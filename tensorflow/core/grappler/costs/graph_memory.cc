@@ -45,7 +45,7 @@ Status GraphMemory::InferStatically(
     return s;
   }
   InferFromTrace(metadata.step_stats());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GraphMemory::InferDynamically(Cluster* cluster) {
@@ -57,7 +57,7 @@ Status GraphMemory::InferDynamically(Cluster* cluster) {
   RunMetadata metadata;
   TF_RETURN_IF_ERROR(cluster->Run(item_, &metadata));
   InferFromTrace(metadata.step_stats());
-  return Status::OK();
+  return OkStatus();
 }
 
 int64_t GraphMemory::GetWorstCaseMemoryUsage() const {

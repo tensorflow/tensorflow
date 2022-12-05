@@ -15,15 +15,21 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 
+#include <string>
+#include <tuple>
+#include <vector>
+
 #include "tensorflow/cc/saved_model/metrics.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
 
 constexpr char kTestData[] = "cc/saved_model/testdata";
+// This is the value in testdata/VarsAndArithmeticObjectGraph/fingerprint.pb
+constexpr char kV2ModuleSavedModelChecksum[] = "15788619162413586750";
 
 class BundleV2Test : public ::testing::Test {
  protected:
@@ -44,7 +50,7 @@ class BundleV2Test : public ::testing::Test {
                                          attr.checkpoint_key());
             }
           }
-          return Status::OK();
+          return OkStatus();
         }));
 
     // Should be one of each var name restored.
@@ -110,6 +116,9 @@ TEST_F(BundleV2Test, UpdatesMetrics) {
   EXPECT_EQ(metrics::SavedModelRead("2").value(), read_count + 1);
   EXPECT_EQ(metrics::SavedModelReadApi(kCCLoadBundleV2Label).value(),
             api_count + 1);
+  // Check that the gauge contains the fingerprint.
+  EXPECT_EQ(metrics::SavedModelReadFingerprint().value(),
+            kV2ModuleSavedModelChecksum);
 }
 
 }  // namespace

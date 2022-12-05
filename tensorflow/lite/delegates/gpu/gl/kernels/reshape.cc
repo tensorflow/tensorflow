@@ -16,9 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/reshape.h"
 
 #include <algorithm>
+#include <any>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -41,7 +44,7 @@ class Reshape : public NodeShader {
       return absl::InvalidArgumentError(
           "Number of elements in input & output tensors don't match.");
     }
-    const auto& attr = absl::any_cast<const ReshapeAttributes&>(ctx.op_attr);
+    const auto& attr = std::any_cast<const ReshapeAttributes&>(ctx.op_attr);
     if (attr.new_shape.h != ctx.output_shapes[0][1] ||
         attr.new_shape.w != ctx.output_shapes[0][2] ||
         attr.new_shape.c != ctx.output_shapes[0][3]) {
@@ -88,7 +91,7 @@ class Reshape : public NodeShader {
 }  // namespace
 
 std::unique_ptr<NodeShader> NewReshapeNodeShader() {
-  return absl::make_unique<Reshape>();
+  return std::make_unique<Reshape>();
 }
 
 }  // namespace gl

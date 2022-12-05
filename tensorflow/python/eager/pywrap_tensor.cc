@@ -12,13 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// Must be included first
+// clang-format off
+#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+// clang-format on
 
 #include "tensorflow/python/eager/pywrap_tensor.h"
 
-#include <stdlib.h>
-#include <string.h>
+#include <stdlib.h>  // NOLINT
+#include <string.h>  // NOLINT
 
-#include <cmath>
+#include <cmath>  // NOLINT
 
 #include "structmember.h"  // NOLINT // For PyMemberDef
 #include "pybind11/pybind11.h"
@@ -35,7 +39,6 @@ limitations under the License.
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
-#include "tensorflow/python/lib/core/numpy.h"
 #include "tensorflow/python/lib/core/py_exception_registry.h"
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
@@ -503,7 +506,7 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   self->handle_data = Py_None;
   Py_INCREF(Py_None);
   self->tensor_shape = Py_None;
-  self->status.status = tensorflow::Status::OK();
+  self->status.status = ::tensorflow::OkStatus();
   self->dict = nullptr;
   self->weakreflist = nullptr;
   self->context = nullptr;
@@ -587,7 +590,7 @@ static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
   if (code != TF_OK) {
     RaiseExceptionTypeFromTFStatus(&self->status);
     // Cleanup self->status before returning.
-    self->status.status = tensorflow::Status::OK();
+    self->status.status = ::tensorflow::OkStatus();
     return nullptr;
   }
   PyObject* shape = PyTuple_New(n);
@@ -613,7 +616,7 @@ static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
         PyErr_SetString(PyExc_RuntimeError, "Error while creating shape");
       }
       // Cleanup self->status before returning.
-      self->status.status = tensorflow::Status::OK();
+      self->status.status = ::tensorflow::OkStatus();
       Py_DECREF(shape);
       if (dim != nullptr) Py_DECREF(dim);
       return nullptr;
@@ -627,7 +630,7 @@ static PyObject* EagerTensor_rank(EagerTensor* self) {
   int num_dims = TFE_TensorHandleNumDims(self->handle, &self->status);
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status, nullptr)) {
     // Cleanup self->status before returning.
-    self->status.status = tensorflow::Status::OK();
+    self->status.status = ::tensorflow::OkStatus();
     return nullptr;
   }
 #if PY_MAJOR_VERSION < 3
@@ -643,7 +646,7 @@ static PyObject* EagerTensor_num_elements(EagerTensor* self) {
   int n = TFE_TensorHandleNumElements(handle, &self->status);
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status, nullptr)) {
     // Cleanup self->status before returning.
-    self->status.status = tensorflow::Status::OK();
+    self->status.status = ::tensorflow::OkStatus();
     return nullptr;
   }
   return PyLong_FromLongLong(n);
@@ -694,7 +697,7 @@ static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status,
                                                   PyExc_RuntimeError)) {
     // Cleanup self->status before returning.
-    self->status.status = tensorflow::Status::OK();
+    self->status.status = ::tensorflow::OkStatus();
     return nullptr;
   }
 
@@ -711,7 +714,7 @@ static PyObject* EagerTensor_numpy_internal(EagerTensor* self) {
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status, nullptr)) {
     Py_XDECREF(py_array);
     // Cleanup self->status before returning.
-    self->status.status = tensorflow::Status::OK();
+    self->status.status = ::tensorflow::OkStatus();
     return nullptr;
   } else {
     return PyArray_Return(reinterpret_cast<PyArrayObject*>(py_array));
@@ -750,7 +753,7 @@ static PyObject* EagerTensor_device(EagerTensor* self) {
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status,
                                                   PyExc_ValueError)) {
     // Cleanup self->status before returning.
-    self->status.status = tensorflow::Status::OK();
+    self->status.status = ::tensorflow::OkStatus();
     return nullptr;
   }
 #if PY_MAJOR_VERSION >= 3
@@ -767,7 +770,7 @@ static PyObject* EagerTensor_backing_device(EagerTensor* self) {
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status,
                                                   PyExc_ValueError)) {
     // Cleanup self->status before returning.
-    self->status.status = tensorflow::Status::OK();
+    self->status.status = ::tensorflow::OkStatus();
     return nullptr;
   }
 #if PY_MAJOR_VERSION >= 3
@@ -849,7 +852,7 @@ static int EagerTensor_getbuffer(EagerTensor* self, Py_buffer* view,
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status,
                                                   PyExc_BufferError)) {
     // Cleanup self->status before returning.
-    self->status.status = tensorflow::Status::OK();
+    self->status.status = ::tensorflow::OkStatus();
     return -1;
   }
   if (PyObject_GetBuffer(py_array.get(), view, flags) < 0) {
@@ -972,7 +975,7 @@ PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle,
     Py_INCREF(Py_None);
     t->tensor_shape = Py_None;
     t->handle = handle;
-    t->status.status = tensorflow::Status::OK();
+    t->status.status = ::tensorflow::OkStatus();
     t->weakreflist = nullptr;
     PyObject* py_context = GetPyEagerContext();
     if (py_context == nullptr) {
@@ -1009,7 +1012,7 @@ int64_t PyEagerTensor_NumElements(PyObject* tensor) {
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&as_c_eager_tensor->status,
                                                   PyExc_ValueError)) {
     // Cleanup status before returning.
-    as_c_eager_tensor->status.status = tensorflow::Status::OK();
+    as_c_eager_tensor->status.status = ::tensorflow::OkStatus();
     return -1;
   }
 

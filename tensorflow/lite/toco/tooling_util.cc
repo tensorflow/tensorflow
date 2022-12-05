@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/tooling_util.h"
 
+#include <algorithm>
 #include <functional>
 #include <iterator>
 #include <set>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>

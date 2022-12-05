@@ -27,7 +27,7 @@ Status LookupInterface::CheckKeyShape(const TensorShape& shape) {
                                    " must end with the table's key shape ",
                                    key_shape().DebugString());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LookupInterface::CheckKeyAndValueTypes(const Tensor& keys,
@@ -40,7 +40,7 @@ Status LookupInterface::CheckKeyAndValueTypes(const Tensor& keys,
     return errors::InvalidArgument("Value must be type ", value_dtype(),
                                    " but got ", values.dtype());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LookupInterface::CheckKeyAndValueTensorsHelper(const Tensor& keys,
@@ -58,7 +58,7 @@ Status LookupInterface::CheckKeyAndValueTensorsHelper(const Tensor& keys,
         "Expected shape ", expected_value_shape.DebugString(),
         " for value, got ", values.shape().DebugString());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LookupInterface::CheckKeyAndValueTensorsForInsert(const Tensor& keys,
@@ -95,7 +95,7 @@ Status LookupInterface::CheckFindArguments(const Tensor& key,
         fullsize_value_shape.DebugString(), " for default value, got ",
         default_value.shape().DebugString());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace lookup

@@ -51,7 +51,7 @@ REGISTER_OP("Variable")
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &out));
       c->set_output(0, out);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("IsVariableInitialized")
@@ -92,7 +92,7 @@ REGISTER_OP("Assign")
       }
 
       c->set_output(0, c->input(1));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("AssignAdd")
@@ -124,11 +124,11 @@ Status ScatterUpdateShape(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->Concatenate(indices_shape, var_subshape, &concat));
   TF_RETURN_IF_ERROR(
       InferenceContext::Rank(c->input(2)) == 0
-          ? Status::OK()
+          ? OkStatus()
           : c->Merge(c->input(2), concat, &unused_updates_shape));
 
   c->set_output(0, var_shape);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ScatterNdUpdateShape(InferenceContext* c) {
@@ -323,7 +323,7 @@ REGISTER_OP("CountUpTo")
       ShapeHandle output;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &output));
       c->set_output(0, output);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ResourceCountUpTo")
@@ -347,7 +347,7 @@ REGISTER_OP("ResourceCountUpTo")
       ShapeHandle output;
       TF_RETURN_IF_ERROR(c->WithRank(shape_and_type.shape, 0, &output));
       c->set_output(0, output);
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

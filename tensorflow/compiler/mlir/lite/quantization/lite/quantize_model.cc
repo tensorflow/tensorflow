@@ -100,8 +100,10 @@ TfLiteStatus QuantizeModel(
 
   llvm::dbgs() << "fully_quantize: " << fully_quantize
                << ", inference_type: " << quant_specs.inference_type
-               << ", input_inference_type: " << input_type
-               << ", output_inference_type: " << output_type << "\n";
+               << ", input_inference_type: "
+               << tflite::EnumNameTensorType(input_type)
+               << ", output_inference_type: "
+               << tflite::EnumNameTensorType(output_type) << "\n";
   mlir::Builder mlir_builder(&context);
   mlir::Type input_mlir_type =
       tflite::ConvertElementType(input_type, mlir_builder);

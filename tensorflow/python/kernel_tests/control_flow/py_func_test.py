@@ -16,16 +16,15 @@
 """Tests for py_func op."""
 
 import gc
+import queue
 import re
 
 import numpy as np
-from six.moves import queue
 
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -415,7 +414,7 @@ class PyFuncTest(PyFuncTestBase):
 
   def testNoReturnValueStateful(self):
 
-    class State(object):
+    class State:
 
       def __init__(self):
         self._value = np.array([1], np.int64)
@@ -603,7 +602,7 @@ class EagerPyFuncTest(PyFuncTestBase):
         x = array_ops.ones((3, 1), dtype=dtypes.float32)
         return script_ops.eager_py_func(matmul, inp=[a, x], Tout=dtypes.float32)
 
-      wrapped = function.defun(wrapper)
+      wrapped = def_function.function(wrapper)
       ret = self.evaluate(wrapped())
       self.assertAllEqual(ret, [[3.0], [3.0], [3.0]])
 

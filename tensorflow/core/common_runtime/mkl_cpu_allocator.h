@@ -189,7 +189,7 @@ class MklCPUAllocator : public Allocator {
     large_size_allocator_ =
         new BFCAllocator(absl::WrapUnique(sub_allocator_), max_mem_bytes, kName,
                          large_allocator_opts);
-    return Status::OK();
+    return OkStatus();
   }
 
   inline string Name() override { return kName; }

@@ -20,15 +20,7 @@ load(
     "tf_cc_test",
     "tf_copts",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tfcompile_target_cpu")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tfcompile_dfsan_enabled")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tfcompile_dfsan_abilists")
+load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_abilists", "tfcompile_dfsan_enabled", "tfcompile_target_cpu")
 
 def _tfcompile_model_library_rule_impl(ctx):
     header_file = ctx.outputs.header_out
@@ -60,7 +52,9 @@ def _tfcompile_model_library_rule_impl(ctx):
 
     dfsan_flags = []
     dfsan_deps = []
-    if ctx.attr.dfsan:
+
+    # DFSan is only supported on linux.
+    if ctx.attr.is_linux and ctx.attr.dfsan:
         dfsan_flags = [
             "--sanitize_dataflow",
             "--sanitize_abilists_dataflow=" + ",".join([f.path for f in ctx.files.dfsan_abilists]),
@@ -90,11 +84,9 @@ def _tfcompile_model_library_rule_impl(ctx):
         mnemonic = "TensorflowCompile",
     )
     out_files = [header_file, metadata_object_file, function_object_file, session_module_pb]
-    dep_files = [ctx.executable.tfcompile_tool]
     return [
         DefaultInfo(
             files = depset(out_files),
-            runfiles = ctx.runfiles(files = dep_files, transitive_files = depset(dep_files)),
         ),
         OutputGroupInfo(**output_dict),
     ]
@@ -121,6 +113,7 @@ _tfcompile_model_library = rule(
         "extra_flags": attr.string_list(),
         "dfsan": attr.bool(default = False),
         "dfsan_abilists": attr.label_list(default = [], allow_files = True),
+        "is_linux": attr.bool(),
     },
 )
 
@@ -143,7 +136,8 @@ def tf_library(
         enable_tracemes = False,
         mlir_components = "None",
         deps = None,
-        tags = []):
+        tags = [],
+        copts = []):
     """Runs tfcompile to compile a TensorFlow graph into executable code with fast
     math enabled on cpu.
 
@@ -201,6 +195,7 @@ def tf_library(
       deps: a list of deps to include on the build rules for the generated
         library, added to the standard deps if standard_runtime_deps is True.
       tags: tags to apply to subsidiary build rules.
+      copts: list of copts to pass to cc rules.
     """
     if not cpp_class:
         fail("cpp_class must be specified")
@@ -323,6 +318,10 @@ def tf_library(
         extra_flags = debug_info_flags + profiling_flags + mlir_flags + traceme_flags,
         dfsan = tfcompile_dfsan_enabled(),
         dfsan_abilists = tfcompile_dfsan_abilists(),
+        is_linux = select({
+            "//tensorflow:linux_x86_64": True,
+            "//conditions:default": False,
+        }),
         visibility = visibility,
         testonly = testonly,
         tags = tags,
@@ -370,10 +369,11 @@ def tf_library(
             "//third_party/eigen3",
         ] or []) + (
             mlir_components.count("HloLowering") > 0 and [
-                "@llvm-project//mlir:mlir_c_runner_utils",
+                "//tensorflow/compiler/xla/service/cpu:runtime_mlir_utils",
             ] or []
         ) + (deps or []),
         tags = tags,
+        copts = copts,
     )
 
     # Variables used for gen_test and gen_benchmark.
@@ -426,6 +426,7 @@ def tf_library(
                 "//tensorflow/core:test",
             ],
             tags = tags,
+            extra_copts = copts,
         )
 
     if gen_benchmark:
@@ -461,7 +462,7 @@ def tf_library(
             name = benchmark_name,
             srcs = [benchmark_file],
             testonly = testonly,
-            copts = tf_copts(),
+            copts = copts + tf_copts(),
             linkopts = if_android(["-pie", "-s"]),
             deps = [
                 ":" + name,

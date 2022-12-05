@@ -28,10 +28,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
@@ -41,7 +41,8 @@ namespace tensorflow {
 void CreateConvertMlirToXlaHloPipeline(
     mlir::OpPassManager& pm, llvm::StringRef device_type, bool prefer_tf2xla,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-        custom_legalization_passes);
+        custom_legalization_passes,
+    bool allow_partial_conversion = false);
 
 // Lowers MLIR module to XLA HLO inside an XlaComputation. The input module
 // should only contain operations in tf dialect. If the input module contains

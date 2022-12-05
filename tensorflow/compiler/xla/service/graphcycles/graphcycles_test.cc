@@ -22,9 +22,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 // We emulate a GraphCycles object with a node vector and an edge vector.
 // We then compare the two implementations.
@@ -200,7 +200,7 @@ TEST(GraphCycles, RandomizedTest) {
   static const int kDataOffset = 17;  // an offset to the node-specific data
   int n = 100000;
   int op = 0;
-  std::mt19937 rnd(tensorflow::testing::RandomSeed() + 1);
+  std::mt19937 rnd(tsl::testing::RandomSeed() + 1);
 
   for (int iter = 0; iter != n; iter++) {
     if ((iter % 10000) == 0) VLOG(0) << "Iter " << iter << " of " << n;

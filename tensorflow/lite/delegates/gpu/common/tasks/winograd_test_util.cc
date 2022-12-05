@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/winograd_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -84,7 +85,7 @@ absl::Status Winograd4x4To36TileX6Test(TestExecutionEnvironment* env) {
           CreateWinograd4x4To36TileX6(env->GetGpuInfo(), op_def, padding);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor,
-          absl::make_unique<Winograd4x4To36TileX6>(std::move(operation)),
+          std::make_unique<Winograd4x4To36TileX6>(std::move(operation)),
           BHWC(1, 36, 1, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(dst_ref.data, dst_tensor.data, eps));
     }
@@ -153,7 +154,7 @@ absl::Status Winograd36To4x4Tile4x1Test(TestExecutionEnvironment* env) {
           CreateWinograd36To4x4Tile4x1(env->GetGpuInfo(), op_def, biases);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor,
-          absl::make_unique<Winograd36To4x4Tile4x1>(std::move(operation)),
+          std::make_unique<Winograd36To4x4Tile4x1>(std::move(operation)),
           BHWC(1, 4, 4, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(dst_ref.data, dst_tensor.data, eps));
     }
@@ -215,10 +216,80 @@ absl::Status Winograd4x4To36Test(TestExecutionEnvironment* env) {
       Padding2D padding;
       padding.prepended = HW(1, 1);
       padding.appended = HW(1, 1);
-      Winograd4x4To36 operation = CreateWinograd4x4To36(op_def, padding);
+      Winograd4x4To36 operation =
+          CreateWinograd4x4To36(op_def, padding, env->GetGpuInfo());
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Winograd4x4To36>(std::move(operation)),
+          src_tensor, std::make_unique<Winograd4x4To36>(std::move(operation)),
           BHWC(1, 36, 1, 1), &dst_tensor));
+      RETURN_IF_ERROR(PointWiseNear(dst_ref.data, dst_tensor.data, eps));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status Winograd4x4To36BatchTest(TestExecutionEnvironment* env) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(3, 4, 4, 1);
+  src_tensor.data.resize(src_tensor.shape.DimensionsProduct());
+  for (int i = 0; i < src_tensor.shape.DimensionsProduct(); ++i) {
+    src_tensor.data[i] = sin(i);
+  }
+
+  TensorFloat32 dst_ref;
+  dst_ref.shape = BHWC(src_tensor.shape.b, 36, 1, 1);
+  dst_ref.data.resize(dst_ref.shape.DimensionsProduct());
+  auto b_t = BtMatrixForWinograd4x4To6x6();
+
+  // Bt * Src * B
+  // 1: temp = Src * B
+  for (int batch_id = 0; batch_id < dst_ref.shape.b; ++batch_id) {
+    std::vector<float> temp(36, 0.0f);
+    for (int y = 0; y < 6; ++y) {
+      for (int x = 0; x < 6; ++x) {
+        float sum = 0.0f;
+        for (int i = 0; i < 6; ++i) {
+          if (y < 1 || y > 4 || i < 1 || i > 4) continue;
+          const int index =
+              src_tensor.shape.LinearIndex({batch_id, y - 1, i - 1, 0});
+          sum += src_tensor.data[index] * b_t[x * 6 + i];
+        }
+        temp[y * 6 + x] = sum;
+      }
+    }
+    // 2: ref = Bt * temp
+    for (int y = 0; y < 6; ++y) {
+      for (int x = 0; x < 6; ++x) {
+        float sum = 0.0f;
+        for (int i = 0; i < 6; ++i) {
+          sum += b_t[y * 6 + i] * temp[i * 6 + x];
+        }
+        const int index =
+            dst_ref.shape.LinearIndex({batch_id, y * 6 + x, 0, 0});
+        dst_ref.data[index] = sum;
+      }
+    }
+  }
+
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
+      float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
+      if (!env->GetGpuInfo().IsRoundToNearestSupported()) {
+        eps *= 4.0f;
+      }
+      OperationDef op_def;
+      op_def.precision = precision;
+      op_def.src_tensors.push_back({data_type, storage, Layout::BHWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::BHWC});
+      TensorFloat32 dst_tensor;
+      Padding2D padding;
+      padding.prepended = HW(1, 1);
+      padding.appended = HW(1, 1);
+      Winograd4x4To36 operation =
+          CreateWinograd4x4To36(op_def, padding, env->GetGpuInfo());
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src_tensor, std::make_unique<Winograd4x4To36>(std::move(operation)),
+          dst_ref.shape, &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(dst_ref.data, dst_tensor.data, eps));
     }
   }
@@ -284,7 +355,7 @@ absl::Status Winograd36To4x4Test(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       Winograd36To4x4 operation = CreateWinograd36To4x4(op_def, biases);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Winograd36To4x4>(std::move(operation)),
+          src_tensor, std::make_unique<Winograd36To4x4>(std::move(operation)),
           BHWC(1, 4, 4, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(dst_ref.data, dst_tensor.data, eps));
     }

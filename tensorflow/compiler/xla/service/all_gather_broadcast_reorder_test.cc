@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -34,9 +34,9 @@ class AllGatherBroadcastReorderTest : public HloTestBase {
     ASSERT_TRUE(changed.ok());
 
     if (expected_output == PassOutput::NoChange) {
-      EXPECT_FALSE(changed.ValueOrDie());
+      EXPECT_FALSE(changed.value());
     } else {
-      EXPECT_TRUE(changed.ValueOrDie());
+      EXPECT_TRUE(changed.value());
       if (expected_output == PassOutput::NonUniformAGPattern) {
         EXPECT_THAT(module->entry_computation()->root_instruction(),
                     m::Broadcast(m::AllGather(m::Parameter())));

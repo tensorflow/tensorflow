@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "MlirPassthroughOp"
   input_arg {
     name: "inputs"

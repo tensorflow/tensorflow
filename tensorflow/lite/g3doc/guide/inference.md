@@ -67,14 +67,14 @@ require writing JNI wrappers to move data between Java and C++ layers.
 
 See below for details about using [C++](#load-and-run-a-model-in-c) and
 [Java](#load-and-run-a-model-in-java), or follow the
-[Android quickstart](android.md) for a tutorial and example code.
+[Android quickstart](../android) for a tutorial and example code.
 
 #### TensorFlow Lite Android wrapper code generator
 
 Note: TensorFlow Lite wrapper code generator is in experimental (beta) phase and
 it currently only supports Android.
 
-For TensorFlow Lite model enhanced with [metadata](../convert/metadata.md),
+For TensorFlow Lite model enhanced with [metadata](../inference_with_metadata/overview),
 developers can use the TensorFlow Lite Android wrapper code generator to create
 platform specific wrapper code. The wrapper code removes the need to interact
 directly with `ByteBuffer` on Android. Instead, developers can interact with the
@@ -99,7 +99,7 @@ See below for details about using [Swift](#load-and-run-a-model-in-swift),
 
 ### Linux Platform
 
-On Linux platforms (including [Raspberry Pi](build_rpi.md)), you can run
+On Linux platforms (including [Raspberry Pi](build_arm)), you can run
 inferences using TensorFlow Lite APIs available in
 [C++](#load-and-run-a-model-in-c) and [Python](#load-and-run-a-model-in-python),
 as shown in the following sections.
@@ -192,7 +192,7 @@ In this case, each entry in `inputs` corresponds to an input tensor and
 output data.
 
 In both cases, the tensor indices should correspond to the values you gave to
-the [TensorFlow Lite Converter](../convert/) when you created the model. Be
+the [TensorFlow Lite Converter](../models/convert/) when you created the model. Be
 aware that the order of tensors in `input` must match the order given to the
 TensorFlow Lite Converter.
 
@@ -572,7 +572,7 @@ print(output_data)
 
 As an alternative to loading the model as a pre-converted `.tflite` file, you
 can combine your code with the
-[TensorFlow Lite Converter Python API](https://www.tensorflow.org/lite/convert/python_api)
+[TensorFlow Lite Converter Python API](https://www.tensorflow.org/lite/api_docs/python/tf/lite/TFLiteConverter)
 (`tf.lite.TFLiteConverter`), allowing you to convert your TensorFlow model into
 the TensorFlow Lite format and then run inference:
 
@@ -602,6 +602,44 @@ For more Python sample code, see
 
 Tip: Run `help(tf.lite.Interpreter)` in the Python terminal to get detailed
 documentation about the interpreter.
+
+## Run inference with dynamic shape model
+
+If you want to run a model with dynamic input shape,
+*resize the input shape* before running inference.
+Otherwise, the `None` shape in Tensorflow models will be replaced by a
+placeholder of `1` in TFLite models.
+
+The following examples show how to resize the input shape before
+running inference in different languages.
+All the examples assume that the input shape is defined as `[1/None, 10]`, and
+need to be resized to `[3, 10]`.
+
+<section class="tabs">
+
+###### C++ {.new-tab}
+
+```c++
+// Resize input tensors before allocate tensors
+interpreter->ResizeInputTensor(/*tensor_index=*/0, std::vector<int>{3,10});
+interpreter->AllocateTensors();
+```
+###### Python {.new-tab}
+
+```python
+# Load the TFLite model in TFLite Interpreter
+interpreter = tf.lite.Interpreter(model_path=TFLITE_FILE_PATH)
+  
+# Resize input shape for dynamic shape model and allocate tensor
+interpreter.resize_tensor_input(interpreter.get_input_details()[0]['index'], [3, 10])
+interpreter.allocate_tensors()
+  
+# Get input and output tensors.
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+```
+
+</section>
 
 ## Supported operations
 

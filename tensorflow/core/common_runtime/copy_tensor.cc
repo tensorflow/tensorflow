@@ -74,7 +74,7 @@ void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
         status_cb->Ref();
         CopyHostToDevice(&from, cpu_allocator, out_allocator, edge_name, dst,
                          to, recv_dev_context, wrapped_done, sync_dst_compute);
-        return Status::OK();
+        return OkStatus();
       } else {
         if (!DMAHelper::CanUseDMA(&from)) {
           Status err = errors::InvalidArgument(
@@ -89,7 +89,7 @@ void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
           *to = Tensor(out_allocator, from.dtype(), from.shape());
           recv_dev_context->CopyCPUTensorToDevice(&from, dst, to, wrapped_done,
                                                   sync_dst_compute);
-          return Status::OK();
+          return OkStatus();
         } else {
           return status_cb->status();
         }
@@ -112,7 +112,7 @@ void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
     }
   } else if (input->dtype() == DT_RESOURCE) {
     *output = *input;
-    done(Status::OK());
+    done(OkStatus());
   } else {
     recv_dev_context->CopyCPUTensorToDevice(input, dst, output, std::move(done),
                                             sync_dst_compute);
@@ -148,7 +148,7 @@ void CopyDeviceToDevice(CopyTensor::CopyFunction copy_function,
                            send_dev_context, recv_dev_context, src, dst,
                            src_alloc_attr, dst_alloc_attr, &from, to,
                            dev_to_dev_stream_index, wrapped_done);
-        return Status::OK();
+        return OkStatus();
       } else {
         if (!DMAHelper::CanUseDMA(&from)) {
           Status err = errors::InvalidArgument(
@@ -164,7 +164,7 @@ void CopyDeviceToDevice(CopyTensor::CopyFunction copy_function,
           copy_function(send_dev_context, recv_dev_context, src, dst,
                         src_alloc_attr, dst_alloc_attr, &from, to,
                         dev_to_dev_stream_index, wrapped_done);
-          return Status::OK();
+          return OkStatus();
         } else {
           return status_cb->status();
         }
@@ -188,7 +188,7 @@ void CopyDeviceToDevice(CopyTensor::CopyFunction copy_function,
     }
   } else if (input->dtype() == DT_RESOURCE) {
     *output = *input;
-    done(Status::OK());
+    done(OkStatus());
   } else {
     copy_function(send_dev_context, recv_dev_context, src, dst, src_alloc_attr,
                   dst_alloc_attr, input, output, dev_to_dev_stream_index,
@@ -297,7 +297,7 @@ void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
   // cpu -> cpu
   CHECK(!non_cpu_src && !non_cpu_dst);
   *output = *input;
-  done(Status::OK());
+  done(OkStatus());
 }
 
 // static
@@ -308,7 +308,7 @@ Status CopyTensor::Register(DeviceType sender_device_type,
   std::vector<RegistrationInfo>* registry = MutableRegistry();
   registry->emplace_back(sender_device_type, receiver_device_type,
                          copy_function, is_pluggable_device);
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -324,7 +324,7 @@ static Status WrappedTensorDeviceCopy(
     *to = from;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #define REGISTER_WRAPPED_TENSOR_COPY(DIRECTION)         \
@@ -357,7 +357,7 @@ void CopyDeviceToHost(const Tensor* input, Allocator* cpu_allocator,
         status_cb->Ref();
         CopyDeviceToHost(&from, cpu_allocator, out_allocator, edge_name, src,
                          to, send_dev_context, wrapped_done);
-        return Status::OK();
+        return OkStatus();
       } else {
         if (!DMAHelper::CanUseDMA(&from)) {
           Status err = errors::InvalidArgument(
@@ -372,7 +372,7 @@ void CopyDeviceToHost(const Tensor* input, Allocator* cpu_allocator,
           *to = Tensor(out_allocator, from.dtype(), from.shape());
           send_dev_context->CopyDeviceTensorToCPU(&from, edge_name, src, to,
                                                   wrapped_done);
-          return Status::OK();
+          return OkStatus();
         } else {
           return status_cb->status();
         }
@@ -395,7 +395,7 @@ void CopyDeviceToHost(const Tensor* input, Allocator* cpu_allocator,
     }
   } else if (input->dtype() == DT_RESOURCE) {
     *output = *input;
-    done(Status::OK());
+    done(OkStatus());
   } else {
     send_dev_context->CopyDeviceTensorToCPU(input, edge_name, src, output,
                                             std::move(done));

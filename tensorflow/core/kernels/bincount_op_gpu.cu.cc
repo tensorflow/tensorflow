@@ -47,12 +47,13 @@ struct BincountFunctor<GPUDevice, Tidx, T, false> {
           "handled by unsorted_segment_sum");
     }
     if (output.size() == 0) {
-      return Status::OK();
+      return OkStatus();
     }
     if (tensorflow::OpDeterminismRequired()) {
-      // TODO(reedwm): Is this really nondeterministic? There is no
-      // documentation in DeviceHistogram::HistogramEven on whether it is
-      // deterministic or not.
+      // TODO(reedwm): Is this really nondeterministic?
+      // DeviceHistogram::HistogramEven is called, and it is unclear
+      // if it is deterministic on floating-point inputs.
+      // See https://github.com/NVIDIA/cub/issues/471#issuecomment-1194682443.
       return errors::Unimplemented(
           "Determinism is not yet supported in GPU implementation of "
           "Bincount.");
@@ -107,7 +108,7 @@ struct BincountFunctor<GPUDevice, Tidx, T, false> {
       return errors::Internal(
           "Could not launch HistogramEven: ", GpuGetErrorString(err), ".");
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 

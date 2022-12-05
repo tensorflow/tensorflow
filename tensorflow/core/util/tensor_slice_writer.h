@@ -68,6 +68,8 @@ class TensorSliceWriter {
   static size_t MaxBytesPerElement(DataType dt);
 
  private:
+  static size_t MaxBytesPerElementOrZero(DataType dt);
+
   static constexpr size_t kMaxMessageBytes = 1LL << 31;
   // Filling in the TensorProto in a SavedSlice will add the following
   // header bytes, in addition to the data:
@@ -156,15 +158,21 @@ Status TensorSliceWriter::Add(const string& name, const TensorShape& shape,
     data_.insert(key_value);
   }
   ++slices_;
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T>
 Status TensorSliceWriter::SaveData(const T* data, int64_t num_elements,
                                    SavedSlice* ss) {
-  size_t size_bound =
-      ss->ByteSize() + kTensorProtoHeaderBytes +
-      (MaxBytesPerElement(DataTypeToEnum<T>::value) * num_elements);
+  size_t max_bytes_per_element =
+      MaxBytesPerElementOrZero(DataTypeToEnum<T>::value);
+  if (max_bytes_per_element == 0) {
+    return errors::InvalidArgument(
+        "Tensor slice serialization not implemented for dtype ",
+        DataTypeToEnum<T>::value);
+  }
+  size_t size_bound = ss->ByteSize() + kTensorProtoHeaderBytes +
+                      (max_bytes_per_element * num_elements);
   if (size_bound > kMaxMessageBytes) {
     return errors::InvalidArgument(
         "Tensor slice is too large to serialize (conservative estimate: ",
@@ -173,7 +181,7 @@ Status TensorSliceWriter::SaveData(const T* data, int64_t num_elements,
   Fill(data, num_elements, ss->mutable_data());
   DCHECK_GE(ss->ByteSize(), 0);
   DCHECK_LE(ss->ByteSize(), size_bound);
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>

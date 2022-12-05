@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <fstream>
 #include <iostream>
+#include <string>
 
 #include "absl/strings/escaping.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"

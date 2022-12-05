@@ -40,8 +40,10 @@ COPY --from=devtoolset /dt7 /dt7
 COPY --from=devtoolset /dt9 /dt9
 
 # Install TensorRT.
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub
 RUN echo \
-    deb https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1604/x86_64 / \
+    deb https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64 / \
     > /etc/apt/sources.list.d/nvidia-ml.list \
       && \
     apt-get update && apt-get install -y \
@@ -84,18 +86,18 @@ RUN /install/build_and_install_python.sh "3.7.7"
 RUN /install/build_and_install_python.sh "3.8.2"
 RUN /install/build_and_install_python.sh "3.9.4"
 RUN /install/build_and_install_python.sh "3.10.0"
+RUN /install/build_and_install_python.sh "3.11.0"
 
 COPY install/install_pip_packages_by_version.sh /install/
-RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.7"
-RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.8"
-RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.9"
-RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.10"
+RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.7" "jax"
+RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.8" "jax"
+RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.9" "jax"
+RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.10" "jax"
+RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.11" "jax"
 
-# Clang is not available for Ubuntu 20.04 in Google mirror so we download the
-# official release
-ENV CLANG_VERSION="11.0.0"
-COPY install/install_latest_clang_ml2014.sh /install/
-RUN /install/install_latest_clang_ml2014.sh
+ENV CLANG_VERSION="rf2b94bd7eaa83d853dc7568fac87b1f8bf4ddec6"
+COPY install/install_latest_clang.sh /install/
+RUN /install/install_latest_clang.sh
 
 # TensorRT 7 for CUDA 11.1 is compatible with CUDA 11.2, but requires
 # libnvrtc.so.11.1. See https://github.com/NVIDIA/TensorRT/issues/1064.

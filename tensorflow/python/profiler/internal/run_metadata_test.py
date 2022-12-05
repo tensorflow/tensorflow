@@ -16,8 +16,6 @@
 
 from collections import defaultdict
 
-import six
-
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
@@ -214,7 +212,7 @@ class RunMetadataTest(test.TestCase):
       else:
         forward_op.add(op.name)
 
-    for _, f in six.iteritems(back_to_forward):
+    for _, f in back_to_forward.items():
       self.assertTrue(f in forward_op)
 
   # This test requires HARDWARE_TRACE or FULL_TRACE to be specified to

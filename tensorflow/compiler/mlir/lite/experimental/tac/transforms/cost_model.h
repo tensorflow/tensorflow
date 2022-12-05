@@ -37,7 +37,7 @@ namespace tac {
 float GetCostForOp(Operation* op, const std::string& hardware);
 
 // Get the estimated cost for the whole function under the given hardware.
-float GetCostForFunc(FuncOp* func, const std::string& hardware);
+float GetCostForFunc(func::FuncOp* func, const std::string& hardware);
 
 // Get the transfer cost given from & to hardware info.
 // We will only calculate for the "necessary" tensor transferred.

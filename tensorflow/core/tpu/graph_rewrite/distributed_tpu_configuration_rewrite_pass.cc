@@ -70,7 +70,7 @@ Status AddConfigurationNode(const string& configuration_device_name,
 
   TF_ASSIGN_OR_RETURN(*configuration_node, graph->AddNode(config_def));
   (*configuration_node)->set_assigned_device_name(configuration_device_name);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddHostConfigNode(const string& host_device_name,
@@ -92,7 +92,7 @@ Status AddHostConfigNode(const string& host_device_name,
                       graph->AddNode(host_config_def));
   (*host_configuration_node)->set_assigned_device_name(host_device_name);
   graph->AddEdge(configuration_node, 0, *host_configuration_node, 0);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddWaitNode(const string& configuration_device_name,
@@ -116,7 +116,7 @@ Status AddWaitNode(const string& configuration_device_name,
   for (int i = 0; i < host_configuration_nodes.size(); ++i) {
     graph->AddEdge(host_configuration_nodes[i], 0, *wait_node, i);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddGlobalTPUArrayNode(const string& host_device_name, Node* wait_node,
@@ -131,7 +131,7 @@ Status AddGlobalTPUArrayNode(const string& host_device_name, Node* wait_node,
                       graph->AddNode(global_tpu_array_def));
   (*global_tpu_array_node)->set_assigned_device_name(host_device_name);
   graph->AddEdge(wait_node, 0, *global_tpu_array_node, 0);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddSynchronizationNode(
@@ -164,7 +164,7 @@ Status AddSynchronizationNode(
       graph->AddEdge(sync_node, dep.src_output, dep.dst, dep.dst_input);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 
@@ -189,7 +189,7 @@ Status AddShutdownNode(
     }
     graph->AddControlEdge(*shutdown_node, dep.dst);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddHostDisconnectNode(const string& host_device_name,
@@ -215,7 +215,7 @@ Status AddHostDisconnectNode(const string& host_device_name,
   } else {
     graph->AddEdge(host_disconnect_node, 0, post_disconnect_node, output_index);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -326,7 +326,7 @@ Status DistributedTPUConfigurationRewritePass::Run(
                 configuration_node_def, host_devices.front()->name(),
                 global_array_id_nodes, wait_node, output_dependencies, graph));
 
-            return Status::OK();
+            return OkStatus();
           }));
 
   if (VLOG_IS_ON(1)) {
@@ -335,7 +335,7 @@ Status DistributedTPUConfigurationRewritePass::Run(
   }
 
   VLOG(1) << "DistributedTPUConfigurationRewritePass::Run() finished";
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DistributedTPUShutdownRewritePass::Run(
@@ -375,7 +375,7 @@ Status DistributedTPUShutdownRewritePass::Run(
                                         shutdown_node, -1, graph));
             }
 
-            return Status::OK();
+            return OkStatus();
           }));
 
   if (VLOG_IS_ON(1)) {
@@ -383,7 +383,7 @@ Status DistributedTPUShutdownRewritePass::Run(
   }
 
   VLOG(1) << "DistributedTPUShutdownRewritePass::Run() finished";
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

@@ -33,7 +33,7 @@ Status NodeProperties::CreateFromNodeDef(
   props->reset(new NodeProperties(op_def, std::move(node_def),
                                   std::move(input_types),
                                   std::move(output_types)));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

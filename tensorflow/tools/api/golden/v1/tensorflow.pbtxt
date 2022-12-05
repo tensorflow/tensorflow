@@ -21,6 +21,10 @@ tf_module {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "CXX_VERSION"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "ConditionalAccumulator"
     mtype: "<type \'type\'>"
   }
@@ -38,7 +42,7 @@ tf_module {
   }
   member {
     name: "DType"
-    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DTypeMeta\'>"
   }
   member {
     name: "DeviceSpec"
@@ -1846,7 +1850,7 @@ tf_module {
   }
   member_method {
     name: "random_index_shuffle"
-    argspec: "args=[\'index\', \'seed\', \'max_index\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'index\', \'seed\', \'max_index\', \'rounds\', \'name\'], varargs=None, keywords=None, defaults=[\'4\', \'None\'], "
   }
   member_method {
     name: "random_normal"
@@ -2514,7 +2518,7 @@ tf_module {
   }
   member_method {
     name: "vectorized_map"
-    argspec: "args=[\'fn\', \'elems\', \'fallback_to_while_loop\'], varargs=None, keywords=None, defaults=[\'True\'], "
+    argspec: "args=[\'fn\', \'elems\', \'fallback_to_while_loop\', \'warn\'], varargs=None, keywords=None, defaults=[\'True\', \'True\'], "
   }
   member_method {
     name: "verify_tensor_all_finite"

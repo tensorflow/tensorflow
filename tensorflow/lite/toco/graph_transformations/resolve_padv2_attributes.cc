@@ -30,17 +30,17 @@ namespace toco {
   *modified = false;
   const auto pad_it = model->operators.begin() + op_index;
   auto* pad_op = pad_it->get();
-  if (pad_op->type != OperatorType::kPadV2) return ::tensorflow::Status::OK();
+  if (pad_op->type != OperatorType::kPadV2) return ::tensorflow::OkStatus();
 
   auto* op = static_cast<PadV2Operator*>(pad_op);
-  if (!op->left_padding.empty()) return ::tensorflow::Status::OK();
+  if (!op->left_padding.empty()) return ::tensorflow::OkStatus();
 
   CHECK_EQ(op->inputs.size(), 3);
   if (!IsConstantParameterArray(*model, op->inputs[1]))
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
 
   const auto& array = model->GetArray(op->inputs[1]);
-  if (!array.has_shape()) return ::tensorflow::Status::OK();
+  if (!array.has_shape()) return ::tensorflow::OkStatus();
 
   const std::vector<int>& dims = array.shape().dims();
   CHECK_EQ(dims.size(), 2);
@@ -55,6 +55,6 @@ namespace toco {
   // TODO(dkalenichenko): Delete the extra input?
 
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 }  // namespace toco

@@ -18,6 +18,9 @@ import copy
 import os
 
 from absl.testing import parameterized
+# The following import helps load the keras injection function we use in
+# parameter_server_strategy_v2 -- keras_deps.get_load_context_function.
+from tensorflow import keras  # pylint: disable=unused-import
 
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
@@ -36,6 +39,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.saving import save as keras_save
 from tensorflow.python.module import module
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.saved_model import load as tf_load
@@ -76,7 +80,7 @@ class DistributedTableTest(test.TestCase, parameterized.TestCase):
     elif init_source == "keyvaluetensor":
       keys_tensor = constant_op.constant(
           list(range(len(vals))), dtype=dtypes.int64)
-      vals_tensor = constant_op.constant(vals)
+      vals_tensor = constant_op.constant(vals, dtype=dtypes.int64)
       return lookup_ops.KeyValueTensorInitializer(keys_tensor, vals_tensor)
     else:
       raise ValueError("Unrecognized init_source: " + init_source)
@@ -226,33 +230,68 @@ class DistributedTableTest(test.TestCase, parameterized.TestCase):
       returned_input = r.fetch()
       self.assertAllClose(-48, returned_input)
 
-  @combinations.generate(source_combination)
-  def testAccessingResourceHandleInDatasetFnWithMapFnDefinedInside(
-      self, source):
-
+  @combinations.generate(
+      combinations.combine(
+          source=["textfile", "keyvaluetensor"],
+          create_datasets_under_scope=[True, False],
+          using_dataset_instance_not_function=[True, False],
+          create_per_worker_dataset_takes_instance=[True, False]))
+  def testCreateTableUnderScopeCombo(self, source,
+                                     create_datasets_under_scope,
+                                     using_dataset_instance_not_function,
+                                     create_per_worker_dataset_takes_instance):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
 
     coordinator = coordinator_lib.ClusterCoordinator(strategy=strategy)
 
     with strategy.scope():
-      lookuptable = self.createStaticHashTable(
+      lookup_table = self.createStaticHashTable(
           init_source=source, vals=[0, 1, 2], default_value=-2)
 
-    def dataset_fn(input_context):
-      generation_tensor = constant_op.constant([0, 1, 3], dtype=dtypes.int64)
-      dataset = self.makeDatasetFromTensorWithoutUsingResource(
-          input_context, generation_tensor)
-      dataset = dataset.map(lookuptable.lookup)
-      return dataset
+    if using_dataset_instance_not_function:
 
-    @def_function.function
-    def per_worker_dataset_fn():
-      return strategy.distribute_datasets_from_function(dataset_fn)
+      def per_worker_dataset_fn():
+        dataset = dataset_ops.DatasetV2.from_tensors(
+            constant_op.constant([0, 1, 3], dtype=dtypes.int64))
+        dataset = dataset.repeat().batch(24, drop_remainder=True).prefetch(2)
+        dataset = dataset.map(lookup_table.lookup)
 
-    per_worker_dataset = coordinator.create_per_worker_dataset(
-        per_worker_dataset_fn)
-    per_worker_iterator = iter(per_worker_dataset)
+        return strategy.experimental_distribute_dataset(dataset)
+
+    else:
+
+      def per_worker_dataset_fn():
+        def dataset_fn(input_context):
+          batch_size = input_context.get_per_replica_batch_size(24)
+          dataset = dataset_ops.DatasetV2.from_tensors(
+              constant_op.constant([0, 1, 3], dtype=dtypes.int64))
+          dataset = dataset.repeat().batch(batch_size, drop_remainder=True)
+          dataset = dataset.shard(input_context.num_input_pipelines,
+                                  input_context.input_pipeline_id)
+          dataset = dataset.prefetch(2)  # This prefetches 2 batches per device.
+          dataset = dataset.map(lookup_table.lookup)
+          return dataset
+        return strategy.distribute_datasets_from_function(dataset_fn)
+
+    if create_datasets_under_scope:
+      with strategy.scope():
+        if create_per_worker_dataset_takes_instance:
+          per_worker_dataset = coordinator.create_per_worker_dataset(
+              per_worker_dataset_fn())
+        else:
+          per_worker_dataset = coordinator.create_per_worker_dataset(
+              per_worker_dataset_fn)
+        per_worker_iterator = iter(per_worker_dataset)
+
+    else:
+      if create_per_worker_dataset_takes_instance:
+        per_worker_dataset = coordinator.create_per_worker_dataset(
+            per_worker_dataset_fn())
+      else:
+        per_worker_dataset = coordinator.create_per_worker_dataset(
+            per_worker_dataset_fn)
+      per_worker_iterator = iter(per_worker_dataset)
 
     @def_function.function
     def worker_fn(iterator):
@@ -260,9 +299,162 @@ class DistributedTableTest(test.TestCase, parameterized.TestCase):
 
     result = []
     for _ in range(10):
-      # batch_size == 24 and each input is [0, 1, -2]
       result.append(
           coordinator.schedule(worker_fn, args=(per_worker_iterator,)))
+
+    for r in result:
+      returned_input = r.fetch()
+      self.assertAllClose(-24, returned_input)
+
+  @combinations.generate(
+      combinations.combine(
+          source=["textfile", "keyvaluetensor"],
+          create_datasets_under_scope=[True, False],
+          using_dataset_instance_not_function=[True, False],
+          create_per_worker_dataset_takes_instance=[True, False]))
+  def testCreateTableInDatasetCombo(self, source, create_datasets_under_scope,
+                                    using_dataset_instance_not_function,
+                                    create_per_worker_dataset_takes_instance):
+
+    if using_dataset_instance_not_function and (
+        not create_per_worker_dataset_takes_instance):
+      # This is the case that uses the `experimental_distribute_dataset` API to
+      # distribute dataset (instead of the `distribute_datasets_from_function`
+      # API), and passes `create_per_worker_dataset` a function that returns
+      # the distributed dataset (instead of passing it the distributed dataset
+      # directly).
+      # TODO(b/201775366): evaluate whether we need to handle this case
+      self.skipTest("Failed to serialize the input pipeline graph")
+
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+    coordinator = coordinator_lib.ClusterCoordinator(strategy=strategy)
+
+    if using_dataset_instance_not_function:
+
+      def per_worker_dataset_fn():
+        # If this line is being called under strategy.scope(), it becomes a
+        # DistributedTable. Interestingly, after
+        # `experimental_distribute_dataset` serializes the dataset on chief and
+        # deserializes it on workers, `lookup_table` becomes a
+        # RestoredDistributedTable instead of a DistributedTable. And when it’s
+        # `resource_handle` is being accessed on the worker, it does not detect
+        # a DispatchContext, so it returns the restored resource handle,
+        # which is also the one on the local worker. The LookupTableFindV2 ops
+        # is on the local worker, too.
+        lookup_table = self.createStaticHashTable(
+            init_source=source, vals=[0, 1, 2], default_value=-2)
+
+        if create_datasets_under_scope:
+          self.assertIsInstance(lookup_table, ps_values.DistributedTable)
+
+        dataset = dataset_ops.DatasetV2.from_tensors(
+            constant_op.constant([0, 1, 3], dtype=dtypes.int64))
+        dataset = dataset.repeat().batch(24, drop_remainder=True).prefetch(2)
+        dataset = dataset.map(lookup_table.lookup)
+
+        return strategy.experimental_distribute_dataset(dataset)
+
+    else:
+
+      def per_worker_dataset_fn():
+
+        def dataset_fn(input_context):
+          # When we're wrapping the initialization of a StaticHashTable inside a
+          # `dataset_fn` to be distributed with
+          # `distribute_datasets_from_function`, no matter it's called under
+          # strategy.scope() or not, this call creates a StaticHashTable on
+          # chief instead of a DistributedTable on chief and workers.
+          # And correspondingly, LookupTableFindV2 ops is on chief and there are
+          # send-recv communication for the lookup.
+          lookup_table = self.createStaticHashTable(
+              init_source=source, vals=[0, 1, 2], default_value=-2)
+          if create_datasets_under_scope:
+            self.assertIsInstance(lookup_table, lookup_ops.StaticHashTable)
+            self.assertNotIsInstance(lookup_table, ps_values.DistributedTable)
+
+          batch_size = input_context.get_per_replica_batch_size(24)
+          dataset = dataset_ops.DatasetV2.from_tensors(
+              constant_op.constant([0, 1, 3], dtype=dtypes.int64))
+          dataset = dataset.repeat().batch(batch_size, drop_remainder=True)
+          dataset = dataset.shard(input_context.num_input_pipelines,
+                                  input_context.input_pipeline_id)
+          dataset = dataset.prefetch(2)  # This prefetches 2 batches per device.
+          dataset = dataset.map(lookup_table.lookup)
+          return dataset
+
+        return strategy.distribute_datasets_from_function(dataset_fn)
+
+    if create_datasets_under_scope:
+      with strategy.scope():
+        if create_per_worker_dataset_takes_instance:
+          per_worker_dataset = coordinator.create_per_worker_dataset(
+              per_worker_dataset_fn())
+        else:
+          per_worker_dataset = coordinator.create_per_worker_dataset(
+              per_worker_dataset_fn)
+        per_worker_iterator = iter(per_worker_dataset)
+
+    else:
+      if create_per_worker_dataset_takes_instance:
+        per_worker_dataset = coordinator.create_per_worker_dataset(
+            per_worker_dataset_fn())
+      else:
+        per_worker_dataset = coordinator.create_per_worker_dataset(
+            per_worker_dataset_fn)
+      per_worker_iterator = iter(per_worker_dataset)
+
+    @def_function.function
+    def worker_fn(iterator):
+      return math_ops.reduce_sum(next(iterator))
+
+    result = []
+    for _ in range(10):
+      result.append(
+          coordinator.schedule(worker_fn, args=(per_worker_iterator,)))
+
+    for r in result:
+      returned_input = r.fetch()
+      self.assertAllClose(-24, returned_input)
+
+  @combinations.generate(source_combination)
+  def testAccessingTableInStepFunction(self, source):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+    coordinator = coordinator_lib.ClusterCoordinator(strategy=strategy)
+
+    with strategy.scope():
+      lookup_table = self.createStaticHashTable(
+          init_source=source, vals=[0, 1, 2], default_value=-2)
+
+    dataset = (
+        dataset_ops.DatasetV2.from_tensors(
+            constant_op.constant([0, 1, 3], dtype=dtypes.int64)).repeat().batch(
+                24, drop_remainder=True).prefetch(2))
+    dataset = dataset.map(lookup_table.lookup)
+
+    distributed_dataset = strategy.experimental_distribute_dataset(dataset)
+    distributed_dataset = coordinator.create_per_worker_dataset(
+        distributed_dataset)
+
+    @def_function.function
+    def worker_fn(iterator):
+
+      def replica_fn(inputs):
+        return math_ops.reduce_sum(lookup_table.lookup(inputs))
+
+      all_results = strategy.run(replica_fn, args=(next(iterator),))
+      return all_results
+
+    steps_per_epoch = 10
+    distributed_iterator = iter(distributed_dataset)
+    result = []
+    for _ in range(steps_per_epoch):
+
+      result.append(
+          coordinator.schedule(worker_fn, args=(distributed_iterator,)))
+
+    coordinator.join()
 
     for r in result:
       returned_input = r.fetch()
@@ -327,7 +519,7 @@ class DistributedTableTest(test.TestCase, parameterized.TestCase):
       else:
         keys_tensor = constant_op.constant(
             list(range(len(vals))), dtype=dtypes.int64)
-        vals_tensor = constant_op.constant(vals)
+        vals_tensor = constant_op.constant(vals, dtype=dtypes.int64)
         self.initializer = lookup_ops.KeyValueTensorInitializer(
             keys_tensor, vals_tensor)
 
@@ -383,6 +575,49 @@ class DistributedTableTest(test.TestCase, parameterized.TestCase):
     self.assertNotEmpty(deferred_captures)
 
     self.verifyWorkerLocalInstance(coordinator, distributed_model)
+
+  @combinations.generate(source_combination)
+  def testLookupInNestedTFWhileLoop(self, source):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+    coordinator = coordinator_lib.ClusterCoordinator(strategy=strategy)
+
+    file_path = os.path.join(self.get_temp_dir(), "text_file_initializer")
+    with strategy.scope():
+      model = self.Model(source, file_path)
+
+    @def_function.function
+    def replica_fn(batch_data):
+      replica_result = array_ops.zeros(shape=(), dtype=dtypes.int64)
+      for _ in math_ops.range(10):
+        replica_result += math_ops.reduce_sum(model.use_table(batch_data))
+      return replica_result
+
+    @def_function.function
+    def step_fn(iterator):
+
+      step_result = array_ops.zeros(shape=(), dtype=dtypes.int64)
+      for _ in math_ops.range(10):
+        step_result += strategy.run(replica_fn, args=(next(iterator),))
+
+      return step_result
+
+    dataset = (
+        dataset_ops.DatasetV2.from_tensors(
+            constant_op.constant([0, 1, 3], dtype=dtypes.int64)).repeat().batch(
+                24, drop_remainder=True).prefetch(2))
+    distributed_dataset = coordinator.create_per_worker_dataset(
+        strategy.experimental_distribute_dataset(dataset))
+
+    results = []
+    for _ in range(10):
+      results.append(
+          coordinator.schedule(step_fn, args=(iter(distributed_dataset),)))
+
+    coordinator.join()
+
+    for r in results:
+      self.assertAllClose(-2400, r.fetch())
 
   @combinations.generate(source_and_load_combination)
   def testDistributeTableSaveAndServe(self, load, source):

@@ -72,7 +72,7 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -93,7 +93,7 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddScalar(seeds_.second, &seed2));
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {input_graph_node, rate, seed, seed2}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -118,7 +118,7 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
           tf_shared_lock l(mu_);
           if (!input_impl_) {
             *end_of_sequence = true;
-            return Status::OK();
+            return OkStatus();
           }
           TF_RETURN_IF_ERROR(
               input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
@@ -126,7 +126,7 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
         if (*end_of_sequence) {
           mutex_lock l(mu_);
           input_impl_.reset();
-          return Status::OK();
+          return OkStatus();
         }
 
         // generate a number from random uniform [0, 1)
@@ -138,7 +138,7 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
         }
       } while (!rand_val_hit);
       *end_of_sequence = false;
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -167,7 +167,7 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name("input_impl_empty"), ""));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -188,7 +188,7 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
       } else {
         input_impl_.reset();
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     mutex mu_;

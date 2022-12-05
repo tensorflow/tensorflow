@@ -1,6 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -13,7 +14,6 @@ py_library(
     srcs = ["memory_test_util.py"],
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
-    deps = ["@six_archive//:six"],
 )
 
 cuda_py_test(

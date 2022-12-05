@@ -26,6 +26,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/jit/encapsulate_xla_computations_pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
@@ -39,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -288,7 +291,27 @@ Status PlaceInputOutputNodesOnHost(const std::vector<std::string>& inputs,
       output_node->set_assigned_device_name(cpu_device->name());
     }
   }
-  return Status::OK();
+  return OkStatus();
+}
+
+Status AdjustDeviceAssignment(const std::vector<std::string>& inputs,
+                              const std::vector<std::string>& outputs,
+                              const std::vector<std::string>& control_outputs,
+                              const Device* cpu_device, Graph* graph) {
+  // TODO(b/232299232): We don't inline and partition v2 control flow currently.
+  // All ops within control flow are placed on CPU for now. Figure out a better
+  // way to handle v2 control flow.
+  for (Node* node : graph->op_nodes()) {
+    if (node->IsWhileNode() || node->IsIfNode()) {
+      LOG(WARNING) << "The control flow node " << node->name()
+                   << " is placed on CPU.";
+      node->set_assigned_device_name(cpu_device->name());
+    }
+  }
+
+  TF_RETURN_IF_ERROR(
+      PlaceInputOutputNodesOnHost(inputs, outputs, cpu_device, graph));
+  return OkStatus();
 }
 
 bool IsTpuGraph(const Graph* graph) {
@@ -312,9 +335,12 @@ bool IsTpuGraph(const Graph* graph) {
 // devices. Returns a new graph with the added Send/Recv ops.
 // This is done by partitioning `graph` and add Send/Recv ops on the edges
 // across devices.
-StatusOr<std::unique_ptr<Graph>> MaybeInsertTransferOps(
-    const FallbackState& fallback_state, const std::vector<std::string>& inputs,
-    const std::vector<std::string>& outputs, std::unique_ptr<Graph> graph) {
+StatusOr<std::unique_ptr<Graph>> BuildXlaOpsAndMaybeInsertTransferOps(
+    const std::string& graph_func_name, const FallbackState& fallback_state,
+    const std::vector<std::string>& inputs,
+    const std::vector<std::string>& outputs,
+    const std::vector<std::string>& control_outputs,
+    std::unique_ptr<Graph> graph) {
   // Skip inserting transfer ops if this is a TPU graph.
   // Our stack currently cannot run the old bridge on TPU graphs, as it will
   // generate ops that are not supported by the subsequent MLIR passes.
@@ -333,6 +359,15 @@ StatusOr<std::unique_ptr<Graph>> MaybeInsertTransferOps(
     DumpGraphToFile("after_inlining", *graph);
   }
 
+  // Replace the StatefulPartitionedCall op that should be compiled to an
+  // XlaLaunch op.
+  // TODO(b/239089915): Clean this up after the logic is implemented in TFXLA
+  // bridge.
+  TF_RETURN_IF_ERROR(BuildXlaLaunchOps(graph.get()));
+  if (VLOG_IS_ON(1)) {
+    DumpGraphToFile("after_build_xla_launch", *graph);
+  }
+
   // Run placer.
   const Device* cpu_device = fallback_state.device_manager().HostCPU();
   if (cpu_device == nullptr) {
@@ -347,8 +382,8 @@ StatusOr<std::unique_ptr<Graph>> MaybeInsertTransferOps(
     DumpGraphToFile("after_placer", *graph);
   }
 
-  TF_RETURN_IF_ERROR(
-      PlaceInputOutputNodesOnHost(inputs, outputs, cpu_device, graph.get()));
+  TF_RETURN_IF_ERROR(AdjustDeviceAssignment(inputs, outputs, control_outputs,
+                                            cpu_device, graph.get()));
 
   // Insert send/recv ops to the graph.
   TF_ASSIGN_OR_RETURN(
@@ -403,7 +438,7 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
       result.graph.get(),
       const_cast<tensorflow::FunctionLibraryDefinition*>(
           &result.graph->flib_def()),
-      /*restrict_functionalization_to_tpu_nodes=*/false));
+      /*restrict_functionalization_to_compiled_nodes=*/false));
 
   if (VLOG_IS_ON(1)) {
     DumpGraphToFile("after_functionalization", *result.graph);
@@ -416,7 +451,7 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
   auto status_or_optimized_graph =
       OptimizeGraph(*result.graph, build_graph_options);
   if (status_or_optimized_graph.ok()) {
-    result.graph = std::move(status_or_optimized_graph.ValueOrDie());
+    result.graph = std::move(status_or_optimized_graph.value());
   } else {
     LOG(WARNING) << "TFRT failed to optimize graph: "
                  << status_or_optimized_graph.status();
@@ -429,10 +464,12 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
   result.grappler_duration = absl::Now() - grappler_start_time;
 
   if (options_.enable_tfrt_gpu) {
-    TF_ASSIGN_OR_RETURN(result.graph,
-                        MaybeInsertTransferOps(fallback_state_, inputs,
-                                               graph_import_config.outputs,
-                                               std::move(result.graph)));
+    TF_ASSIGN_OR_RETURN(
+        result.graph,
+        BuildXlaOpsAndMaybeInsertTransferOps(
+            graph_import_config.graph_func_name, fallback_state_, inputs,
+            graph_import_config.outputs, graph_import_config.control_outputs,
+            std::move(result.graph)));
 
     // Update `control_outputs` as there might be newly added Send ops.
     for (const Node* node : result.graph->nodes()) {
@@ -457,7 +494,7 @@ Status TfrtGraphExecutionState::Extend(const GraphDef& graph) {
       functions_to_optimize_,
       PreprocessGraph(*graph_def, options_.run_placer_grappler_on_functions));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -633,7 +670,7 @@ Status PruneGraphDef(GraphDef& graph_def,
     *graph_def.add_node() = std::move(node);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status EliminateRefVariablesFromV1ControlFlow(tensorflow::GraphDef& graph_def) {
@@ -710,7 +747,7 @@ Status EliminateRefVariablesFromV1ControlFlow(tensorflow::GraphDef& graph_def) {
   }
 
   graph_def.mutable_node()->Swap(updated_graph_def.mutable_node());
-  return Status::OK();
+  return OkStatus();
 }
 
 void RemoveInputShapesInFunctions(tensorflow::GraphDef& graph_def) {
@@ -792,7 +829,7 @@ Status OptimizeFunctions(
 
     fdef = std::move(new_fdef);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -826,6 +863,42 @@ TfrtGraphExecutionState::OptimizeGraph(
   TF_RETURN_IF_ERROR(optimized_graph->AddFunctionLibrary(optimized_flib_proto));
 
   return optimized_graph;
+}
+
+// TODO(b/239089915): Clean this up after the logic is implemented in TFXLA
+// bridge.
+Status BuildXlaLaunchOps(Graph* graph) {
+  const auto is_xla_launch_node = [](const Node& n) -> StatusOr<bool> {
+    if (!n.IsPartitionedCall()) {
+      return false;
+    }
+    bool xla_must_compile = false;
+    const bool has_attribute =
+        TryGetNodeAttr(n.attrs(), kXlaMustCompileAttr, &xla_must_compile);
+    return has_attribute && xla_must_compile;
+  };
+
+  const auto get_xla_function_info = [](const Node& launch)
+      -> StatusOr<EncapsulateXlaComputationsPass::XlaFunctionInfo> {
+    EncapsulateXlaComputationsPass::XlaFunctionInfo result;
+    std::vector<DataType> tin_dtypes;
+    TF_RETURN_IF_ERROR(GetNodeAttr(launch.def(), "Tin", &tin_dtypes));
+    int variable_start_index = 0;
+    for (; variable_start_index < tin_dtypes.size(); ++variable_start_index) {
+      if (tin_dtypes.at(variable_start_index) == DT_RESOURCE) break;
+    }
+    result.variable_start_index = variable_start_index;
+
+    NameAttrList func;
+    TF_RETURN_IF_ERROR(GetNodeAttr(launch.attrs(), "f", &func));
+    result.function_name = func.name();
+
+    return result;
+  };
+
+  return EncapsulateXlaComputationsPass::BuildXlaLaunchOps(
+      graph, is_xla_launch_node, get_xla_function_info,
+      /*add_edges_to_output_of_downstream_nodes=*/false);
 }
 
 }  // namespace tfrt_stub

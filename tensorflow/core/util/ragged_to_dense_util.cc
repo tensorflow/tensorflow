@@ -34,7 +34,7 @@ tensorflow::Status GetRowPartitionTypesHelper(
         "Unknown string for partition info type: ",
         row_partition_type_strings.at(row_partition_types->size()));
   }
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 tensorflow::Status CombineRaggedTensorToTensorShapes(
@@ -47,7 +47,7 @@ tensorflow::Status CombineRaggedTensorToTensorShapes(
   if (value_shape.unknown_rank() && shape.unknown_rank()) {
     output_shape->Clear();
     output_shape->set_unknown_rank(true);
-    return tensorflow::Status::OK();
+    return OkStatus();
   }
 
   if (shape.unknown_rank()) {
@@ -59,7 +59,7 @@ tensorflow::Status CombineRaggedTensorToTensorShapes(
     *output_shape = shape;
   }
   if (value_shape.unknown_rank()) {
-    return tensorflow::Status::OK();
+    return OkStatus();
   }
   // At this point, value_shape and output_shape have known ranks.
   if (ragged_rank + value_shape.dim_size() != output_shape->dim_size()) {
@@ -89,14 +89,14 @@ tensorflow::Status CombineRaggedTensorToTensorShapes(
       }
     }
   }
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 tensorflow::Status ValidateDefaultValueShape(
     const TensorShapeProto& default_value_shape,
     const TensorShapeProto& value_shape) {
   if (default_value_shape.unknown_rank() || value_shape.unknown_rank()) {
-    return tensorflow::Status::OK();
+    return OkStatus();
   }
 
   int default_ndims = default_value_shape.dim_size();
@@ -124,7 +124,7 @@ tensorflow::Status ValidateDefaultValueShape(
           i - default_value_shape.dim_size(), "] = ", value_dim);
     }
   }
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

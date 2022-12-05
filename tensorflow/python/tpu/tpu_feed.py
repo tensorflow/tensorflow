@@ -20,7 +20,7 @@ import itertools
 
 import numpy as np
 
-from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
+from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape

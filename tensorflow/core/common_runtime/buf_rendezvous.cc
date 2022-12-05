@@ -139,7 +139,7 @@ void BufRendezvous::ProvideBuf(const string& key, Device* dev,
   } while (false);
   if (h) {
     DeregisterCancellation(h);
-    h->cons_cb(Status::OK(), h);
+    h->cons_cb(OkStatus(), h);
   }
   if (!providebuf_status.ok()) {
     done(providebuf_status);
@@ -208,7 +208,7 @@ void BufRendezvous::ConsumeBuf(const string& key, const string& device_name,
   } while (false);
   if (existing_hook) {
     DeregisterCancellation(existing_hook);
-    existing_hook->cons_cb(Status::OK(), existing_hook);
+    existing_hook->cons_cb(OkStatus(), existing_hook);
     return;
   }
   if (!consumebuf_status.ok()) {
@@ -241,7 +241,7 @@ void BufRendezvous::CancelHook(const string& key) {
 
 /*static*/
 void BufRendezvous::DoneWithHook(Hook* h) {
-  h->prod_cb(Status::OK());
+  h->prod_cb(OkStatus());
   delete h;
 }
 

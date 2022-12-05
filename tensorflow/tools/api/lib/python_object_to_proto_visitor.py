@@ -16,9 +16,8 @@
 """A visitor class that generates protobufs for each python object."""
 
 import enum
+import re
 import sys
-
-import six
 
 from google.protobuf import message
 from tensorflow.python.platform import tf_logging as logging
@@ -68,7 +67,7 @@ if sys.version_info.major == 3:
           "'tensorflow.python.training.monitored_session.StepContext'>",
       "<class "
       "'tensorflow.python.ops.variables.Variable.SaveSliceInfo'>":
-          "<class "
+          '<class '
           "'tensorflow.python.ops.variables.SaveSliceInfo'>"
   }
 
@@ -77,10 +76,8 @@ if sys.version_info.major == 3:
             isinstance(cls, type) and issubclass(cls, enum.Enum))
 else:
   _NORMALIZE_TYPE = {
-      "<class 'abc.ABCMeta'>":
-          "<type 'type'>",
-      "<class 'pybind11_type'>":
-          "<class 'pybind11_builtins.pybind11_type'>",
+      "<class 'abc.ABCMeta'>": "<type 'type'>",
+      "<class 'pybind11_type'>": "<class 'pybind11_builtins.pybind11_type'>",
   }
   _NORMALIZE_ISINSTANCE = {
       "<class 'pybind11_object'>":
@@ -101,9 +98,9 @@ _NORMALIZE_TYPE["<class 'typing._GenericAlias'>"] = 'typing.Union'
 # TODO(b/203104448): Remove once the golden files are generated in Python 3.9.
 _NORMALIZE_TYPE["<class 'typing._UnionGenericAlias'>"] = 'typing.Union'
 # TODO(b/203104448): Remove once the golden files are generated in Python 3.8.
-_NORMALIZE_TYPE[
-    "<class 'typing_extensions._ProtocolMeta'>"] = ("<class "
-                                                    "'typing._ProtocolMeta'>")
+_NORMALIZE_TYPE["<class 'typing_extensions._ProtocolMeta'>"] = (
+    '<class '
+    "'typing._ProtocolMeta'>")
 # TODO(b/203104448): Remove once the golden files are generated in Python 3.8.
 _NORMALIZE_TYPE[
     "<class 'typing_extensions.Protocol'>"] = "<class 'typing.Protocol'>"
@@ -158,6 +155,51 @@ def _SanitizedArgSpec(obj):
   return output_string
 
 
+def _GenerateArgsSpec(doc):
+  """Generate args spec from a method docstring."""
+  args_spec = []
+  doc = re.search(r'\(.*\)', doc)
+  if not doc:
+    return None
+  # remove parentheses
+  doc = doc.group().strip('(').strip(')')
+  doc_split = doc.split(',')
+  for s in doc_split:
+    arg = re.search(r'\w+', s)
+    if not arg:
+      return None
+    args_spec.append(f'\'{arg.group()}\'')
+  return ', '.join(args_spec)
+
+
+def _ParseDocstringArgSpec(doc):
+  """Get an ArgSpec string from a method docstring.
+
+  This method is used to generate argspec for C extension functions that follow
+  pybind11 DocString format function signature. For example:
+  `foo_function(a: int, b: string) -> None...`
+
+  Args:
+    doc: A python string which starts with function signature.
+
+  Returns:
+    string: a argspec string representation if successful. If not, return None.
+
+  Raises:
+    ValueError: Raised when failed to parse the input docstring.
+  """
+  # Check if the docstring begins with a function signature
+  match = re.search(r'^\w+\(.*\)', doc)
+  args_spec = _GenerateArgsSpec(doc)
+  if (not match) or (args_spec is None):
+    raise ValueError(f'Failed to parse argspec from docstring: {doc}')
+
+  # TODO(panzf): implement parsing docs with varargs, keywords, and defaults
+  output_string = (
+      f'args=[{args_spec}], varargs=None, keywords=None, defaults=None')
+  return output_string
+
+
 def _SanitizedMRO(obj):
   """Get a list of superclasses with minimal amount of non-TF classes.
 
@@ -181,8 +223,7 @@ def _SanitizedMRO(obj):
     str_repr = _NormalizeType(str(cls))
     return_list.append(str_repr)
     # Class type that has keras in their name should also be monitored. This
-    # will cover any class that imported from third_party/py/keras or
-    # keras_preprocessing.
+    # will cover any class imported from third_party/py/keras.
     if 'tensorflow' not in str_repr and 'keras' not in str_repr:
       break
 
@@ -200,7 +241,7 @@ def _IsProtoClass(obj):
   return isinstance(obj, type) and issubclass(obj, message.Message)
 
 
-class PythonObjectToProtoVisitor(object):
+class PythonObjectToProtoVisitor:
   """A visitor that summarizes given python objects as protobufs."""
 
   def __init__(self, default_path='tensorflow'):
@@ -225,8 +266,7 @@ class PythonObjectToProtoVisitor(object):
       if (_SkipMember(parent, member_name) or
           isinstance(member_obj, deprecation.HiddenTfApiAttribute)):
         return
-      if member_name == '__init__' or not six.ensure_str(
-          member_name).startswith('_'):
+      if member_name == '__init__' or not member_name.startswith('_'):
         if tf_inspect.isroutine(member_obj):
           new_method = proto.member_method.add()
           new_method.name = member_name
@@ -235,6 +275,16 @@ class PythonObjectToProtoVisitor(object):
           # func_code.
           if hasattr(member_obj, '__code__'):
             new_method.argspec = _SanitizedArgSpec(member_obj)
+          else:
+            # Try to parse argspec based on docstring for exposed C++ functions
+            if member_name != '__init__' and hasattr(member_obj, '__doc__'):
+              doc = member_obj.__doc__
+              try:
+                spec_str = _ParseDocstringArgSpec(doc)
+              except ValueError:
+                pass
+              else:
+                new_method.argspec = spec_str
         else:
           new_member = proto.member.add()
           new_member.name = member_name
@@ -285,5 +335,6 @@ class PythonObjectToProtoVisitor(object):
         self._protos[lib_path] = api_objects_pb2.TFAPIObject(
             path=lib_path, tf_class=class_obj)
       else:
-        logging.error('Illegal call to ApiProtoDump::_py_obj_to_proto.'
-                      'Object is neither a module nor a class: %s', path)
+        logging.error(
+            'Illegal call to ApiProtoDump::_py_obj_to_proto.'
+            'Object is neither a module nor a class: %s', path)

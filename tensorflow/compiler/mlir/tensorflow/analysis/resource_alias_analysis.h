@@ -42,7 +42,7 @@ class BacktrackAnalysisInfo;
 class ResourceAliasAnalysisInfo {
  public:
   // Constructs analysis info by analyzing the given function.
-  ResourceAliasAnalysisInfo(FuncOp func,
+  ResourceAliasAnalysisInfo(func::FuncOp func,
                             const BacktrackAnalysis& backtrack_analysis,
                             SymbolTableCollection& symbol_table_collection);
 
@@ -89,7 +89,7 @@ class ResourceAliasAnalysisInfo {
   // Analyzes tf.Case/tf.If ops to compute resource IDs.
   template <class CaseOrIfOp>
   void AnalyzeFunctionalCaseOrIfOp(CaseOrIfOp case_or_if_op,
-                                   llvm::ArrayRef<FuncOp> functions,
+                                   llvm::ArrayRef<func::FuncOp> functions,
                                    const BacktrackAnalysis& backtrack_analysis);
 
   // Analyzes tf.CaseRegion/tf.IfRegion ops to compute resource IDs.

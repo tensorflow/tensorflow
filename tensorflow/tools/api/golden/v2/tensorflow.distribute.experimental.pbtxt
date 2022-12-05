@@ -29,7 +29,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "PreemptionCheckpointHandler"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TPUStrategy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TerminationConfig"
     mtype: "<type \'type\'>"
   }
   member {

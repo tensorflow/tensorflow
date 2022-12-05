@@ -1,9 +1,8 @@
 # Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -81,7 +80,7 @@ tf_py_test(
 
 tf_py_test(
     name = "map_fusion_test",
-    size = "small",
+    size = "medium",
     srcs = ["map_fusion_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",

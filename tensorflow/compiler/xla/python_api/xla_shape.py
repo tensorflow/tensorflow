@@ -59,7 +59,6 @@ class Shape(object):
       self.message.dimensions.extend(dimensions)
       if layout is None:
         layout = list(reversed(range(len(dimensions))))
-      self.message.layout.format = xla_data_pb2.DENSE
       self.message.layout.minor_to_major.extend(layout)
 
   def element_type(self):

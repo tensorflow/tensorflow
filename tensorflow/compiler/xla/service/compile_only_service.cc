@@ -26,13 +26,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/host_info.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -63,7 +60,7 @@ CompileOnlyService::CompileOnlyService(const ServiceOptions& options,
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyService::CompileAheadOfTime(
-    const absl::Span<const AotXlaComputationInstance> computations,
+    absl::Span<const AotXlaComputationInstance> computations,
     const AotCompilationOptions& options,
     std::unique_ptr<AotCompilationMetadata>* metadata) {
   std::vector<std::unique_ptr<HloModule>> hlo_modules;
@@ -105,15 +102,16 @@ CompileOnlyService::CompileAheadOfTime(
     TF_RET_CHECK(instance.computation.has_host_program_shape());
     auto update_shape_with_empty_tiles = [this](Shape* subshape,
                                                 const xla::ShapeIndex& index) {
-      if (subshape->IsArray() && subshape->layout().tiles().empty()) {
+      if (subshape->IsArray() &&
+          (!subshape->has_layout() || subshape->layout().tiles().empty())) {
         *subshape = compiler_->DefaultDeviceShapeRepresentation(*subshape);
       }
     };
-    ShapeUtil::ForEachMutableSubshape(
-        const_cast<Shape*>(instance.result_layout),
-        update_shape_with_empty_tiles);
+    Shape result_layout(instance.result_layout);
+    ShapeUtil::ForEachMutableSubshape(&result_layout,
+                                      update_shape_with_empty_tiles);
     *execution_options.mutable_shape_with_output_layout() =
-        instance.result_layout->ToProto();
+        result_layout.ToProto();
     for (auto shape : instance.argument_layouts) {
       ShapeUtil::ForEachMutableSubshape(const_cast<Shape*>(shape),
                                         update_shape_with_empty_tiles);
@@ -133,8 +131,8 @@ CompileOnlyService::CompileAheadOfTime(
   }
 
   return compiler_->CompileAheadOfTime(
-      absl::make_unique<HloModuleGroup>(hlo_modules[0]->name(),
-                                        absl::MakeSpan(hlo_modules)),
+      std::make_unique<HloModuleGroup>(hlo_modules[0]->name(),
+                                       absl::MakeSpan(hlo_modules)),
       options, metadata);
 }
 

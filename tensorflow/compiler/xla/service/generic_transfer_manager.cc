@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/generic_transfer_manager.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,11 +24,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -55,7 +56,7 @@ Status GenericTransferManager::WriteSingleTupleIndexTable(
   stream->ThenDoHostCallback([element_pointers{std::move(element_pointers)}]() {
     /* holds reference to element_pointers in closure */
   });
-  return Status::OK();
+  return OkStatus();
 }
 
 void GenericTransferManager::TransferLiteralFromDevice(
@@ -82,9 +83,9 @@ void GenericTransferManager::TransferLiteralFromDevice(
                 GetByteSizeRequirement(
                     ShapeUtil::GetSubshape(literal.shape(), index)));
           }
-          return Status::OK();
+          return OkStatus();
         }));
-    return Status::OK();
+    return OkStatus();
   }();
   if (!status.ok()) {
     done(status);
@@ -112,34 +113,27 @@ Status GenericTransferManager::TransferLiteralToDeviceAsync(
   return ShapeUtil::ForEachSubshapeWithStatus(
       device_buffer.on_device_shape(),
       [&](const Shape& device_subshape, const ShapeIndex& index) -> Status {
-        se::DeviceMemoryBase device_memory = device_buffer.buffer(index);
         if (device_subshape.IsArray()) {
-          TF_RET_CHECK(GetByteSizeRequirement(device_subshape) ==
-                       device_memory.size());
-          // Element is array-shaped: transfer array data to device buffer.
-          const auto subliteral = LiteralSlice(literal, index);
-          Literal relayed_out_literal;
-          const void* source;
-          if (LayoutUtil::Equal(device_subshape.layout(),
-                                subliteral.shape().layout())) {
-            source = subliteral.untyped_data();
-            return TransferBufferToDevice(
-                stream,
-                /*size=*/GetByteSizeRequirement(device_subshape), source,
-                &device_memory);
+          int64_t size = GetByteSizeRequirement(device_subshape);
+          se::DeviceMemoryBase device_memory = device_buffer.buffer(index);
+          TF_RET_CHECK(size == device_memory.size());
+          LiteralSlice subliteral(literal, index);
+          if (device_subshape.layout() == subliteral.shape().layout()) {
+            return TransferBufferToDevice(stream, size,
+                                          /*source=*/subliteral.untyped_data(),
+                                          /*destination=*/&device_memory);
           } else {
             // Relayout data before transferring.
-            relayed_out_literal = subliteral.Relayout(device_subshape.layout(),
-                                                      /*shape_index=*/{});
-            source = relayed_out_literal.untyped_data();
+            auto relaid_out = std::make_shared<Literal>(
+                subliteral.Relayout(device_subshape.layout()));
             TF_RETURN_IF_ERROR(TransferBufferToDevice(
-                stream,
-                /*size=*/GetByteSizeRequirement(device_subshape), source,
-                &device_memory));
-            return stream->BlockHostUntilDone();
+                stream, size, /*source=*/relaid_out->untyped_data(),
+                /*destination=*/&device_memory));
+            // Ensure the buffer is transferred before we destroy it.
+            stream->ThenDoHostCallback([keep_alive = std::move(relaid_out)] {});
           }
         }
-        return Status::OK();
+        return OkStatus();
       });
 }
 

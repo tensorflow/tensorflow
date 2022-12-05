@@ -16,16 +16,18 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/device_target.h"
 
 #include <algorithm>
+#include <functional>
+#include <optional>
 
 #include "absl/types/optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/numerical_utils.h"
 
 namespace mlir {
@@ -33,7 +35,7 @@ namespace quant {
 
 constexpr int k8Bits = 8;
 constexpr int k32Bits = 32;
-constexpr unsigned kSigned = quant::QuantizationFlags::Signed;
+constexpr unsigned kSigned = QuantizationFlags::Signed;
 
 DeviceTarget::DeviceTarget(MLIRContext* ctx) : ctx_(ctx) {
   f32_ = FloatType::getF32(ctx_);
@@ -57,8 +59,9 @@ Optional<KernelSpec> DeviceTarget::GetKernelSpec(
   return kernel_specs_it->getValue().Find(signature);
 }
 
-ScaleDecomposeFn DeviceTarget::GetDecomposeFn(QuantizeRegionOp op) const {
-  auto kernel_specs_it = specs_.find(op.logical_kernel());
+ScaleDecomposeFn DeviceTarget::GetDecomposeFn(
+    quantfork::QuantizeRegionOp op) const {
+  auto kernel_specs_it = specs_.find(op.getLogicalKernel());
   if (kernel_specs_it == specs_.end()) return ScaleDecomposeFn(nullptr);
   return kernel_specs_it->second.GetDecomposeFn();
 }
@@ -99,25 +102,24 @@ LogicalResult DeviceTarget::RegisterKernel(
 }
 
 LogicalResult DeviceTarget::DecomposeMultiplyAccumulateScale(
-    Operation* op, quant::QuantizedMultipliers* input_multipliers,
-    quant::QuantizedMultipliers* output_multipliers,
-    quant::QuantizedRanges* output_ranges) {
-  auto rop = llvm::dyn_cast<quant::QuantizeRegionOp>(op);
+    Operation* op, QuantizedMultipliers* input_multipliers,
+    QuantizedMultipliers* output_multipliers, QuantizedRanges* output_ranges) {
+  auto rop = llvm::dyn_cast<quantfork::QuantizeRegionOp>(op);
   if (!rop) return failure();
 
   llvm::SmallVector<Type, 4> input_specs, out_specs;
-  for (auto spec : rop.input_specs()) {
+  for (auto spec : rop.getInputSpecs()) {
     input_specs.push_back(spec.cast<TypeAttr>().getValue());
   }
-  for (auto spec : rop.output_specs()) {
+  for (auto spec : rop.getOutputSpecs()) {
     out_specs.push_back(spec.cast<TypeAttr>().getValue());
   }
 
-  auto in_spec = input_specs[0].dyn_cast<quant::UniformQuantizedType>();
+  auto in_spec = input_specs[0].dyn_cast<UniformQuantizedType>();
   // TODO(fengliuai): handles the PerAxis QuantizedType.
-  auto w_spec = input_specs[1].dyn_cast<quant::UniformQuantizedType>();
-  auto b_spec = input_specs[2].dyn_cast<quant::UniformQuantizedType>();
-  auto o_spec = out_specs[0].dyn_cast<quant::UniformQuantizedType>();
+  auto w_spec = input_specs[1].dyn_cast<UniformQuantizedType>();
+  auto b_spec = input_specs[2].dyn_cast<UniformQuantizedType>();
+  auto o_spec = out_specs[0].dyn_cast<UniformQuantizedType>();
   if (!in_spec || !w_spec || !b_spec || !o_spec) return failure();
 
   double scale_product = in_spec.getScale() * w_spec.getScale();
@@ -128,25 +130,24 @@ LogicalResult DeviceTarget::DecomposeMultiplyAccumulateScale(
 
   // output multipliers
   double real_multiplier = scale_product / o_spec.getScale();
-  output_multipliers->push_back(quant::QuantizeMultiplier(real_multiplier));
+  output_multipliers->push_back(QuantizeMultiplier(real_multiplier));
 
   // output ranges
   auto min = rop->getAttrOfType<FloatAttr>("min");
   auto max = rop->getAttrOfType<FloatAttr>("max");
-  output_ranges->push_back(quant::CalculateQuantizedRange(
+  output_ranges->push_back(CalculateQuantizedRange(
       o_spec.getScale(), o_spec.getZeroPoint(),
-      (min ? absl::optional<double>(min.getValueAsDouble()) : absl::nullopt),
-      (max ? absl::optional<double>(max.getValueAsDouble()) : absl::nullopt),
+      (min ? std::optional<double>(min.getValueAsDouble()) : std::nullopt),
+      (max ? std::optional<double>(max.getValueAsDouble()) : std::nullopt),
       o_spec.getStorageTypeMin(), o_spec.getStorageTypeMax()));
 
   return success();
 }
 
 LogicalResult DeviceTarget::DecomposeSameScale(
-    Operation* op, quant::QuantizedMultipliers* input_multipliers,
-    quant::QuantizedMultipliers* output_multipliers,
-    quant::QuantizedRanges* output_ranges) {
-  auto rop = llvm::dyn_cast<quant::QuantizeRegionOp>(op);
+    Operation* op, QuantizedMultipliers* input_multipliers,
+    QuantizedMultipliers* output_multipliers, QuantizedRanges* output_ranges) {
+  auto rop = llvm::dyn_cast<quantfork::QuantizeRegionOp>(op);
   if (!rop) return failure();
 
   // input multipliers
@@ -159,19 +160,19 @@ LogicalResult DeviceTarget::DecomposeSameScale(
     output_multipliers->push_back(kUnitQuantizedMultiplier);
   }
 
-  auto o_spec = rop.output_specs()[0]
+  auto o_spec = rop.getOutputSpecs()[0]
                     .cast<TypeAttr>()
                     .getValue()
-                    .dyn_cast<quant::UniformQuantizedType>();
+                    .dyn_cast<UniformQuantizedType>();
   if (!o_spec) return failure();
 
   // output ranges
   auto min = rop->getAttrOfType<FloatAttr>("min");
   auto max = rop->getAttrOfType<FloatAttr>("max");
-  output_ranges->push_back(quant::CalculateQuantizedRange(
+  output_ranges->push_back(CalculateQuantizedRange(
       o_spec.getScale(), o_spec.getZeroPoint(),
-      (min ? absl::optional<double>(min.getValueAsDouble()) : absl::nullopt),
-      (max ? absl::optional<double>(max.getValueAsDouble()) : absl::nullopt),
+      (min ? std::optional<double>(min.getValueAsDouble()) : std::nullopt),
+      (max ? std::optional<double>(max.getValueAsDouble()) : std::nullopt),
       o_spec.getStorageTypeMin(), o_spec.getStorageTypeMax()));
 
   return success();

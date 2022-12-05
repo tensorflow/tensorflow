@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "KMC2ChainInitialization"
   input_arg {
     name: "distances"

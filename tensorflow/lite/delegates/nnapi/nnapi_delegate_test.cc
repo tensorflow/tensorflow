@@ -17,16 +17,18 @@ limitations under the License.
 #include <sys/mman.h>
 
 #include <algorithm>
+#include <functional>
 #include <initializer_list>
+#include <memory>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_plugin.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
@@ -81,7 +83,7 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
   }
 
   void ApplyNNAPIDelegate() {
-    stateful_delegate_.reset(new StatefulNnApiDelegate(options_));
+    stateful_delegate_ = std::make_unique<StatefulNnApiDelegate>(options_);
     SetDelegate(stateful_delegate_.get());
     ApplyDelegate();
   }
@@ -5423,7 +5425,7 @@ TEST(QuantizedPadV2OpTest, Int8AdvancedDynamicValuedTest) {
 // FloatLeakyReluOpModel and QuantizedLeakyReluOpModel.
 class LeakyReluOpModel : public SingleOpModelWithNNAPI {
  public:
-  LeakyReluOpModel(const TensorData& input, const float& alpha)
+  LeakyReluOpModel(const TensorData& input, const float alpha)
       : input_type_(input.type) {
     input_ = AddInput(input);
     output_ = AddOutput({input.type, input.shape, input.min, input.max});

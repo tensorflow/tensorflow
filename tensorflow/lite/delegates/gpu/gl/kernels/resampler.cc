@@ -18,7 +18,9 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -77,7 +79,7 @@ class Resampler : public NodeShader {
 }  // namespace
 
 std::unique_ptr<NodeShader> NewResamplerNodeShader() {
-  return absl::make_unique<Resampler>();
+  return std::make_unique<Resampler>();
 }
 
 }  // namespace gl

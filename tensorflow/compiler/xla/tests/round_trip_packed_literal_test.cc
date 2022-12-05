@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -39,8 +39,8 @@ class RoundTripPackedLiteralTest : public ClientLibraryTestBase {
   // Sends the literal to the server and retrieves it back.
   Literal RoundTripToServer(const Literal& original) {
     std::unique_ptr<GlobalData> data =
-        client_->TransferToServer(original).ConsumeValueOrDie();
-    return client_->Transfer(*data).ConsumeValueOrDie();
+        client_->TransferToServer(original).value();
+    return client_->Transfer(*data).value();
   }
 };
 
@@ -50,17 +50,13 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR1F32Length2) {
   floats[0] = 42.0;
   floats[1] = 24.0;
 
-  std::string fname =
-      tensorflow::testing::TmpDir() + "/RoundTripsR1F32Length2.data";
-  EXPECT_TRUE(
-      tensorflow::WriteStringToFile(tensorflow::Env::Default(), fname, data)
-          .ok());
+  std::string fname = tsl::testing::TmpDir() + "/RoundTripsR1F32Length2.data";
+  EXPECT_TRUE(tsl::WriteStringToFile(tsl::Env::Default(), fname, data).ok());
 
-  std::unique_ptr<tensorflow::RandomAccessFile> f;
-  TF_CHECK_OK(tensorflow::Env::Default()->NewRandomAccessFile(fname, &f));
+  std::unique_ptr<tsl::RandomAccessFile> f;
+  TF_CHECK_OK(tsl::Env::Default()->NewRandomAccessFile(fname, &f));
   PackedLiteralReader reader(f.release());
-  Literal actual =
-      reader.Read(ShapeUtil::MakeShape(F32, {2})).ConsumeValueOrDie();
+  Literal actual = reader.Read(ShapeUtil::MakeShape(F32, {2})).value();
   EXPECT_TRUE(reader.IsExhausted());
 
   EXPECT_EQ(42.0, actual.Get<float>({0}));
@@ -77,18 +73,16 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim0Minor) {
   floats[3] = 46.0;  // y=1,x=1
 
   std::string fname =
-      tensorflow::testing::TmpDir() + "/RoundTripsR2F32Size2x2Dim0Minor.data";
-  EXPECT_TRUE(
-      tensorflow::WriteStringToFile(tensorflow::Env::Default(), fname, data)
-          .ok());
+      tsl::testing::TmpDir() + "/RoundTripsR2F32Size2x2Dim0Minor.data";
+  EXPECT_TRUE(tsl::WriteStringToFile(tsl::Env::Default(), fname, data).ok());
 
   const Layout layout = LayoutUtil::MakeLayout({1, 0});
 
-  std::unique_ptr<tensorflow::RandomAccessFile> f;
-  TF_CHECK_OK(tensorflow::Env::Default()->NewRandomAccessFile(fname, &f));
+  std::unique_ptr<tsl::RandomAccessFile> f;
+  TF_CHECK_OK(tsl::Env::Default()->NewRandomAccessFile(fname, &f));
   PackedLiteralReader reader(f.release());
-  Literal actual = reader.Read(ShapeUtil::MakeShape(F32, {2, 2}), &layout)
-                       .ConsumeValueOrDie();
+  Literal actual =
+      reader.Read(ShapeUtil::MakeShape(F32, {2, 2}), &layout).value();
   EXPECT_TRUE(reader.IsExhausted());
 
   EXPECT_EQ(42.0f, actual.Get<float>({0, 0}));
@@ -110,18 +104,16 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim1Minor) {
   floats[3] = 46.0;  // y=1,x=1
 
   std::string fname =
-      tensorflow::testing::TmpDir() + "/RoundTripsR2F32Size2x2Dim1Minor.data";
-  EXPECT_TRUE(
-      tensorflow::WriteStringToFile(tensorflow::Env::Default(), fname, data)
-          .ok());
+      tsl::testing::TmpDir() + "/RoundTripsR2F32Size2x2Dim1Minor.data";
+  EXPECT_TRUE(tsl::WriteStringToFile(tsl::Env::Default(), fname, data).ok());
 
   const Layout layout = LayoutUtil::MakeLayout({0, 1});
 
-  std::unique_ptr<tensorflow::RandomAccessFile> f;
-  TF_CHECK_OK(tensorflow::Env::Default()->NewRandomAccessFile(fname, &f));
+  std::unique_ptr<tsl::RandomAccessFile> f;
+  TF_CHECK_OK(tsl::Env::Default()->NewRandomAccessFile(fname, &f));
   PackedLiteralReader reader(f.release());
-  Literal actual = reader.Read(ShapeUtil::MakeShape(F32, {2, 2}), &layout)
-                       .ConsumeValueOrDie();
+  Literal actual =
+      reader.Read(ShapeUtil::MakeShape(F32, {2, 2}), &layout).value();
   EXPECT_TRUE(reader.IsExhausted());
 
   EXPECT_EQ(42.0f, actual.Get<float>({0, 0}));

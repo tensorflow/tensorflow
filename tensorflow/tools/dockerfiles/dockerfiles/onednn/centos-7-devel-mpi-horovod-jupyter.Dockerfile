@@ -82,15 +82,13 @@ RUN ln -sf $(which ${PYTHON}) /usr/local/bin/python && \
 # On CentOS 7, yum needs to run with Python2.7
 RUN sed -i 's#/usr/bin/python#/usr/bin/python2#g' /usr/bin/yum /usr/libexec/urlgrabber-ext-down
 
-# Installs bazelisk
+# Install bazel
+ARG BAZEL_VERSION=3.7.2
 RUN mkdir /bazel && \
+    curl -fSsL -o /bazel/installer.sh "https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh" && \
     curl -fSsL -o /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \
-    mkdir /bazelisk && \
-    curl -fSsL -o /bazelisk/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazelisk/master/LICENSE" && \
-    mkdir -p "$HOME/bin" && \
-    curl -fSsL -o $HOME/bin/bazel "https://github.com/bazelbuild/bazelisk/releases/download/v1.11.0/bazelisk-linux-amd64" && \
-    chmod u+x "$HOME/bin/bazel" && \
-    export PATH="$HOME/bin:$PATH"
+    bash /bazel/installer.sh && \
+    rm -f /bazel/installer.sh
 
 RUN yum update -y && yum install -y \
     openmpi \

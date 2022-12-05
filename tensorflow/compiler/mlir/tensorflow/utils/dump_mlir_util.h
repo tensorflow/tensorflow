@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -25,8 +26,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-extern const char kCrashReproducerStdErr[];
-extern const char kCrashReproducerCrashAnalysis[];
+inline constexpr absl::string_view kCrashReproducerStdErr = "-";
+inline constexpr absl::string_view kCrashReproducerCrashAnalysis =
+    "crash_analysis";
 
 // Creates a file to use for dumping and returns success if a file could be
 // created. The opened file is placed in 'os' and the path of the file used is
@@ -67,8 +69,10 @@ std::string DumpCrashReproducerToFile(llvm::StringRef name,
 // This will create a file name via prefixing `name` with the value of the
 // TF_DUMP_GRAPH_PREFIX environment variable if `dirname` is empty and
 // suffixing `name` with ".mlir".
+// If `pass_manager` is provided, prints a header with the pass pipeline.
 std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
-                             llvm::StringRef dirname = "");
+                             llvm::StringRef dirname = "",
+                             const mlir::PassManager* pass_manager = nullptr);
 
 // Reads the directory to dump the MLIR module from environment variables.
 // Default is reading from TF_DUMP_GRAPH_PREFIX, and if the string is 'sponge'

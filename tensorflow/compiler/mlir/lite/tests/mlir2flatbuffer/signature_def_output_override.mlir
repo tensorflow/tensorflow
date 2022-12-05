@@ -15,7 +15,8 @@
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1, 3 ]
+// CHECK-NEXT:      shape_signature: [ -1, 3 ],
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1, 3 ],
 // CHECK-NEXT:      buffer: 2,
@@ -23,21 +24,24 @@
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1, 3 ]
+// CHECK-NEXT:      shape_signature: [ -1, 3 ],
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 5 ],
 // CHECK-NEXT:      buffer: 3,
 // CHECK-NEXT:      name: "arith.constant",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 5, 3 ],
 // CHECK-NEXT:      buffer: 4,
 // CHECK-NEXT:      name: "arith.constant1",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1, 5 ],
 // CHECK-NEXT:      buffer: 5,
@@ -45,7 +49,8 @@
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1, 5 ]
+// CHECK-NEXT:      shape_signature: [ -1, 5 ],
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    } ],
 // CHECK-NEXT:    inputs: [ 0, 1 ],
 // CHECK-NEXT:    outputs: [ 4, 4 ],

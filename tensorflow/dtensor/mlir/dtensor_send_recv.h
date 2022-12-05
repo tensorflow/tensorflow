@@ -40,24 +40,24 @@ StatusOr<mlir::Operation*> GetCorrespondingDTensorSendRecvOp(
   if (std::is_same<DTensorOp, mlir::TF::DTensorSend>::value) {
     module.walk([&](mlir::Operation* op) {
       if (auto xla_recv_tpu = llvm::dyn_cast<mlir::TF::XlaRecvFromHostOp>(op)) {
-        if (dtensor_op.key() == xla_recv_tpu.key()) {
+        if (dtensor_op.getKey() == xla_recv_tpu.getKey()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
       } else if (auto xla_recv_cpu =
                      llvm::dyn_cast<mlir::TF::_XlaRecvAtHostV2Op>(op)) {
-        if (dtensor_op.key() == xla_recv_cpu.key()) {
+        if (dtensor_op.getKey() == xla_recv_cpu.getKey()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
       } else if (auto dtensor_recv =
                      llvm::dyn_cast<mlir::TF::DTensorRecv>(op)) {
-        if (dtensor_op.key() == dtensor_recv.key()) {
+        if (dtensor_op.getKey() == dtensor_recv.getKey()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
       } else if (auto host_recv = llvm::dyn_cast<mlir::TF::_HostRecvOp>(op)) {
-        if (dtensor_op.key() == host_recv.tensor_name()) {
+        if (dtensor_op.getKey() == host_recv.getTensorName()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
@@ -72,24 +72,24 @@ StatusOr<mlir::Operation*> GetCorrespondingDTensorSendRecvOp(
     }
     module.walk([&](mlir::Operation* op) {
       if (auto xla_send_tpu = llvm::dyn_cast<mlir::TF::XlaSendToHostOp>(op)) {
-        if (dtensor_op.key() == xla_send_tpu.key()) {
+        if (dtensor_op.getKey() == xla_send_tpu.getKey()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
       } else if (auto xla_send_cpu =
                      llvm::dyn_cast<mlir::TF::_XlaSendFromHostV2Op>(op)) {
-        if (dtensor_op.key() == xla_send_cpu.key()) {
+        if (dtensor_op.getKey() == xla_send_cpu.getKey()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
       } else if (auto dtensor_send =
                      llvm::dyn_cast<mlir::TF::DTensorSend>(op)) {
-        if (dtensor_op.key() == dtensor_send.key()) {
+        if (dtensor_op.getKey() == dtensor_send.getKey()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
       } else if (auto host_send = llvm::dyn_cast<mlir::TF::_HostSendOp>(op)) {
-        if (dtensor_op.key() == host_send.tensor_name()) {
+        if (dtensor_op.getKey() == host_send.getTensorName()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
@@ -106,33 +106,19 @@ StatusOr<mlir::Operation*> GetCorrespondingDTensorSendRecvOp(
   return corresponding_op;
 }
 
-// Lowers DTensorRecv op to either one of XlaRecvAtHost or XlaRecvFromHost,
-// depending on src mesh cluster configuration.
-StatusOr<mlir::Operation*> LowerDTensorRecvToXlaOp(
-    mlir::TF::DTensorRecv dtensor_recv);
+// Lowers DTensorSend to a number of different device-specific ops:
+// _HostSend, XlaSendFromHost, XlaSendToHost, etc.
+StatusOr<mlir::Operation*> LowerDTensorRecv(mlir::Operation* send_op,
+                                            mlir::Operation* recv_op);
 
-// Lowers DTensorRecv op to either one of XlaRecvAtHost or XlaRecvFromHost,
-// depending on src mesh cluster configuration. `output_type` can be set to the
-// specific local tensor type needed, if different from the Recv op output type.
-StatusOr<mlir::Operation*> LowerDTensorRecvToXlaOp(
-    mlir::TF::DTensorRecv dtensor_recv, mlir::Type output_type);
+// Lowers DTensorRecv to a number of different device-specific ops:
+// _HostRecv, XlaRecvAtHost, XlaRecvFromHost, etc.
+StatusOr<mlir::Operation*> LowerDTensorSend(mlir::Operation* send_op,
+                                            mlir::Operation* recv_op);
 
-// Lowers DTensorSend Op to either one of XlaSendFromHost op or XlaSendToHost,
-// depending on the src mesh cluster. `send_from_device_zero` should be set if
-// control flow needs to be inserted to gather data onto and only sent from the
-// zero'th device.
-StatusOr<mlir::Operation*> LowerDTensorSendToXlaOp(
-    const Layout& send_input_layout, mlir::Value send_input,
-    mlir::TF::DTensorSend dtensor_send, bool send_from_device_zero);
-
-// Lowers DTensorSend Op to a TF HostSend op.
-StatusOr<mlir::Operation*> LowerDTensorSendFromCPUToTFOp(
-    const Layout& send_input_layout, mlir::Value send_input,
-    mlir::TF::DTensorSend dtensor_send);
-
-// Lowers DTensorSend Op to a TF HostRecv op.
-StatusOr<mlir::Operation*> LowerDTensorRecvFromCPUToTFOp(
-    const Mesh& send_mesh, mlir::TF::DTensorRecv dtensor_recv);
+// Lowers a DTensorSend and DTensorRecv pair to XLA ops
+StatusOr<mlir::Operation*> LowerDTensorSendAndRecv(mlir::Operation* send_op,
+                                                   mlir::Operation* recv_op);
 
 }  // namespace dtensor
 }  // namespace tensorflow

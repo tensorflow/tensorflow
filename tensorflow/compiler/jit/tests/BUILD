@@ -3,7 +3,10 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 licenses(["notice"])
 
-package(default_visibility = ["//visibility:private"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//visibility:private"],
+)
 
 cc_library(
     name = "auto_clustering_test_helper",
@@ -55,6 +58,9 @@ cc_library(
     testonly = True,
     srcs = ["xla_compilation_cache_test_helper.cc"],
     hdrs = ["xla_compilation_cache_test_helper.h"],
+    visibility = [
+        "//tensorflow/compiler/jit:__pkg__",
+    ],
     deps = [
         "//tensorflow/compiler/jit:xla_activity_listener",
         "//tensorflow/compiler/jit:xla_compilation_cache_proto_cc",
@@ -83,7 +89,7 @@ tf_cc_test(
         "xla_compilation_cache_serialize_test.cc",
     ],
     env = {
-        "XLA_FLAGS": "--xla_gpu_bef_executable",
+        "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
     },
     tags = [
         "config-cuda-only",
@@ -105,7 +111,7 @@ tf_cc_test(
         "xla_compilation_cache_serialize_options_test.cc",
     ],
     env = {
-        "XLA_FLAGS": "--xla_gpu_bef_executable",
+        "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
     },
     tags = [
         "config-cuda-only",

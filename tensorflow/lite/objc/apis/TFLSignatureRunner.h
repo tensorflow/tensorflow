@@ -129,7 +129,7 @@ typedef NS_ENUM(NSUInteger, TFLSignatureRunnerErrorCode) {
  * Allocates memory for tensors.
  *
  * @note This call is *purely optional*. Tensor allocation will occur automatically during
- *     execution if any input tensors have been resized.
+ *     execution.
  *
  * @param error An optional error parameter populated when there is an error in allocating memory.
  *

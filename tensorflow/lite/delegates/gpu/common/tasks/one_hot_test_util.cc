@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/one_hot_test_util.h"
 
+#include <memory>
+
 #include "tensorflow/lite/delegates/gpu/common/tasks/one_hot.h"
 
 namespace tflite {
@@ -39,7 +41,7 @@ absl::Status OneHotTest(TestExecutionEnvironment* env) {
       dst.SetBHWCShape(BHWC(1, 1, 1, 8));
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {&src}, {&dst},
-          absl::make_unique<GPUOperation>(std::move(operation))));
+          std::make_unique<GPUOperation>(std::move(operation))));
       TensorFloat32 dst_tensor;
       dst.DownloadData(&dst_tensor);
       RETURN_IF_ERROR(
@@ -68,7 +70,7 @@ absl::Status OneHotBatchTest(TestExecutionEnvironment* env) {
       dst.SetBHWCShape(BHWC(10, 1, 1, 10));
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {&src}, {&dst},
-          absl::make_unique<GPUOperation>(std::move(operation))));
+          std::make_unique<GPUOperation>(std::move(operation))));
       TensorFloat32 dst_tensor;
       dst.DownloadData(&dst_tensor);
       std::vector<float> expected(100, attr.off_value);

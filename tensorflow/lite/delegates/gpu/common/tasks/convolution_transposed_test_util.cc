@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -54,7 +55,7 @@ absl::Status ConvolutionTransposedSimpleWeightsTest(
           CreateConvolutionTransposed(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor,
-          absl::make_unique<ConvolutionTransposed>(std::move(operation)),
+          std::make_unique<ConvolutionTransposed>(std::move(operation)),
           BHWC(1, 4, 4, 2), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({1.0f, 1.0f, 1.0f, 1.0f, 5.0f,  5.0f,  5.0f,  5.0f,
@@ -94,7 +95,7 @@ absl::Status ConvolutionTransposedTest(TestExecutionEnvironment* env) {
           CreateConvolutionTransposed(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor,
-          absl::make_unique<ConvolutionTransposed>(std::move(operation)),
+          std::make_unique<ConvolutionTransposed>(std::move(operation)),
           BHWC(1, 4, 4, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(
           {2.5f, 4.5f, 8.5f, 18.5f, 6.5f, 8.5f, 28.5f, 38.5f, 14.5f, 32.5f,

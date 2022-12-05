@@ -1,9 +1,9 @@
-load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/core/platform:distribute.bzl", "distribute_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -12,6 +12,7 @@ distribute_py_test(
     srcs = ["saved_model_test.py"],
     tags = [
         "no_windows",  # TODO(b/171350360)
+        "nomultivm",  # multi_worker_test_base incompatible with multivm base
         "notsan",  # b/195248428
     ],
     deps = [

@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/regexp.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/regexp.h"
+#include "tensorflow/tsl/platform/test.h"
 
 // This module contains a minimal subset of gmock functionality just
 // sufficient to execute the currently existing tests.
@@ -54,14 +54,18 @@ inline const Status& GetStatus(const StatusOr<T>& status) {
 // Macros for testing the results of functions that return Status or
 // StatusOr<T> (for any type T).
 #define EXPECT_IS_OK(expression) \
-  EXPECT_EQ(Status::OK(), xla::testing::internal_status::GetStatus(expression))
+  EXPECT_EQ(::tsl::OkStatus(),   \
+            xla::testing::internal_status::GetStatus(expression))
 #define EXPECT_IS_NOT_OK(expression) \
-  EXPECT_NE(Status::OK(), xla::testing::internal_status::GetStatus(expression))
+  EXPECT_NE(::tsl::OkStatus(),       \
+            xla::testing::internal_status::GetStatus(expression))
 #undef ASSERT_IS_OK
 #define ASSERT_IS_OK(expression) \
-  ASSERT_EQ(Status::OK(), xla::testing::internal_status::GetStatus(expression))
+  ASSERT_EQ(::tsl::OkStatus(),   \
+            xla::testing::internal_status::GetStatus(expression))
 #undef ASSERT_IS_NOT_OK
 #define ASSERT_IS_NOT_OK(expression) \
-  ASSERT_NE(Status::OK(), xla::testing::internal_status::GetStatus(expression))
+  ASSERT_NE(::tsl::OkStatus(),       \
+            xla::testing::internal_status::GetStatus(expression))
 
 #endif  // TENSORFLOW_COMPILER_XLA_TEST_HELPERS_H_

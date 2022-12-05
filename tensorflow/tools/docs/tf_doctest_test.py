@@ -122,7 +122,7 @@ class TfDoctestOutputCheckerTest(parameterized.TestCase):
       raise e
 
   @parameterized.parameters(
-      # CHeck examples out of tolerence.
+      # Check examples out of tolerence.
       ['1.001e-2', [0]],
       ['0.0', [1.001e-3]],
   )
@@ -143,7 +143,7 @@ class TfDoctestOutputCheckerTest(parameterized.TestCase):
       e.args = (e.args[0] + msg,)
       raise e
 
-  def test_no_floats(self):
+  def test_want_no_floats(self):
     want = 'text ... text'
     got = 'text 1.0 1.2 1.9 text'
     output_checker = tf_doctest_lib.TfDoctestOutputChecker()
@@ -151,9 +151,19 @@ class TfDoctestOutputCheckerTest(parameterized.TestCase):
         output_checker.check_output(
             want=want, got=got, optionflags=doctest.ELLIPSIS))
 
+  @parameterized.parameters(['text [1.0 ] text', 'text [1.00] text'],
+                            ['text [ 1.0] text', 'text [1.0 ] text'],
+                            ['text [ 1.0 ] text', 'text [ 1.0] text'],
+                            ['text [1.000] text', 'text [ 1.0 ] text'])
+  def test_extra_spaces(self, want, got):
+    output_checker = tf_doctest_lib.TfDoctestOutputChecker()
+    self.assertTrue(
+        output_checker.check_output(
+            want=want, got=got, optionflags=doctest.ELLIPSIS))
+
   @parameterized.parameters(['1.0, ..., 1.0', '1.0, 1.0, 1.0'],
                             ['1.0, 1.0..., 1.0', '1.0, 1.002, 1.0'])
-  def test_warning_messages(self, want, got):
+  def test_wrong_float_counts(self, want, got):
     output_checker = tf_doctest_lib.TfDoctestOutputChecker()
 
     output_checker.check_output(

@@ -30,8 +30,8 @@ TEST_F(XlaCompilationCacheSerializeTest, PersistentCacheTest) {
   for (int b = 1; b < 4; ++b) {
     TF_ASSERT_OK(ExecuteWithBatch(graph, b));
   }
-  TF_ASSERT_OK(
-      listener()->VerifyListenerHistory(/*expect_persistent_cache_use=*/false));
+  TF_ASSERT_OK(listener()->VerifyPersistentCacheUseListenerHistory(
+      /*expect_persistent_cache_use=*/false));
 
   // Reset the cluster numbering between sessions so we can get the same
   // cluster numbering.
@@ -42,8 +42,8 @@ TEST_F(XlaCompilationCacheSerializeTest, PersistentCacheTest) {
   for (int b = 1; b < 4; ++b) {
     TF_ASSERT_OK(ExecuteWithBatch(graph, b));
   }
-  TF_ASSERT_OK(
-      listener()->VerifyListenerHistory(/*expect_persistent_cache_use=*/true));
+  TF_ASSERT_OK(listener()->VerifyPersistentCacheUseListenerHistory(
+      /*expect_persistent_cache_use=*/true));
 
   // Reset the cluster numbering between sessions so we can get the same
   // cluster numbering.

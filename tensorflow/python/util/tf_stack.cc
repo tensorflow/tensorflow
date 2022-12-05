@@ -44,6 +44,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/python/util/stack_trace.h"
 
@@ -142,6 +143,32 @@ class StackTraceWrapper : public AbstractStackTrace {
       : stack_frames_cache_(std::vector<StackFrame>(stack_frames.begin(),
                                                     stack_frames.end())) {}
 
+  StackTraceWrapper(StackTraceWrapper&& rhs) {
+    captured_ = std::move(rhs.captured_);
+    source_map_ = std::move(rhs.source_map_);
+    filter_ = std::move(rhs.filter_);
+    stacklevel_ = rhs.stacklevel_;
+    tensorflow::mutex_lock lock(rhs.mu_);
+    stack_frames_cache_ = std::move(rhs.stack_frames_cache_);
+    last_stack_frame_cache_ = std::move(rhs.last_stack_frame_cache_);
+  }
+
+  StackTraceWrapper& operator=(StackTraceWrapper&& rhs) {
+    if (&rhs == this) return *this;
+
+    captured_ = std::move(rhs.captured_);
+    source_map_ = std::move(rhs.source_map_);
+    filter_ = std::move(rhs.filter_);
+    stacklevel_ = rhs.stacklevel_;
+
+    tensorflow::mutex_lock self_lock(mu_);
+    tensorflow::mutex_lock rhs_lock(rhs.mu_);
+
+    stack_frames_cache_ = std::move(rhs.stack_frames_cache_);
+    last_stack_frame_cache_ = std::move(rhs.last_stack_frame_cache_);
+    return *this;
+  }
+
   static StackTraceWrapper ExtractStack(
       const std::shared_ptr<SourceMap>& source_map,
       const std::shared_ptr<StringSet>& filter, int stacklevel) {
@@ -150,6 +177,7 @@ class StackTraceWrapper : public AbstractStackTrace {
   }
 
   absl::Span<const StackFrame> ToFrames() const override {
+    tensorflow::mutex_lock lock(mu_);
     if (stack_frames_cache_) {
       return *stack_frames_cache_;
     }
@@ -193,6 +221,7 @@ class StackTraceWrapper : public AbstractStackTrace {
   }
 
   StackFrame LastUserFrame() const override {
+    tensorflow::mutex_lock lock(mu_);
     if (last_stack_frame_cache_) {
       return *last_stack_frame_cache_;
     }
@@ -212,6 +241,7 @@ class StackTraceWrapper : public AbstractStackTrace {
 
   // Erases a section of the stack trace.
   void Erase(int first, int last) {
+    tensorflow::mutex_lock lock(mu_);
     if (!stack_frames_cache_) {
       ToFrames();
     }
@@ -235,6 +265,7 @@ class StackTraceWrapper : public AbstractStackTrace {
             ? io::CommonPathPrefix(files_to_find_prefix).size()
             : 0;
 
+    tensorflow::mutex_lock lock(mu_);
     if (!opts.drop_internal_frames) {
       return ToStringHelper(*stack_frames_cache_, opts, shared_prefix_size);
     }
@@ -248,7 +279,6 @@ class StackTraceWrapper : public AbstractStackTrace {
     return ToStringHelper(filtered_frames, opts, shared_prefix_size);
   }
 
-  StackTraceWrapper(StackTraceWrapper&&) = default;
   ~StackTraceWrapper() override {
     PyGILState_STATE state = PyGILState_Ensure();
     captured_.Clear();
@@ -280,14 +310,18 @@ class StackTraceWrapper : public AbstractStackTrace {
     return filter_->contains(file_name);
   }
 
+  // Note: Make sure to update move constructor while adding new member
+  // variables.
   StackTrace captured_;
   std::shared_ptr<SourceMap> source_map_;
   std::shared_ptr<StringSet> filter_;
   int stacklevel_;
 
   // Using optional to force destruction while we hold a GIL.
-  mutable absl::optional<std::vector<StackFrame>> stack_frames_cache_;
-  mutable absl::optional<StackFrame> last_stack_frame_cache_;
+  mutable absl::optional<std::vector<StackFrame>> stack_frames_cache_
+      TF_GUARDED_BY(mu_);
+  mutable absl::optional<StackFrame> last_stack_frame_cache_ TF_GUARDED_BY(mu_);
+  mutable mutex mu_;
 };
 
 }  // namespace

@@ -16,55 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_PLATFORM_INTERFACE_H_
 #define TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_PLATFORM_INTERFACE_H_
 
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/stream_executor/platform.h"
-#include "tensorflow/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/stream_executor/tpu/tpu_topology.h"
-
-namespace tensorflow {
-namespace tpu {
-
-// TODO(skyewm): get rid of TpuTopologyPtr and either use SE_TpuTopology* or
-// return a TpuTopologyExternal.
-typedef SE_TpuTopology* TpuTopologyPtr;
-
-class TpuPlatformInterface : public stream_executor::Platform {
- public:
-  using Status = stream_executor::port::Status;
-
-  // Returns a TPU platform to be used by TPU ops. If multiple TPU platforms are
-  // registered, finds the most suitable one. Returns nullptr if no TPU platform
-  // is registered or an error occurred.
-  //
-  // 'initialize_platform' can be set to false to not initialize a platform if
-  // not necessary. 'num_tries' specifies the number of tries if the TPU
-  // platform isn't initialized yet, with a 1-second delay between each try
-  // (num_tries == 1 means try once with no retries).
-  static TpuPlatformInterface* GetRegisteredPlatform(
-      bool initialize_platform = true, int num_tries = 5);
-
-  virtual Status Reset(bool only_tear_down, absl::string_view reason) = 0;
-
-  Status Reset(absl::string_view reason) { return Reset(false, reason); }
-
-  Status Reset() { return Reset(false, {}); }
-
-  virtual int64_t TpuMemoryLimit() = 0;
-
-  virtual bool ShouldRegisterTpuDeviceToDeviceCopy() = 0;
-
-  virtual const TpuTopologyPtr GetTopologyPtr() = 0;
-
-  virtual const TpuHostLocationExternal GetTpuHostLocation() const = 0;
-
-  virtual TpuRuntimeVersion version() const = 0;
-
-  TpuTopologyExternal topology() {
-    return TpuTopologyExternal(GetTopologyPtr());
-  }
-};
-
-}  // namespace tpu
-}  // namespace tensorflow
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_PLATFORM_INTERFACE_H_

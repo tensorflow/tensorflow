@@ -75,7 +75,7 @@ static void BM_UnsortedSegmentReduction(::testing::benchmark::State& state,
   OpKernelContext::Params params;
   params.device = device.get();
   params.frame_iter = FrameAndIter(0, 0);
-  params.inputs = &reduction_inputs;
+  params.inputs = reduction_inputs;
   params.op_kernel = reduction_op.get();
   std::vector<AllocatorAttributes> attrs;
   test::SetOutputAttrs(&params, &attrs);
@@ -138,7 +138,7 @@ static void BM_SegmentReduction(::testing::benchmark::State& state,
   OpKernelContext::Params params;
   params.device = device.get();
   params.frame_iter = FrameAndIter(0, 0);
-  params.inputs = &reduction_inputs;
+  params.inputs = reduction_inputs;
   params.op_kernel = reduction_op.get();
   std::vector<AllocatorAttributes> attrs;
   test::SetOutputAttrs(&params, &attrs);

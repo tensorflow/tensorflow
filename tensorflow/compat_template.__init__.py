@@ -49,11 +49,11 @@ if _module_dir:
 setattr(_current_module, "estimator", estimator)
 
 _keras_module = "keras.api._v2.keras"
-keras = _LazyLoader("keras", globals(), _keras_module)
+_keras = _LazyLoader("keras", globals(), _keras_module)
 _module_dir = _module_util.get_parent_dir_for_name(_keras_module)
 if _module_dir:
   _current_module.__path__ = [_module_dir] + _current_module.__path__
-setattr(_current_module, "keras", keras)
+setattr(_current_module, "keras", _keras)
 
 # We would like the following to work for fully enabling 2.0 in a 1.0 install:
 #
@@ -71,16 +71,16 @@ if hasattr(_current_module, 'keras'):
   # when it doing some very initial loading, like tf.compat.v2, etc.
   try:
     _keras_package = "keras.api._v2.keras."
-    losses = _LazyLoader("losses", globals(), _keras_package + "losses")
-    metrics = _LazyLoader("metrics", globals(), _keras_package + "metrics")
-    optimizers = _LazyLoader(
+    _losses = _LazyLoader("losses", globals(), _keras_package + "losses")
+    _metrics = _LazyLoader("metrics", globals(), _keras_package + "metrics")
+    _optimizers = _LazyLoader(
         "optimizers", globals(), _keras_package + "optimizers")
-    initializers = _LazyLoader(
+    _initializers = _LazyLoader(
         "initializers", globals(), _keras_package + "initializers")
-    setattr(_current_module, "losses", losses)
-    setattr(_current_module, "metrics", metrics)
-    setattr(_current_module, "optimizers", optimizers)
-    setattr(_current_module, "initializers", initializers)
+    setattr(_current_module, "losses", _losses)
+    setattr(_current_module, "metrics", _metrics)
+    setattr(_current_module, "optimizers", _optimizers)
+    setattr(_current_module, "initializers", _initializers)
   except ImportError:
     pass
 

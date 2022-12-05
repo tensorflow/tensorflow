@@ -39,8 +39,8 @@ limitations under the License.
 #define EXECUTE_FUNCTION_RETURN(...) return fn != nullptr ? fn(__VA_ARGS__) : 0;
 
 inline void* loadLibrary(const char* name) {
-  // TODO: change RTLD_LOCAL? Assumes there can be multiple instances of nn
-  // api RT
+  // TODO(karimnosseir): change RTLD_LOCAL? Assumes there can be multiple
+  // instances of nn api RT
   void* handle = nullptr;
 #ifdef __ANDROID__
   handle = dlopen(name, RTLD_LAZY | RTLD_LOCAL);

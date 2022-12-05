@@ -15,7 +15,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -182,7 +182,7 @@ TfLiteStatus SelectEval(TfLiteContext* context, TfLiteNode* node) {
   if (data->has_low_rank_input_condition) {
     TF_LITE_SWITCH(input_x->type, RankOneSelect);
   } else if (data->requires_broadcast) {
-    TF_LITE_SWITCH(input_x->type, BroadcastSelect4DSlow);
+    TF_LITE_SWITCH(input_x->type, BroadcastSelect5DSlow);
   } else {
     TF_LITE_SWITCH(input_x->type, Select);
   }

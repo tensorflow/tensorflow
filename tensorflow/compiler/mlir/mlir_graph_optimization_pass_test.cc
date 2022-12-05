@@ -179,22 +179,22 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsDisabledFallback) {
   EXPECT_EQ(function_optimization_pass_.Run(
                 device_set_, config_proto_, &graph_, flib_.get(),
                 &control_ret_node_names_, &control_rets_updated_),
-            Status::OK());
+            OkStatus());
   verifyGraph(original_graph_def);
 }
 
 TEST_F(MlirGraphOptimizationPassTest, OptimizationPassDoesNotFailFallback) {
-  Init(Status::OK(), {MlirOptimizationPassState::FallbackEnabled});
+  Init(OkStatus(), {MlirOptimizationPassState::FallbackEnabled});
 
   GraphDef original_graph_def;
   graph_->ToGraphDef(&original_graph_def);
 
   AddModuleModificationPass(MlirOptimizationPassState::FallbackEnabled,
-                            Status::OK());
+                            OkStatus());
   EXPECT_EQ(function_optimization_pass_.Run(
                 device_set_, config_proto_, &graph_, flib_.get(),
                 &control_ret_node_names_, &control_rets_updated_),
-            Status::OK());
+            OkStatus());
 
   verifyGraph(original_graph_def, true);
 }

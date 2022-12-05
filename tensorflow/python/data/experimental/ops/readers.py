@@ -24,6 +24,7 @@ from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.experimental.ops import parsing_ops
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import map_op
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.data.util import convert
@@ -344,6 +345,7 @@ def make_csv_dataset_v2(
     num_rows_for_inference=100,
     compression_type=None,
     ignore_errors=False,
+    encoding="utf-8",
 ):
   """Reads CSV files into a dataset.
 
@@ -463,6 +465,7 @@ def make_csv_dataset_v2(
       such as malformed data or empty lines, and moves on to the next valid
       CSV record. Otherwise, the dataset raises an error and stops processing
       when encountering any invalid records. Defaults to `False`.
+    encoding: Encoding to use when reading. Defaults to `UTF-8`.
 
   Returns:
     A dataset, where each element is a (features, labels) tuple that corresponds
@@ -489,7 +492,8 @@ def make_csv_dataset_v2(
   # Clean arguments; figure out column names and defaults
   if column_names is None or column_defaults is None:
     # Find out which io function to open the file
-    file_io_fn = lambda filename: file_io.FileIO(filename, "r")
+    file_io_fn = lambda filename: file_io.FileIO(  # pylint: disable=g-long-lambda
+        filename, "r", encoding=encoding)
     if compression_type is not None:
       compression_type_value = tensor_util.constant_value(compression_type)
       if compression_type_value is None:
@@ -497,15 +501,17 @@ def make_csv_dataset_v2(
             f"Received unknown `compression_type` {compression_type}. "
             "Expected: GZIP, ZLIB or "" (empty string).")
       if compression_type_value == "GZIP":
-        file_io_fn = lambda filename: gzip.open(filename, "rt")
+        file_io_fn = lambda filename: gzip.open(  # pylint: disable=g-long-lambda
+            filename, "rt", encoding=encoding)
       elif compression_type_value == "ZLIB":
         raise ValueError(
             f"`compression_type` {compression_type} is not supported for "
             "probing columns.")
       elif compression_type_value != "":
         raise ValueError(
-            f"Received unknown `compression_type` {compression_type}. Expected: "
-            "GZIP, ZLIB or "" (empty string).")
+            f"Received unknown `compression_type` {compression_type}. "
+            "Expected: GZIP, ZLIB or "
+            " (empty string).")
   if column_names is None:
     if not header:
       raise ValueError("Expected `column_names` or `header` arguments. Neither "
@@ -614,7 +620,7 @@ def make_csv_dataset_v2(
   # indefinitely, and all batches will be full-sized.
   dataset = dataset.batch(batch_size=batch_size,
                           drop_remainder=num_epochs is None)
-  dataset = dataset_ops.MapDataset(
+  dataset = map_op._MapDataset(  # pylint: disable=protected-access
       dataset, map_fn, use_inter_op_parallelism=False)
   dataset = dataset.prefetch(prefetch_buffer_size)
 
@@ -643,13 +649,16 @@ def make_csv_dataset_v1(
     num_rows_for_inference=100,
     compression_type=None,
     ignore_errors=False,
+    encoding="utf-8",
 ):  # pylint: disable=missing-docstring
-  return dataset_ops.DatasetV1Adapter(make_csv_dataset_v2(
-      file_pattern, batch_size, column_names, column_defaults, label_name,
-      select_columns, field_delim, use_quote_delim, na_value, header,
-      num_epochs, shuffle, shuffle_buffer_size, shuffle_seed,
-      prefetch_buffer_size, num_parallel_reads, sloppy, num_rows_for_inference,
-      compression_type, ignore_errors))
+  return dataset_ops.DatasetV1Adapter(
+      make_csv_dataset_v2(file_pattern, batch_size, column_names,
+                          column_defaults, label_name, select_columns,
+                          field_delim, use_quote_delim, na_value, header,
+                          num_epochs, shuffle, shuffle_buffer_size,
+                          shuffle_seed, prefetch_buffer_size,
+                          num_parallel_reads, sloppy, num_rows_for_inference,
+                          compression_type, ignore_errors, encoding))
 make_csv_dataset_v1.__doc__ = make_csv_dataset_v2.__doc__
 
 
@@ -1058,7 +1067,7 @@ def make_batched_features_dataset_v2(file_pattern,
   # Extract values if the `Example` tensors are stored as key-value tuples.
   if dataset_ops.get_legacy_output_types(dataset) == (
       dtypes.string, dtypes.string):
-    dataset = dataset_ops.MapDataset(
+    dataset = map_op._MapDataset(  # pylint: disable=protected-access
         dataset, lambda _, v: v, use_inter_op_parallelism=False)
 
   # Apply dataset repeat and shuffle transformations.

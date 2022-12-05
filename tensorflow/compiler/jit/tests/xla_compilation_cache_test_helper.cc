@@ -131,7 +131,7 @@ Status XlaCompilationCacheSerializeTest::ExecuteWithBatch(const GraphDef& graph,
     EXPECT_NEAR(golden_output_tensors[0].flat<float>()(i),
                 output_tensors[0].flat<float>()(i), 1e-3);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status
@@ -161,7 +161,7 @@ XlaCompilationCacheSerializeTest::AlterPersistentCacheEntryHloModuleNames(
     return errors::NotFound(
         "Did not find any persistent XLA compilation cache entries to alter.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

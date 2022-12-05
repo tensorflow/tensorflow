@@ -2,6 +2,7 @@
 #   Contains the legacy TF RNN APIs (internal TensorFlow version).
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow/python/keras:__subpackages__",
@@ -44,7 +45,7 @@ py_library(
         "//tensorflow/python/keras/legacy_tf_layers:layers_base",
         "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils:tf_utils",
-        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/trackable:base",
     ],
 )
 

@@ -10,7 +10,8 @@
 // CHECK-NEXT:      name: "StatefulPartitionedCall:1",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    } ],
 // CHECK-NEXT:    inputs: [  ],
 // CHECK-NEXT:    outputs: [ 0 ],

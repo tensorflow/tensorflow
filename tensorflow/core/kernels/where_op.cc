@@ -41,7 +41,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/util/gpu_solvers.h"
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
@@ -77,7 +77,7 @@ struct NumTrue<CPUDevice, T, int64_t> {
                         typename TTypes<T>::ConstFlat input,
                         TTypes<int64_t>::UnalignedScalar num_true) {
     num_true() = CountAccumulator<T>(input.data(), input.data() + input.size());
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -118,7 +118,7 @@ struct Where<CPUDevice, DIMS, T, TIndex> {
         ++*found_true;
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 

@@ -173,7 +173,7 @@ class SaveV2 : public OpKernel {
                   &checkpoint_callback_manager,
                   [](checkpoint::CheckpointCallbackManager** out) {
                     *out = new checkpoint::CheckpointCallbackManager();
-                    return Status::OK();
+                    return OkStatus();
                   }));
       checkpoint_callback_manager->Save(prefix_string);
       checkpoint_callback_manager->Unref();
@@ -240,7 +240,7 @@ class RestoreV2 : public OpKernel {
                   &checkpoint_callback_manager,
                   [](checkpoint::CheckpointCallbackManager** out) {
                     *out = new checkpoint::CheckpointCallbackManager();
-                    return Status::OK();
+                    return OkStatus();
                   }));
       checkpoint_callback_manager->Restore(prefix_string);
       checkpoint_callback_manager->Unref();
@@ -260,6 +260,8 @@ class MergeV2Checkpoints : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context,
                    context->GetAttr("delete_old_dirs", &delete_old_dirs_));
+    OP_REQUIRES_OK(context, context->GetAttr("allow_missing_files",
+                                             &allow_missing_files_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -279,8 +281,9 @@ class MergeV2Checkpoints : public OpKernel {
         gtl::ArraySlice<tstring>(checkpoint_prefixes.flat<tstring>());
     Env* env = Env::Default();
     const string& merged_prefix = destination_prefix.scalar<tstring>()();
-    OP_REQUIRES_OK(
-        context, tensorflow::MergeBundles(env, input_prefixes, merged_prefix));
+    OP_REQUIRES_OK(context,
+                   tensorflow::MergeBundles(env, input_prefixes, merged_prefix,
+                                            allow_missing_files_));
 
     if (delete_old_dirs_) {
       const string merged_dir(io::Dirname(merged_prefix));
@@ -298,6 +301,10 @@ class MergeV2Checkpoints : public OpKernel {
  private:
   // On merge, whether or not to delete the input (temporary) directories.
   bool delete_old_dirs_;
+
+  // On merge, whether or not to relax condition that all input prefix filenames
+  // to exist.
+  bool allow_missing_files_;
 };
 REGISTER_KERNEL_BUILDER(Name("MergeV2Checkpoints").Device(DEVICE_CPU),
                         MergeV2Checkpoints);

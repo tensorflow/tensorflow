@@ -55,7 +55,7 @@ Status ReadVariableShapeFn(InferenceContext* c) {
       c->set_output_handle_shapes_and_types(0, variant_shape_and_type);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ReadVariablesShapeFn(InferenceContext* c) {
@@ -85,7 +85,7 @@ Status ReadVariablesShapeFn(InferenceContext* c) {
     }
     c->set_output(i, shape_and_type.shape);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -109,7 +109,7 @@ REGISTER_OP("VarHandleOp")
       c->set_output_handle_shapes_and_types(0,
                                             std::vector<ShapeAndType>{{s, t}});
 
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_VarHandlesOp")
@@ -143,7 +143,7 @@ REGISTER_OP("_VarHandlesOp")
             i, std::vector<ShapeAndType>{{s, dtypes[i]}});
       }
 
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ReadVariableOp")
@@ -171,7 +171,7 @@ Status ReadGrad(const AttrSlice& attrs, FunctionDef* g) {
       // Nodes
       {});
   // clang-format on
-  return Status::OK();
+  return OkStatus();
 }
 REGISTER_OP_GRADIENT("ReadVariableOp", ReadGrad);
 
@@ -204,7 +204,7 @@ Status CreateAssignShapeFn(InferenceContext* c) {
           value_handle_shape_and_type->size());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_OP("AssignVariableOp")
@@ -235,13 +235,13 @@ Status VariableShapeShapeFn(InferenceContext* c) {
   auto* handle_data = c->input_handle_shapes_and_types(0);
   if (handle_data == nullptr || handle_data->empty()) {
     c->set_output(0, c->Vector(c->UnknownDim()));
-    return Status::OK();
+    return OkStatus();
   }
   ShapeHandle var_shape = (*handle_data)[0].shape;
   int64_t rank = c->RankKnown(var_shape) ? c->Rank(var_shape)
                                          : InferenceContext::kUnknownDim;
   c->set_output(0, c->Vector(rank));
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_OP("VariableShape")
@@ -306,7 +306,7 @@ REGISTER_OP("ResourceGather")
                   std::back_inserter(variant_shape_and_type));
         c->set_output_handle_shapes_and_types(0, variant_shape_and_type);
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ResourceGatherNd")
@@ -333,7 +333,7 @@ Status ResourceScatterUpdateShape(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->Concatenate(indices_shape, var_subshape, &concat));
   TF_RETURN_IF_ERROR(
       InferenceContext::Rank(c->input(2)) == 0
-          ? Status::OK()
+          ? OkStatus()
           : c->Merge(c->input(2), concat, &unused_updates_shape));
   if (handle_shape_and_type[0].dtype == DT_VARIANT &&
       handle_shape_and_type.size() > 1 &&
@@ -348,7 +348,7 @@ Status ResourceScatterUpdateShape(InferenceContext* c) {
           value_handle_shape_and_type->size());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -416,7 +416,7 @@ REGISTER_OP("MutexV2")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("MutexLock")
@@ -426,13 +426,13 @@ REGISTER_OP("MutexLock")
     .SetTypeConstructor(full_type::Nullary(TFT_MUTEX_LOCK))
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ConsumeMutexLock")
     .Input("mutex_lock: variant")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); });
+    .SetShapeFn([](InferenceContext* c) { return OkStatus(); });
 
 REGISTER_OP("DisableCopyOnRead")
     .Input("resource: resource")

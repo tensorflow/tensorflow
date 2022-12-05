@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/kernels/quantize_and_dequantize.h"
 
+#include <any>
 #include <memory>
 #include <string>
 
@@ -41,7 +42,7 @@ value_0 = value_0 * vec4($quant_scale$) + vec4($quant_min$);
 )";
 
     const auto& attr =
-        absl::any_cast<const QuantizeAndDequantizeAttributes&>(ctx.op_attr);
+        std::any_cast<const QuantizeAndDequantizeAttributes&>(ctx.op_attr);
     *generated_code = {
         /*parameters=*/{{"quant_min", attr.min},
                         {"quant_max", attr.max},
@@ -61,7 +62,7 @@ value_0 = value_0 * vec4($quant_scale$) + vec4($quant_min$);
 }  // namespace
 
 std::unique_ptr<NodeShader> NewQuantizeAndDequantizeNodeShader() {
-  return absl::make_unique<QuantizeAndDequantize>();
+  return std::make_unique<QuantizeAndDequantize>();
 }
 
 }  // namespace gl

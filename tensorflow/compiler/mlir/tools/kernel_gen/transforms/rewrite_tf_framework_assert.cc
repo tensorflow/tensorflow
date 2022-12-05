@@ -41,11 +41,11 @@ class TFAssertOpConverter : public OpConversionPattern<TFAssertOp> {
     Block *split_block = rewriter.splitBlock(
         rewriter.getInsertionBlock(), std::next(rewriter.getInsertionPoint()));
 
-    auto func = op->getParentOfType<FuncOp>();
+    auto func = op->getParentOfType<func::FuncOp>();
     Block *error_reporting_block =
         rewriter.createBlock(&func.getRegion(), {}, {});
-    rewriter.create<ReportErrorOp>(loc, adaptor.ctx(), adaptor.error_code(),
-                                   adaptor.msg());
+    rewriter.create<ReportErrorOp>(loc, adaptor.getCtx(),
+                                   adaptor.getErrorCode(), adaptor.getMsg());
 
     SmallVector<Value, 2> null_memrefs;
     for (auto type : func.getFunctionType().getResults()) {
@@ -55,24 +55,24 @@ class TFAssertOpConverter : public OpConversionPattern<TFAssertOp> {
 
     rewriter.restoreInsertionPoint(ip);
     rewriter.replaceOpWithNewOp<cf::CondBranchOp>(
-        op, adaptor.arg(), split_block, llvm::None, error_reporting_block,
+        op, adaptor.getArg(), split_block, llvm::None, error_reporting_block,
         llvm::None);
     return success();
   }
 };
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_REWRITETFFRAMEWORKASSERT
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 bool IsNotInsideTfEntryFunction(Operation *op) {
-  auto func = op->getParentOfType<FuncOp>();
+  auto func = op->getParentOfType<func::FuncOp>();
   return !func->hasAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName);
 }
 // All contained `tf_framework.assert` operations are rewritten into calls to
 // `tf_framework.report_error` and the required control flow to make
 // execution of the function terminate.
 class RewriteTFFrameworkAssertPass
-    : public RewriteTFFrameworkAssertBase<RewriteTFFrameworkAssertPass> {
+    : public impl::RewriteTFFrameworkAssertBase<RewriteTFFrameworkAssertPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();
   }

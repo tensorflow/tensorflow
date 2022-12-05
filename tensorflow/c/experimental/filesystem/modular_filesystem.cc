@@ -23,8 +23,9 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/tsl/platform/errors.h"
 
-// TODO(mihaimaruseac): After all filesystems are converted, all calls to
+// TODO(b/139060984): After all filesystems are converted, all calls to
 // methods from `FileSystem` will have to be replaced to calls to private
 // methods here, as part of making this class a singleton and the only way to
 // register/use filesystems.
@@ -499,7 +500,7 @@ Status ModularRandomAccessFile::Read(uint64 offset, size_t n,
 
 Status ModularRandomAccessFile::Name(StringPiece* result) const {
   *result = filename_;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ModularWritableFile::Append(StringPiece data) {
@@ -523,7 +524,7 @@ Status ModularWritableFile::Close() {
 }
 
 Status ModularWritableFile::Flush() {
-  if (ops_->flush == nullptr) return Status::OK();
+  if (ops_->flush == nullptr) return OkStatus();
 
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
   ops_->flush(file_.get(), plugin_status.get());
@@ -540,7 +541,7 @@ Status ModularWritableFile::Sync() {
 
 Status ModularWritableFile::Name(StringPiece* result) const {
   *result = filename_;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ModularWritableFile::Tell(int64_t* position) {
@@ -561,8 +562,9 @@ Status RegisterFilesystemPlugin(const std::string& dso_path) {
 
   // Step 2: Load symbol for `TF_InitPlugin`
   void* dso_symbol;
-  TF_RETURN_IF_ERROR(
-      env->GetSymbolFromLibrary(dso_handle, "TF_InitPlugin", &dso_symbol));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      env->GetSymbolFromLibrary(dso_handle, "TF_InitPlugin", &dso_symbol),
+      "Failed to load TF_InitPlugin symbol for DSO: ", dso_path);
 
   // Step 3: Call `TF_InitPlugin`
   TF_FilesystemPluginInfo info;

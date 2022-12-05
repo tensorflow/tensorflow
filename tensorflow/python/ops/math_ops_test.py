@@ -685,6 +685,12 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     np_result = self.numpySafeTruncateDivInt(nums, divs)
     self.assertAllEqual(tf_result, np_result)
 
+  def testTruncateDivideFloat(self):
+    nums, divs = self.floatTestData()
+    tf_result = math_ops.truncatediv(nums, divs)
+    np_result = np.trunc(nums / divs)
+    self.assertAllEqual(tf_result, np_result)
+
   @test_util.deprecated_graph_mode_only
   def testDivideName(self):
     op = math_ops.divide(
@@ -1160,6 +1166,14 @@ class RangeTest(test_util.TensorFlowTestCase):
     tensor = ops.convert_to_tensor(values)
     self.assertAllEqual((5,), tensor.get_shape().as_list())
     self.assertAllEqual(values, self.evaluate(tensor))
+
+  def testInputsNearInt64Max(self):
+    int64_t_max = 2**63 - 1
+    x = math_ops.range(0, 201, int64_t_max - 200, dtype=dtypes.int64)
+    self.assertAllEqual((0,), self.evaluate(x))  # just below potential overflow
+    x = math_ops.range(0, 202, int64_t_max - 200, dtype=dtypes.int64)
+    self.assertAllEqual(
+        (0,), self.evaluate(x))  # smallest input with potential overflow
 
 
 @test_util.run_all_in_graph_and_eager_modes

@@ -26,7 +26,7 @@ REGISTER_OP("CustomAggregator")
     .SetIsStateful()
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
-      return Status::OK();
+      return OkStatus();
     });
 
 class CustomAggregatorOp : public OpKernel {

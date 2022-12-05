@@ -16,28 +16,32 @@ func.func @main(%arg0: tensor<4xi32>, %arg1: tensor<32x4x4x128xf32>, %arg2: tens
 // CHECK-NEXT:      name: "arg0",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 32, 4, 4, 128 ],
 // CHECK-NEXT:      buffer: 2,
 // CHECK-NEXT:      name: "arg1",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1, 32, 42, 128 ],
 // CHECK-NEXT:      buffer: 3,
 // CHECK-NEXT:      name: "arg2",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1, 64, 84, 32 ],
 // CHECK-NEXT:      buffer: 4,
 // CHECK-NEXT:      name: "tfl.transpose_conv",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    } ],
 // CHECK-NEXT:    inputs: [ 0, 1, 2 ],
 // CHECK-NEXT:    outputs: [ 3 ],

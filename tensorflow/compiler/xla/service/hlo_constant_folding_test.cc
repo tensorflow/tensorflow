@@ -19,12 +19,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -241,7 +241,7 @@ TEST_F(HloConstantFoldingTest, ConstantFoldReduce) {
 TEST_F(HloConstantFoldingTest, ConstantFoldReduceNoLayout) {
   TF_ASSERT_OK_AND_ASSIGN(auto m,
                           ParseAndReturnVerifiedModule(kConstantFoldReduce));
-  HloInstruction* add = m->computations().begin()->root_instruction();
+  HloInstruction* add = (*m->computations().begin())->root_instruction();
   LayoutUtil::ClearLayout(add->mutable_shape());
   HloConstantFolding const_folder;
   TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(m.get()));
@@ -368,6 +368,28 @@ TEST_F(HloConstantFoldingTest, BigReduceWindow) {
   TF_ASSERT_OK_AND_ASSIGN(bool result,
                           RunHloPass(&constant_folding, module.get()));
   EXPECT_TRUE(result);
+}
+
+TEST_F(HloConstantFoldingTest, TimingConsumingTest) {
+  constexpr absl::string_view mod_str = R"(
+    HloModule jit_f, entry_computation_layout={()->f32[]}
+    region_0.4 {
+      Arg_0.5 = f32[] parameter(0)
+      Arg_1.6 = f32[] parameter(1)
+      ROOT add.7 = f32[] add(Arg_0.5, Arg_1.6)
+    }
+
+    ENTRY main.9 {
+      constant.1 = f32[] constant(1)
+      broadcast.2 = f32[32,999,40,512]{3,2,1,0} broadcast(constant.1), dimensions={}
+      constant.3 = f32[] constant(0)
+      ROOT reduce.8 = f32[] reduce(broadcast.2, constant.3), dimensions={0,1,2,3}, to_apply=region_0.4
+    }
+   )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(mod_str));
+  HloConstantFolding const_fold;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&const_fold, module.get()));
+  EXPECT_FALSE(result);
 }
 
 }  // namespace

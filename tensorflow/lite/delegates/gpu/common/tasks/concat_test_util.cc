@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -48,7 +49,7 @@ absl::Status ConcatWidthTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateConcatXY(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          {src0, src1}, absl::make_unique<GPUOperation>(std::move(operation)),
+          {src0, src1}, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 3, 2), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({half(0.0f), half(-1.0f), half(1.0f), half(-1.2f),
@@ -81,7 +82,7 @@ absl::Status ConcatHeightTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateConcatXY(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          {src0, src1}, absl::make_unique<GPUOperation>(std::move(operation)),
+          {src0, src1}, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 3, 1, 2), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({half(0.0f), half(-1.0f), half(-0.05f),
                                      half(0.045f), half(1.0f), half(-1.2f)},
@@ -118,7 +119,7 @@ absl::Status ConcatChannelsTest(TestExecutionEnvironment* env) {
           CreateConcatZ(op_def, {1, 2, 3}, env->GetGpuInfo());
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {src0, src1, src2},
-          absl::make_unique<GPUOperation>(std::move(operation)),
+          std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 6), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({half(0.0f), half(1.0f), half(2.0f), half(5.0f),
@@ -153,7 +154,7 @@ absl::Status ConcatChannelsAlignedx4Test(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateConcatZ(op_def, {4, 4}, env->GetGpuInfo());
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          {src0, src1}, absl::make_unique<GPUOperation>(std::move(operation)),
+          {src0, src1}, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 8), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({half(-1.0f), half(-2.0f), half(-3.0f), half(-4.0f),

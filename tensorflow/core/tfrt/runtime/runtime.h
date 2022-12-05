@@ -39,9 +39,6 @@ namespace tfrt_stub {
 // tensorflow::experimental::cc::Runtime when it lands.
 class Runtime {
  public:
-  ABSL_DEPRECATED("Use other Create() methods instead.")
-  static std::unique_ptr<Runtime> Create();
-
   // Creates a runtime instance with specified threading configuration. Returns
   // null upon creation error.
   static std::unique_ptr<Runtime> Create(int num_inter_op_threads,
@@ -89,6 +86,12 @@ class Runtime {
     for (auto& fn : runtime_resource_fns_) {
       fn(resource_ctx);
     }
+  }
+
+  // Creates a work queue for a request.
+  StatusOr<std::unique_ptr<WorkQueueInterface>> CreateRequestQueue(
+      int64_t request_id) const {
+    return work_queue_->InitializeRequest(request_id);
   }
 
  private:

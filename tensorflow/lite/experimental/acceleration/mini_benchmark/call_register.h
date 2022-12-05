@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_CALL_REGISTER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_CALL_REGISTER_H_
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 namespace tflite {
 namespace acceleration {
 namespace ops {

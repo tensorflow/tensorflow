@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 
-#include "tensorflow/compiler/jit/xla_compilation_cache.h"
+#include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 
@@ -43,7 +43,7 @@ Status MlirXlaOpKernel::ContextToXlaArgs(
                        ctx->InputExpression(i).HumanString()));
     XlaCompiler::Argument arg;
     arg.type = ctx->input_type(i);
-    arg.shape = ctx->InputXlaShape(i).ValueOrDie();
+    arg.shape = ctx->InputXlaShape(i).value();
     arg.name = absl::StrCat("_arg", i);
     if (registered_consts.count(i)) {
       arg.kind = XlaCompiler::Argument::kConstant;
@@ -53,7 +53,7 @@ Status MlirXlaOpKernel::ContextToXlaArgs(
     }
     xla_args.push_back(arg);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 MlirXlaOpKernel::MlirXlaOpKernel(OpKernelConstruction* ctx)
@@ -96,7 +96,8 @@ Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
   }
 
   // Create a graph that wraps the kernel.
-  TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(def(), xla_args, result_dtypes));
+  TF_ASSIGN_OR_RETURN(auto graph,
+                      CreateSingleOpGraph(def(), xla_args, result_dtypes));
 
   // Compile the graph to HLO.
   GraphDebugInfo debug_info;
@@ -113,7 +114,7 @@ Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
     ctx->SetOutput(i, returns[i]);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void MlirXlaOpKernel::Compile(XlaOpKernelContext* ctx) {

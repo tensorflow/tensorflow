@@ -35,8 +35,8 @@ from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.saved_model import save_context
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training.saving import saveable_object_util
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
@@ -725,16 +725,16 @@ class ShardedVariableMixin(trackable.Trackable):
 
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
-  def _map_resources(self, save_options):
+  def _export_to_saved_model_graph(self, object_map, tensor_map,
+                                   options, **kwargs):
     """For implementing `Trackable`."""
-    obj_map, resource_map = {}, {}
+    resource_list = []
     for v in self._variables + [self._saving_variable]:
-      v_obj_map, v_resource_map = v._map_resources(save_options)  # pylint:disable=protected-access
-      obj_map.update(v_obj_map)
-      resource_map.update(v_resource_map)
-    obj_map[self] = ShardedVariable([obj_map[self._saving_variable]],
-                                    name=self.name)
-    return obj_map, resource_map
+      resource_list.extend(v._export_to_saved_model_graph(  # pylint:disable=protected-access
+          object_map, tensor_map, options, **kwargs))
+    object_map[self] = ShardedVariable([object_map[self._saving_variable]],
+                                       name=self.name)
+    return resource_list
 
   @property
   def _unique_id(self):
@@ -752,6 +752,18 @@ class ShardedVariableMixin(trackable.Trackable):
   @property
   def is_sharded_variable(self):
     return True
+
+  def numpy(self):
+    """Copies the values in this ShardedVariable to a NumPy array.
+
+    First converts to a single Tensor using the registered conversion function,
+    which concatenates the shards, then uses Tensor.numpy() to convert to
+    a NumPy array.
+
+    Returns:
+      A NumPy array of the same shape and dtype.
+    """
+    return _var_to_tensor(self).numpy()
 
 
 @tf_export('__internal__.distribute.ShardedVariable', v1=[])

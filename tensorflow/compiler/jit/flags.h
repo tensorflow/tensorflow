@@ -61,6 +61,9 @@ struct MarkForCompilationPassFlags {
   // If non-empty, limit XLA clustering to the following TF operations.
   string tf_xla_ops_to_cluster;
 
+  // If non-empty, remove following operations from XLA clustering excludelist.
+  string tf_xla_cluster_exclude_ops;
+
   // Dump graphs during XLA compilation.
   bool tf_xla_clustering_debug;
 
@@ -167,7 +170,15 @@ struct MlirCommonFlags {
 struct JitRtFlags {
   bool always_specialize;
   bool cost_driven_async_parallel_for;
+
+  // Enables tracking of the "live" JitRt queries to, on a crash, identify the
+  // "query of death". See TfJitRtQueryOfDeathLogger.
+  bool log_query_of_death;
+
   bool vectorize;
+
+  // Enables crash reproducer for JitRt MLIR pass manager.
+  bool enable_crash_reproducer;
 };
 
 // Return a pointer to the DumpGraphFlags struct;
@@ -194,7 +205,7 @@ const JitRtFlags& GetJitRtFlags();
 // Returns the effective MLIR bridge rollout state based on the flags and the
 // optional configuration.
 ConfigProto::Experimental::MlirBridgeRollout GetMlirBridgeRolloutState(
-    absl::optional<const ConfigProto> config_proto);
+    std::optional<const ConfigProto> config_proto);
 
 // Appends the flag definitions associated with
 // MarkForCompilationPassFlags/DumpGraphFlags to `flag_list`.
@@ -206,6 +217,10 @@ void AppendMarkForCompilationPassFlags(
 // Disables XLA compilation, forces it to return an error message instead. Can
 // be used by a server to ensure that JIT compilation is opt-in.
 void DisableXlaCompilation();
+
+// Enables XLA compilation. Can be used with `DisableXlaCompilation` to
+// enable/disable JIT compilation at different stages.
+void EnableXlaCompilation();
 
 // Returns `false` unless `DisableXlaCompilation` was called.
 bool FailOnXlaCompilation();

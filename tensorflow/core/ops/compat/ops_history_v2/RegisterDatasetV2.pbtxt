@@ -1,0 +1,81 @@
+op 	 {
+  name: "RegisterDatasetV2"
+  input_arg {
+    name: "dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "address"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "protocol"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "dataset_id"
+    type: DT_STRING
+  }
+  attr {
+    name: "external_state_policy"
+    type: "int"
+  }
+  attr {
+    name: "element_spec"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}
+op {
+  name: "RegisterDatasetV2"
+  input_arg {
+    name: "dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "address"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "protocol"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "dataset_id"
+    type: DT_STRING
+  }
+  attr {
+    name: "external_state_policy"
+    type: "int"
+  }
+  attr {
+    name: "element_spec"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "requested_dataset_id"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}

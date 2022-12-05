@@ -48,7 +48,7 @@ FallbackState::FallbackState(const SessionOptions &session_options,
             Rendezvous::Factory{
                 [](const int64, const DeviceMgr *device_mgr, Rendezvous **r) {
                   *r = new IntraProcessRendezvous(device_mgr);
-                  return Status::OK();
+                  return OkStatus();
                 }}) {
   for (auto *d : device_manager_.ListDevices()) {
     device_set_.AddDevice(d);

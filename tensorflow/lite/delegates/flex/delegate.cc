@@ -78,8 +78,7 @@ TfLiteStatus FlexDelegate::Initialize(TfLiteContext* context) {
 
   // Initializes the cancellation manager.
   if (!cancellation_manager_) {
-    cancellation_manager_ =
-        absl::make_unique<tensorflow::CancellationManager>();
+    cancellation_manager_ = std::make_unique<tensorflow::CancellationManager>();
     delegate_data_.SetCancellationManager(cancellation_manager_.get());
   }
 
@@ -145,7 +144,7 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
   // The life cycle of the pointer will be managed by the reference counting in
   // the TensorFlow world and the pointer will be freed when all the buffer
   // maps, who own it, are gone.
-  if (flex::IsResourceOrVariant(output)) {
+  if (IsResourceOrVariant(output)) {
     const size_t required_bytes = sizeof(tensorflow::Tensor**);
     const tensorflow::Tensor** tf_tensor_ptr =
         reinterpret_cast<const tensorflow::Tensor**>(malloc(required_bytes));

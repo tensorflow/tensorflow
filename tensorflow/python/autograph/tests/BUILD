@@ -1,5 +1,7 @@
 load(":reference_test.bzl", "reference_test")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 licenses(["notice"])
 
 py_library(
@@ -23,7 +25,9 @@ reference_test(name = "ext_slice_test")
 
 reference_test(name = "type_annotations_test")
 
-# # Scoping and modularity
+# ## Scoping and modularity
+
+reference_test(name = "loop_scoping_test")
 
 # ## Composite names
 

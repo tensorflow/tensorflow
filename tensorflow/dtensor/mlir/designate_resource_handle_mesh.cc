@@ -26,12 +26,14 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORDESIGNATERESOURCEHANDLEMESH
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 mlir::LogicalResult SetMeshForResourceCreatingCluster(
     mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder) {
@@ -63,7 +65,7 @@ mlir::LogicalResult SetMeshForResourceCreatingCluster(
 }
 
 struct DTensorDesignateResourceHandleMesh
-    : public DTensorDesignateResourceHandleMeshBase<
+    : public impl::DTensorDesignateResourceHandleMeshBase<
           DTensorDesignateResourceHandleMesh> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();

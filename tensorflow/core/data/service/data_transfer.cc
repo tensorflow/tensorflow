@@ -19,9 +19,9 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "absl/strings/str_join.h"
-#include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
@@ -101,10 +101,10 @@ Status DataTransferServer::Build(std::string name, GetElementT get_element,
   auto it = transfer_server_factories().find(name);
   if (it != transfer_server_factories().end()) {
     *out = it->second(get_element);
-    return Status::OK();
+    return OkStatus();
   }
 
-  std::vector<string> available_names;
+  std::vector<std::string> available_names;
   for (const auto& factory : transfer_server_factories()) {
     available_names.push_back(factory.first);
   }

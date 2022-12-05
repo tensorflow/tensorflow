@@ -12,15 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <initializer_list>
+#include <memory>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_mock_test.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/fully_connected.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
@@ -42,7 +45,8 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
   SingleOpModelWithNNAPI() = default;
   void Init(const NnApi* nnapi) {
     options_.disallow_nnapi_cpu = false;
-    stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi, options_));
+    stateful_delegate_ =
+        std::make_unique<StatefulNnApiDelegate>(nnapi, options_);
     SetDelegate(stateful_delegate_.get());
   }
 
@@ -89,7 +93,7 @@ class HybridFullyConnectedOpModel : public SingleOpModelWithNNAPI {
                        .Union();
     SetBuiltinOp(BuiltinOperator_FULLY_CONNECTED,
                  BuiltinOptions_FullyConnectedOptions, options);
-    resolver_ = absl::make_unique<SingleOpResolver>(
+    resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED,
         ops::builtin::Register_FULLY_CONNECTED_PIE());
     BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)},
@@ -294,8 +298,8 @@ class BaseConvolutionOpModel : public SingleOpModelWithNNAPI {
                      dilation_width_factor, dilation_height_factor)
                      .Union());
 
-    resolver_ = absl::make_unique<SingleOpResolver>(BuiltinOperator_CONV_2D,
-                                                    registration);
+    resolver_ = std::make_unique<SingleOpResolver>(BuiltinOperator_CONV_2D,
+                                                   registration);
     BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)},
                      /*num_threads=*/-1,
                      /* allow_fp32_relax_to_fp16 */ false,
@@ -799,7 +803,7 @@ class DequantizeOpModel : public SingleOpModelWithNNAPI {
     SetBuiltinOp(BuiltinOperator_DEQUANTIZE, BuiltinOptions_DequantizeOptions,
                  CreateDequantizeOptions(builder_).Union());
 
-    resolver_ = absl::make_unique<SingleOpResolver>(
+    resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_DEQUANTIZE, ops::builtin::Register_DEQUANTIZE(),
         version);
 

@@ -29,7 +29,6 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -39,6 +38,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
@@ -49,10 +49,12 @@ limitations under the License.
 namespace mlir {
 namespace tosa {
 namespace {
-#define GEN_PASS_CLASSES
+
+#define GEN_PASS_DEF_TOSASTRIPQUANTTYPESPASS
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
 
-class StripQuantTypes : public TosaStripQuantTypesPassBase<StripQuantTypes> {
+class StripQuantTypes
+    : public impl::TosaStripQuantTypesPassBase<StripQuantTypes> {
  public:
   explicit StripQuantTypes() {}
   void runOnOperation() override;
@@ -95,7 +97,7 @@ class GenericTypeConvert : public ConversionPattern {
       Operation* op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const override {
     llvm::SmallVector<Type, 4> newResults;
-    if (isa<FuncOp>(op)) {
+    if (isa<func::FuncOp>(op)) {
       return failure();
     }
 
@@ -128,10 +130,10 @@ void StripQuantTypes::runOnOperation() {
   QuantTypeConverter converter;
   ConversionTarget target(getContext());
 
-  target.addIllegalDialect<quant::QuantizationDialect>();
+  target.addIllegalDialect<quantfork::QuantizationForkDialect>();
   // Operations are legal if they don't contain any illegal type.
   target.markUnknownOpDynamicallyLegal([](Operation* op) {
-    if (auto funcOp = dyn_cast<FuncOp>(op)) {
+    if (auto funcOp = dyn_cast<func::FuncOp>(op)) {
       for (Type type : funcOp.getFunctionType().getInputs()) {
         if (isIllegalType(type)) return false;
       }
@@ -153,7 +155,8 @@ void StripQuantTypes::runOnOperation() {
 
   RewritePatternSet patterns(&getContext());
   patterns.add<GenericTypeConvert>(ctx, converter);
-  populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns, converter);
+  populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                 converter);
 
   if (failed(applyFullConversion(func, target, std::move(patterns)))) {
     signalPassFailure();
@@ -162,7 +165,7 @@ void StripQuantTypes::runOnOperation() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createStripQuantTypesPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createStripQuantTypesPass() {
   return std::make_unique<StripQuantTypes>();
 }
 }  // namespace tosa

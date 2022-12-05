@@ -15,17 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_writer.h"
 
+#include <algorithm>
 #include <array>
+#include <memory>
+#include <vector>
 
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_slice_reader.h"
@@ -360,6 +362,17 @@ TEST(TensorSliceWriteTest, SizeErrors) {
     EXPECT_TRUE(absl::StrContains(s.error_message(),
                                   "Tensor slice is too large to serialize"));
   }
+}
+
+TEST(TensorSliceWriterTest, InvalidInput) {
+  SavedSlice ss;
+  std::array<uint32_t, 1> data;
+  std::fill(data.begin(), data.end(), 1234);
+  Status s = TensorSliceWriter::SaveData(data.data(), data.size(), &ss);
+  EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+  EXPECT_TRUE(absl::StrContains(
+      s.error_message(),
+      "Tensor slice serialization not implemented for dtype"));
 }
 
 }  // namespace checkpoint

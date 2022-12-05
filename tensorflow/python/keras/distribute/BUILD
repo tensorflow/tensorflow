@@ -3,6 +3,7 @@
 #   related to dist-strat used by Keras..
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # TODO(scottzhu): Remove this deps when distribute test are converted to integration test.
     default_visibility = [
         "//tensorflow:internal",
@@ -48,7 +49,7 @@ py_library(
         "//tensorflow/python/keras/mixed_precision:policy",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:mode_keys",
-        "//tensorflow/python/training/tracking:data_structures",
+        "//tensorflow/python/trackable:data_structures",
         "//tensorflow/tools/docs:doc_controls",
     ],
 )
@@ -77,10 +78,11 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:lib",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/utils:mode_keys",
         "//tensorflow/python/training:checkpoint_management",
-        "//tensorflow/python/training/tracking:util",
     ],
 )
 

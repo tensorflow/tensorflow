@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/base/casts.h"
+#include "absl/strings/substitute.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
@@ -34,6 +39,34 @@ StatusOr<std::uintptr_t> PjRtClient::UnsafeBufferPointer(PjRtBuffer* buffer) {
   return absl::bit_cast<std::uintptr_t>(ptr);
 }
 
+PjRtFuture<Status> PjRtBuffer::CopyRawToHostFuture(
+    PjRtFuture<StatusOr<void*>> dst, int64_t offset, int64_t transfer_size) {
+  StatusOr<void*> awaited_dst = dst.Await();
+  if (!awaited_dst.ok()) {
+    return PjRtFuture<Status>(std::move(awaited_dst).status());
+  }
+  return CopyRawToHost(*awaited_dst, offset, transfer_size);
+}
+
 MultiSliceConfig::~MultiSliceConfig() {}
+
+std::string CompiledMemoryStats::DebugString() const {
+  return absl::Substitute(
+      "CompiledMemoryStats("
+      "generated_code_size_in_bytes=$0, "
+      "argument_size_in_bytes=$1, "
+      "output_size_in_bytes=$2, "
+      "alias_size_in_bytes=$3, "
+      "temp_size_in_bytes=$4)",
+      generated_code_size_in_bytes, argument_size_in_bytes,
+      output_size_in_bytes, alias_size_in_bytes, temp_size_in_bytes);
+}
+
+// Defining the first virtual non-pure method, which is usually the virtual
+// destructor, makes it a key function. This reduces the program size and takes
+// fewer linker resources.
+PjRtHostMemoryForDeviceManager::~PjRtHostMemoryForDeviceManager() = default;
+
+CopyToDeviceStream::~CopyToDeviceStream() = default;
 
 }  // namespace xla

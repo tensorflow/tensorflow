@@ -24,9 +24,9 @@ import weakref
 from absl import logging
 import numpy as np
 
-from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
 from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
 from tensorflow.python.autograph.impl import api as autograph
+from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -929,7 +929,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._use_spmd_for_xla_partitioning = use_spmd_for_xla_partitioning
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
-    distribute_utils. validate_colocate(colocate_with_variable, self)
+    distribute_utils.validate_colocate(colocate_with_variable, self)
 
   def _make_dataset_iterator(self, dataset):
     """Make iterators for each of the TPU hosts."""
@@ -1342,7 +1342,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         value = math_ops.scalar_mul((1./self._num_replicas_in_sync), value)
       elif reduce_op != reduce_util.ReduceOp.SUM:
         raise NotImplementedError(
-            "`reduce_op`={reduce_op} is not supported. Currently we only "
+            f"`reduce_op`={reduce_op} is not supported. Currently we only "
             "support ReduceOp.SUM and ReduceOp.MEAN in TPUStrategy.")
       return tpu_ops.cross_replica_sum(value)
 
@@ -1390,11 +1390,19 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       else:
         return (fn(var, *args, **kwargs),)
 
+    # Inside `tf.function`, we don't expand PackedVariable in python as it will
+    # be expanded later during function instantiation in the runtime.
+    packed_var = var._packed_variable  # pylint: disable=protected-access
+    if packed_var is not None and not context.executing_eagerly():
+      if group:
+        return fn(packed_var, *args, **kwargs)
+      else:
+        return (fn(packed_var, *args, **kwargs),)
+
     # Otherwise, we revert to MirroredStrategy behavior and update the variable
     # on each replica directly.
     updates = []
     values_and_devices = []
-    packed_var = var._packed_variable  # pylint: disable=protected-access
     if packed_var is not None:
       for device in packed_var.devices:
         values_and_devices.append((packed_var, device))
@@ -1560,6 +1568,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     def tpu_function(args, kwargs):
       """TF Function used to replicate the user computation."""
+      logging.vlog(1,
+                   "`TPUStrategy.run` is called with [args: %s] [kwargs: %s]",
+                   args, kwargs)
+
       if kwargs is None:
         kwargs = {}
 

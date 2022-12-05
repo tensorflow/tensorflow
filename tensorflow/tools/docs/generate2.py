@@ -25,7 +25,6 @@ pip install git+https://github.com/tensorflow/docs
 ```
 """
 import contextlib
-import distutils
 import pathlib
 import textwrap
 
@@ -33,6 +32,7 @@ from typing import NamedTuple
 
 from absl import app
 from absl import flags
+from packaging import version
 
 import tensorflow as tf
 
@@ -69,6 +69,11 @@ tf.__all__ = [item_name for item_name, value in tf_inspect.getmembers(tf)]
 # This will just list compat.v2 as an alias for tf. Close enough, let's not
 # duplicate all the module skeleton files.
 tf.compat.v2 = tf
+
+tf.losses = tf.keras.losses
+tf.metrics = tf.keras.metrics
+tf.optimizers = tf.keras.optimizers
+tf.initializers = tf.keras.initializers
 
 MIN_NUM_FILES_EXPECTED = 2000
 FLAGS = flags.FLAGS
@@ -170,8 +175,11 @@ class TfExportAwareVisitor(doc_generator_visitor.DocGeneratorVisitor):
                    tf_export.ESTIMATOR_API_NAME]
 
     for api_name in all_exports:
-      canonical = tf_export.get_canonical_name_for_symbol(
-          self._index[name], api_name=api_name)
+      try:
+        canonical = tf_export.get_canonical_name_for_symbol(
+            self._index[name], api_name=api_name)
+      except AttributeError:
+        canonical = None
       if canonical is not None:
         break
 
@@ -193,10 +201,11 @@ def build_docs(output_dir, code_url_prefix, search_hints):
   output_dir = pathlib.Path(output_dir)
   site_path = pathlib.Path("/", FLAGS.site_path)
 
-  if distutils.version.LooseVersion(tf.__version__) >= "2.9":
-    doc_controls.set_deprecated(tf.keras.preprocessing)
+  if version.parse(tf.__version__) >= version.parse("2.9"):
+    doc_controls.set_deprecated(tf.compat.v1)
     doc_controls.set_deprecated(tf.estimator)
     doc_controls.set_deprecated(tf.feature_column)
+    doc_controls.set_deprecated(tf.keras.preprocessing)
 
   # The custom page will be used for raw_ops.md not the one generated above.
   doc_controls.set_custom_page_builder_cls(tf.raw_ops, RawOpsPageInfo)
@@ -214,6 +223,7 @@ def build_docs(output_dir, code_url_prefix, search_hints):
 
   do_not_document = ["tf.__internal__",
                      "tf.keras.__internal__",
+                     "tf.keras.wrappers",
                      "tf.__operators__",
                      "tf.tools",
                      "tf.compat.v1.pywrap_tensorflow",

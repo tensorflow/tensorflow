@@ -1,6 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -56,7 +57,6 @@ py_library(
 pybind_extension(
     name = "_pywrap_modify_model_interface",
     srcs = ["modify_model_interface.cc"],
-    module_name = "_pywrap_modify_model_interface",
     deps = [
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize:modify_model_interface",

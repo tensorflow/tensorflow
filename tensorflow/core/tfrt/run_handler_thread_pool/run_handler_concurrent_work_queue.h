@@ -12,10 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_TFRT_EXPERIMENTAL_RUN_HANDLER_THREAD_POOL_RUN_HANDLER_CONCURRENT_WORK_QUEUE_H_
-#define TENSORFLOW_CORE_TFRT_EXPERIMENTAL_RUN_HANDLER_THREAD_POOL_RUN_HANDLER_CONCURRENT_WORK_QUEUE_H_
+#ifndef TENSORFLOW_CORE_TFRT_RUN_HANDLER_THREAD_POOL_RUN_HANDLER_CONCURRENT_WORK_QUEUE_H_
+#define TENSORFLOW_CORE_TFRT_RUN_HANDLER_THREAD_POOL_RUN_HANDLER_CONCURRENT_WORK_QUEUE_H_
 
 #include <memory>
+#include <ostream>
+#include <string>
+#include <vector>
 
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
@@ -77,7 +80,7 @@ class RunHandlerThreadWorkQueue
   };
 
   explicit RunHandlerThreadWorkQueue(const Options& options);
-  ~RunHandlerThreadWorkQueue() override {}
+  ~RunHandlerThreadWorkQueue() override = default;
 
   std::string name() const override {
     return tensorflow::strings::StrCat(
@@ -88,9 +91,7 @@ class RunHandlerThreadWorkQueue
 
   tensorflow::StatusOr<
       std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>>
-  InitializeRequest(tfrt::RequestContextBuilder* request_context_builder,
-                    tensorflow::thread::ThreadPoolInterface**
-                        intra_op_threadpool) const override;
+  InitializeRequest(int64_t request_id) const override;
 
   int GetParallelismLevel() const override {
     return options_.num_main_threads + options_.num_complementary_threads;
@@ -130,7 +131,9 @@ class RunHandlerThreadWorkQueue
       blocking_work_queue_;
 };
 
+std::ostream& operator<<(std::ostream& strm,
+                         const RunHandlerThreadWorkQueue::Options& options);
 }  // namespace tf
 }  // namespace tfrt
 
-#endif  // TENSORFLOW_CORE_TFRT_EXPERIMENTAL_RUN_HANDLER_THREAD_POOL_RUN_HANDLER_CONCURRENT_WORK_QUEUE_H_
+#endif  // TENSORFLOW_CORE_TFRT_RUN_HANDLER_THREAD_POOL_RUN_HANDLER_CONCURRENT_WORK_QUEUE_H_

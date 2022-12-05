@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/padding_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -45,7 +46,7 @@ absl::Status PaddingAppendWidthTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePadding(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 2, 2), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({0.0f, 1.0f, 0.0f, 0.0f, 2.0f, 3.0f, 0.0f, 0.0f},
@@ -75,7 +76,7 @@ absl::Status PaddingPrependWidthTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePadding(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 2, 2), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 2.0f, 3.0f},
@@ -105,7 +106,7 @@ absl::Status PaddingAppendHeightTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePadding(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 3, 1, 2), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({0.0f, 1.0f, 2.0f, 3.0f, 0.0f, 0.0f},
                                     dst_tensor.data, eps));
@@ -134,7 +135,7 @@ absl::Status PaddingPrependHeightTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePadding(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 3, 1, 2), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({0.0f, 0.0f, 0.0f, 1.0f, 2.0f, 3.0f},
                                     dst_tensor.data, eps));
@@ -163,7 +164,7 @@ absl::Status PaddingAppendChannelsTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePadding(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 3), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({0.0f, 1.0f, 0.0f, 2.0f, 3.0f, 0.0f},
                                     dst_tensor.data, eps));
@@ -192,7 +193,7 @@ absl::Status PaddingPrependChannelsTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePadding(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 3), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({0.0f, 0.0f, 1.0f, 0.0f, 2.0f, 3.0f},
                                     dst_tensor.data, eps));
@@ -221,7 +222,7 @@ absl::Status PaddingPrependChannelsX4Test(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePadding(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 1, 1, 6), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 2.0f},
                                     dst_tensor.data, eps));
@@ -250,7 +251,7 @@ absl::Status PaddingComplexTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePadding(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 3, 3, 3), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
@@ -283,7 +284,7 @@ absl::Status PaddingReflectWidthTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePadding(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 1, 7, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({3.0f, 2.0f, 1.0f, 2.0f, 3.0f, 2.0f, 1.0f},
                                     dst_tensor.data, eps));
@@ -313,7 +314,7 @@ absl::Status PaddingReflectChannelsTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePadding(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 1, 1, 7), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({3.0f, 2.0f, 1.0f, 2.0f, 3.0f, 2.0f, 1.0f},
                                     dst_tensor.data, eps));

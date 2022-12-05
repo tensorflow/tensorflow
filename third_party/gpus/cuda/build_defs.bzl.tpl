@@ -43,7 +43,6 @@ def cuda_default_copts():
         "-x", "cuda",
         "-DGOOGLE_CUDA=1",
         "-Xcuda-fatbinary=--compress-all",
-        "--no-cuda-include-ptx=all"
     ] + %{cuda_extra_copts}) + if_cuda_clang_opt(
         # Some important CUDA optimizations are only enabled at O3.
         ["-O3"]
@@ -95,6 +94,10 @@ def cuda_header_library(
 def cuda_library(copts = [], **kwargs):
     """Wrapper over cc_library which adds default CUDA options."""
     native.cc_library(copts = cuda_default_copts() + copts, **kwargs)
+
+def cuda_cc_test(copts = [], **kwargs):
+    """Wrapper over cc_test which adds default CUDA options."""
+    native.cc_test(copts = copts + if_cuda(["-DGOOGLE_CUDA=1"]), **kwargs)
 
 EnableCudaInfo = provider()
 

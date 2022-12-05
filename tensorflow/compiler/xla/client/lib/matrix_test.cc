@@ -304,7 +304,7 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
         ParseEinsumString(to_string(test_case[0], test_case[1], test_case[2]),
                           test_case[0].size(), test_case[1].size());
     EXPECT_TRUE(parse_result_or_status.status().ok());
-    auto parse_result = parse_result_or_status.ValueOrDie();
+    auto parse_result = parse_result_or_status.value();
     for (int i = 0; i < 3; ++i) {
       EXPECT_EQ(parse_result[i], to_vec(test_case[i]));
     }

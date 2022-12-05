@@ -50,6 +50,11 @@ TEST_F(OpenCLOperationTest, FullyConnectedExtraLarge) {
   ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
+TEST_F(OpenCLOperationTest, FullyConnectedInt8) {
+  auto status = FullyConnectedInt8Test(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
 TEST_F(OpenCLOperationTest, RearrageWeights) {
   tflite::gpu::Tensor<OHWI, DataType::FLOAT32> weights;
   weights.shape = OHWI(8, 1, 1, 8);

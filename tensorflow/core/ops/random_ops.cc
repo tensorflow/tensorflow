@@ -128,7 +128,7 @@ REGISTER_OP("Multinomial")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(1, &num_samples));
       c->set_output(0, c->Matrix(c->Dim(logits_shape, 0), num_samples));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("RandomGamma")
@@ -145,7 +145,7 @@ REGISTER_OP("RandomGamma")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
       TF_RETURN_IF_ERROR(c->Concatenate(out, c->input(1), &out));
       c->set_output(0, out);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("RandomGammaGrad")
@@ -169,7 +169,7 @@ REGISTER_OP("RandomPoisson")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
       TF_RETURN_IF_ERROR(c->Concatenate(out, c->input(1), &out));
       c->set_output(0, out);
-      return Status::OK();
+      return OkStatus();
     })
     .Deprecated(25, "Replaced by RandomPoissonV2");
 
@@ -188,7 +188,7 @@ REGISTER_OP("RandomPoissonV2")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
       TF_RETURN_IF_ERROR(c->Concatenate(out, c->input(1), &out));
       c->set_output(0, out);
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

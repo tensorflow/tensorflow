@@ -99,10 +99,9 @@ class XlaSetBoundOp : public XlaOpKernel {
     int64_t bound;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("bound", &bound));
     xla::Literal bound_literal = xla::LiteralUtil::CreateR0<int32>(bound);
-    xla::XlaOp result =
-        xla::CustomCall(ctx->builder(), "SetBound", {ctx->Input("input")},
-                        ctx->InputXlaShape("input").ValueOrDie(), "", false, {},
-                        &bound_literal);
+    xla::XlaOp result = xla::CustomCall(
+        ctx->builder(), "SetBound", {ctx->Input("input")},
+        ctx->InputXlaShape("input").value(), "", false, {}, &bound_literal);
     ctx->SetOutput(0, result);
   }
 };
@@ -310,7 +309,7 @@ class SqueezeOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     StatusOr<xla::Shape> input_shape = ctx->builder()->GetShape(ctx->Input(0));
     OP_REQUIRES_OK(ctx, input_shape.status());
-    xla::Shape shape = input_shape.ValueOrDie();
+    xla::Shape shape = input_shape.value();
     int64_t rank = shape.rank();
 
     std::unordered_set<int32> wrapped_squeeze_dims;
@@ -385,7 +384,7 @@ class ZerosLikeOp : public XlaOpKernel {
 
       auto list_shape_or = ctx->builder()->GetShape(list);
       OP_REQUIRES_OK(ctx, list_shape_or.status());
-      const xla::Shape& list_shape = list_shape_or.ValueOrDie();
+      const xla::Shape& list_shape = list_shape_or.value();
       std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
       list_dynamic_dims.reserve(list_shape.tuple_shapes_size() - 1);
       for (int i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
@@ -413,7 +412,7 @@ class ZerosLikeOp : public XlaOpKernel {
     } else {
       auto zero = XlaHelpers::Zero(ctx->builder(), input_type(0));
       xla::XlaOp input = ctx->Input(0);
-      auto input_shape = ctx->InputXlaShape(0).ValueOrDie();
+      auto input_shape = ctx->InputXlaShape(0).value();
       auto result = xla::Broadcast(zero, input_shape.dimensions());
 
       // Setting up dynamic dimensions of the broadcast.

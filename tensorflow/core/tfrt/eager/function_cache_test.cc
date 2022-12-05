@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/eager/function_cache.h"
 
 #include <memory>
+#include <utility>
 
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 #include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
 
 namespace tfrt {
@@ -87,7 +89,7 @@ tensorflow::Status AddModel(
   TF_RETURN_IF_ERROR(Add(ctx, inputs, absl::MakeSpan(add_outputs)));
 
   outputs[0] = add_outputs[0];
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::AbstractContext* BuildFunction(const char* fn_name) {
@@ -110,7 +112,7 @@ tensorflow::Status CreateParamsForInputs(
             input->DataType(), shape, &handle));
     params->emplace_back(handle);
   }
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 using Model = std::function<tensorflow::Status(
@@ -147,7 +149,7 @@ tensorflow::Status PrepareFunction(
   }
   TF_RETURN_IF_ERROR(ctx->RegisterFunction(func));
 
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status BuildImmediateExecutionContext(
@@ -159,7 +161,7 @@ tensorflow::Status BuildImmediateExecutionContext(
   *ctx = tensorflow::unwrap(TF_NewEagerExecutionContext(opts, status.get()));
   TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(status.get()));
   TFE_DeleteContextOptions(opts);
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status TestScalarTensorHandle(
@@ -173,7 +175,7 @@ tensorflow::Status TestScalarTensorHandle(
   TFE_TensorHandle* input_eager = TestScalarTensorHandle(eager_ctx, value);
   *tensor = tensorflow::unwrap(
       TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 TEST_P(CppTests, TestFunctionCacheWithAdd) {
@@ -226,20 +228,28 @@ TEST_P(CppTests, TestFunctionCacheWithAdd) {
   for (auto d : device_mgr->ListDevices()) dev_set.AddDevice(d);
   auto& device = corert->GetHostContext()->GetHostDevice();
   const Device* input_devices[2] = {&device, &device};
-  auto req_ctx = RequestContextBuilder(corert->GetHostContext(),
-                                       /*resource_context=*/nullptr)
-                     .build();
+  tfrt::ResourceContext resource_context;
+  RequestContextBuilder req_ctx_builder(corert->GetHostContext(),
+                                        &resource_context);
+  TF_ASSERT_OK(tensorflow::tfd::SetUpKernelFallbackCompatRequestContext(
+      &req_ctx_builder, /*runner_table=*/nullptr, tfrt_ctx->GetEagerContext(),
+      /*user_intra_op_threadpool=*/nullptr, /*model_metadata=*/std::nullopt));
+  auto req_ctx = std::move(req_ctx_builder).build();
   ExecutionContext exec_ctx(std::move(*req_ctx));
 
   auto request_ctx_fn =
-      [host = corert->GetHostContext()](
+      [host = corert->GetHostContext(),
+       eager_context = tfrt_ctx->GetEagerContext(), &resource_context](
           tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table,
           RCReference<RequestContext>* request_ctx) {
-        *request_ctx =
-            std::move(*RequestContextBuilder(host,
-                                             /*resource_context=*/nullptr)
-                           .build());
-        return Status::OK();
+        RequestContextBuilder req_ctx_builder(host, &resource_context);
+        TF_RETURN_IF_ERROR(
+            tensorflow::tfd::SetUpKernelFallbackCompatRequestContext(
+                &req_ctx_builder, runner_table, eager_context,
+                /*user_intra_op_threadpool=*/nullptr,
+                /*model_metadata=*/std::nullopt));
+        *request_ctx = *std::move(req_ctx_builder).build();
+        return ::tensorflow::OkStatus();
       };
 
   // Inserts a new cache entry.

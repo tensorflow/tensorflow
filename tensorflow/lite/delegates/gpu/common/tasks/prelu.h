@@ -22,11 +22,13 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
+
+ElementwiseDescriptor CreatePReLU(const PReLUAttributes& attr,
+                                  TensorDescriptor tensor_desc);
 
 GPUOperation CreatePReLU(const GpuInfo& gpu_info,
                          const OperationDef& definition,

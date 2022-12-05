@@ -155,13 +155,17 @@ class TraceType(metaclass=abc.ABCMeta):
 
   # TODO(b/221309709): Polish into a stable placeholder_value.
   @doc_controls.do_not_doc_inheritable
-  def _placeholder_value(self):
+  def _placeholder_value(self, placeholder_context):
     """Creates a placeholder for tracing.
 
     Often it is more useful to trace with a placeholder value than an actual
     one. For example, a placeholder value can represent multiple different
     actual values. This means that the trace generated with that placeholder
     value is more general and reusable which saves expensive retracing.
+
+    Args:
+      placeholder_context: A PlaceholderContext container for context
+                           information when creating a placeholder value.
 
     For the `Fruit` example shared above, implementing:
 
@@ -211,10 +215,16 @@ class TracingContext(metaclass=abc.ABCMeta):
   pass
 
 
+class PlaceholderContext(metaclass=abc.ABCMeta):
+  """Contains context information for generating placeholders within a scope."""
+  pass
+
+
 @runtime_checkable
 class SupportsTracingProtocol(Protocol):
   """A protocol allowing custom classes to control tf.function retracing."""
 
+  @doc_controls.doc_private
   @abc.abstractmethod
   def __tf_tracing_type__(self, context: TracingContext) -> TraceType:
     """Returns the tracing type of this object.

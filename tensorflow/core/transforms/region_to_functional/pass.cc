@@ -22,15 +22,19 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/core/transforms/pass_detail.h"
+#include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/transforms/region_to_functional/impl.h"
 
 namespace mlir {
 namespace tfg {
-
 namespace {
+
+#define GEN_PASS_DEF_FUNCTIONALTOREGION
+#define GEN_PASS_DEF_REGIONTOFUNCTIONAL
+#include "tensorflow/core/transforms/passes.h.inc"
+
 struct RegionToFunctionalPass
-    : public RegionToFunctionalBase<RegionToFunctionalPass> {
+    : public impl::RegionToFunctionalBase<RegionToFunctionalPass> {
   explicit RegionToFunctionalPass(bool force_ctl_capture) {
     force_control_capture = force_ctl_capture;
   }
@@ -40,9 +44,13 @@ struct RegionToFunctionalPass
     SymbolTable table(getOperation());
     PopulateRegionToFunctionalPatterns(patterns, table, force_control_capture);
 
+    GreedyRewriteConfig config;
+    // Use top-down traversal for more efficient conversion. Disable region
+    // simplification as all regions are single block.
+    config.useTopDownTraversal = true;
+    config.enableRegionSimplification = false;
     // Iterate until all regions have been outlined. This is guaranteed to
     // terminate because the IR can only hold a finite depth of regions.
-    GreedyRewriteConfig config;
     config.maxIterations = GreedyRewriteConfig::kNoIterationLimit;
     if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
                                             config))) {

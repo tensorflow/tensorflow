@@ -17,8 +17,9 @@ limitations under the License.
 #include <stdint.h>
 
 #include <limits>
+#include <vector>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/delegates/hexagon/hexagon_nn/hexagon_nn.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/util.h"
@@ -36,17 +37,31 @@ TfLiteStatus ReduceOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   TF_LITE_ENSURE_STATUS(ComputeAndAddMinAndMax(context, input_tensor));
 
   // Axes tensor should be constant.
-  tensor_id = inputs->data[1];
-  const auto& axes_tensor = context->tensors[tensor_id];
-  if (axes_tensor.allocation_type == kTfLiteMmapRo) {
-    // If the axes input is a constant, bake it into the Hexagon graph as a
-    // Const node.
-    auto* const_axes_node =
-        graph_builder_->AddConstNodeWithData(tensor_id, axes_tensor);
-    AddInput(TensorID(const_axes_node->GetID(), 0));
-  } else {
+  int axes_tensor_id = inputs->data[1];
+  const auto& axes_tensor = context->tensors[axes_tensor_id];
+  if (axes_tensor.allocation_type != kTfLiteMmapRo) {
     TF_LITE_KERNEL_LOG(context, "Reduction op doesn't have constant axis");
     return kTfLiteError;
+  }
+
+  // Hexagon assumes a 4-D input tensor. If the input tensor is not 4-D, we
+  // need to apply the supplemental offset to the axis.
+  auto* const_axes_node =
+      graph_builder_->AddConstNodeWithData(tensor_id, axes_tensor);
+  if (input_tensor.dims->size < 4) {
+    const int axes_size = NumElements(&axes_tensor);
+    auto offset = 4 - input_tensor.dims->size;
+    std::vector<int> axes(axes_size);
+    for (auto i = 0; i < axes.size(); ++i) {
+      axes[i] = axes_tensor.data.i32[i] + offset;
+    }
+    const std::vector<int> axes_shape = {1, 1, 1, axes_size};
+    auto axes_node = graph_builder_->AddConstNodeWithData(
+        axes_shape.data(), reinterpret_cast<char*>(axes.data()),
+        axes.size() * sizeof(axes[0]));
+    AddInput(TensorID(axes_node->GetID(), 0));
+  } else {
+    AddInput(TensorID(const_axes_node->GetID(), 0));
   }
 
   auto& output_tensor = context->tensors[outputs->data[0]];

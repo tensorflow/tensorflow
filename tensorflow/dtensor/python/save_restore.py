@@ -15,70 +15,19 @@
 """Contains functionaility for Checkpoint/SavedModel in DTensor."""
 
 import collections
-import logging
 from typing import Dict, List, Union
 
 from tensorflow.dtensor.python import api
 from tensorflow.dtensor.python import d_variable
 from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import layout as layout_lib
+from tensorflow.dtensor.python import mesh_util
 from tensorflow.python.eager import context
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import io_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.util.tf_export import tf_export
-
-
-def sharded_prefix(
-    mesh: layout_lib.Mesh,
-    prefix: List[str],
-    tensor_names: List[str],
-    shape_and_slices: List[str],
-    tensors: List[ops.Tensor],
-):
-  """Generates all sharded prefix in distributed Save.
-
-  DTensor SaveV2 SPMD would generate multiple SaveV2 ops on saving devices,
-  and it is desired to not save with same shard_prefix so that content will
-  not be overwritten.
-
-  (prefix, tensor_names, tensors(with layouts)) and saving mesh collectively
-  defines a unique set of shard prefix that is generated for all the Save ops.
-  Usually, (prefix, tensor_names, shape_and_slices, tensors) should match what
-  is used in save.
-
-  Args:
-    mesh: The mesh that is used in save op. Usually a CPU mesh, and matches what
-      is used in Save op.
-    prefix: The prefix of saving files.
-    tensor_names: a list of tensor names used in save op.
-    shape_and_slices: a list of shape and slice specification used in save op.
-      The only supported value is "" as we don't support distributed saving with
-      slices yet.
-    tensors: a list of tensors used in save op. The order should match
-      tensor_names.
-
-  Returns:
-    A one d string tensor that represents all shard_prefix generated.
-  """
-  layout_str = array_ops.stack(
-      [api.fetch_layout(tensor).to_string() for tensor in tensors], axis=0)
-  layouts = api.pack([layout_str] * mesh.num_local_devices(),
-                     layout_lib.Layout.replicated(mesh, rank=1))
-
-  mesh_str_tensor = api.pack([mesh.to_string()] * mesh.num_local_devices(),
-                             layout_lib.Layout.replicated(mesh, rank=0))
-  return gen_dtensor_ops.d_tensor_sharded_prefix(
-      prefix,
-      tensor_names,
-      shape_and_slices,
-      mesh_str_tensor,
-      layouts=layouts,
-      tensors=tensors)
 
 
 @tf_export('experimental.dtensor.sharded_save', v1=[])
@@ -115,27 +64,17 @@ def sharded_save(
   with ops.device(api.device_name()):
     io_ops.save_v2(file_prefix, tensor_names, shape_and_slices, tensors)
 
-  # Query generated shards and generate MergeV2.
-  generated_shards = sharded_prefix(mesh.host_mesh(), [file_prefix],
-                                    tensor_names, shape_and_slices, tensors)
-  # api.py is still visible to external users but the _global_barrier() isn't
-  # intended for public usage.
-  # Once we locked down api.py visibility, we shall be able to make the `_`
-  # prefix on these APIs go away.
-
   # Make sure all clients have written the files
-  _global_barrier(mesh.host_mesh(), 'SaveV2')  # pylint: disable=protected-access
+  mesh_util.barrier(mesh.host_mesh(), 'SaveV2')  # pylint: disable=protected-access
 
-  with ops.device(api.device_name()):
+  with api.run_on(mesh.host_mesh()):
     merge_op = io_ops.MergeV2Checkpoints(
-        checkpoint_prefixes=generated_shards,
+        checkpoint_prefixes=[file_prefix],
         destination_prefix=file_prefix,
         delete_old_dirs=True)
 
   # Make sure first device in first host has finished merge.
-  # pylint: disable=protected-access
-  _global_barrier(mesh.host_mesh(), 'MergeV2Checkpoints')
-  # pylint: enable=protected-access
+  mesh_util.barrier(mesh.host_mesh(), 'MergeV2Checkpoints')
 
   return merge_op
 
@@ -275,45 +214,3 @@ def name_based_save(mesh: layout_lib.Mesh, checkpoint_prefix: Union[str,
       tensor_names=tensor_names,
       shape_and_slices=[''] * len(ordered_name_tensor_dict),
       tensors=list(ordered_name_tensor_dict.values()))
-
-
-def _global_barrier(mesh: layout_lib.Mesh, last_op_name: str):
-  """Runs a global barrier on the mesh.
-
-  Upon returning from the barrier, all operations run before the barrier
-  would have completed across all clients.
-
-  Currently we allocate a fully sharded tensor with mesh shape and run a
-  all_reduce on it.
-
-  Args:
-    mesh: The mesh to run the global barrier on.
-    last_op_name: The last op run before the global_barrier. mainly used for
-      logging purpose.
-  """
-  logging.info('entering global barrier before op: %s', last_op_name)
-
-  # Make sure all ops are consumed before running the sync.
-  context.async_wait()
-
-  shape = api._dtensor_device().pack(  # pylint: disable=protected-access
-      [mesh.shape()] * mesh.num_local_devices(),
-      layout_lib.Layout.replicated(mesh, rank=1))
-  ones = api.call_with_layout(
-      array_ops.ones,
-      layout_lib.Layout(mesh.dim_names, mesh),
-      shape=shape,
-      dtype=dtypes.float32)
-  mesh_size = math_ops.reduce_sum(ones)
-  if mesh_size != mesh.size:
-    raise ValueError(
-        'Global barrier produced wrong mesh size : {0} while mesh has actual'
-        'size : {1}'.format(mesh_size, mesh.size))
-
-  # TODO(hthu): This isn't strictly needed but might cause confusing behaviors
-  # from users. Consider dropping this if there is a `big` performance hit.
-  context.async_wait()
-
-  logging.info(
-      'finished running global barrier across all clients after '
-      'op: %s', last_op_name)

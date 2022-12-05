@@ -52,12 +52,10 @@ TEST_F(TfThreadpoolWorkQueueTest, GetNameOk) {
 TEST_F(TfThreadpoolWorkQueueTest, InitializeRequestOk) {
   tfrt::RequestContextBuilder ctx_builder(/*host=*/nullptr,
                                           /*resource_context=*/nullptr);
-  tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
-  auto queue =
-      tf_threadpool_cwq_->InitializeRequest(&ctx_builder, &intra_op_threadpool);
+  auto queue = tf_threadpool_cwq_->InitializeRequest(/*request_id=*/0);
   TF_ASSERT_OK(queue.status());
-  EXPECT_EQ(*queue, nullptr);
-  EXPECT_NE(intra_op_threadpool, nullptr);
+  EXPECT_NE(*queue, nullptr);
+  EXPECT_NE((*queue)->GetIntraOpThreadPool(), nullptr);
 }
 
 TEST_F(TfThreadpoolWorkQueueTest, IsInWorkerThreadOk) {
@@ -99,29 +97,18 @@ TEST_F(TfThreadpoolWorkQueueTest, RunningNonBlockingTask) {
   EXPECT_EQ(n, 10);
 }
 
-std::unique_ptr<tfrt::HostContext> CreateTestHostContext() {
-  return std::make_unique<tfrt::HostContext>(
-      [](const tfrt::DecodedDiagnostic&) {}, tfrt::CreateMallocAllocator(),
-      tfrt::CreateMultiThreadedWorkQueue(1, 1));
-}
-
 TEST_F(TfThreadpoolWorkQueueTest, RunningMixedTask) {
-  auto host = CreateTestHostContext();
-  tfrt::RequestContextBuilder req_ctx_builder{host.get(),
-                                              /*resource_context=*/nullptr};
-  auto req_ctx = std::move(req_ctx_builder).build();
-  tfrt::ExecutionContext exec_ctx(std::move(*req_ctx));
   tfrt::latch latch(20);
   int n = 0;
   tensorflow::mutex m;
   for (int i = 0; i < 10; ++i) {
-    tf_threadpool_cwq_->AddTask(exec_ctx, tfrt::TaskFunction([&n, &m, &latch] {
-                                  {
-                                    tensorflow::mutex_lock lock(m);
-                                    ++n;
-                                  }
-                                  latch.count_down();
-                                }));
+    tf_threadpool_cwq_->AddTask(tfrt::TaskFunction([&n, &m, &latch] {
+      {
+        tensorflow::mutex_lock lock(m);
+        ++n;
+      }
+      latch.count_down();
+    }));
     tf_threadpool_cwq_->AddBlockingTask(tfrt::TaskFunction([&n, &m, &latch] {
                                           {
                                             tensorflow::mutex_lock lock(m);

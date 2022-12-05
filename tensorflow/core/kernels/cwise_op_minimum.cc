@@ -26,6 +26,8 @@ REGISTER6(BinaryOp, GPU, "Minimum", functor::minimum, float, Eigen::half,
           double, uint8, int16, int64);
 #endif
 
+REGISTER(BinaryOp, GPU, "Minimum", functor::minimum, bfloat16);
+
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.

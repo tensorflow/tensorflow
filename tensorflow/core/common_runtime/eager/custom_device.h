@@ -51,6 +51,11 @@ class CustomDevice {
   // one of which is on this custom device.
   virtual Status Pack(absl::Span<ImmediateExecutionTensorHandle*> handles,
                       ImmediateExecutionTensorHandle** result) = 0;
+
+  // Returns true signifying to pin to the current custom device.
+  // Returns false to pin to the physical device.
+  virtual StatusOr<bool> ShallPinToThisDevice(
+      const ImmediateExecutionOperation* op) = 0;
 };
 
 // Custom devices do many of the same things as physical Devices, but have a

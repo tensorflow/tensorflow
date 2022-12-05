@@ -24,14 +24,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORMIXEDPRECISIONREDUCE
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // Extracts the reduction group size from the group_assignment operand of the
 // reduce op. group_assignment is a 2-dimensional array where each element is
@@ -40,7 +42,7 @@ template <class ReduceOpType>
 mlir::LogicalResult GetAllReduceGroupSize(ReduceOpType reduce_op,
                                           int32* group_size) {
   mlir::DenseIntElementsAttr group_assignment_attr;
-  if (!matchPattern(reduce_op.group_assignment(),
+  if (!matchPattern(reduce_op.getGroupAssignment(),
                     m_Constant(&group_assignment_attr)))
     return mlir::emitError(reduce_op.getLoc(),
                            "group_assigment must be a constant.");
@@ -65,7 +67,9 @@ template <class ReduceOpType>
 mlir::LogicalResult MaybeUpcastForReduction(ReduceOpType reduce_op,
                                             bool* changed) {
   const mlir::RankedTensorType& input_type =
-      reduce_op.input().getType().template dyn_cast<mlir::RankedTensorType>();
+      reduce_op.getInput()
+          .getType()
+          .template dyn_cast<mlir::RankedTensorType>();
   if (!input_type.getElementType().isBF16()) {
     // Upcast only applies for bfloat16 input.
     return mlir::success();
@@ -90,14 +94,16 @@ mlir::LogicalResult MaybeUpcastForReduction(ReduceOpType reduce_op,
   // The original output tensor type that would have been used by all users of
   // the reduce op.
   const mlir::RankedTensorType& output_type =
-      reduce_op.output().getType().template dyn_cast<mlir::RankedTensorType>();
+      reduce_op.getOutput()
+          .getType()
+          .template dyn_cast<mlir::RankedTensorType>();
 
   mlir::TF::CastOp upcast = builder.create<mlir::TF::CastOp>(
       loc,
       mlir::RankedTensorType::get(input_type.getShape(), builder.getF32Type()),
-      reduce_op.input());
-  reduce_op->setOperand(0, upcast.y());
-  reduce_op.output().setType(upcast.y().getType());
+      reduce_op.getInput());
+  reduce_op->setOperand(0, upcast.getY());
+  reduce_op.getOutput().setType(upcast.getY().getType());
 
   builder.setInsertionPointAfter(reduce_op);
   mlir::TF::CastOp downcast = builder.create<mlir::TF::CastOp>(
@@ -108,7 +114,7 @@ mlir::LogicalResult MaybeUpcastForReduction(ReduceOpType reduce_op,
   // Match the layout of the downcast with the reduce op, this is required for
   // the later passes.
   SetSingleLayoutOnOp(downcast, *reduce_layout);
-  reduce_op.output().replaceAllUsesExcept(downcast.y(), downcast);
+  reduce_op.getOutput().replaceAllUsesExcept(downcast.getY(), downcast);
 
   *changed = true;
   return mlir::success();
@@ -121,7 +127,7 @@ mlir::LogicalResult TryMixedPrecisionReduce(mlir::func::FuncOp function,
   int32_t changedReduceOpsCounter = 0;
 
   mlir::WalkResult walk_result = function.walk([&](ReduceOpType reduce_op) {
-    if (reduce_op.reduce_op().str() == kReduceOpAdd) {
+    if (reduce_op.getReduceOp().str() == kReduceOpAdd) {
       reduceOpsCounter += 1;
       bool changed = false;
       if (mlir::failed(MaybeUpcastForReduction(reduce_op, &changed)))
@@ -140,7 +146,8 @@ mlir::LogicalResult TryMixedPrecisionReduce(mlir::func::FuncOp function,
 
 // MLIR pass that enables tensor upcasting within mixed-precision reduction.
 struct DTensorMixedPrecisionReducePass
-    : public DTensorMixedPrecisionReduceBase<DTensorMixedPrecisionReducePass> {
+    : public impl::DTensorMixedPrecisionReduceBase<
+          DTensorMixedPrecisionReducePass> {
   void runOnOperation() override {
     mlir::func::FuncOp function = getOperation();
 

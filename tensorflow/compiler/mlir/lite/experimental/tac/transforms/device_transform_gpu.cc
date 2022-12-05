@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/device_transform_gpu.h"
 
 #include <memory>
+#include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
@@ -43,7 +44,8 @@ namespace tac {
 namespace {
 
 struct DeviceTransformGPUPass
-    : public mlir::PassWrapper<DeviceTransformGPUPass, OperationPass<FuncOp>> {
+    : public mlir::PassWrapper<DeviceTransformGPUPass,
+                               OperationPass<func::FuncOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DeviceTransformGPUPass)
 
   llvm::StringRef getArgument() const final {
@@ -72,7 +74,7 @@ RewritePatternSet GetHardwareRewritePatternsGPU(MLIRContext* context) {
   return gpu_hardware.GetTransformations(context);
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateDeviceTransformGPUPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDeviceTransformGPUPass() {
   return std::make_unique<DeviceTransformGPUPass>();
 }
 

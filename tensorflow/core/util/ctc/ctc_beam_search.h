@@ -212,7 +212,7 @@ Status CTCBeamSearchDecoder<T, CTCBeamState, CTCBeamComparer>::Decode(
       (*scores)(b, i) = -beam_log_probabilities[i];
     }
   }  // for (int b...
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T, typename CTCBeamState, typename CTCBeamComparer>
@@ -426,7 +426,7 @@ Status CTCBeamSearchDecoder<T, CTCBeamState, CTCBeamComparer>::TopPaths(
     paths->push_back(e->LabelSeq(merge_repeated));
     log_probs->push_back(e->newp.total);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace ctc

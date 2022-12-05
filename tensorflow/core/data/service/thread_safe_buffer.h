@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_THREAD_SAFE_BUFFER_H_
 
 #include <deque>
+#include <utility>
 
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -53,7 +54,7 @@ class ThreadSafeBuffer final {
   condition_variable ready_to_pop_;
   condition_variable ready_to_push_;
   std::deque<StatusOr<T>> results_ TF_GUARDED_BY(mu_);
-  Status status_ TF_GUARDED_BY(mu_) = Status::OK();
+  Status status_ TF_GUARDED_BY(mu_) = OkStatus();
 
   TF_DISALLOW_COPY_AND_ASSIGN(ThreadSafeBuffer);
 };
@@ -92,7 +93,7 @@ Status ThreadSafeBuffer<T>::Push(StatusOr<T> value) {
   }
   results_.push_back(std::move(value));
   ready_to_pop_.notify_one();
-  return Status::OK();
+  return OkStatus();
 }
 
 template <class T>

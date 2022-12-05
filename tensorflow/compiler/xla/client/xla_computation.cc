@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 
+#include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -32,7 +32,7 @@ StatusOr<std::unique_ptr<HloSnapshot>> XlaComputation::Snapshot() const {
   if (IsNull()) {
     return InvalidArgument("Computation is invalid.");
   }
-  auto session = absl::make_unique<HloSnapshot>();
+  auto session = std::make_unique<HloSnapshot>();
   *session->mutable_hlo()->mutable_hlo_module() = proto_;
   return std::move(session);
 }

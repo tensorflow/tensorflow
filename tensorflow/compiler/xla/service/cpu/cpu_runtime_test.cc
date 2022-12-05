@@ -19,20 +19,20 @@ limitations under the License.
 #include <string>
 #include <tuple>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_custom_call_status.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_matmul_acl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -47,7 +47,7 @@ std::unique_ptr<Array2D<float>> MaybeTransposeArray2D(const Array2D<T>& array,
   if (transpose) {
     std::swap(output_width, output_height);
   }
-  auto output = absl::make_unique<Array2D<float>>(output_height, output_width);
+  auto output = std::make_unique<Array2D<float>>(output_height, output_width);
   for (int y = 0; y < array.height(); y++) {
     for (int x = 0; x < array.width(); x++) {
       if (transpose) {
@@ -94,14 +94,13 @@ std::unique_ptr<Array2D<float>> EigenMatrixMultiply(const Array2D<float>& a,
 
   // Since we're going to transpose c before returning it. Swap the order of the
   // dimension sizes to ensure the returned array is properly dimensioned.
-  auto c_transpose = absl::make_unique<Array2D<float>>(n, m);
+  auto c_transpose = std::make_unique<Array2D<float>>(n, m);
   if (single_threaded) {
     __xla_cpu_runtime_EigenSingleThreadedMatMulF32(
         nullptr, c_transpose->data(), a_transpose->data(), b_transpose->data(),
         m, n, k, transpose_lhs, transpose_rhs);
   } else {
-    tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "XLAEigen",
-                                        2);
+    tsl::thread::ThreadPool pool(tsl::Env::Default(), "XLAEigen", 2);
     Eigen::ThreadPoolDevice device(pool.AsEigenThreadPool(), pool.NumThreads());
     ExecutableRunOptions run_options;
     run_options.set_intra_op_thread_pool(&device);
@@ -207,7 +206,7 @@ std::unique_ptr<Array2D<float>> MKLMatrixMultiply(const Array2D<float>& a,
 
   // Since we're going to transpose c before returning it, swap the order of the
   // dimension sizes to ensure the returned array is properly dimensioned.
-  auto c_transpose = absl::make_unique<Array2D<float>>(n, m);
+  auto c_transpose = std::make_unique<Array2D<float>>(n, m);
   if (single_threaded) {
     __xla_cpu_runtime_MKLSingleThreadedMatMulF32(
         nullptr, c_transpose->data(), a_transpose->data(), b_transpose->data(),

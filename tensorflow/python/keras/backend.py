@@ -75,9 +75,7 @@ from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import moving_averages
-from tensorflow.python.training.tracking import util as tracking_util
 from tensorflow.python.util import dispatch
-from tensorflow.python.util import keras_deps
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
@@ -315,10 +313,6 @@ def clear_session():
   if context.executing_eagerly():
     # Clear pending nodes in eager executors, kernel caches and step_containers.
     context.context().clear_kernel_cache()
-
-# Inject the clear_session function to keras_deps to remove the dependency
-# from TFLite to Keras.
-keras_deps.register_clear_session_function(clear_session)
 
 
 @keras_export('keras.backend.manual_variable_initialization')
@@ -746,14 +740,6 @@ def get_session(op_input_list=()):
     with session.graph.as_default():
       _initialize_variables(session)
   return session
-
-# Inject the get_session function to keras_deps to remove the dependency
-# from TFLite to Keras.
-keras_deps.register_get_session_function(get_session)
-
-# Inject the get_session function to tracking_util to avoid the backward
-# dependency from TF to Keras.
-tracking_util.register_session_provider(get_session)
 
 
 def get_graph():

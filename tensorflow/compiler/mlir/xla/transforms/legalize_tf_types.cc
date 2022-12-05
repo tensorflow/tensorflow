@@ -31,7 +31,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
 
 #define DEBUG_TYPE "xla-legalize-tf-types"
 
@@ -102,7 +101,7 @@ class TfTypeConversionTarget : public ConversionTarget {
     markUnknownOpDynamicallyLegal([this](Operation *op) {
       // The FuncOp type can contain types that the op's operand and result
       // types do not contain.
-      if (auto func = dyn_cast<FuncOp>(op)) {
+      if (auto func = dyn_cast<func::FuncOp>(op)) {
         if (!converter_.isSignatureLegal(func.getFunctionType())) return false;
       }
       return converter_.isLegal(op);
@@ -147,8 +146,11 @@ class TfTypePattern : public ConversionPattern {
   }
 };
 
+#define GEN_PASS_DEF_LEGALIZETFTYPESPASS
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+
 struct LegalizeTfTypesPass
-    : public LegalizeTfTypesPassBase<LegalizeTfTypesPass> {
+    : public impl::LegalizeTfTypesPassBase<LegalizeTfTypesPass> {
   void runOnOperation() override;
 };
 
@@ -156,7 +158,8 @@ void LegalizeTfTypesPass::runOnOperation() {
   TfTypeConverter converter;
   RewritePatternSet patterns(&getContext());
   patterns.add<TfTypePattern>(&getContext(), converter);
-  populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns, converter);
+  populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                 converter);
   TfTypeConversionTarget target(getContext(), converter);
   if (failed(applyFullConversion(getOperation(), target, std::move(patterns))))
     return signalPassFailure();

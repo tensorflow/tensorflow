@@ -46,7 +46,7 @@ namespace tensorflow {
 //    exception will be suppressed.
 //
 // These restrictions are both intended to ensure that the state of
-// PyErr_Occured is unchanged by PyContextManager's destructor.  This is
+// PyErr_Occurred is unchanged by PyContextManager's destructor.  This is
 // important, because changing the state of PyErr_Occurred in the destructor
 // would mean that we are returning a nullptr with no exception set, or
 // returning a non-null value with an exception set (both of which are invalid).

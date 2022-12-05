@@ -16,9 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/mean.h"
 
 #include <algorithm>
+#include <any>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -239,7 +242,7 @@ class Mean : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
-    const auto& attr = absl::any_cast<const MeanAttributes&>(ctx.op_attr);
+    const auto& attr = std::any_cast<const MeanAttributes&>(ctx.op_attr);
     if (attr.dims != std::set<Axis>({Axis::HEIGHT, Axis::WIDTH})) {
       return absl::InvalidArgumentError(
           "Mean calculation is supported only for height and width.");
@@ -267,7 +270,7 @@ class Mean : public NodeShader {
 }  // namespace
 
 std::unique_ptr<NodeShader> NewMeanNodeShader() {
-  return absl::make_unique<Mean>();
+  return std::make_unique<Mean>();
 }
 
 }  // namespace gl

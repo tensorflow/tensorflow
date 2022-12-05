@@ -41,7 +41,7 @@ REGISTER_OP("_TPUCompileMlir")
       for (int i = 0; i < num_computations; ++i) {
         c->set_output(i + 1, c->Vector(3));
       }
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(
         R"(
@@ -64,7 +64,7 @@ REGISTER_OP("_TPUCompileMlirPlaceholderProgramKey")
     .Output("program: string")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Vector(3));
-      return Status::OK();
+      return OkStatus();
     })
     .SetIsStateful()
     .Doc(
@@ -104,7 +104,7 @@ REGISTER_OP("TPUCompile")
       for (int i = 0; i < num_computations; ++i) {
         c->set_output(num_computations + i + 1, c->Scalar());
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TPUCompileSucceededAssert")
