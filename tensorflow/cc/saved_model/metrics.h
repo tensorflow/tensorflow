@@ -42,11 +42,11 @@ monitoring::CounterCell& SavedModelWrite(absl::string_view write_version);
 monitoring::CounterCell& SavedModelRead(absl::string_view write_version);
 
 // Returns "/tensorflow/core/saved_model/write/fingerprint" cell, which contains
-// the graph_def_checksum of the SM's fingerprint when it is exported.
+// the saved_model_checksum of the SM's fingerprint when it is exported.
 monitoring::GaugeCell<string>& SavedModelWriteFingerprint();
 
 // Returns "/tensorflow/core/saved_model/read/fingerprint" cell, wich contains
-// the graph_def_checksum of the SM's fingerprint when it is imported.
+// the saved_model_checksum of the SM's fingerprint when it is imported.
 monitoring::GaugeCell<string>& SavedModelReadFingerprint();
 
 // Returns "/tensorflow/core/saved_model/write/api" cell. This metric has 1

@@ -496,7 +496,7 @@ cc_library(
     hdrs = [
         "execute.h",
         "execute_node.h",
-    ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util_header"]),
+    ],
     copts = if_mkl(["-DINTEL_MKL"]),
     deps = [
         ":context",
@@ -534,7 +534,10 @@ cc_library(
             "//tensorflow/core/distributed_runtime/eager:remote_execute_node",
             "//tensorflow/core/distributed_runtime/eager:remote_copy_node",
         ],
-    }) + if_mkl([":mkl_eager_op_rewrite"]),
+    }) + if_mkl([
+        ":mkl_eager_op_rewrite",
+        "//tensorflow/core/graph:mkl_graph_util",
+    ]),
 )
 
 tf_cc_test(

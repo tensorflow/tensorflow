@@ -3861,6 +3861,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(add(v, v), 2.0)
 
+  def testSameVariableTwiceWithReducedRetracing(self):
+    v = variables.Variable(2.0)
+
+    @polymorphic_function.function(reduce_retracing=True)
+    def add(a, b):
+      return a + b
+
+    self.assertAllEqual(add(v, v), 4.0)
+
   def testVariableUpdate(self):
     v1 = variables.Variable(1.0)
     v2 = variables.Variable(2.0)

@@ -660,8 +660,8 @@ XLA_TEST_F(ConvertTest, ConvertF8e4m3fnF16RoundtripExhaustive) {
 
   std::vector<Eigen::half> all_f8_as_f16;
   for (int i = 0; i < 256; i++) {
-    tsl::float8_e4m3 val =
-        Eigen::numext::bit_cast<tsl::float8_e4m3>(static_cast<uint8_t>(i));
+    tsl::float8_e4m3fn val =
+        Eigen::numext::bit_cast<tsl::float8_e4m3fn>(static_cast<uint8_t>(i));
     all_f8_as_f16.push_back(Eigen::half{val});
   }
 

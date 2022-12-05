@@ -1505,10 +1505,36 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   if (failed(GetTuple(op, op.getInputs(), ctx, args))) return failure();
   auto xla_api_version = xla::ConvertCustomCallApiVersion(op.getApiVersion());
   if (!xla_api_version.ok()) return failure();
+
+  // CustomCallOp backend config can be either a string if we use any of the
+  // older custom call API versions, or a dictionary attribute if we use typed
+  // FFI. We always pass it as a string to the HLO instruction. If it was a
+  // dictionary attribute we rely on MLIR printing to convert it to string.
+  std::string backend_config;
+
+  if (*xla_api_version == xla::CustomCallApiVersion::API_VERSION_TYPED_FFI) {
+    // Serialize backend config dictionary as a string.
+    if (auto dict = op.getBackendConfig()
+                        .value_or(mlir::Attribute())
+                        .dyn_cast_or_null<mlir::DictionaryAttr>()) {
+      llvm::raw_string_ostream(backend_config) << dict;
+    }
+  } else {
+    // Forward backend config string to the HLO instruction.
+    if (auto str = op.getBackendConfig()
+                       .value_or(mlir::Attribute())
+                       .dyn_cast_or_null<mlir::StringAttr>()) {
+      llvm::raw_string_ostream(backend_config) << str.strref();
+    }
+  }
+
   auto& value_map = *ctx.values;
   auto aliasInfo =
       xla::ConvertCustomCallOutputOperandAliasing(op.getOutputOperandAliases());
   auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
+  auto custom_call_schedule =
+      xla::ConvertCustomCallSchedule(op.getCustomCallSchedule());
+  if (!custom_call_schedule.ok()) return failure();
   if (op.getCalledComputations().size() == 1) {
     mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
         op.getCalledComputations()[0].cast<FlatSymbolRefAttr>());
@@ -1517,10 +1543,10 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
         ctx.converter->GetLoweredComputation(callee);
     value_map[result] = xla::CustomCallWithComputation(
         ctx.builder, std::string(op.getCallTargetName()), args, computation,
-        xla::TypeToShape(result.getType()), std::string(op.getBackendConfig()),
+        xla::TypeToShape(result.getType()), backend_config,
         op.getHasSideEffect(), output_operand_aliasing,
         /*literal=*/nullptr,
-        /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
+        /*schedule=*/*custom_call_schedule,
         /*api_version=*/*xla_api_version);
     return success();
   }
@@ -1532,22 +1558,21 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
         result.getType(), op.getResultLayouts().value());
     value_map[result] = xla::CustomCallWithLayout(
         ctx.builder, std::string(op.getCallTargetName()), args,
-        result_shape_with_layout, operand_shapes_with_layout,
-        std::string(op.getBackendConfig()), op.getHasSideEffect(),
-        output_operand_aliasing,
+        result_shape_with_layout, operand_shapes_with_layout, backend_config,
+        op.getHasSideEffect(), output_operand_aliasing,
         /*literal=*/nullptr,
-        /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
+        /*schedule=*/*custom_call_schedule,
         /*api_version=*/*xla_api_version);
     return success();
   }
 
-  value_map[result] = xla::CustomCall(
-      ctx.builder, std::string(op.getCallTargetName()), args,
-      xla::TypeToShape(result.getType()), std::string(op.getBackendConfig()),
-      op.getHasSideEffect(), output_operand_aliasing,
-      /*literal=*/nullptr,
-      /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
-      /*api_version=*/*xla_api_version);
+  value_map[result] =
+      xla::CustomCall(ctx.builder, std::string(op.getCallTargetName()), args,
+                      xla::TypeToShape(result.getType()), backend_config,
+                      op.getHasSideEffect(), output_operand_aliasing,
+                      /*literal=*/nullptr,
+                      /*schedule=*/*custom_call_schedule,
+                      /*api_version=*/*xla_api_version);
   return success();
 }
 

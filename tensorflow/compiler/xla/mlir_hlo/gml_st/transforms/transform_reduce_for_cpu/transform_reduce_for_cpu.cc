@@ -111,6 +111,9 @@ struct ReduceTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       rewriter.replaceOp(reduceOp,
                          tilingParallelDimsResult->loop->getResults());
       reduceOp = cast<linalg::ReduceOp>(tilingParallelDimsResult->tiledOp);
+      // Fuse linalg.map ops into the loop.
+      fuseGreedily(rewriter, *reduceOp->getBlock(),
+                   [](Operation *op) { return isa<linalg::MapOp>(op); });
     }
 
     // Fusion into the output.
@@ -138,6 +141,9 @@ struct ReduceTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       rewriter.replaceOp(reduceOp,
                          tilingReductionDimsResult->loop->getResults());
       reduceOp = cast<linalg::ReduceOp>(tilingReductionDimsResult->tiledOp);
+      // Fuse linalg.map ops into the loop.
+      fuseGreedily(rewriter, *reduceOp->getBlock(),
+                   [](Operation *op) { return isa<linalg::MapOp>(op); });
     }
 
     setLabel(reduceOp, kReduceTransformedLabel);
@@ -196,7 +202,7 @@ struct TransformReduceForCpuPass
            "Tiling sizes for Reduce should have 2 element.");
 
     RewritePatternSet patterns(ctx);
-    patterns.add<ReduceTransformPattern>(ctx, tileSizes[0]);
+    patterns.add<ReduceTransformPattern>(ctx, tileSizes[0], tileSizes[1]);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();

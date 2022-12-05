@@ -62,9 +62,12 @@ void AddQuantizeQatPasses(mlir::PassManager &pm,
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
       mlir::quant::QuantizationMethod::kQuantizationAwareTraining,
       quantization_options.op_set()));
+  // TODO(b/260677670): Pass quantization options as pass's inputs where
+  // applicable
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       mlir::quant::QuantizationMethod::kQuantizationAwareTraining,
-      quantization_options.op_set()));
+      quantization_options.op_set(),
+      quantization_options.enable_per_channel_quantization()));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
@@ -95,7 +98,8 @@ void AddQuantizePtqDynamicRangePasses(
       quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       mlir::quant::QuantizationMethod::kDynamicRangeQuantization,
-      quantization_options.op_set()));
+      quantization_options.op_set(),
+      quantization_options.enable_per_channel_quantization()));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 }
@@ -119,6 +123,7 @@ void AddQuantizePtqPreCalibrationPasses(
 void AddQuantizePtqPostCalibrationPasses(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options) {
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
@@ -126,7 +131,8 @@ void AddQuantizePtqPostCalibrationPasses(
       quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       mlir::quant::QuantizationMethod::kPostTrainingQuantization,
-      quantization_options.op_set()));
+      quantization_options.op_set(),
+      quantization_options.enable_per_channel_quantization()));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 

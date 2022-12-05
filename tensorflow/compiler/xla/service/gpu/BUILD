@@ -1200,6 +1200,8 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/tsl/platform:status",
@@ -2008,30 +2010,27 @@ tf_cc_test(
     ],
 )
 
-# TODO(ezhulenev): This test breaks MacOS build, try to re-enable it later.
-# copybara:uncomment_begin
-# tf_cc_test(
-#     name = "gpu_aot_compilation_test",
-#     srcs = [
-#         "gpu_aot_compilation_test.cc",
-#     ],
-#     env = {
-#         "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
-#     },
-#     tags = [
-#         "gpu",
-#         "no_oss",
-#         "no_rocm",
-#         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
-#         "requires-gpu-nvidia",
-#     ],
-#     deps = [
-#         ":nvptx_compiler_impl",
-#         "//tensorflow/compiler/xla/tests:hlo_test_base",
-#         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
-#     ],
-# )
-# copybara:uncomment_end
+tf_cc_test(
+    name = "gpu_aot_compilation_test",
+    srcs = if_cuda_is_configured([
+        "gpu_aot_compilation_test.cc",
+    ]),
+    env = {
+        "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
+    },
+    tags = [
+        "gpu",
+        "no_oss",
+        "no_rocm",
+        "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
+        "requires-gpu-nvidia",
+    ],
+    deps = if_cuda_is_configured([
+        ":nvptx_compiler_impl",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
+    ]),
+)
 
 cc_library(
     name = "amdgpu_compiler",
@@ -2452,6 +2451,7 @@ cc_library(
         ":cublas_cudnn",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_creation_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
@@ -2493,9 +2493,11 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

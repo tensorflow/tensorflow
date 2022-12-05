@@ -688,7 +688,7 @@ def stateless_random_gamma(shape,
     broadcast_shape = array_ops.broadcast_dynamic_shape(
         array_ops.shape(alpha), array_ops.shape(beta))
     alpha_broadcast = array_ops.broadcast_to(alpha, broadcast_shape)
-    if compat.forward_compatible(2022, 11, 29):
+    if compat.forward_compatible(2022, 12, 14):
       alg = "auto_select"
       key, counter, alg = _get_key_counter_alg(seed, alg)
       rnd = gen_stateless_random_ops_v2.stateless_random_gamma_v3(

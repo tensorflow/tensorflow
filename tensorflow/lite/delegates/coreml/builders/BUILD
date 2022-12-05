@@ -69,6 +69,8 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "@FP16",
     ],
 )
 
@@ -79,6 +81,7 @@ cc_test(
         ":util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
+        "//third_party/eigen3",
         "@com_google_googletest//:gtest_main",
     ],
 )

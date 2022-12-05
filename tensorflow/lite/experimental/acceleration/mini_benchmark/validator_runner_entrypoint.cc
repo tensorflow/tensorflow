@@ -16,6 +16,9 @@ limitations under the License.
 
 #include <string>
 
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"  // from @flatbuffers
+
 #ifndef _WIN32
 #include <fcntl.h>
 #include <sys/file.h>
@@ -44,6 +47,8 @@ limitations under the License.
 namespace tflite {
 namespace acceleration {
 namespace {
+
+using flatbuffers::Offset;
 
 MinibenchmarkStatus RunValidator(absl::string_view model_path,
                                  const std::string& nnapi_sl_path,
@@ -147,26 +152,34 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
         break;
       }
 
-      // If succeed, write MiniBenchmark metrics to file then return.
+      // If succeed, write MiniBenchmark output to file then return.
       flatbuffers::FlatBufferBuilder fbb;
       std::vector<int64_t> delegate_prep_time_us{results.delegate_prep_time_us};
-      std::vector<flatbuffers::Offset<tflite::BenchmarkMetric>> metrics;
+      std::vector<Offset<tflite::BenchmarkMetric>> metrics;
       metrics.reserve(results.metrics.size());
       for (const auto& name_and_values : results.metrics) {
         metrics.push_back(
             CreateBenchmarkMetric(fbb, fbb.CreateString(name_and_values.first),
                                   fbb.CreateVector(name_and_values.second)));
       }
+      std::vector<Offset<BenchmarkResult_::InferenceOutput>> actual_output;
+      for (const auto& output : results.actual_inference_output) {
+        const uint8_t* output_uint8 =
+            reinterpret_cast<const uint8_t*>(output.data());
+        actual_output.push_back(BenchmarkResult_::CreateInferenceOutput(
+            fbb, fbb.CreateVector(output_uint8, output.size())));
+      }
       return storage.Append(
           &fbb,
-          CreateBenchmarkEvent(fbb, CreateTFLiteSettings(fbb, &tflite_settings),
-                               BenchmarkEventType_END,
-                               CreateBenchmarkResult(
-                                   fbb, fbb.CreateVector(delegate_prep_time_us),
-                                   fbb.CreateVector(results.execution_time_us),
-                                   0, results.ok, fbb.CreateVector(metrics)),
-                               /* error */ 0, Validator::BootTimeMicros(),
-                               Validator::WallTimeMicros()));
+          CreateBenchmarkEvent(
+              fbb, CreateTFLiteSettings(fbb, &tflite_settings),
+              BenchmarkEventType_END,
+              CreateBenchmarkResult(
+                  fbb, fbb.CreateVector(delegate_prep_time_us),
+                  fbb.CreateVector(results.execution_time_us), 0, results.ok,
+                  fbb.CreateVector(metrics), fbb.CreateVector(actual_output)),
+              /* error */ 0, Validator::BootTimeMicros(),
+              Validator::WallTimeMicros()));
     }
   }
   // Write error to file.

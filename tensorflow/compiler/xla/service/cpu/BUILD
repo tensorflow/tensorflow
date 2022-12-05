@@ -2,12 +2,12 @@
 #    LLVM-based CPU backend for XLA.
 
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
-load("//tensorflow/compiler/xla:xla.bzl", "ORC_JIT_MEMORY_MAPPER_TARGETS")
+load("//tensorflow/compiler/xla:xla.bzl", "ORC_JIT_MEMORY_MAPPER_TARGETS", "xla_cc_binary")
 load(
     "//third_party/mkl:build_defs.bzl",
     "mkl_deps",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/tsl:tsl.bzl", "tf_openmp_copts", "tsl_copts")
 load(
     "//third_party/compute_library:build_defs.bzl",
@@ -494,7 +494,6 @@ cc_library(
     srcs = ["cpu_executable.cc"],
     hdrs = ["cpu_executable.h"],
     deps = [
-        ":executable_proto_cc",
         ":simple_orc_jit",
         ":xla_framework",
         "//tensorflow/compiler/xla:shape_tree",
@@ -523,13 +522,13 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/host:host_stream",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Parser",
     ],
 )
@@ -713,7 +712,7 @@ cc_library(
     ],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "sample_harness",
     srcs = ["sample_harness.cc"],
     deps = [

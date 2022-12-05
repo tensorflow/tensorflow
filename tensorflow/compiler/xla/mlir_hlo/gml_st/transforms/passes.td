@@ -163,10 +163,10 @@ def VectorizeGmlStLoopsPass :
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }
 
-def LoweringVectorContractPass :
-    Pass<"lowering-vector-contract", "mlir::func::FuncOp"> {
+def LowerVectorContractPass :
+    Pass<"lower-vector-contract", "mlir::func::FuncOp"> {
   let summary = "Pass to lower vector.contract";
-  let constructor = "::mlir::gml_st::createLoweringVectorContractPass()";
+  let constructor = "::mlir::gml_st::createLowerVectorContractPass()";
   let dependentDialects = ["::mlir::vector::VectorDialect",
                            "::mlir::gml_st::GmlStDialect"];
 }
@@ -224,6 +224,7 @@ def TransformReduceForCpuPass :
 
   let options = [
     ListOption<"tileSizes", "tile-sizes", "int64_t",
-               "Tile sizes for a `linalg.reduce`">,
+               "Tile sizes for a `linalg.reduce`. tileSizes[0] is the parallel "
+               "dimension and tileSizes[1] is the reduction dimension.">,
   ];
 }

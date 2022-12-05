@@ -21,6 +21,7 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -1050,6 +1051,25 @@ OpFoldResult CastOp::fold(ArrayRef<Attribute> operands) {
   Value operand = getOperand();
   if (getType() == operand.getType()) return operand;
   return {};
+}
+
+//===----------------------------------------------------------------------===//
+// CollectiveReduceV2Op
+//===----------------------------------------------------------------------===//
+
+// For `CollectiveReduceV2Op` we have two cases:
+// 1) If at least one ordering token is present, then we purely rely on ordering
+//    tokens for side effect modeling and ignore the op-based effect
+//    `TF_CollectiveReduceOrderingEffect` for which this function is relevant
+//    (note that returning `std::nullopt` here signals exactly that).
+// 2) If no ordering token is present, then we treat the op conservatively which
+//    means that different op instances need dependencies. This is realized by
+//    always returning the same string ("") in this case. In fact, we could
+//    return any string here, as long as it is the same string for all op
+//    instances without ordering tokens.
+std::optional<std::string> CollectiveReduceV2Op::GetResourceInstanceStr() {
+  return getNorderingToken() == 0 ? std::optional<std::string>("")
+                                  : std::nullopt;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2461,28 +2481,33 @@ std::string GetAbsDeviceStr(Operation *op, uint64_t device_ordinal) {
   return absl::StrCat(device_str, ":", device_ordinal_str);
 }
 
-std::string
+std::optional<std::string>
 EnqueueTPUEmbeddingArbitraryTensorBatchOp::GetResourceInstanceStr() {
   return GetAbsDeviceStr(*this, getDeviceOrdinal());
 }
 
-std::string EnqueueTPUEmbeddingBatchOp::GetResourceInstanceStr() {
+std::optional<std::string>
+EnqueueTPUEmbeddingBatchOp::GetResourceInstanceStr() {
   return GetAbsDeviceStr(*this, getDeviceOrdinal());
 }
 
-std::string EnqueueTPUEmbeddingIntegerBatchOp::GetResourceInstanceStr() {
+std::optional<std::string>
+EnqueueTPUEmbeddingIntegerBatchOp::GetResourceInstanceStr() {
   return GetAbsDeviceStr(*this, getDeviceOrdinal());
 }
 
-std::string EnqueueTPUEmbeddingRaggedTensorBatchOp::GetResourceInstanceStr() {
+std::optional<std::string>
+EnqueueTPUEmbeddingRaggedTensorBatchOp::GetResourceInstanceStr() {
   return GetAbsDeviceStr(*this, getDeviceOrdinal());
 }
 
-std::string EnqueueTPUEmbeddingSparseBatchOp::GetResourceInstanceStr() {
+std::optional<std::string>
+EnqueueTPUEmbeddingSparseBatchOp::GetResourceInstanceStr() {
   return GetAbsDeviceStr(*this, getDeviceOrdinal());
 }
 
-std::string EnqueueTPUEmbeddingSparseTensorBatchOp::GetResourceInstanceStr() {
+std::optional<std::string>
+EnqueueTPUEmbeddingSparseTensorBatchOp::GetResourceInstanceStr() {
   return GetAbsDeviceStr(*this, getDeviceOrdinal());
 }
 

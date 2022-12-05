@@ -259,7 +259,7 @@ cc_library(
     ] + if_google([
         # All new dependencies go here as the OSS part has no valid implementation.
         ":dtensor_device_util",
-        "//learning/infra/mira/distributed/pathways:pathways_parallel_executor",
+        "//learning/infra/mira/distributed/dtensor:mira_parallel_executor",
     ]),
 )
 

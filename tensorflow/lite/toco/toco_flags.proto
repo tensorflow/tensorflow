@@ -38,7 +38,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 51.
+// Next ID to use: 52.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -300,4 +300,7 @@ message TocoFlags {
 
   // Whether to ensure each function has a single use.
   optional bool guarantee_all_funcs_one_use = 50 [default = false];
+
+  // Whether to convert model to stablehlo.
+  optional bool convert_to_stablehlo = 51 [default = false];
 }

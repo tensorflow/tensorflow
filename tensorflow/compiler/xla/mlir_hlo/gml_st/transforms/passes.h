@@ -90,7 +90,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeGmlStLoopsPass(
     ArrayRef<StringRef> distributionLabels = {});
 
 /// Pass to lower vector.contract.
-std::unique_ptr<OperationPass<func::FuncOp>> createLoweringVectorContractPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorContractPass();
 
 /// Pass to transform a thlo.scatter op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();

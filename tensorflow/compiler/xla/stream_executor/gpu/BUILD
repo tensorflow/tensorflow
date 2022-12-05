@@ -32,6 +32,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/tf2xla:__subpackages__",
+        "//tensorflow/compiler/xla/pjrt:__subpackages__",
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/common_runtime/gpu:__subpackages__",
@@ -384,4 +385,45 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/tsl/platform:status",
     ]),
+)
+
+# TODO(tlongeri): Remove gpu_cudamallocasync_allocator header/impl split
+tsl_gpu_library(
+    name = "gpu_cudamallocasync_allocator_header",
+    hdrs = ["gpu_cudamallocasync_allocator.h"],
+    deps = [
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/tsl/framework:allocator",
+        "//tensorflow/tsl/framework:device_id",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:mutex",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+tsl_gpu_library(
+    name = "gpu_cudamallocasync_allocator",
+    srcs = [
+        "gpu_cudamallocasync_allocator.cc",
+    ],
+    hdrs = ["gpu_cudamallocasync_allocator.h"],
+    cuda_deps = [
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
+    ],
+    deps = [
+        ":gpu_init_impl",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:device_id_utils",
+        "//tensorflow/tsl/framework:allocator",
+        "//tensorflow/tsl/framework:device_id",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/util:env_var",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
 )

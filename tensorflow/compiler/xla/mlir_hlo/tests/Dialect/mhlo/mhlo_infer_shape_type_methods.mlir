@@ -617,3 +617,13 @@ func.func @add_bounds_unranked(
   %1 = "mhlo_test.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
   func.return %1 : tensor<*xindex>
 }
+
+// -----
+
+// CHECK-LABEL: @partition_id
+func.func @partition_id() -> tensor<*xindex> {
+  %result = "mhlo.partition_id"() : () -> tensor<ui32>
+  // CHECK: types0 = tensor<ui32>
+  %1 = "mhlo_test.get_return_types"(%result) : (tensor<ui32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}

@@ -81,13 +81,17 @@ std::unique_ptr<OpQuantScaleSpec> GetTfQuantScaleSpec(Operation* op) {
           TF::ConcatOp,
           TF::ConcatV2Op,
           TF::ExpandDimsOp,
+          TF::IdentityNOp,
           TF::IdentityOp,
           TF::MaxPoolOp,
           TF::PadV2Op,
+          TF::RankOp,
           TF::ReshapeOp,
           TF::SelectOp,
           TF::SelectV2Op,
+          TF::ShapeNOp,
           TF::ShapeOp,
+          TF::SizeOp,
           TF::SqueezeOp,
           TF::TransposeOp
           // go/keep-sorted end
