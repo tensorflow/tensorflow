@@ -219,7 +219,7 @@ def OutfeedOp : XlaCpu_Op<"outfeed", [BufferizableOpInterface]> {
   let arguments = (ins
     Variadic<TensorOrMemref>:$operand,
     DefaultValuedStrAttr<StrAttr, "">:$config,
-    ArrayAttr:$resultType
+    ArrayAttr:$result_type
   );
   let extraClassDeclaration = [{
     // Declarations for BufferizableOpInterface:
