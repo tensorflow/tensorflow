@@ -1,4 +1,8 @@
 load("//tensorflow:pytype.default.bzl", "pytype_library")
+load(
+    "//tensorflow/dtensor:build_defs.bzl",
+    "dtensor_test",
+)
 
 pytype_library(
     name = "test_util",
@@ -23,5 +27,18 @@ pytype_library(
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+dtensor_test(
+    name = "config_test",
+    srcs = ["config_test.py"],
+    main = "config_test.py",
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:config",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:for_generated_wrappers",
     ],
 )
