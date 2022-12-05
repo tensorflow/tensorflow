@@ -106,7 +106,8 @@ createTransformMapForCpuPass(int64_t tileSize = 1);
 
 /// Pass to transform a linalg.reduce op for CPU backend.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createTransformReduceForCpuPass(ArrayRef<int64_t> reduceTileSizes = {});
+createTransformReduceForCpuPass(int64_t vectorSize = 8, int64_t tileSize1D = 32,
+                                ArrayRef<int64_t> tileSizes2D = {});
 
 /// Pass to transform a linalg.transpose op for CPU backend.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
