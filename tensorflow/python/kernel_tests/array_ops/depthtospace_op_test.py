@@ -77,6 +77,13 @@ class DepthToSpaceTest(test.TestCase):
     x_out = [[[[1], [2]], [[3], [4]]]]
     self._testOne(x_np, block_size, x_out, dtype=dtypes.float16)
 
+  @test_util.run_deprecated_v1
+  def testBasicBfloat16(self):
+    x_np = [[[[1, 2, 3, 4]]]]
+    block_size = 2
+    x_out = [[[[1], [2]], [[3], [4]]]]
+    self._testOne(x_np, block_size, x_out, dtype=dtypes.bfloat16)
+
   # Tests for larger input dimensions. To make sure elements are
   # correctly ordered spatially.
   @test_util.run_deprecated_v1

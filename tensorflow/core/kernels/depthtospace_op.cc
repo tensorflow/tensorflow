@@ -192,6 +192,9 @@ REGISTER_KERNEL_BUILDER(
     Name("DepthToSpace").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
     DepthToSpaceOp<GPUDevice, Eigen::half>);
 REGISTER_KERNEL_BUILDER(
+    Name("DepthToSpace").Device(DEVICE_GPU).TypeConstraint<Eigen::bfloat16>("T"),
+    DepthToSpaceOp<GPUDevice, Eigen::bfloat16>);
+REGISTER_KERNEL_BUILDER(
     Name("DepthToSpace").Device(DEVICE_GPU).TypeConstraint<qint8>("T"),
     DepthToSpaceOp<GPUDevice, qint8>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
