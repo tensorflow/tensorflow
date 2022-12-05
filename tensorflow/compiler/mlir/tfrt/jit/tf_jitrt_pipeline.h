@@ -55,6 +55,12 @@ struct TfJitRtPipelineOptions
       llvm::cl::desc("Tile sizes for `linalg.matmul`."),
       llvm::cl::list_init<int64_t>({4, 4, 4}), llvm::cl::ZeroOrMore};
 
+  Option<bool> lower_to_mmt4d{
+      *this, "lower-to-mmt4d",
+      llvm::cl::desc("Enable the specific code generation (packing) for matmul "
+                     "operations."),
+      llvm::cl::init(false)};
+
   Option<bool> legalize_i1_tensors{
       *this, "legalize-i1-tensors",
       llvm::cl::desc("Convert i1 tensors to i8 tensors."),

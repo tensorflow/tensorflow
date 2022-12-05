@@ -80,8 +80,8 @@ void AddLinalgTransformations(OpPassManager& pm,
       options.vector_size, options.reduction_1d_tile_size,
       options.reduction_2d_tile_sizes));
 
-  pm.addNestedPass<FuncOp>(
-      mlir::gml_st::createTransformMatmulForCpuPass(options.matmul_tile_sizes));
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createTransformMatmulForCpuPass(
+      options.matmul_tile_sizes, options.lower_to_mmt4d));
 
   if (options.vectorize && options.codegen_transpose)
     pm.addNestedPass<FuncOp>(CreateTileTransposePass());
