@@ -21,6 +21,7 @@ limitations under the License.
 
 // clang-format off
 // Must be included first
+#include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/tsl/python/lib/core/numpy.h"  //NOLINT
 // clang-format on
 
@@ -240,10 +241,22 @@ PYBIND11_MODULE(xla_extension, m) {
            &PyClient::CreateDeviceToHostChannelHandle)
       .def("create_host_to_device_channel_handle",
            &PyClient::CreateHostToDeviceChannelHandle)
-      .def("buffer_from_pyval", &PyClient::BufferFromPyval, py::arg("argument"),
-           py::arg("device") = nullptr, py::arg("force_copy") = false,
-           py::arg("host_buffer_semantics") =
-               PjRtClient::HostBufferSemantics::kZeroCopy)
+      .def(
+          "buffer_from_pyval",
+          [](py::handle py_client, py::handle argument, py::handle py_device,
+             bool force_copy,
+             PjRtClient::HostBufferSemantics host_buffer_semantics) {
+            PyClient* client = fast_cast<PyClient>(py_client);
+            PjRtDevice* device = py_device.is_none()
+                                     ? nullptr
+                                     : fast_cast<PjRtDevice>(py_device);
+            return client->BufferFromPyval(argument, device, force_copy,
+                                           host_buffer_semantics);
+          },
+          py::arg("argument"), py::arg("device") = nullptr,
+          py::arg("force_copy") = false,
+          py::arg("host_buffer_semantics") =
+              PjRtClient::HostBufferSemantics::kZeroCopy)
       .def("make_cross_host_receive_buffers",
            &PyClient::MakeCrossHostReceiveBuffers, py::arg("shapes"),
            py::arg("device"))
