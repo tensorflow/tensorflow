@@ -252,11 +252,30 @@ ragged_tensor.RaggedTensor.__truediv__ = math_ops.truediv
 ragged_tensor.RaggedTensor.__rtruediv__ = _right(math_ops.truediv)
 
 
-# Dummy methods
-def _dummy_bool(_):
-  """Dummy method to prevent a RaggedTensor from being used as a Python bool."""
+def ragged_bool(self):  # pylint: disable=g-doc-args
+  """Raises TypeError when a RaggedTensor is used as a Python bool.
+
+  To prevent RaggedTensor from being used as a bool, this function always raise
+  TypeError when being called.
+
+  For example:
+
+  >>> x = tf.ragged.constant([[1, 2], [3]])
+  >>> result = True if x else False  # Evaluate x as a bool value.
+  Traceback (most recent call last):
+  ...
+  TypeError: RaggedTensor may not be used as a boolean.
+
+  >>> x = tf.ragged.constant([[1]])
+  >>> r = (x == 1)  # tf.RaggedTensor [[True]]
+  >>> if r:  # Evaluate r as a bool value.
+  ...   pass
+  Traceback (most recent call last):
+  ...
+  TypeError: RaggedTensor may not be used as a boolean.
+  """
   raise TypeError("RaggedTensor may not be used as a boolean.")
 
 
-ragged_tensor.RaggedTensor.__bool__ = _dummy_bool
-ragged_tensor.RaggedTensor.__nonzero__ = _dummy_bool
+ragged_tensor.RaggedTensor.__bool__ = ragged_bool  # Python3 bool conversion.
+ragged_tensor.RaggedTensor.__nonzero__ = ragged_bool  # Python2 bool conversion.
