@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/non_max_suppression.h"
 
 #include <initializer_list>
+#include <limits>
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -113,21 +114,23 @@ void Free(TfLiteContext* context, void* buffer) {
 bool IsSoftNms(TfLiteNode* node) { return NumInputs(node) == 6; }
 
 template <typename T>
-void GenSoftNmsLut(float scale, T* soft_nms_lut) {
-  TFLITE_DCHECK_LT(scale, 0.f);
+void GenSoftNmsLut(float sigma_scale, T* soft_nms_lut) {
+  TFLITE_DCHECK_LT(sigma_scale, 0.f);
 
-  const auto lut_func = [scale](float iou) {
-    return std::exp(scale * iou * iou);
+  const void* lut_func_params = static_cast<const void*>(&sigma_scale);
+  const auto lut_func = [](float iou, const void* lut_func_params) {
+    const float sigma_scale = *static_cast<const float*>(lut_func_params);
+    return std::exp(sigma_scale * iou * iou);
   };
 
-  constexpr float input_min = 0.f;  // min IOU
-  constexpr float input_max = 1.f;  // max IOU
-
-  constexpr float output_min = 0.f;  // exp(-inf)
-  constexpr float output_max = 1.f;  // exp(0)
-
-  gen_lut<float, T, T>(lut_func, input_min, input_max, output_min, output_max,
-                       soft_nms_lut);
+  // As the IOU is [0; 1] the LUT inputs in the [0; 1] range. The LUT output
+  // will also be in the same range as the parameter of std::exp will always be
+  // <= 0 due to the scale parameter being < 0.
+  const float lut_scale =
+      1.0f / (std::numeric_limits<T>::max() - std::numeric_limits<T>::min());
+  LUTPopulate<T>(lut_scale, std::numeric_limits<T>::min(), lut_scale,
+                 std::numeric_limits<T>::min(), lut_func, lut_func_params,
+                 reinterpret_cast<T*>(soft_nms_lut));
 }
 
 template <typename T>
@@ -194,18 +197,18 @@ TfLiteStatus PrepareQuantized(TfLiteContext* context, TfLiteNode* node) {
     // generated.
     if (soft_nms_sigma > input_sigma->params.zero_point) {
       // Calculate scale from sigma.
-      const float scale =
+      const float sigma_scale =
           -0.5f / ((soft_nms_sigma - input_sigma->params.zero_point) *
                    input_sigma->params.scale);
 
       // Generate LUT.
-      void* soft_nms_lut = malloc(sizeof(T) * lut_size<T>());
+      void* soft_nms_lut = malloc(sizeof(T) * LUTSize<T>());
       if (!soft_nms_lut) {
         TF_LITE_KERNEL_LOG(context, "Failed to allocate Soft-NMS LUT.");
         return kTfLiteError;
       }
 
-      GenSoftNmsLut(scale, static_cast<T*>(soft_nms_lut));
+      GenSoftNmsLut(sigma_scale, static_cast<T*>(soft_nms_lut));
       op_data->soft_nms_lut = soft_nms_lut;
     }
   }

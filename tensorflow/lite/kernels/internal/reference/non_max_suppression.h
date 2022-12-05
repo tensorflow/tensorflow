@@ -401,7 +401,7 @@ inline void NonMaxSuppression(const NonMaxSuppressionParams& params,
         // Note thate we need to subtract zero_point in order to correctly
         // handle asymmetrically quantized values. This will be added back to
         // the final result at the end.
-        const T similarity_metric = lut_lookup(iou, soft_nms_lut);
+        const T similarity_metric = LUTLookup(iou, soft_nms_lut);
 
         const int32_t new_score = (static_cast<int32_t>(next_candidate.score) -
                                    params.scores_rescale_zero_point) *
