@@ -41,6 +41,7 @@ struct XLA_FFI_Error {
 
 struct XLA_FFI_ExecutionContext {
   XLA_FFI_Module_State* state;
+  XLA_FFI_Stream* stream;
 };
 
 //===----------------------------------------------------------------------===//
@@ -118,6 +119,13 @@ absl::StatusCode ConvertErrorCode(XLA_FFI_Error_Code errc) {
 // Adaptor from the Xla custom call to an Xla FFI calling convention.
 //===----------------------------------------------------------------------===//
 
+// We use weak linking to provide a default implementation here. The XLA:GPU
+// backend overrides this implementation, and it is picked at link time.
+ABSL_ATTRIBUTE_WEAK XLA_FFI_Stream* GetXlaFfiStream(
+    const CustomCall::UserData* user_data, const DiagnosticEngine* diagnostic) {
+  return nullptr;
+}
+
 class FfiCustomCall : public CustomCall {
  public:
   FfiCustomCall(const XLA_FFI_Api* api, int64_t module_id,
@@ -138,6 +146,7 @@ class FfiCustomCall : public CustomCall {
 
     // Prepare FFI execution context.
     XLA_FFI_ExecutionContext ctx;
+    ctx.stream = GetXlaFfiStream(user_data, diagnostic);
     ctx.state = state_vector->state[module_id_];
 
     // Package custom call arguments and state into FFI function arguments.
@@ -231,6 +240,8 @@ FfiState::FfiState(const FfiModule* parent, XLA_FFI_Module_State* state)
 FfiState::~FfiState() { parent->DestroyState(state); }
 
 absl::StatusOr<std::unique_ptr<FfiState>> FfiModule::CreateModuleState() const {
+  if (!create_state_) return nullptr;
+
   XLA_FFI_Module_CreateState_Args args;
   args.struct_size = XLA_FFI_Module_CreateState_Args_STRUCT_SIZE;
   args.priv = nullptr;
@@ -243,8 +254,6 @@ absl::StatusOr<std::unique_ptr<FfiState>> FfiModule::CreateModuleState() const {
   return std::make_unique<FfiState>(this, args.state);
 }
 
-class FfiCustomCall;
-
 void FfiModule::Export(DynamicCustomCallRegistry& registry) const {
   for (auto& fn : exported_functions_) {
     VLOG(1) << "Export FFI function: " << fn.name
@@ -255,6 +264,8 @@ void FfiModule::Export(DynamicCustomCallRegistry& registry) const {
 }
 
 void FfiModule::DestroyState(XLA_FFI_Module_State* state) const {
+  if (!destroy_state_) return;
+
   XLA_FFI_Module_DestroyState_Args args;
   args.struct_size = XLA_FFI_Module_DestroyState_Args_STRUCT_SIZE;
   args.priv = nullptr;
@@ -317,7 +328,7 @@ FfiStateVector FfiModulesState::state_vector() const {
   FfiStateVector state_vector;
   for (auto& state : state_) {
     auto* ffi_state = dynamic_cast<FfiState*>(state.get());
-    state_vector.state.push_back(ffi_state->state);
+    state_vector.state.push_back(ffi_state ? ffi_state->state : nullptr);
   }
   return state_vector;
 }
@@ -327,7 +338,7 @@ FfiStateVector FfiModulesState::state_vector() const {
 //===----------------------------------------------------------------------===//
 
 template <const XLA_FFI_Api* (*api)()>
-static void RegisterModule(XLA_FFI_Module_Register_Args* args) {
+static void RegisterXlaFfiModule(XLA_FFI_Module_Register_Args* args) {
   absl::Status struct_size_check = CheckMatchingStructSizes(
       "XLA_FFI_Module_Register_Args", XLA_FFI_Module_Register_Args_STRUCT_SIZE,
       args->struct_size);
@@ -348,7 +359,7 @@ static void RegisterModule(XLA_FFI_Module_Register_Args* args) {
                        std::move(exported_functions));
 }
 
-static XLA_FFI_Module_State* GetModuleState(
+static XLA_FFI_Module_State* GetXlaFfiModuleState(
     XLA_FFI_ExecutionContext_GetModuleState_Args* args) {
   absl::Status struct_size_check = CheckMatchingStructSizes(
       "XLA_FFI_ExecutionContext_GetModuleState_Args",
@@ -357,6 +368,16 @@ static XLA_FFI_Module_State* GetModuleState(
   if (!struct_size_check.ok()) LOG(ERROR) << struct_size_check.message();
 
   return args->ctx->state;
+}
+
+static XLA_FFI_Stream* GetXlaFfiStream(
+    XLA_FFI_ExecutionContext_GetStream_Args* args) {
+  absl::Status struct_size_check = CheckMatchingStructSizes(
+      "XLA_FFI_ExecutionContext_GetStream_Args",
+      XLA_FFI_ExecutionContext_GetStream_Args_STRUCT_SIZE, args->struct_size);
+  if (!struct_size_check.ok()) LOG(ERROR) << struct_size_check.message();
+
+  return args->ctx->stream;
 }
 
 }  // namespace ffi
@@ -376,12 +397,13 @@ const XLA_FFI_Api ffi_api = {
     //===------------------------------------------------------------------===//
     // Module Registration APIs.
     //===------------------------------------------------------------------===//
-    ::xla::runtime::ffi::RegisterModule<GetXlaFfiApi>,
+    ::xla::runtime::ffi::RegisterXlaFfiModule<GetXlaFfiApi>,
 
     //===------------------------------------------------------------------===//
     // Execution Context APIs.
     //===------------------------------------------------------------------===//
-    ::xla::runtime::ffi::GetModuleState,
+    ::xla::runtime::ffi::GetXlaFfiModuleState,
+    ::xla::runtime::ffi::GetXlaFfiStream,
 
     //===------------------------------------------------------------------===//
     // Error Reporting APIs.

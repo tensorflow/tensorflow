@@ -130,11 +130,21 @@ const size_t XLA_FFI_Error_Create_Args_STRUCT_SIZE =
 typedef XLA_FFI_Error* XLA_FFI_Error_Create(XLA_FFI_Error_Create_Args* args);
 
 //===----------------------------------------------------------------------===//
+// XLA FFI Stream.
+//===----------------------------------------------------------------------===//
+
+// XLA FFI stream is an opaque handle to the underlying stream executor `Stream`
+// implementation. In XLA:GPU it is `se::gpu::GpuStreamHandle` (when running on
+// CUDA platform it is a `CUstream`).
+typedef struct XLA_FFI_Stream XLA_FFI_Stream;
+
+//===----------------------------------------------------------------------===//
 // XLA FFI Execution Context.
 //===----------------------------------------------------------------------===//
 
 typedef struct XLA_FFI_ExecutionContext XLA_FFI_ExecutionContext;
 
+// Get `XLA_FFI_Module_State` from the execution context.
 typedef struct {
   size_t struct_size;
   void* priv;
@@ -146,6 +156,19 @@ const size_t XLA_FFI_ExecutionContext_GetModuleState_Args_STRUCT_SIZE =
 
 typedef XLA_FFI_Module_State* XLA_FFI_ExecutionContext_GetModuleState(
     XLA_FFI_ExecutionContext_GetModuleState_Args* args);
+
+// Get `XLA_FFI_Stream` from the execution context.
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  XLA_FFI_ExecutionContext* ctx;
+} XLA_FFI_ExecutionContext_GetStream_Args;
+
+const size_t XLA_FFI_ExecutionContext_GetStream_Args_STRUCT_SIZE =
+    XLA_FFI_STRUCT_SIZE(XLA_FFI_ExecutionContext_GetStream_Args, ctx);
+
+typedef XLA_FFI_Stream* XLA_FFI_ExecutionContext_GetStream(
+    XLA_FFI_ExecutionContext_GetStream_Args* args);
 
 //===----------------------------------------------------------------------===//
 // XLA FFI Function API.
@@ -200,7 +223,10 @@ typedef struct XLA_FFI_Api {
   void* priv;
 
   XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Module_Register);
+
   XLA_FFI_API_STRUCT_FIELD(XLA_FFI_ExecutionContext_GetModuleState);
+  XLA_FFI_API_STRUCT_FIELD(XLA_FFI_ExecutionContext_GetStream);
+
   XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_Create);
 
   XLA_FFI_API_TYPEID_FIELD(Float);

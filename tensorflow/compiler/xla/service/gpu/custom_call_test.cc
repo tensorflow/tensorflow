@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/runtime/ffi/ffi_api.h"
 #include "tensorflow/compiler/xla/runtime/module.h"
 #include "tensorflow/compiler/xla/runtime/module_registry.h"
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
@@ -389,6 +390,89 @@ TEST_F(CustomCallTest, ExportedMemcpy) {
 
   XlaBuilder b(TestName());
   CustomCall(&b, "test.memcpy",
+             /*operands=*/{Broadcast(ConstantR0WithType(&b, F32, 42.0), {128})},
+             ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
+  EXPECT_THAT(result.data<float>(), ::testing::Each(42));
+}
+
+//===----------------------------------------------------------------------===//
+// XLA runtime FFI modules is an external version of custom calls (C API based).
+//===----------------------------------------------------------------------===//
+
+namespace ffi = ::xla::runtime::ffi;
+
+struct TestFfiModule : ffi::StatelessModule {
+  explicit TestFfiModule(const XLA_FFI_Api* api)
+      : StatelessModule(
+            api, "TestFfiModule",
+            {{"ffi.always_fail", FFI_AlwaysFail}, {"ffi.memcpy", FFI_Memcpy}}) {
+  }
+
+  XLA_FFI_DEFINE_FUNCTION(
+      FFI_AlwaysFail, AlwaysFail,
+      ffi::Ffi::Bind("ffi.always_fail").Arg<ffi::StridedBufferArg>());
+
+  XLA_FFI_DEFINE_FUNCTION(FFI_Memcpy, Memcpy,
+                          ffi::Ffi::Bind("ffi.memcpy")
+                              .Stream<se::gpu::GpuStreamHandle>()
+                              .Arg<ffi::StridedBufferArg>()
+                              .Arg<ffi::StridedBufferArg>());
+
+  // Check that we can use `FfiStatus` to return errors back to the caller.
+  static ffi::FfiStatus AlwaysFail(ffi::StridedBufferArg arg) {
+    return ffi::FfiStatus::Internal("Uh oh, too bad");
+  }
+
+  // Check that we can get access to the stream and launch on device.
+  static ffi::FfiStatus Memcpy(se::gpu::GpuStreamHandle stream,
+                               ffi::StridedBufferArg src,
+                               ffi::StridedBufferArg dst) {
+    se::DeviceMemoryBase src_mem(src.data);
+    se::DeviceMemoryBase dst_mem(dst.data);
+
+    int64_t size_in_bytes = sizeof(float);
+    for (unsigned d = 0; d < src.sizes.size(); ++d)
+      size_in_bytes *= src.sizes[d];
+
+    auto err = gpuMemcpyAsync(dst.data, src.data, size_in_bytes,
+                              gpuMemcpyDeviceToDevice, stream);
+    if (err != gpuSuccess)
+      return ffi::FfiStatus::Internal("Failed to launch memcpy");
+
+    return ffi::FfiStatus::Ok();
+  }
+};
+
+XLA_REGISTER_FFI_MODULE(std::make_unique<TestFfiModule>(GetXlaFfiApi()));
+
+TEST_F(CustomCallTest, ExportedFfiAlwaysFail) {
+  // TODO(ezhulenev): Remove once XLA runtime is enabled by default.
+  mutable_debug_options()->set_xla_gpu_enable_xla_runtime_executable(true);
+
+  XlaBuilder b(TestName());
+  CustomCall(&b, "ffi.always_fail", /*operands=*/{},
+             ShapeUtil::MakeShape(F32, {}), /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  auto status = Execute(&b, {}).status();
+  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
+  VLOG(0) << status.error_message();
+  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Uh oh, too bad"));
+}
+
+TEST_F(CustomCallTest, ExportedFfiMemcpy) {
+  // TODO(ezhulenev): Remove once XLA runtime is enabled by default.
+  mutable_debug_options()->set_xla_gpu_enable_xla_runtime_executable(true);
+
+  XlaBuilder b(TestName());
+  CustomCall(&b, "ffi.memcpy",
              /*operands=*/{Broadcast(ConstantR0WithType(&b, F32, 42.0), {128})},
              ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"",
              /*has_side_effect=*/false,

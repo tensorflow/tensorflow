@@ -119,6 +119,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:module_registry",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service/gpu:buffer_allocations",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
         "//tensorflow/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/strings",
     ],

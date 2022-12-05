@@ -38,9 +38,32 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/memset.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/tracing.h"
+#include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/tsl/protobuf/dnn.pb.h"
 
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
+#endif  // #if GOOGLE_CUDA
+
 namespace xla {
+
+#if GOOGLE_CUDA
+namespace runtime {
+namespace ffi {
+
+// Override weak symbol defined in the `xla/runtime/ffi.cc` with a strong one
+// that provides implementation for the XLA:GPU backend.
+XLA_FFI_Stream* GetXlaFfiStream(const CustomCall::UserData* user_data,
+                                const DiagnosticEngine* diagnostic) {
+  auto run_opts = user_data->getIfExists<const ServiceExecutableRunOptions>();
+  auto stream = se::gpu::AsGpuStreamValue(run_opts->stream());
+  return reinterpret_cast<XLA_FFI_Stream*>(stream);
+}
+
+}  // namespace ffi
+}  // namespace runtime
+#endif  // GOOGLE_CUDA
+
 namespace gpu {
 
 using ::xla::runtime::CustomCallAttrEncodingSet;

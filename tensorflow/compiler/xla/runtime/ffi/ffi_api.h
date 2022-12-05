@@ -158,74 +158,88 @@ class Ffi {
 };
 
 //===----------------------------------------------------------------------===//
-// XLA FFI stateful module is a collection of FFI functions and a state.
+// XLA FFI module is a base class for stateful and stateless FFI modules.
 //===----------------------------------------------------------------------===//
 
-struct FfiFunction {
-  std::string target;
-  XLA_FFI_Function* function;
-};
-
-template <typename State>
-class StatefulModule {
+class Module {
  public:
-  // TODO(ezhulenev): To gracefully fail if state can't be created, this has to
-  // return `FfiStatusOr<std::unique_ptr<State>>`, but we do not have a
-  // `StatusOr` implementation yet and we can't depend on absl.
-  virtual std::unique_ptr<State> CreateState() = 0;
+  virtual ~Module() = default;
 
-  virtual ~StatefulModule() = default;
+  struct ExportedFunction {
+    std::string target;
+    XLA_FFI_Function* function;
+  };
 
  protected:
-  StatefulModule(const XLA_FFI_Api* api, std::string module_name,
-                 std::vector<FfiFunction> exported_functions)
+  Module(const XLA_FFI_Api* api, std::string module_name,
+         std::vector<ExportedFunction> exported_functions,
+         XLA_FFI_Module_CreateState* create_state,
+         XLA_FFI_Module_DestroyState* destroy_state)
       : api_(api),
         module_name_(std::move(module_name)),
         exported_functions_(std::move(exported_functions)) {
-    RegisterModule(this);
+    Register(create_state, destroy_state);
   }
 
  private:
-  // Registers `module` with an XLA runtime.
-  static void RegisterModule(StatefulModule* module);
+  // Register `this` module with the XLA runtime.
+  void Register(XLA_FFI_Module_CreateState* create_state,
+                XLA_FFI_Module_DestroyState* destroy_state) {
+    XLA_FFI_Module_Register_Args args;
+    args.struct_size = XLA_FFI_Module_Register_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.name = module_name_.c_str();
+    args.module = reinterpret_cast<XLA_FFI_Module*>(this);
+    args.create_state = create_state;
+    args.destroy_state = destroy_state;
 
-  // Implements `XLA_FFI_Module_CreateState` API function.
-  static XLA_FFI_Error* CreateState(XLA_FFI_Module_CreateState_Args* args);
+    std::vector<const char*> exported_names;
+    std::vector<XLA_FFI_Function*> exported_functions;
+    for (auto& fn : exported_functions_) {
+      exported_names.push_back(fn.target.c_str());
+      exported_functions.push_back(fn.function);
+    }
 
-  // Implements `XLA_FFI_Module_DestroyState` API function.
-  static void DestroyState(XLA_FFI_Module_DestroyState_Args* args);
+    args.num_exported_functions = exported_functions_.size();
+    args.exported_names = exported_names.data();
+    args.exported_functions = exported_functions.data();
+
+    api_->XLA_FFI_Module_Register(&args);
+  }
 
   // Module is registered with the XLA runtime behind this API instance, and any
   // module manipulation (e.g. export functions) must be done through it.
   const XLA_FFI_Api* api_;
 
   std::string module_name_;
-  std::vector<FfiFunction> exported_functions_;
+  std::vector<ExportedFunction> exported_functions_;
 };
 
+//===----------------------------------------------------------------------===//
+// XLA FFI stateful module is a collection of FFI functions and a state.
+//===----------------------------------------------------------------------===//
+
 template <typename State>
-void StatefulModule<State>::RegisterModule(StatefulModule* module) {
-  XLA_FFI_Module_Register_Args args;
-  args.struct_size = XLA_FFI_Module_Register_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  args.name = module->module_name_.c_str();
-  args.module = reinterpret_cast<XLA_FFI_Module*>(module);
-  args.create_state = CreateState;
-  args.destroy_state = DestroyState;
+class StatefulModule : public Module {
+ public:
+  // TODO(ezhulenev): To gracefully fail if state can't be created, this has to
+  // return `FfiStatusOr<std::unique_ptr<State>>`, but we do not have a
+  // `StatusOr` implementation yet and we can't depend on absl.
+  virtual std::unique_ptr<State> CreateState() = 0;
 
-  std::vector<const char*> exported_names;
-  std::vector<XLA_FFI_Function*> exported_functions;
-  for (auto& fn : module->exported_functions_) {
-    exported_names.push_back(fn.target.c_str());
-    exported_functions.push_back(fn.function);
-  }
+ protected:
+  StatefulModule(const XLA_FFI_Api* api, std::string module_name,
+                 std::vector<ExportedFunction> exported_functions)
+      : Module(api, std::move(module_name), std::move(exported_functions),
+               CreateState, DestroyState) {}
 
-  args.num_exported_functions = module->exported_functions_.size();
-  args.exported_names = exported_names.data();
-  args.exported_functions = exported_functions.data();
+ private:
+  // Implements `XLA_FFI_Module_CreateState` API function.
+  static XLA_FFI_Error* CreateState(XLA_FFI_Module_CreateState_Args* args);
 
-  module->api_->XLA_FFI_Module_Register(&args);
-}
+  // Implements `XLA_FFI_Module_DestroyState` API function.
+  static void DestroyState(XLA_FFI_Module_DestroyState_Args* args);
+};
 
 template <typename State>
 XLA_FFI_Error* StatefulModule<State>::CreateState(
@@ -245,6 +259,31 @@ void StatefulModule<State>::DestroyState(
 
   delete reinterpret_cast<State*>(args->state);
 }
+
+//===----------------------------------------------------------------------===//
+// XLA FFI stateless module is a collection of FFI functions without a state.
+//===----------------------------------------------------------------------===//
+
+class StatelessModule : public Module {
+ protected:
+  StatelessModule(const XLA_FFI_Api* api, std::string module_name,
+                  std::vector<ExportedFunction> exported_functions)
+      : Module(api, std::move(module_name), std::move(exported_functions),
+               /*create_state=*/nullptr, /*destroy_state=*/nullptr) {}
+};
+
+//===----------------------------------------------------------------------===//
+// Helper macro to define a static module registration.
+//===----------------------------------------------------------------------===//
+
+#define XLA_REGISTER_FFI_MODULE(FUNC) \
+  XLA_REGISTER_FFI_MODULE_IMPL(FUNC, __COUNTER__)
+
+#define XLA_REGISTER_FFI_MODULE_IMPL(FUNC, N)           \
+  static bool xla_ffi_module_##N##_registered_ = []() { \
+    static auto* module = FUNC.release();               \
+    return module != nullptr;                           \
+  }()
 
 //===----------------------------------------------------------------------===//
 // Arguments supported by the FFI handlers.
@@ -406,11 +445,16 @@ struct AttrTag {};
 template <typename T>
 struct StateTag {};
 
+// A type tag to distinguish argument tied to XLA runtime stream.
+template <typename T>
+struct StreamTag {};
+
 // A template for checking if type is a wrapped attribute or user data.
 // clang-format off
-template <typename>   struct IsWrapped              : std::false_type {};
-template <typename T> struct IsWrapped<AttrTag<T>>  : std::true_type {};
-template <typename T> struct IsWrapped<StateTag<T>> : std::true_type {};
+template <typename>   struct IsWrapped               : std::false_type {};
+template <typename T> struct IsWrapped<AttrTag<T>>   : std::true_type {};
+template <typename T> struct IsWrapped<StateTag<T>>  : std::true_type {};
+template <typename T> struct IsWrapped<StreamTag<T>> : std::true_type {};
 // clang-format on
 
 }  // namespace internal
@@ -431,6 +475,14 @@ class FfiBinding {
 
   template <typename T>
   FfiBinding<Ts..., internal::StateTag<T>> State() && {
+    return {std::move(*this)};
+  }
+
+  template <typename T>
+  FfiBinding<Ts..., internal::StreamTag<T>> Stream() && {
+    static_assert(std::is_pointer_v<T>,
+                  "T must be a pointer type, e.g. for GPU platform it must be "
+                  "se::gpu::GpuStreamHandle");
     return {std::move(*this)};
   }
 
@@ -665,6 +717,24 @@ struct Decode<StateTag<T>> {
   }
 };
 
+template <typename T>
+struct Decode<StreamTag<T>> {
+  static std::optional<T> call(const XLA_FFI_Api* api,
+                               XLA_FFI_ExecutionContext* ctx,
+                               DecodingOffsets& offsets, internal::DecodedArgs,
+                               const std::vector<std::string>& attrs_names,
+                               const std::vector<size_t>& attrs_idx,
+                               internal::DecodedAttrs attrs) {
+    XLA_FFI_ExecutionContext_GetStream_Args args;
+    args.struct_size = XLA_FFI_ExecutionContext_GetStream_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.ctx = ctx;
+
+    XLA_FFI_Stream* stream = api->XLA_FFI_ExecutionContext_GetStream(&args);
+    return reinterpret_cast<T>(stream);
+  }
+};
+
 }  // namespace internal
 
 //===----------------------------------------------------------------------===//
@@ -680,9 +750,10 @@ namespace internal {
 
 // A helper template to extract the type of the handler argument.
 // clang-format off
-template <typename T> struct FnArgType              { using Type = T; };
-template <typename T> struct FnArgType<AttrTag<T>>  { using Type = T; };
-template <typename T> struct FnArgType<StateTag<T>> { using Type = T*; };
+template <typename T> struct FnArgType               { using Type = T;  };
+template <typename T> struct FnArgType<AttrTag<T>>   { using Type = T;  };
+template <typename T> struct FnArgType<StateTag<T>>  { using Type = T*; };
+template <typename T> struct FnArgType<StreamTag<T>> { using Type = T;  };
 // clang-format on
 
 // A template for counting regular arguments in the Ts pack.
