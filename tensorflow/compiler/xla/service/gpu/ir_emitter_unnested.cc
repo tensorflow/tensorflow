@@ -456,8 +456,8 @@ int RowReductionGetRowsPerWarp(int reduced_dimension_size) {
 IrEmitterUnnested::IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
                                      IrEmitterContext* ir_emitter_context)
     : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/false),
-      elemental_emitter_(hlo_module_config_, module_, &b_,
-                         GetNestedComputer()) {}
+      elemental_emitter_(hlo_module_config_, module_, &b_, GetNestedComputer(),
+                         ir_emitter_context) {}
 
 StatusOr<std::unique_ptr<IrEmitterUnnested>> IrEmitterUnnested::Create(
     const HloModuleConfig& hlo_module_config,
