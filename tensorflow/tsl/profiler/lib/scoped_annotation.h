@@ -47,6 +47,7 @@ class ScopedAnnotation {
  public:
   explicit ScopedAnnotation(absl::string_view name) {
 #if !defined(IS_MOBILE_PLATFORM)
+#ifdef NCCL_ENABLED
     std::optional<nvtxDomainHandle_t> domain =
         tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
@@ -54,8 +55,9 @@ class ScopedAnnotation {
       std::string name_str(name);
       tsl::profiler::nvtx::MakeAttributes(name_str.c_str(), &attrs);
       ::nvtxDomainRangePushEx(domain.value(), &attrs);
-    }
-    else if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
+    } else
+#endif
+      if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
       old_length_ = AnnotationStack::PushAnnotation(name);
     }
 #endif
@@ -66,6 +68,7 @@ class ScopedAnnotation {
 
   explicit ScopedAnnotation(const string& name) {
 #if !defined(IS_MOBILE_PLATFORM)
+#ifdef NCCL_ENABLED
     std::optional<nvtxDomainHandle_t> domain =
         tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
@@ -73,7 +76,9 @@ class ScopedAnnotation {
       tsl::profiler::nvtx::MakeAttributes(name.c_str(), &attrs);
       ::nvtxDomainRangePushEx(domain.value(), &attrs);
     }
-    else if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
+    else
+#endif
+      if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
       old_length_ = AnnotationStack::PushAnnotation(name);
     }
 #endif
@@ -81,6 +86,7 @@ class ScopedAnnotation {
 
   explicit ScopedAnnotation(string&& name) {
 #if !defined(IS_MOBILE_PLATFORM)
+#ifdef NCCL_ENABLED
     std::optional<nvtxDomainHandle_t> domain =
         tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
@@ -88,7 +94,9 @@ class ScopedAnnotation {
       tsl::profiler::nvtx::MakeAttributes(name.c_str(), &attrs);
       ::nvtxDomainRangePushEx(domain.value(), &attrs);
     }
-    else if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
+    else
+#endif
+      if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
       old_length_ = AnnotationStack::PushAnnotation(std::move(name));
     }
 #endif
@@ -97,6 +105,7 @@ class ScopedAnnotation {
   template <typename NameGeneratorT>
   explicit ScopedAnnotation(NameGeneratorT name_generator) {
 #if !defined(IS_MOBILE_PLATFORM)
+#ifdef NCCL_ENABLED
     std::optional<nvtxDomainHandle_t> domain =
         tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
@@ -105,7 +114,9 @@ class ScopedAnnotation {
       tsl::profiler::nvtx::MakeAttributes(name.c_str(), &attrs);
       ::nvtxDomainRangePushEx(domain.value(), &attrs);
     }
-    else if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
+    else
+#endif
+      if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
       auto name = name_generator();
       old_length_ = AnnotationStack::PushAnnotation(name);
     }
@@ -118,12 +129,15 @@ class ScopedAnnotation {
     // fail probably due to compiler in that presubmit config.
     std::atomic_thread_fence(std::memory_order_acquire);
 #if !defined(IS_MOBILE_PLATFORM)
+#ifdef NCCL_ENABLED
     std::optional<nvtxDomainHandle_t> domain =
         tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
       ::nvtxDomainRangePop(domain.value());
     }
-    else if (TF_PREDICT_FALSE(old_length_ != kInvalidLength)) {
+    else
+#endif
+      if (TF_PREDICT_FALSE(old_length_ != kInvalidLength)) {
       AnnotationStack::PopAnnotation(old_length_);
     }
 #endif
