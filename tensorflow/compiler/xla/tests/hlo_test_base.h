@@ -386,6 +386,7 @@ class HloTestBase : public ManifestCheckingTest {
   static se::Platform* GetTestPlatform();
 
  private:
+  // Either an HloRunner or HloRunnerPjRt depending on if ShouldUsePjRt()
   std::unique_ptr<HloRunnerInterface> runner_;
   se::Platform* test_platform_;
 

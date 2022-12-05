@@ -1,6 +1,8 @@
 # copybara:uncomment(oss-unused) load("//net/grpc/go/build_defs:go_grpc_library.bzl", "go_grpc_library")
 load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 package_group(
     name = "friends",
     includes = [
@@ -38,6 +40,7 @@ tf_proto_library(
     has_services = 1,
     cc_api_version = 2,
     create_grpc_library = True,
+    create_java_proto = False,
     make_default_target_header_only = True,
     protodeps = [
         ":profiler_options_proto",
@@ -53,6 +56,7 @@ tf_proto_library(
     has_services = 1,
     cc_api_version = 2,
     create_grpc_library = True,
+    create_java_proto = False,
     make_default_target_header_only = True,
     protodeps = [":profiler_service_proto"],
     use_grpc_namespace = True,
@@ -74,7 +78,7 @@ tf_proto_library(
     cc_api_version = 2,
     visibility = [
         "//tensorflow/compiler/xla/python:__pkg__",
-        "//tensorflow/core/profiler:__pkg__",
+        "//tensorflow/tsl/profiler:internal",
     ],
 )
 

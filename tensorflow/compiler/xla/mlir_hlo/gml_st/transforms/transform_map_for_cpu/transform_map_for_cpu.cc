@@ -35,6 +35,9 @@ namespace {
 #define GEN_PASS_DEF_TRANSFORMMAPFORCPUPASS
 #include "gml_st/transforms/passes.h.inc"
 
+static constexpr llvm::StringRef kMapTransformedLabel =
+    "__map_transformed_label__";
+
 struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
   TileMapPattern(MLIRContext *context, TilingOptions options,
                  PatternBenefit benefit = 1)
@@ -43,7 +46,7 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
 
   LogicalResult matchAndRewrite(linalg::MapOp op,
                                 PatternRewriter &rewriter) const override {
-    if (hasTransformationAttr(op)) return failure();
+    if (hasLabel(op, kMapTransformedLabel)) return failure();
 
     auto tilingResult =
         tile(options, rewriter, cast<TilingInterface>(op.getOperation()));
@@ -54,7 +57,7 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
     if (tilingResult->loop != nullptr) {
       rewriter.replaceOp(op, tilingResult->loop->getResults());
     }
-    setTransformationAttr(rewriter, tilingResult->tiledOp);
+    setLabel(tilingResult->tiledOp, kMapTransformedLabel);
     return success();
   }
 
@@ -94,7 +97,7 @@ struct TransformMapForCpuPass
       return signalPassFailure();
     }
 
-    f.walk([](linalg::MapOp op) { gml_st::removeTransformationAttr(op); });
+    f.walk([](linalg::MapOp op) { removeLabel(op, kMapTransformedLabel); });
   }
 };
 

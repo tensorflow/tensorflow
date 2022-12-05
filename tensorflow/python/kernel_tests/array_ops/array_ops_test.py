@@ -1856,6 +1856,72 @@ class QuantizeAndDequantizeTest(test_util.TensorFlowTestCase):
               max_range=input_max,
               axis=2**31 - 1))
 
+  @test_util.run_v2_only
+  def testInvalidAxis(self):
+
+    @def_function.function
+    def test_quantize_and_dequantize_v2():
+      gen_array_ops.quantize_and_dequantize_v2(
+          input=[2.5],
+          input_min=[1.0],
+          input_max=[10.0],
+          signed_input=True,
+          num_bits=1,
+          range_given=True,
+          round_mode="HALF_TO_EVEN",
+          narrow_range=True,
+          axis=0x7fffffff)
+
+    @def_function.function
+    def test_quantize_and_dequantize_v3():
+      gen_array_ops.quantize_and_dequantize_v3(
+          input=[2.5],
+          input_min=[1.0],
+          input_max=[10.0],
+          num_bits=1,
+          signed_input=True,
+          range_given=True,
+          narrow_range=True,
+          axis=0x7fffffff)
+
+    @def_function.function
+    def test_quantize_and_dequantize_v4():
+      gen_array_ops.quantize_and_dequantize_v4(
+          input=[2.5],
+          input_min=[1.0],
+          input_max=[10.0],
+          signed_input=True,
+          num_bits=1,
+          range_given=True,
+          round_mode="HALF_TO_EVEN",
+          narrow_range=True,
+          axis=0x7fffffff)
+
+    @def_function.function
+    def test_quantize_and_dequantize_v4_grad():
+      gen_array_ops.quantize_and_dequantize_v4_grad(
+          gradients=[2.5],
+          input=[2.5],
+          input_min=[1.0],
+          input_max=[10.0],
+          axis=0x7fffffff)
+
+    with self.assertRaisesRegex(
+        ValueError, "Axis cannot be >= kint32max value, got 2147483647"):
+      test_quantize_and_dequantize_v2()
+
+    with self.assertRaisesRegex(
+        ValueError, "Axis cannot be >= kint32max value, got 2147483647"):
+      test_quantize_and_dequantize_v3()
+
+    with self.assertRaisesRegex(
+        ValueError, "Axis cannot be >= kint32max value, got 2147483647"):
+      test_quantize_and_dequantize_v4()
+
+    with self.assertRaisesRegex(
+        ValueError, "Axis cannot be >= kint32max value, got 2147483647"):
+      test_quantize_and_dequantize_v4_grad()
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class SortedSearchTest(test_util.TensorFlowTestCase):

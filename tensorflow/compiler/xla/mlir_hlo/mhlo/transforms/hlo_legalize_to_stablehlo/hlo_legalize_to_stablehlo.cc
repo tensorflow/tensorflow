@@ -67,6 +67,11 @@ Attribute convertAttr(Attribute hloAttr) {
         attr.getOutputFeatureDimension(), attr.getOutputSpatialDimensions());
   }
   if (auto attr = hloAttr.dyn_cast<mhlo::CustomCallApiVersionAttr>()) {
+    // This API version value is used to experiment with XLA runtime typed
+    // custom calls. Needs more experimental data before we decide whether or
+    // not to propose it to StableHLO.
+    if (attr.getValue() == mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI)
+      return {};
     RETURN_CONVERTED_ENUM_ATTR(CustomCallApiVersion);
   }
   if (auto attr = hloAttr.dyn_cast<mhlo::DotDimensionNumbersAttr>()) {
@@ -82,6 +87,11 @@ Attribute convertAttr(Attribute hloAttr) {
     return stablehlo::GatherDimensionNumbersAttr::get(
         attr.getContext(), attr.getOffsetDims(), attr.getCollapsedSliceDims(),
         attr.getStartIndexMap(), attr.getIndexVectorDim());
+  }
+  if (auto attr = hloAttr.dyn_cast<mhlo::OutputOperandAliasAttr>()) {
+    return stablehlo::OutputOperandAliasAttr::get(
+        attr.getContext(), attr.getOutputTupleIndices(), attr.getOperandIndex(),
+        attr.getOperandTupleIndices());
   }
   if (auto attr = hloAttr.dyn_cast<mhlo::PrecisionAttr>()) {
     // This precision value is used to experiment with int4 support.
@@ -154,10 +164,19 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
       auto dimensionNumbers = debugString(hloOp.getDimensionNumbers());
       if (dimensionNumbers.find('?') != std::string::npos) return failure();
     }
+
+    if constexpr (std::is_same<HloOpTy, mhlo::AllToAllOp>::value) {
+      // StableHLO AllToAll doesn't support the tuple form yet.
+      // Proposal: https://github.com/openxla/stablehlo/issues/574.
+      if (hloOp.getNumOperands() != 1) return failure();
+    }
+
     if constexpr (std::is_same<HloOpTy, mhlo::CustomCallOp>::value) {
-      // Added to MHLO per feature request from JAX.
-      // Hasn't been proposed to StableHLO yet.
-      if (!hloOp.getOutputOperandAliases().empty()) return failure();
+      // StableHLO CustomCall doesn't support dictionary backend config.
+      // Proposal: https://github.com/openxla/stablehlo/issues/637
+      auto backendConfig = hloOp.getBackendConfig();
+      if (backendConfig && !backendConfig->template isa<mlir::StringAttr>())
+        return failure();
     }
 
     // Convert MHLO types to StableHLO equivalents.

@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -98,6 +99,7 @@ Value LookThroughIdentity(Value result) {
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
 }  // namespace
 
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NcclAllReduceOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NegOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(OnesLikeOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(PreventGradientOp);
@@ -135,6 +137,21 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(TanhOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(TanhGradOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ZerosLikeOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(_UnaryOpsCompositionOp);
+
+//===----------------------------------------------------------------------===//
+// NcclAllReduceOp
+//===----------------------------------------------------------------------===//
+
+// For `NcclAllReduceOp` ops the `device` attribute corresponds to the resource
+// instance.
+std::optional<std::string> NcclAllReduceOp::GetResourceInstanceStr() {
+  auto device_attr = (*this)->getAttrOfType<StringAttr>("device");
+  // Treat missing device attribute like unspecified (= empty string) attribute.
+  // Note that different op instances with the same string (including empty
+  // string) are seen as dependent (same resource instance).
+  if (!device_attr) return "";
+  return device_attr.str();
+}
 
 //===----------------------------------------------------------------------===//
 // NotEqualOp
@@ -214,7 +231,7 @@ static TensorType InferOneHotOpType(Value indices, Value depth, Value on_value,
   auto shape = llvm::to_vector<2>(indices_ty.getShape());
   if (axis_val == -1) axis_val = shape.size();
 
-  int64_t depth_val = ShapedType::kDynamicSize;
+  int64_t depth_val = ShapedType::kDynamic;
   DenseIntElementsAttr depth_attr;
   if (matchPattern(depth, m_Constant(&depth_attr)) &&
       depth_attr.getNumElements() == 1)
@@ -808,7 +825,7 @@ LogicalResult GetReshapeOutputType(Value tensor, Value shape,
     // shape.
     if (shape_ty.hasStaticShape()) {
       llvm::SmallVector<int64_t, 8> dynamic_shape(shape_ty.getDimSize(0),
-                                                  ShapedType::kDynamicSize);
+                                                  ShapedType::kDynamic);
       output_ty =
           tensorflow::GetTypeFromTFTensorShape(dynamic_shape, element_ty);
     }
@@ -825,7 +842,7 @@ LogicalResult GetReshapeOutputType(Value tensor, Value shape,
   for (const auto &dim : llvm::enumerate(shape_attr.getValues<APInt>())) {
     const int64_t size = dim.value().getSExtValue();
     if (size == tensorflow::kTFDynamicSize ||  // NOLINT
-        size == ShapedType::kDynamicSize) {    // NOLINT
+        size == ShapedType::kDynamic) {        // NOLINT
       if (unknown_index != -1)
         return error_handler(llvm::formatv(
             "requires 'shape' to have at most one dynamic dimension, but got "
@@ -1004,9 +1021,8 @@ LogicalResult SelectOp::verify() {
              << "requires that t and e are nonscalar when pred is a vector";
     }
     // We know `data` tensor has a rank of at least 1.
-    if (data_first_dim != ShapedType::kDynamicSize &&
-        cond_shape != ShapedType::kDynamicSize &&
-        data_first_dim != cond_shape) {
+    if (data_first_dim != ShapedType::kDynamic &&
+        cond_shape != ShapedType::kDynamic && data_first_dim != cond_shape) {
       return op.emitOpError() << "requires that, when pred is a vector, the "
                                  "shape matches the first dimension of t and e";
     }
@@ -1331,25 +1347,25 @@ LogicalResult SliceOp::verify() {
     for (const APInt &raw_begin_index : begin_indices.getValues<APInt>()) {
       int64_t begin_index = raw_begin_index.getSExtValue();
       int64_t input_size =
-          input_ty ? input_ty.getShape()[dim] : ShapedType::kDynamicSize;
+          input_ty ? input_ty.getShape()[dim] : ShapedType::kDynamic;
       int64_t slice_size =
           constant_slice_sizes
               ? slice_sizes.getValues<APInt>()[dim].getSExtValue()
               : 0;
       int64_t output_size =
-          output_ty ? output_ty.getShape()[dim] : ShapedType::kDynamicSize;
+          output_ty ? output_ty.getShape()[dim] : ShapedType::kDynamic;
 
-      if (slice_size == -1 && input_size != ShapedType::kDynamicSize) {
+      if (slice_size == -1 && input_size != ShapedType::kDynamic) {
         slice_size = input_size - begin_index;
       }
-      if (output_size != ShapedType::kDynamicSize && constant_slice_sizes &&
+      if (output_size != ShapedType::kDynamic && constant_slice_sizes &&
           output_size != slice_size) {
         return op.emitOpError()
                << "requires output size to have the same size of slice, got "
                   "slice size "
                << slice_size << " and output size " << output_size;
       }
-      if (begin_index < 0 || (input_size != ShapedType::kDynamicSize &&
+      if (begin_index < 0 || (input_size != ShapedType::kDynamic &&
                               begin_index + slice_size > input_size)) {
         return op.emitOpError()
                << "requires 0 <= begin[i] <= begin[i] + size[i] <= Di";
@@ -1364,7 +1380,7 @@ LogicalResult SliceOp::verify() {
       for (int64_t i = 0; i < input_ty.getRank(); ++i) {
         int64_t slice_size = slice_sizes.getValues<APInt>()[i].getSExtValue();
         int64_t input_size = input_shape[i];
-        if (slice_size != -1 && input_size != ShapedType::kDynamicSize &&
+        if (slice_size != -1 && input_size != ShapedType::kDynamic &&
             slice_size > input_size) {
           return op.emitOpError() << "requires size[i] <= Di, even if begin[i] "
                                      "is unknown at compile time";
@@ -3543,9 +3559,9 @@ LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypeComponents(
         return emitOptionalError(location, "dim_index (", dim_index,
                                  ") is out of range [0, ", rank, ")");
       }
-      shape[dim_index] = ShapedType::kDynamicSize;
+      shape[dim_index] = ShapedType::kDynamic;
     } else {
-      shape.assign(shape.size(), ShapedType::kDynamicSize);
+      shape.assign(shape.size(), ShapedType::kDynamic);
     }
     result_ty = tensorflow::GetTypeFromTFTensorShape(shape, element_ty);
   } else {

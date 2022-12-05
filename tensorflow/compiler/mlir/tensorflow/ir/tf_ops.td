@@ -62,7 +62,8 @@ class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [Pure]> {
   }];
 }
 
-def TF_CaseOp : TF_Op<"Case", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+def TF_CaseOp : TF_Op<"Case",
+      [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = [{
 An n-way switch statement which calls a single branch function.
   }];
@@ -320,7 +321,7 @@ def TF_YieldOp : TF_Op<"Yield",
     region.
   }];
 
-  let arguments = (ins Variadic<AnyType>:$operands);
+  let arguments = (ins Variadic<AnyType>);
 }
 
 def TF_IfRegionOp : TF_Op<"IfRegion",
@@ -377,7 +378,8 @@ else_branch: A region that computes the outputs of the op if cond = false.
 }
 
 def TF_LegacyCallOp : TF_Op<"LegacyCall",
-                            [CallOpInterface, SymbolUserOpInterface, Pure]> {
+      [CallOpInterface,
+       DeclareOpInterfaceMethods<SymbolUserOpInterface>, Pure]> {
   let summary =
     "returns `f(inputs)`, where `f` is a function.";
 
@@ -418,9 +420,6 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
     }
     // TODO(b/204997177): Deprecate and remove.
     func::FuncOp func() {  return ResolveFunc(nullptr); }
-
-    // SymbolUserOpInterface verifier.
-    LogicalResult verifySymbolUses(SymbolTableCollection &symbolTable);
   }];
 }
 
@@ -539,7 +538,7 @@ def TF_PlaceholderWithDefaultOp : TF_Op<"PlaceholderWithDefault", [Pure]> {
 }
 
 def TF_StatefulPartitionedCallOp : TF_Op<"StatefulPartitionedCall",
-                                         [CallOpInterface, SymbolUserOpInterface]> {
+      [CallOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary =
     "returns `f(inputs)`, where `f`'s body is placed and partitioned.";
 
@@ -582,13 +581,11 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     }
     // TODO(b/204997177): Deprecate and remove.
     func::FuncOp func() {  return ResolveFunc(nullptr); }
-
-    // SymbolUserOpInterface verifier.
-    LogicalResult verifySymbolUses(SymbolTableCollection &symbolTable);
   }];
 }
 
-def TF_WhileOp : TF_Op<"While", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+def TF_WhileOp : TF_Op<"While",
+      [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = [{
 output = input; While (Cond(output)) { output = Body(output) }
   }];
@@ -987,7 +984,8 @@ This function is faster and numerically stabler than `bessel_i1(x)`.
   }];
 }
 
-def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface, SymbolUserOpInterface]> {
+def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall",
+      [CallOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Calls a function placed on a specified TPU device.";
 
   let arguments = (ins
@@ -1022,9 +1020,6 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface, Symb
     }
     // TODO(b/204997177): Deprecate and remove.
     func::FuncOp func() {  return ResolveFunc(nullptr); }
-
-    // SymbolUserOpInterface verifier.
-    LogicalResult verifySymbolUses(SymbolTableCollection &symbolTable);
   }];
 }
 

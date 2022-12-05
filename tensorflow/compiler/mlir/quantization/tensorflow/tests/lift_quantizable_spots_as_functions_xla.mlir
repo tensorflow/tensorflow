@@ -71,3 +71,33 @@ func.func @conv_with_dynamic_channel_dim(%arg0: tensor<1x3x4x?xf32>) -> tensor<*
 // Check that the `attr_map` attribute has been removed.
 // CHECK-NOT: attr_map
 // CHECK-SAME: data_format = "NHWC", dilations = [1, 1, 2, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1]
+
+// -----
+
+func.func @const_filter_with_q_dq(%arg0: tensor<1x3x4x3xf32>) -> (tensor<1x3x2x2xf32>) {
+  %cst = "tf.Const"() {device = "", value = dense<[[[[-0.308480561, 0.122108772], [-0.0622722618, 0.285358578], [0.279975802, -0.227407396]], [[-0.223535746, 0.301872164], [0.45813936, 0.375932634], [-0.142182723, 9.95125505E-4]], [[0.183462933, 0.212702021], [-0.129749238, 0.0611961856], [0.00308316527, -0.486231536]]], [[[0.272826612, 0.382641196], [-0.135114014, 0.115396179], [-0.424618751, -1.311760e-01]], [[0.433140099, 0.15137814], [-0.102797419, 0.288730145], [-0.183163881, 0.0680986494]], [[0.369127393, -0.0638265759], [0.302147657, -0.35623318], [0.204260975, 0.204581305]]]]> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
+  %cst_0 = "tf.Const"() {device = "", value = dense<[1.000000e-01, 2.000000e-01]> : tensor<2xf32>} : () -> tensor<2xf32>
+  %0 = "quantfork.qcast"(%arg0) : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0011764706057660721:-43>>
+  %1 = "quantfork.dcast"(%0) : (tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0011764706057660721:-43>>) -> tensor<1x3x4x3xf32>
+  %q_w = "quantfork.qcast"(%cst) : (tensor<2x3x3x2xf32>) -> tensor<2x3x3x2x!quant.uniform<i8:f32, 0.0125:-24>>
+  %dq_w = "quantfork.dcast"(%q_w) : (tensor<2x3x3x2x!quant.uniform<i8:f32, 0.0125:-24>>) -> tensor<2x3x3x2xf32>
+  %2 = "tf.Conv2D"(%1, %dq_w) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<1x3x2x2xf32>
+  %3 = "tf.BiasAdd"(%2, %cst_0) {data_format = "NHWC", device = ""} : (tensor<1x3x2x2xf32>, tensor<2xf32>) -> tensor<1x3x2x2xf32>
+  %4 = "tf.Relu"(%3) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
+  %5 = "quantfork.qcast"(%4) : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2x!quant.uniform<i8:f32, 0.0027450981093387976:-19>>
+  %6 = "quantfork.dcast"(%5) : (tensor<1x3x2x2x!quant.uniform<i8:f32, 0.0027450981093387976:-19>>) -> tensor<1x3x2x2xf32>
+  %7 = "tf.Identity"(%6) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
+  %8 = "tf.Identity"(%7) {device = ""} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xf32>
+  return %8 : tensor<1x3x2x2xf32>
+}
+
+// CHECK-LABEL: func @const_filter_with_q_dq
+// CHECK-DAG: %[[WEIGHT:.*]] = "tf.Const"() {{.*}} : () -> tensor<2x3x3x2xf32>
+// CHECK-DAG: %[[BIAS:.*]] = "tf.Const"() {device = "", value = dense<[1.000000e-01, 2.000000e-01]> : tensor<2xf32>}
+// CHECK: %[[Q_W:.*]] = "quantfork.qcast"(%[[WEIGHT]])
+// CHECK: %[[DQ_W:.*]] = "quantfork.dcast"(%[[Q_W]])
+// CHECK: %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"({{.*}}, %[[DQ_W]], %[[BIAS]])
+// CHECK-SAME: _tfl_quant_trait = "fully_quantizable"
+// CHECK-SAME: f = @composite_conv2d_with_bias_and_relu_fn_1
+
+// CHECK-LABEL: func private @composite_conv2d_with_bias_and_relu_fn_1

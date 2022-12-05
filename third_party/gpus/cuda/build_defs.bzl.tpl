@@ -95,6 +95,10 @@ def cuda_library(copts = [], **kwargs):
     """Wrapper over cc_library which adds default CUDA options."""
     native.cc_library(copts = cuda_default_copts() + copts, **kwargs)
 
+def cuda_cc_test(copts = [], **kwargs):
+    """Wrapper over cc_test which adds default CUDA options."""
+    native.cc_test(copts = copts + if_cuda(["-DGOOGLE_CUDA=1"]), **kwargs)
+
 EnableCudaInfo = provider()
 
 def _enable_cuda_flag_impl(ctx):

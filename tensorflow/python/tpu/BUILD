@@ -8,12 +8,14 @@ load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 # to use TPU symbols. They are accessible from tf.contrib.tpu in TF 1.x and
 # tf.tpu and tf.compat.v1.tpu in TF 2.x.
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//learning/brain:__subpackages__",
         "//learning/deepmind:__subpackages__",
         "//learning/serving:__subpackages__",
         "//research/graph:__subpackages__",
         "//tensorflow:__subpackages__",
+        "//third_party/py/jax_tpu_embedding:__subpackages__",
         "//waymo/ml/deploy/sync_test/tools:__subpackages__",
     ],
     licenses = ["notice"],

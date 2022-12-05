@@ -44,7 +44,11 @@ using xla::ShapeUtil;
 namespace xla {
 
 PrimitiveType TypeToPrimitiveType(mlir::Type type) {
-  if (type.isBF16()) {
+  if (type.isFloat8E5M2()) {
+    return PrimitiveType::F8E5M2;
+  } else if (type.isFloat8E4M3FN()) {
+    return PrimitiveType::F8E4M3FN;
+  } else if (type.isBF16()) {
     return PrimitiveType::BF16;
   } else if (type.isF16()) {
     return PrimitiveType::F16;
@@ -164,21 +168,21 @@ Shape TypeToShape(mlir::Type type) {
     if (auto extn = t.getEncoding().dyn_cast_or_null<TypeExtensionsAttr>()) {
       bounds = llvm::to_vector<4>(extn.getBounds());
     } else {
-      bounds.assign(rank, ShapedType::kDynamicSize);
+      bounds.assign(rank, ShapedType::kDynamic);
     }
 
-    llvm::SmallVector<int64_t, 4> shape(rank, mlir::ShapedType::kDynamicSize);
+    llvm::SmallVector<int64_t, 4> shape(rank, mlir::ShapedType::kDynamic);
     std::vector<bool> is_dynamic(rank, false);
     for (int64_t dim = 0; dim < rank; ++dim) {
       // Only fully static shapes are supported.
       // TODO(b/115638799): Update once xla::Shape can support dynamic shapes.
       int64_t size = t.getDimSize(dim);
-      if (size == ShapedType::kDynamicSize) {
-        if (bounds[dim] == ShapedType::kDynamicSize) return {};
+      if (size == ShapedType::kDynamic) {
+        if (bounds[dim] == ShapedType::kDynamic) return {};
         shape[dim] = bounds[dim];
         is_dynamic[dim] = true;
       } else {
-        if (bounds[dim] != ShapedType::kDynamicSize) return {};
+        if (bounds[dim] != ShapedType::kDynamic) return {};
         shape[dim] = size;
       }
     }

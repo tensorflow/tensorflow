@@ -25,9 +25,9 @@ limitations under the License.
 // TODO(b/240438534): enable nnapi.
 #if defined(__ANDROID__)
 #define TFLITE_SUPPORTS_NNAPI_DELEGATE 1
-#if defined(CL_DELEGATE_NO_GL)
 #define TFLITE_SUPPORTS_GPU_DELEGATE 1
-#endif  // defined(CL_DELEGATE_NO_GL)
+#elif defined(CL_DELEGATE_NO_GL)
+#define TFLITE_SUPPORTS_GPU_DELEGATE 1
 #endif  // defined(__ANDROID__)
 #endif  // TFLITE_WITH_STABLE_ABI
 

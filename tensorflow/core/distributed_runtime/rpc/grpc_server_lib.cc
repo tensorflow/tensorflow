@@ -308,6 +308,8 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
         worker_cache, default_worker_name);
   }
 
+  auto* grpc_coordination_service =
+      static_cast<GrpcCoordinationServiceImpl*>(coordination_service_);
   // Set up worker environment.
   worker_env_.session_mgr = new SessionMgr(
       &worker_env_, SessionMgr::WorkerNameFromServerDef(server_def_),
@@ -315,7 +317,8 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
       [this](const ServerDef& server_def, WorkerCacheInterface** worker_cache) {
         WorkerCacheFactoryOptions options(server_def);
         return WorkerCacheFactory(options, worker_cache);
-      });
+      },
+      grpc_coordination_service->GetRpcHandler());
   worker_env_.compute_pool = compute_pool;
 
   // Finish setting up master environment.
@@ -505,6 +508,14 @@ Status GrpcServer::SetCoordinationServiceAgentInstance(
   return OkStatus();
 }
 
+Status GrpcServer::SetCoordinationServiceInstance(
+    tsl::CoordinationServiceInterface* service) {
+  auto* coord_service =
+      static_cast<GrpcCoordinationServiceImpl*>(coordination_service_);
+  coord_service->SetCoordinationServiceInstance(service);
+  return OkStatus();
+}
+
 Status GrpcServer::StopCoordinationService() {
   // Note: the sequence of events is important here.
   // 1. Agent must be torn down before the service as it needs to notify the
@@ -513,6 +524,7 @@ Status GrpcServer::StopCoordinationService() {
   // them within the session manager to prevent data races.
   TF_RETURN_IF_ERROR(SetCoordinationServiceAgentInstance(nullptr));
   worker_env()->session_mgr->TeardownCoordinationServiceAgent();
+  TF_RETURN_IF_ERROR(SetCoordinationServiceInstance(nullptr));
   coordination_service_->Shutdown();
   worker_env()->session_mgr->TeardownCoordinationService();
   return OkStatus();

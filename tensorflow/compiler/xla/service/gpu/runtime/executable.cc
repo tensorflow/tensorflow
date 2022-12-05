@@ -25,7 +25,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/runtime/ffi.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
 
 namespace xla {
 namespace gpu {
@@ -34,19 +37,30 @@ using ::xla::runtime::Executable;
 using ::xla::runtime::JitExecutable;
 using ::xla::runtime::success;
 
-GpuRuntimeExecutable::GpuRuntimeExecutable(
-    std::vector<int64_t> buffer_sizes,
-    std::unique_ptr<JitExecutable> jit_executable, DebugOptions debug_options)
-    : buffer_sizes_(std::move(buffer_sizes)),
-      executable_(std::move(jit_executable)),
-      debug_options_(std::move(debug_options)) {}
+using ::xla::runtime::ffi::ExportFfiModules;
+using ::xla::runtime::ffi::FfiStateVector;
 
 GpuRuntimeExecutable::GpuRuntimeExecutable(
     std::vector<int64_t> buffer_sizes,
-    std::unique_ptr<Executable> aot_executable, DebugOptions debug_options)
+    std::unique_ptr<JitExecutable> jit_executable, DebugOptions debug_options,
+    FfiModulesState ffi_modules_state)
+    : buffer_sizes_(std::move(buffer_sizes)),
+      executable_(std::move(jit_executable)),
+      debug_options_(std::move(debug_options)),
+      ffi_modules_state_(std::move(ffi_modules_state)) {
+  ExportFfiModules(dynamic_custom_calls_);
+}
+
+GpuRuntimeExecutable::GpuRuntimeExecutable(
+    std::vector<int64_t> buffer_sizes,
+    std::unique_ptr<Executable> aot_executable, DebugOptions debug_options,
+    FfiModulesState ffi_modules_state)
     : buffer_sizes_(std::move(buffer_sizes)),
       executable_(std::move(aot_executable)),
-      debug_options_(std::move(debug_options)) {}
+      debug_options_(std::move(debug_options)),
+      ffi_modules_state_(std::move(ffi_modules_state)) {
+  ExportFfiModules(dynamic_custom_calls_);
+}
 
 //===---------------------------------------------------------------------===///
 // Compile Xla program lowered to runtime dialects to Gpu runtime executable.
@@ -96,10 +110,14 @@ GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
     return InternalError("Failed to compile XLA Runtime program: %s",
                          jit_executable.status().message());
 
+  // Instantiate state for all registered FFI modules.
+  auto ffi_modules_state = FfiModulesState::Instantiate();
+  if (!ffi_modules_state.ok()) ffi_modules_state.status();
+
   return std::unique_ptr<GpuRuntimeExecutable>(new GpuRuntimeExecutable(
       std::move(program->buffer_sizes),
       std::make_unique<JitExecutable>(std::move(*jit_executable)),
-      std::move(program->debug_options)));
+      std::move(program->debug_options), std::move(*ffi_modules_state)));
 }
 
 //===---------------------------------------------------------------------===///
@@ -110,10 +128,14 @@ GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
 GpuRuntimeExecutable::Create(absl::Span<const int64_t> buffer_sizes,
                              Executable executable,
                              DebugOptions debug_options) {
+  // Instantiate state for all registered FFI modules.
+  auto ffi_modules_state = FfiModulesState::Instantiate();
+  if (!ffi_modules_state.ok()) ffi_modules_state.status();
+
   return std::unique_ptr<GpuRuntimeExecutable>(new GpuRuntimeExecutable(
       std::vector<int64_t>(buffer_sizes.begin(), buffer_sizes.end()),
       std::make_unique<Executable>(std::move(executable)),
-      std::move(debug_options)));
+      std::move(debug_options), std::move(*ffi_modules_state)));
 }
 
 //===---------------------------------------------------------------------===///
@@ -180,7 +202,8 @@ Status GpuRuntimeExecutable::Execute(
   runtime::NoResultConverter converter;
 
   // Get the async communications stream for async collectives.
-  int device_ordinal = run_options->stream()->parent()->device_ordinal();
+  se::StreamExecutor* executor = run_options->stream()->parent();
+  int device_ordinal = executor->device_ordinal();
   StatusOr<StreamPool::Ptr> async_comms_stream =
       run_options->BorrowStream(device_ordinal);
 
@@ -200,15 +223,28 @@ Status GpuRuntimeExecutable::Execute(
   // get access to other exported functions from custom call handlers.
   runtime::Executable& executable = this->executable();
 
+  // Take snapshots of every state required by custom calls.
+  StreamExecutorKernels::Snapshot kernels = gpu_kernels_(executor)->snapshot();
+  GemmConfigs::Snapshot gemm_configs = gemm_configs_.snapshot();
+
+  // Initialize state required for running functions exported from FFI modules.
+  FfiStateVector ffi_state = ffi_modules_state_.state_vector();
+
   // Pass auxiliary data to the custom call handlers.
-  runtime::CustomCall::UserData user_data;
-  user_data.insert_all(
+  runtime::CustomCall::UserData user_data(
       run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
-      &binary, &kernels_cache_, &gemm_configs_cache_, &conv_runners_cache_,
+      &ffi_state, &binary, &kernels, &gemm_configs, &conv_runners_cache_,
       &collectives_,
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.
       async_collectives.async_comm_stream() ? &async_collectives : nullptr);
+
+#if GOOGLE_CUDA
+  // Add auxiliary data that is available only if compiled with CUDA support.
+  MatmulPlans::Snapshot matmul_plans = cublas_lt_matmul_plans_.snapshot();
+  GraphInstances::Snapshot graph_instances = graph_instances_.snapshot();
+  user_data.insert_all(&matmul_plans, &graph_instances);
+#endif  // GOOGLE_CUDA
 
   // Collect all emitted diagnostic messages.
   std::string diagnostic;
@@ -223,6 +259,7 @@ Status GpuRuntimeExecutable::Execute(
   opts.async_task_runner = NoAsyncTaskRunner();
   opts.custom_call_data = &user_data;
   opts.diagnostic_engine = &diagnostic_engine;
+  opts.custom_call_registry = &dynamic_custom_calls_;
 
   // Execute with the prepared call frame.
   executable.Execute(call_frame, opts);

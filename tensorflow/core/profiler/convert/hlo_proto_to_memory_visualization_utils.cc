@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <utility>
@@ -262,54 +263,6 @@ std::string GetInstructionNameWithShapeIndex(
   }
 }
 
-HeapObject MakeHeapObjectCommon(std::string label, int logical_buffer_id,
-                                int64_t logical_buffer_size_bytes,
-                                int64_t unpadded_shape_bytes) {
-  HeapObject result;
-  result.set_label(std::move(label));
-  result.set_logical_buffer_id(logical_buffer_id);
-  result.set_logical_buffer_size_mib(BytesToMiB(logical_buffer_size_bytes));
-  result.set_unpadded_shape_mib(BytesToMiB(unpadded_shape_bytes));
-  return result;
-}
-
-HeapObject MakeHeapObject(const std::string& tf_op_name,
-                          const std::string& shape_string,
-                          const std::string& op_code,
-                          std::string instruction_name, std::string group_name,
-                          std::string label, int color, int logical_buffer_id,
-                          int64_t logical_buffer_size_bytes,
-                          int64_t unpadded_shape_bytes) {
-  HeapObject result =
-      MakeHeapObjectCommon(std::move(label), logical_buffer_id,
-                           logical_buffer_size_bytes, unpadded_shape_bytes);
-  result.set_numbered(color);
-  result.set_instruction_name(std::move(instruction_name));
-  result.set_group_name(std::move(group_name));
-  result.set_tf_op_name(tf_op_name);
-  result.set_shape_string(shape_string);
-  result.set_op_code(op_code);
-  return result;
-}
-
-HeapObject MakeHeapObject(std::string color, std::string label,
-                          int logical_buffer_id,
-                          int64_t logical_buffer_size_bytes,
-                          int64_t unpadded_shape_bytes) {
-  HeapObject result =
-      MakeHeapObjectCommon(std::move(label), logical_buffer_id,
-                           logical_buffer_size_bytes, unpadded_shape_bytes);
-  result.set_named(std::move(color));
-  return result;
-}
-
-BufferSpan MakeBufferSpan(int32 start, int32 limit) {
-  BufferSpan result;
-  result.set_start(start);
-  result.set_limit(limit);
-  return result;
-}
-
 // A wrapper around ShapeUtil::ByteSizeOf that clears out the layout/padding,
 // since that is considered in the ByteSizeOf calculation.
 int64_t ShapeUnpaddedSize(Shape shape) {
@@ -324,6 +277,50 @@ int64_t ShapeUnpaddedSize(Shape shape) {
 
 std::string ShapeDescription(const Shape& shape) {
   return ShapeUtil::HumanStringWithLayout(shape);
+}
+
+HeapObject MakeHeapObjectCommon(std::string label, int32_t color,
+                                int64_t logical_buffer_id,
+                                int64_t logical_buffer_size_bytes,
+                                int64_t unpadded_shape_bytes) {
+  HeapObject result;
+  result.set_numbered(color);
+  result.set_label(std::move(label));
+  result.set_logical_buffer_id(logical_buffer_id);
+  result.set_logical_buffer_size_mib(BytesToMiB(logical_buffer_size_bytes));
+  result.set_unpadded_shape_mib(BytesToMiB(unpadded_shape_bytes));
+  return result;
+}
+
+HeapObject MakeHeapObject(const HloProtoBufferWrapper& wrapper,
+                          const LogicalBufferProto& logical_buffer,
+                          const BufferAllocationProto& buffer_allocation,
+                          int32_t color) {
+  const Shape& shape = wrapper.GetLogicalBufferShape(logical_buffer);
+  const HloInstructionProto& hlo_instruction =
+      wrapper.GetHloInstruction(logical_buffer);
+  std::string shape_string = ShapeDescription(shape);
+  int64_t unpadded_shape_bytes = ShapeUnpaddedSize(shape);
+  std::string label = absl::StrFormat(
+      "%s: %s # %s", logical_buffer.defined_at().instruction_name(),
+      shape_string, hlo_instruction.metadata().op_name());
+  HeapObject result =
+      MakeHeapObjectCommon(std::move(label), color, logical_buffer.id(),
+                           logical_buffer.size(), unpadded_shape_bytes);
+  result.set_numbered(color);
+  result.set_instruction_name(GetInstructionNameWithShapeIndex(logical_buffer));
+  result.set_group_name(GetAllocationGroupName(buffer_allocation));
+  result.set_tf_op_name(hlo_instruction.metadata().op_name());
+  result.set_shape_string(shape_string);
+  result.set_op_code(hlo_instruction.opcode());
+  return result;
+}
+
+BufferSpan MakeBufferSpan(int32 start, int32 limit) {
+  BufferSpan result;
+  result.set_start(start);
+  result.set_limit(limit);
+  return result;
 }
 
 std::string BufferAllocationDescription(
@@ -508,6 +505,22 @@ struct HeapSimulatorStats {
     return OkStatus();
   }
 
+  // Get the logical buffers with indefinite lifetime (buffers that do not
+  // appear in heap simulator trace, so the profiler does not know its exact
+  // lifetime span). They will be handled separately by
+  // ProcessIndefiniteLifetimeBuffers.
+  std::vector<const LogicalBufferProto*> LogicalBuffersWithIndefiniteLifetime()
+      const {
+    std::vector<const LogicalBufferProto*> indefinite_logical_buffers;
+    for (const auto& logical_buffer :
+         wrapper.GetHloProto().buffer_assignment().logical_buffers()) {
+      if (!seen_logical_buffers.contains(&logical_buffer)) {
+        indefinite_logical_buffers.push_back(&logical_buffer);
+      }
+    }
+    return indefinite_logical_buffers;
+  }
+
   // Keep track of memory usage when iterating through heap simulator trace
   // events.
   int64_t heap_size_bytes = 0;
@@ -625,12 +638,12 @@ Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
   stats->SetSimulatorTraceEventSize(trace.events_size());
   for (const auto& event : trace.events()) {
     stats->UpdateOnSimulatorEvent(event);
-    const LogicalBufferProto& logical_buffer =
-        wrapper.GetLogicalBuffer(event.buffer_id());
     if (event.kind() == HeapSimulatorTrace::Event::ALLOC) {
       share_tracker.ProcessAllocEvent(event);
       // ALLOC event increases memory usage and initializes the buffer lifetime
       // span.
+      const LogicalBufferProto& logical_buffer =
+          wrapper.GetLogicalBuffer(event.buffer_id());
       stats->IncreaseMemoryUsage(logical_buffer,
                                  /*init_buffer_span=*/true);
     } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
@@ -664,6 +677,176 @@ Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
   return OkStatus();
 }
 
+// The stats when processing buffer allocations and logical buffers.
+struct BufferStats {
+  BufferStats(const HloProtoBufferWrapper& wrapper,
+              const HeapSimulatorStats& simulator_stats,
+              int64_t small_buffer_size)
+      : wrapper(wrapper),
+        simulator_stats(simulator_stats),
+        small_buffer_size(small_buffer_size) {}
+
+  // Add a HeapObject derived from logical buffer and buffer allocation.
+  void AddHeapObject(const LogicalBufferProto& logical_buffer,
+                     const BufferAllocationProto& buffer_allocation) {
+    if (logical_buffer.size() < small_buffer_size) {
+      // Accumulate small buffers, don't make a HeapObject.
+      total_small_buffer_size_bytes += logical_buffer.size();
+    } else {
+      // Make a new HeapObject, assign a new color to visualize it.
+      max_heap_objects.push_back(MakeHeapObject(wrapper, logical_buffer,
+                                                buffer_allocation, colorno++));
+    }
+  }
+
+  void FinalizeBufferUsage() {
+    // Buffers from HeapSimulatorTrace.
+    for (const int64_t logical_buffer_id :
+         simulator_stats.peak_logical_buffers) {
+      const LogicalBufferProto& logical_buffer =
+          wrapper.GetLogicalBuffer(logical_buffer_id);
+      const BufferAllocationProto& buffer_allocation =
+          wrapper.GetBufferAllocation(logical_buffer);
+      AddHeapObject(logical_buffer, buffer_allocation);
+    }
+
+    // Make a single HeapObject out of all the small buffers.
+    if (total_small_buffer_size_bytes != 0) {
+      max_heap_objects.push_back(MakeHeapObjectCommon(
+          absl::StrFormat("small (<%d bytes)", small_buffer_size), colorno++,
+          /*logical_buffer_id=*/-1, total_small_buffer_size_bytes,
+          /*unpadded_shape_bytes=*/0));
+    }
+  }
+
+  // All the HeapObjects at peak memory time.
+  std::vector<HeapObject> max_heap_objects;
+  // The total size of all memory buffers with indefinite lifetime.
+  int64_t indefinite_memory_usage_bytes = 0;
+  // The accumulated size of all small buffers.
+  int64_t total_small_buffer_size_bytes = 0;
+  // Tracker of memory viewer color.
+  int32_t colorno = 0;
+
+  const HloProtoBufferWrapper& wrapper;
+  const HeapSimulatorStats& simulator_stats;
+  const int64_t small_buffer_size;
+};
+
+void ProcessIndefiniteLifetimeBuffers(const HloProtoBufferWrapper& wrapper,
+                                      const HeapSimulatorStats& simulator_stats,
+                                      int64_t memory_color,
+                                      BufferStats* buffer_stats) {
+  absl::flat_hash_set<const BufferAllocationProto*> seen_buffer_allocations =
+      simulator_stats.seen_buffer_allocations;
+  for (const LogicalBufferProto* logical_buffer :
+       simulator_stats.LogicalBuffersWithIndefiniteLifetime()) {
+    const BufferAllocationProto& buffer_allocation =
+        wrapper.GetBufferAllocation(*logical_buffer);
+    if (buffer_allocation.is_thread_local() ||
+        logical_buffer->color() != memory_color) {
+      continue;
+    }
+    if (seen_buffer_allocations.insert(&buffer_allocation).second) {
+      buffer_stats->indefinite_memory_usage_bytes += buffer_allocation.size();
+      const auto& logical_buffers =
+          wrapper.GetLogicalBuffersFromBufferAllocation(buffer_allocation);
+      if (logical_buffers.size() == 1) {
+        buffer_stats->AddHeapObject(*logical_buffer, buffer_allocation);
+      } else {
+        VLOG(1) << "Indefinite lifetime, no heap object shown due to "
+                << "multiple logical buffers in buffer allocation: "
+                << logical_buffer->ShortDebugString()
+                << " :: " << BufferAllocationDescription(buffer_allocation);
+      }
+      if (buffer_allocation.size() < buffer_stats->small_buffer_size) {
+        VLOG(1) << "Indefinite memory usage now: "
+                << buffer_stats->indefinite_memory_usage_bytes << " bytes (+"
+                << buffer_allocation.size() << " bytes)";
+      }
+    }
+  }
+
+  buffer_stats->FinalizeBufferUsage();
+}
+
+void GeneratePreprocessResult(const HloProtoBufferWrapper& wrapper,
+                              const HeapSimulatorStats& simulator_stats,
+                              const BufferStats& buffer_stats,
+                              PreprocessResult* result) {
+  // Module info.
+  result->set_module_name(wrapper.GetHloProto().hlo_module().name());
+  result->set_entry_computation_name(
+      wrapper.GetHloProto().hlo_module().entry_computation_name());
+
+  // Build HeapObjects and index.
+  std::vector<const HeapObject*> max_heap_by_size;
+  max_heap_by_size.reserve(buffer_stats.max_heap_objects.size());
+  for (const auto& object : buffer_stats.max_heap_objects) {
+    max_heap_by_size.push_back(&object);
+  }
+  std::sort(max_heap_by_size.begin(), max_heap_by_size.end(),
+            [](const HeapObject* a, const HeapObject* b) {
+              return a->logical_buffer_size_mib() >
+                     b->logical_buffer_size_mib();
+            });
+
+  std::vector<int> max_heap_to_by_size;
+  max_heap_to_by_size.reserve(max_heap_by_size.size());
+  for (const auto& object : buffer_stats.max_heap_objects) {
+    auto it =
+        std::find(max_heap_by_size.begin(), max_heap_by_size.end(), &object);
+    int index = std::distance(max_heap_by_size.begin(), it);
+    max_heap_to_by_size.push_back(index);
+  }
+
+  std::vector<int> by_size_to_max_heap;
+  for (const auto* object : max_heap_by_size) {
+    int index = object - &buffer_stats.max_heap_objects[0];
+    by_size_to_max_heap.push_back(index);
+  }
+
+  *result->mutable_max_heap() = {buffer_stats.max_heap_objects.begin(),
+                                 buffer_stats.max_heap_objects.end()};
+  result->mutable_max_heap_by_size()->Reserve(max_heap_by_size.size());
+  for (const HeapObject* o : max_heap_by_size) {
+    *result->add_max_heap_by_size() = *o;
+  }
+  *result->mutable_max_heap_to_by_size() = {max_heap_to_by_size.begin(),
+                                            max_heap_to_by_size.end()};
+  *result->mutable_by_size_to_max_heap() = {by_size_to_max_heap.begin(),
+                                            by_size_to_max_heap.end()};
+
+  // For the buffers that have indefinite lifetime (that is, lifetime not
+  // reflected by the heap simulation) add it to the peak values and the vectors
+  // of heap sizes.
+  size_t timeline_size = simulator_stats.heap_size_bytes_timeline.size();
+  double add_mib = BytesToMiB(buffer_stats.indefinite_memory_usage_bytes);
+  result->mutable_heap_sizes()->Reserve(timeline_size);
+  result->mutable_unpadded_heap_sizes()->Reserve(timeline_size);
+  for (size_t i = 0; i < timeline_size; i++) {
+    result->add_heap_sizes(
+        BytesToMiB(simulator_stats.heap_size_bytes_timeline[i]) + add_mib);
+    result->add_unpadded_heap_sizes(
+        BytesToMiB(simulator_stats.unpadded_heap_size_bytes_timeline[i]) +
+        add_mib);
+  }
+
+  result->set_peak_heap_mib(BytesToMiB(simulator_stats.peak_heap_size_bytes) +
+                            add_mib);
+  result->set_peak_unpadded_heap_mib(
+      BytesToMiB(simulator_stats.peak_unpadded_heap_size_bytes) + add_mib);
+  result->set_peak_heap_size_position(simulator_stats.peak_heap_size_position);
+
+  // Build buffer lifespan.
+  for (const auto& item : simulator_stats.logical_buffer_spans) {
+    (*result->mutable_logical_buffer_spans())[item.first] =
+        MakeBufferSpan(item.second.first, item.second.second);
+  }
+
+  NoteSpecialAllocations(wrapper, buffer_stats.small_buffer_size, result);
+}
+
 }  // namespace
 
 absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
@@ -680,164 +863,13 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
         "Failed to process heap simulator trace: ", status.error_message()));
   }
 
-  // Process indefinite memory usage.
-  int64_t indefinite_memory_usage_bytes = 0;
-  std::vector<HeapObject> max_heap;
-  int colorno = 0;
-  int64_t rest = 0;
-
-  // Helper lambda that adds the logical buffer as an element in the "max heap"
-  // view with constitutent logical buffers.
-  auto add_heap_object = [&](const LogicalBufferProto& logical_buffer,
-                             const BufferAllocationProto& buffer_allocation) {
-    if (logical_buffer.size() <= small_buffer_size) {
-      rest += logical_buffer.size();
-      return;
-    }
-
-    const Shape& shape = wrapper.GetLogicalBufferShape(logical_buffer);
-    const HloInstructionProto& hlo_instruction =
-        wrapper.GetHloInstruction(logical_buffer);
-    std::string shape_string = ShapeDescription(shape);
-    int64_t unpadded_shape_bytes = ShapeUnpaddedSize(shape);
-    std::string label =
-        StrFormat("%s: %s # %s", logical_buffer.defined_at().instruction_name(),
-                  shape_string, hlo_instruction.metadata().op_name());
-    max_heap.push_back(MakeHeapObject(
-        hlo_instruction.metadata().op_name(), shape_string,
-        hlo_instruction.opcode(),
-        GetInstructionNameWithShapeIndex(logical_buffer),
-        GetAllocationGroupName(buffer_allocation), std::move(label), colorno++,
-        logical_buffer.id(), logical_buffer.size(), unpadded_shape_bytes));
-  };
-
-  // Now look for all logical buffers which have not been seen, and assume they
-  // have indefinite lifetime if they are not in thread-local buffer
-  // allocations.
-  absl::flat_hash_set<const LogicalBufferProto*> unseen;
-  for (const LogicalBufferProto& logical_buffer :
-       wrapper.GetHloProto().buffer_assignment().logical_buffers()) {
-    if (!simulator_stats.seen_logical_buffers.contains(&logical_buffer)) {
-      unseen.insert(&logical_buffer);
-    }
-  }
-  for (const LogicalBufferProto* logical_buffer : unseen) {
-    const BufferAllocationProto& buffer_allocation =
-        wrapper.GetBufferAllocation(*logical_buffer);
-    if (buffer_allocation.is_thread_local()) {
-      continue;
-    }
-    if (logical_buffer->color() != memory_color) {
-      continue;
-    }
-    if (simulator_stats.seen_buffer_allocations.insert(&buffer_allocation)
-            .second) {
-      indefinite_memory_usage_bytes += buffer_allocation.size();
-      const auto& logical_buffers =
-          wrapper.GetLogicalBuffersFromBufferAllocation(buffer_allocation);
-      if (logical_buffers.size() == 1) {
-        add_heap_object(*logical_buffers.front(), buffer_allocation);
-      } else {
-        VLOG(1) << "Indefinite lifetime, no heap object shown due to "
-                   "multiple logical buffers in buffer allocation: "
-                << logical_buffer->ShortDebugString()
-                << " :: " << BufferAllocationDescription(buffer_allocation);
-      }
-      if (buffer_allocation.size() > small_buffer_size) {
-        VLOG(1) << "Indefinite memory usage now: "
-                << indefinite_memory_usage_bytes << " bytes (+"
-                << buffer_allocation.size() << " bytes)";
-      }
-    }
-  }
-
-  // For the buffers that have indefinite lifetime (that is, lifetime not
-  // reflected by the heap simulation) add it to the peak values and the vectors
-  // of heap sizes.
-  simulator_stats.peak_heap_size_bytes += indefinite_memory_usage_bytes;
-  simulator_stats.peak_unpadded_heap_size_bytes +=
-      indefinite_memory_usage_bytes;
-  for (int i = 0; i < simulator_stats.heap_size_bytes_timeline.size(); ++i) {
-    simulator_stats.heap_size_bytes_timeline[i] +=
-        indefinite_memory_usage_bytes;
-    simulator_stats.unpadded_heap_size_bytes_timeline[i] +=
-        indefinite_memory_usage_bytes;
-  }
-
-  // Accumulate data for use in a stacked bar plot.
-  //
-  // We accumulate it in "program order" -- the order in which it was placed
-  // into the logical_buffers sequence above was program order, and we iterate
-  // that order to create data points.
-  for (int logical_buffer_id : simulator_stats.peak_logical_buffers) {
-    const auto& logical_buffer = wrapper.GetLogicalBuffer(logical_buffer_id);
-    const auto& buffer_allocation = wrapper.GetBufferAllocation(logical_buffer);
-    add_heap_object(logical_buffer, buffer_allocation);
-  }
-  if (rest != 0) {
-    max_heap.push_back(MakeHeapObject(
-        "gray", StrFormat("small (<%d bytes)", small_buffer_size), -1, rest,
-        0));
-  }
-
-  std::vector<const HeapObject*> max_heap_by_size;
-  max_heap_by_size.reserve(max_heap.size());
-  for (const auto& object : max_heap) {
-    max_heap_by_size.push_back(&object);
-  }
-  std::sort(max_heap_by_size.begin(), max_heap_by_size.end(),
-            [](const HeapObject* a, const HeapObject* b) {
-              return a->logical_buffer_size_mib() >
-                     b->logical_buffer_size_mib();
-            });
-
-  std::vector<int> max_heap_to_by_size;
-  max_heap_to_by_size.reserve(max_heap.size());
-  for (const auto& object : max_heap) {
-    auto it =
-        std::find(max_heap_by_size.begin(), max_heap_by_size.end(), &object);
-    int index = std::distance(max_heap_by_size.begin(), it);
-    max_heap_to_by_size.push_back(index);
-  }
-
-  std::vector<int> by_size_to_max_heap;
-  for (const auto* object : max_heap_by_size) {
-    int index = object - &max_heap[0];
-    by_size_to_max_heap.push_back(index);
-  }
+  // Process buffers with indefinite lifetime.
+  BufferStats buffer_stats(wrapper, simulator_stats, small_buffer_size);
+  ProcessIndefiniteLifetimeBuffers(wrapper, simulator_stats, memory_color,
+                                   &buffer_stats);
 
   PreprocessResult result;
-  result.set_module_name(hlo_proto.hlo_module().name());
-  result.set_entry_computation_name(
-      hlo_proto.hlo_module().entry_computation_name());
-  size_t timeline_size = simulator_stats.heap_size_bytes_timeline.size();
-  result.mutable_heap_sizes()->Reserve(timeline_size);
-  result.mutable_unpadded_heap_sizes()->Reserve(timeline_size);
-  for (size_t i = 0; i < timeline_size; i++) {
-    result.add_heap_sizes(
-        BytesToMiB(simulator_stats.heap_size_bytes_timeline[i]));
-    result.add_unpadded_heap_sizes(
-        BytesToMiB(simulator_stats.unpadded_heap_size_bytes_timeline[i]));
-  }
-  *result.mutable_max_heap() = {max_heap.begin(), max_heap.end()};
-  for (const HeapObject* o : max_heap_by_size) {
-    *result.add_max_heap_by_size() = *o;
-  }
-  *result.mutable_max_heap_to_by_size() = {max_heap_to_by_size.begin(),
-                                           max_heap_to_by_size.end()};
-  *result.mutable_by_size_to_max_heap() = {by_size_to_max_heap.begin(),
-                                           by_size_to_max_heap.end()};
-  result.set_peak_heap_mib(BytesToMiB(simulator_stats.peak_heap_size_bytes));
-  result.set_peak_unpadded_heap_mib(
-      BytesToMiB(simulator_stats.peak_unpadded_heap_size_bytes));
-  result.set_peak_heap_size_position(simulator_stats.peak_heap_size_position);
-
-  for (const auto& item : simulator_stats.logical_buffer_spans) {
-    (*result.mutable_logical_buffer_spans())[item.first] =
-        MakeBufferSpan(item.second.first, item.second.second);
-  }
-
-  NoteSpecialAllocations(wrapper, small_buffer_size, &result);
+  GeneratePreprocessResult(wrapper, simulator_stats, buffer_stats, &result);
   return result;
 }
 

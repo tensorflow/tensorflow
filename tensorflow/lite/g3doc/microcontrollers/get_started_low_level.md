@@ -150,10 +150,11 @@ In the following code, the model is instantiated using data from a `char` array,
 `g_model`, which is declared in `model.h`. We then check the model to ensure its
 schema version is compatible with the version we are using:
 
-```c++
+```C++
 const tflite::Model* model = ::tflite::GetModel(g_model);
 if (model->version() != TFLITE_SCHEMA_VERSION) {
-  error_reporter->Report("Model provided is schema version %d not equal "
+  TF_LITE_REPORT_ERROR(error_reporter,
+      "Model provided is schema version %d not equal "
       "to supported version %d.\n",
       model->version(), TFLITE_SCHEMA_VERSION);
 }
@@ -262,10 +263,10 @@ In this case, we input a floating point value representing `0`.
 To run the model, we can call `Invoke()` on our `tflite::MicroInterpreter`
 instance:
 
-```c++
+```C++
 TfLiteStatus invoke_status = interpreter.Invoke();
 if (invoke_status != kTfLiteOk) {
-  error_reporter->Report("Invoke failed\n");
+  TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed\n");
 }
 ```
 

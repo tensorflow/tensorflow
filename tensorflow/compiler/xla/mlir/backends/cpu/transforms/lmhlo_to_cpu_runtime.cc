@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -31,7 +32,9 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
+#include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 
 namespace xla {
 namespace cpu {
@@ -43,6 +46,11 @@ namespace {
 using namespace mlir;  // NOLINT
 
 using mlir::lmhlo::CustomCallOp;
+using mlir::lmhlo::InfeedOp;
+using mlir::lmhlo::OutfeedOp;
+
+using xla_cpu::PartitionIdOp;
+using xla_cpu::ReplicaIdOp;
 
 using xla::runtime::AppendCustomCallAttrs;
 using xla::runtime::CustomCallDeclarations;
@@ -56,6 +64,53 @@ class ConvertLmhloToCpuRuntimePass
     registry.insert<func::FuncDialect, memref::MemRefDialect>();
   }
 };
+
+// Copies memrefs with non-identity layouts (e.g. results of memref.subviews)
+// to newly allocated memrefs, ensuring all outputs have flat layouts.
+// TODO(jreiffers): If the memref just as an offset, but its layout is otherwise
+// default, the copy is overkill.
+SmallVector<Value> EnsureFlatMemrefs(ValueRange values,
+                                     ImplicitLocOpBuilder& b) {
+  SmallVector<Value> out;
+  for (Value value : values) {
+    auto ty = value.getType().dyn_cast<MemRefType>();
+    if (!ty || ty.getLayout().isIdentity()) {
+      out.push_back(value);
+    } else {
+      auto default_layout_ty =
+          MemRefType::get(ty.getShape(), ty.getElementType());
+      auto alloc =
+          out.emplace_back(b.create<memref::AllocOp>(default_layout_ty));
+      b.create<memref::CopyOp>(value, alloc);
+    }
+  }
+  return out;
+}
+
+// Replaces a DPS style collective op with a custom call.
+func::CallOp CreateCallForDpsCollectiveOp(Operation* op,
+                                          CustomCallDeclarations& custom_calls,
+                                          StringRef call_target,
+                                          PatternRewriter& rewriter) {
+  ImplicitLocOpBuilder b(op->getLoc(), rewriter);
+  b.setInsertionPoint(op);
+
+  // Subview ops result in strided Memrefs. The runtime can't deal with them,
+  // so we copy everything that doesn't have the default layout.
+  SmallVector<Value> new_operands = EnsureFlatMemrefs(op->getOperands(), b);
+
+  func::FuncOp callee = custom_calls.GetOrCreate(
+      b, call_target, TypeRange(ValueRange(new_operands)), TypeRange());
+  auto call =
+      b.create<func::CallOp>(callee.getName(), TypeRange(), new_operands);
+
+  // Copy attributes from original op.
+  for (auto& attr : op->getAttrs()) {
+    call->setAttr(attr.getName(), attr.getValue());
+  }
+  rewriter.eraseOp(op);
+  return call;
+}
 
 //===----------------------------------------------------------------------===//
 
@@ -108,13 +163,23 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
         operands[num_args + indexed.value()] = op.getOutput()[indexed.index()];
     }
 
+    // TODO(jreiffers): This will break if an output has a non-default layout.
+    operands = EnsureFlatMemrefs(operands, b);
     // Create a custom call function declaration.
     func::FuncOp callee = custom_calls_.GetOrCreate(
         b, kCustomCallTarget, TypeRange(ValueRange(operands)), TypeRange());
 
+    // The ABI is different depending on whether the original op was outputting
+    // a tuple or not. For multiple outputs this is trivial but for a single
+    // output we rely on the xla_shape attribute to distinguish the ABIs.
+    bool output_tuple = num_results > 1;
+    if (auto xla_shape = op->getAttrOfType<StringAttr>("xla_shape"))
+      output_tuple = ParseShape(xla_shape.strref())->IsTuple();
+
     llvm::SmallVector<NamedAttribute> custom_call_attrs = {
         {b.getStringAttr("num_results"),
          b.getI32IntegerAttr(static_cast<int32_t>(num_results))},
+        {b.getStringAttr("output_tuple"), b.getBoolAttr(output_tuple)},
         {b.getStringAttr("api_version"), op.getApiVersionAttr()},
         {b.getStringAttr("call_target_name"), op.getCallTargetNameAttr()}};
 
@@ -132,6 +197,195 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
 
 //===----------------------------------------------------------------------===//
 
+LogicalResult LowerXfeed(Operation* op, PatternRewriter& rewriter,
+                         StringRef call_target,
+                         CustomCallDeclarations& custom_calls) {
+  ImplicitLocOpBuilder b(op->getLoc(), rewriter);
+
+  // By default all operands are passed to the custom call handler.
+  llvm::SmallVector<Value> operands = op->getOperands();
+
+  // Create a custom call function declaration.
+  func::FuncOp callee = custom_calls.GetOrCreate(
+      b, call_target, TypeRange(ValueRange(operands)), TypeRange());
+
+  // Call the runtime intrinsic with the original operands.
+  rewriter.replaceOpWithNewOp<func::CallOp>(op, callee.getName(), TypeRange(),
+                                            operands);
+
+  return success();
+}
+
+class InfeedOpLowering : public OpRewritePattern<InfeedOp> {
+ private:
+  static constexpr const char kCallTarget[] = "xla.cpu.infeed";
+
+ public:
+  InfeedOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(InfeedOp op,
+                                PatternRewriter& rewriter) const override {
+    return LowerXfeed(op, rewriter, kCallTarget, custom_calls_);
+  }
+
+ private:
+  CustomCallDeclarations& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
+class OutfeedOpLowering : public OpRewritePattern<OutfeedOp> {
+ private:
+  static constexpr const char kCallTarget[] = "xla.cpu.outfeed";
+
+ public:
+  OutfeedOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(OutfeedOp op,
+                                PatternRewriter& rewriter) const override {
+    return LowerXfeed(op, rewriter, kCallTarget, custom_calls_);
+  }
+
+ private:
+  CustomCallDeclarations& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
+template <typename IdOp>
+class IdOpLowering : public OpRewritePattern<IdOp> {
+ public:
+  IdOpLowering(MLIRContext* ctx, llvm::StringRef call_target,
+               CustomCallDeclarations& custom_calls)
+      : OpRewritePattern<IdOp>(ctx),
+        call_target_(call_target),
+        custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(IdOp op,
+                                PatternRewriter& rewriter) const override {
+    ImplicitLocOpBuilder b(op->getLoc(), rewriter);
+
+    // Create a custom call function declaration.
+    func::FuncOp callee = custom_calls_.GetOrCreate(
+        b, call_target_, TypeRange(), TypeRange(rewriter.getI32Type()));
+
+    rewriter.replaceOpWithNewOp<func::CallOp>(op, callee.getName(),
+                                              TypeRange(rewriter.getI32Type()));
+    return success();
+  }
+
+ private:
+  llvm::StringRef call_target_;
+  CustomCallDeclarations& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
+class AllReduceLowering : public OpRewritePattern<xla_cpu::AllReduceOp> {
+ public:
+  AllReduceLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(xla_cpu::AllReduceOp op,
+                                PatternRewriter& rewriter) const override {
+    if (!op.getOperandTypes().front().isa<MemRefType>()) {
+      return failure();
+    }
+
+    auto call = CreateCallForDpsCollectiveOp(op.getOperation(), custom_calls_,
+                                             kCallTarget, rewriter);
+
+    // Set default attributes.
+    if (!call->hasAttr("use_global_device_ids")) {
+      call->setAttr("use_global_device_ids", rewriter.getI32IntegerAttr(0));
+    }
+    if (!call->hasAttr("op_id")) {
+      call->setAttr("op_id", rewriter.getI64IntegerAttr(0));
+    }
+
+    return success();
+  }
+
+ private:
+  static constexpr const char kCallTarget[] = "xla.cpu.all_reduce";
+
+  CustomCallDeclarations& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
+class AllToAllLowering : public OpRewritePattern<xla_cpu::AllToAllOp> {
+ public:
+  AllToAllLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(xla_cpu::AllToAllOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getSplitDimensionAttr()) {
+      op.emitOpError("ArrayAllToAll is not supported");
+      return failure();
+    }
+    CreateCallForDpsCollectiveOp(op.getOperation(), custom_calls_, kCallTarget,
+                                 rewriter);
+    return success();
+  }
+
+ private:
+  static constexpr const char kCallTarget[] = "xla.cpu.tuple_all_to_all";
+
+  CustomCallDeclarations& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
+class CollectivePermuteLowering
+    : public OpRewritePattern<xla_cpu::CollectivePermuteOp> {
+ public:
+  CollectivePermuteLowering(MLIRContext* ctx,
+                            CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(xla_cpu::CollectivePermuteOp op,
+                                PatternRewriter& rewriter) const override {
+    if (!op.getOperandTypes().front().isa<MemRefType>()) {
+      return failure();
+    }
+
+    CreateCallForDpsCollectiveOp(op.getOperation(), custom_calls_, kCallTarget,
+                                 rewriter);
+    return success();
+  }
+
+ private:
+  static constexpr const char kCallTarget[] = "xla.cpu.collective_permute";
+
+  CustomCallDeclarations& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
+class FftLowering : public OpRewritePattern<xla_cpu::FftOp> {
+ public:
+  FftLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(xla_cpu::FftOp op,
+                                PatternRewriter& rewriter) const override {
+    CreateCallForDpsCollectiveOp(op.getOperation(), custom_calls_, kCallTarget,
+                                 rewriter);
+    return success();
+  }
+
+ private:
+  static constexpr const char kCallTarget[] = "xla.cpu.fft";
+
+  CustomCallDeclarations& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
 void ConvertLmhloToCpuRuntimePass::runOnOperation() {
   ModuleOp module = getOperation();
   MLIRContext* ctx = module.getContext();
@@ -142,7 +396,13 @@ void ConvertLmhloToCpuRuntimePass::runOnOperation() {
 
   // Convert lmhlo operations to XLA cpu runtime custom calls.
   RewritePatternSet patterns(ctx);
-  patterns.insert<CustomCallOpLowering>(ctx, custom_calls);
+  patterns.insert<InfeedOpLowering, OutfeedOpLowering, CustomCallOpLowering,
+                  AllReduceLowering, AllToAllLowering,
+                  CollectivePermuteLowering, FftLowering>(ctx, custom_calls);
+  patterns.insert<IdOpLowering<PartitionIdOp>>(ctx, "xla.cpu.partition_id",
+                                               custom_calls);
+  patterns.insert<IdOpLowering<ReplicaIdOp>>(ctx, "xla.cpu.replica_id",
+                                             custom_calls);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();

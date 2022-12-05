@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 /// \file
+///
 /// Deserialization infrastructure for tflite. Provides functionality
 /// to go from a serialized tflite model in flatbuffer format to an
 /// in-memory representation of the model.
@@ -31,10 +32,10 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/api/verifier.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/stderr_reporter.h"

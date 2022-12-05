@@ -70,8 +70,10 @@ add_mlir_library(MLIRHLOGPUTransforms
   MLIRGPUOps
   MLIRHLOAnalysis
   MLIRIR
+  MLIRMemRefTransforms
   MLIRPass
   MLIRShapeDialect
   MLIRSCFTransforms
   MLIRTransforms
+  MLIRVectorTransforms
 )

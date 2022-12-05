@@ -35,6 +35,12 @@ def is_initialized() -> bool:
   return bool(_INITIALIZED_ACCELERATOR_SYSTEM_TYPE)
 
 
+def set_initialized(value):
+  """Sets if accelerator system has been initialized."""
+  global _INITIALIZED_ACCELERATOR_SYSTEM_TYPE
+  _INITIALIZED_ACCELERATOR_SYSTEM_TYPE = value
+
+
 def initialize_multi_client_cluster(job_name: str,
                                     dtensor_jobs: List[str],
                                     client_id: int,
@@ -211,7 +217,7 @@ def initialize_accelerator_system(
       )._collective_use_nccl_communication = config.gpu_use_nccl_communication(
       )
 
-  if device_type == "TPU":
+  if device_type == "TPU" and not config.backend_is_pw():
     tpu_util.initialize_tpu_system()
 
   _INITIALIZED_ACCELERATOR_SYSTEM_TYPE = device_type
@@ -240,7 +246,7 @@ def shutdown_accelerator_system() -> None:
         "Shutting down accelerator system under multi-client mode is "
         "not supported.")
 
-  if device_type == "TPU":
+  if device_type == "TPU" and not config.backend_is_pw():
     tpu_util.shutdown_tpu_system()
 
   # reset TF context to stop gRPC servers.

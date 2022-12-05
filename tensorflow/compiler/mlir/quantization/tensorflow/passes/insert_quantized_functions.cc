@@ -42,9 +42,9 @@ class InsertQuantizedFunctionsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertQuantizedFunctionsPass)
 
-  explicit InsertQuantizedFunctionsPass() {}
+  explicit InsertQuantizedFunctionsPass() = default;
   explicit InsertQuantizedFunctionsPass(QuantizationMethod quantization_method,
-                                        const OpSet& op_set) {
+                                        OpSet op_set) {
     quantization_method_ = quantization_method;
     op_set_ = op_set;
   }
@@ -170,6 +170,15 @@ void InsertQuantizedFunctionsPass::runOnOperation() {
     func::FuncOp new_func = func.clone();
     new_func.setPrivate();
     symbol_table.insert(new_func);
+
+    // For consistency, we require all quantized composite function to have
+    // the "tf_quant.quantized_ops" attribute.
+    if (!new_func.getSymName().starts_with("quantized_")) continue;
+    if (!new_func->hasAttrOfType<ArrayAttr>("tf_quant.quantized_ops")) {
+      new_func->emitError() << "Missing \"tf_quant.quantized_ops\" "
+                               "attribute in the quantized composite function.";
+      signalPassFailure();
+    }
   }
 }
 
@@ -177,9 +186,9 @@ void InsertQuantizedFunctionsPass::runOnOperation() {
 
 // Creates an instance of the pass for inserting quantized functions.
 std::unique_ptr<OperationPass<ModuleOp>> CreateInsertQuantizedFunctionsPass(
-    QuantizationMethod quantization_method, const OpSet& op_set) {
+    QuantizationMethod quantization_method, OpSet target_opset) {
   return std::make_unique<InsertQuantizedFunctionsPass>(quantization_method,
-                                                        op_set);
+                                                        target_opset);
 }
 
 }  // namespace quant

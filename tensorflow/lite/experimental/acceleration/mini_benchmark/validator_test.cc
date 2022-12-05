@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration.pb.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/proto_to_flatbuffer.h"
@@ -42,6 +41,9 @@ namespace acceleration {
 namespace {
 
 using flatbuffers::FlatBufferBuilder;
+
+// The output tensor byte size from one input.
+constexpr int kOutputTensorSize = 1001;
 
 class ValidatorTest : public ::testing::Test {
  protected:
@@ -74,13 +76,6 @@ class ValidatorTest : public ::testing::Test {
 
 TEST_F(ValidatorTest, HappyPathOnCpuWithEmbeddedValidation) {
   ASSERT_EQ(validation_model_loader_->Init(), kMinibenchmarkSuccess);
-  int model_output_size = validation_model_loader_->GetModel()
-                              ->GetModel()
-                              ->subgraphs()
-                              ->Get(0)
-                              ->outputs()
-                              ->size();
-
   Validator validator(std::move(validation_model_loader_),
                       default_compute_settings_);
   Validator::Results results;
@@ -88,7 +83,7 @@ TEST_F(ValidatorTest, HappyPathOnCpuWithEmbeddedValidation) {
   EXPECT_TRUE(results.ok);
   EXPECT_GE(results.metrics.size(), 0);
   EXPECT_EQ(results.delegate_error, 0);
-  EXPECT_EQ(results.actual_inference_output.size(), model_output_size);
+  EXPECT_TRUE(results.actual_inference_output.empty());
 }
 
 TEST_F(ValidatorTest, HappyPathOnCpuWithCustomValidation) {
@@ -130,6 +125,8 @@ TEST_F(ValidatorTest, HappyPathOnCpuWithCustomValidation) {
   EXPECT_EQ(results.metrics.size(), 0);
   EXPECT_EQ(results.delegate_error, 0);
   EXPECT_EQ(results.actual_inference_output.size(), model_output_size);
+  EXPECT_EQ(results.actual_inference_output[0].size(),
+            batch_size * kOutputTensorSize);
 }
 
 TEST_F(ValidatorTest, DelegateNotSupported) {

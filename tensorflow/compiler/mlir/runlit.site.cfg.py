@@ -44,6 +44,7 @@ mlir_tf_tools_dirs = [
     'tensorflow/compiler/xla/mlir_hlo',
     'tensorflow/compiler/xla/mlir_hlo/tosa',
     'tensorflow/compiler/xla/translate',
+    'tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla',
     'tensorflow/compiler/mlir/lite',
     'tensorflow/compiler/mlir/lite/experimental/tac',
     'tensorflow/compiler/mlir/quantization/tensorflow',

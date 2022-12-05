@@ -42,25 +42,27 @@ StatusOr<std::unique_ptr<HloLiveRange>> HloLiveRange::Run(
 }
 
 void HloLiveRange::NormalizeAliasedBuffers() {
-  absl::flat_hash_map<HloBuffer::Id, std::vector<TimeBound*>>
+  absl::flat_hash_map<HloBuffer::Id,
+                      std::vector<std::pair<TimeBound*, HloValue::Id>>>
       live_ranges_by_buffer;
   for (auto& entry : buffer_live_ranges_) {
     const HloValue& value = *entry.first;
     const HloBuffer& buffer = alias_analysis_.GetBufferContainingValue(value);
-    live_ranges_by_buffer[buffer.id()].push_back(&entry.second);
+    live_ranges_by_buffer[buffer.id()].push_back({&entry.second, value.id()});
   }
 
   for (auto& entry : live_ranges_by_buffer) {
-    std::vector<TimeBound*>& aliased_live_ranges = entry.second;
-    absl::c_sort(aliased_live_ranges,
-                 [](const TimeBound* a, const TimeBound* b) {
-                   return std::forward_as_tuple(a->start, a->end) <
-                          std::forward_as_tuple(b->start, b->end);
-                 });
+    auto& aliased_live_ranges = entry.second;
+    absl::c_sort(
+        aliased_live_ranges, [](std::pair<const TimeBound*, HloValue::Id> a,
+                                std::pair<const TimeBound*, HloValue::Id> b) {
+          return std::forward_as_tuple(a.first->start, a.first->end, a.second) <
+                 std::forward_as_tuple(b.first->start, b.first->end, b.second);
+        });
 
     for (int64_t i = 0; i + 1 < aliased_live_ranges.size(); ++i) {
-      TimeBound& live_range1 = *aliased_live_ranges[i];
-      TimeBound& live_range2 = *aliased_live_ranges[i + 1];
+      TimeBound& live_range1 = *aliased_live_ranges[i].first;
+      TimeBound& live_range2 = *aliased_live_ranges[i + 1].first;
       live_range2.end = std::max(live_range1.end, live_range2.end);
       live_range1.end = std::min(live_range1.end, live_range2.start);
     }

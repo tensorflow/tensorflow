@@ -116,7 +116,7 @@ class TflToMhloPass
               auto conf_attr = mlir::mhlo::PrecisionAttr::get(
                   builder->getContext(),
                   mlir::mhlo::symbolizePrecision(vector[i].AsString().str())
-                      .getValue());
+                      .value());
               precision_attrs.push_back(conf_attr);
             }
             auto named_attr = builder->getNamedAttr(

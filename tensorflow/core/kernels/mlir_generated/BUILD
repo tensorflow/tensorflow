@@ -18,6 +18,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/core/kernels:__subpackages__",
     ],
@@ -1007,6 +1008,9 @@ gpu_kernel_library(
         "i8",
         "ui32",
         "ui64",
+        "f16",
+        "f32",
+        "f64",
     ],
     op = "truncate_div",
     tile_size = "1024",

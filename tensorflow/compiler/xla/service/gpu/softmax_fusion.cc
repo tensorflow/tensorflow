@@ -18,17 +18,19 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <numeric>
+#include <queue>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -37,6 +39,23 @@ namespace xla::gpu {
 
 namespace {
 namespace m = ::xla::match;
+
+bool HasDefaultLayout(const Shape& shape) {
+  return shape.has_layout() &&
+         LayoutUtil::IsMonotonicWithDim0Major(shape.layout());
+}
+
+bool ShapeInvolvesComplexNumbers(const Shape& shape) {
+  if (shape.IsArray() &&
+      (shape.element_type() == C64 || shape.element_type() == C128)) {
+    return true;
+  } else if (shape.IsTuple()) {
+    for (auto& tuple_shape : shape.tuple_shapes())
+      if (ShapeInvolvesComplexNumbers(tuple_shape)) return true;
+  }
+
+  return false;
+}
 
 bool MatchesSoftmaxPattern(HloInstruction* instr) {
   // Match the following pattern:
@@ -51,47 +70,75 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
   //
   // There should not be other users of these ops than indicated by the edges.
   // Between the root and the producer, there can be some optional unary
-  // elementwise ops. Also, initially we only support major-to-minor layouts.
+  // elementwise ops. The operand of the broadcast can be a reshape that removes
+  // 1-sized dimensions. Around the reduce can be a convert op. Also, initially
+  // we only support major-to-minor layouts.
+  //
+  // If any op between the producer and the root (both included) involves arrays
+  // of complex numbers, the pattern does not match.
 
   HloInstruction* root;
   HloInstruction* broadcast;
-  HloInstruction* reduce_or_reshape;
-  HloInstruction* reduce;
+  HloInstruction* reduce_or_unary;
   if (!Match(instr,
              m::Op(&root)
-                 .WithOperand(
-                     1, m::Broadcast(&broadcast,
-                                     m::Op(&reduce_or_reshape).WithOneUse())
-                            .WithOneUse())
+                 .WithOperand(1,
+                              m::Broadcast(&broadcast,
+                                           m::Op(&reduce_or_unary).WithOneUse())
+                                  .WithOneUse())
                  // The root operation should be an elementwise binary op of
                  // rank 2.
-                 // TODO(frgossen): Relax the rank 2 constraint when the
-                 // pipeline can handle it.
                  .WithPredicate([](const HloInstruction* instr) {
+                   if (!instr->shape().IsArray()) return false;
+
+                   int64_t rank = instr->shape().rank();
                    return instr->IsElementwiseBinary() &&
-                          instr->shape().rank() == 2 &&
-                          // Currently crashes the pipeline.
-                          instr->shape().dimensions(0) != 1;
+                          // If the product of the first dimensions is 1, it
+                          // currently crashes the pipeline. Also, we expect
+                          // that the performance is not so good if the
+                          // reduction dimension is big compared to the other
+                          // dimensions.
+                          Product(absl::Span<const int64_t>(
+                                      instr->shape().dimensions())
+                                      .first(rank - 1)) >
+                              instr->shape().dimensions(rank - 1);
                  }))) {
     return false;
   }
-  reduce = reduce_or_reshape;
-  if (reduce_or_reshape->opcode() == HloOpcode::kReshape) {
+  bool has_major_to_minor_layout = HasDefaultLayout(root->shape()) &&
+                                   HasDefaultLayout(reduce_or_unary->shape()) &&
+                                   HasDefaultLayout(broadcast->shape());
+  if (reduce_or_unary->opcode() == HloOpcode::kReshape) {
     // Check that the reshape only removes 1-sized dimensions.
     auto descr =
-        reduce_or_reshape->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
+        reduce_or_unary->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
     if (!descr.has_value() || !descr->inserted_dimensions.empty()) {
       return false;
     }
-    reduce = reduce_or_reshape->mutable_operand(0);
-    if (reduce->user_count() != 1) {
+    reduce_or_unary = reduce_or_unary->mutable_operand(0);
+    if (reduce_or_unary->user_count() != 1) {
       return false;
     }
+    if (!HasDefaultLayout(reduce_or_unary->shape())) {
+      has_major_to_minor_layout = false;
+    }
   }
+  bool has_convert_around_reduce = false;
+  if (reduce_or_unary->opcode() == HloOpcode::kConvert) {
+    has_convert_around_reduce = true;
+    reduce_or_unary = reduce_or_unary->mutable_operand(0);
+    if (reduce_or_unary->user_count() != 1) {
+      return false;
+    }
+    if (!HasDefaultLayout(reduce_or_unary->shape())) {
+      has_major_to_minor_layout = false;
+    }
+  }
+
   // The reduction should reduce the last dimension of the operand shape.
-  if (reduce->opcode() != HloOpcode::kReduce ||
-      reduce->dimensions().size() != 1 ||
-      reduce->dimensions()[0] != reduce->shape().rank()) {
+  if (reduce_or_unary->opcode() != HloOpcode::kReduce ||
+      reduce_or_unary->dimensions().size() != 1 ||
+      reduce_or_unary->dimensions()[0] != reduce_or_unary->shape().rank()) {
     return false;
   }
 
@@ -120,31 +167,46 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
     }
   }
 
-  HloInstruction* producer = reduce->mutable_operand(0);
+  HloInstruction* producer = reduce_or_unary->mutable_operand(0);
+  if (has_convert_around_reduce && producer->opcode() == HloOpcode::kConvert) {
+    if (!HasDefaultLayout(producer->shape())) {
+      has_major_to_minor_layout = false;
+    }
+    if (producer->user_count() != 1) {
+      return false;
+    }
+    producer = producer->mutable_operand(0);
+  }
+  if (!HasDefaultLayout(producer->shape())) {
+    has_major_to_minor_layout = false;
+  }
 
-  bool has_major_to_minor_layout =
-      LayoutUtil::IsMonotonicWithDim0Major(root->shape().layout()) &&
-      LayoutUtil::IsMonotonicWithDim0Major(
-          reduce_or_reshape->shape().layout()) &&
-      LayoutUtil::IsMonotonicWithDim0Major(reduce->shape().layout()) &&
-      LayoutUtil::IsMonotonicWithDim0Major(broadcast->shape().layout()) &&
-      LayoutUtil::IsMonotonicWithDim0Major(reduce->shape().layout()) &&
-      LayoutUtil::IsMonotonicWithDim0Major(producer->shape().layout());
+  if (ShapeInvolvesComplexNumbers(root->shape()) ||
+      ShapeInvolvesComplexNumbers(broadcast->shape()) ||
+      ShapeInvolvesComplexNumbers(reduce_or_unary->shape()) ||
+      ShapeInvolvesComplexNumbers(producer->shape())) {
+    return false;
+  }
 
-  // Check whether the operand of the reduce is a direct or indirect operand of
-  // 'root'.
-  const HloInstruction* maybe_common_operand = reduce->operand(0);
+  for (HloInstruction* operand : producer->operands()) {
+    if (ShapeInvolvesComplexNumbers(operand->shape())) {
+      return false;
+    }
+  }
+
+  // Check whether 'producer' is a direct or indirect operand of 'root'.
+  const HloInstruction* maybe_common_operand = producer;
   const HloInstruction* current_operand = root->operand(0);
   while (current_operand != maybe_common_operand) {
     // Any intermediate operand between 'root' and 'maybe_common_operand' needs
     // to be an unary elementwise op with a single user.
     if (current_operand->operand_count() != 1 ||
         !current_operand->IsElementwise() ||
-        current_operand->user_count() > 1) {
+        current_operand->user_count() > 1 ||
+        ShapeInvolvesComplexNumbers(current_operand->shape())) {
       return false;
     }
-    if (!LayoutUtil::IsMonotonicWithDim0Major(
-            current_operand->shape().layout())) {
+    if (!HasDefaultLayout(current_operand->shape())) {
       has_major_to_minor_layout = false;
     }
     current_operand = current_operand->operand(0);
@@ -161,11 +223,49 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
 HloInstruction* SoftmaxProducer(HloInstruction* softmax_root) {
   // The softmax producer is found by going up the chain
   // -> broadcast -> (reshape) -> reduce -> producer
-  auto reduce_or_reshape = softmax_root->mutable_operand(1)->mutable_operand(0);
-  if (reduce_or_reshape->opcode() == HloOpcode::kReduce) {
-    return reduce_or_reshape->mutable_operand(0);
+  auto reduce_or_unary = softmax_root->mutable_operand(1)->mutable_operand(0);
+  bool has_convert_around_reduce = false;
+  while (reduce_or_unary->opcode() != HloOpcode::kReduce) {
+    if (reduce_or_unary->opcode() == HloOpcode::kConvert) {
+      has_convert_around_reduce = true;
+    }
+    reduce_or_unary = reduce_or_unary->mutable_operand(0);
   }
-  return reduce_or_reshape->mutable_operand(0)->mutable_operand(0);
+  HloInstruction* producer = reduce_or_unary->mutable_operand(0);
+  if (has_convert_around_reduce && producer->opcode() == HloOpcode::kConvert) {
+    producer = producer->mutable_operand(0);
+  }
+  return producer;
+}
+
+bool IsSupportedBroadcast(HloInstruction* hlo) {
+  if (hlo->opcode() != HloOpcode::kBroadcast) {
+    return false;
+  }
+  int64_t rank = hlo->shape().rank();
+  if (rank <= 2) {
+    return true;
+  }
+  // TODO(akuegel): Remove this logic once we do not rely on collapsing shapes
+  // to 2D.
+  // For rank > 2, we need to collapse the shape to 2D. This only works if the
+  // dimensions that are to be collapsed have the same state regarding whether
+  // they are broadcasted or not.
+  if (!hlo->dimensions().empty()) {
+    // Make sure that the broadcast dimensions are sorted.
+    if (!std::is_sorted(hlo->dimensions().begin(), hlo->dimensions().end())) {
+      return false;
+    }
+    // If there is a broadcast dimension in the part of dimensions that are
+    // collapsed into 1 dimension, then all those rank - 1 dimensions need to be
+    // broadcast dimensions.
+    if (hlo->dimensions(0) < rank - 1 &&
+        (hlo->dimensions().size() < rank - 1 ||
+         hlo->dimensions()[rank - 1] != rank - 1)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 Status ReplaceSoftmaxWithCustomCall(HloInstruction* root,
@@ -173,8 +273,52 @@ Status ReplaceSoftmaxWithCustomCall(HloInstruction* root,
   absl::flat_hash_map<const HloInstruction*, HloInstruction*>
       old_to_new_mapping;
   auto builder = HloComputation::Builder("softmax_computation");
-  old_to_new_mapping[producer] = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, producer->shape(), "parameter_0"));
+  std::vector<HloInstruction*> custom_call_operands;
+  absl::flat_hash_set<HloInstruction*> visited;
+  std::queue<HloInstruction*> worklist;
+  worklist.push(producer);
+  visited.insert(producer);
+  int64_t operand_idx = 0;
+  // Fuse all elementwise and broadcast ops into the softmax fusion computation,
+  // provided each of them (except the softmax root) has exactly one user. We do
+  // this by searching for unfusable ops which become the parameters of the
+  // computation. Everything that was fused will be reconstructed in the new
+  // computation by remapping the ops to their new operands.
+  while (!worklist.empty()) {
+    HloInstruction* current = worklist.front();
+    worklist.pop();
+    // TODO(akuegel): Currently our MLIR lowering doesn't work if we fuse
+    // constants in. This results in an error like:
+    // 'memref.get_global' op '__constant_150xf32' does not reference a valid
+    // global memref
+    // TODO(bchetioui): We currently do not have reliable support for complex
+    // numbers. Since the producer is only matched if it does not involve
+    // complex numbers, all that is left is to check the operands of the
+    // potentially fuseable preceding operations.
+    if ((current->user_count() == 1 ||
+         (current == producer && current->user_count() == 2)) &&
+        ((current->IsElementwise() &&
+          current->opcode() != HloOpcode::kConstant) ||
+         IsSupportedBroadcast(current)) &&
+        llvm::none_of(current->operands(), [](HloInstruction* operand) {
+          return ShapeInvolvesComplexNumbers(operand->shape());
+        })) {
+      for (HloInstruction* operand : current->operands()) {
+        if (!visited.contains(operand)) {
+          visited.insert(operand);
+          worklist.push(operand);
+        }
+      }
+    } else {
+      // The op is unfusable. Create a parameter for the softmax computation.
+      custom_call_operands.push_back(current);
+      old_to_new_mapping[current] =
+          builder.AddInstruction(HloInstruction::CreateParameter(
+              operand_idx, current->shape(),
+              absl::StrCat("parameter_", operand_idx)));
+      ++operand_idx;
+    }
+  }
   std::function<void(const HloInstruction*)> create_computation =
       [&](const HloInstruction* instr) {
         if (old_to_new_mapping.contains(instr)) {
@@ -194,7 +338,8 @@ Status ReplaceSoftmaxWithCustomCall(HloInstruction* root,
                                                            /*is_entry=*/false);
   auto softmax_custom_call =
       root->parent()->AddInstruction(HloInstruction::CreateCustomCall(
-          root->shape(), {producer}, softmax_computation, kSoftmaxCallTarget));
+          root->shape(), custom_call_operands, softmax_computation,
+          kSoftmaxCallTarget));
   if (root->IsRoot()) {
     root->parent()->set_root_instruction(softmax_custom_call);
     TF_RETURN_IF_ERROR(
@@ -216,6 +361,9 @@ StatusOr<bool> SoftmaxFusion::Run(
       softmax_producer_to_root_mapping;
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
+    if (comp->IsCustomCallComputation()) {
+      continue;
+    }
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
       if (MatchesSoftmaxPattern(instr)) {
         softmax_roots.push_back(instr);
@@ -254,9 +402,16 @@ StatusOr<bool> SoftmaxFusion::Run(
           valid = false;
           break;
         }
+
+        const Shape* current_shape = &current->shape();
+        while (!current_shape->has_layout() &&
+               current_shape->tuple_shapes_size() == 1) {
+          current_shape = &current_shape->tuple_shapes(0);
+        }
+
         // Again, we only allow the default layout for any unary ops on the
         // path.
-        if (!LayoutUtil::IsMonotonicWithDim0Major(current->shape().layout())) {
+        if (!HasDefaultLayout(*current_shape)) {
           valid = false;
           break;
         }

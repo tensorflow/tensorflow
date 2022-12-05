@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Analysis/DataFlow/ConstantPropagationAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -111,6 +112,7 @@ void LocalizeVarHandlesPass::runOnOperation() {
 
   DataFlowSolver solver;
   solver.load<dataflow::DeadCodeAnalysis>();
+  solver.load<dataflow::SparseConstantPropagation>();
   solver.load<TF::ResourceDataflowAnalysis>();
   if (failed(solver.initializeAndRun(module))) return signalPassFailure();
 

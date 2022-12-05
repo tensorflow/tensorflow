@@ -1050,8 +1050,11 @@ Status AlgebraicSimplifierVisitor::HandleBitcast(HloInstruction* bitcast) {
   }
   HloInstruction* op;
   if (Match(bitcast, m::Bitcast(m::Bitcast(m::Op(&op))))) {
-    return ReplaceWithNewInstruction(
-        bitcast, HloInstruction::CreateBitcast(bitcast->shape(), op));
+    auto new_bitcast = HloInstruction::CreateBitcast(bitcast->shape(), op);
+    HloInstruction* new_bitcast_ptr = new_bitcast.get();
+    TF_RETURN_IF_ERROR(
+        ReplaceWithNewInstruction(bitcast, std::move(new_bitcast)));
+    bitcast = new_bitcast_ptr;
   }
   // All bitcasts can be eliminated (assuming layout constraints are satisfied).
   ReplaceInstructionIfCompatible(bitcast, bitcast->mutable_operand(0));
@@ -3676,24 +3679,7 @@ Status AlgebraicSimplifierVisitor::HandleCompare(HloInstruction* compare) {
   HloInstruction* lhs;
   HloInstruction* rhs;
   CHECK(Match(compare, m::Compare(m::Op(&lhs), m::Op(&rhs))));
-  HloInstruction *a, *b;
-  // Gt(Max(a,b),_) or Gt(Max(b,a),_)
-  if (Match(compare, m::Gt(m::Maximum(m::Op(&a), m::Op(&b)), m::Op(&rhs)))) {
-    // Gt(Max(a,b),b) -> Gt(a,b)
-    if (rhs == b) {
-      HloInstruction* new_compare =
-          compare->AddInstruction(HloInstruction::CreateCompare(
-              compare->shape(), a, b, compare->comparison_direction()));
-      return ReplaceInstruction(compare, new_compare);
-    } else if (rhs == a) {  // Gt(Max(a,b),a) -> Gt(b,a)
-      HloInstruction* new_compare =
-          compare->AddInstruction(HloInstruction::CreateCompare(
-              compare->shape(), b, a, compare->comparison_direction()));
-      return ReplaceInstruction(compare, new_compare);
-    } else {
-      return OkStatus();
-    }
-  }
+
   if (Cast<HloCompareInstruction>(compare)->type() ==
       Comparison::Type::kUnsigned) {
     // X u<  0 -> false

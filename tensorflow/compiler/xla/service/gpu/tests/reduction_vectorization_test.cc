@@ -43,9 +43,21 @@ class ReductionVectorizationNoOptTest : public GpuCodegenTest {
     debug_options.set_xla_disable_all_hlo_passes(true);
     return debug_options;
   }
+
+ public:
+  se::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
+  }
 };
 
 TEST_F(ReductionVectorizationNoOptTest, MultiOutputStore) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::PASCAL_)) {
+    GTEST_SKIP() << "Maxwell GPUs are less vectorized";
+  }
   const char* hlo_text = R"(
 HloModule MultiOutputStore
 

@@ -3,6 +3,7 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/python/profiler:__subpackages__"],
     licenses = ["notice"],
 )
@@ -84,23 +85,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/profiler:__subpackages__",
     ],
     deps = [
-        ":traceme_wrapper",
-        "@pybind11",
-    ],
-)
-
-cc_library(
-    name = "traceme_wrapper",
-    hdrs = ["traceme_wrapper.h"],
-    copts = tf_profiler_copts(),
-    visibility = [
-        "//tensorflow/compiler/xla/python:__pkg__",
-    ],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/lib:traceme_for_pybind",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
+        "//tensorflow/compiler/xla/python/profiler/internal:traceme_wrapper",
         "@pybind11",
     ],
 )

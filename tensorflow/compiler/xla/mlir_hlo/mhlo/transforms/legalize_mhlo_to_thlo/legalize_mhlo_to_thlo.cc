@@ -80,7 +80,7 @@ struct ConcatenateOpPattern : public OpConversionPattern<mhlo::ConcatenateOp> {
     SmallVector<Value> dynamicInitSizes;
     for (int64_t i = 0; i < rank; ++i) {
       // No need to materialize anything for static dimensions.
-      if (staticInitSizes[i] != ShapedType::kDynamicSize) {
+      if (staticInitSizes[i] != ShapedType::kDynamic) {
         continue;
       }
 
@@ -98,7 +98,7 @@ struct ConcatenateOpPattern : public OpConversionPattern<mhlo::ConcatenateOp> {
       Value dynamicSum;
       for (const Value operand : adaptor.getVal()) {
         auto operandTy = operand.getType().cast<RankedTensorType>();
-        if (operandTy.getDimSize(concatDim) == ShapedType::kDynamicSize) {
+        if (operandTy.getDimSize(concatDim) == ShapedType::kDynamic) {
           const Value dynamicSummand =
               rewriter.create<tensor::DimOp>(loc, operand, concatDim);
           if (dynamicSum) {
@@ -124,7 +124,8 @@ struct ConcatenateOpPattern : public OpConversionPattern<mhlo::ConcatenateOp> {
     auto emptyTensor = rewriter.create<tensor::EmptyOp>(
         loc, staticInitSizes, resultTy.getElementType(), dynamicInitSizes);
     rewriter.replaceOpWithNewOp<thlo::ConcatenateOp>(
-        op, resultTy, adaptor.getVal(), emptyTensor, concatDim);
+        op, resultTy, adaptor.getVal(), emptyTensor,
+        rewriter.getIndexAttr(concatDim));
     return success();
   }
 };
@@ -160,7 +161,7 @@ struct DynamicBroadcastInDimOpPattern
       dynamicDims.push_back(rewriter.create<tensor::ExtractOp>(
           loc, outputDimensions,
           ValueRange{rewriter.create<arith::ConstantIndexOp>(loc, i)}));
-      staticShapeInfo.push_back(ShapedType::kDynamicSize);
+      staticShapeInfo.push_back(ShapedType::kDynamic);
     }
     auto emptyTensor = rewriter.create<tensor::EmptyOp>(
         loc, staticShapeInfo, resultTy.getElementType(), dynamicDims);
@@ -205,7 +206,7 @@ struct GatherPattern : public OpConversionPattern<mhlo::GatherOp> {
         typeConverter->convertType(op.getType()).cast<RankedTensorType>();
     SmallVector<OpFoldResult> sizes;
     sizes.reserve(resultType.getRank());
-    if (resultType.getDimSize(0) != ShapedType::kDynamicSize) {
+    if (resultType.getDimSize(0) != ShapedType::kDynamic) {
       sizes.push_back(rewriter.getI64IntegerAttr(resultType.getDimSize(0)));
     } else {
       sizes.push_back(
@@ -332,7 +333,7 @@ struct SortPattern : public OpConversionPattern<mhlo::SortOp> {
 
     auto thloSort = rewriter.create<thlo::SortOp>(
         loc, resultTypes, adaptor.getInputs(), outputs,
-        rewriter.getI64IntegerAttr(dimension), rewriter.getBoolAttr(isStable));
+        rewriter.getIndexAttr(dimension), rewriter.getBoolAttr(isStable));
 
     Region& region = thloSort.getComparator();
     rewriter.inlineRegionBefore(op.getComparator(), region, region.end());

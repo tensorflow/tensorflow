@@ -19,6 +19,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+// clang-format off
+// Must be included first
+#include "tensorflow/tsl/python/lib/core/numpy.h"  //NOLINT
+// clang-format on
+
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -30,7 +35,6 @@ limitations under the License.
 #include "pybind11/pytypes.h"
 #include "pybind11/stl_bind.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/pjrt/cpu_device.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/distributed.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
@@ -53,7 +57,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/mlir.h"
-#include "tensorflow/compiler/xla/python/numpy.h"
 #include "tensorflow/compiler/xla/python/ops.h"
 #include "tensorflow/compiler/xla/python/outfeed_receiver_py.h"
 #include "tensorflow/compiler/xla/python/pjit.h"
@@ -97,7 +100,7 @@ bool IsOptimizedBuild() {
 }  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
-  ImportNumpy();
+  tsl::ImportNumpy();
   CHECK(tensorflow::RegisterNumpyBfloat16());
 
   // Exceptions
@@ -283,15 +286,6 @@ PYBIND11_MODULE(xla_extension, m) {
            py::arg("has_side_effects") = false);
 
   m.def(
-      "get_cpu_client",
-      [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
-        py::gil_scoped_release gil_release;
-        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
-                            GetCpuClient(asynchronous));
-        return std::make_shared<PyClient>(std::move(client));
-      },
-      py::arg("asynchronous") = true);
-  m.def(
       "get_tfrt_cpu_client",
       [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
         py::gil_scoped_release gil_release;
@@ -366,7 +360,7 @@ PYBIND11_MODULE(xla_extension, m) {
         []() -> StatusOr<std::shared_ptr<PyClient>> {
           py::gil_scoped_release gil_release;
           TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> c_api_client,
-                              GetCApiClient());
+                              GetCApiClient("TPU"));
           return std::make_shared<PyClient>(std::move(c_api_client));
         });
 #endif  // XLA_PYTHON_ENABLE_TPU
@@ -449,6 +443,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("get_parameter_shardings",
            &PyLoadedExecutable::GetParameterShardings)
       .def("keep_alive", &PyLoadedExecutable::KeepAlive)
+      .def("compile_options",
+           [](const PyLoadedExecutable& self) {
+             return self.pjrt_executable().GetCompileOptions();
+           })
       .def_property_readonly("traceback", &PyLoadedExecutable::traceback)
       .def_property_readonly("fingerprint",
                              [](PyLoadedExecutable* exec) -> py::object {
@@ -648,7 +646,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("get_output_shardings", &PjRtExecutable::GetOutputShardings)
       .def("get_parameter_shardings", &PjRtExecutable::GetParameterShardings)
       .def("get_compiled_memory_stats", &PjRtExecutable::GetCompiledMemoryStats)
-      .def("serialize", &PjRtExecutable::SerializeExecutable);
+      .def("compile_options", &PjRtExecutable::GetCompileOptions)
+      .def("serialize", [](const PjRtExecutable& exec) -> py::bytes {
+        return ValueOrThrow(exec.SerializeExecutable());
+      });
 
   m.def(
       "compile",

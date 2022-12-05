@@ -255,10 +255,12 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
   };
 
   add_pass(CreateFunctionalToExecutorDialectConversionPass());
-  add_pass(TFDevice::CreateReplicateToIslandPass());
+  add_pass(TFDevice::CreateReplicateToIslandPass(/*legacy_graph_export=*/true));
   add_pass(TFDevice::CreateReplicaIDToDeviceOrdinalPass());
-  add_pass(TFDevice::CreateParallelExecuteToIslandsPass());
-  add_pass(TFDevice::CreateLaunchToDeviceAttributePass());
+  add_pass(TFDevice::CreateParallelExecuteToIslandsPass(
+      /*legacy_graph_export=*/true));
+  add_pass(TFDevice::CreateLaunchToDeviceAttributePass(
+      /*legacy_graph_export=*/true));
   pm.addNestedPass<func::FuncOp>(TFTPU::CreateTPUDevicePropagationPass());
   pm.addPass(createSymbolDCEPass());
   if (tensorflow::GetMlirCommonFlags()
@@ -328,9 +330,9 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   pm.addPass(TF::CreateTFShapeInferencePass());
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
   pm.addPass(TFDevice::CreateResourceOpLiftingPass());
-  // Inline the StatefulPartitionedCallOp op based in the parent region.
-  pm.addPass(TFDevice::CreateXlaInlineDeviceOpsPass());
   pm.addPass(TFDevice::CreateXlaRewritePass());
+  // Inline the cluster ops.
+  pm.addPass(TFDevice::CreateXlaInlineDeviceOpsPass());
   // Re-run the canonicalizer pass as some cleanup during resource op lifting
   // pass opens up some opportunities for canonicalization of cluster ops.
   // Specifically, we want to eliminate pass through results from the cluster

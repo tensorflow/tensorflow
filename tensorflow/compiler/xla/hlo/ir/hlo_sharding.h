@@ -249,6 +249,12 @@ class HloSharding {
   // having this object sharding.
   StatusOr<HloSharding> GetTupleSharding(const Shape& shape) const;
 
+  // If the shape is tuple and the current sharding is not a tuple, attempt to
+  // construct a sharding that is compatible with the shape by replicating the
+  // current sharding across all tuple elements. Note that the returned
+  // sharding is not guaranteed to be compatible with the input shape.
+  HloSharding NormalizeTupleSharding(const Shape& shape) const;
+
   // Extracts the sharding that is common within the current sharding.
   // If the current sharding is not a tuple sharding, the current sharding will
   // be returned. If it is a tuple, and all the tuple elements are common, the

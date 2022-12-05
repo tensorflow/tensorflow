@@ -4722,7 +4722,7 @@ class PngTest(test_util.TensorFlowTestCase):
 
       # Smooth ramps compress well, but not too well
       self.assertGreaterEqual(len(png0), 400)
-      self.assertLessEqual(len(png0), 750)
+      self.assertLessEqual(len(png0), 1150)
 
   def testSyntheticUint16(self):
     with self.cached_session():
@@ -4737,7 +4737,7 @@ class PngTest(test_util.TensorFlowTestCase):
 
       # Smooth ramps compress well, but not too well
       self.assertGreaterEqual(len(png0), 800)
-      self.assertLessEqual(len(png0), 1500)
+      self.assertLessEqual(len(png0), 2100)
 
   def testSyntheticTwoChannel(self):
     with self.cached_session():

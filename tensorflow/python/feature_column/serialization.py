@@ -26,14 +26,17 @@ from tensorflow.tools.docs import doc_controls
 
 _FEATURE_COLUMN_DEPRECATION_WARNING = """\
     Warning: tf.feature_column is not recommended for new code. Instead,
-    feature preprocessing can be done directly using [Keras preprocessing
-    layers](https://www.tensorflow.org/guide/migrate/migrating_feature_columns).
-    See the [migration guide](https://tensorflow.org/guide/migrate) for details.
+    feature preprocessing can be done directly using either [Keras preprocessing
+    layers](https://www.tensorflow.org/guide/migrate/migrating_feature_columns)
+    or through the one-stop utility [`tf.keras.utils.FeatureSpace`](https://www.tensorflow.org/api_docs/python/tf/keras/utils/FeatureSpace)
+    built on top of them. See the [migration guide](https://tensorflow.org/guide/migrate)
+    for details.
     """
 
 _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING = (
-    'Use Keras preprocessing layers instead. Each of `tf.feature_column.*` has'
-    ' a functional equivalent in `tf.keras.layers` for feature preprocessing '
+    'Use Keras preprocessing layers instead, either directly or via the '
+    '`tf.keras.utils.FeatureSpace` utility. Each of `tf.feature_column.*` has '
+    'a functional equivalent in `tf.keras.layers` for feature preprocessing '
     'when training a Keras model.')
 
 _FEATURE_COLUMNS = [

@@ -70,7 +70,7 @@ Value insertDynamicAlloc(Location loc, Value result, Value shapeOperand,
   // Extract the required element out of the vector.
   SmallVector<Value, 4> dynamicOperands;
   for (const auto& shapeElement : llvm::enumerate(resultType.getShape())) {
-    if (shapeElement.value() != ShapedType::kDynamicSize) continue;
+    if (shapeElement.value() != ShapedType::kDynamic) continue;
     Value index =
         rewriter->create<arith::ConstantIndexOp>(loc, shapeElement.index());
     Value allocOperand =

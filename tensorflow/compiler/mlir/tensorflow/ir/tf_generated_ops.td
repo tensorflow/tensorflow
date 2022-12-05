@@ -73,11 +73,11 @@ Provided an input tensor, the `tf.math.acos` operation returns the inverse cosin
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$x
+    TF_FpOrComplexTensor:$x
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$y
+    TF_FpOrComplexTensor:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -599,7 +599,7 @@ Usage:
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint16, TF_Qint32, TF_Qint8, TF_Quint16, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
+    TensorOf<[TF_Bfloat16, TF_Bool, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint16, TF_Qint32, TF_Qint8, TF_Quint16, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
     Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{int16, int32 or int64, must be in the range `[-rank(input), rank(input))`.
 Describes which dimension of the input Tensor to reduce across. For vectors,
 use dimension = 0.}]>:$dimension
@@ -634,7 +634,7 @@ Usage:
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint16, TF_Qint32, TF_Qint8, TF_Quint16, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
+    TensorOf<[TF_Bfloat16, TF_Bool, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint16, TF_Qint32, TF_Qint8, TF_Quint16, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
     Arg<TF_I32OrI64Tensor, [{int32 or int64, must be in the range `[-rank(input), rank(input))`.
 Describes which dimension of the input Tensor to reduce across. For vectors,
 use dimension = 0.}]>:$dimension
@@ -706,11 +706,11 @@ tf.math.asin(y) # [1.047, 0.785] = x
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$x
+    TF_FpOrComplexTensor:$x
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$y
+    TF_FpOrComplexTensor:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -877,11 +877,11 @@ tf.math.atan(y) # [1.047, 0.785] = x
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$x
+    TF_FpOrComplexTensor:$x
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$y
+    TF_FpOrComplexTensor:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1070,7 +1070,7 @@ is smaller than desired.}]>:$drop_remainder,
   );
 }
 
-def TF_BatchFunctionOp : TF_Op<"BatchFunction", [AttrSizedOperandSegments, Pure]> {
+def TF_BatchFunctionOp : TF_Op<"BatchFunction", [AttrSizedOperandSegments, DeclareOpInterfaceMethods<SymbolUserOpInterface>, Pure]> {
   let summary = [{
 Batches all the inputs tensors to the computation done by the function.
   }];
@@ -2224,6 +2224,30 @@ Mutually accumulates multiple tensors of identical type and shape.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_CollectiveGatherV2Op : TF_Op<"CollectiveGatherV2", [TF_CollectiveReduceOrderingEffect]> {
+  let summary = [{
+Mutually accumulates multiple tensors of identical type and shape.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$input,
+    TF_Int32Tensor:$group_size,
+    TF_Int32Tensor:$group_key,
+    TF_Int32Tensor:$instance_key,
+    Variadic<TF_ResourceTensor>:$ordering_token,
+
+    DefaultValuedOptionalAttr<StrAttr, "\"auto\"">:$communication_hint,
+    DefaultValuedOptionalAttr<F32Attr, "0.0f">:$timeout_seconds
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$data
+  );
+
+  TF_DerivedOperandSizeAttr Nordering_token = TF_DerivedOperandSizeAttr<4>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_CollectivePermuteOp : TF_Op<"CollectivePermute", []> {
   let summary = "An Op to permute tensors across replicated TPU instances.";
 
@@ -2280,7 +2304,7 @@ Mutually reduces multiple tensors of identical type and shape.
   }];
 }
 
-def TF_CollectiveReduceV2Op : TF_Op<"CollectiveReduceV2", [TF_CollectiveReduceOrderingEffect]> {
+def TF_CollectiveReduceV2Op : TF_Op<"CollectiveReduceV2", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_CollectiveReduceOrderingEffect]> {
   let summary = [{
 Mutually reduces multiple tensors of identical type and shape.
   }];
@@ -4126,6 +4150,12 @@ See `dynamic_stitch` for an example on how to merge partitions back.
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/DynamicPartition.png" alt>
 </div>
+
+
+Raises:
+  * `InvalidArgumentError` in following cases:
+    - If partitions is not in range `[0, num_partiions)`
+    - If `partitions.shape` does not match prefix of `data.shape` argument.
   }];
 
   let arguments = (ins
@@ -5053,10 +5083,14 @@ def TF_FakeParamOp : TF_Op<"FakeParam", [Pure, TF_NoConstantFold]> {
 
 def TF_FakeQuantWithMinMaxArgsOp : TF_Op<"FakeQuantWithMinMaxArgs", [Pure, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
-Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same type.
+Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same shape and type.
   }];
 
   let description = [{
+Quantization is called fake since the output is still in floating point.
+  The API converts inputs into values within the range [min and max] and returns
+  as output.
+
 Attributes
 
 *   `[min; max]` define the clamping range for the `inputs` data.
@@ -5076,7 +5110,25 @@ the behavior can be unexpected:
 *   If `min <= 0 <= max`: `scale = (max - min) / (2^num_bits - 1) `,
 `min_adj = scale * round(min / scale)` and `max_adj = max + min_adj - min`.
 
-Quantization is called fake since the output is still in floating point.
+
+Examples
+
+```python
+
+inp = tf.constant ([10.03, -10.23, 3])
+out = tf.quantization.fake_quant_with_min_max_args(inp, min=-5, max=5,
+                                                   num_bits=16)
+print(out)
+
+#  Output:
+#  tf.Tensor([ 4.9999237 -5.0000763  3.0000763], shape=(3,), dtype=float32)
+```
+
+Raises:
+  * InvalidArgumentError:
+    - If num_bits are outside of range [2, 16].
+    - If min >= max.
+  * ValueError: If `inputs` are of any other type than float32.
   }];
 
   let arguments = (ins
@@ -10011,6 +10063,47 @@ the insert operations. It does not support the initialization operation.
   );
 }
 
+def TF_NcclAllReduceOp : TF_Op<"NcclAllReduce", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_NcclAllReduceOrderingEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+  let summary = [{
+Outputs a tensor containing the reduction across all input tensors.
+  }];
+
+  let description = [{
+Outputs a tensor containing the reduction across all input tensors passed to ops
+within the same `shared_name.
+
+The graph should be constructed so if one op runs with shared_name value `c`,
+then `num_devices` ops will run with shared_name value `c`.  Failure to do so
+will cause the graph execution to fail to complete.
+
+input: the input to the reduction
+data: the value of the reduction across all `num_devices` devices.
+reduction: the reduction operation to perform.
+num_devices: The number of devices participating in this reduction.
+shared_name: Identifier that shared between ops of the same reduction.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$input,
+
+    TF_AnyStrAttrOf<["min", "max", "prod", "sum"]>:$reduction,
+    I64Attr:$num_devices,
+    StrAttr:$shared_name
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$data
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
+}
+
 def TF_NdtriOp : TF_Op<"Ndtri", [Pure]> {
   let summary = "";
 
@@ -10866,7 +10959,7 @@ truncated normal values using the parameters for each row.}]>:$output
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_PartitionedCallOp : TF_Op<"PartitionedCall", [CallOpInterface, Pure, SymbolUserOpInterface]> {
+def TF_PartitionedCallOp : TF_Op<"PartitionedCall", [CallOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface>, Pure]> {
   let summary = [{
 returns `f(inputs)`, where `f`'s body is placed and partitioned.
   }];
@@ -10904,9 +10997,6 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     func::FuncOp func() {
       return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getF());
     }
-
-    // SymbolUserOpInterface verifier.
-    LogicalResult verifySymbolUses(SymbolTableCollection &symbolTable);
   }];
 }
 
@@ -15078,6 +15168,46 @@ has size `k`, the number of segments.}]>:$output
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_SegmentSumV2Op : TF_Op<"SegmentSumV2", [Pure]> {
+  let summary = "Computes the sum along segments of a tensor.";
+
+  let description = [{
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+
+Computes a tensor such that
+\\(output_i = \sum_j data_j\\) where sum is over `j` such
+that `segment_ids[j] == i`.
+
+If the sum is empty for a given segment ID `i`, `output[i] = 0`.
+
+Note that this op is currently only supported with jit_compile=True.
+</div>
+  }];
+
+  let arguments = (ins
+    TF_NumberTensor:$data,
+    Arg<TF_I32OrI64Tensor, [{A 1-D tensor whose size is equal to the size of `data`'s
+first dimension.  Values should be sorted and can be repeated.
+The values must be less than `num_segments`.
+
+Caution: The values are always validated to be sorted on CPU, never validated
+on GPU.}]>:$segment_ids,
+    TF_I32OrI64Tensor:$num_segments
+  );
+
+  let results = (outs
+    Res<TF_NumberTensor, [{Has same shape as data, except for the first `segment_ids.rank`
+dimensions, which are replaced with a single dimension which has size
+`num_segments`.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tnumsegments = TF_DerivedOperandTypeAttr<2>;
+}
+
 def TF_SelfAdjointEigV2Op : TF_Op<"SelfAdjointEigV2", [Pure]> {
   let summary = [{
 Computes the eigen decomposition of one or more square self-adjoint matrices.
@@ -18274,11 +18404,11 @@ Given an input tensor, this function computes tangent of every
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$x
+    TF_FpOrComplexTensor:$x
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$y
+    TF_FpOrComplexTensor:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -18995,7 +19125,7 @@ Apply a sparse update to a tensor taking the element-wise maximum.
 Returns a new tensor copied from `tensor` whose values are element-wise maximum between
 tensor and updates according to the indices.
 
->>> tensor = [0, 0, 0, 0, 0, 0, 0, 0] 
+>>> tensor = [0, 0, 0, 0, 0, 0, 0, 0]
 >>> indices = [[1], [4], [5]]
 >>> updates = [1, -1, 1]
 >>> tf.tensor_scatter_nd_max(tensor, indices, updates).numpy()
@@ -19294,8 +19424,15 @@ def TF_TimestampOp : TF_Op<"Timestamp", []> {
   let description = [{
 Returns the timestamp as a `float64` for seconds since the Unix epoch.
 
-Note: the timestamp is computed when the op is executed, not when it is added
-to the graph.
+Common usages include:
+* Logging
+* Providing a random number seed
+* Debugging graph execution
+* Generating timing information, mainly through comparison of timestamps
+
+Note: In graph mode, the timestamp is computed when the op is executed,
+not when it is added to the graph.  In eager mode, the timestamp is computed
+when the op is eagerly executed.
   }];
 
   let arguments = (ins);
@@ -19482,7 +19619,7 @@ left-hand side.}]>:$rhs,
 
 def TF_TruncateDivOp : TF_Op<"TruncateDiv", [Pure, ResultsBroadcastableShape]>,
                        WithBroadcastableBinOpBuilder {
-  let summary = "Returns x / y element-wise for integer types.";
+  let summary = "Returns x / y element-wise, rounded towards zero.";
 
   let description = [{
 Truncation designates that negative numbers will round fractional quantities
@@ -19630,6 +19767,63 @@ Same shape condition as scales.}]>:$zero_points,
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_UniformQuantizedAddOp : TF_Op<"UniformQuantizedAdd", [Pure]> {
+  let summary = [{
+Perform quantized add of quantized Tensor `lhs` and quantized Tensor `rhs` to make quantized `output`.
+  }];
+
+  let description = [{
+Given quantized `lhs` and quantized `rhs`, performs quantized add on `lhs` and `rhs` to make quantized `output`.
+
+`UniformQuantizedAdd` follows Numpy broadcasting rules.
+The two input array shapes are compared element-wise.
+Starting with the trailing dimensions, the two dimensions either have to be equal or one of them needs to be 1.
+
+`lhs` and `rhs` must be quantized Tensor, where data value is quantized using the formula:
+```
+quantized_data = clip(original_data / scale + zero_point, quantization_min_val, quantization_max_val)
+```
+`output` is also quantized, using the same formula.
+
+If `lhs` and `output` is both per-axis quantized, the quantization axis must match.
+Also, if `rhs` and `output` is both per-axis quantized, the quantization axis must match.
+*Match* means the axis must match when adding, regarding the broadcasting.
+i.e. For both operands `lhs` and `rhs`,
+if `operand.quantization_axis` >= 0 and `output.quantization_axis` >= 0,
+`operand.dims` - `operand.quantization_axis` must be equal to `output.dims` - `output.quantization_axis`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Qint32Tensor, [{Must be a quantized tensor.}]>:$lhs,
+    Arg<TF_Qint32Tensor, [{Must be a quantized tensor.}]>:$rhs,
+    Arg<TF_Float32Tensor, [{The float value(s) used as scale factors when quantizing the original data that `lhs` represents.}]>:$lhs_scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero points when quantizing original data that `lhs` represents.
+Must have same shape with `lhs_scales`.}]>:$lhs_zero_points,
+    Arg<TF_Float32Tensor, [{The float value(s) used as scale factors when quantizing the original data that `rhs` represents.}]>:$rhs_scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero points when quantizing original data that `rhs` represents.
+Must have same shape with `rhs_scales`.}]>:$rhs_zero_points,
+    Arg<TF_Float32Tensor, [{The float value(s) to use as scale factors when quantizing original data that `output` represents.}]>:$output_scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero points when quantizing original data that output represents.
+Must have same shape with `output_scales`.}]>:$output_zero_points,
+
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$lhs_quantization_axis,
+    I64Attr:$lhs_quantization_min_val,
+    I64Attr:$lhs_quantization_max_val,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$rhs_quantization_axis,
+    I64Attr:$rhs_quantization_min_val,
+    I64Attr:$rhs_quantization_max_val,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$output_quantization_axis,
+    I64Attr:$output_quantization_min_val,
+    I64Attr:$output_quantization_max_val
+  );
+
+  let results = (outs
+    Res<TF_Qint32Tensor, [{The output quantized tensor.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_UniformQuantizedClipByValueOp : TF_Op<"UniformQuantizedClipByValue", [Pure]> {
   let summary = "Perform clip by value on the quantized Tensor `operand`.";
 
@@ -19660,6 +19854,136 @@ Same shape condition as scales.}]>:$zero_points,
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_UniformQuantizedConvolutionOp : TF_Op<"UniformQuantizedConvolution", [Pure]> {
+  let summary = [{
+Perform quantized convolution of quantized Tensor `lhs` and quantized Tensor `rhs`. to make quantized `output`.
+  }];
+
+  let description = [{
+Given quantized `lhs` and quantized `rhs`, performs quantized dot on `lhs` and `rhs` to make quantized `output`.
+
+`lhs` and `rhs` must be Tensors of same rank, and meet following shape conditions.
+- `lhs_feature` % `feature_group_count` == 0
+- `lhs_feature` % `rhs_input_feature` == 0
+- `lhs_feature` / `feature_group_count` == `rhs_input_feature`
+- `rhs_output_feature` % `feature_group_count` == 0
+- `lhs_batch` % `batch_group_count` == 0
+- `rhs_output_feature` % `batch_group_count` == 0
+
+`lhs` and `rhs` must be quantized Tensor, where data value is quantized using the formula:
+```
+quantized_data = clip(original_data / scale + zero_point, quantization_min_val, quantization_max_val)
+```
+`output` is also quantized, using the same formula.
+If `rhs` is per-tensor quantized, `output` must be also per-tensor quantized.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Qint8Tensor, [{Must be a quantized tensor, rank >= 3.}]>:$lhs,
+    Arg<TF_Qint8Tensor, [{Must be a quantized tensor, same rank as `lhs`.}]>:$rhs,
+    Arg<TF_Float32Tensor, [{The float value(s) used as scale factors when quantizing the original data that `lhs` represents.
+Must be a scalar `Tensor` (`lhs` supports only per-tensor quantization).}]>:$lhs_scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero points when quantizing original data that `lhs` represents.
+Same shape condition as `lhs_scales`.}]>:$lhs_zero_points,
+    Arg<TF_Float32Tensor, [{The float value(s) used as scale factors when quantizing the original data that `rhs` represents.
+Must be a scalar `Tensor` for per-tensor quantization,
+or 1D `Tensor` of size `rhs.dim_size(kernel_output_feature_dimension)`, for per-channel quantization.}]>:$rhs_scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero points when quantizing original data that `rhs` represents.
+Same shape condition as `rhs_scales`.}]>:$rhs_zero_points,
+    Arg<TF_Float32Tensor, [{The float value(s) to use as scale factors when quantizing original data that `output` represents.
+Must be a scalar `Tensor` for per-tensor quantization,
+or 1D `Tensor` of size `rhs.dim_size(kernel_output_feature_dimension)`
+- which is equal to `output.dim_size(output_feature_dimension)`,
+for per-channel quantization.
+If `rhs` is per-tensor quantized, output must be also per-tensor quantized.
+This means that if `rhs_scales` and `rhs_zero_points` are scalar `Tensor`s, `output_scales` and `output_zero_points` must be scalar `Tensor`s as well.}]>:$output_scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero points when quantizing original data that output represents.
+Same shape condition as `output_scales`.}]>:$output_zero_points,
+
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$window_strides,
+    StrAttr:$padding,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$explicit_padding,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$lhs_dilation,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$rhs_dilation,
+    DefaultValuedOptionalAttr<I64Attr, "1">:$batch_group_count,
+    DefaultValuedOptionalAttr<I64Attr, "1">:$feature_group_count,
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$dimension_numbers,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$lhs_quantization_axis,
+    I64Attr:$lhs_quantization_min_val,
+    I64Attr:$lhs_quantization_max_val,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$rhs_quantization_axis,
+    I64Attr:$rhs_quantization_min_val,
+    I64Attr:$rhs_quantization_max_val,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$output_quantization_axis,
+    I64Attr:$output_quantization_min_val,
+    I64Attr:$output_quantization_max_val
+  );
+
+  let results = (outs
+    Res<TF_Qint32Tensor, [{The output quantized tensor of `Tout`, same rank as `lhs` and `rhs`.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_UniformQuantizedConvolutionHybridOp : TF_Op<"UniformQuantizedConvolutionHybrid", [Pure]> {
+  let summary = [{
+Perform hybrid quantized convolution of float Tensor `lhs` and quantized Tensor `rhs`.
+  }];
+
+  let description = [{
+Given float `lhs` and quantized `rhs`, internally performs quantization on `lhs`,
+and then performs quantized convolution on quantized `lhs` and `rhs`.
+
+The internal quantization on `lhs` is a quantization to `Trhs`, dynamic range,
+per-batch (per-axis along axis `dimension_numbers.input_batch_dimension`), asymmetric,
+and not narrow range (the range is [Trhs_MIN, Trhs_MAX]).
+
+`lhs` and `rhs` must be Tensors of same rank, and meet following shape conditions.
+- lhs_feature % feature_group_count == 0
+- lhs_feature % rhs_input_feature == 0
+- lhs_feature / feature_group_count == rhs_input_feature
+- rhs_output_feature % feature_group_count == 0
+- lhs_batch % batch_group_count == 0
+- rhs_output_feature % batch_group_count == 0
+
+`rhs` must be quantized Tensor, where its data value is quantized using the formula:
+quantized_data = clip(original_data / scale + zero_point, quantization_min_val, quantization_max_val).
+  }];
+
+  let arguments = (ins
+    Arg<TF_Float32Tensor, [{Must be a non-quantized Tensor of `Tlhs`, rank >= 3.}]>:$lhs,
+    Arg<TF_Qint8Tensor, [{Must be a quantized Tensor of `Trhs`, same rank as `lhs`.}]>:$rhs,
+    Arg<TF_Float32Tensor, [{The float value(s) used as scale factors when quantizing the original data that `rhs` represents.
+Must be a scalar Tensor for per-tensor quantization,
+or 1D Tensor of size `rhs.dim_size(kernel_output_feature_dimension)`, for per-channel quantization.}]>:$rhs_scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero_point when quantizing original data that `rhs` represents.
+Same shape condition as `rhs_scales`.}]>:$rhs_zero_points,
+
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$window_strides,
+    StrAttr:$padding,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$explicit_padding,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$lhs_dilation,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$rhs_dilation,
+    DefaultValuedOptionalAttr<I64Attr, "1">:$batch_group_count,
+    DefaultValuedOptionalAttr<I64Attr, "1">:$feature_group_count,
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$dimension_numbers,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$rhs_quantization_axis,
+    I64Attr:$rhs_quantization_min_val,
+    I64Attr:$rhs_quantization_max_val
+  );
+
+  let results = (outs
+    Res<TF_Float32Tensor, [{The output Tensor of `Tout`, same rank as `lhs` and `rhs`.
+The output data is the non-quantized output data.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tlhs = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Trhs = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_UniformQuantizedDotOp : TF_Op<"UniformQuantizedDot", [Pure]> {

@@ -25,14 +25,14 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 
 
-def rebatch(input_dataset, batch_size, drop_remainder=False, name=None):
-  return RebatchDataset(input_dataset, batch_size, drop_remainder, name)
+def _rebatch(input_dataset, batch_size, drop_remainder=False, name=None):
+  return _RebatchDataset(input_dataset, batch_size, drop_remainder, name)
 
 
-class RebatchDataset(dataset_ops.UnaryDataset):
+class _RebatchDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that rebatches elements from its input into new batch sizes.
 
-  `RebatchDataset(input_dataset, batch_sizes)` is functionally equivalent to
+  `_RebatchDataset(input_dataset, batch_sizes)` is functionally equivalent to
   `input_dataset.unbatch().batch(N)`, where the value of N cycles through the
   `batch_sizes` input list. The elements produced by this dataset have the same
   rank as the elements of the input dataset.
@@ -68,7 +68,7 @@ class RebatchDataset(dataset_ops.UnaryDataset):
         drop_remainder=drop_remainder,
         **self._flat_structure)
     # LINT.ThenChange(//tensorflow/core/grappler/optimizers/data/auto_shard.cc)
-    super(RebatchDataset, self).__init__(input_dataset, variant_tensor)
+    super().__init__(input_dataset, variant_tensor)
 
   def _compute_static_batch_dim(self):
     """Computes the static batch dimension of a dataset if it can be determined.

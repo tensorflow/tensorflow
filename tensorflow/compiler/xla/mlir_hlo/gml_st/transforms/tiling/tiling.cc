@@ -35,8 +35,6 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/Dialect/Tensor/Utils/Utils.h"
-#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -55,6 +53,8 @@ namespace {
 
 #define GEN_PASS_DEF_TILINGPASS
 #include "gml_st/transforms/passes.h.inc"
+
+static constexpr llvm::StringRef kTileAppliedLabel = "__tile_applied_label__";
 
 // Compute tile size for the tile that starts at `offset`, has size `tileSize`
 // for the tensor with the dimension size `dimSize`.
@@ -190,7 +190,7 @@ struct DimOfMaterializedTilePattern : public OpRewritePattern<tensor::DimOp> {
 /// `gml_st.for` for iterating over the tiles.
 struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
   TilingPattern(MLIRContext *context,
-                llvm::function_ref<LogicalResult(Operation *)> filterFn,
+                llvm::function_ref<LogicalResult(TilingInterface)> filterFn,
                 TilingOptions options, PatternBenefit benefit = 1)
       : OpInterfaceRewritePattern<TilingInterface>(context, benefit),
         filterFn(filterFn),
@@ -198,7 +198,7 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
 
   LogicalResult matchAndRewrite(TilingInterface op,
                                 PatternRewriter &rewriter) const override {
-    if (!filterFn || failed(filterFn(op)) || hasTransformationAttr(op))
+    if (!filterFn || failed(filterFn(op)) || hasLabel(op, kTileAppliedLabel))
       return failure();
 
     auto tilingResult = tile(options, rewriter, op);
@@ -209,12 +209,12 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
     if (tilingResult->loop != nullptr) {
       rewriter.replaceOp(op, tilingResult->loop->getResults());
     }
-    setTransformationAttr(rewriter, tilingResult->tiledOp);
+    setLabel(tilingResult->tiledOp, kTileAppliedLabel);
     return success();
   }
 
  private:
-  llvm::function_ref<LogicalResult(Operation *)> filterFn;
+  llvm::function_ref<LogicalResult(TilingInterface)> filterFn;
   TilingOptions options;
 };
 
@@ -251,7 +251,7 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
       }));
     };
 
-    auto filterFn = [&](Operation *op) {
+    auto filterFn = [&](TilingInterface op) {
       if (!opName.empty() && op->getName().getStringRef() != opName)
         return failure();
       if (!opLabel.empty() && !hasMatchingLabel(op, opLabel)) return failure();
@@ -264,7 +264,7 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
       return signalPassFailure();
 
     // Clean up by removing temporary attributes.
-    f.walk([](Operation *op) { removeTransformationAttr(op); });
+    removeTilingLabels(f);
   }
 };
 
@@ -314,7 +314,8 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
   rewriter.setInsertionPoint(terminator);
 
   // 4. Insert the tiled implementation within the loop.
-  TilingInterface tiledOp = op.getTiledImplementation(rewriter, offsets, sizes);
+  TilingInterface tiledOp = op.getTiledImplementation(
+      rewriter, offsets, sizes, /*useExtractSlice=*/false);
   tilingResult.tiledOp = tiledOp.getOperation();
 
   // 5. Add `gml_st.set_yield` terminator.
@@ -340,9 +341,13 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
 
 void populateTilingPatterns(
     MLIRContext *context,
-    llvm::function_ref<LogicalResult(Operation *)> filterFn,
+    llvm::function_ref<LogicalResult(TilingInterface)> filterFn,
     const TilingOptions &opts, RewritePatternSet *patterns) {
   patterns->add<TilingPattern>(context, filterFn, opts);
+}
+
+void removeTilingLabels(Operation *op) {
+  op->walk([](Operation *op) { removeLabel(op, kTileAppliedLabel); });
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(

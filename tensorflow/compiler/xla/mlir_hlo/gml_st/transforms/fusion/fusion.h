@@ -32,9 +32,15 @@ FailureOr<Value> createFusedOp(PatternRewriter &rewriter,
 FailureOr<Operation *> fuse(PatternRewriter &rewriter,
                             MaterializeOp materializeOp);
 
+// Finds `gml_st.materialize` ops in the block and fuses ops into them. Verifies
+// that fusion candidate doesn't have any uses except the one
+// `gml_st.materialize` in the block to avoid exponential code growth.
+void fuseGreedily(PatternRewriter &rewriter, Block &block,
+                  llvm::function_ref<bool(Operation *)> filterFn = nullptr);
+
 /// Populate fusion patterns.
 void populateFusionPatterns(MLIRContext *ctx,
-                            function_ref<LogicalResult(Operation *)> filterFn,
+                            function_ref<LogicalResult(MaterializeOp)> filterFn,
                             RewritePatternSet *patterns);
 
 }  // namespace gml_st

@@ -227,7 +227,7 @@ bool TensorFlowDialect::CanDuplicate(Operation *op) {
   if (op->hasTrait<OpTrait::TF::CannotDuplicate>()) return false;
 
   // If the op has no memory side effects, it can be duplicated.
-  if (MemoryEffectOpInterface::hasNoEffect(op)) return true;
+  if (isMemoryEffectFree(op)) return true;
 
   // If the op is marked stateless using the `is_stateless` attribute, that
   // attribute determines if the op can be duplicated.
@@ -272,7 +272,7 @@ void *TensorFlowDialect::getRegisteredInterfaceForOp(
 // Returns true if the op can have side effects.
 bool TensorFlowDialect::CanHaveSideEffects(Operation *op) {
   // If the op has no memory side effects, it has no side effects
-  if (MemoryEffectOpInterface::hasNoEffect(op)) return false;
+  if (isMemoryEffectFree(op)) return false;
 
   // If the op is marked stateless using the `is_stateless` attribute, then
   // it has no side effects.
