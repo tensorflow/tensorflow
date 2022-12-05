@@ -331,12 +331,6 @@ class Device:
   def live_buffers(self) -> List[Buffer]: ...
   def __getattr__(self, name: str) -> Any: ...
 
-class GpuDevice(Device):
-  slice_index: int
-
-class TpuDevice(Device):
-  pass
-
 class _GpuAllocatorKind(enum.IntEnum):
     DEFAULT: int
     PLATFORM: int
