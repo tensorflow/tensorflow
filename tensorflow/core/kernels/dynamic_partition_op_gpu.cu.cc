@@ -337,13 +337,11 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     // Determine temporary device storage requirements.
     Tensor cub_temp_storage;
     size_t temp_storage_bytes = 0;
-    auto status = gpuprim::DeviceRadixSort::SortPairs(
+    auto gpuResult = gpuprim::DeviceRadixSort::SortPairs(
                 NULL, temp_storage_bytes, partitions_ptr, partitions_out_ptr,
                 indices_in_ptr, indices_out_ptr, N, 0, sizeof(int32) * 8, cu_stream);
     
-    OP_REQUIRES_ASYNC(c, status,
-                    errors::Internal("Failed to launch copy from device to host."), 
-                    done);
+    if (gpuResult != gpuSuccess) return;    
 
     // Allocate temporary storage.
     OP_REQUIRES_OK_ASYNC(
@@ -353,14 +351,12 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
             &cub_temp_storage),
         done);
     // Radix-sort the partition information.
-    status = gpuprim::DeviceRadixSort::SortPairs(
+    gpuResult = gpuprim::DeviceRadixSort::SortPairs(
               cub_temp_storage.flat<int8>().data(), temp_storage_bytes,
               partitions_ptr, partitions_out_ptr, indices_in_ptr, indices_out_ptr, N,
               0, sizeof(int32) * 8, cu_stream);
 
-    OP_REQUIRES_ASYNC(c, status,
-                    errors::Internal("Failed to launch copy from device to host."), 
-                    done);    
+    if (gpuResult != gpuSuccess) return;
   }  // At this point cub_temp_storage will be marked for deallocation.
 
   void CountAndSortParts(OpKernelContext* c, const Tensor* partitions,
@@ -422,12 +418,11 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     // Determine temporary device storage requirements
     Tensor cub_temp_storage;
     size_t temp_storage_bytes = 0;
-    auto status = gpuprim::DeviceReduce::ReduceByKey(
+    auto gpuResult = gpuprim::DeviceReduce::ReduceByKey(
               NULL, temp_storage_bytes, keys_in_ptr, unique_out_it, values_in,
               aggregates_out_it, num_runs_ptr, reduction_op, N, cu_stream);
     
-    OP_REQUIRES_ASYNC(c, status,
-        errors::Internal("Failed to launch copy from device to host."), done);
+    if (gpuResult != gpuSuccess) return;
 
     // Allocate temporary storage.
     OP_REQUIRES_OK_ASYNC(
@@ -440,13 +435,12 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     // each index appears in partitions. The distinct indices are stored
     // in unique_out, while the count is stored in aggregates_out.
     // The total number of distinct indices is stored in num_runs.
-    status = gpuprim::DeviceReduce::ReduceByKey(
+    gpuResult = gpuprim::DeviceReduce::ReduceByKey(
                 cub_temp_storage.flat<int8>().data(), temp_storage_bytes, keys_in_ptr,
                 unique_out_it, values_in, aggregates_out_it, num_runs_ptr, reduction_op,
                 N, cu_stream);
 
-    OP_REQUIRES_ASYNC(c, status,
-        errors::Internal("Failed to launch copy from device to host."), done);
+    if (gpuResult != gpuSuccess) return;
     
     // We are not done yet. unique_out only contains the indices that appeared
     // at least once in partitions. We move each value from aggregates_out

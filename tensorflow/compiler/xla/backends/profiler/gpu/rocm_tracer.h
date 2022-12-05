@@ -309,8 +309,8 @@ class RocmTracer {
   void Enable(const RocmTracerOptions& options, RocmTraceCollector* collector);
   void Disable();
 
-  Status ApiCallbackHandler(uint32_t domain, uint32_t cbid, const void* cbdata);
-  Status ActivityCallbackHandler(const char* begin, const char* end);
+  tsl::Status ApiCallbackHandler(uint32_t domain, uint32_t cbid, const void* cbdata);
+  tsl::Status ActivityCallbackHandler(const char* begin, const char* end);
 
   static uint64_t GetTimestamp();
   static int NumGpus();

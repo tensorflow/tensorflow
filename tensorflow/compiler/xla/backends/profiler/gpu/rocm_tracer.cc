@@ -1414,10 +1414,10 @@ void ApiCallback(uint32_t domain, uint32_t cbid, const void* cbdata,
   tracer->ApiCallbackHandler(domain, cbid, cbdata).IgnoreError();
 }
 
-Status RocmTracer::ApiCallbackHandler(uint32_t domain, uint32_t cbid,
+tsl::Status RocmTracer::ApiCallbackHandler(uint32_t domain, uint32_t cbid,
                                     const void* cbdata) {
   if (api_tracing_enabled_) TF_RETURN_IF_ERROR((*api_cb_impl_)(domain, cbid, cbdata));
-  return OkStatus();
+  return tsl::OkStatus();
 }
 
 tsl::Status RocmTracer::EnableApiTracing() {
@@ -1477,7 +1477,7 @@ void ActivityCallback(const char* begin, const char* end, void* user_data) {
   tracer->ActivityCallbackHandler(begin, end).IgnoreError();
 }
 
-Status RocmTracer::ActivityCallbackHandler(const char* begin, const char* end) {
+tsl::Status RocmTracer::ActivityCallbackHandler(const char* begin, const char* end) {
   if (activity_tracing_enabled_) {
     TF_RETURN_IF_ERROR((*activity_cb_impl_)(begin, end));
   } else {
@@ -1502,7 +1502,7 @@ Status RocmTracer::ActivityCallbackHandler(const char* begin, const char* end) {
     }
     VLOG(3) << "Dropped Activity Records End";
   }
-  return OkStatus();
+  return tsl::OkStatus();
 }
 
 tsl::Status RocmTracer::EnableActivityTracing() {
