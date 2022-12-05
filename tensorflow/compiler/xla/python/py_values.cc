@@ -563,6 +563,9 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
   if (arg.get_type() == PyArray::type()) {
     auto array = py::reinterpret_borrow<PyArray>(arg);
     if (array.fastpath_enabled()) {
+      if (array.IsDeleted()) {
+        return xla::InvalidArgument("Array has been deleted.");
+      }
       auto dtype = array.GetBuffer(0)->on_device_shape().element_type();
       return PyArgSignature(dtype, array.shape(), array.weak_type());
     }

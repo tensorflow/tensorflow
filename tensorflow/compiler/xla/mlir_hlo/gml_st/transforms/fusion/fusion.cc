@@ -81,12 +81,12 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
       rewriter.replaceOp(op, tileOp.getSizes()[*dimConstantIndex]);
       return success();
     }
-    // Case GenericOp.
-    if (auto genericOp = llvm::dyn_cast<linalg::GenericOp>(def)) {
-      if (genericOp.getNumResults() != 1 || !genericOp.hasTensorSemantics()) {
+    // Case LinalgOp.
+    if (auto linalgOp = llvm::dyn_cast<linalg::LinalgOp>(def)) {
+      if (linalgOp->getNumResults() != 1 || !linalgOp.hasTensorSemantics()) {
         return failure();
       }
-      Value outputOperand = genericOp.getDpsInitOperand(0)->get();
+      Value outputOperand = linalgOp.getDpsInitOperand(0)->get();
       rewriter.replaceOpWithNewOp<tensor::DimOp>(op, outputOperand,
                                                  op.getIndex());
       return success();
@@ -270,6 +270,9 @@ void reifyDimOp(PatternRewriter& rewriter, tensor::DimOp dimOp) {
 }
 
 void reifyDimOpsUsers(PatternRewriter& rewriter, Operation* op) {
+  OpBuilder::InsertionGuard guard(rewriter);
+  rewriter.setInsertionPointAfter(op);
+
   for (auto* user : llvm::make_early_inc_range(op->getUsers())) {
     auto dimOp = dyn_cast<tensor::DimOp>(user);
     if (dimOp) reifyDimOp(rewriter, dimOp);

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_validation_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_nnapi_sl_fake_impl.h"
@@ -73,7 +74,8 @@ class ValidatorRunnerImplTest : public ::testing::Test {
   ValidatorRunnerImpl CreateValidator() {
     return ValidatorRunnerImpl(model_path_, storage_path_, data_directory_path_,
                                0, std::move(custom_validation_embedder_),
-                               error_reporter_, nnapi_sl_, entrypoint_name_);
+                               error_reporter_, nnapi_sl_, entrypoint_name_,
+                               EmbeddedResultEvaluator::GetInstance());
   }
 
   bool should_perform_test_;
@@ -127,22 +129,25 @@ TEST_F(ValidatorRunnerImplTest, SucceedWithNnApiSl) {
     usleep(absl::ToInt64Microseconds(kWaitBetweenRefresh));
   }
   std::vector<const BenchmarkEvent*> results = validator.GetSuccessfulResults();
-  for (auto result : results) {
-    EXPECT_THAT(result, testing::Property(&BenchmarkEvent::event_type,
+  for (auto& result : results) {
+    ASSERT_THAT(result, testing::Property(&BenchmarkEvent::event_type,
                                           testing::Eq(BenchmarkEventType_END)));
+    EXPECT_THAT(result->result()->actual_output(),
+                testing::Pointee(testing::SizeIs(0)));
   }
   EXPECT_TRUE(WasNnApiSlInvoked());
 }
 
-TEST_F(ValidatorRunnerImplTest, SucceedWithEmbeddedValidation) {
+TEST_F(ValidatorRunnerImplTest, SucceedWithCustomValidation) {
   // Setup.
   if (!should_perform_test_) {
     std::cerr << "Skipping test";
     return;
   }
+  int batch_size = 3;
   custom_validation_embedder_ = std::make_unique<CustomValidationEmbedder>(
-      3, std::vector<std::vector<uint8_t>>{
-             std::vector<uint8_t>(3 * 224 * 224 * 3, 1)});
+      batch_size, std::vector<std::vector<uint8_t>>{
+                      std::vector<uint8_t>(batch_size * 224 * 224 * 3, 1)});
   model_path_ = plain_model_path_;
   ValidatorRunnerImpl validator = CreateValidator();
   ASSERT_EQ(validator.Init(), kMinibenchmarkSuccess);
@@ -162,8 +167,12 @@ TEST_F(ValidatorRunnerImplTest, SucceedWithEmbeddedValidation) {
   }
   std::vector<const BenchmarkEvent*> results = validator.GetSuccessfulResults();
   for (auto result : results) {
-    EXPECT_THAT(result, testing::Property(&BenchmarkEvent::event_type,
+    ASSERT_THAT(result, testing::Property(&BenchmarkEvent::event_type,
                                           testing::Eq(BenchmarkEventType_END)));
+    EXPECT_THAT(result->result()->actual_output(),
+                testing::Pointee(testing::SizeIs(1)));
+    EXPECT_THAT(result->result()->actual_output()->Get(0)->value(),
+                testing::Pointee(testing::SizeIs(batch_size * 1001)));
   }
 }
 

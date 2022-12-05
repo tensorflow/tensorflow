@@ -321,7 +321,7 @@ def TF_YieldOp : TF_Op<"Yield",
     region.
   }];
 
-  let arguments = (ins Variadic<AnyType>:$operands);
+  let arguments = (ins Variadic<AnyType>);
 }
 
 def TF_IfRegionOp : TF_Op<"IfRegion",

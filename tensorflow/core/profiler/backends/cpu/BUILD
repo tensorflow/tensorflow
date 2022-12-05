@@ -140,7 +140,7 @@ cc_library(
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
         "//tensorflow/compiler/xla/backends/profiler/cpu:python_tracer_impl",
-        "//tensorflow/core/profiler/lib:profiler_interface",
+        "//tensorflow/tsl/profiler/lib:profiler_interface",
     ],
 )
 

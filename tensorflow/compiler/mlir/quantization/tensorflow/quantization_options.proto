@@ -153,4 +153,9 @@ message QuantizationOptions {
   // fail. To quantize models larger than 2 GiB, this should be set to `false`.
   // If not set, it defaults to `true`.
   FreezeAllVariables freeze_all_variables = 6;
+
+  // Enables chnanel-wise quantizaiton. By default, channel-wise quantization is
+  // not applied regardless of the op support. Currently, it is supported for
+  // Uniform Quantized opset only.
+  bool enable_per_channel_quantization = 7;
 }

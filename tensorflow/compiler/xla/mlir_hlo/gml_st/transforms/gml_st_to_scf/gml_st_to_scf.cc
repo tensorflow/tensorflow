@@ -138,7 +138,7 @@ struct ForOpToSCFPattern : public OpRewritePattern<ForOp> {
       for (auto &op : loop.getBody()->without_terminator())
         builder.clone(op, bvm);
 
-      std::vector<Value> result;
+      scf::ValueVector result;
       llvm::transform(loop.getTerminator().getSrcs(),
                       std::back_inserter(result),
                       [&](Value src) { return bvm.lookupOrDefault(src); });
@@ -148,11 +148,7 @@ struct ForOpToSCFPattern : public OpRewritePattern<ForOp> {
     scf::LoopNest nest = scf::buildLoopNest(
         rewriter, loop.getLoc(), loop.getLowerBound(), loop.getUpperBound(),
         loop.getStep(), loop.getOutputs(), cloneBody);
-    // TODO(csigg): just nest.getResults() once https://reviews.llvm.org/D136926
-    // has landed.
-    ValueRange results;
-    if (!nest.loops.empty()) results = nest.getResults();
-    rewriter.replaceOp(loop, results);
+    rewriter.replaceOp(loop, nest.results);
     return success();
   }
 };

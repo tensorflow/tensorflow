@@ -19,7 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -101,7 +101,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Not yet support string type due to the use of memcopy with fixed size.
   TF_LITE_ENSURE(context, op_context.input->type != kTfLiteString);
 
-  if (IsConstantTensor(op_context.shape)) {
+  if (IsConstantOrPersistentTensor(op_context.shape)) {
     return ResizeOutputTensor(context, &op_context);
   }
 

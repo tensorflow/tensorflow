@@ -63,12 +63,12 @@ std::unique_ptr<tflite::delegates::DelegatePluginInterface> LoadDelegatePlugin(
       name + "Plugin", tflite_settings);
 }
 
-void AddTensorDataToMap(TfLiteTensor* tensor,
-                        std::map<std::string, std::vector<char>>& output_map) {
+void AppendTensorDataToVector(const TfLiteTensor* tensor,
+                              std::vector<std::vector<char>>& output_vector) {
   std::vector<char> char_output(TfLiteTensorByteSize(tensor));
   memcpy(char_output.data(), TfLiteTensorData(tensor),
          TfLiteTensorByteSize(tensor));
-  output_map.emplace(TfLiteTensorName(tensor), std::move(char_output));
+  output_vector.emplace_back(std::move(char_output));
 }
 
 // Returns whether the tensor is embedded with data.
@@ -201,25 +201,40 @@ MinibenchmarkStatus Validator::LoadDelegate() {
 
   // Create delegate plugin and delegate.
   Delegate which_delegate = Delegate_NONE;
-  if (compute_settings_->tflite_settings()) {
+  bool is_stable_delegate = false;
+  auto tflite_settings = compute_settings_->tflite_settings();
+  if (tflite_settings) {
     which_delegate = compute_settings_->tflite_settings()->delegate();
+    if (tflite_settings->stable_delegate_loader_settings() &&
+        tflite_settings->stable_delegate_loader_settings()->delegate_path()) {
+      is_stable_delegate = !tflite_settings->stable_delegate_loader_settings()
+                                ->delegate_path()
+                                ->str()
+                                .empty();
+    }
   }
   std::string delegate_name;
-  switch (which_delegate) {
-    case Delegate_NONE:
-      // Skip creating delegate if running on CPU.
-      return kMinibenchmarkSuccess;
-    case Delegate_NNAPI:
-      delegate_name = "Nnapi";
-      break;
-    case Delegate_GPU:
-      delegate_name = "Gpu";
-      break;
-    case Delegate_XNNPACK:
-      delegate_name = "XNNPack";
-      break;
-    default:
-      return kMinibenchmarkDelegateNotSupported;
+  if (is_stable_delegate) {
+    // When a stable delegate shared library is provided, the stable delegate
+    // plugin loads symbols from the shared library to initialize the delegates.
+    delegate_name = "StableDelegate";
+  } else {
+    switch (which_delegate) {
+      case Delegate_NONE:
+        // Skip creating delegate if running on CPU.
+        return kMinibenchmarkSuccess;
+      case Delegate_NNAPI:
+        delegate_name = "Nnapi";
+        break;
+      case Delegate_GPU:
+        delegate_name = "Gpu";
+        break;
+      case Delegate_XNNPACK:
+        delegate_name = "XNNPack";
+        break;
+      default:
+        return kMinibenchmarkDelegateNotSupported;
+    }
   }
 
   TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Running mini-benchmark on %s",
@@ -404,13 +419,15 @@ MinibenchmarkStatus Validator::RunValidation(Results* results_out) {
 
     TFLITE_LOG_PROD(TFLITE_LOG_INFO, "  accuracy: %s",
                     results_out->ok ? "ok" : "not ok");
-  }
-
-  // Model output.
-  for (int i = 0; i < model_output_size; i++) {
-    AddTensorDataToMap(
-        validation_entrypoint_->tensor(validation_entrypoint_->outputs()[i]),
-        results_out->actual_inference_output);
+  } else {
+    // Model output.
+    results_out->actual_inference_output.clear();
+    results_out->actual_inference_output.reserve(model_output_size);
+    for (int i = 0; i < model_output_size; i++) {
+      AppendTensorDataToVector(
+          validation_entrypoint_->tensor(validation_entrypoint_->outputs()[i]),
+          results_out->actual_inference_output);
+    }
   }
   // Performance metrics.
   results_out->delegate_prep_time_us =

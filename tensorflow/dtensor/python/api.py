@@ -22,7 +22,6 @@ from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.eager import context
-from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -395,23 +394,6 @@ def relayout(tensor: ops.Tensor, layout: layout_lib.Layout) -> ops.Tensor:
   """
   layout_str = layout.to_string()
   return gen_dtensor_ops.relayout(tensor, layout_str)
-
-
-# -----------------------------------------------------------------------------
-# Private methods.
-
-
-def is_tpu_present() -> bool:
-  """Returns true if TPU devices are present."""
-  # Check if TPU is present from initialized context.
-  # TPU_SYSTEM is a logical device that indicates TPUs are present.
-  tpu_system_devices = tf_config.list_physical_devices("TPU_SYSTEM")
-  return len(tpu_system_devices) > 0  # pylint: disable=g-explicit-length-test
-
-
-def is_gpu_present() -> bool:
-  """Returns true if TPU devices are present."""
-  return len(tf_config.list_physical_devices("GPU")) > 0  # pylint: disable=g-explicit-length-test
 
 
 def _set_dtensor_device(device: dtensor_device.DTensorDevice) -> None:

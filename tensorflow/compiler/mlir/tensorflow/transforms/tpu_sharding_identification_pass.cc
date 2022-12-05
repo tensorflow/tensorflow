@@ -241,7 +241,7 @@ void IdentifyXlaShardingForComputationInputs(
   // Sharding configurations are added to the tf_device.ClusterFunc as an
   // attribute and the function as an argument attribute.
   for (auto operand_and_arg :
-       llvm::zip(cluster_func.operands(), function_block.getArguments())) {
+       llvm::zip(cluster_func.getOperands(), function_block.getArguments())) {
     Value operand = std::get<0>(operand_and_arg);
     BlockArgument arg = std::get<1>(operand_and_arg);
 

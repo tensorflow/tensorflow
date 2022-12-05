@@ -2411,6 +2411,29 @@ Value applyConvolutionPadding(Location loc, Value input,
       DenseIntElementsAttr::get(attrType, padInterior));
 }
 
+// If the ConvolutionOp has a window reversal, applies it to the filter.
+Value applyConvolutionReversal(Location loc, OpBuilder& b, ConvolutionOp op,
+                               Value filter) {
+  auto reversals = op.getWindowReversal();
+  if (!reversals.has_value()) {
+    return filter;
+  }
+  llvm::SmallVector<int64_t> reversedDims;
+  for (auto [idx, reversed] :
+       llvm::enumerate(reversals.value().getValues<bool>())) {
+    if (reversed) {
+      reversedDims.push_back(
+          op.getDimensionNumbers().getKernelSpatialDimensions()[idx]);
+    }
+  }
+
+  return b.create<mhlo::ReverseOp>(
+      loc, filter,
+      mlir::DenseIntElementsAttr::get(
+          RankedTensorType::get(reversedDims.size(), b.getI64Type()),
+          reversedDims));
+}
+
 /// Converts mhlo.conv operation to linalg named op. This only covers normal
 /// convolution cases. The op must have canonical dimension numbers. Depthwise
 /// convolution and pointwise convolution are not handled in the conversion.
@@ -2429,6 +2452,7 @@ struct NormalConvolutionOpConversion
     Location loc = op.getLoc();
     Value input = adaptor.getLhs();
     Value filter = adaptor.getRhs();
+    filter = applyConvolutionReversal(loc, rewriter, op, filter);
     auto resultType =
         typeConverter->convertType(op.getResult().getType()).cast<ShapedType>();
     int64_t rank = resultType.getRank();
@@ -2582,25 +2606,7 @@ struct ConvolutionOpGeneralConversion
     Value modifiedRhs = applyConvolutionPadding(
         op.getLoc(), adaptor.getRhs(), nullptr, adaptor.getRhsDilationAttr(),
         op.getDimensionNumbers().getKernelSpatialDimensions(), rewriter);
-
-    // Decompose the reversal dims into its own step
-    auto reversals = op.getWindowReversal();
-    if (reversals.has_value()) {
-      llvm::SmallVector<int64_t> reversedDims;
-      for (auto& idxAndBool :
-           llvm::enumerate(reversals.value().getValues<bool>()))
-        if (idxAndBool.value())
-          reversedDims.push_back(
-              op.getDimensionNumbers()
-                  .getKernelSpatialDimensions()[idxAndBool.index()]);
-
-      modifiedRhs = rewriter.create<mhlo::ReverseOp>(
-          loc, modifiedRhs,
-          mlir::DenseIntElementsAttr::get(
-              RankedTensorType::get(reversedDims.size(),
-                                    rewriter.getIntegerType(64)),
-              reversedDims));
-    }
+    modifiedRhs = applyConvolutionReversal(loc, rewriter, op, modifiedRhs);
 
     // Non-one values for feature or batch group counts will result in reshaped
     // inputs and outputs. These mappings are used to keep track of the the new

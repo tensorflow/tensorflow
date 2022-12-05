@@ -236,6 +236,7 @@ namespace functor {
   extern template struct SpatialAvgPooling<GPUDevice, T>;
 
 DECLARE_GPU_SPEC(Eigen::half);
+DECLARE_GPU_SPEC(Eigen::bfloat16);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
@@ -244,6 +245,9 @@ DECLARE_GPU_SPEC(double);
 REGISTER_KERNEL_BUILDER(
     Name("AvgPool").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
     AvgPoolingOp<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(
+    Name("AvgPool").Device(DEVICE_GPU).TypeConstraint<Eigen::bfloat16>("T"),
+    AvgPoolingOp<GPUDevice, Eigen::bfloat16>);
 REGISTER_KERNEL_BUILDER(
     Name("AvgPool").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     AvgPoolingOp<GPUDevice, float>);
@@ -660,6 +664,11 @@ REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
                             .TypeConstraint<Eigen::half>("T")
                             .HostMemory("orig_input_shape"),
                         AvgPoolingGradOpCustomGPUKernel<Eigen::half>);
+REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::bfloat16>("T")
+                            .HostMemory("orig_input_shape"),
+                        AvgPoolingGradOpCustomGPUKernel<Eigen::bfloat16>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

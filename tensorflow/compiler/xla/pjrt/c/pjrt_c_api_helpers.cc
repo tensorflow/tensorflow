@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 
+#include <functional>
 #include <memory>
+#include <utility>
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -326,6 +329,41 @@ xla::PjRtClient::HostBufferSemantics ConvertFromPjRtHostBufferSemantics(
     case PJRT_HostBufferSemantics::PJRT_HostBufferSemantics_kZeroCopy:
       return xla::PjRtClient::HostBufferSemantics::kZeroCopy;
   }
+}
+
+xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
+                                                      const PJRT_Api* c_api) {
+  using xla::Status, xla::PjRtFuture;
+  PJRT_Event_OnReady_Args event_onready_args;
+  event_onready_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
+  event_onready_args.priv = nullptr;
+  event_onready_args.event = c_event;
+
+  PjRtFuture<Status>::Promise promise = PjRtFuture<Status>::CreatePromise();
+  event_onready_args.user_arg = new std::function<void(PJRT_Error*)>(
+      [promise, c_event, c_api](PJRT_Error* error) mutable {
+        if (error != nullptr) {
+          xla::Status s = ::pjrt::PjrtErrorToStatus(error, c_api);
+          promise.Set(s);
+          ::pjrt::MakeErrorDeleter(c_api)(error);
+        } else {
+          promise.Set(tsl::OkStatus());
+        }
+        ::pjrt::MakeEventDeleter(c_api)(c_event);
+      });
+  event_onready_args.callback = [](PJRT_Error* error, void* arg) {
+    std::function<void(PJRT_Error*)>* set_future =
+        reinterpret_cast<std::function<void(PJRT_Error*)>*>(arg);
+    (*set_future)(error);
+    delete set_future;
+  };
+
+  PJRT_Error* error = c_api->PJRT_Event_OnReady(&event_onready_args);
+  if (error != nullptr) {
+    xla::Status s = ::pjrt::PjrtErrorToStatus(error, c_api);
+    return PjRtFuture<Status>(s);
+  }
+  return PjRtFuture<Status>(std::move(promise));
 }
 
 }  // namespace pjrt

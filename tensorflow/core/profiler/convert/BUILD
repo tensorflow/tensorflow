@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_oss", "tf_cc_test")
-load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts", "tf_profiler_pybind_cc_library_wrapper")
+load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -678,7 +678,7 @@ cc_library(
     hdrs = ["xplane_to_tools_data.h"],
     copts = tf_profiler_copts(),
     deps = [
-        ":hlo_to_tools_data_headers_only",
+        ":hlo_to_tools_data",
         ":multi_xplanes_to_op_stats",
         ":op_stats_to_input_pipeline_analysis",
         ":op_stats_to_op_profile",
@@ -777,7 +777,7 @@ cc_library(
 )
 
 cc_library(
-    name = "hlo_to_tools_data_impl",
+    name = "hlo_to_tools_data",
     srcs = ["hlo_to_tools_data.cc"],
     hdrs = ["hlo_to_tools_data.h"],
     copts = tf_profiler_copts(),
@@ -795,12 +795,6 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/strings",
     ],
-    alwayslink = True,
-)
-
-tf_profiler_pybind_cc_library_wrapper(
-    name = "hlo_to_tools_data_headers_only",
-    actual = ":hlo_to_tools_data_impl",
 )
 
 cc_library(

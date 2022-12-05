@@ -209,4 +209,39 @@ def FftOp : XlaCpu_Op<"fft", [BufferizableOpInterface]> {
   }];
 }
 
+def OutfeedOp : XlaCpu_Op<"outfeed", [BufferizableOpInterface]> {
+  let summary = "CPU-specific version of Outfeed";
+  let description = [{
+    The major differences between this and HLO's outfeed are:
+    - It bufferizes to itself.
+    - It captures the output type to reinstate it after signless conversions.
+  }];
+  let arguments = (ins
+    Variadic<TensorOrMemref>:$operand,
+    DefaultValuedStrAttr<StrAttr, "">:$config,
+    ArrayAttr:$resultType
+  );
+  let extraClassDeclaration = [{
+    // Declarations for BufferizableOpInterface:
+    bool bufferizesToMemoryRead(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return true;
+    }
+    bool bufferizesToMemoryWrite(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return false;
+    }
+    SmallVector<OpResult> getAliasingOpResult(
+        OpOperand &opOperand, const bufferization::AnalysisState &state) {
+      return {};
+    }
+    LogicalResult bufferize(RewriterBase &rewriter,
+        const bufferization::BufferizationOptions &options);
+    bufferization::BufferRelation bufferRelation(OpResult opResult,
+        const bufferization::AnalysisState &state) {
+      return bufferization::BufferRelation::Equivalent;
+    }
+  }];
+}
+
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_XLA_CPU_OPS_TD_

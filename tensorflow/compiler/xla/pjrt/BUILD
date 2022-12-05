@@ -363,7 +363,6 @@ cc_library(
     deps = [
         ":local_device_state",
         ":pjrt_stream_executor_client",
-        ":tracked_device_buffer",
         ":utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -371,11 +370,9 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:tpu_computation_placer",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executable",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executable_interface",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
@@ -387,10 +384,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_transfer_manager",
         "//tensorflow/tsl/platform:casts",
         "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:logging",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
     ],
 )
 
@@ -622,6 +615,7 @@ cc_library(
     hdrs = ["pjrt_c_api_client.h"],
     deps = [
         ":pjrt_client",
+        ":pjrt_executable",
         ":pjrt_future",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",

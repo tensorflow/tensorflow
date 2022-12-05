@@ -18,16 +18,16 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 
 #include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_cudamallocasync_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/random.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/tsl/framework/device_id.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {
@@ -149,7 +149,7 @@ TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsync)) {
   std::vector<std::unique_ptr<Device>> devices;
   Status status;
   int number_instantiated =
-      GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly();
+      se::GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly();
   {  // The new scope is to trigger the destruction of the object.
     status = DeviceFactory::GetFactory("GPU")->CreateDevices(
         opts, kDeviceNamePrefix, &devices);
@@ -166,7 +166,7 @@ TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsync)) {
     allocator->DeallocateRaw(ptr);
   }
   EXPECT_EQ(number_instantiated + 1,
-            GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly());
+            se::GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly());
   EXPECT_EQ(status.code(), error::OK);
 }
 
@@ -178,7 +178,7 @@ TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsyncPreallocate)) {
   Status status;
 
   int number_instantiated =
-      GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly();
+      se::GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly();
   {  // The new scope is to trigger the destruction of the object.
     status = DeviceFactory::GetFactory("GPU")->CreateDevices(
         opts, kDeviceNamePrefix, &devices);
@@ -198,7 +198,7 @@ TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsyncPreallocate)) {
   unsetenv("TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC");
 
   EXPECT_EQ(number_instantiated + 1,
-            GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly());
+            se::GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly());
 
   EXPECT_EQ(status.code(), error::OK);
 }

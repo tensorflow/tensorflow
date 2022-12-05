@@ -234,6 +234,13 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(expected, repr(mt))
     self.assertEqual(expected, repr(mt))
 
+  def testAsDict(self):
+    values = constant_op.constant([1, 2, 3, 4])
+    mask = constant_op.constant([True, True, False, True])
+    mt = MaskedTensorV1(values, mask)
+    mt_dict = extension_type.as_dict(mt)
+    self.assertEqual({'values': values, 'mask': mask}, mt_dict)
+
   def testConstructorSignature(self):
 
     class MyType(extension_type.ExtensionType):

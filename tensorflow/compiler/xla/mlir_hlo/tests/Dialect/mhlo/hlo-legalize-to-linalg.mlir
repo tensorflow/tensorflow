@@ -3354,7 +3354,7 @@ func.func @dynamic_slice(%arg: tensor<3x4xf32>, %start1: tensor<i64>, %start2: t
 // -----
 
 func.func @dynamic_slice_unsigned_index(
-    %arg: tensor<3x4xui32>, %start1: tensor<ui64>, %start2: tensor<ui64>) 
+    %arg: tensor<3x4xui32>, %start1: tensor<ui64>, %start2: tensor<ui64>)
     -> tensor<1x4xui32> {
   %0 = "mhlo.dynamic_slice"(%arg, %start1, %start2) {
     slice_sizes = dense<[1, 4]> : tensor<2xi64>
@@ -4936,8 +4936,8 @@ func.func @torch_index_select(%arg0: tensor<5x1x5xi32>,
 // CHECK-SAME:   indexing_maps
 // CHECK-SAME:   #[[MAP0]], #[[MAP1]], #[[MAP2]]
 // CHECK-SAME:   iterator_types = ["parallel", "parallel", "parallel"]
-// CHECK-SAME: ins(%[[INDEX]], %[[INIT1]] : 
-// CHECK-SAME: outs(%[[INIT2]] : 
+// CHECK-SAME: ins(%[[INDEX]], %[[INIT1]] :
+// CHECK-SAME: outs(%[[INIT2]] :
 // CHECK-SAME: {someattr}
 //      CHECK: ^{{.+}}(%[[VAL:.+]]: i32, %{{.+}}: i32, %{{.+}}: i32):
 //      CHECK:   %[[CAST:.+]] = arith.index_cast %[[VAL]] : i32 to index
@@ -5748,6 +5748,29 @@ func.func @convolution_without_reversing_and_stride(%arg0: tensor<2x14x12x2xf64>
     {batch_group_count = 1 : i64, feature_group_count = 2 : i64, precision_config = [#mhlo<precision HIGHEST>, #mhlo<precision HIGHEST>]}
     : (tensor<2x14x12x2xf64>, tensor<7x7x1x2xf64>) -> tensor<2x12x16x2xf64>
   return %0 : tensor<2x12x16x2xf64>
+}
+
+// -----
+
+// CHECK-DAG: affine_map<(d0, d1, d2, d3) -> (-d0 + 2, -d1 + 2, d2, d3)>
+// CHECK-LABEL: @normal_convolution_with_reversal
+func.func @normal_convolution_with_reversal(%arg0: tensor<1x3x3x3xf32>,
+    %arg1: tensor<3x3x3x1xf32>) -> tensor<1x1x1x1xf32> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+      dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+      window = {
+        stride = [1, 1],
+        pad = [[0, 0], [0, 0]],
+        lhs_dilate = [1, 1],
+        rhs_dilate = [1, 1],
+        reverse = [1, 1]
+      } {
+        batch_group_count = 1 : i64,
+        feature_group_count = 1 : i64, precision_config = [
+          #mhlo<precision DEFAULT>,
+          #mhlo<precision DEFAULT>]
+      } : (tensor<1x3x3x3xf32>, tensor<3x3x3x1xf32>) -> tensor<1x1x1x1xf32>
+  return %0 : tensor<1x1x1x1xf32>
 }
 
 // -----

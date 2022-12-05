@@ -85,5 +85,6 @@ objc_library(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/kernels/internal:types",
+        "@FP16",
     ],
 )

@@ -34,6 +34,12 @@ namespace gml_st {
 bool isZero(Value v);
 bool isOne(Value v);
 
+/// Returns true if `candidate`'s offsets are all 0s and strides are all 1s.
+bool isIdentityTileOp(TileOp candidate);
+
+/// Returns true if `lhs` and `rhs` are of same static shape.
+bool haveSameStaticShape(Value lhs, Value rhs);
+
 /// Perform standalone tiling of a single LinalgOp by `tileSizes`.
 /// An empty vector is interpreted as the identity permutation and the
 /// transformation returns early.

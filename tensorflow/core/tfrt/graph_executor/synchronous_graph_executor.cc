@@ -37,7 +37,6 @@ tensorflow::tfrt_stub::GraphExecutionOptions GetGraphExecutionOptions(
   compile_options.variable_device = tensorflow::DeviceNameUtils::FullName(
       /*job=*/"localhost", /*replica=*/0,
       /*task=*/0, /*type=*/"CPU", /*id=*/0);
-  compile_options.enable_native_ops = false;
   compile_options.enable_grappler = true;
   compile_options.hoist_invariant_ops = true;
   compile_options.cost_threshold = 1024;

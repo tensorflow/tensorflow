@@ -76,6 +76,8 @@ void RegisterDefaultXlaCpuRuntimeDialects(DialectRegistry& dialects) {
 
 static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
     mlir::OpPassManager& pm, const CpuPipelineOptions& opts) {
+  pm.addPass(mlir::createAsyncFuncToAsyncRuntimePass());
+
   // Convert entry function to the XLA entrypoint.
   pm.addPass(CreateExportRuntimeFunctionsPass());
   pm.addPass(cpu::createConvertLmhloToCpuRuntimePass());
@@ -110,6 +112,8 @@ static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
   // Expand math operations into std/arith dialect operations.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::arith::createArithExpandOpsPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::memref::createExpandOpsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::memref::createExpandStridedMetadataPass());
 
   // Add alignment attribute to all memref allocations.
   pm.addNestedPass<mlir::func::FuncOp>(

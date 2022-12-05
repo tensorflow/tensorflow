@@ -4,6 +4,7 @@
 
 // ArgResultAlias aka #stablehlo.result_alias is unused at the moment.
 // ChannelHandle aka #stablehlo.channel_handle is covered below.
+// CustomCallSchedule aka #mhlo.custom_call_schdeule isn't in stablehlo yet.
 
 func.func @attr_comparison_direction_eq(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<i1> {
   %0 = "stablehlo.compare"(%arg0, %arg1) {

@@ -36,7 +36,7 @@ FailureOr<Operation *> fuse(PatternRewriter &rewriter,
 // that fusion candidate doesn't have any uses except the one
 // `gml_st.materialize` in the block to avoid exponential code growth.
 void fuseGreedily(PatternRewriter &rewriter, Block &block,
-                  llvm::function_ref<bool(Operation *)> filterFn);
+                  llvm::function_ref<bool(Operation *)> filterFn = nullptr);
 
 /// Populate fusion patterns.
 void populateFusionPatterns(MLIRContext *ctx,

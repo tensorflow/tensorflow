@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
@@ -55,6 +56,9 @@ constexpr char kTPUCore0[] = "TPU_REPLICATED_CORE_0";
 
 struct ReplicateToIslandPass
     : public impl::ReplicateToIslandPassBase<ReplicateToIslandPass> {
+  explicit ReplicateToIslandPass(bool legacy_graph_export) {
+    legacy_graph_export_ = legacy_graph_export;
+  }
   void runOnOperation() override;
 };
 
@@ -238,7 +242,8 @@ LogicalResult ExpandReplicateIntoReplicas(
 LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
                                          tf_executor::GraphOp graph_op,
                                          tf_executor::IslandOp island_op,
-                                         tf_device::ReplicateOp replicate_op) {
+                                         tf_device::ReplicateOp replicate_op,
+                                         bool legacy_graph_export) {
   OpBuilder builder(island_op);
   const int num_replicas = replicate_op.getN();
 
@@ -325,14 +330,15 @@ void ReplicateToIslandPass::runOnOperation() {
     auto replicate_op =
         cast<tf_device::ReplicateOp>(island_op.GetBody().front());
     if (failed(CreateIslandsFromReplicate(tf_dialect, graph_op, island_op,
-                                          replicate_op)))
+                                          replicate_op, legacy_graph_export_)))
       return signalPassFailure();
   }
 }
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateReplicateToIslandPass() {
-  return std::make_unique<ReplicateToIslandPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateReplicateToIslandPass(
+    bool legacy_graph_export) {
+  return std::make_unique<ReplicateToIslandPass>(legacy_graph_export);
 }
 
 }  // namespace TFDevice

@@ -90,7 +90,9 @@ struct AutoShardingSolverOption {
   std::vector<int64_t> force_strategy_inst_indices;
   std::vector<std::string> force_strategy_stra_names;
 
-  bool only_allow_divisible;
+  bool only_allow_divisible_input_output;
+
+  bool only_allow_divisible_intermediate;
 
   // If true, trictly limit the following iterations to use the same number of
   // shards for sharded tensor dimensions; if false, the following iterations

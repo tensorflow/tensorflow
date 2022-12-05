@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/runtime/diagnostics.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
+#include "tensorflow/compiler/xla/runtime/module.h"
 #include "tensorflow/compiler/xla/runtime/state.h"
 #include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"
@@ -126,6 +127,28 @@ static absl::Status CompileAndExecute(
   return absl::OkStatus();
 }
 
+template <typename State>
+static absl::StatusOr<std::unique_ptr<State>> CompileAndExecute(
+    std::string_view source, ArgumentsRef args, const StatefulModule<State>& m,
+    absl::Span<const std::string_view> exported = {"test"}) {
+  CustomCallRegistry registry = {
+      [&](DynamicCustomCallRegistry& registry) { m.Export(registry); },
+      [&](DirectCustomCallRegistry& registry) { m.Export(registry); },
+  };
+  auto state = m.CreateModuleState();
+  if (!state.ok()) return state.status();
+
+  CustomCall::UserData user_data;
+  auto initialized = m.InitializeUserData(state->get(), user_data);
+  if (!initialized.ok()) return initialized;
+
+  auto executed = CompileAndExecute(source, args, registry, /*copts=*/{},
+                                    /*type_converter=*/{}, exported, user_data);
+  if (!executed.ok()) return executed;
+
+  return state;
+}
+
 // No-Op custom call with a single `i32` argument.
 static void I32NoOp(DynamicCustomCallRegistry& registry) {
   registry.Register(
@@ -135,44 +158,62 @@ static void I32NoOp(DynamicCustomCallRegistry& registry) {
 }
 
 //===----------------------------------------------------------------------===//
+// A test for stateful module with a direct custom call.
+//===----------------------------------------------------------------------===//
 
-// Static counter to observe side effects of direct custom call.
-static int32_t custom_call_counter = 0;
+struct Counter : public Module::State {
+  int32_t value = 0;
+};
 
-// Direct custom call linked with XLA runtime executable at compile (link) time.
-static bool CustomCallFn(ExecutionContext* ctx, void** args, void** attrs,
-                         void** rets) {
-  auto handler = CustomCall::Bind("test.custom_call")
-                     .Arg<int32_t>()
-                     .To([&](int32_t arg) -> LogicalResult {
-                       custom_call_counter += arg;
-                       return success();
-                     });
+// Package custom call that updates a `Counter` as a runtime module.
+struct CounterModule : public StatefulModule<Counter> {
+  CounterModule() : StatefulModule<Counter>("counter") {}
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+  static bool Inc(ExecutionContext* e, void** args, void** attrs, void** rets) {
+    auto impl = CustomCall::Bind("test.increment")
+                    .UserData<Counter*>()  // counter
+                    .Arg<int32_t>()        // value
+                    .To([](Counter* counter, int32_t value) {
+                      return success(counter->value += value);
+                    });
+    return succeeded(Executable::Call(e, *impl, args, attrs, rets));
+  }
+
+  void Export(DirectCustomCallRegistry& registry) const final {
+    registry.Register("test.increment", Inc);
+  }
+
+  absl::StatusOr<std::unique_ptr<Counter>> CreateModuleState() const final {
+    return std::make_unique<Counter>();
+  }
+
+  absl::Status InitializeUserData(Counter* state,
+                                  CustomCall::UserData& user_data) const final {
+    user_data.insert(state);
+    return absl::OkStatus();
+  }
+};
 
 TEST(CustomCallTest, DirectCustomCall) {
   absl::string_view source = R"(
-    func.func private @custom_call(%arg0: i32)
-      attributes { rt.custom_call = "test.custom_call" }
+    func.func private @increment(%arg0: i32)
+      attributes { rt.custom_call = "test.increment" }
 
     func.func @test() {
       %0 = arith.constant 42 : i32
-      call @custom_call(%0) : (i32) -> ()
+      call @increment(%0) : (i32) -> ()
       return
     }
   )";
 
-  CustomCallRegistry registry;
-  registry.direct_custom_calls = [&](DirectCustomCallRegistry& registry) {
-    registry.Register("test.custom_call", CustomCallFn);
-  };
-
-  ASSERT_EQ(custom_call_counter, 0);
-  ASSERT_TRUE(CompileAndExecute(source, /*args=*/{}, registry).ok());
-  EXPECT_EQ(custom_call_counter, 42);
+  auto counter = CompileAndExecute(source, /*args=*/{}, CounterModule());
+  ASSERT_TRUE(counter.ok());
+  EXPECT_EQ((*counter)->value, 42);
 }
+
+//===----------------------------------------------------------------------===//
+// All other tests use dynamic custom calls and do not use modules.
+//===----------------------------------------------------------------------===//
 
 TEST(CustomCallTest, ScalarArgs) {
   absl::string_view source = R"(

@@ -49,6 +49,9 @@ StatusOr<FftType> ConvertFftType(llvm::StringRef type_string);
 StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
     llvm::StringRef transpose_string);
 
+StatusOr<xla::CustomCallSchedule> ConvertCustomCallSchedule(
+    mlir::mhlo::CustomCallSchedule schedule);
+
 StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
     mlir::mhlo::CustomCallApiVersion api_version);
 
