@@ -192,8 +192,8 @@ Shape GetPerDeviceShape(const Shape& shape, const HloSharding& sharding,
     dimensions[i] = limit[i] - offset[i];
   }
   if (shape.has_layout()) {
-    return xla::ShapeUtil::MakeShapeWithLayout(shape.element_type(), dimensions,
-                                               shape.layout().minor_to_major());
+    return xla::ShapeUtil::MakeShapeWithDenseLayout(
+        shape.element_type(), dimensions, shape.layout().minor_to_major());
   }
   return xla::ShapeUtil::MakeShape(shape.element_type(), dimensions);
 }

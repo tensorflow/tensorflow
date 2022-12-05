@@ -21,7 +21,7 @@ populate_source_vars("${TFLITE_SOURCE_DIR}/tools/benchmark"
   FILTER "(_test|_plus_flex_main|_performance_options.*)\\.cc$"
 )
 list(APPEND TFLITE_BENCHMARK_SRCS
-  ${TF_SOURCE_DIR}/core/util/stats_calculator.cc
+  ${TF_SOURCE_DIR}/tsl/util/stats_calculator.cc
   ${TFLITE_SOURCE_DIR}/kernels/internal/utils/sparsity_format_converter.cc
   ${TFLITE_SOURCE_DIR}/profiling/memory_info.cc
   ${TFLITE_SOURCE_DIR}/profiling/memory_usage_monitor.cc
@@ -51,7 +51,7 @@ endif()
 if(TFLITE_ENABLE_XNNPACK)
   list(APPEND TFLITE_BENCHMARK_SRCS
     ${TFLITE_SOURCE_DIR}/tools/delegates/xnnpack_delegate_provider.cc
-  )
+    ${TFLITE_SOURCE_DIR}/core/experimental/acceleration/configuration/c/xnnpack_plugin.cc)
 else()
   set(TFLITE_BENCHMARK_CC_OPTIONS "-DTFLITE_WITHOUT_XNNPACK")
 endif()  # TFLITE_ENABLE_XNNPACK

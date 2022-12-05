@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
 
@@ -560,6 +561,12 @@ TEST_F(LayoutTest, EquivalentLayout) {
   EXPECT_TRUE(x_sharded.IsEquivalent(fully_sharded));
   EXPECT_FALSE(fully_sharded.IsEquivalent(y_sharded));
   EXPECT_FALSE(y_sharded.IsEquivalent(fully_sharded));
+}
+
+TEST(DynamicSizeTest, IsDynamicSize) {
+  EXPECT_TRUE(IsDynamicSize(-1));
+  EXPECT_TRUE(IsDynamicSize(mlir::ShapedType::kDynamic));
+  EXPECT_FALSE(IsDynamicSize(10));
 }
 
 }  // namespace

@@ -143,7 +143,7 @@ static LogicalResult LowerIfOp(IfOp op) {
   OpBuilder builder(op_inst);
 
   // Lower the condition to a boolean value (i1).
-  Value cond_i1 = LowerCondition(loc, op.cond(), &builder);
+  Value cond_i1 = LowerCondition(loc, op.getCond(), &builder);
   if (!cond_i1) return failure();
 
   // Split the basic block before the 'if'.  The new dest will be our merge

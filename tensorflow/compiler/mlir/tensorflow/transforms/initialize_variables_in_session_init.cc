@@ -67,6 +67,8 @@ func::FuncOp CreateSessionInitFunc(ModuleOp module) {
                                            kSessionInitFuncName, func_type);
   func->setAttr(kTfSavedModelExportedNameAttr,
                 builder.getStrArrayAttr({kSessionInitFuncName}));
+  func->setAttr(kTfSavedModelInitializerTypeAttr,
+                builder.getStringAttr(kTfSavedModelInitializerRestoreType));
   func.setVisibility(mlir::func::FuncOp::Visibility::Public);
   auto func_builder = OpBuilder::atBlockBegin(func.addEntryBlock());
   func_builder.create<mlir::func::ReturnOp>(func.getLoc());
@@ -90,13 +92,33 @@ func::FuncOp GetOrCreateSessionInitFunc(ModuleOp module) {
   if (!session_init_op) return CreateSessionInitFunc(module);
 
   SymbolTable symbol_table(module);
+
+  // Find the init function that has tf_saved_model.initializer_type ==
+  // "restore_op".
+  for (auto init_sym :
+       session_init_op.getInitializers().getAsValueRange<FlatSymbolRefAttr>()) {
+    auto init_func_op = symbol_table.lookup<func::FuncOp>(init_sym);
+
+    const auto init_type_attr = init_func_op->getAttrOfType<StringAttr>(
+        kTfSavedModelInitializerTypeAttr);
+    if (init_type_attr &&
+        init_type_attr == kTfSavedModelInitializerRestoreType) {
+      return init_func_op;
+    }
+  }
+
+  // When the init function with type "restore_op" is not found, fall back to
+  // taking the init function corresponding to the first symbol in the
+  // initializers list to be backwards-compatible, before
+  // tf_saved_model.initializer_type attribute was introduced.
   if (!session_init_op.getInitializers().empty()) {
-    func::FuncOp init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
-        session_init_op.getInitializers()[0]
-            .cast<FlatSymbolRefAttr>()
-            .getValue());
+    auto init_func_op =
+        symbol_table.lookup<func::FuncOp>(session_init_op.getInitializers()[0]
+                                              .cast<FlatSymbolRefAttr>()
+                                              .getValue());
     return init_func_op;
   }
+
   return CreateSessionInitFunc(module);
 }
 

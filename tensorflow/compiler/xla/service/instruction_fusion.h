@@ -17,15 +17,16 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_INSTRUCTION_FUSION_H_
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/fusion_queue.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 
@@ -57,7 +58,7 @@ class FusionDecision {
   }
 
   // Can be fused.
-  FusionDecision() {}
+  FusionDecision() = default;
 
   // A trick to declare and test fusion decision in a single statement (as TF
   // is still on C++14 and can't use if statement with explicit initializer).
@@ -75,7 +76,7 @@ class FusionDecision {
   // Connects two decisions with a disjunction. This is different than just
   // picking one, as we also have to propagate both explanations if only one of
   // them is false to show why fusion wasn't performed.
-  FusionDecision Or(const FusionDecision& decision) {
+  FusionDecision Or(const FusionDecision& decision) const {
     if (CanFuse() || decision.CanFuse()) {
       return {};
     }
@@ -85,7 +86,7 @@ class FusionDecision {
   // Connects two fusion decision with a conjunction. Unlike disjunction,
   // propagates only one explanation (as it is enough to show that fusion could
   // not be done).
-  FusionDecision And(const FusionDecision& decision) {
+  FusionDecision And(const FusionDecision& decision) const {
     if (CanFuse()) {
       return decision;
     }
@@ -97,12 +98,12 @@ class FusionDecision {
   }
 
   // Appends to explanation, or turns the decision negative.
-  FusionDecision operator<<(absl::string_view explanation) {
+  FusionDecision operator<<(absl::string_view explanation) const {
     return {absl::StrCat(explanation_.value_or(""), explanation)};
   }
 
   // Appends to explanation, or turns the decision negative.
-  FusionDecision operator<<(int64_t explanation) {
+  FusionDecision operator<<(int64_t explanation) const {
     return {absl::StrCat(explanation_.value_or(""), explanation)};
   }
 
@@ -125,10 +126,18 @@ class FusionDecision {
 // }
 struct NoFusionPossible {
   // Inverts the test value (true <=> not fusible) on wrapped FusionDecision.
-  explicit operator bool() { return !static_cast<bool>(fusion_decision); }
+  explicit operator bool() const { return !static_cast<bool>(fusion_decision); }
 
   // Returns wrapped fusion decision.
-  FusionDecision operator!() { return fusion_decision; }
+  FusionDecision operator!() const { return fusion_decision; }
+
+  friend NoFusionPossible operator||(const NoFusionPossible& a,
+                                     const NoFusionPossible& b) {
+    // If 'a'  says "fusion is possible" (branch after ":"), then we always want
+    // to return 'b', be it either to propagate b's explanation, or to say that
+    // fusion is indeed possible.
+    return a ? a : b;
+  }
 
   FusionDecision fusion_decision;
 };

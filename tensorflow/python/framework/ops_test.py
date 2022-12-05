@@ -1108,7 +1108,7 @@ class OperationTest(test_util.TensorFlowTestCase):
   @test_util.run_v1_only("b/120545219")
   def testAddWhileInput(self):
 
-    @eager_function.defun
+    @def_function.function
     def test():
       output = control_flow_ops.while_loop(lambda x: x < 3, lambda x: x + 1,
                                            [1])
@@ -2243,33 +2243,6 @@ class CollectionTest(test_util.TensorFlowTestCase):
       # Collections are ordered.
       self.assertEqual([90, 100], ops.get_collection("key"))
 
-  def test_defun(self):
-    with context.eager_mode():
-
-      @eager_function.defun
-      def defun():
-        ops.add_to_collection("int", 1)
-        ops.add_to_collection("tensor", constant_op.constant(2))
-
-        @eager_function.defun
-        def inner_defun():
-          self.assertEqual(ops.get_collection("int"), [1])
-          three = ops.get_collection("tensor")[0] + ops.get_collection("int")[0]
-          ops.add_to_collection("int", 2)
-          self.assertEqual(ops.get_collection("int"), [1, 2])
-          ops.add_to_collection("foo", "bar")
-          self.assertEqual(ops.get_collection("foo"), ["bar"])
-          return three
-
-        self.assertEqual(ops.get_collection("int"), [1])
-        three = inner_defun()
-        self.assertEqual(ops.get_collection("int"), [1])
-        self.assertEqual(ops.get_collection("foo"), [])
-        return three
-
-      three = defun()
-      self.assertEqual(three.numpy(), 3)
-
 
 ops.NotDifferentiable("FloatOutput")
 
@@ -2834,77 +2807,6 @@ class InitScopeTest(test_util.TensorFlowTestCase):
         self.assertTrue(context.eager_mode())
       self.assertTrue(context.eager_mode())
 
-  def testEscapesDefunWhenInEagerMode(self):
-
-    def function_with_variables():
-      with ops.init_scope():
-        self.v = resource_variable_ops.ResourceVariable(3)
-      return self.v.assign_add(1)
-
-    with context.eager_mode():
-      # Each invocation of function_with_variables recreates a variable.
-      self.assertEqual(4, int(function_with_variables()))
-      self.assertEqual(4, int(function_with_variables()))
-
-      compiled = eager_function.defun(function_with_variables)
-      # The init_scope in function_with_variables lifts the variable out
-      # of the graph function constructed by defun; hence,
-      # compiled now appears to be stateful.
-      self.assertEqual(4, int(compiled()))
-      self.assertEqual(5, int(compiled()))
-
-  def testEscapesDefunWhenInGraphMode(self):
-    def function_with_variables(name):
-      with ops.init_scope():
-        _ = variable_scope.get_variable(name, shape=(1,))
-
-    g = ops.Graph()
-    with g.as_default():
-      with self.cached_session():
-        # First ensure that graphs that are not building functions are
-        # not escaped.
-        function_with_variables("foo")
-        with self.assertRaisesRegex(ValueError,
-                                    r"Variable foo already exists.*"):
-          # This will fail because reuse is not set to True.
-          function_with_variables("foo")
-
-        compiled = eager_function.defun(function_with_variables)
-        compiled("bar")
-        self.assertEqual(
-            len(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)), 2)
-
-        # The second call to `compiled` should not create variables: the
-        # init_scope has lifted the variable creation code out of the defun.
-        compiled("bar")
-        self.assertEqual(
-            len(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)), 2)
-
-  def testEscapesNestedDefun(self):
-
-    def inner_function():
-      with ops.init_scope():
-        self.v = resource_variable_ops.ResourceVariable(1)
-      return self.v.assign_add(2)
-
-    def outer_function(inner=None):
-      with ops.init_scope():
-        self.v0 = resource_variable_ops.ResourceVariable(0)
-      return self.v0.assign_add(1) + inner()
-
-    with context.eager_mode():
-      # Each invocation of outer_function recreates variables.
-      self.assertEqual(4, int(outer_function(inner=inner_function)))
-      self.assertEqual(4, int(outer_function(inner=inner_function)))
-
-      compiled_inner = eager_function.defun(inner_function)
-      compiled_outer = eager_function.defun(outer_function)
-      # The init_scope lifts variables out of the graph functions
-      # constructed by defun; hence, compiled_outer should now appear to be
-      # stateful.
-      self.assertEqual(4, int(compiled_outer(inner=compiled_inner)))
-      self.assertEqual(7, int(compiled_outer(inner=compiled_inner)))
-
   @test_util.run_v1_only("b/120545219")
   def testFallsBackToGlobalGraphWhenAllGraphsAreBuildingFunctions(self):
     with context.graph_mode():
@@ -2978,7 +2880,7 @@ class InitScopeTest(test_util.TensorFlowTestCase):
 
       foo()
       self.assertEqual(ops.get_name_scope(), "")
-      foo_compiled = eager_function.defun(foo)
+      foo_compiled = def_function.function(foo)
       foo_compiled()
       self.assertEqual(ops.get_name_scope(), "")
 

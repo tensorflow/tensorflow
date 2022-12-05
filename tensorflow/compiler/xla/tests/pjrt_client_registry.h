@@ -24,20 +24,41 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/service/hlo_runner_interface.h"
 
 namespace xla {
 
 class PjRtClientTestFactoryRegistry {
  public:
-  void Register(
-      std::function<StatusOr<std::unique_ptr<PjRtClient>>()> factory) {
+  typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;
+  typedef std::function<DeviceShapeRepresentationFn(PjRtClient*)>
+      DeviceShapeRepresentationFnFactory;
+  typedef std::function<StatusOr<std::unique_ptr<PjRtClient>>()>
+      PjRtClientFactory;
+
+  static DeviceShapeRepresentationFn DefaultShapeRepresentationRegisteredFn(
+      StatusOr<PjRtClient*> client) {
+    return [](const Shape& host_shape) { return host_shape; };
+  }
+
+  void Register(PjRtClientFactory factory,
+                DeviceShapeRepresentationFnFactory
+                    registered_device_shape_representation_fn) {
     if (HasRegisteredFactory()) {
       LOG(FATAL) << "A PjRtClient has already been registered.";
       return;
     }
+
     absl::MutexLock lock(&mu_);
     factory_ = std::move(factory);
+    registered_device_shape_representation_fn_ =
+        std::move(registered_device_shape_representation_fn);
+  }
+
+  // Return the device shape representation of 'host_shape'.
+  DeviceShapeRepresentationFn GetDeviceShapeRepresentationFn(
+      PjRtClient* pjrt_client) {
+    absl::MutexLock lock(&mu_);
+    return registered_device_shape_representation_fn_(pjrt_client);
   }
 
   bool HasRegisteredFactory() {
@@ -54,15 +75,17 @@ class PjRtClientTestFactoryRegistry {
   mutable absl::Mutex mu_;
   std::function<StatusOr<std::unique_ptr<PjRtClient>>()> factory_
       ABSL_GUARDED_BY(mu_);
+  DeviceShapeRepresentationFnFactory registered_device_shape_representation_fn_;
 };
 
 PjRtClientTestFactoryRegistry& GetGlobalPjRtClientTestFactory();
 
-StatusOr<std::unique_ptr<HloRunnerInterface>> GetHloRunnerForTest(
-    se::Platform* test_platform);
-
 void RegisterPjRtClientTestFactory(
-    std::function<StatusOr<std::unique_ptr<PjRtClient>>()> factory);
+    PjRtClientTestFactoryRegistry::PjRtClientFactory factory,
+    PjRtClientTestFactoryRegistry::DeviceShapeRepresentationFnFactory
+        registered_device_shape_representation_fn =
+            PjRtClientTestFactoryRegistry::
+                DefaultShapeRepresentationRegisteredFn);
 
 bool ShouldUsePjRt();
 

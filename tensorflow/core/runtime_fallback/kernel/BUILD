@@ -7,6 +7,7 @@ load(
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/core/runtime_fallback:internal"],
     features = ["-layering_check"],
     licenses = ["notice"],
@@ -295,6 +296,7 @@ cc_library(
         ":kernel_fallback_execute_compat",
         ":kernel_fallback_tensor",
         ":kernel_fallback_tensor_conversion_alwayslink",
+        "//tensorflow/core/tfrt/fallback:op_kernel_runner_cache",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
@@ -354,6 +356,7 @@ cc_library(
         ":kernel_fallback_tensor",
         ":kernel_fallback_tensor_conversion_alwayslink",
         ":kernel_fallback_utils",
+        "@com_google_absl//absl/base",
         "@llvm-project//llvm:Support",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
@@ -361,6 +364,7 @@ cc_library(
         "//tensorflow/core/runtime_fallback/util:attr_util",
         "//tensorflow/core/tfrt/fallback:cost_recorder",
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
+        "//tensorflow/core/tfrt/fallback:op_kernel_runner_cache",
         "//tensorflow/core/tfrt/utils:error_util",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "//tensorflow/core/tfrt/utils:tensor_util",

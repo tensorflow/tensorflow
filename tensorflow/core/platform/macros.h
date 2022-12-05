@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_MACROS_H_
 #define TENSORFLOW_CORE_PLATFORM_MACROS_H_
 
-#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/macros.h"  // IWYU pragma: export
 
 namespace tensorflow {
 namespace internal {

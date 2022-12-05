@@ -251,6 +251,6 @@ def generate_backend_test_macros(backends = []):
                 "-DXLA_DISABLED_MANIFEST=\\\"%s\\\"" % manifest,
             ],
             deps = [
-                "//tensorflow/core/platform:logging",
+                "//tensorflow/tsl/platform:logging",
             ],
         )

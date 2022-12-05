@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
 #include "tensorflow/lite/delegates/gpu/common/quantization_util.h"
+#include "tensorflow/lite/delegates/gpu/delegate_options.h"
 #include "tensorflow/lite/delegates/serialization.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/minimal_logging.h"
@@ -70,6 +71,8 @@ InferenceUsage ToUsage(int32_t usage) {
       return InferenceUsage::FAST_SINGLE_ANSWER;
     case TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED:
       return InferenceUsage::SUSTAINED_SPEED;
+    case TFLITE_GPU_INFERENCE_PREFERENCE_BALANCED:
+      return InferenceUsage::BALANCED;
   }
   return InferenceUsage::UNKNOWN;
 }

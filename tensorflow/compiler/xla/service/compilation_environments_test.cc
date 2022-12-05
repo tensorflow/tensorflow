@@ -75,12 +75,19 @@ TEST_F(CompilationEnvironmentsTest, GetDefaultEnv) {
   EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 100);
 }
 
+TEST_F(CompilationEnvironmentsTest, GetDefaultMutableEnv) {
+  CompilationEnvironments envs;
+  EXPECT_EQ(envs.GetMutableEnv<TestCompilationEnvironment1>().some_flag(), 100);
+  EXPECT_EQ(envs.GetMutableEnv<TestCompilationEnvironment1>().some_flag(), 100);
+}
+
 TEST_F(CompilationEnvironmentsTest, GetAddedEnvNotModifiedByProcessNewEnv) {
   CompilationEnvironments envs;
   auto env = std::make_unique<TestCompilationEnvironment1>();
   env->set_some_flag(5);
   envs.AddEnv(std::move(env));
   EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 5);
+  EXPECT_EQ(envs.GetMutableEnv<TestCompilationEnvironment1>().some_flag(), 5);
 }
 
 TEST_F(CompilationEnvironmentsTest, GetAddedEnvModifiedByProcessNewEnv) {
@@ -89,6 +96,7 @@ TEST_F(CompilationEnvironmentsTest, GetAddedEnvModifiedByProcessNewEnv) {
   env->set_some_flag(1);
   envs.AddEnv(std::move(env));
   EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 100);
+  EXPECT_EQ(envs.GetMutableEnv<TestCompilationEnvironment1>().some_flag(), 100);
 }
 
 TEST_F(CompilationEnvironmentsTest, MultipleEnvs) {
@@ -98,6 +106,18 @@ TEST_F(CompilationEnvironmentsTest, MultipleEnvs) {
   EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 100);
 }
 
+TEST_F(CompilationEnvironmentsTest, MultipleMutableEnvs) {
+  CompilationEnvironments envs;
+  EXPECT_EQ(envs.GetMutableEnv<TestCompilationEnvironment1>().some_flag(), 100);
+  EXPECT_EQ(envs.GetMutableEnv<TestCompilationEnvironment2>().some_other_flag(),
+            200);
+  envs.GetMutableEnv<TestCompilationEnvironment1>().set_some_flag(101);
+  envs.GetMutableEnv<TestCompilationEnvironment2>().set_some_other_flag(201);
+  EXPECT_EQ(envs.GetMutableEnv<TestCompilationEnvironment1>().some_flag(), 101);
+  EXPECT_EQ(envs.GetMutableEnv<TestCompilationEnvironment2>().some_other_flag(),
+            201);
+}
+
 TEST_F(CompilationEnvironmentsTest, CopyConstructor) {
   // Setup envs with 2 environments
   auto envs = std::make_unique<CompilationEnvironments>();
@@ -105,8 +125,8 @@ TEST_F(CompilationEnvironmentsTest, CopyConstructor) {
   env1->set_some_flag(10);
   envs->AddEnv(std::move(env1));
   auto env2 = std::make_unique<TestCompilationEnvironment2>();
-  env2->set_some_other_flag(20);
   envs->AddEnv(std::move(env2));
+  envs->GetMutableEnv<TestCompilationEnvironment2>().set_some_other_flag(20);
 
   // Call the copy constructor and delete the original CompilationEnvironments
   auto envs_copy = std::make_unique<CompilationEnvironments>(*envs);
@@ -125,8 +145,8 @@ TEST_F(CompilationEnvironmentsTest, CopyAssignment) {
   env1->set_some_flag(10);
   envs1->AddEnv(std::move(env1));
   auto env2 = std::make_unique<TestCompilationEnvironment2>();
-  env2->set_some_other_flag(20);
   envs1->AddEnv(std::move(env2));
+  envs1->GetMutableEnv<TestCompilationEnvironment2>().set_some_other_flag(20);
 
   // Create envs2 with some environments that should be deleted on copy
   // assignment

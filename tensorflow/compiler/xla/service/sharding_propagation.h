@@ -21,9 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/custom_call_sharding_helper.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
@@ -90,6 +90,14 @@ class ShardingPropagation : public HloModulePass {
   static std::optional<HloSharding> GetShardingFromUser(
       const HloInstruction& instruction, const HloInstruction& user,
       int64_t aggressiveness, bool is_spmd, const CallGraph& call_graph);
+
+  // Canonicalizes entry_computation_layouts by calling
+  // module.layout_canonicalization_callback(), which gives canolicalized
+  // argument and result layouts based on current module. Currently used by
+  // PJRT which assigns layouts based on runtime shapes: see
+  // DetermineArgumentLayoutsFromCompileOptions() in
+  //     tensorflow/compiler/xla/pjrt/utils.cc
+  Status CanonicalizeLayouts(HloModule* module);
 
  private:
   bool InferShardingFromOperands(HloInstruction* instruction,

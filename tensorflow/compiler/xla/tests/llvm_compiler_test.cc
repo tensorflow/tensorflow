@@ -18,11 +18,11 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -61,8 +61,7 @@ class GpuDummyCompiler : public GpuCompiler {
 
   StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
-      GpuVersion gpu_version, se::StreamExecutor* stream_exec, bool relocatable,
-      const HloModule* debug_module) {
+      GpuVersion gpu_version, bool relocatable, const HloModule* debug_module) {
     std::vector<uint8_t> compiled_results;
     return std::pair<std::string, std::vector<uint8_t>>(
         "", std::move(compiled_results));

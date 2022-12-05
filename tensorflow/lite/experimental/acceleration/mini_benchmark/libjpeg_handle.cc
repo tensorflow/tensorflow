@@ -23,7 +23,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/decode_jpeg_status.h"
 
 namespace tflite {

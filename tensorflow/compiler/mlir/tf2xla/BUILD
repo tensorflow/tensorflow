@@ -1,6 +1,8 @@
 # Description:
 #    TF2XLA Bridge and related components.
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 cc_library(
     name = "mlir_bridge_rollout_policy",
     srcs = ["mlir_bridge_rollout_policy.cc"],

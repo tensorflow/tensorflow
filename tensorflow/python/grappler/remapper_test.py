@@ -38,7 +38,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import sysconfig
+from tensorflow.python.platform import sysconfig as sysconfig_lib
 from tensorflow.python.platform import test
 from tensorflow.python.util import _pywrap_utils
 
@@ -92,7 +92,8 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
       # The cublaslt matmul with gelu epilog is only supported since cuda 11.4.
       if not test.is_gpu_available(cuda_only=True):
         self.skipTest('This test requires GPU.')
-      cuda_version_str = sysconfig.get_build_info().get('cuda_version', '0.0')
+      cuda_version_str = sysconfig_lib.get_build_info().get(
+          'cuda_version', '0.0')
       cuda_version = tuple([int(x) for x in cuda_version_str.split('.')])
       if cuda_version < (11, 4):
         self.skipTest('This test requires CUDA >= 11.4.')

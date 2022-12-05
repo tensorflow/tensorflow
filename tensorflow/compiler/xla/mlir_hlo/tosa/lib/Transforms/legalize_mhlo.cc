@@ -15,8 +15,8 @@ limitations under the License.
 
 #include <utility>
 
+#include "mhlo/IR/hlo_ops.h"
 #include "mhlo_tosa/Transforms/passes.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -220,7 +220,7 @@ struct ConvertMhloIotaOp : public OpRewritePattern<mhlo::IotaOp> {
     size_t tileMultiplesSize = resultShape.size();
     tileMultiples.resize(tileMultiplesSize);
 
-    for (int i = 0; i < tileMultiplesSize; i++) {
+    for (size_t i = 0; i < tileMultiplesSize; i++) {
       if (i == iotaDimension) {
         tileMultiples[i] = 1;
       } else {
@@ -296,6 +296,17 @@ struct ConvertMhloReduceOp : public OpRewritePattern<mhlo::ReduceOp> {
   }
 };
 
+struct ConvertMhloReturnOp : public OpRewritePattern<mhlo::ReturnOp> {
+  using OpRewritePattern<mhlo::ReturnOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::ReturnOp op,
+                                PatternRewriter& rewriter) const override {
+    rewriter.replaceOpWithNewOp<tosa::YieldOp>(op, op->getResultTypes(),
+                                               op.getResults());
+    return success();
+  }
+};
+
 struct ConvertMhloSliceOp : public OpRewritePattern<mhlo::SliceOp> {
   using OpRewritePattern<mhlo::SliceOp>::OpRewritePattern;
 
@@ -323,7 +334,7 @@ struct ConvertMhloSliceOp : public OpRewritePattern<mhlo::SliceOp> {
     llvm::SmallVector<int64_t, 2> startIndicesI64;
     startIndicesI64.resize(startIndices.size());
 
-    for (int64_t i = 0; i < startIndices.size(); i++) {
+    for (int64_t i = 0; i < static_cast<int64_t>(startIndices.size()); i++) {
       size[i] = endIndices[i] - startIndices[i];
       startIndicesI64[i] = startIndices[i];
     }
@@ -357,6 +368,31 @@ struct ConvertMhloTransposeOp : public OpRewritePattern<mhlo::TransposeOp> {
   }
 };
 
+struct ConvertMhloWhileOp : public OpRewritePattern<mhlo::WhileOp> {
+  using OpRewritePattern<mhlo::WhileOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::WhileOp op,
+                                PatternRewriter& rewriter) const override {
+    auto* cond = &op.getCond();
+    auto* body = &op.getBody();
+    auto newWhileOp = rewriter.create<tosa::WhileOp>(
+        op->getLoc(), op->getResultTypes(), op->getOperands());
+
+    auto* newCond = &newWhileOp->getRegion(0);
+    auto* newBody = &newWhileOp->getRegion(1);
+    rewriter.createBlock(newCond);
+    rewriter.createBlock(newBody);
+
+    rewriter.cloneRegionBefore(*cond, &newCond->back());
+    rewriter.eraseBlock(&newCond->back());
+    rewriter.cloneRegionBefore(*body, &newBody->back());
+    rewriter.eraseBlock(&newBody->back());
+
+    rewriter.replaceOp(op, newWhileOp.getResults());
+    return success();
+  }
+};
+
 LogicalResult LegalizeMhlo::initialize(MLIRContext* ctx) {
   RewritePatternSet patternList(ctx);
   populateGeneratedPDLLPatterns(patternList);
@@ -365,8 +401,10 @@ LogicalResult LegalizeMhlo::initialize(MLIRContext* ctx) {
   patternList.addWithLabel<ConvertMhloDotOp>({"MhloDot"}, ctx);
   patternList.addWithLabel<ConvertMhloIotaOp>({"MhloIota"}, ctx);
   patternList.addWithLabel<ConvertMhloReduceOp>({"MhloReduce"}, ctx);
+  patternList.addWithLabel<ConvertMhloReturnOp>({"MhloReturn"}, ctx);
   patternList.addWithLabel<ConvertMhloSliceOp>({"MhloSlice"}, ctx);
   patternList.addWithLabel<ConvertMhloTransposeOp>({"MhloTranspose"}, ctx);
+  patternList.addWithLabel<ConvertMhloWhileOp>({"MhloWhile"}, ctx);
   patterns = std::move(patternList);
   return success();
 }

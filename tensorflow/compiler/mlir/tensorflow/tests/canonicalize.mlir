@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -pass-pipeline='func.func(canonicalize)' | FileCheck %s
+// RUN: tf-opt %s -pass-pipeline='builtin.module(func.func(canonicalize))' | FileCheck %s
 
 // CHECK-LABEL: func @tfAssertTrue
 func.func @tfAssertTrue(%arg0: tensor<1x1x6x2xf32>) {
@@ -1490,6 +1490,57 @@ func.func @testWhileRegionUnusedValue(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>
   // Verify that return still uses while result # 0
   // CHECK: return %[[WHILE_OUT]]#0 : tensor<*xf32>
   func.return %0#0 : tensor<*xf32>
+}
+
+// Check that a Cast is inserted when there is an implicit cast from
+// WhileRegion operands to iteration variables.
+// CHECK-LABEL: testWhileRegionExplicitCast
+func.func @testWhileRegionExplicitCast(%arg0 : tensor<i32>, %arg1 : tensor<*xi32>) -> tensor<i32> {
+  // CHECK: [[CAST1:%.*]] = "tf.Cast"(%arg1)
+  // CHECK: "tf.WhileRegion"(%arg0, [[CAST1]])
+  %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
+    {
+      // condition, check if count has reached 0
+      ^bb0(%carg0: tensor<i32>, %carg1: tensor<i32>):
+      %ne = "tf.NotEqual"(%carg0, %carg1) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      "tf.Yield"(%ne) : (tensor<i1>) -> ()
+    },
+    {
+      // loop body
+      ^bb0(%barg0: tensor<i32>, %barg1: tensor<i32>):
+      %one = arith.constant dense<1> : tensor<i32>
+      %sub0 = "tf.Sub"(%barg0, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      %sub1 = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "tf.Yield"(%sub0, %sub1) : (tensor<i32>, tensor<i32>) -> ()
+    }
+  ) { is_stateless = false } : (tensor<i32>, tensor<*xi32>) -> (tensor<i32>, tensor<i32>)
+  return %0#0 : tensor<i32>
+}
+
+// Check that an iteration variable that requires an explicit Cast to be pass
+// through is actually made pass through.
+// CHECK-LABEL: testWhileRegionPassThroughExplicitCast
+func.func @testWhileRegionPassThroughExplicitCast(%arg0 : tensor<i32>, %arg1 : tensor<*xi32>) -> tensor<i32> {
+  // CHECK: [[CAST1:%.*]] = "tf.Cast"(%arg1)
+  // CHECK: "tf.WhileRegion"(%arg0)
+  %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
+    {
+      // condition, check if count has reached 0
+      ^bb0(%carg0: tensor<i32>, %carg1: tensor<i32>):
+      %zero = arith.constant dense<0> : tensor<i32>
+      %ne = "tf.NotEqual"(%carg0, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      "tf.Yield"(%ne) : (tensor<i1>) -> ()
+    },
+    {
+      // loop body
+      ^bb0(%barg0: tensor<i32>, %barg1: tensor<i32>):
+      %one = arith.constant dense<1> : tensor<i32>
+      %sub = "tf.Sub"(%barg0, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "tf.Yield"(%sub, %barg1) : (tensor<i32>, tensor<i32>) -> ()
+    }
+  ) { is_stateless = false } : (tensor<i32>, tensor<*xi32>) -> (tensor<i32>, tensor<i32>)
+  // CHECK: return [[CAST1]]
+  func.return %0#1 : tensor<i32>
 }
 
 // Check that output_shapes attribute is removed for tf.If

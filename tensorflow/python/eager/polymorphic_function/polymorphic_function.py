@@ -399,29 +399,32 @@ def run_functions_eagerly(run_eagerly):
 
   Calling `tf.config.run_functions_eagerly(True)` will make all
   invocations of `tf.function` run eagerly instead of running as a traced graph
-  function.
-
-  This can be useful for debugging.
+  function. This can be useful for debugging. As the code now runs line-by-line,
+  you can add arbitrary `print` messages or pdb breakpoints to monitor the
+  inputs/outputs of each Tensorflow operation. However, you should avoid using
+  this for actual production because it significantly slows down execution.
 
   >>> def my_func(a):
-  ...  print("Python side effect")
+  ...  print(f'a: {a}')
   ...  return a + a
   >>> a_fn = tf.function(my_func)
 
   >>> # A side effect the first time the function is traced
+  >>> # In tracing time, `a` is printed with shape and dtype only
   >>> a_fn(tf.constant(1))
-  Python side effect
+  a: Tensor("a:0", shape=(), dtype=int32)
   <tf.Tensor: shape=(), dtype=int32, numpy=2>
 
-  >>> # No further side effect, as the traced function is called
+  >>> # `print` is a python side effect, it won't execute as the traced function
+  >>> # is called
   >>> a_fn(tf.constant(2))
   <tf.Tensor: shape=(), dtype=int32, numpy=4>
 
   >>> # Now, switch to eager running
   >>> tf.config.run_functions_eagerly(True)
-  >>> # Side effect, as the function is called directly
+  >>> # The code now runs eagerly and the actual value of `a` is printed
   >>> a_fn(tf.constant(2))
-  Python side effect
+  a: 2
   <tf.Tensor: shape=(), dtype=int32, numpy=4>
 
   >>> # Turn this back off

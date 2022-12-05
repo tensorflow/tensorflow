@@ -4,6 +4,7 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 # TF to TFRT kernels conversion.
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/compiler/mlir/tfrt:friends"],
     licenses = ["notice"],
 )
@@ -17,7 +18,7 @@ tfrt_cc_library(
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/xla/mlir/utils/runtime:constraints",
+        "//tensorflow/compiler/xla/mlir/runtime/utils:constraints",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -59,7 +60,6 @@ cc_library(
         "tf_jitrt_rewrite_vector_multi_reduction.cc",
         "tf_jitrt_symbolic_shape_optimization.cc",
         "tf_jitrt_tile_cwise.cc",
-        "tf_jitrt_tile_matmul.cc",
         "tf_jitrt_tile_reduction.cc",
         "tf_jitrt_tile_transpose.cc",
     ],
@@ -75,6 +75,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st",
+        "//tensorflow/compiler/xla/mlir_hlo:gml_st_passes",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st_transforms",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "//tensorflow/compiler/xla/mlir_hlo:shape_component_analysis",

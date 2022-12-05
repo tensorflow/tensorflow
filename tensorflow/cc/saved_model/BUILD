@@ -17,6 +17,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -121,6 +122,7 @@ cc_library(
     hdrs = ["loader.h"],
     deps = [
         ":constants",
+        ":fingerprinting",
         ":loader_util",
         ":reader",
     ] + if_not_mobile([
@@ -142,6 +144,7 @@ cc_library(
     hdrs = ["bundle_v2.h"],
     deps = [
         ":constants",
+        ":fingerprinting",
         ":metrics",
         ":reader",
         ":util",

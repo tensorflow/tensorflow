@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_comparison.h"
 
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include <cmath>
 #include <vector>

@@ -27,6 +27,7 @@ set(LIBS
         MhloRegisterDialects
         LmhloPasses
         AllMhloPasses
+        AllThloPasses
         MLIRBufferTransforms
         MLIRHLOGPUTransforms
         MLIRHLOAnalysis
@@ -36,6 +37,7 @@ add_llvm_executable(mlir-hlo-opt mlir-hlo-opt.cc
   DEPENDS
         MLIRLmhloPassIncGen
         MLIRMhloPassIncGen
+        MLIRThloPassIncGen
         LMHLOTransformsPassIncGen
         LMHLOGPUTransformsPassIncGen
 )

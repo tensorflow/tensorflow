@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CONVOLUTION_PRED_EXPANDER_H_
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/op_expander_pass.h"
 #include "tensorflow/compiler/xla/statusor.h"
 

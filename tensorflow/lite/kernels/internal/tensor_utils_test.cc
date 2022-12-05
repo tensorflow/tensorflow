@@ -19,7 +19,7 @@ limitations under the License.
 #include <algorithm>
 
 #include <gmock/gmock.h>
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -960,9 +960,9 @@ TEST(uKernels, QuantMul8bitArbitrarySclaeTest) {
   CwiseMul(input1.data(), input2.data(), multiplier, shift, 2, 15, 3,
            output.data());
   const std::vector<int8_t> expected_output = {
-      -84,  127, 127, -128, -128, 127,  56,   -128, 127,  -128,
-      -126, 127, -7,  127,  127,  -128, -128, 127,  -128, 127,
-      127,  -33, -20, 127,  -128, -128, -128, -128, 127,  -128,
+      -78,  127, 127, -128, -128, 127,  62,   -128, 127,  -128,
+      -120, 127, -1,  127,  127,  -128, -128, 127,  -128, 127,
+      127,  -27, -14, 127,  -128, -128, -128, -128, 127,  -128,
   };
   EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
 }

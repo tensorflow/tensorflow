@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "include/dlpack/dlpack.h"  // from @dlpack
 #include "pybind11/pytypes.h"
+#include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
@@ -224,7 +225,14 @@ StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
   if (device.client()->platform_id() == CpuId()) {
     return kDLCPU;
   } else if (device.client()->platform_id() == GpuId()) {
-    return kDLCUDA;
+    const StreamExecutorGpuDevice& gdevice =
+        dynamic_cast<const StreamExecutorGpuDevice&>(device);
+
+    if (absl::StrContains(gdevice.device_vendor(), "Advanced Micro Devices")) {
+      return kDLROCM;
+    } else {
+      return kDLCUDA;
+    }
   }
   return InvalidArgument("Device %s cannot be used as a DLPack device.",
                          device.DebugString());
@@ -249,6 +257,13 @@ StatusOr<PjRtDevice*> DeviceForDLDevice(const PjRtClient* cpu_client,
       TF_RET_CHECK(cpu_client->platform_id() == CpuId());
       return cpu_client->LookupAddressableDevice(context.device_id);
     case kDLCUDA:
+      if (gpu_client == nullptr) {
+        return InvalidArgument(
+            "DLPack tensor is on GPU, but no GPU backend was provided.");
+      }
+      TF_RET_CHECK(gpu_client->platform_id() == GpuId());
+      return gpu_client->LookupAddressableDevice(context.device_id);
+    case kDLROCM:
       if (gpu_client == nullptr) {
         return InvalidArgument(
             "DLPack tensor is on GPU, but no GPU backend was provided.");
@@ -382,8 +397,8 @@ StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
     minor_to_major.resize(dlmt->dl_tensor.ndim);
     std::iota(minor_to_major.rbegin(), minor_to_major.rend(), 0);
   }
-  Shape shape =
-      ShapeUtil::MakeShapeWithLayout(element_type, dimensions, minor_to_major);
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(element_type, dimensions,
+                                                    minor_to_major);
 
   std::function<void()> on_delete_callback;
   if (dlmt->deleter) {

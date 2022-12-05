@@ -250,16 +250,20 @@ static Graph* FusedConv2DWithBias(int batch, int height, int width,
 
   Node* conv;
   auto builder =
-      IsMKLEnabled()
-          ? NodeBuilder(graph->NewName("conv"), "_MklNativeFusedConv2D")
-                .Attr("_kernel", MKL_OP_LABEL)
-          : NodeBuilder(graph->NewName("conv"), "_FusedConv2D");
-  TF_CHECK_OK(builder.Input(images)
-                  .Input(filter)
-                  .Attr("num_args", 1)
-                  .Input(args)
-                  .Input(host_args)
-                  .Attr("T", DataTypeToEnum<T>::value)
+      NodeBuilder(graph->NewName("conv"),
+                  IsMKLEnabled() ? "_MklNativeFusedConv2D" : "_FusedConv2D")
+          .Input(images)
+          .Input(filter)
+          .Attr("num_args", 1)
+          .Input(args);
+
+  if (IsMKLEnabled()) {
+    builder.Attr("_kernel", MKL_OP_LABEL);
+  } else {
+    builder.Input(host_args);
+  }
+
+  TF_CHECK_OK(builder.Attr("T", DataTypeToEnum<T>::value)
                   .Attr("strides", {1, 1, 1, 1})
                   .Attr("padding", "SAME")
                   .Attr("fused_ops", fused_ops)
@@ -301,16 +305,20 @@ static Graph* FusedConv2DWithBatchNorm(
 
   Node* conv;
   auto builder =
-      IsMKLEnabled()
-          ? NodeBuilder(graph->NewName("conv"), "_MklNativeFusedConv2D")
-                .Attr("_kernel", MKL_OP_LABEL)
-          : NodeBuilder(graph->NewName("conv"), "_FusedConv2D");
-  TF_CHECK_OK(builder.Input(images)
-                  .Input(filter)
-                  .Attr("num_args", 4)
-                  .Input(args)
-                  .Input(host_args)
-                  .Attr("T", DataTypeToEnum<T>::value)
+      NodeBuilder(graph->NewName("conv"),
+                  IsMKLEnabled() ? "_MklNativeFusedConv2D" : "_FusedConv2D")
+          .Input(images)
+          .Input(filter)
+          .Attr("num_args", 4)
+          .Input(args);
+
+  if (IsMKLEnabled()) {
+    builder.Attr("_kernel", MKL_OP_LABEL);
+  } else {
+    builder.Input(host_args);
+  }
+
+  TF_CHECK_OK(builder.Attr("T", DataTypeToEnum<T>::value)
                   .Attr("strides", {1, 1, 1, 1})
                   .Attr("padding", "SAME")
                   .Attr("fused_ops", fused_ops)

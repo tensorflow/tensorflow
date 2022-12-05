@@ -39,8 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/lib/math/math_util.h"
+#include "tensorflow/tsl/platform/errors.h"  // IWYU pragma: keep
 
 namespace xla {
 

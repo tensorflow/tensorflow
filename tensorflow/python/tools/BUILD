@@ -5,6 +5,7 @@ load("//tensorflow:tensorflow.bzl", "if_google", "if_xla_available", "py_binary"
 load("//tensorflow/python/tools:tools.bzl", "saved_model_compile_aot")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )

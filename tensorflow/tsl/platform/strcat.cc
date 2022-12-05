@@ -57,13 +57,19 @@ AlphaNum::AlphaNum(Hex hex) {
 // after the area just overwritten.  It comes in multiple flavors to minimize
 // call overhead.
 static char *Append1(char *out, const AlphaNum &x) {
+  if (x.data() == nullptr) return out;
+
   memcpy(out, x.data(), x.size());
   return out + x.size();
 }
 
 static char *Append2(char *out, const AlphaNum &x1, const AlphaNum &x2) {
-  memcpy(out, x1.data(), x1.size());
-  out += x1.size();
+  if (x1.data() != nullptr) {
+    memcpy(out, x1.data(), x1.size());
+    out += x1.size();
+  }
+
+  if (x2.data() == nullptr) return out;
 
   memcpy(out, x2.data(), x2.size());
   return out + x2.size();
@@ -71,14 +77,22 @@ static char *Append2(char *out, const AlphaNum &x1, const AlphaNum &x2) {
 
 static char *Append4(char *out, const AlphaNum &x1, const AlphaNum &x2,
                      const AlphaNum &x3, const AlphaNum &x4) {
-  memcpy(out, x1.data(), x1.size());
-  out += x1.size();
+  if (x1.data() != nullptr) {
+    memcpy(out, x1.data(), x1.size());
+    out += x1.size();
+  }
 
-  memcpy(out, x2.data(), x2.size());
-  out += x2.size();
+  if (x2.data() != nullptr) {
+    memcpy(out, x2.data(), x2.size());
+    out += x2.size();
+  }
 
-  memcpy(out, x3.data(), x3.size());
-  out += x3.size();
+  if (x3.data() != nullptr) {
+    memcpy(out, x3.data(), x3.size());
+    out += x3.size();
+  }
+
+  if (x4.data() == nullptr) return out;
 
   memcpy(out, x4.data(), x4.size());
   return out + x4.size();

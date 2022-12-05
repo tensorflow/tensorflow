@@ -175,17 +175,6 @@ PYBIND11_MODULE(tpu_client_extension, m) {
              return buffer->CopyToDevice(std::move(dst_device));
            })
       .def("delete", &PyTpuBuffer::Delete)
-      .def("block_host_until_ready",
-           [](PyTpuBuffer* buffer) {
-             // TODO(phawkins): remove 3 months after the release of jaxlib >=
-             // 0.3.2.
-             PythonDeprecationWarning(
-                 "block_host_until_ready() on a JAX array object is "
-                 "deprecated, use block_until_ready() instead.");
-             GlobalPyRefManager()->CollectGarbage();
-             py::gil_scoped_release gil_release;
-             return buffer->BlockHostUntilReady();
-           })
       .def("block_until_ready",
            [](PyTpuBuffer* buffer) {
              GlobalPyRefManager()->CollectGarbage();

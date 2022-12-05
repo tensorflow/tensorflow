@@ -113,7 +113,7 @@ XLA_TEST_P(ReduceWindowTest, MismatchedRanksGivesErrorStatus) {
                CreateScalarAddComputation(FloatType(), &builder_),
                /*window_dimensions=*/{1, 2},
                /*window_strides=*/{1}, Padding::kValid);
-  ASSERT_EQ(builder_.first_error().code(), tensorflow::error::INVALID_ARGUMENT)
+  ASSERT_EQ(builder_.first_error().code(), tsl::error::INVALID_ARGUMENT)
       << builder_.first_error();
   ASSERT_THAT(builder_.first_error().error_message(),
               ::testing::HasSubstr("Want input dimensions size"));
@@ -391,7 +391,7 @@ XLA_TEST_P(ReduceWindowTest, R6AddMultipleStrides) {
   std::vector<int64_t> output_layout = {1, 5, 3, 2, 0, 4};
   std::vector<int64_t> output_dims = {6, 8, 6, 6, 8, 8};
   Shape result_shape =
-      ShapeUtil::MakeShapeWithLayout(F32, output_dims, output_layout);
+      ShapeUtil::MakeShapeWithDenseLayout(F32, output_dims, output_layout);
   Literal expected(result_shape);
   expected.PopulateWithValue(27.0f);
   ComputeAndCompareLiteral(&builder_, expected, {}, DefaultErrorSpec());
@@ -672,9 +672,10 @@ class R4ReduceWindowTest : public ReduceWindowTestBase,
             /*stride=*/param.strides,
             /*padding=*/padding);
     Literal expected_literal = LiteralUtil::CreateFromArray(*expected);
-    const Shape& expected_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
-        input_literal.shape().element_type(),
-        expected_literal.shape().dimensions(), param.layout);
+    const Shape& expected_shape_with_layout =
+        ShapeUtil::MakeShapeWithDenseLayout(
+            input_literal.shape().element_type(),
+            expected_literal.shape().dimensions(), param.layout);
     ComputeAndCompareLiteral(&b, expected_literal, {input_arg.get()},
                              DefaultErrorSpec(), &expected_shape_with_layout);
   }

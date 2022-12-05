@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
-#include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -140,6 +142,7 @@ std::string TpuVersionEnumToString(TpuVersionEnum version) {
       return "TPU v3";
     case kTpuV4:
       return "TPU v4";
+// reserved for internal use
   }
 }
 
