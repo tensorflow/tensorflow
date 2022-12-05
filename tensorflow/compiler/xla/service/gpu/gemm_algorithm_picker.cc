@@ -55,10 +55,14 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
       return se::cuda::BlasLt::Epilogue::kDefault;
     case GemmBackendConfig::RELU:
       return se::cuda::BlasLt::Epilogue::kReLU;
+    case GemmBackendConfig::GELU:
+      return se::cuda::BlasLt::Epilogue::kGELU;
     case GemmBackendConfig::BIAS:
       return se::cuda::BlasLt::Epilogue::kBias;
     case GemmBackendConfig::BIASRELU:
       return se::cuda::BlasLt::Epilogue::kBiasThenReLU;
+    case GemmBackendConfig::BIASGELU:
+      return se::cuda::BlasLt::Epilogue::kBiasThenGELU;
     default:
       return InternalError("Unsupported Epilogue.");
   }

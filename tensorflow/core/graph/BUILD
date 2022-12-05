@@ -24,7 +24,10 @@ package(
 cc_library(
     name = "mkl_graph_util",
     hdrs = ["mkl_graph_util.h"],
-    deps = ["@com_google_absl//absl/container:flat_hash_map"],
+    deps = [
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )
 
 tf_cc_test(

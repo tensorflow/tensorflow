@@ -114,7 +114,7 @@ struct TestModule : public ffi::StatefulModule<TestModuleState> {
       : Base(api, "ffi-module", {{"ffi.fill", FFI_Fill}}) {}
 
   // Creates a new TestModule state for each executable.
-  std::unique_ptr<TestModuleState> CreateState() const final {
+  std::unique_ptr<TestModuleState> CreateState() final {
     return std::make_unique<TestModuleState>();
   }
 

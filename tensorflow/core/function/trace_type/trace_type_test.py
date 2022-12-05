@@ -222,7 +222,7 @@ class TraceTypeBuilderTest(test.TestCase, parameterized.TestCase):
       trace_type.from_value(obj)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
-  def testGetPlaceholderValue(self):
+  def testGetDefaultPlaceholderValue(self):
     placeholder_context = trace_type.InternalPlaceholderContext()
     composite_value = [1, 2, (3, [4, 5]), {6: [7]}, TestAttrsClass(8, (10, 11))]
     composite_type = trace_type.from_value(composite_value)

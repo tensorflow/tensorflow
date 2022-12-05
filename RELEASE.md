@@ -14,13 +14,27 @@
             *   Using functools.wraps on a function with different signature
             *   Using functools.partial with an invalid tf.function input
 
-*   `tfconfig.experimental.enable_mlir_graph_optimization`:
+*   `tf.config.experimental.enable_mlir_graph_optimization`:
 
     * Experimental API removed.
 
-*   `tfconfig.experimental.disable_mlir_graph_optimization`:
+*   `tf.config.experimental.disable_mlir_graph_optimization`:
 
     * Experimental API removed.
+
+*   `tf.keras`
+
+    * Improvements and fixes in Keras loss masking: 
+        
+        * Whether you represent a ragged tensor as a `tf.RagedTensor` or using
+          [keras masking](https://www.tensorflow.org/guide/keras/masking_and_padding),
+          the returned loss values should be the identical to each other.
+          In previous versions Keras may have silently ignored the mask.
+        * If you use masked losses with Keras the loss values may be different
+          in TensorFlow `2.12` compared to previous versions.
+        * In cases where the mask was previously ignored, you will now get
+          an error if you pass a mask with an incompatible shape.
+
 
 # Known Caveats
 

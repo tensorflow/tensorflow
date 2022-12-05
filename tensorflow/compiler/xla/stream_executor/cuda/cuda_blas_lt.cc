@@ -101,14 +101,14 @@ port::StatusOr<cublasLtEpilogue_t> AsCublasLtEpilogue(
       return CUBLASLT_EPILOGUE_BIAS;
     case BlasLt::Epilogue::kBiasThenReLU:
       return CUBLASLT_EPILOGUE_RELU_BIAS;
-    case BlasLt::Epilogue::kGeLU:
+    case BlasLt::Epilogue::kGELU:
 #if CUDA_VERSION >= 11040
       return CUBLASLT_EPILOGUE_GELU;
 #else
       return port::InternalError(absl::StrCat(
           "CUBLASLT_EPILOGUE_GELU epilog requires cublasLt >= 11.4"));
 #endif
-    case BlasLt::Epilogue::kBiasThenGeLUApproximate:
+    case BlasLt::Epilogue::kBiasThenGELU:
 #if CUDA_VERSION >= 11040
       return CUBLASLT_EPILOGUE_GELU_BIAS;
 #else

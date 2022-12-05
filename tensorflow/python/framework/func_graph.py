@@ -1506,9 +1506,14 @@ def _get_defun_inputs(args, names, placeholder_context, structured_args):
 def _get_defun_input(arg, name, placeholder_context):
   """Maps a python function arg to a graph-construction input."""
   func_graph = ops.get_default_graph()
-  if isinstance(arg, (tensor_spec.TensorSpec, ops.Tensor)):
+  if isinstance(arg, (tensor_spec.TensorSpec, ops.Tensor,
+                      resource_variable_ops.VariableSpec)):
     if isinstance(arg, ops.Tensor):
       input_arg = tensor_spec.TensorSpec.from_tensor(arg, name=name)
+    elif isinstance(arg, resource_variable_ops.VariableSpec):
+      input_arg = arg
+      if input_arg.name is None:
+        input_arg._name = name  # pylint: disable=protected-access
     else:
       input_arg = (tensor_spec.TensorSpec.from_spec(arg, name=name)
                    if arg.name is None else arg)
@@ -1517,20 +1522,7 @@ def _get_defun_input(arg, name, placeholder_context):
       handle_data_util.copy_handle_data(arg, placeholder)
     return placeholder
   # TODO(b/246437883): Investigate how to remove this branch.
-  elif isinstance(arg, (resource_variable_ops.BaseResourceVariable,
-                        resource_variable_ops.VariableSpec)):
-    if isinstance(arg, resource_variable_ops.VariableSpec):
-      name = arg.name or name
-      with func_graph.outer_graph.as_default():
-        placeholder = graph_placeholder(dtypes.resource, [], name=name)
-        # TODO(b/246438937): Replace this with nest.pack_sequence_as after we
-        # can expand Variables.
-        arg = resource_variable_ops.ResourceVariable(
-            shape=arg.shape,
-            dtype=arg.dtype,
-            handle=placeholder,
-            trainable=arg.trainable)
-
+  if isinstance(arg, resource_variable_ops.BaseResourceVariable):
     # Capture arg variables to create placeholders for them. These will be
     # removed as captures after the function is traced (since otherwise we'd
     # just add it back with a new placeholder when the variable was referenced).

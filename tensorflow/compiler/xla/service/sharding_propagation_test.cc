@@ -8430,5 +8430,26 @@ ENTRY %entry {
   EXPECT_TRUE(changed);
 }
 
+TEST_F(ShardingPropagationTest, ContractingAsNonContractingCrash) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %p0 = f32[20,64,56,56]{3,2,1,0} parameter(0), sharding={replicated}
+  %p1 = f32[1,1,256,64]{2,3,1,0} parameter(1), sharding={devices=[4,2,1,1]0,1,2,3,4,5,6,7}
+  %convolution.4512 = f32[20,256,56,56]{3,2,1,0} convolution(%p0, %p1), window={size=1x1}, dim_labels=bf01_01oi->bf01
+  ROOT %copy = f32[20,256,56,56]{3,2,1,0} copy(%convolution.4512)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+}
+
 }  // namespace
 }  // namespace xla

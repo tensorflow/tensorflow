@@ -77,6 +77,28 @@ struct LowerVectorContractPass
     auto func = getOperation();
     auto *ctx = func.getContext();
 
+    // Reduce vector.contract dimensions to fit one of the lowering patterns to
+    // vector.outerproduct.
+    {
+      RewritePatternSet castAwayUnitDimPatterns(ctx);
+      vector::populateCastAwayVectorLeadingOneDimPatterns(
+          castAwayUnitDimPatterns);
+      if (failed(applyPatternsAndFoldGreedily(
+              func, std::move(castAwayUnitDimPatterns)))) {
+        return signalPassFailure();
+      }
+
+      RewritePatternSet reductionToContractPatterns(ctx);
+      vector::populateVectorReductionToContractPatterns(
+          reductionToContractPatterns);
+      vector::ExtractOp::getCanonicalizationPatterns(
+          reductionToContractPatterns, ctx);
+      if (failed(applyPatternsAndFoldGreedily(
+              func, std::move(reductionToContractPatterns)))) {
+        return signalPassFailure();
+      }
+    }
+
     RewritePatternSet patterns(ctx);
 
     auto outerProductOpFilter = [&](OuterProductOp op) {
@@ -95,7 +117,9 @@ struct LowerVectorContractPass
                                                         outerProductOpFilter);
     vector::populateVectorTransferPermutationMapLoweringPatterns(patterns);
 
-    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+      return signalPassFailure();
+    }
   }
 };
 }  // namespace

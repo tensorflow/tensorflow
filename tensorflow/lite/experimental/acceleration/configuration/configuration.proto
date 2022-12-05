@@ -37,9 +37,15 @@
 // compatibility, new fields MUST ONLY be added at the END of messages,
 // and fields should NEVER be deleted, but instead can only be deprecated.
 //
+// WARNING: before modifying this file, you should copy the previous contents
+// of this file to 'testdata/configuration.proto_prev'.  This is used to test
+// that your changes will preserve binary backwards compatibility.
+//
 // WARNING: you need to manually generate and update the generated flatbuffer
 // code (configuration_generated.h) when modifying this file. See BUILD for
 // more information.
+
+// LINT.IfChange
 
 syntax = "proto2";
 
@@ -790,3 +796,5 @@ message BenchmarkEventStorage {
   optional ModelIdGroup model_id_group = 1;
   optional BenchmarkEvent benchmark_event = 2;
 }
+
+// LINT.ThenChange(//tensorflow/lite/experimental/acceleration/configuration/testdata/configuration.proto_prev)

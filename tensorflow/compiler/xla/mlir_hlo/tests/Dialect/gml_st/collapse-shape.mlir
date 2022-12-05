@@ -303,3 +303,30 @@ func.func @partial_softmax(%arg0: tensor<2x4x2048x4096xf32>)
 // CHECK-3:        func.func @partial_softmax(%[[ARG0:.*]]: tensor<2x4x2048x4096xf32>)
 // CHECK-3-NOT:    collapse_shape
 // CHECK-3-NOT:    expand_shape
+
+// -----
+
+
+func.func @collapse_shape_of_cwise(%arg0: tensor<2x4xf32>) -> tensor<8xf32> {
+  %0 = tensor.empty() : tensor<2x4xf32>
+  %1 = linalg.map
+      ins(%arg0 : tensor<2x4xf32>)
+      outs(%0 : tensor<2x4xf32>)
+    (%in: f32) {
+       %2 = arith.negf %in : f32
+       linalg.yield %2 : f32
+    }
+  %3 = tensor.collapse_shape %1 [[0, 1]] : tensor<2x4xf32> into tensor<8xf32>
+  return %3 : tensor<8xf32>
+}
+
+// CHECK:   func.func @collapse_shape_of_cwise
+// CHECK: %[[COLLAPSED:.*]] = tensor.collapse_shape {{.*}} [
+// CHECK-SAME: [0, 1]] : tensor<2x4xf32> into tensor<8xf32>
+// CHECK: %[[MAPPED:.*]] = linalg.map
+// CHECK: ins(%[[COLLAPSED]] : tensor<8xf32>)
+
+// CHECK-1: func.func @collapse_shape_of_cwise
+// CHECK-2: func.func @collapse_shape_of_cwise
+// CHECK-3: func.func @collapse_shape_of_cwise
+

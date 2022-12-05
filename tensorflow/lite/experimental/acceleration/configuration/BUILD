@@ -18,6 +18,7 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "nnapi_plugin_impl_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
+load(":build_defs.bzl", "flatbuffer_schema_compat_test")
 
 # copybara:comment_begin(oss-only)
 load("//tensorflow/tsl/platform/default:build_config.bzl", "tf_proto_library_py")
@@ -31,6 +32,7 @@ package(
     licenses = ["notice"],
 )
 
+# We generate a FlatBuffer schema from the Protobuf schema.
 genrule(
     name = "configuration_schema",
     srcs = ["configuration.proto"],
@@ -38,15 +40,51 @@ genrule(
     # We rename the namespace since otherwise the proto classes and flatbuffer
     # classes would have the same names.
     cmd = """
-    $(location {}) --proto -o $(@D) $(location :configuration.proto)
-    perl -p -i -e 's/tflite.proto/tflite/' $(@D)/configuration.fbs
+        $(location {}) --proto -o $(@D) $(location :configuration.proto)
+        perl -p -i -e 's/tflite.proto/tflite/' $@
     """.format(flatc_path),
     compatible_with = get_compatible_with_portable(),
-    tools = [
-        flatc_path,
+    tools = [flatc_path],
+)
+
+# We also do the same transformation for the _previous_
+# version of the schema -- this is used to test that changes
+# to the schema preserve binary backwards compatibility.
+genrule(
+    name = "configuration_prev_schema",
+    srcs = ["testdata/configuration.proto_prev"],  # Must NOT end in '.proto'.
+    outs = ["configuration.prev.fbs"],  # MUST end in '.fbs'.
+    # We rename the namespace since otherwise the proto classes and flatbuffer
+    # classes would have the same names.
+    cmd = """
+        cp $(location :testdata/configuration.proto_prev) $(@D)/configuration.prev.proto
+        $(location {}) --proto -o $(@D) $(@D)/configuration.prev.proto
+        perl -p -i -e 's/tflite.proto/tflite/' $@
+    """.format(flatc_path),
+    compatible_with = get_compatible_with_portable(),
+    tools = [flatc_path],
+)
+
+# Test that changes to the schema preserve binary backwards compatibility.
+flatbuffer_schema_compat_test(
+    name = "configuration_abi_stability_test",
+    ref_schema = ":configuration.prev.fbs",
+    schema = ":configuration.fbs",
+)
+
+# Test that the previous version of the proto is different than the current version.
+sh_test(
+    name = "prev_is_different_than_current_test",
+    srcs = ["prev_is_different_than_current_test.sh"],
+    data = [
+        "configuration.proto",
+        "testdata/configuration.proto_prev",
     ],
 )
 
+# Generate a C++ header containing the contents of the FlatBuffer schema
+# as a char array literal.  This is potentially useful for embedding in programs
+# (e.g. for JSON parsing using that schema).
 genrule(
     name = "configuration_fbs_contents_cc",
     srcs = ["configuration.fbs"],

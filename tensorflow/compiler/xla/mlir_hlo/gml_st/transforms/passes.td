@@ -223,7 +223,11 @@ def TransformReduceForCpuPass :
   let constructor = "createTransformReduceForCpuPass()";
 
   let options = [
-    ListOption<"tileSizes", "tile-sizes", "int64_t",
+    Option<"vectorSize", "vector-size", "int64_t", "8",
+           "Vector size for a 1D `linalg.reduce`">,
+    Option<"tileSize1D", "tile-size-1d", "int64_t", "32",
+               "Tile size for a 1D `linalg.reduce`">,
+    ListOption<"tileSizes2D", "tile-sizes-2d", "int64_t",
                "Tile sizes for a `linalg.reduce`. tileSizes[0] is the parallel "
                "dimension and tileSizes[1] is the reduction dimension.">,
   ];

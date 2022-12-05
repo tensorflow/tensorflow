@@ -880,16 +880,16 @@ tsl::StatusOr<lmhlo_gpu::CublasLtMatmulEpilogue> AsLhloEpilogue(
   switch (epilogue) {
     case xla::gpu::GemmBackendConfig::DEFAULT:
       return lmhlo_gpu::CublasLtMatmulEpilogue::Default;
-      break;
-    case xla::gpu::GemmBackendConfig::BIAS:
-      return lmhlo_gpu::CublasLtMatmulEpilogue::Bias;
-      break;
     case xla::gpu::GemmBackendConfig::RELU:
       return lmhlo_gpu::CublasLtMatmulEpilogue::Relu;
-      break;
+    case xla::gpu::GemmBackendConfig::GELU:
+      return lmhlo_gpu::CublasLtMatmulEpilogue::Gelu;
+    case xla::gpu::GemmBackendConfig::BIAS:
+      return lmhlo_gpu::CublasLtMatmulEpilogue::Bias;
     case xla::gpu::GemmBackendConfig::BIASRELU:
       return lmhlo_gpu::CublasLtMatmulEpilogue::BiasRelu;
-      break;
+    case xla::gpu::GemmBackendConfig::BIASGELU:
+      return lmhlo_gpu::CublasLtMatmulEpilogue::BiasGelu;
     default:
       return xla::InternalError("unknown epilogue");
   }

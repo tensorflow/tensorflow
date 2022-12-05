@@ -313,14 +313,6 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("BFC", GpuAllocatorConfig::Kind::kBFC)
       .value("CUDA_ASYNC", GpuAllocatorConfig::Kind::kCudaAsync);
 
-  // TODO(tomhennigan): Remove this types.
-  py::class_<StreamExecutorGpuDevice, PjRtDevice,
-             ClientAndPtr<StreamExecutorGpuDevice>>
-      gpu_device(m, "GpuDevice");
-  gpu_device.def_property_readonly(
-      "slice_index", &StreamExecutorGpuDevice::slice_index,
-      "Integer ID of a set of devices connected by "
-      "fast network, e.g., NVLink.");
   m.def(
       "get_gpu_client",
       [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
@@ -344,9 +336,6 @@ PYBIND11_MODULE(xla_extension, m) {
 #endif  // XLA_PYTHON_ENABLE_GPU
 
 #ifdef XLA_PYTHON_ENABLE_TPU
-  // TODO(tomhennigan): Remove this types.
-  py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>> tpu_device(
-      m, "TpuDevice");
   m.def(
       "get_tpu_client",
       [](int max_inflight_computations) -> StatusOr<std::shared_ptr<PyClient>> {

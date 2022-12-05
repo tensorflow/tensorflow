@@ -7,7 +7,7 @@
 // RUN: | FileCheck %s --check-prefix=TRANSFORMED
 
 // RUN: tf-tfrt-opt %s -split-input-file -xla-cpu-transform-matmul="tile-sizes=8,4,2" \
-// RUN:   -canonicalize -vectorize-gml-st-loops="vectorize-gml-st-ops=true" \
+// RUN:   -canonicalize -vectorize-gml-st-loops \
 // RUN: | FileCheck %s --check-prefix=VECTORIZED
 
 // RUN: tf-tfrt-opt %s -split-input-file -xla-cpu-transform-matmul="lower-to-mmt4d=true" \
@@ -71,14 +71,13 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // VECTORIZED-DAG:     %[[INIT:.*]] = tensor.empty
 
 // VECTORIZED:         %[[MAIN_PAR:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]]) to (%[[IUB:.*]], %[[JUB:.*]]) step
-// VECTORIZED:           %[[MAIN_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) to (%[[KUB:.*]]) {{.*}} outs (%[[ARG:.*]] = %[[CST]]:
+// VECTORIZED:           %[[MAIN_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) to (%[[KUB:.*]]) {{.*}} outs (%[[ARG:.*]] =
 // VECTORIZED:             %[[LHS_READ:.*]] = vector.transfer_read {{.*}} vector<8x2xf32>
 // VECTORIZED:             %[[RHS_READ:.*]] = vector.transfer_read {{.*}} vector<2x4xf32>
 // VECTORIZED:             %[[CONTRACT:.*]] = vector.contract {{.*}} %[[LHS_READ]], %[[RHS_READ]], %[[ARG]]
 // VECTORIZED-NEXT:        gml_st.set_yield %[[CONTRACT]]
-// VECTORIZED:           %[[WRITE:.*]] = vector.transfer_write %[[MAIN_FOR]], %[[INIT]]
-// VECTORIZED:           %[[EXTRACT:.*]] = tensor.extract_slice %[[WRITE]]
-// VECTORIZED:           %[[REM_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[KUB]]) {{.*}} outs ({{.*}} = %[[EXTRACT]]:
+// VECTORIZED:           %[[WRITE:.*]] = vector.transfer_write %[[MAIN_FOR]]
+// VECTORIZED:           %[[REM_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[KUB]]) {{.*}} outs ({{.*}} = %[[WRITE]]:
 // VECTORIZED:             %[[MAIN_PAR_REM_FOR_MATMUL:.*]] = linalg.matmul
 // VECTORIZED-NEXT:        gml_st.set_yield %[[MAIN_PAR_REM_FOR_MATMUL]]
 // VECTORIZED:           gml_st.set_yield %[[REM_FOR]]
@@ -128,10 +127,10 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // MMT4D-NOT:        linalg.matmul
 // MMT4D:            gml_st.parallel {{.*}} = (%c0, %c0) to (%[[DIM0:.*]], %[[DIM1:.*]]) step (%c1, %c1)
 // MMT4D:              gml_st.parallel {{.*}} = (%c0, %c0) to (%c8, %c8) step (%c8, %c8)
-// MMT4D:                gml_st.for {{.*}} = (%c0) to (%[[DIM2:.*]]) step (%c1)
-// MMT4D:                  gml_st.for {{.*}} = (%c0) to (%c1) step (%c1) outs (%[[ARG:.*]] =
-// MMT4D:                    %[[LHS_READ:.*]] = vector.transfer_read
-// MMT4D:                    %[[RHS_READ:.*]] = vector.transfer_read
-// MMT4D:                    %[[OUT_READ:.*]] = vector.transfer_read
-// MMT4D:                    %[[CONTRACT:.*]] = vector.contract {{.*}} %[[LHS_READ]], %[[RHS_READ]], %[[OUT_READ]]
-// MMT4D:                    %[[WRITE:.*]] = vector.transfer_write %[[CONTRACT]], %[[ARG]]
+// MMT4D:                %[[KERNEL:.*]] = gml_st.for {{.*}} = (%c0) to (%[[DIM2:.*]]) step (%c1) outs (%[[ARG:.*]] =
+// MMT4D:                  %[[LHS_READ:.*]] = vector.transfer_read
+// MMT4D:                  %[[RHS_READ:.*]] = vector.transfer_read
+// MMT4D:                  %[[CONTRACT:.*]] = vector.contract {{.*}} %[[LHS_READ]], %[[RHS_READ]], %[[ARG]]
+// MMT4D:                  gml_st.set_yield %[[CONTRACT]] into %[[ARG]]
+// MMT4D:                %[[WRITE:.*]] = vector.transfer_write %[[KERNEL]]
+// MMT4D:                gml_st.set_yield %[[WRITE]] into

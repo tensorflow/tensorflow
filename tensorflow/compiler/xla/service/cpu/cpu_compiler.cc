@@ -1396,6 +1396,13 @@ CpuCompiler::CompileXlaRuntimeCpuExecutable(
       auto xla_runtime_executable,
       GetXlaRuntimeCpuExecutable(*mlir_module, "main", xla_framework_mapping));
 
+  if (DumpingEnabledForHloModule(*hlo_module)) {
+    TF_ASSIGN_OR_RETURN(std::string_view obj_file,
+                        xla_runtime_executable->GetObjFile());
+    DumpToFileInDir(*hlo_module, /*file_prefix=*/"", /*file_suffix=*/"o",
+                    obj_file);
+  }
+
   return std::make_unique<CpuExecutable>(
       std::move(hlo_module), std::move(hlo_profile_printer_data),
       std::move(hlo_profile_index_map), std::move(assignment),

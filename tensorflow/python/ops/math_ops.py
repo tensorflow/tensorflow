@@ -4072,10 +4072,10 @@ def add_n(inputs, name=None):
 
   See Also:
 
-  * `tf.reduce_sum(inputs, axis=0)` - This performe the same mathematical
+  * `tf.reduce_sum(inputs, axis=0)` - This performs the same mathematical
     operation, but `tf.add_n` may be more efficient because it sums the
     tensors directly. `reduce_sum` on the other hand calls
-    `tf.convert_to_tensor` on the list of tensors, unncessairly stacking them
+    `tf.convert_to_tensor` on the list of tensors, unnecessarily stacking them
     into a single tensor before summing.
 
   Args:

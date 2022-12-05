@@ -737,6 +737,8 @@ struct VectorizeGmlStLoopsPass
       RewritePatternSet patterns(ctx);
       patterns.add<IdentityMaterializeOpFoldingPattern>(ctx);
       (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+
+      hoistRedundantVectorTransfersOnTensor(func);
     }
   }
 };
