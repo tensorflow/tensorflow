@@ -12,10 +12,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
-<<<<<<< HEAD
-=======
 
->>>>>>> google_upstream/master
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     features = ["-layering_check"],
