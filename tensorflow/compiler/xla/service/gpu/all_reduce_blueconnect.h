@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_ALL_REDUCE_BLUECONNECT_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_ALL_REDUCE_BLUECONNECT_H_
 
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
@@ -38,7 +38,10 @@ class AllReduceBlueConnect : public HloModulePass {
 
   absl::string_view name() const override { return "all-reduce-blueconnect"; }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   size_t num_devices_per_host_;

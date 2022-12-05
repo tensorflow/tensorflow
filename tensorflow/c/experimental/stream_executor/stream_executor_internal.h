@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/stream_executor/executor_cache.h"
-#include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/executor_cache.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
 
 namespace stream_executor {
 
@@ -70,6 +70,7 @@ class CPlatform : public Platform {
     return visible_device_count;
   }
   bool UseBfcAllocator() const { return platform_.use_bfc_allocator; }
+  bool ForceMemoryGrowth() const { return platform_.force_memory_growth; }
   port::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;
   port::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;

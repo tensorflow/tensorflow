@@ -1,7 +1,7 @@
 // RUN: tf-tfrt-opt %s -tf-jitrt-legalize-i1-types -split-input-file | FileCheck %s
 
-func @func_op(%arg0: tensor<?x?xi1>) -> tensor<?x?xi1> {
-  return %arg0 : tensor<?x?xi1>
+func.func @func_op(%arg0: tensor<?x?xi1>) -> tensor<?x?xi1> {
+  func.return %arg0 : tensor<?x?xi1>
 }
 
 // CHECK-LABEL:   func @func_op(
@@ -11,9 +11,9 @@ func @func_op(%arg0: tensor<?x?xi1>) -> tensor<?x?xi1> {
 
 // -----
 
-func @true_constant_op() -> tensor<i1> {
+func.func @true_constant_op() -> tensor<i1> {
   %0 = mhlo.constant dense<true> : tensor<i1>
-  return %0 : tensor<i1>
+  func.return %0 : tensor<i1>
 }
 
 // CHECK-LABEL:   func @true_constant_op() -> tensor<i8> {
@@ -23,9 +23,9 @@ func @true_constant_op() -> tensor<i1> {
 
 // -----
 
-func @false_constant_op() -> tensor<i1> {
+func.func @false_constant_op() -> tensor<i1> {
   %0 = mhlo.constant dense<false> : tensor<i1>
-  return %0 : tensor<i1>
+  func.return %0 : tensor<i1>
 }
 
 // CHECK-LABEL:   func @false_constant_op() -> tensor<i8> {
@@ -35,9 +35,9 @@ func @false_constant_op() -> tensor<i1> {
 
 // -----
 
-func @and_op(%arg0: tensor<?x?xi1>, %arg1: tensor<?x?xi1>) -> tensor<?x?xi1> {
+func.func @and_op(%arg0: tensor<?x?xi1>, %arg1: tensor<?x?xi1>) -> tensor<?x?xi1> {
   %0 = mhlo.and %arg0, %arg1 : tensor<?x?xi1>
-  return %0 : tensor<?x?xi1>
+  func.return %0 : tensor<?x?xi1>
 }
 
 // CHECK-LABEL:   func @and_op(
@@ -49,9 +49,9 @@ func @and_op(%arg0: tensor<?x?xi1>, %arg1: tensor<?x?xi1>) -> tensor<?x?xi1> {
 
 // -----
 
-func @or_op(%arg0: tensor<?x?xi1>, %arg1: tensor<?x?xi1>) -> tensor<?x?xi1> {
+func.func @or_op(%arg0: tensor<?x?xi1>, %arg1: tensor<?x?xi1>) -> tensor<?x?xi1> {
   %0 = mhlo.or %arg0, %arg1 : tensor<?x?xi1>
-  return %0 : tensor<?x?xi1>
+  func.return %0 : tensor<?x?xi1>
 }
 
 // CHECK-LABEL:   func @or_op(
@@ -63,7 +63,7 @@ func @or_op(%arg0: tensor<?x?xi1>, %arg1: tensor<?x?xi1>) -> tensor<?x?xi1> {
 
 // -----
 
-func @reduce_op(%arg0: tensor<?x?xi1>) -> tensor<?xi1> {
+func.func @reduce_op(%arg0: tensor<?x?xi1>) -> tensor<?xi1> {
   %0 = mhlo.constant dense<1> : tensor<1xi32>
   %1 = "mhlo.convert"(%arg0) : (tensor<?x?xi1>) -> tensor<?x?xi1>
   %2 = mhlo.constant dense<true> : tensor<i1>
@@ -73,7 +73,7 @@ func @reduce_op(%arg0: tensor<?x?xi1>) -> tensor<?xi1> {
     "mhlo.return"(%5) : (tensor<i1>) -> ()
   }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<?x?xi1>, tensor<i1>) -> tensor<?xi1>
   %4 = "mhlo.convert"(%3) : (tensor<?xi1>) -> tensor<?xi1>
-  return %4 : tensor<?xi1>
+  func.return %4 : tensor<?xi1>
 }
 
 // CHECK-LABEL:   func @reduce_op(

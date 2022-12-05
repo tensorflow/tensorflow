@@ -153,7 +153,7 @@ Status CreateSplitTensorGraph(const TensorShape& input_shape,
     output_tensor_names->push_back(absl::StrCat(xla_op->name(), ":", i));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CreateSplitResourceGraph(const TensorShape& input_shape,
@@ -196,7 +196,7 @@ Status CreateSplitResourceGraph(const TensorShape& input_shape,
     output_tensor_names->push_back(absl::StrCat(xla_op->name(), ":", i));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 struct XlaSplitNDTestParam {
@@ -813,7 +813,7 @@ Status CreateConcatTensorGraph(absl::Span<const TensorShape> input_shapes,
 
   output_tensor_names->push_back(absl::StrCat(xla_op->name(), ":", 0));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 template <bool Init>
@@ -874,7 +874,7 @@ Status CreateConcatResourceGraph(
 
   output_tensor_names->push_back(absl::StrCat(read_var->name(), ":", 0));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 struct XlaConcatNDTestParam {
@@ -1260,7 +1260,7 @@ Status CreateRoundtripTensorGraph(
 
   output_tensor_names->push_back(absl::StrCat(equal->name(), ":", 0));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CreateRoundtripResourceGraph(
@@ -1334,7 +1334,7 @@ Status CreateRoundtripResourceGraph(
 
   output_tensor_names->push_back(absl::StrCat(equal->name(), ":", 0));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 struct RoundtripXlaSplitConcatNDTestParam {

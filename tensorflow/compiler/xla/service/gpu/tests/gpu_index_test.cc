@@ -16,19 +16,18 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -77,7 +76,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshape) {
       ROOT gte = pred[5,7,2]{2,1,0} compare(x, reshape), direction=GE
     })",
                                              config)
-                    .ValueOrDie();
+                    .value();
 
   // Check the optimized IR as the unoptimized IR contains dead udiv and urem.
   CompileAndVerifyIr(std::move(module),
@@ -103,7 +102,7 @@ TEST_F(GpuIndexTest,
       ROOT gte = pred[1,7,2,5,3]{4,3,2,1,0} compare(x, broadcast), direction=GE
     })",
                                              config)
-                    .ValueOrDie();
+                    .value();
   CompileAndVerifyIr(std::move(module),
                      R"(
 ; CHECK: %[[tmp4:.*]] = udiv i32 %[[linear_index:.*]], 1
@@ -115,7 +114,7 @@ TEST_F(GpuIndexTest,
 ; CHECK: %[[tmp1:.*]] = udiv i32 %[[linear_index]], 30
 ; CHECK: %[[dim1:.*]] = urem i32 %[[tmp1]], 7
 ; CHECK: %[[dim0:.*]] = udiv i32 %[[linear_index]], 210
-; CHECK: %{{.*}} = getelementptr inbounds [2 x [1 x [3 x float]]], [2 x [1 x [3 x float]]]* %{{.*}}, i32 0, i32 %[[dim2]], i32 0, i32 %[[dim4]]
+; CHECK: %{{.*}} = getelementptr inbounds [2 x [1 x [3 x float]]], ptr %{{.*}}, i32 0, i32 %[[dim2]], i32 0, i32 %[[dim4]]
       )",
                      /*match_optimized_ir=*/false);
 }
@@ -136,7 +135,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
       ROOT gte = pred[5,7,2]{2,1,0} compare(x, broadcast), direction=GE
     })",
                                              config)
-                    .ValueOrDie();
+                    .value();
 
   // Check the optimized IR reuses the linear index by calculating modulo 14.
 
@@ -147,9 +146,8 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
   CompileAndVerifyIr(std::move(module),
                      R"(
 ; CHECK: %[[urem1:.*]] = urem i{{[0-9]*}} %[[linear_index:.*]], 14
-; CHECK: %[[bitcast:.*]] = bitcast i8{{( addrspace\(1\))?}}* %[[alloc:.*]] to float{{( addrspace\(1\))?}}*
 ; CHECK: %[[idx1:.*]] = zext i{{[0-9]*}} %[[urem1]] to i64
-; CHECK: getelementptr inbounds float, float{{( addrspace\(1\))?}}* %[[bitcast]], i64 %[[idx1]]
+; CHECK: getelementptr inbounds float, ptr{{( addrspace\(1\))?}} %[[alloc:.*]], i64 %[[idx1]]
       )",
                      /*match_optimized_ir=*/true);
 }
@@ -158,7 +156,6 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
 TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithSizeOneDimensions) {
   HloModuleConfig config;
   auto debug_options = HloTestBase::GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
   config.set_debug_options(debug_options);
 
   auto module = ParseAndReturnVerifiedModule(R"(
@@ -169,17 +166,17 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithSizeOneDimensions) {
       ROOT y = f16[1,1024,1,256]{2,3,1,0} convert(x)
     })",
                                              config)
-                    .ValueOrDie();
+                    .value();
 
   // Check that the unoptimized IR reuses the linear index.
   CompileAndVerifyIr(std::move(module),
                      R"(
 ; CHECK-LABEL: @fusion
 ; CHECK: udiv i32 %[[linear_index:.*]], 262144
-; CHECK: %[[ld_addr:.*]] = getelementptr inbounds float, float* {{.*}}, i32 %[[linear_index]]
-; CHECK: load float, float* %[[ld_addr]]
-; CHECK: %[[st_addr:.*]] = getelementptr inbounds half, half* {{.*}}, i32 %[[linear_index]]
-; CHECK: store half {{.*}}, half* %[[st_addr]]
+; CHECK: %[[ld_addr:.*]] = getelementptr inbounds float, ptr {{.*}}, i32 %[[linear_index]]
+; CHECK: load float, ptr %[[ld_addr]]
+; CHECK: %[[st_addr:.*]] = getelementptr inbounds half, ptr {{.*}}, i32 %[[linear_index]]
+; CHECK: store half {{.*}}, ptr %[[st_addr]]
       )",
                      /*match_optimized_ir=*/false);
 }
@@ -187,7 +184,6 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithSizeOneDimensions) {
 TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithTranspose) {
   HloModuleConfig config;
   auto debug_options = HloTestBase::GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
   config.set_debug_options(debug_options);
 
   auto module = ParseAndReturnVerifiedModule(R"(
@@ -200,7 +196,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithTranspose) {
       ROOT gte = pred[1024,2,256,3]{2,3,0,1} compare(transpose, y), direction=GE
     })",
                                              config)
-                    .ValueOrDie();
+                    .value();
   // Check the optimized IR contains no udiv and urem.
   CompileAndVerifyIr(std::move(module),
                      R"(

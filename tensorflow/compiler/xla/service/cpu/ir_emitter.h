@@ -21,6 +21,7 @@ limitations under the License.
 #include <functional>
 #include <map>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -34,13 +35,13 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Target/TargetMachine.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_function.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/alias_analysis.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
@@ -112,10 +113,14 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // in the given order.  In this case, 'instruction_order' must be a
   // topological sort of the set of nodes accessible from the root of the
   // computation.
+  //
+  // If 'allow_reassociation' is true, the fast-math reassociation flag will
+  // be enabled in the function's body. This is used when emitting reducers.
   StatusOr<llvm::Function*> EmitComputation(
       HloComputation* computation, const std::string& function_name_prefix,
       bool is_top_level_computation,
-      absl::Span<HloInstruction* const> instruction_order);
+      absl::Span<HloInstruction* const> instruction_order,
+      bool allow_reassociation);
 
   llvm::IRBuilder<>* b() { return &b_; }
 
@@ -139,7 +144,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleCopy(HloInstruction* copy) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleSelect(HloInstruction* select) override;
-  Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleDot(HloInstruction* dot) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleFft(HloInstruction* fft) override;
@@ -147,7 +151,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleCollectivePermute(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
   Status HandleOutfeed(HloInstruction* outfeed) override;
-  Status HandleSort(HloInstruction* sort) override;
+  Status HandleSort(HloInstruction* hlo) override;
   Status HandleParameter(HloInstruction* parameter) override;
   Status HandleReduce(HloInstruction* reduce) override;
   Status HandleReduceWindow(HloInstruction* reduce_window) override;
@@ -171,6 +175,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleScatter(HloInstruction* scatter) override;
   Status HandleAfterAll(HloInstruction* after_all) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
+  Status HandlePartitionId(HloInstruction* hlo) override;
   Status HandleReplicaId(HloInstruction* hlo) override;
   Status HandleRng(HloInstruction* rng) override;
   Status HandleRngGetAndUpdateState(HloInstruction* rng_state) override;
@@ -182,7 +187,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // A convenient helper for calling BufferAssignment::GetUniqueSlice.
   BufferAllocation::Slice GetAllocationSlice(
       const HloInstruction& hlo, const ShapeIndex& index = {}) const {
-    return assignment_.GetUniqueSlice(&hlo, index).ConsumeValueOrDie();
+    return assignment_.GetUniqueSlice(&hlo, index).value();
   }
 
  private:
@@ -289,7 +294,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // callee.  The return value is the scalar returned by the callee.
   std::vector<llvm::Value*> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
-      absl::string_view name);
+      absl::string_view name, bool is_reducer);
 
   // Similar to EmitThreadLocal, yet assumes that the function returns a scalar.
   llvm::Value* EmitScalarReturningThreadLocalCall(
@@ -457,8 +462,27 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Used to produce unique names for generated functions.
   NameUniquer name_uniquer_;
 
+  struct ComputationToEmit {
+    const HloComputation* computation;
+    bool allow_reassociation;
+
+    bool operator==(const ComputationToEmit& other) const {
+      return computation == other.computation &&
+             allow_reassociation == other.allow_reassociation;
+    }
+
+    template <typename H>
+    friend H AbslHashValue(H h, const ComputationToEmit& c) {
+      return H::combine(std::move(h), c.computation, c.allow_reassociation);
+    }
+    friend std::ostream& operator<<(std::ostream& os,
+                                    const ComputationToEmit& c) {
+      return os << c.computation->name() << ", " << c.allow_reassociation;
+    }
+  };
+
   // Map containing all previously emitted computations.
-  std::map<const HloComputation*, llvm::Function*> emitted_functions_;
+  absl::flat_hash_map<ComputationToEmit, llvm::Function*> emitted_functions_;
 
   // Map containing all previously emitted thread-local temporary buffers.
   std::map<std::pair<llvm::Function*, BufferAllocation::Slice>, llvm::Value*>
@@ -471,6 +495,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   std::unique_ptr<IrFunction> compute_function_;
   llvm::IRBuilder<> b_;
   mlir::MLIRContext* mlir_context_;
+  bool allow_reassociation_;
 
   // The buffer allocation slice for the root of the computation being compiled.
   // Only relevant for thread local computations.

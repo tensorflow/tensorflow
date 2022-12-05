@@ -359,10 +359,10 @@ RunHandlerThreadPool::RunHandlerThreadPool(
   thread_data_.resize(num_threads_);
   for (int i = 0; i < num_threads_; ++i) {
     thread_data_[i].new_thread_work_sources =
-        absl::make_unique<Eigen::MaxSizeVector<ThreadWorkSource*>>(
+        std::make_unique<Eigen::MaxSizeVector<ThreadWorkSource*>>(
             options.max_concurrent_handler);
     thread_data_[i].current_thread_work_sources =
-        absl::make_unique<Eigen::MaxSizeVector<ThreadWorkSource*>>(
+        std::make_unique<Eigen::MaxSizeVector<ThreadWorkSource*>>(
             options.max_concurrent_handler);
   }
   VLOG(1) << "Creating RunHandlerThreadPool " << name << " with  "
@@ -857,7 +857,7 @@ class RunHandlerPool::Impl {
     // requests will trigger recomputation.
     if (wait_if_no_active_request_ && sorted_active_handlers_.empty()) {
       thread_local auto thread_work_sources =
-          absl::make_unique<Eigen::MaxSizeVector<internal::ThreadWorkSource*>>(
+          std::make_unique<Eigen::MaxSizeVector<internal::ThreadWorkSource*>>(
               max_handlers_);
       thread_work_sources->resize(0);
       auto version = ++version_;

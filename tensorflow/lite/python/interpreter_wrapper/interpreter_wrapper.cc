@@ -21,17 +21,18 @@ limitations under the License.
 #include <memory>
 #include <sstream>
 #include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
@@ -98,8 +99,9 @@ std::unique_ptr<Interpreter> CreateInterpreter(
   ::tflite::python::ImportNumpy();
 
   std::unique_ptr<Interpreter> interpreter;
-  InterpreterBuilder builder(*model, resolver);
-  if (preserve_all_tensors) builder.PreserveAllTensorsExperimental();
+  InterpreterOptions options;
+  options.SetPreserveAllTensors(preserve_all_tensors);
+  InterpreterBuilder builder(*model, resolver, &options);
   if (builder(&interpreter) != kTfLiteOk) {
     return nullptr;
   }
@@ -108,7 +110,9 @@ std::unique_ptr<Interpreter> CreateInterpreter(
 
 PyObject* PyArrayFromFloatVector(const float* data, npy_intp size) {
   void* pydata = malloc(size * sizeof(float));
-  memcpy(pydata, data, size * sizeof(float));
+  if (data != nullptr) {
+    memcpy(pydata, data, size * sizeof(float));
+  }
   PyObject* obj = PyArray_SimpleNewFromData(1, &size, NPY_FLOAT32, pydata);
   PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(obj), NPY_ARRAY_OWNDATA);
   return obj;
@@ -116,7 +120,9 @@ PyObject* PyArrayFromFloatVector(const float* data, npy_intp size) {
 
 PyObject* PyArrayFromIntVector(const int* data, npy_intp size) {
   void* pydata = malloc(size * sizeof(int));
-  memcpy(pydata, data, size * sizeof(int));
+  if (data != nullptr) {
+    memcpy(pydata, data, size * sizeof(int));
+  }
   PyObject* obj = PyArray_SimpleNewFromData(1, &size, NPY_INT32, pydata);
   PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(obj), NPY_ARRAY_OWNDATA);
   return obj;
@@ -207,14 +213,13 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
   std::unique_ptr<tflite::MutableOpResolver> resolver;
   switch (op_resolver_id) {
     case kBuiltinOpResolver:
-      resolver = absl::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
+      resolver = std::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
       break;
     case kBuiltinRefOpResolver:
-      resolver =
-          absl::make_unique<tflite::ops::builtin::BuiltinRefOpResolver>();
+      resolver = std::make_unique<tflite::ops::builtin::BuiltinRefOpResolver>();
       break;
     case kBuiltinOpResolverWithoutDefaultDelegates:
-      resolver = absl::make_unique<
+      resolver = std::make_unique<
           tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates>();
       break;
     default:

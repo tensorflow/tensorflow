@@ -42,9 +42,9 @@ class Rtol(enum.Enum):
 
 def mlir_func_1d(op_name):
   return f"""
-  func @test(%arg0: tensor<?xf32>) -> tensor<?xf32> {{
+  func.func @test(%arg0: tensor<?xf32>) -> tensor<?xf32> {{
     %0 = "tf.{op_name}"(%arg0): (tensor<?xf32>) -> tensor<?xf32>
-    return %0 : tensor<?xf32>
+    func.return %0 : tensor<?xf32>
   }}"""
 
 

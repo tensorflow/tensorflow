@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -81,8 +82,10 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/tracking",
-        "//tensorflow/python/training/tracking:data_structures",
+        "//tensorflow/python/trackable:autotrackable",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:data_structures",
+        "//tensorflow/python/trackable:resource",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@six_archive//:six",

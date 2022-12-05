@@ -1,0 +1,130 @@
+// RUN: xla-translate --print-sugar=false -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
+// RUN: xla-translate --print-sugar=false -hlo-text-to-mlir-hlo %s -o - | FileCheck %s -check-prefix=NO_DEAD_FUNCTION
+
+// NO_DEAD_FUNCTION-NOT: @test
+
+// CHECK: module @foobar
+HloModule foobar
+
+// Compiler-generated functions
+
+// CHECK:  func private [[RECV_GENSYM:@.*recv.*]]([[TOK:%.*]]: !mhlo.token) -> (tensor<128x32xf32>, !mhlo.token) attributes {execution_thread = "main"} {
+  // CHECK-NEXT: "mhlo.recv"([[TOK]]
+  // CHECK-SAME{LITERAL}: {channel_handle = #mhlo.channel_handle<handle = 5, type = 0>, is_host_transfer = true}
+
+// CHECK:  func private [[SEND_GENSYM:@.*send.*]]([[INPUT:%.*]]: tensor<128x32xf32>, %arg1: !mhlo.token) -> !mhlo.token attributes {execution_thread = "main"} {
+  // CHECK-NEXT:  "mhlo.send"([[INPUT]]
+  // CHECK-SAME{LITERAL}: {channel_handle = #mhlo.channel_handle<handle = 5, type = 0>, is_host_transfer = true}
+
+// CHECK:  func private [[COPY_GENSYM:@.*copy.*]]([[INPUT:%.*]]: tensor<128x32xf32>) -> tensor<128x32xf32> attributes {execution_thread = "main"} {
+  // CHECK-NEXT:  mhlo.copy [[INPUT]]
+  // CHECK-SAME: is_cross_program_prefetch
+
+// CHECK: func private [[CP_GENSYM:@.*collective_permute_.*]]([[INPUT:%.*]]: tensor<128x32xf32>) -> tensor<128x32xf32> attributes {execution_thread = "main"} {
+  // CHECK-NEXT:  "mhlo.collective_permute"([[INPUT]])
+  // CHECK-SAME{LITERAL}:{source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>} : (tensor<128x32xf32>) -> tensor<128x32xf32>
+
+// CHECK:  func private [[AR_GENSYM:@.*all_reduce.*]]([[INPUT:%.*]]: tensor<128x32xf32>) -> tensor<128x32xf32> attributes {execution_thread = "main"} {
+  // CHECK-NEXT:  "mhlo.all_reduce"([[INPUT]])
+    // CHECK: [[BLOCK:^.*]]([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
+    // CHECK: mhlo.add [[LHS]], [[RHS]]
+  // CHECK: channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
+  // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  // CHECK: use_global_device_ids
+
+// CHECK:  func private [[AG_GENSYM:@.*all_gather.*]]([[INPUT:%.*]]: tensor<128x32xf32>) -> tensor<128x128xf32> attributes {execution_thread = "main"} {
+  // CHECK-NEXT:  "mhlo.all_gather"([[INPUT]])
+  // CHECK-SAME: all_gather_dim = 1 : i64
+  // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
+  // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  // CHECK: use_global_device_ids
+
+// CHECK:  func @main(%arg0: tensor<f32>) -> tensor<f32> {
+ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
+  ROOT %Arg_0.1 = f32[] parameter(0)
+}
+
+// Tests
+
+// CHECK:  func private @test_all_gather_start
+// CHECK-SAME:  ([[INPUT:%.*]]: tensor<128x32xf32>)
+%test_all_gather_start {
+  input = f32[128,32] parameter(0)
+  // CHECK-NEXT:  [[AG_START:%.*]] = "mhlo.async_start"([[INPUT]])
+  // CHECK-SAME: called_computation = [[AG_GENSYM]], execution_thread = "main"
+  ag-start = (f32[128,32], f32[128,128]) all-gather-start(input), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, dimensions={1}, use_global_device_ids=true
+  // CHECK-NEXT:  "mhlo.async_done"([[AG_START]])
+  // CHECK-SAME: called_computation = [[AG_GENSYM]], execution_thread = "main"
+  ROOT ag-done = f32[128,128] all-gather-done(ag-start)
+}
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+// CHECK:  func private @test_all_reduce_start
+// CHECK-SAME:  ([[INPUT:%.*]]: tensor<128x32xf32>)
+%test_all_reduce_start {
+  input = f32[128,32] parameter(0)
+  // CHECK-NEXT:  [[AR_START:%.*]] = "mhlo.async_start"([[INPUT]])
+  // CHECK-SAME: called_computation = [[AR_GENSYM]], execution_thread = "main"
+  ar-start = (f32[128,32], f32[128,32]) all-reduce-start(input), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, to_apply=add, use_global_device_ids=true
+  // CHECK-NEXT:  "mhlo.async_done"([[AR_START]])
+  // CHECK-SAME: called_computation = [[AR_GENSYM]], execution_thread = "main"
+  ROOT ar-done = f32[128,32] all-reduce-done(ar-start)
+}
+
+// CHECK:  func private @test_collective_permute
+// CHECK-SAME:  ([[ARG:%.*]]: tensor<128x32xf32>) -> tensor<128x32xf32>
+%test_collective_permute (input: f32[128,32]) -> f32[128,32] {
+  %input = f32[128,32]{1,0} parameter(0)
+  // CHECK-NEXT:  [[CP_START:%.*]] = "mhlo.async_start"([[ARG]])
+  // CHECK-SAME: called_computation = [[CP_GENSYM]], execution_thread = "main"
+  %cp-start = (f32[128,32]{1,0}, f32[128,32]) collective-permute-start(%input), source_target_pairs={{0,1},{1,2},{2,3}}
+  // CHECK-NEXT:  "mhlo.async_done"([[CP_START]])
+  // CHECK-SAME: called_computation = [[CP_GENSYM]], execution_thread = "main"
+  ROOT %cp-done = f32[128,32]{1,0} collective-permute-done(%cp-start)
+}
+
+// CHECK:  func private @test_copy_start
+// CHECK-SAME:  ([[INPUT:%.*]]: tensor<128x32xf32>)
+%test_copy_start {
+  input = f32[128,32] parameter(0)
+  // CHECK-NEXT:  [[COPY_START:%.*]] = "mhlo.async_start"([[INPUT]])
+  // CHECK-SAME: called_computation = [[COPY_GENSYM]], execution_thread = "main"
+  copy-start = (f32[128,32], f32[128,32], u32[]) copy-start(input), is_cross_program_prefetch=true
+  // CHECK-NEXT: "mhlo.async_done"([[COPY_START]])
+  // CHECK-SAME: called_computation = [[COPY_GENSYM]], execution_thread = "main"
+  ROOT copy-done = f32[128,32] copy-done(copy-start)
+}
+
+// CHECK:  func private @test_send
+// CHECK-SAME:  ([[INPUT:%.*]]: tensor<128x32xf32>, [[TOK:%.*]]: !mhlo.token)
+%test_send_start {
+  input = f32[128,32] parameter(0)
+  tok = token[] parameter(1)
+  // CHECK-NEXT:  [[SEND_START:%.*]] = "mhlo.async_start"([[INPUT]], [[TOK]])
+  // CHECK-SAME: called_computation = [[SEND_GENSYM]], execution_thread = "main"
+  // CHECK-SAME{LITERAL}: -> !mhlo.async_bundle<tuple<tensor<128x32xf32>, !mhlo.token>, !mhlo.token, tensor<ui32>>
+  send-start = (f32[128,32], u32[], token[]) send(input, tok), channel_id=5, is_host_transfer=true
+  // CHECK-NEXT: "mhlo.async_done"([[SEND_START]])
+  // CHECK-SAME: called_computation = [[SEND_GENSYM]], execution_thread = "main"
+  ROOT send-done = token[] send-done(send-start), channel_id=5, is_host_transfer=true
+}
+
+// CHECK:  func private @test_recv
+// CHECK-SAME:  ([[INPUT:%.*]]: tensor<128x32xf32>, [[TOK:%.*]]: !mhlo.token)
+%test_recv_start {
+  input = f32[128,32] parameter(0)
+  tok = token[] parameter(1)
+  // CHECK-NEXT:  [[RECV_START:%.*]] = "mhlo.async_start"([[TOK]])
+  // CHECK-SAME: called_computation = [[RECV_GENSYM]], execution_thread = "main"
+  // CHECK-SAME{LITERAL}: -> !mhlo.async_bundle<!mhlo.token, tuple<tensor<128x32xf32>, !mhlo.token>, tensor<ui32>>
+  recv-start = (f32[128,32], u32[], token[]) recv(tok), channel_id=5, is_host_transfer=true
+  // CHECK-NEXT: "mhlo.async_done"([[RECV_START]])
+  // CHECK-SAME: called_computation = [[RECV_GENSYM]], execution_thread = "main"
+  recv-done = (f32[128,21], token[]) recv-done(recv-start), channel_id=5, is_host_transfer=true
+  ROOT gte = get-tuple-element(recv-done), index=0
+}

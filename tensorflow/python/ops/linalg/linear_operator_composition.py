@@ -14,15 +14,15 @@
 # ==============================================================================
 """Composes one or more `LinearOperators`."""
 
-import warnings
-
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops.linalg import linear_operator
+from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = ["LinearOperatorComposition"]
@@ -169,22 +169,39 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
 
     # Auto-set and check hints.
     if all(operator.is_non_singular for operator in operators):
-      if is_non_singular is False:
+      if is_non_singular is False:  # pylint:disable=g-bool-id-comparison
         raise ValueError(
             "The composition of non-singular operators is always non-singular.")
       is_non_singular = True
 
-    # Initialization.
+    if _composition_must_be_self_adjoint(operators):
+      if is_self_adjoint is False:  # pylint:disable=g-bool-id-comparison
+        raise ValueError(
+            "The composition was determined to be self-adjoint but user "
+            "provided incorrect `False` hint.")
+      is_self_adjoint = True
 
-    graph_parents = []
-    with warnings.catch_warnings():
-      warnings.simplefilter("ignore")
-      for operator in operators:
-        graph_parents.extend(operator.graph_parents)
+    if linear_operator_util.is_aat_form(operators):
+      if is_square is False:  # pylint:disable=g-bool-id-comparison
+        raise ValueError(
+            "The composition was determined have the form "
+            "A @ A.H, hence it must be square. The user "
+            "provided an incorrect `False` hint.")
+      is_square = True
+
+    if linear_operator_util.is_aat_form(operators) and is_non_singular:
+      if is_positive_definite is False:  # pylint:disable=g-bool-id-comparison
+        raise ValueError(
+            "The composition was determined to be non-singular and have the "
+            "form A @ A.H, hence it must be positive-definite. The user "
+            "provided an incorrect `False` hint.")
+      is_positive_definite = True
+
+    # Initialization.
 
     if name is None:
       name = "_o_".join(operator.name for operator in operators)
-    with ops.name_scope(name, values=graph_parents):
+    with ops.name_scope(name):
       super(LinearOperatorComposition, self).__init__(
           dtype=dtype,
           is_non_singular=is_non_singular,
@@ -193,8 +210,6 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
           is_square=is_square,
           parameters=parameters,
           name=name)
-    # TODO(b/143910018) Remove graph_parents in V3.
-    self._set_graph_parents(graph_parents)
 
   @property
   def operators(self):
@@ -288,6 +303,38 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
       solution = operator.solve(solution, adjoint=adjoint)
     return solution
 
+  def _assert_non_singular(self):
+    if all(operator.is_square for operator in self.operators):
+      asserts = [operator.assert_non_singular() for operator in self.operators]
+      return control_flow_ops.group(asserts)
+    return super(LinearOperatorComposition, self)._assert_non_singular()
+
   @property
   def _composite_tensor_fields(self):
     return ("operators",)
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    return {"operators": [0] * len(self.operators)}
+
+
+def _composition_must_be_self_adjoint(operators):
+  """Runs some checks to see if composition operators must be SA.
+
+  Args:
+    operators: List of LinearOperators.
+
+  Returns:
+    True if the composition must be SA. False if it is not SA OR if we did not
+      determine whether the composition is SA.
+  """
+  if len(operators) == 1 and operators[0].is_self_adjoint:
+    return True
+
+  # Check for forms like A @ A.H or (A1 @ A2) @ (A2.H @ A1.H) or ...
+  if linear_operator_util.is_aat_form(operators):
+    return True
+
+  # Done checking...could still be SA.
+  # We may not catch some cases. E.g. (A @ I) @ A.H is SA, but is not AAT form.
+  return False

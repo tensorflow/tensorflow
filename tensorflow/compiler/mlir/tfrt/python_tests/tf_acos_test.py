@@ -28,17 +28,17 @@ specializations = [
 
 def acos_1d():
   return """
-  func @acos(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  func.func @acos(%arg0: tensor<?xf32>) -> tensor<?xf32> {
     %0 = "tf.Acos"(%arg0): (tensor<?xf32>) -> tensor<?xf32>
-    return %0 : tensor<?xf32>
+    func.return %0 : tensor<?xf32>
   }"""
 
 
 def acos_2d():
   return """
-  func @acos(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  func.func @acos(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
     %0 = "tf.Acos"(%arg0): (tensor<?x?xf32>) -> tensor<?x?xf32>
-    return %0 : tensor<?x?xf32>
+    func.return %0 : tensor<?x?xf32>
   }"""
 
 

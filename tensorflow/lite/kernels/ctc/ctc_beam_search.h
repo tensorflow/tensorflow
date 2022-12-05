@@ -104,7 +104,7 @@ class CTCBeamSearchDecoder : public CTCDecoder {
 
   // Calculate the next step of the beam search and update the internal state.
   template <typename Vector>
-  void Step(const Vector& log_input_t);
+  void Step(const Vector& raw_input);
 
   template <typename Vector>
   float GetTopK(const int K, const Vector& input,

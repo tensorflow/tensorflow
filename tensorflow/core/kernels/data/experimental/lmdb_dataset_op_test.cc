@@ -45,13 +45,13 @@ class LMDBDatasetParams : public DatasetParams {
 
   Status GetInputNames(std::vector<string>* input_names) const override {
     *input_names = {LMDBDatasetOp::kFileNames};
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attributes) const override {
     *attributes = {{LMDBDatasetOp::kOutputTypes, output_dtypes_},
                    {LMDBDatasetOp::kOutputShapes, output_shapes_}};
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override { return LMDBDatasetOp::kDatasetType; }
@@ -76,7 +76,7 @@ tstring MaybeCopyDataFile() {
   FileSystem* fs;  // Pointer to singleton
   TF_EXPECT_OK(Env::Default()->GetFileSystemForFile(src_loc, &fs));
 
-  // FileSystem::FileExists currently returns Status::OK() if the file
+  // FileSystem::FileExists currently returns OkStatus() if the file
   // exists and errors::NotFound() if the file doesn't exist. There's no
   // indication in the code or docs about whether other error codes may be
   // added in the future, so we code defensively here.

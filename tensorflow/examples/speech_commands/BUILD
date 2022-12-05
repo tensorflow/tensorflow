@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -59,7 +60,7 @@ py_library(
 
 tf_py_test(
     name = "models_test",
-    size = "small",
+    size = "medium",
     srcs = ["models_test.py"],
     tags = [
         "no_pip",  # b/131330719

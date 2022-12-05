@@ -70,7 +70,7 @@ Status CompileXla(xla::CompileOnlyClient* client,
     return errors::Unknown("Couldn't get XLA program shape: ",
                            pshape_or.status().error_message());
   }
-  compile_result->program_shape = pshape_or.ValueOrDie()->ToProto();
+  compile_result->program_shape = pshape_or.value()->ToProto();
   xla::ProgramShapeProto* pshape = &compile_result->program_shape;
 
   // AotXlaComputationInstance::argument_layouts is a vector of Shape
@@ -95,11 +95,11 @@ Status CompileXla(xla::CompileOnlyClient* client,
   }
   compile_result->aot =
       xla::unique_ptr_static_cast<xla::cpu::CpuAotCompilationResult>(
-          std::move(aot_or.ValueOrDie().back()));
+          std::move(aot_or.value().back()));
   compile_result->entry_point = aot_opts.entry_point_name();
   compile_result->pointer_size =
       xla::CompileOnlyClient::PointerSizeForTriple(aot_opts.triple());
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -110,20 +110,31 @@ Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
   // computation.
   // TODO(toddw): Should we let the user pick the XLA cpu vs. gpu client?
   se::Platform* cpu_platform =
-      se::MultiPlatformManager::PlatformWithName("Host").ValueOrDie();
+      se::MultiPlatformManager::PlatformWithName("Host").value();
   xla::CompileOnlyClient* client =
-      xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform)
-          .ValueOrDie();
+      xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform).value();
   xla::XlaComputation computation;
-  if (flags.mlir_components == "Bridge") {
+
+  bool use_mlir_hlo_lowering = false;
+  bool use_mlir_bridge = false;
+  if (!flags.mlir_components.empty() && flags.mlir_components != "None") {
+    for (auto component : absl::StrSplit(flags.mlir_components, ',')) {
+      if (component == "Bridge") {
+        use_mlir_bridge = true;
+      } else if (component == "HloLowering") {
+        use_mlir_hlo_lowering = true;
+      } else {
+        return errors::Unknown("Unknown mlir_component ", component);
+      }
+    }
+  }
+  if (use_mlir_bridge) {
     TF_RETURN_IF_ERROR(ConvertGraphDefToXlaViaMlir(
         graph_def, config, &computation, flags.debug_info,
         flags.debug_info_path_begin_marker));
-  } else if (flags.mlir_components.empty() || flags.mlir_components == "None") {
+  } else {
     TF_RETURN_IF_ERROR(ConvertGraphDefToXla(std::move(graph_def), config,
                                             client, &computation));
-  } else {
-    return errors::Unknown("Unknown mlir_components ", flags.mlir_components);
   }
 
   if (flags.experimental_quantize && *quantize_xla) {
@@ -147,6 +158,13 @@ Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
       flags.target_triple, flags.target_cpu, flags.target_features,
       flags.entry_point,
       xla::cpu::CpuAotCompilationOptions::RelocationModel::BigPic);
+  aot_opts.set_use_mlir_hlo_lowering(use_mlir_hlo_lowering);
+
+  if (flags.sanitize_dataflow) {
+    aot_opts.set_sanitize_dataflow(flags.sanitize_dataflow);
+    aot_opts.set_sanitize_abilists_dataflow(absl::StrSplit(
+        flags.sanitize_abilists_dataflow, ',', absl::SkipEmpty()));
+  }
 
   return CompileXla(client, computation, aot_opts, compile_result);
 }
@@ -222,7 +240,7 @@ Status Main(const MainFlags& flags) {
       nodes.insert(fetch.id().node_name());
     }
     std::cout << absl::StrJoin(nodes, ",");
-    return Status::OK();
+    return OkStatus();
   }
 
   // Read and initialize the graph.
@@ -267,7 +285,7 @@ Status Main(const MainFlags& flags) {
   TF_RETURN_IF_ERROR(GenerateHeader(codegen_opts, config, compile_result,
                                     metadata_result, &header));
   TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_header, header));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tfcompile

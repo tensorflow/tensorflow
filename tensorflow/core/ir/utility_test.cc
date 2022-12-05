@@ -18,7 +18,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/test.h"
@@ -37,11 +37,12 @@ TEST(DialectUtilityTest, TestLookupControlDependency) {
     }
   )mlir";
 
-  OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
-  auto ret_op = cast<ReturnOp>(func.body().front().getTerminator());
+  auto ret_op = cast<ReturnOp>(func.getBody().front().getTerminator());
 
   Value copy = ret_op.getOperand(0);
   Value ctl = LookupControlDependency(copy);
@@ -71,11 +72,12 @@ TEST(DialectUtilityTest, TestLookupDataValue) {
     }
   )mlir";
 
-  OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
-  auto ret_op = cast<ReturnOp>(func.body().front().getTerminator());
+  auto ret_op = cast<ReturnOp>(func.getBody().front().getTerminator());
 
   Value ctl = ret_op.getOperand(1);
   Optional<Value> produce = LookupDataValue(ctl);
@@ -105,11 +107,12 @@ TEST(DialectUtilityTest, TestLookupDataValueNoData) {
     }
   )mlir";
 
-  OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
-  auto ret_op = cast<ReturnOp>(func.body().front().getTerminator());
+  auto ret_op = cast<ReturnOp>(func.getBody().front().getTerminator());
 
   Value ctl = ret_op.getOperand(1);
   Optional<Value> no_data = LookupDataValue(ctl);

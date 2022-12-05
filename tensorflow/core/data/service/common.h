@@ -29,8 +29,8 @@ namespace tensorflow {
 namespace data {
 
 // Increment this when making backwards-incompatible changes to communication
-// between tf.data servers.
-constexpr int kDataServiceVersion = 3;
+// between tf.data clients and servers.
+constexpr int kDataServiceVersion = 6;
 
 // If the user starts a colocated tf.data worker on each TF host, the worker
 // will be applied a "COLOCATED" tag. This is used to avoid reading from tf.data
@@ -64,6 +64,9 @@ std::string TargetWorkersToString(TargetWorkers target_workers);
 // Parses a string representing a `DeploymentMode` (case-insensitive).
 // Returns InvalidArgument if the string is not recognized.
 StatusOr<DeploymentMode> ParseDeploymentMode(absl::string_view s);
+
+// Returns true if `status` is a retriable error that indicates preemption.
+bool IsPreemptedError(const Status& status);
 
 // Base class for data service clients. Data service clients are
 // threadsafe.

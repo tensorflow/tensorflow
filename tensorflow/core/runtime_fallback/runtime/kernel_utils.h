@@ -15,8 +15,8 @@ limitations under the License.
 
 // This file declares kernel utils.
 
-#ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_UTILS_H_
-#define TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_UTILS_H_
+#ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_KERNEL_UTILS_H_
+#define TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_KERNEL_UTILS_H_
 
 #include <memory>
 
@@ -154,4 +154,4 @@ class EagerContextResource {
 }  // namespace tfd
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_UTILS_H_
+#endif  // TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_KERNEL_UTILS_H_

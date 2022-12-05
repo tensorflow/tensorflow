@@ -44,7 +44,7 @@ class HexagonPlugin : public DelegatePluginInterface {
   }
   static std::unique_ptr<HexagonPlugin> New(
       const TFLiteSettings& tflite_settings) {
-    return absl::make_unique<HexagonPlugin>(tflite_settings);
+    return std::make_unique<HexagonPlugin>(tflite_settings);
   }
   explicit HexagonPlugin(const TFLiteSettings& tflite_settings) {
     const HexagonSettings* settings = tflite_settings.hexagon_settings();

@@ -30,8 +30,10 @@ class TestModule(tf.Module):
     return x + y
     # Basic check that the debug info file is being correctly saved and loaded.
     #
-    # CHECK: "tf.AddV2"{{.*}}loc(#[[LOC:.*]])
-    # CHECK: #[[LOC]] = loc({{.*}}callsite("{{[^"]*}}/debug_info.py{{.*}}":{{[0-9]+}}:{{[0-9]+}}
+    # CHECK: "tf.AddV2"{{.*}}loc(#loc{{[0-9]+}})
+    # CHECK: "tf.Identity"{{.*}}loc(#loc{{[0-9]+}})
+    # CHECK: #loc{{[0-9]+}} = loc("{{.*}}debug_info.py":{{[0-9]+}}:{{[0-9]+}})
+    # CHECK: #loc{{[0-9]+}} = loc(callsite(#loc{{[0-9]+}} at #loc{{[0-9]+}}))
 
 
 if __name__ == '__main__':

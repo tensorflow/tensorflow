@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {

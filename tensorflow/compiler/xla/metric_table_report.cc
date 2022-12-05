@@ -16,14 +16,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/metric_table_report.h"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 

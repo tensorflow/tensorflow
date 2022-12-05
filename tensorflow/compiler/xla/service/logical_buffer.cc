@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
@@ -28,8 +28,6 @@ LogicalBuffer::LogicalBuffer(HloInstruction* instruction,
     : BufferValue(instruction, index, id),
       instruction_(instruction),
       index_(index) {}
-
-LogicalBuffer::~LogicalBuffer() {}
 
 std::string LogicalBuffer::ToString() const {
   std::string color_string;

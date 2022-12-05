@@ -94,9 +94,6 @@ class SvdOpGpu : public AsyncOpKernel {
   explicit SvdOpGpu(OpKernelConstruction* context) : AsyncOpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("compute_uv", &compute_uv_));
     OP_REQUIRES_OK(context, context->GetAttr("full_matrices", &full_matrices_));
-    OP_REQUIRES(context, !tensorflow::OpDeterminismRequired(),
-                errors::Unimplemented("Determinism is not yet supported "
-                                      "for Svd."));
   }
 
   void RunSVD(OpKernelContext* context, DoneCallback done, int64 m, int64 n,
@@ -358,6 +355,14 @@ class SvdOpGpu : public AsyncOpKernel {
     const int64 n = input.dim_size(ndims - 1);
     const int64 p = std::min(m, n);
 
+    if (n == 1) {
+      OP_REQUIRES_ASYNC(
+          context, !tensorflow::OpDeterminismRequired(),
+          errors::Unimplemented("Determinism is not yet supported for SVD of "
+                                "matrices with 1 column."),
+          done);
+    }
+
     // output tensors.
     Tensor* outputU = NULL;
     Tensor* outputS = NULL;
@@ -394,6 +399,12 @@ class SvdOpGpu : public AsyncOpKernel {
                          done);
     OP_REQUIRES_OK_ASYNC(context, context->allocate_output(2, shapeV, &outputV),
                          done);
+
+    // If there are zero batches, we are done.
+    if (shapeRaw.num_elements() == 0) {
+      done();
+      return;
+    }
 
     if (n == 0 || m == 0) {
       if (n == m || !compute_uv_ || !full_matrices_) {

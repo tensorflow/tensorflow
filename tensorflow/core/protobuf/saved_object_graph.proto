@@ -38,7 +38,8 @@ message SavedObject {
   // Objects which this object depends on: named edges in the dependency
   // graph.
   //
-  // Note: currently only valid if kind == "user_object" or "resource".
+  // Note: All kinds of SavedObject may have children, except
+  // "constant" and "captured_tensor".
   repeated TrackableObjectGraph.TrackableObject.ObjectReference children = 1;
 
   // Ordered list of dependencies that must be loaded before this object.

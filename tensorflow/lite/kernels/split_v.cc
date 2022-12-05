@@ -16,8 +16,8 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -103,14 +103,14 @@ TfLiteStatus ResizeOutputTensors(TfLiteContext* context, TfLiteNode* node,
 
   if (minus_one_index != -1) {
     if (size_splits_sum > input_size) {
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "The sum of size_splits must be less than the dimension of value.");
     } else {
       size_splits_vector[minus_one_index] = input_size - size_splits_sum;
     }
   } else if (size_splits_sum != input_size) {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context,
         "The size_splits must sum to the dimension of value along axis.");
   }
@@ -208,8 +208,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     default:
-      context->ReportError(context, "Type %s currently not supported.",
-                           TfLiteTypeGetName(op_context.input->type));
+      TF_LITE_KERNEL_LOG(context, "Type %s currently not supported.",
+                         TfLiteTypeGetName(op_context.input->type));
       return kTfLiteError;
   }
 #undef TF_LITE_SPLIT_V

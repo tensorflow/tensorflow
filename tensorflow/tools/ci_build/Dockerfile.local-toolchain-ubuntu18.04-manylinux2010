@@ -30,5 +30,3 @@ ADD devtoolset/rpm-patch.sh rpm-patch.sh
 
 # Set up a sysroot for glibc 2.12 / libstdc++ 4.4 / devtoolset-7 in /dt7.
 RUN /build_devtoolset.sh devtoolset-7 /dt7
-# Set up a sysroot for glibc 2.12 / libstdc++ 4.4 / devtoolset-8 in /dt8.
-RUN /build_devtoolset.sh devtoolset-8 /dt8

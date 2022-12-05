@@ -254,7 +254,7 @@ tf_module {
   }
   member_method {
     name: "ssim"
-    argspec: "args=[\'img1\', \'img2\', \'max_val\', \'filter_size\', \'filter_sigma\', \'k1\', \'k2\'], varargs=None, keywords=None, defaults=[\'11\', \'1.5\', \'0.01\', \'0.03\'], "
+    argspec: "args=[\'img1\', \'img2\', \'max_val\', \'filter_size\', \'filter_sigma\', \'k1\', \'k2\', \'return_index_map\'], varargs=None, keywords=None, defaults=[\'11\', \'1.5\', \'0.01\', \'0.03\', \'False\'], "
   }
   member_method {
     name: "ssim_multiscale"

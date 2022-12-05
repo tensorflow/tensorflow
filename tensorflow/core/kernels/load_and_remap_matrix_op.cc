@@ -50,7 +50,7 @@ Status RemapVectorToMap(
                           ", which is not supported."));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // anonymous namespace
 
@@ -74,6 +74,11 @@ class LoadAndRemapMatrixOp : public OpKernel {
     std::vector<bool> row_id_present;
     const Tensor* row_remapping_t;
     OP_REQUIRES_OK(context, context->input("row_remapping", &row_remapping_t));
+    OP_REQUIRES(
+        context, row_remapping_t->dims() == 1,
+        errors::InvalidArgument("The `row_remapping` tensor must be 1-D, got "
+                                "a tensor of shape ",
+                                row_remapping_t->shape().DebugString()));
     const auto row_remapping = row_remapping_t->vec<int64_t>();
     OP_REQUIRES(context, row_remapping.size() == num_rows_,
                 errors::InvalidArgument(strings::StrCat(

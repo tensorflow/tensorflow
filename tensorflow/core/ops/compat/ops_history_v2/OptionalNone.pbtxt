@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "OptionalNone"
   output_arg {
     name: "optional"

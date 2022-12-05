@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
@@ -62,6 +63,9 @@ class ParseExampleOp : public OpKernel {
 
     // Grab the inputs.
     OP_REQUIRES_OK(ctx, ctx->input("serialized", &serialized));
+    OP_REQUIRES(ctx, serialized->NumElements() == 0 || serialized->data(),
+                errors::InvalidArgument(
+                    "Serialized data must not be null if there are elements"));
     OP_REQUIRES_OK(ctx, ctx->input("names", &names));
     if (op_version_ == 2) {
       OP_REQUIRES_OK(ctx, GetTensorKeys(ctx, "dense_keys", &dense_keys_t));
@@ -107,7 +111,7 @@ class ParseExampleOp : public OpKernel {
     for (int i = 0; i < keys_flat.size(); ++i) {
       keys->push_back(keys_flat(i));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Copies keys from OpInputList of scalar to std::vector<string>.
@@ -119,7 +123,7 @@ class ParseExampleOp : public OpKernel {
     for (const auto& key : key_list) {
       keys->push_back(key.scalar<tstring>()());
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Validates the shapes of input tensors.
@@ -201,7 +205,7 @@ class ParseExampleOp : public OpKernel {
             "] == ", DataTypeString(attrs_.dense_types[d]));
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Populates the FastParseExampleConfig from keys & defaults.
@@ -280,7 +284,7 @@ class ParseExampleOp : public OpKernel {
         ragged_splits.set(d, result.ragged_splits[d]);
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   ParseExampleAttrs attrs_;
@@ -562,7 +566,7 @@ class ParseSequenceExampleOp : public OpKernel {
         }
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   example::FastParseExampleConfig MakeContextConfig(
@@ -761,7 +765,7 @@ class ParseSequenceExampleOp : public OpKernel {
             d, feature_list_result.ragged_splits[d]);
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   ParseSequenceExampleAttrs attrs_;

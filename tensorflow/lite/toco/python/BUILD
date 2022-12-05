@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_binary", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/lite:__subpackages__",
         "//tensorflow/tools/pip_package:__subpackages__",
@@ -41,7 +42,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",
         "//tensorflow/lite/python/interpreter_wrapper:python_error_reporter",

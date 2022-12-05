@@ -16,6 +16,7 @@
 
 import functools
 import sys
+import time
 
 import six
 
@@ -35,6 +36,7 @@ from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.distribute_lib import InputReplicationMode
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
@@ -54,6 +56,24 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
+
+
+_distributed_dataset_initialization_time_milliseconds = monitoring.Sampler(
+    "/tensorflow/api/distribution_strategy/"
+    "distributed_dataset_initialization_time_milliseconds",
+    monitoring.ExponentialBuckets(scale=1, growth_factor=2, bucket_count=26),
+    "Track the time (in milliseconds) to initialize distributed datasets.",
+    "strategy", "workers")
+
+_distributed_dataset_from_function_initialization_time_milliseconds = (
+    monitoring.Sampler(
+        "/tensorflow/api/distribution_strategy/"
+        "distributed_dataset_from_function_initialization_time_milliseconds",
+        monitoring.ExponentialBuckets(
+            scale=1, growth_factor=2, bucket_count=26),
+        "Track the time (in milliseconds) to initialize distributed datasets "
+        "from function.",
+        "strategy", "workers"))
 
 
 def get_iterator_spec_from_dataset(strategy, dataset):
@@ -523,7 +543,7 @@ def _is_statically_shaped(element_spec):
       if spec.shape.rank > 0 and spec.shape.as_list()[0] is None:
         return False
     else:
-      for component in nest.flatten(spec._component_specs):  # pylint: disable=protected-access
+      for component in spec._flat_tensor_specs:  # pylint: disable=protected-access
         if not component.shape.is_fully_defined():
           return False
   return True
@@ -708,6 +728,84 @@ class DistributedDatasetAndIteratorSpec(type_spec.TypeSpec):
       raise ValueError("tf.distribute strategy is not compatible with both %s "
                        "and %s" % (self, other))
 
+  def is_subtype_of(self, other):
+    """Returns True if `self` is subtype of `other`.
+
+    Args:
+      other: A `TypeSpec`.
+    """
+    try:
+      self.sanity_check_type(other)
+      nest.assert_same_structure(self._element_spec, other._element_spec)  # pylint: disable=protected-access
+    except (TypeError, ValueError):
+      return False
+
+    self_elements = nest.flatten(self._element_spec)
+    other_elements = nest.flatten(other._element_spec)  # pylint: disable=protected-access
+
+    return all(
+        self_element.is_subtype_of(other_element)
+        for (self_element, other_element) in zip(self_elements, other_elements))
+
+  def most_specific_common_supertype(self, others):
+    """Returns the most specific supertype of `self` and `others`.
+
+    Args:
+      others: A Sequence of `TypeSpec`.
+
+    Returns `None` if a supertype does not exist.
+    """
+    try:
+      for other in others:
+        self.sanity_check_type(other)
+        nest.assert_same_structure(self._element_spec, other._element_spec)  # pylint: disable=protected-access
+    except (TypeError, ValueError):
+      return None
+
+    self_elements = nest.flatten(self._element_spec)
+    others_elements = [nest.flatten(other._element_spec) for other in others]  # pylint: disable=protected-access
+    common_elements = [None] * len(self_elements)
+
+    for i, self_element in enumerate(self_elements):
+      common_elements[i] = self_element.most_specific_common_supertype(
+          [other_elements[i] for other_elements in others_elements])
+      if common_elements[i] is None:
+        return None
+    common_element_spec = nest.pack_sequence_as(self._element_spec,
+                                                common_elements)
+    return type(self)(
+        self._input_workers,
+        common_element_spec,
+        self._strategy,
+        self._options,
+        cardinality=self._cardinality,
+        enable_get_next_as_optional=self._enable_get_next_as_optional)
+
+  def _with_tensor_ranks_only(self):
+    element_spec = nest.map_structure(
+        lambda s: s._with_tensor_ranks_only(),  # pylint: disable=protected-access
+        self._element_spec)
+    return type(self)(
+        self._input_workers,
+        element_spec,
+        self._strategy,
+        self._options,
+        cardinality=self._cardinality,
+        enable_get_next_as_optional=self._enable_get_next_as_optional)
+
+  # TODO(b/206014848): Remove once names are not used.
+  def _without_tensor_names(self):
+    element_spec = nest.map_structure(
+        lambda s: s._without_tensor_names(),  # pylint: disable=protected-access
+        self._element_spec)
+    return type(self)(
+        self._input_workers,
+        element_spec,
+        self._strategy,
+        self._options,
+        cardinality=self._cardinality,
+        enable_get_next_as_optional=self._enable_get_next_as_optional)
+
 
 class DistributedIteratorSpec(DistributedDatasetAndIteratorSpec):
   """Type specification for `DistributedIterator`."""
@@ -715,30 +813,6 @@ class DistributedIteratorSpec(DistributedDatasetAndIteratorSpec):
   @property
   def value_type(self):
     return DistributedIterator
-
-  # Overriding this method so that we can merge and reconstruct the spec object
-  def most_specific_compatible_type(self, other):
-    """Returns the most specific TypeSpec compatible with `self` and `other`.
-
-    Args:
-      other: A `TypeSpec`.
-
-    Raises:
-      ValueError: If there is no TypeSpec that is compatible with both `self`
-        and `other`.
-    """
-    # pylint: disable=protected-access
-    self.sanity_check_type(other)
-    element_spec = nest.map_structure(
-        lambda a, b: a.most_specific_compatible_type(b), self._element_spec,
-        other._element_spec)
-    return DistributedIteratorSpec(
-        self._input_workers,
-        element_spec,
-        self._strategy,
-        self._options,
-        cardinality=self._cardinality,
-        enable_get_next_as_optional=self._enable_get_next_as_optional)
 
   @property
   def _component_specs(self):
@@ -778,18 +852,6 @@ class DistributedIteratorSpec(DistributedDatasetAndIteratorSpec):
         value._options,
         cardinality=value._cardinality,
         enable_get_next_as_optional=value._enable_get_next_as_optional)
-
-  def _with_tensor_ranks_only(self):
-    element_spec = nest.map_structure(
-        lambda s: s._with_tensor_ranks_only(),  # pylint: disable=protected-access
-        self._element_spec)
-    return DistributedIteratorSpec(
-        self._input_workers,
-        element_spec,
-        self._strategy,
-        self._options,
-        cardinality=self._cardinality,
-        enable_get_next_as_optional=self._enable_get_next_as_optional)
 
 
 class DistributedIterator(DistributedIteratorBase,
@@ -895,29 +957,6 @@ class DistributedDatasetSpec(DistributedDatasetAndIteratorSpec):
   @property
   def value_type(self):
     return DistributedDataset
-
-  # Overriding this method so that we can merge and reconstruct the spec object
-  def most_specific_compatible_type(self, other):
-    """Returns the most specific TypeSpec compatible with `self` and `other`.
-
-    Args:
-      other: A `TypeSpec`.
-
-    Raises:
-      ValueError: If there is no TypeSpec that is compatible with both `self`
-        and `other`.
-    """
-    # pylint: disable=protected-access
-    self.sanity_check_type(other)
-    element_spec = nest.map_structure(
-        lambda a, b: a.most_specific_compatible_type(b), self._element_spec,
-        other._element_spec)
-    return DistributedDatasetSpec(
-        self._input_workers,
-        element_spec,
-        self._strategy,
-        self._options,
-        enable_get_next_as_optional=self._enable_get_next_as_optional)
 
   @property
   def _component_specs(self):
@@ -1052,10 +1091,19 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
     self._cardinality = _cardinality(dataset)
     self._enable_get_next_as_optional = _enable_get_next_as_optional(
         self._strategy, dataset, self._cardinality)
+    distribute_start_time_ns = time.time_ns()
     self._create_cloned_datasets_from_dataset(dataset, self._input_context,
                                               self._input_workers,
                                               self._strategy,
                                               self._num_replicas_in_sync)
+    if context.executing_eagerly():
+      # Records the time to initialize the distributed dataset.
+      context.async_wait()
+      distribute_duration_ms = (time.time_ns() -
+                                distribute_start_time_ns) // 1_000_000
+      _distributed_dataset_initialization_time_milliseconds.get_cell(
+          self._strategy.__class__.__name__,
+          str(self._input_workers.num_workers)).add(distribute_duration_ms)
     self._element_spec = _create_distributed_tensor_spec(
         self._strategy, self._cloned_datasets[0].element_spec)
     self._built = True
@@ -1080,7 +1128,7 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
     # `num_replicas_in_sync` smaller batches to be distributed among that
     # worker's replicas, so that the batch size for a global step (across all
     # workers and replicas) adds up to the original dataset's batch size.
-    if num_replicas_in_sync is not None:
+    if num_replicas_in_sync is not None and num_replicas_in_sync > 1:
       num_workers = input_context.num_input_pipelines if input_context else len(
           input_workers.worker_devices)
       rebatch_fn = self._make_rebatch_fn(dataset, num_workers,
@@ -1134,13 +1182,13 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
 
     def rebatch_fn(dataset, worker_index):
       try:
-        # pylint: disable=protected-access
+
         def apply_rebatch():
           batch_sizes = distribute.batch_sizes_for_worker(
               batch_size, num_workers, num_replicas_per_worker, worker_index)
-          return distribute._RebatchDataset(
-              dataset, batch_sizes).prefetch(num_replicas_per_worker)
+          return dataset.rebatch(batch_sizes).prefetch(num_replicas_per_worker)
 
+        # pylint: disable=protected-access
         def apply_legacy_rebatch():
           return distribute._LegacyRebatchDataset(
               dataset, num_replicas_in_sync).prefetch(num_replicas_per_worker)
@@ -1239,26 +1287,6 @@ class DistributedDatasetsFromFunctionSpec(DistributedDatasetAndIteratorSpec):
           functools.partial(_replace_per_replica_spec, i=i), self._element_spec)
       specs.append(dataset_ops.DatasetSpec(element_spec))
     return specs
-
-  # Overriding this method so that we can merge and reconstruct the spec object
-  def most_specific_compatible_type(self, other):
-    """Returns the most specific TypeSpec compatible with `self` and `other`.
-
-    Args:
-      other: A `TypeSpec`.
-
-    Raises:
-      ValueError: If there is no TypeSpec that is compatible with both `self`
-        and `other`.
-    """
-    # pylint: disable=protected-access
-    self.sanity_check_type(other)
-    element_spec = nest.map_structure(
-        lambda a, b: a.most_specific_compatible_type(b), self._element_spec,
-        other._element_spec)  # pylint: disable=protected-access
-    return DistributedDatasetsFromFunctionSpec(self._input_workers,
-                                               element_spec, self._strategy,
-                                               self._options)
 
   def _to_components(self, value):
     return value._datasets  # pylint: disable=protected-access
@@ -1360,9 +1388,19 @@ class DistributedDatasetsFromFunction(_IterableInput,
 
   def build(self):
     assert not self._built
+    distribute_start_time_ns = time.time_ns()
     self._datasets, element_spec = (
         _create_datasets_from_function_with_input_context(
             self._input_contexts, self._input_workers, self._dataset_fn))
+    if context.executing_eagerly():
+      # Records the time to initialize the distributed dataset.
+      context.async_wait()
+      distribute_duration_ms = (time.time_ns() -
+                                distribute_start_time_ns) // 1_000_000
+      _distributed_dataset_from_function_initialization_time_milliseconds.get_cell(
+          self._strategy.__class__.__name__,
+          str(self._input_workers.num_workers)).add(distribute_duration_ms)
+
     self._element_spec = _create_distributed_tensor_spec(
         self._strategy, element_spec)
     self._cardinality = _cardinality(self._datasets[0])

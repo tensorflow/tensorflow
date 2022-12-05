@@ -98,7 +98,7 @@ REGISTER_OP("TPUPartitionedInput")
         }
       }
 
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

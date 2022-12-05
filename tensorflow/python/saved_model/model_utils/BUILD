@@ -16,13 +16,10 @@
 # Description:
 #   Keras saving and loading libraries.
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "py_strict_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],
 )
@@ -48,7 +45,6 @@ py_strict_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python/saved_model:signature_def_utils",
-        "@six_archive//:six",
     ],
 )
 
@@ -81,13 +77,14 @@ py_strict_library(
     deps = [
         ":export_output",
         ":mode_keys",
+        "//tensorflow/python:op_selector",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
-        "@six_archive//:six",
+        "//tensorflow/python/saved_model:utils",
     ],
 )
 
@@ -106,6 +103,7 @@ py_strict_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
     ],

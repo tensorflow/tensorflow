@@ -5,6 +5,12 @@ load(
     "clean_dep",
 )
 
+# Dependencies for the bzl_library rule for this file.
+# This should include bzl_library targets for the bzl files loaded by the "load" statements above.
+SPECIAL_RULES_DEPS = [
+    "//tensorflow:tensorflow_bzl",
+]
+
 def tflite_portable_test_suite(**kwargs):
     """This is a no-op outside of Google."""
     _ignore = [kwargs]

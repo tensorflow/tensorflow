@@ -3,7 +3,7 @@
 // RUN: | FileCheck %s
 
 // CHECK-LABEL: func @single_cluster_one_result
-func @single_cluster_one_result(%arg0 : tensor<i32>, %arg1 : tensor<i32>)
+func.func @single_cluster_one_result(%arg0 : tensor<i32>, %arg1 : tensor<i32>)
     -> tensor<i32> {
   // CHECK: %[[CLUSTER:.*]] = "tf_device.cluster"()
   // CHECK:                 "tf.Add"
@@ -19,5 +19,5 @@ func @single_cluster_one_result(%arg0 : tensor<i32>, %arg1 : tensor<i32>)
   %4 = "tf.Add"(%1, %3) : (tensor<i32>, tensor<i32>) -> tensor<i32>
   // CHECK: }) {policy = "tfrt.auto-fusion"}
   // CHECK: return %[[CLUSTER]]
-  return %4 : tensor<i32>
+  func.return %4 : tensor<i32>
 }

@@ -28,7 +28,9 @@ def make_batchmatmul_tests(options):
           "dtype": [tf.float32],
           "shapes": [((3, 4, 7), (7, 9), (3, 4, 7), (7, 9)),
                      ((None, 4, 5), (None, 5, 6), (3, 4, 5), (3, 5, 6)),
-                     ((None, 1, 3, 4), (None, 4, 2), (2, 1, 3, 4), (5, 4, 2))],
+                     ((None, 1, 3, 4), (None, 4, 2), (2, 1, 3, 4), (5, 4, 2)),
+                     ((None, None, None, 3, 4), (None, None, None, 4, 3),
+                      (2, 2, 2, 3, 4), (2, 2, 2, 4, 3))],
           "adjoint_b": [False, True],
           "adjoint_a": [False, True],
           "rhs_constant": [False],
@@ -96,6 +98,7 @@ def make_batchmatmul_tests(options):
           outputs, feed_dict=dict(zip(inputs, [input0_value, input1_value])))
       return [input0_value, input1_value], output_values
 
+  options.disable_batchmatmul_unfold = True
   make_zip_of_tests(
       options,
       test_parameters,

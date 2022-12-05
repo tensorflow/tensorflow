@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/internal/tfprof_timeline.h"
 

@@ -93,23 +93,23 @@ TEST(PendingCounts, MarkLiveShowsUpAsCount) {
     PendingCounts c(layout);
     c.set_initial_count(h, count);
     EXPECT_EQ(c.pending(h), count);
-    c.mark_live(h);
+    auto result = c.adjust_for_mark_live_atomic(h);
     EXPECT_EQ(c.pending(h), count - 1);
     // mark_live should be idempotent
-    c.mark_live(h);
+    result = c.adjust_for_mark_live_atomic(h);
     EXPECT_EQ(c.pending(h), count - 1);
 
     c.decrement_pending(h, count - 1);
     EXPECT_EQ(c.pending(h), 0);
 
     // mark_live should be idempotent
-    c.mark_live(h);
+    result = c.adjust_for_mark_live_atomic(h);
     EXPECT_EQ(c.pending(h), 0);
     c.mark_started(h);
-    c.mark_live(h);
+    result = c.adjust_for_mark_live_atomic(h);
     EXPECT_EQ(c.pending(h), 0);
     c.mark_completed(h);
-    c.mark_live(h);
+    result = c.adjust_for_mark_live_atomic(h);
     EXPECT_EQ(c.pending(h), 0);
   }
 }
@@ -157,16 +157,16 @@ TEST(PendingCounts, AdjustForActivation) {
     // Don't increment the dead count this time
     PendingCounts::AdjustResult result = c.adjust_for_activation(h, false);
     EXPECT_EQ(c.pending(h), count - 1);
-    EXPECT_TRUE(result.any_pending);
+    EXPECT_GT(result.pending_count, 0);
     EXPECT_EQ(c.dead_count(h), 0);
-    EXPECT_FALSE(result.any_dead);
+    EXPECT_EQ(result.dead_count, 0);
 
     // Increment the dead count this time
     result = c.adjust_for_activation(h, true);
     EXPECT_EQ(c.pending(h), count - 2);
-    EXPECT_TRUE(result.any_pending);
+    EXPECT_GT(result.pending_count, 0);
     EXPECT_EQ(c.dead_count(h), 1);
-    EXPECT_TRUE(result.any_dead);
+    EXPECT_GT(result.dead_count, 0);
   }
 }
 

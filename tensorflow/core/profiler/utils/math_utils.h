@@ -16,29 +16,35 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_MATH_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_MATH_UTILS_H_
 
+#include "tensorflow/tsl/profiler/utils/math_utils.h"
+
 namespace tensorflow {
 namespace profiler {
 
-// Convert from clock cycles to seconds.
-inline double CyclesToSeconds(double cycles, double frequency_hz) {
-  // cycles / (cycles/s) = s.
-  return cycles / frequency_hz;
-}
-
-// Checks the divisor and returns 0 to avoid divide by zero.
-inline double SafeDivide(double dividend, double divisor) {
-  constexpr double kEpsilon = 1.0E-10;
-  if ((-kEpsilon < divisor) && (divisor < kEpsilon)) return 0.0;
-  return dividend / divisor;
-}
-
-inline double GibiToGiga(double gibi) { return gibi * ((1 << 30) / 1.0e9); }
-inline double GigaToGibi(double giga) { return giga / ((1 << 30) / 1.0e9); }
-
-// Calculates GiB/s.
-inline double GibibytesPerSecond(double gigabytes, double ns) {
-  return GigaToGibi(SafeDivide(gigabytes, ns));
-}
+using tsl::profiler::CyclesToSeconds;     // NOLINT
+using tsl::profiler::GibibytesPerSecond;  // NOLINT
+using tsl::profiler::GibiToGiga;          // NOLINT
+using tsl::profiler::GigaToGibi;          // NOLINT
+using tsl::profiler::GigaToTera;          // NOLINT
+using tsl::profiler::GigaToUni;           // NOLINT
+using tsl::profiler::MicroToMilli;        // NOLINT
+using tsl::profiler::MicroToNano;         // NOLINT
+using tsl::profiler::MilliToNano;         // NOLINT
+using tsl::profiler::MilliToPico;         // NOLINT
+using tsl::profiler::MilliToUni;          // NOLINT
+using tsl::profiler::NanoToMicro;         // NOLINT
+using tsl::profiler::NanoToMilli;         // NOLINT
+using tsl::profiler::NanoToPico;          // NOLINT
+using tsl::profiler::PicoToMicro;         // NOLINT
+using tsl::profiler::PicoToMilli;         // NOLINT
+using tsl::profiler::PicoToNano;          // NOLINT
+using tsl::profiler::PicoToUni;           // NOLINT
+using tsl::profiler::SafeDivide;          // NOLINT
+using tsl::profiler::TeraToGiga;          // NOLINT
+using tsl::profiler::UniToGiga;           // NOLINT
+using tsl::profiler::UniToMicro;          // NOLINT
+using tsl::profiler::UniToNano;           // NOLINT
+using tsl::profiler::UniToPico;           // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

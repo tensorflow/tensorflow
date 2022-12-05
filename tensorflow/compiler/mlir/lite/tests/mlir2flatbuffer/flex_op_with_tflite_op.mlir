@@ -1,6 +1,6 @@
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -emit-select-tf-ops -o - | flatbuffer_to_string - | FileCheck %s
 
-func @main(tensor<4xf32>) -> tensor<4xf32> {
+func.func @main(tensor<4xf32>) -> tensor<4xf32> {
 ^bb0(%arg0: tensor<4xf32>):
 // CHECK:  {
 // CHECK-NEXT:  version: 3,
@@ -24,35 +24,40 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
 // CHECK-NEXT:      name: "arg0",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      buffer: 2,
 // CHECK-NEXT:      name: "Const",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      buffer: 3,
 // CHECK-NEXT:      name: "mul",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      buffer: 4,
 // CHECK-NEXT:      name: "div",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      buffer: 5,
 // CHECK-NEXT:      name: "exp",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    } ],
 // CHECK-NEXT:    inputs: [ 0 ],
 // CHECK-NEXT:    outputs: [ 4 ],
@@ -107,5 +112,5 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
   // tf.div is the result of conversion to a Flex TF op
   %2 = "tf.Div"(%1, %0)  : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32> loc("div")
   %3 = "tfl.exp"(%2)  : (tensor<4xf32>) -> tensor<4xf32> loc("exp")
-  return %3 : tensor<4xf32>
+  func.return %3 : tensor<4xf32>
 }

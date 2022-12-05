@@ -26,6 +26,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
+#ifdef DNNL_AARCH64_USE_ACL
+#include "tensorflow/core/platform/mutex.h"
+#endif
 
 using dnnl::prop_kind;
 using dnnl::softmax_forward;
@@ -60,6 +63,9 @@ class MklSoftmaxPrimitive : public MklPrimitive {
   //   dst_data:  output data buffer of dst
   void Execute(const T* src_data, T* dst_data,
                std::shared_ptr<stream> fwd_cpu_stream) {
+#ifdef DNNL_AARCH64_USE_ACL
+    mutex_lock lock(primitive_execution_mu_);
+#endif
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *fwd_cpu_stream);
@@ -140,6 +146,10 @@ class MklSoftmaxPrimitive : public MklPrimitive {
   }
 
   struct SoftmaxFwdContext context_;
+
+#ifdef DNNL_AARCH64_USE_ACL
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T>
@@ -279,8 +289,8 @@ class MklSoftmaxOp : public OpKernel {
       // addresses does not work, as the addresses are re-used in matmul with
       // different data The counter ensures we still benefit from caching via
       // SetSoftmaxFwd().
-      static int counter = 1;
-      fwdParams.aarch64_counter = counter++;
+      fwdParams.aarch64_counter =
+          MklSoftmaxPrimitiveFactory<T>::IncrementCounter();
 #endif
       MklSoftmaxPrimitive<T>* softmax_fwd =
           MklSoftmaxPrimitiveFactory<T>::Get(fwdParams);

@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -68,7 +68,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                             GetTensorData<float>(output));
       break;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Neg only currently supports int64, int32, and float32, got %d.",
           input->type);

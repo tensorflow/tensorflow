@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "ReverseSequence"
   input_arg {
     name: "input"

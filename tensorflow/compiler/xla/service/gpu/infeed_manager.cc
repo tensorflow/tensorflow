@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "tensorflow/compiler/xla/shape_util.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/xla_executor_state.h"
-#include "tensorflow/stream_executor/gpu/gpu_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
@@ -30,7 +31,7 @@ constexpr int kMaxInfeedsInFlight = 8;
 
 InfeedManager::InfeedManager(se::StreamExecutor* executor)
     : BlockingXfeedQueue(/*max_pending_xfeeds=*/kMaxInfeedsInFlight),
-      stream_(absl::make_unique<se::Stream>(executor)) {
+      stream_(std::make_unique<se::Stream>(executor)) {
   stream_->Init();
 }
 
@@ -83,7 +84,7 @@ Status InfeedManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
   }
 
   EnqueueDestination(std::move(buffer_tree));
-  return Status::OK();
+  return OkStatus();
 }
 
 InfeedManager* GetOrCreateInfeedManager(se::StreamExecutor* executor) {

@@ -159,7 +159,7 @@ class InvertPermutationOp : public XlaOpKernel {
     // TODO(b/32495713): Remove this when we can check whether Scatter is
     // constant. Right now, we always assume it is non-constant because we don't
     // check the embedded computation.
-    if (tensor_or_status.ValueOrDie().has_value()) {
+    if (tensor_or_status.value().has_value()) {
       std::vector<int64_t> perm;
       OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(0, &perm));
 
@@ -184,10 +184,11 @@ class InvertPermutationOp : public XlaOpKernel {
           xla::Iota(ctx->builder(),
                     xla::primitive_util::NativeToPrimitiveType<T>(), size);
       auto result = XlaScatter(iota, iota, indices,
-                               /*indices_are_vectors=*/false, /*combiner=*/{},
-                               ctx->builder());
+                               /*indices_are_vectors=*/false,
+                               /*indices_are_sorted=*/false,
+                               /*combiner=*/{}, ctx->builder());
       OP_REQUIRES_OK(ctx, result.status());
-      ctx->SetOutput(0, result.ValueOrDie());
+      ctx->SetOutput(0, result.value());
     }
   }
 };

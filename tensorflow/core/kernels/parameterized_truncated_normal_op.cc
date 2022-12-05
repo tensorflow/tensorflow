@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/stateless_random_ops.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/platform/logging.h"
@@ -630,20 +631,18 @@ class ParameterizedTruncatedNormalOp : public OpKernel {
     OP_REQUIRES(ctx, shape_tensor.NumElements() > 0,
                 errors::InvalidArgument("Shape tensor must not be empty, got ",
                                         shape_tensor.DebugString()));
-    int32_t num_batches = shape_tensor.flat<int32>()(0);
+    TensorShape tensor_shape;
+    OP_REQUIRES_OK(ctx, tensor::MakeShape(shape_tensor, &tensor_shape));
 
+    int32_t num_batches = tensor_shape.dim_size(0);
     int32_t samples_per_batch = 1;
-    const int32_t num_dims = shape_tensor.dim_size(0);
+    const int32_t num_dims = tensor_shape.dims();
     for (int32_t i = 1; i < num_dims; i++) {
-      samples_per_batch *= shape_tensor.flat<int32>()(i);
+      samples_per_batch *= tensor_shape.dim_size(i);
     }
     const int32_t num_elements = num_batches * samples_per_batch;
 
     // Allocate the output before fudging num_batches and samples_per_batch.
-    auto shape_vec = shape_tensor.flat<int32>();
-    TensorShape tensor_shape;
-    OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(
-                            shape_vec.data(), shape_vec.size(), &tensor_shape));
     Tensor* samples_tensor;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, tensor_shape, &samples_tensor));
 

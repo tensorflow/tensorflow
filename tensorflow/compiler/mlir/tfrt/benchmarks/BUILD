@@ -5,7 +5,10 @@ load(
     "tf_cc_test",
 )
 
-package(default_visibility = ["//visibility:private"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//visibility:private"],
+)
 
 licenses(["notice"])
 
@@ -17,6 +20,10 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_pipeline",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:compiler",
+        "//tensorflow/compiler/xla/runtime:arguments",
+        "//tensorflow/compiler/xla/runtime:jit_executable",
+        "//tensorflow/compiler/xla/runtime:types",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:logging",
@@ -30,8 +37,9 @@ cc_library(
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
         "@tf_runtime//:tensor",
-        "@tf_runtime//backends/jitrt",
+        "@tf_runtime//backends/jitrt:async_task_runner",
         "@tf_runtime//backends/jitrt:jitrt_compiler",
+        "@tf_runtime//backends/jitrt:results",
     ],
 )
 
@@ -43,17 +51,14 @@ cc_library(
     deps = [
         ":benchmark",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tfrt:host_context_util",
+        "//tensorflow/compiler/mlir/tfrt:runtime_fallback_executor",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_pipeline",
         "//tensorflow/compiler/mlir/tfrt:tf_to_tfrt",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
-        "//tensorflow/core:platform_base",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
-        "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
-        "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
-        "//tensorflow/core/tfrt/utils:fallback_tensor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
@@ -62,10 +67,6 @@ cc_library(
         "@tf_runtime//:befexecutor",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:hostcontext",
-        "@tf_runtime//:mlirtobef",
-        "@tf_runtime//:support",
-        "@tf_runtime//:tensor",
-        "@tf_runtime//backends/jitrt",
     ],
 )
 
@@ -145,6 +146,7 @@ cc_library(
     hdrs = ["cwise_op_unary_benchmark.h"],
     deps = [
         ":benchmark",
+        "//tensorflow/compiler/mlir/tfrt:host_context_util",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -163,7 +165,10 @@ tf_cc_binary(
         "no_oss",
         "manual",
     ]),
-    deps = [":benchmark"],
+    deps = [
+        ":benchmark",
+        "//tensorflow/compiler/mlir/tfrt:host_context_util",
+    ],
 )
 
 tf_cc_binary(

@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/functiondef_import.h"
 
+#include <string>
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/Support/Debug.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -28,14 +29,11 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/convert_attributes.h"
-#include "tensorflow/core/ir/importexport/convert_tensor.h"
 #include "tensorflow/core/ir/importexport/convert_types.h"
-#include "tensorflow/core/ir/importexport/import.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
+#include "tensorflow/core/platform/statusor.h"
 
 using tensorflow::AttrValue;
 using tensorflow::FunctionDef;
@@ -43,6 +41,7 @@ using tensorflow::NodeDef;
 using tensorflow::OpDef;
 using tensorflow::OpDef_AttrDef;
 using tensorflow::Status;
+using tensorflow::StatusOr;
 using tensorflow::errors::InvalidArgument;
 using tensorflow::protobuf::RepeatedPtrField;
 
@@ -84,7 +83,7 @@ class ValueMapManager {
     }
     base_operation.push_back(op->getResult(1));
     base_operation.push_back(op->getResult(0));
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   Value GetValueOrCreatePlaceholder(StringRef full_name) {
@@ -120,7 +119,7 @@ class ValueMapManager {
                          builder_.getStringAttr(node_name));
       state.types.push_back(placeholder_ty_);
       state.types.push_back(control_ty_);
-      Operation* placeholder = builder_.createOperation(state);
+      Operation* placeholder = builder_.create(state);
       base_operation.push_back(placeholder->getResult(1));
       base_operation.push_back(placeholder->getResult(0));
     }
@@ -162,15 +161,19 @@ Status ImportNodes(ValueMapManager value_manager,
       cast<TFGraphDialect>(context->getLoadedDialect("tfg"));
   StringAttr device_attr = tfgDialect->getDeviceAttrIdentifier();
   StringAttr name_attr = tfgDialect->getNameAttrIdentifier();
+  StringAttr fulltype_attr = tfgDialect->getFullTypeAttrIdentifier();
   // Process every node and create a matching MLIR operation
   for (const NodeDef& node : nodes) {
-    DVLOG(0) << "Processing node " << node.name() << "\n";
+    DVLOG(1) << "Processing node " << node.name() << "\n";
     if (node.op().empty()) return InvalidArgument("empty op type");
     OperationState state(unknown_loc, absl::StrCat("tfg.", node.op()));
     // Fetch the inputs, creating placeholder if an input hasn't been visited.
-    for (const std::string& input : node.input())
+    for (const std::string& input : node.input()) {
+      if (input.empty())
+        return InvalidArgument("Node '", node.name(), "' has an empty input");
       state.operands.push_back(
           value_manager.GetValueOrCreatePlaceholder(input));
+    }
     // Retrieve the entry in the nodes_map for this node and infer the result
     // count from what was inferred during the first traversal above.
     state.types.push_back(placeholder_ty);
@@ -180,13 +183,20 @@ Status ImportNodes(ValueMapManager value_manager,
       const std::string& name = namedAttr.first;
       const AttrValue& tf_attr = namedAttr.second;
       TF_ASSIGN_OR_RETURN(Attribute attr,
-                          ConvertAttributeValue(tf_attr, builder, tfgDialect));
+                          ConvertAttributeValue(tf_attr, builder));
       state.addAttribute(name, attr);
     }
-    state.addAttribute(device_attr, StringAttr::get(context, node.device()));
-    state.addAttribute(name_attr, StringAttr::get(context, node.name()));
+    if (!node.device().empty())
+      state.addAttribute(device_attr, StringAttr::get(context, node.device()));
+    if (!node.name().empty())
+      state.addAttribute(name_attr, StringAttr::get(context, node.name()));
+    if (node.has_experimental_type()) {
+      TF_ASSIGN_OR_RETURN(tf_type::FullTypeAttr type,
+                          ConvertAttribute(node.experimental_type(), builder));
+      state.addAttribute(fulltype_attr, type);
+    }
 
-    Operation* op = builder.createOperation(state);
+    Operation* op = builder.create(state);
 
     StringRef node_name = node.name();
     {
@@ -204,7 +214,7 @@ Status ImportNodes(ValueMapManager value_manager,
           op.getAttrOfType<StringAttr>(name_attr).getValue().str()));
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::StatusOr<NamedAttrList> ConvertArgDefAttributes(
@@ -235,6 +245,12 @@ tensorflow::StatusOr<NamedAttrList> ConvertArgDefAttributes(
     input_attrs.append("tfg.handle_data", handle_data);
   }
   if (arg.is_ref()) input_attrs.append("tfg.is_ref", builder.getUnitAttr());
+  if (arg.has_experimental_full_type()) {
+    TF_ASSIGN_OR_RETURN(
+        tf_type::FullTypeAttr type,
+        ConvertAttribute(arg.experimental_full_type(), builder));
+    input_attrs.append("tfg.experimental_full_type", type);
+  }
   return input_attrs;
 }
 
@@ -243,17 +259,13 @@ tensorflow::StatusOr<NamedAttrList> ConvertArgDefAttributes(
 // used as scratchpad for the import inside this function. The `gradients` maps
 // is provided to
 Status ImportGenericFunction(
-    const FunctionDef& func,
+    GraphFuncOp func_op, const FunctionDef& func,
     llvm::StringMap<llvm::StringMap<SmallVector<Value, 1>>>& values_map,
     OpBuilder& builder) {
   const OpDef& signature = func.signature();
   Location unknown_loc = builder.getUnknownLoc();
   MLIRContext* context = builder.getContext();
 
-  auto func_op = builder.create<GraphFuncOp>(unknown_loc, signature.name(),
-                                             FunctionType::get(context, {}, {}),
-                                             /*generic=*/true);
-  TFGraphDialect* tfgDialect = cast<TFGraphDialect>(func_op->getDialect());
   NamedAttrList attrs;
   DictionaryAttr func_attrs = builder.getDictionaryAttr({});
   if (signature.name().empty())
@@ -265,7 +277,7 @@ Status ImportGenericFunction(
   if (signature.is_stateful())
     attrs.append("is_stateful", builder.getUnitAttr());
   if (signature.control_output_size()) {
-    llvm::SmallVector<Attribute> control_outputs;
+    SmallVector<Attribute> control_outputs;
     for (const std::string& output : signature.control_output())
       control_outputs.push_back(builder.getStringAttr(output));
     attrs.append("control_output", builder.getArrayAttr(control_outputs));
@@ -277,12 +289,11 @@ Status ImportGenericFunction(
       if (attr.name().empty())
         return InvalidArgument("Missing name for function attribute");
       if (!attr.type().empty())
-        attr_def.append(
-            builder.getNamedAttr("type", builder.getStringAttr(attr.type())));
+        attr_def.append(builder.getNamedAttr(
+            "function_type", builder.getStringAttr(attr.type())));
       if (attr.has_default_value()) {
-        TF_ASSIGN_OR_RETURN(
-            Attribute attr,
-            ConvertAttributeValue(attr.default_value(), builder, tfgDialect));
+        TF_ASSIGN_OR_RETURN(Attribute attr, ConvertAttributeValue(
+                                                attr.default_value(), builder));
         attr_def.append(builder.getNamedAttr("default_value", attr));
       }
       if (!attr.description().empty())
@@ -294,7 +305,7 @@ Status ImportGenericFunction(
       if (attr.has_allowed_values()) {
         TF_ASSIGN_OR_RETURN(
             Attribute attr,
-            ConvertAttributeValue(attr.allowed_values(), builder, tfgDialect));
+            ConvertAttributeValue(attr.allowed_values(), builder));
         attr_def.append(builder.getNamedAttr("allowed_values", attr));
       }
       attr_defs.append(builder.getNamedAttr(
@@ -324,10 +335,12 @@ Status ImportGenericFunction(
   // Import the function attributes with a `tf.` prefix to match the current
   // infrastructure expectations.
   for (const auto& namedAttr : func.attr()) {
+    if (namedAttr.first.empty())
+      return InvalidArgument("Invalid function attribute name");
     const std::string& name = "tf." + namedAttr.first;
     const AttrValue& tf_attr = namedAttr.second;
     TF_ASSIGN_OR_RETURN(Attribute attr,
-                        ConvertAttributeValue(tf_attr, builder, tfgDialect));
+                        ConvertAttributeValue(tf_attr, builder));
     attrs.append(name, attr);
   }
   SmallString<8> arg_or_res_attr_name;
@@ -338,10 +351,10 @@ Status ImportGenericFunction(
   // We populate the `arg_names` vector with the name of each input at each
   // position, and `arg_types` with the matching type.
   int arg_num = 0;
-  llvm::SmallVector<StringRef> arg_names;
-  llvm::SmallVector<Type> arg_types;
-  llvm::SmallVector<Attribute> args_attrs;
-  llvm::SmallVector<Attribute> res_attrs;
+  SmallVector<StringRef> arg_names;
+  SmallVector<Type> arg_types;
+  SmallVector<Attribute> args_attrs;
+  SmallVector<Attribute> res_attrs;
   for (const auto& enumerated_input : llvm::enumerate(signature.input_arg())) {
     const OpDef::ArgDef& input = enumerated_input.value();
     TF_ASSIGN_OR_RETURN(NamedAttrList input_attrs,
@@ -350,9 +363,8 @@ Status ImportGenericFunction(
     if (it != func.arg_attr().end()) {
       NamedAttrList arg_attr;
       for (const auto& named_attr : it->second.attr()) {
-        TF_ASSIGN_OR_RETURN(
-            Attribute attr,
-            ConvertAttributeValue(named_attr.second, builder, tfgDialect));
+        TF_ASSIGN_OR_RETURN(Attribute attr,
+                            ConvertAttributeValue(named_attr.second, builder));
         arg_attr.append(named_attr.first, attr);
       }
       input_attrs.append("tfg.arg_attrs",
@@ -389,7 +401,7 @@ Status ImportGenericFunction(
 
   values_map.clear();
   Block* body = new Block();
-  func_op.body().push_back(body);
+  func_op.getBody().push_back(body);
   Type control_ty = ControlType::get(context);
   // Create the block arguments and populate the `values_map` with the matching
   // input names.
@@ -450,21 +462,31 @@ Status ImportGenericFunction(
                               Value());
   for (const auto& ret_val : func.ret()) {
     auto position = output_name_to_position.find(ret_val.first);
-    if (position == output_name_to_position.end())
+    if (position == output_name_to_position.end()) {
       return InvalidArgument(
           "Can't import function, returned value references unknown output "
           "argument ",
           ret_val.first);
+    }
+    if (ret_val.second.empty()) {
+      return InvalidArgument("Function '", func.signature().name(),
+                             "' has empty result name");
+    }
     ret_vals[position->second] =
         value_manager.GetValueOrCreatePlaceholder(ret_val.second);
   }
   for (const auto& ret_val : func.control_ret()) {
     auto position = control_output_to_position.find(ret_val.first);
-    if (position == control_output_to_position.end())
+    if (position == control_output_to_position.end()) {
       return InvalidArgument(
           "Can't import function, returned value references unknown output "
           "argument ",
           ret_val.first);
+    }
+    if (ret_val.second.empty()) {
+      return InvalidArgument("Function '", func.signature().name(),
+                             "' has empty control result name");
+    }
     Value result = value_manager.GetValueOrCreatePlaceholder(
         (Twine("^") + ret_val.second).str());
     if (!result.getType().isa<ControlType>())
@@ -484,26 +506,28 @@ Status ImportGenericFunction(
       unknown_loc, operands.slice(0, func.ret_size()),
       operands.slice(func.ret_size()));
 
-  // Now that we have all the types, set the function signature as the "type"
-  // attribute.
+  // Now that we have all the types, set the function signature as the
+  // "function_type" attribute.
   {
     SmallVector<Type> arg_types_with_ctl;
     for (Type type : arg_types) {
       arg_types_with_ctl.push_back(type);
       arg_types_with_ctl.push_back(control_ty);
     }
-    attrs.append("type", TypeAttr::get(builder.getFunctionType(
-                             arg_types_with_ctl, ret_op.getOperandTypes())));
+    attrs.append("function_type",
+                 TypeAttr::get(builder.getFunctionType(
+                     arg_types_with_ctl, ret_op.getOperandTypes())));
   }
   func_op->setAttrs(attrs);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace
 
-Status ConvertGenericFunction(const FunctionDef& func, OpBuilder& builder) {
+Status ConvertGenericFunction(GraphFuncOp func_op, const FunctionDef& func,
+                              OpBuilder& builder) {
   llvm::StringMap<llvm::StringMap<SmallVector<Value, 1>>> values_map;
-  return ImportGenericFunction(func, values_map, builder);
+  return ImportGenericFunction(func_op, func, values_map, builder);
 }
 
 }  // namespace tfg

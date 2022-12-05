@@ -18,7 +18,10 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 #include <vector>
+
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/tracking_allocator.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -27,7 +30,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class Allocator;
 class AllocatorMemoryUsed;
 class CostModelManager;
 class Graph;
@@ -37,7 +39,6 @@ class OpKernelContext;
 class StepStats;
 class StepStatsCollector;
 class Tensor;
-class TrackingAllocator;
 
 // Statistics collection interface for individual node execution.
 //

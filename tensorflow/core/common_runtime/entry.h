@@ -22,7 +22,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class mutex;
 class Tensor;
 
 // An Entry store a single input value for an individual kernel invocation in

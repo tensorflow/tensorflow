@@ -31,7 +31,7 @@ namespace port {
 namespace {
 
 // If the CPU feature isn't present, log a fatal error.
-void CheckFeatureOrDie(CPUFeature feature, const string& feature_name) {
+void CheckFeatureOrDie(CPUFeature feature, const std::string& feature_name) {
   if (!TestCPUFeature(feature)) {
     const auto error_msg =
         "The TensorFlow library was compiled to use " + feature_name +
@@ -52,8 +52,8 @@ void CheckFeatureOrDie(CPUFeature feature, const string& feature_name) {
 }
 
 // Check if CPU feature is included in the TensorFlow binary.
-void CheckIfFeatureUnused(CPUFeature feature, const string& feature_name,
-                          string& missing_instructions) {
+void CheckIfFeatureUnused(CPUFeature feature, const std::string& feature_name,
+                          std::string& missing_instructions) {
   if (TestCPUFeature(feature)) {
     missing_instructions.append(" ");
     missing_instructions.append(feature_name);
@@ -93,6 +93,24 @@ class CPUFeatureGuard {
 #ifdef __AVX512F__
     CheckFeatureOrDie(CPUFeature::AVX512F, "AVX512F");
 #endif  // __AVX512F__
+#ifdef __AVX512VNNI__
+    CheckFeatureOrDie(CPUFeature::AVX512_VNNI, "AVX512_VNNI");
+#endif  // __AVX512VNNI__
+#ifdef __AVX512BF16__
+    CheckFeatureOrDie(CPUFeature::AVX512_BF16, "AVX512_BF16");
+#endif  // __AVX512BF16__
+#ifdef __AVXVNNI__
+    CheckFeatureOrDie(CPUFeature::AVX_VNNI, "AVX_VNNI");
+#endif  // __AVXVNNI__
+#ifdef __AMXTILE__
+    CheckFeatureOrDie(CPUFeature::AMX_TILE, "AMX_TILE");
+#endif  // __AMXTILE__
+#ifdef __AMXINT8__
+    CheckFeatureOrDie(CPUFeature::AMX_INT8, "AMX_INT8");
+#endif  // __AMXINT8__
+#ifdef __AMXBF16__
+    CheckFeatureOrDie(CPUFeature::AMX_BF16, "AMX_BF16");
+#endif  // __AMXBF16__
 #ifdef __FMA__
     CheckFeatureOrDie(CPUFeature::FMA, "FMA");
 #endif  // __FMA__
@@ -107,7 +125,7 @@ absl::once_flag g_cpu_feature_guard_warn_once_flag;
 
 void InfoAboutUnusedCPUFeatures() {
   absl::call_once(g_cpu_feature_guard_warn_once_flag, [] {
-    string missing_instructions;
+    std::string missing_instructions;
 #if defined(_MSC_VER) && !defined(__clang__)
 
 #ifndef __AVX__
@@ -143,6 +161,30 @@ void InfoAboutUnusedCPUFeatures() {
 #ifndef __AVX512F__
     CheckIfFeatureUnused(CPUFeature::AVX512F, "AVX512F", missing_instructions);
 #endif  // __AVX512F__
+#ifndef __AVX512VNNI__
+    CheckIfFeatureUnused(CPUFeature::AVX512_VNNI, "AVX512_VNNI",
+                         missing_instructions);
+#endif  // __AVX512VNNI__
+#ifndef __AVX512BF16__
+    CheckIfFeatureUnused(CPUFeature::AVX512_BF16, "AVX512_BF16",
+                         missing_instructions);
+#endif  // __AVX512BF16___
+#ifndef __AVXVNNI__
+    CheckIfFeatureUnused(CPUFeature::AVX_VNNI, "AVX_VNNI",
+                         missing_instructions);
+#endif  // __AVXVNNI__
+#ifndef __AMXTILE__
+    CheckIfFeatureUnused(CPUFeature::AMX_TILE, "AMX_TILE",
+                         missing_instructions);
+#endif  // __AMXTILE__
+#ifndef __AMXINT8__
+    CheckIfFeatureUnused(CPUFeature::AMX_INT8, "AMX_INT8",
+                         missing_instructions);
+#endif  // __AMXINT8__
+#ifndef __AMXBF16__
+    CheckIfFeatureUnused(CPUFeature::AMX_BF16, "AMX_BF16",
+                         missing_instructions);
+#endif  // __AMXBF16__
 #ifndef __FMA__
     CheckIfFeatureUnused(CPUFeature::FMA, "FMA", missing_instructions);
 #endif  // __FMA__

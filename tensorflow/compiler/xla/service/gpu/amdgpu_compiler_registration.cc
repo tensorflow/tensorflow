@@ -14,11 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/amdgpu_compiler.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
 
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       stream_executor::rocm::kROCmPlatformId,
-      []() { return absl::make_unique<xla::gpu::AMDGPUCompiler>(); });
+      []() { return std::make_unique<xla::gpu::AMDGPUCompiler>(); });
   return true;
 }
 static bool module_initialized = InitModule();

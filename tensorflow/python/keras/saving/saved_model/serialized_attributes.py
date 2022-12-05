@@ -19,8 +19,8 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.keras.saving.saved_model import constants
 from tensorflow.python.keras.saving.saved_model import save_impl
 from tensorflow.python.keras.utils.generic_utils import LazyLoader
-from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking.tracking import AutoTrackable
+from tensorflow.python.trackable import base as trackable
+from tensorflow.python.trackable.autotrackable import AutoTrackable
 
 # TODO(b/134426265): Switch back to single-quotes to match the rest of the file
 # once the issue with copybara is fixed.

@@ -12,19 +12,24 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// Must be included first
+// clang-format off
+#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+// clang-format on
 
 #include "tensorflow/compiler/xla/python/py_values.h"
 
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/sharded_device_array.h"
+#include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/python/lib/core/numpy.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace py = pybind11;
 
@@ -65,6 +70,9 @@ StatusOr<DevicePutResult> HandlePythonScalar(py::handle obj,
     ptr = &squashed_data;
     type = primitive_util::NativeToPrimitiveType<SquashedT>();
   }
+  // Must release the GIL before BufferFromHostBuffer because backends may
+  // decide to block/sleep for device buffer allocation.
+  py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(
       auto buffer,
       to_device->client()->BufferFromHostBuffer(
@@ -106,6 +114,9 @@ StatusOr<DevicePutResult> HandlePythonInt(py::handle obj, PjRtDevice* to_device,
     ptr = &data_int64;
     type = S64;
   }
+  // Must release the GIL before BufferFromHostBuffer because backends may
+  // decide to block/sleep for device buffer allocation.
+  py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(
       auto buffer,
       to_device->client()->BufferFromHostBuffer(
@@ -136,6 +147,9 @@ StatusOr<DevicePutResult> HandleNumpyScalar(py::handle h, PjRtDevice* to_device,
     ptr = &data_squashed;
     type = primitive_util::NativeToPrimitiveType<SquashedT>();
   }
+  // Must release the GIL before BufferFromHostBuffer because backends may
+  // decide to block/sleep for device buffer allocation.
+  py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtBuffer> buffer,
       to_device->client()->BufferFromHostBuffer(
@@ -183,6 +197,9 @@ StatusOr<DevicePutResult> HandleNumpyArray(py::handle h, PjRtDevice* to_device,
             std::move(py_buffer_ref)}]() { /* keeps py_buffer_ref alive */ };
     host_buffer_semantics = PjRtClient::HostBufferSemantics::kZeroCopy;
   }
+  // Must release the GIL before BufferFromHostBuffer because backends may
+  // decide to block/sleep for device buffer allocation.
+  py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(
       auto buffer,
       to_device->client()->BufferFromHostBuffer(
@@ -214,6 +231,34 @@ StatusOr<DevicePutResult> HandlePyBuffer(py::handle obj, PjRtDevice* to_device,
                         to_device);
 }
 
+StatusOr<DevicePutResult> HandlePyArray(py::handle obj, PjRtDevice* to_device,
+                                        const DevicePutOptions& options) {
+  auto py_array = py::reinterpret_borrow<PyArray>(obj);
+
+  // We only allow single device case for PyArray in device put.
+  if (py_array.num_shards() != 1) {
+    return InvalidArgument(
+        "Only single-sharded Array is expected in device_put.");
+  }
+
+  if (py_array.sharding().get_type() == jax::PmapSharding::type()) {
+    // We are only handling single device case for PmapSharding here. For other
+    // cases, it fallbacks to python.
+    return HandleNumpyArray(obj.attr("_value"), to_device, options);
+  }
+
+  PjRtBuffer* buffer = py_array.GetBuffer(0);
+  if (buffer->device() == to_device) {
+    return DevicePutResult(
+        buffer, py_array.weak_type(),
+        /*owning_pybuffer=*/py::reinterpret_borrow<py::object>(obj));
+  } else {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> copied_buffer,
+                        buffer->CopyToDevice(to_device));
+    return DevicePutResult(std::move(copied_buffer), py_array.weak_type());
+  }
+}
+
 StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
                                             PjRtDevice* to_device,
                                             const DevicePutOptions& options) {
@@ -226,22 +271,6 @@ StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
     return HandleNumpyArray(obj, to_device, options);
   }
 
-  // Force buffers with a non-trivial lazy expression.
-  py::object forced;
-  if (!py::getattr(obj, "_lazy_expr").is_none()) {
-    if (!options.force_lazy_arrays) {
-      return InvalidArgument("Lazy arrays are not supported by device_put");
-    }
-    static py::function& force = *[]() {
-      const auto xla_module = py::module::import("jax.interpreters.xla");
-      return new py::function(
-          py::cast<py::function>(xla_module.attr("_force")));
-    }();
-    forced = force(obj);
-    buffer = forced.attr("device_buffer");
-    obj = forced;
-  }
-
   return PyBufferHelper(obj, buffer, py::cast<PyBuffer*>(buffer), to_device);
 }
 
@@ -249,7 +278,7 @@ StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
 
 StatusOr<DevicePutResult> DevicePut(py::handle arg, PjRtDevice* to_device,
                                     const DevicePutOptions& options) {
-  tensorflow::profiler::TraceMe traceme("DevicePut");
+  tsl::profiler::TraceMe traceme("DevicePut");
   static const absl::flat_hash_map<PyObject*, DevicePutFunc>* const handlers =
       [] {
         auto p = new absl::flat_hash_map<PyObject*, DevicePutFunc>();
@@ -320,6 +349,13 @@ StatusOr<DevicePutResult> DevicePut(py::handle arg, PjRtDevice* to_device,
 
         return p;
       }();
+
+  if (arg.get_type() == PyArray::type()) {
+    auto array = py::reinterpret_borrow<PyArray>(arg);
+    if (array.fastpath_enabled()) {
+      return HandlePyArray(arg, to_device, options);
+    }
+  }
 
   // Fast-path for the most common case of PyBuffer.
   if (arg.get_type().ptr() == PyBuffer::type()) {
@@ -524,9 +560,19 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
         return p;
       }();
 
+  if (arg.get_type() == PyArray::type()) {
+    auto array = py::reinterpret_borrow<PyArray>(arg);
+    if (array.fastpath_enabled()) {
+      if (array.IsDeleted()) {
+        return xla::InvalidArgument("Array has been deleted.");
+      }
+      auto dtype = array.GetBuffer(0)->on_device_shape().element_type();
+      return PyArgSignature(dtype, array.shape(), array.weak_type());
+    }
+  }
+
   // Fast-path for the most common case of PyBuffer.
   if (arg.get_type().ptr() == PyBuffer::type()) {
-    // PyBuffer necessarily has a trivial LazyExpr, no need to check it.
     TF_ASSIGN_OR_RETURN(PyBuffer * buffer, PyBuffer::AsPyBuffer(arg));
     bool weak_type = buffer->weak_type().has_value()
                          ? *buffer->weak_type()

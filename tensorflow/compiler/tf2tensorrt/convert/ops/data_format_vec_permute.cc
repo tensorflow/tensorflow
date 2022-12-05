@@ -36,8 +36,9 @@ int get_spatial_dim_count(string format) {
 class ConvertDataFormatVecPermute
     : public OpConverterBase<ConvertDataFormatVecPermute> {
  public:
-  ConvertDataFormatVecPermute(OpConverterParams* params)
-      : OpConverterBase<ConvertDataFormatVecPermute>(params) {}
+  ConvertDataFormatVecPermute(const OpConverterParams* params)
+      : OpConverterBase<ConvertDataFormatVecPermute>(params,
+                                                     {DataType::DT_INT32}) {}
 
   struct DataFormatVecPermuteAttributes {
     string dst_format;
@@ -49,18 +50,10 @@ class ConvertDataFormatVecPermute
     return {InputArgSpec::Create("x", TrtInputArg::kBoth)};
   }
 
-  static constexpr std::array<DataType, 1> AllowedDataTypes() {
-    return {DataType::DT_INT32};
-  }
-
   Status Validate() {
+    TF_RETURN_IF_ERROR(NotSupportedInImplicitBatch());
     const auto& inputs = params_->inputs;
-    const auto& node_def = params_->node_def;
-
-    if (params_->use_implicit_batch) {
-      return errors::Unimplemented("Implicit batch mode not supported, at ",
-                                   node_def.name());
-    }
+    const auto& nodeName = params_->node_def.name();
 
     x_input_ = inputs.at(0);
 
@@ -70,7 +63,7 @@ class ConvertDataFormatVecPermute
     if (input_rank != 1 && input_rank != 2) {
       return errors::InvalidArgument(
           "Input must be a vector or matrix, but got rank ", input_rank,
-          ", at ", node_def.name());
+          ", at ", nodeName);
     }
 
     // Verify and consume node attributes.
@@ -84,22 +77,21 @@ class ConvertDataFormatVecPermute
     const int spatial_dim_count = get_spatial_dim_count(*src_format);
     if (input_rank == 1) {
       if (x_dims.d[0] != spatial_dim_count && x_dims.d[0] != full_dim_count) {
-        return errors::InvalidArgument("1D input must be of size ",
-                                       spatial_dim_count, " or ",
-                                       full_dim_count, ", but got size ",
-                                       x_dims.d[0], ", at ", node_def.name());
+        return errors::InvalidArgument(
+            "1D input must be of size ", spatial_dim_count, " or ",
+            full_dim_count, ", but got size ", x_dims.d[0], ", at ", nodeName);
       }
     } else if (input_rank == 2) {
       if (x_dims.d[0] != spatial_dim_count && x_dims.d[0] != full_dim_count) {
         return errors::InvalidArgument(
             "First dimension of 2D input must be of size ", spatial_dim_count,
             " or ", full_dim_count, ", but got shape (", x_dims.d[0], ", ",
-            x_dims.d[1], "), at ", node_def.name());
+            x_dims.d[1], "), at ", nodeName);
       }
       if (x_dims.d[1] != 2) {
         return errors::InvalidArgument(
             "Second dimension of 2D input must be of size 2, but got shape (",
-            x_dims.d[0], ", ", x_dims.d[1], "), at ", node_def.name());
+            x_dims.d[0], ", ", x_dims.d[1], "), at ", nodeName);
       }
     }
 
@@ -108,12 +100,10 @@ class ConvertDataFormatVecPermute
     attrs_.dst_format = *dst_format;
     attrs_.src_format = *src_format;
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Convert() {
-    const auto& node_def = params_->node_def;
-
     // Copy format strings in case they need to be modified.
     string dst_format = attrs_.dst_format;
     string src_format = attrs_.src_format;
@@ -163,12 +153,12 @@ class ConvertDataFormatVecPermute
     nvinfer1::IGatherLayer* layer = params_->converter->network()->addGather(
         *x_tensor->trt_tensor(), *indices_tensor->trt_tensor(), 0);
     TRT_ENSURE(layer);
-    params_->converter->SetLayerName(layer, node_def);
+    params_->converter->SetLayerName(layer, params_->node_def);
 
     ITensorProxyPtr output_tensor = layer->getOutput(0);
 
     params_->outputs->push_back(TRT_TensorOrWeights(output_tensor));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

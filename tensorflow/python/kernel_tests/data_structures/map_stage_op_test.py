@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import queue
+import threading
+
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -200,30 +203,26 @@ class MapStageTest(test.TestCase):
 
     g.finalize()
 
-    from six.moves import queue as Queue
-    import threading
-
-    queue = Queue.Queue()
+    value_queue = queue.Queue()
     n = 8
 
     with self.session(graph=g) as sess:
-      # Stage data in a separate thread which will block
-      # when it hits the staging area's capacity and thus
-      # not fill the queue with n tokens
+      # Stage data in a separate thread which will block when it hits the
+      # staging area's capacity and thus not fill the value_queue with n tokens
       def thread_run():
         for i in range(n):
           sess.run(stage, feed_dict={x: i, pi: i})
-          queue.put(0)
+          value_queue.put(0)
 
       t = threading.Thread(target=thread_run)
       t.daemon = True
       t.start()
 
-      # Get tokens from the queue until a timeout occurs
+      # Get tokens from the value_queue until a timeout occurs
       try:
         for i in range(n):
-          queue.get(timeout=TIMEOUT)
-      except Queue.Empty:
+          value_queue.get(timeout=TIMEOUT)
+      except queue.Empty:
         pass
 
       # Should've timed out on the iteration 'capacity'
@@ -264,31 +263,27 @@ class MapStageTest(test.TestCase):
 
     g.finalize()
 
-    from six.moves import queue as Queue
-    import threading
-
-    queue = Queue.Queue()
+    value_queue = queue.Queue()
     n = 8
 
     with self.session(graph=g) as sess:
-      # Stage data in a separate thread which will block
-      # when it hits the staging area's capacity and thus
-      # not fill the queue with n tokens
+      # Stage data in a separate thread which will block when it hits the
+      # staging area's capacity and thus not fill the value_queue with n tokens
       def thread_run():
         for i in range(n):
           data = np.full(chunk, i, dtype=np.uint8)
           sess.run(stage, feed_dict={x: data, pi: i})
-          queue.put(0)
+          value_queue.put(0)
 
       t = threading.Thread(target=thread_run)
       t.daemon = True
       t.start()
 
-      # Get tokens from the queue until a timeout occurs
+      # Get tokens from the value_queue until a timeout occurs
       try:
         for i in range(n):
-          queue.get(timeout=TIMEOUT)
-      except Queue.Empty:
+          value_queue.get(timeout=TIMEOUT)
+      except queue.Empty:
         pass
 
       # Should've timed out on the iteration 'capacity'
@@ -310,7 +305,6 @@ class MapStageTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testOrdering(self):
-    import six
     import random
 
     with ops.Graph().as_default() as g:
@@ -334,7 +328,7 @@ class MapStageTest(test.TestCase):
 
     with self.session(graph=g) as sess:
       # Keys n-1..0
-      keys = list(reversed(six.moves.range(n)))
+      keys = list(reversed(range(n)))
 
       for i in keys:
         sess.run(stage, feed_dict={pi: i, x: i})

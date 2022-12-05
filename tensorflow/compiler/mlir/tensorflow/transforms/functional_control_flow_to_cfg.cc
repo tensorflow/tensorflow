@@ -17,7 +17,7 @@ limitations under the License.
 // TensorFlow dialect to MLIR Control Flow Graph (CFG) form.
 
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -29,15 +29,18 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
 
 namespace {
 
+#define GEN_PASS_DEF_FUNCTIONALCONTROLFLOWTOCFGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct FunctionalControlFlowToCFG
-    : public FunctionalControlFlowToCFGPassBase<FunctionalControlFlowToCFG> {
+    : public impl::FunctionalControlFlowToCFGPassBase<
+          FunctionalControlFlowToCFG> {
   void runOnOperation() override;
 };
 
@@ -56,8 +59,8 @@ static Value LowerCondition(Location loc, Value value, OpBuilder* builder) {
 // Requires the function to provide arguments for each of the `fn` operands
 // that is compatible for tensor cast.
 static Operation* CallFn(Location loc, const std::function<Value(int)>& get_arg,
-                         FuncOp fn, OpBuilder* builder) {
-  FunctionType fn_type = fn.getType();
+                         func::FuncOp fn, OpBuilder* builder) {
+  FunctionType fn_type = fn.getFunctionType();
   llvm::SmallVector<Value, 4> operands;
   int num_operands = fn_type.getNumInputs();
   operands.reserve(num_operands);
@@ -71,7 +74,7 @@ static Operation* CallFn(Location loc, const std::function<Value(int)>& get_arg,
     }
     operands.push_back(val);
   }
-  return builder->create<CallOp>(loc, fn, operands).getOperation();
+  return builder->create<func::CallOp>(loc, fn, operands).getOperation();
 }
 
 // Prepares for jump to the given block by introducing necessary tensor_cast
@@ -140,7 +143,7 @@ static LogicalResult LowerIfOp(IfOp op) {
   OpBuilder builder(op_inst);
 
   // Lower the condition to a boolean value (i1).
-  Value cond_i1 = LowerCondition(loc, op.cond(), &builder);
+  Value cond_i1 = LowerCondition(loc, op.getCond(), &builder);
   if (!cond_i1) return failure();
 
   // Split the basic block before the 'if'.  The new dest will be our merge
@@ -225,10 +228,10 @@ static LogicalResult LowerWhileOp(WhileOp op) {
   // as the input types of the body function. Note that it is always possible
   // for body_block and orig_block_tail to have arguments of the same types as
   // they have exactly one call-site and they are sharing the operands.
-  for (Type type : cond_fn.getType().getInputs()) {
+  for (Type type : cond_fn.getFunctionType().getInputs()) {
     cond_block->addArgument(type, loc);
   }
-  for (Type type : body_fn.getType().getInputs()) {
+  for (Type type : body_fn.getFunctionType().getInputs()) {
     body_block->addArgument(type, loc);
     orig_block_tail->addArgument(type, loc);
   }
@@ -302,7 +305,8 @@ void FunctionalControlFlowToCFG::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTFFunctionalControlFlowToCFG() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTFFunctionalControlFlowToCFG() {
   return std::make_unique<FunctionalControlFlowToCFG>();
 }
 

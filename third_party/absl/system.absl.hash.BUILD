@@ -7,7 +7,7 @@ cc_library(
     linkopts = ["-labsl_hash"],
     deps = [
         ":city",
-        ":wyhash",
+        ":low_level_hash",
         "//absl/base:endian",
         "//absl/container:fixed_array",
         "//absl/numeric:int128",
@@ -27,8 +27,8 @@ cc_library(
 )
 
 cc_library(
-    name = "wyhash",
-    linkopts = ["-labsl_wyhash"],
+    name = "low_level_hash",
+    linkopts = ["-labsl_low_level_hash"],
     visibility = ["//visibility:private"],
     deps = [
         "//absl/base:endian",

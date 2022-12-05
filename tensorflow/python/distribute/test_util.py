@@ -15,6 +15,7 @@
 """Test utilities."""
 
 import collections
+import dataclasses
 import functools
 import io
 import itertools
@@ -25,6 +26,7 @@ from absl import app
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import multi_process_runner
+from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
@@ -37,6 +39,28 @@ try:
   import objgraph  # pylint:disable=g-import-not-at-top
 except ImportError:
   objgraph = None
+
+
+@dataclasses.dataclass
+class TestClusterParams:
+  cluster: dict
+  max_num_worker: int
+  max_num_ps: int
+
+
+def get_cluster_def(cluster_params, num_workers, num_ps):
+  if (num_workers > cluster_params.max_num_worker or
+      num_ps > cluster_params.max_num_ps):
+    raise ValueError("Requesting more servers than the maximum, adjust"
+                     "cluster params' max_num_ps and max_num_worker")
+  if cluster_params.cluster is None:
+    cluster_params.cluster = multi_worker_test_base.create_in_process_cluster(
+        num_workers=cluster_params.max_num_worker,
+        num_ps=cluster_params.max_num_ps)
+  return {
+      "worker": cluster_params.cluster["worker"][:num_workers],
+      "ps": cluster_params.cluster["ps"][:num_ps],
+  }
 
 
 def gather(strategy, value):
@@ -235,7 +259,7 @@ def show_backref(target, max_depth=3):
   Args:
     target: The target object for the memory graph.
     max_depth: The maximum depth of the graph. By default 3 layers of references
-    are used. Increases this a lot may result in the graph growing too big.
+      are used. Increases this a lot may result in the graph growing too big.
 
   Returns:
     A string that contains the object reference graph.

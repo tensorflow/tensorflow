@@ -90,7 +90,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       const string& prefix) const override {
     name_utils::IteratorPrefixParams params;
     params.op_version = op_version_;
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix, params)});
   }
 
@@ -127,7 +127,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -153,7 +153,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(CopyBatch(CopyBatchParams(ctx), batch_elements,
                                  parallel_copy_,
                                  /*allocation_callback=*/nullptr, out_tensors));
-    return Status::OK();
+    return OkStatus();
   }
 
  protected:
@@ -171,7 +171,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {input_graph_node, batch_size, drop_remainder},
                       {{kParallelCopy, parallel_copy}}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -179,6 +179,8 @@ class BatchDatasetOp::Dataset : public DatasetBase {
    public:
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
+
+    bool SymbolicCheckpointCompatible() const override { return true; }
 
     Status Initialize(IteratorContext* ctx) override {
       return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
@@ -194,7 +196,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
         mutex_lock l(mu_);
         if (!input_impl_) {
           *end_of_sequence = true;
-          return Status::OK();
+          return OkStatus();
         }
         batch_elements.reserve(dataset()->reserve_size_);
         *end_of_sequence = false;
@@ -212,13 +214,13 @@ class BatchDatasetOp::Dataset : public DatasetBase {
 
       if (batch_elements.empty()) {
         DCHECK(*end_of_sequence);
-        return Status::OK();
+        return OkStatus();
       }
 
       if (dataset()->drop_remainder_ &&
           batch_elements.size() < dataset()->batch_size_) {
         *end_of_sequence = true;
-        return Status::OK();
+        return OkStatus();
       }
 
       // Copy the retrieved batch elements into one output tensor per tuple
@@ -234,7 +236,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
           /*allocation_callback=*/nullptr, out_tensors));
 
       *end_of_sequence = false;
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -246,23 +248,26 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      if (!input_impl_) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
-      } else {
+      TF_RETURN_IF_ERROR(writer->WriteScalar(
+          full_name(kInputImplEmpty), static_cast<int64_t>(!input_impl_)));
+      if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      if (!reader->Contains(full_name(kInputImplEmpty))) {
+      int64_t input_empty;
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(full_name(kInputImplEmpty), &input_empty));
+      if (!static_cast<bool>(input_empty)) {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       } else {
         input_impl_.reset();
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {

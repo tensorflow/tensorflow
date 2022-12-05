@@ -49,8 +49,8 @@ TEST_F(ReductionSplitterTest, SplitReductionAtDimensionTwo) {
     ROOT reduce.982 = f32[16,64]{1,0} reduce(bitcast.2136, constant_11111), dimensions={0,2}, to_apply=add_computation
   }
   )")
-                    .ValueOrDie();
-  ASSERT_TRUE(ReductionSplitter().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_TRUE(ReductionSplitter().Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root_reduction =
       module->entry_computation()->root_instruction();
@@ -79,8 +79,8 @@ TEST_F(ReductionSplitterTest, SplitReductionAtDimensionZero) {
     ROOT reduce.982 = f32[16,64]{1,0} reduce(param_0, constant_11111), dimensions={2,0,4}, to_apply=add_computation
   }
   )")
-                    .ValueOrDie();
-  ASSERT_TRUE(ReductionSplitter().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_TRUE(ReductionSplitter().Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root_reduction =
       module->entry_computation()->root_instruction();
@@ -110,8 +110,8 @@ TEST_F(ReductionSplitterTest, DontSplitReductionWithSmallDimensions) {
     ROOT reduce.982 = f32[1024]{0} reduce(param_0, constant_11111), dimensions={2,0}, to_apply=add_computation
   }
   )")
-                    .ValueOrDie();
-  EXPECT_FALSE(ReductionSplitter().Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_FALSE(ReductionSplitter().Run(module.get()).value());
 }
 
 TEST_F(ReductionSplitterTest, DontSplitReductionsWithContiguousDimensions) {
@@ -131,8 +131,8 @@ TEST_F(ReductionSplitterTest, DontSplitReductionsWithContiguousDimensions) {
     ROOT reduce.982 = f32[128,64]{1,0} reduce(param_0, constant_11111), dimensions={3,0}, to_apply=add_computation
   }
   )")
-                    .ValueOrDie();
-  EXPECT_FALSE(ReductionSplitter().Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_FALSE(ReductionSplitter().Run(module.get()).value());
 }
 
 }  // namespace

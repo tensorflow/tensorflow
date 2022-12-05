@@ -19,16 +19,16 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -40,7 +40,7 @@ class MapInlinerVisitor : public DfsHloVisitorWithDefault {
 
   // Default visitor action is to do nothing and return OK.
   Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HandleMap(HloInstruction* map) override;
@@ -69,10 +69,9 @@ Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
   // Only inlining functions that are simply a single operation until a better
   // profitability model for inlining is defined.
   if (hlo_query::AllOperandsAreParameters(root)) {
-    if (root.opcode() == HloOpcode::kFusion ||
-        root.opcode() == HloOpcode::kTrace) {
+    if (root.opcode() == HloOpcode::kFusion) {
       // Cloning not supported for these instructions.
-      return Status::OK();
+      return OkStatus();
     }
     VLOG(10) << "inlining map({X ... Y}, op) => : op(X ... Y) with function "
              << root.ToShortString();
@@ -105,16 +104,18 @@ Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
           computation_->ReplaceInstruction(map, placed_instruction));
     }
     changed_ = true;
-    return Status::OK();
+    return OkStatus();
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
-StatusOr<bool> MapInliner::Run(HloModule* module) {
+StatusOr<bool> MapInliner::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   MapInlinerVisitor visitor(/*computation=*/nullptr);
   bool changed = false;
-  for (HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool computation_changed, visitor.Run(computation));
     changed |= computation_changed;
   }

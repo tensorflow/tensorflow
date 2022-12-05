@@ -257,8 +257,9 @@ absl::Status AddOutput(GraphFloat32* graph, const Node* from_node,
 absl::Status ConnectTwoNodes(GraphFloat32* graph, const Node* from_node,
                              const Node* to_node, Value** output);
 
-// @return true if all tensors have same batch value or if model has no values.
-bool IsBatchMatchesForAllValues(const GraphFloat32& model);
+// @return OkStatus if all tensors have the same batch value, otherwise an
+// invalid argument error is returned.
+absl::Status CheckBatchSizeForAllValues(const GraphFloat32& model);
 
 }  // namespace gpu
 }  // namespace tflite

@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -42,22 +41,13 @@ else:
 # pylint: enable=g-import-not-at-top
 
 
-class Delegate(object):
+class Delegate:
   """Python wrapper class to manage TfLiteDelegate objects.
 
-  The shared library is expected to have two functions:
-    TfLiteDelegate* tflite_plugin_create_delegate(
-        char**, char**, size_t, void (*report_error)(const char *))
-    void tflite_plugin_destroy_delegate(TfLiteDelegate*)
-
-  The first one creates a delegate object. It may return NULL to indicate an
-  error (with a suitable error message reported by calling report_error()).
-  The second one destroys delegate object and must be called for every
-  created delegate object. Passing NULL as argument value is allowed, i.e.
-
-    tflite_plugin_destroy_delegate(tflite_plugin_create_delegate(...))
-
-  always works.
+  The shared library is expected to have two functions,
+  tflite_plugin_create_delegate and tflite_plugin_destroy_delegate,
+  which should implement the API specified in
+  tensorflow/lite/delegates/external/external_delegate_interface.h.
   """
 
   def __init__(self, library, options=None):
@@ -86,6 +76,7 @@ class Delegate(object):
         ctypes.POINTER(ctypes.c_char_p), ctypes.c_int,
         ctypes.CFUNCTYPE(None, ctypes.c_char_p)
     ]
+    # The return type is really 'TfLiteDelegate*', but 'void*' is close enough.
     self._library.tflite_plugin_create_delegate.restype = ctypes.c_void_p
 
     # Convert the options from a dictionary to lists of char pointers.
@@ -96,7 +87,7 @@ class Delegate(object):
       options_keys[idx] = str(key).encode('utf-8')
       options_values[idx] = str(value).encode('utf-8')
 
-    class ErrorMessageCapture(object):
+    class ErrorMessageCapture:
 
       def __init__(self):
         self.message = ''
@@ -179,7 +170,7 @@ def load_delegate(library, options=None):
   return delegate
 
 
-class SignatureRunner(object):
+class SignatureRunner:
   """SignatureRunner class for running TFLite models using SignatureDef.
 
   This class should be instantiated through TFLite Interpreter only using
@@ -274,7 +265,7 @@ class SignatureRunner(object):
       + `index`: The tensor index in the interpreter.
       + `shape`: The shape of the tensor.
       + `shape_signature`: Same as `shape` for models with known/fixed shapes.
-        If any dimension sizes are unkown, they are indicated with `-1`.
+        If any dimension sizes are unknown, they are indicated with `-1`.
       + `dtype`: The numpy data type (such as `np.int32` or `np.uint8`).
       + `quantization`: Deprecated, use `quantization_parameters`. This field
         only works for per-tensor quantization, whereas
@@ -353,7 +344,7 @@ def _get_op_resolver_id(op_resolver_type=OpResolverType.AUTO):
 
 
 @_tf_export('lite.Interpreter')
-class Interpreter(object):
+class Interpreter:
   """Interpreter interface for running TensorFlow Lite models.
 
   Models obtained from `TfLiteConverter` can be run in Python with
@@ -661,7 +652,7 @@ class Interpreter(object):
       + `index`: The tensor index in the interpreter.
       + `shape`: The shape of the tensor.
       + `shape_signature`: Same as `shape` for models with known/fixed shapes.
-        If any dimension sizes are unkown, they are indicated with `-1`.
+        If any dimension sizes are unknown, they are indicated with `-1`.
       + `dtype`: The numpy data type (such as `np.int32` or `np.uint8`).
       + `quantization`: Deprecated, use `quantization_parameters`. This field
         only works for per-tensor quantization, whereas
@@ -835,7 +826,7 @@ class Interpreter(object):
         signature_key = next(iter(self._signature_defs))
     return SignatureRunner(interpreter=self, signature_key=signature_key)
 
-  def get_tensor(self, tensor_index):
+  def get_tensor(self, tensor_index, subgraph_index=0):
     """Gets the value of the output tensor (get a copy).
 
     If you wish to avoid the copy, use `tensor()`. This function cannot be used
@@ -844,11 +835,13 @@ class Interpreter(object):
     Args:
       tensor_index: Tensor index of tensor to get. This value can be gotten from
         the 'index' field in get_output_details.
+      subgraph_index: Index of the subgraph to fetch the tensor. Default value
+        is 0, which means to fetch from the primary subgraph.
 
     Returns:
       a numpy array.
     """
-    return self._interpreter.GetTensor(tensor_index)
+    return self._interpreter.GetTensor(tensor_index, subgraph_index)
 
   def tensor(self, tensor_index):
     """Returns function that gives a numpy view of the current tensor buffer.

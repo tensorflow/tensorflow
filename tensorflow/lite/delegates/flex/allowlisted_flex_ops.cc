@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
 
 #include <set>
+#include <string>
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/lite/delegates/flex/allowlisted_flex_ops_internal.h"
@@ -96,15 +97,6 @@ const std::set<std::string>& GetFlexAllowlist() {
           "BitwiseAnd",
           "BitwiseOr",
           "BitwiseXor",
-          // Deprecated and removed in OSS: "BoostedTreesBucketize",
-          // Deprecated and removed in OSS: "BoostedTreesCreateQuantileStreamResource",
-          // Deprecated and removed in OSS: "BoostedTreesFlushQuantileSummaries",
-          // Deprecated and removed in OSS: "BoostedTreesMakeQuantileSummaries",
-          // Deprecated and removed in OSS: "BoostedTreesQuantileStreamResourceAddSummaries",
-          // Deprecated and removed in OSS: "BoostedTreesQuantileStreamResourceDeserialize",
-          // Deprecated and removed in OSS: "BoostedTreesQuantileStreamResourceFlush",
-          // Deprecated and removed in OSS: "BoostedTreesQuantileStreamResourceGetBucketBoundaries",
-          // Deprecated and removed in OSS: "BoostedTreesQuantileStreamResourceHandleOp",
           "BroadcastArgs",
           "BroadcastGradientArgs",
           "BroadcastTo",
@@ -262,7 +254,6 @@ const std::set<std::string>& GetFlexAllowlist() {
           "InvGrad",
           "Invert",
           "InvertPermutation",
-          // Deprecated and removed in OSS: "IsBoostedTreesQuantileStreamResourceInitialized",
           "IsFinite",
           "IsNan",
           "IsVariableInitialized",
@@ -617,6 +608,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "StackV2",
           "StatelessMultinomial",
           "StatelessRandomGammaV2",
+          "StatelessRandomGammaV3",
           "StatelessRandomGetAlg",
           "StatelessRandomGetKeyCounter",
           "StatelessRandomGetKeyCounterAlg",
@@ -742,11 +734,13 @@ const std::set<std::string>& GetFlexAllowlist() {
           "UniqueWithCounts",
           "UniqueWithCountsV2",
           "Unpack",
+          "UnsortedSegmentJoin",
           "UnsortedSegmentMax",
           "UnsortedSegmentMin",
           "UnsortedSegmentProd",
           "UnsortedSegmentSum",
           "UnwrapDatasetVariant",
+          "UpperBound",
           "VarHandleOp",
           "VarIsInitializedOp",
           "Variable",
@@ -804,6 +798,7 @@ const std::set<std::string>& GetTFTextFlexAllowlist() {
           "SentencepieceDetokenizeOp",
           "SentencepieceVocabSizeOp",
           "SplitMergeTokenizeWithOffsets",
+          "TFText>NgramsStringJoin",
           "TFText>WhitespaceTokenizeWithOffsetsV2",
           "TokenizerFromLogits",
           "UnicodeScriptTokenizeWithOffsets",

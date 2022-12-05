@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "BlockLSTM"
   input_arg {
     name: "seq_len_max"

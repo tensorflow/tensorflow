@@ -54,6 +54,15 @@ def _tf_http_archive_impl(ctx):
     # See also https://github.com/bazelbuild/bazel/issues/10515.
     link_dict = _get_link_dict(ctx, ctx.attr.link_files, ctx.attr.build_file)
 
+    # For some reason, we need to "resolve" labels once before the
+    # download_and_extract otherwise it'll invalidate and re-download the
+    # archive each time.
+    # https://github.com/bazelbuild/bazel/issues/10515
+    patch_files = ctx.attr.patch_file
+    for patch_file in patch_files:
+        if patch_file:
+            ctx.path(Label(patch_file))
+
     if _use_system_lib(ctx, ctx.attr.name):
         link_dict.update(_get_link_dict(
             ctx = ctx,
@@ -67,7 +76,6 @@ def _tf_http_archive_impl(ctx):
             type = ctx.attr.type,
             stripPrefix = ctx.attr.strip_prefix,
         )
-        patch_files = ctx.attr.patch_file
         if patch_files:
             for patch_file in patch_files:
                 patch_file = ctx.path(Label(patch_file)) if patch_file else None

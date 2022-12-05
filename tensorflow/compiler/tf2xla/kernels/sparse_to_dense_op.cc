@@ -90,6 +90,7 @@ class SparseToDenseOp : public XlaOpKernel {
     }
     auto result = XlaScatter(buffer, sparse_values, indices,
                              /*indices_are_vectors=*/indices_shape.dims() > 1,
+                             /*indices_are_sorted=*/false,
                              /*combiner=*/{}, builder);
     context->SetOutput(0, builder->ReportErrorOrReturn(result));
   }

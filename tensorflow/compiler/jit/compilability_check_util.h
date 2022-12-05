@@ -136,6 +136,9 @@ class RecursiveCompilabilityChecker {
     // Whether to allow the compilation of CollectiveReduceV2Op.
     bool allow_collective_reduce_v2 = true;
 
+    // Whether to allow the compilation of WhereOp.
+    bool allow_where_op = true;
+
     // Whether to allow the compilation of UniqueOp. Compilation of the UniqueOp
     // generates output with bounded dynamic shape that may cause failures with
     // auto clustering.

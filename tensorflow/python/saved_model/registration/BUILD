@@ -1,12 +1,11 @@
 # Description:
 # TensorFlow SavedModel Registration.
 
-load("//tensorflow:tensorflow.bzl", "py_strict_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -37,7 +36,7 @@ tf_py_test(
     deps = [
         ":registration",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/trackable:base",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -54,7 +53,7 @@ tf_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/trackable:autotrackable",
         "@absl_py//absl/testing:parameterized",
     ],
 )

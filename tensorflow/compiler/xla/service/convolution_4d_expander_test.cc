@@ -18,9 +18,9 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -46,7 +46,7 @@ ENTRY convolution_computation {
   EXPECT_EQ(root->opcode(), HloOpcode::kConvolution);
   EXPECT_EQ(root->window().dimensions_size(), 4);
   Convolution4DExpander expander_pass;
-  ASSERT_TRUE(expander_pass.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(expander_pass.Run(module.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kReshape);
   const HloInstruction* new_convolution = root->operand(0);
@@ -71,7 +71,7 @@ ENTRY convolution_computation {
   EXPECT_EQ(root->opcode(), HloOpcode::kConvolution);
   EXPECT_EQ(root->window().dimensions_size(), 4);
   Convolution4DExpander expander_pass;
-  ASSERT_TRUE(expander_pass.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(expander_pass.Run(module.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kReshape);
   const HloInstruction* new_convolution = root->operand(0);
@@ -98,7 +98,7 @@ ENTRY convolution_computation {
   EXPECT_EQ(root->opcode(), HloOpcode::kConvolution);
   EXPECT_EQ(root->window().dimensions_size(), 4);
   Convolution4DExpander expander_pass;
-  ASSERT_TRUE(expander_pass.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(expander_pass.Run(module.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kReshape);
   const HloInstruction* new_convolution = root->operand(0);
@@ -123,7 +123,7 @@ ENTRY convolution_computation {
   EXPECT_EQ(root->opcode(), HloOpcode::kConvolution);
   EXPECT_EQ(root->window().dimensions_size(), 3);
   Convolution4DExpander expander_pass;
-  ASSERT_FALSE(expander_pass.Run(module.get()).ValueOrDie());
+  ASSERT_FALSE(expander_pass.Run(module.get()).value());
 }
 
 TEST_F(Convolution4DExpanderTest, DontConvertIfNoTrivialDimensionAvailable) {
@@ -142,7 +142,7 @@ ENTRY convolution_computation {
   EXPECT_EQ(root->opcode(), HloOpcode::kConvolution);
   EXPECT_EQ(root->window().dimensions_size(), 4);
   Convolution4DExpander expander_pass;
-  ASSERT_FALSE(expander_pass.Run(module.get()).ValueOrDie());
+  ASSERT_FALSE(expander_pass.Run(module.get()).value());
 }
 
 TEST_F(Convolution4DExpanderTest, DontConvertIfPaddingIsNonzero) {
@@ -165,7 +165,7 @@ ENTRY convolution_computation {
   // corresponding spatial output dimensions are also of size 1, these
   // dimensions are not trivial because they involve lower and/or higher padding
   // plus stride.
-  ASSERT_FALSE(expander_pass.Run(module.get()).ValueOrDie());
+  ASSERT_FALSE(expander_pass.Run(module.get()).value());
 }
 
 }  // namespace

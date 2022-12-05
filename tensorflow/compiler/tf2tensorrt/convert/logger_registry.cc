@@ -31,7 +31,7 @@ class LoggerRegistryImpl : public LoggerRegistry {
              .second) {
       return errors::AlreadyExists("Logger ", name, " already registered");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   nvinfer1::ILogger* LookUp(const string& name) override {

@@ -19,6 +19,7 @@ limitations under the License.
 
 namespace tfrt {
 class Device;
+class ExecutionContext;
 }  // namespace tfrt
 
 namespace tensorflow {

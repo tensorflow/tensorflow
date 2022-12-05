@@ -22,44 +22,45 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/call_once.h"
+#include "absl/strings/str_format.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/dump.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_simplify_padding.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
 #include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
+#include "tensorflow/compiler/xla/service/gpu/triangular_solve_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
-#include "tensorflow/compiler/xla/service/hlo_cse.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
-#include "tensorflow/stream_executor/gpu/asm_compiler.h"
-#include "tensorflow/stream_executor/gpu/gpu_driver.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace xla {
 namespace gpu {
@@ -75,7 +76,8 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
       /*allow_mixed_precision=*/false);
   pipeline.AddPass<GpusolverRewriter>();
   pipeline.AddPass<GpuConvRewriter>();
-  pipeline.AddPass<CudnnFusedConvRewriter>();
+  pipeline.AddPass<CudnnFusedConvRewriter>(
+      stream_exec->GetDeviceDescription().cuda_compute_capability());
   pipeline.AddPass<GpuConvPaddingLegalization>();
   pipeline.AddPass<CudnnPadForConvolutions>(
       stream_exec->GetDeviceDescription().cuda_compute_capability());
@@ -87,22 +89,21 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<CallInliner>();
   pipeline.AddPass<TupleSimplifier>();
 
-  // tf2xla bridge, DepthwiseConvolutionConverter and GpuConvRewriter
-  // introduces reshapes and transposes that can be eliminated using
-  // AlgebraicSimplifier  We run algsimp to a fixed point.
-  //
-  // When transposes appear in a fusion node, we can easily adjust the
-  // multi-dimensional index to create the one needed for the operand. This
-  // is not as easy with bitcasts, because we don't have the information
-  // readily available which dimensions are permuted. In addition to that,
-  // if we have a transpose and a reshape next to each other, they will both
-  // be replaced by a bitcast, and we replace bitcast(bitcast) with one
-  // bitcast. This leads to having to linearize and then delinearize the
-  // index.
-  AlgebraicSimplifierOptions options;
-  options.set_replace_transpose_with_bitcast(false);
-  options.set_enable_conv_operand_swap(false);
-  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
+  AlgebraicSimplifierOptions algsimp_options;
+  algsimp_options.set_enable_conv_operand_swap(false);
+  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
+
+  // CudnnSimplifyPadding gets rid of some padding introduced by
+  // CudnnPadForConvolutions and used by CudnnVectorizeConvolutions.  The
+  // pattern-matches in this pass need to be run after inlining and simplifying
+  // tuples from CudnnVectorizeConvolutions.  We also need to run algsimp to
+  // e.g. clean up unnecessary nop `convert`s.
+  pipeline.AddPass<CudnnSimplifyPadding>();
+
+  // tf2xla bridge, DepthwiseConvolutionConverter, GpuConvRewriter, and
+  // CudnnSimplifyPadding introduce reshapes and transposes that can be
+  // eliminated using AlgebraicSimplifier  We run algsimp to a fixed point.
+  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
 
   // GpuConvRewriter, GpuConvPaddingLegalization and
   // CudnnConvPadForTensorCores may add instructions which can be simplified
@@ -110,7 +111,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<HloConstantFolding>();
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
@@ -144,18 +145,21 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, device_allocator));
 
   HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
-
-  // Find the fastest algorithm for GEMMs.
   post_pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
+
+  // Transform TriangularSolve ops into custom-calls, so we can add temp
+  // memory.
+  post_pipeline.AddPass<TriangularSolveRewriter>();
+
   TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
-absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
-                                        const HloInstruction* operand,
-                                        const ShapeIndex& user_index) {
+std::optional<bool> CanShareBufferHint(const HloInstruction* user,
+                                       const HloInstruction* operand,
+                                       const ShapeIndex& user_index) {
   switch (user->opcode()) {
     case HloOpcode::kAllReduce:
       // NCCL all-reduce can be performed in-place.
@@ -163,9 +167,11 @@ absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
              (user_index.size() == 1 &&
               user->operand(user_index[0]) == operand);
     case HloOpcode::kCustomCall:
-      // Share the bias buffer with the parent instruction.
-      if (user->custom_call_target() == kGemmCallTarget) {
-        return user->operand_count() == 3 && user->operand(2) == operand;
+      // The matrix bias operand can be overwritten in-place.
+      if (user->custom_call_target() == kCublasLtMatmulCallTarget) {
+        GemmBackendConfig config =
+            std::move(user->backend_config<GemmBackendConfig>()).value();
+        return (config.beta() != 0.) && user->operand(2) == operand;
       }
       // The operand of cholesky can be shared with the first output.
       if (user->custom_call_target() == kCusolverCholeskyCallTarget) {
@@ -173,7 +179,7 @@ absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
       }
       return false;
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
@@ -188,16 +194,16 @@ bool MaybeLoadPtxFromFile(const HloModuleConfig module_config,
        module_config.debug_options().xla_gpu_ptx_file()) {
     // To ease comparing many PTX versions, accept different suffixes then
     // the original filename.
-    auto filename = tensorflow::io::Basename(full_filename);
+    auto filename = tsl::io::Basename(full_filename);
     if (absl::StartsWith(filename, prefix)) {
       matched_filename = full_filename;
-      VLOG(0) << "RunBackend() - Will load PTX from file: " << full_filename;
+      VLOG(1) << "RunBackend() - Will load PTX from file: " << full_filename;
       break;
     }
   }
   if (!module_config.debug_options().xla_gpu_ptx_file().empty() &&
       matched_filename.empty()) {
-    VLOG(0) << "RunBackend() - For module with prefix '" << prefix
+    VLOG(1) << "RunBackend() - For module with prefix '" << prefix
             << "', we did not found a PTX file to load.";
   }
 
@@ -229,17 +235,16 @@ std::unique_ptr<llvm::Module> MaybeLoadLLVMFromFile(const HloModule* module,
       xla_gpu_llvm_ir_file, [prefix](const std::string& full_filename) {
         // To ease comparing many LLVM versions, accept different suffixes then
         // the original filename.
-        return absl::StartsWith(tensorflow::io::Basename(full_filename),
-                                prefix);
+        return absl::StartsWith(tsl::io::Basename(full_filename), prefix);
       });
   if (!xla_gpu_llvm_ir_file.empty() &&
       matched_filename == std::end(xla_gpu_llvm_ir_file)) {
-    VLOG(0) << "RunBackend() - For module with prefix '" << prefix
+    VLOG(1) << "RunBackend() - For module with prefix '" << prefix
             << "', we did not found a LLVM file to load.";
   }
 
   if (matched_filename != std::end(xla_gpu_llvm_ir_file)) {
-    VLOG(0) << "RunBackend() - Will load LLVM from file: " << *matched_filename;
+    VLOG(1) << "RunBackend() - Will load LLVM from file: " << *matched_filename;
     llvm::LLVMContext& context = llvm_module->getContext();
     llvm::SMDiagnostic err;
     std::unique_ptr<llvm::Module> loaded_module =
@@ -273,7 +278,7 @@ void WarnIfBadDriverJITVersion() {
       LOG(WARNING) << "Couldn't read CUDA driver version.";
       return;
     }
-    se::cuda::DriverVersion version = version_or_status.ValueOrDie();
+    se::cuda::DriverVersion version = version_or_status.value();
 
     // The following versions of the driver JIT miscompile some address
     // calculations with large offsets (e.g. "load ptr + large_constant"),
@@ -313,9 +318,7 @@ GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
 StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                    llvm::Module* llvm_module,
-                                   GpuVersion gpu_version,
-                                   se::StreamExecutor* stream_exec,
-                                   bool relocatable,
+                                   GpuVersion gpu_version, bool relocatable,
                                    const HloModule* debug_module) {
   std::string libdevice_dir;
   {
@@ -342,33 +345,36 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   std::string ptx;
   if (!(debug_module &&
         MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
-    XLA_SCOPED_LOGGING_TIMER(
-        "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
-    uint64_t start_usecs = tensorflow::Env::Default()->NowMicros();
+    XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+        "NVPTXCompiler::CompileTargetBinary - CompileToPtx for ",
+        (debug_module != nullptr ? debug_module->name() : "(unknown")));
+    uint64_t start_usecs = tsl::Env::Default()->NowMicros();
     TF_ASSIGN_OR_RETURN(ptx, nvptx::CompileToPtx(selected_module, gpu_version,
                                                  module_config, libdevice_dir));
 
-    uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
+    uint64_t end_usecs = tsl::Env::Default()->NowMicros();
     // This won't record values for calls that error out (because if they error
     // out we have no way of telling how far through the process we got).
     RecordLlvmPassesAndLlvmToPtxDuration(end_usecs - start_usecs);
   }
 
   std::vector<uint8_t> cubin = CompileGpuAsmOrGetCachedResult(
-      stream_exec, ptx, absl::get<se::CudaComputeCapability>(gpu_version),
-      module_config, relocatable);
+      ptx, std::get<se::CudaComputeCapability>(gpu_version), module_config,
+      (debug_module != nullptr ? debug_module->name() : "(unknown)"),
+      relocatable);
 
   return std::pair<std::string, std::vector<uint8_t>>(std::move(ptx),
                                                       std::move(cubin));
 }
 
 std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
-    se::StreamExecutor* stream_exec, const std::string& ptx,
-    se::CudaComputeCapability cc, const HloModuleConfig& hlo_module_config,
+    const std::string& ptx, se::CudaComputeCapability cc,
+    const HloModuleConfig& hlo_module_config, absl::string_view module_name,
     bool relocatable) {
-  XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::CompileGpuAsmOrGetCachedResult");
-  tensorflow::profiler::TraceMe activity(
-      "PTX->CUBIN", tensorflow::profiler::TraceMeLevel::kInfo);
+  XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+      "NVPTXCompiler::CompileGpuAsmOrGetCachedResult for ", module_name));
+  tsl::profiler::TraceMe activity("PTX->CUBIN",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   bool inserted;
   decltype(compilation_cache_.begin()) iter;
   // Pointers into compilation_cache_ where the ptx and (optional) cubin are
@@ -399,23 +405,22 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
         if (relocatable) {
           ptxas_config.extra_flags.push_back("-c");
         }
-        uint64_t start_usecs = tensorflow::Env::Default()->NowMicros();
+        uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
         StatusOr<std::vector<uint8_t>> maybe_cubin = se::CompileGpuAsm(
-            stream_exec->device_ordinal(), cache_ptx->c_str(), ptxas_config);
+            cc.major, cc.minor, cache_ptx->c_str(), ptxas_config);
 
         if (maybe_cubin.ok()) {
-          uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
+          uint64_t end_usecs = tsl::Env::Default()->NowMicros();
           // This won't record values for calls that error out (because if they
           // error out we have no way of telling how far through the process we
           // got).
           RecordPtxToCubinDuration(end_usecs - start_usecs);
-          cache_value->cubin_data = std::move(maybe_cubin).ValueOrDie();
-          VLOG(2) << "Compiled PTX size:" << ptx.size()
+          cache_value->cubin_data = std::move(maybe_cubin).value();
+          VLOG(1) << "Compiled PTX size:" << ptx.size()
                   << " CUBIN size: " << cache_value->cubin_data.size();
         } else {
-          if (maybe_cubin.status().code() ==
-              tensorflow::error::Code::NOT_FOUND) {
+          if (maybe_cubin.status().code() == tsl::error::Code::NOT_FOUND) {
             if (!hlo_module_config.debug_options()
                      .xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found()) {
               LOG(WARNING) << CantFindCudaMessage(
@@ -441,7 +446,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
                 "using $PATH.",
                 hlo_module_config);
           } else if (maybe_cubin.status().code() !=
-                     tensorflow::error::Code::UNIMPLEMENTED) {
+                     tsl::error::Code::UNIMPLEMENTED) {
             // If unimplemented is returned, we fallback to the driver.
             LOG(FATAL) << "ptxas returned an error during compilation of ptx "
                           "to sass: '"
@@ -470,17 +475,72 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
   return cache_value->cubin_data;
 }
 
+static bool UseNvlink() {
+  const bool use_nvlink_by_default =
+#ifdef TF_DISABLE_NVLINK_BY_DEFAULT
+      false;
+#else
+      true;
+#endif
+  bool use_nvlink;
+  TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_NVLINK_FOR_PARALLEL_COMPILATION",
+                                      /*default_val=*/
+                                      use_nvlink_by_default, &use_nvlink));
+  return use_nvlink;
+}
+
+StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
+    const HloModuleConfig& hlo_module_config) {
+  if (UseNvlink()) {
+    return true;
+  }
+
+  // TODO(phawkins): rather than comparing version numbers, it might be more
+  // robust if we simply tried to link something the first time we compile.
+  auto ptxas_config =
+      PtxOptsFromDebugOptions(hlo_module_config.debug_options());
+  TF_ASSIGN_OR_RETURN(
+      auto ptxas_version_tuple,
+      se::GetAsmCompilerVersion(ptxas_config.preferred_cuda_dir));
+  int ptxas_version = std::get<0>(ptxas_version_tuple) * 1000 +
+                      std::get<1>(ptxas_version_tuple) * 10;
+  int driver_version;
+  if (!se::gpu::GpuDriver::GetDriverVersion(&driver_version)) {
+    return FailedPrecondition("Unable to get CUDA driver version");
+  }
+  bool ok = driver_version >= ptxas_version;
+  if (!ok) {
+    LOG_FIRST_N(WARNING, 1)
+        << "The NVIDIA driver's CUDA version is "
+        << absl::StrFormat("%d.%d", driver_version / 1000,
+                           (driver_version % 1000) / 10)
+        << " which is older than the ptxas CUDA version "
+        << absl::StrFormat("(%d.%d.%d)", std::get<0>(ptxas_version_tuple),
+                           std::get<1>(ptxas_version_tuple),
+                           std::get<2>(ptxas_version_tuple))
+        << ". Because the driver is older than the ptxas version, XLA is "
+           "disabling parallel compilation, which may slow down compilation. "
+           "You should update your NVIDIA driver or use the NVIDIA-provided "
+           "CUDA forward compatibility packages.";
+  }
+  return ok;
+}
+
 StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
-    se::StreamExecutor* stream_exec,
-    std::vector<std::vector<uint8_t>> modules) {
+    se::StreamExecutor* stream_exec, std::vector<std::vector<uint8_t>> modules,
+    const DebugOptions& debug_options) {
   std::vector<stream_executor::CubinOrPTXImage> images;
   images.reserve(modules.size());
   for (auto& module : modules) {
     images.push_back({"", std::move(module)});
   }
-  return LinkGpuAsm(static_cast<se::gpu::GpuContext*>(
-                        stream_exec->implementation()->GpuContextHack()),
-                    images);
+  auto context = static_cast<se::gpu::GpuContext*>(
+      stream_exec->implementation()->GpuContextHack());
+  if (UseNvlink()) {
+    return LinkUsingNvlink(debug_options.xla_gpu_cuda_data_dir(), context,
+                           images);
+  }
+  return LinkGpuAsm(context, images);
 }
 
 }  // namespace gpu

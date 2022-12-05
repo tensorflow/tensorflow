@@ -13,23 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// The CUDA implementation of the StreamExecutorInterface functionality.
-// CUDA inclusions are ideally confined to this implementation file.
-//
-// The notions from the StreamExecutor basically correspond to the CUDA streams
-// programming model provided by the libcuda.so driver APIs, so we don't have
-// to do much more than wrap the calls to the libraries appropriately.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_GPU_EXECUTOR_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_GPU_EXECUTOR_H_
 
-#include "tensorflow/stream_executor/gpu/gpu_executor.h"
-
-namespace stream_executor {
-namespace cuda {
-
-using CUDAExecutor = gpu::GpuExecutor;
-
-}  // namespace cuda
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_GPU_EXECUTOR_H_

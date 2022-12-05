@@ -80,7 +80,7 @@ void Check(int axis, const std::initializer_list<int>& input_shape,
            const TensorType& type = TensorType_FLOAT32) {
   UnpackOpModel<T> m({type, input_shape}, axis);
   m.SetInput(input_data);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // Check outputs shapes.
   EXPECT_THAT(m.GetOutputShapes(), ElementsAreArray(exp_output_shape));

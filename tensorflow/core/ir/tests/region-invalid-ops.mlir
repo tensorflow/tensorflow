@@ -69,7 +69,7 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   } do {
   ^bb0(%arg0: tensor<*xi32>, %arg1: !tf_type.control):
     yield(%arg0) [%arg1] : tensor<*xi32>
-  } {parallel_iterations = 10 :i64} : tensor<*xi32>
+  } {parallel_iterations = 10 :i64} : (tensor<*xi32>) -> (tensor<*xi32>)
 }
 
 // -----
@@ -86,7 +86,7 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   ^bb0(%arg0: tensor<*xi32>, %arg1: !tf_type.control):
     %Cond, %ctl_2 = Cond : () -> (tensor<*xi1>)
     condition %Cond : tensor<*xi1> (%arg0) : tensor<*xi32>
-  } {parallel_iterations = 10 :i64} : tensor<*xi32>
+  } {parallel_iterations = 10 :i64} : (tensor<*xi32>) -> (tensor<*xi32>)
 }
 
 // -----
@@ -94,11 +94,11 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
 tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   %Index, %ctl = Index : () -> (tensor<i32>)
   %Arg, %ctl_0 = Arg : () -> (tensor<*xf32>)
-  // expected-error@+1 {{expected first body block argument to be tensor<i32>}}
+  // expected-error@+1 {{expected first body block argument to be an i32 tensor}}
   %For, %ctl_1 = ForRegion(%Arg) [%ctl] from %Index to %Index by %Index {
   ^bb0(%arg0: tensor<i64>, %arg1: tensor<*xf32>, %arg2: !tf_type.control, %arg3: !tf_type.control):
     yield(%arg1) [%arg3] : tensor<*xf32>
-  } : tensor<*xf32>
+  } : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>)
 }
 
 // -----
@@ -110,7 +110,7 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   %For, %ctl_1 = ForRegion(%Arg) [%ctl] from %Index to %Index by %Index {
   ^bb0(%arg0: tensor<i32>, %arg1: tensor<*xf32>, %arg2: !tf_type.control, %arg3: !tf_type.control):
     return(%arg1) [%arg3] : tensor<*xf32>
-  } : tensor<*xf32>
+  } : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>)
 }
 
 // -----
@@ -122,7 +122,7 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   %ctl_1 = ForRegion [%ctl] from %Index to %Index by %Index {
   ^bb0:
     yield
-  }
+  } : (tensor<i32>, tensor<i32>, tensor<i32>)
 }
 
 // -----
@@ -134,7 +134,7 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   %For, %ctl_1 = ForRegion(%Arg) [%ctl] from %Index to %Index by %Index {
   ^bb0(%arg0: tensor<i32>, %arg1: tensor<*xf32>, %arg2: !tf_type.control):
     yield(%arg1) [%arg2] : tensor<*xf32>
-  } : tensor<*xf32>
+  } : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>)
 }
 
 // -----
@@ -145,5 +145,5 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   %For, %ctl_1 = ForRegion(%Index) [%ctl] from %Index to %Index by %Index {
   ^bb0(%arg0: tensor<i32>, %arg1: !tf_type.control, %arg2: !tf_type.control, %arg3: tensor<*xf32>):
     yield(%arg0) [%arg2] : tensor<i32>
-  } : tensor<i32>
+  } : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>)
 }

@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "QuantizedInstanceNorm"
   input_arg {
     name: "x"

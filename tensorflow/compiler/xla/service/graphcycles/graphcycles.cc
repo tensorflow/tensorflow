@@ -38,7 +38,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/graphcycles/ordered_set.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace tensorflow {
 
@@ -370,14 +370,14 @@ bool GraphCycles::CanContractEdge(int32_t a, int32_t b) {
   return !reachable;
 }
 
-absl::optional<int32_t> GraphCycles::ContractEdge(int32_t a, int32_t b) {
+std::optional<int32_t> GraphCycles::ContractEdge(int32_t a, int32_t b) {
   CHECK(HasEdge(a, b));
   RemoveEdge(a, b);
 
   if (IsReachableNonConst(a, b)) {
     // Restore the graph to its original state.
     InsertEdge(a, b);
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   if (rep_->nodes_[b]->in.Size() + rep_->nodes_[b]->out.Size() >

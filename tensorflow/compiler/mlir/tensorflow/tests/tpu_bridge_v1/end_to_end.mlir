@@ -1,7 +1,7 @@
 // RUN: tf-opt %s -tf-tpu-bridge-v1 | FileCheck %s
 
 module attributes {tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"], tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 296 : i32}} {
-  func @main() {
+  func.func @main() {
 // CHECK: arith.constant
 // CHECK: TPUCompile
 // CHECK: TPUExecute
@@ -25,6 +25,6 @@ module attributes {tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0",
       %control_27 = tf_executor.island(%control_2, %control_26) wraps "tf.NoOp"() : () -> ()
       tf_executor.fetch %control_27 : !tf_executor.control
     }
-    return
+    func.return
   }
 }

@@ -124,7 +124,7 @@ class NcclManagerTest : public ::testing::Test {
     for (int node = 0; node < num_nodes; ++node) {
       for (int local_rank = 0; local_rank < num_ranks_per_node; ++local_rank) {
         auto* device = GetDevice(num_ranks_per_node, node, local_rank);
-        auto* stream = device->tensorflow_gpu_device_info()->stream;
+        auto* stream = device->tensorflow_accelerator_device_info()->stream;
 
         Tensor in_cpu(data_type_, shape);
         test::FillFn<Scalar>(&in_cpu, [&](int index) {
@@ -173,7 +173,7 @@ class NcclManagerTest : public ::testing::Test {
     for (int node = 0; node < num_nodes; ++node) {
       for (int i = 0; i < num_ranks_per_node; ++i) {
         auto* device = GetDevice(num_ranks_per_node, node, i);
-        auto* stream = device->tensorflow_gpu_device_info()->stream;
+        auto* stream = device->tensorflow_accelerator_device_info()->stream;
 
         Tensor in_cpu(data_type_, in_shape);
         test::FillFn<Scalar>(&in_cpu, [&](int index) {
@@ -231,7 +231,7 @@ class NcclManagerTest : public ::testing::Test {
                                [](int) { return static_cast<Scalar>(1); });
           const Tensor& in_gpu = test_case->ins.back();
           auto in_gpu_mem = AsDeviceMemory(in_gpu.flat<Scalar>().data());
-          auto* stream = device->tensorflow_gpu_device_info()->stream;
+          auto* stream = device->tensorflow_accelerator_device_info()->stream;
           stream->ThenMemcpy(&in_gpu_mem, in_cpu.flat<Scalar>().data(),
                              in_cpu.TotalBytes());
         } else {
@@ -261,7 +261,7 @@ class NcclManagerTest : public ::testing::Test {
            ++local_rank) {
         auto* device =
             GetDevice(test_case->num_ranks_per_node, node, local_rank);
-        auto* stream = device->tensorflow_gpu_device_info()->stream;
+        auto* stream = device->tensorflow_accelerator_device_info()->stream;
         const int global_rank =
             GlobalRank(test_case->num_ranks_per_node, node, local_rank);
         const Tensor& out_gpu = test_case->outs[global_rank];
@@ -331,8 +331,8 @@ class NcclManagerTest : public ::testing::Test {
           for (int local_rank = 0; local_rank < num_ranks_per_node;
                ++local_rank) {
             auto* device = GetDevice(num_ranks_per_node, node, local_rank);
-            auto* info = device->tensorflow_gpu_device_info();
-            auto* stream = device->tensorflow_gpu_device_info()->stream;
+            auto* info = device->tensorflow_accelerator_device_info();
+            auto* stream = device->tensorflow_accelerator_device_info()->stream;
             const int global_rank =
                 GlobalRank(num_ranks_per_node, node, local_rank);
             auto participant = absl::make_unique<NcclManager::Participant>(
@@ -380,8 +380,8 @@ class NcclManagerTest : public ::testing::Test {
                         src_global_rank, local_rank, &node_states,
                         &collective_key, &communicator_key, &test_case]() {
           auto* device = GetDevice(num_ranks_per_node, node, local_rank);
-          auto* info = device->tensorflow_gpu_device_info();
-          auto* stream = device->tensorflow_gpu_device_info()->stream;
+          auto* info = device->tensorflow_accelerator_device_info();
+          auto* stream = device->tensorflow_accelerator_device_info()->stream;
           const int global_rank =
               GlobalRank(num_ranks_per_node, node, local_rank);
           auto* input = global_rank == src_global_rank
@@ -475,8 +475,8 @@ TYPED_TEST(NcclManagerTest, BasicSumReduction) {
     for (int rank = 0; rank < num_ranks; ++rank) {
       auto* device = this->GetDevice(num_ranks, /*node=*/0, rank);
       VLOG(2) << "rank " << rank << " device " << device->name();
-      auto* info = device->tensorflow_gpu_device_info();
-      auto* stream = device->tensorflow_gpu_device_info()->stream;
+      auto* info = device->tensorflow_accelerator_device_info();
+      auto* stream = device->tensorflow_accelerator_device_info()->stream;
       auto participant = absl::make_unique<NcclManager::Participant>(
           device->executor(), stream, info, &test_case->ins[rank],
           &test_case->outs[rank], /*global_rank=*/-1,
@@ -521,7 +521,7 @@ TYPED_TEST(NcclManagerTest, MultipleCallers) {
 
     for (int rank = 0; rank < num_ranks; ++rank) {
       auto* device = this->GetDevice(num_ranks, /*node=*/0, rank);
-      auto* stream = device->tensorflow_gpu_device_info()->stream;
+      auto* stream = device->tensorflow_accelerator_device_info()->stream;
       SE_ASSERT_OK(stream->BlockHostUntilDone());
     }
 
@@ -541,8 +541,8 @@ TYPED_TEST(NcclManagerTest, MultipleCallers) {
           case_and_rank.pop_back();
         }
         auto* device = this->GetDevice(num_ranks, /*node=*/0, rank);
-        auto* info = device->tensorflow_gpu_device_info();
-        auto* stream = device->tensorflow_gpu_device_info()->stream;
+        auto* info = device->tensorflow_accelerator_device_info();
+        auto* stream = device->tensorflow_accelerator_device_info()->stream;
         typename TestFixture::TestCase* test_case = test_cases[test_num].get();
         auto participant = absl::make_unique<NcclManager::Participant>(
             device->executor(), stream, info, &test_case->ins[rank],
@@ -584,8 +584,8 @@ TYPED_TEST(NcclManagerTest, BasicAllGather) {
     for (int rank = 0; rank < num_ranks; ++rank) {
       auto* device = this->GetDevice(num_ranks, /*node=*/0, rank);
       VLOG(2) << "rank " << rank << " device " << device->name();
-      auto* info = device->tensorflow_gpu_device_info();
-      auto* stream = device->tensorflow_gpu_device_info()->stream;
+      auto* info = device->tensorflow_accelerator_device_info();
+      auto* stream = device->tensorflow_accelerator_device_info()->stream;
       auto participant = absl::make_unique<NcclManager::Participant>(
           device->executor(), stream, info, &test_case->ins[rank],
           &test_case->outs[rank], rank,
@@ -691,8 +691,8 @@ TYPED_TEST(NcclManagerTest, ConsistentCollectiveType) {
                                   TensorShape({2, 3}), 0.0f));
   for (int rank = 0; rank < num_ranks; ++rank) {
     auto* device = this->GetDevice(num_ranks, /*node=*/0, rank);
-    auto* info = device->tensorflow_gpu_device_info();
-    auto* stream = device->tensorflow_gpu_device_info()->stream;
+    auto* info = device->tensorflow_accelerator_device_info();
+    auto* stream = device->tensorflow_accelerator_device_info()->stream;
     auto participant = absl::make_unique<NcclManager::Participant>(
         device->executor(), stream, info, &test_case->ins[rank],
         &test_case->outs[rank], /*global_rank=*/-1,
@@ -728,8 +728,8 @@ TYPED_TEST(NcclManagerTest, ConsistentCommunicatorKey) {
                                   TensorShape({2, 3}), 0.0f));
   for (int rank = 0; rank < num_ranks; ++rank) {
     auto* device = this->GetDevice(num_ranks, /*node=*/0, rank);
-    auto* info = device->tensorflow_gpu_device_info();
-    auto* stream = device->tensorflow_gpu_device_info()->stream;
+    auto* info = device->tensorflow_accelerator_device_info();
+    auto* stream = device->tensorflow_accelerator_device_info()->stream;
     auto participant = absl::make_unique<NcclManager::Participant>(
         device->executor(), stream, info, &test_case->ins[rank],
         &test_case->outs[rank], /*global_rank=*/-1,
@@ -757,8 +757,8 @@ TYPED_TEST(NcclManagerTest, ConsistentNumberOfDevices) {
                                   TensorShape({2, 3}), 0.0f));
   for (int rank = 0; rank < num_ranks; ++rank) {
     auto* device = this->GetDevice(num_ranks, /*node=*/0, rank);
-    auto* info = device->tensorflow_gpu_device_info();
-    auto* stream = device->tensorflow_gpu_device_info()->stream;
+    auto* info = device->tensorflow_accelerator_device_info();
+    auto* stream = device->tensorflow_accelerator_device_info()->stream;
     int num_devices = rank == 0 ? num_ranks : num_ranks + 1;
     auto participant = absl::make_unique<NcclManager::Participant>(
         device->executor(), stream, info, &test_case->ins[rank],
@@ -786,8 +786,8 @@ TYPED_TEST(NcclManagerTest, BroadcastNoSource) {
                                   /*src_rank=*/-1, false));
   for (int rank = 0; rank < num_ranks; ++rank) {
     auto* device = this->GetDevice(num_ranks, /*node=*/0, rank);
-    auto* info = device->tensorflow_gpu_device_info();
-    auto* stream = device->tensorflow_gpu_device_info()->stream;
+    auto* info = device->tensorflow_accelerator_device_info();
+    auto* stream = device->tensorflow_accelerator_device_info()->stream;
     auto participant = absl::make_unique<NcclManager::Participant>(
         device->executor(), stream, info, nullptr, &test_case->outs[rank], rank,
         this->CreateDoneCallback(test_case.get()));
@@ -812,8 +812,8 @@ TYPED_TEST(NcclManagerTest, BroadcastMultipleSends) {
                                   /*src_rank=*/-1, false));
   for (int rank = 0; rank < num_ranks; ++rank) {
     auto* device = this->GetDevice(num_ranks, /*node=*/0, rank);
-    auto* info = device->tensorflow_gpu_device_info();
-    auto* stream = device->tensorflow_gpu_device_info()->stream;
+    auto* info = device->tensorflow_accelerator_device_info();
+    auto* stream = device->tensorflow_accelerator_device_info()->stream;
     auto participant = absl::make_unique<NcclManager::Participant>(
         device->executor(), stream, info, &test_case->outs[rank],
         &test_case->outs[rank], rank,
@@ -840,8 +840,8 @@ TYPED_TEST(NcclManagerTest, BroadcastInconsistentSource) {
                                   /*src_rank=*/-1, false));
   for (int rank = 0; rank < num_ranks; ++rank) {
     auto* device = this->GetDevice(num_ranks, /*node=*/0, rank);
-    auto* info = device->tensorflow_gpu_device_info();
-    auto* stream = device->tensorflow_gpu_device_info()->stream;
+    auto* info = device->tensorflow_accelerator_device_info();
+    auto* stream = device->tensorflow_accelerator_device_info()->stream;
     auto participant = absl::make_unique<NcclManager::Participant>(
         device->executor(), stream, info, &test_case->outs[rank],
         &test_case->outs[rank], rank,
@@ -877,8 +877,8 @@ TYPED_TEST(NcclManagerTest, AbortThenReset) {
                      const string& communicator_key) {
     auto* device = this->GetDevice(/* num_ranks_per_node */ 1, node,
                                    /* local_rank */ 0);
-    auto* info = device->tensorflow_gpu_device_info();
-    auto* stream = device->tensorflow_gpu_device_info()->stream;
+    auto* info = device->tensorflow_accelerator_device_info();
+    auto* stream = device->tensorflow_accelerator_device_info()->stream;
     auto participant = absl::make_unique<NcclManager::Participant>(
         device->executor(), stream, info, &test_case->ins[node],
         &test_case->outs[node], /* global_rank */ node,

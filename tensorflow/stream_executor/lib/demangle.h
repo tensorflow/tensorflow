@@ -16,14 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_DEMANGLE_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_DEMANGLE_H_
 
-#include "tensorflow/stream_executor/platform/port.h"
-
-namespace stream_executor {
-namespace port {
-
-std::string Demangle(const char* mangled);
-
-}  // namespace port
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/lib/demangle.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_DEMANGLE_H_

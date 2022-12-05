@@ -19,37 +19,15 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace tensorflow {
 
-// Returns a boolean into "value" from the environmental variable
-// "env_var_name". If it is unset, the default value is used. A string "0" or a
-// case insensitive "false" is interpreted as false. A string "1" or a case
-// insensitive "true" is interpreted as true. Otherwise, an error status is
-// returned.
-Status ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val,
-                          bool* value);
-
-// Returns an int64 into "value" from the environmental variable "env_var_name".
-// If it is unset, the default value is used.
-// If the string cannot be parsed into int64, an error status is returned.
-Status ReadInt64FromEnvVar(StringPiece env_var_name, int64_t default_val,
-                           int64_t* value);
-// Returns a float into "value" from the environmental variable "env_var_name".
-// If it is unset, the default value is used.
-// If the string cannot be parsed into float, an error status is returned.
-Status ReadFloatFromEnvVar(StringPiece env_var_name, float default_val,
-                           float* value);
-
-// Returns a string into "value" from the environmental variable "env_var_name".
-// If it is unset, the default value is used.
-Status ReadStringFromEnvVar(StringPiece env_var_name, StringPiece default_val,
-                            std::string* value);
-
-// Returns a comma separated string into "value" from the environmental variable
-// "env_var_name". If it is unset, the default value is comma split and used.
-Status ReadStringsFromEnvVar(StringPiece env_var_name, StringPiece default_val,
-                             std::vector<std::string>* value);
+using tsl::ReadBoolFromEnvVar;
+using tsl::ReadFloatFromEnvVar;
+using tsl::ReadInt64FromEnvVar;
+using tsl::ReadStringFromEnvVar;
+using tsl::ReadStringsFromEnvVar;
 
 }  // namespace tensorflow
 

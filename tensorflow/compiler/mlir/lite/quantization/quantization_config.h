@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 
 namespace mlir {
-namespace TFL {
+namespace quant {
 
 // Stores information about how to quantize a user-specified custom operation.
 struct CustomOpInfo {
@@ -112,6 +112,10 @@ struct QuantizationSpecs {
   std::vector<std::pair<llvm::Optional<double>, llvm::Optional<double>>>
       input_ranges;
 
+  // Whether to disable setting the quantization parameters of the input nodes
+  // using input ranges.
+  bool disable_set_input_nodes_quantization_params = false;
+
   // The default ranges can be used when a tensor doesn't have quantization
   // parameters and couldn't be quantized. Used only for latency tests.
   std::pair<llvm::Optional<double>, llvm::Optional<double>> default_ranges;
@@ -157,12 +161,17 @@ struct QuantizationSpecs {
   // quantization type.
   int64_t GetQuantizationTypeWidth() const {
     switch (inference_type) {
+      case tensorflow::DT_INT8:
+      case tensorflow::DT_UINT8:
       case tensorflow::DT_QINT8:
       case tensorflow::DT_QUINT8:
         return 8;
+      case tensorflow::DT_INT16:
+      case tensorflow::DT_UINT16:
       case tensorflow::DT_QINT16:
       case tensorflow::DT_QUINT16:
         return 16;
+      case tensorflow::DT_INT32:
       case tensorflow::DT_QINT32:
         return 32;
       default:
@@ -219,7 +228,7 @@ bool GetInputNodeQuantSpecs(
     const std::vector<llvm::Optional<double>>& node_maxs,
     tensorflow::DataType inference_type, QuantizationSpecs* quant_specs);
 
-}  // namespace TFL
+}  // namespace quant
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_CONFIG_H_

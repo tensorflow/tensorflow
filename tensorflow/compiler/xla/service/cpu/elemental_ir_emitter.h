@@ -19,9 +19,9 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
@@ -44,8 +44,9 @@ class CpuElementalIrEmitter : public ElementalIrEmitter {
 
   StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
-      absl::string_view name) override {
-    return ir_emitter_->EmitThreadLocalCall(callee, parameters, name);
+      absl::string_view name, bool is_reducer) override {
+    return ir_emitter_->EmitThreadLocalCall(callee, parameters, name,
+                                            is_reducer);
   }
 
   bool fast_min_max() override {

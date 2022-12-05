@@ -16,28 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_ARRAY_SLICE_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_ARRAY_SLICE_H_
 
-#include "absl/types/span.h"
-
-namespace stream_executor {
-namespace port {
-
-template <typename T>
-using ArraySlice = absl::Span<const T>;
-template <typename T>
-using MutableArraySlice = absl::Span<T>;
-
-}  // namespace port
-}  // namespace stream_executor
-
-namespace perftools {
-namespace gputools {
-
-// Temporarily pull stream_executor into perftools::gputools while we migrate
-// code to the new namespace.  TODO(b/77980417): Remove this once we've
-// completed the migration.
-using namespace stream_executor;  // NOLINT[build/namespaces]
-
-}  // namespace gputools
-}  // namespace perftools
+#include "tensorflow/compiler/xla/stream_executor/lib/array_slice.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_ARRAY_SLICE_H_

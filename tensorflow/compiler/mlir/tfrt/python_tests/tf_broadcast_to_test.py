@@ -26,13 +26,13 @@ class TfBroadcastToTest(test.TestCase):
 
   def test_broadcast_return(self):
     mlir_function = """
-      func @test(%arg0: tensor<?xf32>, %arg1: tensor<2xi32>)
+      func.func @test(%arg0: tensor<?xf32>, %arg1: tensor<2xi32>)
            -> (tensor<?x?xf32>, tensor<?x?xf32>) {
         %1 = "tf.BroadcastTo"(%arg0, %arg1)
              : (tensor<?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
         %2 = "tf.Add"(%1, %1)
              : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
-        return %1, %2 : tensor<?x?xf32>, tensor<?x?xf32>
+        func.return %1, %2 : tensor<?x?xf32>, tensor<?x?xf32>
       }"""
 
     compiled = jitrt.compile(mlir_function, 'test')

@@ -98,7 +98,7 @@ Status ReplaceReduce(Graph* graph, Node* node) {
       graph->AddEdge(recv_node, 0, out_node.node, out_node.index);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 TensorProto TensorFromShape(const TensorShapeProto& shape) {
@@ -155,7 +155,7 @@ Status ReplaceBroadcast(Graph* graph, Node* node) {
         }
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   string shared_name = node->name();
@@ -236,7 +236,7 @@ Status ReplaceBroadcast(Graph* graph, Node* node) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Replaces occurrences of Nccl{Reduce, Broadcast}Input/Output with their
@@ -245,7 +245,7 @@ class NcclReplacePass : public GraphOptimizationPass {
  public:
   Status Run(const GraphOptimizationPassOptions& options) override {
     if (options.graph == nullptr) {
-      return Status::OK();
+      return OkStatus();
     }
     Graph* graph = options.graph->get();
     if (graph == nullptr) {
@@ -266,7 +266,7 @@ class NcclReplacePass : public GraphOptimizationPass {
         TF_RETURN_IF_ERROR(ReplaceBroadcast(graph, node));
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_PLACEMENT, 0,

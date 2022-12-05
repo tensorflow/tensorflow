@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_BFLOAT16_NORMALIZATION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_BFLOAT16_NORMALIZATION_H_
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/bfloat16_support.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -35,7 +35,10 @@ class BFloat16Normalization : public HloModulePass {
 
   // Run BF16 normalization on the given computation. Returns whether the
   // computation was changed.
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   const BFloat16Support* bfloat16_support_;
@@ -47,7 +50,8 @@ class BFloat16Normalization : public HloModulePass {
 // BFloat16Support, and does not change HLOs that have BF16 data if they do not
 // use mixed precision; it removes mixed precision even if the backend supports
 // it. This pass is used to make the HLO module valid for other HLO passes which
-// do not support mixed precision.
+// do not support mixed precision. Currently, this pass is only used by the
+// Despecializer, not by our normal compilation flow on TPU.
 class BFloat16MixedPrecisionRemoval : public HloModulePass {
  public:
   BFloat16MixedPrecisionRemoval() {}
@@ -60,9 +64,12 @@ class BFloat16MixedPrecisionRemoval : public HloModulePass {
 
   // Run mixed precision removal on the given computation. Returns whether the
   // computation was changed.
-  StatusOr<bool> Run(HloModule* module) override {
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(HloModule* module,
+                     const absl::flat_hash_set<absl::string_view>&
+                         execution_threads) override {
     BFloat16Normalization normalization(&no_mixed_precision_support_);
-    return normalization.Run(module);
+    return normalization.Run(module, execution_threads);
   }
 
  private:

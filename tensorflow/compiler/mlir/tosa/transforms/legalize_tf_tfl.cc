@@ -15,6 +15,7 @@ limitations under the License.
 
 // Legalize TensorFlow and TensorFlow Lite to TOSA
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -30,11 +31,12 @@ namespace mlir {
 namespace tosa {
 
 namespace {
-#define GEN_PASS_CLASSES
+
+#define GEN_PASS_DEF_TOSALEGALIZETFTFLPASS
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
 
 // Performs lowering to TOSA dialect
-class LegalizeTFTFL : public TosaLegalizeTFTFLPassBase<LegalizeTFTFL> {
+class LegalizeTFTFL : public impl::TosaLegalizeTFTFLPassBase<LegalizeTFTFL> {
  public:
   explicit LegalizeTFTFL() {}
   void runOnOperation() override;
@@ -46,7 +48,7 @@ void LegalizeTFTFL::runOnOperation() {
   populateLegalizeTFPatterns(ctx, patterns);
   populateLegalizeTFLPatterns(ctx, patterns);
 
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   if (ApplyPatternsWithShapeResolution(func, std::move(patterns)).failed()) {
     signalPassFailure();
   }
@@ -55,7 +57,7 @@ void LegalizeTFTFL::runOnOperation() {
 }  // anonymous namespace
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTFL pass.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFTFLPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFTFLPass() {
   return std::make_unique<LegalizeTFTFL>();
 }
 

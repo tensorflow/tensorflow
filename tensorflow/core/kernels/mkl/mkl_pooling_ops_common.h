@@ -25,6 +25,9 @@ limitations under the License.
 #include "dnnl.hpp"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/padding.h"
+#ifdef DNNL_AARCH64_USE_ACL
+#include "tensorflow/core/platform/mutex.h"
+#endif
 
 namespace tensorflow {
 
@@ -147,6 +150,10 @@ class MklPoolingFwdPrimitive : public MklPrimitive {
   };
 
   struct PoolingFwdContext context_;
+
+#ifdef DNNL_AARCH64_USE_ACL
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T>
@@ -292,6 +299,9 @@ class MklPoolingBwdPrimitive : public MklPrimitive {
   };
 
   struct PoolingBwdContext context_;
+#ifdef DNNL_AARCH64_USE_ACL
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T>

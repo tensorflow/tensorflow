@@ -24,8 +24,8 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_builder_mixin.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
@@ -56,6 +56,12 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
 
   llvm::Module* module() { return module_; }
 
+  // Returns which ops invalidate the cache of emitted instructions by creating
+  // a new BasicBlock and setting the insertion point to the newly created
+  // BasicBlock. We can only reuse cached values if they were emitted in the
+  // same BasicBlock as the current BasicBlock.
+  static bool OpInvalidatesCache(const HloInstruction* hlo);
+
  protected:
   virtual llvm_ir::IrArray::Index GetSourceIndexOfBitcast(
       const llvm_ir::IrArray::Index& index, const HloInstruction* hlo) {
@@ -69,6 +75,8 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
 
   virtual llvm::Value* EmitExtractReal(llvm::Value* value);
   virtual llvm::Value* EmitExtractImag(llvm::Value* value);
+
+  virtual StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value);
 
  private:
   virtual StatusOr<llvm::Value*> EmitUnaryOp(const HloInstruction* op,
@@ -271,7 +279,7 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
 
   virtual StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
-      absl::string_view name) = 0;
+      absl::string_view name, bool is_reducer) = 0;
 
   StatusOr<llvm::Value*> EmitElementalMap(
       const HloMapInstruction* map_instr,

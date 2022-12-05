@@ -8,6 +8,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -34,6 +35,8 @@ cc_library(
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:c_api_macros",
+        "//tensorflow/c:tf_buffer",
+        "//tensorflow/c:tf_buffer_internal",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
@@ -55,6 +58,7 @@ tf_cc_test(
     deps = [
         ":grappler",
         "//tensorflow/c:c_api_internal",
+        "//tensorflow/c:tf_buffer_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

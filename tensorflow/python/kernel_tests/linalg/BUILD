@@ -1,12 +1,9 @@
 # Tests of TensorFlow linalg kernels written using the Python API.
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -242,7 +239,7 @@ cuda_py_test(
     name = "linear_operator_circulant_test",
     size = "medium",
     srcs = ["linear_operator_circulant_test.py"],
-    shard_count = 10,
+    shard_count = 15,
     tags = [
         "no_cuda11",  # TODO(b/197522782): reenable test after fixing.
         "noasan",  # times out, b/63678675
@@ -416,6 +413,7 @@ cuda_py_test(
     name = "linear_operator_lower_triangular_test",
     size = "medium",
     srcs = ["linear_operator_lower_triangular_test.py"],
+    shard_count = 4,
     tags = [
         "noasan",
         "optonly",
@@ -745,6 +743,22 @@ cuda_py_test(
     ],
     # TODO(b/127344411): This test passes because XLA does not actually cluster
     # the self_adjoint_eig op.
+)
+
+cuda_py_test(
+    name = "slicing_test",
+    size = "small",
+    srcs = ["slicing_test.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/ops/linalg",
+        "//third_party/py/numpy",
+    ],
 )
 
 cuda_py_test(

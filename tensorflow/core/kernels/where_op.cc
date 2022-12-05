@@ -41,7 +41,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/util/gpu_solvers.h"
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
@@ -77,7 +77,7 @@ struct NumTrue<CPUDevice, T, int64_t> {
                         typename TTypes<T>::ConstFlat input,
                         TTypes<int64_t>::UnalignedScalar num_true) {
     num_true() = CountAccumulator<T>(input.data(), input.data() + input.size());
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -118,7 +118,7 @@ struct Where<CPUDevice, DIMS, T, TIndex> {
         ++*found_true;
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -351,8 +351,9 @@ class WhereGPUOp : public AsyncOpKernel {
     };
 
     auto stream = context->op_device_context()->stream();
-    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-        stream, create_and_check_output);
+    context->device()
+        ->tensorflow_accelerator_device_info()
+        ->event_mgr->ThenExecute(stream, create_and_check_output);
   }
 
  private:
@@ -364,15 +365,15 @@ class WhereGPUOp : public AsyncOpKernel {
       Name("Where").Device(DEVICE_GPU).TypeConstraint<T>("T"), WhereGPUOp<T>);
 
 TF_CALL_WHERE_GPU_TYPES(REGISTER_GPU_WHERE_OP);
+#undef REGISTER_GPU_WHERE_OP
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 REGISTER_KERNEL_BUILDER(Name("Where")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .HostMemory("input")
                             .HostMemory("index"),
                         WhereCPUOp<int32>);
-
-#undef REGISTER_GPU_WHERE_OP
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

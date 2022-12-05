@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "ParseExample"
   input_arg {
     name: "serialized"

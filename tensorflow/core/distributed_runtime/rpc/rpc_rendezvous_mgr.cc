@@ -84,7 +84,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
     resp_.Clear();
     {
       mutex_lock l(mu_);
-      status_ = Status::OK();
+      status_ = OkStatus();
     }
     done_ = nullptr;
   }

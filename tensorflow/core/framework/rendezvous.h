@@ -148,7 +148,7 @@ class Rendezvous : public RendezvousInterface, public core::RefCounted {
             create_fn)
         : valid_(true),
           create_fn_(std::move(create_fn)),
-          cleanup_fn_([](const int64_t step_id) { return Status::OK(); }) {}
+          cleanup_fn_([](const int64_t step_id) { return OkStatus(); }) {}
 
     explicit operator bool() const { return valid_; }
 
@@ -181,7 +181,7 @@ class Rendezvous : public RendezvousInterface, public core::RefCounted {
 // Returns a Rendezvous instance that is limited to use only by
 // producers and consumers in the local process.  The caller assumes
 // ownership of one Ref() on the returned object.
-Rendezvous* NewLocalRendezvous();
+Rendezvous* NewLocalRendezvous(int num_shards = 1);
 
 }  // end namespace tensorflow
 

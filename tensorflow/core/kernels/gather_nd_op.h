@@ -25,10 +25,13 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
 
+namespace tsl {
+class Status;
+}
 namespace tensorflow {
+using tsl::Status;
 
 class OpKernelContext;
-class Status;
 class Tensor;
 
 namespace functor {
@@ -165,7 +168,7 @@ Status DoGatherNd(OpKernelContext* c, const Tensor& params,
           ", node name: ", c->op_kernel().name());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace functor

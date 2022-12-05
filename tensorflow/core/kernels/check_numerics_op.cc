@@ -34,7 +34,7 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
@@ -271,8 +271,9 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
       checkForAnomalies(context, abnormal_detected_host_flat);
       done();
     };
-    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-        stream, std::move(check_cb));
+    context->device()
+        ->tensorflow_accelerator_device_info()
+        ->event_mgr->ThenExecute(stream, std::move(check_cb));
   }
 
  protected:

@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "GenerateVocabRemapping"
   input_arg {
     name: "new_vocab_file"

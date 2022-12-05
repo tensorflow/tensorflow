@@ -52,12 +52,6 @@ Status OptimizeWithInjectPrefetch(const GrapplerItem &item, GraphDef *output,
   return Optimize(optimizer, item, output, autotune);
 }
 
-Status OptimizeWithInjectPrefetchEligible(const GrapplerItem &item,
-                                          GraphDef *output, bool autotune) {
-  InjectPrefetchEligible optimizer;
-  return Optimize(optimizer, item, output, autotune);
-}
-
 class InjectPrefetchParameterizedTest : public ::testing::TestWithParam<bool> {
 };
 
@@ -84,18 +78,6 @@ TEST_P(InjectPrefetchParameterizedTest, TestAutotuneSetting) {
                                                       inject_prefetch_output));
   EXPECT_EQ(autotune, graph_utils::ContainsGraphNodeWithName(
                           "inject/prefetch_range", inject_prefetch_output));
-
-  // Test inject_prefetch_eligible
-  GraphDef inject_prefetch_eligible_output;
-  TF_ASSERT_OK(OptimizeWithInjectPrefetchEligible(
-      item, &inject_prefetch_eligible_output, autotune));
-  EXPECT_EQ(false, graph_utils::ContainsNodeWithOp(
-                       kPrefetchDataset, inject_prefetch_eligible_output));
-  EXPECT_EQ(false,
-            graph_utils::ContainsGraphNodeWithName(
-                "inject/prefetch_range", inject_prefetch_eligible_output));
-  EXPECT_EQ(item.graph.DebugString(),
-            inject_prefetch_eligible_output.DebugString());
 }
 
 INSTANTIATE_TEST_SUITE_P(AutotuneSetting, InjectPrefetchParameterizedTest,

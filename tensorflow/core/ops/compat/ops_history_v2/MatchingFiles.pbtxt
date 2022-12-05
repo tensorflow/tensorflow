@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "MatchingFiles"
   input_arg {
     name: "pattern"

@@ -15,10 +15,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
 
 #include <ostream>
+#include <string>
 #include <unordered_set>
 #include <utility>
 
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -31,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -40,7 +43,6 @@ limitations under the License.
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 using stream_executor::port::StatusOr;
 
@@ -48,7 +50,7 @@ namespace tensorflow {
 namespace internal {
 namespace {
 
-using ::mlir::TFL::ReducedPrecisionSupport;
+using ::mlir::quant::ReducedPrecisionSupport;
 
 // Op def string for TFLite_Detection_PostProcess Op.
 const char kDetectionPostProcessOp[] =
@@ -124,6 +126,8 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
       return DT_INT8;
     case toco::IODataType::INT16:
       return DT_INT16;
+    case toco::IODataType::UINT16:
+      return DT_UINT16;
     case toco::IODataType::INT32:
       return DT_INT32;
     case toco::IODataType::UINT32:
@@ -182,10 +186,10 @@ Status RegisterCustomBuiltinOps(const std::vector<string> extra_tf_opdefs) {
     tensorflow::OpRegistry::Global()->Register(
         [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
           *op_reg_data = tensorflow::OpRegistrationData(opdef);
-          return Status::OK();
+          return OkStatus();
         });
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -202,8 +206,8 @@ Status RegisterAllCustomOps(const toco::TocoFlags& toco_flags) {
 
 Status PopulateQuantizationSpecs(
     const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
-    mlir::TFL::QuantizationSpecs* quant_specs, std::vector<string>* node_names,
-    std::vector<string>* node_dtypes,
+    mlir::quant::QuantizationSpecs* quant_specs,
+    std::vector<string>* node_names, std::vector<string>* node_dtypes,
     std::vector<llvm::Optional<std::vector<int>>>* node_shapes,
     std::vector<llvm::Optional<double>>* node_mins,
     std::vector<llvm::Optional<double>>* node_maxs) {
@@ -250,8 +254,8 @@ Status PopulateQuantizationSpecs(
     }
   }
 
-  if (mlir::TFL::GetInputNodeQuantSpecs(*node_names, *node_mins, *node_maxs,
-                                        inference_type, quant_specs)) {
+  if (mlir::quant::GetInputNodeQuantSpecs(*node_names, *node_mins, *node_maxs,
+                                          inference_type, quant_specs)) {
     return errors::InvalidArgument("Failed to get input quant spec.");
   }
 
@@ -305,7 +309,7 @@ Status PopulateQuantizationSpecs(
   if (toco_flags.enable_mlir_dynamic_range_quantizer()) {
     quant_specs->enable_mlir_dynamic_range_quantizer = true;
   }
-  return ::tensorflow::Status::OK();
+  return OkStatus();
 }
 
 // Dumps the op graph of the `module` to `filename` in DOT format.
@@ -321,7 +325,7 @@ Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
     return errors::Unknown("Failed to dump Op Graph from MLIR module.");
   }
   output->keep();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvertMLIRToTFLiteFlatBuffer(

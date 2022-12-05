@@ -46,7 +46,7 @@ message XlaAutoClusteringSummary {
 
     // A histogram of the TF operations in this cluster.
     repeated OpAndCount op_histogram = 3;
-  };
+  }
 
   // The number of nodes in the graph that are not inside an XLA cluster.
   int32 unclustered_node_count = 1;
@@ -81,7 +81,7 @@ message XlaAutoClusteringActivity {
 // B, and A is compiled 5 times and B is compiled 2 times then we will generate
 // 7 instances of XlaJitCompilationActivity.
 //
-// Next ID: 5
+// Next ID: 6
 message XlaJitCompilationActivity {
   string cluster_name = 1;
 
@@ -93,6 +93,9 @@ message XlaJitCompilationActivity {
 
   // Total microseconds spent in (re-)compiling this cluster so far.
   int64 cumulative_compile_time_us = 4;
+
+  // Whether a persistent compilation cache entry was used.
+  bool used_persistent_cache = 5;
 }
 
 // LINT.IfChange
@@ -117,4 +120,4 @@ message XlaOptimizationRemark {
   // Information such as which node was the problem.
   string debug_information = 2;
 }
-// LINT.ThenChange(https://www.tensorflow.org/code/tensorflow/compiler/jit/xla_activity_listener.h)
+// LINT.ThenChange(//tensorflow/compiler/jit/xla_activity_listener.h)

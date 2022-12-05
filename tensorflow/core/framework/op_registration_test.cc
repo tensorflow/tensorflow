@@ -27,7 +27,7 @@ namespace {
 void Register(const string& op_name, OpRegistry* registry) {
   registry->Register([op_name](OpRegistrationData* op_reg_data) -> Status {
     op_reg_data->op_def.set_name(op_name);
-    return Status::OK();
+    return OkStatus();
   });
 }
 
@@ -51,7 +51,7 @@ TEST(OpRegistrationTest, TestDuplicate) {
   TF_EXPECT_OK(
       registry->SetWatcher([](const Status& s, const OpDef& op_def) -> Status {
         EXPECT_TRUE(errors::IsAlreadyExists(s));
-        return Status::OK();
+        return OkStatus();
       }));
   Register("Foo", registry.get());
   s = registry->ProcessRegistrations();

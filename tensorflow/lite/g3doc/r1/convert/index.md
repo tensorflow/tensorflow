@@ -7,7 +7,7 @@ file extension).
 
 Note: This page contains documentation on the converter API for TensorFlow 1.x.
 The API for TensorFlow 2.0 is available
-[here](https://www.tensorflow.org/lite/convert/).
+[here](https://www.tensorflow.org/lite/models/convert).
 
 ## Options
 

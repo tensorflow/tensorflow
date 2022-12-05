@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -63,9 +63,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_EXP(reference_ops, float);
         break;
       default:
-        context->ReportError(context,
-                             "Type %d is currently not supported by Exp.",
-                             op_context.input->type);
+        TF_LITE_KERNEL_LOG(context,
+                           "Type %d is currently not supported by Exp.",
+                           op_context.input->type);
         return kTfLiteError;
     }
   }

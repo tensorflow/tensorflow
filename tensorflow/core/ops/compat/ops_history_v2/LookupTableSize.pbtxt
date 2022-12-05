@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "LookupTableSize"
   input_arg {
     name: "table_handle"

@@ -233,22 +233,6 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
         context.context().config.experimental.mlir_bridge_rollout,
         config_pb2.ConfigProto.Experimental.MLIR_BRIDGE_ROLLOUT_UNSPECIFIED)
 
-  @reset_eager
-  def testEnableMlirGraphOptimization(self):
-    # Default value of enable_mlir_graph_optimization is false.
-    self.assertFalse(
-        context.context().config.experimental.enable_mlir_graph_optimization)
-
-    # Tests enabling mlir graph optimization.
-    config.enable_mlir_graph_optimization()
-    self.assertTrue(
-        context.context().config.experimental.enable_mlir_graph_optimization)
-
-    # Tests disabling mlir graph optimization.
-    config.disable_mlir_graph_optimization()
-    self.assertFalse(
-        context.context().config.experimental.enable_mlir_graph_optimization)
-
   @test_util.run_gpu_only
   @reset_eager
   def testJit(self):
@@ -465,7 +449,9 @@ class DeviceTest(test.TestCase):
 
   @reset_eager
   def testGpuMultiple(self):
+    config.set_soft_device_placement(False)
     gpus = config.list_physical_devices('GPU')
+
     if len(gpus) < 2:
       self.skipTest('Need at least 2 GPUs')
 
@@ -476,7 +462,8 @@ class DeviceTest(test.TestCase):
         a = constant_op.constant(1.0)
         self.evaluate(a)
 
-    with self.assertRaisesRegex(RuntimeError, 'unknown device'):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy device specification'):
       with ops.device('/device:GPU:' + str(len(gpus))):
         a = constant_op.constant(1.0)
         self.evaluate(a)

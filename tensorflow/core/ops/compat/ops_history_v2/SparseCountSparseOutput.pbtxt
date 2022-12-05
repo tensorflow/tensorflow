@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "SparseCountSparseOutput"
   input_arg {
     name: "indices"

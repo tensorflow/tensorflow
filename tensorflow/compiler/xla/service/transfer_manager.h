@@ -26,10 +26,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/device_memory.h"
 
 namespace xla {
 
@@ -240,6 +240,11 @@ class TransferManager {
   // Fails if 'shape' cannot be represented by the device.
   virtual StatusOr<Shape> ChooseCompactLayoutForShape(
       const Shape& host_shape) const;
+
+  // For the given shape, chooses a layout for infeed. The returned shape
+  // has the same dimensions as the original shape, and only the layout is
+  // changed.
+  virtual Shape ChooseGoodInfeedLayout(const Shape& shape) const;
 
   typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;
 

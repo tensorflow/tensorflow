@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/function.pb.h"
-#include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/stringpiece.h"
@@ -32,21 +31,45 @@ namespace tensorflow {
 namespace core {
 namespace function {
 
-// This global context is available for testing and to be shared with the
-// various APIs, such as the default Python eager execution context.
+// TODO(mdan): Get rid of this once pybind can depend on MLIR headers.
+// This empty struct serves to hide a pointer to an actual MLIR FuncOp object.
+struct OpaqueTfgGraphFuncOp;
+
+// This is the current global context managed by the Python API. For historical
+// reasons, the Python runtime controls this context and all other clients must
+// use it. See tensorflow/python/eager/pywrap_tfe.h and
+// tensorflow/python/eager/context.py.
+//
+// This must always be called after the Python eager context was initialized.
+//
+// If the Python runtime isn't involved, or when writing code that exclusively
+// relies on functions defined in this namespace, users are encouraged to
+// maintain their own EagerContext or use GlobalEagerContext.
+EagerContext& GlobalPythonEagerContext();
+
+// This global context is available for testing and to be shared among various
+// APIs.
 EagerContext& GlobalEagerContext();
 
 using ReturnValues = std::vector<ImmediateTensorHandlePtr>;
 
+// A public API for manipulating and executing functions in a TensorFlow
+// runtime.
 class Runtime {
  public:
   explicit Runtime(EagerContext& eager_ctx) : eager_ctx_(eager_ctx) {}
 
   StatusOr<FunctionDef> GetFunctionProto(StringPiece name);
 
-  // # TODO(mdan): Enforce creation or rename to SetFunction.
+  // TODO(mdan): Enforce creation or rename to SetFunction.
   Status CreateFunction(const FunctionDef& fdef);
-  Status CreateFunction(mlir::tfg::GraphFuncOp fop);
+  // TODO(mdan): Change to mlir::tfg::GraphFuncOp once pybind can depend on it.
+  Status CreateFunction(OpaqueTfgGraphFuncOp* fop);
+  // Applies a MLIR pipeline to an existing function.
+  // The pipeline may rename the function. If it does so, the old function
+  // remains unchanged. If the new name specifies an existing function, it will
+  // be overwritten.
+  Status TransformFunction(StringPiece name, StringPiece pipeline_name);
 
   StatusOr<ReturnValues> CallFunction(
       StringPiece name, absl::Span<AbstractTensorHandle* const> args);

@@ -576,7 +576,8 @@ def get_module_docstring(module_name, package, api_name):
     if docsrc.docstring_module_name:
       docstring_module_name = docsrc.docstring_module_name
 
-  docstring_module_name = package + '.' + docstring_module_name
+  if package != 'keras':
+    docstring_module_name = package + '.' + docstring_module_name
   if (docstring_module_name in sys.modules and
       sys.modules[docstring_module_name].__doc__):
     return sys.modules[docstring_module_name].__doc__
@@ -584,18 +585,18 @@ def get_module_docstring(module_name, package, api_name):
   return 'Public API for tf.%s namespace.' % module_name
 
 
-def create_api_files(output_files,
-                     packages,
-                     packages_to_ignore,
-                     root_init_template,
-                     output_dir,
-                     output_package,
-                     api_name,
-                     api_version,
-                     compat_api_versions,
-                     compat_init_templates,
-                     lazy_loading=_LAZY_LOADING,
-                     use_relative_imports=False):
+def create_primary_api_files(output_files,
+                             packages,
+                             packages_to_ignore,
+                             root_init_template,
+                             output_dir,
+                             output_package,
+                             api_name,
+                             api_version,
+                             compat_api_versions,
+                             compat_init_templates,
+                             lazy_loading=_LAZY_LOADING,
+                             use_relative_imports=False):
   """Creates __init__.py files for the Python API.
 
   Args:
@@ -699,6 +700,27 @@ def create_api_files(output_files,
         'repo)')
 
 
+def create_proxy_api_files(output_files,
+                           proxy_module_root,
+                           output_dir):
+  """Creates __init__.py files in proxy format for the Python API.
+
+  Args:
+    output_files: List of __init__.py file paths to create.
+    proxy_module_root: Module root for proxy-import format. If specified, proxy
+      files with content like `from proxy_module_root.proxy_module import *`
+      will be created to enable import resolution under TensorFlow.
+    output_dir: output API root directory.
+  """
+  for file_path in output_files:
+    module = get_module(os.path.dirname(file_path), output_dir)
+    if not os.path.isdir(os.path.dirname(file_path)):
+      os.makedirs(os.path.dirname(file_path))
+    contents = f'from {proxy_module_root}.{module} import *'
+    with open(file_path, 'w') as fp:
+      fp.write(contents)
+
+
 def main():
   parser = argparse.ArgumentParser()
   parser.add_argument(
@@ -785,6 +807,13 @@ def main():
       type=bool,
       help='Whether to import submodules using relative imports or absolute '
       'imports')
+  parser.add_argument(
+      '--proxy_module_root',
+      default=None,
+      type=str,
+      help='Module root for proxy-import format. If specified, proxy files with '
+      'content like `from proxy_module_root.proxy_module import *` will be '
+      'created to enable import resolution under TensorFlow.')
   args = parser.parse_args()
 
   if len(args.outputs) == 1:
@@ -812,12 +841,15 @@ def main():
     # This should never happen (tm).
     raise ValueError(f'Invalid value for --loading flag: {args.loading}. Must '
                      'be one of lazy, static, default.')
-
-  create_api_files(outputs, packages, packages_to_ignore,
-                   args.root_init_template, args.apidir,
-                   args.output_package, args.apiname, args.apiversion,
-                   args.compat_apiversions, args.compat_init_templates,
-                   lazy_loading, args.use_relative_imports)
+  if args.proxy_module_root is None:
+    create_primary_api_files(outputs, packages, packages_to_ignore,
+                             args.root_init_template, args.apidir,
+                             args.output_package, args.apiname, args.apiversion,
+                             args.compat_apiversions,
+                             args.compat_init_templates, lazy_loading,
+                             args.use_relative_imports)
+  else:
+    create_proxy_api_files(outputs, args.proxy_module_root, args.apidir)
 
 
 if __name__ == '__main__':

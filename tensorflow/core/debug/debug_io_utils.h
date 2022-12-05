@@ -325,7 +325,7 @@ class DebugGrpcChannel {
   string url_;
   ::grpc::ClientContext ctx_;
   std::shared_ptr<::grpc::Channel> channel_;
-  std::unique_ptr<EventListener::Stub> stub_;
+  std::unique_ptr<grpc::EventListener::Stub> stub_;
   std::unique_ptr<::grpc::ClientReaderWriterInterface<Event, EventReply>>
       reader_writer_;
 
