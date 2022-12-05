@@ -5845,7 +5845,6 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
                       new_reduce_dimensions, function));
     }
   }
-
   // Convert Reduce(concat({a,b,...})) to
   //  map(reduce(a),map(reduce(b),...,))
   //
@@ -5866,33 +5865,6 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
       old_reduce = new_reduce;
     }
     return ReplaceInstruction(reduce, old_reduce);
-  }
-
-  // Convert Reduce(concat({a, b, ...})) to
-  // Concat({Reduce(a), Reduce(b),...})
-  if (arg->opcode() == HloOpcode::kConcatenate &&
-      !absl::c_linear_search(reduce->dimensions(),
-                             arg->concatenate_dimension())) {
-    auto original_concat_dim = arg->concatenate_dimension();
-    auto new_concat_dim = original_concat_dim;
-    for (auto dim : reduce->dimensions()) {
-      if (dim < original_concat_dim) {
-        --new_concat_dim;
-      }
-    }
-
-    auto new_args = arg->mutable_operands();
-    for (HloInstruction*& operand : new_args) {
-      Shape partial_reduce_shape = reduce_result_shape;
-      partial_reduce_shape.set_dimensions(
-          new_concat_dim, operand->shape().dimensions(original_concat_dim));
-      operand = reduce->AddInstruction(HloInstruction::CreateReduce(
-          partial_reduce_shape, operand, init_value, reduce->dimensions(),
-          function));
-    }
-    return ReplaceInstruction(
-        reduce, arg->AddInstruction(HloInstruction::CreateConcatenate(
-                    reduce_result_shape, new_args, new_concat_dim)));
   }
 
   HloInstruction *dot, *lhs, *rhs;
