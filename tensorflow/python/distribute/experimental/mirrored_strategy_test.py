@@ -19,8 +19,8 @@ import numpy as np
 
 from tensorflow.dtensor.python import d_variable
 from tensorflow.dtensor.python import layout
+from tensorflow.dtensor.python.tests import test_util
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute.experimental import dtensor_test_util as test_util
 from tensorflow.python.distribute.experimental import mirrored_strategy
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
