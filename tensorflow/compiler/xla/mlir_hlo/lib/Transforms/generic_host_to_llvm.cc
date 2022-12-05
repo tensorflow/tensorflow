@@ -16,6 +16,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Transforms/passes.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
@@ -60,8 +61,10 @@ class GenericHostToLLVMPass
 
     // Populate patterns.
     RewritePatternSet patterns(&getContext());
+    populateAffineToStdConversionPatterns(patterns);
     arith::populateArithExpandOpsPatterns(patterns);
     memref::populateExpandOpsPatterns(patterns);
+    memref::populateExpandStridedMetadataPatterns(patterns);
     arith::populateArithToLLVMConversionPatterns(typeConverter, patterns);
     populateMemRefToLLVMConversionPatterns(typeConverter, patterns);
     populateMathToLLVMConversionPatterns(typeConverter, patterns);

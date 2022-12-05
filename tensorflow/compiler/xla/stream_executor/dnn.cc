@@ -246,6 +246,8 @@ std::string ActivationModeString(ActivationMode mode) {
       return "tanh";
     case ActivationMode::kBandPass:
       return "bandpass";
+    case ActivationMode::kElu:
+      return "elu";
     default:
       return absl::StrCat("unknown: ", static_cast<int32_t>(mode));
   }

@@ -239,3 +239,60 @@ func.func @scalarized_reduction(%arg: tensor<1x?xf32>) -> tensor<1xf32> {
 // CHECK-NEXT:  }
 // CHECK:       return %[[ALLOC]] : memref<1xf32>
 
+// -----
+
+func.func @matmul(%lhs: tensor<128x16xf32>,
+                  %rhs: tensor<16x64xf32>,
+                  %out: tensor<128x64xf32>) -> tensor<128x64xf32> {
+  %c0 = arith.constant 0 : index
+  %c2 = arith.constant 2 : index
+  %c4 = arith.constant 4 : index
+  %c8 = arith.constant 8 : index
+  %c16 = arith.constant 16 : index
+  %c64 = arith.constant 64 : index
+  %c128 = arith.constant 128 : index
+  %matmul = gml_st.parallel (%i, %j)
+      = (%c0, %c0) to (%c128, %c64) step (%c8, %c4) {
+    %lhs_tile = gml_st.tile [%i, 0] [8, 16] [1, 1] : !gml_st.tile<8x16>
+    %lhs_sub = gml_st.materialize %lhs[%lhs_tile]
+      : tensor<128x16xf32>[!gml_st.tile<8x16>] to tensor<8x16xf32>
+    %rhs_tile = gml_st.tile [0, %j] [16, 4] [1, 1] : !gml_st.tile<16x4>
+    %rhs_sub = gml_st.materialize %rhs[%rhs_tile]
+      : tensor<16x64xf32>[!gml_st.tile<16x4>] to tensor<16x4xf32>
+    %out_tile = gml_st.tile [%i, %j] [8, 4] [1, 1] : !gml_st.tile<8x4>
+    %out_sub = gml_st.materialize %out[%out_tile]
+      : tensor<128x64xf32>[!gml_st.tile<8x4>] to tensor<8x4xf32>
+
+    %mat_sub = gml_st.for (%k) = (%c0) to (%c16) step (%c2)
+        outs (%out_sub_ = %out_sub: tensor<8x4xf32>) {
+      %lhs_tile2 = gml_st.tile [0, %k] [8, 2] [1, 1] : !gml_st.tile<8x2>
+      %lhs_sub2 = gml_st.materialize %lhs_sub[%lhs_tile2]
+        : tensor<8x16xf32>[!gml_st.tile<8x2>] to tensor<8x2xf32>
+      %rhs_tile2 = gml_st.tile [%k, 0] [2, 4] [1, 1] : !gml_st.tile<2x4>
+      %rhs_sub2 = gml_st.materialize %rhs_sub[%rhs_tile2]
+        : tensor<16x4xf32>[!gml_st.tile<2x4>] to tensor<2x4xf32>
+      %out_tile2 = gml_st.tile [0, 0] [8, 4] [1, 1] : !gml_st.tile<8x4>
+      %out_sub2 = gml_st.materialize %out_sub_[%out_tile2]
+        : tensor<8x4xf32>[!gml_st.tile<8x4>] to tensor<8x4xf32>
+
+      %mat_sub2 = linalg.matmul
+        ins(%lhs_sub2, %rhs_sub2 : tensor<8x2xf32>, tensor<2x4xf32>)
+        outs(%out_sub2 : tensor<8x4xf32>) -> tensor<8x4xf32>
+
+      gml_st.set_yield %mat_sub2 into %out_sub_[%out_tile2]
+        : tensor<8x4xf32> into tensor<8x4xf32>[!gml_st.tile<8x4>]
+    } : tensor<8x4xf32>
+    gml_st.set_yield %mat_sub into %out[%out_tile]
+      : tensor<8x4xf32> into tensor<128x64xf32>[!gml_st.tile<8x4>]
+  } : tensor<128x64xf32>
+  return %matmul : tensor<128x64xf32>
+}
+// CHECK-LABEL: func.func @matmul
+// CHECK-NOT:     alloc
+// CHECK:         gml_st.parallel
+// CHECK-3:         memref.subview
+// CHECK-NOT:       alloc
+// CHECK:           gml_st.for
+// CHECK-4:           memref.subview
+// CHECK-NOT:         alloc
+// CHECK:             linalg.matmul

@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/tsl/util/tensor_bundle/byte_swap_array.h"
+#include "tensorflow/tsl/util/byte_swap_array.h"
 
 namespace tensorflow {
 

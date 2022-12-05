@@ -403,13 +403,13 @@ TEST_F(LiteralUtilTest, TokenEquality) {
 
 TEST_F(LiteralUtilTest, DifferentLayoutEquality) {
   // Test equality with literals which have different layouts.
-  Literal colmajor(ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1}));
+  Literal colmajor(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {0, 1}));
   colmajor.Set<float>({0, 0}, 1.0);
   colmajor.Set<float>({0, 1}, 2.0);
   colmajor.Set<float>({1, 0}, 3.0);
   colmajor.Set<float>({1, 1}, 4.0);
 
-  Literal rowmajor(ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0}));
+  Literal rowmajor(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0}));
   rowmajor.Set<float>({0, 0}, 1.0);
   rowmajor.Set<float>({0, 1}, 2.0);
   rowmajor.Set<float>({1, 0}, 3.0);
@@ -1048,7 +1048,7 @@ TEST_F(LiteralUtilTest, CopySliceFrom) {
   const int64_t layouts[][4] = {
       {3, 2, 1, 0}, {0, 2, 1, 3}, {0, 1, 2, 3}, {2, 0, 3, 1}, {1, 3, 0, 2}};
   for (const auto& layout : layouts) {
-    Shape shape = ShapeUtil::MakeShapeWithLayout(
+    Shape shape = ShapeUtil::MakeShapeWithDenseLayout(
         primitive_util::NativeToPrimitiveType<uint32_t>(), dimensions, layout);
 
     auto source = Literal::CreateFromShape(shape);
@@ -1251,7 +1251,7 @@ TEST_F(LiteralUtilTest, Populate) {
       {{6, 11, 5, 17}, {3, 2, 0, 1}},
   };
   for (const auto& data : populate_data) {
-    Shape shape = ShapeUtil::MakeShapeWithLayout(
+    Shape shape = ShapeUtil::MakeShapeWithDenseLayout(
         primitive_util::NativeToPrimitiveType<uint32_t>(), data.dimensions,
         data.layout);
     Literal literal(shape);
@@ -1293,7 +1293,7 @@ TEST_F(LiteralUtilTest, PopulateParallel) {
       {{6, 11, 5, 17}, {3, 2, 0, 1}},
   };
   for (const auto& data : populate_data) {
-    Shape shape = ShapeUtil::MakeShapeWithLayout(
+    Shape shape = ShapeUtil::MakeShapeWithDenseLayout(
         primitive_util::NativeToPrimitiveType<uint32_t>(), data.dimensions,
         data.layout);
     Literal literal(shape);

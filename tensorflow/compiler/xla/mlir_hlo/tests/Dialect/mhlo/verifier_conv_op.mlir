@@ -218,7 +218,7 @@ func.func @invalid_conv_dimensions(%arg0 : tensor<100x26x26x32xf32>,
 
 func.func @invalid_conv_dimensions(%arg0 : tensor<100x26x26x32xf32>,
     %arg1 : tensor<3x3x1x32xf32>) -> tensor<100x28x28x1xf32> {
-  // expected-error@+1 {{expects kernel dimension-numbers to be unique, got {0, 2, 3, 3}.}}
+  // expected-error@+1 {{expects kernel dimension-numbers to be unique, got {3, 2, 0, 0}.}}
   %result = "mhlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
     dimension_numbers = #mhlo.conv<raw
@@ -246,7 +246,7 @@ func.func @invalid_conv_dimensions(%arg0 : tensor<100x26x26x32xf32>,
 
 func.func @invalid_conv_dimensions(%arg0 : tensor<100x26x26x32xf32>,
     %arg1 : tensor<3x3x1x32xf32>) -> tensor<100x28x28x1xf32> {
-  // expected-error@+1 {{expects output dimension-numbers to be unique, got {0, 3, 3, 3}.}}
+  // expected-error@+1 {{expects output dimension-numbers to be unique, got {0, 3, 0, 3}.}}
   %result = "mhlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
     dimension_numbers = #mhlo.conv<raw

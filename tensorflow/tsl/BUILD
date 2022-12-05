@@ -3,6 +3,8 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 # Config setting to use in select()s to distinguish open source build from
 # google internal build on configurable attributes.
 #
@@ -396,6 +398,21 @@ selects.config_setting_group(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "freebsd",
+    values = {"cpu": "freebsd"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "no_nccl_support",
+    define_values = dict(
+        if_google({"GOOGLE_CUDA_COMPILER": "clang"}),
+        no_nccl_support = "true",
+    ),
+    visibility = ["//visibility:public"],
+)
+
 # DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
 # Instead, please use public APIs or public build rules TF provides.
 # If you need functionality that is not exposed, we will work with you to expand our public APIs.
@@ -412,6 +429,7 @@ package_group(
         "//learning/pathways/...",
         "//smartass/brain/configure/...",
         "//tensorflow/...",
+        "//tensorflow/tsl/...",
         "//tensorflow_decision_forests/...",
         "//tensorflow_federated/...",
         "//third_party/cloud_tpu/convergence_tools/sdc_monitoring/...",
@@ -428,6 +446,7 @@ bzl_library(
     srcs = ["tsl.bzl"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/tsl/platform:rules_cc_bzl",
         "//third_party/compute_library:build_defs_bzl",
         "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
@@ -437,3 +456,14 @@ bzl_library(
         "@local_config_tensorrt//:build_defs_bzl",
     ],
 )
+
+# copybara:comment_begin(oss-only)
+cc_library(
+    name = "grpc++",
+    visibility = ["//visibility:public"],
+    deps = select({
+        ":linux_s390x": ["@com_github_grpc_grpc//:grpc++_unsecure"],
+        "//conditions:default": ["@com_github_grpc_grpc//:grpc++"],
+    }),
+)
+# copybara:comment_end

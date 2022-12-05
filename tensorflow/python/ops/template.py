@@ -17,14 +17,13 @@ import functools
 import traceback
 from tensorflow.python.checkpoint import checkpoint as trackable_util
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
-from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
@@ -224,8 +223,8 @@ def make_template_internal(name_,
   """
 
   if kwargs:
-    func_ = tf_decorator.make_decorator(func_,
-                                        functools.partial(func_, **kwargs))
+    func_ = functools.partial(func_, **kwargs)
+
   if context.executing_eagerly():
     if unique_name_ is not None:
       raise ValueError(
@@ -301,7 +300,7 @@ class Template(trackable.Trackable):
       ValueError: if `name` is None.
     """
     if create_graph_function:
-      self._func = function.defun(func)
+      self._func = def_function.function(func)
     else:
       self._func = func
     self._stacktrace = traceback.format_stack()[:-2]

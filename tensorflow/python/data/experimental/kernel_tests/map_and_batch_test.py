@@ -25,6 +25,7 @@ from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
@@ -422,6 +423,49 @@ class MapAndBatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       combinations.times(
           test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              drop_remainder=[True, False], symbolic_checkpoint=[True, False])))
+  def test(self, verify_fn, drop_remainder, symbolic_checkpoint):
+    range_size = 11
+    num_shards = 3
+    num_repeats = 2
+    batch_size = 5
+    num_parallel_calls = 7
+    total_outputs = (range_size // num_shards) * num_repeats
+    if drop_remainder:
+      num_outputs = total_outputs // batch_size
+    else:
+      num_outputs = int(math.ceil(total_outputs / batch_size))
+
+    def build_ds(range_start, drop_remainder=False, symbolic_checkpoint=False):
+
+      def _map_fn(x):
+        return math_ops.square(x)
+
+      dataset = dataset_ops.Dataset.range(
+          range_start, range_start + range_size)
+      dataset = dataset.shard(num_shards=num_shards, index=0)
+      dataset = dataset.repeat(num_repeats)
+      dataset = dataset.apply(
+          batching.map_and_batch(
+              map_func=_map_fn,
+              batch_size=batch_size,
+              num_parallel_calls=num_parallel_calls,
+              drop_remainder=drop_remainder))
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(
+        self, lambda: build_ds(
+            10,
+            drop_remainder=drop_remainder,
+            symbolic_checkpoint=symbolic_checkpoint), num_outputs)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
           combinations.combine(drop_remainder=[True, False])))
   def testNumParallelBatches(self, verify_fn, drop_remainder):
     range_size = 11
@@ -447,40 +491,6 @@ class MapAndBatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                       map_func=_map_fn,
                       batch_size=batch_size,
                       num_parallel_batches=num_parallel_batches,
-                      drop_remainder=drop_remainder))
-
-    verify_fn(self, lambda: build_ds(10, drop_remainder=drop_remainder),
-              num_outputs)
-
-  @combinations.generate(
-      combinations.times(
-          test_base.default_test_combinations(),
-          checkpoint_test_base.default_test_combinations(),
-          combinations.combine(drop_remainder=[True, False])))
-  def testNumParallelCalls(self, verify_fn, drop_remainder):
-    range_size = 11
-    num_shards = 3
-    num_repeats = 2
-    batch_size = 5
-    num_parallel_calls = 7
-    total_outputs = (range_size // num_shards) * num_repeats
-    if drop_remainder:
-      num_outputs = total_outputs // batch_size
-    else:
-      num_outputs = int(math.ceil(total_outputs / batch_size))
-
-    def build_ds(range_start, drop_remainder=False):
-
-      def _map_fn(x):
-        return math_ops.square(x)
-
-      return dataset_ops.Dataset.range(
-          range_start, range_start + range_size).shard(
-              num_shards=num_shards, index=0).repeat(num_repeats).apply(
-                  batching.map_and_batch(
-                      map_func=_map_fn,
-                      batch_size=batch_size,
-                      num_parallel_calls=num_parallel_calls,
                       drop_remainder=drop_remainder))
 
     verify_fn(self, lambda: build_ds(10, drop_remainder=drop_remainder),

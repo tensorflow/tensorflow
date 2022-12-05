@@ -20,6 +20,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_COMPILER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_COMPILER_H_
 
+#include <any>
 #include <functional>
 #include <map>
 #include <memory>
@@ -29,15 +30,16 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
+#include "tensorflow/compiler/xla/service/metrics_hook_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -174,6 +176,11 @@ class AotCompilationOptions {
     sanitize_abilists_dataflow_ = abilists;
   }
 
+  const std::any& target_config() const { return target_config_; }
+  void set_target_config(std::any target_config) {
+    target_config_ = std::move(target_config);
+  }
+
  protected:
   AotCompilationOptions();
 
@@ -191,6 +198,8 @@ class AotCompilationOptions {
   bool run_backend_only_ = false;
   bool sanitize_dataflow_ = false;
   std::vector<std::string> sanitize_abilists_dataflow_;
+  // Contains target-specific information required by AOT compilation.
+  std::any target_config_;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time
@@ -378,6 +387,10 @@ class Compiler {
       Executable* executable) const {
     return Unimplemented("Export unimplemented");
   }
+
+  // Returns a MetricsHookInterface object used to instrument Compiler's
+  // compilation stages.
+  virtual std::unique_ptr<MetricsHookInterface> CreateMetricsHook() const;
 
  private:
   // Mutex that guards the platform-compiler map.

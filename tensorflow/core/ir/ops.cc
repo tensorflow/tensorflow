@@ -805,8 +805,8 @@ ParseResult ReturnOp::parse(OpAsmParser &parser, OperationState &result) {
     do {
       NamedAttrList attrs;
       OptionalParseResult parse_result = parser.parseOptionalOperand(operand);
-      if (!parse_result.hasValue()) break;
-      if (failed(parse_result.getValue())) return failure();
+      if (!parse_result.has_value()) break;
+      if (failed(parse_result.value())) return failure();
       if (parser.parseOptionalAttrDict(attrs)) return failure();
       control_ret_attrs.push_back(attrs.getDictionary(result.getContext()));
       operands.push_back(std::move(operand));

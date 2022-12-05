@@ -385,14 +385,14 @@ def kron(a, b):  # pylint: disable=missing-function-docstring
   # pylint: disable=protected-access,g-complex-comprehension
   a, b = np_array_ops._promote_dtype(a, b)
   t_a = np_utils.cond(
-      a.ndim < b.ndim,
+      a.shape.rank < b.shape.rank,
       lambda: np_array_ops.reshape(  # pylint: disable=g-long-lambda
-          a, np_array_ops._pad_left_to(b.ndim, a.shape)),
+          a, np_array_ops._pad_left_to(b.shape.rank, a.shape)),
       lambda: a)
   t_b = np_utils.cond(
-      b.ndim < a.ndim,
+      b.shape.rank < a.shape.rank,
       lambda: np_array_ops.reshape(  # pylint: disable=g-long-lambda
-          b, np_array_ops._pad_left_to(a.ndim, b.shape)),
+          b, np_array_ops._pad_left_to(a.shape.rank, b.shape)),
       lambda: b)
 
   def _make_shape(shape, prepend):

@@ -24,10 +24,19 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
     licenses = ["notice"],
+)
+
+filegroup(
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "byte_swap_array.cc",
+        "byte_swap_array.h",
+    ],
 )
 
 filegroup(
@@ -37,6 +46,8 @@ filegroup(
         "command_line_flags.h",
         "determinism.cc",
         "determinism.h",
+        "device_name_utils.cc",
+        "device_name_utils.h",
         "env_var.cc",
         "env_var.h",
         "ptr_util.h",
@@ -60,7 +71,9 @@ filegroup(
 filegroup(
     name = "framework_internal_private_hdrs",
     srcs = [
+        "byte_swap_array.h",
         "command_line_flags.h",
+        "device_name_utils.h",
         "env_var.h",
         "ptr_util.h",
         "stat_summarizer_options.h",
@@ -104,9 +117,21 @@ filegroup(
 filegroup(
     name = "framework_srcs",
     srcs = [
+        "device_name_utils.h",
         "ptr_util.h",
         "stat_summarizer_options.h",
         "use_cudnn.h",
+    ],
+)
+
+cc_library(
+    name = "byte_swap_array",
+    srcs = ["byte_swap_array.cc"],
+    hdrs = ["byte_swap_array.h"],
+    deps = [
+        "//tensorflow/tsl/platform:byte_order",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
     ],
 )
 
@@ -201,7 +226,6 @@ cc_library(
         "//tensorflow/tsl:__subpackages__",
     ],
     deps = [
-        "//tensorflow/core/util:test_log_proto_impl_cc",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:errors",
@@ -209,6 +233,7 @@ cc_library(
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:str_util",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/protobuf:test_log_proto_cc",
     ],
 )
 
@@ -223,7 +248,7 @@ cc_library(
     ],
     copts = tsl_copts(),
     visibility = [
-        "//tensorflow:internal",
+        "//tensorflow/tsl:internal",
     ],
 )
 
@@ -233,6 +258,32 @@ tsl_cc_test(
     deps = [
         ":stats_calculator_portable",
         "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "device_name_utils",
+    srcs = ["device_name_utils.cc"],
+    hdrs = ["device_name_utils.h"],
+    deps = [
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:stringpiece",
+    ],
+)
+
+tsl_cc_test(
+    name = "device_name_utils_test",
+    size = "small",
+    srcs = ["device_name_utils_test.cc"],
+    deps = [
+        ":device_name_utils",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:strcat",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
     ],
 )

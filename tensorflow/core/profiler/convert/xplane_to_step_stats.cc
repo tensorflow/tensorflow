@@ -75,46 +75,41 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
     LOG(WARNING) << "GPU trace was not collected.";
     return;
   }
-  std::vector<const XPlane*> host_planes = FindPlanesWithNames(
-      xspace, {kCuptiDriverApiPlaneName, kRoctracerApiPlaneName});
-  DCHECK_LE(host_planes.size(), 1);
+  const XPlane* host_plane = FindPlaneWithName(xspace, kHostThreadsPlaneName);
+  DCHECK_NE(host_plane, nullptr);
 
   absl::flat_hash_map<int64_t /*correlation_id*/, CorrelationInfo>
       correlation_info_map;
-  for (const XPlane* host_plane : host_planes) {
-    absl::flat_hash_map<uint32_t /*device_id*/, DeviceStepStats*>
-        sync_dev_stats_map;
-    XPlaneVisitor plane = CreateTfXPlaneVisitor(host_plane);
-    plane.ForEachLine([&](const XLineVisitor& line) {
-      uint32_t thread_id = line.Id();
-      line.ForEachEvent([&](const XEventVisitor& event) {
-        LaunchEventStats stats(&event);
-        if (event.Name() == "cuStreamSynchronize") {
-          if (stats.device_id.has_value()) {
-            uint32_t device_ordinal = stats.device_id.value();
-            DeviceStepStats* sync_dev_stats =
-                sync_dev_stats_map[device_ordinal];
-            if (sync_dev_stats == nullptr) {
-              sync_dev_stats = step_stats->add_dev_stats();
-              sync_dev_stats->set_device(
-                  absl::StrCat("/device:GPU:", device_ordinal, "/sync"));
-            }
-            NodeExecStats* ns = sync_dev_stats->add_node_stats();
-            SetNodeTimes(event, ns);
-            ns->set_node_name(std::string(event.Name()));
-            ns->set_timeline_label(absl::StrCat("ThreadId ", thread_id));
-            ns->set_thread_id(thread_id);
+
+  absl::flat_hash_map<uint32_t /*device_id*/, DeviceStepStats*>
+      sync_dev_stats_map;
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(host_plane);
+  plane.ForEachLine([&](const XLineVisitor& line) {
+    uint32_t thread_id = line.Id();
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      LaunchEventStats stats(&event);
+      if (event.Name() == "cuStreamSynchronize") {
+        if (stats.device_id.has_value()) {
+          uint32_t device_ordinal = stats.device_id.value();
+          DeviceStepStats* sync_dev_stats = sync_dev_stats_map[device_ordinal];
+          if (sync_dev_stats == nullptr) {
+            sync_dev_stats = step_stats->add_dev_stats();
+            sync_dev_stats->set_device(
+                absl::StrCat("/device:GPU:", device_ordinal, "/sync"));
           }
-        } else {
-          if (stats.correlation_id.has_value()) {
-            int64_t correlation_id = stats.correlation_id.value();
-            uint64_t enqueue_time_ns = event.TimestampNs();
-            correlation_info_map[correlation_id] = {thread_id, enqueue_time_ns};
-          }
+          NodeExecStats* ns = sync_dev_stats->add_node_stats();
+          SetNodeTimes(event, ns);
+          ns->set_node_name(std::string(event.Name()));
+          ns->set_timeline_label(absl::StrCat("ThreadId ", thread_id));
+          ns->set_thread_id(thread_id);
         }
-      });
+      } else if (stats.correlation_id.has_value()) {
+        int64_t correlation_id = stats.correlation_id.value();
+        uint64_t enqueue_time_ns = event.TimestampNs();
+        correlation_info_map[correlation_id] = {thread_id, enqueue_time_ns};
+      }
     });
-  }
+  });
   for (const XPlane* device_plane : device_planes) {
     absl::flat_hash_map<std::pair<int64_t /*stream_id*/, GpuEventType>,
                         DeviceStepStats*>

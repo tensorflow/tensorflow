@@ -18,25 +18,73 @@
 // Internal functions should be marked as private. They will be inlined and
 // deleted in `InsertQuantizedFunctionsPass`.
 //
-// Function template can generate functions with different parameters. Ex:
-// ```
-// parameters[
-//   {"key1": "value11", "key2": "value21"},
-//   {"key1": "value12", "key2": "value22"},
-// ]
-// func.func func_name_${key1}_fn (...) {
-//   ...${key2}...
-// }
-// ```
-// The above template with generate two functions by substituting `key1` and
-// `key2` with given values.
+// For Uniform Quantized op case, attributes are generated during quantize
+// composite pass. Therefore, attr_map is set to an empty string.
 
 module {
 
-  // TODO(b/238600711): Populate attributes for quantized_function_library_uniform_quantized
+  // Currently only 4-d case is supported
+  func.func @quantized_conv2d_fn(
+                         %input : tensor<*xf32>, %weight : tensor<*x!tf_type.qint8>,
+                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>) -> tensor<*xf32>
+      attributes {tf_quant.quantized_ops = ["Conv2D"]} {
+
+    %out = "tf.UniformQuantizedConvolutionHybrid"(%input, %weight,
+                           %weight_scale, %weight_zp) {
+        Tlhs = "tfdtype$DT_FLOAT",
+        Trhs = "tfdtype$DT_QINT8",
+        Tout = "tfdtype$DT_FLOAT",
+        window_strides = [1, 1],
+        padding = "",
+        explicit_padding = [],
+        lhs_dilation = [],
+        rhs_dilation = [],
+        dimension_numbers = "",
+        batch_group_count = 1,
+        feature_group_count = 1,
+        rhs_quantization_axis = -1,
+        rhs_quantization_min_val = -128,
+        rhs_quantization_max_val = 127,
+        attr_map = ""
+      } : (tensor<*xf32>, tensor<*x!tf_type.qint8>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
+
+
+    func.return %out : tensor<*xf32>
+  }
+
+  // Currently only 4-d case is supported
+  func.func @quantized_depthwise_conv2d_fn(
+                         %input : tensor<*xf32>, %weight : tensor<*x!tf_type.qint8>,
+                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>) -> tensor<*xf32>
+      attributes {tf_quant.quantized_ops = ["DepthwiseConv2D"]} {
+
+    %out = "tf.UniformQuantizedConvolutionHybrid"(%input, %weight,
+                           %weight_scale, %weight_zp) {
+        Tlhs = "tfdtype$DT_FLOAT",
+        Trhs = "tfdtype$DT_QINT8",
+        Tout = "tfdtype$DT_FLOAT",
+        window_strides = [1, 1],
+        padding = "",
+        explicit_padding = [],
+        lhs_dilation = [],
+        rhs_dilation = [],
+        dimension_numbers = "",
+        batch_group_count = 1,
+        feature_group_count = 1,
+        rhs_quantization_axis = -1,
+        rhs_quantization_min_val = -128,
+        rhs_quantization_max_val = 127,
+        attr_map = ""
+      } : (tensor<*xf32>, tensor<*x!tf_type.qint8>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
+
+    func.return %out : tensor<*xf32>
+  }
+
+  // Currently only 4-d case is supported
   func.func @quantized_matmul_fn(
                          %input : tensor<*xf32>, %weight : tensor<*x!tf_type.qint8>,
-                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>) -> tensor<*xf32> {
+                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>) -> tensor<*xf32>
+      attributes {tf_quant.quantized_ops = ["MatMul"]} {
 
     %out = "tf.UniformQuantizedDotHybrid"(%input, %weight,
                                 %weight_scale, %weight_zp) {
@@ -46,7 +94,7 @@ module {
         rhs_quantization_axis = -1,
         rhs_quantization_min_val = -128,
         rhs_quantization_max_val = 127,
-        attr_map = "0:Tlhs,1:Trhs,2:Tout,3:rhs_quantization_axis,4:rhs_quantization_min_val,5:rhs_quantization_max_val"
+        attr_map = ""
       } : (tensor<*xf32>, tensor<*x!tf_type.qint8>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
 
     func.return %out : tensor<*xf32>

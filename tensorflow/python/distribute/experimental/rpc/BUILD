@@ -4,6 +4,7 @@ load("//tensorflow:pytype.default.bzl", "pytype_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )

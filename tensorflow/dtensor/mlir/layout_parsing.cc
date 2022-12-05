@@ -58,7 +58,8 @@ StatusOr<absl::optional<Layout>> ExtractSingleLayoutFromOp(
     // If DTensorLayout is used, then DTensorLayout op is the only consumer for
     // the operation output value.
     auto users = op->getUsers();
-    out.emplace(llvm::cast<mlir::TF::DTensorLayout>(*users.begin()).layout());
+    out.emplace(
+        llvm::cast<mlir::TF::DTensorLayout>(*users.begin()).getLayout());
   } else {
     TF_ASSIGN_OR_RETURN(auto layouts, ExtractLayoutFromOp(op, attr_name));
     if (layouts.empty()) return out;
@@ -97,7 +98,7 @@ StatusOr<std::vector<absl::optional<Layout>>> ExtractLayoutFromOp(
     for (auto op_result : op->getOpResults()) {
       outs.emplace_back(
           llvm::cast<mlir::TF::DTensorLayout>(*op_result.getUsers().begin())
-              .layout());
+              .getLayout());
     }
   } else {
     auto serialized_layouts = op->getAttrOfType<mlir::ArrayAttr>(attr_name);
@@ -165,7 +166,7 @@ StatusOr<absl::optional<Layout>> ExtractLayoutFromOperand(mlir::Value operand) {
     mlir::Operation* op = op_result.getDefiningOp();
     absl::optional<Layout> out;
     if (auto layout_op = llvm::dyn_cast<mlir::TF::DTensorLayout>(op)) {
-      out.emplace(layout_op.layout());
+      out.emplace(layout_op.getLayout());
     } else {
       const int result_number = op_result.getResultNumber();
       TF_ASSIGN_OR_RETURN(auto layouts, ExtractLayoutFromOp(op, kLayoutAttr));

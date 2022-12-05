@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/grpc_call.h"
+#include "tensorflow/tsl/protobuf/rpc_options.pb.h"
 
 namespace tensorflow {
 

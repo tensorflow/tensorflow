@@ -69,6 +69,7 @@ from tensorflow.python.autograph.utils import tensors
 from tensorflow.python.data.experimental.ops import take_while_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import scan_op
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -405,7 +406,7 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, symbol_names, opts):
       arith_mean += a
   ```
 
-  The state is represented by the variables geo_mean and arith_mean. The
+  The state is represented by the variables named geo_mean and arith_mean. The
   `extra_test`, `body`, `get_state` and `set_state` functions must bind to the
   original `geo_mean` and `arith_mean` symbols, using `nonlocal`.
 
@@ -538,7 +539,7 @@ def _known_len_tf_for_stmt(
     nonlocal iterate_index
     # TODO(b/171479293): Drop the lint override.
     iterate_index, *loop_vars = aug_loop_vars  # pylint:disable=unused-variable
-    # The iteration index is not "output" by the for loop. If the iterate
+    # The iteration index is not "output" by the for loop. If the iteration index
     # is used outside the loop, it will appear in the loop vars separately.
     set_state(loop_vars)
 
@@ -586,7 +587,7 @@ def _tf_ragged_for_stmt(
     nonlocal iterate_index
     # TODO(b/171479293): Drop the lint override.
     iterate_index, *loop_vars = aug_loop_vars  # pylint:disable=unused-variable
-    # The iteration index is not "output" by the for loop. If the iterate
+    # The iteration index is not "output" by the for loop. If the iteration index
     # is used outside the loop, it will appear in the loop vars separately.
     set_state(loop_vars)
 
@@ -748,8 +749,7 @@ def _general_purpose_scan(ds, init_state, body):
   # TODO(mdan): s/use_default_device/specialize_for_input_pipeline.
   # TODO(mdan): Don't use private symbols.
   # pylint:disable=protected-access
-  return dataset_ops._ScanDataset(
-      ds, init_state, body, use_default_device=False)
+  return scan_op._ScanDataset(ds, init_state, body, use_default_device=False)
 
 
 def _tf_dataset_for_stmt(
@@ -1127,7 +1127,7 @@ def _try_handling_undefineds(body, get_state, set_state, init_vars, nulls,
    1. the types of loop variables could be inferred (usually by staging one
        iteration)
    2. these types could be replaced by placeholders (e.g. zero values, for
-       tensors.
+       tensors).
 
   Args:
     body: a function representing the loop body. See while_stmt.
@@ -1243,7 +1243,7 @@ def _tf_while_stmt(test, body, get_state, set_state, symbol_names, opts):
     # This has two roles:
     #  1. Shape invariants are remapped from the old init vars to the new ones.
     #  2. Any new shape invariants created by the init vars are kept, but only
-    #     if the user didn't already specified some.
+    #     if the user didn't already specify some.
     for v, nv, ni in zip(orig_init_vars, init_vars, extra_shape_invariants):
       merged_invariant = merged_shape_invariants.get(id(v), ni)
       if merged_invariant is not None:

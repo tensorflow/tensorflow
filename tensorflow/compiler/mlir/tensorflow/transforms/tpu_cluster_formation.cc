@@ -469,7 +469,7 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
             status = pi.emitOpError()
                      << "requires " << num_cores_per_replica
                      << " operands but found " << pi->getNumOperands();
-          for (auto operand : pi.inputs()) {
+          for (auto operand : pi.getInputs()) {
             if (auto ri = llvm::dyn_cast_or_null<TF::TPUReplicatedInputOp>(
                     operand.getDefiningOp())) {
               if (!seen_ops.contains(ri)) {
@@ -495,7 +495,7 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
   llvm::SmallVector<TF::TPUReplicatedInputOp, 8> packed_ops;
   for (auto& pos_and_input : llvm::enumerate(replicated_input_ops)) {
     auto input = pos_and_input.value();
-    bool is_packed = input.is_packed();
+    bool is_packed = input.getIsPacked();
     const int num_operands = input->getNumOperands();
     int num_inputs = is_packed ? 1 : num_replicas;
     if (num_operands != num_inputs)
@@ -521,7 +521,7 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
   for (const auto& pos_and_input :
        llvm::enumerate(ordered_tpu_replicate_inputs)) {
     auto tpu_replicated_input = pos_and_input.value();
-    if (tpu_replicated_input.is_mirrored_variable()) {
+    if (tpu_replicated_input.getIsMirroredVariable()) {
       mirrored_variable_indices.push_back(pos_and_input.index());
     }
   }

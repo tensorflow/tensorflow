@@ -110,7 +110,7 @@ void ExpectTensorEqual(const tensorflow::Tensor& x, const tensorflow::Tensor& y,
 
 SavedModel::Options DefaultTpuModelOptions(
     tensorflow::tfrt_stub::Runtime* runtime,
-    tensorflow::TfrtTpuInfraTarget tpu_target);
+    tensorflow::TfrtDeviceInfraTarget tpu_target);
 
 tensorflow::StatusOr<std::vector<tensorflow::serving::PredictRequest>>
 GetWarmupRequests(absl::string_view saved_model_dir);

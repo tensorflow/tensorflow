@@ -241,8 +241,8 @@ std::string GetVarianceCalculationCode(const GpuInfo& gpu_info,
            std::to_string(work_group_size.z) + "];\n";
     } else {
       c += "__local " + accum_type + " shared_mem[" +
-           std::to_string(work_group_size.x) + "][" +
            std::to_string(work_group_size.y) + "][" +
+           std::to_string(work_group_size.x) + "][" +
            std::to_string(work_group_size.z) + "];\n";
     }
   }

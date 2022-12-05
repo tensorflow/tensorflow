@@ -27,10 +27,10 @@ limitations under the License.
 #include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/core/model_builder.h"
@@ -845,6 +845,14 @@ void InterpreterBuilder::AddDelegate(TfLiteDelegate* delegate) {
   } else {
     delegates_.push_back(delegate);
   }
+}
+
+void InterpreterBuilder::AddDelegate(
+    TfLiteOpaqueDelegateStruct* opaque_delegate) {
+  // The following cast is safe only because this code is part of the TF Lite
+  // runtime code.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
+  AddDelegate(reinterpret_cast<TfLiteDelegate*>(opaque_delegate));
 }
 
 }  // namespace tflite

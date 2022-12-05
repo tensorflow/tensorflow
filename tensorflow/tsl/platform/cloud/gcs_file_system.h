@@ -447,9 +447,7 @@ class GcsFileSystem : public FileSystem {
 /// Google Cloud Storage implementation of a file system with retry on failures.
 class RetryingGcsFileSystem : public RetryingFileSystem<GcsFileSystem> {
  public:
-  RetryingGcsFileSystem()
-      : RetryingFileSystem(std::unique_ptr<GcsFileSystem>(new GcsFileSystem),
-                           RetryConfig(100000 /* init_delay_time_us */)) {}
+  RetryingGcsFileSystem();
 };
 
 }  // namespace tsl

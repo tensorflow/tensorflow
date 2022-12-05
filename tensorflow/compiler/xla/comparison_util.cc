@@ -55,6 +55,11 @@ bool IsValidComparison(xla::PrimitiveType type, Comparison::Order order) {
     case PRIMITIVE_TYPE_INVALID:
     case PrimitiveType_INT_MAX_SENTINEL_DO_NOT_USE_:
     case PrimitiveType_INT_MIN_SENTINEL_DO_NOT_USE_:
+    // TODO(b/259609697): Add support for comparing F8 values. F8 values are
+    // comparable like any other floating-point type, but comparisons are not
+    // yet implemented by any backend.
+    case F8E5M2:
+    case F8E4M3FN:
       return false;
   }
 }
@@ -317,6 +322,8 @@ std::optional<Comparison> Comparison::Inverse() const {
     case TUPLE:
     case OPAQUE_TYPE:
     case TOKEN:
+    case F8E5M2:
+    case F8E4M3FN:
     case PRIMITIVE_TYPE_INVALID:
     case PrimitiveType_INT_MAX_SENTINEL_DO_NOT_USE_:
     case PrimitiveType_INT_MIN_SENTINEL_DO_NOT_USE_:

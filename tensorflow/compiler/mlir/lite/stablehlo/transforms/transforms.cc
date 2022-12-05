@@ -18,6 +18,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/drop_savedmodel_semantics.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/rename_entrypoint_to_main.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/smuggle_disallowed_ops.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/tf_mhlo_pass.h"
@@ -69,7 +70,13 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
   pm.addPass(mlir::TFL::mhlo::CreateDropSavedModelSemanticsPass());
 }
 
-void AddStablehloOptimizationPasses(OpPassManager& pm) {}
+void AddStablehloOptimizationPasses(OpPassManager& pm) {
+  pm.addNestedPass<func::FuncOp>(createUnfuseBatchNormPass());
+  pm.addNestedPass<func::FuncOp>(createFuseConvolutionPass());
+  pm.addNestedPass<func::FuncOp>(createFoldBroadcastPass());
+  pm.addNestedPass<func::FuncOp>(createOptimizePass());
+  pm.addPass(mlir::createCanonicalizerPass());
+}
 
 }  // namespace odml
 }  // namespace mlir

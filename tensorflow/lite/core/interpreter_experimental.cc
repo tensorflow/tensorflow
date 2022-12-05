@@ -24,11 +24,11 @@ limitations under the License.
 
 #include "ruy/denormal.h"  // from @ruy
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/c/common_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
@@ -79,6 +79,14 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   return ModifyGraphWithDelegateImpl(delegate);
 }
 
+TfLiteStatus Interpreter::ModifyGraphWithDelegate(
+    TfLiteOpaqueDelegateStruct* delegate) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime tests.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
+  return ModifyGraphWithDelegate(reinterpret_cast<TfLiteDelegate*>(delegate));
+}
+
 bool Interpreter::HasDelegates() { return primary_subgraph().HasDelegates(); }
 
 TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
@@ -99,6 +107,16 @@ TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
   return kTfLiteOk;
 }
 
+TfLiteStatus Interpreter::SetBufferHandle(
+    int tensor_index, TfLiteBufferHandle buffer_handle,
+    TfLiteOpaqueDelegateStruct* opaque_delegate) {
+  // The following cast is safe only because this code is part of the TF Lite
+  // runtime code.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
+  return SetBufferHandle(tensor_index, buffer_handle,
+                         reinterpret_cast<TfLiteDelegate*>(opaque_delegate));
+}
+
 TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
                                           TfLiteBufferHandle* buffer_handle,
                                           TfLiteDelegate** delegate) {
@@ -108,6 +126,20 @@ TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
   *delegate = tensor->delegate;
   *buffer_handle = tensor->buffer_handle;
 
+  return kTfLiteOk;
+}
+
+TfLiteStatus Interpreter::GetBufferHandle(
+    int tensor_index, TfLiteBufferHandle* buffer_handle,
+    TfLiteOpaqueDelegateStruct** opaque_delegate) {
+  TfLiteDelegate* delegate_ptr;
+  TF_LITE_ENSURE_STATUS(
+      GetBufferHandle(tensor_index, buffer_handle, &delegate_ptr));
+  // The following cast is safe only because this code is part of the TF Lite
+  // runtime code.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
+  *opaque_delegate =
+      reinterpret_cast<TfLiteOpaqueDelegateStruct*>(delegate_ptr);
   return kTfLiteOk;
 }
 

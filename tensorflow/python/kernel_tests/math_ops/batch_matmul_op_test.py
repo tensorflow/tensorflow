@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python import tf2
 from tensorflow.python.client import session
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -57,7 +58,14 @@ class BatchMatmulOpTest(test.TestCase):
     x = x_in if not adjoint_a else x_in.reshape(x_t_shape)
     y = y_in if not adjoint_b else y_in.reshape(y_t_shape)
     is_floating = x.dtype != np.int32
-    tol = 100 * np.finfo(x.dtype).eps if is_floating else 0
+    # np.finfo doesn't support bfloat16. So, we manually compute the eps which
+    # defines the difference between 1.0 and the next smallest representable
+    # float larger than 1.0. For bfloat16, the difference is 1/128.
+    if x.dtype == dtypes.bfloat16.as_numpy_dtype:
+      epsilon = 0.0078125
+    elif is_floating:
+      epsilon = np.finfo(x.dtype).eps
+    tol = 100 * epsilon if is_floating else 0
     with self.cached_session(use_gpu=is_floating) as sess:
       if static_shape:
         z0 = math_ops.matmul(x, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
@@ -155,12 +163,23 @@ class BatchMatmulGradientTest(test.TestCase):
     y_t_shape = y_in.shape[:-2] + (y_in.shape[-1], y_in.shape[-2])
     x = x_in if not adjoint_a else x_in.reshape(x_t_shape)
     y = y_in if not adjoint_b else y_in.reshape(y_t_shape)
-    epsilon = np.finfo(x.dtype).eps
+    # np.finfo doesn't support bfloat16. So, we manually compute the eps which
+    # defines the difference between 1.0 and the next smallest representable
+    # float larger than 1.0. For bfloat16, the difference is 1/128.
+    if x.dtype == dtypes.bfloat16.as_numpy_dtype:
+      epsilon = 0.0078125
+    else:
+      epsilon = np.finfo(x.dtype).eps
     # Since our gradient is linear, a larger delta decreases the error.
     delta = 10 * epsilon**(1.0 / 3.0)
 
     def Loss(x, y):
-      return math_ops.reduce_sum(math_ops.matmul(x, y, adjoint_a, adjoint_b))
+      z = math_ops.matmul(x, y, adjoint_a, adjoint_b)
+      # To avoid the high error when reduce_sum over the bfloat16 values, we
+      # cast the results to float32.
+      if z.dtype == dtypes.bfloat16:
+        z = math_ops.cast(z, dtype=dtypes.float32)
+      return math_ops.reduce_sum(z)
 
     with self.cached_session():
       ((x_jacob_t, y_jacob_t),
@@ -261,8 +280,10 @@ class BatchMatMulBenchmark(test.Benchmark):
 
 if __name__ == "__main__":
   dtypes_to_test = [
-      np.float16, np.float32, np.float64, np.int32, np.complex64, np.complex128
+      np.float16, np.float32, np.float64, np.int32, np.complex64, np.complex128,
+      dtypes.bfloat16.as_numpy_dtype
   ]
+
   for dtype_ in dtypes_to_test:
     for adjoint_a_ in False, True:
       for adjoint_b_ in False, True:

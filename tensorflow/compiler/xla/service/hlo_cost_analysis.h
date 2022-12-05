@@ -20,9 +20,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -63,6 +63,10 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
     // property is bytes accessed, this is the number of bytes that can be
     // processed per second. Is empty if no rates have been set.
     Properties per_second_rates = {};
+    // Operations like broadcast with reused inputs are not handled
+    // efficiently on some platforms. Depending on the goal of the analysis
+    // we may need to count or ignore them.
+    bool count_multiple_input_accesses = false;
 
     // Set the rates used to calculate the time taken by the computation.
     void set_flops_per_second(float value) {
@@ -171,6 +175,13 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status Preprocess(const HloInstruction* hlo) override;
   Status Postprocess(const HloInstruction* hlo) override;
 
+  // Enable efficient updates if a known small set of instructions within an
+  // HLO graph was modified.
+  // Updates the cost analysis by removing one instruction.
+  Status RemoveInstruction(HloInstruction* instruction);
+  // Updates the cost analysis by re-doing the analysis of one instruction.
+  Status RevisitInstruction(HloInstruction* instruction);
+
   // Decorates shape_size_ by returning 0 immediately if the shape does not have
   // a layout.
   int64_t GetShapeSize(const Shape& shape) const;
@@ -249,10 +260,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // An FMA counts as two floating point operations in these analyzes.
   static constexpr int64_t kFmaFlops = 2;
 
-  // Operations like broadcast with reused inputs are
-  // not handled efficiently on some platforms.
-  virtual bool input_reuse_is_inefficient() const { return false; }
-
   // Small constants can be embedded in the assembly and not require
   // memory access.
   virtual size_t immediate_constant_max_elements() const { return 1; }
@@ -320,6 +327,9 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // The hardware-specific options that contains things like the shape size
   // function and per-second rates.
   Options options_;
+
+  // Determines which properties propagate from subcomputations to parents.
+  virtual bool KeyToCopyFromSubcomputation(absl::string_view key) const;
 
   HloCostAnalysis(const HloCostAnalysis&) = delete;
   HloCostAnalysis& operator=(const HloCostAnalysis&) = delete;

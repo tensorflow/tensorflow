@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_CONFIG_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_CONFIG_H_
 
+#include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -25,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -79,6 +82,11 @@ class HloModuleConfig {
                            bool ignore_layouts = true);
 
   explicit HloModuleConfig(ComputationLayout entry_computation_layout);
+
+  // Convert an HloModuleConfig to or from a proto.
+  StatusOr<HloModuleConfigProto> ToProto() const;
+  static StatusOr<std::unique_ptr<HloModuleConfig>> CreateFromProto(
+      const HloModuleConfigProto& proto);
 
   // Checks if this config has an entry computation layout already.
   bool has_entry_computation_layout() const {
@@ -347,8 +355,9 @@ class HloModuleConfig {
   }
 
  private:
-  // If you add new members, be sure to update compilation_cache_key.
-
+  // If you add new members, be sure to update compilation_cache_key and the
+  // HloModuleConfigProto.
+  // LINT.IfChange
   std::optional<ComputationLayout> entry_computation_layout_;
 
   // Module/graph-level seed handle.
@@ -402,9 +411,6 @@ class HloModuleConfig {
   FusionConfigCollection fusion_config_collection_ =
       FusionConfigCollection::kOff;
 
-  // TODO(b/155665133): Consolidate fusion, dot, and layout config into a proto
-  // similar to backend config.
-
   // Custom fusion configuration, where fusion_config_[c][v] control if node v
   // in computation c must be fused to all its consumers (true) or not (false).
   std::vector<std::vector<bool>> fusion_config_;
@@ -451,6 +457,7 @@ class HloModuleConfig {
 
   PrecisionConfig::Precision matrix_unit_operand_precision_ =
       PrecisionConfig::DEFAULT;
+  // LINT.ThenChange(//tensorflow/compiler/xla/xla.proto)
 };
 
 }  // namespace xla

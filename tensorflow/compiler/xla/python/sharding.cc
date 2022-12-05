@@ -26,14 +26,19 @@ namespace py = pybind11;
 size_t ShardingHash(const pybind11::object& sharding) {
   auto type = sharding.get_type();
 
-  if (type.is(MeshPspecSharding::type())) {
-    const auto* mesh_sharding = py::cast<jax::MeshPspecSharding*>(sharding);
+  if (type.is(NamedSharding::type())) {
+    const auto* mesh_sharding = py::cast<jax::NamedSharding*>(sharding);
     return absl::Hash<void*>()(mesh_sharding->mesh().ptr());
   }
 
   if (type.is(OpShardingSharding::type())) {
     auto* op_sharding = py::cast<OpShardingSharding*>(sharding);
     return op_sharding->Hash();
+  }
+
+  if (type.is(SingleDeviceSharding::type())) {
+    auto* single_device_sharding = py::cast<SingleDeviceSharding*>(sharding);
+    return absl::Hash<void*>()(single_device_sharding->device().ptr());
   }
 
   return py::hash(sharding);
@@ -47,19 +52,34 @@ bool ShardingEqual(const pybind11::object& a, const pybind11::object& b) {
 
   if (!a_type.is(b_type)) return false;
 
-  if (a_type.is(MeshPspecSharding::type())) {
-    auto* a_mesh_sharding = py::cast<const MeshPspecSharding*>(a);
-    auto* b_mesh_sharding = py::cast<const MeshPspecSharding*>(b);
+  if (a_type.is(NamedSharding::type())) {
+    auto* a_mesh_sharding = py::cast<const NamedSharding*>(a);
+    auto* b_mesh_sharding = py::cast<const NamedSharding*>(b);
 
     return a_mesh_sharding->mesh().ptr() == b_mesh_sharding->mesh().ptr() &&
            a_mesh_sharding->spec().equal(b_mesh_sharding->spec());
   }
 
+  if (a_type.is(OpShardingSharding::type())) {
+    auto* a_op_sharding_sharding = py::cast<const OpShardingSharding*>(a);
+    auto* b_op_sharding_sharding = py::cast<const OpShardingSharding*>(b);
+
+    return a_op_sharding_sharding == b_op_sharding_sharding;
+  }
+
+  if (a_type.is(SingleDeviceSharding::type())) {
+    auto* a_single_device_sharding = py::cast<const SingleDeviceSharding*>(a);
+    auto* b_single_device_sharding = py::cast<const SingleDeviceSharding*>(b);
+
+    return a_single_device_sharding->device().ptr() ==
+           b_single_device_sharding->device().ptr();
+  }
+
   return a.equal(b);
 }
 
-MeshPspecSharding::MeshPspecSharding(py::object mesh, py::object spec,
-                                     py::object parsed_pspec)
+NamedSharding::NamedSharding(py::object mesh, py::object spec,
+                             py::object parsed_pspec)
     : XLACompatibleSharding(/*num_devices=*/[&mesh]() {
         py::array devices = mesh.attr("devices");
         return devices.size();
@@ -84,14 +104,14 @@ void RegisterSharding(py::module& m) {
                                               py::metaclass(abc_meta));
   abc_init(py::type::of<XLACompatibleSharding>());
 
-  py::class_<MeshPspecSharding, XLACompatibleSharding>(m, "MeshPspecSharding",
-                                                       py::dynamic_attr())
+  py::class_<NamedSharding, XLACompatibleSharding>(m, "NamedSharding",
+                                                   py::dynamic_attr())
       .def(py::init<py::object, py::object, py::object>(), py::arg("mesh"),
            py::arg("spec"), py::arg("_parsed_pspec") = py::none())
-      .def_property_readonly("mesh", &MeshPspecSharding::mesh)
-      .def_property_readonly("spec", &MeshPspecSharding::spec)
-      .def_property("_parsed_pspec", &MeshPspecSharding::parsed_pspec,
-                    &MeshPspecSharding::set_parsed_pspec);
+      .def_property_readonly("mesh", &NamedSharding::mesh)
+      .def_property_readonly("spec", &NamedSharding::spec)
+      .def_property("_parsed_pspec", &NamedSharding::parsed_pspec,
+                    &NamedSharding::set_parsed_pspec);
 
   py::class_<SingleDeviceSharding, XLACompatibleSharding>(
       m, "SingleDeviceSharding", py::dynamic_attr())

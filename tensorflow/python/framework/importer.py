@@ -207,10 +207,13 @@ def _ConvertInputMapValues(name, input_map):
 
 def _PopulateTFImportGraphDefOptions(options, prefix, input_map,
                                      return_elements,
-                                     validate_colocation_constraints):
+                                     validate_colocation_constraints,
+                                     propagate_device_spec=False):
   """Populates the TF_ImportGraphDefOptions `options`."""
   c_api.TF_ImportGraphDefOptionsSetPrefix(options, prefix)
   c_api.TF_ImportGraphDefOptionsSetUniquifyNames(options, True)
+  c_api.TF_ImportGraphDefOptionsSetPropagateDeviceSpec(options,
+                                                       propagate_device_spec)
 
   for input_src, input_dst in input_map.items():
     input_src = compat.as_str(input_src)
@@ -409,10 +412,13 @@ def import_graph_def(graph_def,
 
 
 def import_graph_def_for_function(  # pylint: disable=invalid-name
-    graph_def, name=None):
+    graph_def, name=None, propagate_device_spec=False):
   """Like import_graph_def but does not validate colocation constraints."""
   return _import_graph_def_internal(
-      graph_def, validate_colocation_constraints=False, name=name)
+      graph_def,
+      validate_colocation_constraints=False,
+      name=name,
+      propagate_device_spec=propagate_device_spec)
 
 
 def _import_graph_def_internal(  # pylint: disable=invalid-name
@@ -421,7 +427,8 @@ def _import_graph_def_internal(  # pylint: disable=invalid-name
     return_elements=None,
     validate_colocation_constraints=True,
     name=None,
-    producer_op_list=None):
+    producer_op_list=None,
+    propagate_device_spec=False):
   """Imports the graph from `graph_def` into the current default `Graph`.
 
   This function provides a way to import a serialized TensorFlow
@@ -450,6 +457,8 @@ def _import_graph_def_internal(  # pylint: disable=invalid-name
       unrecognized attrs for ops in `graph_def` that have their default value
       according to `producer_op_list` will be removed. This will allow some more
       `GraphDef`s produced by later binaries to be accepted by earlier binaries.
+    propagate_device_spec: Whether to propagate assigned device information
+      when importing a graph from a GraphDef into the current default `Graph`.
 
   Returns:
     A list of `Operation` and/or `Tensor` objects from the imported graph,
@@ -487,7 +496,8 @@ def _import_graph_def_internal(  # pylint: disable=invalid-name
   scoped_options = c_api_util.ScopedTFImportGraphDefOptions()
   options = scoped_options.options
   _PopulateTFImportGraphDefOptions(options, prefix, input_map, return_elements,
-                                   validate_colocation_constraints)
+                                   validate_colocation_constraints,
+                                   propagate_device_spec)
 
   # _ProcessNewOps mutates the new operations. _mutation_lock ensures a
   # Session.run call cannot occur between creating the TF_Operations in the
