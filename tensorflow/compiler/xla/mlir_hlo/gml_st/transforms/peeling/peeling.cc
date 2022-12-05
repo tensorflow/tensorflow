@@ -127,13 +127,13 @@ void rewriteAffineOpAfterPeeling(RewriterBase &rewriter, Operation *mainLoop,
   mainLoop->walk([&](OpTy affineOp) {
     AffineMap map = affineOp.getAffineMap();
     (void)scf::rewritePeeledMinMaxOp(rewriter, affineOp, map,
-                                     affineOp.operands(), IsMin, mainIv, ub,
+                                     affineOp.getOperands(), IsMin, mainIv, ub,
                                      step, /*insideLoop=*/true);
   });
   remainderLoop->walk([&](OpTy affineOp) {
     AffineMap map = affineOp.getAffineMap();
     (void)scf::rewritePeeledMinMaxOp(rewriter, affineOp, map,
-                                     affineOp.operands(), IsMin, remainderIv,
+                                     affineOp.getOperands(), IsMin, remainderIv,
                                      ub, step, /*insideLoop=*/false);
   });
 }
