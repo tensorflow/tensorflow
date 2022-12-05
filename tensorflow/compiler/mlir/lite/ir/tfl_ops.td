@@ -5059,7 +5059,7 @@ def TFL_YieldOp : Op<TFL_Dialect, "yield",
     The operation takes a variable number of operands and produces no results.
     The operand number and types must match the signature of the region that contains the operation.
   }];
-  let arguments = (ins Variadic<AnyType>:$operands);
+  let arguments = (ins Variadic<AnyType>);
 
   // Default builder needed for ensureTerminator
   let builders = [

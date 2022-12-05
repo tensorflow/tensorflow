@@ -9,6 +9,20 @@ diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/di
    StablehloBase
  )
  
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
+--- stablehlo/stablehlo/dialect/ChloOps.td
++++ stablehlo/stablehlo/dialect/ChloOps.td
+@@ -909,8 +909,8 @@
+     ```
+   }];
+ 
+-  let arguments = (ins Variadic<HLO_Tensor>:$operands);
+-  let results = (outs Variadic<HLO_Tensor>:$results);
++  let arguments = (ins Variadic<HLO_Tensor>);
++  let results = (outs Variadic<HLO_Tensor>);
+   let regions = (region SizedRegion<1>:$body);
+ 
+   let hasVerifier = 1;
 diff --ruN a/stablehlo/stablehlo/reference/Tensor.cpp b/stablehlo/stablehlo/reference/Tensor.cpp
 --- stablehlo/stablehlo/reference/Tensor.cpp
 +++ stablehlo/stablehlo/reference/Tensor.cpp
