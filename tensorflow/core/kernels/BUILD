@@ -4213,6 +4213,7 @@ tf_kernel_library(
     gpu_srcs = [
         "topk_op.h",
         "topk_op_gpu.h",
+        "topk_op_gpu_bfloat16.cu.cc",
         "topk_op_gpu_double.cu.cc",
         "topk_op_gpu_float.cu.cc",
         "topk_op_gpu_half.cu.cc",
