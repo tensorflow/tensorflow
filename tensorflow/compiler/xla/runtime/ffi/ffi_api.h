@@ -172,7 +172,7 @@ class StatefulModule {
   // TODO(ezhulenev): To gracefully fail if state can't be created, this has to
   // return `FfiStatusOr<std::unique_ptr<State>>`, but we do not have a
   // `StatusOr` implementation yet and we can't depend on absl.
-  virtual std::unique_ptr<State> CreateState() const = 0;
+  virtual std::unique_ptr<State> CreateState() = 0;
 
   virtual ~StatefulModule() = default;
 
