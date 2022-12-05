@@ -167,6 +167,7 @@ tf_cc_binary(
     ]),
     deps = [
         ":benchmark",
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tfrt:host_context_util",
     ],
 )
