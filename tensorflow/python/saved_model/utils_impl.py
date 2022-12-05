@@ -277,4 +277,5 @@ def get_debug_dir(export_dir):
 
 
 def swap_function_tensor_content(meta_graph_def, from_endiness, to_endiness):
-  bst.swap_tensor_in_saved_model(meta_graph_def, from_endiness, to_endiness)
+  bst.swap_tensor_content_in_graph_function(meta_graph_def, 
+        from_endiness, to_endiness)

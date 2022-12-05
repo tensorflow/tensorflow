@@ -36,7 +36,8 @@ def byte_swap_tensor_content(tensor, from_endiness, to_endiness):
     if tensor_bytes:
       tensor_size = 1
       for sz in tshape:
-        tensor_size = tensor_size * sz.size
+        if sz.size != 0:
+          tensor_size = tensor_size * sz.size
       chunksize = int(len(tensor_bytes) / tensor_size)
       # Split tensor_data into chunks for byte swapping.
       to_swap = [
@@ -51,7 +52,8 @@ def byte_swap_tensor_content(tensor, from_endiness, to_endiness):
       ])
 
 
-def swap_tensor_in_saved_model(graph_def, from_endiness, to_endiness):
+def swap_tensor_content_in_graph_function(graph_def, 
+      from_endiness, to_endiness):
   if isinstance(graph_def, meta_graph_pb2.MetaGraphDef):
     functions = graph_def.graph_def.library.function
   elif isinstance(graph_def, graph_pb2.GraphDef):
@@ -66,7 +68,7 @@ def swap_tensor_in_saved_model(graph_def, from_endiness, to_endiness):
         byte_swap_tensor_content(tensor, from_endiness, to_endiness)
 
 
-def swap_tensor_in_frozen_graph(graph_def, from_endiness, to_endiness):
+def swap_tensor_content_in_graph_node(graph_def, from_endiness, to_endiness):
   for node in graph_def.node:
     if node.op == "Const":
       tensor = node.attr["value"].tensor

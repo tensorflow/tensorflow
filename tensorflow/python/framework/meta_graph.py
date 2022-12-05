@@ -639,7 +639,7 @@ def read_meta_graph_file(filename):
   try:
     meta_graph_def.ParseFromString(file_content)
     if sys.byteorder == 'big':
-      bst.swap_tensor_in_saved_model(meta_graph_def,
+      bst.swap_tensor_content_in_graph_function(meta_graph_def,
         "little", "big")
     return meta_graph_def
   except Exception:  # pylint: disable=broad-except
@@ -649,7 +649,7 @@ def read_meta_graph_file(filename):
   try:
     text_format.Merge(file_content.decode("utf-8"), meta_graph_def)
     if sys.byteorder == 'big':
-      bst.swap_tensor_in_saved_model(meta_graph_def,
+      bst.swap_tensor_content_in_graph_function(meta_graph_def,
         "little", "big")
   except text_format.ParseError as e:
     raise IOError(f"Cannot parse file {filename}: {str(e)}.")

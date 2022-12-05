@@ -62,10 +62,10 @@ def write_graph(graph_or_graph_def, logdir, name, as_text=True):
 
   if sys.byteorder == 'big':
     if hasattr(graph_def, 'node'):
-      byte_swap_tensor.swap_tensor_in_frozen_graph(graph_def,
+      byte_swap_tensor.swap_tensor_content_in_graph_node(graph_def,
         "big", "little")
     else:
-      byte_swap_tensor.swap_tensor_in_saved_model(graph_def,
+      byte_swap_tensor.swap_tensor_content_in_graph_function(graph_def,
         "big", "little")
 
   # gcs does not have the concept of directory at the moment.
