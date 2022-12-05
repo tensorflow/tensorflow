@@ -434,6 +434,20 @@ Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
   return const_op.getResult();
 }
 
+// Create an expected bitwidth integer constant operator based on the type
+// parameter.
+Value getTosaConstTensorScalarInt(ImplicitLocOpBuilder& builder, Type type,
+                                  int32_t val) {
+  auto bit_width = type.getIntOrFloatBitWidth();
+  auto const_type = tensorflow::GetTypeFromTFTensorShape(
+      {}, builder.getIntegerType(bit_width));
+  auto const_attr = DenseElementsAttr::get(const_type, val);
+
+  auto const_op =
+      builder.create<tosa::ConstOp>(builder.getLoc(), const_type, const_attr);
+  return const_op.getResult();
+}
+
 // Create a vector from a 32-bit value tensor.  Returns the size of
 // the new vector or -1 on error.
 LogicalResult getVectorFromValue32(Value val, SmallVectorImpl<int32_t>& vec) {

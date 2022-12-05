@@ -23,15 +23,16 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/Tosa/Utils/ShapeUtils.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"          // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"         // from @llvm-project
+#include "mlir/Dialect/Tosa/Utils/ShapeUtils.h"    // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"             // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"                  // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"          // from @llvm-project
+#include "mlir/IR/PatternMatch.h"                  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"                     // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
@@ -103,6 +104,11 @@ Value getTosaConstTensorSingleF32(PatternRewriter& rewriter, Operation* op,
 Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
                                   int32_t val);
 
+// Create an expected bitwidth integer constant operator based on the type
+// parameter.
+Value getTosaConstTensorScalarInt(ImplicitLocOpBuilder& builder, Type type,
+                                  int32_t val);
+
 // Create a vector from a 32-bit value tensor.  Returns vector size on success
 // or -1 on error.
 LogicalResult getVectorFromValue32(Value val, SmallVectorImpl<int32_t>& vec);
@@ -151,9 +157,9 @@ LogicalResult ApplyPatternsWithShapeResolution(
 // Creates a TOSA operation and performs shape inference on the individual
 // op. This allows shape inference during the TFLite to TOSA lowering.
 template <typename TosaOp, typename... Args>
-TosaOp CreateOpAndInfer(PatternRewriter& rewriter, Location loc, Type result_ty,
+TosaOp CreateOpAndInfer(ImplicitLocOpBuilder& builder, Type result_ty,
                         Args&&... args) {
-  auto op = rewriter.create<TosaOp>(loc, result_ty, args...);
+  auto op = builder.create<TosaOp>(result_ty, args...);
 
   InferShapedTypeOpInterface shapeInterface =
       dyn_cast<InferShapedTypeOpInterface>(op.getOperation());
@@ -161,7 +167,7 @@ TosaOp CreateOpAndInfer(PatternRewriter& rewriter, Location loc, Type result_ty,
 
   SmallVector<ShapedTypeComponents> returnedShapes;
   if (shapeInterface
-          .inferReturnTypeComponents(op.getContext(), op.getLoc(),
+          .inferReturnTypeComponents(op.getContext(), builder.getLoc(),
                                      op->getOperands(), op->getAttrDictionary(),
                                      op->getRegions(), returnedShapes)
           .failed())
@@ -194,6 +200,13 @@ TosaOp CreateOpAndInfer(PatternRewriter& rewriter, Location loc, Type result_ty,
           : Type{mlir::UnrankedTensorType::get(newKnowledge.dtype)};
   result.setType(new_ty);
   return op;
+}
+
+template <typename TosaOp, typename... Args>
+TosaOp CreateOpAndInfer(PatternRewriter& rewriter, Location loc, Type result_ty,
+                        Args&&... args) {
+  ImplicitLocOpBuilder builder(loc, rewriter);
+  return CreateOpAndInfer<TosaOp>(builder, result_ty, args...);
 }
 
 template <typename TosaOp, typename... Args>

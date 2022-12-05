@@ -34,10 +34,11 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/IR/TosaOps.h"   // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"           // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"   // from @llvm-project
+#include "mlir/IR/Matchers.h"               // from @llvm-project
+#include "mlir/IR/PatternMatch.h"           // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
@@ -4460,6 +4461,46 @@ std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
 
   return CreateOpAndInfer<MulOp>(rewriter, loc, output_type, table_result_fp,
                                  output_scale, rewriter.getI32IntegerAttr(0))
+      .getResult();
+}
+
+// Lowers Sign operator to a sequence of TOSA ops.
+llvm::Optional<Value> convertSignOp(PatternRewriter& rewriter, Operation* op,
+                                    Value input, RankedTensorType output_type) {
+  auto output_elem_type = output_type.getElementType();
+  if (output_elem_type.isa<mlir::quant::QuantizedType>()) {
+    (void)rewriter.notifyMatchFailure(op, "tfl quantization not yet supported");
+    return llvm::None;
+  }
+
+  // TOSA greater and select can both broadcast, so simply create a tensor with
+  // one element.
+  Value pos_one, neg_one, zero;
+  ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
+  if (output_elem_type.isa<FloatType>()) {
+    pos_one = getTosaConstTensorSingleF32(rewriter, op, 1.0f);
+    neg_one = getTosaConstTensorSingleF32(rewriter, op, -1.0f);
+    zero = getTosaConstTensorSingleF32(rewriter, op, 0.0f);
+  } else {
+    pos_one = getTosaConstTensorScalarInt(builder, output_elem_type, 1);
+    neg_one = getTosaConstTensorScalarInt(builder, output_elem_type, -1);
+    zero = getTosaConstTensorScalarInt(builder, output_elem_type, 0);
+  }
+
+  ShapedType const_type = output_type.clone(rewriter.getIntegerType(1));
+
+  auto gt_zero_op =
+      CreateOpAndInfer<tosa::GreaterOp>(builder, const_type, input, zero);
+
+  auto lt_zero_op =
+      CreateOpAndInfer<tosa::GreaterOp>(builder, const_type, zero, input);
+
+  auto select_neg_op = CreateOpAndInfer<tosa::SelectOp>(
+      builder, output_type, lt_zero_op, neg_one, zero);
+
+  // Select positive one based on the condition tensor.
+  return CreateOpAndInfer<tosa::SelectOp>(builder, output_type, gt_zero_op,
+                                          pos_one, select_neg_op)
       .getResult();
 }
 
