@@ -22,8 +22,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 
 namespace tflite {
@@ -956,9 +956,9 @@ void TestOneHybridAsymmLSTM() {
   };
   EXPECT_TRUE(ArrayFloatNear(cell->data.f, expected_cell.data(), 20, 1e-2));
   EXPECT_TRUE(
-      ArrayFloatNear(activation->data.f, expected_activation.data(), 12, 1e-4));
+      ArrayFloatNear(activation->data.f, expected_activation.data(), 12, 2e-4));
   EXPECT_TRUE(
-      ArrayFloatNear(output->data.f, expected_activation.data(), 12, 1e-4));
+      ArrayFloatNear(output->data.f, expected_activation.data(), 12, 2e-4));
 }
 
 TEST(TestOneHybridAsymmLSTM, TestOneHybridAsymmLSTM) {

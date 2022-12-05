@@ -245,13 +245,13 @@ TEST(NonMaxSuppressionV4OpModel, TestInt8Output) {
       /*static_shaped_outputs=*/true,
       /*max_output_size=*/6);
   nms.SetScoreThreshold(0.4f);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({2}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0, 0, 0, 0, 0}));
 
   // No candidate gets selected. But the outputs should be zeroed out.
   nms.SetScoreThreshold(0.99f);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({0}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({0, 0, 0, 0, 0, 0}));
 }
@@ -262,13 +262,13 @@ TEST(NonMaxSuppressionV4OpModel, TestInt16Output) {
       /*static_shaped_outputs=*/true,
       /*max_output_size=*/6);
   nms.SetScoreThreshold(0.4f);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({2}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0, 0, 0, 0, 0}));
 
   // No candidate gets selected. But the outputs should be zeroed out.
   nms.SetScoreThreshold(0.99f);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({0}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({0, 0, 0, 0, 0, 0}));
 }
@@ -300,17 +300,17 @@ TEST(NonMaxSuppressionV4OpModel, TestInt8DynamicOutput) {
   nms.SetScoreThreshold(0.4f);
 
   nms.SetMaxOutputSize(1);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({1}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3}));
 
   nms.SetMaxOutputSize(2);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({2}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0}));
 
   nms.SetScoreThreshold(0.99f);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({0}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({0, 0}));
 }
@@ -321,17 +321,17 @@ TEST(NonMaxSuppressionV4OpModel, TestInt16DynamicOutput) {
   nms.SetScoreThreshold(0.4f);
 
   nms.SetMaxOutputSize(1);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({1}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3}));
 
   nms.SetMaxOutputSize(2);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({2}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0}));
 
   nms.SetScoreThreshold(0.99f);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({0}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({0, 0}));
 }
@@ -427,7 +427,7 @@ TEST(NonMaxSuppressionV5OpModel, TestInt8Output) {
       /*tensor_type=*/TensorType_INT8,
       /*static_shaped_outputs=*/true,
       /*max_output_size=*/6);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({3}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0, 5, 0, 0, 0}));
   EXPECT_THAT(nms.GetDequantizedSelectedScores<int8_t>(),
@@ -436,7 +436,7 @@ TEST(NonMaxSuppressionV5OpModel, TestInt8Output) {
 
   // No candidate gets selected. But the outputs should be zeroed out.
   nms.SetScoreThreshold(0.99f);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({0}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({0, 0, 0, 0, 0, 0}));
   EXPECT_THAT(nms.GetDequantizedSelectedScores<int8_t>(),
@@ -450,7 +450,7 @@ TEST(NonMaxSuppressionV5OpModel, TestInt16Output) {
       /*tensor_type=*/TensorType_INT16,
       /*static_shaped_outputs=*/true,
       /*max_output_size=*/6);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({3}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0, 5, 0, 0, 0}));
   EXPECT_THAT(nms.GetDequantizedSelectedScores<int16_t>(),
@@ -459,7 +459,7 @@ TEST(NonMaxSuppressionV5OpModel, TestInt16Output) {
 
   // No candidate gets selected. But the outputs should be zeroed out.
   nms.SetScoreThreshold(0.99f);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({0}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({0, 0, 0, 0, 0, 0}));
   EXPECT_THAT(nms.GetDequantizedSelectedScores<int16_t>(),
@@ -508,7 +508,7 @@ TEST(NonMaxSuppressionV5OpModel, TestInt8DynamicOutput) {
       /*max_output_size=*/6);
 
   nms.SetMaxOutputSize(2);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({2}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0}));
   EXPECT_THAT(
@@ -516,14 +516,14 @@ TEST(NonMaxSuppressionV5OpModel, TestInt8DynamicOutput) {
       ElementsAreArray(ArrayFloatNear({0.95, 0.9}, kQuantizedTolerance)));
 
   nms.SetMaxOutputSize(1);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({1}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3}));
   EXPECT_THAT(nms.GetDequantizedSelectedScores<int8_t>(),
               ElementsAreArray(ArrayFloatNear({0.95}, kQuantizedTolerance)));
 
   nms.SetMaxOutputSize(3);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({3}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0, 5}));
   EXPECT_THAT(
@@ -532,7 +532,7 @@ TEST(NonMaxSuppressionV5OpModel, TestInt8DynamicOutput) {
 
   // No candidate gets selected. But the outputs should be zeroed out.
   nms.SetScoreThreshold(0.99f);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({0}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({0, 0, 0}));
   EXPECT_THAT(
@@ -549,7 +549,7 @@ TEST(NonMaxSuppressionV5OpModel, TestInt16DynamicOutput) {
       /*max_output_size=*/6);
 
   nms.SetMaxOutputSize(2);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({2}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0}));
   EXPECT_THAT(
@@ -557,14 +557,14 @@ TEST(NonMaxSuppressionV5OpModel, TestInt16DynamicOutput) {
       ElementsAreArray(ArrayFloatNear({0.95, 0.9}, kQuantizedTolerance)));
 
   nms.SetMaxOutputSize(1);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({1}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3}));
   EXPECT_THAT(nms.GetDequantizedSelectedScores<int16_t>(),
               ElementsAreArray(ArrayFloatNear({0.95}, kQuantizedTolerance)));
 
   nms.SetMaxOutputSize(3);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({3}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0, 5}));
   EXPECT_THAT(
@@ -573,7 +573,7 @@ TEST(NonMaxSuppressionV5OpModel, TestInt16DynamicOutput) {
 
   // No candidate gets selected. But the outputs should be zeroed out.
   nms.SetScoreThreshold(0.99f);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({0}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({0, 0, 0}));
   EXPECT_THAT(

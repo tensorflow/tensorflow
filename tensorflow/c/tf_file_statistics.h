@@ -27,7 +27,7 @@ typedef struct TF_FileStatistics {
   bool is_directory;
 } TF_FileStatistics;
 
-// TODO(mihaimaruseac): `tensorflow::FileStatistics` from
+// TODO(b/139060984): `tensorflow::FileStatistics` from
 // `core/platform/file_statistics.h` is a duplicate of this so maybe try to
 // remove duplication later?
 

@@ -84,7 +84,7 @@ Status DecodeTensorNameSlice(const string& code, string* name,
       slice->set_length(d, length);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseShapeAndSlice(const string& shape_and_slice, TensorShape* shape,

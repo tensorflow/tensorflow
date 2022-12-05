@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_stream.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -292,6 +292,7 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
       BiasOp<GPUDevice, type>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
+TF_CALL_bfloat16(REGISTER_GPU_KERNEL);
 REGISTER_GPU_KERNEL(int32);
 #undef REGISTER_GPU_KERNEL
 
@@ -539,6 +540,7 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
       BiasGradOp<GPUDevice, type>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
+TF_CALL_bfloat16(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

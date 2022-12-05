@@ -1,6 +1,6 @@
 // RUN: tf-opt -split-input-file -verify-diagnostics -tf-resource-device-inference %s | FileCheck %s
 
-!tf_res = type tensor<*x!tf_type.resource<tensor<32xf32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<32xf32>>>
 
 // Tests that the pass can correctly propagate device attributes inside the same
 // function.
@@ -37,7 +37,7 @@ func.func @propagate_in_function(
 }
 
 // -----
-!tf_res = type tensor<*x!tf_type.resource<tensor<32xf32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<32xf32>>>
 
 // Tesets that the pass can propagate through tf.If's branches.
 
@@ -111,7 +111,7 @@ func.func @if_else(
 
 
 // -----
-!tf_res = type tensor<*x!tf_type.resource<tensor<32xf32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<32xf32>>>
 
 // Tesets that the pass can propagate through tf.While's branches.
 // CHECK-LABEL: func @propagate_while_op
@@ -196,7 +196,7 @@ func.func @while_cond(
 }
 
 // -----
-!tf_res = type tensor<*x!tf_type.resource<tensor<32xf32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<32xf32>>>
 
 // Tesets that the pass reports error on conflicting assignments from multiple
 // callers.
@@ -248,7 +248,7 @@ func.func @if_then_and_else(
 // -----
 
 // Test that the pass can propagate through calls
-!tf_res = type tensor<*x!tf_type.resource<tensor<32xf32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<32xf32>>>
 
 // CHECK-LABEL: func @test_function
 // CHECK-SAME: {tf.device = "/TPU:0"}

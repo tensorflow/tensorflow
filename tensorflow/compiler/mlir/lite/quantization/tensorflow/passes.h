@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_TENSORFLOW_PASSES_H_
 
 #include <memory>
+#include <string>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -26,10 +27,10 @@ namespace mlir {
 namespace TF {
 
 // Legalize the tf ops to the quant ops, so the quantization passes can work.
-std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFToQuantPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeTFToQuantPass();
 
 // Fallbacks ops that are not supported by TF Quantization to TFLite Flex ops.
-std::unique_ptr<OperationPass<FuncOp>> CreateFallbackToFlexOpsPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateFallbackToFlexOpsPass(
     const std::string &mode = "DEFAULT");
 
 }  // namespace TF

@@ -40,8 +40,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import summary_op_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.trackable import resource
 from tensorflow.python.training import training_util
-from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
@@ -360,19 +360,19 @@ class _ResourceSummaryWriter(SummaryWriter):
 
 
 class _MultiMetaclass(
-    type(_ResourceSummaryWriter), type(tracking.TrackableResource)):
+    type(_ResourceSummaryWriter), type(resource.TrackableResource)):
   pass
 
 
 class _TrackableResourceSummaryWriter(
     _ResourceSummaryWriter,
-    tracking.TrackableResource,
+    resource.TrackableResource,
     metaclass=_MultiMetaclass):
   """A `_ResourceSummaryWriter` subclass that implements `TrackableResource`."""
 
   def __init__(self, create_fn, init_op_fn):
     # Resolve multiple inheritance via explicit calls to __init__() on parents.
-    tracking.TrackableResource.__init__(self, device="/CPU:0")
+    resource.TrackableResource.__init__(self, device="/CPU:0")
     self._create_fn = create_fn
     self._init_op_fn = init_op_fn
     # Pass .resource_handle into _ResourceSummaryWriter parent class rather than
@@ -1111,12 +1111,35 @@ def flush(writer=None, name=None):
   Returns:
     The created `tf.Operation`.
   """
+  del name  # unused
   if writer is None:
     writer = _summary_state.writer
     if writer is None:
       return control_flow_ops.no_op()
   if isinstance(writer, SummaryWriter):
     return writer.flush()
+  raise ValueError("Invalid argument to flush(): %r" % (writer,))
+
+
+def legacy_raw_flush(writer=None, name=None):
+  """Legacy version of flush() that accepts a raw resource tensor for `writer`.
+
+  Do not use this function in any new code. Not supported and not part of the
+  public TF APIs.
+
+  Args:
+    writer: The `tf.summary.SummaryWriter` to flush. If None, the current
+      default writer will be used instead; if there is no current writer, this
+      returns `tf.no_op`. For this legacy version only, also accepts a raw
+      resource tensor pointing to the underlying C++ writer resource.
+    name: Ignored legacy argument for a name for the operation.
+
+  Returns:
+    The created `tf.Operation`.
+  """
+  if writer is None or isinstance(writer, SummaryWriter):
+    # Forward to the TF2 implementation of flush() when possible.
+    return flush(writer, name)
   else:
     # Legacy fallback in case we were passed a raw resource tensor.
     with ops.device("cpu:0"):

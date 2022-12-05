@@ -49,6 +49,14 @@ class LinearOperatorIdentityTest(
     # 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
 
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+        "operator_solve_with_same_type",
+    ]
+
   def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
@@ -298,6 +306,14 @@ class LinearOperatorScaledIdentityTest(
     # TODO(langmore) Test tf.float16 once tf.linalg.solve works in
     # 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
+
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+        "operator_solve_with_same_type",
+    ]
 
   def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
@@ -560,6 +576,14 @@ class LinearOperatorScaledIdentityTest(
     operator = linalg_lib.LinearOperatorScaledIdentity(
         num_rows=2, multiplier=multiplier)
     self.check_tape_safe(operator)
+
+  def test_convert_variables_to_tensors(self):
+    multiplier = variables_module.Variable(1.23)
+    operator = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows=2, multiplier=multiplier)
+    with self.cached_session() as sess:
+      sess.run([multiplier.initializer])
+      self.check_convert_variables_to_tensors(operator)
 
 
 if __name__ == "__main__":

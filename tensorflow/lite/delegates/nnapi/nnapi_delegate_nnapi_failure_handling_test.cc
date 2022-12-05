@@ -21,17 +21,18 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <ostream>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_mock_test.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
@@ -61,7 +62,8 @@ class AddSubOpsAcceleratedModel : public MultiOpModel {
       : MultiOpModel() {
     StatefulNnApiDelegate::Options options;
     options.accelerator_name = accelerator_name.c_str();
-    stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi, options));
+    stateful_delegate_ =
+        std::make_unique<StatefulNnApiDelegate>(nnapi, options);
     SetDelegate(stateful_delegate_.get());
     Init(input1, input2, input3, output, activation_type,
          allow_fp32_relax_to_fp16);

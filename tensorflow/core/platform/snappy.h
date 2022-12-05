@@ -17,31 +17,23 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_SNAPPY_H_
 
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/snappy.h"
 
 #if !defined(PLATFORM_WINDOWS)
 #include <sys/uio.h>
 #else
 namespace tensorflow {
-struct iovec {
-  void* iov_base;
-  size_t iov_len;
-};
+using tsl::iovec;
 }  // namespace tensorflow
 #endif
 
 namespace tensorflow {
 namespace port {
-
-// Snappy compression/decompression support
-bool Snappy_Compress(const char* input, size_t length, string* output);
-
-bool Snappy_GetUncompressedLength(const char* input, size_t length,
-                                  size_t* result);
-bool Snappy_Uncompress(const char* input, size_t length, char* output);
-
-bool Snappy_UncompressToIOVec(const char* compressed, size_t compressed_length,
-                              const struct iovec* iov, size_t iov_cnt);
-
+using tsl::port::Snappy_Compress;
+using tsl::port::Snappy_CompressFromIOVec;
+using tsl::port::Snappy_GetUncompressedLength;
+using tsl::port::Snappy_Uncompress;
+using tsl::port::Snappy_UncompressToIOVec;
 }  // namespace port
 }  // namespace tensorflow
 

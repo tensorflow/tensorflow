@@ -25,7 +25,7 @@ class TestOptimization : public GraphOptimizationPass {
   static int count_;
   Status Run(const GraphOptimizationPassOptions& options) override {
     ++count_;
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -43,9 +43,8 @@ TEST(OptimizationRegistry, OptimizationPass) {
       new FunctionLibraryDefinition(OpRegistry::Global(),
                                     FunctionDefLibrary{}));
   options.flib_def = flib_def.get();
-  EXPECT_EQ(Status::OK(),
-            OptimizationPassRegistry::Global()->RunGrouping(
-                OptimizationPassRegistry::PRE_PLACEMENT, options));
+  EXPECT_EQ(OkStatus(), OptimizationPassRegistry::Global()->RunGrouping(
+                            OptimizationPassRegistry::PRE_PLACEMENT, options));
   EXPECT_EQ(1, TestOptimization::count_);
 }
 
@@ -71,7 +70,7 @@ class OptimizationPassTest : public ::testing::Test {
   void RunPass() {
     GraphOptimizationPassOptions options;
     options.flib_def = flib_def_.get();
-    EXPECT_EQ(Status::OK(),
+    EXPECT_EQ(OkStatus(),
               OptimizationPassRegistry::Global()->RunGrouping(
                   OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, options));
   }

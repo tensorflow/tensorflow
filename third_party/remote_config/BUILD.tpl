@@ -18,8 +18,8 @@ platform(
     name = "platform",
     visibility = ["//visibility:public"],
     constraint_values = [
-        "@bazel_tools//platforms:%{cpu}",
-        "@bazel_tools//platforms:%{platform}",
+        "@platforms//cpu:%{cpu}",
+        "@platforms//os:%{platform}",
         ":platform_constraint",
     ],
     exec_properties = %{exec_properties},

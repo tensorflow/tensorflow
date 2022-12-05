@@ -70,7 +70,7 @@ Status CompileXla(xla::CompileOnlyClient* client,
     return errors::Unknown("Couldn't get XLA program shape: ",
                            pshape_or.status().error_message());
   }
-  compile_result->program_shape = pshape_or.ValueOrDie()->ToProto();
+  compile_result->program_shape = pshape_or.value()->ToProto();
   xla::ProgramShapeProto* pshape = &compile_result->program_shape;
 
   // AotXlaComputationInstance::argument_layouts is a vector of Shape
@@ -95,11 +95,11 @@ Status CompileXla(xla::CompileOnlyClient* client,
   }
   compile_result->aot =
       xla::unique_ptr_static_cast<xla::cpu::CpuAotCompilationResult>(
-          std::move(aot_or.ValueOrDie().back()));
+          std::move(aot_or.value().back()));
   compile_result->entry_point = aot_opts.entry_point_name();
   compile_result->pointer_size =
       xla::CompileOnlyClient::PointerSizeForTriple(aot_opts.triple());
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -110,10 +110,9 @@ Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
   // computation.
   // TODO(toddw): Should we let the user pick the XLA cpu vs. gpu client?
   se::Platform* cpu_platform =
-      se::MultiPlatformManager::PlatformWithName("Host").ValueOrDie();
+      se::MultiPlatformManager::PlatformWithName("Host").value();
   xla::CompileOnlyClient* client =
-      xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform)
-          .ValueOrDie();
+      xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform).value();
   xla::XlaComputation computation;
 
   bool use_mlir_hlo_lowering = false;
@@ -241,7 +240,7 @@ Status Main(const MainFlags& flags) {
       nodes.insert(fetch.id().node_name());
     }
     std::cout << absl::StrJoin(nodes, ",");
-    return Status::OK();
+    return OkStatus();
   }
 
   // Read and initialize the graph.
@@ -286,7 +285,7 @@ Status Main(const MainFlags& flags) {
   TF_RETURN_IF_ERROR(GenerateHeader(codegen_opts, config, compile_result,
                                     metadata_result, &header));
   TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_header, header));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tfcompile

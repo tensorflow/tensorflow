@@ -31,63 +31,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_RANDOM_DISTRIBUTION_SAMPLER_H_
 #define TENSORFLOW_CORE_LIB_RANDOM_DISTRIBUTION_SAMPLER_H_
 
-#include <memory>
-#include <utility>
-
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/lib/random/distribution_sampler.h"
 
 namespace tensorflow {
 namespace random {
-
-class DistributionSampler {
- public:
-  explicit DistributionSampler(const gtl::ArraySlice<float>& weights);
-
-  ~DistributionSampler() {}
-
-  int Sample(SimplePhilox* rand) const {
-    float r = rand->RandFloat();
-    // Since n is typically low, we don't bother with UnbiasedUniform.
-    int idx = rand->Uniform(num_);
-    if (r < prob(idx)) return idx;
-    // else pick alt from that bucket.
-    DCHECK_NE(-1, alt(idx));
-    return alt(idx);
-  }
-
-  int num() const { return num_; }
-
- private:
-  float prob(int idx) const {
-    DCHECK_LT(idx, num_);
-    return data_[idx].first;
-  }
-
-  int alt(int idx) const {
-    DCHECK_LT(idx, num_);
-    return data_[idx].second;
-  }
-
-  void set_prob(int idx, float f) {
-    DCHECK_LT(idx, num_);
-    data_[idx].first = f;
-  }
-
-  void set_alt(int idx, int val) {
-    DCHECK_LT(idx, num_);
-    data_[idx].second = val;
-  }
-
-  int num_;
-  std::unique_ptr<std::pair<float, int>[]> data_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(DistributionSampler);
-};
-
+using tsl::random::DistributionSampler;  // NOLINT(misc-unused-using-decls)
 }  // namespace random
 }  // namespace tensorflow
 

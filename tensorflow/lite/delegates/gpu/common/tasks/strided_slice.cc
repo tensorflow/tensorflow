@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/strided_slice.h"
 
 #include <string>
+#include <utility>
 
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 

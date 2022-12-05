@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_PERCEPTION_OPS_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_PERCEPTION_OPS_UTILS_H_
 
+#include <string>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -28,7 +30,7 @@ namespace TFL {
 // Fuse MaxUnpooling2D ops annotated by tf.function to a TFLite custom op.
 class ConvertMaxUnpoolingFunc {
  public:
-  explicit ConvertMaxUnpoolingFunc(FuncOp func, mlir::TF::FuncAttr attr)
+  explicit ConvertMaxUnpoolingFunc(func::FuncOp func, mlir::TF::FuncAttr attr)
       : func_(func), attr_(attr) {}
 
   LogicalResult RewriteFunc();
@@ -38,21 +40,21 @@ class ConvertMaxUnpoolingFunc {
  private:
   LogicalResult CreateCustomOptions(std::string& custom_option_buffer);
 
-  FuncOp func_;
+  func::FuncOp func_;
   mlir::TF::FuncAttr attr_;
 };
 
 // Fuse DenseImageWarp ops annotated by tf.function to a TFLite custom op.
 class ConvertDenseImageWarpFunc {
  public:
-  explicit ConvertDenseImageWarpFunc(FuncOp func) : func_(func) {}
+  explicit ConvertDenseImageWarpFunc(func::FuncOp func) : func_(func) {}
 
   LogicalResult RewriteFunc();
 
   LogicalResult VerifySignature();
 
  private:
-  FuncOp func_;
+  func::FuncOp func_;
 };
 
 }  // end namespace TFL

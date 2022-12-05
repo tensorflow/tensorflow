@@ -32,7 +32,7 @@ class ShapeOutputTest(trt_test.TfTrtIntegrationTestBase):
   """Test shape value output with TF-TRT."""
 
   def setUp(self):
-    super(trt_test.TfTrtIntegrationTestBase, self).setUp()  # pylint: disable=bad-super-call
+    super().setUp()
     self.DisableNonTrtOptimizers()
 
   def GraphFn(self, x):
@@ -65,6 +65,11 @@ class ShapeOutputTest(trt_test.TfTrtIntegrationTestBase):
       # Second segment not converted in implicit batch mode, because its
       # tensors have only one dimensions
       return ["TRTEngineOp_000"]
+
+  def ShouldRunTest(self, run_params):
+    # We cannot calibrate without bulding the engine, we turn of INT8 test.
+    return (run_params.dynamic_shape and
+            run_params.precision_mode != "INT8", "no calibration dynamic shape")
 
 
 class ShapeOutputWithSingleInputProfile(ShapeOutputTest):
@@ -222,6 +227,11 @@ class ShapeValueMaskTest(trt_test.TfTrtIntegrationTestBase):
       return ["TRTEngineOp_000"]
     else:
       return []
+
+  def ShouldRunTest(self, run_params):
+    # We cannot calibrate without bulding the engine, we turn of INT8 test.
+    return (run_params.dynamic_shape and
+            run_params.precision_mode != "INT8", "no calibration dynamic shape")
 
 
 if __name__ == "__main__":

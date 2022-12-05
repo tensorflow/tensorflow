@@ -39,15 +39,15 @@ class GenerateTestHloChecksTest(absltest.TestCase):
         generate_test_hlo_checks.replace_instruction_names(input_hlo), """
 %param.0 # Do not replace if it's not CHECK'd.
 // CHECK: %computation { # Do not replace computations
-// CHECK: [[INSTR_0:%[^ ]+]] = parameter(0) # Replace
-// CHECK: [[INSTR_1:%[^ ]+]] = parameter(1)
-// CHECK-NEXT: [[INSTR_2:%[^ ]+]] = add([[INSTR_0]], [[INSTR_1]]) # Replace for any CHECK-directive
-// CHECK-NEXT: ROOT [[INSTR_3:%[^ ]+]] = reduce([[INSTR_2]])
+// CHECK: [[param_0_0:%[^ ]+]] = parameter(0) # Replace
+// CHECK: [[param_1_1:%[^ ]+]] = parameter(1)
+// CHECK-NEXT: [[add_1_2:%[^ ]+]] = add([[param_0_0]], [[param_1_1]]) # Replace for any CHECK-directive
+// CHECK-NEXT: ROOT [[reduce_3:%[^ ]+]] = reduce([[add_1_2]])
 // CHECK-NEXT: }
 // CHECK: %computation.2 { # New computation resets the counter.
-// CHECK-NEXT: [[INSTR_0:%[^ ]+]] = parameter(0)
-// CHECK-NEXT: [[INSTR_1:%[^ ]+]] = get-tuple-element([[INSTR_0]])
-// CHECK-NEXT: ROOT [[INSTR_2:%[^ ]+]] = bitcast-convert([[INSTR_1]])
+// CHECK-NEXT: [[parameter_0_0:%[^ ]+]] = parameter(0)
+// CHECK-NEXT: [[get_tuple_element_1_1:%[^ ]+]] = get-tuple-element([[parameter_0_0]])
+// CHECK-NEXT: ROOT [[bitcast_convert_2:%[^ ]+]] = bitcast-convert([[get_tuple_element_1_1]])
 """)
 
 

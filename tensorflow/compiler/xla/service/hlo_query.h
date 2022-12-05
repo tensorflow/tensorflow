@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_QUERY_H_
 
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 
 namespace xla {
 
@@ -57,18 +57,17 @@ bool ContainsInstrWithOpcode(const HloComputation* comp,
 // Returns an operand of an instruction with the given opcode. If there are
 // multiple matching operands, then the first matching operand is returned. If
 // there are no matching operands then nullptr is returned.
-HloInstruction* GetMatchingOperand(
-    const std::function<bool(const HloInstruction*)>& matcher,
-    HloInstruction* instruction);
+HloInstruction* GetMatchingOperand(const HloPredicate& matcher,
+                                   HloInstruction* instruction);
 
 // Returns whether a binary instruction has a matching operand. Sets
 // matching_operand to the matching operand and the other operand to
 // other_operand. Note: in the case where both operands match, the first operand
 // of the instruction is returned.
-bool MatchBinaryInstructionOperand(
-    const std::function<bool(const HloInstruction*)>& matcher,
-    HloInstruction* instruction, HloInstruction** matching_operand,
-    HloInstruction** other_operand);
+bool MatchBinaryInstructionOperand(const HloPredicate& matcher,
+                                   HloInstruction* instruction,
+                                   HloInstruction** matching_operand,
+                                   HloInstruction** other_operand);
 
 // Returns whether a binary instruction has a operand with a given opcode.
 // This is a special case of MatchingBinaryInstructionOperand.

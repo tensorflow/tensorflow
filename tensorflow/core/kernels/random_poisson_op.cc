@@ -71,7 +71,7 @@ namespace functor {
 template <typename T, typename U>
 struct PoissonFunctor<CPUDevice, T, U> {
   void operator()(OpKernelContext* ctx, const CPUDevice& d, const T* rate_flat,
-                  int num_rate, int num_samples,
+                  int64_t num_rate, int64_t num_samples,
                   const random::PhiloxRandom& rng, U* samples_flat) {
     // Two different algorithms are employed, depending on the size of
     // rate.
@@ -296,8 +296,8 @@ class RandomPoissonOp : public OpKernel {
     TensorShape samples_shape;
     OP_REQUIRES_OK(ctx, tensor::MakeShape(shape_t, &samples_shape));
     const int64_t num_samples = samples_shape.num_elements();
+    OP_REQUIRES_OK(ctx, samples_shape.AppendShapeWithStatus(rate_t.shape()));
 
-    samples_shape.AppendShape(rate_t.shape());
     // Allocate output samples.
     Tensor* samples_t = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, samples_shape, &samples_t));

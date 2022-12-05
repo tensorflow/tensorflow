@@ -1,0 +1,19 @@
+op {
+  graph_op_name: "XlaRecvTPUEmbeddingDeduplicationData"
+  visibility: HIDDEN
+  attr {
+    name: "config"
+    description: <<END
+Serialized TPUEmbeddingConfiguration proto.
+END
+  }
+  summary: "Receives deduplication data (indices and weights) from the embedding core."
+  description: <<END
+The deduplication data is a Tensor with type=DT_VARIANT. The tensor itself is an
+XLA nested tuple containing N elements (where N is the ratio of the number of
+embedding to tensor cores per TPU chip). Each element of the nested tuple is a
+tuple of rank 1 tensors. Each tensor either contains indices (DT_UINT32) for
+embedding lookup on the TensorCore or weights (DT_FLOAT) to apply to the output
+of the embedding lookup operation.
+END
+}

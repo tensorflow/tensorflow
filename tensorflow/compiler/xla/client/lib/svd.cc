@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -834,7 +834,7 @@ SVDResult SVD(XlaOp a, int64_t max_iter, float epsilon,
   if (!shape_with_status.status().ok()) {
     return return_error(shape_with_status.status());
   }
-  Shape a_shape = shape_with_status.ValueOrDie();
+  Shape a_shape = shape_with_status.value();
   const int64_t num_dims = a_shape.rank();
   const int64_t num_batch_dims = num_dims - 2;
   std::vector<int64_t> batch_dims(num_batch_dims);
@@ -856,7 +856,7 @@ SVDResult SVD(XlaOp a, int64_t max_iter, float epsilon,
   if (!svd_result_or.ok()) {
     return return_error(svd_result_or.status());
   }
-  SVDResult svd_result = svd_result_or.ValueOrDie();
+  SVDResult svd_result = svd_result_or.value();
 
   auto output_with_status = WhileLoopFn(
       {
@@ -874,7 +874,7 @@ SVDResult SVD(XlaOp a, int64_t max_iter, float epsilon,
     return return_error(output_with_status.status());
   }
 
-  auto output = output_with_status.ValueOrDie();
+  auto output = output_with_status.value();
 
   svd_result.u = output[1];
   svd_result.v = output[2];
@@ -884,7 +884,7 @@ SVDResult SVD(XlaOp a, int64_t max_iter, float epsilon,
   if (!svd_result_or.ok()) {
     return return_error(svd_result_or.status());
   }
-  svd_result = svd_result_or.ValueOrDie();
+  svd_result = svd_result_or.value();
 
   if (maybe_transpose) {
     std::swap(svd_result.u, svd_result.v);

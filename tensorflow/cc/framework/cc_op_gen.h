@@ -21,11 +21,12 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-
+namespace cc_op {
 /// Result is written to files dot_h and dot_cc.
 void WriteCCOps(const OpList& ops, const ApiDefMap& api_def_map,
                 const string& dot_h_fname, const string& dot_cc_fname);
 
+}  // namespace cc_op
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_H_

@@ -17,22 +17,22 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/dynamic_annotations.h"
-#include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace {
 void R0F32Add2(float* out, float** in) {
@@ -73,6 +73,15 @@ void CustomCallFail(float*, float** in, XlaCustomCallStatus* status) {
   XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
 }
 
+void CustomCallFailWithBackendConfigStr(float*, float**, const char* opaque,
+                                        size_t opaque_len,
+                                        XlaCustomCallStatus* status) {
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(opaque, opaque_len);
+  auto msg = absl::StrFormat("Fail with raw backend config str: %s.",
+                             absl::string_view(opaque, opaque_len));
+  XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
+}
+
 }  // namespace
 
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R0F32Add2);
@@ -81,9 +90,12 @@ XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(Add1ToValues);
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(F32TupleSwap);
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R0F32Add2Succeed);
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(CustomCallFail);
+XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(CustomCallFailWithBackendConfigStr);
 
 namespace xla {
 namespace {
+
+using ::testing::HasSubstr;
 
 class CustomCallTest : public HloTestBase {
  protected:
@@ -184,7 +196,7 @@ XLA_TEST_F(CustomCallTest, LayoutConstrained) {
       b.AddInstruction(HloInstruction::CreateParameter(0, r2f32_, "p"));
 
   const Shape& r2f32_dim0_major =
-      ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0});
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0});
   auto custom_call = b.AddInstruction(HloInstruction::CreateCustomCall(
       r2f32_dim0_major, {input}, "Add1ToValues", {r2f32_dim0_major}));
   b.AddInstruction(
@@ -249,7 +261,7 @@ XLA_TEST_F(CustomCallTest, ReportsFailure) {
   module->AddEntryComputation(builder.Build());
 
   auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), tensorflow::error::Code::INTERNAL);
+  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
   EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Failed: 42.0"));
 }
 
@@ -273,7 +285,7 @@ XLA_TEST_F(CustomCallTest, ReportsFirstFailure) {
   module->AddEntryComputation(builder.Build());
 
   auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), tensorflow::error::Code::INTERNAL);
+  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
   EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Failed: 1.0"));
 }
 
@@ -296,8 +308,28 @@ XLA_TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), tensorflow::error::Code::INTERNAL);
-  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Failed: 1.0"));
+  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
+  EXPECT_THAT(status.error_message(), HasSubstr("Failed: 1.0"));
+}
+
+XLA_TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
+  const char* const kModuleStr = R"(
+    HloModule m
+    ENTRY test {
+      c0 = f32[] constant(1.0)
+      ROOT dummy-result = f32[] custom-call(f32[] %c0),
+                                custom_call_target="CustomCallFailWithBackendConfigStr",
+                                backend_config="foo",
+                                api_version=API_VERSION_STATUS_RETURNING_UNIFIED
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  auto status = Execute(std::move(module), {}).status();
+  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Fail with raw backend config str: foo"));
 }
 
 class CustomCallClientAPITest : public ClientLibraryTestBase {};

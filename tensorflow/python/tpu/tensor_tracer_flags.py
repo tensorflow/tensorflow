@@ -18,7 +18,7 @@
 import os
 import os.path
 import re
-
+from absl import flags
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -31,6 +31,7 @@ TRACE_MODE_NAN_INF = 'nan-inf'
 TRACE_MODE_NORM = 'norm'
 TRACE_MODE_MAX_ABS = 'max-abs'
 TRACE_MODE_SUMMARY = 'summary'
+TRACE_MODE_HISTORY = 'history'
 # summary mode to collects a finite set of signatures for each traced tensor,
 # (such as norm, max, min, mean) and dumps it using tb summaries.
 
@@ -113,6 +114,21 @@ TT_SUMMARY_SIGNATURES = (TT_SUMMARY_NORM, TT_SUMMARY_MAX, TT_SUMMARY_MIN,
                          TT_SUMMARY_SPARSITY, TT_SUMMARY_MEAN, TT_SUMMARY_VAR,
                          TT_SUMMARY_SIZE, TT_SUMMARY_MAX_ABS)
 
+FLAGS = flags.FLAGS
+
+DELTA_THRESHOLD = flags.DEFINE_float(
+    'delta_threshold',
+    default=0.5,
+    help=('Log if history based diff crosses this threshold.'))
+TT_CHECK_FILTER = flags.DEFINE_bool(
+    'tt_check_filter',
+    default=False,
+    help='Terminate early to check op name filtering.')
+TT_SINGLE_CORE_SUMMARIES = flags.DEFINE_bool(
+    'tt_single_core_summaries',
+    default=False,
+    help='Report single core metric and avoid aggregation.')
+
 
 class TTParameters(object):
   """A class that handles the parameters of Tensor Tracer."""
@@ -141,6 +157,7 @@ class TTParameters(object):
     self.trace_scalar_ops = self.is_flag_on(FLAG_NAME_TRACE_SCALAR_OPS)
     self.use_compact_trace = self.trace_mode in (TRACE_MODE_NAN_INF,
                                                  TRACE_MODE_NORM,
+                                                 TRACE_MODE_HISTORY,
                                                  TRACE_MODE_MAX_ABS,
                                                  TRACE_MODE_SUMMARY)
     self.use_temp_cache_var = self.is_flag_on(FLAG_NAME_TEMP_CACHE_VAR)
@@ -214,7 +231,8 @@ class TTParameters(object):
     valid_trace_modes = [
         TRACE_MODE_NAN_INF, TRACE_MODE_PART_TENSOR, TRACE_MODE_FULL_TENSOR,
         TRACE_MODE_NORM, TRACE_MODE_MAX_ABS,
-        TRACE_MODE_SUMMARY, TRACE_MODE_FULL_TENSOR_SUMMARY
+        TRACE_MODE_SUMMARY, TRACE_MODE_FULL_TENSOR_SUMMARY,
+        TRACE_MODE_HISTORY
     ]
     if trace_mode not in valid_trace_modes:
       raise ValueError('Invalid trace mode "%s" given to the Tensor_Tracer.'
@@ -241,11 +259,11 @@ class TTParameters(object):
     return submode
 
   @staticmethod
-  def match_next_flag(flags, pos):
+  def match_next_flag(tt_flags, pos):
     """Returns the match for the next TensorTracer flag.
 
     Args:
-       flags: a string that contains the flags.
+       tt_flags: a string that contains the flags.
        pos: where in flags to start the search.
 
     Returns:
@@ -254,16 +272,16 @@ class TTParameters(object):
        has a value.
     """
 
-    match = _FLAG_DOUBLE_QUOTE_PAT.match(flags, pos)
+    match = _FLAG_DOUBLE_QUOTE_PAT.match(tt_flags, pos)
     if match:
       return match, True
-    match = _FLAG_SINGLE_QUOTE_PAT.match(flags, pos)
+    match = _FLAG_SINGLE_QUOTE_PAT.match(tt_flags, pos)
     if match:
       return match, True
-    match = _FLAG_NO_QUOTE_PAT.match(flags, pos)
+    match = _FLAG_NO_QUOTE_PAT.match(tt_flags, pos)
     if match:
       return match, True
-    match = _FLAG_NO_EQUAL_PAT.match(flags, pos)
+    match = _FLAG_NO_EQUAL_PAT.match(tt_flags, pos)
     if match:
       # The flag is found but is not given a value.
       return match, False
@@ -324,6 +342,7 @@ class TTParameters(object):
     # cores have a different number of elements. Variance uses the maximal core
     # variance.
     return {TRACE_MODE_NORM: linalg_ops.norm,
+            TRACE_MODE_HISTORY: math_ops.reduce_max,
             TRACE_MODE_MAX_ABS: math_ops.reduce_max,
             TRACE_MODE_NAN_INF: math_ops.reduce_max,
             TT_SUMMARY_NORM: linalg_ops.norm,

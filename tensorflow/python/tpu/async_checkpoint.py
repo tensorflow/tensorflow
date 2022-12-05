@@ -28,12 +28,27 @@ from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 from tensorflow.python.training.summary_io import SummaryWriterCache
+
+
+# Captures the timestamp of the first Saver object instantiation or end of a
+# save operation. Can be accessed by multiple Saver instances.
+_END_TIME_OF_LAST_WRITE = None
+_END_TIME_OF_LAST_WRITE_LOCK = threading.Lock()
+
+# API label for cell names used in TF1 async checkpoint metrics.
+_ASYNC_CHECKPOINT_V1 = "async_checkpoint_v1"
+
+
+def _get_duration_microseconds(start_time_seconds, end_time_seconds) -> int:
+  """Returns the duration between start and end time in microseconds."""
+  return max(int((end_time_seconds - start_time_seconds) * 1000000), 0)
 
 
 class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
@@ -86,6 +101,12 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
     self._global_step_tensor = None
 
     self._last_checkpoint_step = None
+
+    # Initialize the first timestamp for _END_TIME_OF_LAST_WRITE.
+    global _END_TIME_OF_LAST_WRITE
+    with _END_TIME_OF_LAST_WRITE_LOCK:
+      if _END_TIME_OF_LAST_WRITE is None:
+        _END_TIME_OF_LAST_WRITE = time.time()
 
   def _set_steps_per_run(self, steps_per_run):
     self._steps_per_run = steps_per_run
@@ -171,25 +192,55 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
       for l in self._listeners:
         l.after_save(session, step)
 
+      # Measure the async checkpoint write duration, i.e., non-blocking time.
       end_time = time.time()
+      metrics.AddAsyncCheckpointWriteDuration(
+          api_label=_ASYNC_CHECKPOINT_V1,
+          microseconds=_get_duration_microseconds(start_time, end_time))
+
+      # Measure the elapsed time since the last checkpoint.
+      # Due to the nature of async checkpoint, here it actually captures the
+      # duration between the start_time of the previous checkpoint and the start
+      # time of this checkpoint. As a result, the duration of the final async
+      # checkpoint is excluded, which is fine since it does not take much time.
+      global _END_TIME_OF_LAST_WRITE
+      with _END_TIME_OF_LAST_WRITE_LOCK:
+        metrics.AddTrainingTimeSaved(
+            api_label=_ASYNC_CHECKPOINT_V1,
+            microseconds=_get_duration_microseconds(_END_TIME_OF_LAST_WRITE,
+                                                    start_time))
+      _END_TIME_OF_LAST_WRITE = start_time
+
       logging.info("Checkpoint actual writing time: (%.3f sec)",
                    end_time - start_time)
       logging.info("Checkpoint finished for %d into %s.", step, self._save_path)
 
+    # Measure the checkpoint write duration that is blocking the main thread.
+    blocking_start_time = time.time()
+    def end_of_blocking_time():
+      blocking_end_time = time.time()
+      metrics.AddCheckpointWriteDuration(
+          api_label=_ASYNC_CHECKPOINT_V1,
+          microseconds=_get_duration_microseconds(blocking_start_time,
+                                                  blocking_end_time))
+
     if not asynchronous:
       self._last_checkpoint_step = step
       _save_fn()
+      end_of_blocking_time()
       return
 
     if self._save_thread is not None:
       self._save_thread.join(timeout=0.1)
       if self._save_thread.is_alive():
         logging.info("Saver thread still in progress, skipping checkpoint.")
+        end_of_blocking_time()
         return
 
     self._last_checkpoint_step = step
     self._save_thread = threading.Thread(target=_save_fn)
     self._save_thread.start()
+    end_of_blocking_time()
 
   def _get_saver(self):
     if self._saver is not None:

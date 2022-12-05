@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "ListDataset"
+  visibility: HIDDEN
+  summary: "Creates a dataset that emits each of `tensors` once."
+}

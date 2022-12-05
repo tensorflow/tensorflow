@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/shape_tree.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -250,7 +251,7 @@ TEST_F(ShapeTreeTest, InvalidIndexingNestedTuple) {
 TEST_F(ShapeTreeTest, ShapeTreeOfNonCopyableType) {
   ShapeTree<std::unique_ptr<int>> shape_tree{tuple_shape_};
   EXPECT_EQ(shape_tree.element({2}).get(), nullptr);
-  *shape_tree.mutable_element({2}) = absl::make_unique<int>(42);
+  *shape_tree.mutable_element({2}) = std::make_unique<int>(42);
   EXPECT_EQ(*shape_tree.element({2}), 42);
 }
 
@@ -590,7 +591,7 @@ void BM_Copy(::testing::benchmark::State& state) {
   ShapeTree<int> shape_tree(shape);
   for (auto s : state) {
     ShapeTree<int> copy = shape_tree;
-    tensorflow::testing::DoNotOptimize(copy);
+    tsl::testing::DoNotOptimize(copy);
   }
 }
 
@@ -624,7 +625,7 @@ void BM_ForEach(::testing::benchmark::State& state) {
   ShapeTree<int> shape_tree(shape);
   for (auto s : state) {
     shape_tree.ForEachMutableElement([](const ShapeIndex& index, int* data) {
-      tensorflow::testing::DoNotOptimize(index);
+      tsl::testing::DoNotOptimize(index);
     });
   }
 }
@@ -642,7 +643,7 @@ void BM_Iterate(::testing::benchmark::State& state) {
   ShapeTree<int> shape_tree(shape);
   for (auto s : state) {
     for (auto& iter : shape_tree) {
-      tensorflow::testing::DoNotOptimize(iter.second);
+      tsl::testing::DoNotOptimize(iter.second);
     }
   }
 }

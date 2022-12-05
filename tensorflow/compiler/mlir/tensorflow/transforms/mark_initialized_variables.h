@@ -28,7 +28,7 @@ namespace tf_saved_model {
 // If 'session' is NULL the function is no-op.
 // Returns failure in case fetching variables from session failed, success
 // otherwise.
-LogicalResult MarkInitializedVariablesInFunction(FuncOp function,
+LogicalResult MarkInitializedVariablesInFunction(func::FuncOp function,
                                                  tensorflow::Session* session);
 // Apply `MarkInitializedVariablesInFunction` to every non-empty function in the
 // module.

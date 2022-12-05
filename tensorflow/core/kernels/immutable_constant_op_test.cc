@@ -83,7 +83,7 @@ class TestFileSystem : public NullFileSystem {
     auto region = new TestReadOnlyMemoryRegion(kTestTensorSizeBytes);
     std::fill_n(region->GetWritableDataStart(), kTestTensorSize, val);
     result->reset(region);
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -158,7 +158,7 @@ Status CreateTempFileFloat(Env* env, float value, uint64 size,
     TF_RETURN_IF_ERROR(file->Append(sp));
   }
   TF_RETURN_IF_ERROR(file->Close());
-  return Status::OK();
+  return OkStatus();
 }
 
 TEST(ImmutableConstantOpTest, FromFile) {
@@ -199,7 +199,7 @@ Status CreateTempFileBadString(Env* env, char value, uint64 size,
   TF_RETURN_IF_ERROR(env->NewWritableFile(*filename, &file));
   TF_RETURN_IF_ERROR(file->Append(std::string(size, value)));
   TF_RETURN_IF_ERROR(file->Close());
-  return Status::OK();
+  return OkStatus();
 }
 
 TEST(ImmutableConstantOpTest, FromFileStringUnimplmented) {

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_op_or_val_NAME_MAPPER_H_
-#define TENSORFLOW_COMPILER_MLIR_op_or_val_NAME_MAPPER_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_OP_OR_ARG_NAME_MAPPER_H_
+#define TENSORFLOW_COMPILER_MLIR_OP_OR_ARG_NAME_MAPPER_H_
 
 #include <string>
 
@@ -99,4 +99,4 @@ class OpOrArgStripNameMapper : public OpOrArgNameMapper {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_op_or_val_NAME_MAPPER_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_OP_OR_ARG_NAME_MAPPER_H_

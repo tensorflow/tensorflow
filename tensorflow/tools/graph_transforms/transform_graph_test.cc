@@ -40,7 +40,7 @@ Status test_empty_graph_transform(const GraphDef& graph_def,
                                   const TransformFuncContext& context,
                                   GraphDef* result) {
   result->Clear();
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 

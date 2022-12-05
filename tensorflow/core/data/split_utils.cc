@@ -35,18 +35,18 @@ Status IndexSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
   mutex_lock l(mu_);
   if (i_ >= n_) {
     *end_of_splits = true;
-    return Status::OK();
+    return OkStatus();
   }
   *end_of_splits = false;
   *split = Tensor(DT_INT64, TensorShape{});
   split->scalar<int64_t>()() = i_++;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IndexSplitProvider::Reset() {
   mutex_lock l(mu_);
   i_ = 0;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IndexSplitProvider::Save(
@@ -76,20 +76,20 @@ Status ShardingSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
   while (num_to_skip_ > 0) {
     TF_RETURN_IF_ERROR(split_provider_->GetNext(split, end_of_splits));
     if (*end_of_splits) {
-      return Status::OK();
+      return OkStatus();
     }
     num_to_skip_--;
   }
   num_to_skip_ = num_shards_ - 1;
   TF_RETURN_IF_ERROR(split_provider_->GetNext(split, end_of_splits));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ShardingSplitProvider::Reset() {
   mutex_lock l(mu_);
   TF_RETURN_IF_ERROR(split_provider_->Reset());
   num_to_skip_ = shard_index_;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ShardingSplitProvider::Save(
@@ -114,7 +114,7 @@ Status ShardingSplitProvider::Restore(
       },
       reader));
   TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kNumToSkip), &num_to_skip_));
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::shared_ptr<SplitProvider>> GetSingleSplitProvider(

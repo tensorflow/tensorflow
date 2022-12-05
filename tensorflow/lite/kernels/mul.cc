@@ -17,8 +17,10 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include <complex>
+
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
@@ -163,8 +165,22 @@ void EvalMul(TfLiteContext* context, TfLiteNode* node, TfLiteMulParams* params,
     } else {
       TF_LITE_MUL(reference_ops, Mul, int64_t);
     }
-  }
 #undef TF_LITE_MUL
+  } else if (output->type == kTfLiteComplex64) {
+#define TF_LITE_MUL_COMPLEX(op_name)                                      \
+  reference_ops::op_name(                                                 \
+      op_params, GetTensorShape(input1),                                  \
+      GetTensorData<std::complex<float>>(input1), GetTensorShape(input2), \
+      GetTensorData<std::complex<float>>(input2), GetTensorShape(output), \
+      GetTensorData<std::complex<float>>(output));
+
+    if (need_broadcast) {
+      TF_LITE_MUL_COMPLEX(BroadcastMul4DSlow);
+    } else {
+      TF_LITE_MUL_COMPLEX(Mul);
+    }
+#undef TF_LITE_MUL_COMPLEX
+  }
 }
 
 template <KernelType kernel_type>
@@ -280,9 +296,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
-
+  if (output->type == kTfLiteComplex64 && params->activation) {
+    TF_LITE_KERNEL_LOG(context,
+                       "Activation is not allowed for COMPLEX64 input.");
+    return kTfLiteError;
+  }
   if (output->type == kTfLiteFloat32 || output->type == kTfLiteInt32 ||
-      output->type == kTfLiteInt64) {
+      output->type == kTfLiteInt64 || output->type == kTfLiteComplex64) {
     EvalMul<kernel_type>(context, node, params, data, input1, input2, output);
   } else if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
              output->type == kTfLiteInt16) {
@@ -290,10 +310,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         context, EvalQuantized<kernel_type>(context, node, params, data, input1,
                                             input2, output));
   } else {
-    TF_LITE_KERNEL_LOG(context,
-                       "Mul only supports FLOAT32, INT32 and quantized UINT8,"
-                       " INT8 and INT16 now, got %d.",
-                       output->type);
+    TF_LITE_KERNEL_LOG(
+        context, "Mul only supports FLOAT32, COMPLEX32, INT8, INT16,",
+        " INT32, INT64 and quantized UINT8 now, got %d.", output->type);
     return kTfLiteError;
   }
 

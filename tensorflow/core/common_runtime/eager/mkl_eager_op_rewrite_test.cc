@@ -35,7 +35,7 @@ class EagerOpRewriteTest : public ::testing::Test {
   // Creates a new op to be used as input to MKL eager rewrite.
   std::unique_ptr<tensorflow::EagerOperation> CreateOp(const string op_name) {
     std::unique_ptr<DeviceMgr> device_mgr =
-        absl::make_unique<StaticDeviceMgr>(DeviceFactory::NewDevice(
+        std::make_unique<StaticDeviceMgr>(DeviceFactory::NewDevice(
             "CPU", {}, "/job:localhost/replica:0/task:0/device:CPU:0"));
     bool async = false;
     tensorflow::Rendezvous* rendezvous =
@@ -48,18 +48,17 @@ class EagerOpRewriteTest : public ::testing::Test {
     EagerExecutor executor_(false);
     std::unique_ptr<tensorflow::EagerOperation> op(
         new tensorflow::EagerOperation(eager_ctx_));
-    EXPECT_EQ(Status::OK(),
+    EXPECT_EQ(OkStatus(),
               op.get()->Reset(op_name.c_str(), nullptr, false, &executor_));
-    EXPECT_EQ(Status::OK(),
-              op.get()->SetDeviceName(
-                  "/job:localhost/replica:0/task:0/device:CPU:0"));
+    EXPECT_EQ(OkStatus(), op.get()->SetDeviceName(
+                              "/job:localhost/replica:0/task:0/device:CPU:0"));
     return op;
   }
 
   // Validates the result of MKL eager rewrite.
   void CheckRewrite(EagerOperation* orig_op, string expected_op_name) {
     std::unique_ptr<tensorflow::EagerOperation> out_op;
-    EXPECT_EQ(Status::OK(),
+    EXPECT_EQ(OkStatus(),
               EagerOpRewriteRegistry::Global()->RunRewrite(
                   EagerOpRewriteRegistry::POST_PLACEMENT, orig_op, &out_op));
 

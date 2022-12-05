@@ -264,7 +264,7 @@ class TFRecordWriterTest(TFCompressionTestCase):
     records = [random_record, repeated_record, random_record]
 
     tests = [
-        ("compression_level", 2, -1),  # Lower compression is worse.
+        ("compression_level", 2, "LE"),  # Lower compression is worse or equal.
         ("compression_level", 6, 0),  # Default compression_level is equal.
         ("flush_mode", zlib.Z_FULL_FLUSH, 1),  # A few less bytes.
         ("flush_mode", zlib.Z_NO_FLUSH, 0),  # NO_FLUSH is the default.
@@ -272,7 +272,7 @@ class TFRecordWriterTest(TFCompressionTestCase):
         ("output_buffer_size", 4096, 0),  # Increases time not size.
         ("window_bits", 8, -1),  # Smaller than default window increases size.
         ("compression_strategy", zlib.Z_HUFFMAN_ONLY, -1),  # Worse.
-        ("compression_strategy", zlib.Z_FILTERED, -1),  # Worse.
+        ("compression_strategy", zlib.Z_FILTERED, "LE"),  # Worse or equal.
     ]
 
     compression_type = tf_record.TFRecordCompressionType.ZLIB
@@ -281,10 +281,16 @@ class TFRecordWriterTest(TFCompressionTestCase):
       options_b = tf_record.TFRecordOptions(
           compression_type=compression_type, **{prop: value})
       delta = self._CompressionSizeDelta(records, options_a, options_b)
-      self.assertTrue(
-          delta == 0 if delta_sign == 0 else delta // delta_sign > 0,
-          "Setting {} = {}, file was {} smaller didn't match sign of {}".format(
-              prop, value, delta, delta_sign))
+      if delta_sign == "LE":
+        self.assertLessEqual(
+            delta, 0,
+            "Setting {} = {}, file was {} smaller didn't match sign of {}"
+            .format(prop, value, delta, delta_sign))
+      else:
+        self.assertTrue(
+            delta == 0 if delta_sign == 0 else delta // delta_sign > 0,
+            "Setting {} = {}, file was {} smaller didn't match sign of {}"
+            .format(prop, value, delta, delta_sign))
 
 
 class TFRecordWriterZlibTest(TFCompressionTestCase):

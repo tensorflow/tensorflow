@@ -28,6 +28,8 @@ class ReorderTfAssertPass
     : public mlir::PassWrapper<ReorderTfAssertPass,
                                mlir::OperationPass<mlir::ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ReorderTfAssertPass)
+
   llvm::StringRef getArgument() const final { return "tfrt-reorder-tf-assert"; }
   llvm::StringRef getDescription() const final {
     return "Move tf.Assert to the end of the function to avoid unnecessary "
@@ -81,8 +83,7 @@ class ReorderTfAssertPass
   bool IsFunctionNonSideEffectingOrAssert(mlir::func::FuncOp func_op) {
     auto& block = func_op.front();
     for (mlir::Operation& op : block) {
-      if (!llvm::isa<mlir::TF::AssertOp>(&op) &&
-          !mlir::MemoryEffectOpInterface::hasNoEffect(&op))
+      if (!llvm::isa<mlir::TF::AssertOp>(&op) && !mlir::isMemoryEffectFree(&op))
         return false;
     }
     return true;

@@ -80,7 +80,7 @@ TEST(TestTFGRegionOps, TestIfLikeRegionOpSuccessorRegions) {
   Attribute cond = DenseElementsAttr::get(tensor_type, /*value=*/true);
   op.getSuccessorRegions(/*index=*/llvm::None, /*operands=*/{cond}, regions);
   ASSERT_EQ(regions.size(), 1u);
-  EXPECT_EQ(regions.front().getSuccessor(), &op.then_region());
+  EXPECT_EQ(regions.front().getSuccessor(), &op.getThenRegion());
 }
 
 TEST(TestTFGRegionOps, TestCaseLikeRegionOpSuccessorRegions) {
@@ -122,7 +122,7 @@ TEST(TestTFGRegionOps, TestCaseLikeRegionOpSuccessorRegions) {
   Attribute branch = DenseElementsAttr::get(tensor_type, /*value=*/1);
   op.getSuccessorRegions(/*index=*/llvm::None, {branch}, regions);
   ASSERT_EQ(regions.size(), 1u);
-  EXPECT_EQ(regions.front().getSuccessor(), &op.branches()[1]);
+  EXPECT_EQ(regions.front().getSuccessor(), &op.getBranches()[1]);
 }
 
 TEST(TestTFGRegionOps, TestWhileLikeRegionOpSuccessorRegions) {
@@ -151,7 +151,7 @@ TEST(TestTFGRegionOps, TestWhileLikeRegionOpSuccessorRegions) {
   op.getSuccessorRegions(/*index=*/llvm::None, /*operands=*/{Attribute()},
                          regions);
   ASSERT_EQ(regions.size(), 1u);
-  EXPECT_EQ(regions.front().getSuccessor(), &op.cond_region());
+  EXPECT_EQ(regions.front().getSuccessor(), &op.getCondRegion());
   regions.clear();
 
   // Test cond -> parent or body
@@ -163,7 +163,7 @@ TEST(TestTFGRegionOps, TestWhileLikeRegionOpSuccessorRegions) {
   // Test body -> cond
   op.getSuccessorRegions(/*index=*/1, /*operands=*/{Attribute()}, regions);
   ASSERT_EQ(regions.size(), 1u);
-  EXPECT_EQ(regions.front().getSuccessor(), &op.cond_region());
+  EXPECT_EQ(regions.front().getSuccessor(), &op.getCondRegion());
   regions.clear();
 }
 

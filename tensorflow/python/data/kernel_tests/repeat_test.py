@@ -20,6 +20,7 @@ from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -77,41 +78,83 @@ class RepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
 class RepeatDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                   parameterized.TestCase):
 
-  def _build_repeat_dataset(self, count, take_count=3):
-    components = (np.arange(10),)
-    return dataset_ops.Dataset.from_tensor_slices(components).take(
-        take_count).repeat(count)
+  def _build_repeat_dataset(self,
+                            num_elements,
+                            num_epochs,
+                            num_outputs=None,
+                            options=None):
+    dataset = dataset_ops.Dataset.range(num_elements).repeat(num_epochs)
+    if num_outputs:
+      range_dataset = dataset_ops.Dataset.range(num_outputs)
+      dataset = dataset_ops.Dataset.zip((dataset, range_dataset))
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def testFiniteRepeat(self, verify_fn):
-    count = 10
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def testFiniteRepeat(self, verify_fn, symbolic_checkpoint):
+    num_elements = 10
+    num_epochs = 10
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
     verify_fn(
         self,
-        lambda: self._build_repeat_dataset(count),
-        num_outputs=(3 * count))
+        lambda: self._build_repeat_dataset(
+            num_elements, num_epochs, options=options),
+        num_outputs=(num_elements * num_epochs))
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def testEmptyRepeat(self, verify_fn):
-    verify_fn(self, lambda: self._build_repeat_dataset(0), num_outputs=0)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testInfiniteRepeat(self):
-    self.verify_unused_iterator(
-        lambda: self._build_repeat_dataset(-1), 10, verify_exhausted=False)
-    self.verify_multiple_breaks(
-        lambda: self._build_repeat_dataset(-1), 20, verify_exhausted=False)
-    self.verify_reset_restored_iterator(
-        lambda: self._build_repeat_dataset(-1), 20, verify_exhausted=False)
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def testEmptyRepeat(self, verify_fn, symbolic_checkpoint):
+    num_elements = 10
+    num_epochs = 0
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(
+        self,
+        lambda: self._build_repeat_dataset(
+            num_elements, num_epochs, options=options),
+        num_outputs=0)
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def testInfiniteEmptyRepeat(self, verify_fn):
-    verify_fn(self, lambda: self._build_repeat_dataset(-1, 0), num_outputs=0)
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def testInfiniteRepeat(self, verify_fn, symbolic_checkpoint):
+    num_elements = 10
+    num_epochs = -1
+    num_outputs = 100
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(
+        self,
+        lambda: self._build_repeat_dataset(
+            num_elements, num_epochs, num_outputs=num_outputs, options=options),
+        num_outputs=num_outputs)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def testInfiniteEmptyRepeat(self, verify_fn, symbolic_checkpoint):
+    num_elements = 0
+    num_epochs = -1
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(
+        self,
+        lambda: self._build_repeat_dataset(
+            num_elements, num_epochs, options=options),
+        num_outputs=0)
 
 
 class RepeatRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):

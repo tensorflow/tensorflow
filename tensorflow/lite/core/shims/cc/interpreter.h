@@ -17,7 +17,7 @@ limitations under the License.
 
 /// For documentation, see third_party/tensorflow/lite/interpreter.h.
 
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 
 namespace tflite_shims {
 using Interpreter = ::tflite::Interpreter;

@@ -321,7 +321,7 @@ class GraphViewInternal {
   Status AddUniqueNode(NodeDefT* node) {
     auto inserted = nodes_.emplace(node->name(), node);
     return inserted.second
-               ? Status::OK()
+               ? OkStatus()
                : errors::InvalidArgument("Non unique node name detected: ",
                                          node->name());
   }

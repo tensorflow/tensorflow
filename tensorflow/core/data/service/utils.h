@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_UTILS_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_UTILS_H_
 
+#include <string>
+
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/record_reader.h"

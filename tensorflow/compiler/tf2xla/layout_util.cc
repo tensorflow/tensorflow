@@ -28,14 +28,14 @@ XlaShapeLayoutHelpers::ShapeDeterminationFns::ShapeDeterminationFns() {
 
 XlaShapeLayoutHelpers::LayoutPreferenceFn UseNoPreferenceLayoutFn() {
   return [](const TensorShape& shape, DataType dtype,
-            absl::optional<XlaArgument::Kind>) -> XlaLayoutPreference {
+            std::optional<XlaArgument::Kind>) -> XlaLayoutPreference {
     return XlaLayoutPreference::kNoPreference;
   };
 }
 
 // Rewrites the layout of xla_shape if there is tiled sharding.
 Status RewriteLayoutWithShardedShape(
-    const absl::optional<xla::HloSharding>& sharding, bool use_fast_memory,
+    const std::optional<xla::HloSharding>& sharding, bool use_fast_memory,
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     xla::Shape* xla_shape) {
   if (sharding && !sharding->IsTileMaximal() && !sharding->IsManual()) {
@@ -67,14 +67,14 @@ Status RewriteLayoutWithShardedShape(
     TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
                                             xla_shape->element_type()));
     auto layout_preference = shape_determination_fns.layout_preference_fn(
-        per_device_tensor_shape, dtype, absl::nullopt);
+        per_device_tensor_shape, dtype, std::nullopt);
     TF_ASSIGN_OR_RETURN(per_device_xla_shape,
                         shape_determination_fns.shape_representation_fn(
                             per_device_tensor_shape, dtype, use_fast_memory,
                             layout_preference));
     *xla_shape->mutable_layout() = per_device_xla_shape.layout();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // There is a shape_representation_fn or sharding for an output, this function
@@ -82,7 +82,7 @@ Status RewriteLayoutWithShardedShape(
 StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
     xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
-    absl::optional<xla::OpSharding> sharding, bool fast_mem) {
+    std::optional<xla::OpSharding> sharding, bool fast_mem) {
   if (original_shape.IsTuple()) {
     std::vector<xla::XlaOp> elements;
     for (int i = 0; i < original_shape.tuple_shapes_size(); ++i) {
@@ -102,7 +102,7 @@ StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
   TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
                                           original_shape.element_type()));
   auto layout_preference =
-      shape_determination_fns.layout_preference_fn(shape, dtype, absl::nullopt);
+      shape_determination_fns.layout_preference_fn(shape, dtype, std::nullopt);
   TF_ASSIGN_OR_RETURN(auto to_shape,
                       shape_determination_fns.shape_representation_fn(
                           shape, dtype, fast_mem, layout_preference));

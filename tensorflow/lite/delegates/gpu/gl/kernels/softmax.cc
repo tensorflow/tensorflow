@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/kernels/softmax.h"
 
+#include <any>
 #include <memory>
 #include <string>
 #include <utility>
@@ -43,7 +44,7 @@ class Softmax : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
-    const auto& attr = absl::any_cast<const SoftmaxAttributes&>(ctx.op_attr);
+    const auto& attr = std::any_cast<const SoftmaxAttributes&>(ctx.op_attr);
     if (ctx.input_shapes[0] != ctx.output_shapes[0]) {
       return absl::InvalidArgumentError(
           "Input and output shapes do not match.");
@@ -214,7 +215,7 @@ class Softmax : public NodeShader {
 }  // namespace
 
 std::unique_ptr<NodeShader> NewSoftmaxNodeShader() {
-  return absl::make_unique<Softmax>();
+  return std::make_unique<Softmax>();
 }
 
 }  // namespace gl

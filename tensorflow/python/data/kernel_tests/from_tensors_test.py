@@ -24,6 +24,7 @@ from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
@@ -142,7 +143,7 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.skipTest("attr module is not available.")
 
     @attr.s
-    class Foo(object):
+    class Foo:
       x = attr.ib()
       y = attr.ib()
 
@@ -301,17 +302,24 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
 class FromTensorsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                 parameterized.TestCase):
 
-  def _build_tensor_dataset(self, variable_array):
+  def _build_tensor_dataset(self, variable_array, options=None):
     components = (variable_array, np.array([1, 2, 3]), np.array(37.0))
-
-    return dataset_ops.Dataset.from_tensors(components)
+    dataset = dataset_ops.Dataset.from_tensors(components)
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def test(self, verify_fn):
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def test(self, verify_fn, symbolic_checkpoint):
     arr = np.array(1)
-    verify_fn(self, lambda: self._build_tensor_dataset(arr), num_outputs=1)
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(
+        self, lambda: self._build_tensor_dataset(arr, options), num_outputs=1)
 
 
 class FromTensorsRandomAccessTest(test_base.DatasetTestBase,
@@ -329,6 +337,18 @@ class FromTensorsRandomAccessTest(test_base.DatasetTestBase,
       combinations.times(test_base.default_test_combinations()))
   def testBasic(self):
     dataset = dataset_ops.Dataset.from_tensors(range(4))
+    self.assertAllEqual(self.evaluate(random_access.at(dataset, 0)), range(4))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, 1))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testWithOptions(self):
+    dataset = dataset_ops.Dataset.from_tensors(range(4))
+    options = options_lib.Options()
+    options.experimental_optimization.map_and_batch_fusion = True
+    dataset = dataset.with_options(options)
+
     self.assertAllEqual(self.evaluate(random_access.at(dataset, 0)), range(4))
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(random_access.at(dataset, 1))

@@ -74,7 +74,7 @@ class SparseExpanderRegistry {
       InitOnStartupMarker{}                                           \
       << SparseExpanderRegistry::Global()->RegisterSparseExpansionFn( \
              mlir::op ::getOperationName().str(),                     \
-             absl::make_unique<prop>(__VA_ARGS__))
+             std::make_unique<prop>(__VA_ARGS__))
 
 }  // namespace dtensor
 }  // namespace tensorflow

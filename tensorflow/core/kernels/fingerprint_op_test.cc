@@ -54,7 +54,7 @@ class FingerprintOpTest : public OpsTestBase {
     method_ = Tensor(DT_STRING, TensorShape{});
     method_.scalar<tstring>()() = method;
     inputs_.push_back(TensorValue(&method_));
-    return Status::OK();
+    return OkStatus();
   }
 
   Tensor batch_dims_;

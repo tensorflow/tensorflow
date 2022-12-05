@@ -50,12 +50,13 @@ limitations under the License.
 namespace mlir {
 namespace tosa {
 namespace {
-#define GEN_PASS_CLASSES
+
+#define GEN_PASS_DEF_TOSACONVERTTFLUINT8PASS
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
 
 // Performs lowering to TOSA dialect.
 class ConvertUint8ToInt8
-    : public TosaConvertTFLUint8PassBase<ConvertUint8ToInt8> {
+    : public impl::TosaConvertTFLUint8PassBase<ConvertUint8ToInt8> {
  public:
   explicit ConvertUint8ToInt8() {}
   void runOnOperation() override;
@@ -88,7 +89,7 @@ struct ConvertUint8QConstOp : public RewritePattern {
     }
 
     mlir::DenseElementsAttr src_dense_attr =
-        tfl_qconst_op.value().cast<DenseElementsAttr>();
+        tfl_qconst_op.getValue().cast<DenseElementsAttr>();
 
     double type_range_min =
         static_cast<double>(output_element_type.getStorageTypeMin() -
@@ -342,7 +343,7 @@ void ConvertUint8ToInt8::runOnOperation() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createConvertTFLUint8Pass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createConvertTFLUint8Pass() {
   return std::make_unique<ConvertUint8ToInt8>();
 }
 

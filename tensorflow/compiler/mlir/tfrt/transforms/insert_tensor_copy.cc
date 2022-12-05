@@ -42,6 +42,8 @@ class InsertFallbackTensorCopy
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertFallbackTensorCopy)
+
   void runOnOperation() override {
     mlir::func::FuncOp func_op = getOperation();
 

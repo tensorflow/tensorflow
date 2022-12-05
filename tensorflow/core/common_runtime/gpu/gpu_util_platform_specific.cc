@@ -52,7 +52,7 @@ Status GPUDeviceContext::ThenExecute(Device* device, se::Stream* stream,
   const DeviceBase::AcceleratorDeviceInfo* gpu_info =
       device->tensorflow_accelerator_device_info();
   gpu_info->event_mgr->ThenExecute(stream, func);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

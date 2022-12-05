@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 
+#include <vector>
+
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -22,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/local_client_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -43,14 +45,14 @@ XLA_TEST_F(TestUtilsTest, UnusedParam) {
   Shape pair_float = ShapeUtil::MakeShape(F32, {2});
   Reduce(Parameter(&builder, 0, pair_float, "operand"),
          Parameter(&builder, 1, single_float, "init"),
-         computation_status.ValueOrDie(), {0});
+         computation_status.value(), {0});
   computation_status = builder.Build();
   TF_ASSERT_OK(computation_status.status());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executables, local_client_->Compile(computation_status.ValueOrDie(),
-                                               {&pair_float, &single_float},
-                                               ExecutableBuildOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto executables,
+                          local_client_->Compile(computation_status.value(),
+                                                 {&pair_float, &single_float},
+                                                 ExecutableBuildOptions()));
   HloModule& module =
       const_cast<HloModule&>(executables[0]->executable()->module());
   TF_ASSERT_OK(MakeFakeArguments(&module).status());
@@ -69,7 +71,7 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {
       dynamic-slice.1 = f32[1,2,3] dynamic-slice(array_param.1, index_param.0, index_param.1, index_param.2), dynamic_slice_sizes={1,2,3}
       ROOT dynamic-slice.2 = f32[3,2,2] dynamic-slice(array_param.2, index_param.0, index_param.1, index_param.2), dynamic_slice_sizes={3,2,2}
     })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 5);
@@ -100,7 +102,7 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
       dynamic-update-slice.1 = f32[123,4,789] dynamic-update-slice(array_param.1, update_param.1, index_param.0, index_param.1, index_param.2)
       ROOT dynamic-update-slice.2 = f32[3,3000,5] dynamic-update-slice(array_param.2, update_param.2, index_param.0, index_param.1, index_param.2)
     })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 7);
@@ -134,7 +136,7 @@ ENTRY %sort.148.1589 (parameter.0: f32[1048576], parameter.1: s32[1048576]) -> (
   ROOT %sort.148.1589 = (f32[1048576]{0}, s32[1048576]{0}) sort(f32[1048576]{0} %parameter.0, s32[1048576]{0} %parameter.1), dimensions={0}, to_apply=compare
 }
 )")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 2);
@@ -165,7 +167,7 @@ ENTRY %sort.148.1589 (parameter.0: s32[1048576], parameter.1: s32[1048576]) -> (
   ROOT %sort.148.1589 = (s32[1048576]{0}, s32[1048576]{0}) sort(s32[1048576]{0} %parameter.0, s32[1048576]{0} %parameter.1), dimensions={0}, to_apply=compare
 }
 )")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 2);
@@ -196,7 +198,7 @@ ENTRY %sort. (parameter.0: bf16[2,1452], parameter.1: s32[2,1452]) -> (bf16[2,14
   ROOT %sort = (bf16[2,1452]{1,0}, s32[2,1452]{1,0}) sort(bf16[2,1452]{1,0} %parameter.0, s32[2,1452]{1,0} %parameter.1), dimensions={1}, to_apply=compare
 }
 )")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 2);
@@ -224,7 +226,7 @@ ENTRY %module (parameter.0: s32[], parameter.1: f32[20,20]) -> f32[] {
   ROOT %bitcast.5 = f32[] bitcast(f32[1]{0} %dynamic-slice.3)
 }
 )")
-                    .ValueOrDie();
+                    .value();
 
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
@@ -253,7 +255,7 @@ ENTRY %module(parameter.0: f32[200,100,300], parameter.1: s32[10,2]) ->
       slice_sizes={1,1,300}
 }
 )")
-                    .ValueOrDie();
+                    .value();
 
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
@@ -264,6 +266,43 @@ ENTRY %module(parameter.0: f32[200,100,300], parameter.1: s32[10,2]) ->
       ShapeUtil::Equal(indices_shape, ShapeUtil::MakeShape(S32, {10, 2})))
       << ShapeUtil::HumanString(indices_shape);
   auto indices = args[1].data<int32_t>();
+  for (const auto index : indices) {
+    EXPECT_GE(index, -1);
+    EXPECT_LE(index, 100);
+  }
+}
+
+XLA_TEST_F(TestUtilsTest, MakeFakeArgumentsForGatherTupleParam) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule cluster_13361217111314620287__.11, entry_computation_layout={((s32[10]{0:T(1024)}, bf16[100,256]{1,0:T(8,128)(2,1)}))->(bf16[10,256]{1,0:T(8,128)(2,1)})}
+
+ENTRY cluster_13361217111314620287__.11 {
+  constant.6 = s32[] constant(0), metadata={op_type="GatherV2" op_name="GatherV2"}
+  arg_tuple.1 = (s32[10]{0:T(1024)}, bf16[100,256]{1,0:T(8,128)(2,1)}) parameter(0), parameter_replication={false,true}, sharding={{maximal device=0 metadata={op_type="_TPUReplicate" op_name="cluster"}}, {maximal device=0 metadata={op_type="_TPUReplicate" op_name="cluster"}}}, metadata={op_name="XLA_Args"}
+  get-tuple-element.3 = bf16[100,256]{1,0:T(8,128)(2,1)} get-tuple-element(arg_tuple.1), index=1, sharding={maximal device=0 metadata={op_type="_TPUReplicate" op_name="cluster"}}, metadata={op_name="const_0_arg"}
+  reshape.5 = bf16[100,256]{1,0} reshape(get-tuple-element.3)
+  get-tuple-element.2 = s32[10]{0:T(1024)} get-tuple-element(arg_tuple.1), index=0, sharding={maximal device=0 metadata={op_type="_TPUReplicate" op_name="cluster"}}, metadata={op_name="input0_0_arg"}
+  reshape.4 = s32[10]{0} reshape(get-tuple-element.2)
+  gather.7 = bf16[10,256]{1,0} gather(reshape.5, reshape.4), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,256}, metadata={op_type="GatherV2" op_name="GatherV2"}
+  reshape.8 = bf16[10,256]{1,0:T(8,128)(2,1)} reshape(gather.7), metadata={op_name="XLA_Retvals"}
+  copy.9 = bf16[10,256]{1,0:T(8,128)(2,1)} copy(reshape.8), sharding={maximal device=0 metadata={op_type="_TPUReplicate" op_name="cluster"}}, metadata={op_name="XLA_Retvals"}
+  ROOT tuple.10 = (bf16[10,256]{1,0:T(8,128)(2,1)}) tuple(copy.9), sharding={{maximal device=0 metadata={op_type="_TPUReplicate" op_name="cluster"}}}, metadata={op_name="XLA_Retvals"}
+}
+)")
+                    .value();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> args,
+      MakeFakeArguments(module.get(), /*pseudo_random=*/true,
+                        /*use_large_range=*/true,
+                        /*treat_gte_as_data_formatting=*/true));
+  ASSERT_EQ(args.size(), 1);
+
+  const Shape& indices_shape = args[0].shape().tuple_shapes()[0];
+  EXPECT_TRUE(ShapeUtil::Equal(indices_shape, ShapeUtil::MakeShape(S32, {10})))
+      << ShapeUtil::HumanString(indices_shape);
+  const std::vector<Literal> results = args[0].DecomposeTuple();
+  auto indices = results[0].data<int32_t>();
   for (const auto index : indices) {
     EXPECT_GE(index, -1);
     EXPECT_LE(index, 100);
@@ -291,7 +330,7 @@ ENTRY main {
     index_vector_dim=1
   }
 )")
-                    .ValueOrDie();
+                    .value();
 
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));

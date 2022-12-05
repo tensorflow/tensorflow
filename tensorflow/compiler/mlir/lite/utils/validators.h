@@ -103,9 +103,9 @@ inline bool TFPaddingIsSameOrValid(Operation *op, StringAttr *padding) {
 
 /// Returns whether the given `a` and `b` have broadcast-compatible
 /// types.
-bool IsBroadcastableElementsAttrs(mlir::Attribute a, mlir::Attribute b);
+bool IsBroadcastableElementsAttrs(mlir::TypedAttr a, mlir::TypedAttr b);
 // Returns true if every dimension of the attribute is 1 except the last one.
-bool IsDimensionsDegenerateExceptLastOne(mlir::Attribute val);
+bool IsDimensionsDegenerateExceptLastOne(mlir::TypedAttr val);
 // Returns true if every element is 1 except the last one.
 bool IsDimensionsDegenerateExceptLastOne(ArrayRef<int64_t> elements_shape);
 

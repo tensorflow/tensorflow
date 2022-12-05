@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -32,14 +33,12 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/convert_op_folder.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
+#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/utils.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/utils/convert_op_folder.h"
+#include "tensorflow/compiler/xla/mlir_hlo/utils/hlo_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace mlir {
@@ -52,8 +51,11 @@ constexpr absl::string_view kGroupSizeAttrName =
 constexpr absl::string_view kGroupKeyAttrName =
     "tf2xla.collective_info.group_key";
 
+#define GEN_PASS_DEF_LEGALIZETFCOLLECTIVE
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+
 class LegalizeTFCollective
-    : public LegalizeTFCollectiveBase<LegalizeTFCollective> {
+    : public impl::LegalizeTFCollectiveBase<LegalizeTFCollective> {
  public:
   void runOnOperation() override;
 };
@@ -112,7 +114,7 @@ LogicalResult ConvertReplicaGroups(OpBuilder& builder,
     return op->emitOpError() << "expects constant group_assignment";
   }
   replica_groups =
-      hlo::ConvertElementsAttr(group_assignment, builder.getIntegerType(64))
+      hlo::convertElementsAttr(group_assignment, builder.getIntegerType(64))
           .cast<DenseIntElementsAttr>();
   if (replica_groups.getType().getRank() != 2) {
     return op->emitOpError() << "group_assignment should have rank 2, got "
@@ -121,16 +123,14 @@ LogicalResult ConvertReplicaGroups(OpBuilder& builder,
   return success();
 }
 
-ChannelHandle ConvertChannel(OpBuilder& builder, int64_t channel_id,
-                             StringRef mode) {
+ChannelHandleAttr ConvertChannel(OpBuilder& builder, int64_t channel_id,
+                                 StringRef mode) {
   if (mode == "CrossReplica") {
-    return ChannelHandle();
+    return ChannelHandleAttr();
   }
-  return ChannelHandle::get(
-      /*handle=*/builder.getI64IntegerAttr(channel_id),
-      /*type=*/
-      builder.getI64IntegerAttr(xla::ChannelHandle::DEVICE_TO_DEVICE),
-      builder.getContext());
+  return ChannelHandleAttr::get(builder.getContext(),
+                                /*handle=*/channel_id,
+                                /*type=*/xla::ChannelHandle::DEVICE_TO_DEVICE);
 }
 
 LogicalResult ConvertAllReduce(OpBuilder& builder, int64_t channel_id,
@@ -139,19 +139,23 @@ LogicalResult ConvertAllReduce(OpBuilder& builder, int64_t channel_id,
                                StringRef mode, Value input, StringRef merge_op,
                                StringRef final_op, Operation* op) {
   builder.setInsertionPoint(op);
-  ChannelHandle channel_handle = ConvertChannel(builder, channel_id, mode);
+  ChannelHandleAttr channel_handle = ConvertChannel(builder, channel_id, mode);
   Location loc = op->getLoc();
   Type element_type = getElementTypeOrSelf(input.getType());
-  auto all_reduce = builder.create<AllReduceOp>(loc, result_type, input,
-                                                replica_groups, channel_handle);
+  auto all_reduce = builder.create<AllReduceOp>(
+      loc, result_type, input, replica_groups, channel_handle, nullptr);
   if (merge_op == "Add") {
-    BuildReduceBody<AddOp>(element_type, &all_reduce.computation(), &builder);
+    BuildReduceBody<AddOp>(element_type, &all_reduce.getComputation(),
+                           &builder);
   } else if (merge_op == "Mul") {
-    BuildReduceBody<MulOp>(element_type, &all_reduce.computation(), &builder);
+    BuildReduceBody<MulOp>(element_type, &all_reduce.getComputation(),
+                           &builder);
   } else if (merge_op == "Min") {
-    BuildReduceBody<MinOp>(element_type, &all_reduce.computation(), &builder);
+    BuildReduceBody<MinOp>(element_type, &all_reduce.getComputation(),
+                           &builder);
   } else if (merge_op == "Max") {
-    BuildReduceBody<MaxOp>(element_type, &all_reduce.computation(), &builder);
+    BuildReduceBody<MaxOp>(element_type, &all_reduce.getComputation(),
+                           &builder);
   } else {
     return op->emitOpError() << "invalid merge_op " << merge_op
                              << ", want one of [Add, Mul, Min, Max]";
@@ -202,7 +206,7 @@ class ConvertXlaAllReduce
   LogicalResult matchAndRewrite(TF::XlaAllReduceOp all_reduce,
                                 PatternRewriter& rewriter) const override {
     DenseIntElementsAttr replica_groups;
-    if (failed(ConvertReplicaGroups(rewriter, all_reduce.group_assignment(),
+    if (failed(ConvertReplicaGroups(rewriter, all_reduce.getGroupAssignment(),
                                     replica_groups, all_reduce))) {
       return failure();
     }
@@ -213,7 +217,7 @@ class ConvertXlaAllReduce
       return failure();
     }
 
-    StringRef reduce_op = all_reduce.reduce_op();
+    StringRef reduce_op = all_reduce.getReduceOp();
 
     StringRef merge_op, final_op;
     if (reduce_op == "Add") {
@@ -239,8 +243,9 @@ class ConvertXlaAllReduce
 
     int64_t channel_id = channel_id_++;
     return ConvertAllReduce(rewriter, channel_id, all_reduce.getType(),
-                            replica_groups, all_reduce.mode(),
-                            all_reduce.input(), merge_op, final_op, all_reduce);
+                            replica_groups, all_reduce.getMode(),
+                            all_reduce.getInput(), merge_op, final_op,
+                            all_reduce);
   }
 };
 
@@ -254,13 +259,14 @@ class ConvertCollectiveReduceV2
   LogicalResult matchAndRewrite(TF::CollectiveReduceV2Op all_reduce,
                                 PatternRewriter& rewriter) const override {
     TF::CollectiveAssignGroupV2Op assign_group =
-        all_reduce.group_size().getDefiningOp<TF::CollectiveAssignGroupV2Op>();
+        all_reduce.getGroupSize()
+            .getDefiningOp<TF::CollectiveAssignGroupV2Op>();
 
     if (assign_group) {
       // Found a group assignment. Use replica_groups to represent group
       // assignment.
 
-      if (assign_group != all_reduce.group_key()
+      if (assign_group != all_reduce.getGroupKey()
                               .getDefiningOp<TF::CollectiveAssignGroupV2Op>()) {
         return all_reduce->emitOpError()
                << "group_size and group_key are not from the "
@@ -268,7 +274,8 @@ class ConvertCollectiveReduceV2
       }
 
       DenseIntElementsAttr replica_groups;
-      if (failed(ConvertReplicaGroups(rewriter, assign_group.group_assignment(),
+      if (failed(ConvertReplicaGroups(rewriter,
+                                      assign_group.getGroupAssignment(),
                                       replica_groups, all_reduce))) {
         return failure();
       }
@@ -289,13 +296,14 @@ class ConvertCollectiveReduceV2
       // ops are used.
       return ConvertAllReduce(rewriter, channel_id, all_reduce.getType(),
                               replica_groups, /* mode=*/"CrossReplica",
-                              all_reduce.input(), all_reduce.merge_op(),
-                              all_reduce.final_op(), all_reduce);
+                              all_reduce.getInput(), all_reduce.getMergeOp(),
+                              all_reduce.getFinalOp(), all_reduce);
     }
 
     // No group assignment, use separate channels per group_key.
     DenseIntElementsAttr group_size_attr;
-    if (!matchPattern(all_reduce.group_size(), m_Constant(&group_size_attr))) {
+    if (!matchPattern(all_reduce.getGroupSize(),
+                      m_Constant(&group_size_attr))) {
       return all_reduce.emitOpError()
              << "group_size must be a compile time constant";
     }
@@ -318,7 +326,8 @@ class ConvertCollectiveReduceV2
       // TODO(b/226201111): Stop emitting CollectiveInfo when it is no longer
       // needed.
       DenseIntElementsAttr group_key_attr;
-      if (!matchPattern(all_reduce.group_key(), m_Constant(&group_key_attr))) {
+      if (!matchPattern(all_reduce.getGroupKey(),
+                        m_Constant(&group_key_attr))) {
         return all_reduce.emitOpError()
                << "group_key must be a compile time constant";
       }
@@ -338,8 +347,8 @@ class ConvertCollectiveReduceV2
     int64_t channel_id = channel_id_++;
     return ConvertAllReduce(
         rewriter, channel_id, all_reduce.getType(), replica_groups,
-        /* mode= */ "CrossReplicaAndPartition", all_reduce.input(),
-        all_reduce.merge_op(), all_reduce.final_op(), all_reduce);
+        /* mode= */ "CrossReplicaAndPartition", all_reduce.getInput(),
+        all_reduce.getMergeOp(), all_reduce.getFinalOp(), all_reduce);
   }
 };
 

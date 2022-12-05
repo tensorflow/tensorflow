@@ -27,29 +27,29 @@ func.func @print_memrefs(
 // CHECK-DAG: global internal constant @[[STR0:debug_op_[0-9]+]]({{.*}} @print_memrefs
 // CHECK-DAG: global internal constant @[[STR1:debug_op_[0-9]+]]({{.*}} -> memref<?xf32>
 // CHECK-DAG: global internal constant @[[STR2:debug_op_[0-9]+]]({{.*}} -> memref<*xf32>
-// CHECK-DAG: func private @print_memref_f32(memref<*xf32>)
-// CHECK-DAG: llvm.func @print_c_string(!llvm.ptr<i8>)
+// CHECK-DAG: func private @printMemrefF32(memref<*xf32>)
+// CHECK-DAG: llvm.func @printCString(!llvm.ptr<i8>)
 
 // CHECK: func @print_memrefs
 // CHECK-SAME:     , %[[ARG:.*]]: memref<*xf32>)
 // Print debug info for the function arg.
 // CHECK:       %[[STR0_ADDR:.*]] = llvm.mlir.addressof @[[STR0]]
 // CHECK:       %[[STR0_PTR:.*]] = llvm.getelementptr %[[STR0_ADDR]]
-// CHECK:       llvm.call @print_c_string(%[[STR0_PTR]]) : (!llvm.ptr<i8>)
-// CHECK:       call @print_memref_f32(%[[ARG]]) : (memref<*xf32>) -> ()
+// CHECK:       llvm.call @printCString(%[[STR0_PTR]]) : (!llvm.ptr<i8>)
+// CHECK:       call @printMemrefF32(%[[ARG]]) : (memref<*xf32>) -> ()
 
 // Print debug info for reshape from unranked to ranked.
 // CHECK:       %[[RESHAPE:.*]] = memref.reshape %[[ARG]]
 // CHECK:       %[[STR1_ADDR:.*]] = llvm.mlir.addressof @[[STR1]]
 // CHECK:       %[[STR1_PTR:.*]] = llvm.getelementptr %[[STR1_ADDR]]
-// CHECK:       llvm.call @print_c_string(%[[STR1_PTR]]) : (!llvm.ptr<i8>)
+// CHECK:       llvm.call @printCString(%[[STR1_PTR]]) : (!llvm.ptr<i8>)
 // CHECK:       %[[UNRANKED_BUF:.*]] = memref.cast %[[RESHAPE]]
-// CHECK:       call @print_memref_f32(%[[UNRANKED_BUF]]) : (memref<*xf32>)
+// CHECK:       call @printMemrefF32(%[[UNRANKED_BUF]]) : (memref<*xf32>)
 
 // Print debug info for reshape from ranked to unranked.
 // CHECK:       %[[ALLOC:.*]] = tf_framework.alloc
 // CHECK:       %[[RESHAPE_2:.*]] = memref.reshape %[[ALLOC]]
 // CHECK:       %[[STR2_ADDR:.*]] = llvm.mlir.addressof @[[STR2]]
 // CHECK:       %[[STR2_PTR:.*]] = llvm.getelementptr %[[STR2_ADDR]]
-// CHECK:       llvm.call @print_c_string(%[[STR2_PTR]]) : (!llvm.ptr<i8>)
-// CHECK:       call @print_memref_f32(%[[RESHAPE_2]]) : (memref<*xf32>)
+// CHECK:       llvm.call @printCString(%[[STR2_PTR]]) : (!llvm.ptr<i8>)
+// CHECK:       call @printMemrefF32(%[[RESHAPE_2]]) : (memref<*xf32>)

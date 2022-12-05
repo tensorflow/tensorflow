@@ -16,7 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Vector/Transforms/VectorRewritePatterns.h"
 #include "mlir/Pass/Pass.h"
@@ -27,7 +27,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_REWRITEVECTORMULTIREDUCTIONPASS
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 using mlir::MLIRContext;
@@ -36,7 +36,7 @@ using mlir::vector::MultiDimReductionOp;
 using mlir::vector::VectorMultiReductionLowering;
 
 struct RewriteVectorMultiReductionPass
-    : public RewriteVectorMultiReductionPassBase<
+    : public impl::RewriteVectorMultiReductionPassBase<
           RewriteVectorMultiReductionPass> {
   void runOnOperation() override {
     MLIRContext* ctx = &getContext();
@@ -50,7 +50,7 @@ struct RewriteVectorMultiReductionPass
   mlir::LogicalResult RewriteTwoAndMoreDimReductions(MLIRContext* ctx,
                                                      Operation* op) const {
     mlir::ConversionTarget target(*ctx);
-    target.addLegalDialect<mlir::arith::ArithmeticDialect,
+    target.addLegalDialect<mlir::arith::ArithDialect,
                            mlir::vector::VectorDialect>();
     target.addDynamicallyLegalOp<MultiDimReductionOp>(
         [&](MultiDimReductionOp op) {

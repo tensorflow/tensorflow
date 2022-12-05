@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/debug/debug_graph_utils.h"
 
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
@@ -46,15 +47,15 @@ TEST_F(DebugGraphUtilsTest, TestMalformedDebugOpName) {
 
   Status s = ParseDebugOpName("(mute_if_healthy=true)", &debug_op_name_proper,
                               &attributes);
-  ASSERT_EQ(errors::Code::INVALID_ARGUMENT, s.code());
+  ASSERT_TRUE(errors::IsInvalidArgument(s));
 
   s = ParseDebugOpName("DebugNumericSummary(", &debug_op_name_proper,
                        &attributes);
-  ASSERT_EQ(errors::Code::INVALID_ARGUMENT, s.code());
+  ASSERT_TRUE(errors::IsInvalidArgument(s));
 
   s = ParseDebugOpName("DebugNumericSummary)", &debug_op_name_proper,
                        &attributes);
-  ASSERT_EQ(errors::Code::INVALID_ARGUMENT, s.code());
+  ASSERT_TRUE(errors::IsInvalidArgument(s));
 }
 
 TEST_F(DebugGraphUtilsTest, TestDebugOpNameWithMalformedAttributes) {
@@ -63,28 +64,28 @@ TEST_F(DebugGraphUtilsTest, TestDebugOpNameWithMalformedAttributes) {
 
   Status s = ParseDebugOpName("DebugNumericSummary(=)", &debug_op_name_proper,
                               &attributes);
-  ASSERT_EQ(errors::Code::INVALID_ARGUMENT, s.code());
+  ASSERT_TRUE(errors::IsInvalidArgument(s));
 
   s = ParseDebugOpName("DebugNumericSummary(mute_if_healthy=)",
                        &debug_op_name_proper, &attributes);
-  ASSERT_EQ(errors::Code::INVALID_ARGUMENT, s.code());
+  ASSERT_TRUE(errors::IsInvalidArgument(s));
 
   s = ParseDebugOpName("DebugNumericSummary(=true)", &debug_op_name_proper,
                        &attributes);
-  ASSERT_EQ(errors::Code::INVALID_ARGUMENT, s.code());
+  ASSERT_TRUE(errors::IsInvalidArgument(s));
 
   s = ParseDebugOpName("DebugNumericSummary(mute_if_healthy:true)",
                        &debug_op_name_proper, &attributes);
-  ASSERT_EQ(errors::Code::INVALID_ARGUMENT, s.code());
+  ASSERT_TRUE(errors::IsInvalidArgument(s));
 
   s = ParseDebugOpName("DebugNumericSummary(mute_if_healthy=true;threshold=)",
                        &debug_op_name_proper, &attributes);
-  ASSERT_EQ(errors::Code::INVALID_ARGUMENT, s.code());
+  ASSERT_TRUE(errors::IsInvalidArgument(s));
 
   s = ParseDebugOpName(
       "DebugNumericSummary(mute_if_healthy=true;threshold:300.0)",
       &debug_op_name_proper, &attributes);
-  ASSERT_EQ(errors::Code::INVALID_ARGUMENT, s.code());
+  ASSERT_TRUE(errors::IsInvalidArgument(s));
 }
 
 TEST_F(DebugGraphUtilsTest, TestValidDebugOpNameWithSingleAttribute) {
@@ -133,7 +134,7 @@ TEST_F(DebugGraphUtilsTest, TestValidDebugOpNameWithMoreDuplicateAttributes) {
       "DebugNumericSummary(mute_if_healthy=true; lower_bound=3; "
       "mute_if_healthy=false;)",
       &debug_op_name_proper, &attributes);
-  ASSERT_EQ(errors::Code::INVALID_ARGUMENT, s.code());
+  ASSERT_TRUE(errors::IsInvalidArgument(s));
 }
 
 TEST_F(DebugGraphUtilsTest, TestValidDebugOpNameWithWhitespaceInAttributes) {

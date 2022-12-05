@@ -24,9 +24,9 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
-#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
@@ -36,6 +36,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_op_executable.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/casts.h"
@@ -43,14 +51,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/tpu_execute_op_options.h"
-#include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/stream_executor/tpu/status_helper.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
-#include "tensorflow/stream_executor/tpu/tpu_op_executable.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
 namespace tensorflow {
 
@@ -109,7 +109,7 @@ xla::Shape HostShapeToDeviceShape(const xla::Shape& host_shape) {
   XLA_Shape c_host_shape;
   XLA_Shape c_device_shape;
   ApiConverter::ToC(host_shape, &c_host_shape);
-  tensorflow::tpu::OpsApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
+  stream_executor::tpu::OpsApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
       &c_host_shape, &c_device_shape);
   xla::Shape device_shape = ApiConverter::FromC(&c_device_shape);
   ApiConverter::Destroy(&c_host_shape);
@@ -121,7 +121,8 @@ int64_t ShapeSizeCompact(const xla::Shape& shape) {
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
   int64_t size =
-      tensorflow::tpu::OpsApiFn()->HardwareLayout_ShapeSizeCompactFn(&c_shape);
+      stream_executor::tpu::OpsApiFn()->HardwareLayout_ShapeSizeCompactFn(
+          &c_shape);
   ApiConverter::Destroy(&c_shape);
   return size;
 }
@@ -130,7 +131,7 @@ int64_t ShapeSizeCompactRaw(const xla::Shape& shape) {
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
   int64_t size =
-      tensorflow::tpu::OpsApiFn()->HardwareLayout_ShapeSizeCompactRawFn(
+      stream_executor::tpu::OpsApiFn()->HardwareLayout_ShapeSizeCompactRawFn(
           &c_shape);
   ApiConverter::Destroy(&c_shape);
   return size;
@@ -147,7 +148,7 @@ xla::Status FixTupleTableAsync(se::Stream* stream,
       [&](const xla::Shape& element_shape,
           const xla::ShapeIndex& index) -> Status {
         if (!element_shape.IsTuple()) {
-          return Status::OK();
+          return OkStatus();
         }
         std::vector<se::DeviceMemoryBase> elements;
         xla::ShapeIndex element_index = index;
@@ -214,7 +215,7 @@ xla::Status UpdateDynamicInputs(
         [&](const xla::Shape& compile_time_shape,
             const xla::ShapeIndex& index) -> Status {
           if (compile_time_shape.IsTuple() || compile_time_shape.is_static()) {
-            return Status::OK();
+            return OkStatus();
           }
 
           const xla::Shape& runtime_shape =
@@ -255,8 +256,8 @@ xla::Status UpdateDynamicInputs(
             params.compile_time_shape = &c_compile_time_shape;
             params.status = status.c_status;
 
-            tensorflow::tpu::OpsApiFn()->TpuExecute_RuntimeInputToPaddedDataFn(
-                &params);
+            stream_executor::tpu::OpsApiFn()
+                ->TpuExecute_RuntimeInputToPaddedDataFn(&params);
             ApiConverter::Destroy(&c_runtime_shape);
             ApiConverter::Destroy(&c_compile_time_shape);
             return status.status();
@@ -272,14 +273,14 @@ xla::Status UpdateDynamicInputs(
           stream->ThenMemcpyH2D<int8>(*padded_data, &typed_new_input_memory);
 
           // Retain the memory until the end of the transfer.
-          stream->ThenDoHostCallback([padded_data]() { return Status::OK(); });
+          stream->ThenDoHostCallback([padded_data]() { return OkStatus(); });
 
           // Modify the memory location in the input shape tree to point to the
           // new input.
           *mutable_input_mem =
               xla::MaybeOwningDeviceMemory(std::move(new_input));
           element_modified = true;
-          return Status::OK();
+          return OkStatus();
         }));
     if (element_modified) {
       // The input location has been modified, need to fix tuple table to
@@ -292,7 +293,7 @@ xla::Status UpdateDynamicInputs(
                                             &runtime_input, transfer_manager));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void TPUCancelExecution(Env* env, int device_ordinal) {
@@ -306,8 +307,12 @@ void TPUCancelExecution(Env* env, int device_ordinal) {
     // continue running callbacks. The new thread will call quick_exit,
     // so we discard the returned Thread pointer because we won't have
     // an opportunity to delete it.
-    (void)env->StartThread(ThreadOptions(), "tpu_execute_exit_countdown",
-                           [env]() { ExitCountdown(env); });
+    auto res = env->StartThread(ThreadOptions(), "tpu_execute_exit_countdown",
+                                [env]() { ExitCountdown(env); });
+    // workaround "ignoring return value of function declared with attribute
+    // warn_unused_result" since (void) no longer works on open source bazel
+    // build
+    ((void)(res));
   } else if (tpu_cancellation_closes_chips) {
     LOG(INFO) << "TPUCancelExecution CloseTPUHost on device " << device_ordinal;
     Status status = TpuNodeContext::CloseTpuHost();
@@ -460,7 +465,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
       computation_layout.add_parameter_layout(xla::ShapeLayout(shape));
       input_shapes.push_back(std::move(shape));
     }
-    module = absl::make_unique<xla::HloModule>(
+    module = std::make_unique<xla::HloModule>(
         "TpuExecutableModule",
         xla::HloModuleConfig(std::move(computation_layout)));
   }
@@ -482,7 +487,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   TF_RETURN_IF_ERROR(UpdateDynamicInputs(stream, backend->memory_allocator(),
                                          &arguments, input_shapes));
 
-  auto tpu_executable = absl::make_unique<TpuOpExecutable>(
+  auto tpu_executable = std::make_unique<TpuOpExecutable>(
       tpu_program, std::move(module), /*host_command_handler=*/handler);
 
   const int32_t device_ordinal = node_context->device_ordinal();

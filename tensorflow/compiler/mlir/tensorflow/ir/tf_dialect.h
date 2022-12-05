@@ -91,23 +91,12 @@ class TensorFlowDialect final : public Dialect {
     return failure();
   }
 
-  using DecodeConstantHook = LogicalResult (*)(OpaqueElementsAttr input,
-                                               ElementsAttr &output);
-  static void RegisterDecodeConstantHook(DecodeConstantHook fn) {
-    decode_constant_hook_ = std::move(fn);
-  }
-  static LogicalResult decode(OpaqueElementsAttr input, ElementsAttr &output) {
-    if (decode_constant_hook_) return decode_constant_hook_(input, output);
-    return failure();
-  }
-
   // Provides a hook for op interface.
   void *getRegisteredInterfaceForOp(mlir::TypeID interface,
                                     mlir::OperationName opName) override;
 
  private:
   static ConstantFoldHook constant_fold_hook_;
-  static DecodeConstantHook decode_constant_hook_;
 
   // Storage for a custom fallback interface.
   TensorFlowRegistryEffectInterfaceFallback *fallback_effect_op_interface_;

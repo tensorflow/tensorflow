@@ -63,13 +63,13 @@ LogicalResult VerifyTensorTypesCompatible(Type t1, Type t2) {
 
 LogicalResult GlobalTensorOp::verify() {
   GlobalTensorOp global_tensor = *this;
-  if (failed(VerifyTensorTypesCompatible(
-          global_tensor.type(), global_tensor.value().Attribute::getType()))) {
+  if (failed(VerifyTensorTypesCompatible(global_tensor.getType(),
+                                         global_tensor.getValue().getType()))) {
     return global_tensor.emitError() << "'type' and 'value' attributes should "
                                         "have compatible tensor types";
   }
-  if (!global_tensor.is_mutable()) {
-    if (!global_tensor.type().cast<TensorType>().hasStaticShape()) {
+  if (!global_tensor.getIsMutable()) {
+    if (!global_tensor.getType().cast<TensorType>().hasStaticShape()) {
       return global_tensor.emitError()
              << "'type' attribute for immutable 'tf_saved_model.global_tensor' "
                 "should have a static shape";
@@ -83,7 +83,7 @@ LogicalResult SessionInitializerOp::verify() {
   mlir::SymbolTable symbol_table(
       session_initializer->getParentOfType<ModuleOp>());
 
-  for (auto sym_ref : session_initializer.initializers()) {
+  for (auto sym_ref : session_initializer.getInitializers()) {
     auto init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
         sym_ref.cast<FlatSymbolRefAttr>().getValue());
 
@@ -159,7 +159,7 @@ static LogicalResult VerifyIndexPath(Operation *op, NamedAttribute named_attr) {
 
 Type GetBoundInputArgTypeFor(mlir::Operation *op) {
   if (auto global_tensor = llvm::dyn_cast<GlobalTensorOp>(op)) {
-    auto type = global_tensor.type().cast<TensorType>();
+    auto type = global_tensor.getType().cast<TensorType>();
     return RankedTensorType::get(
         {}, TF::ResourceType::get({type}, type.getContext()));
   }
@@ -203,7 +203,7 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
                                 "reference a valid symbol, got invalid symbol '"
                              << symbol_name << "'";
     }
-    auto arg_type = cast<FuncOp>(op).getArgument(arg_index).getType();
+    auto arg_type = cast<func::FuncOp>(op).getArgument(arg_index).getType();
     return VerifyBoundInputArgType(op, arg_type, symbol_op);
   }
   if (named_attr.getName() == "tf_saved_model.index_path") {
@@ -225,7 +225,36 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionResultAttribute(
                          << named_attr.getName().getValue() << "'";
 }
 
-static bool HasAnyTfSavedModelArgAttr(FuncOp func) {
+// Verifies the session_init op. There should be no duplicate
+// tf_saved_model.initializer_type values.
+LogicalResult VerifySessionInitOp(SessionInitializerOp session_init_op,
+                                  SymbolTable &symbol_table) {
+  // Stores previously seen init types.
+  llvm::SmallDenseSet<StringAttr> init_types{};
+
+  for (auto init_sym :
+       session_init_op.getInitializers().getAsValueRange<FlatSymbolRefAttr>()) {
+    auto init_func = symbol_table.lookup<func::FuncOp>(init_sym);
+    if (!init_func) continue;
+
+    auto init_type =
+        init_func->getAttrOfType<StringAttr>(kTfSavedModelInitializerTypeAttr);
+    if (!init_type) continue;
+
+    if (init_types.contains(init_type)) {
+      return init_func->emitError()
+             << "Attribute tf_saved_model.initializer_type should not have "
+                "duplicate values. Found duplicate: "
+             << init_type;
+    }
+
+    init_types.insert(init_type);
+  }
+
+  return success();
+}
+
+static bool HasAnyTfSavedModelArgAttr(func::FuncOp func) {
   for (int i = 0, e = func.getNumArguments(); i < e; i++) {
     if (func.getArgAttr(i, "tf_saved_model.index_path") ||
         func.getArgAttr(i, "tf_saved_model.bound_input")) {
@@ -268,7 +297,7 @@ static LogicalResult VerifySavedModelModule(
       }
     }
   }
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     const bool is_exported = IsExported(func);
 
     if (is_exported && !func.isPublic()) {
@@ -286,37 +315,50 @@ static LogicalResult VerifySavedModelModule(
     }
   }
 
+  SymbolTable symbol_table(module);
+
   auto session_initializers = module.getOps<SessionInitializerOp>();
-  if (!session_initializers.empty() &&
-      !llvm::hasSingleElement(session_initializers)) {
-    return (*++session_initializers.begin()).emitError()
-           << "there must be no more than one session_initializer op";
+  if (!session_initializers.empty()) {
+    if (!llvm::hasSingleElement(session_initializers)) {
+      return (*++session_initializers.begin()).emitError()
+             << "there must be no more than one session_initializer op";
+    }
+
+    if (failed(
+            VerifySessionInitOp(*session_initializers.begin(), symbol_table))) {
+      return failure();
+    }
   }
 
   auto is_init = [&session_initializers](mlir::func::FuncOp func) {
     if (session_initializers.empty()) return false;
-    auto init_syms = (*session_initializers.begin()).initializers();
+    auto init_syms = (*session_initializers.begin()).getInitializers();
     return std::any_of(
         init_syms.begin(), init_syms.end(), [&](Attribute sym_ref) {
           return sym_ref.cast<FlatSymbolRefAttr>().getValue() == func.getName();
         });
   };
 
-  SymbolTable symbol_table(module);
   auto symbol_uses = SymbolTable::getSymbolUses(&module.getBodyRegion());
-  if (!symbol_uses.hasValue()) {
+  if (!symbol_uses.has_value()) {
     return module.emitError() << "modules with 'tf_saved_model.semantics' must "
                                  "have analyzable symbol uses";
   }
   for (auto symbol_use : *symbol_uses) {
-    auto func = symbol_table.lookupNearestSymbolFrom<FuncOp>(
+    auto func = symbol_table.lookupNearestSymbolFrom<func::FuncOp>(
         symbol_use.getUser(), symbol_use.getSymbolRef());
     if (func && IsExported(func)) {
       // If it is an init function, then it can be used by the unique
       // session_initializer op.
       if (is_init(func) &&
-          llvm::isa<SessionInitializerOp>(symbol_use.getUser()))
+          llvm::isa<SessionInitializerOp>(symbol_use.getUser())) {
+        if (!func->getAttr(kTfSavedModelInitializerTypeAttr)) {
+          LOG(WARNING)
+              << "func op in session_initializer op's initializers attribute "
+              << "should have tf_saved_model.initializer_type attribute.";
+        }
         continue;
+      }
 
       return symbol_use.getUser()
           ->emitError("exported function cannot be internally referenced")
@@ -327,7 +369,7 @@ static LogicalResult VerifySavedModelModule(
   return success();
 }
 
-LogicalResult VerifyExportedFunc(FuncOp func) {
+LogicalResult VerifyExportedFunc(func::FuncOp func) {
   bool reached_bound_inputs = false;
   auto module = func->getParentOfType<ModuleOp>();
   for (int i = 0, e = func.getNumArguments(); i < e; i++) {
@@ -374,10 +416,40 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
   return success();
 }
 
+bool IsValidInitializerType(StringRef initializer_type) {
+  return initializer_type == kTfSavedModelInitializerRestoreType ||
+         initializer_type == kTfSavedModelInitializerInitType;
+}
+
+// Verifies the "tf_saved_model.initializer_type" attribute.
+LogicalResult VerifyInitializerTypeAttr(Operation *op,
+                                        const NamedAttribute named_attr) {
+  if (!isa<func::FuncOp>(op)) {
+    return op->emitError() << "Attribute tf_saved_model.initializer_type "
+                           << "should be on a func::FuncOp.";
+  }
+
+  // Validate the attribute value.
+  auto initializer_type_attr_value =
+      named_attr.getValue().dyn_cast_or_null<StringAttr>();
+  if (!initializer_type_attr_value) {
+    return op->emitError() << "Attribute tf_saved_model.initializer_type "
+                           << "should be a StringAttr.";
+  }
+
+  if (!IsValidInitializerType(initializer_type_attr_value)) {
+    return op->emitError() << "tf_saved_model.initializer_type should be one "
+                              "of 'restore_op' or 'init_op'. Got: "
+                           << initializer_type_attr_value.str();
+  }
+
+  return success();
+}
+
 LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
     Operation *op, NamedAttribute named_attr) {
   if (named_attr.getName() == "tf_saved_model.exported_names") {
-    if (!isa<FuncOp, GlobalTensorOp>(op)) {
+    if (!isa<func::FuncOp, GlobalTensorOp>(op)) {
       return op->emitError() << "'tf_saved_model.exported_names' must be on a "
                                 "'func' or 'tf_saved_model.global_tensor' op";
     }
@@ -391,7 +463,7 @@ LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
                 "whose immediate parent has attribute "
                 "'tf_saved_model.semantics'";
     }
-    if (auto func = dyn_cast<FuncOp>(op)) {
+    if (auto func = dyn_cast<func::FuncOp>(op)) {
       if (failed(VerifyExportedFunc(func))) {
         return failure();
       }
@@ -408,6 +480,10 @@ LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
   }
   if (named_attr.getName() == "tf_saved_model.under_construction") {
     return success();
+  }
+
+  if (named_attr.getName() == kTfSavedModelInitializerTypeAttr) {
+    return VerifyInitializerTypeAttr(op, named_attr);
   }
 
   return op->emitError() << "unknown tf_saved_model dialect attribute '"
@@ -436,7 +512,7 @@ bool HasTfSavedModelSemantics(ModuleOp module) {
   return module->getAttr("tf_saved_model.semantics") != nullptr;
 }
 
-Operation *LookupBoundInput(FuncOp func, int arg_index,
+Operation *LookupBoundInput(func::FuncOp func, int arg_index,
                             const SymbolTable &symbol_table) {
   auto attr = func.getArgAttrOfType<FlatSymbolRefAttr>(
       arg_index, "tf_saved_model.bound_input");
@@ -459,9 +535,9 @@ class OptimizeSessionInitializerPattern
                                 PatternRewriter &rewriter) const override {
     SymbolTable symbol_table(op->getParentOfType<ModuleOp>());
 
-    SmallVector<FuncOp, 2> to_remove;
+    SmallVector<func::FuncOp, 2> to_remove;
     SmallVector<mlir::Attribute, 2> to_keep;
-    for (auto sym_ref : op.initializers()) {
+    for (auto sym_ref : op.getInitializers()) {
       auto init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
           sym_ref.cast<FlatSymbolRefAttr>().getValue());
 
@@ -504,7 +580,7 @@ SmallVector<StringRef, 2> GetSessionInitializerExportedName(ModuleOp op) {
   SymbolTable symbol_table(op);
 
   SmallVector<StringRef, 2> results;
-  for (auto sym_ref : session_initializer_op.initializers()) {
+  for (auto sym_ref : session_initializer_op.getInitializers()) {
     auto init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
         sym_ref.cast<FlatSymbolRefAttr>().getValue());
     auto exported_names = GetExportedNames(init_func_op);

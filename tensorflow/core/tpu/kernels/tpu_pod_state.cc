@@ -17,7 +17,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 
 #if defined(LIBTPU_ON_GCE)
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
@@ -41,11 +41,11 @@ Status DeleteIfExists(ResourceMgr* resource_manager,
       resource_manager->default_container(), resource_name);
   if (status.ok()) {
     VLOG(1) << "Removed existing resource " << resource_name;
-    return Status::OK();
+    return OkStatus();
   }
   if (status.code() == error::NOT_FOUND) {
     VLOG(1) << "No resource " << resource_name << " to remove";
-    return Status::OK();
+    return OkStatus();
   }
   VLOG(1) << "Error removing resource " << resource_name << " : " << status;
   return status;
@@ -63,7 +63,7 @@ ConstructCacheService(ResourceMgr* rmgr, int serving_port,
   TF_RETURN_IF_ERROR(server_builder.status());
 
   auto cache_service = absl::make_unique<TpuCompilationCacheService>(
-      server_builder.ValueOrDie().get(), compilation_cache);
+      server_builder.value().get(), compilation_cache);
   cache_service->SetMemoryQuota(1ul << 31);  // 2GB
   cache_service->Start();
   return cache_service;
@@ -75,7 +75,8 @@ Status GetServerAddressAndPort(std::string* server_address, int* serving_port) {
   char* server_address_output = nullptr;
   auto cleanup = absl::MakeCleanup([&status, &server_address_output]() {
     TF_DeleteStatus(status);
-    tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(server_address_output);
+    stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
+        server_address_output);
   });
   size_t server_address_output_size;
   *serving_port = -1;
@@ -88,12 +89,13 @@ Status GetServerAddressAndPort(std::string* server_address, int* serving_port) {
   params.port_output = serving_port;
   params.status = status;
 
-  tpu::OpsApiFn()->TpuConfigurationApi_GetServerAddressAndPortFn(&params);
+  stream_executor::tpu::OpsApiFn()
+      ->TpuConfigurationApi_GetServerAddressAndPortFn(&params);
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status));
   *server_address =
       std::string(server_address_output, server_address_output_size);
   CHECK_NE(*serving_port, -1);
-  return Status::OK();
+  return OkStatus();
 }
 
 TpuPodState::TpuPodState(
@@ -105,7 +107,8 @@ TpuPodState::~TpuPodState() {
     VLOG(1) << "Shutting down Compilation Cache Service.";
     if (cache_service_->Shutdown(20)) {
       if (service_port_ >= 0) {
-        tpu::OpsApiFn()->TpuNetUtil_RecycleUnusedPortFn(service_port_);
+        stream_executor::tpu::OpsApiFn()->TpuNetUtil_RecycleUnusedPortFn(
+            service_port_);
       }
     } else {
       LOG(ERROR)
@@ -129,7 +132,7 @@ Status GetTPUPodState(const ResourceMgr* rmgr, TpuPodState** pod_state) {
     return errors::FailedPrecondition(
         "The TPU system has not been initialized.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool HasTPUPodState(const ResourceMgr* rmgr) {
@@ -157,7 +160,8 @@ Status ConstructTpuPodState(
 
   char* host_config_output = nullptr;
   auto host_config_cleanup = absl::MakeCleanup([&host_config_output]() {
-    tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(host_config_output);
+    stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
+        host_config_output);
   });
   size_t host_config_output_size;
 
@@ -172,7 +176,7 @@ Status ConstructTpuPodState(
   params.host_config_output = &host_config_output;
   params.status = status;
 
-  tpu::OpsApiFn()->ConfigureDistributedTpuOp_DoWorkFn(&params);
+  stream_executor::tpu::OpsApiFn()->ConfigureDistributedTpuOp_DoWorkFn(&params);
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status));
   *host_config_proto = std::string(host_config_output, host_config_output_size);
 

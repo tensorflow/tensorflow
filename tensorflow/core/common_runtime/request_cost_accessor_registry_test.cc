@@ -40,7 +40,7 @@ TEST(RequestCostAccessorRegistryTest, Basic) {
 
 TEST(RequestCostAccessorRegistryDeathTest, CrashWhenRegisterTwice) {
   const auto creator = []() {
-    return absl::make_unique<TestRequestCostAccessor>();
+    return std::make_unique<TestRequestCostAccessor>();
   };
   EXPECT_DEATH(
       RequestCostAccessorRegistry::RegisterRequestCostAccessor("test", creator),

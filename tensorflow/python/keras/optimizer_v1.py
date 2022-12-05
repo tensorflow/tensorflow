@@ -26,8 +26,8 @@ from tensorflow.python.keras import backend
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training import training_util
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 
 

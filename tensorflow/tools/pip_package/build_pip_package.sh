@@ -160,6 +160,8 @@ function prepare_src() {
       cp -LR \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
+      # Prevents pip package bloat. See b/228948031#comment17.
+      rm -f ${TMPDIR}/tensorflow/python/lib_pywrap_tensorflow_internal.*
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
         "${EXTERNAL_INCLUDES}"
@@ -183,6 +185,8 @@ function prepare_src() {
       cp -LR \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
+      # Prevents pip package bloat. See b/228948031#comment17.
+      rm -f ${TMPDIR}/tensorflow/python/lib_pywrap_tensorflow_internal.*
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
         "${EXTERNAL_INCLUDES}"
@@ -212,6 +216,12 @@ function prepare_src() {
 
   rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so
   rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so.[0-9].*
+
+  # Copying symlinks with -L duplicates these libraries.
+  rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.dylib
+  rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.[0-9].*.dylib
+  rm -f ${TMPDIR}/tensorflow/libtensorflow_cc.dylib
+  rm -f ${TMPDIR}/tensorflow/libtensorflow_cc.[0-9].*.dylib
 
   # TODO(annarev): copy over API files from tensorflow/api/_vN to tensorflow/
   #   except tensorflow/api/_vN/lite/.

@@ -17,16 +17,17 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "tensorflow/core/common_runtime/graph_execution_state.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
-#include "tensorflow/core/tfrt/tpu/tpu_resources.h"
+#include "tensorflow/core/tfrt/tpu/tpu_resources.h"  // NOLINT(unused-includes): For tfrt::tpu::TpuModelResource
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
@@ -42,14 +43,21 @@ namespace tfrt_stub {
 // Contains request related info.
 struct RequestInfo {
   tfrt::RCReference<tfrt::RequestContext> tfrt_request_context;
-  std::unique_ptr<WorkQueueInterface> request_queue;
+  // If this request needs to create a new queue, it is stored here. Otherwise,
+  // it can be nullptr.
+  std::unique_ptr<WorkQueueInterface> request_queue_owner;
+  // The inter-op thread pool to be used for this request, and it must not be
+  // nullptr. If `request_queue_owner` is not nullptr, then `request_queue` is
+  // the raw pointer inside `request_queue_owner`.
+  WorkQueueInterface* request_queue = nullptr;
+  // The task runner used by tensorflow::OpKernel.
   std::function<void(std::function<void()>)> runner;
 };
 
 // Creates a `RequestInfo` given relative data.
 StatusOr<std::unique_ptr<RequestInfo>> SetUpRequestContext(
     const GraphExecutionRunOptions& run_options,
-    const SessionMetadata& model_metadata, tfrt::HostContext* host,
+    const SessionMetadata& model_metadata, const Runtime& runtime,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
     tfrt::ResourceContext* resource_context,
     const FallbackState& fallback_state);
@@ -60,11 +68,10 @@ tensorflow::Status GraphExecutionRunOnFunction(
     const GraphExecutionRunOptions& run_options,
     absl::string_view signature_name, const tfrt::Function& func,
     absl::Span<const tensorflow::Tensor> inputs,
-    absl::Span<const tensorflow::Tensor> captures,
     std::vector<tensorflow::Tensor>* outputs,
     tfrt::ResourceContext* resource_context, const Runtime& runtime,
     const FallbackState& fallback_state,
-    tfrt::RequestDeadlineTracker& req_deadline_tracker);
+    tfrt::RequestDeadlineTracker* req_deadline_tracker);
 
 // Creates a ResourceContext and populate it with per model resource from
 // Runtime. If `tpu_target` is set to kTpurt, also call a special
@@ -73,13 +80,35 @@ tensorflow::Status GraphExecutionRunOnFunction(
 // TODO(b/178227859): Remove the need for the special handling for TPU here.
 std::unique_ptr<tfrt::ResourceContext> CreateResourceContext(
     const Runtime& runtime, tfrt::tpu::TpuModelResource* tpu_model_resource,
-    tensorflow::TfrtTpuInfraTarget tpu_target);
+    tensorflow::TfrtDeviceInfraTarget tpu_target);
 
 // Loads (if not yet) and runs a subgraph in a graph as per each request.
 class GraphExecutor {
  public:
   using Options = GraphExecutionOptions;
   using RunOptions = GraphExecutionRunOptions;
+
+  // The loading result of a `ClientGraph`.
+  struct LoadedClientGraph {
+    std::string name;
+    tfrt::BefBuffer bef;
+    tfrt::RCReference<tfrt::BEFFile> bef_file;
+    std::unique_ptr<tfrt::ResourceContext> resource_context;
+  };
+
+  // A subgraph constructed by specifying input/output tensors.
+  struct ClientGraph {
+    // A unique name by joining all the input/output/target names.
+    std::string name;
+    // The feed nodes for the corresponding inputs, but they might not be in the
+    // original order and if there are more than one original inputs mapped to
+    // the same feed node, only one is picked here.
+    tensorflow::GraphImportConfig::InputArrays input_nodes;
+    // The fetch nodes for the outputs, which should be in the original order.
+    std::vector<std::string> output_nodes;
+    // The target nodes that should be run but not returned as outputs.
+    std::vector<std::string> target_nodes;
+  };
 
   // Creates a `GraphExecutor` given the args.
   static StatusOr<std::unique_ptr<GraphExecutor>> Create(
@@ -107,6 +136,19 @@ class GraphExecutor {
       absl::Span<const std::string> target_tensor_names,
       std::vector<tensorflow::Tensor>* outputs);
 
+  // Runs the graph identified by `graph_name` using the input `inputs` and
+  // stores the output of the execution in `outputs`. It is the client's
+  // responsibility to ensure `graph_name` corresponds to logically different
+  // graphs, since this name is used to lookup compiled graphs in the cache. The
+  // graph is run synchronously with the TFRT interpreter.
+  tensorflow::Status RunWithSyncInterpreter(
+      const std::string& graph_name, absl::Span<tfrt::Value*> input_values,
+      absl::Span<const std::string> input_names,
+      absl::Span<const tensorflow::DataType> input_dtypes,
+      absl::Span<const std::string> output_tensor_names,
+      absl::Span<const std::string> target_tensor_names,
+      absl::Span<tfrt::Value*> outputs);
+
   // Extends the current graph by `graph`.
   tensorflow::Status Extend(const GraphDef& graph);
 
@@ -115,53 +157,41 @@ class GraphExecutor {
     return *graph_execution_state_;
   }
 
+  // Compiles and returns a graph that is specified by `client_graph`.
+  StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
+  ImportAndCompileClientGraph(const GraphExecutor::ClientGraph& client_graph);
+
+  // Returns the underlying runtime.
+  const tensorflow::tfrt_stub::Runtime& runtime() const {
+    DCHECK(options_.runtime);
+    return *options_.runtime;
+  }
+
  private:
-  // The loading result of a `ClientGraph`.
-  struct LoadedClientGraph {
-    std::string name;
-    tfrt::BefBuffer bef;
-    tfrt::RCReference<tfrt::BEFFile> bef_file;
-    std::unique_ptr<tfrt::ResourceContext> resource_context;
-  };
-
-  // A subgraph constructed by specifying input/output tensors.
-  struct ClientGraph {
-    // A unique name by joining all the input/output/target names.
-    std::string name;
-    // The feed nodes for the corresponding inputs, but they might not be in the
-    // original order and if there are more than one original inputs mapped to
-    // the same feed node, only one is picked here.
-    tensorflow::GraphImportConfig::InputArrays input_nodes;
-    // The fetch nodes for the outputs, which should be in the original order.
-    std::vector<std::string> output_nodes;
-    // The target nodes that should be run but not returned as outputs.
-    std::vector<std::string> target_nodes;
-  };
-
   // A set of methods to load a client graph.
   StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>> LoadClientGraph(
-      const GraphExecutor::ClientGraph& client_graph);
+      const GraphExecutor::ClientGraph& client_graph,
+      tensorflow::tfrt_stub::WorkQueueInterface* work_queue);
   tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
   ImportClientGraphToMlirModule(const GraphExecutor::ClientGraph& client_graph,
                                 mlir::MLIRContext* context) const;
   StatusOr<tfrt::BefBuffer> CompileMlirModuleToBef(mlir::ModuleOp module) const;
-  tensorflow::Status InitBef(tfrt::BEFFile* bef_file,
-                             tfrt::ResourceContext* resource_context);
+  tensorflow::Status InitBef(
+      tfrt::BEFFile* bef_file, tfrt::ResourceContext* resource_context,
+      tensorflow::tfrt_stub::WorkQueueInterface* work_queue);
 
   // Returns a `LoadedClientGraph` given input/output tensor info. If there is
   // no existing one yet, creates one first.
   StatusOr<std::reference_wrapper<const GraphExecutor::LoadedClientGraph>>
   GetOrCreateLoadedClientGraph(
+      const RunOptions& run_options,
       absl::Span<const std::string> input_tensor_names,
       absl::Span<const tensorflow::DataType> input_tensor_dtypes,
       absl::Span<const std::string> output_tensor_names,
-      absl::Span<const std::string> target_tensor_names)
+      absl::Span<const std::string> target_tensor_names,
+      tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
+      std::optional<const std::string> graph_name = std::nullopt)
       TF_LOCKS_EXCLUDED(loaded_client_graphs_mu_);
-
-  const tensorflow::tfrt_stub::Runtime& runtime() const {
-    DCHECK(options_.runtime);
-    return *options_.runtime;
-  }
 
   Options options_;
   std::reference_wrapper<const FallbackState> fallback_state_;

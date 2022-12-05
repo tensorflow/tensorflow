@@ -122,7 +122,10 @@ class TFOp {
   // requested device otherwise.
   StringAttr deviceAttr() {
     StringAttr device = assignedDeviceAttr();
-    if (device) return device;
+    if (device) {
+      assert(!device.getValue().empty());
+      return device;
+    }
     return requestedDeviceAttr();
   }
   StringRef device() {

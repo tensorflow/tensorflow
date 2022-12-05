@@ -32,8 +32,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/tensor_float_32_utils.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 
 namespace xla {
 
@@ -57,7 +57,7 @@ class SVDTest : public ClientLibraryTestBase {
     };
 
     // Test fails with TensorFloat-32 enabled
-    tensorflow::enable_tensor_float_32_execution(false);
+    tsl::enable_tensor_float_32_execution(false);
   }
   void TearDown() override { ClientLibraryTestBase::TearDown(); }
 
@@ -72,8 +72,8 @@ class SVDTest : public ClientLibraryTestBase {
   }
 
   XlaOp ComputeMatmulUDVT(SVDResult result, XlaBuilder* builder) {
-    Shape u_shape = builder->GetShape(result.u).ValueOrDie();
-    Shape v_shape = builder->GetShape(result.v).ValueOrDie();
+    Shape u_shape = builder->GetShape(result.u).value();
+    Shape v_shape = builder->GetShape(result.v).value();
 
     int64_t m = ShapeUtil::GetDimension(u_shape, -1);
     int64_t n = ShapeUtil::GetDimension(v_shape, -1);
@@ -97,7 +97,7 @@ class SVDTest : public ClientLibraryTestBase {
   }
 
   XlaOp GetAverageAbsoluteError(XlaOp m1, XlaOp m2, XlaBuilder* builder) {
-    Shape shape = builder->GetShape(m1).ValueOrDie();
+    Shape shape = builder->GetShape(m1).value();
     int64_t size = 1;
     for (auto d : shape.dimensions()) {
       size *= d;

@@ -26,10 +26,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "fp16.h"  // from @FP16
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/delegates/xnnpack/test_util.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
@@ -69,6 +69,10 @@ void DepthwiseConv2DTester::Test(TfLiteDelegate* delegate) const {
   ASSERT_EQ(default_interpreter->AllocateTensors(), kTfLiteOk);
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
+
+  if (weights_cache_ != nullptr) {
+    TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache_);
+  }
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());

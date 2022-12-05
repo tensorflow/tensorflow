@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "BarrierTakeMany"
   input_arg {
     name: "handle"

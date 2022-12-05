@@ -146,3 +146,35 @@ func.func @testSomeRegionNoUsers() {
 // CHECK-NEXT:   [[OP_B_OUTPUT:%.+]] = "tf.opB"()
 // CHECK:        tf_executor.yield [[OP_B_OUTPUT]] :
 // CHECK:      tf_executor.fetch [[ISLAND_0_OUTPUT]], [[ISLAND_1_CTRL]] :
+
+// -----
+
+// Tests a ParallelExecute with a single region.
+
+// CHECK-LABEL: func @testSingleton
+// CHECK-SAME: ([[ARG_0:%.+]]: tensor<i1>)
+func.func @testSingleton(%arg0 : tensor<i1>) {
+  %0 = tf_executor.graph {
+    %1:2 = tf_executor.island {
+      %2 = "tf.opA"(%arg0) : (tensor<i1>) -> tensor<i1>
+      tf_executor.yield %2 : tensor<i1>
+    }
+    %3:2 = tf_executor.island() {
+      %4 = "tf_device.parallel_execute"() ({
+        %5 = "tf.opB"(%1#0) : (tensor<i1>) -> tensor<i1>
+        tf_device.return %5 : tensor<i1>
+      }) {} : () -> tensor<i1>
+      tf_executor.yield %4 : tensor<i1>
+    }
+    tf_executor.fetch %3#0 : tensor<i1>
+  }
+  func.return
+}
+
+// CHECK:      [[INPUT_A:%.+]], {{%.+}} = tf_executor.island {
+// CHECK-NEXT:   [[OP_A_OUTPUT:%.+]] = "tf.opA"([[ARG_0]])
+// CHECK-NEXT:   tf_executor.yield [[OP_A_OUTPUT]] :
+// CHECK:      [[ISLAND_0_OUTPUT:%.+]], {{%.+}} = tf_executor.island {
+// CHECK-NEXT:   [[OP_B_OUTPUT:%.+]] = "tf.opB"([[INPUT_A]])
+// CHECK:        tf_executor.yield [[OP_B_OUTPUT]] :
+// CHECK:      tf_executor.fetch [[ISLAND_0_OUTPUT]] :

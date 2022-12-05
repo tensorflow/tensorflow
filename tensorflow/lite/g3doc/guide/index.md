@@ -10,7 +10,7 @@ helping developers run their models on mobile, embedded, and edge devices.
     leaves the device), connectivity (internet connectivity is not required),
     size (reduced model and binary size) and power consumption (efficient
     inference and a lack of network connections).
--   *Multiple platform support*, covering [Android](android) and [iOS](ios)
+-   *Multiple platform support*, covering [Android](../android) and [iOS](ios)
     devices, [embedded Linux](python), and
     [microcontrollers](../microcontrollers).
 -   *Diverse language support*, which includes Java, Swift, Objective-C, C++,
@@ -47,7 +47,7 @@ devices with limited compute and memory resources.
 A TensorFlow Lite model can optionally include *metadata* that has
 human-readable model description and machine-readable data for automatic
 generation of pre- and post-processing pipelines during on-device inference.
-Refer to [Add metadata](../convert/metadata) for more details.
+Refer to [Add metadata](../models/convert/metadata) for more details.
 
 You can generate a TensorFlow Lite model in the following ways:
 
@@ -56,12 +56,13 @@ You can generate a TensorFlow Lite model in the following ways:
     may or may not contain metadata.*
 
 *   **Create a TensorFlow Lite model:** Use the
-    [TensorFlow Lite Model Maker](model_maker) to create a model with your own
-    custom dataset. *By default, all models contain metadata.*
+    [TensorFlow Lite Model Maker](../models/modify/model_maker) to create a
+    model with your own custom dataset. *By default, all models contain
+    metadata.*
 
 *   **Convert a TensorFlow model into a TensorFlow Lite model:** Use the
-    [TensorFlow Lite Converter](../convert/index) to convert a TensorFlow model
-    into a TensorFlow Lite model. During conversion, you can apply
+    [TensorFlow Lite Converter](../models/convert/) to convert a TensorFlow
+    model into a TensorFlow Lite model. During conversion, you can apply
     [optimizations](../performance/model_optimization) such as
     [quantization](../performance/post_training_quantization) to reduce model
     size and latency with minimal or no loss in accuracy. *By default, all
@@ -92,8 +93,8 @@ ways based on the model type:
 On Android and iOS devices, you can improve performance using hardware
 acceleration. On either platforms you can use a
 [GPU Delegate](../performance/gpu), on android you can either use the
-[NNAPI Delegate](../performance/nnapi) (for newer devices) or the
-[Hexagon Delegate](../performance/hexagon_delegate) (on older devices) and on
+[NNAPI Delegate](../android/delegates/nnapi) (for newer devices) or the
+[Hexagon Delegate](../android/delegates/hexagon) (on older devices) and on
 iOS you can use the [Core ML Delegate](../performance/coreml_delegate). To add
 support for new hardware accelerators, you can
 [define your own delegate](../performance/implementing_delegate).
@@ -102,8 +103,8 @@ support for new hardware accelerators, you can
 
 You can refer to the following guides based on your target device:
 
-*   **Android and iOS:** Explore the [Android quickstart](android) and
-    [iOS quickstart](ios).
+*   **Android and iOS:** Explore the [Android quickstart](../android/quickstart)
+    and [iOS quickstart](ios).
 
 *   **Embedded Linux:** Explore the [Python quickstart](python) for embedded
     devices such as [Raspberry Pi](https://www.raspberrypi.org/){:.external} and

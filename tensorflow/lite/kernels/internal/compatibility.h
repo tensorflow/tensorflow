@@ -86,6 +86,16 @@ using int32 = std::int32_t;
 using uint32 = std::uint32_t;
 #endif  // !defined(TF_LITE_STATIC_MEMORY)
 
+// Allow for cross-compiler usage of function signatures - currently used for
+// specifying named RUY profiler regions in templated methods.
+#if defined(_MSC_VER)
+#define TFLITE_PRETTY_FUNCTION __FUNCSIG__
+#elif defined(__GNUC__)
+#define TFLITE_PRETTY_FUNCTION __PRETTY_FUNCTION__
+#else
+#define TFLITE_PRETTY_FUNCTION __func__
+#endif
+
 // TFLITE_DEPRECATED()
 //
 // Duplicated from absl/base/macros.h to avoid pulling in that library.

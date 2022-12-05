@@ -252,21 +252,21 @@ std::unique_ptr<InlinedFunctionBodyPlacer>
 InlinedFunctionBodyPlacer::DefaultPlacer(const Graph& graph,
                                          const Node& caller) {
   VLOG(3) << "Create default placer for inlined function body.";
-  return absl::make_unique<DefaultFunctionBodyPlacer>(caller);
+  return std::make_unique<DefaultFunctionBodyPlacer>(caller);
 }
 
 std::unique_ptr<InlinedFunctionBodyPlacer>
 InlinedFunctionBodyPlacer::SingleDevicePlacer(const Graph& graph,
                                               const Node& caller) {
   VLOG(3) << "Create single device placer for inlined function body.";
-  return absl::make_unique<SingleDeviceFunctionBodyPlacer>(caller);
+  return std::make_unique<SingleDeviceFunctionBodyPlacer>(caller);
 }
 
 std::unique_ptr<InlinedFunctionBodyPlacer>
 InlinedFunctionBodyPlacer::MultiDevicePlacer(const Graph& graph,
                                              const Node& caller) {
   VLOG(3) << "Create multi device placer for inlined function body.";
-  return absl::make_unique<MultiDeviceFunctionBodyPlacer>(caller);
+  return std::make_unique<MultiDeviceFunctionBodyPlacer>(caller);
 }
 
 namespace {
@@ -278,7 +278,7 @@ Status ValidateNoInline(const FunctionBody* fbody) {
     return errors::InvalidArgument(
         "Can't inline function marked with '_noinline'");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
@@ -393,7 +393,7 @@ Status ValidateInlining(const Node* node, const FunctionBody* fbody,
     TF_RETURN_IF_ERROR(ValidateNoInline(fbody));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Function inlining must preserve function execution semantics with regards to
@@ -850,7 +850,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
 
   VLOG(4) << "Final graph: " << g->ToGraphDefDebug().DebugString();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,

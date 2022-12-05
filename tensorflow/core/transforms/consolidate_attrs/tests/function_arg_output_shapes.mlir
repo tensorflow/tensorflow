@@ -13,8 +13,10 @@ tfg.func @test_output_shapes(%arg0: tensor<*xi32> {tf._output_shapes = [#tf_type
 
 // -----
 
+// Check that output shapes that is not an array is ignored.
+
 // CHECK-LABEL: tfg.func @test_not_array_attr(
-// CHECK-SAME: %[[ARG0:.*]]: tensor<*xi32> {tfg.regenerate_output_shapes})
+// CHECK-SAME: %[[ARG0:.*]]: tensor<*xi32> {tf._output_shapes = 5 : i32})
 tfg.func @test_not_array_attr(%arg0: tensor<*xi32> {tf._output_shapes = 5 : i32})
     -> (tensor<*xi32>) {
   return(%arg0) : tensor<*xi32>
@@ -22,8 +24,10 @@ tfg.func @test_not_array_attr(%arg0: tensor<*xi32> {tf._output_shapes = 5 : i32}
 
 // -----
 
+// Check that output shapes that is not an array of shapes is ignored.
+
 // CHECK-LABEL: tfg.func @test_not_shape_arr(
-// CHECK-SAME: %[[ARG0:.*]]: tensor<*xi32> {tfg.regenerate_output_shapes})
+// CHECK-SAME: %[[ARG0:.*]]: tensor<*xi32> {tf._output_shapes = [5 : i32]})
 tfg.func @test_not_shape_arr(%arg0: tensor<*xi32> {tf._output_shapes = [5 : i32]})
     -> (tensor<*xi32>) {
   return(%arg0) : tensor<*xi32>
@@ -31,8 +35,11 @@ tfg.func @test_not_shape_arr(%arg0: tensor<*xi32> {tf._output_shapes = [5 : i32]
 
 // -----
 
+// Check that output shapes that is an array of shapes but has the wrong number
+// of shapes is ignored.
+
 // CHECK-LABEL: tfg.func @test_wrong_shape_list_size(
-// CHECK-SAME: %[[ARG0:.*]]: tensor<*xi32> {tfg.regenerate_output_shapes})
+// CHECK-SAME: %[[ARG0:.*]]: tensor<*xi32> {tf._output_shapes = [{{.*}}]})
 tfg.func @test_wrong_shape_list_size(%arg0: tensor<*xi32> {tf._output_shapes = [
   #tf_type.shape<2>, #tf_type.shape<2>
 ]}) -> (tensor<*xi32>) {

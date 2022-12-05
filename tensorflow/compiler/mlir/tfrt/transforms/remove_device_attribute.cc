@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -31,6 +32,8 @@ constexpr const char* kDevice = "device";
 
 struct RemoveDeviceAttributePass
     : public PassWrapper<RemoveDeviceAttributePass, OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RemoveDeviceAttributePass)
+
   llvm::StringRef getArgument() const final {
     return "tfrt-remove-device-attribute";
   }
@@ -60,9 +63,9 @@ void RemoveDeviceAttributePass::runOnOperation() {
     OpBuilder builder(execute_op);
     auto new_execute_op = builder.create<tfrt::corert::ExecuteOp>(
         execute_op.getLoc(), execute_op.getResultTypes(),
-        execute_op.op_handler(), execute_op.operands(), new_op_attrs,
-        op_func_attrs, execute_op.op_name());
-    execute_op.replaceAllUsesWith(new_execute_op.results());
+        execute_op.getOpHandler(), execute_op.operands(), new_op_attrs,
+        op_func_attrs, execute_op.getOpName());
+    execute_op.replaceAllUsesWith(new_execute_op.getResults());
     execute_op.erase();
     return WalkResult::advance();
   });

@@ -666,7 +666,6 @@ inline void RequantizeManyInNewRange<quint8, qint32>(
 
 template <int shift>
 struct int64_right_shift_op {
-  EIGEN_EMPTY_STRUCT_CTOR(int64_right_shift_op)
   EIGEN_DEVICE_FUNC
   EIGEN_STRONG_INLINE const int64_t operator()(const int64_t a) const {
     return a >> shift;

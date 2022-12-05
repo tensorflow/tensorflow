@@ -21,11 +21,6 @@ limitations under the License.
 #include <string>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-// Disable clang-format to prevent 'FixedPoint' header from being included
-// before 'Tensor' header on which it depends.
-// clang-format off
-#include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
-// clang-format on
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
@@ -36,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/framework/device_type.h"
 
 namespace tensorflow {
 
@@ -50,28 +46,11 @@ enum MemoryType {
   HOST_MEMORY = 1,
 };
 
-// A DeviceType is just a string, but we wrap it up in a class to give
-// some type checking as we're passing these around
-class DeviceType {
- public:
-  DeviceType(const char* type)  // NOLINT(runtime/explicit)
-      : type_(type) {}
+using tsl::DeviceType;  // NOLINT
 
-  explicit DeviceType(StringPiece type) : type_(type.data(), type.size()) {}
-
-  const char* type() const { return type_.c_str(); }
-  const std::string& type_string() const { return type_; }
-
-  bool operator<(const DeviceType& other) const;
-  bool operator==(const DeviceType& other) const;
-  bool operator!=(const DeviceType& other) const { return !(*this == other); }
-
- private:
-  std::string type_;
-};
-std::ostream& operator<<(std::ostream& os, const DeviceType& d);
-
-// Convenient constants that can be passed to a DeviceType constructor
+// Convenient constants that can be passed to a DeviceType constructor.
+// See comments for CreateOpKernel in op_kernel.h for uses of DEVICE_DEFAULT
+// and other device types.
 TF_EXPORT extern const char* const DEVICE_DEFAULT;     // "DEFAULT"
 TF_EXPORT extern const char* const DEVICE_CPU;         // "CPU"
 TF_EXPORT extern const char* const DEVICE_GPU;         // "GPU"
@@ -264,7 +243,7 @@ constexpr DataTypeSet kAllTypes =
     ToSet(DT_BOOL) | ToSet(DT_QINT8) | ToSet(DT_QUINT8) | ToSet(DT_QINT16) |
     ToSet(DT_QUINT16) | ToSet(DT_QINT32) | ToSet(DT_HALF) | ToSet(DT_RESOURCE) |
     ToSet(DT_VARIANT) | ToSet(DT_UINT32) | ToSet(DT_UINT64) |
-    ToSet(DT_BFLOAT16);
+    ToSet(DT_BFLOAT16) | ToSet(DT_FLOAT8_E5M2) | ToSet(DT_FLOAT8_E4M3FN);
 inline const DataTypeSet& AllTypes() { return kAllTypes; }
 
 #if !defined(IS_MOBILE_PLATFORM) || defined(SUPPORT_SELECTIVE_REGISTRATION)
@@ -283,8 +262,8 @@ const DataTypeSet kNumberTypes =
     ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) | ToSet(DT_INT64) | ToSet(DT_INT32) |
     ToSet(DT_UINT8) | ToSet(DT_UINT16) | ToSet(DT_INT16) | ToSet(DT_INT8) |
     ToSet(DT_COMPLEX64) | ToSet(DT_COMPLEX128) | ToSet(DT_QINT8) |
-    ToSet(DT_QUINT8) | ToSet(DT_QINT32) | ToSet(DT_HALF) | ToSet(DT_UINT32) |
-    ToSet(DT_UINT64) | ToSet(DT_BFLOAT16);
+    ToSet(DT_QUINT8) | ToSet(DT_QINT16) | ToSet(DT_QUINT16) | ToSet(DT_QINT32) |
+    ToSet(DT_HALF) | ToSet(DT_UINT32) | ToSet(DT_UINT64) | ToSet(DT_BFLOAT16);
 inline const DataTypeSet& NumberTypes() { return kNumberTypes; }
 
 constexpr DataTypeSet kQuantizedTypes = ToSet(DT_QINT8) | ToSet(DT_QUINT8) |
@@ -398,6 +377,8 @@ MATCH_TYPE_AND_ENUM(quint16, DT_QUINT16);
 MATCH_TYPE_AND_ENUM(qint32, DT_QINT32);
 MATCH_TYPE_AND_ENUM(bfloat16, DT_BFLOAT16);
 MATCH_TYPE_AND_ENUM(Eigen::half, DT_HALF);
+MATCH_TYPE_AND_ENUM(float8_e5m2, DT_FLOAT8_E5M2);
+MATCH_TYPE_AND_ENUM(float8_e4m3fn, DT_FLOAT8_E4M3FN);
 MATCH_TYPE_AND_ENUM(ResourceHandle, DT_RESOURCE);
 MATCH_TYPE_AND_ENUM(Variant, DT_VARIANT);
 
@@ -474,14 +455,16 @@ constexpr DataTypeSet kDataTypesCanUseMemcpy =
     ToSet(DT_COMPLEX64) | ToSet(DT_COMPLEX128) | ToSet(DT_INT64) |
     ToSet(DT_UINT64) | ToSet(DT_BOOL) | ToSet(DT_QINT8) | ToSet(DT_QUINT8) |
     ToSet(DT_QINT16) | ToSet(DT_QUINT16) | ToSet(DT_QINT32) |
-    ToSet(DT_BFLOAT16) | ToSet(DT_HALF);
+    ToSet(DT_BFLOAT16) | ToSet(DT_HALF) | ToSet(DT_FLOAT8_E5M2) |
+    ToSet(DT_FLOAT8_E4M3FN);
 inline bool DataTypeCanUseMemcpy(DataType dt) {
   return kDataTypesCanUseMemcpy.Contains(dt);
 }
 
 // Returns true iff 'dt' is a real, non-quantized floating point type.
 constexpr DataTypeSet kDataTypeIsFloating =
-    ToSet(DT_HALF) | ToSet(DT_BFLOAT16) | ToSet(DT_FLOAT) | ToSet(DT_DOUBLE);
+    ToSet(DT_HALF) | ToSet(DT_BFLOAT16) | ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) |
+    ToSet(DT_FLOAT8_E4M3FN) | ToSet(DT_FLOAT8_E5M2);
 inline bool DataTypeIsFloating(DataType dt) {
   return kDataTypeIsFloating.Contains(dt);
 }

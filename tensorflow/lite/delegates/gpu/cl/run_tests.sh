@@ -91,6 +91,7 @@ if ((num_targets == 1)); then
   ADB shell rm -f $OPENCL_DIR/$executable
 else # Cleaning log records for multiple test targets
   for ((i = 0; i < num_targets; i++)); do
+    echo ${targets[i]}
     target=${targets[i]}
     executable=${target##*:}  #finds last token after ':'
     bazel build "${BUILD_CONFIG[@]}" $target > /dev/null 2>&1
@@ -98,7 +99,7 @@ else # Cleaning log records for multiple test targets
     exec_path=bazel-bin/$(echo $test_path | cut -c 3-)
     ADB push "$exec_path" $OPENCL_DIR > /dev/null 2>&1
     ADB shell chmod +x $OPENCL_DIR/$executable
-    ADB shell ./$OPENCL_DIR/$executable --logtostderr 2> /dev/null | grep '\][[:space:]][a-zA-Z][a-zA-Z0-9_]*\.'
+    ADB shell ./$OPENCL_DIR/$executable --logtostderr 2> /dev/null | grep '\[*\.'
     ADB shell rm -f $OPENCL_DIR/$executable
   done
 fi

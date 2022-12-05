@@ -61,7 +61,7 @@ Status GetWindowedOutputSizeVerboseV2(int64_t input_size, int64_t filter_size,
         ", effective_filter_size: ", effective_filter_size,
         ", stride: ", stride, "]");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetWindowedOutputSizeVerbose(int64_t input_size, int64_t filter_size,
@@ -114,7 +114,7 @@ Status Get3dOutputSize(const std::array<int64_t, 3>& input,
                                              padding_type, &(*output_ptr)[i],
                                              &(*padding_ptr)[i]));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Get3dOutputSizeV2(const std::array<int64_t, 3>& input,
@@ -129,6 +129,6 @@ Status Get3dOutputSizeV2(const std::array<int64_t, 3>& input,
         input[i], window[i], dilations[i], strides[i], padding_type,
         &(*output_ptr)[i], &(*padding_ptr)[i]));
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace tensorflow

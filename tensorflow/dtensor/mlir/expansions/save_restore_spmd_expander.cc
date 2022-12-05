@@ -41,9 +41,12 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/cc/save_restore_util.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
+#include "tensorflow/dtensor/mlir/collectives.h"
 #include "tensorflow/dtensor/mlir/device_utils.h"
+#include "tensorflow/dtensor/mlir/dtensor_send_recv.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
@@ -55,6 +58,61 @@ namespace tensorflow {
 namespace dtensor {
 
 namespace {
+
+// Given a string tensor `prefix` of shape [k], produces a new string tensor
+// of shape [k*n] where n = number of devices in `mesh` by appending
+// device_id from [0, n) to `prefix`.
+//
+// For example:
+//   before:
+//     prefix = tf.Constant(["alice", "bob"])
+//     mesh.num_devices() = 2
+//   after =
+//     result = tf.Constant(["alice_device_0", "bob_device_0", "alice_device_1",
+//     "bob_device_1"])
+//
+// This is needed for DTensorCheckpointV2 tf.MergeV2Checkpoint SPMD expansion
+// to generate all candidate checkpoint prefix string that we generated
+// during tf.SaveV2 SPMD Expansion.
+StatusOr<mlir::Value> GetAllCandidateCheckpointPrefixes(
+    mlir::OpBuilder& builder, mlir::Value prefix, mlir::Value zero_const,
+    const Mesh& mesh) {
+  if (mesh.num_devices() == 0) return prefix;
+
+  mlir::Value new_prefix =
+      builder
+          .create<mlir::TF::AddOp>(
+              prefix.getLoc(),
+              prefix.getType().dyn_cast<mlir::RankedTensorType>(), prefix,
+              StringConst(builder, prefix.getLoc(),
+                          llvm::SmallVector<llvm::StringRef>(
+                              {DeviceSuffix(0, mesh.num_devices())})))
+          .getZ();
+
+  for (int64_t device_id = 1; device_id < mesh.num_devices(); ++device_id) {
+    mlir::Value prefix_plus_dtensor_suffix =
+        builder
+            .create<mlir::TF::AddOp>(
+                prefix.getLoc(),
+                prefix.getType().dyn_cast<mlir::RankedTensorType>(), prefix,
+                StringConst(builder, prefix.getLoc(),
+                            llvm::SmallVector<llvm::StringRef>(
+                                {DeviceSuffix(device_id, mesh.num_devices())})))
+            .getZ();
+
+    new_prefix = builder
+                     .create<mlir::TF::ConcatOp>(
+                         prefix.getLoc(),
+                         /*output=*/prefix.getType(),
+                         /*concat_dim=*/
+                         zero_const,
+                         llvm::SmallVector<mlir::Value, 4>{
+                             new_prefix, prefix_plus_dtensor_suffix})
+                     .getResult();
+  }
+  return new_prefix;
+}
+
 // Maps a device_id to a 0 based switch-case branch index.
 //
 // For Save/Restore ops, constructing a switch-case on all global devices is not
@@ -134,17 +192,12 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
 
   llvm::SmallVector<mlir::func::FuncOp, 8> branch_funs;
 
-  // Try to extract prefix out as constants and build new shard prefix base on
-  // it.
-  TF_ASSIGN_OR_RETURN(std::string prefix, ExtractConstScalarStringFromValue(
-                                              original_save.prefix()));
-
   // Best effort extraction on shape_and_slices and verify they are empty. If
   // the extraction failed to just ignore those values and work as if those are
   // empty.
   llvm::SmallVector<std::string, 4> original_shape_and_slices;
   const Status extraction_status = ExtractConstStringVectorFromValue(
-      original_save.shape_and_slices(), original_shape_and_slices);
+      original_save.getShapeAndSlices(), original_shape_and_slices);
   if (extraction_status.ok()) {
     for (const std::string& shape_and_slice : original_shape_and_slices) {
       if (!shape_and_slice.empty())
@@ -211,6 +264,7 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
       mlir::Block* fn_block = new_save.addEntryBlock();
       mlir::OpBuilder fn_builder = mlir::OpBuilder::atBlockBegin(fn_block);
 
+      mlir::Value prefix = new_save.getArgument(0);
       mlir::Value tensor_names = new_save.getArgument(1);
       // It is currently unsupported if user passes in shape_and_slices.
       // TODO(hthu): Implement this.
@@ -219,9 +273,9 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
       // First run a split op on the tensor_names so that we can use the proper
       // splitted output(one of the tensor_name) to reconstruct tensor_names
       // field in the new SaveV2 op.
-      TF_ASSIGN_OR_RETURN(
-          llvm::ArrayRef<int64_t> tensor_names_shape,
-          GetGlobalShapeOfValueFromDTensorLayout(original_save.tensor_names()));
+      TF_ASSIGN_OR_RETURN(llvm::ArrayRef<int64_t> tensor_names_shape,
+                          GetGlobalShapeOfValueFromDTensorLayout(
+                              original_save.getTensorNames()));
       if (tensor_names_shape.size() != 1)
         return errors::Internal(
             llvm::formatv("SaveV2 op got `tensor_names` with rank {0}) but "
@@ -237,8 +291,8 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
       // Builds the per device saving spec, that takes care of tensor_name
       // uniqueness requirement. Each save op should use new_tensor_indices and
       // new_specs to map the corresponding saving tensor and its slice spec.
-      SaveOpSpecs specs =
-          BuildPerDeviceSave(per_device_specs, device_id, prefix);
+      SaveOpSpecs specs = BuildPerDeviceSave(
+          fn_builder, per_device_specs, device_id, prefix, mesh.num_devices());
       const std::vector<std::vector<int>>& new_tensor_indices =
           specs.tensor_indices;
       const std::vector<std::vector<std::string>>& new_specs =
@@ -272,23 +326,15 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
               fn_builder
                   .create<mlir::TF::ConcatOp>(
                       location,
-                      /*output=*/original_save.tensor_names().getType(),
+                      /*output=*/original_save.getTensorNames().getType(),
                       /*concat_dim=*/
                       IntConst(fn_builder, location, /*values=*/{0}),
                       new_tensor_names)
                   .getResult();
         }
 
-        // Builds a unique prefix for this device and this save_op.
-        std::string new_prefix =
-            prefix +
-            llvm::formatv("_device_{0}_save_op_{1}", device_id, save_op_index)
-                .str();
-
         fn_builder.create<mlir::TF::SaveV2Op>(
-            location,
-            StringConst(fn_builder, location,
-                        {specs.new_prefixes[save_op_index]}),
+            location, specs.new_prefixes[save_op_index],
             /*tensor_name=*/tensor_names,
             /*shape_and_slices=*/
             StringConst(
@@ -338,7 +384,7 @@ StatusOr<mlir::Operation*> ExpandSaveV2Op(mlir::Operation* op) {
   absl::flat_hash_map<int64_t, std::pair<std::vector<int64_t>, Layout>>
       tensor_shape_layout_map;
   std::vector<SavingTensorMetadata> metadata;
-  for (const auto& it : llvm::enumerate(save_v2.tensors())) {
+  for (const auto& it : llvm::enumerate(save_v2.getTensors())) {
     mlir::Value tensor = it.value();
     // We use index to select the tensor names and shape_and_slices from the
     // inputs. This is generic regardless whether the inputs are constants or
@@ -397,9 +443,30 @@ StatusOr<mlir::Operation*> ExpandMergeV2Op(mlir::Operation* op) {
   auto location = merge_v2.getLoc();
   mlir::OpBuilder builder(merge_v2);
 
-  auto func_type =
-      mlir::FunctionType::get(builder.getContext(), merge_v2.getOperandTypes(),
-                              llvm::ArrayRef<mlir::Type>{});
+  TF_ASSIGN_OR_RETURN(auto device_id, DeviceId(merge_v2));
+  TF_ASSIGN_OR_RETURN(Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
+
+  // Emit a barrier before every merge to ensure that every device's save
+  // finishes running before the merge is called and use this as the
+  // suffix for the new prefix string tensors so that it is not
+  // removed from dead node analysis.
+  //
+  // Note that this barrier is implemented with a DTensorAllReduce which
+  // gets lowered to a CollectiveReduce op, which is a SideEffect op. Since
+  // both Merge and Save ops are maximally conservative SideEffect ops,
+  // the execution order is guaranteed to be Save -> Barrier -> Merge, which
+  // is the desired execution order to guarantee correctness of IO.
+  TF_ASSIGN_OR_RETURN(
+      mlir::Operation * rank_1_zero,
+      EmitBarrierWithConstValue(builder, location, mesh, /*value=*/0));
+
+  // Add a zero value to the end of the function types, used for
+  // adding a barrier before every merge op.
+  llvm::SmallVector<mlir::Type> input_types(merge_v2.getOperandTypes());
+  input_types.push_back(rank_1_zero->getResult(0).getType());
+
+  auto func_type = mlir::FunctionType::get(builder.getContext(), input_types,
+                                           llvm::ArrayRef<mlir::Type>{});
   // Build then_func that is the branch of device_id != 0, which only contains a
   // single NoOp.
   mlir::func::FuncOp then_func = mlir::func::FuncOp::create(
@@ -431,21 +498,44 @@ StatusOr<mlir::Operation*> ExpandMergeV2Op(mlir::Operation* op) {
   mlir::OpBuilder else_fn_builder =
       mlir::OpBuilder::atBlockBegin(else_fn_block);
   mlir::Value checkpoint_prefixes = else_fn_block->getArgument(0);
+
+  mlir::Value zero_value =
+      else_fn_block->getArgument(else_fn_block->getNumArguments() - 1);
+  TF_ASSIGN_OR_RETURN(
+      checkpoint_prefixes,
+      GetAllCandidateCheckpointPrefixes(else_fn_builder, checkpoint_prefixes,
+                                        zero_value, mesh));
+
   mlir::Value destination_prefixes = else_fn_block->getArgument(1);
 
   else_fn_builder.create<mlir::TF::MergeV2CheckpointsOp>(
       location, checkpoint_prefixes, destination_prefixes,
-      merge_v2.delete_old_dirs());
+      /*delete_old_dirs=*/
+      else_fn_builder.getBoolAttr(merge_v2.getDeleteOldDirs()),
+      /*allow_missing_files=*/else_fn_builder.getBoolAttr(true));
 
   else_fn_builder.create<mlir::func::ReturnOp>(location);
 
   symbol_table.insert(then_func);
   symbol_table.insert(else_func);
 
-  TF_ASSIGN_OR_RETURN(mlir::Value device_id, DeviceId(merge_v2));
+  auto new_operands = llvm::to_vector<4>(merge_v2.getOperands());
+  new_operands.push_back(rank_1_zero->getResult(0));
+
+  TF_ASSIGN_OR_RETURN(
+      mlir::Value zero_scalar,
+      CreateZeroScalarConst(
+          builder, location,
+          device_id.getType().cast<mlir::TensorType>().getElementType()));
+
+  mlir::TF::NotEqualOp not_equal = builder.create<mlir::TF::NotEqualOp>(
+      location, device_id, zero_scalar,
+      /*incompatible_shape_error=*/builder.getBoolAttr(false));
+
   auto if_op = builder.create<mlir::TF::IfOp>(
-      location, then_func.getFunctionType().getResults(), /*cond=*/device_id,
-      /*input=*/merge_v2.getOperands(),
+      location, then_func.getFunctionType().getResults(),
+      /*cond=*/not_equal.getResult(),
+      /*input=*/new_operands,
       /*then_branch=*/then_func.getSymName(),
       /*else_branch=*/else_func.getSymName(), /*is_stateless=*/false);
 
@@ -456,113 +546,59 @@ StatusOr<mlir::Operation*> ExpandMergeV2Op(mlir::Operation* op) {
 
 // SPMD Expander for RestoreV2 op.
 //
-// The original RestoreV2 op will be updated to only restore the slice for the
+// Both tf.RestoreV2 and DTensorRestoreV2 op will be expanded the same way.
+// That is, they will be updated to only restore the slice for the
 // given device_id. For replicated tensors, that would be the full tensor slice.
 // For sharded tensors, we compute its slice using device coordinates and tensor
 // layout.
-StatusOr<mlir::Operation*> ExpandRestoreV2Op(mlir::Operation* op) {
-  // Stock RestoreV2 is pass through as those saveables runs on non-dtensor
-  // device. The restore operation for them is as-is.
-  // TODO(hthu): Figure out better placement for things like SaveCounters.
-  if (llvm::isa<mlir::TF::RestoreV2Op>(op)) return op;
-
-  mlir::TF::DTensorRestoreV2Op restore_v2 =
-      mlir::dyn_cast<mlir::TF::DTensorRestoreV2Op>(op);
-  if (!restore_v2) {
-    return errors::InvalidArgument(
-        llvm::formatv("Expecting DTensorRestoreV2Op but got {0}", OpName(op))
-            .str());
-  }
-
-  // Infer local shape as output type relies on it.
-  // Most of the time the inference is no-op as at this point, out shape are
-  // unknown until we actually load it back.
-  //
-  // It is possible to recover the shape and update to local shape using similar
-  // mechanism as finding AssignVariableOp, but it seems uncessary for now.
-  restore_v2 = mlir::cast<mlir::TF::DTensorRestoreV2Op>(
-      InferSPMDExpandedLocalShape(restore_v2));
-
-  TF_ASSIGN_OR_RETURN(Mesh mesh, ExtractDeviceMeshEnclosingCluster(restore_v2));
+//
+// `global_shapes` refers to the global shapes of the outputs of the op.
+// `layouts` refers to the output layouts of the op.
+StatusOr<mlir::Operation*> ExpandRestoreV2OpHelper(
+    mlir::Operation* op, std::vector<std::vector<int64_t>> global_shapes,
+    std::vector<Layout> layouts, std::vector<mlir::Type> output_types,
+    mlir::MutableOperandRange shapes_and_slices_mutable) {
+  TF_ASSIGN_OR_RETURN(Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
 
   // Prepare for building CaseOp.
-  mlir::ModuleOp module = restore_v2->getParentOfType<mlir::ModuleOp>();
+  mlir::ModuleOp module = op->template getParentOfType<mlir::ModuleOp>();
   if (!module)
     return errors::Internal(
         "DTensorRestoreV2 op isn't enclosed inside a mlir::ModuleOp");
 
   mlir::SymbolTable symbol_table(module);
 
-  mlir::OpBuilder builder(restore_v2);
-  const auto& location = restore_v2.getLoc();
+  mlir::OpBuilder builder(op);
+  const auto& location = op->getLoc();
 
   // Tracks case branch functions for each local_device_id.
   llvm::SmallVector<mlir::func::FuncOp> branch_funcs(
       mesh.local_device_ids().size());
   // Stores restore ops for each device_id in a function, that is suitable for
   // feeding into a CaseOp.
-
+  //
   // Branch functions have shared function type as original restore_v2.
-  auto func_type = mlir::FunctionType::get(builder.getContext(),
-                                           restore_v2.getOperandTypes(),
-                                           restore_v2.getResultTypes());
+  const auto func_type =
+      mlir::FunctionType::get(builder.getContext(), op->getOperandTypes(),
+                              mlir::TypeRange(output_types));
 
-  llvm::SmallVector<std::string, 4> new_shape_and_slices(
-      restore_v2.getNumResults(), "");
   for (int local_device_idx = 0;
        local_device_idx < mesh.local_device_ids().size(); ++local_device_idx) {
     int device_id = mesh.local_device_ids()[local_device_idx];
     TF_ASSIGN_OR_RETURN(const DeviceLocation& coords,
                         mesh.device_location(device_id));
 
-    llvm::SmallVector<std::string> new_shapes_and_slices(
-        restore_v2.tensors().size());
-
-    mlir::ArrayAttr input_shapes_attr =
-        restore_v2->getAttrOfType<mlir::ArrayAttr>("input_shapes");
-    if (!input_shapes_attr) {
-      return errors::InvalidArgument(
-          "DTensorRestoreV2Op requires input_shapes attributes.");
-    }
-
-    llvm::SmallVector<llvm::SmallVector<int64_t, 4>, 4> input_shapes;
-    input_shapes.reserve(input_shapes_attr.size());
-    for (const auto& shape : input_shapes_attr) {
-      mlir::TF::ShapeAttr shape_attr = shape.cast<mlir::TF::ShapeAttr>();
-      if (!shape_attr.hasStaticShape()) {
-        return errors::InvalidArgument(
-            llvm::formatv("DTensorRestoreV2Op requires statically known input "
-                          "shape, but got non-static shape: {0}.",
-                          shape_attr)
-                .str());
-      }
-      input_shapes.push_back(llvm::SmallVector<int64_t, 4>(
-          shape_attr.getShape().begin(), shape_attr.getShape().end()));
-    }
-
-    mlir::ArrayAttr input_layouts_attr = restore_v2.input_layouts();
-    if (!input_layouts_attr) {
-      return errors::InvalidArgument(
-          "DTensorRestoreV2Op requires input_layouts attributes.");
-    }
-    llvm::SmallVector<std::string> input_layouts;
-    input_layouts.reserve(input_layouts_attr.size());
-    for (const auto& layout : input_layouts_attr.getValue().vec()) {
-      input_layouts.push_back(layout.cast<mlir::StringAttr>().getValue().str());
-    }
+    llvm::SmallVector<std::string> new_shapes_and_slices(op->getNumResults());
 
     // For each tensor, build its restore shape_and_slice.
-    for (const auto& it :
-         llvm::enumerate(llvm::zip(input_shapes, input_layouts))) {
-      llvm::ArrayRef<int64_t> global_shape = std::get<0>(it.value());
-      TF_ASSIGN_OR_RETURN(Layout layout,
-                          Layout::FromString(std::get<1>(it.value())));
-
+    for (const auto& it : llvm::enumerate(llvm::zip(global_shapes, layouts))) {
+      std::vector<int64_t> global_shape = std::get<0>(it.value());
+      Layout layout = std::get<1>(it.value());
       // Fully replicated tensor does not need a slice and spec field and we
       // simply leave it as empty string. Note that Non-DTensor restore will
       // use replicated layout from SaveSpec.
       if (layout.IsFullyReplicated()) {
-        new_shape_and_slices[it.index()] = "";
+        new_shapes_and_slices[it.index()] = "";
         continue;
       }
 
@@ -571,7 +607,7 @@ StatusOr<mlir::Operation*> ExpandRestoreV2Op(mlir::Operation* op) {
           SliceSpecOnDevice(layout, mesh, coords, global_shape));
 
       // Concat shape and slice specs
-      new_shape_and_slices[it.index()] =
+      new_shapes_and_slices[it.index()] =
           llvm::formatv("{0} {1}", absl::StrJoin(global_shape, " "),
                         absl::StrJoin(slice_specs, ":"))
               .str();
@@ -579,14 +615,14 @@ StatusOr<mlir::Operation*> ExpandRestoreV2Op(mlir::Operation* op) {
 
     // Builds the restore op on device_id.
     mlir::OpBuilder builder(op);
-    restore_v2.shape_and_slicesMutable().assign(StringConst(
-        builder, restore_v2.getLoc(),
-        llvm::SmallVector<llvm::StringRef>(new_shape_and_slices.begin(),
-                                           new_shape_and_slices.end())));
+    shapes_and_slices_mutable.assign(StringConst(
+        builder, op->getLoc(),
+        llvm::SmallVector<llvm::StringRef>(new_shapes_and_slices.begin(),
+                                           new_shapes_and_slices.end())));
     mlir::func::FuncOp device_restore_fn = mlir::func::FuncOp::create(
         location,
-        llvm::formatv("{0}_on_device_{1}_{2}", OpName(restore_v2), device_id,
-                      OpHash(restore_v2))
+        llvm::formatv("{0}_on_device_{1}_{2}", OpName(op), device_id,
+                      OpHash(op))
             .str(),
         func_type, llvm::ArrayRef<mlir::NamedAttribute>{});
     // Set function visibility to private to indicate that it is only used in
@@ -601,11 +637,11 @@ StatusOr<mlir::Operation*> ExpandRestoreV2Op(mlir::Operation* op) {
     // Constructs shapes and slices ourselves while reusing all other
     // arguments.
     auto new_restore_v2 = fn_builder.create<mlir::TF::RestoreV2Op>(
-        location, restore_v2.getResultTypes(), prefix, tensor_names,
+        location, mlir::TypeRange(output_types), prefix, tensor_names,
         StringConst(
             fn_builder, location,
-            llvm::SmallVector<llvm::StringRef>(new_shape_and_slices.begin(),
-                                               new_shape_and_slices.end())));
+            llvm::SmallVector<llvm::StringRef>(new_shapes_and_slices.begin(),
+                                               new_shapes_and_slices.end())));
     fn_builder.create<mlir::func::ReturnOp>(location,
                                             new_restore_v2.getResults());
 
@@ -617,7 +653,7 @@ StatusOr<mlir::Operation*> ExpandRestoreV2Op(mlir::Operation* op) {
   for (auto& func : branch_funcs)
     symbols.push_back(mlir::SymbolRefAttr::get(func));
 
-  TF_ASSIGN_OR_RETURN(mlir::Value device_id, DeviceId(restore_v2));
+  TF_ASSIGN_OR_RETURN(mlir::Value device_id, DeviceId(op));
   llvm::SmallVector<int64_t> local_device_ids(mesh.local_device_ids().begin(),
                                               mesh.local_device_ids().end());
   mlir::Value branch_index = DeviceIdToLocalBranchIndex(
@@ -625,16 +661,126 @@ StatusOr<mlir::Operation*> ExpandRestoreV2Op(mlir::Operation* op) {
 
   auto case_op = builder.create<mlir::TF::CaseOp>(
       location,
-      /*output=*/restore_v2.getResultTypes(),
+      /*output=*/mlir::TypeRange(output_types),
       /*branch_index=*/branch_index,
-      /*input=*/restore_v2.getOperands(),
+      /*input=*/op->getOperands(),
       /*branches=*/builder.getArrayAttr(symbols),
       /*is_stateless=*/builder.getBoolAttr(false));
 
-  restore_v2.replaceAllUsesWith(case_op);
-  restore_v2.erase();
+  op->replaceAllUsesWith(case_op);
+  op->erase();
 
   return case_op.getOperation();
+}
+
+// DTensorRestoreV2 op has layouts and shapes as the attribute of the op
+// itself. We extract those attributes and call the helper expander.
+StatusOr<mlir::Operation*> ExpandDTensorRestoreV2Op(mlir::Operation* op) {
+  mlir::TF::DTensorRestoreV2Op restore_v2 =
+      mlir::dyn_cast<mlir::TF::DTensorRestoreV2Op>(op);
+  if (!restore_v2) {
+    return errors::InvalidArgument(
+        llvm::formatv("Expecting DTensorRestoreV2Op but got {0}", OpName(op))
+            .str());
+  }
+
+  mlir::ArrayAttr input_shapes_attr =
+      restore_v2->getAttrOfType<mlir::ArrayAttr>("input_shapes");
+  if (!input_shapes_attr) {
+    return errors::InvalidArgument(
+        "DTensorRestoreV2Op requires input_shapes attributes.");
+  }
+
+  std::vector<std::vector<int64_t>> input_shapes;
+  input_shapes.reserve(input_shapes_attr.size());
+  for (const auto& shape : input_shapes_attr) {
+    mlir::TF::ShapeAttr shape_attr = shape.cast<mlir::TF::ShapeAttr>();
+    if (!shape_attr.hasStaticShape()) {
+      return errors::InvalidArgument(
+          llvm::formatv("DTensorRestoreV2Op requires statically known input "
+                        "shape, but got non-static shape: {0}.",
+                        shape_attr)
+              .str());
+    }
+    input_shapes.push_back(std::vector<int64_t>(shape_attr.getShape().begin(),
+                                                shape_attr.getShape().end()));
+  }
+
+  mlir::ArrayAttr input_layouts_attr = restore_v2.getInputLayouts();
+  if (!input_layouts_attr) {
+    return errors::InvalidArgument(
+        "DTensorRestoreV2Op requires input_layouts attributes.");
+  }
+  std::vector<Layout> input_layouts;
+  input_layouts.reserve(input_layouts_attr.size());
+  for (const auto& layout : input_layouts_attr.getValue().vec()) {
+    input_layouts.push_back(
+        Layout::FromString(layout.cast<mlir::StringAttr>().getValue().str())
+            .value());
+  }
+
+  return ExpandRestoreV2OpHelper(
+      op, input_shapes, input_layouts,
+      std::vector<mlir::Type>(op->getResultTypes().begin(),
+                              op->getResultTypes().end()),
+      restore_v2.getShapeAndSlicesMutable());
+}
+
+// Extract the layout and shapes the normal way. By this time, we should
+// have all necessary DTensorLayout op as the outputs of each op
+// and the correct Type shapes and dtypes as the outputs of the tf.RestoreV2
+// op.
+//
+// Call the helper expander function with those shapes and layouts.
+StatusOr<mlir::Operation*> ExpandRestoreV2Op(mlir::Operation* op) {
+  // Fetch the shape of each output.
+  std::vector<std::vector<int64_t>> global_shapes;
+  global_shapes.reserve(op->getNumResults());
+
+  // This is subtle. For tf.train.Checkpoint.save_counter scalar variable,
+  // this variable may not yet be created by the time we call
+  // Checkpoint.restore.
+  //
+  // In this case, the tf.RestoreV2 is called eagerly, and thus there is no
+  // tf.AssignVariable op. This means that we cannot infer the shapes and layout
+  // from previous pass CreateDTensorInferShapesForRestoreV2Op.
+  //
+  // But for save_counter, we know this is always replicated, and we can just
+  // return the op itself. For now, we will do this hacky way, but eventually
+  // we need to generalize restoring variables that are not yet created.
+  //
+  // TODO(b/235373719) Generalize support for checkpoint restoration for
+  // variables that are not yet created.
+  if (op->getNumResults() == 1 && !GetShapeOfValue(op->getResult(0)).ok()) {
+    return op;
+  }
+
+  for (auto result : op->getResults()) {
+    global_shapes.push_back(GetShapeOfValue(result).value());
+  }
+
+  // Fetch the layout of each output.
+  TF_ASSIGN_OR_RETURN(std::vector<Layout> layouts,
+                      ExtractRequiredLayoutFromOp(op));
+
+  // Calculate the new local type range needed for the new RestoreV2Op we will
+  // emit.
+  std::vector<mlir::Type> new_types;
+  new_types.reserve(op->getNumResults());
+
+  for (const auto& it :
+       llvm::zip(op->getResultTypes(), global_shapes, layouts)) {
+    mlir::Type type = std::get<0>(it);
+    std::vector<int64_t>& shape = std::get<1>(it);
+    Layout& layout = std::get<2>(it);
+    new_types.push_back(mlir::RankedTensorType::get(
+        layout.LocalShapeFromGlobalShape(shape),
+        type.dyn_cast<mlir::RankedTensorType>().getElementType()));
+  }
+
+  return ExpandRestoreV2OpHelper(
+      op, global_shapes, layouts, new_types,
+      mlir::dyn_cast<mlir::TF::RestoreV2Op>(op).getShapeAndSlicesMutable());
 }
 
 }  // namespace
@@ -647,7 +793,10 @@ StatusOr<mlir::Operation*> SaveRestoreSPMDExpander::ExpandOp(
   if (llvm::isa<mlir::TF::MergeV2CheckpointsOp>(op)) {
     return ExpandMergeV2Op(op);
   }
-  if (llvm::isa<mlir::TF::RestoreV2Op, mlir::TF::DTensorRestoreV2Op>(op)) {
+  if (llvm::isa<mlir::TF::DTensorRestoreV2Op>(op)) {
+    return ExpandDTensorRestoreV2Op(op);
+  }
+  if (llvm::isa<mlir::TF::RestoreV2Op>(op)) {
     return ExpandRestoreV2Op(op);
   }
 
@@ -655,24 +804,94 @@ StatusOr<mlir::Operation*> SaveRestoreSPMDExpander::ExpandOp(
       llvm::formatv("SPMD for op : {0} is not implemented ", OpName(op)).str());
 }
 
+// Find all the resource tensor layouts attached to the AssignVariableOp
+// that `restore_op` is restoring to.
+StatusOr<llvm::SmallVector<Layout>> GetLayoutsFromAssignVariableOps(
+    mlir::ModuleOp module, mlir::TF::RestoreV2Op* restore_op) {
+  llvm::SmallVector<Layout> layouts(restore_op->getNumResults());
+
+  for (auto result : restore_op->getResults()) {
+    // Find the AssignVariableOp connected to this output. There should only
+    // be at most one IdentityOp and one DTensorSend between this result
+    // and the AssignVariableOp.
+    for (auto consuming_op : result.getUsers()) {
+      // To get to the AssignVariableOp that consumes `result`, we expect
+      // an IdentityOp, CastOp, or a DTensorSend op on the path. So, skip past
+      // these ops first.
+      while (llvm::isa<mlir::TF::CastOp, mlir::TF::IdentityOp,
+                       mlir::TF::DTensorSend>(consuming_op)) {
+        if (auto send_op =
+                mlir::dyn_cast_or_null<mlir::TF::DTensorSend>(consuming_op)) {
+          TF_ASSIGN_OR_RETURN(
+              consuming_op, GetCorrespondingDTensorSendRecvOp(module, send_op));
+        }
+        auto next_op = consuming_op->getResult(0).getUsers();
+        if (next_op.empty()) {
+          return errors::Internal(
+              "Expected a result of an identity op to be consumed by another "
+              "op, but was empty during RestoreV2 Expansion.");
+        }
+        consuming_op = *next_op.begin();
+      }
+      // We skipped past ops like Identity and Send's. There might be an
+      // AssignVariableOp now.
+      if (auto assign_op = llvm::dyn_cast_or_null<mlir::TF::AssignVariableOp>(
+              consuming_op)) {
+        TF_ASSIGN_OR_RETURN(auto layout, ExtractRequiredLayoutFromOperand(
+                                             assign_op.getResource()));
+        layouts[result.getResultNumber()] = layout;
+        break;
+      }
+    }
+  }
+  return layouts;
+}
+
 StatusOr<llvm::DenseMap<int, Layout>>
 SaveRestoreSPMDExpander::ComputeLayoutForward(
-    mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
+    mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts,
+    const llvm::DenseMap<int, Layout>& output_layouts) {
   // Save op doesn't have return values.
   if (llvm::isa<mlir::TF::SaveV2Op, mlir::TF::MergeV2CheckpointsOp>(op)) {
     return llvm::DenseMap<int, Layout>();
   }
   if (llvm::isa<mlir::TF::RestoreV2Op>(op)) {
-    // Normal RestoreV2 is generatred for objects that is not placed on DTensor,
-    // such as SaveCounters, etc.
-    // For those, we simply set a stub layout and pass through.
-    // Ideally, those ops shouldn't even run on DTensor Device.
+    // If there are already output layouts specified, this means that
+    // we are in the Late Variable Creation restoration. For this path,
+    // the output layout is already specified, through the default layout
+    // scope. So just return that layout.
+    if (!output_layouts.empty()) return output_layouts;
+
+    mlir::ModuleOp module_op = op->getParentOfType<mlir::ModuleOp>();
     mlir::TF::RestoreV2Op restore_v2 = mlir::cast<mlir::TF::RestoreV2Op>(op);
+    TF_ASSIGN_OR_RETURN(Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
+    if (!mesh.is_cpu_mesh()) {
+      return errors::InvalidArgument(
+          llvm::formatv(
+              "RestoreV2Op must run on a CPU mesh, but was running on: {0}",
+              mesh.ToString())
+              .str());
+    }
+    // Extract the layout of each resource tensor from the AssignVariableOp
+    // consuming each result. This layout sharding will be used as the
+    // output layout for each result tensor.
+    TF_ASSIGN_OR_RETURN(
+        auto layouts, GetLayoutsFromAssignVariableOps(module_op, &restore_v2));
+    if (layouts.size() != restore_v2.getNumResults()) {
+      return errors::Internal(llvm::formatv("Failed to get {0} output layouts "
+                                            "for RestoreV2Op. Got {1} layouts.",
+                                            restore_v2.getNumResults(),
+                                            layouts.size())
+                                  .str());
+    }
     llvm::DenseMap<int, Layout> output_layouts(restore_v2.getNumResults());
-    for (const auto& it : llvm::enumerate(restore_v2.getResults())) {
-      // TODO(hthu): Maybe stub proper replicated with rank if we know the
-      // output.
-      output_layouts[it.index()] = Layout::Empty();
+
+    // Change the mesh of each layout to `mesh` since RestoreOp always runs on
+    // the CPU.
+    for (int i = 0; i < layouts.size(); ++i) {
+      Layout host_mesh_layout = layouts[i];
+      host_mesh_layout.set_mesh(mesh);
+      output_layouts[i] = host_mesh_layout;
     }
     return output_layouts;
   }
@@ -681,7 +900,7 @@ SaveRestoreSPMDExpander::ComputeLayoutForward(
         mlir::cast<mlir::TF::DTensorRestoreV2Op>(op);
     llvm::DenseMap<int, Layout> output_layouts(restore_v2.getNumResults());
     // Output layout is simply the layout from the arguments.
-    for (const auto& it : llvm::enumerate(restore_v2.input_layouts())) {
+    for (const auto& it : llvm::enumerate(restore_v2.getInputLayouts())) {
       TF_ASSIGN_OR_RETURN(
           Layout layout,
           Layout::FromString(

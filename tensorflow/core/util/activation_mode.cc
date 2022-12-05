@@ -39,7 +39,7 @@ Status GetActivationModeFromString(const string& str_value,
   } else {
     return errors::NotFound(str_value, " is not an allowed activation mode");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace tensorflow

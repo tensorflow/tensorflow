@@ -2,7 +2,7 @@ path: "tensorflow.mixed_precision.MixedPrecisionLossScaleOptimizer"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.experimental.loss_scale_optimizer.MixedPrecisionLossScaleOptimizer\'>"
   is_instance: "<class \'tensorflow.python.training.optimizer.Optimizer\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "GATE_GRAPH"

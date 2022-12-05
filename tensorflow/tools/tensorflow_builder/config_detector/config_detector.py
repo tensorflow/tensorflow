@@ -67,7 +67,6 @@ import sys
 
 from absl import app
 from absl import flags
-import six
 
 from tensorflow.tools.tensorflow_builder.config_detector.data import cuda_compute_capability
 
@@ -262,7 +261,7 @@ def get_gpu_type():
       gpu_release = ret_val[1].replace(b"[", b"") + b" "
       gpu_release += ret_val[2].replace(b"]", b"").strip(b"\n")
     else:
-      gpu_release = six.ensure_str(ret_val[1]).replace("\n", " ")
+      gpu_release = ret_val[1].replace("\n", " ")
 
     if gpu_release not in gpu_dict:
       GPU_TYPE = "unknown"
@@ -311,7 +310,7 @@ def get_cuda_version_all():
   for item in filtered:
     ver_re = re.search(r".*/cuda(\-[\d]+\.[\d]+)?", item.decode("utf-8"))
     if ver_re.group(1):
-      all_vers.append(six.ensure_str(ver_re.group(1)).strip("-"))
+      all_vers.append(ver_re.group(1).strip("-"))
 
   if err and FLAGS.debug:
     print("Error in detecting CUDA version:\n %s" % str(err))
@@ -537,7 +536,7 @@ def get_all_configs():
   json_data = {}
   missing = []
   warning = []
-  for config, call_func in six.iteritems(all_functions):
+  for config, call_func in all_functions.items():
     ret_val = call_func
     if not ret_val:
       configs_found.append([config, "\033[91m\033[1mMissing\033[0m"])
@@ -556,8 +555,8 @@ def get_all_configs():
           json_data[config] = ret_val[0]
         else:
           configs_found.append([
-              config, "\033[91m\033[1mMissing " +
-              six.ensure_str(str(ret_val[1])[1:-1]) + "\033[0m"
+              config,
+              "\033[91m\033[1mMissing " + str(ret_val[1][1:-1]) + "\033[0m"
           ])
           missing.append(
               [config,
@@ -585,7 +584,7 @@ def print_all_configs(configs, missing, warning):
   llen = 65  # line length
   for i, row in enumerate(configs):
     if i != 0:
-      print_text += six.ensure_str("-" * llen) + "\n"
+      print_text += "-" * llen + "\n"
 
     if isinstance(row[1], list):
       val = ", ".join(row[1])
@@ -627,7 +626,7 @@ def save_to_file(json_data, filename):
     print("filename: %s" % filename)
     filename += ".json"
 
-  with open(PATH_TO_DIR + "/" + six.ensure_str(filename), "w") as f:
+  with open(PATH_TO_DIR + "/" + filename, "w") as f:
     json.dump(json_data, f, sort_keys=True, indent=4)
 
   print(" Successfully wrote configs to file `%s`.\n" % (filename))

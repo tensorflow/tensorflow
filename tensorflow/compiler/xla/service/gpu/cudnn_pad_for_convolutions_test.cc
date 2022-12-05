@@ -42,8 +42,8 @@ TEST_F(CudnnPadForConvolutionsTest, PadF16ForwardConvInputChannels) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
-  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).value());
   auto* root = module->entry_computation()->root_instruction();
 
   SCOPED_TRACE(module->ToString());
@@ -67,8 +67,8 @@ TEST_F(CudnnPadForConvolutionsTest, PadF16BackwardInputConvOutputChannels) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convBackwardInput"
   })")
-                    .ValueOrDie();
-  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).value());
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,
@@ -89,8 +89,8 @@ TEST_F(CudnnPadForConvolutionsTest, PadF16ForwardConvOutputChannels) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
-  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).value());
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Tuple(
                         m::Slice(m::GetTupleElement(m::CustomCall(
@@ -111,8 +111,8 @@ TEST_F(CudnnPadForConvolutionsTest, PadF16BackwardInputConvInputChannels) {
               custom_call_target="__cudnn$convBackwardInput"
     ROOT gte = f16[10,20,30,41] get-tuple-element(result), index=0
   })")
-                    .ValueOrDie();
-  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).value());
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::GetTupleElement(m::Tuple(
                         m::Slice(m::GetTupleElement(m::CustomCall(
@@ -133,8 +133,8 @@ TEST_F(CudnnPadForConvolutionsTest, PadF16BackwardFilterConvInputChannels) {
               custom_call_target="__cudnn$convBackwardFilter"
     ROOT gte = f16[2,2,41,40] get-tuple-element(result), index=0
   })")
-                    .ValueOrDie();
-  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).value());
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root,
               GmockMatch(m::GetTupleElement(m::Tuple(
@@ -156,8 +156,8 @@ TEST_F(CudnnPadForConvolutionsTest, PadF16BackwardFilterConvOutputChannels) {
               custom_call_target="__cudnn$convBackwardFilter"
     ROOT gte = f16[2,2,40,41] get-tuple-element(result), index=0
   })")
-                    .ValueOrDie();
-  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).value());
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::GetTupleElement(m::Tuple(
                         m::Slice(m::GetTupleElement(m::CustomCall(
@@ -177,8 +177,8 @@ TEST_F(CudnnPadForConvolutionsTest, PadInputFeatures3To4) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
-  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).value());
   auto* root = module->entry_computation()->root_instruction();
 
   SCOPED_TRACE(module->ToString());
@@ -201,8 +201,8 @@ TEST_F(CudnnPadForConvolutionsTest, PadIntForwardConvInputChannels) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
-  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).value());
   auto* root = module->entry_computation()->root_instruction();
 
   SCOPED_TRACE(module->ToString());
@@ -225,8 +225,8 @@ TEST_F(CudnnPadForConvolutionsTest, PadIntForwardConvOutputChannels) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
-  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).value());
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Tuple(
                         m::Slice(m::GetTupleElement(m::CustomCall(
@@ -246,8 +246,8 @@ TEST_F(CudnnPadForConvolutionsTest, PadInt8To32OnSm75) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
-  EXPECT_TRUE(CudnnPadForConvolutions({7, 5}).Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(CudnnPadForConvolutions({7, 5}).Run(module.get()).value());
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,
@@ -270,8 +270,8 @@ TEST_F(CudnnPadForConvolutionsTest, NoPadInt8To32OnSm70) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
-  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).value());
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,
@@ -297,8 +297,8 @@ TEST_F(CudnnPadForConvolutionsTest, NoPadInt8To32FloatOutputSm75) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
-  EXPECT_TRUE(CudnnPadForConvolutions({7, 5}).Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(CudnnPadForConvolutions({7, 5}).Run(module.get()).value());
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,
@@ -324,8 +324,8 @@ TEST_F(CudnnPadForConvolutionsTest, NoPadInt8UnsupportedFilterTypeOutputSm75) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
-  EXPECT_FALSE(CudnnPadForConvolutions({7, 5}).Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_FALSE(CudnnPadForConvolutions({7, 5}).Run(module.get()).value());
 }
 
 TEST_F(CudnnPadForConvolutionsTest, NoPadToInt8x32ExcessiveBlowup) {
@@ -339,8 +339,8 @@ TEST_F(CudnnPadForConvolutionsTest, NoPadToInt8x32ExcessiveBlowup) {
                   window={size=3x3}, dim_labels=bf01_io01->bf01,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
-  EXPECT_FALSE(CudnnPadForConvolutions({7, 5}).Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_FALSE(CudnnPadForConvolutions({7, 5}).Run(module.get()).value());
 }
 
 TEST_F(CudnnPadForConvolutionsTest, PadInt8x4To32) {
@@ -354,8 +354,8 @@ TEST_F(CudnnPadForConvolutionsTest, PadInt8x4To32) {
                   window={size=2x2}, dim_labels=b01f?_01i?o->b01f?,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
-  EXPECT_TRUE(CudnnPadForConvolutions({7, 5}).Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(CudnnPadForConvolutions({7, 5}).Run(module.get()).value());
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,
@@ -383,8 +383,8 @@ TEST_F(CudnnPadForConvolutionsTest, PadInt8x4To32BiasActivation) {
                   window={size=2x2}, dim_labels=b01f?_01i?o->b01f?,
                   custom_call_target="__cudnn$convBiasActivationForward"
   })")
-                    .ValueOrDie();
-  EXPECT_TRUE(CudnnPadForConvolutions({7, 5}).Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(CudnnPadForConvolutions({7, 5}).Run(module.get()).value());
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,
@@ -418,8 +418,8 @@ TEST_F(CudnnPadForConvolutionsTest,
     %custom-call.1 = (f32[1,3,3,5]{3,2,1,0}, u8[0]{0}) custom-call(s8[1,3,3,3]{3,2,1,0} %input, s8[3,3,2,5]{3,2,1,0} %filter, f32[5]{0} %convert, f32[1,3,3,5]{3,2,1,0} %side_input), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convBiasActivationForward", backend_config="{\"activationMode\":\"2\",\"convResultScale\":1,\"sideInputScale\":1}"
     ROOT %get-tuple-element.1 = f32[1,3,3,5]{3,2,1,0} get-tuple-element((f32[1,3,3,5]{3,2,1,0}, u8[0]{0}) %custom-call.1), index=0
     })")
-                    .ValueOrDie();
-  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).ValueOrDie());
+                    .value();
+  EXPECT_TRUE(CudnnPadForConvolutions({7, 0}).Run(module.get()).value());
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::GetTupleElement(m::Tuple(
                         m::Slice(m::GetTupleElement(m::CustomCall(

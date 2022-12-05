@@ -299,7 +299,7 @@ tensorflow::Status Tensor::GetValue(absl::Span<T> data) const {
         "Actual: ", t->NumElements(), "\n"));
   }
   memcpy(data.data(), t->Data(), t->ByteSize());
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 /// @brief The Tuple class for holding TaggedValues of type TUPLE.
@@ -359,7 +359,7 @@ class List final : public Handle {
       return tensorflow::errors::InvalidArgument("Out of bounds index.");
     }
     value_.list()[i] = std::move(h.value_);
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   /// Appends `arg` to list.
@@ -428,7 +428,7 @@ class Callable final : public Handle {
     if (!maybe_value.ok()) {
       return maybe_value.status();
     }
-    return Cast<TReturn>(Handle(maybe_value.ValueOrDie()));
+    return Cast<TReturn>(Handle(maybe_value.value()));
   }
 
  public:

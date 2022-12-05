@@ -30,6 +30,16 @@ TEST_F(OpenCLOperationTest, Cast) {
   ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
+TEST_F(OpenCLOperationTest, CastToBool) {
+  auto status = CastToBoolTests(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
+TEST_F(OpenCLOperationTest, CastFromBool) {
+  auto status = CastFromBoolTests(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
 }  // namespace
 }  // namespace cl
 }  // namespace gpu

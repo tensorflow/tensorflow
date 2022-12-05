@@ -39,7 +39,7 @@ class FoldDeviceIndex : public mlir::OpRewritePattern<mlir::TF::DeviceIndexOp> {
       return mlir::failure();
 
     int32_t i = 0;
-    mlir::ArrayAttr device_names = op.device_names();
+    mlir::ArrayAttr device_names = op.getDeviceNames();
     for (; i < device_names.size(); ++i) {
       auto device_name = device_names[i].cast<mlir::StringAttr>().getValue();
       if (device_name == parsed_name.type) break;
@@ -60,6 +60,8 @@ class OptimizeTfForTfrt
     : public mlir::PassWrapper<OptimizeTfForTfrt,
                                mlir::OperationPass<mlir::func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizeTfForTfrt)
+
   llvm::StringRef getArgument() const final { return "optimize-tf-for-tfrt"; }
 
   llvm::StringRef getDescription() const final {

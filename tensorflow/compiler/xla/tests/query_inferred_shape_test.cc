@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -35,7 +35,7 @@ TEST_F(QueryInferredShapeTest, OnePlusOneShape) {
   auto result = Add(one, one);
   StatusOr<Shape> shape_status = builder.GetShape(result);
   ASSERT_IS_OK(shape_status.status());
-  auto shape = shape_status.ConsumeValueOrDie();
+  auto shape = shape_status.value();
   ASSERT_TRUE(ShapeUtil::Equal(shape, ShapeUtil::MakeShape(F32, {})));
 }
 

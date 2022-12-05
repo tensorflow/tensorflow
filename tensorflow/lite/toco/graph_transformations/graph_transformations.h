@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <initializer_list>
+#include <string>
 #include <unordered_set>
 #include <vector>
 

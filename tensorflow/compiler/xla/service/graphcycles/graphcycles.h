@@ -40,7 +40,8 @@ limitations under the License.
 //   FindPath() is linear in the size of the graph.
 // The current implementation uses O(|V|+|E|) space.
 
-#include "absl/types/optional.h"
+#include <optional>
+
 #include "absl/types/span.h"
 
 namespace tensorflow {
@@ -83,7 +84,7 @@ class GraphCycles {
   // the nodes is removed from the graph, and edges to/from it are added to
   // the remaining one, which is returned. If contracting the edge would create
   // a cycle, does nothing and return no value.
-  absl::optional<int32_t> ContractEdge(int32_t a, int32_t b);
+  std::optional<int32_t> ContractEdge(int32_t a, int32_t b);
 
   // Return true if can contract edge, otherwise return false.
   bool CanContractEdge(int32_t a, int32_t b);

@@ -22,10 +22,11 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/util/stats_calculator.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/profiling/memory_info.h"
 #include "tensorflow/lite/profiling/memory_usage_monitor.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"

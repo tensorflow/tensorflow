@@ -132,7 +132,7 @@ class BufferInfo {
   int64_t entry_param_number_;
 };
 
-// Align to 64-bytes, to mimic tensorflow::Allocator::kAllocatorAlignment.
+// Align to 64-bytes, to mimic tsl::Allocator::kAllocatorAlignment.
 inline constexpr size_t Align() { return 64; }
 
 // The minimum alignment of buffers passed to XLA:CPU.

@@ -81,8 +81,8 @@ TEST(SavedModelTest, MapSignatures) {
       llvm::cast<mlir::tf_saved_model::GlobalTensorOp>(bound_inputs[0]);
   auto asset = llvm::cast<mlir::tf_saved_model::AssetOp>(bound_inputs[1]);
 
-  EXPECT_EQ(global_tensor.sym_name(), "y");
-  EXPECT_EQ(asset.sym_name(), "z");
+  EXPECT_EQ(global_tensor.getSymName(), "y");
+  EXPECT_EQ(asset.getSymName(), "z");
 }
 
 TEST(SavedModelTest, CompileToBEF) {

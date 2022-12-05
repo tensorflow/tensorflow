@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -46,6 +46,7 @@ namespace tensorflow {
 StatusOr<xla::XlaOp> XlaScatter(
     const xla::XlaOp& buffer, const xla::XlaOp& updates,
     const xla::XlaOp& indices, bool indices_are_vectors,
+    bool indices_are_sorted,
     const std::function<xla::XlaOp(xla::XlaOp, xla::XlaOp, xla::XlaBuilder*)>&
         combiner,
     xla::XlaBuilder* builder);

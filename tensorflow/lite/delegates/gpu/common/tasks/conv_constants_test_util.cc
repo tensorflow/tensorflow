@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_constants_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -52,7 +53,7 @@ absl::Status ConvConstantsSimpleWeightsTest(TestExecutionEnvironment* env) {
       GPUOperation operation =
           CreateConvConstants(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 2, 1), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({28.0f, 18.0f, 22.0f, 13.0f}, dst_tensor.data, eps));
@@ -89,7 +90,7 @@ absl::Status ConvConstantsTest(TestExecutionEnvironment* env) {
       GPUOperation operation =
           CreateConvConstants(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 2, 2), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(
           {168.5f, 391.5f, 80.5f, 223.5f, 60.5f, 235.5f, 20.5f, 123.5f},

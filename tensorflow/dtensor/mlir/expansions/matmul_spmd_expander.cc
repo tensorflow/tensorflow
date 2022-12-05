@@ -41,12 +41,12 @@ void GetTransposeSettings(mlir::Operation* op, bool* left_transposed,
   if (mlir::isa<mlir::TF::BatchMatMulV2Op>(op)) {
     mlir::TF::BatchMatMulV2Op mm = mlir::cast<mlir::TF::BatchMatMulV2Op>(op);
     // Adjoint is just conjugate transpose.
-    *left_transposed = mm.adj_x();
-    *right_transposed = mm.adj_y();
+    *left_transposed = mm.getAdjX();
+    *right_transposed = mm.getAdjY();
   } else if (mlir::isa<mlir::TF::MatMulOp>(op)) {
     mlir::TF::MatMulOp mm = mlir::cast<mlir::TF::MatMulOp>(op);
-    *left_transposed = mm.transpose_a();
-    *right_transposed = mm.transpose_b();
+    *left_transposed = mm.getTransposeA();
+    *right_transposed = mm.getTransposeB();
   }
 }
 
@@ -113,7 +113,7 @@ StatusOr<Layout> MatMulSPMDExpander::OutputLayoutAndReducedDims(
   Layout batch_layout;
 
   if (!*left || !*right) {
-    if (allow_unknown_layouts) return Status::OK();
+    if (allow_unknown_layouts) return OkStatus();
     return errors::Unimplemented("failed to do SPMD expansion for ", OpName(op),
                                  " operand layouts "
                                  "unknown");
@@ -124,8 +124,8 @@ StatusOr<Layout> MatMulSPMDExpander::OutputLayoutAndReducedDims(
 
     // Note that it doesn't matter if we pass the global or local shape to
     // GetBroadcastLayoutForElementWise, it will return the same result.
-    TF_ASSIGN_OR_RETURN(const auto left_shape, GetShapeOfValue(mm.x()));
-    TF_ASSIGN_OR_RETURN(const auto right_shape, GetShapeOfValue(mm.y()));
+    TF_ASSIGN_OR_RETURN(const auto left_shape, GetShapeOfValue(mm.getX()));
+    TF_ASSIGN_OR_RETURN(const auto right_shape, GetShapeOfValue(mm.getY()));
     std::vector<std::string> left_splits;
     std::vector<std::string> right_splits;
     TF_ASSIGN_OR_RETURN(
@@ -361,7 +361,7 @@ Status MatMulSPMDExpander::MaybeRelayoutInputs(
   TF_ASSIGN_OR_RETURN(
       right, EmitRelayout(op->getOperand(1), right_layout, new_right_layout));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<llvm::DenseMap<int, Layout>> MatMulSPMDExpander::ComputeLayoutForward(
@@ -422,7 +422,7 @@ StatusOr<llvm::DenseMap<int, Layout>> MatMulSPMDExpander::ComputeLayoutBackward(
   // Make sure necessary dimensions are replicated.
   //
   // Due to broadcasting, each of the batch dimensions (i.e. from dimension 0
-  // to dim - 2), one of the two inputs may have have dimension 1 while the
+  // to dim - 2), one of the two inputs may have dimension 1 while the
   // other has dimension > 1 and equal to the dim of the output. Since a
   // tensor with dimension 1 cannot be sharded, we set this to unsharded.
   auto specs_matmul_operands = [](const llvm::ArrayRef<int64>& tensor_shape,

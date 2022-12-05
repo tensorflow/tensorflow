@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/logging/conversion_log_util.h"
 
+#include <string>
+
 #ifdef __linux__
 #include <sys/utsname.h>
 #endif
@@ -140,6 +142,7 @@ std::string GetOperatorSignature(
 
 std::vector<std::string> GetOperatorNames(const Model& model) {
   std::vector<std::string> op_names;
+  op_names.reserve(model.operators.size());
   for (const auto& op : model.operators) {
     op_names.push_back(TryGetOperatorName(*op));
   }

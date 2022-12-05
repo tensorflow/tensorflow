@@ -39,9 +39,11 @@ tfg.func @test_return_type(%arg0: tensor<*xi32>) -> (tensor<*xi32>)
 
 // -----
 
+// Check _input_shapes is not ArrayAttr is left alone.
+
 // CHECK-LABEL: tfg.func @test_not_array_attr
 // CHECK: %[[ARG0:.*]]: tensor<*xi32>
-// CHECK-NOT: attributes
+// CHECK: attributes {tf._input_shapes = 5 : i32}
 tfg.func @test_not_array_attr(%arg0: tensor<*xi32>) -> (tensor<*xi32>)
     attributes {tf._input_shapes = 5 : i32} {
   return(%arg0) : tensor<*xi32>
@@ -49,9 +51,11 @@ tfg.func @test_not_array_attr(%arg0: tensor<*xi32>) -> (tensor<*xi32>)
 
 // -----
 
+// Check _input_shapes is not an array of shapes is left alone.
+
 // CHECK-LABEL: tfg.func @test_not_shape_arr
 // CHECK: %[[ARG0:.*]]: tensor<*xi32>
-// CHECK-NOT: attributes
+// CHECK: attributes {tf._input_shapes = [5 : i32]}
 tfg.func @test_not_shape_arr(%arg0: tensor<*xi32>) -> (tensor<*xi32>)
     attributes {tf._input_shapes = [5 : i32]} {
   return(%arg0) : tensor<*xi32>
@@ -59,10 +63,31 @@ tfg.func @test_not_shape_arr(%arg0: tensor<*xi32>) -> (tensor<*xi32>)
 
 // -----
 
+// Check _input_shapes is an array of an incorrect number of shapes is left
+// alone.
+
 // CHECK-LABEL: tfg.func @test_wrong_shape_list_size
 // CHECK: %[[ARG0:.*]]: tensor<*xi32>
-// CHECK-NOT: attributes
+// CHECK: attributes {tf._input_shapes = [#tf_type.shape<2>, #tf_type.shape<2>]}
 tfg.func @test_wrong_shape_list_size(%arg0: tensor<*xi32>) -> (tensor<*xi32>)
     attributes {tf._input_shapes = [#tf_type.shape<2>, #tf_type.shape<2>]} {
+  return(%arg0) : tensor<*xi32>
+}
+
+// -----
+
+// Check that empty _input_shapes are ignored.
+
+// CHECK-LABEL: tfg.func @test_empty_input_shapes
+// CHECK: attributes {tf._input_shapes = []}
+tfg.func @test_empty_input_shapes(%arg0: tensor<*xi32>) -> (tensor<*xi32>)
+    attributes {tf._input_shapes = []} {
+  return(%arg0) : tensor<*xi32>
+}
+
+// CHECK-LABEL: tfg.func @test_empty_input_shapes_unit
+// CHECK: attributes {tf._input_shapes}
+tfg.func @test_empty_input_shapes_unit(%arg0: tensor<*xi32>) -> (tensor<*xi32>)
+    attributes {tf._input_shapes} {
   return(%arg0) : tensor<*xi32>
 }

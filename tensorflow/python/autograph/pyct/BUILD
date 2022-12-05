@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -13,7 +14,7 @@ filegroup(
             "**/OWNERS",
         ],
     ),
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:private"],
 )
 
 py_library(
@@ -44,7 +45,6 @@ py_library(
         "//tensorflow/python/autograph/pyct/common_transformers",
         "@astunparse_archive//:astunparse",
         "@gast_archive//:gast",
-        "@six_archive//:six",
         "@termcolor_archive//:termcolor",
     ],
 )
@@ -65,9 +65,6 @@ py_test(
     srcs = ["ast_util_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [
-        "no_oss_py2",
-    ],
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
@@ -80,9 +77,6 @@ py_test(
     srcs = ["cache_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [
-        "no_oss_py2",
-    ],
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
@@ -95,9 +89,6 @@ py_test(
     srcs = ["cfg_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [
-        "no_oss_py2",
-    ],
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",

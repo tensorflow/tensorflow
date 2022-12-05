@@ -54,7 +54,7 @@ considering the entire graph.
 
 The combination of the TensorFlow and executor dialects allows for importing
 most TensorFlow graphs and the TensorFlow dialect has proven enough to implement
-the TF/XLA bridge, TFLite converter, and TFRT . However the intent was for
+the TF/XLA bridge, TFLite converter, and TFRT . However, the intent was for
 TensorFlow 2.0 to trace TensorFlow functions directly in the TensorFlow dialect,
 leaving the executor dialect only as a way to provide limited support for
 TensorFlow V1 graphs.
@@ -108,7 +108,7 @@ foo(1., 2., variable)
 ```
 
 Throws an exception because `tf.matmul` expects rank-2 tensors, but the variable
-may or may not have been assigned. As such a user may want to opt-in a safer
+may or may not have been assigned. As such a user may want to opt in a safer
 behavior for their function:
 
 ```
@@ -120,16 +120,16 @@ def foo(x, y, variable):
    return b
 ```
 
-However this control dependency cannot be modelled in the TensorFlow dialect: it
-will be just dropped! There is no solution today to prevent the variable
+However, this control dependency cannot be modelled in the TensorFlow dialect:
+it will be just dropped! There is no solution today to prevent the variable
 assignment to be executed ahead of the `matmul` in the TensorFlow Dialect.
 
 While many of these cases could be modeled with different constructs at the
 source level, this would be a major overhaul of TensorFlow itself, and more
 importantly its ecosystem. Instead, we recognize that the TensorFlow dialect as
-it exists today cannot support all of these use-cases and it prevented MLIR from
-providing a general graph transformation solution for TensorFlow, contributing
-to more fragmentation instead of reducing it as promised.
+it exists today cannot support all of these use-cases, and it prevented MLIR
+from providing a general graph transformation solution for TensorFlow,
+contributing to more fragmentation instead of reducing it as promised.
 
 The rest of this document describe how this new dialect follows a more pragmatic
 approach to enable MLIR deployment in TensorFlow.
@@ -163,7 +163,7 @@ operation using the following form:
     device” information are preserved.
 *   The node name is carried as a first-class attribute.
 *   Optional “op specific” attributes can be listed between curly brackets.
-*   Finally the type signature follows, omitting the control dependencies.
+*   Finally, the type signature follows, omitting the control dependencies.
 
 This structure allows for a perfect round-trip to NodeDef, while still being
 ergonomic when manipulating it in MLIR (compared to the `tf\_executor` dialect
@@ -193,7 +193,7 @@ Note that the `AddV2` operation is using the result of a `placeholder` operation
 that is defined later in the list. This wasn’t possible in MLIR 2 years ago when
 the TensorFlow dialect was designed. It was actually
 [attempted to allow such unordered semantics](https://groups.google.com/a/tensorflow.org/g/mlir/c/gPQFIy9XpVw/m/hfxmBGF8AQAJ)
-and break away from the CFG-centric representation but we couldn’t reach a
+and break away from the CFG-centric representation, but we couldn’t reach a
 consensus, and some key members of the team believed that a departure from
 CFG/SSA would limit the reusability of many algorithms. On the other hand, this
 choice prevented us to design a graph dialect that can just replace TensorFlow
@@ -203,15 +203,15 @@ feature is now available (it was motivated by the
 Another recent development that made it also more friendly is the
 [removal of the requirement for terminators](https://llvm.discourse.group/t/rfc-making-terminator-optional-for-single-block-graph-regions/2997):
 the `tfg.graph` operation above contains a single block listing operations, and
-a terminator does not have any role to play. Finally a Dialect can now
-[acts as fallback for OpInterfaces](https://llvm.discourse.group/t/rfc-dialect-fallback-for-opinterface/3074),
+a terminator does not have any role to play. Finally, a Dialect can now
+[act as fallback for OpInterfaces](https://llvm.discourse.group/t/rfc-dialect-fallback-for-opinterface/3074),
 which allows us to reuse more of the TensorFlow registry to provide information
 to MLIR passes about TensorFlow operation without having to register them with
 MLIR in the first place.
 
 The `tfg.graph` operation round-trips almost perfectly to
 [Graph](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/graph/graph.h#L504),
-with the exception of the `Function Library`, which I address below.
+except for the `Function Library`, which I address below.
 
 ### Function Library
 
@@ -282,7 +282,7 @@ attributes.
 
 There is one aspect of the modelling worth mentioning from the MLIR point of
 view: FunctionDef allows for nodes in a graph to express input control
-dependencies from function arguments. However in MLIR you need an actual
+dependencies from function arguments. However, in MLIR you need an actual
 [SSA](https://en.wikipedia.org/wiki/Static_single_assignment_form) value to add
 an edge between two operations. These values are typed and this is why
 operations define a control token (like `%ctl_0`). We apply the same recipe for
@@ -314,7 +314,7 @@ really coupled to SavedModel. The user can load a SavedModel independently of
 MLIR and invoke MLIR transformations on a Function or Graph from there. There is
 also already a dialect to model the specific aspects of SavedModel, it is
 currently wrapping around the TensorFlow executor dialect and the TensorFlow
-dialect and we may look into integrating it with the `tfg` dialect in the
+dialect, and we may look into integrating it with the `tfg` dialect in the
 future. For these reasons, we mostly leave out modeling the Saved Model for
 future work right now.
 
@@ -324,7 +324,7 @@ Functional control-flow is modeled with nodes in the graph invoking functions in
 the library. MLIR supports `region`s, which is a concept that allows attaching
 subgraphs directly inside a graph, making it more friendly to optimizations. For
 example a conditional operation can represent the two branches subgraph in the
-TensorFlow dialect directly as follow:
+TensorFlow dialect directly as follows:
 
 ```
   %0, %1, %2 = "tf.IfRegion"(%arg0) ({
@@ -372,7 +372,7 @@ matching or updating nodes in the graph.
 ### What happens to the existing TensorFlow Dialects?
 
 The existing TensorFlow dialect is suitable for representing a large subset of
-TensorFlow programs (like models that intends to convert to TFLite, or XLA), and
+TensorFlow programs (like models that intend to convert to TFLite, or XLA), and
 for such cases we will continue to use it.
 
 ### What happens to the existing TensorFlow Executor Dialect?

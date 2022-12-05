@@ -12,12 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_DATA_SERVICE_COMPRESSION_UTILS_H_
-#define TENSORFLOW_CORE_DATA_SERVICE_COMPRESSION_UTILS_H_
+#ifndef TENSORFLOW_CORE_DATA_COMPRESSION_UTILS_H_
+#define TENSORFLOW_CORE_DATA_COMPRESSION_UTILS_H_
 
-#include "tensorflow/core/common_runtime/dma_helper.h"
-#include "tensorflow/core/data/dataset.pb.h"
+#include <string>
+#include <vector>
+
+#include "tensorflow/core/framework/dataset.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -38,4 +42,4 @@ Status UncompressElement(const CompressedElement& compressed,
 }  // namespace data
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_DATA_SERVICE_COMPRESSION_UTILS_H_
+#endif  // TENSORFLOW_CORE_DATA_COMPRESSION_UTILS_H_

@@ -29,15 +29,18 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
 
 namespace {
 
+#define GEN_PASS_DEF_FUNCTIONALCONTROLFLOWTOCFGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct FunctionalControlFlowToCFG
-    : public FunctionalControlFlowToCFGPassBase<FunctionalControlFlowToCFG> {
+    : public impl::FunctionalControlFlowToCFGPassBase<
+          FunctionalControlFlowToCFG> {
   void runOnOperation() override;
 };
 
@@ -56,7 +59,7 @@ static Value LowerCondition(Location loc, Value value, OpBuilder* builder) {
 // Requires the function to provide arguments for each of the `fn` operands
 // that is compatible for tensor cast.
 static Operation* CallFn(Location loc, const std::function<Value(int)>& get_arg,
-                         FuncOp fn, OpBuilder* builder) {
+                         func::FuncOp fn, OpBuilder* builder) {
   FunctionType fn_type = fn.getFunctionType();
   llvm::SmallVector<Value, 4> operands;
   int num_operands = fn_type.getNumInputs();
@@ -140,7 +143,7 @@ static LogicalResult LowerIfOp(IfOp op) {
   OpBuilder builder(op_inst);
 
   // Lower the condition to a boolean value (i1).
-  Value cond_i1 = LowerCondition(loc, op.cond(), &builder);
+  Value cond_i1 = LowerCondition(loc, op.getCond(), &builder);
   if (!cond_i1) return failure();
 
   // Split the basic block before the 'if'.  The new dest will be our merge
@@ -302,7 +305,8 @@ void FunctionalControlFlowToCFG::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTFFunctionalControlFlowToCFG() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTFFunctionalControlFlowToCFG() {
   return std::make_unique<FunctionalControlFlowToCFG>();
 }
 

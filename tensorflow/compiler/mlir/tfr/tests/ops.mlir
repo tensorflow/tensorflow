@@ -33,7 +33,7 @@ func.func private @tensor_invalid_1() -> !tfr.tensor<[N, T>
 
 // -----
 
-// expected-error@+1 {{unexpected nul or EOF in pretty dialect name}}
+// expected-error@+1 {{unbalanced}}
 func.func @tensor_invalid_2() -> !tfr.tensor<[N, T]
 
 // -----

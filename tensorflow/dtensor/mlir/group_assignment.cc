@@ -193,7 +193,7 @@ bool GroupAssignment::IsWithinSlices() const {
   // `GlobalToSlices`, i.e., the total group count remains the same.
   int total_num_groups = 0;
   for (int i = 0; i < num_slices(); i++) {
-    total_num_groups += num_groups(i).ValueOrDie();
+    total_num_groups += num_groups(i).value();
   }
   if (total_num_groups != num_groups()) return false;
   return total_num_groups == num_groups();
@@ -252,7 +252,7 @@ Status GroupAssignment::GlobalToSlices() {
   }
 
   VLOG(2) << "Divided group assignment: " << ToString();
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace dtensor

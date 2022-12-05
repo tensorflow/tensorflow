@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -104,10 +104,10 @@ TEST_F(GpuAtomicTest, TestAddAtomicF32) {
 )";
 
   CompileAndVerifyIr(hlo_string, is_built_with_rocm_ ? R"(
-CHECK: atomicrmw fadd float addrspace{{.*}}, float {{.*}} seq_cst, align 4
+CHECK: atomicrmw fadd ptr addrspace(1) %[[ADDR:.*]], float %[[VALUE:.*]] syncscope("agent") seq_cst
 )"
                                                      : R"(
-CHECK: atomicrmw fadd float* %[[ADDR:.*]], float %[[VALUE:.*]] seq_cst
+CHECK: atomicrmw fadd ptr %[[ADDR:.*]], float %[[VALUE:.*]] seq_cst
 )");
 }
 
@@ -144,7 +144,7 @@ TEST_F(GpuAtomicTest, TestAddAtomicF64) {
 )";
 
   CompileAndVerifyIr(hlo_string, R"(
-CHECK: atomicrmw fadd double* %[[ADDR:.*]], double %[[VALUE:.*]] seq_cst
+CHECK: atomicrmw fadd ptr %[[ADDR:.*]], double %[[VALUE:.*]] seq_cst
 )");
 }
 

@@ -421,7 +421,14 @@ class _ResourceGather(_Node):
     axis_node_name = self._node.name + "/axis"
     axis_dtype = self._node.attr["Tindices"]
     axis_data = np.array(self._node.attr["batch_dims"].i)
-    output_axis_node = self.converted_self().container.node.add()
+    converted_graph = self._enclosing_graph.converted_self()
+    # Add Const axis node, or get it if it exists to avoid duplicates.
+    if axis_node_name not in converted_graph.nodes:
+      converted_graph.nodes[axis_node_name] = _Node.new(
+          node=converted_graph.graph_def.node.add(),
+          function=self._function,
+          enclosing_graph=converted_graph)
+    output_axis_node = converted_graph.nodes[axis_node_name].node
     output_axis_node.name = axis_node_name
     output_axis_node.op = "Const"
     output_axis_node.attr["dtype"].CopyFrom(axis_dtype)

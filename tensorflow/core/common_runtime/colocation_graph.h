@@ -113,6 +113,8 @@ class Member {
 
   string DebugString() const;
 
+  bool has_assigned_device_name() const { return assigned_device_name_.has_id; }
+
  private:
   // Updates this to contain the intersection of the device types in
   // this and `other_devices`.

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "tensorflow/lite/testing/kernel_test/util.h"
 
 int main(int argc, char** argv) {
@@ -24,7 +26,7 @@ int main(int argc, char** argv) {
           ? tflite::testing::TfLiteDriver::DelegateType::kNnapi
           : tflite::testing::TfLiteDriver::DelegateType::kNone;
 
-  auto runner = absl::make_unique<tflite::testing::TfLiteDriver>(
+  auto runner = std::make_unique<tflite::testing::TfLiteDriver>(
       delegate_type, run_reference_kernel);
   if (tflite::testing::kernel_test::RunKernelTest(options, runner.get()) ==
       kTfLiteOk) {

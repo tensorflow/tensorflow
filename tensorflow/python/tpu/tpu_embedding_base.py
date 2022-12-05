@@ -15,19 +15,16 @@
 """Base Class for TPU Embeddings Mid level APIs."""
 
 import functools
-from typing import Any, Dict, Iterable, Optional, Union, Text, Callable
+from typing import Any, Dict, Iterable, Optional, Union, Text
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.tpu import tpu_embedding_v2_utils
-from tensorflow.python.training.saving import saveable_hook
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.util import nest
 
-_HOOK_KEY = "TPUEmbedding_saveable"
 
-
-class TPUEmbeddingBase(tracking.AutoTrackable):
+class TPUEmbeddingBase(autotrackable.AutoTrackable):
   """The TPUEmbedding Base class.
 
   This class only contains the basic logic to check the feature config and table
@@ -127,15 +124,6 @@ class TPUEmbeddingBase(tracking.AutoTrackable):
   def _create_variables_and_slots(self):
     """Create variables and slots variables for TPU embeddings."""
     raise NotImplementedError
-
-  def _gather_saveables_for_checkpoint(
-      self) -> Dict[Text, Callable[[Text], saveable_hook.SaveableHook]]:
-    """Overrides default Trackable implementation to add saveable hook."""
-
-    def factory(name=_HOOK_KEY):
-      return saveable_hook.SaveableHook(name)
-
-    return {_HOOK_KEY: factory}
 
   def build(self):
     """Create variables and slots variables for TPU embeddings."""

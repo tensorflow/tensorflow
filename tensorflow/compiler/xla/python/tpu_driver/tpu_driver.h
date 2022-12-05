@@ -20,21 +20,22 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/platform/external/compat.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.pb.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 // This API is EXPERIMENTAL and under active development. It is subject to
 // change without notice.
@@ -54,7 +55,7 @@ class Event {
   // Blocks until the event completes and returns the result status.
   virtual xla::Status Await() = 0;
   // Returns an empty result if the wait times out.
-  virtual absl::optional<xla::Status> AwaitWithTimeout(
+  virtual std::optional<xla::Status> AwaitWithTimeout(
       absl::Duration duration) = 0;
 
   // If the event is already done, the callback is called immediately.
@@ -73,7 +74,7 @@ class BufferHandle {
   virtual std::shared_ptr<Event> OnReady() = 0;
 
   virtual int64_t size_in_bytes() = 0;
-  virtual absl::optional<xla::ShapeProto> shape() = 0;
+  virtual std::optional<xla::ShapeProto> shape() = 0;
 };
 
 // Represents a compiled program on the host.
@@ -216,7 +217,8 @@ class TpuDriver {
 
   virtual std::unique_ptr<CompiledProgramHandle> CompileProgram(
       const xla::HloProto& source, int32_t num_replicas,
-      absl::Span<Event* const> wait_for) = 0;
+      absl::Span<Event* const> wait_for,
+      const xla::DebugOptions& debug_options) = 0;
   virtual std::unique_ptr<LoadedProgramHandle> LoadProgram(
       int32_t core_id, const CompiledProgramHandle* handle,
       absl::Span<Event* const> wait_for) = 0;

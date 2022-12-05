@@ -32,15 +32,16 @@ limitations under the License.
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/utility.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/transforms/pass_detail.h"
 
 namespace mlir {
 namespace tfg {
-
 namespace {
 
+#define GEN_PASS_DEF_DEDUPEANDHOISTCONSTANT
+#include "tensorflow/core/transforms/passes.h.inc"
+
 struct DedupeAndHoistConstantPass
-    : DedupeAndHoistConstantBase<DedupeAndHoistConstantPass> {
+    : impl::DedupeAndHoistConstantBase<DedupeAndHoistConstantPass> {
   LogicalResult initialize(MLIRContext* context) override {
     dtype_id = StringAttr::get(context, "dtype");
     name_id = StringAttr::get(context, TFGraphDialect::getNameAttrKey());
@@ -144,7 +145,7 @@ void DedupeAndHoistConstantPass::PropagateEdges(Operation* op) {
 
 bool DedupeAndHoistConstantPass::RequiresIdentity(Operation* op) {
   for (Operation* user : op->getUsers())
-    if (function_table->MaybeCall(user)) return true;
+    if (function_table->MayBeCall(user)) return true;
   return false;
 }
 

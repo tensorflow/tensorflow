@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -29,7 +29,7 @@ Status ShapeLayout::CopyLayoutFromShape(const Shape& other_shape) {
                            ShapeUtil::HumanString(shape()));
   }
   shape_ = other_shape;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ShapeLayout::AssignLayoutToShape(Shape* to_shape) const {
@@ -39,7 +39,7 @@ Status ShapeLayout::AssignLayoutToShape(Shape* to_shape) const {
                            ShapeUtil::HumanString(shape()));
   }
   *to_shape = shape_;
-  return Status::OK();
+  return OkStatus();
 }
 
 void ShapeLayout::SetToDefaultLayout() {

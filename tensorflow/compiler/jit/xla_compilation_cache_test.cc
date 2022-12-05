@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_compilation_cache.h"
 
+#include <vector>
+
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -113,7 +115,7 @@ void BM_BuildSignature(::testing::benchmark::State& state) {
     StatusOr<XlaCompilationCache::Signature> s =
         XlaCompilationCache::BuildSignature(fn, args);
     CHECK(s.ok());
-    XlaCompilationCache::Signature sig = std::move(s.ValueOrDie());
+    XlaCompilationCache::Signature sig = std::move(s.value());
   }
 }
 BENCHMARK(BM_BuildSignature)->Arg(0)->Arg(1)->Arg(2)->Arg(5)->Arg(10);

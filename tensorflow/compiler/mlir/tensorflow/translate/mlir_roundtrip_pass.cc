@@ -24,9 +24,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
@@ -74,7 +74,7 @@ Status MlirRoundtripPass::Run(const GraphOptimizationPassOptions& options) {
     // TODO(jpienaar): Roundtrip results in different failures, investigate.
     TF_RETURN_IF_ERROR(Import(options, *it.second, &context).status());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/coreml/builders/hardswish_op_builder.h"
 
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include <string>
+
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/delegates/coreml/builders/add_op_builder.h"
 #include "tensorflow/lite/delegates/coreml/builders/mul_op_builder.h"
 #include "tensorflow/lite/delegates/coreml/builders/op_factory.h"

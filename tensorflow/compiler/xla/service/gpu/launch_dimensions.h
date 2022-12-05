@@ -95,14 +95,11 @@ struct LaunchDimensionsConfig {
   // `hlo.shape().dimensions().back()/unroll_factor`.
   // Currently few_waves and row_vectorized do not work together.
   bool row_vectorized = false;
-  // If 'logical_order' is true, then adjacent threads will write to
-  // logically adjacent indices in output buffer.
-  bool logical_order = false;
 
   std::string ToString() {
-    return absl::StrCat(
-        "unroll_factor=", unroll_factor, ", few_waves=", few_waves,
-        ", row_vectorized=", row_vectorized, ", logical_order", logical_order);
+    return absl::StrCat("unroll_factor=", unroll_factor,
+                        ", few_waves=", few_waves,
+                        ", row_vectorized=", row_vectorized);
   }
 };
 

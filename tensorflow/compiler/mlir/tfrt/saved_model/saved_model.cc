@@ -67,7 +67,7 @@ Status MapFunctionSignaturesFromTFSavedModelMLIR(
     llvm::function_ref<void(const TFRTSavedModelSignatureInfo&)> map_fn) {
   // Create bound inputs for each functions.
   mlir::SymbolTable symbol_table(module);
-  tensorflow::Status status = tensorflow::Status::OK();
+  tensorflow::Status status = OkStatus();
   module.walk([&symbol_table, map_fn, &status](mlir::func::FuncOp func) {
     // Use the exported name as the function name, and skip non-exported
     // functions.
@@ -94,7 +94,7 @@ Status MapFunctionSignaturesFromTFSavedModelMLIR(
           status = std::move(statusor_spec).status();
           return mlir::WalkResult::interrupt();
         }
-        input_specs.push_back(std::move(statusor_spec).ValueOrDie());
+        input_specs.push_back(std::move(statusor_spec).value());
         if (auto input_device =
                 func.getArgAttrOfType<mlir::StringAttr>(i, "tf.device")) {
           input_devices.push_back(input_device.getValue());
@@ -122,7 +122,7 @@ Status MapFunctionSignaturesFromTFSavedModelMLIR(
           status = std::move(statusor_spec).status();
           return mlir::WalkResult::interrupt();
         }
-        output_specs.push_back(std::move(statusor_spec).ValueOrDie());
+        output_specs.push_back(std::move(statusor_spec).value());
       }
     }
 

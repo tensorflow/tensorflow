@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/add_test_util.h"
 
+#include <memory>
+
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/testing_util.h"
@@ -50,7 +52,7 @@ absl::Status AddTwoEqualIntTensorsTest(TestExecutionEnvironment* env) {
     GPUOperation operation = CreateAdd(op_def, channels, channels[0]);
     RETURN_IF_ERROR(env->ExecuteGPUOperation(
         {&src_0, &src_1}, {&dst},
-        absl::make_unique<GPUOperation>(std::move(operation))));
+        std::make_unique<GPUOperation>(std::move(operation))));
     tflite::gpu::Tensor<BHWC, T> dst_tensor;
     dst.DownloadData(&dst_tensor);
     if (dst_tensor.data != ref_tensor.data) {
@@ -94,7 +96,7 @@ absl::Status AddTwoEqualUintTensorsTest(TestExecutionEnvironment* env) {
     GPUOperation operation = CreateAdd(op_def, channels, channels[0]);
     RETURN_IF_ERROR(env->ExecuteGPUOperation(
         {&src_0, &src_1}, {&dst},
-        absl::make_unique<GPUOperation>(std::move(operation))));
+        std::make_unique<GPUOperation>(std::move(operation))));
     tflite::gpu::Tensor<BHWC, T> dst_tensor;
     dst.DownloadData(&dst_tensor);
     if (dst_tensor.data != ref_tensor.data) {
@@ -131,7 +133,7 @@ absl::Status AddTwoEqualTensorsTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateAdd(op_def, channels, channels[0]);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          {src0, src1}, absl::make_unique<GPUOperation>(std::move(operation)),
+          {src0, src1}, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 2), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({0.0f, 0.0f, -0.1f, 0.0f}, dst_tensor.data, eps));
@@ -168,7 +170,7 @@ absl::Status AddFirstTensorHasMoreChannelsThanSecondTest(
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateAdd(op_def, channels, channels[0]);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          {src0, src1}, absl::make_unique<GPUOperation>(std::move(operation)),
+          {src0, src1}, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 6), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({0.0f, 0.0f, -0.05f, 0.045f, 1.0f, -2.0f,
                                      -1.1f, 1.0f, 2.0f, -3.0f, -2.05f, 2.045f},
@@ -199,7 +201,7 @@ absl::Status AddFirstTensorHasLessChannelsThanSecond(
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateAdd(op_def, channels, 6);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          {src0, src1}, absl::make_unique<GPUOperation>(std::move(operation)),
+          {src0, src1}, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 6), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({0.0f, 0.0f, -0.05f, 0.045f, 1.0f, -2.0f,
                                      -1.1f, 1.0f, 2.0f, -3.0f, -2.05f, 2.045f},

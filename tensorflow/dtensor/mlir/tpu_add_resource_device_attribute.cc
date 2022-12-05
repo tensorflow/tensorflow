@@ -30,12 +30,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORTPUADDRESOURCEDEVICEATTRIBUTE
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 constexpr char kFuncDeviceAttr[] = "tf.device";
 
@@ -53,7 +55,7 @@ void AddPlaceholderDeviceAttributeToResource(
   // TPUExecute op is wrapped inside tf_device.Launch op for device assignment.
   auto tpu_execute_device_launch =
       execute_op->getParentOfType<mlir::tf_device::LaunchOp>();
-  mlir::StringRef tpu_device_attr = tpu_execute_device_launch.device();
+  mlir::StringRef tpu_device_attr = tpu_execute_device_launch.getDevice();
 
   auto function = execute_op->getParentOfType<mlir::func::FuncOp>();
   mlir::OpBuilder builder(execute_op);
@@ -84,7 +86,7 @@ mlir::Operation* IdentifyConnectedAssignVariableOp(mlir::Value val) {
 }
 
 struct DTensorTpuAddResourceDeviceAttribute
-    : public DTensorTpuAddResourceDeviceAttributeBase<
+    : public impl::DTensorTpuAddResourceDeviceAttributeBase<
           DTensorTpuAddResourceDeviceAttribute> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();
@@ -105,7 +107,7 @@ struct DTensorTpuAddResourceDeviceAttribute
             if (!read_variable_op) continue;
 
             AddPlaceholderDeviceAttributeToResource(
-                read_variable_op.resource().cast<mlir::BlockArgument>(),
+                read_variable_op.getResource().cast<mlir::BlockArgument>(),
                 tpu_execute);
           }
 
@@ -116,7 +118,7 @@ struct DTensorTpuAddResourceDeviceAttribute
 
             AddPlaceholderDeviceAttributeToResource(
                 llvm::cast<mlir::TF::AssignVariableOp>(assign_variable)
-                    .resource()
+                    .getResource()
                     .cast<mlir::BlockArgument>(),
                 tpu_execute);
           }

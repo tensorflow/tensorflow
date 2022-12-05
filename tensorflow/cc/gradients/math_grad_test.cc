@@ -54,6 +54,9 @@ using ops::SelectV2;
 using ops::SquaredDifference;
 using ops::Sub;
 using ops::Sum;
+using ops::UnsortedSegmentMax;
+using ops::UnsortedSegmentMin;
+using ops::UnsortedSegmentSum;
 using ops::Where3;
 
 // TODO(andydavis) Test gradient function against numeric gradients output.
@@ -1050,9 +1053,57 @@ TEST_F(NaryGradTest, SelectV2_Broadcast2) {
 TEST_F(NaryGradTest, Atan2Grad) {
   TensorShape shape({3, 2, 5});
   auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
-  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  // Test with x2 = 1 + |x1| to avoid regions where the gradient
+  // is unstable and might cause problems for the numeric estimator.
+  auto x2 =
+      Div(scope_, x1, Add(scope_, Const<float>(scope_, 1), Abs(scope_, x1)));
   auto y = Atan2(scope_, x1, x2);
-  RunTest({x1, x2}, {shape, shape}, {y}, {shape});
+  RunTest({x1}, {shape}, {y}, {shape});
+}
+
+TEST_F(NaryGradTest, UnsortedSegmentMaxGrad) {
+  TensorShape shape({3, 2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto segment_ids = Const(scope_, {0, 0, 1});
+  auto y = UnsortedSegmentMax(scope_, x, segment_ids, /*num_segments=*/2);
+  TensorShape y_shape({2, 2, 5});
+  RunTest({x}, {shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, UnsortedSegmentMaxGrad_Int64Ids) {
+  TensorShape shape({3, 2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto segment_ids = Const(scope_, {0ll, 0ll, 1ll});
+  auto y = UnsortedSegmentMax(scope_, x, segment_ids, /*num_segments=*/2);
+  TensorShape y_shape({2, 2, 5});
+  RunTest({x}, {shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, UnsortedSegmentMaxGrad_NegativeIds) {
+  TensorShape shape({3, 2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto segment_ids = Const(scope_, {0, 0, -1});
+  auto y = UnsortedSegmentMax(scope_, x, segment_ids, /*num_segments=*/1);
+  TensorShape y_shape({1, 2, 5});
+  RunTest({x}, {shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, UnsortedSegmentMinGrad) {
+  TensorShape shape({3, 2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto segment_ids = Const(scope_, {0, 0, 1});
+  auto y = UnsortedSegmentMin(scope_, x, segment_ids, /*num_segments=*/2);
+  TensorShape y_shape({2, 2, 5});
+  RunTest({x}, {shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, UnsortedSegmentSumGrad) {
+  TensorShape shape({3, 2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto segment_ids = Const(scope_, {0, 0, 1});
+  auto y = UnsortedSegmentSum(scope_, x, segment_ids, /*num_segments=*/2);
+  TensorShape y_shape({2, 2, 5});
+  RunTest({x}, {shape}, {y}, {y_shape});
 }
 
 }  // namespace

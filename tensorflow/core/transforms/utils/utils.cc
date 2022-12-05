@@ -35,11 +35,19 @@ namespace mlir {
 namespace tfg {
 namespace util {
 
-bool NodeIsOnCpu(Operation *op) {
+bool OpHasDevice(Operation *op, const char *device_name) {
   std::string task, device;
   return tensorflow::DeviceNameUtils::SplitDeviceName(TFOp(op).device().data(),
                                                       &task, &device) &&
-         absl::StartsWith(device, tensorflow::DEVICE_CPU);
+         absl::StartsWith(device, device_name);
+}
+
+void EraseRegularNodeAttributes(NamedAttrList &attr_list) {
+  NamedAttrList new_attr_list;
+  for (NamedAttribute attr : attr_list) {
+    if (attr.getName().strref().startswith("_")) new_attr_list.append(attr);
+  }
+  attr_list = new_attr_list;
 }
 
 void ForwardNonIntrinsicAttributes(Operation *src, Operation *dst) {
@@ -70,20 +78,20 @@ static void UpdateIfPresent(Region &region,
 static void UpdateArgAttrsIfPresent(
     Region &region, function_ref<void(SmallVectorImpl<Attribute> &)> update) {
   UpdateIfPresent(region, [&](RegionAttr attrs) {
-    SmallVector<Attribute> args = llvm::to_vector(attrs.getArg_attrs());
+    SmallVector<Attribute> args = llvm::to_vector(attrs.getArgAttrs());
     update(args);
     return RegionAttr::get(attrs.getAttrs(),
                            ArrayAttr::get(attrs.getContext(), args),
-                           attrs.getRes_attrs());
+                           attrs.getResAttrs());
   });
 }
 
 static void UpdateResultAttrsIfPresent(
     Region &region, function_ref<void(SmallVectorImpl<Attribute> &)> update) {
   UpdateIfPresent(region, [&](RegionAttr attrs) {
-    SmallVector<Attribute> results = llvm::to_vector(attrs.getRes_attrs());
+    SmallVector<Attribute> results = llvm::to_vector(attrs.getResAttrs());
     update(results);
-    return RegionAttr::get(attrs.getAttrs(), attrs.getArg_attrs(),
+    return RegionAttr::get(attrs.getAttrs(), attrs.getArgAttrs(),
                            ArrayAttr::get(attrs.getContext(), results));
   });
 }
@@ -107,9 +115,9 @@ void LoopRegionEraseArgument(Region &region, unsigned index) {
   assert(index < args.size());
 
   // Erase the arguments.
-  SmallVector<unsigned, 2> indices;
-  indices.push_back(args[index].getArgNumber());
-  indices.push_back(GetLoopRegionControlOf(args[index]).getArgNumber());
+  BitVector indices(region.front().getNumArguments());
+  indices.set(args[index].getArgNumber());
+  indices.set(GetLoopRegionControlOf(args[index]).getArgNumber());
   region.front().eraseArguments(indices);
 
   UpdateArgAttrsIfPresent(region, [&](SmallVectorImpl<Attribute> &arg_attrs) {
@@ -144,9 +152,9 @@ void SizedOperandSegmentsEraseOperands(Operation *op,
   Builder b(op->getContext());
   StringAttr attr_name = b.getStringAttr(
       OpTrait::AttrSizedOperandSegments<void>::getOperandSegmentSizeAttr());
-  auto segment_sizes = op->getAttrOfType<DenseIntElementsAttr>(attr_name);
+  auto segment_sizes = op->getAttrOfType<DenseI32ArrayAttr>(attr_name);
   if (segment_sizes) {
-    auto values = segment_sizes.getValues<int32_t>();
+    auto values = segment_sizes.asArrayRef();
     SmallVector<int32_t> new_sizes = llvm::to_vector(values);
 
     unsigned base = 0;
@@ -160,7 +168,7 @@ void SizedOperandSegmentsEraseOperands(Operation *op,
     assert(llvm::all_of(new_sizes, [](int32_t size) { return size >= 0; }));
     assert(std::accumulate(new_sizes.begin(), new_sizes.end(), 0) ==
            op->getNumOperands() - erase.count());
-    segment_sizes = b.getI32TensorAttr(new_sizes);
+    segment_sizes = b.getDenseI32ArrayAttr(new_sizes);
   }
 
   op->eraseOperands(erase);

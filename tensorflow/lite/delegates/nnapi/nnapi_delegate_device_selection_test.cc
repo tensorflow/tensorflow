@@ -21,17 +21,18 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <ostream>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_mock_test.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
@@ -45,7 +46,8 @@ class FloatAddOpModel : public SingleOpModel {
             const TensorData& input1, const TensorData& input2,
             const TensorData& output, ActivationFunctionType activation_type,
             bool allow_fp32_relax_to_fp16 = false) {
-    stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi, options));
+    stateful_delegate_ =
+        std::make_unique<StatefulNnApiDelegate>(nnapi, options);
     SetDelegate(stateful_delegate_.get());
 
     input1_ = AddInput(input1);
@@ -222,7 +224,8 @@ class AcceleratedModel {
     StatefulNnApiDelegate::Options options;
     options.accelerator_name = accelerator_name.c_str();
     options.max_number_delegated_partitions = max_nnapi_partitions;
-    stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi, options));
+    stateful_delegate_ =
+        std::make_unique<StatefulNnApiDelegate>(nnapi, options);
   }
 
   // build a delegate with no target accelerator name, can disable the NNAPI CPU
@@ -232,7 +235,8 @@ class AcceleratedModel {
     StatefulNnApiDelegate::Options options;
     options.disallow_nnapi_cpu = disallow_nnapi_cpu;
     options.max_number_delegated_partitions = max_nnapi_partitions;
-    stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi, options));
+    stateful_delegate_ =
+        std::make_unique<StatefulNnApiDelegate>(nnapi, options);
   }
 
  private:

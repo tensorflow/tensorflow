@@ -1015,6 +1015,11 @@ def _split_on_axis(np_fun_name, axis):
 
   @np_utils.np_doc(np_fun_name)
   def f(ary, indices_or_sections):
+    if isinstance(indices_or_sections, int):
+      ary_shape = ary.shape[axis]
+      if ary_shape is not None and ary_shape % indices_or_sections:
+        raise ValueError(
+            'array split does not result in an equal division')
     return split(ary, indices_or_sections, axis=axis)
 
   return f

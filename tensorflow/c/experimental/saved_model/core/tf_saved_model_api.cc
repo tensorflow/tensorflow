@@ -126,7 +126,7 @@ Status RestoreCheckpoint(SavedModelV2Bundle* bundle,
                           "implemented yet. (Kind="
                        << bundle->saved_object_graph().nodes(node).kind_case()
                        << ")";
-          return Status::OK();
+          return OkStatus();
         }
 
         Variable* variable = revived_objects.variables.at(node).get();

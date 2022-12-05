@@ -38,7 +38,7 @@ REGISTER_OP("KernelLabelRequired")
       shape_inference::ShapeHandle out;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &out));
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("GraphDefVersion")
@@ -197,6 +197,7 @@ class GetDeadlineOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     if (!ctx->deadline()) {
       ctx->SetStatus(errors::InvalidArgument("Deadline has not ben set."));
+      return;
     }
     Tensor* output;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
@@ -211,6 +212,10 @@ class SleepOp : public OpKernel {
   explicit SleepOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
+        errors::InvalidArgument("Expected argument 0 to be a scalar. Received",
+                                ctx->input(0).DebugString()));
     absl::SleepFor(absl::Seconds(ctx->input(0).scalar<int>()()));
   }
 };
@@ -222,6 +227,10 @@ class SleepIdentityOp : public OpKernel {
   explicit SleepIdentityOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
+        errors::InvalidArgument("Expected argument 0 to be a scalar. Received",
+                                ctx->input(0).DebugString()));
     absl::SleepFor(absl::Seconds(ctx->input(0).scalar<int>()()));
     ctx->set_output(0, ctx->input(1));
   }

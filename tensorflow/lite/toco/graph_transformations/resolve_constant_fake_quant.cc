@@ -66,7 +66,7 @@ void GetBoundsForQuantizedDataType(ArrayDataType quantized_data_type,
   const auto fakequant_it = model->operators.begin() + op_index;
   const auto* fakequant_base_op = fakequant_it->get();
   if (fakequant_base_op->type != OperatorType::kFakeQuant) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   const auto* fakequant_op =
@@ -74,12 +74,12 @@ void GetBoundsForQuantizedDataType(ArrayDataType quantized_data_type,
 
   // Yield until the fakequant MinMax has been resolved.
   if (!fakequant_op->minmax) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // This transformation only applies when the input array is constant.
   if (!IsConstantParameterArray(*model, fakequant_op->inputs[0])) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   const auto& input_array = model->GetArray(fakequant_op->inputs[0]);
@@ -90,7 +90,7 @@ void GetBoundsForQuantizedDataType(ArrayDataType quantized_data_type,
   if (!InferQuantizedDataTypeFromFakeQuant(*fakequant_op,
                                            &quantized_data_type)) {
     AddMessageF("Unsupported FakeQuant num_bits=%d", fakequant_op->num_bits);
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   AddMessageF("Resolving constant %s", LogName(*fakequant_op));
@@ -134,7 +134,7 @@ void GetBoundsForQuantizedDataType(ArrayDataType quantized_data_type,
                             size);
   DeleteOpAndArrays(model, fakequant_op);
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

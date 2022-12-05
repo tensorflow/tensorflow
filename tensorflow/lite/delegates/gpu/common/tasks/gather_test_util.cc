@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/gather_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -52,7 +53,7 @@ absl::Status GatherWidthIntTest(TestExecutionEnvironment* env) {
       GPUOperation operation = CreateGather(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {&src_0, &src_1}, {&dst},
-          absl::make_unique<GPUOperation>(std::move(operation))));
+          std::make_unique<GPUOperation>(std::move(operation))));
       TensorFloat32 dst_tensor;
       dst.DownloadData(&dst_tensor);
       RETURN_IF_ERROR(PointWiseNear(
@@ -89,7 +90,7 @@ absl::Status GatherWidthTest(TestExecutionEnvironment* env) {
       GPUOperation operation = CreateGather(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {src_tensor, src_indices},
-          absl::make_unique<GPUOperation>(std::move(operation)),
+          std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 1, 9, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(
           {half(2.4f), half(3.3f), half(4.2f), half(1.5f), half(2.4f),

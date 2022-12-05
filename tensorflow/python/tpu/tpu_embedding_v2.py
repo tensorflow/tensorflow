@@ -39,13 +39,13 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.tpu.ops import tpu_ops
-from tensorflow.python.training.saving import saveable_hook
-from tensorflow.python.training.tracking import base
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
+from tensorflow.python.trackable import base
 from tensorflow.python.types import internal as internal_types
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
@@ -70,7 +70,7 @@ def _add_key_attr(op, name):
 
 
 @tf_export("tpu.experimental.embedding.TPUEmbedding")
-class TPUEmbedding(tracking.AutoTrackable):
+class TPUEmbedding(autotrackable.AutoTrackable):
   """The TPUEmbedding mid level API.
 
   NOTE: When instantiated under a TPUStrategy, this class can only be created
@@ -325,12 +325,14 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     if self._using_tpu:
       # Extract a list of callable learning rates also in fixed order. Each
-      # table in the confix proto will get a index into this list and we will
+      # table in the config proto will get a index into this list and we will
       # pass this list in the same order after evaluation to the
       # send_tpu_embedding_gradients op.
-      self._dynamic_learning_rates = list({
-          table.optimizer.learning_rate for table in self._table_config if
-          callable(table.optimizer.learning_rate)})
+      self._dynamic_learning_rates = []
+      for table in self._table_config:
+        if (callable(table.optimizer.learning_rate) and
+            table.optimizer.learning_rate not in self._dynamic_learning_rates):
+          self._dynamic_learning_rates.append(table.optimizer.learning_rate)
 
       # We need to list of host devices for the load/retrieve operations.
       self._hosts = get_list_of_hosts(self._strategy)
@@ -557,28 +559,10 @@ class TPUEmbedding(tracking.AutoTrackable):
         self._dynamic_learning_rates)}
 
     for table in self._table_config:
-      table_descriptor = config_proto.table_descriptor.add()
-      table_descriptor.name = table.name
-
-      # For small tables, we pad to the number of hosts so that at least one
-      # id will be assigned to each host.
-      table_descriptor.vocabulary_size = max(table.vocabulary_size,
-                                             self._strategy.extended.num_hosts)
-      table_descriptor.dimension = table.dim
-
-      parameters = table_descriptor.optimization_parameters
-
-      # We handle the learning rate separately here and don't allow the
-      # optimization class to handle this, as it doesn't know about dynamic
-      # rates.
-      if callable(table.optimizer.learning_rate):
-        parameters.learning_rate.dynamic.tag = (
-            learning_rate_index[table.optimizer.learning_rate])
-      else:
-        parameters.learning_rate.constant = table.optimizer.learning_rate
-
-      # Use optimizer to handle the rest of the parameters.
-      table.optimizer._set_optimization_parameters(parameters)  # pylint: disable=protected-access
+      table._set_table_descriptor(  # pylint: disable=protected-access
+          config_proto.table_descriptor.add(),
+          self._strategy.extended.num_hosts,
+          learning_rate_index)
 
     table_to_id = {table: i for i, table in enumerate(self._table_config)}
 
@@ -885,21 +869,6 @@ class TPUEmbedding(tracking.AutoTrackable):
                                self._variables,
                                self._table_config)
 
-  def _gather_saveables_for_checkpoint(
-      self
-  ) -> Dict[Text, Callable[[Text], "TPUEmbeddingSaveable"]]:
-    """Overrides default Trackable implementation to add load/retrieve hook."""
-    # This saveable should be here in both TPU and CPU checkpoints, so when on
-    # CPU, we add the hook with no functions.
-    # TODO(bfontain): Update restore logic in saver so that these hooks are
-    # always executed. Once that is done, we can output an empty list when on
-    # CPU.
-
-    def factory(name=_HOOK_KEY):
-      return TPUEmbeddingSaveable(name, self._load_variables,
-                                  self._retrieve_variables)
-    return {_HOOK_KEY: factory}
-
   # Some helper functions for the below enqueue function.
   def _add_data_for_tensor(self, tensor, weight, indices, values, weights,
                            int_zeros, float_zeros, path):
@@ -1038,9 +1007,9 @@ class TPUEmbedding(tracking.AutoTrackable):
           "Current graph {} does not match graph which contains "
           "TPUReplicateContext {}. This is most likely due to the fact that "
           "enqueueing embedding data is called inside control flow or a "
-          "nested function inside `strategy.run`. This is not supported "
-          "because outside compilation fails to extract the enqueue ops as "
-          "head of computation.".format(ops.get_default_graph(), graph))
+          "tf.function inside `strategy.run`. This is not supported because "
+          "outside compilation fails to extract the enqueue ops as the head of "
+          "a computation.".format(ops.get_default_graph(), graph))
     return in_tpu_ctx
 
   def _raise_error_for_non_direct_inputs(self, features):
@@ -1294,10 +1263,6 @@ class TPUEmbedding(tracking.AutoTrackable):
         if name is not None:
           _add_key_attr(enqueue_op, name)
 
-        # Ensure that this op has outbound control flow, otherwise it won't be
-        # executed.
-        ops.get_default_graph().control_outputs.append(enqueue_op)
-
       tpu.outside_compilation(generate_enqueue_ops)
 
     elif device is None:
@@ -1327,7 +1292,6 @@ class TPUEmbedding(tracking.AutoTrackable):
           if name is not None:
             _add_key_attr(enqueue_op, name)
           enqueue_ops.append(enqueue_op)
-      ops.get_default_graph().control_outputs.extend(enqueue_ops)
     else:
       mode_override = "train" if training else "inference"
       device_spec = tf_device.DeviceSpec.from_string(device)
@@ -1344,7 +1308,6 @@ class TPUEmbedding(tracking.AutoTrackable):
         # Apply the name tag to the op.
         if name is not None:
           _add_key_attr(enqueue_op, name)
-        ops.get_default_graph().control_outputs.append(enqueue_op)
 
   def _get_input_shapes(self, tensors,
                         in_tpu_context: bool) -> List[TensorShape]:
@@ -1586,25 +1549,27 @@ def _retrieve_variables_impl(
         config = None
 
 
-class TPUEmbeddingSaveable(saveable_hook.SaveableHook):
-  """Save/Restore hook to Retrieve/Load TPUEmbedding variables."""
+def _save_callback(trackables, **unused_kwargs):
+  for trackable in trackables.values():
+    trackable._retrieve_variables()  # pylint: disable=protected-access
+  return []
 
-  def __init__(
-      self,
-      name: Text,
-      load: Callable[[], Any],
-      retrieve: Callable[[], Any]):
-    self._load = load
-    self._retrieve = retrieve
-    super(TPUEmbeddingSaveable, self).__init__(name=name)
 
-  def before_save(self):
-    if self._retrieve is not None:
-      self._retrieve()
+def _restore_callback(trackables, **unused_kwargs):
+  for trackable in trackables.values():
+    trackable._load_variables()  # pylint: disable=protected-access
 
-  def after_restore(self):
-    if self._load is not None:
-      self._load()
+
+registration.register_tf_checkpoint_saver(
+    "TPUEmbeddingCallback",
+    predicate=lambda x: isinstance(x, TPUEmbedding),
+    save_fn=_save_callback,
+    restore_fn=_restore_callback,
+    # Set strict_predicate_restore to `False` to because the isinstance
+    # predicate check does not pass after a TPUEmbedding object is loaded from
+    # SavedModel.
+    strict_predicate_restore=False
+)
 
 
 def get_list_of_hosts(strategy: tpu_strategy.TPUStrategy) -> List[Text]:

@@ -20,6 +20,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include "tensorflow/c/tf_attrtype.h"
+#include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
@@ -98,32 +99,6 @@ extern "C" {
 // TF_Version returns a string describing version information of the
 // TensorFlow library. TensorFlow uses semantic versioning.
 TF_CAPI_EXPORT extern const char* TF_Version(void);
-
-// --------------------------------------------------------------------------
-// TF_Buffer holds a pointer to a block of data and its associated length.
-// Typically, the data consists of a serialized protocol buffer, but other data
-// may also be held in a buffer.
-//
-// By default, TF_Buffer itself does not do any memory management of the
-// pointed-to block.  If need be, users of this struct should specify how to
-// deallocate the block by setting the `data_deallocator` function pointer.
-typedef struct TF_Buffer {
-  const void* data;
-  size_t length;
-  void (*data_deallocator)(void* data, size_t length);
-} TF_Buffer;
-
-// Makes a copy of the input and sets an appropriate deallocator.  Useful for
-// passing in read-only, input protobufs.
-TF_CAPI_EXPORT extern TF_Buffer* TF_NewBufferFromString(const void* proto,
-                                                        size_t proto_len);
-
-// Useful for passing *out* a protobuf.
-TF_CAPI_EXPORT extern TF_Buffer* TF_NewBuffer(void);
-
-TF_CAPI_EXPORT extern void TF_DeleteBuffer(TF_Buffer*);
-
-TF_CAPI_EXPORT extern TF_Buffer TF_GetBuffer(TF_Buffer* buffer);
 
 // Parsing a serialized TensorProto into a TF_Tensor.
 TF_CAPI_EXPORT extern void TF_TensorFromProto(const TF_Buffer* from,

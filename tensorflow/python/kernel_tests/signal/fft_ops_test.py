@@ -15,6 +15,7 @@
 """Tests for fft operations."""
 
 import itertools
+import unittest
 
 from absl.testing import parameterized
 import numpy as np
@@ -266,6 +267,7 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     self._check_grad_complex(self._tf_ifft_for_rank(rank), re, im,
                              rtol=tol, atol=tol)
 
+  @unittest.skip("16.86% flaky")
   @parameterized.parameters(itertools.product(
       VALID_FFT_RANKS, range(2), (np.float32, np.float64)))
   def test_grad_random(self, rank, extra_dims, np_type):

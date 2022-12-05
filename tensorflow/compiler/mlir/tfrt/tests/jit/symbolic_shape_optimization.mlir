@@ -8,9 +8,9 @@
 // CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: tensor<?xf32>
 func.func @optimize_1dx1d_bcast(
   %arg0: tensor<?xf32>
-    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
+    {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
   %arg1: tensor<?xf32>
-    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>}
+    {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>}
 ) -> tensor<?xf32> {
   %0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<1xindex>
   %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
@@ -19,7 +19,7 @@ func.func @optimize_1dx1d_bcast(
 
   // CHECK:      %[[C0:.*]] = arith.constant 0 : index
   // CHECK:      %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
-  // CHECK:      %[[OUT:.*]] = linalg.init_tensor [%[[D0]]]
+  // CHECK:      %[[OUT:.*]] = tensor.empty(%[[D0]])
   // CHECK:      %[[RET:.*]] = linalg.generic
   // CHECK-SAME: indexing_maps = [#[[MAP]], #[[MAP]]]
   // CHECK-SAME: iterator_types = ["parallel"]
@@ -43,7 +43,7 @@ func.func @optimize_1dx1d_bcast(
 func.func @optimize_1dx2d_bcast_const_shape(
   %arg0: tensor<512xf32>,
   %arg1: tensor<?x512xf32>
-    {jitrt.symbolic_shape = dense<[-2, 512]> : tensor<2xi64>}
+    {rt.symbolic_shape = dense<[-2, 512]> : tensor<2xi64>}
 ) -> tensor<?x512xf32> {
   %0 = shape.const_shape [512] : tensor<1xindex>
   %1 = shape.shape_of %arg1 : tensor<?x512xf32> -> tensor<2xindex>
@@ -52,7 +52,7 @@ func.func @optimize_1dx2d_bcast_const_shape(
 
   // CHECK:      %[[C0:.*]] = arith.constant 0 : index
   // CHECK:      %[[D0:.*]] = tensor.dim %[[ARG1]], %[[C0]]
-  // CHECK:      %[[OUT:.*]] = linalg.init_tensor [%[[D0]], 512]
+  // CHECK:      %[[OUT:.*]] = tensor.empty(%[[D0]])
   // CHECK:      %[[RET:.*]] = linalg.generic
   // CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]]]
   // CHECK-SAME: iterator_types = ["parallel", "parallel"]
@@ -75,11 +75,11 @@ func.func @optimize_1dx2d_bcast_const_shape(
 // CHECK-SAME:    %[[ARG2:[a-z0-9]+]]: tensor<?xf32>
 func.func @optimize_1dx1dx1d_bcast(
   %arg0: tensor<?xf32>
-    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
+    {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
   %arg1: tensor<?xf32>
-    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
+    {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
   %arg2: tensor<?xf32>
-    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>}
+    {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>}
 ) -> tensor<?xf32> {
   %0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<1xindex>
   %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
@@ -91,7 +91,7 @@ func.func @optimize_1dx1dx1d_bcast(
 
   // CHECK:      %[[C0:.*]] = arith.constant 0 : index
   // CHECK:      %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
-  // CHECK:      %[[OUT:.*]] = linalg.init_tensor [%[[D0]]]
+  // CHECK:      %[[OUT:.*]] = tensor.empty(%[[D0]])
   // CHECK:      %[[RET:.*]] = linalg.generic
   // CHECK-SAME: indexing_maps = [#[[MAP]], #[[MAP]]]
   // CHECK-SAME: iterator_types = ["parallel"]
@@ -114,9 +114,9 @@ func.func @optimize_1dx1dx1d_bcast(
 // CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: tensor<?xf32>
 func.func @optimize_2dx1d_bcast(
   %arg0: tensor<10x?xf32>
-    {jitrt.symbolic_shape = dense<[10, -2]> : tensor<2xi64>},
+    {rt.symbolic_shape = dense<[10, -2]> : tensor<2xi64>},
   %arg1: tensor<?xf32>
-    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>}
+    {rt.symbolic_shape = dense<[-2]> : tensor<1xi64>}
 ) -> (tensor<10x?xf32>, tensor<10x?xf32>) {
   %0 = shape.shape_of %arg0 : tensor<10x?xf32> -> tensor<2xindex>
   %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
@@ -126,7 +126,7 @@ func.func @optimize_2dx1d_bcast(
   // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
   // CHECK:      %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
 
-  // CHECK:      %[[OUT0:.*]] = linalg.init_tensor [10, %[[D1]]]
+  // CHECK:      %[[OUT0:.*]] = tensor.empty(%[[D1]])
   // CHECK:      %[[RET0:.*]] = linalg.generic
   // CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP0]]]
   // CHECK-SAME: iterator_types = ["parallel", "parallel"]
@@ -137,7 +137,7 @@ func.func @optimize_2dx1d_bcast(
        : (tensor<10x?xf32>, tensor<2xindex>) -> tensor<10x?xf32>
 
   // CHECK-DAG:  %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C1]]
-  // CHECK:      %[[OUT1:.*]] = linalg.init_tensor [10, %[[D0]]]
+  // CHECK:      %[[OUT1:.*]] = tensor.empty(%[[D0]])
   // CHECK:      %[[RET1:.*]] = linalg.generic
   // CHECK-SAME: indexing_maps = [#[[MAP1]], #[[MAP0]]]
   // CHECK-SAME: iterator_types = ["parallel", "parallel"]
@@ -162,9 +162,9 @@ func.func @optimize_2dx1d_bcast(
 // CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: tensor<1x?x1xf32>
 func.func @optimize_3dx3d_bcast(
   %arg0: tensor<?x1x?xf32>
-    {jitrt.symbolic_shape = dense<[-2, 1, -3]> : tensor<3xi64>},
+    {rt.symbolic_shape = dense<[-2, 1, -3]> : tensor<3xi64>},
   %arg1: tensor<1x?x1xf32>
-    {jitrt.symbolic_shape = dense<[1, -4, 1]> : tensor<3xi64>}
+    {rt.symbolic_shape = dense<[1, -4, 1]> : tensor<3xi64>}
 ) -> (tensor<?x?x?xf32>, tensor<?x?x?xf32>) {
   %0 = shape.shape_of %arg0 : tensor<?x1x?xf32> -> tensor<3xindex>
   %1 = shape.shape_of %arg1 : tensor<1x?x1xf32> -> tensor<3xindex>
@@ -178,11 +178,7 @@ func.func @optimize_3dx3d_bcast(
   // CHECK:      %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
   // CHECK:      %[[D1:.*]] = tensor.dim %[[ARG1]], %[[C1]]
   // CHECK:      %[[D2:.*]] = tensor.dim %[[ARG0]], %[[C2]]
-  // CHECK:      %[[SHAPE:.*]] = tensor.from_elements %[[D0]], %[[D1]], %[[D2]] : tensor<3xindex>
-  // CHECK:      %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
-  // CHECK:      %[[D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
-  // CHECK:      %[[D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
-  // CHECK:      %[[OUT0:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
+  // CHECK:      %[[OUT0:.*]] = tensor.empty(%[[D0]], %[[D1]], %[[D2]])
   // CHECK:      %[[RET0:.*]] = linalg.generic
   // CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]]]
   // CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel"]
@@ -192,10 +188,7 @@ func.func @optimize_3dx3d_bcast(
          {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>}
        : (tensor<?x1x?xf32>, tensor<3xindex>) -> tensor<?x?x?xf32>
 
-  // CHECK:      %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
-  // CHECK:      %[[D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
-  // CHECK:      %[[D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
-  // CHECK:      %[[OUT1:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
+  // CHECK:      %[[OUT1:.*]] = tensor.empty(%[[D0]], %[[D1]], %[[D2]])
   // CHECK:      %[[RET1:.*]] = linalg.generic
   // CHECK-SAME: indexing_maps = [#[[MAP2]], #[[MAP1]]]
   // CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel"]

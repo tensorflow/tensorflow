@@ -26,6 +26,8 @@ class SetShapeInvariantInWhileOps
     : public mlir::PassWrapper<SetShapeInvariantInWhileOps,
                                mlir::OperationPass<mlir::func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SetShapeInvariantInWhileOps)
+
   void runOnOperation() override {
     mlir::func::FuncOp func_op = getOperation();
 
@@ -34,7 +36,7 @@ class SetShapeInvariantInWhileOps
     func_op.walk([&](mlir::TF::WhileOp op) {
       // Skip tf.While op on TPU.
       if (!op->hasAttr("_tpu_replicate")) {
-        op.shape_invariantAttr(shape_invariant);
+        op.setShapeInvariantAttr(shape_invariant);
       }
     });
   }

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/nms_utils.h"
 
+#include <string>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 
@@ -28,13 +30,10 @@ constexpr char kTFImplements[] = "tf._implements";
 constexpr char kCustomSSDPostprocessing[] = "TFLite_Detection_PostProcess";
 constexpr char kTfNMSPadded[] = "non_max_suppression_padded_v2";
 
-inline OpaqueElementsAttr CustomOption(OpBuilder* builder,
-                                       const std::string& content) {
-  ShapedType type = RankedTensorType::get(
-      {static_cast<int64_t>(content.size())}, builder->getIntegerType(8));
-  return OpaqueElementsAttr::get(builder->getContext()->getLoadedDialect("tfl"),
-                                 type,
-                                 StringRef(content.data(), content.size()));
+inline ConstBytesAttr CustomOption(OpBuilder* builder,
+                                   const std::string& content) {
+  return ConstBytesAttr::get(builder->getContext(),
+                             StringRef(content.data(), content.size()));
 }
 
 }  // namespace
@@ -106,7 +105,8 @@ LogicalResult ConvertSSDPostProcessFunc::RewriteFunc() {
 }
 
 LogicalResult ConvertSSDPostProcessFunc::CreateNMSCustomOptions(
-    FuncOp func, DictionaryAttr attrs, std::string& custom_option_buffer) {
+    func::FuncOp func, DictionaryAttr attrs,
+    std::string& custom_option_buffer) {
   flexbuffers::Builder fbb;
   size_t start_map = fbb.StartMap();
 
@@ -135,7 +135,7 @@ LogicalResult ConvertSSDPostProcessFunc::CreateNMSCustomOptions(
 }
 
 LogicalResult ConvertSSDPostProcessFunc::AddIntAttr(
-    FuncOp func, DictionaryAttr attrs, const std::string& attribute,
+    func::FuncOp func, DictionaryAttr attrs, const std::string& attribute,
     flexbuffers::Builder* builder) {
   auto int_attr = attrs.get(attribute).dyn_cast_or_null<IntegerAttr>();
   if (!int_attr) {
@@ -147,7 +147,7 @@ LogicalResult ConvertSSDPostProcessFunc::AddIntAttr(
 }
 
 LogicalResult ConvertSSDPostProcessFunc::AddFloatAttr(
-    FuncOp func, DictionaryAttr attrs, const std::string& attribute,
+    func::FuncOp func, DictionaryAttr attrs, const std::string& attribute,
     flexbuffers::Builder* builder) {
   auto float_attr = attrs.get(attribute).dyn_cast_or_null<FloatAttr>();
   if (!float_attr) {
@@ -159,7 +159,7 @@ LogicalResult ConvertSSDPostProcessFunc::AddFloatAttr(
 }
 
 LogicalResult ConvertSSDPostProcessFunc::HasIntAttr(
-    FuncOp func, DictionaryAttr attrs, const std::string& attribute) {
+    func::FuncOp func, DictionaryAttr attrs, const std::string& attribute) {
   auto int_attr = attrs.get(attribute).dyn_cast_or_null<IntegerAttr>();
   if (!int_attr) {
     return func.emitWarning()
@@ -169,7 +169,7 @@ LogicalResult ConvertSSDPostProcessFunc::HasIntAttr(
 }
 
 LogicalResult ConvertSSDPostProcessFunc::HasFloatAttr(
-    FuncOp func, DictionaryAttr attrs, const std::string& attribute) {
+    func::FuncOp func, DictionaryAttr attrs, const std::string& attribute) {
   auto float_attr = attrs.get(attribute).dyn_cast_or_null<FloatAttr>();
   if (!float_attr) {
     return func.emitWarning()

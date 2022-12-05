@@ -86,7 +86,7 @@ Status CheckSparseToDenseShapes(const Tensor& indices,
   if (!TensorShapeUtils::IsScalar(default_value.shape())) {
     return errors::InvalidArgument("default_value should be a scalar.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace
@@ -189,6 +189,10 @@ REGISTER_KERNELS_ALL(bool);
 REGISTER_KERNELS_ALL(tstring);
 REGISTER_KERNELS_ALL(complex64);
 REGISTER_KERNELS_ALL(complex128);
+REGISTER_KERNELS_ALL(qint8);
+REGISTER_KERNELS_ALL(qint16);
+REGISTER_KERNELS_ALL(quint8);
+REGISTER_KERNELS_ALL(quint16);
 
 #undef REGISTER_KERNELS_ALL
 #undef REGISTER_KERNELS
