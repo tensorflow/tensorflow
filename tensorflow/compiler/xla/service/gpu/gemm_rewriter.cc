@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/literal_comparison.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -184,6 +185,26 @@ auto BcastConstScalarNear(double value) {
 // and provided C has no other users).
 // We then guide the buffer assignment to alias the buffer of the custom call
 // and C.
+//
+// For scaled FP8 GEMMs on Hopper systems, the following steps mentioned in RFC
+// #22 (https://github.com/openxla/xla/discussions/22) are elided and rewritten
+// into a Custom Call:
+//
+// 1. Cast each input from FP8 to a wider type such as FP16 or FP32.
+// 2. Unscale each input by multiplying each input by the corresponding input
+// scale.
+// 3. Evaluate the matrix multiplication on the scaled inputs.
+// 4. Compute the maximum of the absolute values in the result of the GEMM
+// (DAmax).
+// 5. Scale the output by dividing the output by the output scale.
+// 6. Cast the output back to FP8. Since saturation should be done on overflow,
+// this is represented by a Clamp instruction followed by a Convert instruction.
+
+// Steps 1 through 3 can be elided independently of the remainder. Steps 5 and 6
+// can be elided only if steps 1 through 3 were successfully transformed. Step 4
+// requires steps 5 and 6, i.e. the computation of DAmax can be elided only when
+// the output of the GEMM is requested in FP8 format.
+
 class GemmRewriterVisitor : public DfsHloRewriteVisitor {
  public:
   explicit GemmRewriterVisitor(
@@ -236,24 +257,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
-  Status HandleTuple(HloInstruction *instr) override {
-    HloInstruction *existing_gemm;
-    // Attempt to elide the calculation of the maximum absolute value of an FP8
-    // GEMM, including when the result is type converted, and adapt the Custom
-    // Call.
-    if (Match(
-            instr,
-            m::Tuple(m::CustomCall(&existing_gemm, kCublasLtMatmulF8CallTarget),
-                     m::OptionalUnaryOp(
-                         {HloOpcode::kConvert},
-                         m::Reduce(m::CustomCall(kCublasLtMatmulF8CallTarget),
-                                   m::ConstantScalar())
-                             .WithOneUser())
-                         .WithOneUser()))) {
-      TF_RETURN_IF_ERROR(F8AddDAmax(instr, existing_gemm));
-    }
-    return OkStatus();
-  }
 
   Status HandleMultiply(HloInstruction *instr) override {
     HloInstruction *alpha, *existing_gemm;
@@ -418,38 +421,49 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 
   Status HandleConvert(HloInstruction *instr) override {
-    HloInstruction *bias, *existing_gemm;
-    if (Match(instr,
-              m::Convert(
-                  m::AddAnyOrder(m::Convert(GemmOrCublasLtMatmul(&existing_gemm)
-                                                .WithOneUser()
-                                                .WithElementType(BF16))
-                                     .WithOneUser(),
-                                 m::Convert(m::Op(&bias).WithElementType(BF16))
-                                     .WithOneUser())
-                      .WithOneUser())
-                  .WithElementType(BF16))) {
+    HloInstruction *bias, *clamp_lower, *clamp_upper, *d_scale, *existing_gemm;
+    if (Match(
+            instr,
+            m::Convert(m::AddAnyOrder(
+                           m::Convert(GemmOrCublasLtMatmul(&existing_gemm)
+                                          .WithOneUser()
+                                          .WithElementType(BF16))
+                               .WithOneUser(),
+                           m::Convert(m::Op(&bias).WithElementType(BF16))
+                               .WithOneUser())
+                           .WithOneUser())
+                .WithElementType(BF16))) {
       return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
-    // Attempt to elide the scaling and conversion of the return value of an FP8
-    // GEMM and adapt the Custom Call.
+    // Attempt to elide the scaling and conversion of the result of an FP8
+    // GEMM, including the optional calculation of the maximum of the absolute
+    // values before scaling, and adapt the Custom Call.
     if (Match(
             instr,
             m::Convert(
-                m::Clamp(m::Broadcast().WithOneUser(),
+                m::Clamp(m::Broadcast(m::Constant(&clamp_lower).WithOneUser())
+                             .WithOneUser(),
                          m::Divide(m::CustomCall(&existing_gemm,
                                                  kCublasLtMatmulF8CallTarget),
                                    m::Broadcast(m::Op(&d_scale)).WithOneUser())
                              .WithOneUser(),
-                         m::Broadcast().WithOneUser())
+                         m::Broadcast(m::Constant(&clamp_upper).WithOneUser())
+                             .WithOneUser())
                     .WithOneUser()))) {
-      return F8ConvertD(instr, existing_gemm, d_scale);
+      return F8ConvertD(instr, existing_gemm, d_scale, clamp_lower,
+                        clamp_upper);
     }
     return OkStatus();
   }
 
   Status F8Scaled(HloInstruction *instr, HloInstruction *a, HloInstruction *b,
                   HloInstruction *a_scale, HloInstruction *b_scale) {
+    // FP8 GEMM kernels are only available on Hopper and newer architectures.
+    if (!cuda_compute_capability_.IsAtLeast(
+            se::CudaComputeCapability::HOPPER)) {
+      return OkStatus();
+    }
+
     // cuBLASLt FP8 GEMM kernels require one of the two operands to be in
     // F8E4M3FN format.
     if (!((a->shape().element_type() == F8E4M3FN &&
@@ -499,14 +513,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       default:
         return OkStatus();
     }
-    Literal c_literal(ShapeUtil::MakeScalarShape(c_type));
+
+    // TODO(philipphack): Consider enabling the epilogue fusion of a matrix bias
+    // for FP8 GEMMs.
+    Literal c_literal = LiteralUtil::Zero(c_type);
     HloInstruction *c = instr->AddInstruction(
         HloInstruction::CreateConstant(c_literal.Clone()));
     HloInstruction *c_bcast = instr->AddInstruction(
         HloInstruction::CreateBroadcast(instr->shape(), c, {}));
 
-    Literal one_literal(ShapeUtil::MakeScalarShape(F32));
-    one_literal.PopulateWithValue<float>(1.);
+    Literal one_literal = LiteralUtil::One(F32);
     HloInstruction *one = instr->AddInstruction(
         HloInstruction::CreateConstant(one_literal.Clone()));
 
@@ -521,7 +537,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     std::unique_ptr<HloInstruction> new_custom_call =
         HloInstruction::CreateCustomCall(
-            instr->shape(), {a, b_transp, c_bcast, a_scale, b_scale, one, one},
+            instr->shape(),
+            {a, b_transp, c_bcast, a_scale_f32, b_scale_f32, one, one},
             kCublasLtMatmulF8CallTarget);
     TF_ASSIGN_OR_RETURN(auto gemm_config,
                         instr->backend_config<GemmBackendConfig>());
@@ -533,15 +550,93 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
-  // Scales and converts the return value of an FP8 GEMM to FP8.
   Status F8ConvertD(HloInstruction *instr, HloInstruction *existing_gemm,
-                    HloInstruction *d_scale) {
-    if (instr->shape().element_type() != F8E4M3FN &&
-        instr->shape().element_type() != F8E5M2) {
+                    HloInstruction *d_scale, HloInstruction *clamp_lower,
+                    HloInstruction *clamp_upper) {
+    // Verify the data types and the operands of clamp.
+    if (instr->shape().element_type() == F8E4M3FN) {
+      Literal numeric_limit_lower(ShapeUtil::MakeScalarShape(F32));
+      numeric_limit_lower.PopulateWithValue(
+          float(-std::numeric_limits<tsl::float8_e4m3>::max()));
+      TF_ASSIGN_OR_RETURN(Literal clamp_lower_literal,
+                          clamp_lower->literal().Convert(F32));
+      Status is_equal =
+          literal_comparison::Equal(clamp_lower_literal, numeric_limit_lower);
+      if (!is_equal.ok()) {
+        return OkStatus();
+      }
+      Literal numeric_limit_upper(ShapeUtil::MakeScalarShape(F32));
+      numeric_limit_upper.PopulateWithValue(
+          float(std::numeric_limits<tsl::float8_e4m3>::max()));
+      TF_ASSIGN_OR_RETURN(Literal clamp_upper_literal,
+                          clamp_upper->literal().Convert(F32));
+      is_equal =
+          literal_comparison::Equal(clamp_upper_literal, numeric_limit_upper);
+      if (!is_equal.ok()) {
+        return OkStatus();
+      }
+    } else if (instr->shape().element_type() == F8E5M2) {
+      Literal numeric_limit_lower(ShapeUtil::MakeScalarShape(F32));
+      numeric_limit_lower.PopulateWithValue(
+          float(-std::numeric_limits<tsl::float8_e5m2>::max()));
+      TF_ASSIGN_OR_RETURN(Literal clamp_lower_literal,
+                          clamp_lower->literal().Convert(F32));
+      Status is_equal =
+          literal_comparison::Equal(clamp_lower_literal, numeric_limit_lower);
+      if (!is_equal.ok()) {
+        return OkStatus();
+      }
+      Literal numeric_limit_upper(ShapeUtil::MakeScalarShape(F32));
+      numeric_limit_upper.PopulateWithValue(
+          float(std::numeric_limits<tsl::float8_e5m2>::max()));
+      TF_ASSIGN_OR_RETURN(Literal clamp_upper_literal,
+                          clamp_upper->literal().Convert(F32));
+      is_equal =
+          literal_comparison::Equal(clamp_upper_literal, numeric_limit_upper);
+      if (!is_equal.ok()) {
+        return OkStatus();
+      }
+    } else {
       return OkStatus();
     }
 
-    // Change the data type of C to BF16.
+    // The possible second user of the GEMM must be the calculation of the
+    // maximum of the absolute value of the result of the GEMM. Since it is
+    // unkown in what form this operation will be used, it is identified in a
+    // top-down approach by inspecting the users of the GEMM.
+    const std::vector<HloInstruction *> gemm_users = existing_gemm->users();
+    HloInstruction *reduce_damax = nullptr;
+    if (gemm_users.size() == 2) {
+      for (int i = 0; i < gemm_users.size(); ++i) {
+        if (gemm_users[i]->opcode() == HloOpcode::kAbs &&
+            gemm_users[i]->users().size() == 1 &&
+            gemm_users[i]->users()[0]->opcode() == HloOpcode::kReduce &&
+            gemm_users[i]->users()[0]->operand(1)->opcode() ==
+                HloOpcode::kConstant) {
+          HloInstruction *reduce = gemm_users[i]->users()[0];
+          Literal minus_inf =
+              LiteralUtil::MinValue(reduce->operand(1)->shape().element_type());
+          Status is_equal = literal_comparison::Equal(
+              minus_inf, reduce->operand(1)->literal());
+          HloComputation *reduce_comp = reduce->to_apply();
+          HloInstruction *reduce_comp_root = reduce_comp->root_instruction();
+          if (is_equal.ok() &&
+              reduce_comp_root->opcode() == HloOpcode::kMaximum &&
+              reduce_comp_root->operand(0)->opcode() == HloOpcode::kParameter &&
+              reduce_comp_root->operand(1)->opcode() == HloOpcode::kParameter) {
+            reduce_damax = reduce;
+          }
+        }
+      }
+      if (!reduce_damax) {
+        return OkStatus();
+      }
+    } else if (gemm_users.size() > 2) {
+      return OkStatus();
+    }
+
+    // Change the data type of C to BF16 as required by cuBLASLt for GEMMs with
+    // FP8 outputs (see cuBLASLt documentation).
     Literal c_literal(ShapeUtil::MakeScalarShape(BF16));
     HloInstruction *c = instr->AddInstruction(
         HloInstruction::CreateConstant(c_literal.Clone()));
@@ -550,50 +645,54 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
             ShapeUtil::ChangeElementType(instr->shape(), BF16), c, {}));
     TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(2, c_bcast));
 
-    // Convert the scaling factor of D to F32 and invert it.
-    HloInstruction *d_scale_f32 =
-        instr->AddInstruction(HloInstruction::CreateConvert(
-            ShapeUtil::MakeScalarShape(F32), d_scale));
-    Literal one_literal(ShapeUtil::MakeScalarShape(F32));
-    one_literal.PopulateWithValue<float>(1.);
+    // Invert the scaling factor of D and convert to F32.
+    Literal one_literal = LiteralUtil::One(d_scale->shape().element_type());
     HloInstruction *one = instr->AddInstruction(
         HloInstruction::CreateConstant(one_literal.Clone()));
     HloInstruction *d_scale_inv =
         instr->AddInstruction(HloInstruction::CreateBinary(
-            d_scale->shape(), HloOpcode::kDivide, one, d_scale_f32));
+            d_scale->shape(), HloOpcode::kDivide, one, d_scale));
+    HloInstruction *d_scale_inv_f32 =
+        instr->AddInstruction(HloInstruction::CreateConvert(
+            ShapeUtil::MakeScalarShape(F32), d_scale_inv));
 
-    TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(6, d_scale_inv));
+    TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(6, d_scale_inv_f32));
+
+    // If present, elide the calculation of the maximum of the absolute values
+    // of the result of the GEMM.
+    if (reduce_damax) {
+      return F8AddDAmax(instr, existing_gemm, reduce_damax);
+    }
+
     std::unique_ptr<HloInstruction> new_gemm =
         existing_gemm->CloneWithNewShape(instr->shape());
     TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(new_gemm)));
+
     return OkStatus();
   }
 
   // Adds a scalar DAmax return value to an FP8 GEMM.
-  Status F8AddDAmax(HloInstruction *instr, HloInstruction *existing_gemm) {
-    // cuBLASLt requires D to be FP8 for DAMax to be calculated.
-    if (instr->operand(0)->shape().element_type() != F8E4M3FN &&
-        instr->operand(0)->shape().element_type() != F8E5M2) {
-      return OkStatus();
-    }
+  Status F8AddDAmax(HloInstruction *instr, HloInstruction *existing_gemm,
+                    HloInstruction *reduce_damax) {
+    // Change the output shape of the Custom Call to tuple(D, DAmax).
     Shape damax_shape = ShapeUtil::MakeScalarShape(F32);
     Shape tuple_shape =
-        ShapeUtil::MakeTupleShape({existing_gemm->shape(), damax_shape});
+        ShapeUtil::MakeTupleShape({instr->shape(), damax_shape});
     HloInstruction *gemm_and_damax =
         instr->AddInstruction(existing_gemm->CloneWithNewShape(tuple_shape));
 
-    // Convert DAmax from FP32 to the requested type.
+    // Obtain D and DAmax separately from the output tuple.
     HloInstruction *d =
         instr->AddInstruction(HloInstruction::CreateGetTupleElement(
-            existing_gemm->shape(), gemm_and_damax, 0));
+            instr->shape(), gemm_and_damax, 0));
     HloInstruction *damax = instr->AddInstruction(
         HloInstruction::CreateGetTupleElement(damax_shape, gemm_and_damax, 1));
+
+    // Convert DAmax from FP32 to the requested type and elide reduce.
     HloInstruction *damax_converted = instr->AddInstruction(
-        HloInstruction::CreateConvert(instr->operand(1)->shape(), damax));
-    std::unique_ptr<HloInstruction> gemm_and_damax_converted =
-        HloInstruction::CreateTuple({d, damax_converted});
-    TF_RETURN_IF_ERROR(
-        ReplaceWithNewInstruction(instr, std::move(gemm_and_damax_converted)));
+        HloInstruction::CreateConvert(reduce_damax->shape(), damax));
+    TF_RETURN_IF_ERROR(ReplaceInstruction(reduce_damax, damax_converted));
+    TF_RETURN_IF_ERROR(ReplaceInstruction(instr, d));
 
     return OkStatus();
   }

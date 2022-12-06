@@ -2354,17 +2354,11 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       *proto->mutable_f8e4m3fns() = std::string(
           reinterpret_cast<const char*>(data<tsl::float8_e4m3>().data()),
           size_bytes_dense());
-      if (!kLittleEndian) {
-        ConvertEndianShort(proto->mutable_f8e4m3fns());
-      }
       break;
     case F8E5M2:
       *proto->mutable_f8e5m2s() = std::string(
           reinterpret_cast<const char*>(data<tsl::float8_e5m2>().data()),
           size_bytes_dense());
-      if (!kLittleEndian) {
-        ConvertEndianShort(proto->mutable_f8e5m2s());
-      }
       break;
     case F16:
       *proto->mutable_f16s() =

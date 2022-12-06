@@ -837,6 +837,7 @@ cc_library(
         ":cublas_cudnn",
         ":ir_emission_utils",
         ":matmul_utils",
+        "//tensorflow/compiler/xla:literal_comparison",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto_cc",

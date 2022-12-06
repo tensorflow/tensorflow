@@ -156,7 +156,12 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
 
 class MatmulPlan {
  public:
-  template <typename CublasLtMatmulMaybeF8Op>
+  template <typename CublasLtMatmulMaybeF8Op,
+            typename = std::enable_if<
+                std::is_same<CublasLtMatmulMaybeF8Op,
+                             mlir::lmhlo_gpu::CublasLtMatmulOp>::value ||
+                std::is_same<CublasLtMatmulMaybeF8Op,
+                             mlir::lmhlo_gpu::CublasLtMatmulF8Op>::value>>
   static StatusOr<MatmulPlan> For(CublasLtMatmulMaybeF8Op op) {
     mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
 

@@ -3604,8 +3604,7 @@ TEST_F(CublasLtGemmRewriteTest, ScaledABUnscaledDF8) {
       y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
       x_unscaled = f32[16,32] multiply(x_f32, x_scale_bcast)
       y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
-      ROOT out = f32[16,16] dot(x_unscaled, y_unscaled),
-      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      ROOT out = f32[16,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
           }
 
 )";
@@ -3659,9 +3658,9 @@ TEST_F(CublasLtGemmRewriteTest, ScaledABScaledDF8) {
       z_scale_bcast = f32[16,16] broadcast(z_scale), dimensions={}
       x_unscaled = f32[16,32] multiply(x_f32, x_scale_bcast)
       y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
-      dot_a = f32[16,16] dot(x_unscaled, y_unscaled),
-      lhs_contracting_dims={1}, rhs_contracting_dims={0} dot_a_scaled =
-      f32[16,16] divide(dot_a, z_scale_bcast) c1 = f32[] constant(-448.)
+      dot_a = f32[16,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      dot_a_scaled = f32[16,16] divide(dot_a, z_scale_bcast)
+      c1 = f32[] constant(-448.)
       c1_bcast = f32[16,16] broadcast(c1), dimensions={}
       c2 = f32[] constant(448.)
       c2_bcast = f32[16,16] broadcast(c2), dimensions={}
@@ -3729,8 +3728,9 @@ TEST_F(CublasLtGemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
       x_unscaled = f32[16,32] multiply(x_f32, x_scale_bcast)
       y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
       dot_a = f32[16,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      abs_dot_a = f32[16,16] abs(dot_a)
       c0 = f32[] constant(-inf)
-      amax = f32[] reduce(dot_a, c0), dimensions={0,1}, to_apply=apply
+      amax = f32[] reduce(abs_dot_a, c0), dimensions={0,1}, to_apply=apply
       dot_a_scaled = f32[16,16] divide(dot_a, z_scale_bcast)
       c1 = f32[] constant(-448.)
       c1_bcast = f32[16,16] broadcast(c1), dimensions={}

@@ -912,6 +912,8 @@ Status MatmulPlan::ExecuteOnStream(
   TYPED_MATMUL_F8(CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_16F);
   TYPED_MATMUL_F8(CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_32F, CUDA_R_32F);
 
+#undef TYPED_MATMUL_F8
+
   // Other data types:
   if (operand_types ==
       std::make_tuple(CUDA_R_16F, CUDA_R_16F, CUDA_R_16F, CUDA_R_16F)) {
