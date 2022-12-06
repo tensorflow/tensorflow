@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/interfaces/tiling_interface_impl.h"
+#include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
@@ -56,6 +57,12 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
     // original op and just mark it as transformed then return.
     if (tilingResult->loop != nullptr) {
       rewriter.replaceOp(op, tilingResult->loop->getResults());
+
+      // Fuse ops into the loop.
+      fuseGreedily(rewriter, *tilingResult->tiledOp->getBlock(),
+                   [](Operation *op) {
+                     return isa<linalg::BroadcastOp, linalg::MapOp>(op);
+                   });
     }
     setLabel(tilingResult->tiledOp, kMapTransformedLabel);
     return success();
