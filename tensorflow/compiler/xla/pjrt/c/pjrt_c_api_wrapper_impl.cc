@@ -259,10 +259,7 @@ PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
     PJRT_RETURN_IF_ERROR(
         tsl::errors::InvalidArgument(ProgramFormatErrorMsg(format_str)));
   }
-  // TODO(b/237545405): Implement creation methods for PJRT_Executable.
-  args->executable = new PJRT_Executable{std::move(executable), args->client};
-  PopulatePjrtExecutableAddressableDevices(args->executable);
-  args->executable->populated = true;
+  args->executable = new PJRT_Executable(std::move(executable), args->client);
   return nullptr;
 }
 
@@ -443,13 +440,6 @@ PJRT_Error* PJRT_Executable_AddressableDevices(
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Executable_AddressableDevices_Args",
       PJRT_Executable_AddressableDevices_Args_STRUCT_SIZE, args->struct_size));
-
-  // TODO(b/237545405): Implement creation methods for PJRT_Executable that can
-  // populate addressable_devices on instantiation,  and use this logic there
-  if (!args->executable->populated) {
-    PopulatePjrtExecutableAddressableDevices(args->executable);
-    args->executable->populated = true;
-  }
 
   args->num_addressable_devices = args->executable->addressable_devices.size();
   args->addressable_devices = args->executable->addressable_devices.data();
@@ -812,3 +802,9 @@ PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args) {
 }
 
 }  // namespace pjrt
+
+PJRT_Executable::PJRT_Executable(
+    std::unique_ptr<xla::PjRtLoadedExecutable> executable, PJRT_Client* client)
+    : executable(std::move(executable)), client(client) {
+  pjrt::PopulatePjrtExecutableAddressableDevices(this);
+}

@@ -57,9 +57,9 @@ struct PJRT_Executable {
   // addressed by the compiled executable program. `client` owns the objects
   // these point to.
   std::vector<PJRT_Device*> addressable_devices;
-  // TODO(b/237545405): Remove `populated` once we implement creation methods
-  // for PJRT_Executable that can populate addressable_devices on instantiation.
-  bool populated = false;
+
+  PJRT_Executable(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+                  PJRT_Client* client);
 };
 
 struct PJRT_Buffer {
