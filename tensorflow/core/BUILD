@@ -1095,7 +1095,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":portable_tensorflow_lib_lite",
-        ":protos_all_cc_impl",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:portable_tensorflow_kernels",
         "//third_party/eigen3",
         "@com_google_protobuf//:protobuf",
