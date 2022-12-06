@@ -1396,7 +1396,14 @@ TfLiteStatus Subgraph::Invoke() {
     tensorflow::profiler::TraceMe* trace_op =
         tflite::OnTfLiteOpInvoke(op_name, subgraph_index_, node_index);
 #endif  // TF_LITE_TENSORFLOW_PROFILER
-    TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE(profiler_.get(), op_name, node_index);
+
+    // If per operator profiling flag is set in the delegate, this macro op
+    // should not be profiled, thus a nullptr is passed to the ScopedProfile
+    bool profile_op =
+        !(node.delegate != nullptr &&
+          (node.delegate->flags & kTfLiteDelegateFlagsPerOperatorProfiling));
+    TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE(
+        profile_op ? profiler_.get() : nullptr, op_name, node_index);
 
     for (int i = 0; i < node.inputs->size; ++i) {
       int tensor_index = node.inputs->data[i];
