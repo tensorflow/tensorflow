@@ -273,6 +273,7 @@ xla_cc_binary(
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/platform:subprocess",
+        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/tsl/util:command_line_flags",
     ] + if_cuda_or_rocm([
