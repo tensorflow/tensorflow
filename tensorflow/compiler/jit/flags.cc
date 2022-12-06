@@ -165,6 +165,7 @@ void AllocateAndParseJitRtFlags() {
   jitrt_flags->cost_driven_async_parallel_for = false;
   jitrt_flags->log_query_of_death = false;
   jitrt_flags->vectorize = false;
+  jitrt_flags->pack_matmul = false;
   jitrt_flags->enable_crash_reproducer = false;
   jitrt_flag_list = new std::vector<Flag>({
       Flag("always_specialize", &jitrt_flags->always_specialize, ""),
@@ -172,6 +173,7 @@ void AllocateAndParseJitRtFlags() {
            &jitrt_flags->cost_driven_async_parallel_for, ""),
       Flag("log_query_of_death", &jitrt_flags->log_query_of_death, ""),
       Flag("vectorize", &jitrt_flags->vectorize, ""),
+      Flag("pack_matmul", &jitrt_flags->pack_matmul, ""),
       Flag("enable_crash_reproducer", &jitrt_flags->enable_crash_reproducer,
            ""),
   });

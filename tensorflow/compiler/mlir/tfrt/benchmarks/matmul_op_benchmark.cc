@@ -110,6 +110,9 @@ BM_TFMlir_DYNAMIC_ALL(10, 10, 10, 4, 4, 4, "matmul", f32);
 BM_TFMlir_STATIC_ALL(10, 10, 10, 4, 4, 4, "matmul", f32);
 BM_TFMlir_DYNAMIC_ALL(10, 10, 10, 2, 2, 2, "matmul", f32);
 BM_TFMlir_STATIC_ALL(10, 10, 10, 2, 2, 2, "matmul", f32);
+BM_TFMlir_STATIC_ALL(10, 10, 10, 2, 2, 8, "matmul", f32);
+BM_TFMlir_STATIC_ALL(10, 10, 10, 2, 8, 2, "matmul", f32);
+BM_TFMlir_STATIC_ALL(10, 10, 10, 8, 2, 2, "matmul", f32);
 BM_Eigen_WRAPPER(10, 10, 10, f32);
 
 }  // namespace tensorflow

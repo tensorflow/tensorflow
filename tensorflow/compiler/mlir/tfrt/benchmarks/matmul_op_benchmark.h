@@ -66,8 +66,10 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
 
   TfJitRtPipelineOptions tf_jitrt_opts;
   tf_jitrt_opts.vectorize = tensorflow::GetJitRtFlags().vectorize;
+  tf_jitrt_opts.lower_to_mmt4d = tensorflow::GetJitRtFlags().pack_matmul;
   tf_jitrt_opts.matmul_tile_sizes = {state.range(3), state.range(4),
                                      state.range(5)};
+
   JitExecutable& jit_executable =
       CreateJitExecutable(*host, mlir_input, function_name,
                           /*lower_from_tensorflow=*/true, tf_jitrt_opts);
