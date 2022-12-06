@@ -408,15 +408,17 @@ int PyBuffer_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
   Status status = [&]() {
     TF_ASSIGN_OR_RETURN(PyBuffer * py_buffer, PyBuffer::AsPyBuffer(exporter));
     PjRtBuffer& buffer = *py_buffer->buffer();
-    TF_ASSIGN_OR_RETURN(const auto* shape, py_buffer->xla_dynamic_shape());
-    // Py_buffer objects are POD C structures, so we don't need to hold the GIL.
-    // Additionally we call BlockHostUntilReady() below, which may block.
-    py::gil_scoped_release gil_release;
 
     if (!buffer.IsOnCpu()) {
       return InvalidArgument(
           "Python buffer protocol is only defined for CPU buffers.");
     }
+
+    TF_ASSIGN_OR_RETURN(const auto* shape, py_buffer->xla_dynamic_shape());
+    // Py_buffer objects are POD C structures, so we don't need to hold the GIL.
+    // Additionally we call BlockHostUntilReady() below, which may block.
+    py::gil_scoped_release gil_release;
+
     if (!buffer.on_device_shape().IsArray()) {
       return InvalidArgument(
           "Python buffer protocol is only defined for array buffers.");
