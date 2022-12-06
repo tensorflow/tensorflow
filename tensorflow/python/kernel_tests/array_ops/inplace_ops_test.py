@@ -27,7 +27,7 @@ from tensorflow.python.platform import test as test_lib
 class InplaceOpsTest(test_util.TensorFlowTestCase):
 
   def testBasicUpdate(self):
-    for dtype in [dtypes.float32, dtypes.int32, dtypes.int64]:
+    for dtype in [dtypes.float32, dtypes.int32, dtypes.int64, dtypes.bfloat16]:
       with test_util.use_gpu():
         x = array_ops.ones([7, 3], dtype)
         y = np.ones([7, 3], dtype.as_numpy_dtype)
@@ -61,7 +61,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(x, y)
 
   def testBasicAdd(self):
-    for dtype in [dtypes.float32, dtypes.int32, dtypes.int64]:
+    for dtype in [dtypes.float32, dtypes.int32, dtypes.int64, dtypes.bfloat16]:
       with test_util.use_gpu():
         x = array_ops.ones([7, 3], dtype)
         y = np.ones([7, 3], dtype.as_numpy_dtype)
@@ -80,7 +80,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
         self.assertAllClose(x, y)
 
   def testBasicSub(self):
-    for dtype in [dtypes.float32, dtypes.int32, dtypes.int64]:
+    for dtype in [dtypes.float32, dtypes.int32, dtypes.int64, dtypes.bfloat16]:
       with test_util.use_gpu():
         x = array_ops.ones([7, 3], dtype)
         y = np.ones([7, 3], dtype.as_numpy_dtype)
@@ -161,7 +161,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
   def testEmpty(self):
     for dtype in [
         dtypes.float32, dtypes.float64, dtypes.int32, dtypes.int64, dtypes.bool,
-        dtypes.uint8
+        dtypes.uint8, dtypes.bfloat16
     ]:
       with test_util.use_gpu():
         test_shapes = [(), (1,), (2, 3), (0, 2), (2, 3, 5), (2, 0, 5)]
