@@ -69,7 +69,8 @@ void populateHloToArithmeticConversionPatterns(RewritePatternSet *patterns);
 // arguments to arithmetic dialect.
 void populateScalarHloToArithmeticConversionPatterns(
     MLIRContext *context, TypeConverter &typeConverter,
-    RewritePatternSet *patterns);
+    RewritePatternSet *patterns,
+    llvm::function_ref<bool(Operation *)> filterFn = nullptr);
 
 // Collection of rewrite patterns for lowering of shape operations from the HLO
 // dialect to the standard dialect.

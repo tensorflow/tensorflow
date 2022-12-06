@@ -380,8 +380,9 @@ class LegalizeMHLOToTHLOPass
 
     auto typeConverter = std::make_unique<LinalgTypeConverter>();
 
-    populateScalarHloToArithmeticConversionPatterns(ctx, *typeConverter,
-                                                    &patterns);
+    populateScalarHloToArithmeticConversionPatterns(
+        ctx, *typeConverter, &patterns,
+        [](Operation* op) { return isInBodyOfThloOp(op); });
 
     // List of patterns.
     // clang-format off
