@@ -69,6 +69,7 @@ namespace xla {
 
 namespace {
 
+constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
 constexpr char kShardingAttr[] = "mhlo.sharding";
 
 // Note: This sanitization function causes an irreversible many-to-one mapping
@@ -621,6 +622,17 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         kShardingAttr,
         builder_->getStringAttr(
             instruction->sharding().ToProto().SerializeAsString())));
+  }
+
+  llvm::SmallVector<NamedAttribute, 4> frontend_attributes;
+  for (const auto& [k, v] : instruction->frontend_attributes().map()) {
+    frontend_attributes.push_back(
+        builder_->getNamedAttr(k, builder_->getStringAttr(v)));
+  }
+  if (!frontend_attributes.empty()) {
+    attributes.push_back(builder_->getNamedAttr(
+        kFrontendAttributesAttr,
+        builder_->getDictionaryAttr(frontend_attributes)));
   }
 
   switch (instruction->opcode()) {
