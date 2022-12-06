@@ -74,7 +74,10 @@ const filter_action = async ({github, context, domain}) => {
         title.toLowerCase().includes('gpu')) {
       assignees.push('cheshire', 'gcforster', 'reedwm', 'chsigg', 'xla-rotation');
     }
-    if (title.toLowerCase().includes('tf')) {
+    if (title.toLowerCase().includes('tf-trt')) {
+      assignees.push('meena-at-work', 'nluehr', 'DEKHTIARJonathan', 'pjannaty', 'poulsbo');
+    }
+    else if (title.toLowerCase().includes('tf')) {
       assignees.push('rohan100jain', 'bfontain');
     }
   }
