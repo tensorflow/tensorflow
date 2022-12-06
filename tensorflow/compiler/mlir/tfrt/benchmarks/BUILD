@@ -170,6 +170,7 @@ tf_cc_binary(
         ":benchmark",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tfrt:host_context_util",
+        "@llvm-project//llvm:Support",
     ],
 )
 
