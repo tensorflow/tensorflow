@@ -2140,23 +2140,26 @@ Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
     }
   }
 
-  HloSharding sharding = hlo->sharding().HasUniqueDevice()
-                             ? hlo->sharding()
-                             : HloSharding::Replicate();
-  if (hlo->opcode() == HloOpcode::kSend || hlo->opcode() == HloOpcode::kRecv ||
-      hlo->opcode() == HloOpcode::kRecvDone) {
-    sharding = sharding.GetSubSharding(hlo->shape(), {0});
-  }
+  // The base sharding is a non-tuple sharding that is either assigned to a
+  // specific device or replicated.
+  const HloSharding base_sharding = [&]() {
+    if (hlo->sharding().HasUniqueDevice()) {
+      return HloSharding::AssignDevice(hlo->sharding().GetUniqueDevice());
+    }
+    return HloSharding::Replicate();
+  }();
 
-  // If the instruction cannot be partitioned, replicate the instruction unless
-  // the instruction has side-effect.
+  // Reshard operands according to the base_sharding for the instruction.
   std::vector<HloInstruction*> new_operands;
   for (HloInstruction* operand : hlo->operands()) {
-    new_operands.push_back(GetPartitionedHlo(operand).Reshard(sharding).hlo());
+    HloSharding operand_sharding =
+        base_sharding.NormalizeTupleSharding(operand->shape());
+    new_operands.push_back(
+        GetPartitionedHlo(operand).Reshard(operand_sharding).hlo());
   }
   auto clone =
       b_.AddInstruction(hlo->CloneWithNewOperands(hlo->shape(), new_operands));
-  clone->set_sharding(sharding);
+  clone->set_sharding(base_sharding.NormalizeTupleSharding(clone->shape()));
   SetPartitionedHlo(hlo,
                     PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
                         .Reshard(hlo->sharding()));
@@ -2502,7 +2505,7 @@ Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
   }
   if (sharding.HasUniqueDevice()) {
     std::vector<HloInstruction*> new_operands(input_count, nullptr);
-    for (auto i = 0; i != input_count; ++i) {
+    for (int64_t i = 0; i != input_count; ++i) {
       // Handle variadic sort sharding.
       HloSharding subsharding =
           hlo->sharding().IsTuple()
@@ -3727,8 +3730,27 @@ Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
     return HandleSingleDevice(hlo);
   }
 
-  const auto& sharding = hlo->sharding();
+  // TODO(b/260756663): Remove this fixup once this bug is fixed.
+  // The sharding for an outfeed might include sharding for the outfeed_shape
+  // and sharding for the output tuple. Piece out the sharding for the outfeed
+  // shape if needed.
+  HloSharding sharding = hlo->sharding();
   const Shape& shape = hlo->operand(0)->shape();
+  const int64_t required_leaves = HloSharding::RequiredLeaves(shape);
+
+  // if the sharding is a tuple with one extra element as compared to outfeed
+  // shape, "fix up" the sharding to exclude the output tuple.
+  if (sharding.IsTuple() &&
+      sharding.tuple_elements().size() == required_leaves + 1) {
+    if (shape.IsTuple()) {
+      sharding = HloSharding::Tuple(
+          shape,
+          absl::MakeSpan(sharding.tuple_elements().data(), required_leaves));
+    } else {
+      sharding = sharding.tuple_elements().front();
+    }
+  }
+
   auto partitioned_operand =
       GetPartitionedHlo(hlo->operand(0)).Reshard(sharding);
   const auto& shard_shape = partitioned_operand.hlo()->shape();

@@ -2795,9 +2795,12 @@ void SaveShardingForInstruction(
     absl::flat_hash_map<std::string, std::vector<HloSharding>>&
         preserve_shardings,
     HloInstruction* inst) {
-  if (inst->has_sharding() && !inst->sharding().IsTuple()) {
+  if (!inst->has_sharding()) {
+    return;
+  }
+  if (!inst->sharding().IsTuple()) {
     preserve_shardings[inst->name()] = {inst->sharding()};
-  } else if (inst->has_sharding() && inst->sharding().IsTuple()) {
+  } else {
     preserve_shardings[inst->name()] = inst->sharding().tuple_elements();
   }
 }
