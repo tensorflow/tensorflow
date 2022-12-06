@@ -697,6 +697,7 @@ distribute_py_test(
 tpu_py_test(
     name = "tpu_strategy_test",
     srcs = ["tpu_strategy_test.py"],
+    args = ["--tpu_use_tfrt=true"],
     disable_experimental = True,
     python_version = "PY3",
     tags = ["no_oss"],
