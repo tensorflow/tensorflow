@@ -33,6 +33,7 @@ import fnmatch
 import os
 import re
 import sys
+import platform
 
 from setuptools import Command
 from setuptools import find_packages
@@ -129,6 +130,22 @@ REQUIRED_PACKAGES = [
                         'keras-nightly ~= 2.12.0.dev'),
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
+
+FAKE_REQUIRED_PACKAGES = [
+    # The depedencies here below are not actually used but are needed for
+    # package managers like poetry to parse as they are confused by the
+    # different architectures having different requirements.
+    # The entries here should be a simple duplicate of those in the collaborator
+    # build section.
+    standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws') + '==' +
+    _VERSION + ';platform_system=="Linux" and (platform_machine=="arm64" or '
+    'platform_machine=="aarch64")',
+    standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
+    _VERSION + ';platform_system=="Windows"',
+]
+
+if platform.system() == 'Linux' and platform.machine() == 'x86_64':
+  REQUIRED_PACKAGES.append(FAKE_REQUIRED_PACKAGES)
 
 if collaborator_build:
   # If this is a collaborator build, then build an "installer" wheel and
