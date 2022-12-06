@@ -57,6 +57,7 @@ typedef enum TF_Code {
   TF_INTERNAL = 13,
   TF_UNAVAILABLE = 14,
   TF_DATA_LOSS = 15,
+  TF_XLA_INTERNAL = 21,
 } TF_Code;
 
 // --------------------------------------------------------------------------

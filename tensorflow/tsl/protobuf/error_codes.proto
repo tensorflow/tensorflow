@@ -141,7 +141,7 @@ enum Code {
 
   // Unrecoverable data loss or corruption.
   DATA_LOSS = 15;
-
+  XLAINTERNAL = 21;
   // An extra enum entry to prevent people from writing code that
   // fails to compile when a new code is added.
   //

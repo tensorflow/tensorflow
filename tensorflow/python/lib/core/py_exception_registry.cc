@@ -55,7 +55,8 @@ void PyExceptionRegistry::Init(PyObject* code_to_exc_type_map) {
                                       TF_UNIMPLEMENTED,
                                       TF_INTERNAL,
                                       TF_UNAVAILABLE,
-                                      TF_DATA_LOSS};
+                                      TF_DATA_LOSS,
+                                      TF_XLA_INTERNAL};
   for (TF_Code code : kAllCodes) {
     CHECK(singleton_->exc_types_.find(code) != singleton_->exc_types_.end())
         << error::Code_Name(static_cast<error::Code>(code))

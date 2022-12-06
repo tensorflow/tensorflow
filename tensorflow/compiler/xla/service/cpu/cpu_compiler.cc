@@ -226,7 +226,6 @@ void LoadMLIRDialects(mlir::MLIRContext& context) {
 }  // namespace
 
 namespace xla {
-
 namespace {
 
 bool UseMlirHloLowering(bool use_mlir, HloModule* module) {
@@ -1193,6 +1192,7 @@ std::vector<ComputationToEmit> SubcomputationEmissionOrder(
 
 StatusOr<std::unique_ptr<CpuExecutable>>
 CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
+  return stream_executor::port::XLAInternalError("Vinay Induce Error in tensorflow/compiler/xla/service/cpu/cpu_compiler.cc:1196. End of error.\n");
   ModuleHook pre_optimization_ir_hook;
   ModuleHook post_optimization_ir_hook;
   std::tie(pre_optimization_ir_hook, post_optimization_ir_hook) =

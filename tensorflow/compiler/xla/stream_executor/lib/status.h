@@ -40,6 +40,12 @@ inline Status InvalidArgumentError(absl::string_view message) {
 inline Status InternalError(absl::string_view message) {
   return Status(error::INTERNAL, message);
 }
+
+inline Status XLAInternalError(absl::string_view message) {
+  std::cout << "This error created by Vinay!!!!!!" << std::endl;
+  return Status(error::XLAINTERNAL, message);
+}
+
 inline Status FailedPreconditionError(absl::string_view message) {
   return Status(error::FAILED_PRECONDITION, message);
 }

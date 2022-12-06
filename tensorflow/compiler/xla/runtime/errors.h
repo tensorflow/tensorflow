@@ -16,11 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_ERRORS_H_
 #define TENSORFLOW_COMPILER_XLA_RUNTIME_ERRORS_H_
 
+#include <exception>
 #include <string>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
-
+#include <iostream>
 namespace xla {
 namespace runtime {
 
@@ -35,6 +36,26 @@ absl::Status InternalError(const absl::FormatSpec<Args...>& format,
                            const Args&... args) {
   return absl::InternalError(absl::StrFormat(format, args...));
 }
+
+/*
+class XlaError : public std::exception {
+protected:
+    char *message;
+public:
+    XlaError(char *msg) : message(msg) {}
+    virtual const char * what () {
+        return message;
+    }
+};
+
+class XlaInvalidArgumentError : public XlaError {
+public:
+    XlaInvalidArgumentError(char *msg) : XlaError(msg) {}
+    virtual const char * what () {
+        return message;
+    }
+};
+*/
 
 }  // namespace runtime
 }  // namespace xla
