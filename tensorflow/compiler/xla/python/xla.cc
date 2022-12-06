@@ -82,6 +82,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/pjrt_api.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/python/lib/core/bfloat16.h"
 #include "tensorflow/tsl/distributed_runtime/preemption/preemption_sync_manager.h"
@@ -326,6 +327,11 @@ PYBIND11_MODULE(xla_extension, m) {
     return std::make_shared<PyClient>(std::move(client));
 #endif
   });
+  m.def("load_pjrt_plugin",
+        [](std::string platform_name, std::string library_path) -> Status {
+          return stream_executor::tpu::LoadPjrtPlugin(platform_name,
+                                                      library_path);
+        });
 
 #ifdef XLA_PYTHON_ENABLE_GPU
   py::class_<GpuAllocatorConfig> alloc_config(m, "GpuAllocatorConfig");

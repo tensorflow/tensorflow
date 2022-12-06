@@ -19,11 +19,11 @@ import contextlib
 import enum  # pylint: disable=g-bad-import-order
 import gzip
 import inspect
+import logging
 import os
 from typing import List, Sequence, Tuple, Union
 
 from . import xla_extension as _xla
-
 import numpy as np
 
 # Note this module does *not* depend on any Python protocol buffers. The XLA
@@ -52,6 +52,8 @@ xla_platform_names = {
     'cpu': 'Host',
     'gpu': 'CUDA',
 }
+
+logger = logging.getLogger(__name__)
 
 
 def make_interpreter_client():
@@ -99,14 +101,18 @@ def make_tfrt_tpu_c_api_client():
   return _xla.get_tfrt_tpu_c_api_client()
 
 
-def make_tpu_client():
-  """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
+def _use_pjrt_c_api() -> bool:
   use_pjrt_c_api = os.getenv('JAX_USE_PJRT_C_API_ON_TPU', 'false')
   if use_pjrt_c_api not in ('1', 'true', 'false'):
     raise ValueError(
         'JAX_USE_PJRT_C_API_ON_TPU env var must be "1", "true" or "false", '
         f'got "{use_pjrt_c_api}"')
-  if use_pjrt_c_api in ('1', 'true'):
+  return use_pjrt_c_api in ('1', 'true')
+
+
+def make_tpu_client():
+  """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
+  if _use_pjrt_c_api():
     return make_tfrt_tpu_c_api_client()
 
   max_inflight_computations = os.getenv(
@@ -131,6 +137,30 @@ def make_plugin_device_client():
         'Compile TensorFlow with '
         '//tensorflow/compiler/xla/python:enable_plugin_device set to true '
         '(defaults to false) to enable this.') from e
+
+
+def _get_tpu_library_path() -> str:
+  return os.getenv('TPU_LIBRARY_PATH', 'libtpu.so')
+
+
+# TODO(b/237099479): Move to xla_bridge.py when ready.
+def maybe_load_pjrt_plugins() -> None:
+  """Tries to load PJRT plugin for platform."""
+  if not _use_pjrt_c_api():
+    return
+  # TODO(b/261345120): implement plugin discovery.
+  pjrt_plugins = [('tpu', _get_tpu_library_path())]
+  for plugin_name, library_path in pjrt_plugins:
+    try:
+      _xla.load_pjrt_plugin(plugin_name, library_path)
+    except _xla.XlaRuntimeError as e:
+      msg, *_ = e.args
+      # TODO(b/261137756): _xla.load_pjrt_plugin currently only supports libtpu.
+      # It should be generalized to support other PJRT plugins as well.
+      if isinstance(msg, str) and msg.startswith('UNIMPLEMENTED'):
+        logger.debug(msg)
+      else:
+        raise
 
 
 class OpMetadata:

@@ -965,6 +965,7 @@ tsl_pybind_extension(
         "//tensorflow/compiler/xla/pjrt/distributed",
         "//tensorflow/compiler/xla/pjrt/distributed:client",
         "//tensorflow/compiler/xla/pjrt/distributed:service",
+        "//tensorflow/compiler/xla/stream_executor/tpu:pjrt_api",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/distributed_runtime/preemption:preemption_sync_manager",
         "//tensorflow/python:bfloat16_lib",

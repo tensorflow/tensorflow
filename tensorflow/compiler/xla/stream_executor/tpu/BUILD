@@ -32,6 +32,7 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
+        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_tpu_hdrs",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
@@ -430,7 +431,6 @@ cc_library(
         ":tpu_executor_init_fns",
         ":tpu_library_init_fns",
         ":tpu_ops_c_api_hdrs",
-        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_tpu_hdrs",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
@@ -550,6 +550,7 @@ tf_cc_test(
         ":pjrt_api",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_googletest//:gtest_main",
     ],
 )
