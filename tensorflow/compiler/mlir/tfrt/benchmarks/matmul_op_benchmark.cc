@@ -24,7 +24,7 @@ using f32 = float;
 
 static const char* matmul_ir_skeleton = R"(
 func.func @matmul(%arg0: {0}, %arg1: {1}) -> {2} {
-    %0 = "tf.MatMul"(%arg0, %arg1) {
+    %0 = "tf.MatMul"(%arg0, %arg1) {{
            transpose_a = false,
            transpose_b = false
          } : ({0}, {1}) -> {2}
@@ -89,18 +89,15 @@ BM_TFMlir_DYNAMIC_ALL(100, 100, 100, 8, 8, 8, "matmul", f32);
 BM_TFMlir_STATIC_ALL(100, 100, 100, 8, 8, 8, "matmul", f32);
 BM_Eigen_WRAPPER(100, 100, 100, f32);
 
-// TODO(vuson): for dynamic shapes, the compiler somehow infers the M = 1
-// dimension and messes up the rest. Comment this out for now.
-
-// BM_TFMlir_DYNAMIC_ALL(1, 18, 300, 8, 8, 8, "matmul", f32);
+BM_TFMlir_DYNAMIC_ALL(1, 18, 300, 8, 8, 8, "matmul", f32);
 BM_TFMlir_STATIC_ALL(1, 18, 300, 8, 8, 8, "matmul", f32);
 BM_Eigen_WRAPPER(1, 18, 300, f32);
 
-// BM_TFMlir_DYNAMIC_ALL(1, 300, 300, 8, 8, 8, "matmul", f32);
+BM_TFMlir_DYNAMIC_ALL(1, 300, 300, 8, 8, 8, "matmul", f32);
 BM_TFMlir_STATIC_ALL(1, 300, 300, 8, 8, 8, "matmul", f32);
 BM_Eigen_WRAPPER(1, 300, 300, f32);
 
-// BM_TFMlir_DYNAMIC_ALL(1, 300, 1, 8, 8, 8, "matmul", f32);
+BM_TFMlir_DYNAMIC_ALL(1, 300, 1, 8, 8, 8, "matmul", f32);
 BM_TFMlir_STATIC_ALL(1, 300, 1, 8, 8, 8, "matmul", f32);
 BM_Eigen_WRAPPER(1, 300, 1, f32);
 
