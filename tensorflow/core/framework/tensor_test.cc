@@ -1060,6 +1060,16 @@ TEST(Tensor_Bool, SimpleWithHelper) {
   ExpectEqual<bool>(t1, t2);
 }
 
+TEST(Tensor_Bool, DecodeValidate) {
+  TensorProto proto;
+  proto.set_dtype(DT_BOOL);
+  proto.mutable_tensor_shape()->add_dim()->set_size(5);
+  proto.set_tensor_content(std::string{0, 1, 2, 3, 4});
+
+  Tensor t;
+  EXPECT_FALSE(t.FromProto(proto));
+}
+
 TEST(Tensor_Complex, Simple64) {
   Tensor t(DT_COMPLEX64, {4, 5, 3, 7});
   t.flat<complex64>().setRandom();
