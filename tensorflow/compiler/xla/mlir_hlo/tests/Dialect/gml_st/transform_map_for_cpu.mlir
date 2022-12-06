@@ -47,15 +47,24 @@ func.func @map_unary(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
 // -----
 
 func.func @map_broadcast_fuse(%arg0: tensor<?xf32>, %arg1: tensor<?x?x?xf32>,
-                              %init: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+                              %init0: tensor<?xf32>,
+                              %init1: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+  %abs = linalg.map
+         ins(%arg0:tensor<?xf32>)
+         outs(%init0:tensor<?xf32>)
+         (%input_elem: f32) {
+           %0 = math.absf %input_elem: f32
+           linalg.yield %0: f32
+         }
+
   %bcast = linalg.broadcast
-           ins(%arg0 : tensor<?xf32>)
-           outs(%init : tensor<?x?x?xf32>)
+           ins(%abs : tensor<?xf32>)
+           outs(%init1 : tensor<?x?x?xf32>)
            dimensions = [1, 2]
 
   %mapped = linalg.map
             ins(%bcast, %arg1 : tensor<?x?x?xf32>, tensor<?x?x?xf32>)
-            outs(%init:tensor<?x?x?xf32>)
+            outs(%init1:tensor<?x?x?xf32>)
             (%lhs: f32, %rhs: f32) {
               %0 = arith.addf %lhs, %rhs: f32
               linalg.yield %0: f32
@@ -65,9 +74,10 @@ func.func @map_broadcast_fuse(%arg0: tensor<?xf32>, %arg1: tensor<?x?x?xf32>,
 }
 
 // CHECK-LABEL: func.func @map_broadcast_fuse(
-// CHECK-SAME:      %[[ARG0:.*]]: tensor<?xf32>,
-// CHECK-SAME:      %[[ARG1:.*]]: tensor<?x?x?xf32>,
-// CHECK-SAME:      %[[INIT:.*]]: tensor<?x?x?xf32>)
+// CHECK-SAME:      %[[ARG0:[0-9a-zA-Z]*]]: tensor<?xf32>,
+// CHECK-SAME:      %[[ARG1:[0-9a-zA-Z]*]]: tensor<?x?x?xf32>,
+// CHECK-SAME:      %[[INIT0:[0-9a-zA-Z]*]]: tensor<?xf32>,
+// CHECK-SAME:      %[[INIT1:[0-9a-zA-Z]*]]: tensor<?x?x?xf32>)
 
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0
 // CHECK-DAG:   %[[C1:.*]] = arith.constant 1
@@ -75,8 +85,8 @@ func.func @map_broadcast_fuse(%arg0: tensor<?xf32>, %arg1: tensor<?x?x?xf32>,
 // CHECK-DAG:   %[[C8:.*]] = arith.constant 8
 
 // CHECK-DAG:  %[[DIM_0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
-// CHECK-DAG:  %[[DIM_1:.*]] = tensor.dim %[[INIT]], %[[C1]]
-// CHECK-DAG:  %[[DIM_2:.*]] = tensor.dim %[[INIT]], %[[C2]]
+// CHECK-DAG:  %[[DIM_1:.*]] = tensor.dim %[[INIT1]], %[[C1]]
+// CHECK-DAG:  %[[DIM_2:.*]] = tensor.dim %[[INIT1]], %[[C2]]
 
 // CHECK-NEXT: %[[RESULT:.*]] = gml_st.parallel
 // CHECK-SAME:     (%[[I:.*]], %[[J:.*]], %[[K:.*]]) =
@@ -85,17 +95,22 @@ func.func @map_broadcast_fuse(%arg0: tensor<?xf32>, %arg1: tensor<?x?x?xf32>,
 // CHECK-SAME:     step (%[[C1]], %[[C1]], %[[C8]]) {
 // CHECK:        %[[MIN_DIM:.*]] = affine.min #map(%[[K]])[%[[DIM_2]]]
 // CHECK-DAG:    %[[ARG0_TILE:.*]] = gml_st.tile [%[[I]]]
-// CHECK-DAG:    %[[INIT_TILE:.*]] = gml_st.tile [%[[I]], %[[J]], %[[K]]]
+// CHECK-DAG:    %[[INIT1_TILE:.*]] = gml_st.tile [%[[I]], %[[J]], %[[K]]]
 // CHECK-DAG:    %[[ARG0_SLICE:.*]] = gml_st.materialize %[[ARG0]]
-// CHECK-DAG:    %[[INIT_SLICE:.*]] = gml_st.materialize %[[INIT]]
+// CHECK-DAG:    %[[INIT0_SLICE:.*]] = gml_st.materialize %[[INIT0]]
 
-// CHECK:        %[[BCAST:.*]] = linalg.broadcast
+// CHECK:        %[[ABS:.*]] = linalg.map
 // CHECK-NEXT:     ins(%[[ARG0_SLICE]]
-// CHECK-NEXT:     outs(%[[INIT_SLICE]]
+// CHECK-NEXT:     outs(%[[INIT0_SLICE]]
+
+// CHECK:        %[[INIT1_SLICE:.*]] = gml_st.materialize %[[INIT1]]
+// CHECK:        %[[BCAST:.*]] = linalg.broadcast
+// CHECK-NEXT:     ins(%[[ABS]]
+// CHECK-NEXT:     outs(%[[INIT1_SLICE]]
 // CHECK:        %[[ARG1_SLICE:.*]] = gml_st.materialize %[[ARG1]]
 // CHECK-NEXT:   %[[MAPPED:.*]] = linalg.map
 // CHECK-NEXT:     ins(%[[BCAST]], %[[ARG1_SLICE]] : tensor<1x1x?xf32>
-// CHECK-NEXT:     outs(%[[INIT_SLICE]] : tensor<1x1x?xf32>)
-// CHECK:        gml_st.set_yield %[[MAPPED]] into %[[INIT]][%[[INIT_TILE]]]
+// CHECK-NEXT:     outs(%[[INIT1_SLICE]] : tensor<1x1x?xf32>)
+// CHECK:        gml_st.set_yield %[[MAPPED]] into %[[INIT1]][%[[INIT1_TILE]]]
 // CHECK-NEXT: }
 // CHECK-NEXT: return %[[RESULT]]

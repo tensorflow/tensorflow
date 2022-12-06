@@ -47,6 +47,13 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
 
   LogicalResult matchAndRewrite(linalg::MapOp op,
                                 PatternRewriter &rewriter) const override {
+    auto fuseFilterFn = [](Operation *op) {
+      return isa<linalg::BroadcastOp, linalg::MapOp>(op);
+    };
+
+    // Find there another linalg.map where this op can be fused.
+    op = findRootMap(op, fuseFilterFn);
+
     if (hasLabel(op, kMapTransformedLabel)) return failure();
 
     auto tilingResult =
@@ -59,16 +66,31 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
       rewriter.replaceOp(op, tilingResult->loop->getResults());
 
       // Fuse ops into the loop.
-      fuseGreedily(rewriter, *tilingResult->tiledOp->getBlock(),
-                   [](Operation *op) {
-                     return isa<linalg::BroadcastOp, linalg::MapOp>(op);
-                   });
+      fuseGreedily(rewriter, *tilingResult->tiledOp->getBlock(), fuseFilterFn);
     }
     setLabel(tilingResult->tiledOp, kMapTransformedLabel);
     return success();
   }
 
  private:
+  // Find the root of the fusion cluster.
+  linalg::MapOp findRootMap(
+      linalg::MapOp op,
+      llvm::function_ref<bool(Operation *)> fuseFilterFn) const {
+    linalg::MapOp rootMap = op;
+
+    Operation *curOp = op;
+    while (fuseFilterFn(curOp)) {
+      auto users = llvm::to_vector(curOp->getUsers());
+      // The op has more than 1 user. It will no be fused.
+      if (users.size() != 1) break;
+      curOp = users[0];
+
+      if (auto curMap = dyn_cast<linalg::MapOp>(curOp)) rootMap = curMap;
+    }
+    return rootMap;
+  }
+
   TilingOptions options;
 };
 
