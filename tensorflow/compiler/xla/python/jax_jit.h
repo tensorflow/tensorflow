@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 
+#include <memory>
 #include <stdexcept>
 #include <string>
 
@@ -23,6 +24,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "pybind11/pybind11.h"
+#ifdef JAX_ENABLE_IFRT
+#include "tensorflow/compiler/xla/python/ifrt/array.h"
+#endif
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
@@ -204,6 +208,16 @@ struct ParsedArgumentsAsBuffers {
   absl::InlinedVector<pybind11::object, 2> flat_dynamic_args;
   std::vector<pybind11::object> keep_alive_objects;
 
+#ifdef JAX_ENABLE_IFRT
+  xla::ifrt::Client* ifrt_client;
+  // The following is only valid if the parsing succeeds.
+  std::vector<xla::ifrt::Array*> ifrt_arg_arrays;
+  // We may need to keep these objects around, because:
+  // (a) we need to extend the lifetime of objects created within
+  //    `CopyBuffersToDevice`
+  // (b) `ifrt_arg_arrays` do not maintain ownership
+  std::vector<std::unique_ptr<xla::ifrt::Array>> ifrt_keep_alive;
+#else
   // The following is only valid if the parsing succeeds.
   std::vector<xla::PjRtBuffer*> arg_buffers;
   // We may need to keep these objects around, because:
@@ -211,6 +225,7 @@ struct ParsedArgumentsAsBuffers {
   //    `CopyBuffersToDevice`
   // (b) `arg_buffers` do not maintain ownership
   std::vector<std::unique_ptr<xla::PjRtBuffer>> keep_alive;
+#endif
 };
 
 // Filter out static arguments, flatten and concatenate other arguments (i.e.

@@ -24,6 +24,9 @@ limitations under the License.
 
 #include "absl/synchronization/notification.h"
 #include "tensorflow/compiler/xla/pjrt/lru_cache.h"
+#ifdef JAX_ENABLE_IFRT
+#include "tensorflow/compiler/xla/python/ifrt/array.h"
+#endif
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
@@ -96,18 +99,28 @@ class PjitFunction {
 
 // Prepares the input PjRtBuffers from the python arguments. This is equivalent
 // to shard_args() in pxla.py but for only a few supported cases.
+#ifdef JAX_ENABLE_IFRT
+xla::StatusOr<std::vector<xla::ifrt::Array*>> PrepareIfrtInputs(
+    const xla::PyLoadedExecutable& executable,
+    ParsedArgumentsAsBuffers& arguments) {
+#else
 xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
     const xla::PyLoadedExecutable& executable,
     ParsedArgumentsAsBuffers& arguments) {
+#endif
   const auto& addressable_devices = executable.AddressableDevices();
   int num_args = arguments.flat_dynamic_args.size();
 
+#ifdef JAX_ENABLE_IFRT
+  std::vector<xla::ifrt::Array*> num_args_arrays(num_args);
+#else
   std::vector<std::vector<xla::PjRtBuffer*>> num_computation_num_args_buffers(
       addressable_devices.size());
 
   for (int i = 0; i < addressable_devices.size(); ++i) {
     num_computation_num_args_buffers[i].resize(num_args);
   }
+#endif
 
   for (int i = 0; i < num_args; ++i) {
     const py::object& arg = arguments.flat_dynamic_args[i];
@@ -133,10 +146,34 @@ xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
           addressable_devices.size(), py_array.num_shards());
     }
 
+#ifdef JAX_ENABLE_IFRT
+    xla::ifrt::Array* ifrt_array = py_array.ifrt_array();
+    // PyArray inputs should have already been checked in
+    // `xla::PyArgSignatureOfValue()` called by
+    // `PjitFunction::UpdateArgsSignature()`.
+    DCHECK(ifrt_array != nullptr) << "PyArray has been unexpectedly deleted.";
+
+    if (cpp_sharding->num_devices() == 1 &&
+        ifrt_array->sharding().devices().front() !=
+            addressable_devices[0].get()) {
+      xla::ifrt::DeviceList::Devices ifrt_devices;
+      ifrt_devices.push_back(addressable_devices[0].get());
+      auto sharding = xla::ifrt::OpaqueSharding::Create(
+          xla::ifrt::DeviceList(std::move(ifrt_devices)));
+      TF_ASSIGN_OR_RETURN(
+          auto copied_ifrt_array,
+          ifrt_array->Reshard(std::move(sharding),
+                              xla::ifrt::ArrayCopySemantics::kReuseInput));
+      num_args_arrays[i] = copied_ifrt_array.get();
+      arguments.ifrt_keep_alive.push_back(std::move(copied_ifrt_array));
+    } else {
+      num_args_arrays[i] = ifrt_array;
+    }
+#else
     if (cpp_sharding->num_devices() == 1) {
       for (int j = 0; j < addressable_devices.size(); ++j) {
         auto* to_device = addressable_devices[j].get();
-        xla::PjRtBuffer* buffer = py_array.GetBuffer(j);
+        xla::PjRtBuffer* buffer = py_array.pjrt_buffer(j);
 
         if (buffer->device() == to_device) {
           num_computation_num_args_buffers[j][i] = buffer;
@@ -149,14 +186,19 @@ xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
       }
     } else {
       for (int j = 0; j < addressable_devices.size(); ++j) {
-        num_computation_num_args_buffers[j][i] = py_array.GetBuffer(j);
+        num_computation_num_args_buffers[j][i] = py_array.pjrt_buffer(j);
       }
     }
+#endif
 
     arguments.keep_alive_objects.push_back(arg);
   }
 
+#ifdef JAX_ENABLE_IFRT
+  return num_args_arrays;
+#else
   return num_computation_num_args_buffers;
+#endif
 }
 
 xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
@@ -252,6 +294,46 @@ xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
     return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
   }
 
+#ifdef JAX_ENABLE_IFRT
+  // A vector of [num_inputs].
+  auto num_args_arrays = PrepareIfrtInputs(*cache_entry->executable, arguments);
+  if (!num_args_arrays.ok()) {
+    VLOG(2) << "Failed to prepare IFRT inputs: " << num_args_arrays.status();
+    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
+  }
+
+  // A vector of [num_outputs].
+  std::vector<std::unique_ptr<xla::ifrt::Array>> output_arrays;
+  {
+    py::gil_scoped_release gil_release;
+    TF_ASSIGN_OR_RETURN(
+        auto result, cache_entry->executable->ifrt_executable()->Execute(
+                         *num_args_arrays, cache_entry->executable->options(),
+                         /*devices=*/std::nullopt));
+    output_arrays = std::move(result.outputs);
+  }
+
+  auto traceback = xla::Traceback::Get();
+  const auto& client = cache_entry->executable->client();
+
+  // Convert the ifrt::Array objects to PyArray.
+  int num_outputs = output_arrays.size();
+  absl::InlinedVector<py::object, 4> outputs;
+  outputs.reserve(num_outputs);
+  for (int i = 0; i < num_outputs; ++i) {
+    // Creating the PyArray result. In addition to the IFRT arrays, the metadata
+    // like `aval` and `sharding` are retrieved from the cache for this
+    // function, which are produced by the python path in `cache_miss`.
+    xla::PyArray py_array(
+        cache_entry->out_avals[i], cache_entry->out_weak_types[i],
+        cache_entry->out_dtypes[i], cache_entry->out_shapes[i],
+        cache_entry->out_shardings[i], cache_entry->executable->client(),
+        traceback, std::move(output_arrays[i]),
+        /*committed=*/cache_entry->out_committed.at(i), /*skip_checks=*/true);
+
+    outputs.push_back(std::move(py_array));
+  }
+#else
   // A vector of [num_devices, num_inputs].
   auto num_computation_num_args_buffers =
       PreparePjRtInputs(*cache_entry->executable, arguments);
@@ -266,7 +348,7 @@ xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
   std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> output_buffers;
   {
     py::gil_scoped_release gil_release;
-    auto pjrt_executable = cache_entry->executable->mutable_pjrt_executable();
+    auto pjrt_executable = cache_entry->executable->pjrt_executable();
     TF_ASSIGN_OR_RETURN(
         output_buffers,
         pjrt_executable->Execute(*num_computation_num_args_buffers,
@@ -301,6 +383,7 @@ xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
 
     outputs.push_back(std::move(py_array));
   }
+#endif
 
   py::object out = cache_entry->out_pytree_def.Unflatten(outputs);
 

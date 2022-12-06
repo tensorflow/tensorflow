@@ -38,6 +38,8 @@ class PjRtExecutable final
   // Creates PjRtExecutable from xla::PjRtExecutable.
   static StatusOr<std::unique_ptr<Executable>> Create(
       std::unique_ptr<xla::PjRtExecutable> pjrt_executable);
+  static StatusOr<std::unique_ptr<Executable>> Create(
+      std::shared_ptr<xla::PjRtExecutable> pjrt_executable);
 
   xla::PjRtExecutable* pjrt_executable() const {
     DCHECK(this);
@@ -91,10 +93,10 @@ class PjRtExecutable final
   static char ID;  // NOLINT
 
  protected:
-  explicit PjRtExecutable(std::unique_ptr<xla::PjRtExecutable> pjrt_executable)
+  explicit PjRtExecutable(std::shared_ptr<xla::PjRtExecutable> pjrt_executable)
       : pjrt_executable_(std::move(pjrt_executable)) {}
 
-  std::unique_ptr<xla::PjRtExecutable> pjrt_executable_;
+  std::shared_ptr<xla::PjRtExecutable> pjrt_executable_;
 };
 
 // `LoadedExecutable` implementation that wraps a `xla::PjRtLoadedExecutable`.
@@ -110,6 +112,9 @@ class PjRtLoadedExecutable final
   static StatusOr<std::unique_ptr<LoadedExecutable>> Create(
       PjRtClient* client,
       std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable);
+  static StatusOr<std::unique_ptr<LoadedExecutable>> Create(
+      PjRtClient* client,
+      std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable);
 
   // Creates PjRtExecutable from xla::XlaComputation. We expect that
   // xla::PjRtLoadedExecutable has fixed output dtypes/shapes/shardings. If
@@ -123,6 +128,11 @@ class PjRtLoadedExecutable final
   xla::PjRtLoadedExecutable* pjrt_loaded_executable() const {
     DCHECK(this);
     return pjrt_loaded_executable_.get();
+  }
+  std::shared_ptr<xla::PjRtLoadedExecutable> shared_ptr_pjrt_loaded_executable()
+      const {
+    DCHECK(this);
+    return pjrt_loaded_executable_;
   }
 
   // LoadedExecutable implementation.
@@ -202,13 +212,13 @@ class PjRtLoadedExecutable final
  private:
   static StatusOr<std::unique_ptr<LoadedExecutable>> CreateInternal(
       PjRtClient* client,
-      std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
+      std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
       const xla::Shape& result_shape,
       const xla::HloSharding* result_hlo_sharding);
 
   PjRtLoadedExecutable(
       PjRtClient* client,
-      std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
+      std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
       DeviceList devices, std::vector<DType> output_dtypes,
       std::vector<Shape> output_shapes,
       std::vector<std::shared_ptr<const Sharding>> output_shardings)
@@ -220,7 +230,7 @@ class PjRtLoadedExecutable final
         output_shardings_(std::move(output_shardings)) {}
 
   PjRtClient* client_;
-  std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable_;
+  std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable_;
   DeviceList devices_;
   std::vector<DType> output_dtypes_;
   std::vector<Shape> output_shapes_;

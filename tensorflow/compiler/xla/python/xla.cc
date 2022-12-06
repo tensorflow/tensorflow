@@ -46,6 +46,9 @@ limitations under the License.
 #endif  // XLA_PYTHON_ENABLE_GPU
 #include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#ifdef JAX_ENABLE_IFRT
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
+#endif
 #ifdef XLA_PYTHON_ENABLE_PLUGIN_DEVICE
 #include "tensorflow/compiler/xla/pjrt/pjrt_plugin_device_client.h"
 #endif  // XLA_PYTHON_ENABLE_PLUGIN_DEVICE
@@ -304,14 +307,24 @@ PYBIND11_MODULE(xla_extension, m) {
         py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                             GetTfrtCpuClient(asynchronous));
+#ifdef JAX_ENABLE_IFRT
+        return std::make_shared<PyClient>(
+            ifrt::PjRtClient::Create(std::move(client)));
+#else
         return std::make_shared<PyClient>(std::move(client));
+#endif
       },
       py::arg("asynchronous") = true);
   m.def("get_interpreter_client", []() -> StatusOr<std::shared_ptr<PyClient>> {
     py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                         GetInterpreterClient());
+#ifdef JAX_ENABLE_IFRT
+    return std::make_shared<PyClient>(
+        ifrt::PjRtClient::Create(std::move(client)));
+#else
     return std::make_shared<PyClient>(std::move(client));
+#endif
   });
 
 #ifdef XLA_PYTHON_ENABLE_GPU
@@ -339,7 +352,12 @@ PYBIND11_MODULE(xla_extension, m) {
             GetStreamExecutorGpuClient(asynchronous, allocator_config,
                                        std::move(distributed_client), node_id,
                                        allowed_devices, platform_name));
+#ifdef JAX_ENABLE_IFRT
+        return std::make_shared<PyClient>(
+            ifrt::PjRtClient::Create(std::move(client)));
+#else
         return std::make_shared<PyClient>(std::move(client));
+#endif
       },
       py::arg("asynchronous") = true,
       py::arg("allocator_config") = GpuAllocatorConfig(),
@@ -355,7 +373,12 @@ PYBIND11_MODULE(xla_extension, m) {
         py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtClient> client,
                             GetTpuClient(max_inflight_computations));
+#ifdef JAX_ENABLE_IFRT
+        return std::make_shared<PyClient>(
+            ifrt::PjRtClient::Create(std::move(client)));
+#else
         return std::make_shared<PyClient>(std::move(client));
+#endif
       },
       py::arg("max_inflight_computations") = 32);
   m.def("get_tfrt_tpu_c_api_client",
@@ -363,7 +386,12 @@ PYBIND11_MODULE(xla_extension, m) {
           py::gil_scoped_release gil_release;
           TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> c_api_client,
                               GetCApiClient("TPU"));
+#ifdef JAX_ENABLE_IFRT
+          return std::make_shared<PyClient>(
+              ifrt::PjRtClient::Create(std::move(c_api_client)));
+#else
           return std::make_shared<PyClient>(std::move(c_api_client));
+#endif
         });
 #endif  // XLA_PYTHON_ENABLE_TPU
 
@@ -373,7 +401,12 @@ PYBIND11_MODULE(xla_extension, m) {
           py::gil_scoped_release gil_release;
           TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                               GetTfrtPluginDeviceClient());
+#ifdef JAX_ENABLE_IFRT
+          return std::make_shared<PyClient>(
+              ifrt::PjRtClient::Create(std::move(client)));
+#else
           return std::make_shared<PyClient>(std::move(client));
+#endif
         });
 #endif  // XLA_PYTHON_ENABLE_PLUGIN_DEVICE
 
@@ -447,7 +480,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("keep_alive", &PyLoadedExecutable::KeepAlive)
       .def("compile_options",
            [](const PyLoadedExecutable& self) {
-             return self.pjrt_executable().GetCompileOptions();
+             return self.pjrt_executable()->GetCompileOptions();
            })
       .def_property_readonly("traceback", &PyLoadedExecutable::traceback)
       .def_property_readonly("fingerprint",
