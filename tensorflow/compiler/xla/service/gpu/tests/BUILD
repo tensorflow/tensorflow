@@ -815,6 +815,8 @@ xla_cc_binary(
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler_impl",
 	"//tensorflow/tsl/platform:rocm_rocdl_path",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_plugin",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_helpers",
     ]),
 )
 
