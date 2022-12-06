@@ -362,8 +362,8 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     
     OP_REQUIRES(c, gpuResult == gpuSuccess, 
                 errors::Internal(
-                "Failed to launch gpuprim::DeviceRadixSort::SortPairs, 
-                temp_storage_bytes: ", temp_storage_bytes, ", status: ", 
+                "Failed to launch gpuprim::DeviceRadixSort::SortPairs" 
+                "temp_storage_bytes: ", temp_storage_bytes, "status: ", 
                 GpuGetErrorString(gpuResult)));
   }  // At this point cub_temp_storage will be marked for deallocation.
 
