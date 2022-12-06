@@ -83,7 +83,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_bitwise_ops
-from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_sparse_ops
@@ -1045,7 +1044,8 @@ def saturate_cast(value, dtype, name=None):
         # Clamp real and imag components separately, if required.
         real_in_dtype = in_dtype.real_dtype
         real_out_dtype = dtype.real_dtype
-        if real_in_dtype.min < real_out_dtype.min or real_in_dtype.max > real_out_dtype.max:
+        if real_in_dtype.min < real_out_dtype.min or \
+            real_in_dtype.max > real_out_dtype.max:
           value = gen_math_ops._clip_by_value(
               value,
               ops.convert_to_tensor(
@@ -1065,7 +1065,6 @@ def saturate_cast(value, dtype, name=None):
     # in_dtype is real, but out_dtype could be complex.
     out_real_dtype = dtype.real_dtype
     if in_dtype.min < out_real_dtype.min or in_dtype.max > out_real_dtype.max:
-
       # Forward-compatibility required for Brella if output is real:
       if not dtype.is_complex and not tf_compat.forward_compatible(
           2022, 12, 16):
@@ -4575,16 +4574,11 @@ def reduced_shape(input_shape, axes):
 
   input_rank = array_ops.size(input_shape)  # 4
   axes = (axes + input_rank) % input_rank
-  axes_shape = array_ops.shape(axes)  # [2]
-  return gen_data_flow_ops.dynamic_stitch(  # [2, 1, 1, 7]
-      [
-          range(input_rank),  # [0, 1, 2, 3]
-          axes
-      ],  # [1, 2]
-      [
-          input_shape,  # [2, 3, 5, 7]
-          array_ops.ones(axes_shape, dtype=dtypes.int32)
-      ])  # [1, 1]
+  tensor_indices = array_ops.reshape(axes, [-1, 1])
+  tensor_update = array_ops.reshape(array_ops.ones_like(axes), [-1])
+  return array_ops.tensor_scatter_update(tensor=input_shape,
+                                         indices=tensor_indices,
+                                         updates=tensor_update)
 
 
 def _unsorted_segment_N(data, segment_ids, num_segments):
