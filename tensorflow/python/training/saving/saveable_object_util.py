@@ -50,6 +50,8 @@ _VARIABLE_OPS = set(["Variable",
                      "VarHandleOp",
                      "ReadVariableOp"])
 
+_REF_VARIABLE_OPS = frozenset(["Variable", "VariableV2", "AutoReloadVariable"])
+
 
 def set_cpu0(device_string):
   """Creates a new device string based on `device_string` but using /CPU:0.
@@ -188,8 +190,7 @@ def saveable_objects_for_op(op, name):
         raise ValueError(
             f"Slices must all be from the same tensor: {slice_name} != "
             f"{variable._save_slice_info.full_name}")
-      if variable.op.type in ["Variable", "VariableV2",
-                              "AutoReloadVariable"]:
+      if variable.op.type in _REF_VARIABLE_OPS:
         yield ReferenceVariableSaveable(
             variable, variable._save_slice_info.spec, name)
       else:
@@ -199,9 +200,13 @@ def saveable_objects_for_op(op, name):
   elif isinstance(op, trackable.Trackable) and not isinstance(
       op, variables.Variable):
     # pylint: disable=protected-access
-    for attr, factory in saveable_objects_from_trackable(op).items():
+    for attr, factory in saveable_objects_from_trackable(
+        op, tf1_saver=True).items():
       if attr == trackable.VARIABLE_VALUE_KEY:
-        # Keep original name for classes masquerading as variables.
+        # Keep original name for classes masquerading as variables and
+        # Trackables that define _serialize_to_tensors.
+        full_name = name
+      elif attr == trackable_utils.SERIALIZE_TO_TENSORS_NAME:
         full_name = name
       else:
         full_name = name + "_" + attr
@@ -227,8 +232,7 @@ def saveable_objects_for_op(op, name):
         raise TypeError(
             "names_to_saveables must be a dict mapping string "
             f"names to Tensors/Variables. Not a variable: {variable}")
-      if variable.op.type in ["Variable", "VariableV2",
-                              "AutoReloadVariable"]:
+      if variable.op.type in _REF_VARIABLE_OPS:
         yield ReferenceVariableSaveable(variable, "", name)
       else:
         yield ResourceVariableSaveable(variable, "", name)
@@ -290,7 +294,8 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
     elif isinstance(var, trackable.Trackable) and not resource_or_ref_variable:
       trackable_saveables = [
           (factory() if callable(factory) else factory)
-          for factory in saveable_objects_from_trackable(var).values()]
+          for factory in (
+              saveable_objects_from_trackable(var, tf1_saver=True).values())]
       names_to_saveables.update(
           op_list_to_dict(trackable_saveables))
     else:
@@ -577,8 +582,20 @@ def is_factory_for_restored_saveable_object(factory):
 
 
 @tf_export("__internal__.tracking.saveable_objects_from_trackable", v1=[])
-def saveable_objects_from_trackable(obj):
-  """Returns SaveableObject factory dict from a Trackable."""
+def saveable_objects_from_trackable(obj, tf1_saver=False):
+  """Returns SaveableObject factory dict from a Trackable.
+
+  Args:
+    obj: A `Trackable`
+    tf1_saver: Boolean, whether this is being called from a TF1 Saver (
+        `tf.compat.v1.train.Saver`). When this is True, the SaveableObject will
+        be generated from `obj`'s legacy `_gather_saveables_for_checkpoint` fn.
+        When saving with TF2, `Trackable._serialize_from_tensors` is preferred.
+
+  Returns:
+    A dict mapping attribute names to SaveableObject factories (callables that
+    produce a SaveableObject).
+  """
   if isinstance(obj, python_state.PythonState):
     return {
         python_state.PYTHON_STATE:
@@ -587,6 +604,12 @@ def saveable_objects_from_trackable(obj):
                 state_callback=obj.serialize,
                 restore_callback=obj.deserialize)
     }
+
+  if tf1_saver:
+    saveable_factories = obj._gather_saveables_for_checkpoint()  # pylint: disable=protected-access
+    if saveable_factories:
+      return saveable_factories
+
   if trackable_has_serialize_to_tensor(obj):
 
     def create_saveable(name="", call_with_mapped_captures=None):
@@ -610,7 +633,6 @@ def saveable_objects_from_trackable(obj):
         # Create separate specs for each slice spec.
         for slice_spec, tensor in maybe_tensor.items():
           specs.append(saveable_object.SaveSpec(tensor, slice_spec, spec_name))
-
       return TrackableSaveable(
           obj=obj,
           specs=specs,
@@ -641,18 +663,22 @@ class TrackableSaveable(saveable_object.SaveableObject):
     for n, local_name in enumerate(self._local_names):
       restored_tensor_dict[local_name] = restored_tensors[n]
 
+    restore_fn = self._trackable._restore_from_tensors  # pylint: disable=protected-access
+
+    # When restoring a RefVariable, call the restore function directly.
+    if (not ops.executing_eagerly_outside_functions()
+        and any([spec.tensor.op.type in _REF_VARIABLE_OPS
+                 for spec in self.specs])):
+      return restore_fn(restored_tensor_dict)
+
+    # Wrap the restore function so that it can be converted to a tf.function
+    # when in graph mode (e.g. when creating a graph for SavedModel export).
     def restore_from_tensors():
-      restore_fn = self._trackable._restore_from_tensors  # pylint: disable=protected-access
       if (self._call_with_mapped_captures and
           isinstance(restore_fn, core.ConcreteFunction)):
         self._call_with_mapped_captures(restore_fn, [restored_tensor_dict])
       else:
         restore_fn(restored_tensor_dict)
-
-      # In graph mode, this wrapper function is converted into a tf.function,
-      # and to ensure that _restore_from_tensors is executed, there must be at
-      # least one returned tensor. `_restore_from_tensors` may return zero
-      # tensors so create a dummy constant here.
       return constant_op.constant(1)
 
     if not ops.executing_eagerly_outside_functions():
