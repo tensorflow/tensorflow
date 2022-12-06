@@ -2501,6 +2501,51 @@ ENTRY test {
       )");
 }
 
+TEST_F(CublasLtGemmRewriteTest, SquareMatrixBiasReluActivation) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[4,4] parameter(0)
+  y = f32[4,4] parameter(1)
+  z = f32[4,4] parameter(2)
+  dot_a = f32[4,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  add = f32[4,4] add(dot_a, z)
+  c = f32[] constant(0)
+  c_bcast = f32[4,4] broadcast(c), dimensions={}
+  ROOT out = f32[4,4] maximum(add, c_bcast)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f32[4,4], y: f32[4,4], z: f32[4,4]) -> f32[4,4] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[4,4]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,4]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4,4]{1,0} parameter(2)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[4,4]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":1
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"RELU\"
+; CHECK:           }"
+      )");
+}
+
 TEST_F(CublasLtGemmRewriteTest, VectorBiasReluActivation) {
   const char* hlo_text = R"(
 HloModule test

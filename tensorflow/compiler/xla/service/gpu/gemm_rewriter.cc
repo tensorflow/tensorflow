@@ -574,12 +574,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (!SupportsEpilogueFusion(gemm->shape().element_type())) {
       return OkStatus();
     }
-    bool valid_fusion_pattern =
-        (gemm->operand_count() == 3)
-            ? gemm->operand(0)->shape() != gemm->operand(2)->shape()
-            : true;
 
-    if (!valid_fusion_pattern || gemm->user_count() != 1) {
+    if (gemm->user_count() != 1) {
       return OkStatus();
     }
 
