@@ -21,16 +21,20 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 
 namespace mlir {
+
+struct OpPassManager;
+
 namespace linalg {
+
 class LinalgOp;
 struct TiledLinalgOp;
 struct LinalgTilingOptions;
+
 }  // namespace linalg
 }  // namespace mlir
 
 namespace mlir {
 namespace gml_st {
-
 
 bool isZero(Value v);
 bool isOne(Value v);
@@ -103,6 +107,9 @@ bool hasLabel(Operation *op, StringRef name);
 
 // Checks if `op` has the matching label attribute.
 bool hasMatchingLabel(Operation *op, StringRef label);
+
+// Adds tiling-fusion-vectorization passes for tHLO/Linalg ops mix.
+void addTileableOpsTransformationsForCPU(OpPassManager &pm);
 
 }  // namespace gml_st
 }  // namespace mlir

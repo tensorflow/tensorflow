@@ -50,6 +50,7 @@ cc_library(
     hdrs = ["benchmark_mlir_function.h"],
     deps = [
         ":benchmark",
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:host_context_util",
         "//tensorflow/compiler/mlir/tfrt:runtime_fallback_executor",

@@ -29,6 +29,11 @@ struct TfJitRtPipelineOptions
                          llvm::cl::desc("Enable tiling for vectorization."),
                          llvm::cl::init(false)};
 
+  Option<bool> enable_xla_cpu_transformations{
+      *this, "enable_xla_cpu_transformations",
+      llvm::cl::desc("Enable tiling/fusion shared with XLA:CPU Next."),
+      llvm::cl::init(false)};
+
   Option<bool> peel{*this, "peel", llvm::cl::desc("Enable loop peeling."),
                     llvm::cl::init(true)};
 

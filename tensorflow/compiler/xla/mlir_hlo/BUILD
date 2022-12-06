@@ -1378,6 +1378,7 @@ cc_library(
         "gml_st/transforms/transform_matmul_for_cpu/transform_matmul_for_cpu.cc",
         "gml_st/transforms/transform_reduce_for_cpu/transform_reduce_for_cpu.cc",
         "gml_st/transforms/transform_scatter_for_cpu/transform_scatter_for_cpu.cc",
+        "gml_st/transforms/transform_tileable_ops_for_cpu/transform_tileable_ops_for_cpu.cc",
         "gml_st/transforms/transform_transpose_for_cpu/transform_transpose_for_cpu.cc",
         "gml_st/transforms/transforms.h",
         "gml_st/transforms/vectorization/vectorization.cc",
@@ -1765,9 +1766,7 @@ cc_library(
     name = "gml_st_transforms",
     srcs = ["gml_st/transforms/transforms.cc"],
     hdrs = ["gml_st/transforms/transforms.h"],
-    includes = [
-        "include",
-    ],
+    includes = ["include"],
     strip_include_prefix = ".",
     deps = [
         ":gml_st",

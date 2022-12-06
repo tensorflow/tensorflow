@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/transforms.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 
@@ -176,7 +177,8 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeControlFlowPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeSortPass());
   pm.addNestedPass<FuncOp>(xla::cpu::createLegalizeCollectiveOpsPass());
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass(
+      options.enable_xla_cpu_transformations));
   pm.addPass(mlir::mhlo::createLegalizeToArithmeticPass());
   pm.addNestedPass<FuncOp>(
       mlir::mhlo::createLegalizeHloShapeOpsToStandardPass());
@@ -204,8 +206,12 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // Convert complex types.
   pm.addPass(mlir::createConvertComplexToStandardPass());
 
-  // Add linalg passes to perform fusion, tiling, peeling and vectorization.
-  AddLinalgTransformations(pm, options);
+  // Add passes to perform fusion, tiling, peeling and vectorization.
+  if (options.enable_xla_cpu_transformations) {
+    mlir::gml_st::addTileableOpsTransformationsForCPU(pm);
+  } else {
+    AddLinalgTransformations(pm, options);
+  }
 
   // Inline everything, bufferization doesn't model ownership across calls.
   pm.addPass(mlir::createInlinerPass());
@@ -250,6 +256,8 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
 void CreateDefaultTfJitRtPipeline(OpPassManager& pm) {
   TfJitRtPipelineOptions options;
   options.vectorize = tensorflow::GetJitRtFlags().vectorize;
+  options.enable_xla_cpu_transformations =
+      tensorflow::GetJitRtFlags().enable_xla_cpu_transformations;
   CreateTfJitRtPipeline(pm, options);
 }
 
