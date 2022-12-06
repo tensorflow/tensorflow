@@ -51,6 +51,10 @@
 
 *   `tf.keras`:
 
+    *   The new Keras model saving format (`.keras`) is available. You can start
+        using it via `model.save(f"{fname}.keras", save_format="keras_v3")`.
+        In the future it will become the default for all files with the `.keras`
+        extension. This file format targets the Python runtime only.
     *   Added utility `tf.keras.utils.FeatureSpace`, a one-stop shop for
         structured data preprocessing and encoding.
     *   Added `tf.SparseTensor` input support to `tf.keras.layers.Embedding`
