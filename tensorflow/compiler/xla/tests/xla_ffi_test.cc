@@ -89,7 +89,7 @@ FfiStatus TestModule::Impl(StridedBufferArg input0, StridedBufferArg input1,
 // suppress errors during Thunk emissions. This stub should never be called,
 // and instead XLA will call into registered FFI handlers. Remove this hack!
 static void Abort() { LOG(FATAL) << "Custom call stub must never be called"; }
-XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("test.ffi", Abort, "CUDA");
+XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("test.ffi", Abort, absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value()));
 
 XLA_TEST_F(FfiTest, Basic) {
   // Register XLA FFI module with the runtime.
