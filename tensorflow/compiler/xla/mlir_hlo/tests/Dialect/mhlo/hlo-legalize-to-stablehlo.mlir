@@ -151,7 +151,7 @@ func.func @attr_custom_call_api_version_status_returning_unified(%arg0: tensor<f
 }
 // CHECK-LABEL: "attr_custom_call_api_version_status_returning_unified"
 
-// CustomCallSchedule aka #mhlo<custom_call_schedule> will not be supported (see negative test below).
+// CustomCallSchedule aka #mhlo<custom_call_schedule> is unsupported at the moment (see negative test below).
 // DequantizeMode aka #mhlo<dequantize_mode> is unused at the moment.
 // DomainKind aka #mhlo<kind> is unsupported at the moment (see negative test below).
 // DotDimensionNumbers aka #mhlo.dot is covered below.
@@ -939,13 +939,13 @@ func.func @op_get_dimension_size(%arg0: tensor<?xf32>) -> tensor<i32> {
 }
 // CHECK-LABEL: "op_get_dimension_size"
 
-func.func @op_get_tuple_element(%arg0: tuple<tensor<f32>>) -> tensor<f32> {
+func.func @op_get_tuple_element(%arg0: tuple<tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>>) -> tensor<f32> {
   //      CHECK: "stablehlo.get_tuple_element"(%arg0) {
-  // CHECK-SAME:   index = 0 : i32
-  // CHECK-SAME: } : (tuple<tensor<f32>>) -> tensor<f32>
+  // CHECK-SAME:   index = 4 : i32
+  // CHECK-SAME: } : (tuple<tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>>) -> tensor<f32>
   %0 = "mhlo.get_tuple_element"(%arg0) {
-    index = 0 : i32
-  } : (tuple<tensor<f32>>) -> tensor<f32>
+    index = 4 : i32
+  } : (tuple<tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
 // CHECK-LABEL: "op_get_tuple_element"
@@ -1699,6 +1699,9 @@ func.func @type_ui64(%arg0: tensor<ui64>, %arg1: tensor<ui64>) -> tensor<ui64> {
   func.return %0 : tensor<ui64>
 }
 // CHECK-LABEL: "type_ui64"
+
+// f8E4M3FN is unsupported at the moment (see negative test below).
+// f8E5M2 is unsupported at the moment (see negative test below).
 
 func.func @type_bf16(%arg0: tensor<bf16>, %arg1: tensor<bf16>) -> tensor<bf16> {
   // CHECK: "stablehlo.add"(%arg0, %arg1) : (tensor<bf16>, tensor<bf16>) -> tensor<bf16>

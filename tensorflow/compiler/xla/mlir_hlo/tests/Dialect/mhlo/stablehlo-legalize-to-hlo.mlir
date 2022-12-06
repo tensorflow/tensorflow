@@ -4,7 +4,6 @@
 
 // ArgResultAlias aka #stablehlo.result_alias is unused at the moment.
 // ChannelHandle aka #stablehlo.channel_handle is covered below.
-// CustomCallSchedule aka #mhlo.custom_call_schdeule isn't in stablehlo yet.
 
 func.func @attr_comparison_direction_eq(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<i1> {
   %0 = "stablehlo.compare"(%arg0, %arg1) {
@@ -920,13 +919,13 @@ func.func @op_get_dimension_size(%arg0: tensor<?xf32>) -> tensor<i32> {
 }
 // CHECK-LABEL: "op_get_dimension_size"
 
-func.func @op_get_tuple_element(%arg0: tuple<tensor<f32>>) -> tensor<f32> {
+func.func @op_get_tuple_element(%arg0: tuple<tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>>) -> tensor<f32> {
   //      CHECK: "mhlo.get_tuple_element"(%arg0) {
-  // CHECK-SAME:   index = 0 : i32
-  // CHECK-SAME: } : (tuple<tensor<f32>>) -> tensor<f32>
+  // CHECK-SAME:   index = 4 : i32
+  // CHECK-SAME: } : (tuple<tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>>) -> tensor<f32>
   %0 = "stablehlo.get_tuple_element"(%arg0) {
-    index = 0 : i32
-  } : (tuple<tensor<f32>>) -> tensor<f32>
+    index = 4 : i32
+  } : (tuple<tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
 // CHECK-LABEL: "op_get_tuple_element"
