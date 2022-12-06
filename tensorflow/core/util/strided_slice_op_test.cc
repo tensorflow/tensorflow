@@ -18,7 +18,16 @@ limitations under the License.
 #include <algorithm>
 #include <tuple>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace {
@@ -335,6 +344,429 @@ TEST(StridedSliceAssignBCastTest, RemapDimensionsOutOfBoundsFails) {
     EXPECT_FALSE(bcast.RemapDimensions(test_remap.dims, test_remap.map))
         << PrintToString(test_input);
   }
+}
+
+using IntVector = gtl::InlinedVector<int64_t, 4>;
+
+TensorShape AsTensorShape(gtl::ArraySlice<int64_t> dim_sizes) {
+  TensorShape out;
+  TF_CHECK_OK(TensorShape::BuildTensorShape(dim_sizes, &out));
+  return out;
+}
+
+TEST(ValidateStridedSliceOpTest, BasicStride) {
+  Tensor begin_tensor = test::AsTensor<int32_t>({1, 1});
+  Tensor end_tensor = test::AsTensor<int32_t>({7, 7});
+  Tensor strides_tensor = test::AsTensor<int32_t>({2, 2});
+  TensorShape input_shape = AsTensorShape({10, 10});
+  int32_t begin_mask_spec = 0x2;
+  int32_t end_mask_spec = 0x1;
+  int32_t ellipsis_mask = 0x0;
+  int32_t new_axis_mask = 0x0;
+  int32_t shrink_axis_mask = 0x0;
+
+  // Function outputs.
+  TensorShape processing_shape, final_shape;
+  bool is_identity, is_simple_slice, slice_dim0;
+  IntVector begin, end, strides;
+  StridedSliceShapeSpec shape_spec;
+
+  TF_EXPECT_OK(ValidateStridedSliceOp(
+      &begin_tensor, &end_tensor, strides_tensor, input_shape, begin_mask_spec,
+      end_mask_spec, ellipsis_mask, new_axis_mask, shrink_axis_mask,
+      &processing_shape, &final_shape, &is_identity, &is_simple_slice,
+      &slice_dim0, &begin, &end, &strides, &shape_spec));
+
+  EXPECT_EQ(processing_shape, AsTensorShape({5, 4}));
+  EXPECT_EQ(final_shape, AsTensorShape({5, 4}));
+  EXPECT_FALSE(is_identity);
+  EXPECT_FALSE(is_simple_slice);
+  EXPECT_FALSE(slice_dim0);
+  EXPECT_EQ(begin, (IntVector{1, 0}));
+  EXPECT_EQ(end, (IntVector{10, 7}));
+  EXPECT_EQ(strides, (IntVector{2, 2}));
+}
+
+TEST(ValidateStridedSliceOpTest, NegativeBeginEnd) {
+  Tensor begin_tensor = test::AsTensor<int32_t>({-9, /*Will use bounds*/ -20});
+  Tensor end_tensor = test::AsTensor<int32_t>({-3, -3});
+  Tensor strides_tensor = test::AsTensor<int32_t>({2, 2});
+  TensorShape input_shape = AsTensorShape({10, 10});
+  int32_t begin_mask_spec = 0x0;
+  int32_t end_mask_spec = 0x0;
+  int32_t ellipsis_mask = 0x0;
+  int32_t new_axis_mask = 0x0;
+  int32_t shrink_axis_mask = 0x0;
+
+  // Function outputs.
+  TensorShape processing_shape, final_shape;
+  bool is_identity, is_simple_slice, slice_dim0;
+  IntVector begin, end, strides;
+  StridedSliceShapeSpec shape_spec;
+
+  TF_EXPECT_OK(ValidateStridedSliceOp(
+      &begin_tensor, &end_tensor, strides_tensor, input_shape, begin_mask_spec,
+      end_mask_spec, ellipsis_mask, new_axis_mask, shrink_axis_mask,
+      &processing_shape, &final_shape, &is_identity, &is_simple_slice,
+      &slice_dim0, &begin, &end, &strides, &shape_spec));
+
+  EXPECT_EQ(processing_shape, AsTensorShape({3, 4}));
+  EXPECT_EQ(final_shape, AsTensorShape({3, 4}));
+  EXPECT_EQ(begin, (IntVector{1, 0}));
+  EXPECT_EQ(end, (IntVector{7, 7}));
+}
+
+TEST(ValidateStridedSliceOpTest, EmptyOutputDim) {
+  Tensor begin_tensor = test::AsTensor<int32_t>({1, 1});
+  Tensor end_tensor = test::AsTensor<int32_t>({7, 1});
+  Tensor strides_tensor = test::AsTensor<int32_t>({2, 1});
+  TensorShape input_shape = AsTensorShape({10, 10});
+  int32_t begin_mask_spec = 0x0;
+  int32_t end_mask_spec = 0x0;
+  int32_t ellipsis_mask = 0x0;
+  int32_t new_axis_mask = 0x0;
+  int32_t shrink_axis_mask = 0x0;
+
+  // Function outputs.
+  TensorShape processing_shape, final_shape;
+  bool is_identity, is_simple_slice, slice_dim0;
+  IntVector begin, end, strides;
+  StridedSliceShapeSpec shape_spec;
+
+  TF_EXPECT_OK(ValidateStridedSliceOp(
+      &begin_tensor, &end_tensor, strides_tensor, input_shape, begin_mask_spec,
+      end_mask_spec, ellipsis_mask, new_axis_mask, shrink_axis_mask,
+      &processing_shape, &final_shape, &is_identity, &is_simple_slice,
+      &slice_dim0, &begin, &end, &strides, &shape_spec));
+
+  EXPECT_EQ(processing_shape, AsTensorShape({3, 0}));
+  EXPECT_EQ(final_shape, AsTensorShape({3, 0}));
+}
+
+TEST(ValidateStridedSliceOpTest, ZeroStrideFails) {
+  Tensor begin_tensor = test::AsTensor<int32_t>({1, 1});
+  Tensor end_tensor = test::AsTensor<int32_t>({7, 7});
+  Tensor strides_tensor = test::AsTensor<int32_t>({0, 2});
+  TensorShape input_shape = AsTensorShape({10, 10});
+  int32_t begin_mask_spec = 0x2;
+  int32_t end_mask_spec = 0x1;
+  int32_t ellipsis_mask = 0x0;
+  int32_t new_axis_mask = 0x0;
+  int32_t shrink_axis_mask = 0x0;
+
+  // Function outputs.
+  TensorShape processing_shape, final_shape;
+  bool is_identity, is_simple_slice, slice_dim0;
+  IntVector begin, end, strides;
+  StridedSliceShapeSpec shape_spec;
+
+  EXPECT_THAT(
+      ValidateStridedSliceOp(
+          &begin_tensor, &end_tensor, strides_tensor, input_shape,
+          begin_mask_spec, end_mask_spec, ellipsis_mask, new_axis_mask,
+          shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
+          &is_simple_slice, &slice_dim0, &begin, &end, &strides, &shape_spec),
+      tsl::testing::StatusIs(
+          tsl::error::Code::INVALID_ARGUMENT,
+          ::testing::ContainsRegex("strides.* must be non-zero")));
+}
+
+TEST(ValidateStridedSliceOpTest, ShrinkAxis) {
+  // Shrink middle axis.
+  Tensor begin_tensor = test::AsTensor<int16_t>({0, 1, 0});
+  Tensor end_tensor = test::AsTensor<int16_t>({3, 1, 5});
+  Tensor strides_tensor = test::AsTensor<int16_t>({1, 1, 1});
+  TensorShape input_shape = AsTensorShape({3, 4, 5});
+  int32_t begin_mask_spec = 0x2;
+  int32_t end_mask_spec = 0x2;
+  int32_t ellipsis_mask = 0x0;
+  int32_t new_axis_mask = 0x0;
+  int32_t shrink_axis_mask = 0x2;
+
+  // Function outputs.
+  TensorShape processing_shape, final_shape;
+  bool is_identity, is_simple_slice, slice_dim0;
+  IntVector begin, end, strides;
+  StridedSliceShapeSpec shape_spec;
+
+  TF_EXPECT_OK(ValidateStridedSliceOp(
+      &begin_tensor, &end_tensor, strides_tensor, input_shape, begin_mask_spec,
+      end_mask_spec, ellipsis_mask, new_axis_mask, shrink_axis_mask,
+      &processing_shape, &final_shape, &is_identity, &is_simple_slice,
+      &slice_dim0, &begin, &end, &strides, &shape_spec));
+
+  EXPECT_EQ(final_shape, AsTensorShape({3, 5}));
+}
+
+TEST(ValidateStridedSliceOpTest, ShrinkSliceOutOfBoundsFails) {
+  // Shrink middle axis.
+  Tensor begin_tensor = test::AsTensor<int16_t>({0, 7, 0});
+  Tensor end_tensor = test::AsTensor<int16_t>({3, 7, 5});
+  Tensor strides_tensor = test::AsTensor<int16_t>({1, 1, 1});
+  TensorShape input_shape = AsTensorShape({3, 4, 5});
+  int32_t begin_mask_spec = 0x2;
+  int32_t end_mask_spec = 0x2;
+  int32_t ellipsis_mask = 0x0;
+  int32_t new_axis_mask = 0x0;
+  int32_t shrink_axis_mask = 0x2;
+
+  // Function outputs.
+  TensorShape processing_shape, final_shape;
+  bool is_identity, is_simple_slice, slice_dim0;
+  IntVector begin, end, strides;
+  StridedSliceShapeSpec shape_spec;
+
+  EXPECT_THAT(
+      ValidateStridedSliceOp(
+          &begin_tensor, &end_tensor, strides_tensor, input_shape,
+          begin_mask_spec, end_mask_spec, ellipsis_mask, new_axis_mask,
+          shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
+          &is_simple_slice, &slice_dim0, &begin, &end, &strides, &shape_spec),
+      tsl::testing::StatusIs(
+          tsl::error::Code::INVALID_ARGUMENT,
+          ::testing::ContainsRegex("slice index .* out of bounds")));
+}
+
+TEST(ValidateStridedSliceOpTest, ShrinkAxisNegativeStrideFails) {
+  // Shrink middle axis.
+  Tensor begin_tensor = test::AsTensor<int16_t>({0, 1, 0});
+  Tensor end_tensor = test::AsTensor<int16_t>({3, 2, 5});
+  Tensor strides_tensor = test::AsTensor<int16_t>({1, -1, 1});
+  TensorShape input_shape = AsTensorShape({3, 4, 5});
+  int32_t begin_mask_spec = 0x2;
+  int32_t end_mask_spec = 0x2;
+  int32_t ellipsis_mask = 0x0;
+  int32_t new_axis_mask = 0x0;
+  int32_t shrink_axis_mask = 0x2;
+
+  // Function outputs.
+  TensorShape processing_shape, final_shape;
+  bool is_identity, is_simple_slice, slice_dim0;
+  IntVector begin, end, strides;
+  StridedSliceShapeSpec shape_spec;
+
+  EXPECT_THAT(
+      ValidateStridedSliceOp(
+          &begin_tensor, &end_tensor, strides_tensor, input_shape,
+          begin_mask_spec, end_mask_spec, ellipsis_mask, new_axis_mask,
+          shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
+          &is_simple_slice, &slice_dim0, &begin, &end, &strides, &shape_spec),
+      tsl::testing::StatusIs(
+          tsl::error::Code::INVALID_ARGUMENT,
+          ::testing::ContainsRegex("only stride 1 allowed")));
+}
+
+TEST(ValidateStridedSliceOpTest, NewAxis) {
+  Tensor begin_tensor = test::AsTensor<int64_t>({0, 0});
+  Tensor end_tensor = test::AsTensor<int64_t>({10, 10});
+  Tensor strides_tensor = test::AsTensor<int64_t>({1, 1});
+  TensorShape input_shape = AsTensorShape({10, 10});
+  int32_t begin_mask_spec = 0x0;
+  int32_t end_mask_spec = 0x0;
+  int32_t ellipsis_mask = 0x0;
+  int32_t new_axis_mask = 0x2;
+  int32_t shrink_axis_mask = 0x0;
+
+  // Function outputs.
+  TensorShape processing_shape, final_shape;
+  bool is_identity, is_simple_slice, slice_dim0;
+  IntVector begin, end, strides;
+  StridedSliceShapeSpec shape_spec;
+
+  TF_EXPECT_OK(ValidateStridedSliceOp(
+      &begin_tensor, &end_tensor, strides_tensor, input_shape, begin_mask_spec,
+      end_mask_spec, ellipsis_mask, new_axis_mask, shrink_axis_mask,
+      &processing_shape, &final_shape, &is_identity, &is_simple_slice,
+      &slice_dim0, &begin, &end, &strides, &shape_spec));
+
+  EXPECT_EQ(processing_shape, AsTensorShape({10, 10}));
+  EXPECT_EQ(final_shape, AsTensorShape({10, 1, 10}));
+}
+
+TEST(ValidateStridedSliceOpTest, Ellipsis) {
+  Tensor begin_tensor = test::AsTensor<int32_t>({0, 0});
+  Tensor end_tensor = test::AsTensor<int32_t>({10, 10});
+  Tensor strides_tensor = test::AsTensor<int32_t>({1, 1});
+  TensorShape input_shape = AsTensorShape({10, 10});
+  int32_t begin_mask_spec = 0x0;
+  int32_t end_mask_spec = 0x0;
+  int32_t ellipsis_mask = 0x1;
+  int32_t new_axis_mask = 0x2;
+  int32_t shrink_axis_mask = 0x0;
+
+  // Function outputs.
+  TensorShape processing_shape, final_shape;
+  bool is_identity, is_simple_slice, slice_dim0;
+  IntVector begin, end, strides;
+  StridedSliceShapeSpec shape_spec;
+
+  TF_EXPECT_OK(ValidateStridedSliceOp(
+      &begin_tensor, &end_tensor, strides_tensor, input_shape, begin_mask_spec,
+      end_mask_spec, ellipsis_mask, new_axis_mask, shrink_axis_mask,
+      &processing_shape, &final_shape, &is_identity, &is_simple_slice,
+      &slice_dim0, &begin, &end, &strides, &shape_spec));
+
+  EXPECT_EQ(processing_shape, AsTensorShape({10, 10}));
+  EXPECT_EQ(final_shape, AsTensorShape({10, 10, 1}));
+}
+
+TEST(ValidateStridedSliceOpTest, MultipleEllipsisFails) {
+  Tensor begin_tensor = test::AsTensor<int32_t>({0, 0});
+  Tensor end_tensor = test::AsTensor<int32_t>({10, 10});
+  Tensor strides_tensor = test::AsTensor<int32_t>({1, 1});
+  TensorShape input_shape = AsTensorShape({10, 10});
+  int32_t begin_mask_spec = 0x0;
+  int32_t end_mask_spec = 0x0;
+  int32_t ellipsis_mask = 0x3;
+  int32_t new_axis_mask = 0x0;
+  int32_t shrink_axis_mask = 0x0;
+
+  // Function outputs.
+  TensorShape processing_shape, final_shape;
+  bool is_identity, is_simple_slice, slice_dim0;
+  IntVector begin, end, strides;
+  StridedSliceShapeSpec shape_spec;
+
+  EXPECT_THAT(
+      ValidateStridedSliceOp(
+          &begin_tensor, &end_tensor, strides_tensor, input_shape,
+          begin_mask_spec, end_mask_spec, ellipsis_mask, new_axis_mask,
+          shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
+          &is_simple_slice, &slice_dim0, &begin, &end, &strides, &shape_spec),
+      tsl::testing::StatusIs(tsl::error::Code::INVALID_ARGUMENT,
+                             "Multiple ellipses in slice spec not allowed"));
+}
+
+TEST(ValidateStridedSliceOpTest, WrongBeginTensorFails) {
+  Tensor begin_tensor = test::AsTensor<int32_t>({0});  // Incorrect shape.
+  Tensor end_tensor = test::AsTensor<int32_t>({10, 10});
+  Tensor strides_tensor = test::AsTensor<int32_t>({1, 1});
+  TensorShape input_shape = AsTensorShape({10, 10});
+  int32_t begin_mask_spec = 0x0;
+  int32_t end_mask_spec = 0x0;
+  int32_t ellipsis_mask = 0x1;
+  int32_t new_axis_mask = 0x2;
+  int32_t shrink_axis_mask = 0x0;
+
+  // Function outputs.
+  TensorShape processing_shape, final_shape;
+  bool is_identity, is_simple_slice, slice_dim0;
+  IntVector begin, end, strides;
+  StridedSliceShapeSpec shape_spec;
+
+  EXPECT_THAT(
+      ValidateStridedSliceOp(
+          &begin_tensor, &end_tensor, strides_tensor, input_shape,
+          begin_mask_spec, end_mask_spec, ellipsis_mask, new_axis_mask,
+          shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
+          &is_simple_slice, &slice_dim0, &begin, &end, &strides, &shape_spec),
+      tsl::testing::StatusIs(
+          tsl::error::Code::INVALID_ARGUMENT,
+          ::testing::ContainsRegex("Expected .* equal size tensors")));
+}
+
+TEST(ValidateStridedSliceOpTest, WrongStridesTensorWithNullBeginFails) {
+  Tensor end_tensor = test::AsTensor<int32_t>({10, 10});
+  Tensor strides_tensor = test::AsTensor<int32_t>({1});  // Invalid shape.
+  TensorShape input_shape = AsTensorShape({10, 10});
+  int32_t begin_mask_spec = 0x0;
+  int32_t end_mask_spec = 0x0;
+  int32_t ellipsis_mask = 0x1;
+  int32_t new_axis_mask = 0x2;
+  int32_t shrink_axis_mask = 0x0;
+
+  // Function outputs.
+  TensorShape processing_shape, final_shape;
+  bool is_identity, is_simple_slice, slice_dim0;
+  IntVector begin, end, strides;
+  StridedSliceShapeSpec shape_spec;
+
+  EXPECT_THAT(
+      ValidateStridedSliceOp(
+          /*begin_tensor=*/nullptr, &end_tensor, strides_tensor, input_shape,
+          begin_mask_spec, end_mask_spec, ellipsis_mask, new_axis_mask,
+          shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
+          &is_simple_slice, &slice_dim0, &begin, &end, &strides, &shape_spec),
+      tsl::testing::StatusIs(
+          tsl::error::Code::INVALID_ARGUMENT,
+          ::testing::ContainsRegex("Expected .* equal size tensors")));
+}
+
+TEST(ValidateStridedSliceOpTest, NullBeginEndWithShrinkAxis) {
+  Tensor strides_tensor = test::AsTensor<int32_t>({2, -2, 1});
+  TensorShape input_shape = AsTensorShape({10, 10, 1});
+  int32_t begin_mask_spec = 0x3;
+  int32_t end_mask_spec = 0x3;
+  int32_t ellipsis_mask = 0x0;
+  int32_t new_axis_mask = 0x0;
+  int32_t shrink_axis_mask = 0x4;
+
+  // Function outputs.
+  TensorShape processing_shape, final_shape;
+  bool is_identity, is_simple_slice, slice_dim0;
+  IntVector begin, end, strides;
+  StridedSliceShapeSpec shape_spec;
+
+  TF_EXPECT_OK(ValidateStridedSliceOp(
+      /*begin_tensor=*/nullptr, /*end_tensor=*/nullptr, strides_tensor,
+      input_shape, begin_mask_spec, end_mask_spec, ellipsis_mask, new_axis_mask,
+      shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
+      &is_simple_slice, &slice_dim0, &begin, &end, &strides, &shape_spec));
+
+  EXPECT_EQ(processing_shape, AsTensorShape({5, 5, 1}));
+  EXPECT_EQ(final_shape, AsTensorShape({5, 5}));
+  EXPECT_EQ(strides, (IntVector{2, -2, 1}));
+}
+
+TEST(ValidateStridedSliceOpTest, UnknownInputRankFails) {
+  Tensor end_tensor = test::AsTensor<int32_t>({10, 10});
+  Tensor strides_tensor = test::AsTensor<int32_t>({1, 1});
+  PartialTensorShape input_shape;  // Unknown rank.
+  int32_t begin_mask_spec = 0x0;
+  int32_t end_mask_spec = 0x0;
+  int32_t ellipsis_mask = 0x1;
+  int32_t new_axis_mask = 0x2;
+  int32_t shrink_axis_mask = 0x0;
+
+  // Function outputs.
+  TensorShape processing_shape, final_shape;
+  bool is_identity, is_simple_slice, slice_dim0;
+  IntVector begin, end, strides;
+  StridedSliceShapeSpec shape_spec;
+
+  EXPECT_THAT(
+      ValidateStridedSliceOp(
+          /*begin_tensor=*/nullptr, &end_tensor, strides_tensor, input_shape,
+          begin_mask_spec, end_mask_spec, ellipsis_mask, new_axis_mask,
+          shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
+          &is_simple_slice, &slice_dim0, &begin, &end, &strides, &shape_spec),
+      tsl::testing::StatusIs(tsl::error::Code::INVALID_ARGUMENT,
+                             ::testing::ContainsRegex("unknown rank")));
+}
+
+TEST(ValidateStridedSliceOpTest, PartialInputShape) {
+  Tensor end_tensor = test::AsTensor<int32_t>({10, 10});
+  Tensor strides_tensor = test::AsTensor<int32_t>({1, 1});
+  PartialTensorShape input_shape;
+  TF_CHECK_OK(
+      PartialTensorShape::BuildPartialTensorShape({10, -1}, &input_shape));
+  int32_t begin_mask_spec = 0x0;
+  int32_t end_mask_spec = 0x0;
+  int32_t ellipsis_mask = 0x0;
+  int32_t new_axis_mask = 0x0;
+  int32_t shrink_axis_mask = 0x0;
+
+  // Function outputs.
+  PartialTensorShape processing_shape, final_shape;
+  bool is_identity, is_simple_slice, slice_dim0;
+  IntVector begin, end, strides;
+  StridedSliceShapeSpec shape_spec;
+
+  TF_EXPECT_OK(ValidateStridedSliceOp(
+      /*begin_tensor=*/nullptr, &end_tensor, strides_tensor, input_shape,
+      begin_mask_spec, end_mask_spec, ellipsis_mask, new_axis_mask,
+      shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
+      &is_simple_slice, &slice_dim0, &begin, &end, &strides, &shape_spec));
 }
 
 }  // namespace
