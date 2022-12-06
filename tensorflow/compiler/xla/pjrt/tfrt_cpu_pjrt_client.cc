@@ -58,7 +58,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/denormal.h"
 #include "tensorflow/tsl/platform/setround.h"
 #include "tensorflow/tsl/profiler/lib/connected_traceme.h"
-#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
 
@@ -116,7 +115,7 @@ static void EnqueueWorkWhenReady(
     tsl::thread::ThreadPool* pool,
     llvm::ArrayRef<tfrt::RCReference<tfrt::AsyncValue>> values,
     absl::AnyInvocable<void()> callee) {
-  tfrt::RunWhenReady(values, [pool, callee = std::move(callee)]() mutable {
+  RunWhenReady(values, [pool, callee = std::move(callee)]() mutable {
     EnqueueWork(pool, std::move(callee));
   });
 }
@@ -882,10 +881,9 @@ void TfrtCpuBuffer::Delete() {
   // We should also wait for the definition event.
   event_avs.push_back(device_buffer->definition_event().GetAsyncValue());
 
-  tfrt::RunWhenReady(event_avs,
-                     [device_buffer = std::move(device_buffer)]() mutable {
-                       device_buffer.reset();
-                     });
+  RunWhenReady(event_avs, [device_buffer = std::move(device_buffer)]() mutable {
+    device_buffer.reset();
+  });
 }
 
 bool TfrtCpuBuffer::IsDeleted() {
@@ -920,7 +918,7 @@ StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>> TfrtCpuBuffer::Release(
     // defined. Return the first error encountered.
     Status first_error;
     for (const auto& av : events) {
-      tfrt::Await(av.CopyRCRef());
+      BlockUntilReady(av.GetAsyncValue());
       if (auto* error = av.GetErrorIfPresent()) {
         first_error.Update(
             InternalError("Error Execute: %s", error->message()));
@@ -993,7 +991,7 @@ StatusOr<Shape> TfrtCpuBuffer::logical_on_device_shape() {
 
   // Wait for the definition event.
   const auto& av = device_buffer->definition_event();
-  tfrt::Await(av.CopyRCRef());
+  BlockUntilReady(av.GetAsyncValue());
   if (auto* error = av.GetErrorIfPresent()) {
     return InternalError("Error Execute: %s", error->message());
   }
