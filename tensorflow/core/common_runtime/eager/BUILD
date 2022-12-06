@@ -328,6 +328,18 @@ tf_cuda_library(
     }),
 )
 
+tf_cc_test(
+    name = "tensor_handle_data_test",
+    srcs = ["tensor_handle_data_test.cc"],
+    deps = [
+        ":core",
+        ":tensor_handle_data",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
+    ],
+)
+
 tf_cuda_library(
     name = "tensor_handle",
     srcs = [
