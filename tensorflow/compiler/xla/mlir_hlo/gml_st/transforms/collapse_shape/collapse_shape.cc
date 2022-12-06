@@ -26,8 +26,6 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/IR/TensorInferTypeOpInterfaceImpl.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -76,25 +74,18 @@ struct CollapseBcastPattern : OpRewritePattern<linalg::BroadcastOp> {
 
     // Dimensions to be collapsed must either be all broadcasted or not
     // broadcasted.
-    AffineMap inputMap = op.getIndexingMapsArray().front();
-    llvm::SmallVector<unsigned> broadcastedDims;
-    for (const auto& expr : inputMap.getResults()) {
-      auto dimExpr = expr.dyn_cast<AffineDimExpr>();
-      if (!dimExpr) {
-        return rewriter.notifyMatchFailure(
-            op, "affine map does not only contain dim expressions");
-      }
-      broadcastedDims.push_back(dimExpr.getPosition());
-    }
-    bool firstDimsBroadcasted = false;
-    if (!broadcastedDims.empty()) {
+    llvm::ArrayRef<int64_t> nonBroadcastedDims = op.getDimensions();
+
+    bool firstDimsBroadcasted = true;
+    if (!nonBroadcastedDims.empty()) {
       int i = 0;
-      while (i < broadcastedDims.size() && broadcastedDims[i] == i) {
+      while (i < nonBroadcastedDims.size() && nonBroadcastedDims[i] == i &&
+             i < numCollapsedDims) {
         ++i;
       }
       if (i >= numCollapsedDims) {
-        firstDimsBroadcasted = true;
-      } else if (llvm::any_of(broadcastedDims,
+        firstDimsBroadcasted = false;
+      } else if (llvm::any_of(nonBroadcastedDims,
                               [numCollapsedDims](unsigned dim) {
                                 return dim < numCollapsedDims;
                               })) {
@@ -106,13 +97,13 @@ struct CollapseBcastPattern : OpRewritePattern<linalg::BroadcastOp> {
     Value operand = op.getInput();
     auto operandTy = operand.getType().cast<RankedTensorType>();
     int64_t operandRank = operandTy.getRank();
-    llvm::DenseSet<unsigned> broadcastedDimsSet(broadcastedDims.begin(),
-                                                broadcastedDims.end());
+    llvm::DenseSet<int64_t> nonBroadcastedDimsSet(nonBroadcastedDims.begin(),
+                                                  nonBroadcastedDims.end());
     llvm::SmallVector<int64_t> collapsedNonBroadcastedDims;
     collapsedNonBroadcastedDims.reserve(numCollapsedDims +
                                         (firstDimsBroadcasted ? 1 : 0));
-    for (unsigned dim = numCollapsedDims; dim < initRank; ++dim) {
-      if (!broadcastedDimsSet.contains(dim)) {
+    for (int64_t dim = numCollapsedDims; dim < initRank; ++dim) {
+      if (nonBroadcastedDimsSet.contains(dim)) {
         collapsedNonBroadcastedDims.push_back(dim - numCollapsedDims + 1);
       }
     }
@@ -136,22 +127,10 @@ struct CollapseBcastPattern : OpRewritePattern<linalg::BroadcastOp> {
     Value collapsedInit =
         rewriter.create<tensor::CollapseShapeOp>(loc, init, initReassociation);
 
-    auto collapsedInitTy = collapsedInit.getType().cast<RankedTensorType>();
-    int64_t collapsedInitRank = collapsedInitTy.getRank();
-
     // Create collapsed bcast op.
-    MLIRContext* ctx = getContext();
-    AffineMap collapsedInitMap =
-        AffineMap::getMultiDimIdentityMap(collapsedInitRank, ctx);
     if (!firstDimsBroadcasted) {
       collapsedNonBroadcastedDims.push_back(0);
     }
-    AffineMap collapsedOperandMap =
-        collapsedInitMap.dropResults(collapsedNonBroadcastedDims);
-    SmallVector<AffineMap> collapsedMaps = {collapsedOperandMap,
-                                            collapsedInitMap};
-    SmallVector<utils::IteratorType> collapsedIteratorTypes(
-        collapsedInitRank, utils::IteratorType::parallel);
     Value collapsedBcastOp =
         rewriter
             .create<linalg::BroadcastOp>(
@@ -220,15 +199,8 @@ struct CollapseReductionPattern : OpRewritePattern<linalg::ReduceOp> {
     auto collapsedInitTy = collapsedInit.getType().cast<RankedTensorType>();
 
     // Create collapsed reduction op.
-    MLIRContext* ctx = op.getContext();
-    AffineMap collapsedOperandMap =
-        AffineMap::getMultiDimIdentityMap(collapsedOperandRank, ctx);
     int64_t collapsedReductionDim =
         reductionDim - operandRank + collapsedOperandRank;
-    AffineMap collapsedInitMap =
-        collapsedOperandMap.dropResult(collapsedReductionDim);
-    SmallVector<AffineMap> collapsedMaps = {collapsedOperandMap,
-                                            collapsedInitMap};
     SmallVector<utils::IteratorType> collapsedIteratorTypes(
         collapsedOperandRank, utils::IteratorType::parallel);
     collapsedIteratorTypes[collapsedReductionDim] =
