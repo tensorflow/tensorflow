@@ -736,12 +736,28 @@ class _PythonStringStateSaveable(saveable_object.SaveableObject):
 
 
 def trackable_has_serialize_to_tensor(obj):
-  # pylint: disable=protected-access
-  obj_serialize_fn = obj._serialize_to_tensors
-  if hasattr(obj_serialize_fn, "__func__"):
-    obj_serialize_fn = obj_serialize_fn.__func__
-  return trackable.Trackable._serialize_to_tensors != obj_serialize_fn
-  # pylint: enable=protected-access
+  """Returns whether obj's class has `_serialize_to_tensors` defined."""
+  try:
+    if "_serialize_to_tensors" in obj.__dict__:
+      # In some cases (e.g. restored objects), the object may have
+      # `_serialize_to_tensors` even if the class does not.
+      return True
+  except AttributeError:  # Data structure proxy wrappers don't have __dict__.
+    pass
+
+  # Use MRO so that if a parent class has `_serialize_to_tensors`, but the
+  # object class has not yet been migrated, we'll continue to use the obj
+  # class's `_gather_saveables_for_checkpoint` method.
+  for t in type(obj).mro():
+    if t is trackable.Trackable:
+      # Base case. Return False since _serialize_to_tensors will raise a
+      # NotImplemented Error.
+      return False
+    elif "_serialize_to_tensors" in t.__dict__:
+      return True
+    elif "_gather_saveables_for_checkpoint" in t.__dict__:
+      return False
+  return False
 
 
 def _convert_to_string(x):
