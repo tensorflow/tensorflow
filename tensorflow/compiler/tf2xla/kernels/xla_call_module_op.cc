@@ -233,11 +233,24 @@ Status RefineDynamicShapes(XlaOpKernelContext *ctx,
   // This will only change the argument types and will not propagate the
   // additional type information further. For that, we'll need to run
   // shape inference as explained below.
-  main.setType(
-      builder.getFunctionType(static_array_input_types, main.getResultTypes()));
+  auto static_array_output_types = llvm::to_vector(main.getResultTypes());
   for (auto i = 0; i < main_body.getNumArguments(); ++i) {
-    main_body.getArgument(i).setType(static_array_input_types[i]);
+    auto arg = main_body.getArgument(i);
+    arg.setType(static_array_input_types[i]);
+    // If the argument is used by `func.return`, then we also need to
+    // update function result types. It's not great that we need this hack,
+    // but in the future when we have stablehlo.func, stablehlo.return, etc,
+    // this will not be needed.
+    // TODO(burmako): Once https://github.com/openxla/stablehlo/issues/425 is
+    // fixed, clean this up.
+    for (mlir::OpOperand &use : arg.getUses()) {
+      if (auto ret = llvm::dyn_cast<mlir::func::ReturnOp>(use.getOwner())) {
+        static_array_output_types[use.getOperandNumber()] = arg.getType();
+      }
+    }
   }
+  main.setType(builder.getFunctionType(static_array_input_types,
+                                       static_array_output_types));
   // --tf-shape-inference, despite its TF-specific name, seems to be general
   // enough to also work on MHLO. (Although it fails if it doesn't see a
   // tf.versions attribute on the module, which we hackily attach).
