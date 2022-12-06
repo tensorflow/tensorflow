@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
@@ -244,6 +245,14 @@ Status RefineDynamicShapes(XlaOpKernelContext *ctx,
       builder.getNamedAttr("producer", builder.getI32IntegerAttr(0));
   (**module)->setAttr("tf.versions", builder.getDictionaryAttr({tf_producer}));
 
+  // Verify the module before running passes on it.
+  // If the module doesn't pass verification, all sorts of weirdness might
+  // happen if we run the pass manager.
+  if (failed(verify(**module))) {
+    VLOG(3) << "XlaCallModule module with verification failed: "
+            << debugString(**module);
+    return errors::InvalidArgument("Module verification failed");
+  }
   mlir::PassManager pm((*module)->getContext());
   if (VLOG_IS_ON(3)) {
     auto print_before = [](mlir::Pass *, mlir::Operation *) { return true; };
