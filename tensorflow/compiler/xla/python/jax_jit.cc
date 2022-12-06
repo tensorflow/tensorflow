@@ -158,11 +158,16 @@ std::string CallSignature::DebugString() const {
                                 const xla::PyArgSignature& s) {
     out->append(s.DebugString());
   };
+  auto bool_formatter = [](std::string* out, bool o) {
+    out->append(o ? "true" : "false");
+  };
   return absl::StrFormat(
       "static args (positional + keyword): %s\nstatic arg keyword names: %s\n"
       "dynamic arg signatures (positional + keyword): %s\n"
       "dynamic arg shardings: %s\n"
-      "dynamic arg keyword names: %s\ndynamic arg treedefs: %s\n"
+      "committed args: %s\n"
+      "dynamic arg keyword names: %s\n"
+      "dynamic arg treedefs: %s\n"
       "device: %s\n"
       "jax_enable_x64: %d\n"
       "jax_array: %d\n"
@@ -172,6 +177,7 @@ std::string CallSignature::DebugString() const {
       absl::StrJoin(static_arg_names, ",", py_object_formatter),
       absl::StrJoin(dynamic_arg_signatures, ", ", signature_formatter),
       absl::StrJoin(dynamic_arg_shardings, ", ", py_object_formatter),
+      absl::StrJoin(committed_args, ",", bool_formatter),
       absl::StrJoin(dynamic_arg_names, ",", py_object_formatter),
       absl::StrJoin(dynamic_arg_treedefs, "| ", treedef_formatter),  // new line
       device != nullptr ? device->DebugString() : "nullptr", jax_enable_x64,
@@ -184,11 +190,11 @@ bool CallSignature::operator==(const CallSignature& other) const {
   // instead of hashing and checking sharding's pointer values.
   return std::tie(dynamic_arg_treedefs, dynamic_arg_names,
                   dynamic_arg_signatures, device, jax_enable_x64, jax_array,
-                  static_arg_names) ==
+                  static_arg_names, committed_args) ==
              std::tie(other.dynamic_arg_treedefs, other.dynamic_arg_names,
                       other.dynamic_arg_signatures, other.device,
                       other.jax_enable_x64, other.jax_array,
-                      other.static_arg_names) &&
+                      other.static_arg_names, other.committed_args) &&
          // `==` on py:objects is the Python `is`. We need equal.
          std::equal(dynamic_arg_shardings.begin(), dynamic_arg_shardings.end(),
                     other.dynamic_arg_shardings.begin(),

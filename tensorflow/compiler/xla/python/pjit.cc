@@ -99,13 +99,13 @@ class PjitFunction {
 xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
     const xla::PyLoadedExecutable& executable,
     ParsedArgumentsAsBuffers& arguments) {
-  const auto& devices = executable.AddressableDevices();
+  const auto& addressable_devices = executable.AddressableDevices();
   int num_args = arguments.flat_dynamic_args.size();
 
   std::vector<std::vector<xla::PjRtBuffer*>> num_computation_num_args_buffers(
-      devices.size());
+      addressable_devices.size());
 
-  for (int i = 0; i < devices.size(); ++i) {
+  for (int i = 0; i < addressable_devices.size(); ++i) {
     num_computation_num_args_buffers[i].resize(num_args);
   }
 
@@ -113,31 +113,29 @@ xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
     const py::object& arg = arguments.flat_dynamic_args[i];
 
     xla::PyArray py_array = arg;
-
-    // Currently only committed PyArray inputs are allowed. This is checked
-    // previously in the entry point of PjitFunction::Call().
-    DCHECK(py_array.committed());
-
     const auto& sharding = py_array.sharding();
+    auto* cpp_sharding = sharding.cast<jax::Sharding*>();
+
+    // Currently only committed PyArray inputs or uncommitted PyArray on a
+    // single device inputs are allowed. This is checked previously in the entry
+    // point of PjitFunction::Call().
+    DCHECK(py_array.committed() ||
+           (!py_array.committed() && cpp_sharding->num_devices() == 1));
 
     if (sharding.get_type() == jax::PmapSharding::type()) {
       return xla::Unimplemented(
           "Handling PyArray in PmapSharding is not implemented.");
     }
 
-    auto* cpp_sharding = sharding.cast<jax::Sharding*>();
-
-    if (py_array.num_shards() != devices.size()) {
+    if (py_array.num_shards() != addressable_devices.size()) {
       return xla::InvalidArgument(
-          "Expected PyArray to have %d shards, but got %d", devices.size(),
-          py_array.num_shards());
+          "Expected PyArray to have %d shards, but got %d",
+          addressable_devices.size(), py_array.num_shards());
     }
 
     if (cpp_sharding->num_devices() == 1) {
-      // TODO(chky): Remove this special handling and don't move to another
-      // device if it is already committed.
-      for (int j = 0; j < devices.size(); ++j) {
-        auto* to_device = devices[j].get();
+      for (int j = 0; j < addressable_devices.size(); ++j) {
+        auto* to_device = addressable_devices[j].get();
         xla::PjRtBuffer* buffer = py_array.GetBuffer(j);
 
         if (buffer->device() == to_device) {
@@ -150,7 +148,7 @@ xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
         }
       }
     } else {
-      for (int j = 0; j < devices.size(); ++j) {
+      for (int j = 0; j < addressable_devices.size(); ++j) {
         num_computation_num_args_buffers[j][i] = py_array.GetBuffer(j);
       }
     }
@@ -193,8 +191,10 @@ xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
     //
     // TODO(chky): Consider support uncommitted PyArray in cpp when the python
     // side stablizes.
-    if (!py_array.committed()) {
-      VLOG(2) << "PyArray argument is not committed; fallback to python.";
+    auto* cpp_sharding = py_array.sharding().cast<jax::Sharding*>();
+    if (!py_array.committed() && cpp_sharding->num_devices() > 1) {
+      VLOG(2) << "PyArray argument is not committed and number of global "
+                 "devices is more than 1; fallback to python.";
       return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
     }
   }
@@ -342,6 +342,7 @@ xla::Status PjitFunction::UpdateArgsSignature(
     auto py_array = py::reinterpret_borrow<xla::PyArray>(arg);
 
     arguments.signature.dynamic_arg_shardings.push_back(py_array.sharding());
+    arguments.signature.committed_args.push_back(py_array.committed());
   }
 
   arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
