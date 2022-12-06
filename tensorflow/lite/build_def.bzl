@@ -56,6 +56,9 @@ def tflite_copts():
     }) + select({
         clean_dep("//tensorflow/lite:tensorflow_profiler_config"): ["-DTF_LITE_TENSORFLOW_PROFILER"],
         "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow/lite/delegates:tflite_debug_delegate"): ["-DTFLITE_DEBUG_DELEGATE"],
+        "//conditions:default": [],
     })
 
     return copts + tflite_copts_extra()

@@ -42,6 +42,16 @@ TFLite delegate.
     Unique tokens ensure that the delegate doesn't read inapplicable/invalid
     data. Note that delegate_serialize_dir is also required to enable this
     feature.
+*   `first_delegate_node_index`: `int` (default=0) \
+    The index of the first node that could be delegated. Debug only. Add
+    '--define=tflite_debug_delegate=true' in your build command line to use it.
+    \
+    Currently only supported by CoreML delegate.
+*   `last_delegate_node_index`: `int` (default=INT_MAX) \
+    The index of the last node that could be delegated. Debug only. Add
+    '--define=tflite_debug_delegate=true' in your build command line to use it.
+    \
+    Currently only supported by CoreML delegate.
 
 ### GPU delegate provider
 
