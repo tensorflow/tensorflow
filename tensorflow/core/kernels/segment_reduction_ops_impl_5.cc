@@ -113,6 +113,7 @@ TF_CALL_FLOAT_TYPES(REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
       SparseSegmentReductionSumWithNumSegmentsOp<GPUDevice, type, index_type, \
                                                  segment_ids_type>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
+TF_CALL_bfloat16(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 #undef REGISTER_GPU_SPARSE_KERNELS
 
 #define REGISTER_GPU_SPARSE_KERNELS(type, index_type, segment_ids_type)        \
@@ -134,6 +135,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
       SparseSegmentReductionMeanWithNumSegmentsOp<GPUDevice, type, index_type, \
                                                   segment_ids_type>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
+TF_CALL_bfloat16(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 #undef REGISTER_GPU_SPARSE_KERNELS
 
 #define REGISTER_GPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
@@ -155,6 +157,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
       SparseSegmentReductionSqrtNWithNumSegmentsOp<                     \
           GPUDevice, type, index_type, segment_ids_type>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
+TF_CALL_bfloat16(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 #undef REGISTER_GPU_SPARSE_KERNELS
 
 #endif  // GOOGLE_CUDA
@@ -208,6 +211,7 @@ TF_CALL_FLOAT_TYPES(REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
           .TypeConstraint<segment_ids_type>("Tsegmentids"),             \
       SparseSegmentSumGradOp<GPUDevice, type, index_type, segment_ids_type>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
+TF_CALL_bfloat16(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 #undef REGISTER_GPU_SPARSE_KERNELS
 
 #define REGISTER_GPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
@@ -220,6 +224,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
           .TypeConstraint<segment_ids_type>("Tsegmentids"),             \
       SparseSegmentMeanGradOp<GPUDevice, type, index_type, segment_ids_type>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
+TF_CALL_bfloat16(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 #undef REGISTER_GPU_SPARSE_KERNELS
 
 #define REGISTER_GPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
@@ -233,6 +238,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
       SparseSegmentSqrtNGradOp<GPUDevice, type, index_type,             \
                                segment_ids_type>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
+TF_CALL_bfloat16(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 #undef REGISTER_GPU_SPARSE_KERNELS
 
 #undef REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE

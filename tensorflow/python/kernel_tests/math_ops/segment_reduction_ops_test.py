@@ -40,6 +40,10 @@ class SegmentReductionHelper(test.TestCase):
       num_elem *= x
     values = np.arange(1, num_elem + 1)
     np_values = values.reshape(input_shape).astype(dtype.as_numpy_dtype)
+    if dtype == dtypes_lib.bfloat16:
+      # Large numbers from arange lead to high absolute diff with bfloat16, so
+      # scale down.
+      np_values *= np.array(0.001, dtype=dtype.as_numpy_dtype)
     # Add a non-zero imaginary component to complex types.
     if dtype.is_complex:
       np_values -= 1j * np_values
@@ -86,7 +90,8 @@ class SegmentReductionOpTest(SegmentReductionHelper, parameterized.TestCase):
 
   @parameterized.parameters((dtypes_lib.float32), (dtypes_lib.float64),
                             (dtypes_lib.int64), (dtypes_lib.int32),
-                            (dtypes_lib.complex64), (dtypes_lib.complex128))
+                            (dtypes_lib.complex64), (dtypes_lib.complex128),
+                            (dtypes_lib.bfloat16))
   def testValues(self, dtype):
     # Each item is np_op1, np_op2, tf_op
     ops_list = [(np.add, None, math_ops.segment_sum),
@@ -119,7 +124,8 @@ class SegmentReductionOpTest(SegmentReductionHelper, parameterized.TestCase):
                 indices, np_x, np_op1, np_op2, initial_value=initial_value)
             s = tf_op(data=tf_x, segment_ids=indices)
             tf_ans = self.evaluate(s)
-            self.assertAllClose(np_ans, tf_ans)
+            tol = 1e-6 if dtype != dtypes_lib.bfloat16 else 1e-2
+            self.assertAllClose(np_ans, tf_ans, rtol=tol, atol=tol)
             # NOTE(mrry): The static shape inference that computes
             # `tf_ans.shape` can only infer that sizes from dimension 1
             # onwards, because the size of dimension 0 is data-dependent
@@ -330,10 +336,6 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
               # sqrt_n doesn't support integers
               if (np_op2 == self._sqrt_n_reduce_op and dtype.is_integer):
                 continue
-              # todo(philjd): enable this test once real_div supports bfloat16
-              if (np_op2 in [self._sqrt_n_reduce_op, self._mean_reduce_op] and
-                  dtype == dtypes_lib.bfloat16):
-                continue
               np_ans = self._segmentReduce(
                   indices,
                   np_x,
@@ -343,9 +345,8 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
                   initial_value=init_op(dtype))
               s = tf_op(tf_x, segment_ids=indices, num_segments=num_segments)
               tf_ans = self.evaluate(s)
-              if dtype is dtypes_lib.bfloat16:
-                tf_ans = tf_ans.astype(np.float32)
-              self.assertAllCloseAccordingToType(np_ans, tf_ans)
+              self.assertAllCloseAccordingToType(np_ans, tf_ans,
+                  bfloat16_rtol=1e-1, bfloat16_atol=1e-1)
               self.assertShapeEqual(np_ans, s)
 
   def testNumSegmentsTypes(self):
@@ -394,7 +395,7 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
                                                  half_atol=1e-2)
 
   @parameterized.parameters((dtypes_lib.float16), (dtypes_lib.float32),
-                            (dtypes_lib.float64))
+                            (dtypes_lib.float64), (dtypes_lib.bfloat16))
   @test_util.run_in_graph_and_eager_modes
   def testGradientsGradientTape(self, dtype):
     num_cols = 2
@@ -418,7 +419,8 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
                 gradient_checker_v2.compute_gradient(f, [np_x], delta=1.))
             # pylint: enable=cell-var-from-loop
             self.assertAllCloseAccordingToType(
-                jacob_n, gradient_tape_jacob_t, half_atol=1e-2)
+                jacob_n, gradient_tape_jacob_t, half_atol=1e-2,
+                bfloat16_rtol=5e-1, bfloat16_atol=5e-1)
 
   @test_util.run_deprecated_v1
   def testProdGrad(self):
@@ -583,7 +585,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
   def testValues(self):
     dtypes = [
         dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int64,
-        dtypes_lib.int32
+        dtypes_lib.int32, dtypes_lib.bfloat16
     ]
 
     index_dtypes = [dtypes_lib.int32, dtypes_lib.int64]
@@ -624,7 +626,8 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
                     segment_ids=math_ops.cast(segment_indices,
                                               segment_ids_dtype))
                 tf_ans = self.evaluate(s)
-                self.assertAllClose(np_ans, tf_ans)
+                tol = 1e-6 if dtype != dtypes_lib.bfloat16 else 1e-1
+                self.assertAllClose(np_ans, tf_ans, rtol=tol, atol=tol)
                 # NOTE(mrry): The static shape inference that computes
                 # `tf_ans.shape` can only infer that sizes from dimension 1
                 # onwards, because the size of dimension 0 is data-dependent
