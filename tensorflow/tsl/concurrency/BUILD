@@ -78,7 +78,6 @@ tsl_cc_test(
 
 cc_library(
     name = "ref_count",
-    srcs = ["ref_count.cc"],
     hdrs = ["ref_count.h"],
     compatible_with = get_compatible_with_portable(),
 )

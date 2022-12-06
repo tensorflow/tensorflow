@@ -25,7 +25,7 @@ limitations under the License.
 namespace tsl {
 
 #ifndef NDEBUG
-extern std::atomic<size_t> total_reference_counted_objects;
+inline std::atomic<size_t> total_reference_counted_objects;
 
 // Return the total number of reference-counted objects that are currently
 // live in the process.  This is intended for debugging/assertions only, and
