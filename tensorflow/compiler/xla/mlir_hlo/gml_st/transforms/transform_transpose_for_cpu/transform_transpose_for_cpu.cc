@@ -19,6 +19,7 @@ limitations under the License.
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/passes.h"
+#include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -58,6 +59,17 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
     if (tilingResult->loop != nullptr) {
       rewriter.replaceOp(op, tilingResult->loop->getResults());
     }
+
+    // Peel parallel loops.
+    if (auto loop = dyn_cast_or_null<ParallelOp>(tilingResult->loop)) {
+      auto peelingResult = peelAllLoops(loop, rewriter);
+      for (auto *remParLoop : peelingResult) {
+        remParLoop->walk([&](linalg::TransposeOp op) {
+          setLabel(op.getOperation(), kTransposeTransformedLabel);
+        });
+      }
+    }
+
     setLabel(tilingResult->tiledOp, kTransposeTransformedLabel);
     return success();
   }
