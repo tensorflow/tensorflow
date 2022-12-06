@@ -25,11 +25,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 
@@ -475,7 +475,8 @@ class IrEmitterUnnested : public IrEmitter {
   // reduce op.
   StatusOr<ReductionCodegenInfo> ComputeReductionCodegenInfo(
       mlir::lmhlo::FusionOp fusion, HloComputation* fused_computation,
-      HloInstruction* first_reduce);
+      HloInstruction* first_reduce,
+      const std::vector<std::vector<HloInstruction*>>& instr_index_groups);
 
   // Generates code for input-fusible slices.
   //
@@ -611,6 +612,16 @@ class IrEmitterUnnested : public IrEmitter {
       const IrEmitterUnnested::ReductionOutputMap& output_arrays,
       const HloReduceInstruction* reduction, int output_idx);
 
+  // Performs the actual write of the reduction result.
+  using TypedPointer = std::pair<llvm::Value* const, llvm::Type* const>;
+  void WriteReductionOutput(
+      llvm::Type* index_ty,
+      const ReductionCodegenState& reduction_codegen_state,
+      const TilingKernelInfo& tiling_kernel_info,
+      const ReductionOutputMap& output_arrays,
+      const HloReduceInstruction* reduction, int partial_result_idx,
+      const absl::Span<TypedPointer const> values);
+
   // `current_output`: the value the tile has calculated.
   // `output_address`: address where the output value has to be written.
   void EmitReductionOutputForRowReduction(
@@ -651,8 +662,7 @@ class IrEmitterUnnested : public IrEmitter {
   // reduction: each one should get the output value.
   void EmitFullWarpShuffleDownLoopForReduce(
       const HloComputation* reducer,
-      absl::Span<std::pair<llvm::Value* const, llvm::Type* const>>
-          partial_result_addresses,
+      absl::Span<TypedPointer const> partial_result_addresses,
       int threads_per_block, int num_results_per_warp = 1);
 
   // Allocates a shared tile of given dimensions, applying scaling specified in
@@ -680,11 +690,10 @@ class IrEmitterUnnested : public IrEmitter {
 
   StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunk(
       mlir::Operation* op, mlir::ValueRange operands,
-      Thunk::ThunkInfo thunk_info, const LaunchDimensions& launch_dimensions);
+      const LaunchDimensions& launch_dimensions);
 
   StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunk(
-      mlir::Operation* op, Thunk::ThunkInfo thunk_info,
-      const LaunchDimensions& launch_dimensions);
+      mlir::Operation* op, const LaunchDimensions& launch_dimensions);
 
   // Returns a thunk that, given a reduce or select-and-scatter op,
   // initializes its memory to the appropriate initial value.

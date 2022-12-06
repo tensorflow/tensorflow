@@ -97,5 +97,18 @@ int ReduceInBfloat16MaxGroupSize() {
   return 8;
 }
 
+bool LowerCollectiveGatherToCollectiveGatherV2() {
+  // We lower DTensorGather to CollectiveReduceV2 ops instead of
+  // CollectiveGatherV2, since we do not observe a performance gain with Gather
+  // lowering and ReduceV2 is agnostic of the rank order.
+  //
+  // If LOWER_DTENSOR_GATHER_TO_COLLECTIVE_GATHER_V2 environment variable is set
+  // to '1', it is reduced to collective
+  char* use_collective_gather =
+      std::getenv("LOWER_DTENSOR_GATHER_TO_COLLECTIVE_GATHER_V2");
+  if (use_collective_gather == nullptr) return false;
+  return true;
+}
+
 }  // namespace dtensor
 }  // namespace tensorflow

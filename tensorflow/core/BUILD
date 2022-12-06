@@ -69,6 +69,7 @@ load(
     "if_ios",
     "if_libtpu",
     "if_mobile",
+    "if_nccl",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -79,7 +80,7 @@ load(
     "tf_opts_nortti_if_lite_protos",
     "transitive_hdrs",
 )
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "if_nccl", "tensorflow_opensource_extra_deps", "tf_monitoring_framework_deps", "tf_selective_registration_deps")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "tensorflow_opensource_extra_deps", "tf_monitoring_framework_deps", "tf_selective_registration_deps")
 
 # For platform specific build config
 load(
@@ -88,7 +89,6 @@ load(
     "tf_additional_test_deps",
     "tf_dtensor_tpu_dependencies",
     "tf_jspb_proto_library",
-    "tf_kernel_tests_linkstatic",
     "tf_lib_proto_parsing_deps",
     "tf_portable_deps_no_runtime",
     "tf_portable_proto_lib",
@@ -113,6 +113,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":dependency_whitelist",
         "//tensorflow:internal",
@@ -170,8 +171,10 @@ tf_proto_library(
         "//tensorflow/core/protobuf:error_codes_proto_impl",
         "//tensorflow/core/protobuf:for_core_protos",
         "//tensorflow/core/util:protos_all",
-        "//tensorflow/core/util:test_log_proto_impl",
+        "//tensorflow/core/util:test_log_proto",
         "//tensorflow/core/grappler/costs:op_performance_data",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto",
         "//tensorflow/tsl/protobuf:coordination_config_proto",
         "//tensorflow/tsl/protobuf:distributed_runtime_payloads_proto",
     ],
@@ -1260,7 +1263,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
-        "//tensorflow/tsl/platform/default/build_config:platformlib",
+        "//tensorflow/core/platform/default/build_config:platformlib",
     ] + if_static([":lib_internal_impl"]),
 )
 
@@ -1286,7 +1289,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
-        "//tensorflow/tsl/platform/default/build_config:platformlib",
+        "//tensorflow/core/platform/default/build_config:platformlib",
     ],
 )
 
@@ -1441,7 +1444,7 @@ cc_library(
         "//tensorflow/core/platform:tracing",
         "//tensorflow/core/platform:tstring",
         "//tensorflow/core/platform:unbounded_work_queue",
-        "//tensorflow/tsl/platform/default/build_config:platformlib",
+        "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/util:env_var",
         "//tensorflow/core/util:reporter",  # TODO(gunan): REMOVE as soon as cc_shared_library is supported.
         "@snappy",
@@ -1454,15 +1457,19 @@ cc_library(
     }) +
     # The TF proto implementations that we will statically link here.
     [
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc_impl",
-        "//tensorflow/core/profiler:profiler_options_proto_cc_impl",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl",
         "//tensorflow/core/protobuf:autotuning_proto_cc_impl",
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl",
         "//tensorflow/core:protos_all_cc_impl",
+        "//tensorflow/tsl/protobuf:autotuning_proto_cc_impl",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc_impl",
         "//tensorflow/tsl/protobuf:protos_all_cc_impl",
+        "//tensorflow/compiler/xla:xla_proto_cc_impl",
         "//tensorflow/compiler/xla:xla_data_proto_cc_impl",
         "//tensorflow/compiler/xla/service:hlo_proto_cc_impl",
+        "//tensorflow/compiler/xla/service/gpu:backend_configs_cc_impl",
     ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps(),
     # Alwayslink causes a cc_binary to "always link" in the
     # srcs for a given cc_library, even if they are unreferenced, see:
@@ -1612,7 +1619,7 @@ cc_header_only_library(
         ":lib",
         ":lib_internal",
         "//tensorflow/core/framework:bounds_check",
-        "//tensorflow/tsl/platform/default/build_config:platformlib",
+        "//tensorflow/core/platform/default/build_config:platformlib",
     ],
 )
 
@@ -1671,7 +1678,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform:fingerprint",
-        "//tensorflow/tsl/platform/default/build_config:platformlib",
+        "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/tsl/platform:stringpiece",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/core/profiler/lib:annotated_traceme",
@@ -1687,6 +1694,7 @@ tf_cuda_library(
         "//tensorflow/compiler/jit:common",
         "//tensorflow/tsl/framework:cancellation",
         "//tensorflow/tsl/util:command_line_flags",
+        "//tensorflow/tsl/util:device_name_utils",
         "@com_google_absl//absl/container:btree",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
@@ -1777,6 +1785,7 @@ tf_cuda_library(
         ":function_ops_op_lib",
         ":functional_grad",
         ":functional_ops_op_lib",
+        "//tensorflow/core/common_runtime:stats_publisher_interface",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/kernels:required",
     ]),
@@ -1921,61 +1930,6 @@ tf_cc_test(
         ":test",
         ":test_main",
         "@com_google_absl//absl/memory",
-    ],
-)
-
-tf_cc_tests(
-    name = "core_higher_level_tests",
-    size = "small",
-    srcs = [
-        "//tensorflow/core/example:feature_util_test.cc",
-        "//tensorflow/core/graph:algorithm_test.cc",
-        "//tensorflow/core/graph:control_flow_test.cc",
-        "//tensorflow/core/graph:costmodel_test.cc",
-        "//tensorflow/core/graph:edgeset_test.cc",
-        "//tensorflow/core/graph:graph_def_builder_test.cc",
-        "//tensorflow/core/graph:graph_partition_test.cc",
-        "//tensorflow/core/graph:graph_test.cc",
-        "//tensorflow/core/graph:node_builder_test.cc",
-        "//tensorflow/core/graph:optimizer_cse_test.cc",
-        "//tensorflow/core/graph:subgraph_test.cc",
-        "//tensorflow/core/graph:tensor_id_test.cc",
-        "//tensorflow/core/graph:validate_test.cc",
-        "//tensorflow/core/util/sparse:higher_level_tests_group",
-    ],
-    linkopts = select({
-        "//tensorflow:macos": ["-headerpad_max_install_names"],
-        "//conditions:default": [],
-    }),
-    linkstatic = tf_kernel_tests_linkstatic(),
-    deps = [
-        ":core",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session_internal",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":ops",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/cc:function_ops",
-        "//tensorflow/cc:ops",
-        "//tensorflow/cc:scope",
-        "//tensorflow/cc:sendrecv_ops",
-        "//tensorflow/cc:while_loop",
-        "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/platform:regexp",
-        "//tensorflow/core/util:protos_test_cc",
-        "//third_party/eigen3",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -1,0 +1,44 @@
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+set(LLVM_TARGET_DEFINITIONS thlo_ops.td)
+mlir_tablegen(thlo_ops.h.inc -gen-op-decls)
+mlir_tablegen(thlo_ops.cc.inc -gen-op-defs)
+mlir_tablegen(thlo_dialect.h.inc -gen-dialect-decls)
+mlir_tablegen(thlo_dialect.cc.inc -gen-dialect-defs)
+
+add_public_tablegen_target(MLIRthlo_opsIncGen)
+add_dependencies(mlir-headers MLIRthlo_opsIncGen)
+
+
+include_directories(BEFORE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_mlir_dialect_library(THLODialect
+  thlo_ops.cc
+
+  DEPENDS
+  MLIRthlo_opsIncGen
+  MLIRGmlStTilingInterfaceIncGen
+
+  LINK_LIBS PUBLIC
+  GmlStDialect
+  MLIRDestinationStyleOpInterface
+  MLIRIR
+  MLIRMemRefDialect
+  MLIRSideEffectInterfaces
+  MLIRSupport
+  MLIRTensorDialect
+)

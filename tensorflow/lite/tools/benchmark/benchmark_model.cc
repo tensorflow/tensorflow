@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 
+#ifdef __linux__
 #include <unistd.h>
+#endif  // __linux__
 
 #include <iostream>
 #include <memory>

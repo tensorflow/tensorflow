@@ -119,6 +119,8 @@ struct CallSignature {
   // Static keyword argument names. Interned, and sorted by keyword name.
   std::vector<pybind11::object> static_arg_names;
 
+  absl::InlinedVector<bool, 2> committed_args;
+
   // For JIT, we need this in the key because computation follows the data, so
   // we may have multiple executables depending on the devices the data is on.
   // This is not the case for PMAP, and is set to `nullptr`.
@@ -156,6 +158,8 @@ H AbslHashValue(H h, const CallSignature& s) {
   for (const auto& name : s.dynamic_arg_names) {
     h = H::combine(std::move(h), name.ptr());
   }
+
+  h = H::combine(std::move(h), s.committed_args);
 
   h = H::combine(std::move(h), s.dynamic_arg_names.size());
   for (const auto& static_arg : s.static_args) {

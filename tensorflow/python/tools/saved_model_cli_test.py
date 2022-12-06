@@ -61,12 +61,17 @@ class SavedModelCLITestCase(test.TestCase, parameterized.TestCase):
     if platform.system() == 'Windows':
       self.skipTest('Skipping failing tests on Windows.')
 
-  def testShowCommandAll(self):
+  @test.mock.patch.object(saved_model_cli, '_get_ops_in_metagraph')
+  def testShowCommandAll(self, get_ops_mock):
+    # Mocking _get_ops_in_metagraph because it returns a nondeterministically
+    # ordered set of ops.
+    get_ops_mock.return_value = {'Op1', 'Op2', 'Op3'}
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     self.parser = saved_model_cli.create_parser()
     args = self.parser.parse_args(['show', '--dir', base_path, '--all'])
     with captured_output() as (out, err):
       saved_model_cli.show(args)
+    get_ops_mock.assert_called_once()
     output = out.getvalue().strip()
     # pylint: disable=line-too-long
     exp_out = """MetaGraphDef with tag-set: 'serve' contains the following SignatureDefs:
@@ -147,13 +152,18 @@ signature_def['serving_default']:
         dtype: DT_FLOAT
         shape: (-1, 1)
         name: y:0
-  Method name is: tensorflow/serving/predict"""
+  Method name is: tensorflow/serving/predict
+The MetaGraph with tag set ['serve'] contains the following ops:"""
     # pylint: enable=line-too-long
     self.maxDiff = None  # Produce a useful error msg if the comparison fails
-    self.assertMultiLineEqual(output, exp_out)
+    self.assertIn(exp_out, output)
+    self.assertIn('Op1', output)
+    self.assertIn('Op2', output)
+    self.assertIn('Op3', output)
     self.assertEqual(err.getvalue().strip(), '')
 
-  def testShowAllWithFunctions(self):
+  @test.mock.patch.object(saved_model_cli, '_get_ops_in_metagraph')
+  def testShowAllWithFunctions(self, get_ops_mock):
 
     class DummyModel(autotrackable.AutoTrackable):
       """Model with callable polymorphic functions specified."""
@@ -175,6 +185,9 @@ signature_def['serving_default']:
       def __call__(self, y, c=7):
         return y + 2 * c
 
+    # Mocking _get_ops_in_metagraph because it returns a nondeterministically
+    # ordered set of ops.
+    get_ops_mock.return_value = {'Op1'}
     saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
     dummy_model = DummyModel()
     # Call with specific values to create new polymorphic function traces.
@@ -210,6 +223,7 @@ signature_def['serving_default']:
         shape: (2, 2)
         name: PartitionedCall:0
   Method name is: tensorflow/serving/predict
+The MetaGraph with tag set ['serve'] contains the following ops: {'Op1'}
 
 Concrete Functions:
   Function Name: '__call__'
@@ -242,7 +256,8 @@ Concrete Functions:
     self.assertMultiLineEqual(output, exp_out)
     self.assertEqual(err.getvalue().strip(), '')
 
-  def testShowAllWithPureConcreteFunction(self):
+  @test.mock.patch.object(saved_model_cli, '_get_ops_in_metagraph')
+  def testShowAllWithPureConcreteFunction(self, get_ops_mock):
 
     class DummyModel(autotrackable.AutoTrackable):
       """Model with a callable concrete function."""
@@ -260,6 +275,9 @@ Concrete Functions:
       def multiply(self, a, b):
         return a * b
 
+    # Mocking _get_ops_in_metagraph because it returns a nondeterministically
+    # ordered set of ops.
+    get_ops_mock.return_value = {'Op1'}
     saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
     dummy_model = DummyModel()
     with self.cached_session():
@@ -296,6 +314,7 @@ signature_def['serving_default']:
         shape: ()
         name: PartitionedCall:0
   Method name is: tensorflow/serving/predict
+The MetaGraph with tag set ['serve'] contains the following ops: {'Op1'}
 
 Concrete Functions:
   Function Name: 'pure_concrete_function'
@@ -369,6 +388,49 @@ Concrete Functions:
         '      dtype: DT_FLOAT\n      shape: (-1, 1)\n      name: y:0\n'
         'Method name is: tensorflow/serving/predict')
     self.assertEqual(output, expected_output)
+    self.assertEqual(err.getvalue().strip(), '')
+
+  def testShowCommandListOps(self):
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    self.parser = saved_model_cli.create_parser()
+    args = self.parser.parse_args(
+        ['show', '--dir', base_path, '--tag_set', 'serve', '--list_ops'])
+    with captured_output() as (out, err):
+      saved_model_cli.show(args)
+    output = out.getvalue().strip()
+    self.assertIn(
+        'The MetaGraph with tag set [\'serve\'] contains the following ops:',
+        output)
+    self.assertIn('\'VariableV2\'', output)
+    self.assertIn('\'Add\'', output)
+    self.assertIn('\'RestoreV2\'', output)
+    self.assertIn('\'ShardedFilename\'', output)
+    self.assertIn('\'Placeholder\'', output)
+    self.assertIn('\'Mul\'', output)
+    self.assertIn('\'Pack\'', output)
+    self.assertIn('\'Reshape\'', output)
+    self.assertIn('\'SaveV2\'', output)
+    self.assertIn('\'Const\'', output)
+    self.assertIn('\'Identity\'', output)
+    self.assertIn('\'Assign\'', output)
+    self.assertIn('\'ParseExample\'', output)
+    self.assertIn('\'StringJoin\'', output)
+    self.assertIn('\'MergeV2Checkpoints\'', output)
+    self.assertIn('\'NoOp\'', output)
+    self.assertEqual(err.getvalue().strip(), '')
+
+  def testShowCommandListOpsNoTags(self):
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    self.parser = saved_model_cli.create_parser()
+    args = self.parser.parse_args(['show', '--dir', base_path, '--list_ops'])
+    with captured_output() as (out, err):
+      saved_model_cli.show(args)
+    output = out.getvalue().strip()
+    exp_out = ('--list_ops must be paired with a tag-set or with --all.\n'
+               'The given SavedModel contains the following tag-sets:\n'
+               '\'serve\'').strip()
+    self.maxDiff = None  # Produce a useful error msg if the comparison fails
+    self.assertMultiLineEqual(output, exp_out)
     self.assertEqual(err.getvalue().strip(), '')
 
   def testPrintREFTypeTensor(self):

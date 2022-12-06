@@ -32,10 +32,11 @@ limitations under the License.
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
@@ -130,9 +131,9 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
       if (zero_point < std::numeric_limits<uint8_t>::min() ||
           zero_point > std::numeric_limits<uint8_t>::max()) {
         TF_LITE_KERNEL_LOG(context,
-                           "unsupported zero-point value (%f) for UINT8 tensor "
+                           "unsupported zero-point value (%d) for UINT8 tensor "
                            "%d in XNNPACK delegate",
-                           scale, t);
+                           zero_point, t);
         return xnn_datatype_invalid;
       }
 
@@ -191,7 +192,7 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
         if (zero_point < std::numeric_limits<int8_t>::min() ||
             zero_point > std::numeric_limits<int8_t>::max()) {
           TF_LITE_KERNEL_LOG(context,
-                             "unsupported zero-point value (%f) for INT8 "
+                             "unsupported zero-point value (%d) for INT8 "
                              "tensor %d in XNNPACK delegate",
                              zero_point, t);
           return xnn_datatype_invalid;
@@ -463,12 +464,31 @@ class Delegate {
 
  public:
   explicit Delegate(const TfLiteXNNPackDelegateOptions* options,
-                    xnn_workspace_t workspace) {
+                    xnn_workspace_t workspace,
+                    TfLiteContext* context = nullptr) {
 #if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
-    if (options != nullptr && options->num_threads > 1) {
-      threadpool_.reset(
-          pthreadpool_create(static_cast<size_t>(options->num_threads)));
+    pthreadpool_t threadpool = nullptr;
+    if (context != nullptr) {
+      threadpool =
+          CpuBackendContext::GetFromContext(context)->get_xnnpack_threadpool();
     }
+    if (threadpool != nullptr) {
+      // Note that by passing a valid threadpool via context, your xnnpack
+      // threadpool will have the same number of threads as
+      // CpuBackendContext::max_num_threads_. If this is not desired behavior,
+      // pass a null threadpool, and then set num_threads through
+      // TfLiteXNNPackDelegateOptions.
+      threadpool_.reset(threadpool);
+      own_threadpool_ = false;
+    } else {
+      own_threadpool_ = true;
+      if (options != nullptr && options->num_threads > 1) {
+        threadpool_.reset(
+            pthreadpool_create(static_cast<size_t>(options->num_threads)));
+        threadpool = threadpool_.get();
+      }
+    }
+
 #endif
     TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                          "Created TensorFlow Lite XNNPACK delegate for CPU.");
@@ -546,6 +566,14 @@ class Delegate {
     return variable_holder_.GetAllTensors();
   }
 
+  void maybe_release_threadpool_ownership() {
+#if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
+    if (!own_threadpool_) {
+      threadpool_.release();
+    }
+#endif
+  }
+
  private:
   TfLiteDelegate delegate_ = {
       reinterpret_cast<void*>(this),  // .data_
@@ -573,6 +601,8 @@ class Delegate {
   // Thread pool with smart-pointer for lifetime management.
   std::unique_ptr<pthreadpool, decltype(&pthreadpool_destroy)> threadpool_{
       nullptr, &pthreadpool_destroy};
+  // Boolean that indicates if threadpool_ was created by xnnpack_delegate.
+  bool own_threadpool_;
 #endif
   std::unique_ptr<xnn_workspace, decltype(&xnn_release_workspace)> workspace_{
       nullptr, &xnn_release_workspace};
@@ -767,7 +797,8 @@ class Subgraph {
     }
 
     // XNNPACK Value IDs for TFLite tensors
-    std::vector<uint32_t> xnnpack_tensors(tensors.back() + 1);
+    std::vector<uint32_t> xnnpack_tensors(tensors.empty() ? 0
+                                                          : tensors.back() + 1);
     for (int t : tensors) {
       if (context->tensors[t].type == kTfLiteResource) {
         // We should never see a resource tensor if we are not handling variable
@@ -5986,6 +6017,11 @@ TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
 
 TfLiteDelegate* TfLiteXNNPackDelegateCreate(
     const TfLiteXNNPackDelegateOptions* options) {
+  return TfLiteXNNPackDelegateCreateWithThreadpool(options, nullptr);
+}
+
+TfLiteDelegate* TfLiteXNNPackDelegateCreateWithThreadpool(
+    const TfLiteXNNPackDelegateOptions* options, TfLiteContext* context) {
   xnn_status status = xnn_initialize(/*allocator=*/nullptr);
   if (status != xnn_status_success) {
     return nullptr;
@@ -5996,7 +6032,8 @@ TfLiteDelegate* TfLiteXNNPackDelegateCreate(
     return nullptr;
   }
 
-  auto* xnnpack_delegate = new ::tflite::xnnpack::Delegate(options, workspace);
+  auto* xnnpack_delegate =
+      new ::tflite::xnnpack::Delegate(options, workspace, context);
   return xnnpack_delegate ? xnnpack_delegate->tflite_delegate() : nullptr;
 }
 
@@ -6011,6 +6048,9 @@ void* TfLiteXNNPackDelegateGetThreadPool(TfLiteDelegate* delegate) {
 
 void TfLiteXNNPackDelegateDelete(TfLiteDelegate* delegate) {
   if (delegate != nullptr) {
-    delete static_cast<::tflite::xnnpack::Delegate*>(delegate->data_);
+    ::tflite::xnnpack::Delegate* data =
+        static_cast<::tflite::xnnpack::Delegate*>(delegate->data_);
+    data->maybe_release_threadpool_ownership();
+    delete data;
   }
 }

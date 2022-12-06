@@ -1,5 +1,7 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 cc_library(
     name = "pjrt_c_api_hdrs",
     hdrs = ["pjrt_c_api.h"],
@@ -51,5 +53,6 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_future",
     ],
 )

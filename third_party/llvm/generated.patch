@@ -1,0 +1,11 @@
+Auto generated patch. Do not edit or delete it, even if empty.
+--- a/mlir/lib/ExecutionEngine/SparseTensorRuntime.cpp
++++ b/mlir/lib/ExecutionEngine/SparseTensorRuntime.cpp
+@@ -648,6 +648,7 @@
+   ASSERT_USIZE_EQ(lvlTypesRef, lvlRank);
+   ASSERT_USIZE_EQ(lvl2dimRef, lvlRank);
+   ASSERT_USIZE_EQ(dim2lvlRef, dimRank);
++  (void)dimRank;
+   const index_type *lvlSizes = MEMREF_GET_PAYLOAD(lvlSizesRef);
+   const DimLevelType *lvlTypes = MEMREF_GET_PAYLOAD(lvlTypesRef);
+   const index_type *lvl2dim = MEMREF_GET_PAYLOAD(lvl2dimRef);

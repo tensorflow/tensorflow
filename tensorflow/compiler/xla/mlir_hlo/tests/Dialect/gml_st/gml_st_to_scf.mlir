@@ -236,3 +236,30 @@ func.func @loop_col_reduction(%A: memref<10x8xf32>,
 // CHECK-SAME:      : memref<10x8xf32> to memref<2x4xf32, #map{{[0-9]*}}>
 // CHECK-NEXT:    memref.subview %arg{{[0-9]+}}[%[[I]]] [2] [1]
 // CHECK-SAME:      : memref<10xf32> to memref<2xf32, #map{{[0-9]*}}>
+
+// -----
+
+func.func @for_with_result(%arg: vector<4xf32>) -> vector<4xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c10 = arith.constant 10 : index
+
+  %result = gml_st.for (%i) = (%c0) to (%c10) step (%c1)
+      outs (%out = %arg: vector<4xf32>) {
+    %sum = arith.addf %out, %out : vector<4xf32>
+    %tile = gml_st.tile [0] [4] [1] : !gml_st.tile<4>
+    gml_st.set_yield %sum into %out[%tile]
+        : vector<4xf32> into vector<4xf32>[!gml_st.tile<4>]
+  } : vector<4xf32>
+
+  func.return %result : vector<4xf32>
+}
+
+// CHECK-LABEL: @for_with_result(
+// CHECK-SAME:      %[[ARG:.*]]: vector<4xf32>)
+
+// CHECK:      %[[RESULT:.*]] = scf.for
+// CHECK-SAME:     iter_args(%[[OUT:.*]] = %[[ARG]])
+// CHECK-NEXT:   %[[SUM:.*]] = arith.addf %[[OUT]], %[[OUT]]
+// CHECK-NEXT:   scf.yield %[[SUM]]
+// CHECK:      return %[[RESULT]] : vector<4xf32>

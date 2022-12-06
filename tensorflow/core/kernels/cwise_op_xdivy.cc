@@ -25,6 +25,7 @@ REGISTER5(BinaryOp, CPU, "Xdivy", functor::xdivy, float, Eigen::half, double,
 REGISTER5(BinaryOp, GPU, "Xdivy", functor::xdivy, float, Eigen::half, double,
           complex64, complex128);
 #endif
+REGISTER(BinaryOp, GPU, "Xdivy", functor::xdivy, bfloat16);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

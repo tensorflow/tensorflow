@@ -25,8 +25,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/STLExtras.h"
-#include "tensorflow/compiler/xla/mlir/utils/runtime/constraints.h"
+#include "tensorflow/compiler/xla/mlir/runtime/utils/constraints.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
+#include "tfrt/concurrency/async_value.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
@@ -38,8 +39,8 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
-using tfrt::MakeAvailableAsyncValueRef;
-using tfrt::MakeErrorAsyncValueRef;
+using tsl::MakeAvailableAsyncValueRef;
+using tsl::MakeErrorAsyncValueRef;
 
 using Specialization = JitExecutable::Specialization;
 
@@ -110,14 +111,14 @@ static bool HasStaticShapeOperands(const FunctionType& signature) {
 
   for (unsigned ordinal = 0; ordinal < (*compiler)->num_exported(); ordinal++) {
     auto fn = (*compiler)->exported(ordinal);
-
     // Get resolved operands constraints for the exported function.
     auto constraints = GetArgumentsConstraints(fn);
     if (!constraints.ok()) return constraints.status();
 
     // Get the exported function signature, it will be later required to
     // compute the specialized function signature from the operands at runtime.
-    auto signature = opts.compiler.type_converter.Convert(fn.getFunctionType());
+    auto signature = opts.compiler.type_converter.Convert(
+        llvm::cast<mlir::FunctionType>(fn.getFunctionType()));
     if (!signature.ok()) return signature.status();
 
     JitExecutable::Function function{fn.getName(), std::move(*signature),

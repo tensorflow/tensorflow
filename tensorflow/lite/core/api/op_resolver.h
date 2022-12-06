@@ -19,8 +19,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 // Opaque type similar to TfLiteDelegate / TfLiteOpaqueDelegate.
@@ -62,7 +62,7 @@ class OpResolver {
   // Represents a function that creates a TfLite delegate instance.
   using TfLiteDelegateCreator =
       std::function<std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>(
-          int /*num_threads*/)>;
+          TfLiteContext* /*context*/)>;
 
   // Represents a sequence of delegate creator functions.
   using TfLiteDelegateCreators = std::vector<TfLiteDelegateCreator>;

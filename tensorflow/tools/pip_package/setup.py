@@ -33,6 +33,7 @@ import fnmatch
 import os
 import re
 import sys
+import platform
 
 from setuptools import Command
 from setuptools import find_packages
@@ -88,6 +89,9 @@ REQUIRED_PACKAGES = [
     'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
+    # TODO(b/239052279): replace with external dependency on JAX repo once JAX
+    # no longer relies on TF.
+    'jax >= 0.3.15',
     'libclang >= 13.0.0',
     'numpy >= 1.20',
     'opt_einsum >= 2.3.2',
@@ -118,14 +122,30 @@ REQUIRED_PACKAGES = [
     # current release version. These also usually have "alpha" or "dev" in their
     # version name.
     # These are all updated during the TF release process.
-    standard_or_nightly('tensorboard >= 2.10, < 2.11',
-                        'tb-nightly ~= 2.11.0.a'),
+    standard_or_nightly('tensorboard >= 2.11, < 2.12',
+                        'tb-nightly ~= 2.12.0.a'),
     standard_or_nightly('tensorflow_estimator >= 2.11.0rc0, < 2.12',
                         'tf-estimator-nightly ~= 2.12.0.dev'),
     standard_or_nightly('keras >= 2.11.0rc1, < 2.12',
                         'keras-nightly ~= 2.12.0.dev'),
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
+
+FAKE_REQUIRED_PACKAGES = [
+    # The depedencies here below are not actually used but are needed for
+    # package managers like poetry to parse as they are confused by the
+    # different architectures having different requirements.
+    # The entries here should be a simple duplicate of those in the collaborator
+    # build section.
+    standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws') + '==' +
+    _VERSION + ';platform_system=="Linux" and (platform_machine=="arm64" or '
+    'platform_machine=="aarch64")',
+    standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
+    _VERSION + ';platform_system=="Windows"',
+]
+
+if platform.system() == 'Linux' and platform.machine() == 'x86_64':
+  REQUIRED_PACKAGES.append(FAKE_REQUIRED_PACKAGES)
 
 if collaborator_build:
   # If this is a collaborator build, then build an "installer" wheel and

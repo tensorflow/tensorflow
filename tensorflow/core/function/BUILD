@@ -5,6 +5,7 @@ load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/core/function:__subpackages__"],
 )
 
@@ -65,6 +66,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/tsl/distributed_runtime:pywrap_required_hdrs",
+        "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
     ],
 )
 
@@ -125,6 +127,7 @@ pytype_strict_library(
         "runtime_client.py",
     ],
     srcs_version = "PY3",
+    visibility = [":__subpackages__"],
     deps = [
         ":runtime_client_pybind",
         "//tensorflow/core/framework:function_proto_py",

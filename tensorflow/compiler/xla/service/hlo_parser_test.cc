@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -24,8 +25,8 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -254,7 +255,7 @@ ENTRY %SelectR1F32WithCmpR1F32sFromParamsSmall.v4 (v1: f32[4], v2: f32[4]) -> f3
   %v1 = f32[4]{0} parameter(0), sharding={maximal device=1}
   %v2 = f32[4]{0} parameter(1), sharding={maximal device=1}
   %greater-than = pred[4]{0} compare(f32[4]{0} %v1, f32[4]{0} %v2), direction=GT, type=TOTALORDER, sharding={replicated}
-  ROOT %select = f32[4]{0} select(pred[4]{0} %greater-than, f32[4]{0} %v1, f32[4]{0} %v2), sharding={}
+  ROOT %select = f32[4]{0} select(pred[4]{0} %greater-than, f32[4]{0} %v1, f32[4]{0} %v2), sharding={replicated}
 }
 
 )"
@@ -370,10 +371,10 @@ R"(HloModule TwoSendRecvBothWayRecvFist_module, entry_computation_layout={()->(f
 
 ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> (f32[], token[]) {
   %token0 = token[] after-all()
-  %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, sharding={maximal device=1}
-  ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, sharding={maximal device=1}
+  %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, sharding={{maximal device=1}, {replicated}, {replicated}}
+  ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, sharding={{maximal device=1}, {replicated}}
   %constant = f32[] constant(2.1), sharding={maximal device=0}
-  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, sharding={maximal device=0}, control-predecessors={%recv}
+  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, sharding={{maximal device=1}, {replicated}, {replicated}}, control-predecessors={%recv}
   %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, sharding={maximal device=0}
 }
 
@@ -960,6 +961,28 @@ ENTRY %fusion.v3 () -> f32[3,2,1,1] {
   %constant = f32[3,2,1,1]{3,2,1,0} constant({ { /*i0=0*/ { /*i1=0*/ {-1} }, { /*i1=1*/ {4.1} } }, { /*i0=1*/ { /*i1=0*/ {2} }, { /*i1=1*/ {4.1} } }, { /*i0=2*/ { /*i1=0*/ {5} }, { /*i1=1*/ {4.4} } } })
   %constant.1 = f32[2]{0} constant({3.14, 4.25})
   ROOT %fusion = f32[3,2,1,1]{3,2,1,0} fusion(f32[3,2,1,1]{3,2,1,0} %constant, f32[2]{0} %constant.1), kind=kLoop, calls=%fused_computation
+}
+
+)"
+},
+// FusionWithAliasing
+{
+"FusionWithAliasing",
+R"(HloModule FusionWithAliasing, entry_computation_layout={((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}),f32[123,4]{0,1})->(f32[123,4]{0,1}, f32[2,2]{0,1}, f32[1,2,3]{0,1,2})}
+
+%FusedComp (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4]) -> (f32[123,4], f32[2,2], f32[1,2,3]) {
+  %p1 = f32[123,4]{0,1} parameter(1)
+  %p0 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
+  %elem1 = f32[2,2]{0,1} get-tuple-element((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) %p0), index=0
+  %constant0 = f32[] constant(1)
+  %broadcast0 = f32[1,2,3]{0,1,2} broadcast(f32[] %constant0), dimensions={}
+  ROOT %tuple = (f32[123,4]{0,1}, f32[2,2]{0,1}, f32[1,2,3]{0,1,2}) tuple(f32[123,4]{0,1} %p1, f32[2,2]{0,1} %elem1, f32[1,2,3]{0,1,2} %broadcast0)
+}
+
+ENTRY %FusionWithAliasing (p0.1: (f32[2,2], f32[42,2,3]), p1.1: f32[123,4]) -> (f32[123,4], f32[2,2], f32[1,2,3]) {
+  %p0.1 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
+  %p1.1 = f32[123,4]{0,1} parameter(1)
+  ROOT %fusion = (f32[123,4]{0,1}, f32[2,2]{0,1}, f32[1,2,3]{0,1,2}) fusion((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) %p0.1, f32[123,4]{0,1} %p1.1), kind=kLoop, output_to_operand_aliasing={{0}: (1, {}), {1}: (0, {0})}, calls=%FusedComp
 }
 
 )"
@@ -2312,6 +2335,34 @@ ENTRY test {
   ROOT root = f32[10,10]{1,0:D(D,C)#(u64)*(u32)S(42)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))} parameter(0)
 })",
 },
+
+{
+"SparseCOO",
+R"(HloModule test
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(C+,S)} parameter(0)
+})",
+R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(C+,S)})->f32[10,10]{1,0:D(C+,S)}}
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(C+,S)} parameter(0)
+})",
+},
+
+{
+"SparseCOOUnordered",
+R"(HloModule test
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(C+~,S~)} parameter(0)
+})",
+R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(C+~,S~)})->f32[10,10]{1,0:D(C+~,S~)}}
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(C+~,S~)} parameter(0)
+})",
+},
 });
   // clang-format on
 }
@@ -2529,7 +2580,7 @@ TEST_F(HloParserTest, MoreConstants) {
 
 ENTRY %SelectScalarS32True.v4 () -> s32[] {
   %constant.2 = pred[] constant(true)
-  %constant.1 = s32[] constant(-42), sharding={devices=[2,2]1,2,3,4}
+  %constant.1 = s32[] constant(-42), sharding={replicated}
   %constant = s32[] constant(42)
   %select = s32[] select(pred[] %constant.2, s32[] %constant.1, s32[] %constant)
 }
@@ -3870,6 +3921,17 @@ TEST_F(HloParserTest, ParseDynamicTuple) {
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, ParseInvalidDimLevel) {
+  constexpr std::string_view shape_string = "f32[123]{0:D(D+~)}";
+  StatusOr<Shape> result = ParseShape(shape_string);
+  ASSERT_THAT(
+      result.status(),
+      tsl::testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          testing::HasSubstr(
+              "invalid DimLevelType/unique/ordered combination in shape")));
 }
 
 TEST_F(HloParserTest, NegativeParameterNumber) {

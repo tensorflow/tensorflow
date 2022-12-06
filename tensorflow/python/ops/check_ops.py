@@ -272,6 +272,84 @@ def _binary_assert_doc(sym, test_var):
   return _decorator
 
 
+def _binary_assert_doc_v2(sym, opname, test_var):
+  """Common docstring for v2 assert_* ops that compare two tensors element-wise.
+
+  Args:
+    sym: Binary operation symbol, i.e. "=="
+    opname: Name for the symbol, i.e. "assert_equal"
+    test_var: A number used in the docstring example
+
+  Returns:
+    Decorator that adds the appropriate docstring to the function for
+  symbol `sym`.
+  """
+
+  def _decorator(func):
+    """Decorator that adds docstring to the function for symbol `sym`.
+
+    Args:
+      func: Function for a TensorFlow op
+
+    Returns:
+      A version of `func` with documentation attached.
+    """
+
+    func.__doc__ = """
+    Assert the condition `x {sym} y` holds element-wise.
+
+    This Op checks that `x[i] {sym} y[i]` holds for every pair of (possibly
+    broadcast) elements of `x` and `y`. If both `x` and `y` are empty, this is
+    trivially satisfied.
+
+    If `x` {sym} `y` does not hold, `message`, as well as the first `summarize`
+    entries of `x` and `y` are printed, and `InvalidArgumentError` is raised.
+
+    When using inside `tf.function`, this API takes effects during execution.
+    It's recommended to use this API with `tf.control_dependencies` to
+    ensure the correct execution order.
+
+    In the following example, without `tf.control_dependencies`, errors may
+    not be raised at all.
+    Check `tf.control_dependencies` for more details.
+
+    >>> def check_size(x):
+    ...   with tf.control_dependencies([
+    ...       tf.debugging.{opname}(tf.size(x), {test_var},
+    ...                       message='Bad tensor size')]):
+    ...     return x
+
+    >>> check_size(tf.ones([2, 3], tf.float32))
+    Traceback (most recent call last):
+       ...
+    InvalidArgumentError: ...
+
+    Args:
+      x:  Numeric `Tensor`.
+      y:  Numeric `Tensor`, same dtype as and broadcastable to `x`.
+      message: A string to prefix to the default message. (optional)
+      summarize: Print this many entries of each tensor. (optional)
+      name: A name for this operation (optional).  Defaults to "{opname}".
+
+    Returns:
+      Op that raises `InvalidArgumentError` if `x {sym} y` is False. This can
+        be used with `tf.control_dependencies` inside of `tf.function`s to
+        block followup computation until the check has executed.
+      @compatibility(eager)
+      returns None
+      @end_compatibility
+
+    Raises:
+      InvalidArgumentError: if the check can be performed immediately and
+        `x == y` is False. The check can be performed immediately during eager
+        execution or if `x` and `y` are statically known.
+    """.format(
+        sym=sym, opname=opname, test_var=test_var)
+    return func
+
+  return _decorator
+
+
 def _make_assert_msg_data(sym, x, y, summarize, test_op):
   """Subroutine of _binary_assert that generates the components of the default error message when running in eager mode.
 
@@ -681,36 +759,8 @@ def assert_non_positive(x, data=None, summarize=None, message=None, name=None): 
 @tf_export('debugging.assert_equal', 'assert_equal', v1=[])
 @dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
+@_binary_assert_doc_v2('==', 'assert_equal', 3)
 def assert_equal_v2(x, y, message=None, summarize=None, name=None):
-  """Assert the condition `x == y` holds element-wise.
-
-  This Op checks that `x[i] == y[i]` holds for every pair of (possibly
-  broadcast) elements of `x` and `y`. If both `x` and `y` are empty, this is
-  trivially satisfied.
-
-  If `x` and `y` are not equal, `message`, as well as the first `summarize`
-  entries of `x` and `y` are printed, and `InvalidArgumentError` is raised.
-
-  Args:
-    x:  Numeric `Tensor`.
-    y:  Numeric `Tensor`, same dtype as and broadcastable to `x`.
-    message: A string to prefix to the default message.
-    summarize: Print this many entries of each tensor.
-    name: A name for this operation (optional).  Defaults to "assert_equal".
-
-  Returns:
-    Op that raises `InvalidArgumentError` if `x == y` is False. This can be
-      used with `tf.control_dependencies` inside of `tf.function`s to block
-      followup computation until the check has executed.
-    @compatibility(eager)
-    returns None
-    @end_compatibility
-
-  Raises:
-    InvalidArgumentError: if the check can be performed immediately and
-      `x == y` is False. The check can be performed immediately during eager
-      execution or if `x` and `y` are statically known.
-  """
   return assert_equal(x=x, y=y, summarize=summarize, message=message, name=name)
 
 
@@ -730,39 +780,8 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):  # p
 @tf_export('debugging.assert_none_equal', v1=[])
 @dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
+@_binary_assert_doc_v2('!=', 'assert_none_equal', 6)
 def assert_none_equal_v2(x, y, summarize=None, message=None, name=None):
-  """Assert the condition `x != y` holds for all elements.
-
-  This Op checks that `x[i] != y[i]` holds for every pair of (possibly
-  broadcast) elements of `x` and `y`. If both `x` and `y` are empty, this is
-  trivially satisfied.
-
-  If any elements of `x` and `y` are equal, `message`, as well as the first
-  `summarize` entries of `x` and `y` are printed, and `InvalidArgumentError`
-  is raised.
-
-  Args:
-    x:  Numeric `Tensor`.
-    y:  Numeric `Tensor`, same dtype as and broadcastable to `x`.
-    summarize: Print this many entries of each tensor.
-    message: A string to prefix to the default message.
-    name: A name for this operation (optional).  Defaults to
-    "assert_none_equal".
-
-  Returns:
-    Op that raises `InvalidArgumentError` if `x != y` is ever False. This can
-      be used with `tf.control_dependencies` inside of `tf.function`s to block
-      followup computation until the check has executed.
-    @compatibility(eager)
-    returns None
-    @end_compatibility
-
-  Raises:
-    InvalidArgumentError: if the check can be performed immediately and
-      `x != y` is False for any pair of elements in `x` and `y`. The check can
-      be performed immediately during eager execution or if `x` and `y` are
-      statically known.
-  """
   return assert_none_equal(x=x, y=y, summarize=summarize, message=message,
                            name=name)
 
@@ -920,37 +939,8 @@ def assert_near(
 @tf_export('debugging.assert_less', 'assert_less', v1=[])
 @dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
+@_binary_assert_doc_v2('<', 'assert_less', 3)
 def assert_less_v2(x, y, message=None, summarize=None, name=None):
-  """Assert the condition `x < y` holds element-wise.
-
-  This Op checks that `x[i] < y[i]` holds for every pair of (possibly
-  broadcast) elements of `x` and `y`. If both `x` and `y` are empty, this is
-  trivially satisfied.
-
-  If `x` is not less than `y` element-wise, `message`, as well as the first
-  `summarize` entries of `x` and `y` are printed, and `InvalidArgumentError` is
-  raised.
-
-  Args:
-    x:  Numeric `Tensor`.
-    y:  Numeric `Tensor`, same dtype as and broadcastable to `x`.
-    message: A string to prefix to the default message.
-    summarize: Print this many entries of each tensor.
-    name: A name for this operation (optional).  Defaults to "assert_less".
-
-  Returns:
-    Op that raises `InvalidArgumentError` if `x < y` is False.
-    This can be used with `tf.control_dependencies` inside of `tf.function`s
-    to block followup computation until the check has executed.
-    @compatibility(eager)
-    returns None
-    @end_compatibility
-
-  Raises:
-    InvalidArgumentError: if the check can be performed immediately and
-      `x < y` is False. The check can be performed immediately during eager
-      execution or if `x` and `y` are statically known.
-  """
   return assert_less(x=x, y=y, summarize=summarize, message=message, name=name)
 
 
@@ -966,37 +956,8 @@ def assert_less(x, y, data=None, summarize=None, message=None, name=None):
 @tf_export('debugging.assert_less_equal', v1=[])
 @dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
+@_binary_assert_doc_v2('<=', 'assert_less_equal', 3)
 def assert_less_equal_v2(x, y, message=None, summarize=None, name=None):
-  """Assert the condition `x <= y` holds element-wise.
-
-  This Op checks that `x[i] <= y[i]` holds for every pair of (possibly
-  broadcast) elements of `x` and `y`. If both `x` and `y` are empty, this is
-  trivially satisfied.
-
-  If `x` is not less or equal than `y` element-wise, `message`, as well as the
-  first `summarize` entries of `x` and `y` are printed, and
-  `InvalidArgumentError` is raised.
-
-  Args:
-    x:  Numeric `Tensor`.
-    y:  Numeric `Tensor`, same dtype as and broadcastable to `x`.
-    message: A string to prefix to the default message.
-    summarize: Print this many entries of each tensor.
-    name: A name for this operation (optional). Defaults to "assert_less_equal".
-
-  Returns:
-    Op that raises `InvalidArgumentError` if `x <= y` is False. This can be
-      used with `tf.control_dependencies` inside of `tf.function`s to block
-      followup computation until the check has executed.
-    @compatibility(eager)
-    returns None
-    @end_compatibility
-
-  Raises:
-    InvalidArgumentError: if the check can be performed immediately and
-      `x <= y` is False. The check can be performed immediately during eager
-      execution or if `x` and `y` are statically known.
-  """
   return assert_less_equal(x=x, y=y,
                            summarize=summarize, message=message, name=name)
 
@@ -1014,37 +975,8 @@ def assert_less_equal(x, y, data=None, summarize=None, message=None, name=None):
 @tf_export('debugging.assert_greater', 'assert_greater', v1=[])
 @dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
+@_binary_assert_doc_v2('>', 'assert_greater', 9)
 def assert_greater_v2(x, y, message=None, summarize=None, name=None):
-  """Assert the condition `x > y` holds element-wise.
-
-  This Op checks that `x[i] > y[i]` holds for every pair of (possibly
-  broadcast) elements of `x` and `y`. If both `x` and `y` are empty, this is
-  trivially satisfied.
-
-  If `x` is not greater than `y` element-wise, `message`, as well as the first
-  `summarize` entries of `x` and `y` are printed, and `InvalidArgumentError` is
-  raised.
-
-  Args:
-    x:  Numeric `Tensor`.
-    y:  Numeric `Tensor`, same dtype as and broadcastable to `x`.
-    message: A string to prefix to the default message.
-    summarize: Print this many entries of each tensor.
-    name: A name for this operation (optional).  Defaults to "assert_greater".
-
-  Returns:
-    Op that raises `InvalidArgumentError` if `x > y` is False. This can be
-      used with `tf.control_dependencies` inside of `tf.function`s to block
-      followup computation until the check has executed.
-    @compatibility(eager)
-    returns None
-    @end_compatibility
-
-  Raises:
-    InvalidArgumentError: if the check can be performed immediately and
-      `x > y` is False. The check can be performed immediately during eager
-      execution or if `x` and `y` are statically known.
-  """
   return assert_greater(x=x, y=y, summarize=summarize, message=message,
                         name=name)
 
@@ -1061,38 +993,8 @@ def assert_greater(x, y, data=None, summarize=None, message=None, name=None):  #
 @tf_export('debugging.assert_greater_equal', v1=[])
 @dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
+@_binary_assert_doc_v2('>=', 'assert_greater_equal', 9)
 def assert_greater_equal_v2(x, y, message=None, summarize=None, name=None):
-  """Assert the condition `x >= y` holds element-wise.
-
-  This Op checks that `x[i] >= y[i]` holds for every pair of (possibly
-  broadcast) elements of `x` and `y`. If both `x` and `y` are empty, this is
-  trivially satisfied.
-
-  If `x` is not greater or equal to `y` element-wise, `message`, as well as the
-  first `summarize` entries of `x` and `y` are printed, and
-  `InvalidArgumentError` is raised.
-
-  Args:
-    x:  Numeric `Tensor`.
-    y:  Numeric `Tensor`, same dtype as and broadcastable to `x`.
-    message: A string to prefix to the default message.
-    summarize: Print this many entries of each tensor.
-    name: A name for this operation (optional).  Defaults to
-    "assert_greater_equal".
-
-  Returns:
-    Op that raises `InvalidArgumentError` if `x >= y` is False. This can be
-      used with `tf.control_dependencies` inside of `tf.function`s to block
-      followup computation until the check has executed.
-    @compatibility(eager)
-    returns None
-    @end_compatibility
-
-  Raises:
-    InvalidArgumentError: if the check can be performed immediately and
-      `x >= y` is False. The check can be performed immediately during eager
-      execution or if `x` and `y` are statically known.
-  """
   return assert_greater_equal(x=x, y=y, summarize=summarize, message=message,
                               name=name)
 

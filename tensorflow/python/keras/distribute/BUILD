@@ -3,6 +3,7 @@
 #   related to dist-strat used by Keras..
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # TODO(scottzhu): Remove this deps when distribute test are converted to integration test.
     default_visibility = [
         "//tensorflow:internal",

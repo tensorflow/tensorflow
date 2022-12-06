@@ -17,14 +17,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_COMPILER_H_
 
 #include <memory>
+#include <string_view>
 
 #include "absl/types/span.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/cpu/executable.pb.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
@@ -88,8 +89,8 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
 class CpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
  public:
   CpuXlaRuntimeAotCompilationResult(HloModuleProto hlo,
-                                    const std::string& obj_file,
-                                    const std::string& mlir_module,
+                                    std::string_view obj_file,
+                                    std::string_view mlir_module,
                                     XlaFrameworkMapping xla_framework_mapping);
 
   explicit CpuXlaRuntimeAotCompilationResult(
@@ -198,6 +199,9 @@ class CpuCompiler : public LLVMCompiler {
     return CpuXlaRuntimeAotCompilationResult::FromString(serialized_aot_result);
   }
 
+  StatusOr<std::unique_ptr<CpuExecutable>> CompileXlaRuntimeCpuExecutable(
+      std::unique_ptr<HloModule> module);
+
  private:
   // Initialize the LLVM target.
   static void InitializeLLVMTarget();
@@ -220,8 +224,6 @@ class CpuCompiler : public LLVMCompiler {
       LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile);
 
   StatusOr<std::unique_ptr<CpuExecutable>> CompileLegacyCpuExecutable(
-      std::unique_ptr<HloModule> module);
-  StatusOr<std::unique_ptr<CpuExecutable>> CompileXlaRuntimeCpuExecutable(
       std::unique_ptr<HloModule> module);
 
   CpuCompiler(const CpuCompiler&) = delete;

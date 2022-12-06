@@ -1,7 +1,7 @@
-// RUN: tfg-transforms-opt -pass-pipeline='tfg-lift-graph-to-func{feeds=Placeholder1,Placeholder2 fetches=SomeAdd3 control_rets=SomeAdd4},tfg-lower-func-to-graph' %s | FileCheck %s
-// RUN: tfg-transforms-opt -pass-pipeline='tfg-lift-graph-to-func{fetches=SomeAdd3 control_rets=SomeAdd4},tfg-lower-func-to-graph' %s | FileCheck %s
-// RUN: tfg-transforms-opt -pass-pipeline='tfg-lift-graph-to-func{feeds=Placeholder1,Placeholder2 control_rets=SomeAdd4},tfg-lower-func-to-graph' %s | FileCheck %s
-// RUN: tfg-transforms-opt -pass-pipeline='tfg-lift-graph-to-func{feeds=Placeholder1,Placeholder2},tfg-lower-func-to-graph' %s | FileCheck %s
+// RUN: tfg-transforms-opt -pass-pipeline='builtin.module(tfg-lift-graph-to-func{feeds=Placeholder1,Placeholder2 fetches=SomeAdd3 control_rets=SomeAdd4},tfg-lower-func-to-graph)' %s | FileCheck %s
+// RUN: tfg-transforms-opt -pass-pipeline='builtin.module(tfg-lift-graph-to-func{fetches=SomeAdd3 control_rets=SomeAdd4},tfg-lower-func-to-graph)' %s | FileCheck %s
+// RUN: tfg-transforms-opt -pass-pipeline='builtin.module(tfg-lift-graph-to-func{feeds=Placeholder1,Placeholder2 control_rets=SomeAdd4},tfg-lower-func-to-graph)' %s | FileCheck %s
+// RUN: tfg-transforms-opt -pass-pipeline='builtin.module(tfg-lift-graph-to-func{feeds=Placeholder1,Placeholder2},tfg-lower-func-to-graph)' %s | FileCheck %s
 
 // CHECK: tfg.graph #tf_type.version<producer = 34, min_consumer = 5>
 tfg.graph #tf_type.version<producer = 34, min_consumer = 5> {

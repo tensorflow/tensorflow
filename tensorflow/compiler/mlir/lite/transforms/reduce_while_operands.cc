@@ -47,7 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace TFL {
@@ -142,8 +142,7 @@ bool AllOperationSafe(Block &block) {
   auto walk_result = block.walk([&](Operation *op) {
     // op has SideEffect.
     if (!isa_and_nonnull<TFL::WhileOp>(op) &&
-        !op->hasTrait<OpTrait::IsTerminator>() &&
-        !MemoryEffectOpInterface::hasNoEffect(op)) {
+        !op->hasTrait<OpTrait::IsTerminator>() && !isMemoryEffectFree(op)) {
       return WalkResult::interrupt();
     }
     // op has implict arguments not listed in operands.

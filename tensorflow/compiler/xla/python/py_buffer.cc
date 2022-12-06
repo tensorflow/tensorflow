@@ -218,7 +218,7 @@ std::pair<Status, bool> PyBuffer::CopyToRemoteDevice(
   Status status;
   bool sends_were_enqueued;
   buffer_->CopyToRemoteDevice(
-      serialized_descriptor,
+      PjRtFuture<StatusOr<std::string>>(std::string(serialized_descriptor)),
       [&done, &status, &sends_were_enqueued, &mu](Status s, bool dispatched) {
         absl::MutexLock l(&mu);
         done = true;
@@ -382,14 +382,7 @@ PyShardedBuffer PyShardedBuffer::CreateFromPyBuffers(
 Status PyShardedBuffer::BlockHostUntilReady() {
   GlobalPyRefManager()->CollectGarbage();
   py::gil_scoped_release gil_release;
-  Status status = OkStatus();
-  for (const auto& buffer : buffers_) {
-    // PjRtBuffer::BlockHostUntilReady() fix up the error message because some
-    // clients rely on it.
-    auto s = buffer->BlockHostUntilReady();
-    if (!s.ok()) status = std::move(s);
-  }
-  return status;
+  return AwaitBuffersReady(buffers_);
 }
 
 // PEP 3118 buffer protocol implementation.
@@ -415,15 +408,17 @@ int PyBuffer_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
   Status status = [&]() {
     TF_ASSIGN_OR_RETURN(PyBuffer * py_buffer, PyBuffer::AsPyBuffer(exporter));
     PjRtBuffer& buffer = *py_buffer->buffer();
-    TF_ASSIGN_OR_RETURN(const auto* shape, py_buffer->xla_dynamic_shape());
-    // Py_buffer objects are POD C structures, so we don't need to hold the GIL.
-    // Additionally we call BlockHostUntilReady() below, which may block.
-    py::gil_scoped_release gil_release;
 
     if (!buffer.IsOnCpu()) {
       return InvalidArgument(
           "Python buffer protocol is only defined for CPU buffers.");
     }
+
+    TF_ASSIGN_OR_RETURN(const auto* shape, py_buffer->xla_dynamic_shape());
+    // Py_buffer objects are POD C structures, so we don't need to hold the GIL.
+    // Additionally we call BlockHostUntilReady() below, which may block.
+    py::gil_scoped_release gil_release;
+
     if (!buffer.on_device_shape().IsArray()) {
       return InvalidArgument(
           "Python buffer protocol is only defined for array buffers.");
@@ -673,15 +668,6 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       py::is_method(type));
   type.attr("delete") = py::cpp_function(
       [](PyBuffer::object self) { self.buf()->Delete(); }, py::is_method(type));
-  type.attr("block_host_until_ready") = py::cpp_function(
-      [](PyBuffer::object self) {
-        // TODO(phawkins): remove 3 months after the release of jaxlib >= 0.3.2.
-        PythonDeprecationWarning(
-            "block_host_until_ready() on a JAX array object is deprecated, use "
-            "block_until_ready() instead.");
-        return self.buf()->BlockHostUntilReady();
-      },
-      py::is_method(type));
   type.attr("is_ready") = py::cpp_function(
       [](PyBuffer::object self) { return self.buf()->IsReady(); },
       py::is_method(type));

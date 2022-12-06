@@ -704,15 +704,11 @@ class _TapeGradientFunctions(object):
     """Forward+backward functions where the backward function sees `outputs`."""
     # First figure out which of `outputs` are trainable. We'll accept gradients
     # for each of these in the backward function.
-    handles_to_variables = self._func_graph.variable_captures
     trainable_outputs = []
     trainable_indices = []
     for index, output in enumerate(outputs):
 
       if backprop_util.IsTrainable(output):
-        # Swap in the Variable object for resource handles if we can so
-        # sparse gradients work.
-        output = handles_to_variables.get(id(output), output)
         trainable_outputs.append(output)
         trainable_indices.append(index)
 
@@ -1390,6 +1386,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     assert not self._function_spec, "already initialized"
     spec = self._pre_initialized_function_spec
     args = spec.fullargspec.args
+    # TODO(fmuham): Use annotate_type_constraint here instead.
     arg_specs, kwarg_specs = self.structured_input_signature
     vararg_indices = range(len(spec.arg_names), len(arg_specs))
     fullargspec = tf_inspect.FullArgSpec(

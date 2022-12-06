@@ -2098,7 +2098,11 @@ Status ConvertConv2DHelper(const OpConverterParams* params, int group,
   if (params->use_explicit_precision) {
     TRT_ENSURE(inputs.at(1).is_tensor());
 
-    conv_layer->setInput(1, *inputs.at(1).tensor()->trt_tensor());
+    nvinfer1::IShuffleLayer* layer = params->converter->network()->addShuffle(
+        *inputs.at(1).tensor()->trt_tensor());
+    layer->setFirstTranspose({3, 2, 0, 1});
+    layer->setReshapeDimensions({4, {0, 0, 0, 0}});
+    conv_layer->setInput(1, *layer->getOutput(0));
   }
 
   params->converter->SetLayerName(conv_layer, node_def, "conv");

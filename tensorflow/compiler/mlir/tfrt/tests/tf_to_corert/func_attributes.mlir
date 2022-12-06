@@ -12,7 +12,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %4 : tensor<!tf_type.variant>
   }
   // CHECK-LABEL: __inference_Dataset_flat_map_lambda_190
-  func.func private @__inference_Dataset_flat_map_lambda_190(%arg0: tensor<i64> {tf._user_specified_name = "args_0"}) -> tensor<!tf_type.variant> attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
+  func.func private @__inference_Dataset_flat_map_lambda_190(%arg0: tensor<i64> {tf._user_specified_name = "args_0"}) -> tensor<!tf_type.variant> attributes {tf._original_func_name = "__inference_Dataset_flat_map_lambda_19", tf._tf_data_function = true, tf.signature.is_stateful} {
     %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<0> : tensor<i64>} : () -> tensor<i64>
     %1 = "tf.Const"() {device = "/device:CPU:0", value = dense<1> : tensor<i64>} : () -> tensor<i64>
     %2 = "tf.Const"() {device = "/device:CPU:0", value = dense<5> : tensor<i64>} : () -> tensor<i64>

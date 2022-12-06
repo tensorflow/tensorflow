@@ -190,9 +190,8 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
         if (!min_max.first.has_value() || !min_max.second.has_value()) return;
 
         TypeAttr params = quant::GetQuantizedTypeAttr(
-            builder, input_type,
-            builder.getF64FloatAttr(min_max.first.getValue()),
-            builder.getF64FloatAttr(min_max.second.getValue()),
+            builder, input_type, builder.getF64FloatAttr(min_max.first.value()),
+            builder.getF64FloatAttr(min_max.second.value()),
             /*quant_dim=*/-1, num_bits, narrow_range, is_signed);
         builder.setInsertionPoint(block, insertion_point);
         auto q_op = builder.create<quantfork::QuantizeCastOp>(

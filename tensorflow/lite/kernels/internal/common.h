@@ -388,11 +388,10 @@ constexpr int LUTSize() {
                     std::is_same<T, int8_t>::value ||
                     std::is_same<T, int16_t>::value,
                 "Only LUTs with uint8, int8 or int16 inputs are supported.");
-  if (std::is_same<T, uint8_t>::value || std::is_same<T, int8_t>::value) {
-    return 256;
-  } else {
-    return 513;
-  }
+  // As per c++11: constexpr methods cannot have more than one return statement.
+  return (std::is_same<T, uint8_t>::value || std::is_same<T, int8_t>::value)
+             ? 256
+             : 513;
 }
 
 // Use the same LUT generation code for both uint8_t and int8_t. Int8_t indexes
@@ -412,7 +411,7 @@ LUTPopulate(float input_scale, int32_t input_zero_point, float output_scale,
   for (int32_t val = minval; val <= maxval; ++val) {
     const float dequantized = input_scale * (val - input_zero_point);
     const float transformed = transform(dequantized);
-    const float rescaled = std::round(transformed * inverse_scale);
+    const float rescaled = TfLiteRound(transformed * inverse_scale);
     const int32_t quantized =
         static_cast<int32_t>(rescaled + output_zero_point);
     lut_uint8[static_cast<uint8_t>(static_cast<T>(val))] = static_cast<uint8_t>(

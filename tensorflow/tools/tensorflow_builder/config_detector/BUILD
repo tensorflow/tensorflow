@@ -1,7 +1,10 @@
 # Description:
 #   TensorFlow builder (TensorFlow on Demand project).
 
-package(licenses = ["notice"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
 
 py_binary(
     name = "config_detector",

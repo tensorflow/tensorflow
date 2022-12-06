@@ -17,6 +17,7 @@ load(
     "if_zendnn",
 )
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
@@ -193,10 +194,6 @@ tf_cuda_library(
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            "//tensorflow/core/distributed_runtime/coordination:coordination_service",
-            "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
-            "//tensorflow/core/distributed_runtime/coordination:coordination_service_impl",
-            "//tensorflow/tsl/distributed_runtime/preemption:preemption_notifier",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -213,6 +210,10 @@ tf_cuda_library(
             "//tensorflow/core/distributed_runtime/eager:eager_client",
             "//tensorflow/core/distributed_runtime/eager:cluster_function_library_runtime",
             "//tensorflow/core/distributed_runtime/eager:remote_mgr",
+            "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
+            "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
+            "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_impl",
+            "//tensorflow/tsl/distributed_runtime/preemption:preemption_notifier",
         ],
     }),
 )
@@ -498,7 +499,7 @@ cc_library(
     hdrs = [
         "execute.h",
         "execute_node.h",
-    ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util_header"]),
+    ],
     copts = if_mkl(["-DINTEL_MKL"]),
     deps = [
         ":context",
@@ -536,7 +537,10 @@ cc_library(
             "//tensorflow/core/distributed_runtime/eager:remote_execute_node",
             "//tensorflow/core/distributed_runtime/eager:remote_copy_node",
         ],
-    }) + if_zendnn([":zen_eager_op_rewrite"]) + if_mkl([":mkl_eager_op_rewrite"]),
+    }) + if_mkl([
+        ":mkl_eager_op_rewrite",
+        "//tensorflow/core/graph:mkl_graph_util",
+    ]) + if_zendnn([":zen_eager_op_rewrite"]),
 )
 
 tf_cc_test(

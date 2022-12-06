@@ -20,6 +20,8 @@ limitations under the License.
 #include <string>
 
 #include "grpcpp/grpcpp.h"
+#include "grpcpp/support/byte_buffer.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/stringpiece.h"
 #include "tensorflow/tsl/platform/stringprintf.h"
@@ -114,6 +116,22 @@ inline ::grpc::Status ToGrpcStatus(const Status& s) {
 
 typedef std::shared_ptr<::grpc::Channel> SharedGrpcChannelPtr;
 
+// Serialize src and store in *dst.
+::grpc::Status GrpcMaybeUnparseProto(const protobuf::Message& src,
+                                     ::grpc::ByteBuffer* dst);
+
+// Parse contents of src and initialize *dst with them.
+bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, protobuf::Message* dst);
+
+// Copy string src to grpc buffer *dst.
+::grpc::Status GrpcMaybeUnparseProto(const string& src,
+                                     ::grpc::ByteBuffer* dst);
+
+// Copy grpc buffer src to string *dst.
+bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, string* dst);
+
+// Copy grpc buffer src to tstring *dst.
+bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, tstring* dst);
 }  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_RPC_GRPC_UTIL_H_

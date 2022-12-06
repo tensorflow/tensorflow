@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/synchronization/notification.h"
+#include "tensorflow/compiler/xla/pjrt/lru_cache.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
@@ -59,12 +60,13 @@ struct PjitCacheEntry {
 
 class PjitFunction {
  public:
-  PjitFunction(py::function fun, py::function cache_miss,
-               std::vector<int> static_argnums)
-      : cache_miss_(std::move(cache_miss)),
-        static_argnums_(std::move(static_argnums)) {
-    function_name_ = py::str(py::getattr(fun, "__name__", py::none()));
-  }
+  PjitFunction(std::string function_name, py::function cache_miss,
+               std::vector<int> static_argnums, int executables_cache_size)
+      : function_name_(std::move(function_name)),
+        cache_miss_(std::move(cache_miss)),
+        static_argnums_(std::move(static_argnums)),
+        lru_list_(std::make_unique<Cache::LRUList>(executables_cache_size)),
+        executables_(std::make_unique<Cache>(lru_list_.get())) {}
 
   PjitFunction(const PjitFunction&) = delete;
   PjitFunction& operator=(const PjitFunction&) = delete;
@@ -72,6 +74,8 @@ class PjitFunction {
   PjitFunction& operator=(PjitFunction&&) = default;
 
   xla::StatusOr<py::object> Call(py::args args, py::kwargs kwargs);
+
+  using Cache = xla::LRUCache<CallSignature, std::shared_ptr<PjitCacheEntry>>;
 
  private:
   xla::Status UpdateArgsSignature(const py::args& args,
@@ -86,8 +90,8 @@ class PjitFunction {
   py::function cache_miss_;
   std::vector<int> static_argnums_;
 
-  absl::flat_hash_map<CallSignature, std::unique_ptr<PjitCacheEntry>>
-      executables_;
+  std::unique_ptr<Cache::LRUList> lru_list_;
+  std::unique_ptr<Cache> executables_;
 };
 
 // Prepares the input PjRtBuffers from the python arguments. This is equivalent
@@ -95,13 +99,13 @@ class PjitFunction {
 xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
     const xla::PyLoadedExecutable& executable,
     ParsedArgumentsAsBuffers& arguments) {
-  const auto& devices = executable.AddressableDevices();
+  const auto& addressable_devices = executable.AddressableDevices();
   int num_args = arguments.flat_dynamic_args.size();
 
   std::vector<std::vector<xla::PjRtBuffer*>> num_computation_num_args_buffers(
-      devices.size());
+      addressable_devices.size());
 
-  for (int i = 0; i < devices.size(); ++i) {
+  for (int i = 0; i < addressable_devices.size(); ++i) {
     num_computation_num_args_buffers[i].resize(num_args);
   }
 
@@ -109,31 +113,29 @@ xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
     const py::object& arg = arguments.flat_dynamic_args[i];
 
     xla::PyArray py_array = arg;
-
-    // Currently only committed PyArray inputs are allowed. This is checked
-    // previously in the entry point of PjitFunction::Call().
-    DCHECK(py_array.committed());
-
     const auto& sharding = py_array.sharding();
+    auto* cpp_sharding = sharding.cast<jax::Sharding*>();
+
+    // Currently only committed PyArray inputs or uncommitted PyArray on a
+    // single device inputs are allowed. This is checked previously in the entry
+    // point of PjitFunction::Call().
+    DCHECK(py_array.committed() ||
+           (!py_array.committed() && cpp_sharding->num_devices() == 1));
 
     if (sharding.get_type() == jax::PmapSharding::type()) {
       return xla::Unimplemented(
           "Handling PyArray in PmapSharding is not implemented.");
     }
 
-    auto* cpp_sharding = sharding.cast<jax::Sharding*>();
-
-    if (py_array.num_shards() != devices.size()) {
+    if (py_array.num_shards() != addressable_devices.size()) {
       return xla::InvalidArgument(
-          "Expected PyArray to have %d shards, but got %d", devices.size(),
-          py_array.num_shards());
+          "Expected PyArray to have %d shards, but got %d",
+          addressable_devices.size(), py_array.num_shards());
     }
 
     if (cpp_sharding->num_devices() == 1) {
-      // TODO(chky): Remove this special handling and don't move to another
-      // device if it is already committed.
-      for (int j = 0; j < devices.size(); ++j) {
-        auto* to_device = devices[j].get();
+      for (int j = 0; j < addressable_devices.size(); ++j) {
+        auto* to_device = addressable_devices[j].get();
         xla::PjRtBuffer* buffer = py_array.GetBuffer(j);
 
         if (buffer->device() == to_device) {
@@ -146,7 +148,7 @@ xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
         }
       }
     } else {
-      for (int j = 0; j < devices.size(); ++j) {
+      for (int j = 0; j < addressable_devices.size(); ++j) {
         num_computation_num_args_buffers[j][i] = py_array.GetBuffer(j);
       }
     }
@@ -189,8 +191,10 @@ xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
     //
     // TODO(chky): Consider support uncommitted PyArray in cpp when the python
     // side stablizes.
-    if (!py_array.committed()) {
-      VLOG(2) << "PyArray argument is not committed; fallback to python.";
+    auto* cpp_sharding = py_array.sharding().cast<jax::Sharding*>();
+    if (!py_array.committed() && cpp_sharding->num_devices() > 1) {
+      VLOG(2) << "PyArray argument is not committed and number of global "
+                 "devices is more than 1; fallback to python.";
       return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
     }
   }
@@ -201,11 +205,15 @@ xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
     return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
   }
 
-  auto [it, inserted] = executables_.try_emplace(
-      arguments.signature, std::make_unique<PjitCacheEntry>());
-  auto& cache_entry = *(it->second);
+  bool inserted = false;
+  std::shared_ptr<PjitCacheEntry> cache_entry =
+      executables_->GetOrCreateIfAbsent(
+          arguments.signature, [&inserted](const CallSignature& unused) {
+            inserted = true;
+            return std::make_shared<PjitCacheEntry>();
+          });
 
-  if (!cache_entry.compilation_complete.HasBeenNotified()) {
+  if (!cache_entry->compilation_complete.HasBeenNotified()) {
     // In case of several threads attempting to compile the executable, only
     // the one that inserted the item will perform the compilation.
     if (inserted) {
@@ -218,14 +226,14 @@ xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
         out_and_fastpath_data = cache_miss_(*args, **kwargs);
         out_tuple = py::cast<py::tuple>(out_and_fastpath_data);
 
-        PopulateCacheEntry(cache_entry, arguments.signature, out_tuple);
+        PopulateCacheEntry(*cache_entry, arguments.signature, out_tuple);
       } catch (const std::exception& e) {
         LOG(ERROR) << "cache miss fail: " << e.what();
-        cache_entry.fall_back_to_python = true;
-        cache_entry.compilation_complete.Notify();
+        cache_entry->fall_back_to_python = true;
+        cache_entry->compilation_complete.Notify();
         throw;
       }
-      cache_entry.compilation_complete.Notify();
+      cache_entry->compilation_complete.Notify();
 
       // We have already computed the result in the miss path so we can return
       // it. We are even *required* to do so if there are donated arguments,
@@ -235,18 +243,18 @@ xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
       // Release the GIL while we wait, making sure the compile thread can
       // lock it.
       py::gil_scoped_release release;
-      cache_entry.compilation_complete.WaitForNotification();
+      cache_entry->compilation_complete.WaitForNotification();
     }
   }
 
-  if (cache_entry.fall_back_to_python) {
+  if (cache_entry->fall_back_to_python) {
     VLOG(2) << "cpp pjit fallback to python.";
     return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
   }
 
   // A vector of [num_devices, num_inputs].
   auto num_computation_num_args_buffers =
-      PreparePjRtInputs(*cache_entry.executable, arguments);
+      PreparePjRtInputs(*cache_entry->executable, arguments);
   if (!num_computation_num_args_buffers.ok()) {
     VLOG(2) << "Failed to prepare PjRt inputs: "
             << num_computation_num_args_buffers.status();
@@ -258,14 +266,15 @@ xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
   std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> output_buffers;
   {
     py::gil_scoped_release gil_release;
-    auto pjrt_executable = cache_entry.executable->mutable_pjrt_executable();
-    TF_ASSIGN_OR_RETURN(output_buffers, pjrt_executable->Execute(
-                                            *num_computation_num_args_buffers,
-                                            cache_entry.executable->options()));
+    auto pjrt_executable = cache_entry->executable->mutable_pjrt_executable();
+    TF_ASSIGN_OR_RETURN(
+        output_buffers,
+        pjrt_executable->Execute(*num_computation_num_args_buffers,
+                                 cache_entry->executable->options()));
   }
 
   auto traceback = xla::Traceback::Get();
-  const auto& client = cache_entry.executable->client();
+  const auto& client = cache_entry->executable->client();
 
   // Convert the PjRtBuffer objects to PyArray, and invert the order from
   // [num_devices, num_args] to [num_args, num_devices].
@@ -284,16 +293,16 @@ xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
     // like `aval` and `sharding` are retrieved from the cache for this
     // function, which are produced by the python path in `cache_miss`.
     xla::PyArray py_array(
-        cache_entry.out_avals[i], cache_entry.out_weak_types[i],
-        cache_entry.out_dtypes[i], cache_entry.out_shapes[i],
-        cache_entry.out_shardings[i], cache_entry.executable->client(),
+        cache_entry->out_avals[i], cache_entry->out_weak_types[i],
+        cache_entry->out_dtypes[i], cache_entry->out_shapes[i],
+        cache_entry->out_shardings[i], cache_entry->executable->client(),
         traceback, std::move(pjrt_buffers),
-        /*committed=*/cache_entry.out_committed.at(i), /*skip_checks=*/true);
+        /*committed=*/cache_entry->out_committed.at(i), /*skip_checks=*/true);
 
     outputs.push_back(std::move(py_array));
   }
 
-  py::object out = cache_entry.out_pytree_def.Unflatten(outputs);
+  py::object out = cache_entry->out_pytree_def.Unflatten(outputs);
 
   // If there is a post-hook function, call it with the inputs and the outputs.
   std::optional<py::object> post_hook = GetPostHook();
@@ -333,6 +342,7 @@ xla::Status PjitFunction::UpdateArgsSignature(
     auto py_array = py::reinterpret_borrow<xla::PyArray>(arg);
 
     arguments.signature.dynamic_arg_shardings.push_back(py_array.sharding());
+    arguments.signature.committed_args.push_back(py_array.committed());
   }
 
   arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
@@ -401,10 +411,11 @@ void BuildPjitSubmodule(py::module& m) {
   py::class_<PjitFunction>(m, "PjitFunction", py::dynamic_attr())
       .def("__call__", &PjitFunction::Call);
 
-  m.def("pjit", [](py::function fun, py::function cache_miss,
+  m.def("pjit", [](std::string function_name, py::function cache_miss,
                    std::vector<int> static_argnums) {
-    return PjitFunction(std::move(fun), std::move(cache_miss),
-                        std::move(static_argnums));
+    return PjitFunction(std::move(function_name), std::move(cache_miss),
+                        std::move(static_argnums),
+                        /*executables_cache_size=*/4096);
   });
 }
 

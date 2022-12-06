@@ -32,11 +32,13 @@ namespace tac {
 // Import the file as mlir module, the input maybe flatbuffer or mlir file.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportFlatbufferOrMlir(
     const std::string& input_filename, bool input_mlir,
+    bool experimental_prune_unreachable_nodes_unconditionally,
     llvm::SourceMgr* source_mgr, mlir::MLIRContext* context);
 
 // Export the module to file, can be either mlir or flatbuffer.
 absl::Status ExportFlatbufferOrMlir(const std::string& output_filename,
-                                    bool output_mlir, mlir::ModuleOp module);
+                                    bool output_mlir, mlir::ModuleOp module,
+                                    bool enable_select_tf_ops);
 
 }  // namespace tac
 }  // namespace TFL

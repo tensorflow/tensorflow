@@ -4,15 +4,16 @@
 # Throughout this file, all targets are built with the standard crosstool and
 # do not link against restricted binary blobs.
 
-# TODO(rdzhabarov): XLA should have its own tensorflow independent rule.
 load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/tsl:tsl.bzl", "tsl_gpu_library")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library", "tsl_cc_test")
+load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":friends",
     ],
@@ -60,6 +61,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":allocator_stats",
+        ":device_description_proto_cc",
         ":dnn_proto_cc",
         ":host_or_device_scalar",
         "//tensorflow/compiler/xla/stream_executor/lib",
@@ -103,11 +105,19 @@ cc_library(
     ],
 )
 
+tf_proto_library(
+    name = "device_description_proto",
+    srcs = ["device_description.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+)
+
 cc_library(
     name = "device_description",
     srcs = ["device_description.cc"],
     hdrs = ["device_description.h"],
     deps = [
+        ":device_description_proto_cc",
         ":launch_dim",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
@@ -161,6 +171,19 @@ cc_library(
 )
 
 cc_library(
+    name = "device_id_utils",
+    hdrs = ["device_id_utils.h"],
+    deps = [
+        ":platform",
+        ":stream_executor",
+        "//tensorflow/tsl/framework:device_id_impl",
+        "//tensorflow/tsl/lib/gtl:int_type",
+        "//tensorflow/tsl/platform:str_util",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "device_memory",
     hdrs = ["device_memory.h"],
     deps = ["//tensorflow/compiler/xla/stream_executor/platform"],
@@ -178,8 +201,9 @@ cc_library(
 tf_proto_library(
     name = "dnn_proto",
     srcs = ["dnn.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = ["//tensorflow/tsl/protobuf:dnn_proto"],
+    exports = ["//tensorflow/tsl/protobuf:dnn_proto"],
 )
 
 cc_library(
@@ -231,6 +255,7 @@ cc_library(
         "//tensorflow/tsl/framework:allocator",
         "//tensorflow/tsl/framework:device_id",
         "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/profiler/lib:traceme",
     ],
 )
 
@@ -274,6 +299,7 @@ cc_library(
         ":allocator_stats",
         ":data_type",
         ":device_description",
+        ":device_description_proto_cc",
         ":device_memory",
         ":device_options",
         ":dnn_proto_cc",
@@ -352,6 +378,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":device_description",
+        ":device_description_proto_cc",
         ":kernel_cache_config",
         ":platform",
         ":stream_executor_headers",
@@ -440,6 +467,7 @@ cc_library(
         ":allocator_stats",
         ":data_type",
         ":device_description",
+        ":device_description_proto_cc",
         ":device_memory",
         ":device_options",
         ":dnn_proto_cc",
@@ -480,6 +508,7 @@ cc_library(
     deps = [
         ":data_type",
         ":device_description",
+        ":device_description_proto_cc",
         ":dnn_proto_cc",
         ":kernel_cache_config",
         ":platform",
@@ -551,6 +580,7 @@ cc_library(
         ":blas",
         ":data_type",
         ":device_description",
+        ":device_description_proto_cc",
         ":device_memory",
         ":device_options",
         ":dnn_proto_cc",
@@ -709,6 +739,7 @@ cc_library(
         ":stream_executor_pimpl",
         ":timer",
         "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc_impl",
+        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
     ],
 )
 
@@ -742,7 +773,7 @@ cc_library(
     ],
 )
 
-tsl_cc_test(
+xla_cc_test(
     name = "stream_test",
     size = "small",
     srcs = ["stream_test.cc"],
@@ -756,7 +787,7 @@ tsl_cc_test(
     ],
 )
 
-tsl_cc_test(
+xla_cc_test(
     name = "dnn_test",
     size = "small",
     srcs = ["dnn_test.cc"],
@@ -803,7 +834,7 @@ alias(
 
 alias(
     name = "rocm_platform",
-    actual = "//tensorflow/stream_executor/rocm:all_runtime",
+    actual = "//tensorflow/compiler/xla/stream_executor/rocm:all_runtime",
 )
 
 # TODO(se-owner): document or remove this.

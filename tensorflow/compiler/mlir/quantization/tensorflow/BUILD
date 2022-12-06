@@ -15,6 +15,7 @@ package_group(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":internal_visibility_allowlist_package",
     ],
@@ -44,6 +45,7 @@ py_binary(
 genrule(
     name = "quantized_function_library",
     srcs = [
+        "passes/quantized_function_library_uniform_quantized.mlir",
         "passes/quantized_function_library.mlir",
         "passes/quantized_function_library_uniform_quantized_drq.mlir",
         "passes/quantized_function_library_tf_drq.mlir",
@@ -263,6 +265,23 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "uniform_op_quant_spec",
+    srcs = [
+        "ops/uniform_op_quant_spec.cc",
+    ],
+    hdrs = ["ops/uniform_op_quant_spec.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quant_ops",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
 gentbl_cc_library(
     name = "replace_cast_hacks_with_tf_xla_ops_inc_gen",
     compatible_with = get_compatible_with_cloud(),
@@ -283,6 +302,7 @@ cc_library(
         "passes/convert_custom_aggregation_op_to_quant_stats.cc",
         "passes/convert_fake_quant_to_qdq.cc",
         "passes/convert_tf_quant_ops_to_mhlo.cc",
+        "passes/duplicate_shape_determining_constants.cc",
         "passes/insert_custom_aggregation_ops.cc",
         "passes/insert_main_function.cc",
         "passes/insert_quantized_functions.cc",
@@ -326,6 +346,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:fake_quant_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/utils:tf_to_uniform_attribute_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:tf_to_xla_attribute_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
@@ -380,28 +401,24 @@ cc_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        ":quantization_options_proto_cc",
-        "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/debugging:mlir_dump",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
-        "//tensorflow/compiler/mlir/tensorflow:mlir_import_options",
-        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_freeze_variables",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:path",
-        "//tensorflow/core/platform:statusor",
-        "@llvm-project//mlir:ArithDialect",
+        "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -464,6 +481,33 @@ tf_proto_library(
 #     name = "quantization_options_py_pb2",
 #     api_version = 2,
 #     deps = [":quantization_options_proto"],
+# )
+# copybara:uncomment_end
+
+# OSS only: This target is header-only. Link `exported_model_proto_impl` only to
+# `libtensorflow_framework.so` via `lib_internal_impl`. Do NOT link
+# `exported_model_proto_impl` directly unless the target does not link
+# `libtensorflow_framework.so`.
+tf_proto_library(
+    name = "exported_model_proto",
+    srcs = ["exported_model.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    protodeps = [
+        "//tensorflow/core:protos_all",
+    ],
+    visibility = [
+        ":internal_visibility_allowlist_package",
+        # To be visible from `lib_internal_impl`.
+        "//tensorflow/core:__pkg__",
+    ],
+)
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "exported_model_py_pb2",
+#     api_version = 2,
+#     deps = [":exported_model_proto"],
 # )
 # copybara:uncomment_end
 

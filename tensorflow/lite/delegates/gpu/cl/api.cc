@@ -664,6 +664,8 @@ CreateGpuModelInfo GetCreateInfo(const Environment& environment,
   if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {
     create_info.hints.Add(ModelHints::kReduceKernelsCount);
     create_info.hints.Add(ModelHints::kFastTuning);
+  } else if (options.usage == InferenceUsage::BALANCED) {
+    create_info.hints.Add(ModelHints::kReduceKernelsCount);
   } else if (options.usage == InferenceUsage::SUSTAINED_SPEED) {
     create_info.hints.Add(ModelHints::kAllowSpecialKernels);
   }

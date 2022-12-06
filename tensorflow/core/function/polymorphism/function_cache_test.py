@@ -64,6 +64,9 @@ class MockIntGenericType(MockGenericType):
 class MockSubtypeOf2(MockGenericType):
 
   def is_subtype_of(self, other):
+    if not isinstance(other, MockGenericType):
+      return False
+
     return other._object == 2
 
 

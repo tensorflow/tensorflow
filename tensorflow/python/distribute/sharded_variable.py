@@ -725,16 +725,16 @@ class ShardedVariableMixin(trackable.Trackable):
 
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
-  def _map_resources(self, save_options):
+  def _export_to_saved_model_graph(self, object_map, tensor_map,
+                                   options, **kwargs):
     """For implementing `Trackable`."""
-    obj_map, resource_map = {}, {}
+    resource_list = []
     for v in self._variables + [self._saving_variable]:
-      v_obj_map, v_resource_map = v._map_resources(save_options)  # pylint:disable=protected-access
-      obj_map.update(v_obj_map)
-      resource_map.update(v_resource_map)
-    obj_map[self] = ShardedVariable([obj_map[self._saving_variable]],
-                                    name=self.name)
-    return obj_map, resource_map
+      resource_list.extend(v._export_to_saved_model_graph(  # pylint:disable=protected-access
+          object_map, tensor_map, options, **kwargs))
+    object_map[self] = ShardedVariable([object_map[self._saving_variable]],
+                                       name=self.name)
+    return resource_list
 
   @property
   def _unique_id(self):

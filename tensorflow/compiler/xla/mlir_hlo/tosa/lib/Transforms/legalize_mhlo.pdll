@@ -13,7 +13,7 @@
 // limitations under the License.
 
 #include "mlir/Dialect/Tosa/IR/TosaOps.td"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
+#include "mhlo/IR/hlo_ops.td"
 
 // Helper functions.
 Rewrite onesLike(op: Op, type: Type) -> Op [{

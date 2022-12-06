@@ -15,7 +15,7 @@
 
 """Tests for tensorflow.python.ops.control_flow_util_v2."""
 
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
@@ -48,7 +48,7 @@ class ControlFlowUtilV2Test(test.TestCase):
   def testInDefun(self):
     self._create_control_flow(False)
 
-    @function.defun
+    @def_function.function
     def defun():
       self._create_control_flow(True)
 

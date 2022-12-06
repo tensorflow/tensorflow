@@ -102,7 +102,7 @@ struct RemoveIdentity : public OpRewritePattern<TF::IdentityOp> {
       }
     }
 
-    rewriter.replaceOp(identity, identity.input());
+    rewriter.replaceOp(identity, identity.getInput());
     return success();
   }
 };

@@ -12,13 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// Must be included first
+// clang-format off
+#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+// clang-format on
 
 #include "tensorflow/compiler/xla/python/py_values.h"
 
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/python/numpy.h"
 #include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
@@ -560,6 +563,9 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
   if (arg.get_type() == PyArray::type()) {
     auto array = py::reinterpret_borrow<PyArray>(arg);
     if (array.fastpath_enabled()) {
+      if (array.IsDeleted()) {
+        return xla::InvalidArgument("Array has been deleted.");
+      }
       auto dtype = array.GetBuffer(0)->on_device_shape().element_type();
       return PyArgSignature(dtype, array.shape(), array.weak_type());
     }
