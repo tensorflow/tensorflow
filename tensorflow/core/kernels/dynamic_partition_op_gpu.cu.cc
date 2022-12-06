@@ -341,7 +341,11 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
                 NULL, temp_storage_bytes, partitions_ptr, partitions_out_ptr,
                 indices_in_ptr, indices_out_ptr, N, 0, sizeof(int32) * 8, cu_stream);
     
-    if (gpuResult != gpuSuccess) return;    
+    OP_REQUIRES(c, gpuResult == gpuSuccess, 
+                errors::Internal(
+                "Failed to launch gpuprim::DeviceRadixSort::SortPairs to calculate",
+                "temp_storage_bytes, status: ",
+                GpuGetErrorString(gpuResult)));
 
     // Allocate temporary storage.
     OP_REQUIRES_OK_ASYNC(
@@ -355,8 +359,12 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
               cub_temp_storage.flat<int8>().data(), temp_storage_bytes,
               partitions_ptr, partitions_out_ptr, indices_in_ptr, indices_out_ptr, N,
               0, sizeof(int32) * 8, cu_stream);
-
-    if (gpuResult != gpuSuccess) return;
+    
+    OP_REQUIRES(c, gpuResult == gpuSuccess, 
+                errors::Internal(
+                "Failed to launch gpuprim::DeviceRadixSort::SortPairs, 
+                temp_storage_bytes: ", temp_storage_bytes, ", status: ", 
+                GpuGetErrorString(gpuResult)));
   }  // At this point cub_temp_storage will be marked for deallocation.
 
   void CountAndSortParts(OpKernelContext* c, const Tensor* partitions,
@@ -422,7 +430,11 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
               NULL, temp_storage_bytes, keys_in_ptr, unique_out_it, values_in,
               aggregates_out_it, num_runs_ptr, reduction_op, N, cu_stream);
     
-    if (gpuResult != gpuSuccess) return;
+    OP_REQUIRES(c, gpuResult == gpuSuccess, 
+                errors::Internal(
+                "Failed to launch gpuprim::DeviceReduce::ReduceByKey ",
+                "temp_storage_bytes, status: ", 
+                GpuGetErrorString(gpuResult)));
 
     // Allocate temporary storage.
     OP_REQUIRES_OK_ASYNC(
@@ -440,7 +452,11 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
                 unique_out_it, values_in, aggregates_out_it, num_runs_ptr, reduction_op,
                 N, cu_stream);
 
-    if (gpuResult != gpuSuccess) return;
+    OP_REQUIRES(c, gpuResult == gpuSuccess, 
+                errors::Internal(
+                "Failed to launch gpuprim::DeviceReduce::ReduceByKey ",
+                "temp_storage_bytes: ", temp_storage_bytes, ", status: ", 
+                GpuGetErrorString(gpuResult)));
     
     // We are not done yet. unique_out only contains the indices that appeared
     // at least once in partitions. We move each value from aggregates_out
