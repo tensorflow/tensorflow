@@ -25,6 +25,7 @@ limitations under the License.
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_validation_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
@@ -36,6 +37,13 @@ namespace acceleration {
 namespace {
 
 using ::flatbuffers::FlatBufferBuilder;
+
+class CustomResultEvaluator : public AbstractBenchmarkResultEvaluator {
+ public:
+  bool HasPassedAccuracyCheck(const BenchmarkResult& result) override {
+    return true;
+  }
+};
 
 class BlockingValidatorRunnerTest : public ::testing::Test {
  protected:
@@ -107,6 +115,8 @@ TEST_F(BlockingValidatorRunnerTest, SucceedWithFdModelCustomValidation) {
   options_.model_offset = 0;
   options_.custom_input_batch_size = 3;
   options_.custom_input_data = {std::vector<uint8_t>(3 * 224 * 224 * 3, 1)};
+  CustomResultEvaluator evaluator;
+  options_.benchmark_result_evaluator = &evaluator;
 
   BlockingValidatorRunner runner(options_);
   ASSERT_EQ(runner.Init(), kMinibenchmarkSuccess);

@@ -81,14 +81,11 @@ void AddSparsificationPasses(mlir::OpPassManager& pm) {
   pm.addNestedPass<FuncOp>(mlir::createLinalgGeneralizationPass());
   pm.addNestedPass<FuncOp>(
       mlir::bufferization::createEmptyTensorToAllocTensorPass());
-  pm.addPass(mlir::bufferization::createTensorCopyInsertionPass(
-      GetBufferizationOptions()));
   pm.addPass(mlir::createPreSparsificationRewritePass());
-  pm.addPass(mlir::createSparsificationPass());
-  pm.addPass(mlir::createPostSparsificationRewritePass(/*enableRT=*/false));
-  pm.addPass(mlir::createSparseTensorCodegenPass());
-  pm.addPass(mlir::createSparseBufferRewritePass());
-  pm.addPass(mlir::createDenseBufferizationPass(GetBufferizationOptions()));
+  pm.addPass(mlir::createSparsificationAndBufferizationPass(
+      GetBufferizationOptions(), mlir::SparsificationOptions(),
+      mlir::SparseTensorConversionOptions(), /*enableRuntimeLibrary=*/false,
+      /*enableBufferInitialization=*/false));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createFinalizingBufferizePass());
 }

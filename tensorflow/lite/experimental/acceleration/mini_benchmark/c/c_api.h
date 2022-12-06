@@ -36,7 +36,9 @@ typedef struct TfLiteMiniBenchmarkResult {
   size_t flatbuffer_data_size;
 } TfLiteMiniBenchmarkResult;
 
-// Custom validation related info.
+// Custom validation related info. For forward source compatibility, this
+// struct should always be brace-initialized, so that all fields (including any
+// that might be added in the future) get zero-initialized.
 typedef struct TfLiteMiniBenchmarkCustomValidationInfo {
   // The batch number of custom input.
   int batch_size;
@@ -48,8 +50,19 @@ typedef struct TfLiteMiniBenchmarkCustomValidationInfo {
   // i-th input tensor buffer starts from sum(buffer_dim[0...i-1]) to
   // sum(buffer_dim[0...i]).
   uint8_t* buffer;
+  // Arbitrary data that will be passed  to the `accuracy_validator_func`
+  // function via its `user_data` parameter.
+  void* accuracy_validator_user_data;
+  // Custom validation rule that decides whether a BenchmarkResult passes the
+  // accuracy check.
+  bool (*accuracy_validator_func)(void* user_data,
+                                  uint8_t* benchmark_result_data,
+                                  int benchmark_result_data_size);
 } TfLiteMiniBenchmarkCustomValidationInfo;
 
+// Mini-benchmark settings. For forward source compatibility, this struct
+// should always be brace-initialized, so that all fields (including any that
+// might be added in the future) get zero-initialized.
 typedef struct TfLiteMiniBenchmarkSettings {
   // The pointer to a flatbuffer data of MinibenchmarkSettings.
   uint8_t* flatbuffer_data;

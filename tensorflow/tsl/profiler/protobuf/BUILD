@@ -40,6 +40,7 @@ tf_proto_library(
     has_services = 1,
     cc_api_version = 2,
     create_grpc_library = True,
+    create_java_proto = False,
     make_default_target_header_only = True,
     protodeps = [
         ":profiler_options_proto",

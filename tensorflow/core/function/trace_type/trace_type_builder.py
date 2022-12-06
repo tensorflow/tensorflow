@@ -84,6 +84,33 @@ class InternalTracingContext(trace.TracingContext):
     return self._is_legacy_signature
 
 
+class InternalPlaceholderContext(trace.PlaceholderContext):
+  """Container with mappings shared across TraceTypes for placeholder values."""
+
+  def __init__(self, use_default_placeholder: bool = True):
+    self._use_default_placeholder = use_default_placeholder
+    self._alias_id_to_placeholder = {}
+
+  def has_placeholder(self, alias_id: Hashable) -> bool:
+    return alias_id in self._alias_id_to_placeholder
+
+  def get_placeholder(self, alias_id: Hashable) -> Hashable:
+    if not self.has_placeholder(alias_id):
+      raise KeyError(f"alias_id: {alias_id} not found in this instance of "
+                     "placeholder context.")
+    return self._alias_id_to_placeholder[alias_id]
+
+  def add_placeholder(self, alias_id: Hashable, placeholder: Hashable) -> None:
+    if alias_id in self._alias_id_to_placeholder:
+      raise KeyError(f"alias id: {alias_id} is already stored in this "
+                     "instance of placeholder context.")
+    self._alias_id_to_placeholder[alias_id] = placeholder
+
+  @property
+  def use_default_placeholder(self) -> bool:
+    return self._use_default_placeholder
+
+
 def from_value(value: Any,
                context: trace.TracingContext = None) -> trace.TraceType:
   """Returns a TraceType corresponding to the value based on the context.

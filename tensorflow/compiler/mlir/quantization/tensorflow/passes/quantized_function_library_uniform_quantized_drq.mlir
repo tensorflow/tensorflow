@@ -26,7 +26,8 @@ module {
   // Currently only 4-d case is supported
   func.func @quantized_conv2d_fn(
                          %input : tensor<*xf32>, %weight : tensor<*x!tf_type.qint8>,
-                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>) -> tensor<*xf32> {
+                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>) -> tensor<*xf32>
+      attributes {tf_quant.quantized_ops = ["Conv2D"]} {
 
     %out = "tf.UniformQuantizedConvolutionHybrid"(%input, %weight,
                            %weight_scale, %weight_zp) {
@@ -54,7 +55,8 @@ module {
   // Currently only 4-d case is supported
   func.func @quantized_depthwise_conv2d_fn(
                          %input : tensor<*xf32>, %weight : tensor<*x!tf_type.qint8>,
-                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>) -> tensor<*xf32> {
+                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>) -> tensor<*xf32>
+      attributes {tf_quant.quantized_ops = ["DepthwiseConv2D"]} {
 
     %out = "tf.UniformQuantizedConvolutionHybrid"(%input, %weight,
                            %weight_scale, %weight_zp) {
@@ -81,7 +83,8 @@ module {
   // Currently only 4-d case is supported
   func.func @quantized_matmul_fn(
                          %input : tensor<*xf32>, %weight : tensor<*x!tf_type.qint8>,
-                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>) -> tensor<*xf32> {
+                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>) -> tensor<*xf32>
+      attributes {tf_quant.quantized_ops = ["MatMul"]} {
 
     %out = "tf.UniformQuantizedDotHybrid"(%input, %weight,
                                 %weight_scale, %weight_zp) {

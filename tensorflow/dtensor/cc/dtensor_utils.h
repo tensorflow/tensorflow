@@ -51,6 +51,10 @@ bool DoNotFuseReduceScatter();
 // reduce op.
 int ReduceInBfloat16MaxGroupSize();
 
+// Returns whether to lower DTensorAllGather to CollectiveReduceV2. If false,
+// lowers it to CollectiveReduceV2 for GPU and CPU for supported data types.
+bool LowerCollectiveGatherToCollectiveGatherV2();
+
 }  // namespace dtensor
 }  // namespace tensorflow
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -34,12 +35,6 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 namespace ffi {
-
-using TypeId = XLA_FFI_TypeId;
-
-using Error = XLA_FFI_Error;
-using ErrorCode = XLA_FFI_Error_Code;
-using ExecutionContext = XLA_FFI_ExecutionContext;
 
 // Forward declare template defined below.
 template <typename... Ts>
@@ -59,6 +54,48 @@ class FfiHandler;
 #endif  // MEMORY_SANITIZER
 
 //===----------------------------------------------------------------------===//
+// Check struct sizes passed across the C API to detect mismatched versions.
+//===----------------------------------------------------------------------===//
+
+namespace internal {
+inline void CheckStructSize(std::string_view struct_name, size_t expected_size,
+                            size_t actual_size) {
+  if (expected_size != actual_size) {
+    std::cerr << "Unexpected " << struct_name << " size: expected "
+              << expected_size << " << got " << actual_size
+              << ". Check installed software versions." << std::endl;
+    std::abort();
+  }
+}
+}  // namespace internal
+
+#define CHECK_ARGS_SIZE(name, args)                            \
+  internal::CheckStructSize("XLA_FFI_##name##_Args",           \
+                            XLA_FFI_##name##_Args_STRUCT_SIZE, \
+                            args->struct_size)
+
+//===----------------------------------------------------------------------===//
+// Span is non-owning view into contiguous values ot type `T`.
+//===----------------------------------------------------------------------===//
+
+// TODO(ezhulenev): Replace with `std::span` when C++20 is available.
+template <typename T>
+class Span {
+ public:
+  Span(T* data, size_t size) : data_(data), size_(size) {}
+  Span(const std::vector<std::remove_const_t<T>>& vec)  // NOLINT
+      : Span(vec.data(), vec.size()) {}
+
+  T& operator[](size_t index) const { return data_[index]; }
+
+  size_t size() const { return size_; }
+
+ private:
+  T* data_;
+  size_t size_;
+};
+
+//===----------------------------------------------------------------------===//
 // XLA FFI status wrapper around error reporting APIs.
 //===----------------------------------------------------------------------===//
 
@@ -67,16 +104,16 @@ class FfiStatus {
   static FfiStatus Ok() { return FfiStatus(); }
 
   static FfiStatus Internal(std::string message) {
-    ErrorCode errc = XLA_FFI_Error_Code_INTERNAL;
+    XLA_FFI_Error_Code errc = XLA_FFI_Error_Code_INTERNAL;
     return FfiStatus(errc, message);
   }
 
   static FfiStatus InvalidArgument(std::string message) {
-    ErrorCode errc = XLA_FFI_Error_Code_INVALID_ARGUMENT;
+    XLA_FFI_Error_Code errc = XLA_FFI_Error_Code_INVALID_ARGUMENT;
     return FfiStatus(errc, message);
   }
 
-  std::optional<ErrorCode> errc() const { return errc_; }
+  std::optional<XLA_FFI_Error_Code> errc() const { return errc_; }
 
   std::string_view message() const {
     return message_.has_value() ? *message_ : std::string_view();
@@ -89,15 +126,15 @@ class FfiStatus {
  private:
   FfiStatus() = default;
 
-  FfiStatus(ErrorCode errc, std::string message)
+  FfiStatus(XLA_FFI_Error_Code errc, std::string message)
       : errc_(errc), message_(std::move(message)) {}
 
-  std::optional<ErrorCode> errc_;
+  std::optional<XLA_FFI_Error_Code> errc_;
   std::optional<std::string> message_;
 };
 
 //===----------------------------------------------------------------------===//
-// XLA FFI virtual base for implementing FFI handlers.
+// XLA FFI virtual base for implementing FFI functions.
 //===----------------------------------------------------------------------===//
 
 class Ffi {
@@ -105,30 +142,122 @@ class Ffi {
   virtual ~Ffi() = default;
 
   virtual std::string_view name() const = 0;
-  virtual XLA_FFI_Error* operator()(ExecutionContext* ctx, void** args,
+  virtual XLA_FFI_Error* operator()(XLA_FFI_ExecutionContext* ctx,
+                                    XLA_FFI_Module_State* state, void** args,
                                     void** attrs, void** rets) const = 0;
 
   static FfiBinding<> Bind(std::string name);
 
-  static void Register(const XLA_FFI_Api* api, const std::string& target,
-                       XLA_FFI_Function function) {
-    XLA_FFI_Register_Args args;
-    args.struct_size = XLA_FFI_Register_Args_STRUCT_SIZE;
-    args.priv = nullptr;
-    args.target = target.data();
-    args.function = function;
-
-    api->XLA_FFI_Register(&args);
-  }
-
   template <typename T>
-  static bool Isa(ExecutionContext* ctx, TypeId type_id);
+  static bool Isa(XLA_FFI_ExecutionContext* ctx, XLA_FFI_TypeId type_id);
 
   template <typename T, typename U, typename... Ts>
-  static bool Isa(ExecutionContext* ctx, TypeId type_id) {
+  static bool Isa(XLA_FFI_ExecutionContext* ctx, XLA_FFI_TypeId type_id) {
     return Isa<T>(ctx, type_id) || Isa<U, Ts...>(ctx, type_id);
   }
 };
+
+//===----------------------------------------------------------------------===//
+// XLA FFI stateful module is a collection of FFI functions and a state.
+//===----------------------------------------------------------------------===//
+
+struct FfiFunction {
+  std::string target;
+  XLA_FFI_Function* function;
+};
+
+template <typename State>
+class StatefulModule {
+ public:
+  // TODO(ezhulenev): To gracefully fail if state can't be created, this has to
+  // return `FfiStatusOr<std::unique_ptr<State>>`, but we do not have a
+  // `StatusOr` implementation yet and we can't depend on absl.
+  virtual std::unique_ptr<State> CreateState() const = 0;
+
+  virtual ~StatefulModule() = default;
+
+ protected:
+  StatefulModule(const XLA_FFI_Api* api, std::string module_name,
+                 std::vector<FfiFunction> exported_functions)
+      : api_(api),
+        module_name_(std::move(module_name)),
+        exported_functions_(std::move(exported_functions)) {
+    RegisterModule(this);
+  }
+
+ private:
+  // Registers `module` with an XLA runtime.
+  static void RegisterModule(StatefulModule* module);
+
+  // Implements `XLA_FFI_Module_CreateState` API function.
+  static XLA_FFI_Error* CreateState(XLA_FFI_Module_CreateState_Args* args);
+
+  // Implements `XLA_FFI_Module_DestroyState` API function.
+  static void DestroyState(XLA_FFI_Module_DestroyState_Args* args);
+
+  // Implements `XLA_FFI_Module_ExportFunctions` API function.
+  static void ExportFunctions(XLA_FFI_Module_ExportFunctions_Args* args);
+
+  // Module is registered with the XLA runtime behind this API instance, and any
+  // module manipulation (e.g. export functions) must be done through it.
+  const XLA_FFI_Api* api_;
+
+  std::string module_name_;
+  std::vector<FfiFunction> exported_functions_;
+};
+
+template <typename State>
+void StatefulModule<State>::RegisterModule(StatefulModule* module) {
+  XLA_FFI_RegisterModule_Args args;
+  args.struct_size = XLA_FFI_RegisterModule_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.name = module->module_name_.c_str();
+  args.module = reinterpret_cast<XLA_FFI_Module*>(module);
+  args.create_state = CreateState;
+  args.destroy_state = DestroyState;
+  args.export_functions = ExportFunctions;
+
+  module->api_->XLA_FFI_RegisterModule(&args);
+}
+
+template <typename State>
+XLA_FFI_Error* StatefulModule<State>::CreateState(
+    XLA_FFI_Module_CreateState_Args* args) {
+  CHECK_ARGS_SIZE(Module_CreateState, args);
+
+  auto* module = reinterpret_cast<StatefulModule*>(args->module);
+  auto* state = module->CreateState().release();
+  args->state = reinterpret_cast<XLA_FFI_Module_State*>(state);
+  return nullptr;  // success
+}
+
+template <typename State>
+void StatefulModule<State>::DestroyState(
+    XLA_FFI_Module_DestroyState_Args* args) {
+  CHECK_ARGS_SIZE(Module_DestroyState, args);
+
+  delete reinterpret_cast<State*>(args->state);
+}
+
+template <typename S>
+void StatefulModule<S>::ExportFunctions(
+    XLA_FFI_Module_ExportFunctions_Args* args) {
+  CHECK_ARGS_SIZE(Module_ExportFunctions, args);
+  auto* module = reinterpret_cast<StatefulModule*>(args->module);
+
+  for (size_t i = 0; i < module->exported_functions_.size(); ++i) {
+    const FfiFunction& fn = module->exported_functions_[i];
+
+    XLA_FFI_ExportFunction_Args export_args;
+    export_args.struct_size = XLA_FFI_ExportFunction_Args_STRUCT_SIZE;
+    export_args.priv = nullptr;
+    export_args.target = fn.target.c_str();
+    export_args.function = fn.function;
+    export_args.registry = args->registry;
+
+    module->api_->XLA_FFI_ExportFunction(&export_args);
+  }
+}
 
 //===----------------------------------------------------------------------===//
 // Arguments supported by the FFI handlers.
@@ -202,20 +331,6 @@ constexpr std::string_view PrimitiveTypeToString(PrimitiveType type) {
   }
 }
 
-// TODO(ezhulenev): Replace with `std::span` when C++20 is available.
-template <typename T>
-class Span {
- public:
-  Span(T* data, size_t size) : data_(data), size_(size) {}
-  T& operator[](size_t index) const { return data_[index]; }
-
-  size_t size() const { return size_; }
-
- private:
-  T* data_;
-  size_t size_;
-};
-
 // A view into the buffer argument. Buffers with non-identity layouts can be
 // decoded only as a StridedBufferArg.
 struct StridedBufferArg {
@@ -237,7 +352,7 @@ struct BufferArg {
 };
 
 template <typename T>
-bool Ffi::Isa(ExecutionContext* ctx, TypeId type_id) {
+bool Ffi::Isa(XLA_FFI_ExecutionContext* ctx, XLA_FFI_TypeId type_id) {
   if constexpr (std::is_same_v<T, float>)
     return ctx->XLA_FFI_Get_Float_TypeId() == type_id;
   else if constexpr (std::is_same_v<T, int32_t>)
@@ -298,12 +413,17 @@ namespace internal {
 // A type tag to distinguish arguments tied to the attributes in the
 // `FfiBinding` variadic template argument.
 template <typename T>
-struct Attr {};
+struct AttrTag {};
+
+// A type tag to distinguish argument tied to FFI module state.
+template <typename T>
+struct StateTag {};
 
 // A template for checking if type is a wrapped attribute or user data.
 // clang-format off
-template <typename>   struct IsWrapped : std::false_type {};
-template <typename T> struct IsWrapped<Attr<T>> : std::true_type {};
+template <typename>   struct IsWrapped              : std::false_type {};
+template <typename T> struct IsWrapped<AttrTag<T>>  : std::true_type {};
+template <typename T> struct IsWrapped<StateTag<T>> : std::true_type {};
 // clang-format on
 
 }  // namespace internal
@@ -317,8 +437,13 @@ class FfiBinding {
   }
 
   template <typename T>
-  FfiBinding<Ts..., internal::Attr<T>> Attr(std::string attr) && {
+  FfiBinding<Ts..., internal::AttrTag<T>> Attr(std::string attr) && {
     attrs_.push_back(std::move(attr));
+    return {std::move(*this)};
+  }
+
+  template <typename T>
+  FfiBinding<Ts..., internal::StateTag<T>> State() && {
     return {std::move(*this)};
   }
 
@@ -499,7 +624,9 @@ struct DecodingOffsets {
 
 template <typename T>
 struct Decode {
-  static std::optional<T> call(ExecutionContext* ctx, DecodingOffsets& offsets,
+  static std::optional<T> call(XLA_FFI_ExecutionContext* ctx,
+                               XLA_FFI_Module_State* state,
+                               DecodingOffsets& offsets,
                                internal::DecodedArgs args,
                                const std::vector<std::string>& attrs_names,
                                const std::vector<size_t>& attrs_idx,
@@ -510,8 +637,10 @@ struct Decode {
 };
 
 template <typename T>
-struct Decode<Attr<T>> {
-  static std::optional<T> call(ExecutionContext* ctx, DecodingOffsets& offsets,
+struct Decode<AttrTag<T>> {
+  static std::optional<T> call(XLA_FFI_ExecutionContext* ctx,
+                               XLA_FFI_Module_State* state,
+                               DecodingOffsets& offsets,
                                internal::DecodedArgs args,
                                const std::vector<std::string>& attrs_names,
                                const std::vector<size_t>& attrs_idx,
@@ -530,6 +659,19 @@ struct Decode<Attr<T>> {
   }
 };
 
+template <typename T>
+struct Decode<StateTag<T>> {
+  static std::optional<T*> call(XLA_FFI_ExecutionContext* ctx,
+                                XLA_FFI_Module_State* state,
+                                DecodingOffsets& offsets,
+                                internal::DecodedArgs args,
+                                const std::vector<std::string>& attrs_names,
+                                const std::vector<size_t>& attrs_idx,
+                                internal::DecodedAttrs attrs) {
+    return reinterpret_cast<T*>(state);
+  }
+};
+
 }  // namespace internal
 
 //===----------------------------------------------------------------------===//
@@ -545,8 +687,9 @@ namespace internal {
 
 // A helper template to extract the type of the handler argument.
 // clang-format off
-template <typename T> struct FnArgType          { using Type = T; };
-template <typename T> struct FnArgType<Attr<T>> { using Type = T; };
+template <typename T> struct FnArgType              { using Type = T; };
+template <typename T> struct FnArgType<AttrTag<T>>  { using Type = T; };
+template <typename T> struct FnArgType<StateTag<T>> { using Type = T*; };
 // clang-format on
 
 // A template for counting regular arguments in the Ts pack.
@@ -577,7 +720,8 @@ class FfiHandler : public Ffi {
       std::is_invocable_r_v<FfiStatus, Fn, FnArgType<Ts>...>;
   static_assert(kIsFfiStatusHandler, "unsupported FFI handler type");
 
-  static Error* ToError(ExecutionContext* ctx, FfiStatus status) {
+  static XLA_FFI_Error* ToError(XLA_FFI_ExecutionContext* ctx,
+                                FfiStatus status) {
     if (!status.errc().has_value()) return nullptr;
 
     XLA_FFI_Error_Create_Args args;
@@ -592,8 +736,9 @@ class FfiHandler : public Ffi {
  public:
   std::string_view name() const final { return name_; }
 
-  Error* operator()(ExecutionContext* ctx, void** args, void** attrs,
-                    void** rets) const final {
+  XLA_FFI_Error* operator()(XLA_FFI_ExecutionContext* ctx,
+                            XLA_FFI_Module_State* state, void** args,
+                            void** attrs, void** rets) const final {
     // Decode arguments and attributes from the opaque pointers.
     internal::DecodedArgs decoded_args(args);
     internal::DecodedAttrs decoded_attrs(attrs);
@@ -621,7 +766,7 @@ class FfiHandler : public Ffi {
 
     // Define index sequence to access ffi handler arguments.
     using Is = std::make_index_sequence<kSize>;
-    return call(ctx, decoded_args, decoded_attrs, Is{});
+    return call(ctx, state, decoded_args, decoded_attrs, Is{});
   }
 
  private:
@@ -629,8 +774,10 @@ class FfiHandler : public Ffi {
   friend class FfiBinding;
 
   template <size_t... Is>
-  Error* call(ExecutionContext* ctx, internal::DecodedArgs args,
-              internal::DecodedAttrs attrs, std::index_sequence<Is...>) const {
+  XLA_FFI_Error* call(XLA_FFI_ExecutionContext* ctx,
+                      XLA_FFI_Module_State* state, internal::DecodedArgs args,
+                      internal::DecodedAttrs attrs,
+                      std::index_sequence<Is...>) const {
     // A helper structure to allow each decoder find the correct offset in the
     // arguments, attributes or results.
     internal::DecodingOffsets offsets;
@@ -639,8 +786,8 @@ class FfiHandler : public Ffi {
     // that initializer list will be evaluated left-to-right, and we can rely
     // on correct offsets computation.
     std::tuple<std::optional<FnArgType<Ts>>...> fn_args = {
-        internal::Decode<Ts>::call(ctx, offsets, args, attrs_, attrs_idx_,
-                                   attrs)...};
+        internal::Decode<Ts>::call(ctx, state, offsets, args, attrs_,
+                                   attrs_idx_, attrs)...};
 
     // Check if all arguments, attributes and results were decoded;
     bool all_decoded = (std::get<Is>(fn_args).has_value() && ...);
@@ -693,8 +840,8 @@ class FfiHandler : public Ffi {
 #define XLA_FFI_REGISTER_SCALAR_ARG_DECODING(T)                           \
   template <>                                                             \
   struct FfiArgDecoding<T> {                                              \
-    static std::optional<T> Decode(ExecutionContext* ctx, TypeId type_id, \
-                                   void* value) {                         \
+    static std::optional<T> Decode(XLA_FFI_ExecutionContext* ctx,         \
+                                   XLA_FFI_TypeId type_id, void* value) { \
       if (!Ffi::Isa<T>(ctx, type_id)) {                                   \
         return std::nullopt;                                              \
       }                                                                   \
@@ -712,8 +859,9 @@ template <>
 struct FfiArgDecoding<StridedBufferArg> {
   using EncodedMemref = internal::EncodedMemref;
 
-  static std::optional<StridedBufferArg> Decode(ExecutionContext* ctx,
-                                                TypeId type_id, void* value) {
+  static std::optional<StridedBufferArg> Decode(XLA_FFI_ExecutionContext* ctx,
+                                                XLA_FFI_TypeId type_id,
+                                                void* value) {
     if (!Ffi::Isa<BufferArg, StridedBufferArg>(ctx, type_id)) {
       return std::nullopt;
     }
@@ -735,8 +883,8 @@ template <>
 struct FfiArgDecoding<BufferArg> {
   using EncodedMemref = internal::EncodedMemref;
 
-  static std::optional<BufferArg> Decode(ExecutionContext* ctx, TypeId type_id,
-                                         void* value) {
+  static std::optional<BufferArg> Decode(XLA_FFI_ExecutionContext* ctx,
+                                         XLA_FFI_TypeId type_id, void* value) {
     if (!Ffi::Isa<BufferArg>(ctx, type_id)) {
       return std::nullopt;
     }
@@ -758,9 +906,9 @@ struct FfiArgDecoding<BufferArg> {
 #define XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(T)                          \
   template <>                                                             \
   struct FfiAttrDecoding<T> {                                             \
-    static std::optional<T> Decode(ExecutionContext* ctx,                 \
-                                   std::string_view name, TypeId type_id, \
-                                   void* value) {                         \
+    static std::optional<T> Decode(XLA_FFI_ExecutionContext* ctx,         \
+                                   std::string_view name,                 \
+                                   XLA_FFI_TypeId type_id, void* value) { \
       if (!Ffi::Isa<T>(ctx, type_id)) {                                   \
         return std::nullopt;                                              \
       }                                                                   \
@@ -777,18 +925,17 @@ XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(float);
 // XLA FFI helper macro for registering FFI implementations.
 //===----------------------------------------------------------------------===//
 
-#define XLA_FFI_DEFINE_FUNCTION(fn, impl, binding)                             \
-  static XLA_FFI_Error* fn(XLA_FFI_Function_Args* args) {                      \
-    if (args->struct_size != XLA_FFI_Function_Args_STRUCT_SIZE) {              \
-      std::cerr << "Unexpected XLA_FFI_Function_Args  size: expected "         \
-                << XLA_FFI_Function_Args_STRUCT_SIZE << " << got "             \
-                << args->struct_size << ". Check installed software versions." \
-                << std::endl;                                                  \
-      std::abort();                                                            \
-    }                                                                          \
-    static auto* handler = binding.To(impl).release();                         \
-    return (*handler)(args->ctx, args->args, args->attrs, args->rets);         \
+#define XLA_FFI_DEFINE_FUNCTION(fn, impl, binding)                     \
+  static XLA_FFI_Error* fn(XLA_FFI_Function_Args* args) {              \
+    ::xla::runtime::ffi::internal::CheckStructSize(                    \
+        "XLA_FFI_Function_Args", XLA_FFI_Function_Args_STRUCT_SIZE,    \
+        args->struct_size);                                            \
+    static auto* handler = binding.To(impl).release();                 \
+    return (*handler)(args->ctx, args->state, args->args, args->attrs, \
+                      args->rets);                                     \
   }
+
+#undef CHECK_ARGS_SIZE
 
 }  // namespace ffi
 }  // namespace runtime

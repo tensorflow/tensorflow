@@ -530,7 +530,9 @@ def : Pat<(TF_SliceOp:$op MHLO_Tensor:$input, MHLO_Tensor:$starting_indices,
 //===----------------------------------------------------------------------===//
 
 def ArgTypesMatchCallee : Constraint<
-    CPred<"ArgTypesMatchCallee($0[0].getOwner(), $1, $2)">>;
+    // $0 is a resultset (possibly empty), and $_op isn't assigned. So retrieve
+    // the op using the builder.
+    CPred<"ArgTypesMatchCallee(&*$_builder.getInsertionPoint(), $1, $2)">>;
 
 foreach callOp = [TF_PartitionedCallOp, TF_StatefulPartitionedCallOp] in {
   def : Pat<(callOp:$op $args, FlatSymbolRefAttr:$f,

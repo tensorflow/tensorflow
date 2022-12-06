@@ -38,6 +38,7 @@ enum AccuracyBenchmarkStatus {
   kAccuracyBenchmarkResultCountMismatch = 101,
   kAccuracyBenchmarkArgumentParsingFailed = 102,
   kAccuracyBenchmarkMoreThanOneDelegateProvided = 103,
+  kAccuracyBenchmarkTfLiteSettingsParsingFailed = 104,
 };
 
 // Triggers MiniBenchmark testings. Parses the arguments passed from the

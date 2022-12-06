@@ -137,13 +137,14 @@ module {
   }
 
   parameters[
-    {"func_name": "matmul", "internal_func_name": "internal_matmul_fn"},
-    {"func_name": "conv2d", "internal_func_name": "internal_conv2d_fn"},
-    {"func_name": "depthwise_conv2d", "internal_func_name": "internal_depthwise_conv2d_fn"}
+    {"quantized_ops": ["MatMul"], "internal_func_name": "internal_matmul_fn"},
+    {"quantized_ops": ["Conv2D"], "internal_func_name": "internal_conv2d_fn"},
+    {"quantized_ops": ["DepthwiseConv2D"], "internal_func_name": "internal_depthwise_conv2d_fn"}
   ]
-  func.func @quantized_${func_name}_fn(
+  func.func @GenerateQuantizedFunctionName(${quantized_ops})(
                          %input : tensor<*xf32>, %weight : tensor<*xi8>,
-                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>) -> tensor<*xf32> {
+                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>) -> tensor<*xf32>
+      attributes {tf_quant.quantized_ops = ${quantized_ops}} {
 
     %input_scale, %input_zp = "tf.PartitionedCall"(%input) {
         config = "", config_proto = "", executor_type = "", f=@internal_calculate_quant_params

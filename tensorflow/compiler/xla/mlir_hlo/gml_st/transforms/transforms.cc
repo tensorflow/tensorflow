@@ -34,6 +34,22 @@ namespace mlir {
 namespace gml_st {
 bool isZero(Value v) { return matchPattern(v, m_Zero()); }
 bool isOne(Value v) { return matchPattern(v, m_One()); }
+
+bool isIdentityTileOp(TileOp candidate) {
+  // Offsets must be all 0s and strides must be all 1s.
+  return llvm::all_of(candidate.getOffsets(),
+                      [](Value v) { return isZero(v); }) &&
+         llvm::all_of(candidate.getStrides(), [](Value v) { return isOne(v); });
+}
+
+bool haveSameStaticShape(Value lhs, Value rhs) {
+  auto lhsType = lhs.getType().cast<ShapedType>();
+  auto rhsType = rhs.getType().cast<ShapedType>();
+  if (!lhsType.hasStaticShape() || !rhsType.hasStaticShape()) return false;
+  return lhsType == rhsType;
+}
+
+// Tiling.
 namespace {
 using ::mlir::linalg::LinalgOp;
 

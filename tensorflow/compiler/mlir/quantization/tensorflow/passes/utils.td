@@ -57,6 +57,10 @@ def IsInt32ElementType : Constraint<
 def IsF32ElementType : Constraint<
   CPred<"getElementTypeOrSelf($0).isF32()">>;
 
+// Checks if the value has rank.
+def HasRank : Constraint<
+  CPred<"$0.getType().cast<ShapedType>().hasRank()">>;
+
 // Checks if the value has static shape.
 def HasStaticShapeConstraint : Constraint<CPred<"HasStaticShape($0)">>;
 

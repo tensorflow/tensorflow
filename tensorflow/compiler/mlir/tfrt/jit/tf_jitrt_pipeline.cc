@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
@@ -96,7 +97,7 @@ void AddLinalgTransformations(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(CreateTileFillPass(options.vector_size));
   pm.addNestedPass<FuncOp>(mlir::gml_st::createCollapseMaterializeOpsPass());
   pm.addNestedPass<FuncOp>(mlir::gml_st::createVectorizeGmlStLoopsPass(true));
-  pm.addNestedPass<FuncOp>(mlir::gml_st::createLoweringVectorContractPass());
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createLowerVectorContractPass());
 }
 
 void AddBufferizationPasses(OpPassManager& pm) {
@@ -122,6 +123,11 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(std::make_unique<AddTensorflowProducerVersion>());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addPass(mlir::createCanonicalizerPass());
+
+  // This will add regions to IfOp/WhileOp (turning them into IfRegionOp
+  // and WhileRegionOp), but be aware that those regions will still contain
+  // calls.
+  pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
 
   // Transform TF operation to HLO.
   pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
@@ -169,6 +175,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // Transform HLO operations to Linalg and Standard.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeControlFlowPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeSortPass());
+  pm.addNestedPass<FuncOp>(xla::cpu::createLegalizeCollectiveOpsPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
   pm.addPass(mlir::mhlo::createLegalizeToArithmeticPass());
   pm.addNestedPass<FuncOp>(

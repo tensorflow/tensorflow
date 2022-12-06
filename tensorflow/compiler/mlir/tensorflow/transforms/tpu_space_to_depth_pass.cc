@@ -440,7 +440,7 @@ void HandleCluster(tf_device::ClusterFuncOp cluster_func, int32_t block_size,
       llvm::dyn_cast<tf_device::ReplicateOp>(cluster_func->getParentOp());
 
   llvm::SmallVector<int64_t, 8> transform_input_indices;
-  for (auto input : llvm::enumerate(cluster_func.operands())) {
+  for (const auto& input : llvm::enumerate(cluster_func.getOperands())) {
     if (auto block_arg = input.value().dyn_cast<BlockArgument>()) {
       if (block_arg.getArgNumber() != arg_num) continue;
       // For a block argument, consider transforms only when it is a replicated

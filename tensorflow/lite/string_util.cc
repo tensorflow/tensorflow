@@ -83,11 +83,19 @@ int DynamicBuffer::WriteToBuffer(char** buffer) {
   *buffer = reinterpret_cast<char*>(malloc(bytes));
 
   // Set num of string
+  //
+  // NOTE: The string buffer is accessed here as if it's native endian (instead
+  // of small endian, as documented in the header). This will protentially break
+  // when TFLite is ported to big endian platforms.
+  // TODO(b/165919229): This code will need changing if/when we port to a
+  // big-endian platform.
   memcpy(*buffer, &num_strings, sizeof(int32_t));
 
   // Set offset of strings.
   int32_t start = sizeof(int32_t) * (num_strings + 2);
   for (size_t i = 0; i < offset_.size(); i++) {
+    // TODO(b/165919229): This code will need changing if/when we port to a
+    // big-endian platform.
     int32_t offset = start + offset_[i];
     memcpy(*buffer + sizeof(int32_t) * (i + 1), &offset, sizeof(int32_t));
   }
@@ -122,6 +130,12 @@ void DynamicBuffer::WriteToTensor(TfLiteTensor* tensor,
 
 int GetStringCount(const void* raw_buffer) {
   // The first integers in the raw buffer is the number of strings.
+  //
+  // NOTE: The string buffer is accessed here as if it's native endian (instead
+  // of small endian, as documented in the header). This will protentially break
+  // when TFLite is ported to big endian platforms.
+  // TODO(b/165919229): This code will need changing if/when we port to a
+  // big-endian platform.
   return *static_cast<const int32_t*>(raw_buffer);
 }
 
@@ -131,6 +145,11 @@ int GetStringCount(const TfLiteTensor* tensor) {
 }
 
 StringRef GetString(const void* raw_buffer, int string_index) {
+  // NOTE: The string buffer is accessed here as if it's native endian (instead
+  // of small endian, as documented in the header). This will protentially break
+  // when TFLite is ported to big endian platforms.
+  // TODO(b/165919229): This code will need changing if/when we port to a
+  // big-endian platform.
   const int32_t* offset =
       static_cast<const int32_t*>(raw_buffer) + (string_index + 1);
   return StringRef{

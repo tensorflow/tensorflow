@@ -1701,6 +1701,21 @@ func.func @unhandled_partitioned_call_2(%arg0: tensor<i32>, %arg1: tensor<*xi32>
 
 // -----
 
+// CHECK-LABEL: func @no_args_and_results
+func.func @no_args_and_results() {
+  // CHECK: call @callee() : () -> ()
+  // CHECK: call @callee() : () -> ()
+  // CHECK: call @callee() : () -> ()
+  "tf.PartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @callee} : () -> ()
+  "tf.StatefulPartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @callee} : () -> ()
+  "tf.LegacyCall"() {config = "", config_proto = "", executor_type = "", f = @callee} : () -> ()
+  func.return
+}
+
+func.func @callee() {
+  func.return
+}
+
 //===----------------------------------------------------------------------===//
 // ReverseV2 op legalization.
 //===----------------------------------------------------------------------===//
@@ -5703,7 +5718,7 @@ func.func @avgpool_grad_bf16(%grad: tensor<10x12x16x64xbf16>) -> tensor<10x24x32
 
 // CHECK-LABEL: xla_sharding
 func.func @xla_sharding(%arg0: tensor<4x16xf32>) -> tensor<4x16xf32> {
-  // CHECK-NEXT: "mhlo.custom_call"(%arg0) {call_target_name = "Sharding", mhlo.sharding = ""}
+  // CHECK-NEXT: mhlo.custom_call @Sharding(%arg0) {mhlo.sharding = ""}
   %0 = "tf.XlaSharding"(%arg0) {_XlaSharding = "", sharding = ""} : (tensor<4x16xf32>) -> tensor<4x16xf32>
   func.return %0 : tensor<4x16xf32>
 }

@@ -43,12 +43,9 @@ pytype_strict_library(
     srcs = ["api.py"],
     srcs_version = "PY3",
     deps = [
-        ":config",
         ":dtensor_device",
         ":gen_dtensor_ops",
         ":layout",
-        "//tensorflow/python:config",
-        "//tensorflow/python:device",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:tf_export",

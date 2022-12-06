@@ -301,6 +301,26 @@ class ExtensionType(
     return self._tf_extension_type_cached_type_spec
 
 
+@tf_export('experimental.extension_type.as_dict')
+def as_dict(value):
+  """Extracts the attributes of `value` and their values to a dict format.
+
+  Unlike `dataclasses.asdict()`, this function is not recursive and in case of
+  nested `ExtensionType` objects, only the top level object is converted to a
+  dict.
+
+  Args:
+    value: An `ExtensionType` object.
+
+  Returns:
+    A dict that contains the attributes of `value` and their values.
+  """
+  return {
+      field.name: getattr(value, field.name)
+      for field in value._tf_extension_type_fields()  # pylint: disable=protected-access
+  }
+
+
 def pack(value):
   """Returns a copy of `value` with fields packed in a single Variant.
 

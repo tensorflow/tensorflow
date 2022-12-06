@@ -801,7 +801,7 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3xf32> {
-  %0 = "mhlo.custom_call"(%arg0, %arg1) {backend_config = "bar", call_target_name = "foo", has_side_effect = true} : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
+  %0 = "mhlo.custom_call"(%arg0, %arg1) {backend_config = "bar", call_target_name = "foo", custom_call_schedule = #mhlo<custom_call_schedule LATEST>, has_side_effect = true} : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
   func.return %0 : tensor<1x2x3xf32>
 }
 
@@ -812,7 +812,27 @@ func.func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3x
 // CHECK-SAME:  f32[1,2,3] custom-call(f32[2,3] [[VAL_1]], f32[5,5] [[VAL_2]])
 // CHECK-SAME:  custom_call_target="foo"
 // CHECK-SAME:  custom_call_has_side_effect=true
+// CHECK-SAME:  schedule=SCHEDULE_LATEST
 // CHECK-SAME:  backend_config="bar"
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3xf32> {
+  %0 = "mhlo.custom_call"(%arg0, %arg1) {backend_config = "bar", call_target_name = "foo", custom_call_schedule = #mhlo<custom_call_schedule EARLIEST>, has_side_effect = true} : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
+  func.return %0 : tensor<1x2x3xf32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[VAL_1:%.*]] = f32[2,3] parameter(0)
+// CHECK:  [[VAL_2:%.*]] = f32[5,5] parameter(1)
+// CHECK:  ROOT
+// CHECK-SAME:  f32[1,2,3] custom-call(f32[2,3] [[VAL_1]], f32[5,5] [[VAL_2]])
+// CHECK-SAME:  custom_call_target="foo"
+// CHECK-SAME:  custom_call_has_side_effect=true
+// CHECK-SAME:  schedule=SCHEDULE_EARLIEST
+// CHECK-SAME:  backend_config="bar"
+
 
 // -----
 
@@ -2142,3 +2162,28 @@ func.func private @main(%arg0: tensor<128x4xf32>, %arg1: tensor<128x4xf32>) -> t
   %1 = mhlo.tuple %0#0, %0#1 {result_layout = [dense<[0, 1]> : tensor<2xindex>, dense<[1, 0]> : tensor<2xindex>], xla_shape = "(f32[128,4]{0,1}, f32[128,4]{1,0})"} : tuple<tensor<128x4xf32>, tensor<128x4xf32>>
   return %1 : tuple<tensor<128x4xf32>, tensor<128x4xf32>>
 }
+
+// -----
+
+func.func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3xf32> {
+  %0 = "mhlo.custom_call"(%arg0, %arg1) {
+    call_target_name = "foo",
+    has_side_effect = true,
+    api_version = 4 : i32,
+    backend_config = {
+      user_attr0 = 123 : i32,
+      user_attr1 = dense<42> : tensor<i32>
+    }
+  } : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
+  func.return %0 : tensor<1x2x3xf32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[VAL_1:%.*]] = f32[2,3] parameter(0)
+// CHECK:  [[VAL_2:%.*]] = f32[5,5] parameter(1)
+// CHECK:  ROOT
+// CHECK-SAME:  f32[1,2,3] custom-call(f32[2,3] [[VAL_1]], f32[5,5] [[VAL_2]])
+// CHECK-SAME:  custom_call_target="foo"
+// CHECK-SAME:  custom_call_has_side_effect=true
+// CHECK-SAME:  api_version=API_VERSION_TYPED_FFI
+// CHECK-SAME:  backend_config="{user_attr0 = 123 : i32, user_attr1 = dense<42> : tensor<i32>}"

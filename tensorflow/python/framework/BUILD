@@ -112,10 +112,12 @@ cc_library(
     deps = [
         ":python_op_gen",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )
@@ -1346,7 +1348,8 @@ py_library(
         ":type_spec",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
-        "//tensorflow/python:tensor_util",
+        "//tensorflow/python/eager:graph_only_ops",
+        "//tensorflow/python/platform",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
     ],
