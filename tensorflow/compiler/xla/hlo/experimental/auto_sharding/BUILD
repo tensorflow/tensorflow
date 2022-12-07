@@ -30,6 +30,7 @@ cc_library(
         ":auto_sharding_util",
         ":cluster_environment",
         ":matrix",
+        ":metrics",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:heap_simulator",
@@ -125,6 +126,16 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "metrics",
+    srcs = ["metrics.cc"],
+    hdrs = ["metrics.h"],
+    deps = [
+        "//tensorflow/tsl/lib/monitoring:counter",
+        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
