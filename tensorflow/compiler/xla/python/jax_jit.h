@@ -237,13 +237,6 @@ xla::Status ParseArguments(absl::Span<PyObject* const> positional_args,
                            absl::Span<pybind11::str const> static_argnames,
                            ParsedArgumentsAsBuffers& arguments);
 
-// TODO(phawkins): port pjit to use vectorcall and remove this overload.
-xla::Status ParseArguments(pybind11::handle args,
-                           const std::optional<pybind11::kwargs>& py_kwargs,
-                           absl::Span<int const> static_argnums,
-                           absl::Span<pybind11::str const> static_argnames,
-                           ParsedArgumentsAsBuffers& arguments);
-
 // The function to call in `xla.cc` to add the bindings for this module.
 void BuildJaxjitSubmodule(pybind11::module& m);
 

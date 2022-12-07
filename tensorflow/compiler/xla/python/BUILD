@@ -516,6 +516,7 @@ cc_library(
         ":jax_jit",
         ":py_client",
         ":status_casters",
+        ":util",
         "@com_google_absl//absl/synchronization",
         "@pybind11",
         "//tensorflow/compiler/xla/pjrt:lru_cache",
