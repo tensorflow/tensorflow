@@ -304,6 +304,7 @@ cc_library(
     # Public visibility is needed for external TF/XLA backends.
     visibility = ["//visibility:public"],
     deps = XLA_DEVICE_DEPS + [
+        ":device_compilation_cache",
         ":device_compilation_profiler",
         ":device_compiler_client",
         ":device_executable_persistor",
@@ -487,6 +488,8 @@ cc_library(
         "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
     ],
     deps = [
+        ":device_compilation_cache",
+        ":device_compilation_cluster_signature",
         ":device_compilation_profiler",
         ":device_compiler_client",
         ":device_executable_persistor",
@@ -526,27 +529,12 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "xla_compilation_cache_test",
-    srcs = [
-        "xla_compilation_cache_test.cc",
-    ],
-    deps = [
-        ":flags",
-        ":xla_compilation_cache",
-        ":xla_cpu_jit",
-        "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
     name = "xla_compilation_cache_disable_test",
     srcs = [
         "xla_compilation_cache_disable_test.cc",
     ],
     deps = [
+        ":device_compilation_cache",
         ":device_compilation_profiler",
         ":flags",
         ":xla_compilation_cache",
