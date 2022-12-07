@@ -246,6 +246,17 @@ class OutfeedLowering : public OpRewritePattern<mhlo::OutfeedOp> {
   };
 };
 
+class AddDependencyLowering : public OpRewritePattern<mhlo::AddDependencyOp> {
+  using OpRewritePattern<mhlo::AddDependencyOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::AddDependencyOp op,
+                                PatternRewriter& rewriter) const override {
+    rewriter.replaceOpWithNewOp<xla_cpu::AddDependencyOp>(
+        op, op->getResultTypes(), op->getOperands());
+    return success();
+  };
+};
+
 void LegalizeCollectiveOpsPass::runOnOperation() {
   func::FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
@@ -256,7 +267,7 @@ void LegalizeCollectiveOpsPass::runOnOperation() {
       .insert<AllReduceLowering, CollectivePermuteLowering, AllToAllLowering,
               IdLowering<mhlo::PartitionIdOp, xla_cpu::PartitionIdOp>,
               IdLowering<mhlo::ReplicaIdOp, xla_cpu::ReplicaIdOp>, FftLowering,
-              OutfeedLowering>(ctx);
+              OutfeedLowering, AddDependencyLowering>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     return signalPassFailure();
