@@ -701,12 +701,7 @@ ENTRY AddDotsFunc {
 
 )";
 
-  DebugOptions debug_options = GetDebugOptionsForTest();
-  if (!debug_options.xla_gpu_enable_cublaslt()) {
-    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-  } else {
-    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-2}));
-  }
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: c64[2,2], y: c64[2,2]) -> c64[2,2] {
