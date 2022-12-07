@@ -1348,6 +1348,28 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "device_compilation_cluster_signature",
+    srcs = ["device_compilation_cluster_signature.cc"],
+    hdrs = ["device_compilation_cluster_signature.h"],
+    deps = ["//tensorflow/compiler/tf2xla:xla_compiler"],
+)
+
+tf_cc_test(
+    name = "device_compilation_cluster_signature_test",
+    srcs = [
+        "device_compilation_cluster_signature_test.cc",
+    ],
+    deps = [
+        ":device_compilation_cluster_signature",
+        ":flags",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 tf_cc_test(
     name = "device_compilation_profiler_test",
     srcs = ["device_compilation_profiler_test.cc"],
