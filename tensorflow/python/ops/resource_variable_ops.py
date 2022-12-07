@@ -2642,6 +2642,7 @@ class VariableSpec(tensor_spec.DenseSpec):
     if placeholder_context.use_default_placeholder:
       return super()._placeholder_value(placeholder_context)
 
+    name = self.name or placeholder_context.naming_scope
     default_graph = ops.get_default_graph()
     with default_graph.outer_graph.as_default():
       if placeholder_context.has_placeholder(self.alias_id):
@@ -2649,16 +2650,16 @@ class VariableSpec(tensor_spec.DenseSpec):
         # exists in the PlaceholderContext
         variable = placeholder_context.get_placeholder(self.alias_id)
       else:
-        placeholder = graph_placeholder(dtypes.resource, [], name=self.name)
+        placeholder = graph_placeholder(dtypes.resource, [], name=name)
         variable = self._from_components([placeholder])
         if self.alias_id is not None:
           placeholder_context.add_placeholder(self.alias_id, variable)
     # Capture the Variable's placeholder within the default graph of
     # the current thread.
-    placeholder = default_graph.capture(variable.handle, name=self.name)
+    placeholder = default_graph.capture(variable.handle, name=name)
     placeholder.op._set_attr(  # pylint: disable=protected-access
         "_user_specified_name",
-        attr_value_pb2.AttrValue(s=compat.as_bytes(self.name)))
+        attr_value_pb2.AttrValue(s=compat.as_bytes(name)))
     return variable
 
   def _get_structure(self):
