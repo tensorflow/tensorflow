@@ -402,6 +402,20 @@ se::blas::DataType GetScaleType(se::blas::DataType c_type,
 
 namespace {
 
+// This struct contains the metadata of a matrix, e.g., its base address and
+// dimensions.
+struct MatrixDescriptor {
+  se::DeviceMemoryBase data;
+  int64_t leading_dim_stride;
+  int64_t batch_stride;
+  se::blas::Transpose transpose;
+
+  template <typename T>
+  se::DeviceMemory<T> cast() const {
+    return se::DeviceMemory<T>(data);
+  }
+};
+
 // BLAS GeMM's output is column-major. If we require row-major, use identity:
 // C^T = (A @ B)^T = B^T @ A^T.
 bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
@@ -423,8 +437,8 @@ se::blas::Transpose AsBlasTranspose(MatrixLayout::Order order) {
              : se::blas::Transpose::kTranspose;
 }
 
-se::blas::MatrixDescriptor GetMatrixDesc(const MatrixLayout& layout,
-                                         se::DeviceMemoryBase data) {
+MatrixDescriptor GetMatrixDesc(const MatrixLayout& layout,
+                               se::DeviceMemoryBase data) {
   return {
       data,
       layout.leading_dim_stride,
@@ -435,10 +449,10 @@ se::blas::MatrixDescriptor GetMatrixDesc(const MatrixLayout& layout,
 
 template <typename Input, typename Output>
 Status DoGemmWithAlgorithm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
-                           const se::blas::MatrixDescriptor& lhs,
-                           const se::blas::MatrixDescriptor& rhs,
-                           const se::blas::MatrixDescriptor& output,
-                           Output alpha, Output beta, se::Stream* stream,
+                           const MatrixDescriptor& lhs,
+                           const MatrixDescriptor& rhs,
+                           const MatrixDescriptor& output, Output alpha,
+                           Output beta, se::Stream* stream,
                            se::blas::AlgorithmType algorithm,
                            se::blas::ComputePrecision compute_precision,
                            se::blas::ProfileResult* profile_result) {
@@ -466,9 +480,8 @@ Status DoGemmWithAlgorithm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
 
 template <typename Input>
 Status DoGemm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
-              const se::blas::MatrixDescriptor& lhs,
-              const se::blas::MatrixDescriptor& rhs,
-              const se::blas::MatrixDescriptor& output, Input alpha, Input beta,
+              const MatrixDescriptor& lhs, const MatrixDescriptor& rhs,
+              const MatrixDescriptor& output, Input alpha, Input beta,
               se::Stream* stream,
               std::optional<se::blas::AlgorithmType> algorithm,
               se::blas::ComputePrecision compute_precision,
@@ -518,10 +531,9 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
   int64_t m = output_layout.num_rows;
   int64_t n = output_layout.num_cols;
   int64_t k = lhs_layout.num_cols;
-  se::blas::MatrixDescriptor lhs = GetMatrixDesc(lhs_layout, lhs_buffer);
-  se::blas::MatrixDescriptor rhs = GetMatrixDesc(rhs_layout, rhs_buffer);
-  se::blas::MatrixDescriptor output =
-      GetMatrixDesc(output_layout, output_buffer);
+  MatrixDescriptor lhs = GetMatrixDesc(lhs_layout, lhs_buffer);
+  MatrixDescriptor rhs = GetMatrixDesc(rhs_layout, rhs_buffer);
+  MatrixDescriptor output = GetMatrixDesc(output_layout, output_buffer);
   int64_t batch_size = output_layout.batch_size;
 
   if (!algorithm) algorithm = config.algorithm;
