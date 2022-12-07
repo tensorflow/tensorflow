@@ -333,7 +333,6 @@ bool BatchnormSpatialPersistentEnabled() {
 //   (1) FusedBatchNorm + <Activation>
 //   (2) FusedBatchNorm + SideInput + <Activation>
 // only supported activation is Relu
-
 class FusedBatchNormExRewriter : public RemapperPatternBase {
  public:
   explicit FusedBatchNormExRewriter(OpPropertyHelper &helper)
@@ -372,8 +371,8 @@ class FusedBatchNormExRewriter : public RemapperPatternBase {
     } else {
       // Bfloat16 is available only with oneDNN.
       // Half is not available with oneDNN.
-      if (this->helper_.isOneDNNEnabled() && !dtype_T.isa<Float32Type>() &&
-          !dtype_T.isa<BFloat16Type>()) {
+      if (this->helper_.isOneDNNEnabled() &&
+          !dtype_T.isa<Float32Type, BFloat16Type>()) {
         return false;
       }
     }
@@ -382,12 +381,12 @@ class FusedBatchNormExRewriter : public RemapperPatternBase {
     auto training_attr =
         fused_batch_norm_op->getAttrOfType<BoolAttr>("is_training");
     if (!training_attr) return false;
-    auto is_training = training_attr.getValue();
+    bool is_training = training_attr.getValue();
 
     auto data_format_attr =
         fused_batch_norm_op->getAttrOfType<StringAttr>("data_format");
     if (!data_format_attr) return false;
-    auto data_format = data_format_attr.getValue();
+    StringRef data_format = data_format_attr.getValue();
 
     if (data_format != "NHWC" && data_format != "NCHW") return false;
 
