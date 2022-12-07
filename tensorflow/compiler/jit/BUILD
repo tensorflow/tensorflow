@@ -1349,6 +1349,19 @@ cc_library(
 )
 
 cc_library(
+    name = "device_compilation_cache",
+    hdrs = ["device_compilation_cache.h"],
+    deps = [
+        ":device_compilation_cluster_signature",
+        ":device_compiler_client",
+        ":xla_compile_util",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework_lite",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "device_compilation_cluster_signature",
     srcs = ["device_compilation_cluster_signature.cc"],
     hdrs = ["device_compilation_cluster_signature.h"],
@@ -1402,6 +1415,18 @@ tf_cc_test(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cc_test(
+    name = "device_compilation_cache_test",
+    srcs = ["device_compilation_cache_test.cc"],
+    deps = [
+        ":device_compilation_cache",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_googletest//:gtest_main",
     ],
 )
