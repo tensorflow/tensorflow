@@ -230,6 +230,14 @@ struct ParsedArgumentsAsBuffers {
 
 // Filter out static arguments, flatten and concatenate other arguments (i.e.
 // dynamic positional and keyword arguments), filling `arguments` in place.
+xla::Status ParseArguments(absl::Span<PyObject* const> positional_args,
+                           absl::Span<PyObject* const> keyword_args,
+                           pybind11::handle kwnames,
+                           absl::Span<int const> static_argnums,
+                           absl::Span<pybind11::str const> static_argnames,
+                           ParsedArgumentsAsBuffers& arguments);
+
+// TODO(phawkins): port pjit to use vectorcall and remove this overload.
 xla::Status ParseArguments(pybind11::handle args,
                            const std::optional<pybind11::kwargs>& py_kwargs,
                            absl::Span<int const> static_argnums,

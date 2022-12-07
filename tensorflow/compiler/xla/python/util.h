@@ -29,6 +29,16 @@ limitations under the License.
 
 namespace xla {
 
+// Backward compatibility for vectorcalls in Python 3.8. Remove this after
+// dropping support for Python 3.8.
+#if PY_VERSION_HEX < 0x03090000
+#define JAX_PyObject_Vectorcall _PyObject_Vectorcall
+#define JAX_TPFLAGS_HAVE_VECTORCALL _Py_TPFLAGS_HAVE_VECTORCALL
+#else  // PY_VERSION_HEX < 0x30900000
+#define JAX_PyObject_Vectorcall PyObject_Vectorcall
+#define JAX_TPFLAGS_HAVE_VECTORCALL Py_TPFLAGS_HAVE_VECTORCALL
+#endif  // PY_VERSION_HEX < 0x30900000
+
 // Faster version of the pybind11 cast x.cast<T*>.
 // pybind11's cast is fairly slow because it looks up the type information
 // in a global hash table. It's not a particularly fast hash table and the

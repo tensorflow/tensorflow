@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/sharded_device_array.h"
 #include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/python/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -359,7 +360,8 @@ class PmapFunction {
   // (c) call the executable
   // (d) construct `ShardedDeviceArray` objects from the outputs
   // (e) reconstruct the `PyTree`.
-  xla::StatusOr<py::object> Call(py::args args, py::kwargs kwargs);
+  xla::StatusOr<py::object> Call(py::handle callable, PyObject* const* args,
+                                 size_t nargs, PyObject* kwnames);
 
   py::object PythonSignature() {
     static const auto* inspect = new py::module(py::module::import("inspect"));
@@ -389,7 +391,6 @@ class PmapFunction {
   // macros.
   using object = pyobject;
 
-  py::handle AsPyHandle();
   // Returns true if `h` is a PmapFunction.
   static bool IsPmapFunction(py::handle handle);
   // Converts `handle` to a PmapFunction*. Does not do any checking.
@@ -409,9 +410,7 @@ class PmapFunction {
   //
   // It deals with the arguments signatures and also of the global and
   // thread-local jit context.
-  xla::Status UpdateArgsSignature(const py::args& args,
-                                  const py::kwargs& kwargs,
-                                  ParsedArgumentsAsBuffers& arguments) {
+  xla::Status UpdateArgsSignature(ParsedArgumentsAsBuffers& arguments) {
     arguments.signature.function_name = function_name_;
 
     // Get dynamic argument signatures.
@@ -594,22 +593,48 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
   }
 }
 
-xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
+xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
+                                             PyObject* const* args,
+                                             size_t nargs, PyObject* kwnames) {
+  // Calls the cache_miss_ function. This just calls the Python function; it may
+  // return nullptr value if a Python exception is thrown.
+  auto cache_miss = [&]() -> py::tuple {
+    return py::reinterpret_steal<py::tuple>(
+        JAX_PyObject_Vectorcall(cache_miss_.ptr(), args, nargs, kwnames));
+  };
+
+  // Call the cache_miss() function, extracting the output data and ignoring
+  // the fastpath data. If the cache miss returns a Python error, returns
+  // nullptr and leaves the Python error set.
+  auto fallback_to_cache_miss = [&]() {
+    py::tuple cache_miss_output = cache_miss();
+    if (!cache_miss_output.ptr()) {
+      return py::object();
+    }
+    return py::object(cache_miss_output[0]);
+  };
+
   if (always_fallback_to_python_) {
-    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
+    return fallback_to_cache_miss();
   }
 
+  size_t num_positional_args = PyVectorcall_NARGS(nargs);
+  size_t num_keyword_args = kwnames ? PyTuple_GET_SIZE(kwnames) : 0;
+  absl::Span<PyObject* const> positional_args(args, num_positional_args);
+  absl::Span<PyObject* const> keyword_args(args + num_positional_args,
+                                           num_keyword_args);
   ParsedArgumentsAsBuffers arguments;
-  xla::Status status = ParseArguments(args, kwargs, static_argnums_,
-                                      /*static_argnames=*/{}, arguments);
+  xla::Status status =
+      ParseArguments(positional_args, keyword_args, kwnames, static_argnums_,
+                     /*static_argnames=*/{}, arguments);
   if (!status.ok()) {
     VLOG(2) << "ParseArguments failed: " << status;
-    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
+    return fallback_to_cache_miss();
   }
 
-  status = UpdateArgsSignature(args, kwargs, arguments);
+  status = UpdateArgsSignature(arguments);
   if (!status.ok()) {
-    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
+    return fallback_to_cache_miss();
   }
 
   // Retrieve/Maybe add the executable to the cache.
@@ -630,7 +655,10 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
       try {
         // Calls Python and may release the GIL. May also throw if
         // compilation/tracing fails.
-        out_and_fastpath_data = cache_miss_(*args, **kwargs);
+        out_and_fastpath_data = cache_miss();
+        if (!out_and_fastpath_data.ptr()) {
+          throw py::error_already_set();
+        }
         out_tuple = py::cast<py::tuple>(out_and_fastpath_data);
         PopulateCacheEntry(cache_entry, arguments.signature, out_tuple);
       } catch (const std::exception& e) {
@@ -652,7 +680,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
     }
   }
   if (cache_entry.fall_back_to_python) {
-    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
+    return fallback_to_cache_miss();
   }
 
   // 1. Parse arguments.
@@ -828,7 +856,19 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
   // If there is a post-hook function, call it with the inputs and the outputs.
   std::optional<py::object> post_hook = GetPostHook();
   if (post_hook) {
-    (*post_hook)(this->AsPyHandle(), args, kwargs, out);
+    py::tuple args_tuple(num_positional_args);
+    for (size_t i = 0; i < num_positional_args; ++i) {
+      args_tuple[i] = args[i];
+    }
+    py::dict kwargs;
+    if (kwnames) {
+      for (size_t i = 0; i < num_keyword_args; ++i) {
+        kwargs[py::handle(PyTuple_GET_ITEM(kwnames, i))] =
+            args[num_positional_args + i];
+      }
+    }
+
+    (*post_hook)(callable, args_tuple, kwargs, out);
   }
 
   return out;
@@ -838,6 +878,7 @@ struct JaxPmapFunctionObject {
   PyObject_HEAD;
   PyObject* dict;      // Dictionary for __dict__
   PyObject* weakrefs;  // Weak references; for use by the Python interpreter.
+  vectorcallfunc vectorcall;
   PmapFunction fun;
 };
 
@@ -858,14 +899,35 @@ xla::StatusOr<PmapFunction*> AsPmapFunction(py::handle handle) {
   return PmapFunction::AsPmapFunctionUnchecked(handle);
 }
 
-py::handle PmapFunction::AsPyHandle() {
-  return reinterpret_cast<PyObject*>(reinterpret_cast<char*>(this) -
-                                     offsetof(JaxPmapFunctionObject, fun));
-}
-
 namespace {
 
 extern "C" {
+
+PyObject* JaxPmapFunction_tp_vectorcall(PyObject* callable,
+                                        PyObject* const* args, size_t nargs,
+                                        PyObject* kwnames) {
+  JaxPmapFunctionObject* o = reinterpret_cast<JaxPmapFunctionObject*>(callable);
+  tsl::profiler::TraceMe traceme([&] {
+    return absl::StrCat("JaxPmapFunction(", o->fun.function_name(), ")");
+  });
+  try {
+    xla::StatusOr<py::object> out = o->fun.Call(callable, args, nargs, kwnames);
+    if (!out.ok()) {
+      PyErr_SetString(PyExc_ValueError, out.status().ToString().c_str());
+      return nullptr;
+    }
+    return out.value().release().ptr();
+  } catch (py::error_already_set& e) {
+    e.restore();
+    return nullptr;
+  } catch (py::cast_error& e) {
+    PyErr_SetString(PyExc_ValueError, e.what());
+    return nullptr;
+  } catch (std::invalid_argument& e) {
+    PyErr_SetString(PyExc_ValueError, e.what());
+    return nullptr;
+  }
+}
 
 PyObject* JaxPmapFunction_tp_new(PyTypeObject* subtype, PyObject* args,
                                  PyObject* kwds) {
@@ -874,6 +936,7 @@ PyObject* JaxPmapFunction_tp_new(PyTypeObject* subtype, PyObject* args,
   if (!self) return nullptr;
   self->dict = nullptr;
   self->weakrefs = nullptr;
+  self->vectorcall = JaxPmapFunction_tp_vectorcall;
   return reinterpret_cast<PyObject*>(self);
 }
 
@@ -946,36 +1009,6 @@ static PyGetSetDef JaxPmapFunction_tp_getset[] = {
     {const_cast<char*>("__dict__"), JaxPmapFunction_get_dict,
      JaxPmapFunction_set_dict, nullptr, nullptr},
     {nullptr, nullptr, nullptr, nullptr, nullptr}};
-
-PyObject* JaxPmapFunction_tp_call(PyObject* self, PyObject* args,
-                                  PyObject* kwargs) {
-  JaxPmapFunctionObject* o = reinterpret_cast<JaxPmapFunctionObject*>(self);
-  tsl::profiler::TraceMe traceme([&] {
-    return absl::StrCat("JaxPmapFunction(", o->fun.function_name(), ")");
-  });
-  py::kwargs py_kwargs;
-  if (kwargs) {
-    py_kwargs = py::reinterpret_borrow<py::kwargs>(kwargs);
-  }
-  try {
-    xla::StatusOr<py::object> out = o->fun.Call(
-        py::reinterpret_borrow<py::args>(args), std::move(py_kwargs));
-    if (!out.ok()) {
-      PyErr_SetString(PyExc_ValueError, out.status().ToString().c_str());
-      return nullptr;
-    }
-    return out.value().release().ptr();
-  } catch (py::error_already_set& e) {
-    e.restore();
-    return nullptr;
-  } catch (py::cast_error& e) {
-    PyErr_SetString(PyExc_ValueError, e.what());
-    return nullptr;
-  } catch (std::invalid_argument& e) {
-    PyErr_SetString(PyExc_ValueError, e.what());
-    return nullptr;
-  }
-}
 
 void InitializePmapFunction(JaxPmapFunctionObject* cfun, py::function fun,
                             py::function cache_miss,
@@ -1140,8 +1173,8 @@ void BuildPmapSubmodule(py::module& m) {
     PyTypeObject* type = &heap_type->ht_type;
     type->tp_name = "PmapFunction";
     type->tp_basicsize = sizeof(JaxPmapFunctionObject);
-    type->tp_flags =
-        Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE | Py_TPFLAGS_HAVE_GC;
+    type->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE |
+                     Py_TPFLAGS_HAVE_GC | JAX_TPFLAGS_HAVE_VECTORCALL;
     type->tp_new = JaxPmapFunction_tp_new;
     type->tp_dealloc = JaxPmapFunction_tp_dealloc;
     type->tp_dictoffset = offsetof(JaxPmapFunctionObject, dict);
@@ -1150,7 +1183,8 @@ void BuildPmapSubmodule(py::module& m) {
     type->tp_weaklistoffset = offsetof(JaxPmapFunctionObject, weakrefs);
     type->tp_getset = JaxPmapFunction_tp_getset;
     type->tp_descr_get = JaxPmapFunction_tp_descr_get;
-    type->tp_call = JaxPmapFunction_tp_call;
+    type->tp_call = PyVectorcall_Call;
+    type->tp_vectorcall_offset = offsetof(JaxPmapFunctionObject, vectorcall);
     CHECK_EQ(PyType_Ready(type), 0);
     JaxPmapFunction_Type = reinterpret_cast<PyObject*>(type);
     cfun = py::reinterpret_borrow<py::object>(JaxPmapFunction_Type);
@@ -1239,7 +1273,7 @@ void BuildPmapSubmodule(py::module& m) {
         TF_ASSIGN_OR_RETURN(PmapFunction * fun, AsPmapFunction(self));
         TF_RETURN_IF_ERROR(ParseArguments(args, kwargs, fun->static_argnums(),
                                           /*static_argnames=*/{}, arguments));
-        TF_RETURN_IF_ERROR(fun->UpdateArgsSignature(args, kwargs, arguments));
+        TF_RETURN_IF_ERROR(fun->UpdateArgsSignature(arguments));
         return arguments.signature.DebugString();
       },
       py::is_method(cfun_type));
