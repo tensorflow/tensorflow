@@ -205,7 +205,15 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
 
   // Add passes to perform fusion, tiling, peeling and vectorization.
   if (options.enable_xla_cpu_transformations) {
-    mlir::gml_st::addTileableOpsTransformationsForCPU(pm);
+    mlir::gml_st::GmlStCPUPipelineOptions gml_st_opts;
+    gml_st_opts.vectorize = options.vectorize;
+    gml_st_opts.vectorSize = options.vector_size;
+    gml_st_opts.reduction1DTileSize = options.reduction_1d_tile_size;
+    gml_st_opts.reduction2DTileSizes = options.reduction_2d_tile_sizes;
+    gml_st_opts.matmulTileSizes = options.matmul_tile_sizes;
+    gml_st_opts.lowerToMmt4d = options.lower_to_mmt4d;
+
+    mlir::gml_st::addTileableOpsTransformationsForCPU(pm, gml_st_opts);
   } else {
     AddLinalgTransformations(pm, options);
   }
