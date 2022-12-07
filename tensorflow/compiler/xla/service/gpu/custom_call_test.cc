@@ -133,14 +133,18 @@ void Callback_SubBuffers(se::gpu::GpuStreamHandle stream, void** buffers,
 
   // Set output leaf buffers, copying data from the corresponding same-sized
   // inputs.
-  gpuMemcpyAsync(buffers[4], buffers[3], 8 * sizeof(float),
-                 gpuMemcpyDeviceToDevice, stream);
-  gpuMemcpyAsync(buffers[5], buffers[0], 128 * sizeof(float),
-                 gpuMemcpyDeviceToDevice, stream);
-  gpuMemcpyAsync(buffers[6], buffers[1], 256 * sizeof(float),
-                 gpuMemcpyDeviceToDevice, stream);
-  gpuMemcpyAsync(buffers[7], buffers[2], 1024 * sizeof(float),
-                 gpuMemcpyDeviceToDevice, stream);
+  auto err = gpuMemcpyAsync(buffers[4], buffers[3], 8 * sizeof(float),
+                            gpuMemcpyDeviceToDevice, stream);
+  ASSERT_EQ(err, gpuSuccess);
+  err = gpuMemcpyAsync(buffers[5], buffers[0], 128 * sizeof(float),
+                       gpuMemcpyDeviceToDevice, stream);
+  ASSERT_EQ(err, gpuSuccess);
+  err = gpuMemcpyAsync(buffers[6], buffers[1], 256 * sizeof(float),
+                       gpuMemcpyDeviceToDevice, stream);
+  ASSERT_EQ(err, gpuSuccess);
+  err = gpuMemcpyAsync(buffers[7], buffers[2], 1024 * sizeof(float),
+                       gpuMemcpyDeviceToDevice, stream);
+  ASSERT_EQ(err, gpuSuccess);
 }
 XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_SubBuffers, PLATFORM);
 TEST_F(CustomCallTest, SubBuffers) {
