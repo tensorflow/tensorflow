@@ -852,7 +852,7 @@ func.func @test_strided_slice_shrink_ignore_stride(%arg0: tensor<13x21x3xf32>) -
 // -----
 
 // CHECK-LABEL: test_strided_slice_unstrided
-// CEHCK-SAME: -> tensor<9x21x2xf32>
+// CHECK-SAME: -> tensor<9x21x2xf32>
 // CHECK: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [9, 21, 2], start = [4, 0, 1]}
 // CHECK: %[[VAR1:.*]] = "tosa.reverse"(%[[VAR0]]) {axis = 2 : i64}
 // CHECK: return %[[VAR1]]

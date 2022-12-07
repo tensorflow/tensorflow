@@ -1639,7 +1639,7 @@ func.func @invalidSelect(%arg0: tensor<1x8xi1>, %arg1: tensor<1x8x8xi32>, %arg2:
 //===--------------------------------------------------------------------===//
 
 // Test valid tf.SelectV2
-// CHfaECK-LABEL: func @selectV2BroadcastThen
+// CHECK-LABEL: func @selectV2BroadcastThen
 func.func @selectV2BroadcastThen(%arg0: tensor<i1>, %arg1: tensor<8x1xi32>, %arg2: tensor<2x8x8xi32>) -> tensor<2x8x8xi32> {
   %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<8x1xi32>, tensor<2x8x8xi32>) -> tensor<2x8x8xi32>
   func.return %0: tensor<2x8x8xi32>

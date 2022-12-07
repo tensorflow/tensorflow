@@ -2972,7 +2972,7 @@ func.func @reduce_add_unranked(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> tens
   func.return %0 : tensor<*xi32>
 }
 // CHECK: mhlo.reduce
-// CHECK-PRIMIITVE: mhlo.reduce
+// CHECK-PRIMITIVE: mhlo.reduce
 
 // -----
 
