@@ -6,7 +6,7 @@ load(
 
 pytype_library(
     name = "test_util",
-    testonly = True,
+    testonly = False,  # build_pip_package depends on this target.
     srcs = [
         "test_backend_name.py",
         "test_util.py",
@@ -14,6 +14,7 @@ pytype_library(
     visibility = [
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/dtensor:dtensor-users",
+        "//tensorflow/tools/pip_package:__pkg__",
     ],
     deps = [
         "//tensorflow/dtensor/python:api",
