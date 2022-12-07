@@ -19984,6 +19984,8 @@ The output data is the non-quantized output data.}]>:$output
   TF_DerivedOperandTypeAttr Tlhs = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Trhs = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniformQuantizedDotOp : TF_Op<"UniformQuantizedDot", [Pure]> {
@@ -20071,6 +20073,8 @@ The output data is the original output data itself (Not quantized).}]>:$output
   TF_DerivedOperandTypeAttr Tlhs = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Trhs = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniformRequantizeOp : TF_Op<"UniformRequantize", [Pure]> {

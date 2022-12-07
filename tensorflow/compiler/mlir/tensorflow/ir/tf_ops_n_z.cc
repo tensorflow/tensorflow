@@ -69,6 +69,7 @@ limitations under the License.
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_arith_ops_folder.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_canonicalization_helper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_device_helper.h"
@@ -3900,6 +3901,67 @@ LogicalResult SetStaticDimensionBoundsOp::verify() {
   }
 
   return success();
+}
+
+namespace {
+
+template <typename UniformQuantizedHybridOp>
+LogicalResult VerifyScalesAndZeroPoints(UniformQuantizedHybridOp op,
+                                        Value scales, Value zero_points,
+                                        int32_t quantization_axis) {
+  ShapedType scales_type = scales.getType().cast<ShapedType>();
+  ShapedType zero_points_type = zero_points.getType().cast<ShapedType>();
+
+  if (quantization_axis == -1) {
+    if (scales_type.hasRank() && scales_type.getRank() != 0) {
+      return op.emitOpError(
+          "If quantization_axis is -1, scales must have 0 rank.");
+    }
+    if (zero_points_type.hasRank() && zero_points_type.getRank() != 0) {
+      return op.emitOpError(
+          "If quantization_axis is -1, zero_points must have 0 rank.");
+    }
+  } else {
+    if (scales_type.hasRank() && scales_type.getRank() != 1) {
+      return op.emitOpError(
+          "If quantization_axis is not -1, scales must have 1 rank.");
+    }
+    if (zero_points_type.hasRank() && zero_points_type.getRank() != 1) {
+      return op.emitOpError(
+          "If quantization_axis is not -1, zero_points must have 1 rank.");
+    }
+    if (scales_type.hasStaticShape() && zero_points_type.hasStaticShape() &&
+        scales_type.getNumElements() != zero_points_type.getNumElements()) {
+      return op.emitOpError(
+          "scales and zero points must have same number of elements.");
+    }
+  }
+
+  return success();
+}
+
+}  // namespace
+
+//===----------------------------------------------------------------------===//
+// UniformQuantizedDotHybridOp
+//===----------------------------------------------------------------------===//
+//
+
+LogicalResult UniformQuantizedDotHybridOp::verify() {
+  UniformQuantizedDotHybridOp op = *this;
+  return VerifyScalesAndZeroPoints(op, op.getRhsScales(), op.getRhsZeroPoints(),
+                                   op.getRhsQuantizationAxis());
+}
+
+//===----------------------------------------------------------------------===//
+// UniformQuantizedConvolutionHybridOp
+//===----------------------------------------------------------------------===//
+//
+
+LogicalResult UniformQuantizedConvolutionHybridOp::verify() {
+  UniformQuantizedConvolutionHybridOp op = *this;
+  return VerifyScalesAndZeroPoints(op, op.getRhsScales(), op.getRhsZeroPoints(),
+                                   op.getRhsQuantizationAxis());
 }
 
 }  // namespace TF
