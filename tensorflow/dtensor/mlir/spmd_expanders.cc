@@ -526,5 +526,9 @@ REGISTER_SPMD(RandomNormalInt, TF::RandomUniformIntOp,
               /*error_message=*/
               "Stateful random operations are not supported in DTensor. Please "
               "use stateless random operations instead.");
+
+// Unique
+REGISTER_SPMD(Unique, TF::UniqueOp, ReplicatedOpSPMDExpander,
+              /*relayout_when_sharded=*/true);
 }  // namespace dtensor
 }  // namespace tensorflow
