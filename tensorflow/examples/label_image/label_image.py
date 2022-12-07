@@ -83,6 +83,8 @@ if __name__ == "__main__":
   input_std = 255
   input_layer = "input"
   output_layer = "InceptionV3/Predictions/Reshape_1"
+  
+   fps = int(file_name.get(cv2.CAP_PROP_FPS))
 
   parser = argparse.ArgumentParser()
   parser.add_argument("--image", help="image to be processed")
@@ -116,6 +118,10 @@ if __name__ == "__main__":
     output_layer = args.output_layer
 
   graph = load_graph(model_file)
+  
+  fourcc = cv2.VideoWriter_fourcc(*'XVID')  
+  output_vid = cv2.VideoWriter('labelled_video.mp4',fourcc, fps, (width,height))
+    
   while (file_name.isOpened()):
     (taken, frame)= file_name.read()
     if frame is None:
@@ -155,8 +161,10 @@ if __name__ == "__main__":
       cv2.putText(np_im, text, org, fontFace,  fontScale, (0, 255,0), thickness)
     else:
       cv2.putText(np_im , text, org, fontFace, fontScale, (0, 0, 255), thickness)
-      
-    cv2.imshow(np_im)
+    
+    output_vid.write(np_im)
+
 
   file_name.release()
+  output_vid.release()
   cv2.destroyAllWindows()
