@@ -3432,7 +3432,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core/profiler:profiler_impl",
         "//tensorflow/core/util:determinism",
-        "//tensorflow/stream_executor:stream_executor_impl",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
     ] + if_static([
         "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/core/platform:enable_tf2_utils",
