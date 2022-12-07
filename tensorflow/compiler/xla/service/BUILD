@@ -7012,8 +7012,7 @@ tf_cc_test(
         "no_oss",
         "no_rocm",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
-        "notap",  # b/261422981
-        "requires-gpu-nvidia",
+        "requires-gpu-sm60",
     ],
     deps = if_cuda_is_configured([
         ":gpu_plugin_impl",
