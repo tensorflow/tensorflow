@@ -254,6 +254,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     HloInstruction *cdf;
     if (Match(instr, m::MultiplyAnyOrder(CublasLtMatmul(&existing_gemm),
                                          m::Op(&cdf).WithOneUser())) &&
+        // TODO(cjfj): Expose auxiliary output for GELU epilogues.
+        (existing_gemm->user_count() == 4) &&
         Match(cdf,
               m::MultiplyAnyOrder(
                   BcastConstScalar(0.5),
@@ -581,7 +583,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (config.epilogue() == GemmBackendConfig::DEFAULT) {
       config.set_epilogue(GemmBackendConfig::RELU);
     } else if (config.epilogue() == GemmBackendConfig::BIAS) {
-      config.set_epilogue(GemmBackendConfig::BIAS_RELU);
+      config.set_epilogue(GemmBackendConfig::BIASRELU);
     } else {
       return OkStatus();
     }
@@ -601,40 +603,26 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return ReplaceWithNewInstruction(maximum, std::move(new_gemm));
   }
 
-  Status FuseGeluActivation(HloInstruction *multiply, HloInstruction *gemm) {
+  Status FuseGeluActivation(HloInstruction *multiply,
+                            const HloInstruction *gemm) {
     if (!SupportsEpilogueFusion(gemm->shape().element_type())) {
       return OkStatus();
     }
 
-    // There are four users of the gemm output within the GELU calculation.
-    bool has_aux = gemm->user_count() > 4;
-
     TF_ASSIGN_OR_RETURN(auto config, gemm->backend_config<GemmBackendConfig>());
     if (config.epilogue() == GemmBackendConfig::DEFAULT) {
-      config.set_epilogue(has_aux ? GemmBackendConfig::GELU_AUX
-                                  : GemmBackendConfig::GELU);
+      config.set_epilogue(GemmBackendConfig::GELU);
     } else if (config.epilogue() == GemmBackendConfig::BIAS) {
-      config.set_epilogue(has_aux ? GemmBackendConfig::BIAS_GELU_AUX
-                                  : GemmBackendConfig::BIAS_GELU);
+      config.set_epilogue(GemmBackendConfig::BIASGELU);
     } else {
       return OkStatus();
     }
 
-    std::unique_ptr<HloInstruction> output = gemm->CloneWithNewShape(
-        has_aux ? ShapeUtil::MakeTupleShape({gemm->shape(), gemm->shape()})
-                : gemm->shape());
-    TF_RETURN_IF_ERROR(output->set_backend_config(config));
-    TF_RETURN_IF_ERROR(SetName(multiply->GetModule(), output.get()));
-
-    if (has_aux) {
-      HloInstruction *tuple_output =
-          gemm->parent()->AddInstruction(std::move(output));
-      TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
-          gemm, HloInstruction::CreateGetTupleElement(tuple_output, 1)));
-      output = HloInstruction::CreateGetTupleElement(tuple_output, 0);
-    }
-
-    return ReplaceWithNewInstruction(multiply, std::move(output));
+    // Replace GELU output with fused new_gemm.
+    std::unique_ptr<HloInstruction> new_gemm = gemm->Clone();
+    TF_RETURN_IF_ERROR(new_gemm->set_backend_config(config));
+    TF_RETURN_IF_ERROR(SetName(multiply->GetModule(), new_gemm.get()));
+    return ReplaceWithNewInstruction(multiply, std::move(new_gemm));
   }
 
  private:

@@ -2587,7 +2587,7 @@ ENTRY test {
 ; CHECK-DAG:         \"precision_config\":{
 ; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
+; CHECK-DAG:         \"epilogue\":\"BIASRELU\"
 ; CHECK:           }"
       )");
 }
@@ -2690,7 +2690,7 @@ ENTRY test {
 ; CHECK-DAG:         \"precision_config\":{
 ; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
+; CHECK-DAG:         \"epilogue\":\"BIASRELU\"
 ; CHECK:           }"
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[4,2]{1,0} bitcast([[MATMUL]])
       )");
@@ -2740,7 +2740,7 @@ ENTRY test {
 ; CHECK-DAG:         \"precision_config\":{
 ; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
+; CHECK-DAG:         \"epilogue\":\"BIASRELU\"
 ; CHECK:           }"
       )");
 }
@@ -2838,6 +2838,44 @@ ENTRY test {
       )");
 }
 
+TEST_F(CublasLtGemmRewriteTest, ApproxGeluActivationMatmulHasOtherUsers) {
+  // Modify one constant slightly, so it should no longer pattern match.
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  dot = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  mul.0 = f32[2,4] multiply(dot, dot)
+  mul.1 = f32[2,4] multiply(dot, mul.0)
+  const.0 = f32[] constant(0.044715)
+  bcast.0 = f32[2,4] broadcast(const.0), dimensions={}
+  mul.2 = f32[2,4] multiply(mul.1, bcast.0)
+  add.0 = f32[2,4] add(dot, mul.2)
+  const.1 = f32[] constant(0.797884583)
+  bcast.1 = f32[2,4] broadcast(const.1), dimensions={}
+  mul.3 = f32[2,4] multiply(add.0, bcast.1)
+  tanh = f32[2,4] tanh(mul.3)
+  const.2 = f32[] constant(1)
+  bcast.2 = f32[2,4] broadcast(const.2), dimensions={}
+  add.2 = f32[2,4] add(tanh, bcast.2)
+  const.3 = f32[] constant(0.5)
+  bcast.3 = f32[2,4] broadcast(const.3), dimensions={}
+  mul.4 = f32[2,4] multiply(add.2, bcast.3)
+  mul.5 = f32[2,4] multiply(dot, mul.4)
+  ROOT out = (f32[2,4], f32[2,4]) tuple(mul.5, dot)
+}
+
+)";
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-NOT: GELU
+      )");
+}
+
 TEST_F(CublasLtGemmRewriteTest, VectorBiasThenApproxGeluActivation) {
   const char* hlo_text = R"(
 HloModule test
@@ -2893,125 +2931,7 @@ ENTRY test {
 ; CHECK-DAG:         \"precision_config\":{
 ; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_GELU\"
-; CHECK:           }"
-      )");
-}
-
-TEST_F(CublasLtGemmRewriteTest, ApproxGeluActivationWithAux) {
-  const char* hlo_text = R"(
-HloModule test
-
-ENTRY test {
-  x = f32[2,3] parameter(0)
-  y = f32[3,4] parameter(1)
-  dot = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  mul.0 = f32[2,4] multiply(dot, dot)
-  mul.1 = f32[2,4] multiply(dot, mul.0)
-  const.0 = f32[] constant(0.044715)
-  bcast.0 = f32[2,4] broadcast(const.0), dimensions={}
-  mul.2 = f32[2,4] multiply(mul.1, bcast.0)
-  add.0 = f32[2,4] add(dot, mul.2)
-  const.1 = f32[] constant(0.797884583)
-  bcast.1 = f32[2,4] broadcast(const.1), dimensions={}
-  mul.3 = f32[2,4] multiply(add.0, bcast.1)
-  tanh = f32[2,4] tanh(mul.3)
-  const.2 = f32[] constant(1)
-  bcast.2 = f32[2,4] broadcast(const.2), dimensions={}
-  add.2 = f32[2,4] add(tanh, bcast.2)
-  const.3 = f32[] constant(0.5)
-  bcast.3 = f32[2,4] broadcast(const.3), dimensions={}
-  mul.4 = f32[2,4] multiply(add.2, bcast.3)
-  mul.5 = f32[2,4] multiply(dot, mul.4)
-  ROOT out = (f32[2,4], f32[2,4]) tuple(mul.5, dot)
-}
-
-)";
-
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
-
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4]) -> (f32[2,4], f32[2,4]) {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = (f32[2,4]{1,0}, f32[2,4]{1,0}) custom-call([[P0]], [[P1]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
-; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"GELU_AUX\"
-; CHECK:           }"
-      )");
-}
-
-TEST_F(CublasLtGemmRewriteTest, VectorBiasThenApproxGeluActivationWithAux) {
-  const char* hlo_text = R"(
-HloModule test
-
-ENTRY test {
-  x = f32[2,3] parameter(0)
-  y = f32[3,4] parameter(1)
-  z = f32[4] parameter(2)
-  dot = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  z_bcast = f32[2,4] broadcast(z), dimensions={1}
-  add = f32[2,4] add(dot, z_bcast)
-  mul.0 = f32[2,4] multiply(add, add)
-  mul.1 = f32[2,4] multiply(add, mul.0)
-  const.0 = f32[] constant(0.044715)
-  bcast.0 = f32[2,4] broadcast(const.0), dimensions={}
-  mul.2 = f32[2,4] multiply(mul.1, bcast.0)
-  add.0 = f32[2,4] add(add, mul.2)
-  const.1 = f32[] constant(0.797884583)
-  bcast.1 = f32[2,4] broadcast(const.1), dimensions={}
-  mul.3 = f32[2,4] multiply(add.0, bcast.1)
-  tanh = f32[2,4] tanh(mul.3)
-  const.2 = f32[] constant(1)
-  bcast.2 = f32[2,4] broadcast(const.2), dimensions={}
-  add.2 = f32[2,4] add(tanh, bcast.2)
-  const.3 = f32[] constant(0.5)
-  bcast.3 = f32[2,4] broadcast(const.3), dimensions={}
-  mul.4 = f32[2,4] multiply(add.2, bcast.3)
-  mul.5 = f32[2,4] multiply(add, mul.4)
-  ROOT out = (f32[2,4], f32[2,4]) tuple(mul.5, add)
-}
-
-)";
-
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
-
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[4]) -> (f32[2,4], f32[2,4]) {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = (f32[2,4]{1,0}, f32[2,4]{1,0}) custom-call([[P0]], [[P1]], [[P2]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config="{
-; CHECK-DAG:         \"alpha_real\":1
-; CHECK-DAG:         \"alpha_imag\":0
-; CHECK-DAG:         \"beta\":0
-; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         \"precision_config\":{
-; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
-; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_GELU_AUX\"
+; CHECK-DAG:         \"epilogue\":\"BIASGELU\"
 ; CHECK:           }"
       )");
 }
@@ -3333,7 +3253,7 @@ ENTRY test {
 ; CHECK-DAG:         \"precision_config\":{
 ; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
+; CHECK-DAG:         \"epilogue\":\"BIASRELU\"
 ; CHECK:           }"
       )");
 }
@@ -3385,7 +3305,7 @@ ENTRY test {
 ; CHECK-DAG:         \"precision_config\":{
 ; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
+; CHECK-DAG:         \"epilogue\":\"BIASRELU\"
 ; CHECK:           }"
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f16[6,6]{1,0} slice([[MATMUL]]), slice={[0:6], [0:6]}
       )");
@@ -3432,7 +3352,7 @@ ENTRY test {
 ; CHECK-DAG:         \"precision_config\":{
 ; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
+; CHECK-DAG:         \"epilogue\":\"BIASRELU\"
 ; CHECK:           }"
       )");
 }
@@ -3481,7 +3401,7 @@ ENTRY test {
 ; CHECK-DAG:         \"precision_config\":{
 ; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
+; CHECK-DAG:         \"epilogue\":\"BIASRELU\"
 ; CHECK:           }"
       )");
 }

@@ -62,8 +62,7 @@ struct CublasLtMatmul {
       State<cublas_lt::MatmulPlan> matmul_plan, runtime::StridedMemrefView a,
       runtime::StridedMemrefView b, runtime::StridedMemrefView c,
       runtime::StridedMemrefView d,
-      std::optional<runtime::StridedMemrefView> bias,
-      std::optional<runtime::StridedMemrefView> aux, int64_t algorithm,
+      std::optional<runtime::StridedMemrefView> bias, int64_t algorithm,
       double alpha_real, double alpha_imag, double beta,
       DotDimensionNumbers dot_dims, se::cuda::BlasLt::Epilogue epilogue,
       ArrayRef<int32_t> precision) const;
@@ -78,8 +77,7 @@ absl::Status CublasLtMatmul::operator()(
     State<cublas_lt::MatmulPlan> matmul_plan, runtime::StridedMemrefView a,
     runtime::StridedMemrefView b, runtime::StridedMemrefView c,
     runtime::StridedMemrefView d,
-    std::optional<runtime::StridedMemrefView> bias,
-    std::optional<runtime::StridedMemrefView> aux, int64_t algorithm,
+    std::optional<runtime::StridedMemrefView> bias, int64_t algorithm,
     double alpha_real, double alpha_imag, double beta,
     DotDimensionNumbers dot_dims, se::cuda::BlasLt::Epilogue epilogue,
     ArrayRef<int32_t> precision) const {
@@ -108,22 +106,21 @@ absl::Status CublasLtMatmul::operator()(
   se::DeviceMemoryBase d_data = GetDeviceAddress(d);
   se::DeviceMemoryBase bias_data;
   if (bias.has_value()) bias_data = GetDeviceAddress(*bias);
-  se::DeviceMemoryBase aux_data;
-  if (aux.has_value()) aux_data = GetDeviceAddress(*aux);
 
   se::OwningScratchAllocator<> scratch_allocator(
       stream->parent()->device_ordinal(), stream->parent()->GetAllocator());
 
-  return ToAbslStatus((*plan)->ExecuteOnStream(
-      stream, a_data, b_data, c_data, d_data, bias_data, aux_data,
-      (*algos)[algorithm], scratch_allocator));
-}
+  auto st = (*plan)->ExecuteOnStream(stream, a_data, b_data, c_data, d_data,
+                                     bias_data, (*algos)[algorithm],
+                                     scratch_allocator);
+  if (!st.ok()) return ToAbslStatus(st);
 
-namespace {
+  return absl::OkStatus();
+}
 
 // Adds custom call bindings for matmul operations.
 template <typename... Ts>
-auto BindMatmulAttributes(runtime::CustomCallBinding<Ts...> binding) {
+static auto BindMatmulAttributes(runtime::CustomCallBinding<Ts...> binding) {
   return std::move(binding)
       .template Attr<int64_t>("algorithm")
       .template Attr<double>("alpha_real")
@@ -134,67 +131,20 @@ auto BindMatmulAttributes(runtime::CustomCallBinding<Ts...> binding) {
       .template Attr<ArrayRef<int32_t>>("precision");
 }
 
-auto CublasLtMatmulCall(const char* name) {
-  return CustomCall::Bind(name)
-      .UserData<const ServiceExecutableRunOptions*>()
-      .UserData<const DebugOptions*>()
-      .State<GemmConfig>("uid")
-      .State<cublas_lt::MatmulPlan>("uid")
-      .Arg<runtime::StridedMemrefView>()   // a
-      .Arg<runtime::StridedMemrefView>()   // b
-      .Arg<runtime::StridedMemrefView>()   // c
-      .Arg<runtime::StridedMemrefView>();  // d
-}
-
-bool CublasLtMatmul(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                    void** rets) {
-  static auto* handler =
-      BindMatmulAttributes(
-          CublasLtMatmulCall("xla.gpu.cublas.lt.matmul")
-              .Value(std::optional<runtime::StridedMemrefView>())  // bias
-              .Value(std::optional<runtime::StridedMemrefView>())  // aux
-          )
-          .To<checks>(CublasLtMatmul::Handler())
-          .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
-
-bool CublasLtMatmulBias(runtime::ExecutionContext* ctx, void** args,
-                        void** attrs, void** rets) {
-  static auto* handler =
-      BindMatmulAttributes(
-          CublasLtMatmulCall("xla.gpu.cublas.lt.matmul.bias")
-              .Arg<runtime::StridedMemrefView>()                   // bias
-              .Value(std::optional<runtime::StridedMemrefView>())  // aux
-          )
-          .To<checks>(CublasLtMatmul::Handler())
-          .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
-
-bool CublasLtMatmulAux(runtime::ExecutionContext* ctx, void** args,
-                       void** attrs, void** rets) {
-  static auto* handler =
-      BindMatmulAttributes(
-          CublasLtMatmulCall("xla.gpu.cublas.lt.matmul.aux")
-              .Value(std::optional<runtime::StridedMemrefView>())  // bias
-              .Arg<runtime::StridedMemrefView>()                   // aux
-          )
-          .To<checks>(CublasLtMatmul::Handler())
-          .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
-
-bool CublasLtMatmulBiasAux(runtime::ExecutionContext* ctx, void** args,
+static bool CublasLtMatmul(runtime::ExecutionContext* ctx, void** args,
                            void** attrs, void** rets) {
   static auto* handler =
       BindMatmulAttributes(
-          CublasLtMatmulCall("xla.gpu.cublas.lt.matmul.bias.aux")
-              .Arg<runtime::StridedMemrefView>()  // bias
-              .Arg<runtime::StridedMemrefView>()  // aux
+          CustomCall::Bind("xla.gpu.cublas.lt.matmul")
+              .UserData<const ServiceExecutableRunOptions*>()
+              .UserData<const DebugOptions*>()
+              .State<GemmConfig>("uid")
+              .State<cublas_lt::MatmulPlan>("uid")
+              .Arg<runtime::StridedMemrefView>()                   // a
+              .Arg<runtime::StridedMemrefView>()                   // b
+              .Arg<runtime::StridedMemrefView>()                   // c
+              .Arg<runtime::StridedMemrefView>()                   // d
+              .Value(std::optional<runtime::StridedMemrefView>())  // bias
           )
           .To<checks>(CublasLtMatmul::Handler())
           .release();
@@ -202,7 +152,25 @@ bool CublasLtMatmulBiasAux(runtime::ExecutionContext* ctx, void** args,
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
-}  // namespace
+static bool CublasLtMatmulBias(runtime::ExecutionContext* ctx, void** args,
+                               void** attrs, void** rets) {
+  static auto* handler =
+      BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul.bias")
+                               .UserData<const ServiceExecutableRunOptions*>()
+                               .UserData<const DebugOptions*>()
+                               .State<GemmConfig>("uid")
+                               .State<cublas_lt::MatmulPlan>("uid")
+                               .Arg<runtime::StridedMemrefView>()  // a
+                               .Arg<runtime::StridedMemrefView>()  // b
+                               .Arg<runtime::StridedMemrefView>()  // c
+                               .Arg<runtime::StridedMemrefView>()  // d
+                               .Arg<runtime::StridedMemrefView>()  // bias
+                           )
+          .To<checks>(CublasLtMatmul::Handler())
+          .release();
+
+  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
 
 void PopulateCublasLtMatmulAttrEncoding(
     runtime::CustomCallAttrEncodingSet& encoding) {
@@ -218,8 +186,6 @@ void PopulateCublasLtMatmulAttrEncoding(
 void RegisterMatmulCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.gpu.cublas.lt.matmul", &xla::gpu::CublasLtMatmul);
   registry.Register("xla.gpu.cublas.lt.matmul.bias", CublasLtMatmulBias);
-  registry.Register("xla.gpu.cublas.lt.matmul.aux", CublasLtMatmulAux);
-  registry.Register("xla.gpu.cublas.lt.matmul.bias.aux", CublasLtMatmulBiasAux);
 }
 
 #endif  // GOOGLE_CUDA
