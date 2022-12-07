@@ -27,7 +27,6 @@ limitations under the License.
 #include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
-#include "gml_st/transforms/vectorization/vectorization.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -572,24 +571,13 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
     if (auto loop =
             dyn_cast_or_null<ParallelOp>(tilingParallelDimsResult->loop)) {
       auto peelingResult = peelAllLoops(loop, rewriter);
-      setLabel(loop, kVectorizationAppliedLabel);
-      for (auto *remParLoop : peelingResult) {
-        setLabel(remParLoop, kVectorizationAppliedLabel);
-        remParLoop->walk([&](Operation *childOp) {
-          if (isa<ForOp>(childOp)) {
-            setLabel(childOp, kPeelingAppliedLabel);
-            setLabel(childOp, kVectorizationAppliedLabel);
-          }
-        });
-      }
     }
 
-    // Peel reduction loop inside the main parallel loop.
+    // Peel reduction loop inside the main parallel loop, label the main loop as
+    // "perfectly tiled" one, to enable vectorization after canonicalization.
     if (auto loop = dyn_cast_or_null<ForOp>(tilingReductionDimsResult->loop)) {
       auto peelingResult = peelAllLoops(loop, rewriter);
-      for (auto *remParLoop : peelingResult) {
-        setLabel(remParLoop, kVectorizationAppliedLabel);
-      }
+      setLabel(loop, kPerfectlyTiledLoopLabel);
     }
 
     return success();
@@ -624,7 +612,7 @@ struct TransformMatmulForCpuPass
     // Just do tiling and fusion on linalg.matmul.
     if (!lowerToMmt4D) {
       if (tileSizes.empty()) {
-        tileSizes = {2, 4, 8};
+        tileSizes = {4, 4, 4};
       }
       assert(tileSizes.size() == 3 &&
              "Tiling sizes for MatMul should have 3 elements");

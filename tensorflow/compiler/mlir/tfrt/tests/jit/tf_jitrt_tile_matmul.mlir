@@ -7,11 +7,11 @@
 // RUN: | FileCheck %s --check-prefix=TRANSFORMED
 
 // RUN: tf-tfrt-opt %s -split-input-file -xla-cpu-transform-matmul="tile-sizes=8,4,2" \
-// RUN:   -canonicalize -vectorize-gml-st-loops \
+// RUN:   -canonicalize -vectorize-perfectly-tiled-loops \
 // RUN: | FileCheck %s --check-prefix=VECTORIZED
 
 // RUN: tf-tfrt-opt %s -split-input-file -xla-cpu-transform-matmul="lower-to-mmt4d=true" \
-// RUN:   -vectorize-gml-st-loops \
+// RUN:   -vectorize-perfectly-tiled-loops \
 // RUN: | FileCheck %s --check-prefix=MMT4D
 
 func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
@@ -105,20 +105,20 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // MARKED:         %[[C0:.*]] = arith.constant 0 : index
 // MARKED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]]) to (%[[IUB:.*]], %[[JUB:.*]]) step
 // MARKED:           gml_st.for (%[[K:.*]]) = (%[[C0]]) to (%[[KUB:.*]]) step
-// MARKED:           } {__peeling_applied_label__}
+// MARKED:           } {__peeling_applied_label__, __perfectly_tiled_loop_label__}
 // MARKED:           gml_st.for (%[[K:.*]]) = (%[[KUB]])
-// MARKED:           } {__peeling_applied_label__, __vectorization_applied_label__
-// MARKED:         } {__peeling_applied_label__, __vectorization_applied_label__
+// MARKED:           } {__peeling_applied_label__
+// MARKED:         } {__peeling_applied_label__
 
 // MARKED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[JUB]])
 // MARKED:           gml_st.for (%[[K:.*]]) = (%[[C0]])
-// MARKED:           } {__peeling_applied_label__, __vectorization_applied_label__
-// MARKED:         } {__peeling_applied_label__, __vectorization_applied_label__
+// MARKED:           }
+// MARKED:         } {__peeling_applied_label__
 
 // MARKED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[IUB]], %[[C0]])
 // MARKED:           gml_st.for (%[[K:.*]]) = (%[[C0]])
-// MARKED:           } {__peeling_applied_label__, __vectorization_applied_label__
-// MARKED:         } {__peeling_applied_label__, __vectorization_applied_label__
+// MARKED:           }
+// MARKED:         } {__peeling_applied_label__
 
 // -----
 

@@ -26,17 +26,17 @@ namespace gml_st {
 void addTileableOpsTransformationsForCPU(OpPassManager& pm) {
   using func::FuncOp;
 
-  pm.addPass(createTransformScatterForCpuPass());
-  pm.addPass(createTransformReduceForCpuPass());
-  pm.addPass(createTransformMatmulForCpuPass());
-  pm.addPass(createTransformTransposeForCpuPass());
-  pm.addPass(createTransformMapForCpuPass());
+  pm.addNestedPass<FuncOp>(createTransformScatterForCpuPass());
+  pm.addNestedPass<FuncOp>(createTransformReduceForCpuPass());
+  pm.addNestedPass<FuncOp>(createTransformMatmulForCpuPass());
+  pm.addNestedPass<FuncOp>(createTransformTransposeForCpuPass());
+  pm.addNestedPass<FuncOp>(createTransformMapForCpuPass());
 
   pm.addPass(createCSEPass());
   pm.addPass(createCanonicalizerPass());
 
   pm.addNestedPass<FuncOp>(createCollapseMaterializeOpsPass());
-  pm.addNestedPass<FuncOp>(createVectorizeGmlStLoopsPass(true));
+  pm.addNestedPass<FuncOp>(createVectorizePerfectlyTiledLoopsPass());
   pm.addNestedPass<FuncOp>(createLowerVectorContractPass());
 }
 

@@ -1390,7 +1390,6 @@ cc_library(
         "gml_st/transforms/peeling/peeling.h",
         "gml_st/transforms/rewriters.h",
         "gml_st/transforms/tiling/tiling.h",
-        "gml_st/transforms/vectorization/vectorization.h",
         "gml_st/utils/linalg_utils.h",
         "gml_st/utils/vector_utils.h",
     ],

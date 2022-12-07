@@ -163,6 +163,13 @@ def VectorizeGmlStLoopsPass :
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }
 
+def VectorizePerfectlyTiledLoopsPass :
+    Pass<"vectorize-perfectly-tiled-loops", "mlir::func::FuncOp"> {
+  let summary = "Pass to vectorize gml_st.for loops that are tiled perfectly.";
+  let constructor = "::mlir::gml_st::createVectorizePerfectlyTiledLoopsPass()";
+  let dependentDialects = ["::mlir::vector::VectorDialect"];
+}
+
 def LowerVectorContractPass :
     Pass<"lower-vector-contract", "mlir::func::FuncOp"> {
   let summary = "Pass to lower vector.contract";

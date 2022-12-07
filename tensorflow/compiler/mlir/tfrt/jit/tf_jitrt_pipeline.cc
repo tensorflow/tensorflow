@@ -81,9 +81,6 @@ void AddLinalgTransformations(OpPassManager& pm,
       options.vector_size, options.reduction_1d_tile_size,
       options.reduction_2d_tile_sizes));
 
-  pm.addNestedPass<FuncOp>(mlir::gml_st::createTransformMatmulForCpuPass(
-      options.matmul_tile_sizes, options.lower_to_mmt4d));
-
   if (options.vectorize && options.codegen_transpose)
     pm.addNestedPass<FuncOp>(CreateTileTransposePass());
   pm.addNestedPass<FuncOp>(CreateTileCWisePass(options.vector_size));
@@ -178,7 +175,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeSortPass());
   pm.addNestedPass<FuncOp>(xla::cpu::createLegalizeCollectiveOpsPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass(
-      options.enable_xla_cpu_transformations));
+      /*enablePrimitiveOps=*/options.enable_xla_cpu_transformations));
   pm.addPass(mlir::mhlo::createLegalizeToArithmeticPass());
   pm.addNestedPass<FuncOp>(
       mlir::mhlo::createLegalizeHloShapeOpsToStandardPass());
@@ -256,8 +253,6 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
 void CreateDefaultTfJitRtPipeline(OpPassManager& pm) {
   TfJitRtPipelineOptions options;
   options.vectorize = tensorflow::GetJitRtFlags().vectorize;
-  options.enable_xla_cpu_transformations =
-      tensorflow::GetJitRtFlags().enable_xla_cpu_transformations;
   CreateTfJitRtPipeline(pm, options);
 }
 

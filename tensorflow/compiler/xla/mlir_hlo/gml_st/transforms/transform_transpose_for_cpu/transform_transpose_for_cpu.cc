@@ -59,18 +59,15 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
     if (tilingResult->loop != nullptr) {
       rewriter.replaceOp(op, tilingResult->loop->getResults());
     }
+    setLabel(tilingResult->tiledOp, kTransposeTransformedLabel);
 
-    // Peel parallel loops.
+    // Peel parallel loops, label the main loop as "perfectly tiled" one, to
+    // enable vectorization after canonicalization.
     if (auto loop = dyn_cast_or_null<ParallelOp>(tilingResult->loop)) {
       auto peelingResult = peelAllLoops(loop, rewriter);
-      for (auto *remParLoop : peelingResult) {
-        remParLoop->walk([&](linalg::TransposeOp op) {
-          setLabel(op.getOperation(), kTransposeTransformedLabel);
-        });
-      }
+      setLabel(loop, kPerfectlyTiledLoopLabel);
     }
 
-    setLabel(tilingResult->tiledOp, kTransposeTransformedLabel);
     return success();
   }
 

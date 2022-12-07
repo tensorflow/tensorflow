@@ -89,6 +89,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeGmlStLoopsPass(
     bool vectorizeGmlStOps = false,
     ArrayRef<StringRef> distributionLabels = {});
 
+/// Pass to vectorize gml_st.for loops that are tiled perfectly.
+std::unique_ptr<OperationPass<func::FuncOp>>
+createVectorizePerfectlyTiledLoopsPass();
+
 /// Pass to lower vector.contract.
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorContractPass();
 

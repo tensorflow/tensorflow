@@ -36,6 +36,9 @@ struct LinalgTilingOptions;
 namespace mlir {
 namespace gml_st {
 
+constexpr llvm::StringRef kPerfectlyTiledLoopLabel =
+    "__perfectly_tiled_loop_label__";
+
 bool isZero(Value v);
 bool isOne(Value v);
 
