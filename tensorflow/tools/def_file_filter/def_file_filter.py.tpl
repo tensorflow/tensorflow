@@ -47,6 +47,8 @@ INCLUDEPRE_RE = re.compile(r"google::protobuf::internal::ExplicitlyConstructed|"
                            r"google::protobuf::internal::ArenaImpl::AddCleanup|" # for contrib/data/_prefetching_ops
                            r"google::protobuf::internal::LogMessage|" # for contrib/data/_prefetching_ops
                            r"google::protobuf::Arena::OnArenaAllocation|" # for contrib/data/_prefetching_ops
+                           r"google::protobuf::MessageLite::SerializeAsString|" # for pywrap_saved_model
+                           r"google::protobuf::MessageLite::ParseFromString|" # for pywrap_saved_model
                            r"absl::Mutex::ReaderLock|" # for //tensorflow/contrib/rnn:python/ops/_gru_ops.so and more ops
                            r"absl::Mutex::ReaderUnlock|" # for //tensorflow/contrib/rnn:python/ops/_gru_ops.so and more ops
                            r"tensorflow::internal::LogMessage|"
@@ -278,6 +280,7 @@ def main():
     def_fp.write("\t ?MaybeSavedModelDirectory@tensorflow@@YA_NAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z\n")
     def_fp.write("\t ?_TensorShapeProto_default_instance_@tensorflow@@3VTensorShapeProtoDefaultTypeInternal@1@A\n")
     def_fp.write("\t ?_GraphDef_default_instance_@tensorflow@@3VGraphDefDefaultTypeInternal@1@A\n")
+    def_fp.write("\t ??_7HistogramProto@tensorflow@@6B@\n")
 
     # Each symbols returned by undname matches the same position in candidates.
     # We compare on undname but use the decorated name from candidates.

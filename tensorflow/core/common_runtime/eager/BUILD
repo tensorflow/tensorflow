@@ -328,6 +328,18 @@ tf_cuda_library(
     }),
 )
 
+tf_cc_test(
+    name = "tensor_handle_data_test",
+    srcs = ["tensor_handle_data_test.cc"],
+    deps = [
+        ":core",
+        ":tensor_handle_data",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
+    ],
+)
+
 tf_cuda_library(
     name = "tensor_handle",
     srcs = [
@@ -496,7 +508,7 @@ cc_library(
     hdrs = [
         "execute.h",
         "execute_node.h",
-    ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util_header"]),
+    ],
     copts = if_mkl(["-DINTEL_MKL"]),
     deps = [
         ":context",
@@ -534,7 +546,10 @@ cc_library(
             "//tensorflow/core/distributed_runtime/eager:remote_execute_node",
             "//tensorflow/core/distributed_runtime/eager:remote_copy_node",
         ],
-    }) + if_mkl([":mkl_eager_op_rewrite"]),
+    }) + if_mkl([
+        ":mkl_eager_op_rewrite",
+        "//tensorflow/core/graph:mkl_graph_util",
+    ]),
 )
 
 tf_cc_test(

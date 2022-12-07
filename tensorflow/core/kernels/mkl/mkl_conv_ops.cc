@@ -1938,7 +1938,6 @@ class MklQuantizedConvOp
 
     if (this->get_fuse_add()) {
       // Calculate the scale (beta in oneDNN api term) for sum
-      auto iter = params.post_op_params.begin() + post_op_to_idx_["sum"];
       if (std::is_same<Toutput, quint8>::value) {
         DataType summand_dt = this->input_type(this->get_input_add_idx());
         bool summand_condition =
@@ -2198,12 +2197,11 @@ class MklQuantizedConvOp
   }
 
   inline oneDNNFusedOps StrToEnum(const string op) {
-    if (str_to_enum_.count(op) != 0) {
-      return str_to_enum_[op];
-    } else {
-      TF_CHECK_OK(
-          Status(error::Code::UNKNOWN, "Error: Unknown post op: " + op));
-    }
+    // It was not doing template substitution for the second parameter of
+    // CHECK_EQ and thus I had to do this to make it work.
+    CHECK_EQ(str_to_enum_.find(op) != str_to_enum_.end(), true)  // Crash OK
+        << "Error: Unknown post op: " << op;
+    return str_to_enum_[op];
   }
   // Allocate tensors for cached bias data and
   // cached bias memory descriptor (data format)

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <iostream>
 #include <memory>
 #include <numeric>
@@ -21,6 +22,8 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_format.h"
+#include "llvm/ADT/Optional.h"
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -325,12 +328,144 @@ Value CreateXlaDotV2OpFromTfMatMulOp(OpBuilder &builder, Location loc,
   return CreateXlaDotV2Op(builder, loc, input, weight, input_zp, output, dnums);
 }
 
+// Gets the broadcasted shapes of the input and weight of the BatchMatMul op
+// from their types. If there are dynamic dimesions, these shapes couldn't be
+// used as the arguments for the BroadcastTo ops.
+llvm::Optional<std::pair<SmallVector<int64_t>, SmallVector<int64_t>>>
+GetBroadcastShapesForBatchMatmul(ShapedType input_type,
+                                 ShapedType weight_type) {
+  ArrayRef<int64_t> input_shape = input_type.getShape();
+  ArrayRef<int64_t> weight_shape = weight_type.getShape();
+
+  const int64_t num_matmul_dim = 2;
+  const int64_t num_input_batch_dim = input_type.getRank() - num_matmul_dim;
+  const int64_t num_weight_batch_dim = weight_type.getRank() - num_matmul_dim;
+
+  ArrayRef<int64_t> input_batch_dims =
+      input_shape.slice(0, num_input_batch_dim);
+  ArrayRef<int64_t> weight_batch_dims =
+      weight_shape.slice(0, num_weight_batch_dim);
+  ArrayRef<int64_t> input_matmul_dims =
+      input_shape.slice(num_input_batch_dim, num_matmul_dim);
+  ArrayRef<int64_t> weight_matmul_dims =
+      weight_shape.slice(num_weight_batch_dim, num_matmul_dim);
+
+  SmallVector<int64_t> broadcasted_batch_dims;
+  if (!OpTrait::util::getBroadcastedShape(input_batch_dims, weight_batch_dims,
+                                          broadcasted_batch_dims)) {
+    return llvm::None;
+  }
+  SmallVector<int64_t> broadcasted_input_shape(broadcasted_batch_dims);
+  broadcasted_input_shape.append(input_matmul_dims.begin(),
+                                 input_matmul_dims.end());
+  SmallVector<int64_t> broadcasted_weight_shape(broadcasted_batch_dims);
+  broadcasted_weight_shape.append(weight_matmul_dims.begin(),
+                                  weight_matmul_dims.end());
+
+  return std::make_pair(std::move(broadcasted_input_shape),
+                        std::move(broadcasted_weight_shape));
+}
+
+// Broadcasts batch dimensions of the input and weight of the BatchMatMul
+// op. In XLA, shapes are all constants, so all operations created in this
+// function, except BroadcastTo, are expected to be folded.
+void BroadcastBatchDimensionsForBatchMatMul(OpBuilder &builder, Location loc,
+                                            Value &input, Value &weight) {
+  ShapedType input_type = input.getType().template cast<ShapedType>();
+  ShapedType weight_type = weight.getType().template cast<ShapedType>();
+  const int32_t input_rank = input_type.getRank();
+  const int32_t weight_rank = weight_type.getRank();
+  const int32_t broadcasted_rank = std::max(input_rank, weight_rank);
+
+  const int32_t num_matmul_dim = 2;
+  const int32_t num_input_batch_dim = input_rank - num_matmul_dim;
+  const int32_t num_weight_batch_dim = weight_rank - num_matmul_dim;
+  if (num_input_batch_dim == 0 && num_weight_batch_dim == 0) return;
+
+  // If the broadcasted shapes can be calculated statically, only add two
+  // BroadcastTo ops for input and weight.
+  auto broadcasted_shapes_or =
+      GetBroadcastShapesForBatchMatmul(input_type, weight_type);
+  if (!broadcasted_shapes_or.has_value()) return;
+  const auto broadcasted_input_type = RankedTensorType::get(
+      broadcasted_shapes_or->first, input_type.getElementType());
+  const auto broadcasted_weight_type = RankedTensorType::get(
+      broadcasted_shapes_or->second, weight_type.getElementType());
+
+  if (broadcasted_input_type.hasStaticShape() &&
+      broadcasted_weight_type.hasStaticShape()) {
+    input = builder.create<TF::BroadcastToOp>(
+        loc, broadcasted_input_type, input,
+        Create1DConstValue(builder, loc, broadcasted_shapes_or->first));
+    weight = builder.create<TF::BroadcastToOp>(
+        loc, broadcasted_weight_type, weight,
+        Create1DConstValue(builder, loc, broadcasted_shapes_or->second));
+    return;
+  }
+
+  const Value zero = Create1DConstValue<int32_t>(builder, loc, {0});
+  const Value num_matmul_dim_value =
+      Create1DConstValue<int32_t>(builder, loc, {num_matmul_dim});
+  const Value num_input_batch_dim_value =
+      Create1DConstValue<int32_t>(builder, loc, {num_input_batch_dim});
+  const Value num_weight_batch_dim_value =
+      Create1DConstValue<int32_t>(builder, loc, {num_weight_batch_dim});
+
+  // Decompose the input and weight shape into batch and matmul dimensions.
+  Value input_shape = builder.create<TF::ShapeOp>(
+      loc, input, /*use32Bit=*/builder.getBoolAttr(false));
+  Value input_batch_dims = builder.create<TF::SliceOp>(
+      loc, RankedTensorType::get({num_input_batch_dim}, builder.getI64Type()),
+      input_shape, zero, num_input_batch_dim_value);
+  Value input_matmul_dims = builder.create<TF::SliceOp>(
+      loc, RankedTensorType::get({num_matmul_dim}, builder.getI64Type()),
+      input_shape, num_input_batch_dim_value, num_matmul_dim_value);
+
+  Value weight_shape = builder.create<TF::ShapeOp>(
+      loc, weight, /*use32Bit=*/builder.getBoolAttr(false));
+  Value weight_batch_dims = builder.create<TF::SliceOp>(
+      loc, RankedTensorType::get({num_weight_batch_dim}, builder.getI64Type()),
+      weight_shape, zero, num_weight_batch_dim_value);
+  Value weight_matmul_dims = builder.create<TF::SliceOp>(
+      loc, RankedTensorType::get({num_matmul_dim}, builder.getI64Type()),
+      weight_shape, num_weight_batch_dim_value, num_matmul_dim_value);
+
+  // Calculate the broadcasted shapes.
+  Value broadcasted_batch_dims = builder.create<TF::BroadcastArgsOp>(
+      loc,
+      RankedTensorType::get({broadcasted_rank - num_matmul_dim},
+                            builder.getI64Type()),
+      input_batch_dims, weight_batch_dims);
+  Type broadcasted_shape_type =
+      RankedTensorType::get({broadcasted_rank}, builder.getI64Type());
+
+  const Value zero_scalar = CreateScalarConstValue<int32_t>(builder, loc, 0);
+  Value broacasted_input_shape = builder.create<TF::ConcatOp>(
+      loc, broadcasted_shape_type, /*concat_dim=*/zero_scalar,
+      ValueRange{broadcasted_batch_dims, input_matmul_dims});
+  Value broacasted_weight_shape = builder.create<TF::ConcatOp>(
+      loc, broadcasted_shape_type, /*concat_dim=*/zero_scalar,
+      ValueRange{broadcasted_batch_dims, weight_matmul_dims});
+
+  // Broadcast input and weight with the calculated shapes.
+  input = builder.create<TF::BroadcastToOp>(loc, broadcasted_input_type, input,
+                                            broacasted_input_shape);
+  weight = builder.create<TF::BroadcastToOp>(loc, broadcasted_weight_type,
+                                             weight, broacasted_weight_shape);
+}
+
 Value CreateXlaDotV2OpFromTfBatchMatMulOp(OpBuilder &builder, Location loc,
                                           Value input, Value weight,
                                           Value input_zp, Value output,
                                           BoolAttr adj_x, BoolAttr adj_y) {
+  // TensorFlow BatchMatMulOp allows the batch dimensions to be broadcastable
+  // while the XlaDotV2Op doesn't. So we have to broadcast them beforehand.
+  BroadcastBatchDimensionsForBatchMatMul(builder, loc, input, weight);
+
+  // Both input and weight have the same rank after broadcasting.
   ShapedType weight_shape = weight.getType().template cast<ShapedType>();
   int num_batch_dim = weight_shape.getRank() - 2;
+
   // Transpose and constant-fold the weight if needed.
   if (adj_y.getValue()) {
     SmallVector<int32_t> perm_values(num_batch_dim);

@@ -71,9 +71,9 @@ class Array : public llvm::RTTIExtends<Array, llvm::RTTIRoot> {
   virtual std::shared_ptr<const Sharding> shared_ptr_sharding() const = 0;
 
   // Breaks an array up into per-device arrays. This is the elimination
-  // counterpart of `Client::AssembleArray()`.
-  virtual StatusOr<std::vector<std::unique_ptr<Array>>> Explode(
-      ArrayCopySemantics semantics) = 0;
+  // counterpart of `Client::AssembleArrayFromSingleDeviceArrays()`.
+  virtual StatusOr<std::vector<std::unique_ptr<Array>>>
+  DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) = 0;
 
   // Fetches the array to host and stores it as unreplicated, unsharded data.
   //

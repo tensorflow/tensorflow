@@ -16,8 +16,10 @@ tensorflow/core/tfrt/mla/mla_utils.h:
 tensorflow/core/tfrt/saved_model/saved_model_mira_impl.h:
 tensorflow/core/tfrt/tpu/tpu_resources.h:
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h:
+tensorflow/dtensor/build_defs:.bzl
 tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal.cc:
 tensorflow/dtensor/mlir/utils/update_tpu_metadata.cc:
+tensorflow/dtensor/python/tests/test_backend_name:.py
 tensorflow/examples/custom_ops_doc/multiplex_1/BUILD:
 tensorflow/examples/custom_ops_doc/multiplex_1/multiplex_1_op.py:
 tensorflow/examples/custom_ops_doc/multiplex_2/BUILD:
@@ -87,9 +89,7 @@ tensorflow/python/tpu/profiler/pip_package/build_pip_package.sh:
 tensorflow/python/tpu/profiler/pip_package/setup:.py
 tensorflow/python/tpu/tpu.bzl:
 tensorflow/security/fuzzing/tf_fuzzing:.bzl
-tensorflow/tools/benchmark/parse_onednn_benchmarks:.py
-tensorflow/tools/benchmark/run_models:.sh
-tensorflow/tools/benchmark/run_onednn_benchmarks:.sh
+tensorflow/tools/benchmark/onednn_benchmark_config:.sh
 tensorflow/tools/build_info/BUILD:
 tensorflow/tools/ci_build/a100/nightly.sh:
 tensorflow/tools/ci_build/horovod/gpu/nightly.sh:

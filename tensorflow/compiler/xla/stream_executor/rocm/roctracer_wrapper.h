@@ -21,9 +21,13 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_ROCTRACER_WRAPPER_H_
 
 #include "rocm/include/roctracer/roctracer.h"
-#include "rocm/include/roctracer/roctracer_hcc.h"
 #include "rocm/include/roctracer/roctracer_hip.h"
 #include "rocm/rocm_config.h"
+#if TF_ROCM_VERSION >= 50300
+#include "rocm/include/roctracer/roctracer_roctx.h"
+#else
+#include "rocm/include/roctracer/roctracer_hcc.h"
+#endif
 #include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"

@@ -47,6 +47,12 @@ from tensorflow.python.trackable import base
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver as saver_lib
 
+try:
+  import psutil  # pylint: disable=g-import-not-at-top
+  psutil_import_succeeded = True
+except ImportError:
+  psutil_import_succeeded = False
+
 
 class NonLayerTrackable(autotrackable.AutoTrackable):
 
@@ -1135,6 +1141,23 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       with self.assertRaisesRegex(RuntimeError, "create a session"):
         ckpt.write(prefix)
 
+  def test_ckpt_files_closed_after_restoration(self):
+    if not psutil_import_succeeded:
+      self.skipTest(
+          "psutil is required to check that we've closed our files.")
+    root = autotrackable.AutoTrackable()
+    root.v = variables_lib.Variable(1)
+    ckpt = trackable_utils.Checkpoint(root=root)
+    save_path = ckpt.save(os.path.join(self.get_temp_dir(), "ckpt"))
+
+    root2 = autotrackable.AutoTrackable()
+    ckpt2 = trackable_utils.Checkpoint(root=root2)
+    ckpt2.restore(save_path)
+
+    proc = psutil.Process()
+    for file in proc.open_files():
+      self.assertNotIn(save_path, file[0])
+
 
 class SerializeToTensorTest(test.TestCase):
 
@@ -1188,6 +1211,28 @@ class SerializeToTensorTest(test.TestCase):
 
     self.assertAllEqual([1, 2, 3, 4],
                         self.evaluate([root.v1, root.v2, child.v1, child.v2]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_reference_variable(self):
+    # Test that refvariable is compatible with tf1 saver / tf2 checkpoint.
+
+    with self.cached_session() as sess:
+      root = autotrackable.AutoTrackable()
+      root.v = variables_lib.VariableV1(5, use_resource=False)
+      sess.run(root.v.initializer)
+      ckpt = trackable_utils.Checkpoint(root)
+      ckpt_path = os.path.join(self.get_temp_dir(), "ckpt")
+      ckpt.write(ckpt_path)
+
+      sess.run(root.v.assign(10))
+      saver = saver_lib.Saver(var_list=[root.v])
+      save_path = saver.save(sess, os.path.join(self.get_temp_dir(), "saver"))
+
+      ckpt.read(ckpt_path).assert_consumed().run_restore_ops()
+      self.assertEqual(5, sess.run(root.v))
+
+      saver.restore(sess, save_path)
+      self.assertEqual(10, sess.run(root.v))
 
 
 class TemplateTests(parameterized.TestCase, test.TestCase):

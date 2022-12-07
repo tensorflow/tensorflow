@@ -325,13 +325,18 @@ class MaxPoolingGradOp : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
-    OP_REQUIRES(context, tensor_out.shape() == params.forward_output_shape(),
+    TensorShape params_forward_output_shape;
+    OP_REQUIRES_OK(context,
+                   params.forward_output_shape(&params_forward_output_shape));
+    OP_REQUIRES(context, tensor_out.shape() == params_forward_output_shape,
                 errors::InvalidArgument("Expected orig_output shape to be ",
-                                        params.forward_output_shape(),
+                                        params_forward_output_shape,
                                         ", but got ", tensor_out.shape()));
-    OP_REQUIRES(context, out_backprop.shape() == params.forward_output_shape(),
+    OP_REQUIRES_OK(context,
+                   params.forward_output_shape(&params_forward_output_shape));
+    OP_REQUIRES(context, out_backprop.shape() == params_forward_output_shape,
                 errors::InvalidArgument("Expected grad shape to be ",
-                                        params.forward_output_shape(),
+                                        params_forward_output_shape,
                                         ", but got ", out_backprop.shape()));
 
     Tensor* output = nullptr;
@@ -549,9 +554,12 @@ class MaxPoolingGradGradOp : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
-    OP_REQUIRES(context, tensor_out.shape() == params.forward_output_shape(),
+    TensorShape params_forward_output_shape;
+    OP_REQUIRES_OK(context,
+                   params.forward_output_shape(&params_forward_output_shape));
+    OP_REQUIRES(context, tensor_out.shape() == params_forward_output_shape,
                 errors::InvalidArgument("Expected orig_output shape to be ",
-                                        params.forward_output_shape(),
+                                        params_forward_output_shape,
                                         ", but got ", tensor_out.shape()));
     OP_REQUIRES(
         context, out_grad_backprop.shape() == tensor_in.shape(),
@@ -765,9 +773,12 @@ class MaxPoolingGradGradOp<Eigen::GpuDevice, T> : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
-    OP_REQUIRES(context, tensor_out.shape() == params.forward_output_shape(),
+    TensorShape params_forward_output_shape;
+    OP_REQUIRES_OK(context,
+                   params.forward_output_shape(&params_forward_output_shape));
+    OP_REQUIRES(context, tensor_out.shape() == params_forward_output_shape,
                 errors::InvalidArgument("Expected orig_output shape to be ",
-                                        params.forward_output_shape(),
+                                        params_forward_output_shape,
                                         ", but got ", tensor_out.shape()));
     OP_REQUIRES(
         context, out_grad_backprop.shape() == tensor_in.shape(),
@@ -1127,13 +1138,18 @@ class MaxPoolingGradWithArgmaxOp : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
-    OP_REQUIRES(context, grad_in.shape() == params.forward_output_shape(),
+    TensorShape params_forward_output_shape;
+    OP_REQUIRES_OK(context,
+                   params.forward_output_shape(&params_forward_output_shape));
+    OP_REQUIRES(context, grad_in.shape() == params_forward_output_shape,
                 errors::InvalidArgument("Expected grad shape to be ",
-                                        params.forward_output_shape(),
+                                        params_forward_output_shape,
                                         ", but got ", grad_in.shape()));
-    OP_REQUIRES(context, argmax.shape() == params.forward_output_shape(),
+    OP_REQUIRES_OK(context,
+                   params.forward_output_shape(&params_forward_output_shape));
+    OP_REQUIRES(context, argmax.shape() == params_forward_output_shape,
                 errors::InvalidArgument("Expected argmax shape to be ",
-                                        params.forward_output_shape(),
+                                        params_forward_output_shape,
                                         ", but got ", argmax.shape()));
 
     TensorShape out_shape({params.tensor_in_batch, params.tensor_in_rows,
@@ -1199,9 +1215,12 @@ class MaxPoolingGradGradWithArgmaxOp : public OpKernel {
         context, grad_in.shape() == tensor_in.shape(),
         errors::InvalidArgument("Expected grad shape to be ", tensor_in.shape(),
                                 ", but got ", grad_in.shape()));
-    OP_REQUIRES(context, argmax.shape() == params.forward_output_shape(),
+    TensorShape params_forward_output_shape;
+    OP_REQUIRES_OK(context,
+                   params.forward_output_shape(&params_forward_output_shape));
+    OP_REQUIRES(context, argmax.shape() == params_forward_output_shape,
                 errors::InvalidArgument("Expected argmax shape to be ",
-                                        params.forward_output_shape(),
+                                        params_forward_output_shape,
                                         ", but got ", argmax.shape()));
 
     TensorShape out_shape({params.tensor_in_batch, params.out_height,
@@ -1264,9 +1283,11 @@ class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
       return;
     }
 
-    TensorShape out_shape =
-        ShapeFromFormat(data_format_, params.tensor_in_batch, params.out_height,
-                        params.out_width, params.depth);
+    TensorShape out_shape;
+    OP_REQUIRES_OK(
+        context, ShapeFromFormatWithStatus(data_format_, params.tensor_in_batch,
+                                           params.out_height, params.out_width,
+                                           params.depth, &out_shape));
 
     // Degenerate pooling output should return an empty tensor.
     if (out_shape.num_elements() == 0) {
@@ -1399,9 +1420,11 @@ class MaxPoolingNoMaskV2Op<GPUDevice, T> : public OpKernel {
       return;
     }
 
-    TensorShape out_shape =
-        ShapeFromFormat(data_format_, params.tensor_in_batch, params.out_height,
-                        params.out_width, params.depth);
+    TensorShape out_shape;
+    OP_REQUIRES_OK(
+        context, ShapeFromFormatWithStatus(data_format_, params.tensor_in_batch,
+                                           params.out_height, params.out_width,
+                                           params.depth, &out_shape));
     if (data_format_ == FORMAT_NCHW) {
       DnnPoolingOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum, ksize,
                                stride, padding_, explicit_paddings_,
@@ -1579,11 +1602,13 @@ namespace functor {
   extern template struct SpatialMaxPooling<Eigen::GpuDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
+TF_CALL_bfloat16(DECLARE_GPU_SPEC);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 #define REGISTER_GPU_MAX_POOL_KERNELS(T) REGISTER_MAX_POOL_KERNELS(GPU, T)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_MAX_POOL_KERNELS);
+TF_CALL_bfloat16(REGISTER_GPU_MAX_POOL_KERNELS);
 #undef REGISTER_GPU_MAX_POOL_KERNELS
 
 // Below kernels currently implemented only for GPU device.
@@ -1619,6 +1644,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_MAX_POOL_KERNELS);
                               .TypeConstraint<int64_t>("Targmax"), \
                           MaxPoolingGradGradWithArgmaxOp<GPUDevice, T>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_ONLY_POOL_KERNELS);
+TF_CALL_bfloat16(REGISTER_GPU_ONLY_POOL_KERNELS);
 
 // TODO(b/65847473): Re-enable once the underlying build error is fixed.
 #if !defined(PLATFORM_WINDOWS)

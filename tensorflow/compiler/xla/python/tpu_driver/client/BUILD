@@ -1,6 +1,5 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
-load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "tsl_pybind_extension")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -47,7 +46,7 @@ cc_library(
     ],
 )
 
-pybind_extension(
+tsl_pybind_extension(
     name = "tpu_client_extension",
     srcs = [
         "tpu_client_extension.cc",

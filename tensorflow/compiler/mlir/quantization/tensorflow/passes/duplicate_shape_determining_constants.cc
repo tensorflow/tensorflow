@@ -170,6 +170,10 @@ llvm::SmallVector<OpOperand*> GetOperands(Operation& op,
 // constant" from the XLA compiler's point of view.
 template <typename OpT, int... OperandIdx>
 struct CompileTimeConstantOperand {
+  static_assert(
+      sizeof...(OperandIdx) > 0,
+      "CompileTimeConstantOperand should have at least one operand index.");
+
   using OpType = OpT;
 
   // Returns the indices of operands that should be compile time constants.

@@ -1643,6 +1643,23 @@ auto AggregateDecoder(Members... m) {
 
 }  // namespace internal
 
+//===----------------------------------------------------------------------===//
+// XLA Custom Call helper macro for registering custom call handlers.
+//===----------------------------------------------------------------------===//
+
+#define XLA_RUNTIME_DEFINE_CUSTOM_CALL_WITH_CHECKS(fn, impl, checks, bind) \
+  static bool fn(::xla::runtime::ExecutionContext* ctx, void** args,       \
+                 void** attrs, void** rets) {                              \
+    static auto* handler = bind.To<checks>(impl).release();                \
+    return ::xla::runtime::succeeded(                                      \
+        xla::runtime::Executable::Call(ctx, *handler, args, attrs, rets)); \
+  }
+
+#define XLA_RUNTIME_DEFINE_CUSTOM_CALL(fn, impl, bind) \
+  XLA_RUNTIME_DEFINE_CUSTOM_CALL_WITH_CHECKS(          \
+      fn, impl, ::xla::runtime::CustomCall::RuntimeChecks::kDefault, bind)
+
+//===----------------------------------------------------------------------===//
 // Declare/define an explicit specialization for TypeID for types used
 // by the custom calls. This forces the compiler to emit a strong definition for
 // a class and controls which translation unit and shared object will actually
@@ -1653,6 +1670,8 @@ auto AggregateDecoder(Members... m) {
 // Because custom calls do not "own" the types passed across the function
 // boundary, we declare/define specializations for tagged types to avoid
 // potential conflicts with other libraries.
+//===----------------------------------------------------------------------===//
+
 #define XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(T) \
   MLIR_DECLARE_EXPLICIT_TYPE_ID(::xla::runtime::Tagged<T>)
 

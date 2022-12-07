@@ -39,6 +39,7 @@ limitations under the License.
 
 // TODO(b/238999986): Remove this.
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace pjrt {
 
@@ -259,10 +260,7 @@ PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
     PJRT_RETURN_IF_ERROR(
         tsl::errors::InvalidArgument(ProgramFormatErrorMsg(format_str)));
   }
-  // TODO(b/237545405): Implement creation methods for PJRT_Executable.
-  args->executable = new PJRT_Executable{std::move(executable), args->client};
-  PopulatePjrtExecutableAddressableDevices(args->executable);
-  args->executable->populated = true;
+  args->executable = new PJRT_Executable(std::move(executable), args->client);
   return nullptr;
 }
 
@@ -444,13 +442,6 @@ PJRT_Error* PJRT_Executable_AddressableDevices(
       "PJRT_Executable_AddressableDevices_Args",
       PJRT_Executable_AddressableDevices_Args_STRUCT_SIZE, args->struct_size));
 
-  // TODO(b/237545405): Implement creation methods for PJRT_Executable that can
-  // populate addressable_devices on instantiation,  and use this logic there
-  if (!args->executable->populated) {
-    PopulatePjrtExecutableAddressableDevices(args->executable);
-    args->executable->populated = true;
-  }
-
   args->num_addressable_devices = args->executable->addressable_devices.size();
   args->addressable_devices = args->executable->addressable_devices.data();
   return nullptr;
@@ -594,6 +585,66 @@ PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args) {
     }
   }
 
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_Serialize_Args",
+      PJRT_Executable_Serialize_Args_STRUCT_SIZE, args->struct_size));
+  const xla::PjRtLoadedExecutable& executable = *args->executable->executable;
+  std::string serialization;
+  const PJRT_Client* client = args->executable->client;
+  PJRT_ASSIGN_OR_RETURN(serialization,
+                        client->client->SerializeExecutable(executable));
+
+  PJRT_SerializedExecutable* serialized_exec = new PJRT_SerializedExecutable;
+  if (serialized_exec == nullptr) {
+    return new PJRT_Error{xla::ResourceExhausted(
+        "Out of memory for `PJRT_Executable_Serialize()`")};
+  }
+  serialized_exec->serialized = std::move(serialization);
+  args->serialized_executable = serialized_exec;
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Executable_Deserialize(
+    PJRT_Executable_Deserialize_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_Deserialize_Args",
+      PJRT_Executable_Deserialize_Args_STRUCT_SIZE, args->struct_size));
+  absl::string_view serialized(args->serialized_executable,
+                               args->serialized_executable_size);
+
+  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+                        args->client->client->DeserializeExecutable(
+                            serialized, /*options=*/std::nullopt));
+
+  args->deserialized_executable =
+      new PJRT_Executable{std::move(executable), args->client};
+  return nullptr;
+}
+
+// -------------------------- Serialized Executables ---------------------------
+
+PJRT_Error* PJRT_SerializedExecutable_Destroy(
+    PJRT_SerializedExecutable_Destroy_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_SerializedExecutable_Destroy_Args",
+      PJRT_SerializedExecutable_Destroy_Args_STRUCT_SIZE, args->struct_size));
+  if (args->serialized_executable != nullptr) {
+    delete args->serialized_executable;
+  }
+  return nullptr;
+}
+
+PJRT_Error* PJRT_SerializedExecutable_Data(
+    PJRT_SerializedExecutable_Data_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_SerializedExecutable_Data_Args",
+      PJRT_SerializedExecutable_Data_Args_STRUCT_SIZE, args->struct_size));
+  args->data = args->serialized_executable->serialized.c_str();
+  args->data_size = args->serialized_executable->serialized.size();
   return nullptr;
 }
 
@@ -812,3 +863,9 @@ PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args) {
 }
 
 }  // namespace pjrt
+
+PJRT_Executable::PJRT_Executable(
+    std::unique_ptr<xla::PjRtLoadedExecutable> executable, PJRT_Client* client)
+    : executable(std::move(executable)), client(client) {
+  pjrt::PopulatePjrtExecutableAddressableDevices(this);
+}

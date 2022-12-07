@@ -56,6 +56,9 @@ def tflite_copts():
     }) + select({
         clean_dep("//tensorflow/lite:tensorflow_profiler_config"): ["-DTF_LITE_TENSORFLOW_PROFILER"],
         "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow/lite/delegates:tflite_debug_delegate"): ["-DTFLITE_DEBUG_DELEGATE"],
+        "//conditions:default": [],
     })
 
     return copts + tflite_copts_extra()
@@ -143,7 +146,13 @@ def tflite_linkopts_no_undefined():
     report errors for undefined symbols at runtime.
     """
     return if_oss(
-        ["-Wl,--no-undefined"],
+        select({
+            "//tensorflow:ios": [
+                # iOS linker uses "--undefined error" instead of "--no-undefined".
+                "-Wl,-undefined,error",
+            ],
+            "//conditions:default": ["-Wl,--no-undefined"],
+        }),
         select({
             # Can't enable errors for undefined symbols for asan/msan/tsan mode,
             # since undefined symbols in shared libraries (references to symbols
@@ -152,6 +161,10 @@ def tflite_linkopts_no_undefined():
             "//tools/cpp:asan_build": [],
             "//tools/cpp:msan_build": [],
             "//tools/cpp:tsan_build": [],
+            "//tensorflow:ios": [
+                # iOS linker uses "--undefined error" instead of "--no-undefined".
+                "-Wl,-undefined,error",
+            ],
             "//conditions:default": ["-Wl,--no-undefined"],
         }),
     )

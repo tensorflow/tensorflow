@@ -154,13 +154,18 @@ struct MatchOption {
   // If true, actually capture matched item into the user pointer.
   bool capture;
 
+  // If true, require all operands prescribed in pattern to have one user.
+  bool single_user_only;
+
   // An explanation for why we failed to match is streamed here, if not-null.
   std::ostream* explain_os;
 };
 
 template <typename Value, typename Pattern>
 bool Match(Value* value, const Pattern& pattern,
-           MatchOption option = {/*.capture=*/true, /*.explain_os=*/nullptr}) {
+           MatchOption option = {/*.capture=*/true,
+                                 /*.single_user_only=*/false,
+                                 /*.explain_os=*/nullptr}) {
   if (option.capture) {
     auto new_option = option;
     new_option.capture = false;
@@ -169,6 +174,34 @@ bool Match(Value* value, const Pattern& pattern,
     }
   }
   return pattern.Match(value, option);
+}
+
+// Recursively requires all operands of the top-level operation prescribed in
+// pattern (but not the top-level operation itself) to have one user. The
+// behavior is identical to calling Match(value, pattern) with WithOneUser()
+// applied to all prescribed operands at all levels in pattern.
+//
+// Example:
+// p0 = parameter(0)
+// add = add(p0, p0)
+// mul = multiply(p0, p0)
+//
+// MatchSingleUserOnly(p0, m::Op()) -> true
+// (Top-level operation in the pattern is not required to have one user).
+//
+// MatchSingleUserOnly(add, m::Add()) -> true
+// (Only operands prescribed in the pattern are required to have one user).
+//
+// MatchSingleUserOnly(add, m::Add(m::Op(), m::Op()) -> false
+// (Operands prescribed in the pattern have two users).
+//
+// The previous line is equivalent to:
+// Match(add, m::Add(m::Op().WithOneUser(), m::Op().WithOneUser()) -> false.
+template <typename Value, typename Pattern>
+bool MatchSingleUserOnly(Value* value, const Pattern& pattern) {
+  MatchOption option = {/*.capture=*/true, /*.single_user_only=*/true,
+                        /*.explain_os=*/nullptr};
+  return Match(value, pattern, option);
 }
 
 // If `enable_logging` is false, this is identical to Match(instr, pattern).
@@ -197,7 +230,9 @@ bool MatchAndLogIfFailed(HloInstruction* instr, absl::string_view desc,
     return matched;
   }
   std::stringstream os;
-  CHECK(!Match(instr, pattern, {/*capture=*/false, /*explain_os=*/&os}));
+  CHECK(!Match(
+      instr, pattern,
+      {/*capture=*/false, /*.single_user_only=*/false, /*explain_os=*/&os}));
   LOG(ERROR) << "Failed to match " << desc << ":\n" << os.str();
   return false;
 }
@@ -1454,6 +1489,13 @@ class HloInstructionPatternOperandImpl {
       EXPLAIN << "\nin operand " << operand_index_;
       return false;
     }
+    if (option.single_user_only &&
+        inst->operand(operand_index_)->user_count() != 1) {
+      EXPLAIN << "Operand " << operand_index_ << " of HloInstruction has "
+              << inst->operand(operand_index_)->user_count()
+              << " users. Expected 1.";
+      return false;
+    }
     return true;
   }
 
@@ -1549,6 +1591,16 @@ class HloInstructionPatternBinaryOperandsAnyOrderImpl {
     if (inst->operand_count() != 2) {
       EXPLAIN << "HloInstruction did not have two operands";
       return false;
+    }
+
+    if (option.single_user_only) {
+      for (int i = 0; i < 2; ++i) {
+        if (inst->operand(i)->user_count() != 1) {
+          EXPLAIN << "Operand " << i << " of HloInstruction has "
+                  << inst->operand(i)->user_count() << " users. Expected 1.";
+          return false;
+        }
+      }
     }
 
     // If we're not generating explanations, this is pretty simple.

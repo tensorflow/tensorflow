@@ -23,4 +23,27 @@ limitations under the License.
 // Include generated definitions.
 #include "gml_st/interfaces/tiling_interface.h.inc"
 
+namespace mlir {
+namespace gml_st {
+
+// Helpers to emit either materialize(tile) or extract_slice.
+Value materializeSlice(OpBuilder &b, Location loc, Value valueToTile,
+                       ArrayRef<OpFoldResult> offsets,
+                       ArrayRef<OpFoldResult> sizes,
+                       ArrayRef<OpFoldResult> strides, bool useExtractSlice);
+
+Value materializeSlice(OpBuilder &b, Location loc, Value valueToTile,
+                       ArrayRef<OpFoldResult> offsets,
+                       ArrayRef<OpFoldResult> sizes, bool useExtractSlice);
+
+Value materializeIdentitySlice(OpBuilder &b, Location loc, Value valueToTile,
+                               bool useExtractSlice);
+
+// Extracts a point using materialize(tile) or extract(extract_slice).
+Value materializePoint(OpBuilder &b, Location loc, Value valueToTile,
+                       ArrayRef<OpFoldResult> offsets, bool useExtractSlice);
+
+}  // namespace gml_st
+}  // namespace mlir
+
 #endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_H

@@ -253,6 +253,58 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                      trace_type.deserialize(trace_type.serialize(nameless)))
     self.assertEqual(named, trace_type.deserialize(trace_type.serialize(named)))
 
+  def testPlaceholderWithName(self):
+    placeholder_context = trace_type.InternalPlaceholderContext(False)
+    spec = tensor_spec.TensorSpec([1], np.float32, name="test")
+    placeholder = spec._placeholder_value(placeholder_context)
+    self.assertEqual(placeholder.name, f"{spec.name}:0")
+    self.assertEqual(placeholder.dtype, spec.dtype)
+    self.assertEqual(placeholder.shape, spec.shape)
+
+  def testMultiplePlaceholdersWithNames(self):
+    placeholder_context = trace_type.InternalPlaceholderContext(False)
+    spec1 = tensor_spec.TensorSpec([1, 2], np.float32, name="test1")
+    spec2 = tensor_spec.TensorSpec([3], np.int32, name="test2")
+    spec3 = tensor_spec.TensorSpec(None, np.float32, name="test3")
+    placeholder1 = spec1._placeholder_value(placeholder_context)
+    placeholder2 = spec2._placeholder_value(placeholder_context)
+    placeholder3 = spec3._placeholder_value(placeholder_context)
+    self.assertEqual(placeholder1.name, f"{spec1.name}:0")
+    self.assertEqual(placeholder2.name, f"{spec2.name}:0")
+    self.assertEqual(placeholder3.name, f"{spec3.name}:0")
+    self.assertEqual(placeholder1.dtype, spec1.dtype)
+    self.assertEqual(placeholder2.dtype, spec2.dtype)
+    self.assertEqual(placeholder3.dtype, spec3.dtype)
+    self.assertEqual(placeholder1.shape, spec1.shape)
+    self.assertEqual(placeholder2.shape, spec2.shape)
+    self.assertEqual(placeholder3.shape, spec3.shape)
+
+  def testPlaceholderWithoutName(self):
+    placeholder_context = trace_type.InternalPlaceholderContext(False)
+    spec = tensor_spec.TensorSpec([1], np.float32)
+    placeholder = spec._placeholder_value(placeholder_context)
+    self.assertEqual(placeholder.name, "Placeholder:0")
+    self.assertEqual(placeholder.dtype, spec.dtype)
+    self.assertEqual(placeholder.shape, spec.shape)
+
+  def testMultiplePlaceholdersWithoutNames(self):
+    placeholder_context = trace_type.InternalPlaceholderContext(False)
+    spec1 = tensor_spec.TensorSpec([1, 2], np.float32)
+    spec2 = tensor_spec.TensorSpec([3], np.int32)
+    spec3 = tensor_spec.TensorSpec(None, np.float32)
+    placeholder1 = spec1._placeholder_value(placeholder_context)
+    placeholder2 = spec2._placeholder_value(placeholder_context)
+    placeholder3 = spec3._placeholder_value(placeholder_context)
+    self.assertEqual(placeholder1.name, "Placeholder:0")
+    self.assertEqual(placeholder2.name, "Placeholder_1:0")
+    self.assertEqual(placeholder3.name, "Placeholder_2:0")
+    self.assertEqual(placeholder1.dtype, spec1.dtype)
+    self.assertEqual(placeholder2.dtype, spec2.dtype)
+    self.assertEqual(placeholder3.dtype, spec3.dtype)
+    self.assertEqual(placeholder1.shape, spec1.shape)
+    self.assertEqual(placeholder2.shape, spec2.shape)
+    self.assertEqual(placeholder3.shape, spec3.shape)
+
 
 class BoundedTensorSpecTest(test_util.TensorFlowTestCase):
 

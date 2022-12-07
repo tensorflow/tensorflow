@@ -31,6 +31,12 @@ enum class DeviceCompileMode {
   kAsync,
 };
 
+enum class DeviceCompileState {
+  kUncompiled,
+  kCompiling,
+  kCompiled,
+};
+
 // Creates a single-node graph using the specified `node_def` as the only op
 // apart from the arg and retval nodes corresponding to `args` and
 // `result_types` respectively.

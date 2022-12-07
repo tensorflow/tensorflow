@@ -254,6 +254,7 @@ tf_cc_test_mkl(
     deps = [
         ":mkl_eltwise_activation_base_op",
         ":mkl_swish_op",
+        "@com_google_absl//absl/strings",
         "//tensorflow/cc:math_ops",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core:direct_session",
@@ -516,9 +517,15 @@ tf_cc_test_mkl(
 
 tf_mkl_kernel_library(
     name = "mkl_kernel_util",
-    srcs = ["mkl_kernel_util.h"],
+    srcs = ["mkl_kernel_util.cc"],
+    hdrs = ["mkl_kernel_util.h"],
     deps = MKL_DEPS + [
         ":mkl_quantize_op",
+        "//tensorflow/cc:ops",
+        "//tensorflow/core/kernels:quantization_utils",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:direct_session",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
     ],
 )

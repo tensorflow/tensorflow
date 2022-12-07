@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
@@ -36,6 +37,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/save_variables.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/debugging/mlir_dump.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
@@ -55,42 +57,54 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 namespace quantization {
 namespace internal {
 namespace {
 
+// Options when running passes for exporting an MLIR ModuleOp.
+struct ExportOptions {
+  // If set to `true`, it runs `DuplicateShapeDeterminingConstantsPass` before
+  // lowering to tf_executor dialect.
+  bool duplicate_shape_determining_constants = true;
+
+  // If set to `true`, unfreezes constants into variables and saves them to a
+  // checkpoint file. Setting this to `true` is an experimental feature that has
+  // no stability guarantees.
+  bool unfreeze_constants = false;
+
+  // Path to the directory where checkpoint files are saved.
+  absl::string_view checkpoint_dir = "";
+
+  // Name used to identify the ModuleOp this is exporting. Only used for
+  // debugging and does not modify the behavior of the export.
+  absl::string_view debug_name = "tf_quant";
+};
+
 // Add passes for transforming the MLIR module op so that it can be exported
 // back to GraphDef. Roughly, this consists of:
 //   1) Inserting the @main function, which will become the main Graph.
-//   2) [Experimental] Unfreezing constants into variables.
-//   3) Duplicates shape-determining constants.
-//   4) Converting TF dialect -> tf_executor dialect.
-//   5) Adding initializer function's ops into @main function for correct
+//   2) Duplicates shape-determining constants.
+//   3) Converting TF dialect -> tf_executor dialect.
+//   4) Adding initializer function's ops into @main function for correct
 //      resource initialization when loading the exported model.
 //
 // Duplicating shape-determining constants is required to place constants that
 // affect the shape of a tensor to be placed in the TPU graph instead of in the
 // CPU graph, when the graph gets converted for TPU inference. This allows these
 // constants to be known at XLA compilation time.
-//
-// Setting `freeze_all_variables` to `false` is an experimental feature that has
-// no stability guarantees.
-void AddExportPasses(const bool freeze_all_variables,
-                     const bool duplicate_shape_determining_constants,
+void AddExportPasses(const bool duplicate_shape_determining_constants,
                      mlir::PassManager &pm) {
-  pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
-
-  if (!freeze_all_variables) {
-    pm.addPass(mlir::quant::CreateUnfreezeConstantsPass());
-  }
-
   if (duplicate_shape_determining_constants) {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::quant::CreateDuplicateShapeDeterminingConstantsPass());
   }
 
+  pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(mlir::CreateBreakUpIslandsPass());
@@ -112,10 +126,12 @@ std::string GetInitNodeName(
 }
 
 [[nodiscard]] ExportedModel CreateExportedModel(
-    GraphDef &&graph_def, const absl::string_view init_node_name) {
+    GraphDef &&graph_def, const absl::string_view init_node_name,
+    const absl::string_view checkpoint_dir) {
   ExportedModel exported_model{};
   *exported_model.mutable_graph_def() = graph_def;
   exported_model.set_init_node_name(std::string(init_node_name));
+  exported_model.set_checkpoint_dir(std::string(checkpoint_dir));
 
   return exported_model;
 }
@@ -123,7 +139,7 @@ std::string GetInitNodeName(
 // Converts MLIR ModuleOp to ExportedModel. Returns InternalError status
 // when the conversion fails.
 absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
-    const mlir::ModuleOp module_op) {
+    const mlir::ModuleOp module_op, const absl::string_view checkpoint_dir) {
   const GraphExportConfig config{};
   FunctionLibraryDefinition flib_def{OpRegistry::Global(),
                                      FunctionDefLibrary()};
@@ -139,8 +155,118 @@ absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
   GraphDef graph_def{};
   graph->ToGraphDef(&graph_def);
 
-  return CreateExportedModel(std::move(graph_def),
-                             GetInitNodeName(control_ret_nodes));
+  return CreateExportedModel(
+      std::move(graph_def), GetInitNodeName(control_ret_nodes), checkpoint_dir);
+}
+
+// Runs MLIR passes with `module_op`. The passes are added by calling
+// `add_passes_func`, which is a callable receiving mlir::PassManager& as its
+// only argument. `name` identifies the set of passes added by `add_passes_func`
+// and is used for debugging. Changing the `name` does not modify the behavior
+// of the passes.
+//
+// It will try to dump intermediate MLIRs if certain conditions are met. See the
+// description from `MaybeEnableIrPrinting` for the details about the
+// conditions.
+//
+// Returns a non-OK status when the pass run fails or it fails to create an MLIR
+// dump file.
+template <typename FuncT>
+absl::Status RunPasses(const absl::string_view name, FuncT add_passes_func,
+                       mlir::MLIRContext &ctx, mlir::ModuleOp module_op) {
+  mlir::PassManager pm{&ctx};
+  add_passes_func(pm);
+
+  mlir::StatusScopedDiagnosticHandler diagnostic_handler{&ctx};
+  const absl::StatusOr<std::unique_ptr<llvm::raw_ostream>> out_dump_file =
+      MaybeEnableIrPrinting(pm, name);
+  if (!out_dump_file.ok()) {
+    return absl::InternalError(out_dump_file.status().message());
+  }
+
+  if (failed(pm.run(module_op))) {
+    return absl::InternalError(
+        absl::StrFormat("Failed to run pass: %s. %s", name,
+                        diagnostic_handler.ConsumeStatus().error_message()));
+  }
+
+  return absl::OkStatus();
+}
+
+// Create a unique local temporary filename. It only creates the name, not the
+// actual file.
+absl::StatusOr<std::string> GetLocalTempFilename() {
+  auto *env = Env::Default();
+  std::string tmp_fname{};
+  if (!env->LocalTempFilename(&tmp_fname)) {
+    return absl::InternalError("Failed to create a local temp file name.");
+  }
+
+  return tmp_fname;
+}
+
+// Unfreezes constants into variables and saves them to a checkpoint files under
+// `checkpoint_dir`. `checkpoint_dir` will be created within this function. It
+// will return a non-OK status if it already exists or permission is denied.
+// TODO(b/261652258): Make sure this works for when there are non-frozen
+// variables in the model.
+absl::Status UnfreezeConstantsAndSaveVariables(
+    const absl::string_view checkpoint_dir, mlir::MLIRContext &ctx,
+    mlir::ModuleOp module_op) {
+  if (const absl::Status pass_run_status =
+          RunPasses(/*name=*/kTfQuantConstantUnfreezingStepName,
+                    /*add_passes_func=*/
+                    [](mlir::PassManager &pm) {
+                      pm.addPass(mlir::quant::CreateUnfreezeConstantsPass());
+                    },
+                    ctx, module_op);
+      !pass_run_status.ok()) {
+    return pass_run_status;
+  }
+
+  if (const tsl::Status create_dir_status =
+          Env::Default()->CreateDir(std::string(checkpoint_dir));
+      !create_dir_status.ok()) {
+    LOG(ERROR) << "Failed to create checkpoint directory at: "
+               << checkpoint_dir;
+    return tsl::ToAbslStatus(create_dir_status);
+  }
+
+  return SaveVariablesToCheckpoint(checkpoint_dir, module_op);
+}
+
+// Sets up and runs the passes for exporting `module_op`. The behavior of the
+// exporting passes is controlled by `export_opts`.
+absl::Status RunExportPasses(const ExportOptions &export_opts,
+                             mlir::MLIRContext &ctx, mlir::ModuleOp module_op) {
+  if (export_opts.unfreeze_constants) {
+    if (const absl::Status unfreeze_constant_status =
+            UnfreezeConstantsAndSaveVariables(export_opts.checkpoint_dir, ctx,
+                                              module_op);
+        !unfreeze_constant_status.ok()) {
+      return unfreeze_constant_status;
+    }
+    LOG(INFO) << "Unfrozen constants and saved variables to checkpoint file: "
+              << export_opts.checkpoint_dir;
+  }
+
+  return RunPasses(
+      /*name=*/export_opts.debug_name,
+      /*add_passes_func=*/
+      [dup_constants = export_opts.duplicate_shape_determining_constants](
+          mlir::PassManager &pm) { AddExportPasses(dup_constants, pm); },
+      ctx, module_op);
+}
+
+// Creates MLIRContext where the dialects required for quantization are
+// registered.
+mlir::MLIRContext CreateMlirContextForTfQuantization() {
+  mlir::DialectRegistry registry{};
+  registry.insert<mlir::func::FuncDialect, mlir::scf::SCFDialect,
+                  mlir::tf_saved_model::TensorFlowSavedModelDialect,
+                  mlir::TF::TensorFlowDialect, mlir::shape::ShapeDialect,
+                  mlir::quant::QuantizationDialect>();
+  return mlir::MLIRContext{registry};
 }
 
 }  // namespace
@@ -162,12 +288,7 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
   }
 
   // Convert the SavedModelBundle to an MLIR module.
-  mlir::DialectRegistry registry;
-  registry.insert<mlir::func::FuncDialect, mlir::scf::SCFDialect,
-                  mlir::tf_saved_model::TensorFlowSavedModelDialect,
-                  mlir::TF::TensorFlowDialect, mlir::shape::ShapeDialect,
-                  mlir::quant::QuantizationDialect>();
-  mlir::MLIRContext context(registry);
+  mlir::MLIRContext context = CreateMlirContextForTfQuantization();
 
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
@@ -194,25 +315,35 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
                                status.error_message());
   }
 
-  mlir::PassManager pm(&context);
-  const absl::StatusOr<std::unique_ptr<llvm::raw_ostream>> out_dump_file =
-      MaybeEnableIrPrinting(pm, /*name=*/"tf_quantize_qat");
-  if (!out_dump_file.ok()) {
-    return absl::InternalError(out_dump_file.status().message());
+  if (const absl::Status qat_status =
+          RunPasses(/*name=*/kTfQuantQatStepName,
+                    /*add_passes_func=*/
+                    [&quantization_options](mlir::PassManager &pm) {
+                      AddQuantizeQatPasses(pm, quantization_options);
+                    },
+                    context, *module_ref);
+      !qat_status.ok()) {
+    return qat_status;
   }
 
-  AddQuantizeQatPasses(pm, quantization_options);
-  AddExportPasses(quantization_options.freeze_all_variables().enabled(),
-                  /*duplicate_shape_determining_constants=*/true, pm);
-
-  mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
-  if (failed(pm.run(*module_ref))) {
-    return absl::InternalError(
-        "failed to apply the quantization: " +
-        diagnostic_handler.ConsumeStatus().error_message());
+  const bool unfreeze_constants =
+      !quantization_options.freeze_all_variables().enabled();
+  const absl::StatusOr<std::string> checkpoint_dir = GetLocalTempFilename();
+  if (!checkpoint_dir.ok()) {
+    LOG(ERROR) << "Failed to get checkpoint directory name.";
+    return checkpoint_dir.status();
+  }
+  const auto export_opts =
+      ExportOptions{/*duplicate_shape_determining_constants=*/true,
+                    unfreeze_constants, *checkpoint_dir,
+                    /*debug_name=*/kTfQuantQatStepName};
+  if (const absl::Status export_status =
+          RunExportPasses(export_opts, context, *module_ref);
+      !export_status.ok()) {
+    return export_status;
   }
 
-  return ConvertMlirModuleToExportedModel(*module_ref);
+  return ConvertMlirModuleToExportedModel(*module_ref, *checkpoint_dir);
 }
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
@@ -232,12 +363,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
   }
 
   // Convert the SavedModelBundle to an MLIR module.
-  mlir::DialectRegistry registry;
-  registry.insert<mlir::func::FuncDialect, mlir::scf::SCFDialect,
-                  mlir::tf_saved_model::TensorFlowSavedModelDialect,
-                  mlir::TF::TensorFlowDialect, mlir::shape::ShapeDialect,
-                  mlir::quant::QuantizationDialect>();
-  mlir::MLIRContext context(registry);
+  mlir::MLIRContext context = CreateMlirContextForTfQuantization();
 
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
@@ -263,27 +389,36 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
                                status.error_message());
   }
 
-  mlir::PassManager pm(&context);
-  const absl::StatusOr<std::unique_ptr<llvm::raw_ostream>> out_dump_file =
-      MaybeEnableIrPrinting(pm, /*name=*/"tf_quantize_ptq_pre_calibration");
-  if (!out_dump_file.ok()) {
-    return absl::InternalError(out_dump_file.status().message());
+  if (const absl::Status pre_calib_pass_status = RunPasses(
+          /*name=*/kTfQuantPtqPreCalibrationStepName,
+          /*add_passes_func=*/
+          [&quantization_options](mlir::PassManager &pm) {
+            AddQuantizePtqPreCalibrationPasses(pm, quantization_options);
+          },
+          context, *module_ref);
+      !pre_calib_pass_status.ok()) {
+    return pre_calib_pass_status;
   }
 
-  AddQuantizePtqPreCalibrationPasses(pm, quantization_options);
+  const bool unfreeze_constants =
+      !quantization_options.freeze_all_variables().enabled();
+  const absl::StatusOr<std::string> checkpoint_dir = GetLocalTempFilename();
+  if (!checkpoint_dir.ok()) {
+    return checkpoint_dir.status();
+  }
   // `duplicate_shape_determining_constants = false` because the
   // resulting graph of this step is not expected to be loaded on TPU.
-  AddExportPasses(quantization_options.freeze_all_variables().enabled(),
-                  /*duplicate_shape_determining_constants=*/false, pm);
-
-  mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
-  if (failed(pm.run(*module_ref))) {
-    return absl::InternalError(
-        "Failed to apply the quantization at the pre-calibration stage: " +
-        diagnostic_handler.ConsumeStatus().error_message());
+  const auto export_opts =
+      ExportOptions{/*duplicate_shape_determining_constants=*/false,
+                    unfreeze_constants, *checkpoint_dir,
+                    /*debug_name=*/kTfQuantPtqPreCalibrationStepName};
+  if (const absl::Status export_status =
+          RunExportPasses(export_opts, context, *module_ref);
+      !export_status.ok()) {
+    return export_status;
   }
 
-  return ConvertMlirModuleToExportedModel(*module_ref);
+  return ConvertMlirModuleToExportedModel(*module_ref, *checkpoint_dir);
 }
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
@@ -303,12 +438,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
   }
 
   // Convert the SavedModelBundle to an MLIR module.
-  mlir::DialectRegistry registry;
-  registry.insert<mlir::func::FuncDialect, mlir::scf::SCFDialect,
-                  mlir::tf_saved_model::TensorFlowSavedModelDialect,
-                  mlir::TF::TensorFlowDialect, mlir::shape::ShapeDialect,
-                  mlir::quant::QuantizationDialect>();
-  mlir::MLIRContext context(registry);
+  mlir::MLIRContext context = CreateMlirContextForTfQuantization();
 
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
@@ -328,25 +458,34 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  mlir::PassManager pm(&context);
-  const absl::StatusOr<std::unique_ptr<llvm::raw_ostream>> out_dump_file =
-      MaybeEnableIrPrinting(pm, /*name=*/"tf_quantize_ptq_post_calibration");
-  if (!out_dump_file.ok()) {
-    return absl::InternalError(out_dump_file.status().message());
+  if (const absl::Status pre_calib_pass_status = RunPasses(
+          /*name=*/kTfQuantPtqPostCalibrationStepName,
+          /*add_passes_func=*/
+          [&quantization_options](mlir::PassManager &pm) {
+            AddQuantizePtqPostCalibrationPasses(pm, quantization_options);
+          },
+          context, *module_ref);
+      !pre_calib_pass_status.ok()) {
+    return pre_calib_pass_status;
   }
 
-  AddQuantizePtqPostCalibrationPasses(pm, quantization_options);
-  AddExportPasses(quantization_options.freeze_all_variables().enabled(),
-                  /*duplicate_shape_determining_constants=*/true, pm);
-
-  mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
-  if (failed(pm.run(*module_ref))) {
-    return absl::InternalError(
-        "Failed to apply the quantization at the post-calibation stage: " +
-        diagnostic_handler.ConsumeStatus().error_message());
+  const bool unfreeze_constants =
+      !quantization_options.freeze_all_variables().enabled();
+  const absl::StatusOr<std::string> checkpoint_dir = GetLocalTempFilename();
+  if (!checkpoint_dir.ok()) {
+    return checkpoint_dir.status();
+  }
+  const auto export_opts =
+      ExportOptions{/*duplicate_shape_determining_constants=*/true,
+                    unfreeze_constants, *checkpoint_dir,
+                    /*debug_name=*/kTfQuantPtqPostCalibrationStepName};
+  if (const absl::Status export_status =
+          RunExportPasses(export_opts, context, *module_ref);
+      !export_status.ok()) {
+    return export_status;
   }
 
-  return ConvertMlirModuleToExportedModel(*module_ref);
+  return ConvertMlirModuleToExportedModel(*module_ref, *checkpoint_dir);
 }
 
 absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
@@ -366,12 +505,7 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
   }
 
   // Convert the SavedModelBundle to an MLIR module.
-  mlir::DialectRegistry registry;
-  registry.insert<mlir::func::FuncDialect, mlir::scf::SCFDialect,
-                  mlir::tf_saved_model::TensorFlowSavedModelDialect,
-                  mlir::TF::TensorFlowDialect, mlir::shape::ShapeDialect,
-                  mlir::quant::QuantizationDialect>();
-  mlir::MLIRContext context(registry);
+  mlir::MLIRContext context = CreateMlirContextForTfQuantization();
 
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
@@ -398,25 +532,34 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
                                status.error_message());
   }
 
-  mlir::PassManager pm(&context);
-  const absl::StatusOr<std::unique_ptr<llvm::raw_ostream>> out_dump_file =
-      MaybeEnableIrPrinting(pm, /*name=*/"tf_quantize_drq");
-  if (!out_dump_file.ok()) {
-    return absl::InternalError(out_dump_file.status().message());
+  if (const absl::Status ptq_dynamic_range_status = RunPasses(
+          /*name=*/kTfQuantPtqDynamicRangeStepName,
+          /*add_passes_func=*/
+          [&quantization_options](mlir::PassManager &pm) {
+            AddQuantizePtqDynamicRangePasses(pm, quantization_options);
+          },
+          context, *module_ref);
+      !ptq_dynamic_range_status.ok()) {
+    return ptq_dynamic_range_status;
   }
 
-  AddQuantizePtqDynamicRangePasses(pm, quantization_options);
-  AddExportPasses(quantization_options.freeze_all_variables().enabled(),
-                  /*duplicate_shape_determining_constants=*/true, pm);
-
-  mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
-  if (failed(pm.run(*module_ref))) {
-    return absl::InternalError(
-        "Failed to apply the quantization: " +
-        diagnostic_handler.ConsumeStatus().error_message());
+  const bool unfreeze_constants =
+      !quantization_options.freeze_all_variables().enabled();
+  const absl::StatusOr<std::string> checkpoint_dir = GetLocalTempFilename();
+  if (!checkpoint_dir.ok()) {
+    return checkpoint_dir.status();
+  }
+  const auto export_opts =
+      ExportOptions{/*duplicate_shape_determining_constants=*/true,
+                    unfreeze_constants, *checkpoint_dir,
+                    /*debug_name=*/kTfQuantPtqDynamicRangeStepName};
+  if (const absl::Status export_status =
+          RunExportPasses(export_opts, context, *module_ref);
+      !export_status.ok()) {
+    return export_status;
   }
 
-  return ConvertMlirModuleToExportedModel(*module_ref);
+  return ConvertMlirModuleToExportedModel(*module_ref, *checkpoint_dir);
 }
 
 }  // namespace internal

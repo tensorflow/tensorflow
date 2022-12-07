@@ -3246,7 +3246,10 @@ py_library(
         otherwise = [],
     ),  # b/153585257
     srcs_version = "PY3",
-    deps = [":pywrap_tensorflow_internal"],
+    deps = [
+        ":pywrap_tensorflow_internal",
+        "//tensorflow/python/platform:self_check",
+    ],
 )
 
 pywrap_tensorflow_macro(
@@ -3391,7 +3394,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/platform:stacktrace_handler",
-        "//tensorflow/core/profiler/convert:hlo_to_tools_data_impl",
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
         "//tensorflow/tsl/profiler/rpc/client:profiler_client_impl",
         "//tensorflow/tsl/python/lib/core:numpy",
@@ -3406,6 +3408,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/client:tf_session_helper",
         "//tensorflow/python/eager:pywrap_tfe_lib",
+        "//tensorflow/python/lib/core:custom_types_lib",
         "//tensorflow/compiler/mlir/python:mlir",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
@@ -3515,7 +3518,6 @@ filegroup(
         "//tensorflow/tsl/platform:tensor_float_32_utils",  # tensor_float_32
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core/profiler/backends/cpu:traceme_recorder_impl",  # profiler
-        "//tensorflow/core/profiler/convert:hlo_to_tools_data_impl",  # profiler
         "//tensorflow/tsl/profiler/lib:profiler_session_impl",  # profiler
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",  # profiler
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",  # profiler

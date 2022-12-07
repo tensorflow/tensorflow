@@ -207,6 +207,7 @@ def ConvertTFBatchMatMulToXLADotV2Op : Pat<
   (CreateXlaDotV2OpFromTfBatchMatMulOp
     $input, $weight, $input_zp, $batch_matmul, $adj_x, $adj_y),
   [(IsInt8ElementType $input),
+   (HasRank $input),
    (IsInt8ElementType $weight),
    (IsConstTensor $weight),
    (IsInt32ElementType $batch_matmul),
@@ -224,6 +225,7 @@ def ConvertTFBatchMatMulWithNoZeroPointToXLADotV2Op : Pat<
     $input, $weight, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     $batch_matmul, $adj_x, $adj_y),
   [(IsInt8ElementType $input),
+   (HasRank $input),
    (IsInt8ElementType $weight),
    (IsConstTensor $weight),
    (IsInt32ElementType $batch_matmul),

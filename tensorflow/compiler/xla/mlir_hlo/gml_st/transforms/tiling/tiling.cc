@@ -314,7 +314,8 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
   rewriter.setInsertionPoint(terminator);
 
   // 4. Insert the tiled implementation within the loop.
-  TilingInterface tiledOp = op.getTiledImplementation(rewriter, offsets, sizes);
+  TilingInterface tiledOp = op.getTiledImplementation(
+      rewriter, offsets, sizes, /*useExtractSlice=*/false);
   tilingResult.tiledOp = tiledOp.getOperation();
 
   // 5. Add `gml_st.set_yield` terminator.

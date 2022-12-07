@@ -163,10 +163,17 @@ def VectorizeGmlStLoopsPass :
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }
 
-def LoweringVectorContractPass :
-    Pass<"lowering-vector-contract", "mlir::func::FuncOp"> {
+def VectorizePerfectlyTiledLoopsPass :
+    Pass<"vectorize-perfectly-tiled-loops", "mlir::func::FuncOp"> {
+  let summary = "Pass to vectorize gml_st.for loops that are tiled perfectly.";
+  let constructor = "::mlir::gml_st::createVectorizePerfectlyTiledLoopsPass()";
+  let dependentDialects = ["::mlir::vector::VectorDialect"];
+}
+
+def LowerVectorContractPass :
+    Pass<"lower-vector-contract", "mlir::func::FuncOp"> {
   let summary = "Pass to lower vector.contract";
-  let constructor = "::mlir::gml_st::createLoweringVectorContractPass()";
+  let constructor = "::mlir::gml_st::createLowerVectorContractPass()";
   let dependentDialects = ["::mlir::vector::VectorDialect",
                            "::mlir::gml_st::GmlStDialect"];
 }
@@ -223,7 +230,12 @@ def TransformReduceForCpuPass :
   let constructor = "createTransformReduceForCpuPass()";
 
   let options = [
-    ListOption<"tileSizes", "tile-sizes", "int64_t",
-               "Tile sizes for a `linalg.reduce`">,
+    Option<"vectorSize", "vector-size", "int64_t", "8",
+           "Vector size for a 1D `linalg.reduce`">,
+    Option<"tileSize1D", "tile-size-1d", "int64_t", "32",
+               "Tile size for a 1D `linalg.reduce`">,
+    ListOption<"tileSizes2D", "tile-sizes-2d", "int64_t",
+               "Tile sizes for a `linalg.reduce`. tileSizes[0] is the parallel "
+               "dimension and tileSizes[1] is the reduction dimension.">,
   ];
 }

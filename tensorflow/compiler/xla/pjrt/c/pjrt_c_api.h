@@ -609,8 +609,6 @@ typedef PJRT_Error* PJRT_Device_ToString(PJRT_Device_ToString_Args* args);
 
 // ------------------------------- Executables ---------------------------------
 
-typedef struct PJRT_Buffer PJRT_Buffer;
-
 typedef struct {
   size_t struct_size;
   void* priv;
@@ -759,6 +757,70 @@ const size_t PJRT_Executable_SizeOfGeneratedCodeInBytes_Args_STRUCT_SIZE =
 
 typedef PJRT_Error* PJRT_Executable_SizeOfGeneratedCodeInBytes(
     PJRT_Executable_SizeOfGeneratedCodeInBytes_Args* args);
+
+typedef struct PJRT_SerializedExecutable PJRT_SerializedExecutable;
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  const PJRT_Executable* executable;
+  PJRT_SerializedExecutable* serialized_executable;  // out
+} PJRT_Executable_Serialize_Args;
+const size_t PJRT_Executable_Serialize_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Executable_Serialize_Args, serialized_executable);
+
+// Returns a platform-specific serialization of `executable`. The serialization
+// is not guaranteed to be stable over time.
+typedef PJRT_Error* PJRT_Executable_Serialize(
+    PJRT_Executable_Serialize_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Client* client;
+  const char* serialized_executable;
+  size_t serialized_executable_size;
+  PJRT_Executable* deserialized_executable;  // out
+} PJRT_Executable_Deserialize_Args;
+const size_t PJRT_Executable_Deserialize_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Executable_Deserialize_Args, deserialized_executable);
+
+// Deserializes an executable serialized by `PJRT_Executable_Serialize`.
+// `serialized_executable` must have been produced by the same platform and
+// library version as this one.
+typedef PJRT_Error* PJRT_Executable_Deserialize(
+    PJRT_Executable_Deserialize_Args* args);
+
+// -------------------------- Serialized Executables ---------------------------
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_SerializedExecutable* serialized_executable;
+} PJRT_SerializedExecutable_Destroy_Args;
+const size_t PJRT_SerializedExecutable_Destroy_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_SerializedExecutable_Destroy_Args,
+                     serialized_executable);
+
+// Destroys a `PJRT_SerializedExecutable`.
+typedef PJRT_Error* PJRT_SerializedExecutable_Destroy(
+    PJRT_SerializedExecutable_Destroy_Args* args);
+
+// The string pointed to by `data` is owned by `serialized_executable` and has
+// the same object lifetime.
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_SerializedExecutable* serialized_executable;
+  const char* data;  // out
+  size_t data_size;  // out
+} PJRT_SerializedExecutable_Data_Args;
+const size_t PJRT_SerializedExecutable_Data_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_SerializedExecutable_Data_Args, data_size);
+
+// Returns the data of a `PJRT_SerializedExecutable` and its length in bytes
+typedef PJRT_Error* PJRT_SerializedExecutable_Data(
+    PJRT_SerializedExecutable_Data_Args* args);
 
 // ---------------------------------- Buffers ----------------------------------
 
@@ -982,6 +1044,11 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Delete);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_IsDeleted);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Execute);
+  _PJRT_API_STRUCT_FIELD(PJRT_Executable_Serialize);
+  _PJRT_API_STRUCT_FIELD(PJRT_Executable_Deserialize);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_SerializedExecutable_Destroy);
+  _PJRT_API_STRUCT_FIELD(PJRT_SerializedExecutable_Data);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceTrimmedShape);

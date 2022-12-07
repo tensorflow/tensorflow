@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -89,6 +90,11 @@ PJRT_HostBufferSemantics ConvertToPjRtHostBufferSemantics(
 // PJRT_HostBufferSemantics.
 xla::PjRtClient::HostBufferSemantics ConvertFromPjRtHostBufferSemantics(
     PJRT_HostBufferSemantics buffer_semantics);
+
+// Create and return a `PjRtFuture`  which will be set when `c_event` is ready.
+// This also deletes `c_event` when the `PjRtFuture` is set.
+xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
+                                                      const PJRT_Api* c_api);
 
 }  // namespace pjrt
 

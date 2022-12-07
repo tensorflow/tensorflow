@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/array.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -1929,5 +1930,18 @@ bool OutputInputSameShapes(const HloInstruction* ins) {
   return true;
 }
 
+bool IsEntryComputationInputOrOutput(const HloModule* module,
+                                     const HloInstruction* ins) {
+  for (const auto param :
+       module->entry_computation()->parameter_instructions()) {
+    if (param->name() == ins->name()) {
+      return true;
+    }
+  }
+  if (module->entry_computation()->root_instruction() == ins) {
+    return true;
+  }
+  return false;
+}
 }  // namespace spmd
 }  // namespace xla

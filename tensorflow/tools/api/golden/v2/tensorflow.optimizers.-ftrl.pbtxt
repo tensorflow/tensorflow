@@ -18,6 +18,10 @@ tf_class {
     name: "lr"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "variables"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'learning_rate\', \'learning_rate_power\', \'initial_accumulator_value\', \'l1_regularization_strength\', \'l2_regularization_strength\', \'l2_shrinkage_regularization_strength\', \'beta\', \'weight_decay\', \'clipnorm\', \'clipvalue\', \'global_clipnorm\', \'use_ema\', \'ema_momentum\', \'ema_overwrite_frequency\', \'jit_compile\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'0.001\', \'-0.5\', \'0.1\', \'0.0\', \'0.0\', \'0.0\', \'0.0\', \'None\', \'None\', \'None\', \'None\', \'False\', \'0.99\', \'None\', \'True\', \'Ftrl\'], "
@@ -73,9 +77,5 @@ tf_class {
   member_method {
     name: "update_step"
     argspec: "args=[\'self\', \'gradient\', \'variable\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "variables"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
 }

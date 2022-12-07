@@ -21,6 +21,7 @@ limitations under the License.
 
 // clang-format off
 // Must be included first
+#include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/tsl/python/lib/core/numpy.h"  //NOLINT
 // clang-format on
 
@@ -45,6 +46,9 @@ limitations under the License.
 #endif  // XLA_PYTHON_ENABLE_GPU
 #include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#ifdef JAX_ENABLE_IFRT
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
+#endif
 #ifdef XLA_PYTHON_ENABLE_PLUGIN_DEVICE
 #include "tensorflow/compiler/xla/pjrt/pjrt_plugin_device_client.h"
 #endif  // XLA_PYTHON_ENABLE_PLUGIN_DEVICE
@@ -78,6 +82,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/pjrt_api.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/python/lib/core/bfloat16.h"
 #include "tensorflow/tsl/distributed_runtime/preemption/preemption_sync_manager.h"
@@ -240,10 +245,22 @@ PYBIND11_MODULE(xla_extension, m) {
            &PyClient::CreateDeviceToHostChannelHandle)
       .def("create_host_to_device_channel_handle",
            &PyClient::CreateHostToDeviceChannelHandle)
-      .def("buffer_from_pyval", &PyClient::BufferFromPyval, py::arg("argument"),
-           py::arg("device") = nullptr, py::arg("force_copy") = false,
-           py::arg("host_buffer_semantics") =
-               PjRtClient::HostBufferSemantics::kZeroCopy)
+      .def(
+          "buffer_from_pyval",
+          [](py::handle py_client, py::handle argument, py::handle py_device,
+             bool force_copy,
+             PjRtClient::HostBufferSemantics host_buffer_semantics) {
+            PyClient* client = fast_cast<PyClient>(py_client);
+            PjRtDevice* device = py_device.is_none()
+                                     ? nullptr
+                                     : fast_cast<PjRtDevice>(py_device);
+            return client->BufferFromPyval(argument, device, force_copy,
+                                           host_buffer_semantics);
+          },
+          py::arg("argument"), py::arg("device") = nullptr,
+          py::arg("force_copy") = false,
+          py::arg("host_buffer_semantics") =
+              PjRtClient::HostBufferSemantics::kZeroCopy)
       .def("make_cross_host_receive_buffers",
            &PyClient::MakeCrossHostReceiveBuffers, py::arg("shapes"),
            py::arg("device"))
@@ -291,15 +308,30 @@ PYBIND11_MODULE(xla_extension, m) {
         py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                             GetTfrtCpuClient(asynchronous));
+#ifdef JAX_ENABLE_IFRT
+        return std::make_shared<PyClient>(
+            ifrt::PjRtClient::Create(std::move(client)));
+#else
         return std::make_shared<PyClient>(std::move(client));
+#endif
       },
       py::arg("asynchronous") = true);
   m.def("get_interpreter_client", []() -> StatusOr<std::shared_ptr<PyClient>> {
     py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                         GetInterpreterClient());
+#ifdef JAX_ENABLE_IFRT
+    return std::make_shared<PyClient>(
+        ifrt::PjRtClient::Create(std::move(client)));
+#else
     return std::make_shared<PyClient>(std::move(client));
+#endif
   });
+  m.def("load_pjrt_plugin",
+        [](std::string platform_name, std::string library_path) -> Status {
+          return stream_executor::tpu::LoadPjrtPlugin(platform_name,
+                                                      library_path);
+        });
 
 #ifdef XLA_PYTHON_ENABLE_GPU
   py::class_<GpuAllocatorConfig> alloc_config(m, "GpuAllocatorConfig");
@@ -313,14 +345,6 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("BFC", GpuAllocatorConfig::Kind::kBFC)
       .value("CUDA_ASYNC", GpuAllocatorConfig::Kind::kCudaAsync);
 
-  // TODO(tomhennigan): Remove this types.
-  py::class_<StreamExecutorGpuDevice, PjRtDevice,
-             ClientAndPtr<StreamExecutorGpuDevice>>
-      gpu_device(m, "GpuDevice");
-  gpu_device.def_property_readonly(
-      "slice_index", &StreamExecutorGpuDevice::slice_index,
-      "Integer ID of a set of devices connected by "
-      "fast network, e.g., NVLink.");
   m.def(
       "get_gpu_client",
       [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
@@ -334,7 +358,12 @@ PYBIND11_MODULE(xla_extension, m) {
             GetStreamExecutorGpuClient(asynchronous, allocator_config,
                                        std::move(distributed_client), node_id,
                                        allowed_devices, platform_name));
+#ifdef JAX_ENABLE_IFRT
+        return std::make_shared<PyClient>(
+            ifrt::PjRtClient::Create(std::move(client)));
+#else
         return std::make_shared<PyClient>(std::move(client));
+#endif
       },
       py::arg("asynchronous") = true,
       py::arg("allocator_config") = GpuAllocatorConfig(),
@@ -344,16 +373,18 @@ PYBIND11_MODULE(xla_extension, m) {
 #endif  // XLA_PYTHON_ENABLE_GPU
 
 #ifdef XLA_PYTHON_ENABLE_TPU
-  // TODO(tomhennigan): Remove this types.
-  py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>> tpu_device(
-      m, "TpuDevice");
   m.def(
       "get_tpu_client",
       [](int max_inflight_computations) -> StatusOr<std::shared_ptr<PyClient>> {
         py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtClient> client,
                             GetTpuClient(max_inflight_computations));
+#ifdef JAX_ENABLE_IFRT
+        return std::make_shared<PyClient>(
+            ifrt::PjRtClient::Create(std::move(client)));
+#else
         return std::make_shared<PyClient>(std::move(client));
+#endif
       },
       py::arg("max_inflight_computations") = 32);
   m.def("get_tfrt_tpu_c_api_client",
@@ -361,7 +392,12 @@ PYBIND11_MODULE(xla_extension, m) {
           py::gil_scoped_release gil_release;
           TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> c_api_client,
                               GetCApiClient("TPU"));
+#ifdef JAX_ENABLE_IFRT
+          return std::make_shared<PyClient>(
+              ifrt::PjRtClient::Create(std::move(c_api_client)));
+#else
           return std::make_shared<PyClient>(std::move(c_api_client));
+#endif
         });
 #endif  // XLA_PYTHON_ENABLE_TPU
 
@@ -371,7 +407,12 @@ PYBIND11_MODULE(xla_extension, m) {
           py::gil_scoped_release gil_release;
           TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                               GetTfrtPluginDeviceClient());
+#ifdef JAX_ENABLE_IFRT
+          return std::make_shared<PyClient>(
+              ifrt::PjRtClient::Create(std::move(client)));
+#else
           return std::make_shared<PyClient>(std::move(client));
+#endif
         });
 #endif  // XLA_PYTHON_ENABLE_PLUGIN_DEVICE
 
@@ -445,7 +486,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("keep_alive", &PyLoadedExecutable::KeepAlive)
       .def("compile_options",
            [](const PyLoadedExecutable& self) {
-             return self.pjrt_executable().GetCompileOptions();
+             return self.pjrt_executable()->GetCompileOptions();
            })
       .def_property_readonly("traceback", &PyLoadedExecutable::traceback)
       .def_property_readonly("fingerprint",

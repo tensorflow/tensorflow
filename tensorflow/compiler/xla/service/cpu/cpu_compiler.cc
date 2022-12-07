@@ -619,8 +619,10 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   dynamic_padder_options.shape_check_mode =
       DynamicDimensionInference::ShapeCheckMode::kCompileTime;
   pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
-  pipeline.AddPass<SelectAndScatterExpander>();
-  pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
+  if (!is_mlir_compile) {
+    pipeline.AddPass<SelectAndScatterExpander>();
+    pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
+  }
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
 
   // Run fp16 dots/convs in fp32 and then downcast the result to fp16.
@@ -1395,6 +1397,13 @@ CpuCompiler::CompileXlaRuntimeCpuExecutable(
   TF_ASSIGN_OR_RETURN(
       auto xla_runtime_executable,
       GetXlaRuntimeCpuExecutable(*mlir_module, "main", xla_framework_mapping));
+
+  if (DumpingEnabledForHloModule(*hlo_module)) {
+    TF_ASSIGN_OR_RETURN(std::string_view obj_file,
+                        xla_runtime_executable->GetObjFile());
+    DumpToFileInDir(*hlo_module, /*file_prefix=*/"", /*file_suffix=*/"o",
+                    obj_file);
+  }
 
   return std::make_unique<CpuExecutable>(
       std::move(hlo_module), std::move(hlo_profile_printer_data),

@@ -80,6 +80,8 @@ def _initialize_third_party():
     vulkan_headers()
     tensorrt()
 
+    # copybara: tsl vendor
+
 # Toolchains & platforms required by Tensorflow to build.
 def _tf_toolchains():
     native.register_execution_platforms("@local_execution_config_platform//:platform")

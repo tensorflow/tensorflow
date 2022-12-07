@@ -2011,12 +2011,6 @@ class MapOpToMapConverter : public OpConversionPattern<mhlo::MapOp> {
   }
 };
 
-bool isInBodyOfLinalgOps(Operation* op) {
-  auto* parentOp = op->getParentRegion()->getParentOp();
-  return parentOp->getDialect() ==
-         parentOp->getContext()->getLoadedDialect<linalg::LinalgDialect>();
-}
-
 SmallVector<Value, 8> getReduceOpEmptyTensorDynSizes(
     OpBuilder& b, Location loc, Value arg, ShapedType resultType,
     ArrayRef<int64_t> reductionDims) {
@@ -2411,6 +2405,29 @@ Value applyConvolutionPadding(Location loc, Value input,
       DenseIntElementsAttr::get(attrType, padInterior));
 }
 
+// If the ConvolutionOp has a window reversal, applies it to the filter.
+Value applyConvolutionReversal(Location loc, OpBuilder& b, ConvolutionOp op,
+                               Value filter) {
+  auto reversals = op.getWindowReversal();
+  if (!reversals.has_value()) {
+    return filter;
+  }
+  llvm::SmallVector<int64_t> reversedDims;
+  for (auto [idx, reversed] :
+       llvm::enumerate(reversals.value().getValues<bool>())) {
+    if (reversed) {
+      reversedDims.push_back(
+          op.getDimensionNumbers().getKernelSpatialDimensions()[idx]);
+    }
+  }
+
+  return b.create<mhlo::ReverseOp>(
+      loc, filter,
+      mlir::DenseIntElementsAttr::get(
+          RankedTensorType::get(reversedDims.size(), b.getI64Type()),
+          reversedDims));
+}
+
 /// Converts mhlo.conv operation to linalg named op. This only covers normal
 /// convolution cases. The op must have canonical dimension numbers. Depthwise
 /// convolution and pointwise convolution are not handled in the conversion.
@@ -2429,6 +2446,7 @@ struct NormalConvolutionOpConversion
     Location loc = op.getLoc();
     Value input = adaptor.getLhs();
     Value filter = adaptor.getRhs();
+    filter = applyConvolutionReversal(loc, rewriter, op, filter);
     auto resultType =
         typeConverter->convertType(op.getResult().getType()).cast<ShapedType>();
     int64_t rank = resultType.getRank();
@@ -2582,25 +2600,7 @@ struct ConvolutionOpGeneralConversion
     Value modifiedRhs = applyConvolutionPadding(
         op.getLoc(), adaptor.getRhs(), nullptr, adaptor.getRhsDilationAttr(),
         op.getDimensionNumbers().getKernelSpatialDimensions(), rewriter);
-
-    // Decompose the reversal dims into its own step
-    auto reversals = op.getWindowReversal();
-    if (reversals.has_value()) {
-      llvm::SmallVector<int64_t> reversedDims;
-      for (auto& idxAndBool :
-           llvm::enumerate(reversals.value().getValues<bool>()))
-        if (idxAndBool.value())
-          reversedDims.push_back(
-              op.getDimensionNumbers()
-                  .getKernelSpatialDimensions()[idxAndBool.index()]);
-
-      modifiedRhs = rewriter.create<mhlo::ReverseOp>(
-          loc, modifiedRhs,
-          mlir::DenseIntElementsAttr::get(
-              RankedTensorType::get(reversedDims.size(),
-                                    rewriter.getIntegerType(64)),
-              reversedDims));
-    }
+    modifiedRhs = applyConvolutionReversal(loc, rewriter, op, modifiedRhs);
 
     // Non-one values for feature or batch group counts will result in reshaped
     // inputs and outputs. These mappings are used to keep track of the the new
@@ -3818,29 +3818,12 @@ class SelectOpToMapConverter : public OpConversionPattern<mhlo::SelectOp> {
       return v.getType().cast<ShapedType>().getRank() == 0;
     };
 
+    if (allOperandsAreScalarTensors(op) && isInBodyOfLinalgOps(op))
+      return failure();
+
     // Predicate in mhlo.select can be a shaped type with the same size as other
     // operands, or a scalar.
     const bool isScalarPred = isScalar(op.getPred());
-    const bool allOperandsAreScalar =
-        isScalarPred && isScalar(op.getOnTrue()) && isScalar(op.getOnFalse());
-
-    // Within a linalg op, we can immediately de-tensorsize if the computation
-    // is scalar. We do not do this on the top-level, as that would break the
-    // nice invariant that all programs are exclusively on tensors, which is
-    // currently relied on for fusion in some pipelines.
-    if (allOperandsAreScalar && isInBodyOfLinalgOps(op)) {
-      SmallVector<Value> inputs;
-      for (auto input : adaptor.getOperands()) {
-        inputs.push_back(rewriter.create<tensor::ExtractOp>(loc, input));
-      }
-
-      Value scalarResult = mhlo::MhloOpToStdScalarOp::mapOp(
-          op, resultTy->getElementType(), inputs, &rewriter);
-
-      rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, *resultTy,
-                                                          scalarResult);
-      return success();
-    }
 
     Value predValue;
     ValueRange mappedInputs = adaptor.getOperands();
@@ -3884,6 +3867,7 @@ class PointwiseToLinalgMapConverter : public OpConversionPattern<OpTy> {
   LogicalResult matchAndRewrite(
       OpTy op, typename OpTy::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
+    auto loc = op.getLoc();
     auto getRank = [](Value v) {
       return v.getType().cast<ShapedType>().getRank();
     };
@@ -3909,24 +3893,8 @@ class PointwiseToLinalgMapConverter : public OpConversionPattern<OpTy> {
           op, "mismatched operand/result types or iterator count");
     }
 
-    auto loc = op.getLoc();
-    // Within a linalg.map region, we can immediately de-tensorsize if the
-    // computation is scalar. We do not do this on the top-level, as that would
-    // break the nice invariant that all programs are exclusively on tensors,
-    // which is currently relied on for fusion in some pipelines.
-    if (maxRank == 0 && isInBodyOfLinalgOps(op)) {
-      SmallVector<Value> inputs;
-      for (auto input : adaptor.getOperands()) {
-        inputs.push_back(
-            rewriter.create<tensor::ExtractOp>(loc, input, ValueRange()));
-      }
-      Value scalarResult = mhlo::MhloOpToStdScalarOp::mapOp(
-          op, resultTy->getElementType(), inputs, &rewriter);
-      if (!scalarResult) return failure();
-      rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, *resultTy,
-                                                          scalarResult);
-      return success();
-    }
+    if (allOperandsAreScalarTensors(op) && isInBodyOfLinalgOps(op))
+      return failure();
 
     // Find input/output values and types.
     ValueRange inputs = adaptor.getOperands();
@@ -4007,6 +3975,9 @@ struct HloLegalizeToLinalgPass
 
     auto typeConverter = createHloToLinalgTypeConverter();
     auto func = getOperation();
+    mhlo::populateScalarHloToArithmeticConversionPatterns(
+        &ctx, *typeConverter, &patterns,
+        [](Operation* op) { return isInBodyOfLinalgOps(op); });
     mhlo::populateHloToLinalgConversionPattern(&ctx, *typeConverter, &patterns,
                                                enablePrimitiveOps);
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {

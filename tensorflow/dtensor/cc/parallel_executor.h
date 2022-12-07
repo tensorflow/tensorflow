@@ -45,8 +45,7 @@ class ParallelExecutor {
   // The client is responsible for the ownership of the outputs.
   virtual Future<ExecutionResult> Execute(
       TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
-      mlir::OwningOpRef<mlir::ModuleOp> module_ref,
-      const llvm::StringRef entry_function_name,
+      mlir::ModuleOp module, llvm::StringRef entry_function_name,
       const TFE_OpAttrs* attributes) const = 0;
 };
 

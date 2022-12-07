@@ -16,7 +16,6 @@ exports_files(
     srcs = [
         "c/c_api.h",
         "c/c_api_experimental.h",
-        "c/c_api_opaque.h",
     ],
     visibility = [
         "//tensorflow/lite:__subpackages__",
@@ -225,7 +224,6 @@ cc_library(
     deps = [
         ":builtin_ops_list",
         "//tensorflow/lite:cc_api",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels:builtin_ops",

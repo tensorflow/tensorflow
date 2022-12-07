@@ -1109,6 +1109,46 @@ class TestDelegateWithDynamicTensors : public ::testing::Test {
   TfLiteDelegate delegate_;
 };
 
+TfLiteRegistrationExternal* CreateTfLiteRegistrationExternal() {
+  auto registration = TfLiteRegistrationExternalCreate(
+      kTfLiteBuiltinDelegate, "OpaqueDelegateKernel", 1);
+  TfLiteRegistrationExternalSetPrepare(
+      registration,
+      [](TfLiteOpaqueContext* context,
+         TfLiteOpaqueNode* opaque_node) -> TfLiteStatus {
+        // If tensors are resized, the runtime should propagate shapes
+        // automatically if 'kTfLiteDelegateFlagsRequirePropagatedShapes' flag
+        // is set.
+
+        // Output 0 should be dynamic.
+        TfLiteOpaqueTensor* output0 =
+            TfLiteOpaqueNodeGetOutput(context, opaque_node, 0);
+        EXPECT_EQ(kTfLiteDynamic, TfLiteOpaqueTensorGetAllocationType(output0));
+
+        // Output 1 has the same shape as input.
+        const TfLiteOpaqueTensor* input =
+            TfLiteOpaqueNodeGetInput(context, opaque_node, 0);
+        const TfLiteOpaqueTensor* output1 =
+            TfLiteOpaqueNodeGetOutput(context, opaque_node, 1);
+
+        if (TfLiteOpaqueTensorNumDims(input) !=
+            TfLiteOpaqueTensorNumDims(output1)) {
+          return kTfLiteError;
+        }
+        // When 'kTfLiteDelegateFlagsRequirePropagatedShapes' is *not* set then
+        // changes to the dimensions of the 'input' tensor won't automatically
+        // propagate to the 'output1' tensor dimensions.
+        if (TfLiteOpaqueTensorDim(input, 0) !=
+            TfLiteOpaqueTensorDim(output1, 0)) {
+          return kTfLiteError;
+        }
+
+        return kTfLiteOk;
+      });
+
+  return registration;
+}
+
 class TestOpaqueDelegateBuilderWithDynamicTensors
     : public TestDelegateWithDynamicTensors {
  public:
@@ -1123,20 +1163,11 @@ class TestOpaqueDelegateBuilderWithDynamicTensors
         [](TfLiteOpaqueContext* opaque_context,
            struct TfLiteOpaqueDelegateStruct* opaque_delegate,
            void* data) -> TfLiteStatus {
-      // Note, ideally this function should not perform any casts on the
-      // provided opaque context or opaque delegate. However, the APIs that
-      // allow a caller to load an execution plan by providing an opaque
-      // context, or replace nodes with a delegate kernel by providing an opaque
-      // delegate, are added in child CLs.
       TfLiteIntArray* execution_plan;
-      TfLiteContext* context = reinterpret_cast<TfLiteContext*>(opaque_context);
-      TfLiteDelegate* delegate =
-          reinterpret_cast<TfLiteDelegate*>(opaque_delegate);
-      TF_LITE_ENSURE_STATUS(
-          context->GetExecutionPlan(context, &execution_plan));
-      TfLiteStatus status = context->ReplaceNodeSubsetsWithDelegateKernels(
-          context, DelegateRegistration(), execution_plan, delegate);
-      return status;
+      TfLiteOpaqueContextGetExecutionPlan(opaque_context, &execution_plan);
+      return TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
+          opaque_context, CreateTfLiteRegistrationExternal(), execution_plan,
+          opaque_delegate);
     };
     delegate_external_.flags = kTfLiteDelegateFlagsNone;
   }

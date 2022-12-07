@@ -125,6 +125,19 @@ Value postSparsify(Operation* op, Value semiring, Value result, OpBuilder* b) {
   return result;
 }
 
+bool allOperandsAreScalarTensors(Operation* op) {
+  return llvm::all_of(op->getOperands(), [](Value operand) {
+    auto operandTy = operand.getType().dyn_cast<ShapedType>();
+    return operandTy && operandTy.getRank() == 0;
+  });
+}
+
+bool isInBodyOfLinalgOps(Operation* op) {
+  auto* parentOp = op->getParentRegion()->getParentOp();
+  return parentOp->getDialect() ==
+         parentOp->getContext()->getLoadedDialect<linalg::LinalgDialect>();
+}
+
 }  // namespace mhlo
 
 }  // namespace mlir

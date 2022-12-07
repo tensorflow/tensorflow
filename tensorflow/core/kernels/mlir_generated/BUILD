@@ -28,7 +28,7 @@ package(
 package_group(
     name = "friends",
     packages = [
-        "//third_party/car/...",
+        "//waymo/...",
     ],
 )
 
@@ -1008,6 +1008,9 @@ gpu_kernel_library(
         "i8",
         "ui32",
         "ui64",
+        "f16",
+        "f32",
+        "f64",
     ],
     op = "truncate_div",
     tile_size = "1024",

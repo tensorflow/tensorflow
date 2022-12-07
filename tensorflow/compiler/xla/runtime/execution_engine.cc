@@ -231,6 +231,13 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
   module->setDataLayout(options.target_machine->createDataLayout());
   module->setTargetTriple(options.target_machine->getTargetTriple().str());
 
+  // Run an optimization pipeline over the LLVM module.
+  auto transformer = options.make_optimizing_transformer(
+      options.opt_level, /*sizeLevel=*/0, options.target_machine);
+  if (auto err = transformer(module_ptr))
+    return InternalError("failed to run optimization pipeline: %s",
+                         ToString(err));
+
   // Set up exported functions interface functions in the LLVM module.
   for (std::string_view name : exported) {
     if (auto status = SetUpExportedFunction(*module, name); !status.ok())
@@ -238,13 +245,6 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
           "failed to set up exported function %s interface: %s", name,
           status.message());
   }
-
-  // Run an optimization pipeline over the LLVM module.
-  auto transformer = options.make_optimizing_transformer(
-      options.opt_level, /*sizeLevel=*/0, options.target_machine);
-  if (auto err = transformer(module_ptr))
-    return InternalError("failed to run optimization pipeline: %s",
-                         ToString(err));
 
   // Callback to create the object layer with a user-provided section memory
   // mapper and JIT event listeners.

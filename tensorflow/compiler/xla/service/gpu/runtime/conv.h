@@ -68,6 +68,8 @@ void PopulateConvAttrEncoding(runtime::CustomCallAttrEncodingSet& encoding);
 // Cache conv runners between invocations of convolution custom calls.
 class ConvRunnerCache {
  public:
+  using Key = std::pair<::stream_executor::Stream*, int64_t>;
+
   struct Entry {
     MaybeFusedConvRunner* runner;
     GpuConvConfig* config;
@@ -77,12 +79,12 @@ class ConvRunnerCache {
   // the given id, or creates a new one using user-provided config construction
   // function.
   absl::StatusOr<Entry> GetOrCreate(
-      int64_t uid, absl::FunctionRef<absl::StatusOr<GpuConvConfig>()> config);
+      Key key, absl::FunctionRef<absl::StatusOr<GpuConvConfig>()> config);
 
  private:
   mutable absl::Mutex mutex_;
 
-  absl::node_hash_map<int64_t, std::pair<MaybeFusedConvRunner, GpuConvConfig>>
+  absl::node_hash_map<Key, std::pair<MaybeFusedConvRunner, GpuConvConfig>>
       runners_ ABSL_GUARDED_BY(mutex_);
 };
 

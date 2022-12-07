@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -6,7 +6,7 @@ package(
     licenses = ["notice"],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "xla-translate",
     testonly = True,
     srcs = ["xla_translate_main.cc"],
@@ -19,6 +19,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:translate_registration",
         "//tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla:translate_registration",
         "//tensorflow/tsl/platform:platform_port",
+        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

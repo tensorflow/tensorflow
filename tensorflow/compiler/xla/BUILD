@@ -51,6 +51,8 @@ package_group(
     ],
 )
 
+exports_files(["run_lit.sh"])
+
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",
@@ -1076,6 +1078,12 @@ cc_library(
     name = "side_effect_util",
     srcs = ["side_effect_util.cc"],
     hdrs = ["side_effect_util.h"],
+)
+
+cc_library(
+    name = "lazy",
+    hdrs = ["lazy.h"],
+    deps = ["@com_google_absl//absl/functional:any_invocable"],
 )
 
 tf_proto_library(

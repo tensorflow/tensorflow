@@ -89,7 +89,9 @@ Layout::Layout(const Layout& other)
       memory_space_(other.memory_space_),
       physical_shape_(other.physical_shape_ != nullptr
                           ? std::make_unique<Shape>(*other.physical_shape_)
-                          : nullptr) {}
+                          : nullptr),
+      dynamic_shape_metadata_prefix_in_bytes_(
+          other.dynamic_shape_metadata_prefix_in_bytes_) {}
 
 Layout::Layout(Layout&& other) = default;
 
@@ -110,6 +112,8 @@ Layout& Layout::operator=(const Layout& other) {
     } else {
       physical_shape_ = nullptr;
     }
+    dynamic_shape_metadata_prefix_in_bytes_ =
+        other.dynamic_shape_metadata_prefix_in_bytes_;
   }
   return *this;
 }
@@ -140,6 +144,8 @@ Layout& Layout::operator=(Layout&& other) = default;
   if (proto.has_physical_shape()) {
     *layout.mutable_physical_shape() = Shape(proto.physical_shape());
   }
+  layout.set_dynamic_shape_metadata_prefix_in_bytes(
+      proto.dynamic_shape_metadata_prefix_in_bytes());
   return layout;
 }
 
@@ -167,6 +173,8 @@ LayoutProto Layout::ToProto() const {
   if (has_physical_shape()) {
     *proto.mutable_physical_shape() = physical_shape_->ToProto();
   }
+  proto.set_dynamic_shape_metadata_prefix_in_bytes(
+      dynamic_shape_metadata_prefix_in_bytes_);
   return proto;
 }
 

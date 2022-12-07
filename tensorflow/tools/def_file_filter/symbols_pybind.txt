@@ -372,9 +372,6 @@ tsl::ProfilerSession::~ProfilerSession
 tsl::profiler::ProfilerServer::StartProfilerServer
 tsl::profiler::ProfilerServer::~ProfilerServer
 
-[//tensorflow/core/profiler/convert:hlo_to_tools_data_impl] # profiler
-tensorflow::profiler::ConvertHloProtoToToolData
-
 [//tensorflow/core/profiler/rpc/client:profiler_client_impl] # profiler
 tensorflow::profiler::ProfileGrpc
 tensorflow::profiler::NewSessionGrpc
