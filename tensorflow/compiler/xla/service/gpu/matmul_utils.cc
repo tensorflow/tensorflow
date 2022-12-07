@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -329,13 +330,15 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   const Shape& lhs_shape = gemm->operand(0)->shape();
   const Shape& rhs_shape = gemm->operand(1)->shape();
   const DotDimensionNumbers& dot_dims = config.dot_dimension_numbers();
+  const Shape& output_shape =
+      gemm->shape().IsTuple() ? gemm->shape().tuple_shapes(0) : gemm->shape();
 
   return GemmConfig::For(
       lhs_shape, dot_dims.lhs_batch_dimensions(),
       dot_dims.lhs_contracting_dimensions(), rhs_shape,
       dot_dims.rhs_batch_dimensions(), dot_dims.rhs_contracting_dimensions(),
-      /*output_shape=*/gemm->shape(), config.alpha_real(), config.alpha_imag(),
-      config.beta(), algorithm, se::blas::kDefaultComputePrecision);
+      output_shape, config.alpha_real(), config.alpha_imag(), config.beta(),
+      algorithm, se::blas::kDefaultComputePrecision);
 }
 
 /*static*/ StatusOr<GemmConfig> GemmConfig::For(mlir::lmhlo_gpu::GEMMOp op) {
@@ -588,10 +591,29 @@ StatusOr<bool> EpilogueAddsVectorBias(GemmBackendConfig_Epilogue epilogue) {
     case GemmBackendConfig::DEFAULT:
     case GemmBackendConfig::RELU:
     case GemmBackendConfig::GELU:
+    case GemmBackendConfig::GELU_AUX:
       return false;
     case GemmBackendConfig::BIAS:
-    case GemmBackendConfig::BIASRELU:
-    case GemmBackendConfig::BIASGELU:
+    case GemmBackendConfig::BIAS_RELU:
+    case GemmBackendConfig::BIAS_GELU:
+    case GemmBackendConfig::BIAS_GELU_AUX:
+      return true;
+    default:
+      return InternalError("Unknown Epilogue.");
+  }
+}
+
+StatusOr<bool> EpilogueHasAuxiliaryOutput(GemmBackendConfig_Epilogue epilogue) {
+  switch (epilogue) {
+    case GemmBackendConfig::DEFAULT:
+    case GemmBackendConfig::RELU:
+    case GemmBackendConfig::GELU:
+    case GemmBackendConfig::BIAS:
+    case GemmBackendConfig::BIAS_RELU:
+    case GemmBackendConfig::BIAS_GELU:
+      return false;
+    case GemmBackendConfig::GELU_AUX:
+    case GemmBackendConfig::BIAS_GELU_AUX:
       return true;
     default:
       return InternalError("Unknown Epilogue.");
@@ -649,12 +671,16 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
       return se::cuda::BlasLt::Epilogue::kReLU;
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Gelu:
       return se::cuda::BlasLt::Epilogue::kGELU;
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::GeluAux:
+      return se::cuda::BlasLt::Epilogue::kGELUWithAux;
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Bias:
       return se::cuda::BlasLt::Epilogue::kBias;
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::BiasRelu:
       return se::cuda::BlasLt::Epilogue::kBiasThenReLU;
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::BiasGelu:
       return se::cuda::BlasLt::Epilogue::kBiasThenGELU;
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::BiasGeluAux:
+      return se::cuda::BlasLt::Epilogue::kBiasThenGELUWithAux;
   }
   return InternalError("unexpected epilogue value");
 }
@@ -739,6 +765,7 @@ Status MatmulPlan::DoMatmul(se::Stream* stream, se::DeviceMemoryBase a_buffer,
                             se::DeviceMemoryBase c_buffer,
                             se::DeviceMemoryBase d_buffer,
                             se::DeviceMemoryBase bias_buffer,
+                            se::DeviceMemoryBase aux_buffer,
                             const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
                             se::ScratchAllocator& scratch_allocator,
                             se::blas::ProfileResult* profile_result) const {
@@ -761,13 +788,14 @@ Status MatmulPlan::DoMatmul(se::Stream* stream, se::DeviceMemoryBase a_buffer,
       se::DeviceMemory<Input>(a_buffer), se::DeviceMemory<Input>(b_buffer),
       se::HostOrDeviceScalar<Scale>(beta), se::DeviceMemory<Input>(c_buffer),
       output, algorithm, scratch_allocator,
-      se::DeviceMemory<Input>(bias_buffer), profile_result);
+      se::DeviceMemory<Input>(bias_buffer), aux_buffer, profile_result);
 }
 
 Status MatmulPlan::ExecuteOnStream(
     se::Stream* stream, se::DeviceMemoryBase a_buffer,
     se::DeviceMemoryBase b_buffer, se::DeviceMemoryBase c_buffer,
     se::DeviceMemoryBase d_buffer, se::DeviceMemoryBase bias_buffer,
+    se::DeviceMemoryBase aux_buffer,
     const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
     se::ScratchAllocator& scratch_allocator,
     se::blas::ProfileResult* profile_result) const {
@@ -777,28 +805,28 @@ Status MatmulPlan::ExecuteOnStream(
 
   switch (plan_.d_desc.type()) {
     case CUDA_R_16F:
-      return DoMatmul<Eigen::half, float>(stream, a_buffer, b_buffer, c_buffer,
-                                          d_buffer, bias_buffer, algorithm,
-                                          scratch_allocator, profile_result);
+      return DoMatmul<Eigen::half, float>(
+          stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,
+          aux_buffer, algorithm, scratch_allocator, profile_result);
     case CUDA_R_16BF:
       return DoMatmul<Eigen::bfloat16, float>(
           stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,
-          algorithm, scratch_allocator, profile_result);
+          aux_buffer, algorithm, scratch_allocator, profile_result);
     case CUDA_R_32F:
       return DoMatmul<float>(stream, a_buffer, b_buffer, c_buffer, d_buffer,
-                             bias_buffer, algorithm, scratch_allocator,
-                             profile_result);
+                             bias_buffer, aux_buffer, algorithm,
+                             scratch_allocator, profile_result);
     case CUDA_R_64F:
       return DoMatmul<double>(stream, a_buffer, b_buffer, c_buffer, d_buffer,
-                              bias_buffer, algorithm, scratch_allocator,
-                              profile_result);
+                              bias_buffer, aux_buffer, algorithm,
+                              scratch_allocator, profile_result);
     case CUDA_C_32F:
       return DoMatmul<complex64>(stream, a_buffer, b_buffer, c_buffer, d_buffer,
-                                 bias_buffer, algorithm, scratch_allocator,
-                                 profile_result);
+                                 bias_buffer, aux_buffer, algorithm,
+                                 scratch_allocator, profile_result);
     case CUDA_C_64F:
       return DoMatmul<complex128>(stream, a_buffer, b_buffer, c_buffer,
-                                  d_buffer, bias_buffer, algorithm,
+                                  d_buffer, bias_buffer, aux_buffer, algorithm,
                                   scratch_allocator, profile_result);
     default:
       return InternalError("Unexpected dtype");

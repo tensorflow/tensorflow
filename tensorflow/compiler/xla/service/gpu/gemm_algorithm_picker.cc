@@ -57,12 +57,16 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
       return se::cuda::BlasLt::Epilogue::kReLU;
     case GemmBackendConfig::GELU:
       return se::cuda::BlasLt::Epilogue::kGELU;
+    case GemmBackendConfig::GELU_AUX:
+      return se::cuda::BlasLt::Epilogue::kGELUWithAux;
     case GemmBackendConfig::BIAS:
       return se::cuda::BlasLt::Epilogue::kBias;
-    case GemmBackendConfig::BIASRELU:
+    case GemmBackendConfig::BIAS_RELU:
       return se::cuda::BlasLt::Epilogue::kBiasThenReLU;
-    case GemmBackendConfig::BIASGELU:
+    case GemmBackendConfig::BIAS_GELU:
       return se::cuda::BlasLt::Epilogue::kBiasThenGELU;
+    case GemmBackendConfig::BIAS_GELU_AUX:
+      return se::cuda::BlasLt::Epilogue::kBiasThenGELUWithAux;
     default:
       return InternalError("Unsupported Epilogue.");
   }
@@ -96,17 +100,23 @@ se::RedzoneAllocator CreateRedzoneAllocator(
 }
 
 StatusOr<se::DeviceMemoryBase> CreateBuffer(se::RedzoneAllocator& allocator,
-                                            const HloInstruction& op,
+                                            const Shape& shape,
                                             const AutotuneConfig& config,
                                             int64_t& rng_state) {
-  TF_ASSIGN_OR_RETURN(
-      se::DeviceMemoryBase buffer,
-      allocator.AllocateBytes(ShapeUtil::ByteSizeOf(op.shape())));
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buffer,
+                      allocator.AllocateBytes(ShapeUtil::ByteSizeOf(shape)));
   if (config.should_init_buffers()) {
-    InitializeBuffer(allocator.stream(), op.shape().element_type(), &rng_state,
+    InitializeBuffer(allocator.stream(), shape.element_type(), &rng_state,
                      buffer);
   }
   return buffer;
+}
+
+StatusOr<se::DeviceMemoryBase> CreateBuffer(se::RedzoneAllocator& allocator,
+                                            const HloInstruction& op,
+                                            const AutotuneConfig& config,
+                                            int64_t& rng_state) {
+  return CreateBuffer(allocator, op.shape(), config, rng_state);
 }
 
 // Returns the index (into `algorithms`) of the fastest algorithm.
@@ -125,14 +135,17 @@ StatusOr<std::optional<size_t>> GetBestAlgorithm(
   TF_ASSIGN_OR_RETURN(GemmBackendConfig backend_config,
                       gemm.backend_config<GemmBackendConfig>());
 
+  const Shape& output_shape =
+      gemm.shape().IsTuple() ? gemm.shape().tuple_shapes(0) : gemm.shape();
+
   se::DeviceMemoryBase reference_buffer;
   if (autotune_config.should_check_correctness()) {
     TF_ASSIGN_OR_RETURN(
         reference_buffer,
-        allocator.AllocateBytes(ShapeUtil::ByteSizeOf(gemm.shape())));
+        allocator.AllocateBytes(ShapeUtil::ByteSizeOf(output_shape)));
   }
 
-  BufferComparator comparator(gemm.shape(), gemm.GetModule()->config());
+  BufferComparator comparator(output_shape, gemm.GetModule()->config());
 
   std::vector<AutotuneResult> results;
   std::optional<int64_t> reference_algorithm;
@@ -143,7 +156,7 @@ StatusOr<std::optional<size_t>> GetBestAlgorithm(
     if (autotune_config.should_reinit_output_buffer() &&
         backend_config.beta() != 0) {
       int64_t rng_state = 0;
-      InitializeBuffer(stream, gemm.shape().element_type(), &rng_state,
+      InitializeBuffer(stream, output_shape.element_type(), &rng_state,
                        output_buffer);
     }
 
@@ -285,9 +298,13 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase rhs_buffer,
                       CreateBuffer(buffer_allocator, *gemm->operand(1),
                                    autotune_config, rng_state));
+
+  const Shape& output_shape =
+      gemm->shape().IsTuple() ? gemm->shape().tuple_shapes(0) : gemm->shape();
+
   TF_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase output_buffer,
-      CreateBuffer(buffer_allocator, *gemm, autotune_config, rng_state));
+      CreateBuffer(buffer_allocator, output_shape, autotune_config, rng_state));
 
   std::optional<se::blas::AlgorithmType> best_algorithm;
   if (IsCublasLtMatmul(*gemm)) {
@@ -295,6 +312,10 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
 
     TF_ASSIGN_OR_RETURN(bool has_vector_bias, cublas_lt::EpilogueAddsVectorBias(
                                                   gemm_config.epilogue()));
+
+    TF_ASSIGN_OR_RETURN(
+        bool has_aux_output,
+        cublas_lt::EpilogueHasAuxiliaryOutput(gemm_config.epilogue()));
 
     TF_ASSIGN_OR_RETURN(auto epilogue,
                         AsBlasLtEpilogue(gemm_config.epilogue()));
@@ -305,6 +326,14 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
                           CreateBuffer(buffer_allocator,
                                        *gemm->operand(has_matrix_bias ? 3 : 2),
                                        autotune_config, rng_state));
+    }
+
+    se::DeviceMemoryBase aux_buffer;
+    if (has_aux_output) {
+      TF_ASSIGN_OR_RETURN(
+          aux_buffer,
+          CreateBuffer(buffer_allocator, gemm->shape().tuple_shapes(1),
+                       autotune_config, rng_state));
     }
 
     TF_ASSIGN_OR_RETURN(auto plan,
@@ -325,7 +354,8 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
               se::blas::ProfileResult profile_result;
               TF_RETURN_IF_ERROR(plan.ExecuteOnStream(
                   stream, lhs_buffer, rhs_buffer, output_buffer, output_buffer,
-                  bias_buffer, algorithm, scratch_allocator, &profile_result));
+                  bias_buffer, aux_buffer, algorithm, scratch_allocator,
+                  &profile_result));
               return std::move(profile_result);
             }));
 
