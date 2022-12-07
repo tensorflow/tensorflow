@@ -203,9 +203,16 @@ Status ExecuteThunks(const std::string& module_name,
   tsl::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tsl::profiler::TraceMeLevel::kInfo);
+
   ScopedAnnotation annotation(
-      [&] { return absl::StrFormat("Thunk:#hlo_module=%s,program_id=%d#",
-                                   module_name, module_id);});
+      [&] {
+	std::string module_id_str;
+	if(module_id >= 0) {
+	  module_id_str = absl::StrFormat(",program_id=%d", module_id);
+	}
+	return absl::StrFormat("Thunk:#hlo_module=%s%s#",
+			       module_name, module_id_str);
+      });
 
   for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
     // Annotate execution of this op if tracing was enabled when we started
@@ -639,7 +646,14 @@ Status GpuExecutable::ExecuteThunksOrXlaRuntime(
     for (const std::unique_ptr<Thunk>& thunk : *thunks_) {
       TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
     }
-    return ExecuteThunks(module_name_, module().unique_id(),
+
+    // There isn't always an HLO module.
+    ModuleIdentifier unique_id = -1;
+    if(&module()) {
+      unique_id = module().unique_id();
+    }
+
+    return ExecuteThunks(module_name_, unique_id,
                          *thunks_, run_options,
                          buffer_allocations, block_host_until_done);
   }
