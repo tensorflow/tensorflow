@@ -248,7 +248,7 @@ TEST_F(CApiTest, ReturnFailStatusWhenModelPathInvalid) {
       TfLiteBlockingValidatorRunnerTriggerValidation(&settings);
 
   EXPECT_THAT(result->init_status,
-              tflite::acceleration::kMinibenchmarkModelBuildFailed);
+              tflite::acceleration::kMinibenchmarkModelInitFailed);
   EXPECT_EQ(result->flatbuffer_data, nullptr);
   EXPECT_EQ(result->flatbuffer_data_size, 0);
   TfLiteMiniBenchmarkResultFree(result);

@@ -198,7 +198,7 @@ TEST_F(ValidatorRunnerImplTest, FailWithInvalidEntrypoint) {
 
 TEST_F(ValidatorRunnerImplTest, FailIfCannotLoadModel) {
   model_path_ = "invalid/path";
-  EXPECT_EQ(CreateValidator().Init(), kMinibenchmarkModelBuildFailed);
+  EXPECT_EQ(CreateValidator().Init(), kMinibenchmarkModelInitFailed);
 }
 
 TEST_F(ValidatorRunnerImplTest, FailIfCannotEmbedInputData) {

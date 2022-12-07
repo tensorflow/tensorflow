@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
+#include "tensorflow/lite/tools/model_loader.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -24,57 +24,55 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/model_builder.h"
 
 namespace tflite {
-namespace acceleration {
+namespace tools {
 
-MinibenchmarkStatus ModelLoader::Init() {
+bool ModelLoader::Init() {
   if (model_ && model_->initialized()) {
     // Already done.
-    return kMinibenchmarkSuccess;
+    return true;
   }
-  MinibenchmarkStatus status = InitInternal();
-  if (status != kMinibenchmarkSuccess) {
-    return status;
+  if (!InitInternal()) {
+    return false;
   }
   if (!model_ || !model_->initialized()) {
-    return kMinibenchmarkModelBuildFailed;
+    return false;
   }
-  return kMinibenchmarkSuccess;
+  return true;
 }
 
-MinibenchmarkStatus PathModelLoader::InitInternal() {
+bool PathModelLoader::InitInternal() {
   if (model_path_.empty()) {
-    return kMinibenchmarkPreconditionNotMet;
+    return false;
   }
   model_ = FlatBufferModel::VerifyAndBuildFromFile(model_path_.c_str());
-  return kMinibenchmarkSuccess;
+  return true;
 }
 
 #ifndef _WIN32
 
-MinibenchmarkStatus MmapModelLoader::InitInternal() {
+bool MmapModelLoader::InitInternal() {
   if (model_fd_ < 0 || model_offset_ < 0 || model_size_ < 0) {
-    return kMinibenchmarkPreconditionNotMet;
+    return false;
   }
   if (!MMAPAllocation::IsSupported()) {
-    return kMinibenchmarkUnsupportedPlatform;
+    return false;
   }
   auto allocation = std::make_unique<MMAPAllocation>(
       model_fd_, model_offset_, model_size_, tflite::DefaultErrorReporter());
   if (!allocation->valid()) {
-    return kMinibenchmarkModelReadFailed;
+    return false;
   }
   model_ = FlatBufferModel::VerifyAndBuildFromAllocation(std::move(allocation));
-  return kMinibenchmarkSuccess;
+  return true;
 }
 
-MinibenchmarkStatus PipeModelLoader::InitInternal() {
+bool PipeModelLoader::InitInternal() {
   if (pipe_fd_ < 0) {
-    return kMinibenchmarkPreconditionNotMet;
+    return false;
   }
 
   std::free(model_buffer_);
@@ -96,11 +94,11 @@ MinibenchmarkStatus PipeModelLoader::InitInternal() {
                     "%d bytes missing.",
                     std::strerror(errno), model_size_, remaining_bytes);
     // If read() failed with -1, or read partial or too much data.
-    return kMinibenchmarkModelReadFailed;
+    return false;
   }
 
   model_ = FlatBufferModel::BuildFromModel(tflite::GetModel(model_buffer_));
-  return kMinibenchmarkSuccess;
+  return true;
 }
 
 #endif  // !_WIN32
@@ -142,5 +140,5 @@ std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(absl::string_view path) {
   return std::make_unique<PathModelLoader>(path);
 }
 
-}  // namespace acceleration
+}  // namespace tools
 }  // namespace tflite

@@ -26,10 +26,10 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/tools/model_loader.h"
 
 namespace tflite {
 namespace acceleration {
@@ -43,7 +43,7 @@ class Validator {
  public:
   // Construct Validator for the given model and compute settings. The
   // compute_settings must be valid for the lifetime of the Validator instance.
-  Validator(std::unique_ptr<ModelLoader> model_loader,
+  Validator(std::unique_ptr<tools::ModelLoader> model_loader,
             const ComputeSettings* compute_settings)
       : model_loader_(std::move(model_loader)),
         compute_settings_(compute_settings) {}
@@ -96,7 +96,7 @@ class Validator {
   // embedded, run Model on CPU and add golden output to model_.
   MinibenchmarkStatus CheckGoldenOutput(Results* results_out);
 
-  std::unique_ptr<ModelLoader> model_loader_;
+  std::unique_ptr<tools::ModelLoader> model_loader_;
   const ComputeSettings* compute_settings_;
   // Optional. Interpreter that runs on CPU.
   std::unique_ptr<Interpreter> golden_interpreter_;

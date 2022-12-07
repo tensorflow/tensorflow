@@ -12,23 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_MODEL_LOADER_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_MODEL_LOADER_H_
+#ifndef TENSORFLOW_LITE_TOOLS_MODEL_LOADER_H_
+#define TENSORFLOW_LITE_TOOLS_MODEL_LOADER_H_
 
-#include <stddef.h>
 #include <unistd.h>
 
+#include <cstddef>
 #include <cstdlib>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/model_builder.h"
 
 namespace tflite {
-namespace acceleration {
+namespace tools {
 
 // Class to load the Model.
 class ModelLoader {
@@ -36,7 +35,7 @@ class ModelLoader {
   virtual ~ModelLoader() {}
 
   // Return whether the model is loaded successfully.
-  virtual MinibenchmarkStatus Init();
+  virtual bool Init();
 
   const FlatBufferModel* GetModel() const { return model_.get(); }
 
@@ -45,12 +44,10 @@ class ModelLoader {
   virtual bool IsLoadedFromFlatbufferBuilder() = 0;
 
  protected:
-  // ModelLoader() = default;
-
-  // Interface for subclass to create model_. If failed, Init() will return the
-  // error status; If succeeded but model_ is null, Init() function will return
-  // ModelBuildFailed.
-  virtual MinibenchmarkStatus InitInternal() = 0;
+  // Interface for subclass to create model_. Init() calls InitInternal(). If
+  // InitInternal() returns false, or if it returns true but model_ remains
+  // null, then Init() will return false.
+  virtual bool InitInternal() = 0;
 
   std::unique_ptr<FlatBufferModel> model_;
 };
@@ -64,7 +61,7 @@ class PathModelLoader : public ModelLoader {
   bool IsLoadedFromFlatbufferBuilder() override { return false; }
 
  protected:
-  MinibenchmarkStatus InitInternal() override;
+  bool InitInternal() override;
 
  private:
   const std::string model_path_;
@@ -92,7 +89,7 @@ class MmapModelLoader : public ModelLoader {
   bool IsLoadedFromFlatbufferBuilder() override { return false; }
 
  protected:
-  MinibenchmarkStatus InitInternal() override;
+  bool InitInternal() override;
 
  private:
   const int model_fd_ = -1;
@@ -119,10 +116,10 @@ class PipeModelLoader : public ModelLoader {
   bool IsLoadedFromFlatbufferBuilder() override { return true; }
 
  protected:
-  // Read the serialized Model from read_pipe_fd. Return ModelReadFailed if the
-  // readin bytes is less than read_size. This function also closes the
+  // Reads the serialized Model from read_pipe_fd. Returns false if the number
+  // of bytes read in is less than read_size. This function also closes the
   // read_pipe_fd and write_pipe_fd.
-  MinibenchmarkStatus InitInternal() override;
+  bool InitInternal() override;
 
  private:
   const int pipe_fd_ = -1;
@@ -146,7 +143,7 @@ class PipeModelLoader : public ModelLoader {
 // when possible.
 std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(absl::string_view path);
 
-}  // namespace acceleration
+}  // namespace tools
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_MODEL_LOADER_H_
+#endif  // TENSORFLOW_LITE_TOOLS_MODEL_LOADER_H_
