@@ -4068,6 +4068,7 @@ cc_library(
     hdrs = ["hlo_value.h"],
     deps = [
         ":buffer_value",
+        "//tensorflow/compiler/xla:lazy",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -4079,7 +4080,6 @@ cc_library(
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",

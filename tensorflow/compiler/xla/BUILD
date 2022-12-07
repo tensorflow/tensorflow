@@ -1080,6 +1080,12 @@ cc_library(
     hdrs = ["side_effect_util.h"],
 )
 
+cc_library(
+    name = "lazy",
+    hdrs = ["lazy.h"],
+    deps = ["@com_google_absl//absl/functional:any_invocable"],
+)
+
 tf_proto_library(
     name = "autotune_results_proto",
     srcs = ["autotune_results.proto"],
