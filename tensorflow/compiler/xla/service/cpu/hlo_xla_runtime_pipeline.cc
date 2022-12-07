@@ -121,6 +121,10 @@ static Status CreateHloXlaPipeline(
   pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       xla::cpu::createLegalizeCollectiveOpsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createMhloExpandOpsSimplifierPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createHloCanonicalizeScatterPass());
   // TODO(kramerb): Give THLO lowerings priority over linalg when it's ready for
   // concat, reduce and friends.
   pm.addNestedPass<mlir::func::FuncOp>(

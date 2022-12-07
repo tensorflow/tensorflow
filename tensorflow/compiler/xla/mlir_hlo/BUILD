@@ -611,6 +611,7 @@ cc_library(
         "mhlo/transforms/constraint_fusion/constraint_fusion_pass.cc",
         "mhlo/transforms/convert_to_signless/convert_to_signless_pass.cc",
         "mhlo/transforms/expand_hlo_tuples/expand_hlo_tuples.cc",
+        "mhlo/transforms/expand_ops_simplifier/expand_ops_simplifier.cc",
         "mhlo/transforms/group_reduction_dimensions/group_reduction_dimensions.cc",
         "mhlo/transforms/hlo_legalize_shape_ops_to_standard/hlo_legalize_shape_ops_to_standard.cc",
         "mhlo/transforms/hlo_legalize_to_arithmetic/hlo_legalize_to_arithmetic.cc",
