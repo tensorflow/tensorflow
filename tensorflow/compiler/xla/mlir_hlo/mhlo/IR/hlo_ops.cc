@@ -378,12 +378,11 @@ LogicalResult ReduceScatterOp::verify() {
   auto operandType = getOperand().getType().cast<TensorType>();
   bool operandTypeRanked = operandType.isa<RankedTensorType>();
   Block& block = getComputation().front();
-  SmallVector<TensorType> accumulatorSubshapes;
   if (failed(hlo::verifyReducerShape(
           this->getLoc(), block, {operandType},
           {RankedTensorType::get({}, operandType.getElementType())},
           /*numInputs=*/1, /*allowedDimensions=*/{},
-          /*allInputsUnranked=*/!operandTypeRanked, accumulatorSubshapes)))
+          /*allInputsUnranked=*/!operandTypeRanked)))
     return failure();
 
   return mlir::hlo::verifyReduceScatter(
@@ -7406,13 +7405,12 @@ LogicalResult SelectAndScatterOp::verify() {
 
   // P2.
   Block& scatterBlock = getScatter().front();
-  SmallVector<TensorType> accumulatorSubshapes;
   if (failed(hlo::verifyReducerShape(
           this->getLoc(), scatterBlock,
           {RankedTensorType::get({}, sourceType.getElementType())},
           {initValueType},
           /*numInputs=*/1, /*allowedDimensions=*/{},
-          /*allInputsUnranked=*/false, accumulatorSubshapes)))
+          /*allInputsUnranked=*/false)))
     return failure();
 
   // P3.
@@ -7620,7 +7618,6 @@ LogicalResult ScatterOp::verify() {
 
   // P2.
   Block& block = getUpdateComputation().front();
-  SmallVector<TensorType> accumulatorSubshapes;
   SmallVector<TensorType> inputTypes, initValueTypes;
   for (int64_t i = 0; i < static_cast<int64_t>(numOperands); i++) {
     inputTypes.push_back(operandTypes[i]);
@@ -7630,7 +7627,7 @@ LogicalResult ScatterOp::verify() {
   if (failed(hlo::verifyReducerShape(
           this->getLoc(), block, inputTypes, initValueTypes, numOperands,
           /*allowedDimensions=*/{},
-          /*allInputsUnranked=*/!allOperandTypesRanked, accumulatorSubshapes)))
+          /*allInputsUnranked=*/!allOperandTypesRanked)))
     return failure();
 
   // P3.
