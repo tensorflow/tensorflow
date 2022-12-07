@@ -287,13 +287,23 @@ Gpu3DLaunchConfig GetGpu3DLaunchConfig(int xdim, int ydim, int zdim,
   cudaDeviceGetAttribute(&ygridlimit, cudaDevAttrMaxGridDimY, dev);
   cudaDeviceGetAttribute(&zgridlimit, cudaDevAttrMaxGridDimZ, dev);
 #elif TENSORFLOW_USE_ROCM
-  hipGetDevice(&dev);
-  hipDeviceGetAttribute(&xthreadlimit, hipDeviceAttributeMaxBlockDimX, dev);
-  hipDeviceGetAttribute(&ythreadlimit, hipDeviceAttributeMaxBlockDimY, dev);
-  hipDeviceGetAttribute(&zthreadlimit, hipDeviceAttributeMaxBlockDimZ, dev);
-  hipDeviceGetAttribute(&xgridlimit, hipDeviceAttributeMaxGridDimX, dev);
-  hipDeviceGetAttribute(&ygridlimit, hipDeviceAttributeMaxGridDimY, dev);
-  hipDeviceGetAttribute(&zgridlimit, hipDeviceAttributeMaxGridDimZ, dev);
+  hipError_t err = hipGetDevice(&dev);
+  CHECK_EQ(err, hipSuccess);
+  err =
+      hipDeviceGetAttribute(&xthreadlimit, hipDeviceAttributeMaxBlockDimX, dev);
+  CHECK_EQ(err, hipSuccess);
+  err =
+      hipDeviceGetAttribute(&ythreadlimit, hipDeviceAttributeMaxBlockDimY, dev);
+  CHECK_EQ(err, hipSuccess);
+  err =
+      hipDeviceGetAttribute(&zthreadlimit, hipDeviceAttributeMaxBlockDimZ, dev);
+  CHECK_EQ(err, hipSuccess);
+  err = hipDeviceGetAttribute(&xgridlimit, hipDeviceAttributeMaxGridDimX, dev);
+  CHECK_EQ(err, hipSuccess);
+  err = hipDeviceGetAttribute(&ygridlimit, hipDeviceAttributeMaxGridDimY, dev);
+  CHECK_EQ(err, hipSuccess);
+  err = hipDeviceGetAttribute(&zgridlimit, hipDeviceAttributeMaxGridDimZ, dev);
+  CHECK_EQ(err, hipSuccess);
 #endif
 
   int block_count = 0;
