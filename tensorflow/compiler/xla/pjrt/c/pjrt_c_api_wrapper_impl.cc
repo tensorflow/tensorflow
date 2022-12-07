@@ -39,6 +39,7 @@ limitations under the License.
 
 // TODO(b/238999986): Remove this.
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace pjrt {
 
@@ -584,6 +585,66 @@ PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args) {
     }
   }
 
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_Serialize_Args",
+      PJRT_Executable_Serialize_Args_STRUCT_SIZE, args->struct_size));
+  const xla::PjRtLoadedExecutable& executable = *args->executable->executable;
+  std::string serialization;
+  const PJRT_Client* client = args->executable->client;
+  PJRT_ASSIGN_OR_RETURN(serialization,
+                        client->client->SerializeExecutable(executable));
+
+  PJRT_SerializedExecutable* serialized_exec = new PJRT_SerializedExecutable;
+  if (serialized_exec == nullptr) {
+    return new PJRT_Error{xla::ResourceExhausted(
+        "Out of memory for `PJRT_Executable_Serialize()`")};
+  }
+  serialized_exec->serialized = std::move(serialization);
+  args->serialized_executable = serialized_exec;
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Executable_Deserialize(
+    PJRT_Executable_Deserialize_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_Deserialize_Args",
+      PJRT_Executable_Deserialize_Args_STRUCT_SIZE, args->struct_size));
+  absl::string_view serialized(args->serialized_executable,
+                               args->serialized_executable_size);
+
+  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+                        args->client->client->DeserializeExecutable(
+                            serialized, /*options=*/std::nullopt));
+
+  args->deserialized_executable =
+      new PJRT_Executable{std::move(executable), args->client};
+  return nullptr;
+}
+
+// -------------------------- Serialized Executables ---------------------------
+
+PJRT_Error* PJRT_SerializedExecutable_Destroy(
+    PJRT_SerializedExecutable_Destroy_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_SerializedExecutable_Destroy_Args",
+      PJRT_SerializedExecutable_Destroy_Args_STRUCT_SIZE, args->struct_size));
+  if (args->serialized_executable != nullptr) {
+    delete args->serialized_executable;
+  }
+  return nullptr;
+}
+
+PJRT_Error* PJRT_SerializedExecutable_Data(
+    PJRT_SerializedExecutable_Data_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_SerializedExecutable_Data_Args",
+      PJRT_SerializedExecutable_Data_Args_STRUCT_SIZE, args->struct_size));
+  args->data = args->serialized_executable->serialized.c_str();
+  args->data_size = args->serialized_executable->serialized.size();
   return nullptr;
 }
 

@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 
 struct PJRT_Error {
@@ -76,6 +77,10 @@ struct PJRT_Event {
   std::optional<xla::Status> status;
 };
 
+struct PJRT_SerializedExecutable {
+  std::string serialized;
+};
+
 namespace pjrt {
 
 // C API definitions
@@ -123,6 +128,13 @@ PJRT_Error* PJRT_Executable_SizeOfGeneratedCodeInBytes(
 PJRT_Error* PJRT_Executable_Delete(PJRT_Executable_Delete_Args* args);
 PJRT_Error* PJRT_Executable_IsDeleted(PJRT_Executable_IsDeleted_Args* args);
 PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args);
+PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args);
+PJRT_Error* PJRT_Executable_Deserialize(PJRT_Executable_Deserialize_Args* args);
+
+PJRT_Error* PJRT_SerializedExecutable_Destroy(
+    PJRT_SerializedExecutable_Destroy_Args* args);
+PJRT_Error* PJRT_SerializedExecutable_Data(
+    PJRT_SerializedExecutable_Data_Args* args);
 
 PJRT_Error* PJRT_Buffer_Destroy(PJRT_Buffer_Destroy_Args* args);
 PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
