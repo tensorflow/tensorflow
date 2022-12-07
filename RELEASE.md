@@ -68,6 +68,7 @@
         `layers.BatchNormalization` with `synchronized=True` instead.
     *   Updated `tf.keras.layers.BatchNormalization` to support masking of the
         inputs (`mask` argument) when computing the mean and variance.
+    *   Add `tf.keras.layers.Identity`, a placeholder pass-through layer.
 
 *   `tf.experimental.dtensor`:
 
