@@ -568,7 +568,7 @@ void DnnPoolingGradImpl(OpKernelContext* context,
   if (data_format == FORMAT_NHWC || !tensor_out) {
     OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
                                 FORMAT_NCHW, out_backprop.shape(), data_format,
-                                transformed_output_shape));
+                                &transformed_output_shape));
     OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
                                                    transformed_output_shape,
                                                    &transformed_output));
