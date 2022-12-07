@@ -433,6 +433,43 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec(1e-6, 1e-6)));
 }
 
+// Currently the pipeline wants to collapse everything to 2D, but for some
+// broadcasts this is not possible. This test is an example of such a case.
+TEST_F(SoftmaxFusionTest, 4DWithUncollapsibleBroadcast) {
+  const std::string& hlo_string = R"(
+HloModule module
+
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+
+add_computation {
+  arg_0.1 = f32[] parameter(0)
+  arg_1.1 = f32[] parameter(1)
+  ROOT maximum.1 = f32[] add(arg_0.1, arg_1.1)
+}
+
+ENTRY main {
+  parameter_1.6 = f32[32,150]{1,0} parameter(0)
+  broadcast.599 = f32[32,4,72,150]{3,2,1,0} broadcast(parameter_1.6), dimensions={0,3}
+  constant.474 = f32[] constant(-inf)
+  reduce.45 = f32[32,4,72]{2,1,0} reduce(broadcast.599, constant.474), dimensions={3}, to_apply=max_computation
+  broadcast.600 = f32[32,4,72,150]{3,2,1,0} broadcast(reduce.45), dimensions={0,1,2}
+  subtract.68 = f32[32,4,72,150]{3,2,1,0} subtract(broadcast.599, broadcast.600)
+  exponential.35 = f32[32,4,72,150]{3,2,1,0} exponential(subtract.68)
+  constant.476 = f32[] constant(0)
+  reduce.46 = f32[32,4,72]{2,1,0} reduce(exponential.35, constant.476), dimensions={3}, to_apply=add_computation
+  broadcast.601 = f32[32,4,72,150]{3,2,1,0} broadcast(reduce.46), dimensions={0,1,2}
+  ROOT divide.28 = f32[32,4,72,150]{3,2,1,0} divide(exponential.35, broadcast.601)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  SoftmaxFusion fusion;
+  EXPECT_FALSE(fusion.Run(module.get()).value());
+}
+
 TEST_F(SoftmaxFusionTest, DoubleSoftmaxPatternWithExtraStuff) {
   const std::string& hlo_string = R"(
 

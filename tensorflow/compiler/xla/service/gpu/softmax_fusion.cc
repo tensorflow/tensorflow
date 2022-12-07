@@ -268,8 +268,8 @@ bool IsSupportedBroadcast(HloInstruction* hlo) {
   return true;
 }
 
-Status ReplaceSoftmaxWithCustomCall(HloInstruction* root,
-                                    HloInstruction* producer) {
+StatusOr<bool> TryReplaceSoftmaxWithCustomCall(HloInstruction* root,
+                                               HloInstruction* producer) {
   absl::flat_hash_map<const HloInstruction*, HloInstruction*>
       old_to_new_mapping;
   auto builder = HloComputation::Builder("softmax_computation");
@@ -287,6 +287,13 @@ Status ReplaceSoftmaxWithCustomCall(HloInstruction* root,
   while (!worklist.empty()) {
     HloInstruction* current = worklist.front();
     worklist.pop();
+    // If it is a broadcast that we cannot fuse in, we should not replace the
+    // matched softmax with the custom call, because not fusing the broadcast
+    // can have negative impact on performance.
+    if (current->opcode() == HloOpcode::kBroadcast &&
+        !IsSupportedBroadcast(current)) {
+      return false;
+    }
     // TODO(akuegel): Currently our MLIR lowering doesn't work if we fuse
     // constants in. This results in an error like:
     // 'memref.get_global' op '__constant_150xf32' does not reference a valid
@@ -299,7 +306,7 @@ Status ReplaceSoftmaxWithCustomCall(HloInstruction* root,
          (current == producer && current->user_count() == 2)) &&
         ((current->IsElementwise() &&
           current->opcode() != HloOpcode::kConstant) ||
-         IsSupportedBroadcast(current)) &&
+         current->opcode() == HloOpcode::kBroadcast) &&
         llvm::none_of(current->operands(), [](HloInstruction* operand) {
           return ShapeInvolvesComplexNumbers(operand->shape());
         })) {
@@ -348,7 +355,7 @@ Status ReplaceSoftmaxWithCustomCall(HloInstruction* root,
     TF_RETURN_IF_ERROR(
         root->parent()->ReplaceInstruction(root, softmax_custom_call));
   }
-  return OkStatus();
+  return true;
 }
 
 }  // anonymous namespace
@@ -376,6 +383,7 @@ StatusOr<bool> SoftmaxFusion::Run(
   }
 
   absl::flat_hash_set<HloInstruction*> processed_softmax_roots;
+  bool changed = false;
   for (HloInstruction* root : softmax_roots) {
     if (processed_softmax_roots.contains(root)) {
       continue;
@@ -429,10 +437,11 @@ StatusOr<bool> SoftmaxFusion::Run(
       processed_softmax_roots.insert(merged_root);
     }
     HloInstruction* merged_producer = SoftmaxProducer(root);
-    TF_RETURN_IF_ERROR(
-        ReplaceSoftmaxWithCustomCall(merged_root, merged_producer));
+    TF_ASSIGN_OR_RETURN(bool replaced, TryReplaceSoftmaxWithCustomCall(
+                                           merged_root, merged_producer));
+    changed = changed || replaced;
   }
-  return true;
+  return changed;
 }
 
 }  // namespace xla::gpu
