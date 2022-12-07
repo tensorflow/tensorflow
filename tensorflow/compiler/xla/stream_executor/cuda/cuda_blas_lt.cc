@@ -101,19 +101,21 @@ port::StatusOr<cublasLtEpilogue_t> AsCublasLtEpilogue(
       return CUBLASLT_EPILOGUE_BIAS;
     case BlasLt::Epilogue::kBiasThenReLU:
       return CUBLASLT_EPILOGUE_RELU_BIAS;
+#if CUDA_VERSION >= 11040
     case BlasLt::Epilogue::kGELU:
-#if CUDA_VERSION >= 11040
       return CUBLASLT_EPILOGUE_GELU;
-#else
-      return port::InternalError(absl::StrCat(
-          "CUBLASLT_EPILOGUE_GELU epilog requires cublasLt >= 11.4"));
-#endif
+    case BlasLt::Epilogue::kGELUWithAux:
+      return CUBLASLT_EPILOGUE_GELU_AUX;
     case BlasLt::Epilogue::kBiasThenGELU:
-#if CUDA_VERSION >= 11040
       return CUBLASLT_EPILOGUE_GELU_BIAS;
+    case BlasLt::Epilogue::kBiasThenGELUWithAux:
+      return CUBLASLT_EPILOGUE_GELU_AUX_BIAS;
 #else
-      return port::InternalError(absl::StrCat(
-          "CUBLASLT_EPILOGUE_GELU_BIAS epilog requires cublasLt >= 11.4"));
+    case BlasLt::Epilogue::kGELU:
+    case BlasLt::Epilogue::kGELUWithAux:
+    case BlasLt::Epilogue::kBiasThenGELU:
+    case BlasLt::Epilogue::kBiasThenGELUWithAux:
+      return port::InternalError("GELU epilogues require cublasLt >= 11.4");
 #endif
   }
 }
@@ -250,7 +252,7 @@ port::Status BlasLt::DoMatmul(Stream* stream, const BlasLt::MatmulPlan& plan,
                               DeviceMemoryBase c, DeviceMemoryBase d,
                               const BlasLt::MatmulAlgorithm& algorithm,
                               ScratchAllocator& scratch_allocator,
-                              DeviceMemoryBase bias,
+                              DeviceMemoryBase bias, DeviceMemoryBase aux,
                               blas::ProfileResult* profile_result) {
   std::unique_ptr<gpu::GpuTimer, gpu::GpuTimerDeleter> timer;
   if (profile_result != nullptr) {
@@ -270,12 +272,37 @@ port::Status BlasLt::DoMatmul(Stream* stream, const BlasLt::MatmulPlan& plan,
   {
     absl::MutexLock lock(&mu_);
     TF_RET_CHECK(blas_lt_ != nullptr);
-    // We must set the bias pointer while holding the mutex, to avoid a
+    // We must set the bias and aux pointers while holding the mutex, to avoid a
     // potential race condition from multiple threads sharing the same plan.
     if (bias != nullptr) {
       TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
                                  CUBLASLT_MATMUL_DESC_BIAS_POINTER,
                                  bias.opaque()));
+    }
+
+    if (aux != nullptr) {
+      TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
+                                 CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_POINTER,
+                                 aux.opaque()));
+
+      // Set leading dim and batch stride of auxiliary output to match output.
+      // TODO(cjfj): Set this once at initialization.
+      TF_ASSIGN_OR_RETURN(
+          int64_t output_leading_dim,
+          GetAttr<int64_t>(plan.d_desc.get(), CUBLASLT_MATRIX_LAYOUT_LD));
+
+      TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
+                                 CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_LD,
+                                 output_leading_dim));
+
+      TF_ASSIGN_OR_RETURN(
+          int64_t output_batch_stride,
+          GetAttr<int64_t>(plan.d_desc.get(),
+                           CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET));
+
+      TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
+                                 CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_BATCH_STRIDE,
+                                 output_batch_stride));
     }
 
     gpu::ScopedActivateExecutorContext sac{parent_};

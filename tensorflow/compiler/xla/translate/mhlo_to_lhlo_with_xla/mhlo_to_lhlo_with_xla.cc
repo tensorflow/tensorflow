@@ -884,12 +884,16 @@ tsl::StatusOr<lmhlo_gpu::CublasLtMatmulEpilogue> AsLhloEpilogue(
       return lmhlo_gpu::CublasLtMatmulEpilogue::Relu;
     case xla::gpu::GemmBackendConfig::GELU:
       return lmhlo_gpu::CublasLtMatmulEpilogue::Gelu;
+    case xla::gpu::GemmBackendConfig::GELU_AUX:
+      return lmhlo_gpu::CublasLtMatmulEpilogue::GeluAux;
     case xla::gpu::GemmBackendConfig::BIAS:
       return lmhlo_gpu::CublasLtMatmulEpilogue::Bias;
-    case xla::gpu::GemmBackendConfig::BIASRELU:
+    case xla::gpu::GemmBackendConfig::BIAS_RELU:
       return lmhlo_gpu::CublasLtMatmulEpilogue::BiasRelu;
-    case xla::gpu::GemmBackendConfig::BIASGELU:
+    case xla::gpu::GemmBackendConfig::BIAS_GELU:
       return lmhlo_gpu::CublasLtMatmulEpilogue::BiasGelu;
+    case xla::gpu::GemmBackendConfig::BIAS_GELU_AUX:
+      return lmhlo_gpu::CublasLtMatmulEpilogue::BiasGeluAux;
     default:
       return xla::InternalError("unknown epilogue");
   }
@@ -932,24 +936,43 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmul(
       bool has_vector_bias,
       xla::gpu::cublas_lt::EpilogueAddsVectorBias(config.epilogue()));
 
+  TF_ASSIGN_OR_RETURN(
+      bool has_aux_output,
+      xla::gpu::cublas_lt::EpilogueHasAuxiliaryOutput(config.epilogue()));
+
   TF_RET_CHECK(custom_call->operand_count() ==
                2 + int{has_matrix_bias} + int{has_vector_bias});
 
-  llvm::SmallVector<Value, 5> operands;
+  xla::ShapeIndex output_index =
+      has_aux_output ? xla::ShapeIndex{0} : xla::ShapeIndex{};
+
+  llvm::SmallVector<Value, 6> operands;
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(0), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(1), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(
-      has_matrix_bias ? custom_call->operand(2) : custom_call, &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
+  if (has_matrix_bias) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(2), &operands));
+  } else {
+    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, output_index));
+  }
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, output_index));
 
   if (has_vector_bias) {
     TF_RETURN_IF_ERROR(GetOrCreateView(
         custom_call->operand(has_matrix_bias ? 3 : 2), &operands));
   }
 
+  if (has_aux_output) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, {1}));
+  }
+
   auto op =
       CreateOpWithoutAttrs<lmhlo_gpu::CublasLtMatmulOp>(custom_call, operands);
   SetMatmulAttributes(op, config, builder_);
+
+  int32_t operand_sizes[] = {
+      1, 1, 1, 1, has_vector_bias ? 1 : 0, has_aux_output ? 1 : 0};
+  op->setAttr(op.getOperandSegmentSizeAttr(),
+              builder_.getDenseI32ArrayAttr(operand_sizes));
 
   TF_ASSIGN_OR_RETURN(lmhlo_gpu::CublasLtMatmulEpilogue epilogue,
                       AsLhloEpilogue(config.epilogue()));
