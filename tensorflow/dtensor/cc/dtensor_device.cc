@@ -2230,6 +2230,12 @@ bool PinToDTensorDevice(const TFE_Op* op, TF_Status* s) {
   // tensor to a non-cpu mesh.
   if (has_non_dtensor_resource && broadcast_mesh &&
       !broadcast_mesh->is_cpu_mesh()) {
+    LOG(WARNING)
+        << "DTensor Function has been pinned back to a physical device because"
+        << "a regular TF Variable is an input along with dtensor inputs and "
+        << "was unable to be upcasted to a DVariable. This "
+        << "may be unintended and signify an error in the way the user is "
+        << "mixing dtensors with regular variables as inputs to a function.";
     return false;
   }
 
