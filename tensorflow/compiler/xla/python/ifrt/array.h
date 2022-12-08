@@ -90,6 +90,18 @@ class Array : public llvm::RTTIExtends<Array, llvm::RTTIRoot> {
   // `data` must remain valid until the returned future becomes ready. It will
   // contain a valid data only if the returned future has an OK. Otherwise, its
   // content is undefined.
+  //
+  // TODO(hyeontaek): Add a `size` argument or change the type of `data` to
+  // `absl::Span<char>` to guard against buffer underflows and overflows.
+  //
+  // TODO(hyeontaek): Clarify memory alignment issues and document them.
+  // Implementations may impose alignment requirements on `data`. They can fail
+  // if the requirements are not satisfied so that they avoid extra memory
+  // copies that could incur performance overhead or extra memory use. The
+  // required alignments may be different across backends (e.g., depending on
+  // they use DMA) and across different `DType` and `Shape`. We may need to add
+  // an API that lets users query the alignment requirement of the specific
+  // implementation.
   ABSL_MUST_USE_RESULT
   virtual Future<Status> CopyToHostBuffer(
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
