@@ -722,7 +722,7 @@ class Trackable(object):
     If the `name` attribute should be saved to the checkpoint, then convert it
     a `tf.Variable`.
 
-    **TF1 Compatibility**
+    **TF1 Saver Compatibility**
     If your Trackable needs to be comatible with `tf.compat.v1.train.Saver`,
     implement `_gather_saveables_from_checkpoint`.
 

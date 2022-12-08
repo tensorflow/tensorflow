@@ -784,6 +784,7 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         ":save",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",

@@ -29,6 +29,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -671,20 +672,14 @@ class TrackableSaveable(saveable_object.SaveableObject):
                  for spec in self.specs])):
       return restore_fn(restored_tensor_dict)
 
-    # Wrap the restore function so that it can be converted to a tf.function
-    # when in graph mode (e.g. when creating a graph for SavedModel export).
-    def restore_from_tensors():
-      if (self._call_with_mapped_captures and
-          isinstance(restore_fn, core.ConcreteFunction)):
-        self._call_with_mapped_captures(restore_fn, [restored_tensor_dict])
-      else:
-        restore_fn(restored_tensor_dict)
-      return constant_op.constant(1)
-
-    if not ops.executing_eagerly_outside_functions():
-      restore_from_tensors = def_function.function(restore_from_tensors,
-                                                   autograph=False)
-    return restore_from_tensors()
+    if (self._call_with_mapped_captures and
+        isinstance(restore_fn, core.ConcreteFunction)):
+      ret = self._call_with_mapped_captures(restore_fn, [restored_tensor_dict])
+    else:
+      ret = restore_fn(restored_tensor_dict)
+    if ret is not None:
+      return ret
+    return control_flow_ops.no_op()
 
   def get_proto_names_and_checkpoint_keys(self):
     return [(self._prefix + local_name, spec.name)

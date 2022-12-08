@@ -1174,8 +1174,9 @@ class SerializeToTensorTest(test.TestCase):
         return {"v1": self.v1, "v2": self.v2}
 
       def _restore_from_tensors(self, restored_tensors):
-        self.v1.assign(restored_tensors["v1"])
-        self.v2.assign(restored_tensors["v2"])
+        return control_flow_ops.group(
+            self.v1.assign(restored_tensors["v1"]),
+            self.v2.assign(restored_tensors["v2"]))
 
     root = MultiTensor(variables_lib.Variable(1), variables_lib.Variable(2))
     child = MultiTensor(variables_lib.Variable(3), variables_lib.Variable(4))
