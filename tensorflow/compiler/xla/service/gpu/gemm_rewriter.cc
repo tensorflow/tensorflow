@@ -201,7 +201,7 @@ auto BcastConstScalarNear(double value) {
 // this is represented by a Clamp instruction followed by a Convert instruction.
 
 // Steps 1 through 3 can be elided independently of the remainder. Steps 5 and 6
-// can be elided only if steps 1 through 3 were successfully transformed. Step 4
+// are elided only if steps 1 through 3 were successfully transformed. Step 4
 // requires steps 5 and 6, i.e. the computation of DAmax can be elided only when
 // the output of the GEMM is requested in FP8 format.
 
@@ -441,14 +441,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (Match(
             instr,
             m::Convert(
-                m::Clamp(m::Broadcast(m::Constant(&clamp_lower).WithOneUser())
-                             .WithOneUser(),
+                m::Clamp(m::Broadcast(m::Constant(&clamp_lower)),
                          m::Divide(m::CustomCall(&existing_gemm,
                                                  kCublasLtMatmulF8CallTarget),
                                    m::Broadcast(m::Op(&d_scale)).WithOneUser())
                              .WithOneUser(),
-                         m::Broadcast(m::Constant(&clamp_upper).WithOneUser())
-                             .WithOneUser())
+                         m::Broadcast(m::Constant(&clamp_upper)))
                     .WithOneUser()))) {
       return F8ConvertD(instr, existing_gemm, d_scale, clamp_lower,
                         clamp_upper);
@@ -472,6 +470,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
            b->shape().element_type() == F8E5M2) ||
           (a->shape().element_type() == F8E5M2 &&
            b->shape().element_type() == F8E4M3FN))) {
+      return OkStatus();
+    }
+
+    if (!ShapeUtil::IsScalar(a_scale->shape()) ||
+        !ShapeUtil::IsScalar(b_scale->shape())) {
       return OkStatus();
     }
 
@@ -526,22 +529,36 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     HloInstruction *one = instr->AddInstruction(
         HloInstruction::CreateConstant(one_literal.Clone()));
 
-    // cuBLASLt FP8 GEMM kernels require A, which is later exchanged with B, to
-    // be transposed.
-    HloInstruction *b_transp =
-        instr->AddInstruction(HloInstruction::CreateTranspose(
-            ShapeUtil::MakeShape(
-                b->shape().element_type(),
-                {b->shape().dimensions(1), b->shape().dimensions(0)}),
-            b, {1, 0}));
+    // cuBLASLt FP8 GEMM kernels currently require the first operand, i.e. A, to
+    // be transposed. If the result of the GEMM is not in column major order, A
+    // and B are later exchanged, and B is transposed here instead.
+    // TODO(philipphack): Remove once cuBLASLt supports the NN configuration.
+    TF_ASSIGN_OR_RETURN(auto gemm_config,
+                        instr->backend_config<GemmBackendConfig>());
+    HloInstruction *a_or_b_transp;
+    TF_ASSIGN_OR_RETURN(bool is_col_major,
+                        OutputIsColumnMajor(instr, gemm_config));
+    if (is_col_major) {
+      a_or_b_transp = instr->AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(
+              a->shape().element_type(),
+              {a->shape().dimensions(1), a->shape().dimensions(0)}),
+          a, {1, 0}));
+    } else {
+      a_or_b_transp = instr->AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(
+              b->shape().element_type(),
+              {b->shape().dimensions(1), b->shape().dimensions(0)}),
+          b, {1, 0}));
+    }
 
     std::unique_ptr<HloInstruction> new_custom_call =
         HloInstruction::CreateCustomCall(
             instr->shape(),
-            {a, b_transp, c_bcast, a_scale_f32, b_scale_f32, one, one},
+            {is_col_major ? a_or_b_transp : a, is_col_major ? b : a_or_b_transp,
+             c_bcast, a_scale_f32, b_scale_f32, one, one},
             kCublasLtMatmulF8CallTarget);
-    TF_ASSIGN_OR_RETURN(auto gemm_config,
-                        instr->backend_config<GemmBackendConfig>());
+
     TF_RETURN_IF_ERROR(new_custom_call->set_backend_config(gemm_config));
     TF_RETURN_IF_ERROR(SetName(instr->GetModule(), new_custom_call.get()));
     TF_RETURN_IF_ERROR(
@@ -555,45 +572,17 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                     HloInstruction *clamp_upper) {
     // Verify the data types and the operands of clamp.
     if (instr->shape().element_type() == F8E4M3FN) {
-      Literal numeric_limit_lower(ShapeUtil::MakeScalarShape(F32));
-      numeric_limit_lower.PopulateWithValue(
-          float(-std::numeric_limits<tsl::float8_e4m3>::max()));
-      TF_ASSIGN_OR_RETURN(Literal clamp_lower_literal,
-                          clamp_lower->literal().Convert(F32));
-      Status is_equal =
-          literal_comparison::Equal(clamp_lower_literal, numeric_limit_lower);
-      if (!is_equal.ok()) {
-        return OkStatus();
-      }
-      Literal numeric_limit_upper(ShapeUtil::MakeScalarShape(F32));
-      numeric_limit_upper.PopulateWithValue(
-          float(std::numeric_limits<tsl::float8_e4m3>::max()));
-      TF_ASSIGN_OR_RETURN(Literal clamp_upper_literal,
-                          clamp_upper->literal().Convert(F32));
-      is_equal =
-          literal_comparison::Equal(clamp_upper_literal, numeric_limit_upper);
-      if (!is_equal.ok()) {
+      if (!clamp_lower->literal().IsAllFloat(
+              float(std::numeric_limits<tsl::float8_e4m3>::lowest())) ||
+          !clamp_upper->literal().IsAllFloat(
+              float(std::numeric_limits<tsl::float8_e4m3>::max()))) {
         return OkStatus();
       }
     } else if (instr->shape().element_type() == F8E5M2) {
-      Literal numeric_limit_lower(ShapeUtil::MakeScalarShape(F32));
-      numeric_limit_lower.PopulateWithValue(
-          float(-std::numeric_limits<tsl::float8_e5m2>::max()));
-      TF_ASSIGN_OR_RETURN(Literal clamp_lower_literal,
-                          clamp_lower->literal().Convert(F32));
-      Status is_equal =
-          literal_comparison::Equal(clamp_lower_literal, numeric_limit_lower);
-      if (!is_equal.ok()) {
-        return OkStatus();
-      }
-      Literal numeric_limit_upper(ShapeUtil::MakeScalarShape(F32));
-      numeric_limit_upper.PopulateWithValue(
-          float(std::numeric_limits<tsl::float8_e5m2>::max()));
-      TF_ASSIGN_OR_RETURN(Literal clamp_upper_literal,
-                          clamp_upper->literal().Convert(F32));
-      is_equal =
-          literal_comparison::Equal(clamp_upper_literal, numeric_limit_upper);
-      if (!is_equal.ok()) {
+      if (!clamp_lower->literal().IsAllFloat(
+              float(std::numeric_limits<tsl::float8_e5m2>::lowest())) ||
+          !clamp_upper->literal().IsAllFloat(
+              float(std::numeric_limits<tsl::float8_e5m2>::max()))) {
         return OkStatus();
       }
     } else {
@@ -602,7 +591,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // The possible second user of the GEMM must be the calculation of the
     // maximum of the absolute value of the result of the GEMM. Since it is
-    // unkown in what form this operation will be used, it is identified in a
+    // unknown in what form this operation will be used, it is identified in a
     // top-down approach by inspecting the users of the GEMM.
     const std::vector<HloInstruction *> gemm_users = existing_gemm->users();
     HloInstruction *reduce_damax = nullptr;
@@ -611,16 +600,15 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         if (gemm_users[i]->opcode() == HloOpcode::kAbs &&
             gemm_users[i]->users().size() == 1 &&
             gemm_users[i]->users()[0]->opcode() == HloOpcode::kReduce &&
+            gemm_users[i]->users()[0]->operands().size() == 2 &&
             gemm_users[i]->users()[0]->operand(1)->opcode() ==
-                HloOpcode::kConstant) {
+                HloOpcode::kConstant &&
+            ShapeUtil::IsScalar(
+                gemm_users[i]->users()[0]->operand(1)->shape())) {
           HloInstruction *reduce = gemm_users[i]->users()[0];
-          Literal minus_inf =
-              LiteralUtil::MinValue(reduce->operand(1)->shape().element_type());
-          Status is_equal = literal_comparison::Equal(
-              minus_inf, reduce->operand(1)->literal());
           HloComputation *reduce_comp = reduce->to_apply();
           HloInstruction *reduce_comp_root = reduce_comp->root_instruction();
-          if (is_equal.ok() &&
+          if (reduce->operand(1)->literal().Get<float>({}) <= 0. &&
               reduce_comp_root->opcode() == HloOpcode::kMaximum &&
               reduce_comp_root->operand(0)->opcode() == HloOpcode::kParameter &&
               reduce_comp_root->operand(1)->opcode() == HloOpcode::kParameter) {
@@ -635,9 +623,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return OkStatus();
     }
 
+    if (!ShapeUtil::IsScalar(d_scale->shape())) {
+      return OkStatus();
+    }
+
     // Change the data type of C to BF16 as required by cuBLASLt for GEMMs with
     // FP8 outputs (see cuBLASLt documentation).
-    Literal c_literal(ShapeUtil::MakeScalarShape(BF16));
+    Literal c_literal = LiteralUtil::Zero(BF16);
     HloInstruction *c = instr->AddInstruction(
         HloInstruction::CreateConstant(c_literal.Clone()));
     HloInstruction *c_bcast =
@@ -1052,6 +1044,32 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         std::make_tuple(compute_type, scale_type, a_dtype, output_dtype));
   }
 
+  StatusOr<bool> OutputIsColumnMajor(
+      const HloInstruction *instr,
+      const GemmBackendConfig &gemm_backend_config) const {
+    const HloInstruction *lhs = instr->operand(0);
+    const HloInstruction *rhs = instr->operand(1);
+    const Shape &output_shape = instr->shape();
+
+    // Get the rhs non-contracting dimensions as they will eventually be at the
+    // cublasLt level.
+    std::vector<int64_t> rhs_non_contracting_dims;
+    const DotDimensionNumbers &dot_dims =
+        gemm_backend_config.dot_dimension_numbers();
+    TF_ASSIGN_OR_RETURN(
+        GemmConfig gemm_config,
+        GemmConfig::For(
+            lhs->shape(), dot_dims.lhs_batch_dimensions(),
+            dot_dims.lhs_contracting_dimensions(), rhs->shape(),
+            dot_dims.rhs_batch_dimensions(),
+            dot_dims.rhs_contracting_dimensions(),
+            /*output_shape=*/instr->shape(), gemm_backend_config.alpha_real(),
+            gemm_backend_config.alpha_imag(), gemm_backend_config.beta(),
+            /*algorithm*/ std::nullopt, se::blas::kDefaultComputePrecision));
+
+    return gemm_config.output_layout.order == MatrixLayout::Order::kColumnMajor;
+  }
+
   StatusOr<bool> GemmIsSupportedByCublasLt(
       const HloInstruction *instr,
       const GemmBackendConfig &gemm_backend_config) const {
@@ -1103,17 +1121,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     std::vector<int64_t> rhs_non_contracting_dims;
     const DotDimensionNumbers &dot_dims =
         gemm_backend_config.dot_dimension_numbers();
-    TF_ASSIGN_OR_RETURN(
-        GemmConfig gemm_config,
-        GemmConfig::For(
-            lhs->shape(), dot_dims.lhs_batch_dimensions(),
-            dot_dims.lhs_contracting_dimensions(), rhs->shape(),
-            dot_dims.rhs_batch_dimensions(),
-            dot_dims.rhs_contracting_dimensions(),
-            /*output_shape=*/instr->shape(), gemm_backend_config.alpha_real(),
-            gemm_backend_config.alpha_imag(), gemm_backend_config.beta(),
-            /*algorithm*/ std::nullopt, se::blas::kDefaultComputePrecision));
-    if (gemm_config.output_layout.order != MatrixLayout::Order::kColumnMajor) {
+
+    TF_ASSIGN_OR_RETURN(bool output_is_column_major,
+                        OutputIsColumnMajor(instr, gemm_backend_config));
+    if (!output_is_column_major) {
       // cublasLt's matmul output is column major by default. This gemm requires
       // the output to be in row major. Later we will swap lhs & rhs (and
       // transpose each operand) of this gemm. Since we care about the rhs at

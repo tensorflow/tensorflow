@@ -298,6 +298,8 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     TF_RET_CHECK(lhs_layout.num_cols == rhs_layout.num_rows);
     TF_RET_CHECK(output_layout.num_rows == lhs_layout.num_rows);
     TF_RET_CHECK(output_layout.num_cols == rhs_layout.num_cols);
+    TF_RET_CHECK(c_layout.num_rows == output_layout.num_rows);
+    TF_RET_CHECK(c_layout.num_cols == output_layout.num_cols);
   } else {
     TF_RET_CHECK(lhs_layout.num_cols == rhs_layout.num_cols);
     TF_RET_CHECK(output_layout.num_rows == lhs_layout.num_rows);
@@ -743,6 +745,18 @@ template <>
 struct CudaToNativeT<CUDA_R_32F> {
   using type = float;
 };
+template <>
+struct CudaToNativeT<CUDA_R_64F> {
+  using type = double;
+};
+template <>
+struct CudaToNativeT<CUDA_C_32F> {
+  using type = complex64;
+};
+template <>
+struct CudaToNativeT<CUDA_C_64F> {
+  using type = complex128;
+};
 
 }  // namespace
 
@@ -879,9 +893,9 @@ Status MatmulPlan::ExecuteOnStream(
       operand_types{plan_.a_desc.type(), plan_.b_desc.type(),
                     plan_.c_desc.type(), plan_.d_desc.type()};
 
-#define TYPED_MATMUL_F8(ATYPE, BTYPE, CTYPE, DTYPE)                         \
+#define TYPED_MATMUL(SCALENTYPE, ATYPE, BTYPE, CTYPE, DTYPE)                \
   if (operand_types == std::make_tuple(ATYPE, BTYPE, CTYPE, DTYPE)) {       \
-    return DoMatmul<float, CudaToNativeT<ATYPE>::type,                      \
+    return DoMatmul<SCALENTYPE, CudaToNativeT<ATYPE>::type,                 \
                     CudaToNativeT<BTYPE>::type, CudaToNativeT<CTYPE>::type, \
                     CudaToNativeT<DTYPE>::type>(                            \
         stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,        \
@@ -890,70 +904,49 @@ Status MatmulPlan::ExecuteOnStream(
   }
 
   // FP8 compatible type combinations (see cuBLASLt documentation):
-  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_16BF);
-  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_8F_E4M3);
-  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_8F_E4M3);
-  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_16F);
-  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_32F, CUDA_R_32F);
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_16BF)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16BF,
+               CUDA_R_8F_E4M3)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16F,
+               CUDA_R_8F_E4M3)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_16F)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_32F, CUDA_R_32F)
 
-  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16BF, CUDA_R_16BF);
-  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16BF, CUDA_R_8F_E4M3);
-  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16BF, CUDA_R_8F_E5M2);
-  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16F, CUDA_R_8F_E4M3);
-  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16F, CUDA_R_8F_E5M2);
-  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16F, CUDA_R_16F);
-  TYPED_MATMUL_F8(CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_32F, CUDA_R_32F);
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16BF, CUDA_R_16BF)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16BF,
+               CUDA_R_8F_E4M3)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16BF,
+               CUDA_R_8F_E5M2)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16F,
+               CUDA_R_8F_E4M3)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16F,
+               CUDA_R_8F_E5M2)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16F, CUDA_R_16F)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_32F, CUDA_R_32F)
 
-  TYPED_MATMUL_F8(CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_16BF);
-  TYPED_MATMUL_F8(CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_8F_E4M3);
-  TYPED_MATMUL_F8(CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_8F_E5M2);
-  TYPED_MATMUL_F8(CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_8F_E4M3);
-  TYPED_MATMUL_F8(CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_8F_E5M2);
-  TYPED_MATMUL_F8(CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_16F);
-  TYPED_MATMUL_F8(CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_32F, CUDA_R_32F);
-
-#undef TYPED_MATMUL_F8
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_16BF)
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16BF,
+               CUDA_R_8F_E4M3)
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16BF,
+               CUDA_R_8F_E5M2)
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16F,
+               CUDA_R_8F_E4M3)
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16F,
+               CUDA_R_8F_E5M2)
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_16F)
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_32F, CUDA_R_32F)
 
   // Other data types:
-  if (operand_types ==
-      std::make_tuple(CUDA_R_16F, CUDA_R_16F, CUDA_R_16F, CUDA_R_16F)) {
-    return DoMatmul<float, Eigen::half>(
-        stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,
-        a_scale_buffer, b_scale_buffer, c_scale_buffer, d_scale_buffer,
-        d_amax_buffer, algorithm, scratch_allocator, profile_result);
-  } else if (operand_types == std::make_tuple(CUDA_R_16BF, CUDA_R_16BF,
-                                              CUDA_R_16BF, CUDA_R_16BF)) {
-    return DoMatmul<float, Eigen::bfloat16>(
-        stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,
-        a_scale_buffer, b_scale_buffer, c_scale_buffer, d_scale_buffer,
-        d_amax_buffer, algorithm, scratch_allocator, profile_result);
-  } else if (operand_types ==
-             std::make_tuple(CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F)) {
-    return DoMatmul<float, float>(
-        stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,
-        a_scale_buffer, b_scale_buffer, c_scale_buffer, d_scale_buffer,
-        d_amax_buffer, algorithm, scratch_allocator, profile_result);
-  } else if (operand_types ==
-             std::make_tuple(CUDA_R_64F, CUDA_R_64F, CUDA_R_64F, CUDA_R_64F)) {
-    return DoMatmul<double, double>(
-        stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,
-        a_scale_buffer, b_scale_buffer, c_scale_buffer, d_scale_buffer,
-        d_amax_buffer, algorithm, scratch_allocator, profile_result);
-  } else if (operand_types ==
-             std::make_tuple(CUDA_C_32F, CUDA_C_32F, CUDA_C_32F, CUDA_C_32F)) {
-    return DoMatmul<complex64, complex64>(
-        stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,
-        a_scale_buffer, b_scale_buffer, c_scale_buffer, d_scale_buffer,
-        d_amax_buffer, algorithm, scratch_allocator, profile_result);
-  } else if (operand_types ==
-             std::make_tuple(CUDA_C_64F, CUDA_C_64F, CUDA_C_64F, CUDA_C_64F)) {
-    return DoMatmul<complex128, complex128>(
-        stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,
-        a_scale_buffer, b_scale_buffer, c_scale_buffer, d_scale_buffer,
-        d_amax_buffer, algorithm, scratch_allocator, profile_result);
-  } else {
-    return InternalError("Unexpected dtype");
-  }
+  TYPED_MATMUL(float, CUDA_R_16F, CUDA_R_16F, CUDA_R_16F, CUDA_R_16F)
+  TYPED_MATMUL(float, CUDA_R_16BF, CUDA_R_16BF, CUDA_R_16BF, CUDA_R_16BF)
+  TYPED_MATMUL(float, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F)
+  TYPED_MATMUL(double, CUDA_R_64F, CUDA_R_64F, CUDA_R_64F, CUDA_R_64F)
+  TYPED_MATMUL(complex64, CUDA_C_32F, CUDA_C_32F, CUDA_C_32F, CUDA_C_32F)
+  TYPED_MATMUL(complex128, CUDA_C_64F, CUDA_C_64F, CUDA_C_64F, CUDA_C_64F)
+
+#undef TYPED_MATMUL
+
+  return InternalError("Unexpected dtype");
 }
 
 StatusOr<std::vector<se::cuda::BlasLt::MatmulAlgorithm>>

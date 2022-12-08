@@ -3590,6 +3590,11 @@ ENTRY main {
 }
 
 TEST_F(CublasLtGemmRewriteTest, ScaledABUnscaledDF8) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -3642,6 +3647,11 @@ TEST_F(CublasLtGemmRewriteTest, ScaledABUnscaledDF8) {
 }
 
 TEST_F(CublasLtGemmRewriteTest, ScaledABScaledDF8) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
   const char* hlo_text = R"(
     HloModule test
 
@@ -3705,6 +3715,11 @@ TEST_F(CublasLtGemmRewriteTest, ScaledABScaledDF8) {
 }
 
 TEST_F(CublasLtGemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP()
+        << "cuBLASLt FP8 kernels require Hopper or newer architecture.";
+  }
   const char* hlo_text = R"(
     HloModule test
 

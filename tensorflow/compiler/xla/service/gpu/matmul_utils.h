@@ -100,6 +100,7 @@ struct GemmConfig {
       double alpha_real, double alpha_imag, double beta,
       std::optional<int64_t> algorithm, int64_t compute_precision);
 
+  // As above with additional `c_shape` parameter.
   static StatusOr<GemmConfig> For(
       const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
       absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,
