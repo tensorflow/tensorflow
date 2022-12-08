@@ -30,7 +30,6 @@ namespace xla {
 namespace gpu {
 
 using xla::runtime::CustomCall;
-using xla::runtime::Executable;
 
 namespace {
 struct Cholesky {
@@ -80,23 +79,18 @@ absl::Status Cholesky::operator()(
 #endif
 }
 
-static bool Cholesky(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                     void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.cholesky")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const DebugOptions*>()
-                             .Arg<runtime::StridedMemrefView>()  // operand
-                             .Arg<runtime::StridedMemrefView>()  // a
-                             .Arg<runtime::MemrefView>()         // workspace
-                             .Arg<runtime::MemrefView>()         // info
-                             .Attr<int64_t>("batch_size")
-                             .Attr<bool>("is_lower")
-                             .Attr<int64_t>("n")
-                             .To<checks>(Cholesky::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    Cholesky, Cholesky::Handler(), checks,
+    CustomCall::Bind("xla.gpu.cholesky")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .UserData<const DebugOptions*>()
+        .Arg<runtime::StridedMemrefView>()  // operand
+        .Arg<runtime::StridedMemrefView>()  // a
+        .Arg<runtime::MemrefView>()         // workspace
+        .Arg<runtime::MemrefView>()         // info
+        .Attr<int64_t>("batch_size")
+        .Attr<bool>("is_lower")
+        .Attr<int64_t>("n"));
 
 void RegisterCholeskyCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.gpu.cholesky", &xla::gpu::Cholesky);

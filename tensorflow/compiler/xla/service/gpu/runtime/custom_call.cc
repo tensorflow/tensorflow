@@ -34,7 +34,6 @@ namespace xla {
 namespace gpu {
 
 using ::xla::runtime::CustomCall;
-using ::xla::runtime::Executable;
 using ::xla::runtime::FlatMemrefView;
 using ::xla::runtime::StridedMemrefView;
 
@@ -144,20 +143,15 @@ absl::Status XlaCustomCall::operator()(
   return absl::InvalidArgumentError("Incorrect custom call API version");
 }
 
-static bool CustomCall(runtime::ExecutionContext* ctx, void** args,
-                       void** attrs, void** rets) {
-  static auto* handler = runtime::CustomCall::Bind("xla.gpu.memcpy")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const DebugOptions*>()
-                             .Arg<CustomCall::RemainingArgs>()  // args
-                             .Attr<std::string_view>("call_target_name")
-                             .Attr<int32_t>("api_version")
-                             .Attr<std::string_view>("backend_config")
-                             .To<checks>(XlaCustomCall::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    CustomCall, XlaCustomCall::Handler(), checks,
+    runtime::CustomCall::Bind("xla.gpu.memcpy")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .UserData<const DebugOptions*>()
+        .Arg<CustomCall::RemainingArgs>()  // args
+        .Attr<std::string_view>("call_target_name")
+        .Attr<int32_t>("api_version")
+        .Attr<std::string_view>("backend_config"));
 
 void RegisterCustomCall(runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.gpu.custom_call", &xla::gpu::CustomCall);

@@ -118,7 +118,7 @@ absl::Status KernelLaunch::operator()(
 
 //===----------------------------------------------------------------------===//
 
-XLA_RUNTIME_DEFINE_CUSTOM_CALL_WITH_CHECKS(
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
     Launch, KernelLaunch::Handler(), checks,
     CustomCall::Bind("xla.gpu.func.launch")
         .UserData<const ServiceExecutableRunOptions*>()

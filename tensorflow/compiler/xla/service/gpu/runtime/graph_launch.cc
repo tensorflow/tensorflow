@@ -290,23 +290,18 @@ static absl::Status LaunchGraph(
 
 //===----------------------------------------------------------------------===//
 
-static bool Launch(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                   void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.cuda.graph.launch")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const std::string*>()
-                             .UserData<const std::vector<uint8_t>*>()
-                             .UserData<se::DeviceMemoryBase*>()
-                             .UserData<StreamExecutorKernels::Snapshot*>()
-                             .UserData<GraphInstances::Snapshot*>()
-                             .UserData<Executable*>()
-                             .RemainingArgs()
-                             .Attr<CustomCall::FunctionOrdinal>("capture")
-                             .To<checks>(LaunchGraph)
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    Launch, LaunchGraph, checks,
+    CustomCall::Bind("xla.gpu.cuda.graph.launch")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .UserData<const std::string*>()
+        .UserData<const std::vector<uint8_t>*>()
+        .UserData<se::DeviceMemoryBase*>()
+        .UserData<StreamExecutorKernels::Snapshot*>()
+        .UserData<GraphInstances::Snapshot*>()
+        .UserData<Executable*>()
+        .RemainingArgs()
+        .Attr<CustomCall::FunctionOrdinal>("capture"));
 
 void RegisterGraphLaunchCustomCalls(
     runtime::DirectCustomCallRegistry& registry) {

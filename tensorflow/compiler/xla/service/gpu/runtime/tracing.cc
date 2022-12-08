@@ -28,7 +28,6 @@ namespace xla {
 namespace gpu {
 
 using ::xla::runtime::CustomCall;
-using ::xla::runtime::Executable;
 using ::xla::runtime::HloTrace;
 
 using ::tsl::profiler::ScopedAnnotationStack;
@@ -66,26 +65,14 @@ struct ActivityEnd {
 
 //===----------------------------------------------------------------------===//
 
-static bool Start(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                  void** rets) {
-  static auto* handler = CustomCall::Bind("xla.trace.activity_start")
-                             .Attr<HloTrace>("annotation")
-                             .Ret<int64_t>()
-                             .To<checks>(ActivityStart::Handler())
-                             .release();
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(Start, ActivityStart::Handler(), checks,
+                               CustomCall::Bind("xla.trace.activity_start")
+                                   .Attr<HloTrace>("annotation")
+                                   .Ret<int64_t>());
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
-
-static bool End(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                void** rets) {
-  static auto* handler = CustomCall::Bind("xla.trace.activity_end")
-                             .Arg<int64_t>()
-                             .To<checks>(ActivityEnd::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    End, ActivityEnd::Handler(), checks,
+    CustomCall::Bind("xla.trace.activity_end").Arg<int64_t>());
 
 //===----------------------------------------------------------------------===//
 

@@ -42,11 +42,6 @@ using mlir::StringRef;
 namespace lmhlo_gpu = ::mlir::lmhlo_gpu;
 namespace mhlo = ::mlir::mhlo;
 
-// TODO(jacksonstokes): Add caching layer for convolution configs and runners.
-
-// TODO(ezhulenev): We need to find a better way to pass structured attributes
-// to JitRt custom calls.
-
 namespace {
 
 struct Window {

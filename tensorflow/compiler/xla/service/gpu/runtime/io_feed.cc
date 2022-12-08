@@ -29,7 +29,6 @@ namespace xla {
 namespace gpu {
 
 using runtime::CustomCall;
-using runtime::Executable;
 
 namespace {
 struct Infeed {
@@ -87,17 +86,12 @@ absl::Status Infeed::operator()(const ServiceExecutableRunOptions* run_options,
   return absl::OkStatus();
 }
 
-static bool Infeed(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                   void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.infeed")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<CustomCall::RemainingArgs>()  // args
-                             .Attr<std::string_view>("config")
-                             .To<checks>(Infeed::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    Infeed, Infeed::Handler(), checks,
+    CustomCall::Bind("xla.gpu.infeed")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .Arg<CustomCall::RemainingArgs>()  // args
+        .Attr<std::string_view>("config"));
 
 namespace {
 struct Outfeed {
@@ -182,17 +176,12 @@ absl::Status Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
   return absl::OkStatus();
 }
 
-static bool Outfeed(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                    void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.outfeed")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<CustomCall::RemainingArgs>()  // args
-                             .Attr<std::string_view>("config")
-                             .To<checks>(Outfeed::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    Outfeed, Outfeed::Handler(), checks,
+    CustomCall::Bind("xla.gpu.outfeed")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .Arg<CustomCall::RemainingArgs>()  // args
+        .Attr<std::string_view>("config"));
 
 void RegisterIoFeedCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.gpu.infeed", &xla::gpu::Infeed);
