@@ -161,6 +161,33 @@ class CustomCall {
 
   static CustomCallBinding<> Bind(std::string callee);
   static CustomCallBinding<> Bind(std::string callee, const Options& opts);
+
+  // This is a helper template that allows to convert functions pointers from
+  // the run time values to compile time values (template arguments) with
+  // automatic template arguments inference.
+  //
+  // Example:
+  //
+  //   static LogicalResult Foo(int32_t arg) {... }
+  //
+  //   template<typename Callable>
+  //   void call(Callable callable) { callable(42); }
+  //
+  //   call(Foo);                     // `Foo` passed as a runtime value
+  //   call(FunctionWrapper<Foo>())   // `Foo` passed as a template argument
+  //
+  // In the first case compiler will not be able to inline `Foo` into the `call`
+  // body. However in the second case it can do that, because function pointer
+  // is a statically known value (template non-type argument).
+  template <auto fn>
+  struct FunctionWrapper;
+
+  template <typename Ret, typename... Args, Ret (*fn)(Args...)>
+  struct FunctionWrapper<fn> {
+    LLVM_ATTRIBUTE_ALWAYS_INLINE Ret operator()(Args... args) const {
+      return fn(args...);
+    }
+  };
 };
 
 // Forward declare template defined below.
