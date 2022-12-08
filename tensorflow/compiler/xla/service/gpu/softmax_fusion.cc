@@ -138,6 +138,7 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
   // The reduction should reduce the last dimension of the operand shape.
   if (reduce_or_unary->opcode() != HloOpcode::kReduce ||
       reduce_or_unary->dimensions().size() != 1 ||
+      reduce_or_unary->shape().element_type() == F64 ||
       reduce_or_unary->dimensions()[0] != reduce_or_unary->shape().rank()) {
     return false;
   }

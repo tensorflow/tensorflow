@@ -137,6 +137,31 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(std::move(initial_module), ErrorSpec(1e-6, 1e-6)));
 }
 
+TEST_F(SoftmaxFusionTest, SingleSoftmaxPatternF64) {
+  const std::string& hlo_string = R"(
+
+HloModule softmax
+
+max_computation {
+  arg_0 = f64[] parameter(0)
+  arg_1 = f64[] parameter(1)
+  ROOT maximum = f64[] maximum(arg_0, arg_1)
+}
+
+ENTRY main {
+  param_0 = f64[128,127]{1,0} parameter(0)
+  constant_neg_inf = f64[] constant(-inf)
+  reduce = f64[128]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f64[128,127]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f64[128,127]{1,0} subtract(param_0, broadcast)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  SoftmaxFusion fusion;
+  // We currently do not support f64 reductions in softmax.
+  EXPECT_FALSE(fusion.Run(module.get()).value());
+}
+
 TEST_F(SoftmaxFusionTest, SingleSoftmaxPatternRowsNotLargerThanColumns) {
   const std::string& hlo_string = R"(
 
