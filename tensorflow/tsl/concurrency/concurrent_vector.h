@@ -22,8 +22,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "tensorflow/tsl/platform/mutex.h"
 
 namespace tsl {
 namespace internal {
@@ -98,7 +98,7 @@ class ConcurrentVector {
   // Returns the index of the newly inserted item.
   template <typename... Args>
   size_t emplace_back(Args&&... args) {
-    mutex_lock lock(mutex_);
+    absl::MutexLock lock(&mutex_);
 
     auto& last = all_allocated_elements_.back();
 
@@ -161,7 +161,7 @@ class ConcurrentVector {
   // relationship between emplace_back and operator[].
   std::atomic<uint64_t> state_;
 
-  mutex mutex_;
+  absl::Mutex mutex_;
   std::vector<std::vector<T>> all_allocated_elements_;
 };
 

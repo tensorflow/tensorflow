@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "tensorflow/tsl/concurrency/async_value.h"
 #include "tensorflow/tsl/concurrency/ref_count.h"
-#include "tensorflow/tsl/platform/mem.h"
 
 namespace tsl {
 
@@ -319,7 +318,8 @@ T* PlacementConstruct(void* buf, Args&&... args) {
 
 template <typename T, typename... Args>
 T* AllocateAndConstruct(Args&&... args) {
-  void* buf = port::AlignedMalloc(sizeof(T), alignof(T));
+  // TODO(ezhulenev): `port::AlignedMalloc` has a different order of arguments!
+  void* buf = internal::AlignedAlloc(alignof(T), sizeof(T));
   return PlacementConstruct<T, Args...>(buf, std::forward<Args>(args)...);
 }
 
