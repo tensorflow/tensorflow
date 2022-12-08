@@ -117,6 +117,10 @@ createTransformReduceForCpuPass(int64_t vectorSize = 8, int64_t tileSize1D = 32,
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformTransposeForCpuPass(ArrayRef<int64_t> tileSizes = llvm::None);
 
+/// Pass to transform a thlo.sort op for CPU backend.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createTransformSortForCpuPass();
+
 #define GEN_PASS_REGISTRATION
 #include "gml_st/transforms/passes.h.inc"
 

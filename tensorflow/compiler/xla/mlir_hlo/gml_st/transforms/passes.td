@@ -239,3 +239,10 @@ def TransformReduceForCpuPass :
                "dimension and tileSizes[1] is the reduction dimension.">,
   ];
 }
+
+def TransformSortForCpuPass :
+    Pass<"gml-st-cpu-transform-sort", "mlir::func::FuncOp"> {
+  let summary = "Transform sort ops for running on CPU";
+
+  let constructor = "createTransformSortForCpuPass()";
+}

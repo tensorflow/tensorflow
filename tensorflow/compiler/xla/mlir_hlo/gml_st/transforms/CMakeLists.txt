@@ -46,6 +46,7 @@ add_mlir_library(GmlStPasses
   transform_reduce_for_cpu/transform_reduce_for_cpu.cc
   transform_transpose_for_cpu/transform_transpose_for_cpu.cc
   transform_scatter_for_cpu/transform_scatter_for_cpu.cc
+  transform_sort_for_cpu/transform_sort_for_cpu.cc
   vectorization/vectorization.cc
 
   DEPENDS

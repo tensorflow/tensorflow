@@ -37,6 +37,7 @@ void addTileableOpsTransformationsForCPU(
       options.matmulTileSizes, options.lowerToMmt4d));
   pm.addNestedPass<FuncOp>(createTransformTransposeForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformMapForCpuPass(options.vectorSize));
+  pm.addNestedPass<FuncOp>(createTransformSortForCpuPass());
 
   pm.addPass(createCSEPass());
   pm.addPass(createCanonicalizerPass());

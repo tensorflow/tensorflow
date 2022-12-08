@@ -1379,6 +1379,7 @@ cc_library(
         "gml_st/transforms/transform_matmul_for_cpu/transform_matmul_for_cpu.cc",
         "gml_st/transforms/transform_reduce_for_cpu/transform_reduce_for_cpu.cc",
         "gml_st/transforms/transform_scatter_for_cpu/transform_scatter_for_cpu.cc",
+        "gml_st/transforms/transform_sort_for_cpu/transform_sort_for_cpu.cc",
         "gml_st/transforms/transform_tileable_ops_for_cpu/transform_tileable_ops_for_cpu.cc",
         "gml_st/transforms/transform_transpose_for_cpu/transform_transpose_for_cpu.cc",
         "gml_st/transforms/transforms.h",
