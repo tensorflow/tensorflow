@@ -434,7 +434,9 @@ message DebugOptions {
   // available and recommended for Ampere+ GPUs.
   bool xla_gpu_use_runtime_fusion = 181;
 
-  // Next id: 182
+  bool xla_dump_latency_hiding_schedule = 182;
+
+  // Next id: 183
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -785,4 +787,18 @@ message UnpackRequest {
 
 message UnpackResponse {
   repeated GlobalDataHandle tied_data = 1;
+}
+
+// A trace estimated by the Latency Hiding Scheduler.
+message ScheduleProto {
+  message Instruction {
+    // Instruction id (matches the id in HloInstructionProto).
+    int64 id = 1;
+
+    // Start and end timestamps in cycles.
+    double start_timestamp_cycles = 2;
+    double end_timestamp_cycles = 3;
+  }
+
+  repeated Instruction instructions = 1;
 }

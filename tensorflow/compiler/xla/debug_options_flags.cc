@@ -101,6 +101,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_softmax_fusion(false);
   opts.set_xla_gpu_normalize_layouts(true);
   opts.set_xla_gpu_simplify_all_fp_conversions(true);
+  opts.set_xla_dump_latency_hiding_schedule(false);
   return opts;
 }
 
@@ -824,6 +825,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "By default, XLA:CPU will run fp16 dot/conv as fp32, as this is "
       "generally (much) faster on our hardware.  Set this flag to true to "
       "disable this behavior."));
+  flag_list->push_back(tsl::Flag(
+      "xla_dump_latency_hiding_schedule",
+      bool_setter_for(&DebugOptions::set_xla_dump_latency_hiding_schedule),
+      debug_options->xla_dump_latency_hiding_schedule(),
+      "Dump the schedule from the latency-hiding scheduler."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more
