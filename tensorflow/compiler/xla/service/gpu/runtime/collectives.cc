@@ -137,27 +137,13 @@ Status AsyncCollectivesSupport::PushEvent(int32_t uid, int32_t device_ordinal,
 // CollectivePermute.
 //===----------------------------------------------------------------------===//
 
-namespace {
-struct CollectivePermute {
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          CollectivesSupport* collectives,
-                          CustomCall::RemainingArgs args, int32_t uid,
-                          int64_t group_mode, int64_t op_id,
-                          ArrayRef<int64_t> replica_group_offsets,
-                          ArrayRef<int64_t> replica_group_values,
-                          ArrayRef<int64_t> source_peers,
-                          ArrayRef<int64_t> target_peers) const;
-  static CollectivePermute Handler() { return CollectivePermute(); }
-};
-}  // namespace
-
-absl::Status CollectivePermute::operator()(
+static absl::Status CollectivePermuteImpl(
     const ServiceExecutableRunOptions* run_options,
     CollectivesSupport* collectives, CustomCall::RemainingArgs args,
     int32_t uid, int64_t group_mode, int64_t op_id,
     ArrayRef<int64_t> replica_group_offsets,
     ArrayRef<int64_t> replica_group_values, ArrayRef<int64_t> source_peers,
-    ArrayRef<int64_t> target_peers) const {
+    ArrayRef<int64_t> target_peers) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running CollectivePermute";
   se::Stream* stream = run_options->stream();
@@ -216,7 +202,7 @@ absl::Status CollectivePermute::operator()(
 }
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    CollectivePermute, CollectivePermute::Handler(), checks,
+    CollectivePermute, FunctionWrapper<CollectivePermuteImpl>(), checks,
     CustomCall::Bind("xla.gpu.collective_permute")
         .UserData<const ServiceExecutableRunOptions*>()
         .UserData<CollectivesSupport*>()
@@ -233,24 +219,12 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 // AllGather.
 //===----------------------------------------------------------------------===//
 
-namespace {
-struct AllGather {
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          CollectivesSupport* collectives,
-                          CustomCall::RemainingArgs args, int32_t uid,
-                          int64_t group_mode, int64_t op_id,
-                          ArrayRef<int64_t> replica_group_offsets,
-                          ArrayRef<int64_t> replica_group_values) const;
-  static AllGather Handler() { return AllGather(); }
-};
-}  // namespace
-
-absl::Status AllGather::operator()(
+static absl::Status AllGatherImpl(
     const ServiceExecutableRunOptions* run_options,
     CollectivesSupport* collectives, CustomCall::RemainingArgs args,
     int32_t uid, int64_t group_mode, int64_t op_id,
     ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values) const {
+    ArrayRef<int64_t> replica_group_values) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllGather";
   se::Stream* stream = run_options->stream();
@@ -277,7 +251,7 @@ absl::Status AllGather::operator()(
 }
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    AllGather, AllGather::Handler(), checks,
+    AllGather, FunctionWrapper<AllGatherImpl>(), checks,
     CustomCall::Bind("xla.gpu.all_gather")
         .UserData<const ServiceExecutableRunOptions*>()
         .UserData<CollectivesSupport*>()
@@ -292,25 +266,12 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 // AllReduce.
 //===----------------------------------------------------------------------===//
 
-namespace {
-struct AllReduce {
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          CollectivesSupport* collectives,
-                          CustomCall::RemainingArgs args, int32_t uid,
-                          int64_t group_mode, int64_t op_id,
-                          int64_t reduction_kind,
-                          ArrayRef<int64_t> replica_group_offsets,
-                          ArrayRef<int64_t> replica_group_values) const;
-  static AllReduce Handler() { return AllReduce(); }
-};
-}  // namespace
-
-absl::Status AllReduce::operator()(
+static absl::Status AllReduceImpl(
     const ServiceExecutableRunOptions* run_options,
     CollectivesSupport* collectives, CustomCall::RemainingArgs args,
     int32_t uid, int64_t group_mode, int64_t op_id, int64_t reduction_kind,
     ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values) const {
+    ArrayRef<int64_t> replica_group_values) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllReduce";
   se::Stream* stream = run_options->stream();
@@ -339,7 +300,7 @@ absl::Status AllReduce::operator()(
 }
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    AllReduce, AllReduce::Handler(), checks,
+    AllReduce, FunctionWrapper<AllReduceImpl>(), checks,
     CustomCall::Bind("xla.gpu.all_reduce")
         .UserData<const ServiceExecutableRunOptions*>()
         .UserData<CollectivesSupport*>()
@@ -355,25 +316,12 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 // AllReduceStart.
 //===----------------------------------------------------------------------===//
 
-namespace {
-struct AllReduceStart {
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          AsyncCollectivesSupport* async_collectives,
-                          CustomCall::RemainingArgs args, int64_t group_mode,
-                          int64_t op_id, int64_t reduction_kind,
-                          ArrayRef<int64_t> replica_group_offsets,
-                          ArrayRef<int64_t> replica_group_values,
-                          int32_t uid) const;
-  static AllReduceStart Handler() { return AllReduceStart(); }
-};
-}  // namespace
-
-absl::Status AllReduceStart::operator()(
+static absl::Status AllReduceStartImpl(
     const ServiceExecutableRunOptions* run_options,
     AsyncCollectivesSupport* async_collectives, CustomCall::RemainingArgs args,
     int64_t group_mode, int64_t op_id, int64_t reduction_kind,
     ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values, int32_t uid) const {
+    ArrayRef<int64_t> replica_group_values, int32_t uid) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllReduceStart";
   se::Stream* stream = run_options->stream();
@@ -413,7 +361,7 @@ absl::Status AllReduceStart::operator()(
 }
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    AllReduceStart, AllReduceStart::Handler(), checks,
+    AllReduceStart, FunctionWrapper<AllReduceStartImpl>(), checks,
     CustomCall::Bind("xla.gpu.all_reduce_start")
         .UserData<const ServiceExecutableRunOptions*>()
         .UserData<AsyncCollectivesSupport*>()
@@ -429,20 +377,10 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 // AllReduceDone.
 //===----------------------------------------------------------------------===//
 
-namespace {
-struct AllReduceDone {
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          CollectivesSupport* collectives,
-                          AsyncCollectivesSupport* async_collectives,
-                          CustomCall::RemainingArgs args, int32_t uid) const;
-  static AllReduceDone Handler() { return AllReduceDone(); }
-};
-}  // namespace
-
-absl::Status AllReduceDone::operator()(
+static absl::Status AllReduceDoneImpl(
     const ServiceExecutableRunOptions* run_options,
     CollectivesSupport* collectives, AsyncCollectivesSupport* async_collectives,
-    CustomCall::RemainingArgs args, int32_t uid) const {
+    CustomCall::RemainingArgs args, int32_t uid) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllReduceDone";
   se::Stream* stream = run_options->stream();
@@ -465,7 +403,7 @@ absl::Status AllReduceDone::operator()(
 }
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    AllReduceDone, AllReduceDone::Handler(), checks,
+    AllReduceDone, FunctionWrapper<AllReduceDoneImpl>(), checks,
     CustomCall::Bind("xla.gpu.all_reduce_done")
         .UserData<const ServiceExecutableRunOptions*>()
         .UserData<CollectivesSupport*>()
@@ -477,25 +415,13 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 // AllToAll.
 //===----------------------------------------------------------------------===//
 
-namespace {
-struct AllToAll {
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          CollectivesSupport* collectives,
-                          CustomCall::RemainingArgs args, int32_t uid,
-                          int64_t group_mode, bool has_split_dimension,
-                          int64_t op_id,
-                          ArrayRef<int64_t> replica_group_offsets,
-                          ArrayRef<int64_t> replica_group_values) const;
-  static AllToAll Handler() { return AllToAll(); }
-};
-}  // namespace
-
-absl::Status AllToAll::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    CollectivesSupport* collectives, CustomCall::RemainingArgs args,
-    int32_t uid, int64_t group_mode, bool has_split_dimension, int64_t op_id,
-    ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values) const {
+static absl::Status AllToAllImpl(const ServiceExecutableRunOptions* run_options,
+                                 CollectivesSupport* collectives,
+                                 CustomCall::RemainingArgs args, int32_t uid,
+                                 int64_t group_mode, bool has_split_dimension,
+                                 int64_t op_id,
+                                 ArrayRef<int64_t> replica_group_offsets,
+                                 ArrayRef<int64_t> replica_group_values) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllToAll";
   se::Stream* stream = run_options->stream();
@@ -522,7 +448,7 @@ absl::Status AllToAll::operator()(
 }
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    AllToAll, AllToAll::Handler(), checks,
+    AllToAll, FunctionWrapper<AllToAllImpl>(), checks,
     CustomCall::Bind("xla.gpu.all_to_all")
         .UserData<const ServiceExecutableRunOptions*>()
         .UserData<CollectivesSupport*>()
@@ -538,25 +464,12 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 // ReduceScatter.
 //===----------------------------------------------------------------------===//
 
-namespace {
-struct ReduceScatter {
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          CollectivesSupport* collectives,
-                          CustomCall::RemainingArgs args, int32_t uid,
-                          int64_t group_mode, int64_t op_id,
-                          int64_t reduction_kind,
-                          ArrayRef<int64_t> replica_group_offsets,
-                          ArrayRef<int64_t> replica_group_values) const;
-  static ReduceScatter Handler() { return ReduceScatter(); }
-};
-}  // namespace
-
-absl::Status ReduceScatter::operator()(
+static absl::Status ReduceScatterImpl(
     const ServiceExecutableRunOptions* run_options,
     CollectivesSupport* collectives, CustomCall::RemainingArgs args,
     int32_t uid, int64_t group_mode, int64_t op_id, int64_t reduction_kind,
     ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values) const {
+    ArrayRef<int64_t> replica_group_values) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running ReduceScatter";
   se::Stream* stream = run_options->stream();
@@ -584,7 +497,7 @@ absl::Status ReduceScatter::operator()(
 }
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    ReduceScatter, ReduceScatter::Handler(), checks,
+    ReduceScatter, FunctionWrapper<ReduceScatterImpl>(), checks,
     CustomCall::Bind("xla.gpu.reduce_scatter")
         .UserData<const ServiceExecutableRunOptions*>()
         .UserData<CollectivesSupport*>()
@@ -600,17 +513,8 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 // ReplicaId.
 //===----------------------------------------------------------------------===//
 
-namespace {
-struct ReplicaId {
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          FlatMemrefView result) const;
-  static ReplicaId Handler() { return ReplicaId(); }
-};
-}  // namespace
-
-absl::Status ReplicaId::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    FlatMemrefView result) const {
+static absl::Status ReplicaIdImpl(
+    const ServiceExecutableRunOptions* run_options, FlatMemrefView result) {
   VLOG(3) << "Running ReplicaId";
   se::Stream* stream = run_options->stream();
   NcclExecuteParams params(*run_options, stream);
@@ -630,7 +534,7 @@ absl::Status ReplicaId::operator()(
 }
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    ReplicaId, ReplicaId::Handler(), checks,
+    ReplicaId, FunctionWrapper<ReplicaIdImpl>(), checks,
     CustomCall::Bind("xla.gpu.replica_id")
         .UserData<const ServiceExecutableRunOptions*>()
         .Arg<FlatMemrefView>());
@@ -639,17 +543,8 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 // PartitionId.
 //===----------------------------------------------------------------------===//
 
-namespace {
-struct PartitionId {
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          FlatMemrefView result) const;
-  static PartitionId Handler() { return PartitionId(); }
-};
-}  // namespace
-
-absl::Status PartitionId::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    FlatMemrefView result) const {
+static absl::Status PartitionIdImpl(
+    const ServiceExecutableRunOptions* run_options, FlatMemrefView result) {
   VLOG(3) << "Running PartitionId";
   se::Stream* stream = run_options->stream();
   NcclExecuteParams params(*run_options, stream);
@@ -669,7 +564,7 @@ absl::Status PartitionId::operator()(
 }
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    PartitionId, PartitionId::Handler(), checks,
+    PartitionId, FunctionWrapper<PartitionIdImpl>(), checks,
     CustomCall::Bind("xla.gpu.partition_id")
         .UserData<const ServiceExecutableRunOptions*>()
         .Arg<FlatMemrefView>());
@@ -678,15 +573,15 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 
 void RegisterCollectiveCustomCalls(
     runtime::DirectCustomCallRegistry& registry) {
-  registry.Register("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
-  registry.Register("xla.gpu.all_gather", &xla::gpu::AllGather);
-  registry.Register("xla.gpu.all_reduce", &xla::gpu::AllReduce);
-  registry.Register("xla.gpu.all_reduce_done", &xla::gpu::AllReduceDone);
-  registry.Register("xla.gpu.all_reduce_start", &xla::gpu::AllReduceStart);
-  registry.Register("xla.gpu.all_to_all", &xla::gpu::AllToAll);
-  registry.Register("xla.gpu.reduce_scatter", &xla::gpu::ReduceScatter);
-  registry.Register("xla.gpu.partition_id", &xla::gpu::PartitionId);
-  registry.Register("xla.gpu.replica_id", &xla::gpu::ReplicaId);
+  registry.Register("xla.gpu.collective_permute", CollectivePermute);
+  registry.Register("xla.gpu.all_gather", AllGather);
+  registry.Register("xla.gpu.all_reduce", AllReduce);
+  registry.Register("xla.gpu.all_reduce_done", AllReduceDone);
+  registry.Register("xla.gpu.all_reduce_start", AllReduceStart);
+  registry.Register("xla.gpu.all_to_all", AllToAll);
+  registry.Register("xla.gpu.reduce_scatter", ReduceScatter);
+  registry.Register("xla.gpu.partition_id", PartitionId);
+  registry.Register("xla.gpu.replica_id", ReplicaId);
 }
 
 }  // namespace gpu

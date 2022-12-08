@@ -67,7 +67,7 @@ static absl::Status CholeskyImpl(const ServiceExecutableRunOptions* run_options,
 }
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    Cholesky, CustomCall::FunctionWrapper<CholeskyImpl>(), checks,
+    Cholesky, FunctionWrapper<CholeskyImpl>(), checks,
     CustomCall::Bind("xla.gpu.cholesky")
         .UserData<const ServiceExecutableRunOptions*>()
         .UserData<const DebugOptions*>()
@@ -80,7 +80,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<int64_t>("n"));
 
 void RegisterCholeskyCustomCalls(runtime::DirectCustomCallRegistry& registry) {
-  registry.Register("xla.gpu.cholesky", &Cholesky);
+  registry.Register("xla.gpu.cholesky", Cholesky);
 }
 
 }  // namespace gpu
