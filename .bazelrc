@@ -272,8 +272,6 @@ build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm --define=using_rocm_hipcc=true
 build:rocm --define=tensorflow_mkldnn_contraction_kernel=0
 build:rocm --repo_env TF_NEED_ROCM=1
-# Disable unused-result on rocm builds.
-build:rocm --copt="-Wno-error=unused-result"
 
 # Options extracted from configure script
 build:numa --define=with_numa_support=true
@@ -309,9 +307,6 @@ build:linux --copt="-Wno-extra"
 build:linux --copt="-Wno-deprecated"
 build:linux --copt="-Wno-deprecated-declarations"
 build:linux --copt="-Wno-ignored-attributes"
-build:linux --copt="-Wno-unknown-warning"
-build:linux --copt="-Wno-array-parameter"
-build:linux --copt="-Wno-stringop-overflow"
 build:linux --copt="-Wno-array-bounds"
 
 # Add unused-result as an error on Linux.
@@ -320,6 +315,8 @@ build:linux --copt="-Werror=unused-result"
 # Add switch as an error on Linux.
 build:linux --copt="-Wswitch"
 build:linux --copt="-Werror=switch"
+# Required for building with clang
+build:linux --copt="-Wno-error=unused-but-set-variable"
 
 # On Windows, `__cplusplus` is wrongly defined without this switch
 # See https://devblogs.microsoft.com/cppblog/msvc-now-correctly-reports-__cplusplus/

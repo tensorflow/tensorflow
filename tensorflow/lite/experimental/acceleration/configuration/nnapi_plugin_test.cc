@@ -284,7 +284,9 @@ class NNAPIMultiOpPluginTest : public ::testing::Test {
                              /* hexagon_settings */ 0,
                              /* xnnpack_settings */ 0,
                              /* coreml_settings */ 0,
-                             /* cpu_settings */ 0, max_delegated_partitions));
+                             /* cpu_settings */ 0, max_delegated_partitions,
+                             /* disable_default_delegates */ false,
+                             /* stable_delegate_loader_settings */ 0));
 
     plugin_ = delegates::DelegatePluginRegistry::CreateByName(
         "NnapiPlugin", *tflite_settings_);

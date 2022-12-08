@@ -26,6 +26,8 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 
+constexpr llvm::StringRef kPeelingAppliedLabel = "__peeling_applied_label__";
+
 using PeelingResult = SmallVector<Operation *>;
 
 /// Rewrite a gml_st::LoopOp/ParallelOp/ForOp with bounds/step that potentially

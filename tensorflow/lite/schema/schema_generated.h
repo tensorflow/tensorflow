@@ -8549,6 +8549,7 @@ struct TransposeConvOptionsT : public flatbuffers::NativeTable {
   tflite::Padding padding = tflite::Padding_SAME;
   int32_t stride_w = 0;
   int32_t stride_h = 0;
+  tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE;
   tflite::TensorType quantized_bias_type = tflite::TensorType_FLOAT32;
 };
 
@@ -8559,7 +8560,8 @@ struct TransposeConvOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table
     VT_PADDING = 4,
     VT_STRIDE_W = 6,
     VT_STRIDE_H = 8,
-    VT_quantized_bias_type = 10
+    VT_FUSED_ACTIVATION_FUNCTION = 10,
+    VT_quantized_bias_type = 12
   };
   tflite::Padding padding() const {
     return static_cast<tflite::Padding>(GetField<int8_t>(VT_PADDING, 0));
@@ -8570,6 +8572,10 @@ struct TransposeConvOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table
   int32_t stride_h() const {
     return GetField<int32_t>(VT_STRIDE_H, 0);
   }
+
+  tflite::ActivationFunctionType fused_activation_function() const {
+    return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
+  }
   tflite::TensorType quantized_bias_type() const {
     return static_cast<tflite::TensorType>(GetField<int8_t>(VT_quantized_bias_type, 0));
   }
@@ -8578,6 +8584,7 @@ struct TransposeConvOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table
            VerifyField<int8_t>(verifier, VT_PADDING, 1) &&
            VerifyField<int32_t>(verifier, VT_STRIDE_W, 4) &&
            VerifyField<int32_t>(verifier, VT_STRIDE_H, 4) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
            VerifyField<int8_t>(verifier, VT_quantized_bias_type, 1) &&
            verifier.EndTable();
   }
@@ -8599,6 +8606,9 @@ struct TransposeConvOptionsBuilder {
   void add_stride_h(int32_t stride_h) {
     fbb_.AddElement<int32_t>(TransposeConvOptions::VT_STRIDE_H, stride_h, 0);
   }
+  void add_fused_activation_function(tflite::ActivationFunctionType fused_activation_function) {
+    fbb_.AddElement<int8_t>(TransposeConvOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
+  }
   void add_quantized_bias_type(tflite::TensorType quantized_bias_type) {
     fbb_.AddElement<int8_t>(TransposeConvOptions::VT_quantized_bias_type, static_cast<int8_t>(quantized_bias_type), 0);
   }
@@ -8618,10 +8628,12 @@ inline flatbuffers::Offset<TransposeConvOptions> CreateTransposeConvOptions(
     tflite::Padding padding = tflite::Padding_SAME,
     int32_t stride_w = 0,
     int32_t stride_h = 0,
+    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE,
     tflite::TensorType quantized_bias_type = tflite::TensorType_FLOAT32) {
   TransposeConvOptionsBuilder builder_(_fbb);
   builder_.add_stride_h(stride_h);
   builder_.add_stride_w(stride_w);
+  builder_.add_fused_activation_function(fused_activation_function);
   builder_.add_quantized_bias_type(quantized_bias_type);
   builder_.add_padding(padding);
   return builder_.Finish();
@@ -15352,6 +15364,7 @@ inline void TransposeConvOptions::UnPackTo(TransposeConvOptionsT *_o, const flat
   { auto _e = padding(); _o->padding = _e; }
   { auto _e = stride_w(); _o->stride_w = _e; }
   { auto _e = stride_h(); _o->stride_h = _e; }
+  { auto _e = fused_activation_function(); _o->fused_activation_function = _e; }
   { auto _e = quantized_bias_type(); _o->quantized_bias_type = _e; }
 }
 
@@ -15366,12 +15379,14 @@ inline flatbuffers::Offset<TransposeConvOptions> CreateTransposeConvOptions(flat
   auto _padding = _o->padding;
   auto _stride_w = _o->stride_w;
   auto _stride_h = _o->stride_h;
+  auto _fused_activation_function = _o->fused_activation_function;
   auto _quantized_bias_type = _o->quantized_bias_type;
   return tflite::CreateTransposeConvOptions(
       _fbb,
       _padding,
       _stride_w,
       _stride_h,
+      _fused_activation_function,
       _quantized_bias_type);
 }
 

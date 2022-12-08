@@ -108,10 +108,10 @@ TEST(ArrayImplTest, AssembleArray) {
   auto assembled_sharding = OpaqueSharding::Create(
       DeviceList(DeviceList::Devices({array0->sharding().devices().front(),
                                       array1->sharding().devices().front()})));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto assembled_array,
-      client->AssembleArray(assembled_shape, assembled_sharding, arrays,
-                            ArrayCopySemantics::kAlwaysCopy));
+  TF_ASSERT_OK_AND_ASSIGN(auto assembled_array,
+                          client->AssembleArrayFromSingleDeviceArrays(
+                              assembled_shape, assembled_sharding, arrays,
+                              ArrayCopySemantics::kAlwaysCopy));
 
   EXPECT_EQ(assembled_array->dtype(), dtype);
   EXPECT_EQ(assembled_array->shape(), assembled_shape);
@@ -119,7 +119,7 @@ TEST(ArrayImplTest, AssembleArray) {
             assembled_sharding.get());
 }
 
-TEST(ArrayImplTest, AssembleAndExplodeArray) {
+TEST(ArrayImplTest, AssembleAndDisassembleArray) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
 
   DType dtype(DType::kF32);
@@ -145,29 +145,29 @@ TEST(ArrayImplTest, AssembleAndExplodeArray) {
                        /*on_done_with_host_buffer=*/{}));
 
   std::vector<Array*> arrays({array0.get(), array1.get()});
-  std::vector<Shape> exploded_shapes({shape, shape});
+  std::vector<Shape> single_device_shapes({shape, shape});
   Shape assembled_shape({4, 3});
   auto assembled_sharding = OpaqueSharding::Create(
       DeviceList(DeviceList::Devices({array0->sharding().devices().front(),
                                       array1->sharding().devices().front()})),
-      OpaqueSharding::MakeExplodeFuncFromShapes(exploded_shapes));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto assembled_array,
-      client->AssembleArray(assembled_shape, assembled_sharding, arrays,
-                            ArrayCopySemantics::kAlwaysCopy));
+      OpaqueSharding::MakeDisassembleFuncFromShapes(single_device_shapes));
+  TF_ASSERT_OK_AND_ASSIGN(auto assembled_array,
+                          client->AssembleArrayFromSingleDeviceArrays(
+                              assembled_shape, assembled_sharding, arrays,
+                              ArrayCopySemantics::kAlwaysCopy));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto exploded_arrays,
-      assembled_array->Explode(ArrayCopySemantics::kAlwaysCopy));
+  TF_ASSERT_OK_AND_ASSIGN(auto single_device_arrays,
+                          assembled_array->DisassembleIntoSingleDeviceArrays(
+                              ArrayCopySemantics::kAlwaysCopy));
 
-  ASSERT_THAT(exploded_arrays, SizeIs(2));
-  EXPECT_EQ(exploded_arrays[0]->dtype(), array0->dtype());
-  EXPECT_EQ(exploded_arrays[0]->shape(), array0->shape());
-  EXPECT_THAT(exploded_arrays[0]->sharding().devices().devices(),
+  ASSERT_THAT(single_device_arrays, SizeIs(2));
+  EXPECT_EQ(single_device_arrays[0]->dtype(), array0->dtype());
+  EXPECT_EQ(single_device_arrays[0]->shape(), array0->shape());
+  EXPECT_THAT(single_device_arrays[0]->sharding().devices().devices(),
               ElementsAreArray(array0->sharding().devices().devices()));
-  EXPECT_EQ(exploded_arrays[1]->dtype(), array1->dtype());
-  EXPECT_EQ(exploded_arrays[1]->shape(), array1->shape());
-  EXPECT_THAT(exploded_arrays[1]->sharding().devices().devices(),
+  EXPECT_EQ(single_device_arrays[1]->dtype(), array1->dtype());
+  EXPECT_EQ(single_device_arrays[1]->shape(), array1->shape());
+  EXPECT_THAT(single_device_arrays[1]->sharding().devices().devices(),
               ElementsAreArray(array1->sharding().devices().devices()));
 }
 

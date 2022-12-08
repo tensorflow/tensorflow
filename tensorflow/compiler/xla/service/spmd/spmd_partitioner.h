@@ -344,12 +344,6 @@ class PartitionedHlo {
       : hlo_(hlo), base_shape_(base_shape), state_(std::move(state)) {
     CHECK(hlo->has_sharding())
         << "PartitionedHlo is missing sharding:" << hlo->ToString();
-    // If the tuple shape instruction does not have a tuple sharding, reassign
-    // to use the tuple sharding. Reshard() implementation assumes this.
-    if (hlo_->shape().IsTuple() && !hlo_->sharding().IsTuple()) {
-      hlo_->set_sharding(
-          hlo_->sharding().GetTupleSharding(hlo_->shape()).value());
-    }
   }
 
   PartitionedHlo CloneWithNewHlo(HloInstruction* hlo) const {

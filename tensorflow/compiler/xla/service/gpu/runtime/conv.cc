@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -27,25 +28,175 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/attribute_exporter.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
-namespace gpu {
 
+using xla::runtime::AggregateAttrDef;
+using xla::runtime::AggregateAttrEncoding;
 using xla::runtime::CustomCall;
-using xla::runtime::Executable;
+using xla::runtime::EnumAttrEncoding;
 using xla::runtime::FlatMemrefView;
 using xla::runtime::StridedMemrefView;
-
-using llvm::ArrayRef;
-using mlir::StringRef;
+using xla::runtime::Tagged;
 
 namespace lmhlo_gpu = ::mlir::lmhlo_gpu;
 namespace mhlo = ::mlir::mhlo;
 
-// TODO(jacksonstokes): Add caching layer for convolution configs and runners.
+using llvm::ArrayRef;
 
-// TODO(ezhulenev): We need to find a better way to pass structured attributes
-// to JitRt custom calls.
+//===----------------------------------------------------------------------===//
+// Structs for encoding convolution attributes defined in MHLO dialect.
+//===----------------------------------------------------------------------===//
+
+namespace gpu {
+
+struct ConvDimensionNumbers {
+  int64_t input_batch_dim;
+  int64_t input_feature_dim;
+  ArrayRef<int64_t> input_spatial_dims;
+
+  int64_t kernel_in_feature_dim;
+  int64_t kernel_out_feature_dim;
+  ArrayRef<int64_t> kernel_spatial_dims;
+
+  int64_t output_batch_dim;
+  int64_t output_feature_dim;
+  ArrayRef<int64_t> output_spatial_dims;
+};
+
+struct ConvBackendConfig {
+  int64_t algorithm;
+  bool tensor_ops_enabled;
+  bool is_cudnn_frontend;
+  ArrayRef<int64_t> knob_ids;
+  ArrayRef<int64_t> knob_values;
+  ArrayRef<int64_t> operand_0_layout;
+  ArrayRef<int64_t> operand_1_layout;
+  ArrayRef<int64_t> result_layout;
+  int64_t workspace_size;
+};
+
+}  // namespace gpu
+
+//===----------------------------------------------------------------------===//
+// Register convolution attributes decoding with the Xla runtime.
+//===----------------------------------------------------------------------===//
+
+namespace runtime {
+
+XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(se::dnn::ActivationMode);
+
+XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
+    xla::gpu::ConvDimensionNumbers,
+    // --- input dimensions
+    AggregateMember<int64_t>("input_batch_dim"),
+    AggregateMember<int64_t>("input_feature_dim"),
+    AggregateMember<ArrayRef<int64_t>>("input_spatial_dims"),
+    // --- kernel dimensions
+    AggregateMember<int64_t>("kernel_in_feature_dim"),
+    AggregateMember<int64_t>("kernel_out_feature_dim"),
+    AggregateMember<ArrayRef<int64_t>>("kernel_spatial_dims"),
+    // --- output dimensions
+    AggregateMember<int64_t>("output_batch_dim"),
+    AggregateMember<int64_t>("output_feature_dim"),
+    AggregateMember<ArrayRef<int64_t>>("output_spatial_dims"));
+
+XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
+    xla::gpu::ConvBackendConfig,  //
+    AggregateMember<int64_t>("algorithm"),
+    AggregateMember<bool>("tensor_ops_enabled"),
+    AggregateMember<bool>("is_cudnn_frontend"),
+    AggregateMember<ArrayRef<int64_t>>("knob_ids"),
+    AggregateMember<ArrayRef<int64_t>>("knob_values"),
+    AggregateMember<ArrayRef<int64_t>>("operand_0_layout"),
+    AggregateMember<ArrayRef<int64_t>>("operand_1_layout"),
+    AggregateMember<ArrayRef<int64_t>>("result_layout"),
+    AggregateMember<int64_t>("workspace_size"));
+
+}  // namespace runtime
+
+//===----------------------------------------------------------------------===//
+// Type names for encoded attributes.
+//===----------------------------------------------------------------------===//
+
+namespace gpu {
+
+void RegisterConvTypeIdNames(runtime::TypeIDNameRegistry& registry) {
+  registry.Register<Tagged<ConvDimensionNumbers>>("__type_id_conv_dim_numbers");
+  registry.Register<Tagged<ConvBackendConfig>>("__type_id_conv_backend_config");
+}
+
+//===----------------------------------------------------------------------===//
+// Encoding from MHLO attributes to Xla runtime aggregate attributes.
+//===----------------------------------------------------------------------===//
+
+// TODO(ezhulenev): We have to support enum encoding that can fail instead of
+// always getting the value from returned StatusOr.
+static auto EncodeConvActivation(lmhlo_gpu::Activation activation) {
+  return ConvertConvActivationMode(activation).value();
+}
+
+void PopulateConvAttrEncoding(runtime::CustomCallAttrEncodingSet& encoding) {
+  {  // --- Encode `lmhlo_gpu::ActivationAttr`.
+    encoding
+        .Add<EnumAttrEncoding<lmhlo_gpu::ActivationAttr, lmhlo_gpu::Activation,
+                              se::dnn::ActivationMode>>(EncodeConvActivation);
+  }
+
+  {  // --- Encode `mhlo::ConvDimensionNumbersAttr`.
+    using Attr = mhlo::ConvDimensionNumbersAttr;
+    encoding.Add<AggregateAttrEncoding<Attr, ConvDimensionNumbers>>(
+        encoding,
+        AggregateAttrDef<Attr>()
+            .Add("input_batch_dim", &Attr::getInputBatchDimension)
+            .Add("input_feature_dim", &Attr::getInputFeatureDimension)
+            .Add("input_spatial_dims", &Attr::getInputSpatialDimensions)
+            .Add("kernel_in_feature_dim", &Attr::getKernelInputFeatureDimension)
+            .Add("kernel_out_feature_dim",
+                 &Attr::getKernelOutputFeatureDimension)
+            .Add("kernel_spatial_dims", &Attr::getKernelSpatialDimensions)
+            .Add("output_batch_dim", &Attr::getOutputBatchDimension)
+            .Add("output_feature_dim", &Attr::getOutputFeatureDimension)
+            .Add("output_spatial_dims", &Attr::getOutputSpatialDimensions));
+  }
+
+  {  // --- Encode `lmhlo_gpu::ConvolutionBackendConfigAttr`.
+    using Attr = lmhlo_gpu::ConvolutionBackendConfigAttr;
+    encoding.Add<AggregateAttrEncoding<Attr, ConvBackendConfig>>(
+        encoding, AggregateAttrDef<Attr>()
+                      .Add("algorithm", &Attr::getAlgorithm)
+                      .Add("tensor_ops_enabled", &Attr::getTensorOpsEnabled)
+                      .Add("is_cudnn_frontend", &Attr::getIsCudnnFrontend)
+                      .Add("knob_ids", &Attr::getKnobIds)
+                      .Add("knob_values", &Attr::getKnobValues)
+                      .Add("operand_0_layout", &Attr::getOperand_0Layout)
+                      .Add("operand_1_layout", &Attr::getOperand_1Layout)
+                      .Add("result_layout", &Attr::getResultLayout)
+                      .Add("workspace_size", &Attr::getWorkspaceSize));
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// Convolution runners caching.
+//===----------------------------------------------------------------------===//
+
+absl::StatusOr<ConvRunnerCache::Entry> ConvRunnerCache::GetOrCreate(
+    Key key, absl::FunctionRef<absl::StatusOr<GpuConvConfig>()> config) {
+  absl::MutexLock lock(&mutex_);
+  auto it = runners_.find(key);
+  if (it != runners_.end()) return Entry{&it->second.first, &it->second.second};
+
+  absl::StatusOr<GpuConvConfig> cfg = config();
+  if (!cfg.ok()) return cfg.status();
+
+  auto emplaced = runners_.try_emplace(key, *cfg, *cfg);
+  return Entry{&emplaced.first->second.first, &emplaced.first->second.second};
+}
+
+//===----------------------------------------------------------------------===//
+// Convolution custom call implementation.
+//===----------------------------------------------------------------------===//
 
 namespace {
 
@@ -72,24 +223,11 @@ struct SideInputAttrs {
 
 }  // namespace
 
-absl::StatusOr<ConvRunnerCache::Entry> ConvRunnerCache::GetOrCreate(
-    int64_t uid, absl::FunctionRef<absl::StatusOr<GpuConvConfig>()> config) {
-  absl::MutexLock lock(&mutex_);
-  auto it = runners_.find(uid);
-  if (it != runners_.end()) return Entry{&it->second.first, &it->second.second};
-
-  absl::StatusOr<GpuConvConfig> cfg = config();
-  if (!cfg.ok()) return cfg.status();
-
-  auto emplaced = runners_.try_emplace(uid, *cfg, *cfg);
-  return Entry{&emplaced.first->second.first, &emplaced.first->second.second};
-}
-
 static GpuConvDescriptor GetConvDescriptor(
     CudnnConvKind kind,
     // Arguments
-    runtime::StridedMemrefView operand0, runtime::StridedMemrefView operand1,
-    runtime::StridedMemrefView output, runtime::FlatMemrefView scratch,
+    StridedMemrefView operand0, StridedMemrefView operand1,
+    StridedMemrefView output, FlatMemrefView scratch,
     // Attributes
     ConvDimensionNumbers dims, Window w, ConvBackendConfig b, ConvAttrs attrs,
     // Conv-specific arguments and attributes
@@ -100,7 +238,7 @@ static GpuConvDescriptor GetConvDescriptor(
   descriptor.kind = kind;
 
   // Apply backend config layout to the shape.
-  auto apply_layout = [](runtime::StridedMemrefView& memref,
+  auto apply_layout = [](StridedMemrefView& memref,
                          ArrayRef<int64_t> minor_to_major) {
     Shape shape = ToShape(memref);
     return ShapeUtil::MakeShapeWithDenseLayout(
@@ -176,15 +314,17 @@ static GpuConvDescriptor GetConvDescriptor(
 
 namespace {
 struct Conv {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  ABSL_ATTRIBUTE_ALWAYS_INLINE
   absl::Status operator()(
       const ServiceExecutableRunOptions* run_options,
-      const DebugOptions* debug_options, runtime::StridedMemrefView operand0,
-      runtime::StridedMemrefView operand1,
-      std::optional<runtime::FlatMemrefView> bias,
-      std::optional<runtime::StridedMemrefView> side_input,
-      runtime::StridedMemrefView output, runtime::FlatMemrefView scratch,
-      int64_t uid, ConvRunnerCache* runners, ConvDimensionNumbers conv_dims,
+      const DebugOptions* debug_options, ConvRunnerCache* runners,
+      // Arguments
+      StridedMemrefView operand0, StridedMemrefView operand1,
+      std::optional<FlatMemrefView> bias,
+      std::optional<StridedMemrefView> side_input, StridedMemrefView output,
+      FlatMemrefView scratch, int64_t uid,
+      // Convolution config
+      ConvDimensionNumbers conv_dims,
       // Window config
       ArrayRef<int64_t> window_strides, ArrayRef<int64_t> padding,
       ArrayRef<int64_t> lhs_dilation, ArrayRef<int64_t> rhs_dilation,
@@ -204,8 +344,8 @@ struct Conv {
     if (side_input_scale.has_value()) side_input_attrs = {*side_input_scale};
 
     // Get the convolution runner from the cache.
-    absl::StatusOr<ConvRunnerCache::Entry> runner =
-        runners->GetOrCreate(uid, [&]() -> absl::StatusOr<GpuConvConfig> {
+    absl::StatusOr<ConvRunnerCache::Entry> runner = runners->GetOrCreate(
+        {run_options->stream(), uid}, [&]() -> absl::StatusOr<GpuConvConfig> {
           GpuConvDescriptor descriptor = GetConvDescriptor(
               kind, operand0, operand1, output, scratch, conv_dims,
               {window_strides, padding, lhs_dilation, rhs_dilation,
@@ -251,13 +391,15 @@ struct Conv {
 
 }  // namespace
 
-// Adds custom call bindings for convolution operations.
+//===----------------------------------------------------------------------===//
+// Convolution custom calls bindings and registration.
+//===----------------------------------------------------------------------===//
+
 template <typename... Ts>
 static auto BindConvAttributes(runtime::CustomCallBinding<Ts...> binding) {
   return std::move(binding)
       // Unique convolution id for caching state.
       .template Attr<int64_t>("uid")
-      .template UserData<ConvRunnerCache*>()
       // Convolution dimensions numbers
       .template Attr<ConvDimensionNumbers>("conv_dims")
       // Window config
@@ -273,124 +415,64 @@ static auto BindConvAttributes(runtime::CustomCallBinding<Ts...> binding) {
       .template Attr<double>("result_scale");
 }
 
-template <CudnnConvKind kind>
-static bool ConvFn(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                   void** rets) {
-  static auto* handler =
-      BindConvAttributes(
-          CustomCall::Bind("xla.gpu.conv")
-              .UserData<const ServiceExecutableRunOptions*>()
-              .UserData<const DebugOptions*>()
-              .Arg<runtime::StridedMemrefView>()                   // operand0
-              .Arg<runtime::StridedMemrefView>()                   // operand1
-              .Value(std::optional<runtime::FlatMemrefView>())     // bias
-              .Value(std::optional<runtime::StridedMemrefView>())  // side_input
-              .Arg<runtime::StridedMemrefView>()                   // output
-              .Arg<runtime::FlatMemrefView>()                      // scratch
-          )
-          .To<checks>(Conv::Handler(kind))
-          .release();
+using Kind = CudnnConvKind;
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL_TEMPLATE(
+    Kind kind, ConvFn, Conv::Handler(kind), checks,
+    BindConvAttributes(
+        CustomCall::Bind("xla.gpu.conv")
+            .UserData<const ServiceExecutableRunOptions*>()
+            .UserData<const DebugOptions*>()
+            .UserData<ConvRunnerCache*>()
+            .Arg<StridedMemrefView>()                   // operand0
+            .Arg<StridedMemrefView>()                   // operand1
+            .Value(std::optional<FlatMemrefView>())     // bias
+            .Value(std::optional<StridedMemrefView>())  // side_input
+            .Arg<StridedMemrefView>()                   // output
+            .Arg<FlatMemrefView>()                      // scratch
+        ));
 
-template <CudnnConvKind kind>
-static bool ConvFusedFn(runtime::ExecutionContext* ctx, void** args,
-                        void** attrs, void** rets) {
-  static auto* handler =
-      BindConvAttributes(
-          CustomCall::Bind("xla.gpu.conv.fused")
-              .UserData<const ServiceExecutableRunOptions*>()
-              .UserData<const DebugOptions*>()
-              .Arg<runtime::StridedMemrefView>()                   // operand0
-              .Arg<runtime::StridedMemrefView>()                   // operand1
-              .Arg<runtime::FlatMemrefView>()                      // bias
-              .Value(std::optional<runtime::StridedMemrefView>())  // side_input
-              .Arg<runtime::StridedMemrefView>()                   // output
-              .Arg<runtime::FlatMemrefView>()                      // scratch
-          )
-          .Attr<se::dnn::ActivationMode>("activation_mode")
-          .To<checks>(Conv::Handler(kind))
-          .release();
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    ConvFused, Conv::Handler(Kind::kForwardActivation), checks,
+    BindConvAttributes(
+        CustomCall::Bind("xla.gpu.conv.fused")
+            .UserData<const ServiceExecutableRunOptions*>()
+            .UserData<const DebugOptions*>()
+            .UserData<ConvRunnerCache*>()
+            .Arg<StridedMemrefView>()                   // operand0
+            .Arg<StridedMemrefView>()                   // operand1
+            .Arg<FlatMemrefView>()                      // bias
+            .Value(std::optional<StridedMemrefView>())  // side_input
+            .Arg<StridedMemrefView>()                   // output
+            .Arg<FlatMemrefView>()                      // scratch
+        )
+        .Attr<se::dnn::ActivationMode>("activation_mode"));
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    ConvFuseSideInput, Conv::Handler(Kind::kForwardActivation), checks,
+    BindConvAttributes(CustomCall::Bind("xla.gpu.conv.fused.side_input")
+                           .UserData<const ServiceExecutableRunOptions*>()
+                           .UserData<const DebugOptions*>()
+                           .UserData<ConvRunnerCache*>()
+                           .Arg<StridedMemrefView>()  // operand0
+                           .Arg<StridedMemrefView>()  // operand1
+                           .Arg<FlatMemrefView>()     // bias
+                           .Arg<StridedMemrefView>()  // side_input
+                           .Arg<StridedMemrefView>()  // output
+                           .Arg<FlatMemrefView>()     // scratch
+                       )
+        .Attr<se::dnn::ActivationMode>("activation_mode")
+        .Attr<double>("side_input_scale"));
 
-template <CudnnConvKind kind>
-static bool ConvFuseSideInputdFn(runtime::ExecutionContext* ctx, void** args,
-                                 void** attrs, void** rets) {
-  static auto* handler =
-      BindConvAttributes(CustomCall::Bind("xla.gpu.conv.fused.side_input")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const DebugOptions*>()
-                             .Arg<runtime::StridedMemrefView>()  // operand0
-                             .Arg<runtime::StridedMemrefView>()  // operand1
-                             .Arg<runtime::FlatMemrefView>()     // bias
-                             .Arg<runtime::StridedMemrefView>()  // side_input
-                             .Arg<runtime::StridedMemrefView>()  // output
-                             .Arg<runtime::FlatMemrefView>()     // scratch
-                         )
-          .Attr<se::dnn::ActivationMode>("activation_mode")
-          .Attr<double>("side_input_scale")
-          .To<checks>(Conv::Handler(kind))
-          .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
-
-void PopulateConvAttrEncoding(runtime::CustomCallAttrEncodingSet& encoding) {
-  encoding.Add<runtime::EnumAttrEncoding<lmhlo_gpu::ActivationAttr,
-                                         lmhlo_gpu::Activation,
-                                         se::dnn::ActivationMode>>(
-      [](lmhlo_gpu::Activation value) -> se::dnn::ActivationMode {
-        return ConvertConvActivationMode(value).value();
-      });
-
-  using ConvDimsAttr = mhlo::ConvDimensionNumbersAttr;
-  encoding.Add<
-      xla::runtime::AggregateAttrEncoding<ConvDimsAttr, ConvDimensionNumbers>>(
-      encoding,
-      xla::runtime::AggregateAttrDef<ConvDimsAttr>()
-          .Add("input_batch_dim", &ConvDimsAttr::getInputBatchDimension)
-          .Add("input_feature_dim", &ConvDimsAttr::getInputFeatureDimension)
-          .Add("input_spatial_dims", &ConvDimsAttr::getInputSpatialDimensions)
-          .Add("kernel_in_feature_dim",
-               &ConvDimsAttr::getKernelInputFeatureDimension)
-          .Add("kernel_out_feature_dim",
-               &ConvDimsAttr::getKernelOutputFeatureDimension)
-          .Add("kernel_spatial_dims", &ConvDimsAttr::getKernelSpatialDimensions)
-          .Add("output_batch_dim", &ConvDimsAttr::getOutputBatchDimension)
-          .Add("output_feature_dim", &ConvDimsAttr::getOutputFeatureDimension)
-          .Add("output_spatial_dims",
-               &ConvDimsAttr::getOutputSpatialDimensions));
-
-  using ConvConfigAttr = lmhlo_gpu::ConvolutionBackendConfigAttr;
-  encoding.Add<
-      xla::runtime::AggregateAttrEncoding<ConvConfigAttr, ConvBackendConfig>>(
-      encoding,
-      xla::runtime::AggregateAttrDef<ConvConfigAttr>()
-          .Add("algorithm", &ConvConfigAttr::getAlgorithm)
-          .Add("tensor_ops_enabled", &ConvConfigAttr::getTensorOpsEnabled)
-          .Add("is_cudnn_frontend", &ConvConfigAttr::getIsCudnnFrontend)
-          .Add("knob_ids", &ConvConfigAttr::getKnobIds)
-          .Add("knob_values", &ConvConfigAttr::getKnobValues)
-          .Add("operand_0_layout", &ConvConfigAttr::getOperand_0Layout)
-          .Add("operand_1_layout", &ConvConfigAttr::getOperand_1Layout)
-          .Add("result_layout", &ConvConfigAttr::getResultLayout)
-          .Add("workspace_size", &ConvConfigAttr::getWorkspaceSize));
-}
+//===----------------------------------------------------------------------===//
 
 void RegisterConvCustomCalls(runtime::DirectCustomCallRegistry& registry) {
-  auto conv = [](StringRef name) { return ("xla.gpu.conv." + name).str(); };
-  registry.Register(conv("forward"), &ConvFn<CudnnConvKind::kForward>);
-  registry.Register(conv("backward.input"),
-                    &ConvFn<CudnnConvKind::kBackwardInput>);
-  registry.Register(conv("backward.filter"),
-                    &ConvFn<CudnnConvKind::kBackwardFilter>);
-  registry.Register(conv("forward.fused"),
-                    &ConvFusedFn<CudnnConvKind::kForwardActivation>);
-  registry.Register(conv("forward.fused.side_input"),
-                    &ConvFuseSideInputdFn<CudnnConvKind::kForwardActivation>);
+  auto conv = [](std::string name) { return "xla.gpu.conv." + name; };
+  registry.Register(conv("forward"), &ConvFn<Kind::kForward>);
+  registry.Register(conv("backward.input"), &ConvFn<Kind::kBackwardInput>);
+  registry.Register(conv("backward.filter"), &ConvFn<Kind::kBackwardFilter>);
+  registry.Register(conv("forward.fused"), &ConvFused);
+  registry.Register(conv("forward.fused.side_input"), &ConvFuseSideInput);
 }
 
 }  // namespace gpu

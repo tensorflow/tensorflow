@@ -29,6 +29,7 @@ namespace tensorflow {
 namespace dtensor {
 namespace {
 
+using ::testing::ContainsRegex;
 using ::testing::ElementsAre;
 using ::testing::IsEmpty;
 using ::testing::SizeIs;
@@ -68,10 +69,68 @@ class LayoutTest : public ::testing::Test {
   }
 };
 
-TEST_F(LayoutTest, FromStringEmptyMesh) {
+TEST(MeshTest, FromStringEmptyMesh) {
   Mesh mesh = Mesh::Empty();
   std::string mesh_str = mesh.ToString();
   EXPECT_EQ(mesh_str, Mesh::kEmptyMeshString);
+}
+
+TEST(MeshTest, FromStringMeshWithGlobalDevices) {
+  StatusOr<Mesh> mesh = Mesh::FromString(
+      "mesh:|x=2|0,1|0|/job:localhost/task:0/device:CPU:0|/job:localhost/"
+      "task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1");
+  EXPECT_THAT(mesh->global_devices(),
+              ElementsAre("/job:localhost/task:0/device:CPU:0",
+                          "/job:localhost/task:0/device:CPU:1"));
+}
+
+TEST(MeshTest, FromStringMeshWithXLASPMDAndGlobalDevices) {
+  StatusOr<Mesh> mesh = Mesh::FromString(
+      "mesh:|x=2|0,1|0|/job:localhost/task:0/device:CPU:0|/job:localhost/"
+      "task:0/device:CPU:1|use_xla_spmd");
+  EXPECT_TRUE(mesh->use_xla_spmd());
+}
+
+TEST(MeshTest, FromStringMeshWithXLASPMD) {
+  StatusOr<Mesh> mesh = Mesh::FromString(
+      "mesh:|x=1|0|0|/job:localhost/task:0/device:CPU:0|use_xla_spmd");
+  EXPECT_TRUE(mesh->use_xla_spmd());
+}
+
+TEST(MeshTest, FromStringMeshWithoutXLASPMD) {
+  StatusOr<Mesh> mesh =
+      Mesh::FromString("mesh:|x=1|0|0|/job:localhost/task:0/device:CPU:0");
+  EXPECT_FALSE(mesh->use_xla_spmd());
+}
+
+TEST(MeshTest, ToStringMeshWithoutXLASPMD) {
+  Mesh mesh = Mesh::CreateMesh("MyMesh", /*dim_names=*/{"x"},
+                               /*mesh_shape=*/{2},
+                               /*global_device_ids=*/{0, 1},
+                               /*global_devices_str=*/
+                               {"/job:localhost/task:0/device:CPU:0",
+                                "/job:localhost/task:0/device:CPU:1"},
+                               /*local_device_ids=*/{0, 1},
+                               /*local_devices_str=*/
+                               {"/job:localhost/task:0/device:CPU:0",
+                                "/job:localhost/task:0/device:CPU:1"},
+                               /*use_xla_spmd=*/false);
+  EXPECT_TRUE(!absl::StrContains(mesh.ToString(), Mesh::kUseXLASPMDString));
+}
+
+TEST(MeshTest, ToStringMeshWithXLASPMD) {
+  Mesh mesh = Mesh::CreateMesh("MyMesh", /*dim_names=*/{"x"},
+                               /*mesh_shape=*/{2},
+                               /*global_device_ids=*/{0, 1},
+                               /*global_devices_str=*/
+                               {"/job:localhost/task:0/device:CPU:0",
+                                "/job:localhost/task:0/device:CPU:1"},
+                               /*local_device_ids=*/{0, 1},
+                               /*local_devices_str=*/
+                               {"/job:localhost/task:0/device:CPU:0",
+                                "/job:localhost/task:0/device:CPU:1"},
+                               /*use_xla_spmd=*/true);
+  EXPECT_THAT(mesh.ToString(), ContainsRegex(Mesh::kUseXLASPMDString));
 }
 
 TEST_F(LayoutTest, FromStringEmptyLayout) {

@@ -104,6 +104,7 @@ cc_library(
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/security/fuzzing/cc/ops:__pkg__",
     ],
     deps = [
         "//tensorflow/core/profiler/backends/cpu:annotation_stack_impl",

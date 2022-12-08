@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -31,6 +32,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/type_converter.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
@@ -197,25 +199,6 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
 
 //===----------------------------------------------------------------------===//
 
-LogicalResult LowerXfeed(Operation* op, PatternRewriter& rewriter,
-                         StringRef call_target,
-                         CustomCallDeclarations& custom_calls) {
-  ImplicitLocOpBuilder b(op->getLoc(), rewriter);
-
-  // By default all operands are passed to the custom call handler.
-  llvm::SmallVector<Value> operands = op->getOperands();
-
-  // Create a custom call function declaration.
-  func::FuncOp callee = custom_calls.GetOrCreate(
-      b, call_target, TypeRange(ValueRange(operands)), TypeRange());
-
-  // Call the runtime intrinsic with the original operands.
-  rewriter.replaceOpWithNewOp<func::CallOp>(op, callee.getName(), TypeRange(),
-                                            operands);
-
-  return success();
-}
-
 class InfeedOpLowering : public OpRewritePattern<InfeedOp> {
  private:
   static constexpr const char kCallTarget[] = "xla.cpu.infeed";
@@ -226,26 +209,20 @@ class InfeedOpLowering : public OpRewritePattern<InfeedOp> {
 
   LogicalResult matchAndRewrite(InfeedOp op,
                                 PatternRewriter& rewriter) const override {
-    return LowerXfeed(op, rewriter, kCallTarget, custom_calls_);
-  }
+    ImplicitLocOpBuilder b(op->getLoc(), rewriter);
 
- private:
-  CustomCallDeclarations& custom_calls_;
-};
+    // By default all operands are passed to the custom call handler.
+    llvm::SmallVector<Value> operands = op->getOperands();
 
-//===----------------------------------------------------------------------===//
+    // Create a custom call function declaration.
+    func::FuncOp callee =
+        custom_calls_.GetOrCreate(b, StringRef(kCallTarget),
+                                  TypeRange(ValueRange(operands)), TypeRange());
 
-class OutfeedOpLowering : public OpRewritePattern<OutfeedOp> {
- private:
-  static constexpr const char kCallTarget[] = "xla.cpu.outfeed";
-
- public:
-  OutfeedOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
-      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
-
-  LogicalResult matchAndRewrite(OutfeedOp op,
-                                PatternRewriter& rewriter) const override {
-    return LowerXfeed(op, rewriter, kCallTarget, custom_calls_);
+    // Call the runtime intrinsic with the original operands.
+    rewriter.replaceOpWithNewOp<func::CallOp>(op, callee.getName(), TypeRange(),
+                                              operands);
+    return success();
   }
 
  private:
@@ -386,6 +363,54 @@ class FftLowering : public OpRewritePattern<xla_cpu::FftOp> {
 
 //===----------------------------------------------------------------------===//
 
+class OutfeedLowering : public OpRewritePattern<xla_cpu::OutfeedOp> {
+ public:
+  OutfeedLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(xla_cpu::OutfeedOp op,
+                                PatternRewriter& rewriter) const override {
+    ImplicitLocOpBuilder b(op->getLoc(), rewriter);
+
+    // By default all operands are passed to the custom call handler.
+    llvm::SmallVector<Value> operands = op->getOperands();
+
+    // Create a custom call function declaration.
+    func::FuncOp callee =
+        custom_calls_.GetOrCreate(b, StringRef(kCallTarget),
+                                  TypeRange(ValueRange(operands)), TypeRange());
+
+    llvm::SmallVector<NamedAttribute> custom_call_attrs;
+    SmallVector<int32_t> types;
+    for (int i = 0; i < op.getResultType().size(); ++i) {
+      auto type_attr = cast<TypeAttr>(op.getResultType()[i]);
+      auto status_or_primitive_type =
+          xla::runtime::TypeConverter::ConvertElementType(type_attr.getValue());
+      if (!status_or_primitive_type.ok()) {
+        return rewriter.notifyMatchFailure(
+            op,
+            "is not provided with a supported primitive type in the result "
+            "type attribute.");
+      }
+      types.push_back(status_or_primitive_type.value());
+    }
+
+    // Call the runtime intrinsic with the original operands.
+    auto call = rewriter.replaceOpWithNewOp<func::CallOp>(
+        op, callee.getName(), TypeRange(), operands);
+    call->setAttr("result_type", b.getI32ArrayAttr(types));
+
+    return success();
+  }
+
+ private:
+  static constexpr const char kCallTarget[] = "xla.cpu.outfeed";
+
+  CustomCallDeclarations& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
 void ConvertLmhloToCpuRuntimePass::runOnOperation() {
   ModuleOp module = getOperation();
   MLIRContext* ctx = module.getContext();
@@ -396,7 +421,7 @@ void ConvertLmhloToCpuRuntimePass::runOnOperation() {
 
   // Convert lmhlo operations to XLA cpu runtime custom calls.
   RewritePatternSet patterns(ctx);
-  patterns.insert<InfeedOpLowering, OutfeedOpLowering, CustomCallOpLowering,
+  patterns.insert<InfeedOpLowering, OutfeedLowering, CustomCallOpLowering,
                   AllReduceLowering, AllToAllLowering,
                   CollectivePermuteLowering, FftLowering>(ctx, custom_calls);
   patterns.insert<IdOpLowering<PartitionIdOp>>(ctx, "xla.cpu.partition_id",

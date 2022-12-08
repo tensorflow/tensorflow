@@ -20,14 +20,14 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Register the float8_e4m3 numpy type. Returns true on success.
-bool RegisterNumpyFloat8e4m3();
+// Register the float8_e4m3fn numpy type. Returns true on success.
+bool RegisterNumpyFloat8e4m3fn();
 
-// Returns a pointer to the float8_e4m3 dtype object.
-PyObject* Float8e4m3Dtype();
+// Returns a pointer to the float8_e4m3fn dtype object.
+PyObject* Float8e4m3fnDtype();
 
-// Returns the id number of the float8_e4m3 numpy type.
-int Float8e4m3NumpyType();
+// Returns the id number of the float8_e4m3fn numpy type.
+int Float8e4m3fnNumpyType();
 
 // Register the float8_e5m2 numpy type. Returns true on success.
 bool RegisterNumpyFloat8e5m2();

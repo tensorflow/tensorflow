@@ -352,10 +352,16 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
           op_sig.inputs.at(1).type == kTfLiteInt8 &&
           op_sig.outputs.at(0).type == kTfLiteInt16) {
-        // `quantized_bias_type` is supported at version 4.
+        // `quantized_bias_type` is supported at version 5.
         if (transpose_conv_params->quantized_bias_type) {
-          return 4;
+          return 5;
         }
+      }
+
+      // TransposeConvOp has fused activation function from version 4.
+      if (transpose_conv_params != nullptr &&
+          transpose_conv_params->activation) {
+        return 4;
       }
 
       if (op_sig.inputs.size() == 4 &&

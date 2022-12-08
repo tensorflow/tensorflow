@@ -27,6 +27,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -377,12 +378,11 @@ LogicalResult ReduceScatterOp::verify() {
   auto operandType = getOperand().getType().cast<TensorType>();
   bool operandTypeRanked = operandType.isa<RankedTensorType>();
   Block& block = getComputation().front();
-  SmallVector<TensorType> accumulatorSubshapes;
   if (failed(hlo::verifyReducerShape(
           this->getLoc(), block, {operandType},
           {RankedTensorType::get({}, operandType.getElementType())},
           /*numInputs=*/1, /*allowedDimensions=*/{},
-          /*allInputsUnranked=*/!operandTypeRanked, accumulatorSubshapes)))
+          /*allInputsUnranked=*/!operandTypeRanked)))
     return failure();
 
   return mlir::hlo::verifyReduceScatter(
@@ -748,10 +748,12 @@ void CustomCallOp::build(
     ::mlir::mhlo::CustomCallApiVersionAttr apiVersion,
     ::mlir::ArrayAttr calledComputations, ::mlir::ArrayAttr operandLayouts,
     ::mlir::ArrayAttr resultLayouts) {
-  return CustomCallOp::build(odsBuilder, odsState, resultType, operands,
-                             callTargetName, hasSideEffect, backendConfig,
-                             apiVersion, calledComputations, operandLayouts,
-                             resultLayouts, nullptr);
+  return CustomCallOp::build(
+      odsBuilder, odsState, resultType, operands, callTargetName, hasSideEffect,
+      backendConfig, apiVersion, calledComputations,
+      CustomCallScheduleAttr::get(odsBuilder.getContext(),
+                                  CustomCallSchedule::NONE),
+      operandLayouts, resultLayouts, nullptr);
 }
 
 LogicalResult CustomCallOp::verify() {
@@ -888,6 +890,24 @@ LogicalResult CustomCallOp::verify() {
              << "operand part has type " << operandPart
              << " and output part has type " << outputPart;
   }
+
+  // Check backend_config attribute.
+  if (auto backendConfig = getBackendConfig()) {
+    if (getApiVersion() == CustomCallApiVersion::API_VERSION_TYPED_FFI) {
+      // Typed FFI custom calls require `backend_config` to be a DictionaryAttr.
+      if (backendConfig->isa<mlir::StringAttr>())
+        return emitOpError()
+               << "unsupported user-encoded backend config,"
+                  " backend config must be a dictionary attribute.";
+    } else {
+      // Older API versions require user-encoded `backend_config` string.
+      if (backendConfig->isa<mlir::DictionaryAttr>())
+        return emitOpError()
+               << "unsupported dictionary attribute backend config, backend"
+                  " config must be a user-encoded string attribute.";
+    }
+  }
+
   return success();
 }
 
@@ -991,25 +1011,6 @@ LogicalResult DotOp::inferReturnTypes(
   auto lhsType = op.getLhs().getType().cast<ShapedType>();
   auto rhsType = op.getRhs().getType().cast<ShapedType>();
   inferredReturnTypes.push_back(inferDotReturnType(lhsType, rhsType));
-  return success();
-}
-
-LogicalResult DotOp::verify() {
-  auto lhsType = getLhs().getType().cast<ShapedType>();
-  auto rhsType = getRhs().getType().cast<ShapedType>();
-  auto resultType = getType().cast<ShapedType>();
-  auto expectReturnType = inferDotReturnType(lhsType, rhsType);
-  if (!expectReturnType) {
-    return emitError() << "Unexpected operands type: " << lhsType << " and "
-                       << rhsType;
-  }
-  if (resultType.hasRank() && expectReturnType.hasRank()) {
-    if (resultType.getShape() != expectReturnType.getShape()) {
-      return emitError() << "Unexpected result type: has " << resultType
-                         << " but inferred " << expectReturnType
-                         << " from operands " << lhsType << " and " << rhsType;
-    }
-  }
   return success();
 }
 
@@ -4622,6 +4623,71 @@ LogicalResult ReduceWindowOp::fold(ArrayRef<Attribute> operands,
   return failure();
 }
 
+// Builder that takes a constructor for its region and infers result types
+void ReduceWindowOp::build(
+    OpBuilder& odsBuilder, OperationState& odsState, ValueRange inputs,
+    ValueRange init_values, DenseIntElementsAttr window_dimensions,
+    /*optional*/ DenseIntElementsAttr window_strides,
+    /*optional*/ DenseIntElementsAttr base_dilations,
+    /*optional*/ DenseIntElementsAttr window_dilations,
+    /*optional*/ DenseIntElementsAttr padding,
+    function_ref<void(OpBuilder&, Location, ValueRange)> bodyBuilder) {
+  odsState.addOperands(inputs);
+  odsState.addOperands(init_values);
+  odsState.addAttribute(getWindowDimensionsAttrName(odsState.name),
+                        window_dimensions);
+  if (window_strides) {
+    odsState.addAttribute(getWindowStridesAttrName(odsState.name),
+                          window_strides);
+  }
+  if (base_dilations) {
+    odsState.addAttribute(getBaseDilationsAttrName(odsState.name),
+                          base_dilations);
+  }
+  if (window_dilations) {
+    odsState.addAttribute(getWindowDilationsAttrName(odsState.name),
+                          window_dilations);
+  }
+  if (padding) {
+    odsState.addAttribute(getPaddingAttrName(odsState.name), padding);
+  }
+  Region* region = odsState.addRegion();
+
+  llvm::SmallVector<Type> blockArgTypes;
+  llvm::SmallVector<Location> locs;
+  auto numValues = inputs.size() + init_values.size();
+  blockArgTypes.reserve(numValues);
+  locs.reserve(numValues);
+  for (auto i : inputs) {
+    auto iType = i.getType().cast<ShapedType>();
+    blockArgTypes.push_back(iType.cloneWith(
+        llvm::makeArrayRef<int64_t>(std::nullopt), iType.getElementType()));
+    locs.push_back(i.getLoc());
+  }
+  for (auto i : init_values) {
+    auto iType = i.getType().cast<ShapedType>();
+    blockArgTypes.push_back(iType.cloneWith(
+        llvm::makeArrayRef<int64_t>(std::nullopt), iType.getElementType()));
+    locs.push_back(i.getLoc());
+  }
+
+  {
+    OpBuilder::InsertionGuard g(odsBuilder);
+    Block* body =
+        odsBuilder.createBlock(region, /*insertPt=*/{}, blockArgTypes, locs);
+    bodyBuilder(odsBuilder, odsState.location, body->getArguments());
+  }
+
+  llvm::SmallVector<mlir::Type, 2> inferredReturnTypes;
+  if (mlir::succeeded(ReduceWindowOp::inferReturnTypes(
+          odsBuilder.getContext(), odsState.location, odsState.operands,
+          odsState.attributes.getDictionary(odsState.getContext()),
+          odsState.regions, inferredReturnTypes)))
+    odsState.addTypes(inferredReturnTypes);
+  else
+    llvm::report_fatal_error("Failed to infer result type(s).");
+}
+
 //===----------------------------------------------------------------------===//
 // ReducePrecisionOp
 //===----------------------------------------------------------------------===//
@@ -5939,6 +6005,18 @@ void ReshapeOp::getCanonicalizationPatterns(RewritePatternSet& results,
 
 LogicalResult ReplicaIdOp::inferReturnTypes(
     MLIRContext* context, Optional<Location>, ValueRange operands,
+    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  inferredReturnTypes.push_back(RankedTensorType::get(
+      /*shape=*/{}, IntegerType::get(context, 32, IntegerType::Unsigned)));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// PartitionId Op
+//===----------------------------------------------------------------------===//
+
+LogicalResult PartitionIdOp::inferReturnTypes(
+    MLIRContext* context, Optional<Location>, ValueRange /*operands*/,
     DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
   inferredReturnTypes.push_back(RankedTensorType::get(
       /*shape=*/{}, IntegerType::get(context, 32, IntegerType::Unsigned)));
@@ -7327,13 +7405,12 @@ LogicalResult SelectAndScatterOp::verify() {
 
   // P2.
   Block& scatterBlock = getScatter().front();
-  SmallVector<TensorType> accumulatorSubshapes;
   if (failed(hlo::verifyReducerShape(
           this->getLoc(), scatterBlock,
           {RankedTensorType::get({}, sourceType.getElementType())},
           {initValueType},
           /*numInputs=*/1, /*allowedDimensions=*/{},
-          /*allInputsUnranked=*/false, accumulatorSubshapes)))
+          /*allInputsUnranked=*/false)))
     return failure();
 
   // P3.
@@ -7541,7 +7618,6 @@ LogicalResult ScatterOp::verify() {
 
   // P2.
   Block& block = getUpdateComputation().front();
-  SmallVector<TensorType> accumulatorSubshapes;
   SmallVector<TensorType> inputTypes, initValueTypes;
   for (int64_t i = 0; i < static_cast<int64_t>(numOperands); i++) {
     inputTypes.push_back(operandTypes[i]);
@@ -7551,7 +7627,7 @@ LogicalResult ScatterOp::verify() {
   if (failed(hlo::verifyReducerShape(
           this->getLoc(), block, inputTypes, initValueTypes, numOperands,
           /*allowedDimensions=*/{},
-          /*allInputsUnranked=*/!allOperandTypesRanked, accumulatorSubshapes)))
+          /*allInputsUnranked=*/!allOperandTypesRanked)))
     return failure();
 
   // P3.
@@ -8071,6 +8147,8 @@ using mlir::hlo::printSelectOpType;
 using mlir::hlo::parseSelectOpType;
 using mlir::hlo::printTupleOpType;
 using mlir::hlo::parseTupleOpType;
+using mlir::hlo::printCustomCallTarget;
+using mlir::hlo::parseCustomCallTarget;
 using mlir::hlo::printExponentMantissa;
 using mlir::hlo::parseExponentMantissa;
 // clang-format on

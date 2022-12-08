@@ -49,6 +49,7 @@ cc_binary(
     deps = [
         ":writer_lib",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
 )
@@ -59,6 +60,7 @@ cc_binary(
     deps = [
         ":writer_lib",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
 )
@@ -70,7 +72,7 @@ cc_test(
     deps = [
         ":writer_lib",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",

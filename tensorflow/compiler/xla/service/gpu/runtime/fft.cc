@@ -25,7 +25,6 @@ namespace xla {
 namespace gpu {
 
 using xla::runtime::CustomCall;
-using xla::runtime::Executable;
 using xla::runtime::StridedMemrefView;
 
 using llvm::ArrayRef;
@@ -84,18 +83,14 @@ absl::Status Fft::operator()(const ServiceExecutableRunOptions* run_options,
   return absl::OkStatus();
 }
 
-static bool Fft(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.fft")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<runtime::StridedMemrefView>()  // input
-                             .Arg<runtime::StridedMemrefView>()  // output
-                             .Attr<ArrayRef<int64_t>>("fft_length")
-                             .Attr<se::fft::Type>("fft_type")
-                             .To<checks>(Fft::Handler())
-                             .release();
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    Fft, Fft::Handler(), checks,
+    CustomCall::Bind("xla.gpu.fft")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .Arg<runtime::StridedMemrefView>()  // input
+        .Arg<runtime::StridedMemrefView>()  // output
+        .Attr<ArrayRef<int64_t>>("fft_length")
+        .Attr<se::fft::Type>("fft_type"));
 
 void PopulateFftAttrEncoding(runtime::CustomCallAttrEncodingSet& encoding) {
   encoding.Add<runtime::EnumAttrEncoding<mhlo::FftTypeAttr, mhlo::FftType,

@@ -765,7 +765,8 @@ def _dynamic_range_quantize(
       exported_model.graph_def,
       output_directory,
       signature_def_map,
-      tags={tag_constants.SERVING})
+      tags=tags,
+      init_op_name=exported_model.init_node_name)
 
   return saved_model_load(output_directory)
 
@@ -804,6 +805,8 @@ def _populate_quantization_options_default_values(
 
   * If `op_set` is unspecified, it defaults to `OpSet.TF`.
   * If `freeze_all_variables` is not set, it defaults to `True`.
+  * Check if configurations are set correctly:
+    - Per-channel quantization is supported for Uniform Quantized opset only.
 
   Args:
     quantization_options: An instance of QuantizationOptions.
@@ -813,6 +816,12 @@ def _populate_quantization_options_default_values(
 
   if not quantization_options.HasField('freeze_all_variables'):
     quantization_options.freeze_all_variables.enabled = True
+
+  if quantization_options.enable_per_channel_quantization and (
+      quantization_options.op_set != quant_opts_pb2.OpSet.UNIFORM_QUANTIZED):
+    raise ValueError(
+        'Currently, per-channel quantization is supported for Uniform '
+        'Quantized opset only.')
 
 
 def quantize(

@@ -2343,6 +2343,9 @@ TfLiteStatus ParseTransposeConv(const Operator* op,
     params->padding = ConvertPadding(transpose_conv_params->padding());
     params->stride_width = transpose_conv_params->stride_w();
     params->stride_height = transpose_conv_params->stride_h();
+
+    params->activation =
+        ConvertActivation(transpose_conv_params->fused_activation_function());
     TF_LITE_ENSURE_STATUS(
         ConvertTensorType(transpose_conv_params->quantized_bias_type(),
                           &params->quantized_bias_type, error_reporter));

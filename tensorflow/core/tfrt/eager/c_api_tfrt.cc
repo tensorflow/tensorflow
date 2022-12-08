@@ -104,7 +104,6 @@ namespace {
 using tensorflow::down_cast;
 
 constexpr char kGpuDeviceName[] = "GPU";
-constexpr char kEnableNativeOpsAttr[] = "TFRT_TEST_enable_native_ops";
 constexpr char kEnableGrapplerAttr[] = "TFRT_TEST_enable_grappler";
 
 TensorMetadata CreateMetadata(DType dtype, absl::Span<const Index> dim_sizes) {
@@ -1498,22 +1497,10 @@ tensorflow::Status OperationInterface::Initialize() {
       device_name_.empty() ? context_->GetEagerContext()->HostCPUName()
                            : device_name_;
 
-  // TODO(b/172659131): Do not use TFRT native ops for TF integration for now.
-  // Re-enable once we have a concrete plan to implement feature complete
-  // TFRT native ops (kernels).
-  compile_options.enable_native_ops = false;
-
   if (fallback_attrs_.NumAttributes() > 0) {
     const auto& ndef = NodeDef();
     // TODO(tfrt-devs): If we are to create more attributes, consider packing
     // them into a proto.
-    {
-      const auto& it = ndef.attr().find(kEnableNativeOpsAttr);
-      if (it != ndef.attr().end()) {
-        compile_options.enable_native_ops = it->second.b();
-      }
-    }
-
     {
       const auto& it = ndef.attr().find(kEnableGrapplerAttr);
       if (it != ndef.attr().end()) {

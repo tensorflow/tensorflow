@@ -13,6 +13,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/gpu/common:status",

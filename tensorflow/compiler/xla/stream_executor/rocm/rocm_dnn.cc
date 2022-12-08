@@ -593,18 +593,19 @@ MIOpenSupport::MIOpenSupport(GpuExecutor* parent) : parent_(parent) {
   return_best_algo_only_ = false;
   // but if the env var TF_ROCM_RETURN_BEST_ALGO_ONLY is set, only the best
   // (i.e. most efficient) algorithm will be returned
-  tsl::ReadBoolFromEnvVar("TF_ROCM_RETURN_BEST_ALGO_ONLY", false,
-                          &return_best_algo_only_);
+  TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_ROCM_RETURN_BEST_ALGO_ONLY", false,
+                                      &return_best_algo_only_));
 
   // by default, use Find Mode APIs for convolution
   use_immediate_mode_ = false;
   // swich to Find Mode if env var TF_ROCM_USE_IMMEDIATE_MODE is set
-  tsl::ReadBoolFromEnvVar("TF_ROCM_USE_IMMEDIATE_MODE", false,
-                          &use_immediate_mode_);
+
+  TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_ROCM_USE_IMMEDIATE_MODE", false,
+                                      &use_immediate_mode_));
 
   bool enable_pooling_cache = false;
-  tsl::ReadBoolFromEnvVar("TF_ROCM_BW_POOL_CACHE", false,
-                          &enable_pooling_cache);
+  TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_ROCM_BW_POOL_CACHE", false,
+                                      &enable_pooling_cache));
   if (enable_pooling_cache) m_pooling_cache_allowed = true;
 }
 
@@ -4120,7 +4121,8 @@ void PoolingWorkspaceCache::insert(
     // replacing an entry with the same pointer but different attributes
     // (if everything matches, the caller is expected to reuse the entry)
     desc = &it->second;
-    hipStreamSynchronize(hip_stream);
+    CHECK_EQ(hipStreamSynchronize(hip_stream), hipSuccess)
+        << "Failed to sync hipStream";
     memory_used -= desc->workspace_size;
   } else {
     cache[p] = PoolingWorkspaceDescriptor();
@@ -4149,7 +4151,9 @@ void PoolingWorkspaceCache::trim(hipStream_t hip_stream) {
       if (x.second.timestamp + new_size < timestamp)
         old_entries.push_back(x.first);
     if (old_entries.empty()) break;
-    if (must_sync) hipStreamSynchronize(hip_stream);
+    if (must_sync)
+      CHECK_EQ(hipStreamSynchronize(hip_stream), hipSuccess)
+          << "Failed to sync hipStream";
     must_sync = true;
     for (auto x : old_entries) {
       memory_used -= cache[x].workspace_size;

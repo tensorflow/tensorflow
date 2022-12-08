@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #endif  // TFLITE_KERNEL_USE_XNNPACK
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -107,7 +107,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   params.perm_count = size;
 #ifdef TFLITE_KERNEL_USE_XNNPACK
   xnn_status status;
-  pthreadpool_t threadpool = nullptr;
+  CpuBackendContext* cpu_backend_context =
+      CpuBackendContext::GetFromContext(context);
+  pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
+  threadpool = nullptr;
   std::array<size_t, kTransposeMaxDimensions> xnn_input_shape;
   std::array<size_t, kTransposeMaxDimensions> xnn_perm;
   TfLiteIntArray* input_shape = op_context.input->dims;

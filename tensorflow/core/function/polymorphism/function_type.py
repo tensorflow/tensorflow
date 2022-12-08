@@ -219,6 +219,7 @@ class FunctionType(inspect.Signature):
 
   def placeholder_arguments(self) -> inspect.BoundArguments:
     """Returns BoundArguments of values that can be used for tracing."""
+    placeholder_context = trace_type.InternalPlaceholderContext()
     arguments = collections.OrderedDict()
     for parameter in self.parameters.values():
       if parameter.kind in {Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD}:
@@ -229,7 +230,8 @@ class FunctionType(inspect.Signature):
         raise ValueError("Can not generate placeholder value for "
                          "partially defined function type.")
 
-      arguments[parameter.name] = parameter.type_constraint._placeholder_value()  # pylint: disable=protected-access
+      arguments[parameter.name] = parameter.type_constraint._placeholder_value(  # pylint: disable=protected-access
+          placeholder_context)
 
     return inspect.BoundArguments(self, arguments)
 

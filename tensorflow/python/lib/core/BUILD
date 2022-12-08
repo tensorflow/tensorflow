@@ -35,6 +35,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/python/lib/core:custom_float",
         "//tensorflow/tsl/python/lib/core:numpy",
         "//third_party/eigen3",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
@@ -44,10 +45,6 @@ cc_library(
 
 cc_library(
     name = "bfloat16_lib",
-    srcs = [
-        "bfloat16.cc",
-        "float8_e4m3b11.cc",
-    ],
     hdrs = [
         "bfloat16.h",
         "float8_e4m3b11.h",
@@ -56,6 +53,7 @@ cc_library(
         ":custom_float",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/python/lib/core:bfloat16_lib",
         "//tensorflow/tsl/python/lib/core:numpy",
         "//third_party/eigen3",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
@@ -68,6 +66,7 @@ tf_python_pybind_extension(
     srcs = ["bfloat16_wrapper.cc"],
     hdrs = ["bfloat16.h"],
     deps = [
+        "//tensorflow/tsl/python/lib/core:bfloat16_hdr",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],

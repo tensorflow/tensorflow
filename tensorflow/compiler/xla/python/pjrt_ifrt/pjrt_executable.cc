@@ -24,11 +24,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
+#include "tensorflow/compiler/xla/python/ifrt/dtype.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_array.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
@@ -58,6 +60,12 @@ char PjRtLoadedExecutable::ID = 0;
 
 StatusOr<std::unique_ptr<Executable>> PjRtExecutable::Create(
     std::unique_ptr<xla::PjRtExecutable> pjrt_executable) {
+  return std::unique_ptr<Executable>(new PjRtExecutable(
+      std::shared_ptr<xla::PjRtExecutable>(pjrt_executable.release())));
+}
+
+StatusOr<std::unique_ptr<Executable>> PjRtExecutable::Create(
+    std::shared_ptr<xla::PjRtExecutable> pjrt_executable) {
   return std::unique_ptr<Executable>(
       new PjRtExecutable(std::move(pjrt_executable)));
 }
@@ -75,6 +83,13 @@ StatusOr<std::string> PjRtExecutable::Serialize() const {
 StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
     PjRtClient* client,
     std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable) {
+  return Create(client, std::shared_ptr<xla::PjRtLoadedExecutable>(
+                            pjrt_loaded_executable.release()));
+}
+
+StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
+    PjRtClient* client,
+    std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable) {
   // TODO(hyeontaek): We should request output sharding instead of the entire
   // HLO modules once PjRt supports it.
   // TODO(hyeontaek): We would not need to use GetHloModules() if
@@ -102,17 +117,19 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
   VLOG(3) << "PjRtLoadedExecutable::Create";
   VLOG(3) << computation.proto().DebugString();
   VLOG(3) << options.ToProto()->DebugString();
+  const auto& build_options = options.executable_build_options;
   const bool auto_spmd_partitioning =
-      options.executable_build_options.use_auto_spmd_partitioning() ||
-      options.executable_build_options
-          .allow_spmd_sharding_propagation_to_output();
+      build_options.use_spmd_partitioning() &&
+      build_options.num_partitions() > 1 &&
+      (build_options.use_auto_spmd_partitioning() ||
+       build_options.allow_spmd_sharding_propagation_to_output());
   TF_ASSIGN_OR_RETURN(
       auto pjrt_loaded_executable,
       client->pjrt_client()->Compile(computation, std::move(options)));
 
   if (auto_spmd_partitioning) {
-    // TODO(hyeontaek): We should request output sharding instead of the entire
-    // HLO modules once PjRt supports it.
+    // TODO(hyeontaek): We should request output shapes and shardings instead of
+    // the entire HLO modules once PjRt supports it.
     VLOG(3) << "Requesting GetHloModules";
     TF_ASSIGN_OR_RETURN(auto hlo_modules,
                         pjrt_loaded_executable->GetHloModules());
@@ -148,7 +165,7 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
 StatusOr<std::unique_ptr<LoadedExecutable>>
 PjRtLoadedExecutable::CreateInternal(
     PjRtClient* client,
-    std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
+    std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
     const xla::Shape& result_shape,
     const xla::HloSharding* result_hlo_sharding) {
   DeviceList devices(
@@ -180,9 +197,14 @@ PjRtLoadedExecutable::CreateInternal(
         /*n=*/pjrt_loaded_executable->addressable_devices().size(),
         /*v=*/Shape(tile_shape.dimensions()));
     output_shardings.push_back(OpaqueSharding::Create(
-        devices, OpaqueSharding::MakeExplodeFuncFromShapes(
+        devices, OpaqueSharding::MakeDisassembleFuncFromShapes(
                      std::move(per_device_shapes))));
     return OkStatus();
+  };
+  auto append_token = [&] {
+    output_dtypes.push_back(DType(DType::kToken));
+    output_shapes.push_back(Shape({}));
+    output_shardings.push_back(OpaqueSharding::Create(devices));
   };
 
   if (result_shape.IsArray()) {
@@ -190,6 +212,11 @@ PjRtLoadedExecutable::CreateInternal(
     output_shapes.reserve(1);
     output_shardings.reserve(1);
     TF_RETURN_IF_ERROR(append_arg(result_shape, result_hlo_sharding));
+  } else if (result_shape.IsToken()) {
+    output_dtypes.reserve(1);
+    output_shapes.reserve(1);
+    output_shardings.reserve(1);
+    append_token();
   } else if (result_shape.IsTuple()) {
     output_dtypes.reserve(result_shape.tuple_shapes().size());
     output_shapes.reserve(result_shape.tuple_shapes().size());
@@ -203,22 +230,26 @@ PjRtLoadedExecutable::CreateInternal(
     }
     for (int i = 0; i < result_shape.tuple_shapes().size(); ++i) {
       const auto& element_shape = result_shape.tuple_shapes(i);
-      if (!element_shape.IsArray()) {
-        return FailedPrecondition("Tuple element is not an array");
-      }
-      const xla::HloSharding* element_hlo_sharding = nullptr;
-      if (result_hlo_sharding != nullptr) {
-        element_hlo_sharding = &result_hlo_sharding->tuple_elements()[i];
-        if (element_hlo_sharding->IsTuple()) {
-          return FailedPrecondition(
-              "Output sharding is inconsistent with the tuple result");
+      if (element_shape.IsArray()) {
+        const xla::HloSharding* element_hlo_sharding = nullptr;
+        if (result_hlo_sharding != nullptr) {
+          element_hlo_sharding = &result_hlo_sharding->tuple_elements()[i];
+          if (element_hlo_sharding->IsTuple()) {
+            return FailedPrecondition(
+                "Output sharding is inconsistent with the tuple result");
+          }
         }
+        TF_RETURN_IF_ERROR(append_arg(element_shape, element_hlo_sharding));
+      } else if (element_shape.IsToken()) {
+        append_token();
+      } else {
+        return FailedPrecondition(
+            "The tuple element is not a supported type (array, token)");
       }
-      TF_RETURN_IF_ERROR(append_arg(element_shape, element_hlo_sharding));
     }
   } else {
     return FailedPrecondition(
-        "The computation result is not an array or tuple");
+        "The computation result is not a support type (array, token, tuple)");
   }
 
   return std::unique_ptr<LoadedExecutable>(new PjRtLoadedExecutable(

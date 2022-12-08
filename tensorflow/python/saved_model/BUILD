@@ -3,6 +3,7 @@
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.bzl", "VERSION", "tf_python_pybind_static_deps")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -720,7 +721,13 @@ tf_python_pybind_extension(
         "pywrap_saved_model_fingerprinting.h",
         "pywrap_saved_model_metrics.h",
     ],
+    dynamic_deps = ["//tensorflow/python:_pywrap_tensorflow_internal.so"] + select({
+        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+        "//tensorflow:windows": [],
+    }),
     features = ["-layering_check"],
+    static_deps = tf_python_pybind_static_deps(),
     visibility = ["//tensorflow/python/training:__subpackages__"],
     deps = [
         ":pywrap_saved_model_headers",

@@ -20,12 +20,10 @@ package_group(
 cc_library(
     name = "llvm_gpu_backend",
     srcs = [
-        "dump_ir_pass.cc",
         "gpu_backend_lib.cc",
         "utils.cc",
     ],
     hdrs = [
-        "dump_ir_pass.h",
         "gpu_backend_lib.h",
         "utils.h",
     ],

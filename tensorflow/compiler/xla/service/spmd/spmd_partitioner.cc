@@ -682,7 +682,7 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
   Shape padded_shape = base_shape_;
   std::vector<HloInstruction*> offsets_on_padded_shape(base_shape_.rank());
   std::vector<int64_t> per_shard_window_counts(base_shape_.rank());
-  std::vector<int64_t> explicit_left_padding(base_shape_.rank());
+  std::vector<int64_t> explicit_left_padding(base_shape_.rank(), 0);
   // Track if any shards can be skipped.
   std::vector<int64_t> trimmed_target_sharding_tile_shape(base_shape_.rank());
   // There can be at most 2 ranges of skipped shards on a dimension: 1) on the
@@ -709,11 +709,23 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
     // Do not pad non-partitioned dimensions.
     int64_t shard_count = target.tile_assignment().dim(i);
     trimmed_target_sharding_tile_shape[i] = shard_count;
-    if (shard_count == 1 || can_leave_dimension_partitioned[i]) {
+    if (shard_count == 1) {
       offsets_on_padded_shape[i] = state_.b->AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
       shard_shape.set_dimensions(
           i, CeilOfRatio(base_shape_.dimensions(i), shard_count));
+      continue;
+    }
+    if (can_leave_dimension_partitioned[i]) {
+      int64_t shard_size = CeilOfRatio(base_shape_.dimensions(i), shard_count);
+      padded_shape.set_dimensions(i, shard_size * shard_count);
+      offsets_on_padded_shape[i] =
+          state_.b->AddInstruction(HloInstruction::CreateBinary(
+              ShapeUtil::MakeShape(S32, {}), HloOpcode::kMultiply,
+              partition_ordinals[i],
+              state_.b->AddInstruction(HloInstruction::CreateConstant(
+                  LiteralUtil::CreateR0<int32_t>(shard_size)))));
+      shard_shape.set_dimensions(i, shard_size);
       continue;
     }
     const WindowDimension& wd = window.dimensions(i);
@@ -972,16 +984,20 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
       // are already sharded in a way that where the windowed sharding matches
       // the sharding we want.
       if (target.tile_assignment().dim(i) == 1 ||
-          can_leave_dimension_partitioned[i]) {
+          (can_leave_dimension_partitioned[i] && !sharding().IsReplicated())) {
+        // For can_leave_dimension_partitioned[i], we also check sharding() is
+        // not replicated, because handle_all_windowed_dimensions_are_replicated
+        // is invoked in 2 cases: 1) sharding on this dim is consistent, 2)
+        // current sharding is fully replicated. Case 2) still needs resharding.
         padding_config_dim->set_edge_padding_low(0);
         padding_config_dim->set_edge_padding_high(0);
         pad_hlo_shape.set_dimensions(i, hlo_->shape().dimensions(i));
-        continue;
+      } else {
+        padding_config_dim->set_edge_padding_low(explicit_left_padding[i]);
+        padding_config_dim->set_edge_padding_high(padded_shape.dimensions(i) -
+                                                  explicit_left_padding[i] -
+                                                  base_shape_.dimensions(i));
       }
-      padding_config_dim->set_edge_padding_low(explicit_left_padding[i]);
-      padding_config_dim->set_edge_padding_high(padded_shape.dimensions(i) -
-                                                explicit_left_padding[i] -
-                                                base_shape_.dimensions(i));
     }
     auto padded_hlo =
         ShapeUtil::Compatible(pad_hlo_shape, base_shape_)
@@ -997,7 +1013,7 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
         get_dynamic_slice_offset_on_output_if_needed()});
   };
 
-  auto sharding_with_non_windowed_dims_replicated =
+  auto sharding_with_windowed_dims_replicated =
       GetShardingReplicatedOnWindowedDimension(target, window);
   // If the currrent HLO is replicated or all windows dimensions are replicated,
   // pad then slice. If the target sharding and current sharding are not the
@@ -1005,11 +1021,11 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
   // generating a dynamic slice.
   if (sharding().IsReplicated() ||
       (target != sharding() &&
-       sharding_with_non_windowed_dims_replicated == sharding())) {
+       sharding_with_windowed_dims_replicated == sharding())) {
     return handle_all_windowed_dimensions_are_replicated();
   }
   if (target != sharding() &&
-      sharding_with_non_windowed_dims_replicated != sharding()) {
+      sharding_with_windowed_dims_replicated != sharding()) {
     return Reshard(target).ReshardAsWindowedInput(window, target, pad_value);
   }
   if (Product(trimmed_target_sharding_tile_shape) == 1) {
@@ -1114,10 +1130,10 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
                  "is beyond the neighbor.";
       // If we are already sharded in such a way that all windowed dimensions
       // are replicated then just handle it with pad + slice.
-      if (sharding_with_non_windowed_dims_replicated == sharding()) {
+      if (sharding_with_windowed_dims_replicated == sharding()) {
         return handle_all_windowed_dimensions_are_replicated();
       }
-      return Reshard(sharding_with_non_windowed_dims_replicated)
+      return Reshard(sharding_with_windowed_dims_replicated)
           .ReshardAsWindowedInput(window, target, pad_value);
     }
     visiting_hlo = *resharded;
@@ -2124,23 +2140,26 @@ Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
     }
   }
 
-  HloSharding sharding = hlo->sharding().HasUniqueDevice()
-                             ? hlo->sharding()
-                             : HloSharding::Replicate();
-  if (hlo->opcode() == HloOpcode::kSend || hlo->opcode() == HloOpcode::kRecv ||
-      hlo->opcode() == HloOpcode::kRecvDone) {
-    sharding = sharding.GetSubSharding(hlo->shape(), {0});
-  }
+  // The base sharding is a non-tuple sharding that is either assigned to a
+  // specific device or replicated.
+  const HloSharding base_sharding = [&]() {
+    if (hlo->sharding().HasUniqueDevice()) {
+      return HloSharding::AssignDevice(hlo->sharding().GetUniqueDevice());
+    }
+    return HloSharding::Replicate();
+  }();
 
-  // If the instruction cannot be partitioned, replicate the instruction unless
-  // the instruction has side-effect.
+  // Reshard operands according to the base_sharding for the instruction.
   std::vector<HloInstruction*> new_operands;
   for (HloInstruction* operand : hlo->operands()) {
-    new_operands.push_back(GetPartitionedHlo(operand).Reshard(sharding).hlo());
+    HloSharding operand_sharding =
+        base_sharding.NormalizeTupleSharding(operand->shape());
+    new_operands.push_back(
+        GetPartitionedHlo(operand).Reshard(operand_sharding).hlo());
   }
   auto clone =
       b_.AddInstruction(hlo->CloneWithNewOperands(hlo->shape(), new_operands));
-  clone->set_sharding(sharding);
+  clone->set_sharding(base_sharding.NormalizeTupleSharding(clone->shape()));
   SetPartitionedHlo(hlo,
                     PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
                         .Reshard(hlo->sharding()));
@@ -2176,7 +2195,6 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
 
   if (hlo->opcode() != HloOpcode::kConditional &&
       hlo->opcode() != HloOpcode::kTuple &&
-      hlo->opcode() != HloOpcode::kGetTupleElement &&
       hlo->opcode() != HloOpcode::kParameter &&
       hlo->opcode() != HloOpcode::kWhile && hlo->opcode() != HloOpcode::kRng &&
       hlo->opcode() != HloOpcode::kAllReduce) {
@@ -2206,7 +2224,8 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
                           [](const HloSharding& sharding) {
                             return sharding.IsManualSubgroup();
                           }));
-      if (has_manual_subgroup && !hlo->IsCustomCall("SPMDFullToShardShape")) {
+      if (has_manual_subgroup && !hlo->IsCustomCall("SPMDFullToShardShape") &&
+          hlo->opcode() != HloOpcode::kGetTupleElement) {
         auto get_grouped_sharding =
             [&](const HloSharding& sharding, const Shape& shape,
                 const GroupedSharding* ref =
@@ -2486,7 +2505,7 @@ Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
   }
   if (sharding.HasUniqueDevice()) {
     std::vector<HloInstruction*> new_operands(input_count, nullptr);
-    for (auto i = 0; i != input_count; ++i) {
+    for (int64_t i = 0; i != input_count; ++i) {
       // Handle variadic sort sharding.
       HloSharding subsharding =
           hlo->sharding().IsTuple()
@@ -3280,6 +3299,9 @@ Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
 }
 
 Status SpmdPartitioningVisitor::HandleGetTupleElement(HloInstruction* hlo) {
+  if (hlo->sharding().IsManual()) {
+    return DefaultAction(hlo);
+  }
   const auto& tuple = GetPartitionedHlo(hlo->operand(0));
   auto gte = b_.AddInstruction(HloInstruction::CreateGetTupleElement(
       ShapeUtil::GetTupleElementShape(tuple.hlo()->shape(), hlo->tuple_index()),
@@ -3708,8 +3730,27 @@ Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
     return HandleSingleDevice(hlo);
   }
 
-  const auto& sharding = hlo->sharding();
+  // TODO(b/260756663): Remove this fixup once this bug is fixed.
+  // The sharding for an outfeed might include sharding for the outfeed_shape
+  // and sharding for the output tuple. Piece out the sharding for the outfeed
+  // shape if needed.
+  HloSharding sharding = hlo->sharding();
   const Shape& shape = hlo->operand(0)->shape();
+  const int64_t required_leaves = HloSharding::RequiredLeaves(shape);
+
+  // if the sharding is a tuple with one extra element as compared to outfeed
+  // shape, "fix up" the sharding to exclude the output tuple.
+  if (sharding.IsTuple() &&
+      sharding.tuple_elements().size() == required_leaves + 1) {
+    if (shape.IsTuple()) {
+      sharding = HloSharding::Tuple(
+          shape,
+          absl::MakeSpan(sharding.tuple_elements().data(), required_leaves));
+    } else {
+      sharding = sharding.tuple_elements().front();
+    }
+  }
+
   auto partitioned_operand =
       GetPartitionedHlo(hlo->operand(0)).Reshard(sharding);
   const auto& shard_shape = partitioned_operand.hlo()->shape();

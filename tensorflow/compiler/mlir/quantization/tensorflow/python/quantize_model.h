@@ -26,6 +26,18 @@ namespace tensorflow {
 namespace quantization {
 namespace internal {
 
+// Names of the TensorFlow Quantization steps. These names are used primarily
+// for debugging.
+static constexpr absl::string_view kTfQuantPtqPreCalibrationStepName =
+    "tf_quant_ptq_pre_calibration";
+static constexpr absl::string_view kTfQuantPtqPostCalibrationStepName =
+    "tf_quant_ptq_post_calibration";
+static constexpr absl::string_view kTfQuantQatStepName = "tf_quant_qat";
+static constexpr absl::string_view kTfQuantPtqDynamicRangeStepName =
+    "tf_quant_ptq_dynamic_range";
+static constexpr absl::string_view kTfQuantConstantUnfreezingStepName =
+    "tf_quant_constant_unfreezing";
+
 absl::StatusOr<ExportedModel> QuantizeQatModel(
     absl::string_view saved_model_path, absl::string_view exported_names_str,
     absl::string_view tags, absl::string_view quant_opts_serialized);

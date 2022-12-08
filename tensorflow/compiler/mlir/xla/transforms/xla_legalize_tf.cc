@@ -13,17 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -31,9 +37,14 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
@@ -43,7 +54,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/rewriters.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/attribute_importer.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/util/quantization/uniform_quant_ops_attr.pb.h"
+#include "tensorflow/core/util/quantization/uniform_quant_ops_params.h"
 
 namespace mlir {
 namespace mhlo {
@@ -95,6 +110,174 @@ TensorType GetSameShapeTensorType(TensorType tensor_type, Type element_type) {
   llvm_unreachable("unhandled type");
 }
 
+template <typename UniformQuantizedOp>
+FailureOr<TensorType> GetUniformQuantizedType(
+    UniformQuantizedOp op, TensorType operand_type,
+    TypedValue<TensorType> scales_value,
+    TypedValue<TensorType> zero_points_value, IntegerType storage_type,
+    FloatType expressed_type, int64_t storage_type_min,
+    int64_t storage_type_max, int32_t quantized_dimension,
+    PatternRewriter &rewriter) {
+  // Check whether the scales operand has constant op.
+  DenseFPElementsAttr scales;
+  if (!matchPattern(scales_value, m_Constant(&scales))) {
+    return rewriter.notifyMatchFailure(op, "scales must be constant");
+  }
+
+  // Check whether the zero_points operand has constant op.
+  DenseIntElementsAttr zero_points;
+  if (!matchPattern(zero_points_value, m_Constant(&zero_points))) {
+    return rewriter.notifyMatchFailure(op, "zero_points must be constant");
+  }
+  const unsigned flags = quant::QuantizationFlags::Signed;
+  Type elem_ty;
+  if (quantized_dimension == -1) {
+    elem_ty = quant::UniformQuantizedType::get(
+        flags, storage_type, expressed_type, scales.getValues<float>()[0],
+        zero_points.getValues<int32_t>()[0], storage_type_min,
+        storage_type_max);
+  } else {
+    SmallVector<double> scales_vec;
+    SmallVector<int64_t> zero_points_vec;
+    for (auto elem : scales.getValues<float>()) scales_vec.push_back(elem);
+    for (auto elem : zero_points.getValues<int32_t>())
+      zero_points_vec.push_back(elem);
+    elem_ty = quant::UniformQuantizedPerAxisType::get(
+        flags, storage_type, expressed_type, scales_vec, zero_points_vec,
+        quantized_dimension, storage_type_min, storage_type_max);
+  }
+
+  return GetSameShapeTensorType(operand_type, elem_ty);
+}
+
+template <typename UniformQuantizedOp>
+FailureOr<mhlo::ConstantOp> CreateConstantOpForQint8Rhs(
+    UniformQuantizedOp op, TensorType new_rhs_type, PatternRewriter &rewriter) {
+  // Check whether the rhs operand has constant op.
+  TF::TensorProtoAttr tensor_proto_attr;
+  if (!matchPattern(op.getRhs(), m_Constant(&tensor_proto_attr))) {
+    return rewriter.notifyMatchFailure(op, "rhs must be constant.");
+  }
+
+  llvm::StringRef mangled_tensor = tensor_proto_attr.getValue();
+  absl::string_view tensor_view(mangled_tensor.data(), mangled_tensor.size());
+  // TODO(hinsu): Instead of getting the weight from TensorProto, use MLIR
+  // constant attribute to avoid depending on the Tensor proto.
+  tensorflow::TensorProto tensor_proto;
+  tensorflow::Status status =
+      tensorflow::mangling_util::DemangleTensor(tensor_view, &tensor_proto);
+  if (!status.ok()) {
+    return rewriter.notifyMatchFailure(op, status.error_message());
+  }
+
+  tensorflow::Tensor t;
+  if (!t.FromProto(tensor_proto)) {
+    return op.emitError("Failed to convert tensor proto to Tensor.");
+  }
+
+  auto arr = t.flat<tensorflow::qint8>();
+  auto dense_attr = mlir::DenseElementsAttr::get(
+      GetSameShapeTensorType(new_rhs_type, rewriter.getIntegerType(8)),
+      llvm::makeArrayRef(arr.data(), arr.size()));
+  return rewriter.create<mhlo::ConstantOp>(op.getLoc(), new_rhs_type,
+                                           dense_attr);
+}
+
+xla::ConvolutionDimensionNumbers ConvertConvolutionDimensionNumbers(
+    const tensorflow::UniformQuantizedConvolutionDimensionNumbersAttr
+        &dnums_input) {
+  xla::ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(dnums_input.input_batch_dimension());
+  dnums.set_input_feature_dimension(dnums_input.input_feature_dimension());
+  for (auto value : dnums_input.input_spatial_dimensions()) {
+    dnums.add_input_spatial_dimensions(value);
+  }
+  dnums.set_kernel_input_feature_dimension(
+      dnums_input.kernel_input_feature_dimension());
+  dnums.set_kernel_output_feature_dimension(
+      dnums_input.kernel_output_feature_dimension());
+  for (auto value : dnums_input.kernel_spatial_dimensions()) {
+    dnums.add_kernel_spatial_dimensions(value);
+  }
+  dnums.set_output_batch_dimension(dnums_input.output_batch_dimension());
+  dnums.set_output_feature_dimension(dnums_input.output_feature_dimension());
+  for (auto value : dnums_input.output_spatial_dimensions()) {
+    dnums.add_output_spatial_dimensions(value);
+  }
+  return dnums;
+}
+
+DenseIntElementsAttr ConvertToDenseElementsAttr(ArrayAttr array_attr,
+                                                PatternRewriter &rewriter) {
+  SmallVector<int64_t> array;
+  array.reserve(array_attr.size());
+  for (auto elem : array_attr.getAsRange<IntegerAttr>()) {
+    array.push_back(elem.getInt());
+  }
+  return DenseIntElementsAttr::get(
+      RankedTensorType::get({static_cast<int64_t>(array_attr.size())},
+                            rewriter.getIntegerType(64)),
+      array);
+}
+
+FailureOr<ElementsAttr> ConvertPaddingAttr(
+    TF::UniformQuantizedConvolutionHybridOp op,
+    const xla::ConvolutionDimensionNumbers &dnums, PatternRewriter &rewriter) {
+  StringAttr conv_padding = op.getPaddingAttr();
+  SmallVector<int64_t> padding_nums;
+  ShapedType lhs_shape = op.getLhs().getType().cast<ShapedType>();
+  ShapedType rhs_shape = op.getRhs().getType().cast<ShapedType>();
+
+  // Handle only static shape cases.
+  // TODO(b/260284866): Handle dynamic shape cases.
+  if (!lhs_shape.hasStaticShape()) {
+    return op.emitError("lhs must have static shape.");
+  }
+  if (!rhs_shape.hasStaticShape()) {
+    return op.emitError("rhs must have static shape.");
+  }
+
+  const int64_t padding_nums_size = 2 * (rhs_shape.getRank() - 2);
+  padding_nums.reserve(padding_nums_size);
+  if (conv_padding.strref().equals("EXPLICIT")) {
+    for (auto padding_elem :
+         op.getExplicitPaddingAttr().getAsRange<IntegerAttr>()) {
+      padding_nums.push_back(padding_elem.getInt());
+    }
+  } else if (conv_padding.strref().equals("VALID")) {
+    padding_nums.resize(padding_nums_size, 0);
+  } else {
+    padding_nums.resize(padding_nums_size);
+    for (int i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
+      const int64_t stride =
+          op.getWindowStridesAttr()[i].cast<IntegerAttr>().getInt();
+      const int64_t lhs_size_dilated =
+          tensorflow::UniformQuantizedConvolutionParams::DilatedSize(
+              lhs_shape.getDimSize(dnums.input_spatial_dimensions(i)),
+              op.getLhsDilationAttr()[i].cast<IntegerAttr>().getInt());
+      const int64_t rhs_size_dilated =
+          tensorflow::UniformQuantizedConvolutionParams::DilatedSize(
+              rhs_shape.getDimSize(dnums.kernel_spatial_dimensions(i)),
+              op.getRhsDilationAttr()[i].cast<IntegerAttr>().getInt());
+
+      const int64_t output_size = (lhs_size_dilated + stride - 1) / stride;
+      const int64_t total_padding = std::max(
+          (output_size - 1) * stride + rhs_size_dilated - lhs_size_dilated,
+          static_cast<int64_t>(0));
+      const int64_t padding_end = total_padding / 2;
+      const int64_t padding_begin = total_padding - padding_end;
+      padding_nums[2 * i] = padding_begin;
+      padding_nums[2 * i + 1] = padding_end;
+    }
+  }
+
+  ElementsAttr padding_attr = DenseIntElementsAttr::get(
+      RankedTensorType::get({static_cast<int32_t>(padding_nums.size() / 2), 2},
+                            rewriter.getIntegerType(64)),
+      padding_nums);
+  return padding_attr;
+}
+
 // TODO(hinsu): Move this pattern to legalize_tf after resolving the dependency
 // on the tensor proto.
 class ConvertUniformQuantizedDotHybridOp
@@ -104,74 +287,92 @@ class ConvertUniformQuantizedDotHybridOp
 
   LogicalResult matchAndRewrite(TF::UniformQuantizedDotHybridOp op,
                                 PatternRewriter &rewriter) const override {
-    // Check whether the rhs operand has constant op.
-    TF::TensorProtoAttr tensor_proto_attr;
-    if (!matchPattern(op.getRhs(), m_Constant(&tensor_proto_attr)))
-      return failure();
+    // f32 x qi8 -> f32
+    IntegerType rhs_storage_type = rewriter.getIntegerType(8);
+    // Uniform Quantized type for the rhs.
+    int32_t rhs_quantized_dimension = op.getRhsQuantizationAxis();
+    // Currently for dot, PTQ supports per-tensor quantization.
+    if (rhs_quantized_dimension != -1) {
+      return rewriter.notifyMatchFailure(
+          op, "Legalization supports only rhs_quantization_axis -1.");
+    }
+    auto rhs_type = GetUniformQuantizedType(
+        op, op.getRhs().getType().cast<TensorType>(), op.getRhsScales(),
+        op.getRhsZeroPoints(), rhs_storage_type,
+        /*expressed_type=*/rewriter.getF32Type(), op.getRhsQuantizationMinVal(),
+        op.getRhsQuantizationMaxVal(), rhs_quantized_dimension, rewriter);
+    if (failed(rhs_type)) {
+      return rhs_type;
+    }
+    auto rhs = CreateConstantOpForQint8Rhs(op, *rhs_type, rewriter);
+    if (failed(rhs)) {
+      return rhs;
+    }
+    rewriter.replaceOpWithNewOp<mhlo::DotOp>(op, op.getLhs(), *rhs,
+                                             /*precision_config=*/nullptr);
+    return success();
+  }
+};
 
-    // Check whether the rhs_scales operand has constant op.
-    DenseFPElementsAttr rhs_scales;
-    if (!matchPattern(op.getRhsScales(), m_Constant(&rhs_scales)))
-      return failure();
+class ConvertUniformQuantizedConvolutionHybridOp
+    : public OpRewritePattern<TF::UniformQuantizedConvolutionHybridOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
 
-    // Check whether the rhs_zero_points operand has constant op.
-    DenseIntElementsAttr rhs_zero_points;
-    if (!matchPattern(op.getRhsZeroPoints(), m_Constant(&rhs_zero_points)))
-      return failure();
-
-    // Invalid quantization parameter.
-    if (rhs_scales.empty()) return failure();
-    if (rhs_scales.size() != rhs_zero_points.size()) return failure();
+  LogicalResult matchAndRewrite(TF::UniformQuantizedConvolutionHybridOp op,
+                                PatternRewriter &rewriter) const override {
+    IntegerType rhs_storage_type = rewriter.getIntegerType(8);
 
     // Uniform Quantized type for the rhs.
-    IntegerType storage_type = rewriter.getIntegerType(8);
-    FloatType expressed_type = rewriter.getF32Type();
-    int64_t storage_type_min = op.getRhsQuantizationMinVal();
-    int64_t storage_type_max = op.getRhsQuantizationMaxVal();
-    int32_t quantized_dimension = op.getRhsQuantizationAxis();
-    const unsigned flags = mlir::quant::QuantizationFlags::Signed;
-
-    // Currently, PTQ supports per-tensor quantization, for now.
-    if (quantized_dimension != -1) return failure();
-
-    Type rhs_elem_ty;
-    rhs_elem_ty = quant::UniformQuantizedType::get(
-        flags, storage_type, expressed_type, rhs_scales.getValues<float>()[0],
-        rhs_zero_points.getValues<int32_t>()[0], storage_type_min,
-        storage_type_max);
-
-    Type rhs_type = GetSameShapeTensorType(
-        op.getRhs().getType().cast<TensorType>(), rhs_elem_ty);
-
-    llvm::StringRef mangled_tensor = tensor_proto_attr.getValue();
-    absl::string_view tensor_view(mangled_tensor.data(), mangled_tensor.size());
-    // TODO(hinsu): Instead of getting the weight from TensorProto, use MLIR
-    // constant attribute to avoid depending on the Tensor proto.
-    tensorflow::TensorProto tensor_proto;
-    tensorflow::Status status =
-        tensorflow::mangling_util::DemangleTensor(tensor_view, &tensor_proto);
-    if (!status.ok()) {
-      return failure();
+    auto rhs_type = GetUniformQuantizedType(
+        op, op.getRhs().getType().cast<TensorType>(), op.getRhsScales(),
+        op.getRhsZeroPoints(), rhs_storage_type,
+        /*expressed_type=*/rewriter.getF32Type(), op.getRhsQuantizationMinVal(),
+        op.getRhsQuantizationMaxVal(), op.getRhsQuantizationAxis(), rewriter);
+    if (failed(rhs_type)) {
+      return rhs_type;
+    }
+    auto rhs = CreateConstantOpForQint8Rhs(op, *rhs_type, rewriter);
+    if (failed(rhs)) {
+      return rhs;
     }
 
-    tensorflow::Tensor t;
-    if (!t.FromProto(tensor_proto)) {
-      return failure();
+    // TODO(b/261005147): Update the lowering logic after migration to mhlo
+    // ConvolutionDimensionNumbers.
+    tensorflow::UniformQuantizedConvolutionDimensionNumbersAttr dnums_input;
+    if (!dnums_input.ParseFromString(std::string(op.getDimensionNumbers()))) {
+      return op->emitError("Parse dimension_numbers failed.");
+    }
+    xla::ConvolutionDimensionNumbers dnums =
+        ConvertConvolutionDimensionNumbers(dnums_input);
+
+    SmallVector<NamedAttribute> converted_attrs;
+    for (auto attr : op->getAttrs()) {
+      if (attr.getName() == op.getFeatureGroupCountAttrName() ||
+          attr.getName() == op.getBatchGroupCountAttrName()) {
+        converted_attrs.push_back(attr);
+      } else if (attr.getName() == op.getDimensionNumbersAttrName()) {
+        attr.setValue(xla::ConvertConvDimensionNumbers(dnums, &rewriter));
+        converted_attrs.push_back(attr);
+      } else if (attr.getName() == op.getPaddingAttrName()) {
+        auto value_or = ConvertPaddingAttr(op, dnums, rewriter);
+        if (failed(value_or)) {
+          return value_or;
+        }
+        attr.setValue(*value_or);
+        converted_attrs.push_back(attr);
+      } else if (attr.getName() == op.getWindowStridesAttrName() ||
+                 attr.getName() == op.getLhsDilationAttrName() ||
+                 attr.getName() == op.getRhsDilationAttrName()) {
+        attr.setValue(ConvertToDenseElementsAttr(
+            attr.getValue().cast<ArrayAttr>(), rewriter));
+        converted_attrs.push_back(attr);
+      }
     }
 
-    auto arr = t.flat<tensorflow::qint8>();
-    auto dense_attr = ElementsAttr(mlir::DenseElementsAttr::get(
-        GetSameShapeTensorType(rhs_type.cast<TensorType>(), storage_type),
-        llvm::makeArrayRef(arr.data(), arr.size())));
-
-    Value lhs = op.getLhs();
-    rewriter.setInsertionPointAfterValue(op.getRhs());
-    Value rhs = rewriter.create<mhlo::ConstantOp>(rewriter.getUnknownLoc(),
-                                                  rhs_type, dense_attr);
-
-    rewriter.setInsertionPoint(op);
-    rewriter.replaceOpWithNewOp<mhlo::DotOp>(op, lhs, rhs,
-                                             /*precision_config=*/nullptr);
+    SmallVector<Value, 2> operands{op.getLhs(), *rhs};
+    rewriter.replaceOpWithNewOp<mhlo::ConvolutionOp>(op, op.getType(), operands,
+                                                     converted_attrs);
     return success();
   }
 };
@@ -485,7 +686,8 @@ void LegalizeTFModulePass::runOnOperation() {
 
 void PopulateLegalizeTfQuantizationPatterns(MLIRContext *context,
                                             RewritePatternSet *patterns) {
-  patterns->add<ConvertUniformQuantizedDotHybridOp>(context);
+  patterns->add<ConvertUniformQuantizedDotHybridOp,
+                ConvertUniformQuantizedConvolutionHybridOp>(context);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFPass(

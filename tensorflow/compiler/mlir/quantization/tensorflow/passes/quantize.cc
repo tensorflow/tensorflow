@@ -52,23 +52,23 @@ namespace quant {
 
 //===----------------------------------------------------------------------===//
 // The actual Quantize Pass.
-//
+//===----------------------------------------------------------------------===//
 namespace {
 
 enum QuantizationTrait { kFullQuantization, kDynamicRangeQuantization };
 
 // Base struct for quantization.
-template <QuantizationTrait quantization_trait, typename ConcretTy,
-          typename RootOp = quantfork::DequantizeCastOp>
+template <QuantizationTrait quantization_trait, typename ConcreteT,
+          typename RootOpT = quantfork::DequantizeCastOp>
 struct TFQuantizationBase
-    : public QuantizationPattern<ConcretTy, quantfork::QuantizeCastOp,
+    : public QuantizationPattern<ConcreteT, quantfork::QuantizeCastOp,
                                  quantfork::DequantizeCastOp,
-                                 /*VERIFIER=*/void, RootOp> {
+                                 /*VerifierT=*/void, RootOpT> {
   explicit TFQuantizationBase(MLIRContext* ctx,
                               const QuantPassSpec& quant_params)
-      : QuantizationPattern<ConcretTy, quantfork::QuantizeCastOp,
+      : QuantizationPattern<ConcreteT, quantfork::QuantizeCastOp,
                             quantfork::DequantizeCastOp,
-                            /*VERIFIER=*/void, RootOp>(ctx, quant_params) {}
+                            /*VerifierT=*/void, RootOpT>(ctx, quant_params) {}
 
   // Custom op quantization is not supported.
   static bool IsQuantizableCustomOp(Operation* op,

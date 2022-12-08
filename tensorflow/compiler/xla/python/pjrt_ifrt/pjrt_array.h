@@ -54,6 +54,12 @@ class PjRtArray final : public llvm::RTTIExtends<PjRtArray, Array> {
   static StatusOr<std::unique_ptr<Array>> Create(
       Client* client, std::unique_ptr<PjRtBuffer> pjrt_buffer);
 
+  // Shorthand for a multi-shard array construction using OpaqueSharding.
+  // TODO(hyeontaek): Remove this once IFRT Sharding and JAX Sharding is unified
+  // so that OpaqueSharding can be replaced with a real Sharding.
+  static StatusOr<std::unique_ptr<Array>> Create(Client* client, Shape shape,
+                                                 PjRtBuffers pjrt_buffers);
+
   absl::Span<const std::shared_ptr<PjRtBuffer>> pjrt_buffers() const {
     DCHECK(this);
     return pjrt_buffers_;
@@ -93,8 +99,8 @@ class PjRtArray final : public llvm::RTTIExtends<PjRtArray, Array> {
     return sharding_;
   }
 
-  StatusOr<std::vector<std::unique_ptr<Array>>> Explode(
-      ArrayCopySemantics semantics) override;
+  StatusOr<std::vector<std::unique_ptr<Array>>>
+  DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) override;
 
   ABSL_MUST_USE_RESULT
   Future<Status> CopyToHostBuffer(

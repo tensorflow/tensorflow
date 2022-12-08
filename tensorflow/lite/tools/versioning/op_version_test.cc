@@ -749,6 +749,16 @@ TEST(OpVersionTest, VersioningTransposeConvOperatorTest) {
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   TfLiteTransposeConvParams transpose_conv_params = {};
+  transpose_conv_params.activation = kTfLiteActRelu;
+  fake_op_sig = {
+      .op = BuiltinOperator_TRANSPOSE_CONV,
+      .inputs = CreateOpSignatureTensorSpecs(std::vector<TfLiteType>{
+          kTfLiteInt32, kTfLiteInt8, kTfLiteInt8, none_type}),
+      .builtin_data = reinterpret_cast<void*>(&transpose_conv_params),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+
+  transpose_conv_params = {};
   fake_op_sig = {
       .op = BuiltinOperator_TRANSPOSE_CONV,
       .inputs = CreateOpSignatureTensorSpecs(
@@ -757,7 +767,7 @@ TEST(OpVersionTest, VersioningTransposeConvOperatorTest) {
       .builtin_data = reinterpret_cast<void*>(&transpose_conv_params),
   };
   transpose_conv_params.quantized_bias_type = kTfLiteInt32;
-  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
 }
 
 TEST(OpVersionTest, VersioningSVDFOperatorTest) {

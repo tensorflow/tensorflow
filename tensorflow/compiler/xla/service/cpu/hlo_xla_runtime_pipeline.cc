@@ -81,14 +81,11 @@ void AddSparsificationPasses(mlir::OpPassManager& pm) {
   pm.addNestedPass<FuncOp>(mlir::createLinalgGeneralizationPass());
   pm.addNestedPass<FuncOp>(
       mlir::bufferization::createEmptyTensorToAllocTensorPass());
-  pm.addPass(mlir::bufferization::createTensorCopyInsertionPass(
-      GetBufferizationOptions()));
   pm.addPass(mlir::createPreSparsificationRewritePass());
-  pm.addPass(mlir::createSparsificationPass());
-  pm.addPass(mlir::createPostSparsificationRewritePass(/*enableRT=*/false));
-  pm.addPass(mlir::createSparseTensorCodegenPass());
-  pm.addPass(mlir::createSparseBufferRewritePass());
-  pm.addPass(mlir::createDenseBufferizationPass(GetBufferizationOptions()));
+  pm.addPass(mlir::createSparsificationAndBufferizationPass(
+      GetBufferizationOptions(), mlir::SparsificationOptions(),
+      mlir::SparseTensorConversionOptions(), /*enableRuntimeLibrary=*/false,
+      /*enableBufferInitialization=*/false));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createFinalizingBufferizePass());
 }
@@ -124,6 +121,10 @@ static Status CreateHloXlaPipeline(
   pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       xla::cpu::createLegalizeCollectiveOpsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createMhloExpandOpsSimplifierPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createHloCanonicalizeScatterPass());
   // TODO(kramerb): Give THLO lowerings priority over linalg when it's ready for
   // concat, reduce and friends.
   pm.addNestedPass<mlir::func::FuncOp>(

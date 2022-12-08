@@ -68,8 +68,7 @@ ProfileRequest PopulateProfileRequest(
 TEST(RemoteProfilerSessionManagerTest, Simple) {
   absl::Duration duration = absl::Milliseconds(30);
   RemoteProfilerSessionManagerOptions options;
-  *options.mutable_profiler_options() =
-      tensorflow::ProfilerSession::DefaultOptions();
+  *options.mutable_profiler_options() = tsl::ProfilerSession::DefaultOptions();
   options.mutable_profiler_options()->set_duration_ms(
       absl::ToInt64Milliseconds(duration));
 
@@ -100,8 +99,7 @@ TEST(RemoteProfilerSessionManagerTest, Simple) {
 TEST(RemoteProfilerSessionManagerTest, ExpiredDeadline) {
   absl::Duration duration = absl::Milliseconds(30);
   RemoteProfilerSessionManagerOptions options;
-  *options.mutable_profiler_options() =
-      tensorflow::ProfilerSession::DefaultOptions();
+  *options.mutable_profiler_options() = tsl::ProfilerSession::DefaultOptions();
   options.mutable_profiler_options()->set_duration_ms(
       absl::ToInt64Milliseconds(duration));
 
@@ -133,8 +131,7 @@ TEST(RemoteProfilerSessionManagerTest, ExpiredDeadline) {
 TEST(RemoteProfilerSessionManagerTest, LongSession) {
   absl::Duration duration = absl::Seconds(3);
   RemoteProfilerSessionManagerOptions options;
-  *options.mutable_profiler_options() =
-      tensorflow::ProfilerSession::DefaultOptions();
+  *options.mutable_profiler_options() = tsl::ProfilerSession::DefaultOptions();
   options.mutable_profiler_options()->set_duration_ms(
       absl::ToInt64Milliseconds(duration));
 

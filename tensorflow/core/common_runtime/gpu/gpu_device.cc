@@ -1369,7 +1369,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
                                 " failed. Status: ", hipGetErrorString(err));
       }
       int priority_low, priority_high;
-      hipDeviceGetStreamPriorityRange(&priority_low, &priority_high);
+      err = hipDeviceGetStreamPriorityRange(&priority_low, &priority_high);
       if (err != hipSuccess) {
         return errors::Internal(
             "hipDeviceGetStreamPriorityRange() on GPU:", original_device,

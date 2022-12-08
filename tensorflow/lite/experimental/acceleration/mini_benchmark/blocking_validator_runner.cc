@@ -58,7 +58,7 @@ BlockingValidatorRunner::BlockingValidatorRunner(
                 options.custom_input_batch_size, options.custom_input_data,
                 options.error_reporter),
       options.error_reporter, options.nnapi_sl,
-      options.validation_entrypoint_name);
+      options.validation_entrypoint_name, options.benchmark_result_evaluator);
 }
 
 MinibenchmarkStatus BlockingValidatorRunner::Init() {

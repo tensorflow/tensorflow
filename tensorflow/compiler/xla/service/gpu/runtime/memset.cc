@@ -24,7 +24,6 @@ namespace xla {
 namespace gpu {
 
 using xla::runtime::CustomCall;
-using xla::runtime::Executable;
 
 namespace {
 
@@ -144,17 +143,13 @@ absl::Status Memset::operator()(const ServiceExecutableRunOptions* run_options,
   return absl::OkStatus();
 }
 
-static bool MemsetFn(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                     void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.memset")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<runtime::StridedMemrefView>()  // dst
-                             .Arg<CustomCall::VariantArg>()      // constant
-                             .To<checks>(Memset::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    MemsetFn, Memset::Handler(), checks,
+    CustomCall::Bind("xla.gpu.memset")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .Arg<runtime::StridedMemrefView>()  // dst
+        .Arg<CustomCall::VariantArg>()      // constant
+);
 
 void RegisterMemsetCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.gpu.memset", &MemsetFn);

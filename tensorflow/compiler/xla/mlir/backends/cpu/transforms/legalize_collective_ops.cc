@@ -226,6 +226,37 @@ class FftLowering : public OpRewritePattern<mhlo::FftOp> {
   };
 };
 
+class OutfeedLowering : public OpRewritePattern<mhlo::OutfeedOp> {
+  using OpRewritePattern<mhlo::OutfeedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::OutfeedOp op,
+                                PatternRewriter& rewriter) const override {
+    SmallVector<Attribute> result_types;
+    for (auto operand : op.getInputs()) {
+      result_types.push_back(
+          TypeAttr::get(operand.getType().cast<ShapedType>().getElementType()));
+    }
+    rewriter.create<xla_cpu::OutfeedOp>(
+        op.getLoc(), llvm::None, op.getInputs(), op.getOutfeedConfigAttr(),
+        ArrayAttr::get(op->getContext(), result_types));
+
+    // Replacing the op with the token.
+    rewriter.replaceOp(op, op.getToken());
+    return success();
+  };
+};
+
+class AddDependencyLowering : public OpRewritePattern<mhlo::AddDependencyOp> {
+  using OpRewritePattern<mhlo::AddDependencyOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::AddDependencyOp op,
+                                PatternRewriter& rewriter) const override {
+    rewriter.replaceOpWithNewOp<xla_cpu::AddDependencyOp>(
+        op, op->getResultTypes(), op->getOperands());
+    return success();
+  };
+};
+
 void LegalizeCollectiveOpsPass::runOnOperation() {
   func::FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
@@ -235,8 +266,8 @@ void LegalizeCollectiveOpsPass::runOnOperation() {
   patterns
       .insert<AllReduceLowering, CollectivePermuteLowering, AllToAllLowering,
               IdLowering<mhlo::PartitionIdOp, xla_cpu::PartitionIdOp>,
-              IdLowering<mhlo::ReplicaIdOp, xla_cpu::ReplicaIdOp>, FftLowering>(
-          ctx);
+              IdLowering<mhlo::ReplicaIdOp, xla_cpu::ReplicaIdOp>, FftLowering,
+              OutfeedLowering, AddDependencyLowering>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     return signalPassFailure();

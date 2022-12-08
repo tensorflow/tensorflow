@@ -74,6 +74,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:custom_call_registry",
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/service/cpu:cpu_runtime",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
 )

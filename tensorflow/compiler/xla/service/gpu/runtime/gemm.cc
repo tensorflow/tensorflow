@@ -28,7 +28,6 @@ namespace xla {
 namespace gpu {
 
 using xla::runtime::CustomCall;
-using xla::runtime::Executable;
 using xla::runtime::State;
 
 namespace {
@@ -78,25 +77,20 @@ absl::Status Gemm::operator()(const ServiceExecutableRunOptions* run_options,
   return absl::OkStatus();
 }
 
-static bool Gemm(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                 void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.gemm")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const DebugOptions*>()
-                             .State<GemmConfig>("uid")
-                             .Arg<runtime::StridedMemrefView>()  // lhs
-                             .Arg<runtime::StridedMemrefView>()  // rhs
-                             .Arg<runtime::StridedMemrefView>()  // out
-                             .Attr<int64_t>("algorithm")
-                             .Attr<double>("alpha_real")
-                             .Attr<double>("alpha_imag")
-                             .Attr<double>("beta")
-                             .Attr<DotDimensionNumbers>("dot_dims")
-                             .To<checks>(Gemm::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    Gemm, Gemm::Handler(), checks,
+    CustomCall::Bind("xla.gpu.gemm")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .UserData<const DebugOptions*>()
+        .State<GemmConfig>("uid")
+        .Arg<runtime::StridedMemrefView>()  // lhs
+        .Arg<runtime::StridedMemrefView>()  // rhs
+        .Arg<runtime::StridedMemrefView>()  // out
+        .Attr<int64_t>("algorithm")
+        .Attr<double>("alpha_real")
+        .Attr<double>("alpha_imag")
+        .Attr<double>("beta")
+        .Attr<DotDimensionNumbers>("dot_dims"));
 
 void RegisterGemmCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.gpu.gemm", &xla::gpu::Gemm);

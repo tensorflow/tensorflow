@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/signature_runner.h"
 #include "tensorflow/lite/string_type.h"
 

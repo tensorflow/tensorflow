@@ -422,10 +422,15 @@ typedef struct {
 } TfLiteArgMinParams;
 
 typedef struct {
+  // Parameters supported by version 1:
   TfLitePadding padding;
   int stride_width;
   int stride_height;
-  // Parameters for TransposeConv version 4 or above.
+
+  // Parameters supported by version 4:
+  TfLiteFusedActivation activation;
+
+  // Parameters for TransposeConv version 5 or above.
   // Ensures that quantized_bias_type defaults to correct value.
   TfLiteType quantized_bias_type;
 } TfLiteTransposeConvParams;

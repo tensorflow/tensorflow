@@ -34,7 +34,8 @@ func.func @compute(%a: memref<2x6x2x2xf32>,
        lhs_contracting_dimensions = [3],
        rhs_contracting_dimensions = [2]>,
      epilogue = #lmhlo_gpu<epilogue Default>,
-     precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
+     precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
+     operand_segment_sizes = array<i32: 1, 1, 1, 1, 0, 0>
    } : (memref<2x6x2x2xf32>, memref<2x6x2x2xf32>,
         memref<2x6x2x2xf32>, memref<2x6x2x2xf32>) -> ()
 
@@ -70,7 +71,7 @@ func.func @compute(%a: memref<2x6x2x2xf32>,
   // CHECK-SAME:                        rhs_batching_dimensions = [0, 1],
   // CHECK-SAME:                        lhs_contracting_dimensions = [3],
   // CHECK-SAME:                        rhs_contracting_dimensions = [2]>
-  // CHECK-SAME:   epilogue = #lmhlo_gpu<epilogue Default>
+  // CHECK-SAME:   epilogue = #lmhlo_gpu<epilogue Bias>
   // CHECK-SAME:   precision = dense<0> : tensor<2xi32>
   // CHECK-SAME:   uid = 0 : i64
   "lmhlo_gpu.cublas.lt.matmul"(%a, %b, %c, %d, %bias) {
@@ -83,8 +84,9 @@ func.func @compute(%a: memref<2x6x2x2xf32>,
        rhs_batching_dimensions = [0, 1],
        lhs_contracting_dimensions = [3],
        rhs_contracting_dimensions = [2]>,
-     epilogue = #lmhlo_gpu<epilogue Default>,
-     precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
+     epilogue = #lmhlo_gpu<epilogue Bias>,
+     precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
+     operand_segment_sizes = array<i32: 1, 1, 1, 1, 1, 0>
    } : (memref<2x6x2x2xf32>, memref<2x6x2x2xf32>, memref<2x6x2x2xf32>,
         memref<2x6x2x2xf32>, memref<2x6x2x2xf32>) -> ()
 

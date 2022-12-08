@@ -2000,7 +2000,10 @@ struct ReplacePackWithReshape : public RewritePattern {
     // This is to workaround the unnecessary cast i64 -> i32.
     SmallVector<int32_t, 4> new_shape_array;
     for (auto size : output_type.getShape()) {
-      new_shape_array.push_back(static_cast<int32_t>(size));
+      // TODO(b/259719789): clean up dynamic shape check (e.g. into a
+      // discrete function) once bug is completely fixed.
+      new_shape_array.push_back(
+          mlir::ShapedType::isDynamic(size) ? -1 : static_cast<int32_t>(size));
     }
 
     auto new_shape = rewriter.create<TFL::ConstOp>(
@@ -2103,7 +2106,11 @@ TFL::ConstOp NarrowDownInt64InputValuesForOp(Operation *input_op,
   SmallVector<int32_t, 4> value_i32;
   value_i32.reserve(value_type.getRank());
   for (const auto &size : attr) {
-    value_i32.push_back(static_cast<int32_t>(size.getSExtValue()));
+    // TODO(b/259719789): clean up dynamic shape check (e.g. into a
+    // discrete function) once bug is completely fixed.
+    value_i32.push_back(mlir::ShapedType::isDynamic(size.getSExtValue())
+                            ? -1
+                            : static_cast<int32_t>(size.getSExtValue()));
   }
   auto new_value_i32_attr =
       mlir::DenseIntElementsAttr::get(value_shape_type, value_i32);

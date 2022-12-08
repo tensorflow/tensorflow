@@ -59,7 +59,7 @@ void AllocToArgPass::runOnOperation() {
   BitVector resultsToErase(funcOp.getNumResults());
   Location loc = returnOp.getLoc();
 
-  for (auto [i, result] : llvm::enumerate(returnOp.operands())) {
+  for (auto [i, result] : llvm::enumerate(returnOp.getOperands())) {
     Operation *resultDef = result.getDefiningOp();
     Type resultTy = result.getType();
 

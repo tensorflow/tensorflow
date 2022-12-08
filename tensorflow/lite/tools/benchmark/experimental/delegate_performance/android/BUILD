@@ -73,9 +73,11 @@ cc_library(
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:validator_runner_entrypoint",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:validator_runner_options",
         "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
+        "//tensorflow/lite/experimental/acceleration/configuration:stable_delegate_plugin",
         "//tensorflow/lite/experimental/acceleration/configuration:xnnpack_plugin",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:tool_params",
+        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:tflite_settings_json_parser",
     ] + select({
         # On Android, as the validation runs in a separate process as a
         # different binary, any TFLite delegates to be validated need to
@@ -90,6 +92,12 @@ cc_library(
 cc_test(
     name = "accuracy_benchmark_test",
     srcs = ["jni/accuracy_benchmark_test.cc"],
+    data = [
+        "//tensorflow/lite/delegates/utils/experimental/sample_stable_delegate:tensorflowlite_sample_stable_delegate",
+        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:test_xnnpack_settings.json",
+        "//tensorflow/lite/tools/delegates/experimental/stable_delegate:test_invalid_settings.json",
+        "//tensorflow/lite/tools/delegates/experimental/stable_delegate:test_sample_stable_delegate_settings.json",
+    ],
     deps = [
         ":accuracy_benchmark",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_mobilenet_validation_model",

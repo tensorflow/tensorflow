@@ -44,9 +44,6 @@ struct TfrtCompileOptions {
   // Enable compiler optimization in TFRT dialect.
   bool enable_optimizer = true;
 
-  // This is deprecated and has no effect.
-  bool enable_native_ops = false;
-
   // If true, run grappler passes before compiling.
   bool enable_grappler = true;
 

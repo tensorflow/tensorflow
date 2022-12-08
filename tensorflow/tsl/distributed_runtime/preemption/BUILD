@@ -53,6 +53,7 @@ cc_library(
         ":preemption_notifier",
         "//tensorflow/tsl/distributed_runtime:call_options",
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "//tensorflow/tsl/lib/monitoring:gauge",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:status",

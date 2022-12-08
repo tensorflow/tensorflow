@@ -84,22 +84,81 @@ TEST_F(SoftmaxFusionTest, SingleSoftmaxPatternF16) {
 
 HloModule softmax
 
-max_computation {
-  arg_0 = f16[] parameter(0)
-  arg_1 = f16[] parameter(1)
-  ROOT maximum = f16[] maximum(arg_0, arg_1)
+add_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg_0, arg_1)
 }
 
 ENTRY main {
   param_0 = f16[128,127]{1,0} parameter(0)
-  constant_neg_inf = f32[] constant(-inf)
-  reduce = f16[128]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = f16[128,127]{1,0} broadcast(reduce), dimensions={0}
+  constant_zero = f32[] constant(0.0)
+  convert_up = f32[128,127]{1,0} convert(param_0)
+  reduce = f32[128]{0} reduce(convert_up, constant_zero), dimensions={1}, to_apply=add_computation
+  convert_down = f16[128]{0} convert(reduce)
+  broadcast = f16[128,127]{1,0} broadcast(convert_down), dimensions={0}
   ROOT subtract = f16[128,127]{1,0} subtract(param_0, broadcast)
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  auto initial_module = module->Clone();
   SoftmaxFusion fusion;
+  EXPECT_TRUE(fusion.Run(module.get()).value());
+
+  EXPECT_TRUE(RunAndCompare(std::move(initial_module), ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(SoftmaxFusionTest, SingleSoftmaxPatternF16HigherRank) {
+  const std::string& hlo_string = R"(
+
+HloModule softmax
+
+add_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg_0, arg_1)
+}
+
+ENTRY main {
+  param_0 = f16[2,3,128,127]{3,2,1,0} parameter(0)
+  constant_zero = f32[] constant(0.0)
+  convert_up = f32[2,3,128,127]{3,2,1,0} convert(param_0)
+  reduce = f32[2,3,128]{2,1,0} reduce(convert_up, constant_zero), dimensions={3}, to_apply=add_computation
+  convert_down = f16[2,3,128]{2,1,0} convert(reduce)
+  broadcast = f16[2,3,128,127]{3,2,1,0} broadcast(convert_down), dimensions={0,1,2}
+  ROOT subtract = f16[2,3,128,127]{3,2,1,0} subtract(param_0, broadcast)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  auto initial_module = module->Clone();
+  SoftmaxFusion fusion;
+  EXPECT_TRUE(fusion.Run(module.get()).value());
+
+  EXPECT_TRUE(RunAndCompare(std::move(initial_module), ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(SoftmaxFusionTest, SingleSoftmaxPatternF64) {
+  const std::string& hlo_string = R"(
+
+HloModule softmax
+
+max_computation {
+  arg_0 = f64[] parameter(0)
+  arg_1 = f64[] parameter(1)
+  ROOT maximum = f64[] maximum(arg_0, arg_1)
+}
+
+ENTRY main {
+  param_0 = f64[128,127]{1,0} parameter(0)
+  constant_neg_inf = f64[] constant(-inf)
+  reduce = f64[128]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f64[128,127]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f64[128,127]{1,0} subtract(param_0, broadcast)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  SoftmaxFusion fusion;
+  // We currently do not support f64 reductions in softmax.
   EXPECT_FALSE(fusion.Run(module.get()).value());
 }
 
@@ -198,8 +257,7 @@ ENTRY main {
                   m::Parameter(0),
                   m::Broadcast(m::Reduce(m::Parameter(0), m::Constant())))));
 
-  EXPECT_TRUE(RunAndCompareTwoModules(
-      std::move(module), std::move(initial_module), ErrorSpec(1e-6, 1e-6)));
+  EXPECT_TRUE(RunAndCompare(std::move(initial_module), ErrorSpec(1e-6, 1e-6)));
 }
 
 TEST_F(SoftmaxFusionTest, SoftmaxPatternWithExtraStuff) {
@@ -349,8 +407,7 @@ ENTRY main {
                   m::Parameter(0),
                   m::Broadcast(m::Reduce(m::Parameter(0), m::Constant()))))));
 
-  EXPECT_TRUE(RunAndCompareTwoModules(
-      std::move(module), std::move(initial_module), ErrorSpec(1e-6, 1e-6)));
+  EXPECT_TRUE(RunAndCompare(std::move(initial_module), ErrorSpec(1e-6, 1e-6)));
 }
 
 TEST_F(SoftmaxFusionTest, 4DWithBroadcast) {
@@ -399,6 +456,43 @@ ENTRY main {
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec(1e-6, 1e-6)));
+}
+
+// Currently the pipeline wants to collapse everything to 2D, but for some
+// broadcasts this is not possible. This test is an example of such a case.
+TEST_F(SoftmaxFusionTest, 4DWithUncollapsibleBroadcast) {
+  const std::string& hlo_string = R"(
+HloModule module
+
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+
+add_computation {
+  arg_0.1 = f32[] parameter(0)
+  arg_1.1 = f32[] parameter(1)
+  ROOT maximum.1 = f32[] add(arg_0.1, arg_1.1)
+}
+
+ENTRY main {
+  parameter_1.6 = f32[32,150]{1,0} parameter(0)
+  broadcast.599 = f32[32,4,72,150]{3,2,1,0} broadcast(parameter_1.6), dimensions={0,3}
+  constant.474 = f32[] constant(-inf)
+  reduce.45 = f32[32,4,72]{2,1,0} reduce(broadcast.599, constant.474), dimensions={3}, to_apply=max_computation
+  broadcast.600 = f32[32,4,72,150]{3,2,1,0} broadcast(reduce.45), dimensions={0,1,2}
+  subtract.68 = f32[32,4,72,150]{3,2,1,0} subtract(broadcast.599, broadcast.600)
+  exponential.35 = f32[32,4,72,150]{3,2,1,0} exponential(subtract.68)
+  constant.476 = f32[] constant(0)
+  reduce.46 = f32[32,4,72]{2,1,0} reduce(exponential.35, constant.476), dimensions={3}, to_apply=add_computation
+  broadcast.601 = f32[32,4,72,150]{3,2,1,0} broadcast(reduce.46), dimensions={0,1,2}
+  ROOT divide.28 = f32[32,4,72,150]{3,2,1,0} divide(exponential.35, broadcast.601)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  SoftmaxFusion fusion;
+  EXPECT_FALSE(fusion.Run(module.get()).value());
 }
 
 TEST_F(SoftmaxFusionTest, DoubleSoftmaxPatternWithExtraStuff) {
@@ -769,7 +863,7 @@ add_computation {
   ROOT add = f32[] add(arg0, arg1)
 }
 
-ENTRY main.19 {
+ENTRY main {
   param_0 = f32[13,1,5]{2,1,0} parameter(0)
   constant_zero = f32[] constant(0)
   reduction = f32[13,1]{1,0} reduce(param_0, constant_zero), dimensions={2}, to_apply=add_computation
@@ -781,6 +875,125 @@ ENTRY main.19 {
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   SoftmaxFusion fusion;
   EXPECT_TRUE(fusion.Run(module.get()).value());
+}
+
+TEST_F(SoftmaxFusionTest, SingleSoftmaxPatternMergeSomeUnaryElementwiseOps) {
+  const std::string& hlo_string = R"(
+HloModule softmax
+
+add_computation {
+  arg0 = f32[] parameter(0)
+  arg1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg0, arg1)
+}
+
+ENTRY main {
+  param_0 = f32[13,1,5]{2,1,0} parameter(0)
+  constant_zero = f32[] constant(0)
+  sign = f32[13,1,5]{2,1,0} sign(param_0)
+  convert = c64[13,1,5]{2,1,0} convert(sign)
+  real = f32[13,1,5]{2,1,0} real(convert)
+  reduction = f32[13,1]{1,0} reduce(sign, constant_zero), dimensions={2}, to_apply=add_computation
+  broadcast = f32[13,1,5]{2,1,0} broadcast(reduction), dimensions={0,1}
+  ROOT add = f32[13,1,5]{2,1,0} add(real, broadcast)
+})";
+
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(SoftmaxFusionTest,
+       SingleSoftmaxPatternWithDoublyConsumedReducerIdentity) {
+  const std::string& hlo_string = R"(
+HloModule softmax
+
+add_computation {
+  arg0 = f32[] parameter(0)
+  arg1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg0, arg1)
+}
+
+ENTRY main {
+  param_0 = f32[14,8]{1,0} parameter(0)
+  constant_one = f32[] constant(1)
+  broadcast_one = f32[14,8]{1,0} broadcast(constant_one), dimensions={}
+  constant_zero = f32[] constant(0)
+  broadcast_zero = f32[14,8]{1,0} broadcast(constant_zero), dimensions={}
+  rsqrt = f32[14,8]{1,0} rsqrt(param_0)
+  compare = pred[14,8]{1,0} compare(broadcast_zero, rsqrt), direction=EQ
+  select = f32[14,8]{1,0} select(compare, broadcast_one, rsqrt)
+  reduction = f32[14]{0} reduce(select, constant_zero), dimensions={1}, to_apply=add_computation
+  broadcast = f32[14,8]{1,0} broadcast(reduction), dimensions={0}
+  ROOT add = f32[14,8]{1,0} add(select, broadcast)
+})";
+
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(SoftmaxFusionTest, TryMatchBroadcastIntoOpReturningATuple) {
+  // This is a regression test to check that we do not try to call rank() on a
+  // tuple shape.
+  const std::string& hlo_string = R"(
+HloModule match_softmax
+
+ENTRY main {
+  param_0 = f32[14]{0} parameter(0)
+  param_1 = f32[14]{0} parameter(1)
+  broadcast = f32[14,8]{1,0} broadcast(param_0), dimensions={0}
+  ROOT custom_call = (f32[2]{0}, f32[2]{0}) custom-call(param_1, broadcast), custom_call_target="custom_call"
+})";
+
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  SoftmaxFusion fusion;
+  EXPECT_FALSE(fusion.Run(module.get()).value());
+}
+
+TEST_F(SoftmaxFusionTest, SoftmaxMatcherIgnoresPatternWithComplexProducer) {
+  const std::string& hlo_string = R"(
+HloModule softmax
+
+add_computation {
+  arg0 = c64[] parameter(0)
+  arg1 = c64[] parameter(1)
+  ROOT add = c64[] add(arg0, arg1)
+}
+
+ENTRY main {
+  param_0 = c64[128,127]{1,0} parameter(0)
+  param_1 = c64[] parameter(1)
+  reduce = c64[128]{0} reduce(param_0, param_1), dimensions={1}, to_apply=add_computation
+  broadcast = c64[128,127]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = c64[128,127]{1,0} subtract(param_0, broadcast)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  SoftmaxFusion fusion;
+  EXPECT_FALSE(fusion.Run(module.get()).value());
+}
+
+TEST_F(SoftmaxFusionTest, FuseableOpsInvolvingComplexNumbersBeforeProducer) {
+  const std::string& hlo_string = R"(
+HloModule softmax
+
+add_computation {
+  arg0 = f32[] parameter(0)
+  arg1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg0, arg1)
+}
+
+ENTRY main {
+  %param_0 = c64[13,3]{1,0} parameter(0)
+  %constant_zero = f32[] constant(0)
+  %abs = f32[13,3]{1,0} abs(c64[13,3]{1,0} %param_0)
+  %cosine = f32[13,3]{1,0} cosine(f32[13,3]{1,0} %abs)
+  %reduce = f32[13]{0} reduce(f32[13,3]{1,0} %cosine, f32[] %constant_zero), dimensions={1}, to_apply=add_computation
+  %broadcast = f32[13,3]{1,0} broadcast(f32[13]{0} %reduce), dimensions={0}
+  ROOT add = f32[13,3]{1,0} add(f32[13,3]{1,0} %cosine, f32[13,3]{1,0} %broadcast)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec(1e-6, 1e-6)));
 }
 
 class SoftmaxFusionEnd2EndTest

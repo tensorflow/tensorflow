@@ -44,6 +44,7 @@ class OpProfileBuilder {
 
   void Finalize(double peak_gigaflops_per_second_per_core,
                 double peak_gibibytes_per_second_per_core,
+                double peak_hbm_gibibytes_per_second_per_core,
                 uint64_t total_time_ps);
 
  private:

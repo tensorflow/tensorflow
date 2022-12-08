@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/core/model.h"
 
 #define TFLITE_SCHEMA_VERSION 3
 

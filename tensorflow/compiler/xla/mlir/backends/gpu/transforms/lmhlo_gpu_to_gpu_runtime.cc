@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -32,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/uid_generator.h"
@@ -130,16 +130,36 @@ class CublasLtMatmulOpLowering : public OpRewritePattern<CublasLtMatmulOp> {
   LogicalResult matchAndRewrite(CublasLtMatmulOp op,
                                 PatternRewriter& rewriter) const override {
     // Get the custom call target.
-    std::string matmul;
-    switch (op.getOperands().size()) {
-      case 4:
-        matmul = kCustomCallTarget;
+    std::string matmul = kCustomCallTarget;
+
+    switch (op.getEpilogue()) {
+      case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Default:
+      case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Relu:
+      case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Gelu:
+        if (op.getNumOperands() != 4) {
+          return op.emitOpError("unexpected number of operands for matmul");
+        }
         break;
-      case 5:
-        matmul = absl::StrCat(kCustomCallTarget, ".bias");
+      case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Bias:
+      case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::BiasRelu:
+      case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::BiasGelu:
+        if (op.getNumOperands() != 5) {
+          return op.emitOpError("unexpected number of operands for matmul");
+        }
+        matmul += ".bias";
         break;
-      default:
-        return op.emitOpError("unexpected number of operands for matmul");
+      case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::GeluAux:
+        if (op.getNumOperands() != 5) {
+          return op.emitOpError("unexpected number of operands for matmul");
+        }
+        matmul += ".aux";
+        break;
+      case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::BiasGeluAux:
+        if (op.getNumOperands() != 6) {
+          return op.emitOpError("unexpected number of operands for matmul");
+        }
+        matmul += ".bias.aux";
+        break;
     }
 
     // Get or create a custom call function declaration.

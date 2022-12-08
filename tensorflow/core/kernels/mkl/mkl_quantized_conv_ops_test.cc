@@ -674,8 +674,6 @@ class QuantizedConvTest : public OpsTestBase {
                           const float tol = 1.0) {
     bool fuse_bias = std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") !=
                      fused_ops.end();
-    bool fuse_relu = std::find(fused_ops.begin(), fused_ops.end(), "Relu") !=
-                     fused_ops.end();
     bool fuse_sum =
         std::find(fused_ops.begin(), fused_ops.end(), "Sum") != fused_ops.end();
     bool fuse_requantize = std::find(fused_ops.begin(), fused_ops.end(),

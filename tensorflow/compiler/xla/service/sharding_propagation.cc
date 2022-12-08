@@ -408,7 +408,7 @@ bool InferDotShardingFromOperands(
                                ? dnums.rhs_non_contracting_dims
                                : dnums.lhs_non_contracting_dims) {
       int64_t d = operand_index == 0 ? dim.lhs : dim.rhs;
-      if (d > 0) {
+      if (d >= 0) {
         contracting_dims.push_back(d);
       }
     }
@@ -939,12 +939,14 @@ Status CheckAndUpdateDeviceAssignmentsInWhileBody(
           return bad_status(instruction, device, channel_instruction,
                             *unique_device);
         }
-      } else if (opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv ||
+      } else if (((opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv) &&
+                  !Cast<HloSendRecvInstruction>(instruction)
+                       ->is_host_transfer())
                  // Cross-replica AllReduces don't have a channel_id, and we
                  // don't enforce any invariant about their device assignment.
-                 ((opcode == HloOpcode::kAllReduce ||
-                   opcode == HloOpcode::kReduceScatter) &&
-                  instruction->channel_id())) {
+                 || ((opcode == HloOpcode::kAllReduce ||
+                      opcode == HloOpcode::kReduceScatter) &&
+                     instruction->channel_id())) {
         channel_instruction = instruction;
         unique_device = device;
         if (!devices_to_instructions.empty()) {
@@ -1873,7 +1875,9 @@ bool ShardingPropagation::InferShardingFromOperands(
            instruction->opcode() == HloOpcode::kDynamicSlice)) {
         return false;
       }
-      instruction->set_sharding(HloSharding::Manual(op->sharding().metadata()));
+      instruction->set_sharding(
+          HloSharding::Manual(op->sharding().metadata())
+              .NormalizeTupleSharding(instruction->shape()));
       return true;
     }
   }

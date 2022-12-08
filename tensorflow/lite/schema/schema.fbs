@@ -927,10 +927,15 @@ table SliceOptions {
 }
 
 table TransposeConvOptions {
+  // Parameters supported by version 1, 2, 3:
   padding:Padding;
   stride_w:int;
   stride_h:int;
-  // Parameters for TransposeConv version 4 or above.
+
+  // Parameters supported by version 4:
+  fused_activation_function:ActivationFunctionType = NONE;
+
+  // Parameters for TransposeConv version 5 or above.
   // If set, use this for bias and accumulator.
   quantized_bias_type: TensorType;
 }

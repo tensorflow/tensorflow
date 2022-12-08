@@ -40,8 +40,9 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
   MOCK_METHOD(std::shared_ptr<const Sharding>, shared_ptr_sharding, (),
               (const, override));
 
-  MOCK_METHOD(StatusOr<std::vector<std::unique_ptr<Array>>>, Explode,
-              (ArrayCopySemantics semantics), (override));
+  MOCK_METHOD(StatusOr<std::vector<std::unique_ptr<Array>>>,
+              DisassembleIntoSingleDeviceArrays, (ArrayCopySemantics semantics),
+              (override));
 
   MOCK_METHOD(Future<Status>, CopyToHostBuffer,
               (void* data,

@@ -19,12 +19,15 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <memory>
 #include <numeric>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -453,8 +456,8 @@ int RowReductionGetRowsPerWarp(int reduced_dimension_size) {
 IrEmitterUnnested::IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
                                      IrEmitterContext* ir_emitter_context)
     : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/false),
-      elemental_emitter_(hlo_module_config_, module_, &b_,
-                         GetNestedComputer()) {}
+      elemental_emitter_(hlo_module_config_, module_, &b_, GetNestedComputer(),
+                         ir_emitter_context) {}
 
 StatusOr<std::unique_ptr<IrEmitterUnnested>> IrEmitterUnnested::Create(
     const HloModuleConfig& hlo_module_config,
@@ -1056,11 +1059,16 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunk(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(bias, GetAllocationSlice(matmul.getBias()));
   }
 
+  BufferAllocation::Slice aux;
+  if (matmul.getAux() != nullptr) {
+    TF_ASSIGN_OR_RETURN(aux, GetAllocationSlice(matmul.getAux()));
+  }
+
   TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan plan,
                       cublas_lt::MatmulPlan::For(matmul));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
       GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b, c, d,
-      bias);
+      bias, aux);
 
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
@@ -1210,7 +1218,14 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
 
   void* call_target = CustomCallTargetRegistry::Global()->Lookup(
       call_target_name, std::string(platform_name()));
-  if (!call_target) {
+
+  // Typed custom calls only are supported by XLA runtime. It's ok to emit a
+  // thunk with an unresolved custom call target, as we'll never execute it.
+  bool is_typed_custom_call =
+      custom_call.getApiVersion() ==
+      mlir::mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI;
+
+  if (!call_target && !is_typed_custom_call) {
     return Unimplemented(
         "No registered implementation for custom call to \"%s\"",
         call_target_name);
@@ -1288,14 +1303,28 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
       custom_call_target =
           reinterpret_cast<status_returning_call_type>(call_target);
       break;
+    case mlir::mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI:
+      custom_call_target = [](CustomCallThunk::Stream, void**, const char*,
+                              size_t, XlaCustomCallStatus*) {
+        LOG(FATAL) << "Typed FFI custom call must be called by XLA runtime";
+      };
+      break;
     default:
       return InternalError("Unknown custom-call API version enum value: %d",
                            custom_call.getApiVersion());
   }
 
+  // Thunks support only user-encoded string backend config.
+  std::string backend_config;
+  if (auto str = custom_call.getBackendConfig()
+                     .value_or(mlir::Attribute())
+                     .dyn_cast_or_null<mlir::StringAttr>()) {
+    backend_config = str.str();
+  }
+
   auto thunk = std::make_unique<CustomCallThunk>(
       GetThunkInfo(op), std::move(custom_call_target), std::move(operands),
-      std::move(results), custom_call.getBackendConfig().str());
+      std::move(results), backend_config);
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
 }
@@ -1372,9 +1401,13 @@ Status IrEmitterUnnested::EmitTriangularSolveCustomCall(mlir::Operation* op) {
 
   const Shape b_shape = GetShape(operands[1]);
   const PrimitiveType elem_ty = b_shape.element_type();
+
   TriangularSolveOptions backend_config;
-  TF_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(
-      custom_call.getBackendConfig().str(), &backend_config));
+  if (auto str = custom_call.getBackendConfig()
+                     .value_or(mlir::Attribute())
+                     .dyn_cast_or_null<mlir::StringAttr>())
+    TF_RETURN_IF_ERROR(
+        tsl::HumanReadableJsonToProto(str.str(), &backend_config));
 
   ThunkSequence thunks;
 
@@ -4121,7 +4154,6 @@ Status IrEmitterUnnested::EmitTranspose021Tile(
     absl::Span<const llvm_ir::IrArray> output_arrays,
     const TilingScheme& tiling_scheme,
     const LaunchDimensions& launch_dimensions) {
-
   std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fusion_hlo);
   const HloInstruction* first_transpose = &FindNonTrivialHero(
       **absl::c_find_if(hlo_roots, [](HloInstruction* instr) {
@@ -4962,7 +4994,6 @@ Status IrEmitterUnnested::EmitUnnestedReduction(
               reduction_codegen_info, first_reduce->operand(0)->shape());
         }));
   }
-
 
   return OkStatus();
 }

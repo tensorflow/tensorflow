@@ -2,6 +2,9 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package_group(
     name = "friends",
+    includes = [
+        "//tensorflow/compiler/xla/python:friends",
+    ],
     packages = [
         "//tensorflow/compiler/xla/python/...",
     ],

@@ -24,18 +24,8 @@ namespace gml_st {
 // Helper functions to match `linalg.generic` ops that implement simple
 // reductions, bcasts, and cwise ops.
 
-bool isSimpleReduction(Operation *op, int64_t *dimension = nullptr,
-                       Value *operand = nullptr);
-
 // Returns whether 'op' is element-wise linalg.generic with single result.
 bool isCwiseGenericOp(Operation *op, int64_t *arity = nullptr);
-
-bool isUnaryCwiseGenericOp(Operation *op);
-
-bool isBcast(Operation *op);
-
-bool isSimpleBcast(Operation *op, int64_t *dimension = nullptr,
-                   Value *operand = nullptr);
 
 struct SimpleBcastReduction {
   Operation *bcast;
