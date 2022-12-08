@@ -30,7 +30,9 @@ py_library(
     deps = [
         "//tensorflow/dtensor/python:api",
         "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:layout",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/framework:ops",
     ],
 )
 

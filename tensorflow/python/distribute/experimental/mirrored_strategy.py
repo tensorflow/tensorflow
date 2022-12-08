@@ -37,6 +37,7 @@ class MirroredStrategy(distribute_lib.Strategy):
   """
 
   def __init__(self, mesh):
+    # TODO(scottzhu): Update to use device list to create mesh as well.
     extended = MirroredExtended(container_strategy=self, mesh=mesh)
     super().__init__(extended)
     self._mesh = mesh
@@ -47,13 +48,28 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
 
   def __init__(self, container_strategy, mesh):
     super().__init__(container_strategy)
+    self._validate_mesh_information(mesh)
     self._mesh = mesh
+
+  @classmethod
+  def _validate_mesh_information(cls, mesh):
+    # For mirrored strategy, the mesh should be 1D, and only contains a batch
+    # dimension, we will use that dimension to shard the inputs.
+    if len(mesh.shape()) != 1:
+      raise ValueError('The mesh for MirroredStrategy must be 1D, received: '
+                       f'{len(mesh.shape())}D')
 
   def _create_variable(self, next_creator, **kwargs):
     # Make sure the pop the `use_resource` which is not supported by the
     # base tf.Variable. The `use_resource` is added by
     # creator_with_resource_vars in distribute_lib.py
-    kwargs.pop('use_resource')
+    kwargs.pop('use_resource', None)
+
+    # Ignore the colocate_with for the mirrored strategy. Each of the device
+    # will get same copy of variable in the DTensor's case.
+    # `colocate_with` is added when user call:
+    # strategy.extended.colocate_vars_with(variable)
+    kwargs.pop('colocate_with', None)
 
     # Make sure to call DVariable initializer under the scope so that it will
     # have the proper replicated layout. The initial_value is multi-typed,
@@ -75,3 +91,28 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
           init_var, layout.Layout.replicated(self._mesh, rank))
 
     return d_variable.DVariable(new_initial_value, **kwargs)
+
+  @property
+  def _num_replicas_in_sync(self):
+    return self._mesh.size
+
+  def value_container(self, value):
+    return value
+
+  @property
+  def worker_devices(self):
+    # Note that we return the local device here since this is a single worker
+    # setting, and the local devices will be all the devices in the current
+    # mesh. In the multi-worker mirrored strategy, this value should be
+    # expanded to the global device list.
+    return tuple(self._mesh.local_devices())
+
+  @property
+  def parameter_devices(self):
+    # Same as the worker_devices.
+    return self.worker_devices
+
+  def _in_multi_worker_mode(self):
+    # For a strategy backed by DTensor, all the whole cluster should be treat
+    # as one single worker.
+    return False
