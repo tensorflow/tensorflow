@@ -17,6 +17,9 @@ package org.tensorflow.lite;
 
 import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import java.io.File;
 import java.nio.ByteBuffer;
@@ -30,6 +33,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.tensorflow.lite.InterpreterApi.Options.TfLiteRuntime;
+import org.tensorflow.lite.acceleration.ValidatedAccelerationConfig;
 
 /** Unit tests for {@link org.tensorflow.lite.InterpreterApi}. */
 @RunWith(JUnit4.class)
@@ -105,6 +109,26 @@ public final class InterpreterApiTest {
 
       interpreter.run(2.37f, parsedOutput);
       assertThat(parsedOutput.get(0)).isWithin(0.1f).of(7.11f);
+    }
+  }
+
+  @Test
+  public void testInterpreterWithAccelerationConfig() throws Exception {
+    InterpreterApi.Options options = new InterpreterApi.Options(TEST_OPTIONS);
+
+    // Mock the acceleration config interface.
+    ValidatedAccelerationConfig accelerationConfig = mock(ValidatedAccelerationConfig.class);
+
+    // Set the acceleration config
+    options.setAccelerationConfig(accelerationConfig);
+
+    // Verify that the config was set
+    assertThat(options.getAccelerationConfig()).isEqualTo(accelerationConfig);
+
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, options)) {
+      assertThat(interpreter).isNotNull();
+      // Verify that the apply method was invoked
+      verify(accelerationConfig).apply(any());
     }
   }
 

@@ -77,6 +77,10 @@ class NativeInterpreterWrapper implements AutoCloseable {
     if (options == null) {
       options = new InterpreterImpl.Options();
     }
+    if (options.getAccelerationConfig() != null) {
+      // Apply the validated acceleration config
+      options.getAccelerationConfig().apply(options);
+    }
     this.errorHandle = errorHandle;
     this.modelHandle = modelHandle;
     // First create the interpreter without delegates.  We need an interpreter in order to figure
