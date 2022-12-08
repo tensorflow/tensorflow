@@ -1097,6 +1097,36 @@ FailureOr<Value> SortOp::generateResultTileValue(OpBuilder &b,
       ->getResult(resultNumber);
 }
 
+//===----------------------------------------------------------------------===//
+// ReverseOp
+//===----------------------------------------------------------------------===//
+
+ParseResult ReverseOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseDstStyleOp(
+      parser, result, [&](OpAsmParser &parser, NamedAttrList &attributes) {
+        return parseDenseI64ArrayAttr(parser, attributes, "reverse_dimensions");
+      });
+}
+
+void ReverseOp::print(OpAsmPrinter &p) {
+  printDstStyleOp<ReverseOp>(
+      *this, p, [](ReverseOp op, OpAsmPrinter &p) -> SmallVector<StringRef> {
+        p.printNewline();
+        printDenseI64ArrayAttr(p, op.getReverseDimensionsAttrName(),
+                               op.getReverseDimensions());
+        return {op.getReverseDimensionsAttrName()};
+      });
+}
+
+LogicalResult ReverseOp::verify() {
+  return verifyDestinationStyleOp(getOperation());
+}
+
+void ReverseOp::getAsmResultNames(
+    function_ref<void(Value, StringRef)> setNameFn) {
+  setNameFn(getResult(), "reversed");
+}
+
 }  // namespace thlo
 }  // namespace mlir
 

@@ -264,6 +264,33 @@ def THLO_SortOp : THLO_DstStyleOp<"sort", [
   }];
 }
 
+def THLO_ReverseOp : THLO_DstStyleOp<"reverse", [
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,]> {
+  let summary = "Destination-style twin for the `mhlo.reverse`";
+  let description = [{
+    Reverses the specified dimensions of `input` according to the given
+    `dimensions`.
+
+    See https://www.tensorflow.org/xla/operation_semantics#rev_reverse.
+  }];
+
+  let arguments = (ins
+    TensorOrMemref:$input,
+    TensorOrMemref:$init,
+    DenseI64ArrayAttr:$reverse_dimensions
+  );
+
+  let results = (outs TensorOrMemref:$result);
+
+  let extraClassDeclaration = [{
+    // Implement method necessary for DestinationStyleOpInterface.
+    std::pair<int64_t, int64_t> getDpsInitsPositionRange() {
+      int64_t getNumOperands = this->getNumOperands();
+      return {getNumOperands - 1, getNumOperands};
+    }
+  }];
+}
+
 def THLO_YieldOp : THLO_Op<"yield", [Pure, ReturnLike, Terminator,
     ParentOneOf<["ScatterOp", "SortOp"]>]>,
     Arguments<(ins Variadic<AnyType>:$values)> {
