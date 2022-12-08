@@ -1503,7 +1503,7 @@ genrule(
         "//tensorflow/c/eager:headers",
         "//tensorflow/cc:headers",
         "//tensorflow/core:headers",
-        "//tensorflow/stream_executor:stream_executor_install_hdrs",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_install_hdrs",
     ],
     outs = ["include"],
     cmd = """
