@@ -147,7 +147,7 @@ class GpuRuntimeExecutable {
   ConvRunnerCache conv_runners_cache_;
 
   // Support for running collective operations.
-  JitRtCollectiveSupport collectives_;
+  CollectivesSupport collectives_;
 
 #if GOOGLE_CUDA
   // Keep matmul execution plans (only if cuBLASLt is available).

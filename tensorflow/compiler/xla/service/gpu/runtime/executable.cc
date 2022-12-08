@@ -323,7 +323,7 @@ Status GpuRuntimeExecutable::Execute(
   // Async collective support instantiated for each Gpu executable run, so that
   // concurrent executions can run independenty using a separate set of events
   // for communication.
-  JitRtAsyncCollectiveSupport async_collectives(
+  AsyncCollectivesSupport async_collectives(
       async_comms_stream.ok() ? async_comms_stream->get() : nullptr);
 
   // Always pass in the temp buffer, even if it is null, to accommodate the

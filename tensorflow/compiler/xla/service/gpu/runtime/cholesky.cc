@@ -35,7 +35,6 @@ using ::xla::runtime::StridedMemrefView;
 
 namespace {
 struct Cholesky {
-  ABSL_ATTRIBUTE_ALWAYS_INLINE
   absl::Status operator()(const ServiceExecutableRunOptions* run_options,
                           const DebugOptions* debug_options,
                           StridedMemrefView operand, StridedMemrefView a,
