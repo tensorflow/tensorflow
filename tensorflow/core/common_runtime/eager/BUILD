@@ -724,6 +724,27 @@ tf_cuda_library(
     }),
 )
 
+tf_cc_test(
+    name = "placement_utils_test",
+    srcs = ["placement_utils_test.cc"],
+    deps = [
+        ":core",
+        ":eager_operation",
+        ":execute",
+        ":placement_utils",
+        ":tensor_handle",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:device_mgr",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:array",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 tf_cuda_library(
     name = "attr_builder",
     srcs = ["attr_builder.cc"],
