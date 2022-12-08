@@ -528,6 +528,7 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
         "ReverseSequence",
         "ReverseV2",
         "Round",
+        "ScatterNd",
         "Select",
         "SelectV2",
         "Shape",
