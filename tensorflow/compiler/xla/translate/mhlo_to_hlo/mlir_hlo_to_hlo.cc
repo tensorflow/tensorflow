@@ -183,6 +183,19 @@ static std::vector<int64_t> Convert_broadcast_dimensions(
   return ConvertDenseIntAttr(*broadcast_dimensions);
 }
 
+static std::vector<xla::CrossProgramPrefetch> Convert_cross_program_prefetches(
+    mlir::ArrayAttr prefetches) {
+  std::vector<xla::CrossProgramPrefetch> cross_program_prefetches;
+  for (auto prefetch : prefetches) {
+    auto cpp = prefetch.cast<mlir::mhlo::CrossProgramPrefetchAttr>();
+    xla::CrossProgramPrefetch xla_cpp;
+    xla_cpp.set_parameter(cpp.getParameter());
+    for (auto index : cpp.getIndices()) xla_cpp.add_index(index);
+    cross_program_prefetches.push_back(xla_cpp);
+  }
+  return cross_program_prefetches;
+}
+
 // Converts StringRef to xla FftType enum
 static xla::FftType Convert_fft_type(mlir::mhlo::FftType fft_type) {
   xla::FftType fft_type_enum;
@@ -3024,6 +3037,13 @@ xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
   auto hlo_module = converter.ConsumeMainProto();
   StringRef module_name = module.getName() ? *module.getName() : "main";
   hlo_module.set_name(module_name.str());
+  if (auto cross_program_prefetches = module->getAttrOfType<mlir::ArrayAttr>(
+          "mhlo.cross_program_prefetches")) {
+    for (const auto& prefetch :
+         Convert_cross_program_prefetches(cross_program_prefetches)) {
+      *hlo_module.add_cross_program_prefetches() = std::move(prefetch);
+    }
+  }
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
   return ::tsl::OkStatus();
 }

@@ -166,6 +166,47 @@ def MHLO_ChannelHandle : AttrDef<MHLO_Dialect, "ChannelHandle"> {
   let assemblyFormat = "`<` struct(params) `>`";
 }
 
+def MHLO_CrossProgramPrefetch : AttrDef<MHLO_Dialect, "CrossProgramPrefetch"> {
+  let mnemonic = "cross_program_prefetch";
+  let parameters = (ins "int64_t":$parameter, MHLO_Dims:$indices);
+  let summary = "Argument that is prefetched from another program";
+  let description = [{
+    This attribute captures an argument that is prefetched from another program.
+    For a given `CrossProgramPrefetchAttr`, `parameter` tells us which argument
+    of the `main` function of the module is prefetched, and `indices` is a shape
+    index telling us what subshape of that argument is prefetched.
+
+    A shape has a subshape iff it is a tuple. In that case, the subshape of
+    the tuple by `indices` is the shape achieved after indexing by each
+    element of `indices` in turn. For example, the [1,0] subshape of
+    `tuple<tuple<token, token>, tuple<tensor<i32>, token>>` is `tensor<i32>`.
+
+    An empty value for `indices` means the whole shape is prefetched.
+
+    For example,
+
+    ```mlir
+    module attributes { mhlo.cross_program_prefetch = [ #mhlo.cross_program_prefetch< parameter = 0, indices = [0]> ]} {
+      func.func @copy(%arg0 : tuple<tensor<2x3xi32>, tensor<i32>>) -> tuple<tensor<2x3xi32>, tensor<i32>> {
+        %0 = "mhlo.copy"(%arg0) {is_cross_program_prefetch}
+        return %0 : tuple<tensor<2x3xi32>, tensor<i32>>
+      }
+      func.func @main(%arg0 : tuple<tensor<2x3xi32>, tensor<i32>>) -> tuple<tensor<2x3xi32>, tensor<i32>> {
+        %1 = "mhlo.async_start"(%arg0) {called_computation=@copy}
+        %2 = "mhlo.async_done"(%1) {called_computation=@copy}
+        return %2 : tuple<tensor<2x3xi32>, tensor<i32>>
+      }
+    }
+    ```
+
+    The `parameter = 0` tells us that the async copy of the `0`th parameter is
+    a `cross_program_prefetch`, while the `index` of `[0]` tells us that the
+    `0`th element of the tuple is prefetched while the other element of the
+    tuple is not.
+  }];
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
 // Note: This is an experimental attribute and shouldn't be relied upon for
 // production.
 def MHLO_TypeExtensions : AttrDef<MHLO_Dialect, "TypeExtensions", [

@@ -467,7 +467,7 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(XorOp)
 //===----------------------------------------------------------------------===//
 
 Type maybeTupleFromTypes(MLIRContext* ctx, ArrayRef<Type> types) {
-  if (types.size() == 1) return types[0];
+  if (types.size() == 1 && !types[0].isa<TupleType>()) return types[0];
   return TupleType::get(ctx, TypeRange(types));
 }
 
@@ -9009,6 +9009,22 @@ static LogicalResult verifyArgResultAliasAttr(StringAttr attrName,
   return success();
 }
 
+// Each CrossProgramPrefetchAttr specifies a parameter and a ShapeIndex
+// (1) the parameter must be valid
+// (2) there must be a subshape at the given indices
+LogicalResult verifyCrossProgramPrefetchAttr(CrossProgramPrefetchAttr cpp,
+                                             ModuleOp module) {
+  func::FuncOp main = module.lookupSymbol<func::FuncOp>("main");
+  if (cpp.getParameter() >= main.getNumArguments()) return failure();
+  auto type = main.getArgument(cpp.getParameter()).getType();
+  for (auto index : cpp.getIndices()) {
+    auto tupleType = type.dyn_cast<TupleType>();
+    if (!tupleType) return failure();
+    type = tupleType.getType(index);
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // Builder utilities
 //===----------------------------------------------------------------------===//
@@ -9102,6 +9118,19 @@ LogicalResult MhloDialect::verifyOperationAttribute(Operation* op,
       return op->emitOpError()
              << "attribute " << attr.getName()
              << " can only be used on function-like operations";
+  }
+  if (attr.getName() == "mhlo.cross_program_prefetches") {
+    auto arrayAttr = attr.getValue().dyn_cast<ArrayAttr>();
+    if (!arrayAttr) return failure();
+    for (auto attrElt : arrayAttr) {
+      auto prefetchAttr = attrElt.dyn_cast<CrossProgramPrefetchAttr>();
+      if (!prefetchAttr) return failure();
+      auto module = dyn_cast<ModuleOp>(op);
+      if (!module) return failure();
+      if (failed(verifyCrossProgramPrefetchAttr(prefetchAttr, module))) {
+        return failure();
+      }
+    }
   }
   return success();
 }

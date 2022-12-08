@@ -2101,10 +2101,10 @@ def MHLO_CopyOp: MHLO_Op<"copy", [Pure, HLO_CompatibleOperandsAndResultType]> {
     ```
   }];
   let arguments = (ins
-      MHLO_Tensor:$operand,
+      MHLO_TensorOrTokenOrTuple:$operand,
       UnitAttr:$is_cross_program_prefetch
   );
-  let results = (outs MHLO_Tensor:$result);
+  let results = (outs MHLO_TensorOrTokenOrTuple:$result);
   let hasCustomHLOConverter = 1;
   let hasFolder = 1;
 
