@@ -975,6 +975,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lt_header",
+        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
         "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/compiler/xla/stream_executor:host_or_device_scalar",
         "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
