@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/IR/TensorInferTypeOpInterfaceImpl.h"
+#include "mlir/Dialect/Tensor/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -327,6 +328,7 @@ struct CollapseShapePass
     tensor::CollapseShapeOp::getCanonicalizationPatterns(patterns, ctx);
     tensor::EmptyOp::getCanonicalizationPatterns(patterns, ctx);
     tensor::ExpandShapeOp::getCanonicalizationPatterns(patterns, ctx);
+    tensor::populateFoldTensorEmptyPatterns(patterns);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();
