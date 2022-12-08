@@ -115,7 +115,7 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        ":dependency_whitelist",
+        ":dependency_allowlist",
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
     ],
@@ -127,7 +127,7 @@ package(
 )
 
 package_group(
-    name = "dependency_whitelist",
+    name = "dependency_allowlist",
     packages = [
         "//learning/freud/topic_models/tensorflow/...",
         "//learning/infra/mira/...",

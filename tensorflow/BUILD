@@ -989,12 +989,12 @@ package_group(name = "ndarray_tensor_allow_list")
 # Packages that use private types symbols, until they are exported.
 # TODO(b/154650521) Remove.
 # If this is modified, then copy.bara.sky must also be modified.
-package_group(name = "types_whitelist")
+package_group(name = "types_allowlist")
 
 # Packages that use StructuredTensors.
 # TODO(b/159007891) Remove this package once StructuredTensor is exported.
 # LINT.IfChange
-package_group(name = "structured_tensor_whitelist")
+package_group(name = "structured_tensor_allowlist")
 # LINT.ThenChange(copy.bara.sky)
 
 filegroup(
