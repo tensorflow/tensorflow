@@ -106,12 +106,10 @@ void RegisterXlaGpuTypeIdNames(TypeIDNameRegistry& registry) {
       "__type_id_se_dnn_activation");
   registry.Register<Tagged<DotDimensionNumbers>>(
       "__type_id_dot_dimension_numbers");
-  registry.Register<Tagged<ConvDimensionNumbers>>(
-      "__type_id_conv_dimension_numbers");
   registry.Register<Tagged<se::fft::Type>>("__type_id_se_fft_type");
-  registry.Register<Tagged<ConvBackendConfig>>("__type_id_conv_backend_config");
 
   RegisterTracingTypeIdNames(registry);
+  RegisterConvTypeIdNames(registry);
 
 #if GOOGLE_CUDA
   registry.Register<Tagged<se::cuda::BlasLt::Epilogue>>(
