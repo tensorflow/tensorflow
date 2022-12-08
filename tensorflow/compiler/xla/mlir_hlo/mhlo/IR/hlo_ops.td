@@ -636,8 +636,7 @@ def MHLO_TanhOp: MHLO_UnaryElementwiseOp<"tanh",
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
-// TODO(gleasonk): Merge MHLO_BinaryElementwiseOp and MHLO_BinaryElementwiseOpNoAssembly
-class MHLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
+class MHLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
     MHLO_Op<mnemonic, traits # [InferShapedTypeOpInterface,
     SameOperandsAndResultShape, Elementwise]> {
   let arguments = (ins
@@ -659,10 +658,7 @@ class MHLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
   }];
 
   let results = (outs MHLO_Tensor:$result);
-}
 
-class MHLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
-    MHLO_BinaryElementwiseOpNoAssembly<mnemonic, traits> {
   let assemblyFormat = [{
     $lhs `,` $rhs attr-dict
       `:` custom<SameOperandsAndResultType>(type($lhs), type($rhs), type($result))
@@ -705,7 +701,7 @@ def MHLO_Atan2Op : MHLO_BinaryElementwiseOp<"atan2",
   }];
 }
 
-def MHLO_ComplexOp: MHLO_BinaryElementwiseOpNoAssembly<"complex", [Pure,
+def MHLO_ComplexOp: MHLO_BinaryElementwiseOp<"complex", [Pure,
     SameOperandsElementType, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Complex operator";
   let description = [{
