@@ -337,6 +337,7 @@ Status GpuRuntimeExecutable::Execute(
   // Take snapshots of every state required by custom calls.
   StreamExecutorKernels::Snapshot kernels = gpu_kernels_(executor)->snapshot();
   GemmConfigs::Snapshot gemm_configs = gemm_configs_.snapshot();
+  FftPlans::Snapshot fft_plans = fft_plans_.snapshot();
 
   // Initialize state required for running functions exported from FFI modules.
   FfiStateVector ffi_state = ffi_modules_state_.state_vector();
@@ -345,7 +346,7 @@ Status GpuRuntimeExecutable::Execute(
   runtime::CustomCall::UserData user_data(
       run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
       &ffi_state, &binary, &kernels, &gemm_configs, &conv_runners_cache_,
-      &collectives_,
+      &collectives_, &fft_plans,
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.
       async_collectives.async_comm_stream() ? &async_collectives : nullptr);

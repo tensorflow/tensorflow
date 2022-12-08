@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
 
+#include <memory>
+
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/runtime/state.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 
@@ -25,6 +28,7 @@ namespace xla {
 namespace gpu {
 
 using xla::runtime::CustomCall;
+using xla::runtime::State;
 using xla::runtime::StridedMemrefView;
 
 using llvm::ArrayRef;
@@ -35,6 +39,7 @@ namespace {
 struct Fft {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   absl::Status operator()(const ServiceExecutableRunOptions* run_options,
+                          State<std::unique_ptr<FftPlanCache>> state,
                           runtime::StridedMemrefView input,
                           runtime::StridedMemrefView output,
                           ArrayRef<int64_t> fft_length,
@@ -44,13 +49,11 @@ struct Fft {
 }  // namespace
 
 absl::Status Fft::operator()(const ServiceExecutableRunOptions* run_options,
+                             State<std::unique_ptr<FftPlanCache>> state,
                              runtime::StridedMemrefView input,
                              runtime::StridedMemrefView output,
                              ArrayRef<int64_t> fft_length,
                              se::fft::Type fft_type) const {
-  // TODO(jacksonstokes): Cache FFT plans in the GpuExecutable.
-  FftPlanCache fft_plan_cache;
-
   se::Stream* stream = run_options->stream();
   se::StreamExecutor* executor = stream->parent();
 
@@ -74,10 +77,16 @@ absl::Status Fft::operator()(const ServiceExecutableRunOptions* run_options,
     }
   }
 
+  absl::StatusOr<std::unique_ptr<FftPlanCache>*> fft_plan_cache =
+      state.GetOrCreate([]() -> absl::StatusOr<std::unique_ptr<FftPlanCache>> {
+        return std::make_unique<FftPlanCache>();
+      });
+  if (!fft_plan_cache.ok()) return fft_plan_cache.status();
+
   auto st =
       RunFft(GetDeviceAddress(input), ToShape(input), GetDeviceAddress(output),
              ToShape(output), fft_type, fft_length, executor->device_ordinal(),
-             &fft_plan_cache, stream, run_options->allocator());
+             (*fft_plan_cache)->get(), stream, run_options->allocator());
   if (!st.ok()) return ToAbslStatus(st);
 
   return absl::OkStatus();
@@ -87,6 +96,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
     Fft, Fft::Handler(), checks,
     CustomCall::Bind("xla.gpu.fft")
         .UserData<const ServiceExecutableRunOptions*>()
+        .State<std::unique_ptr<FftPlanCache>>("uid")
         .Arg<runtime::StridedMemrefView>()  // input
         .Arg<runtime::StridedMemrefView>()  // output
         .Attr<ArrayRef<int64_t>>("fft_length")

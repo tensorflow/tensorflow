@@ -136,6 +136,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/runtime:custom_call_registry",
         "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/runtime:state",
         "//tensorflow/compiler/xla/service/gpu:fft_thunk",
         "//tensorflow/compiler/xla/stream_executor:fft",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:attribute_exporter",
