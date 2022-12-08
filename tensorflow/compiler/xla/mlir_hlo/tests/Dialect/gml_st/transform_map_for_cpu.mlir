@@ -114,3 +114,41 @@ func.func @map_broadcast_fuse(%arg0: tensor<?xf32>, %arg1: tensor<?x?x?xf32>,
 // CHECK:        gml_st.set_yield %[[MAPPED]] into %[[INIT1]][%[[INIT1_TILE]]]
 // CHECK-NEXT: }
 // CHECK-NEXT: return %[[RESULT]]
+
+// -----
+
+func.func @map_non_unique_users(%arg: tensor<?x?xf32>,
+                              %init: tensor<?x?xf32>) -> tensor<?x?xf32> {
+
+  %exp = linalg.map
+         ins(%arg: tensor<?x?xf32>)
+         outs(%init: tensor<?x?xf32>)
+         (%input1: f32) {
+           %0 = math.exp %input1 : f32
+           linalg.yield %0: f32
+         }
+
+  %mul = linalg.map
+         ins(%exp, %exp: tensor<?x?xf32>, tensor<?x?xf32>)
+         outs(%init: tensor<?x?xf32>)
+         (%input1: f32, %input2: f32) {
+           %0 = arith.mulf %input1, %input2 : f32
+           linalg.yield %0: f32
+         }
+
+  %abs = linalg.map
+         ins(%mul: tensor<?x?xf32>)
+         outs(%init: tensor<?x?xf32>)
+         (%input1: f32) {
+           %0 = math.absf %input1 : f32
+           linalg.yield %0: f32
+         }
+  func.return %abs : tensor<?x?xf32>
+}
+
+// CHECK-LABEL: func.func @map_non_unique_users(
+// CHECK:          gml_st.parallel
+// CHECK:            math.exp
+// CHECK-NOT:        math.exp
+// CHECK:            arith.mulf
+// CHECK:            math.absf
