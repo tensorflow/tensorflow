@@ -234,8 +234,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lt_header",
         "//tensorflow/tsl/platform:status",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@llvm-project//llvm:Support",
     ],
 )
 
