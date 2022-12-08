@@ -52,9 +52,9 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
 // CHECK-SAME:     [1, 1]
 // CHECK:      %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[ARG_TILE]]]
 // CHECK:      %[[DYNAMIC:.*]] = thlo.dynamic_broadcast_in_dim
-// CHECK-NEXT:     ins(%[[ARG_SUB]] : tensor<?x?xf32>)
-// CHECK-NEXT:     outs(%[[INIT_SUB]] : tensor<3x4x?xf32>)
-// CHECK-NEXT:     broadcast_dimensions = [0, 2]
+// CHECK-SAME:     ins(%[[ARG_SUB]] : tensor<?x?xf32>)
+// CHECK-SAME:     outs(%[[INIT_SUB]] : tensor<3x4x?xf32>)
+// CHECK-SAME:     broadcast_dimensions = [0, 2]
 // CHECK:      return {op_label = "consumer"} %[[DYNAMIC]]
 
 // -----
@@ -117,10 +117,10 @@ func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
 // CHECK-SAME:     [%[[I]], %[[J]]] [%[[ARG_DIM0]], %[[ARG_DIM1]]]
 // CHECK:      %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[INIT_TILE]]]
 // CHECK:      %[[CONCATENATE:.*]] = thlo.concatenate
-// CHECK-NEXT:     ins(%[[A_SUB]] : tensor<?x?xi32>, %[[B_SUB]] : tensor<?x?xi32>,
+// CHECK-SAME:     ins(%[[A_SUB]] : tensor<?x?xi32>, %[[B_SUB]] : tensor<?x?xi32>,
 // CHECK-SAME:         %[[C_SUB]] : tensor<?x?xi32>)
-// CHECK-NEXT:     outs(%[[INIT_SUB]] : tensor<?x?xi32>)
-// CHECK-NEXT:     dimension = 1
+// CHECK-SAME:     outs(%[[INIT_SUB]] : tensor<?x?xi32>)
+// CHECK-SAME:     dimension = 1
 // CHECK:      return {op_label = "consumer"} %[[CONCATENATE]]
 
 // -----

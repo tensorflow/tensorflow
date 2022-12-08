@@ -31,7 +31,7 @@ func.func @sort_variadic(%input1: tensor<64x8x4xf32>, %input2: tensor<64x8x4xf32
 // CHECK:      : tensor<64x8x4xf32>[!gml_st.tile<1x?x1>] to tensor<1x?x1xf32>
 
 // CHECK:      thlo.sort
-// CHECK-NEXT:      ins(%[[INPUT1_SUB]] : tensor<1x?x1xf32>, %[[INPUT2_SUB]] : tensor<1x?x1xf32>)
-// CHECK-NEXT:      outs(%[[INIT1_SUB]] : tensor<1x?x1xf32>, %[[INIT2_SUB]] : tensor<1x?x1xf32>)
-// CHECK-NEXT:      dimension = 1
+// CHECK-SAME:      ins(%[[INPUT1_SUB]] : tensor<1x?x1xf32>, %[[INPUT2_SUB]] : tensor<1x?x1xf32>)
+// CHECK-SAME:      outs(%[[INIT1_SUB]] : tensor<1x?x1xf32>, %[[INIT2_SUB]] : tensor<1x?x1xf32>)
+// CHECK-SAME:      dimension = 1
 
