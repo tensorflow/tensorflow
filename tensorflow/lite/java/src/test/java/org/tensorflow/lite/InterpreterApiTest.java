@@ -94,6 +94,21 @@ public final class InterpreterApiTest {
   }
 
   @Test
+  public void testInterpreterWithoutAccelerationConfig() throws Exception {
+    FloatBuffer parsedOutput = FloatBuffer.allocate(1);
+    InterpreterApi.Options options = new InterpreterApi.Options(TEST_OPTIONS);
+    assertThat(options.getAccelerationConfig()).isNull();
+
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, options)) {
+      // Not setting acceleration config has no effect on an interpreter.
+      assertThat(interpreter).isNotNull();
+
+      interpreter.run(2.37f, parsedOutput);
+      assertThat(parsedOutput.get(0)).isWithin(0.1f).of(7.11f);
+    }
+  }
+
+  @Test
   public void testInterpreterWithNullOptions() throws Exception {
     try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, null)) {
       assertThat(interpreter).isNotNull();
@@ -193,7 +208,7 @@ public final class InterpreterApiTest {
   public void testRunWithDirectByteBufferModel() throws Exception {
     ByteBuffer byteBuffer = ByteBuffer.allocateDirect(MODEL_BUFFER.capacity());
     byteBuffer.order(ByteOrder.nativeOrder());
-    byteBuffer.put(MODEL_BUFFER.duplicate());  // Use duplicate to avoid updating MODEL_BUFFER.
+    byteBuffer.put(MODEL_BUFFER.duplicate()); // Use duplicate to avoid updating MODEL_BUFFER.
     try (InterpreterApi interpreter = InterpreterApi.create(byteBuffer, TEST_OPTIONS)) {
       float[] oneD = {1.23f, 6.54f, 7.81f};
       float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
@@ -211,7 +226,7 @@ public final class InterpreterApiTest {
   public void testRunWithInvalidByteBufferModel() throws Exception {
     ByteBuffer byteBuffer = ByteBuffer.allocate(MODEL_BUFFER.capacity());
     byteBuffer.order(ByteOrder.nativeOrder());
-    byteBuffer.put(MODEL_BUFFER.duplicate());  // Use duplicate to avoid updating MODEL_BUFFER.
+    byteBuffer.put(MODEL_BUFFER.duplicate()); // Use duplicate to avoid updating MODEL_BUFFER.
     try {
       InterpreterApi.create(byteBuffer, TEST_OPTIONS);
       fail();
