@@ -3473,7 +3473,7 @@ ENTRY test {
 ; CHECK-DAG:         \"precision_config\":{
 ; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIASRELU\"
+; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
 ; CHECK:           }"
       )");
 }
@@ -3520,6 +3520,40 @@ ENTRY test {
 ; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
 ; CHECK:           }"
       )");
+}
+
+TEST_F(CublasLtGemmRewriteTest, MatrixBiasBitcastBF16) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = bf16[8,16] parameter(0)
+  y = bf16[16,8] parameter(1)
+  bias = bf16[2,4,8] parameter(2)
+  bias_f32 = f32[2,4,8] convert(bias)
+  dot = bf16[8,8] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_bitcast = bf16[2,4,8] bitcast(dot)
+  dot_bitcast_f32 = f32[2,4,8] convert(dot_bitcast)
+  add_f32 = add(dot_bitcast_f32, bias_f32)
+  ROOT out = bf16[2,4,8] convert(add_f32)
+}
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(GetCudaComputeCapability());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Bitcast(m::CustomCall("__cublas$lt$matmul",
+                                   m::Parameter(0).WithShape(BF16, {8, 16}),
+                                   m::Parameter(1).WithShape(BF16, {16, 8}),
+                                   m::Parameter(2).WithShape(BF16, {2, 4, 8})))
+              .WithShape(BF16, {2, 4, 8})));
 }
 
 // For bfloat16, the operands are padded if necessary on Ampere and newer
@@ -3805,7 +3839,7 @@ ENTRY test {
 ; CHECK-DAG:         \"precision_config\":{
 ; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
 ; CHECK-DAG:         }
-; CHECK-DAG:         \"epilogue\":\"BIASRELU\"
+; CHECK-DAG:         \"epilogue\":\"BIAS_RELU\"
 ; CHECK:           }"
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[6,6]{1,0} slice([[MATMUL]]), slice={[0:6], [0:6]}
       )");
