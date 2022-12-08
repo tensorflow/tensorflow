@@ -837,6 +837,10 @@ class PjRtBuffer {
   // offset+transfer_size must be less than GetOnDeviceSizeInBytes. The
   // returned future transitions to ready on error, or after the transfer has
   // completed.
+  //
+  // Note that the underlying driver may have requirements
+  // on the alignment of `dst` and `offset` as well. Look at implementations of
+  // this method for specific alignment requirements.
   virtual PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
                                            int64_t transfer_size) = 0;
 
