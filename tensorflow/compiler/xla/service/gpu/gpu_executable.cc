@@ -210,7 +210,7 @@ Status ExecuteThunks(const std::string& module_name,
 	if(module_id >= 0) {
 	  module_id_str = absl::StrFormat(",program_id=%d", module_id);
 	}
-	return absl::StrFormat("Thunk:#hlo_module=%s%s#",
+	return absl::StrFormat("XlaModule:#hlo_module=%s%s#",
 			       module_name, module_id_str);
       });
 
