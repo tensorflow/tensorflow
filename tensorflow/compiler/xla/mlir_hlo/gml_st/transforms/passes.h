@@ -104,6 +104,11 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForCpuPass(
     ArrayRef<int64_t> matmulTileSizes = llvm::None,
     bool lowerToMmt4DOp = false);
 
+/// Pass to transform a linalg.matmul op for Triton.
+std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForTritonPass(
+    ArrayRef<int64_t> matmulTileSizes = llvm::None,
+    StringRef distributionLabel = "");
+
 /// Pass to transform a linalg.map op for CPU backend.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformMapForCpuPass(int64_t tileSize = 1);
