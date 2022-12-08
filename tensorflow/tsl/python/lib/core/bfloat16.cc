@@ -17,7 +17,7 @@ limitations under the License.
 #include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
-#include "tensorflow/python/lib/core/bfloat16.h"
+#include "tensorflow/tsl/python/lib/core/bfloat16.h"
 
 #include <array>   // NOLINT
 #include <cmath>   // NOLINT
@@ -29,12 +29,12 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/python/lib/core/custom_float.h"
-#include "tensorflow/python/lib/core/float8_e4m3b11.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/python/lib/core/custom_float.h"
+#include "tensorflow/tsl/python/lib/core/float8_e4m3b11.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace custom_float_internal {
 
 namespace ufuncs {
@@ -228,4 +228,4 @@ PyObject* Float8_E4M3B11Dtype() {
       custom_float_internal::TypeDescriptor<float8_e4m3b11>::type_ptr);
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

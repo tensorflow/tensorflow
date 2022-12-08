@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/custom_float.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace custom_float_internal {
 
 namespace ufuncs {
@@ -143,7 +143,9 @@ struct TypeDescriptor<float8_e5m2>
 };
 
 }  // namespace custom_float_internal
+}  // namespace tsl
 
+namespace tensorflow {
 namespace {
 
 // Initializes the module.
@@ -151,21 +153,23 @@ bool Initialize() {
   tsl::ImportNumpy();
   import_umath1(false);
 
-  custom_float_internal::Safe_PyObjectPtr numpy_str =
-      custom_float_internal::make_safe(PyUnicode_FromString("numpy"));
+  tsl::custom_float_internal::Safe_PyObjectPtr numpy_str =
+      tsl::custom_float_internal::make_safe(PyUnicode_FromString("numpy"));
   if (!numpy_str) {
     return false;
   }
-  custom_float_internal::Safe_PyObjectPtr numpy =
-      custom_float_internal::make_safe(PyImport_Import(numpy_str.get()));
+  tsl::custom_float_internal::Safe_PyObjectPtr numpy =
+      tsl::custom_float_internal::make_safe(PyImport_Import(numpy_str.get()));
   if (!numpy) {
     return false;
   }
 
-  if (!custom_float_internal::RegisterNumpyDtype<float8_e4m3fn>(numpy.get())) {
+  if (!tsl::custom_float_internal::RegisterNumpyDtype<float8_e4m3fn>(
+          numpy.get())) {
     return false;
   }
-  if (!custom_float_internal::RegisterNumpyDtype<float8_e5m2>(numpy.get())) {
+  if (!tsl::custom_float_internal::RegisterNumpyDtype<float8_e5m2>(
+          numpy.get())) {
     return false;
   }
   return true;
@@ -174,7 +178,7 @@ bool Initialize() {
 }  // namespace
 
 bool RegisterNumpyFloat8e4m3fn() {
-  if (custom_float_internal::TypeDescriptor<float8_e4m3fn>::Dtype() !=
+  if (tsl::custom_float_internal::TypeDescriptor<float8_e4m3fn>::Dtype() !=
       NPY_NOTYPE) {
     // Already initialized.
     return true;
@@ -191,15 +195,15 @@ bool RegisterNumpyFloat8e4m3fn() {
 
 PyObject* Float8e4m3fnDtype() {
   return reinterpret_cast<PyObject*>(
-      custom_float_internal::TypeDescriptor<float8_e4m3fn>::type_ptr);
+      tsl::custom_float_internal::TypeDescriptor<float8_e4m3fn>::type_ptr);
 }
 
 int Float8e4m3fnNumpyType() {
-  return custom_float_internal::TypeDescriptor<float8_e4m3fn>::Dtype();
+  return tsl::custom_float_internal::TypeDescriptor<float8_e4m3fn>::Dtype();
 }
 
 bool RegisterNumpyFloat8e5m2() {
-  if (custom_float_internal::TypeDescriptor<float8_e5m2>::Dtype() !=
+  if (tsl::custom_float_internal::TypeDescriptor<float8_e5m2>::Dtype() !=
       NPY_NOTYPE) {
     // Already initialized.
     return true;
@@ -216,11 +220,11 @@ bool RegisterNumpyFloat8e5m2() {
 
 PyObject* Float8e5m2Dtype() {
   return reinterpret_cast<PyObject*>(
-      custom_float_internal::TypeDescriptor<float8_e5m2>::type_ptr);
+      tsl::custom_float_internal::TypeDescriptor<float8_e5m2>::type_ptr);
 }
 
 int Float8e5m2NumpyType() {
-  return custom_float_internal::TypeDescriptor<float8_e5m2>::Dtype();
+  return tsl::custom_float_internal::TypeDescriptor<float8_e5m2>::Dtype();
 }
 
 }  // namespace tensorflow

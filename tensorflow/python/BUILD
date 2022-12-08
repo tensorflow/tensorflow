@@ -3461,7 +3461,7 @@ pywrap_tensorflow_macro(
 filegroup(
     name = "win_lib_files_for_exported_symbols",
     srcs = [
-        ":bfloat16_lib",  # bfloat16
+        "//tensorflow/tsl/python/lib/core:bfloat16_lib",  # bfloat16
         "//tensorflow/python/grappler:cost_analyzer_lib",
         "//tensorflow/python/util:cpp_nest",
         "//tensorflow/python/util:cpp_python_util",

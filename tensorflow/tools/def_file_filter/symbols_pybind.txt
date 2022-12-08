@@ -49,10 +49,10 @@ tensorflow::tfprof::SerializeToString
 [//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool] # graph_analyze
 tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
 
-[//tensorflow/python:bfloat16_lib] # bfloat16
-tensorflow::RegisterNumpyBfloat16
-tensorflow::Bfloat16Dtype
-tensorflow::Float8_E4M3B11Dtype
+[//tensorflow/tsl/python/lib/core:bfloat16_lib] # bfloat16
+tsl::RegisterNumpyBfloat16
+tsl::Bfloat16Dtype
+tsl::Float8_E4M3B11Dtype
 
 [//tensorflow/python:py_func_lib] # py_func
 tensorflow::InitializePyTrampoline

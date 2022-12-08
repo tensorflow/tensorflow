@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/python/lib/core/float8_e4m3b11.h"
+#include "tensorflow/tsl/python/lib/core/float8_e4m3b11.h"
 
 #include <stdio.h>
 
-namespace tensorflow {
+namespace tsl {
 
 uint8_t float_to_float8_e4m3b11(float v) {
   static_assert(sizeof(float) == sizeof(uint32_t), "Invalid");
@@ -84,4 +84,4 @@ float float8_e4m3b11_to_float(uint8_t v) {
   return *reinterpret_cast<float*>(&tmp);
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

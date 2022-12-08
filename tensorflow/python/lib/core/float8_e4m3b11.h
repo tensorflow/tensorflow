@@ -16,49 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_LIB_CORE_FLOAT8_E4M3B11_H_
 #define TENSORFLOW_PYTHON_LIB_CORE_FLOAT8_E4M3B11_H_
 
-#include <stdint.h>
-
-#include <cmath>
-#include <cstring>
-#include <memory>
+#include "tensorflow/tsl/python/lib/core/float8_e4m3b11.h"
 
 namespace tensorflow {
-
-uint8_t float_to_float8_e4m3b11(float v);
-float float8_e4m3b11_to_float(uint8_t v);
-
-class float8_e4m3b11 {
- public:
-  // Exponent: 4, Mantissa: 3, bias: 11
-  float8_e4m3b11() {}
-  float8_e4m3b11(float v) : rep_(float_to_float8_e4m3b11(v)) {}  // NOLINT
-
-  operator float() const {  // NOLINT: Allow implicit conversion to float,
-                            // because it is lossless.
-    return float8_e4m3b11_to_float(rep_);
-  }
-
-  float8_e4m3b11 operator-() const {
-    if ((rep_ & 0x7f) == 0x00) {
-      return *this;
-    }  // nan or 0.
-    float8_e4m3b11 result = *this;
-    result.rep_ = result.rep_ ^ 0x80;
-    return result;
-  }
-
-  uint8_t rep() const { return rep_; }
-
-  static float8_e4m3b11 FromRep(uint8_t rep) {
-    float8_e4m3b11 result;
-    memcpy(&result, &rep, sizeof(float8_e4m3b11));
-    return result;
-  }
-
- private:
-  uint8_t rep_;
-};
-
+// NOLINTBEGIN(misc-unused-using-decls)
+using tsl::float8_e4m3b11;
+using tsl::float8_e4m3b11_to_float;
+using tsl::float_to_float8_e4m3b11;
+// NOLINTEND(misc-unused-using-decls)
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_LIB_CORE_FLOAT8_E4M3B11_H_
