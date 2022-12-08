@@ -312,88 +312,79 @@ static GpuConvDescriptor GetConvDescriptor(
   return descriptor;
 }
 
-namespace {
-struct Conv {
-  ABSL_ATTRIBUTE_ALWAYS_INLINE
-  absl::Status operator()(
-      const ServiceExecutableRunOptions* run_options,
-      const DebugOptions* debug_options, ConvRunnerCache* runners,
-      // Arguments
-      StridedMemrefView operand0, StridedMemrefView operand1,
-      std::optional<FlatMemrefView> bias,
-      std::optional<StridedMemrefView> side_input, StridedMemrefView output,
-      FlatMemrefView scratch, int64_t uid,
-      // Convolution config
-      ConvDimensionNumbers conv_dims,
-      // Window config
-      ArrayRef<int64_t> window_strides, ArrayRef<int64_t> padding,
-      ArrayRef<int64_t> lhs_dilation, ArrayRef<int64_t> rhs_dilation,
-      ArrayRef<int64_t> window_reversal,
-      // Backend config attributes
-      ConvBackendConfig backend_config,
-      // Remaining attributes
-      int64_t feature_group_count, double result_scale,
-      // Optional attributes for fused convolutions.
-      std::optional<se::dnn::ActivationMode> activation_mode = std::nullopt,
-      std::optional<double> side_input_scale = std::nullopt) const {
-    // Build config for optional attributes.
-    std::optional<FusedConvAttrs> fused_attrs = std::nullopt;
-    if (activation_mode.has_value()) fused_attrs = {*activation_mode};
+template <CudnnConvKind kind>
+static absl::Status ConvImpl(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, ConvRunnerCache* runners,
+    // Arguments
+    StridedMemrefView operand0, StridedMemrefView operand1,
+    std::optional<FlatMemrefView> bias,
+    std::optional<StridedMemrefView> side_input, StridedMemrefView output,
+    FlatMemrefView scratch, int64_t uid,
+    // Convolution config
+    ConvDimensionNumbers conv_dims,
+    // Window config
+    ArrayRef<int64_t> window_strides, ArrayRef<int64_t> padding,
+    ArrayRef<int64_t> lhs_dilation, ArrayRef<int64_t> rhs_dilation,
+    ArrayRef<int64_t> window_reversal,
+    // Backend config attributes
+    ConvBackendConfig backend_config,
+    // Remaining attributes
+    int64_t feature_group_count, double result_scale,
+    // Optional attributes for fused convolutions.
+    std::optional<se::dnn::ActivationMode> activation_mode = std::nullopt,
+    std::optional<double> side_input_scale = std::nullopt) {
+  // Build config for optional attributes.
+  std::optional<FusedConvAttrs> fused_attrs = std::nullopt;
+  if (activation_mode.has_value()) fused_attrs = {*activation_mode};
 
-    std::optional<SideInputAttrs> side_input_attrs = std::nullopt;
-    if (side_input_scale.has_value()) side_input_attrs = {*side_input_scale};
+  std::optional<SideInputAttrs> side_input_attrs = std::nullopt;
+  if (side_input_scale.has_value()) side_input_attrs = {*side_input_scale};
 
-    // Get the convolution runner from the cache.
-    absl::StatusOr<ConvRunnerCache::Entry> runner = runners->GetOrCreate(
-        {run_options->stream(), uid}, [&]() -> absl::StatusOr<GpuConvConfig> {
-          GpuConvDescriptor descriptor = GetConvDescriptor(
-              kind, operand0, operand1, output, scratch, conv_dims,
-              {window_strides, padding, lhs_dilation, rhs_dilation,
-               window_reversal},
-              backend_config, {feature_group_count, result_scale}, fused_attrs,
-              side_input_attrs);
+  // Get the convolution runner from the cache.
+  absl::StatusOr<ConvRunnerCache::Entry> runner = runners->GetOrCreate(
+      {run_options->stream(), uid}, [&]() -> absl::StatusOr<GpuConvConfig> {
+        GpuConvDescriptor descriptor = GetConvDescriptor(
+            kind, operand0, operand1, output, scratch, conv_dims,
+            {window_strides, padding, lhs_dilation, rhs_dilation,
+             window_reversal},
+            backend_config, {feature_group_count, result_scale}, fused_attrs,
+            side_input_attrs);
 
-          StatusOr<GpuConvConfig> conv_config =
-              GetGpuConvConfig(descriptor, "");
-          if (!conv_config.ok()) return ToAbslStatus(conv_config.status());
+        StatusOr<GpuConvConfig> conv_config = GetGpuConvConfig(descriptor, "");
+        if (!conv_config.ok()) return ToAbslStatus(conv_config.status());
 
-          return *conv_config;
-        });
-    if (!runner.ok()) return runner.status();
+        return *conv_config;
+      });
+  if (!runner.ok()) return runner.status();
 
-    // Prepare buffer arguments.
-    std::vector<se::DeviceMemoryBase> buffers = {GetDeviceAddress(operand0),
-                                                 GetDeviceAddress(operand1)};
-    if (bias.has_value()) buffers.push_back(GetDeviceAddress(*bias));
-    if (side_input.has_value())
-      buffers.push_back(GetDeviceAddress(*side_input));
+  // Prepare buffer arguments.
+  std::vector<se::DeviceMemoryBase> buffers = {GetDeviceAddress(operand0),
+                                               GetDeviceAddress(operand1)};
+  if (bias.has_value()) buffers.push_back(GetDeviceAddress(*bias));
+  if (side_input.has_value()) buffers.push_back(GetDeviceAddress(*side_input));
 
-    se::DeviceMemoryBase result_buffer = GetDeviceAddress(output);
-    se::DeviceMemoryBase scratch_buffer = GetDeviceAddress(scratch);
+  se::DeviceMemoryBase result_buffer = GetDeviceAddress(output);
+  se::DeviceMemoryBase scratch_buffer = GetDeviceAddress(scratch);
 
-    RunConvOptions opts;
-    opts.runner_cache = runner->runner;
+  RunConvOptions opts;
+  opts.runner_cache = runner->runner;
 
-    // Run the convolution.
-    auto st = RunGpuConv(*runner->config, buffers, result_buffer,
-                         scratch_buffer, run_options->stream(), opts);
-    if (!st.ok() || !run_options->stream()->ok()) {
-      return ToAbslStatus(st);
-    }
-
-    return absl::OkStatus();
+  // Run the convolution.
+  auto st = RunGpuConv(*runner->config, buffers, result_buffer, scratch_buffer,
+                       run_options->stream(), opts);
+  if (!st.ok() || !run_options->stream()->ok()) {
+    return ToAbslStatus(st);
   }
 
-  static Conv Handler(CudnnConvKind kind) { return Conv{kind}; }
-
-  CudnnConvKind kind;
-};
-
-}  // namespace
+  return absl::OkStatus();
+}
 
 //===----------------------------------------------------------------------===//
 // Convolution custom calls bindings and registration.
 //===----------------------------------------------------------------------===//
+
+using Kind = CudnnConvKind;
 
 template <typename... Ts>
 static auto BindConvAttributes(runtime::CustomCallBinding<Ts...> binding) {
@@ -415,10 +406,8 @@ static auto BindConvAttributes(runtime::CustomCallBinding<Ts...> binding) {
       .template Attr<double>("result_scale");
 }
 
-using Kind = CudnnConvKind;
-
 XLA_RUNTIME_DEFINE_CUSTOM_CALL_TEMPLATE(
-    Kind kind, ConvFn, Conv::Handler(kind), checks,
+    Kind kind, Conv, FunctionWrapper<ConvImpl<kind>>(), checks,
     BindConvAttributes(
         CustomCall::Bind("xla.gpu.conv")
             .UserData<const ServiceExecutableRunOptions*>()
@@ -430,10 +419,13 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL_TEMPLATE(
             .Value(std::optional<StridedMemrefView>())  // side_input
             .Arg<StridedMemrefView>()                   // output
             .Arg<FlatMemrefView>()                      // scratch
-        ));
+        )
+        .Value(std::optional<se::dnn::ActivationMode>())  // activation_mode
+        .Value(std::optional<double>())                   // side_input_scale
+);
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    ConvFused, Conv::Handler(Kind::kForwardActivation), checks,
+    ConvFused, FunctionWrapper<ConvImpl<Kind::kForwardActivation>>(), checks,
     BindConvAttributes(
         CustomCall::Bind("xla.gpu.conv.fused")
             .UserData<const ServiceExecutableRunOptions*>()
@@ -446,10 +438,13 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
             .Arg<StridedMemrefView>()                   // output
             .Arg<FlatMemrefView>()                      // scratch
         )
-        .Attr<se::dnn::ActivationMode>("activation_mode"));
+        .Attr<se::dnn::ActivationMode>("activation_mode")
+        .Value(std::optional<double>())  // side_input_scale
+);
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    ConvFuseSideInput, Conv::Handler(Kind::kForwardActivation), checks,
+    ConvFusedSideInput, FunctionWrapper<ConvImpl<Kind::kForwardActivation>>(),
+    checks,
     BindConvAttributes(CustomCall::Bind("xla.gpu.conv.fused.side_input")
                            .UserData<const ServiceExecutableRunOptions*>()
                            .UserData<const DebugOptions*>()
@@ -468,11 +463,11 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 
 void RegisterConvCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   auto conv = [](std::string name) { return "xla.gpu.conv." + name; };
-  registry.Register(conv("forward"), &ConvFn<Kind::kForward>);
-  registry.Register(conv("backward.input"), &ConvFn<Kind::kBackwardInput>);
-  registry.Register(conv("backward.filter"), &ConvFn<Kind::kBackwardFilter>);
-  registry.Register(conv("forward.fused"), &ConvFused);
-  registry.Register(conv("forward.fused.side_input"), &ConvFuseSideInput);
+  registry.Register(conv("forward"), Conv<Kind::kForward>);
+  registry.Register(conv("backward.input"), Conv<Kind::kBackwardInput>);
+  registry.Register(conv("backward.filter"), Conv<Kind::kBackwardFilter>);
+  registry.Register(conv("forward.fused"), ConvFused);
+  registry.Register(conv("forward.fused.side_input"), ConvFusedSideInput);
 }
 
 }  // namespace gpu
