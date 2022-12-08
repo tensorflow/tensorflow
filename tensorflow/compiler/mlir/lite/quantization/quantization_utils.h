@@ -22,6 +22,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 
 #include "absl/container/flat_hash_set.h"
@@ -365,13 +366,13 @@ class QuantizationPattern : public RewritePattern {
     llvm::SmallVector<Operation*, 4> quantizing_ops;
 
     // Collect all the ops to quantize, as the user / producer of the root op.
-    if (std::is_same<RootOpT, DequantizeOpT>::value) {
+    if constexpr (std::is_same_v<RootOpT, DequantizeOpT>) {
       if (op->getNumResults() != 1) {
         return failure();
       }
       auto users = op->getResult(0).getUsers();
       quantizing_ops.append(users.begin(), users.end());
-    } else if (std::is_same<RootOpT, QuantizeOpT>::value) {
+    } else if constexpr (std::is_same_v<RootOpT, QuantizeOpT>) {
       if (op->getNumOperands() != 1) {
         return failure();
       }
@@ -570,7 +571,7 @@ class QuantizationPattern : public RewritePattern {
       // To verify the numericals, the original floating-point ops are
       // preserved in the graph. The result of these floating-point ops are sent
       // to a numeric verifier op as the reference.
-      if (enable_verify && !std::is_same<VerifierT, void>()) {
+      if (enable_verify && !std::is_same_v<VerifierT, void>) {
         // For constant operands, the floating-point constant is duplicated in
         // case it is quantized.
         for (int i = 0, e = quantized_op->getNumOperands(); i < e; ++i) {
