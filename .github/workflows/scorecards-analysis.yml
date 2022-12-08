@@ -15,12 +15,14 @@
 
 name: Scorecards supply-chain security
 on:
-  # Only the default branch is supported.
-  branch_protection_rule:
-  schedule:
-    - cron: '44 15 * * 5'
-  push:
-    branches: [ master ]
+  # TODO(mihaimaruseac): Currently disabled and only allowed as manual trigger only since there are upstream issues
+  ## Only the default branch is supported.
+  #branch_protection_rule:
+  #schedule:
+  #  - cron: '44 15 * * 5'
+  #push:
+  #  branches: [ master ]
+  workflow_dispatch  # TODO(mihaimaruseac): Remove when upstream issues are solved. Allowed for now to test for these get fixed
 
 # Declare default permissions as read only.
 permissions: read-all
