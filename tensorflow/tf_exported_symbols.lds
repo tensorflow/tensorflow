@@ -14,3 +14,5 @@
 *SP_*
 *tsl*profiler*RemoteProfilerSession*
 *tsl*profiler*ProfilerServer*
+*lite*
+*TFL*

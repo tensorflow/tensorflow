@@ -10,6 +10,7 @@ load("//tensorflow:tensorflow.bzl", "if_google", "if_libtpu")
 
 default_visibility = [
     "//tensorflow/dtensor:dtensor-internal",
+    "//tensorflow:__pkg__",
 ]
 
 package(
