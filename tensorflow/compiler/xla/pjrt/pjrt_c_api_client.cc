@@ -263,22 +263,52 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
 
 StatusOr<std::string> PjRtCApiClient::SerializeExecutable(
     const PjRtLoadedExecutable& executable) const {
-  if (kPjRtCApiBypass) {
-    VLOG(1) << "PJRT C API BYPASS: SerializeExecutable";
-    return wrapped_->SerializeExecutable(
-        *PjRtCApiExecutable::GetWrapped(&executable));
-  }
-  return Unimplemented("PJRT C API does not support SerializeExecutable");
+  auto c_api_exec =
+      tensorflow::down_cast<const PjRtCApiExecutable*>(&executable);
+  const PJRT_Executable* c_exec = c_api_exec->c_executable();
+
+  PJRT_Executable_Serialize_Args ser_args;
+  ser_args.struct_size = PJRT_Executable_Serialize_Args_STRUCT_SIZE;
+  ser_args.priv = nullptr;
+  ser_args.executable = c_exec;
+  ser_args.serialized_executable = nullptr;
+
+  const PJRT_Api* api = pjrt_c_api();
+
+  RETURN_STATUS_IF_ERROR(api->PJRT_Executable_Serialize(&ser_args), api);
+  PJRT_SerializedExecutable* c_serialized_exec = ser_args.serialized_executable;
+
+  PJRT_SerializedExecutable_Data_Args data_args;
+  data_args.struct_size = PJRT_SerializedExecutable_Data_Args_STRUCT_SIZE;
+  data_args.priv = nullptr;
+  data_args.serialized_executable = c_serialized_exec;
+  data_args.data = nullptr;
+  data_args.data_size = 0;
+
+  RETURN_STATUS_IF_ERROR(api->PJRT_SerializedExecutable_Data(&data_args), api);
+
+  return std::string(data_args.data, data_args.data_size);
 }
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtCApiClient::DeserializeExecutable(absl::string_view serialized,
                                       std::optional<CompileOptions> options) {
-  if (kPjRtCApiBypass) {
-    VLOG(1) << "PJRT C API BYPASS: DeserializeExecutable";
-    return WrapExecutable(wrapped_->DeserializeExecutable(serialized, options));
-  }
-  return Unimplemented("PJRT C API does not support DeserializeExecutable");
+  PJRT_Executable_Deserialize_Args des_args;
+
+  des_args.struct_size = PJRT_Executable_Deserialize_Args_STRUCT_SIZE;
+  des_args.priv = nullptr;
+  des_args.client = c_client_.get();
+  des_args.serialized_executable = serialized.data();
+  des_args.serialized_executable_size = serialized.length();
+  des_args.deserialized_executable = nullptr;
+
+  const PJRT_Api* api = pjrt_c_api();
+  PJRT_Executable* c_exec = des_args.deserialized_executable;
+
+  RETURN_STATUS_IF_ERROR(api->PJRT_Executable_Deserialize(&des_args), api);
+  std::unique_ptr<PjRtLoadedExecutable> deserialized_executable =
+      std::make_unique<PjRtCApiExecutable>(this, c_exec);
+  return deserialized_executable;
 }
 
 StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
@@ -586,7 +616,6 @@ Convert2DCBuffersToCppBuffers(PJRT_Buffer*** c_lists, size_t outer_size,
   }
   return ret;
 }
-
 
 xla::StatusOr<PJRT_Executable_Execute_Args>
 PjRtCApiExecutable::GetCommonExecuteArgs(
