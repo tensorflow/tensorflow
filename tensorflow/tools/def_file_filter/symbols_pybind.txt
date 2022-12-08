@@ -225,6 +225,7 @@ tensorflow::ExperimentalRunPassPipeline
 tensorflow::ExperimentalConvertSavedModelV1ToMlirLite
 tensorflow::ExperimentalConvertSavedModelV1ToMlir
 tensorflow::ExperimentalConvertSavedModelToMlir
+tensorflow::ExperimentalWriteBytecode
 tensorflow::ImportGraphDef
 tensorflow::ImportFunction
 
