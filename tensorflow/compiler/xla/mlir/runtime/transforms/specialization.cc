@@ -27,6 +27,8 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/type_converter.h"
@@ -145,7 +147,8 @@ static mlir::DenseElementsAttr GetMemrefValues(mlir::Builder& builder,
   return mlir::DenseElementsAttr::get(ranked_tensor, attributes);
 }
 
-Status SpecializeFunction(mlir::func::FuncOp func, ArgumentsRef arguments,
+Status SpecializeFunction(mlir::FunctionOpInterface func,
+                          ArgumentsRef arguments,
                           ArrayRef<SymbolicShape> symbolic_shapes,
                           ArrayRef<ArgumentConstraint> constraints,
                           const SpecializationListener* listener) {
@@ -156,16 +159,17 @@ Status SpecializeFunction(mlir::func::FuncOp func, ArgumentsRef arguments,
   // Specialize all function inputs to the given arguments.
   llvm::SmallVector<mlir::Type> specialized_inputs(num_inputs);
   for (unsigned i = 0; i < num_inputs; ++i) {
-    auto specialized =
-        SpecializeOperandType(i, func.getFunctionType().getInput(i),
-                              arguments[i], symbolic_shapes[i]);
+    auto specialized = SpecializeOperandType(
+        i, llvm::cast<mlir::FunctionType>(func.getFunctionType()).getInput(i),
+        arguments[i], symbolic_shapes[i]);
     if (!specialized.ok()) return specialized.status();
     specialized_inputs[i] = *specialized;
   }
 
   // Update function type to a new specialized one.
   auto specialized = mlir::FunctionType::get(
-      ctx, specialized_inputs, func.getFunctionType().getResults());
+      ctx, specialized_inputs,
+      llvm::cast<mlir::FunctionType>(func.getFunctionType()).getResults());
   func.setType(specialized);
 
   // Update function entry block arguments.
@@ -213,12 +217,13 @@ Status SpecializeFunction(mlir::func::FuncOp func, ArgumentsRef arguments,
   }
 
   // Sink small constants into the function body.
-  builder.setInsertionPointToStart(&func.getBody().front());
+  builder.setInsertionPointToStart(&func.getFunctionBody().front());
   for (int i = 0; i < constraints.size(); ++i) {
     if (constraints[i] != ArgumentConstraint::kValue) continue;
 
     // We only support sinking of Tensor arguments into the function body.
-    mlir::Type input = func.getFunctionType().getInput(i);
+    mlir::Type input =
+        llvm::cast<mlir::FunctionType>(func.getFunctionType()).getInput(i);
     mlir::TensorType tensor = input.dyn_cast<mlir::TensorType>();
     if (!tensor || !SupportsValueSpecialization(tensor)) {
       return InvalidArgumentError(StrCat(

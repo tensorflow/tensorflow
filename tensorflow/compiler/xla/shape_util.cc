@@ -46,25 +46,27 @@ namespace {
 // the size of each element of that primitive type, or 0
 // if the PrimitiveType is not a primitive type
 constexpr uint8_t primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
-    0,                  // PRIMITIVE_TYPE_INVALID = 0,
-    sizeof(int8_t),     // PRED = 1
-    sizeof(int8_t),     // S8 = 2
-    sizeof(int16_t),    // S16 = 3
-    sizeof(int32_t),    // S32 = 4
-    sizeof(int64_t),    // S64 = 5
-    sizeof(uint8_t),    // U8 = 6
-    sizeof(uint16_t),   // U16 = 7
-    sizeof(uint32_t),   // U32 = 8
-    sizeof(uint64_t),   // U64 = 9
-    sizeof(float) / 2,  // F16 = 10
-    sizeof(float),      // F32 = 11
-    sizeof(double),     // F64 = 12
-    0,                  // TUPLE = 13
-    0,                  // OPAQUE_TYPE = 14
-    sizeof(complex64),  // C64 = 15
-    sizeof(float) / 2,  // BF16 = 16
-    0,                  // TOKEN = 17
-    sizeof(complex128)  // C128 = 18
+    0,                   // PRIMITIVE_TYPE_INVALID = 0,
+    sizeof(int8_t),      // PRED = 1
+    sizeof(int8_t),      // S8 = 2
+    sizeof(int16_t),     // S16 = 3
+    sizeof(int32_t),     // S32 = 4
+    sizeof(int64_t),     // S64 = 5
+    sizeof(uint8_t),     // U8 = 6
+    sizeof(uint16_t),    // U16 = 7
+    sizeof(uint32_t),    // U32 = 8
+    sizeof(uint64_t),    // U64 = 9
+    sizeof(float) / 2,   // F16 = 10
+    sizeof(float),       // F32 = 11
+    sizeof(double),      // F64 = 12
+    0,                   // TUPLE = 13
+    0,                   // OPAQUE_TYPE = 14
+    sizeof(complex64),   // C64 = 15
+    sizeof(float) / 2,   // BF16 = 16
+    0,                   // TOKEN = 17
+    sizeof(complex128),  // C128 = 18
+    sizeof(float) / 4,   // F8E5M2 = 19
+    sizeof(float) / 4,   // F8E4M3FN = 20
 };
 constexpr int64_t kAnnotationPrintInterval = 5;
 }  // namespace
@@ -515,6 +517,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     case S16:
     case S32:
     case S64:
+    case F8E5M2:
+    case F8E4M3FN:
     case F16:
     case BF16:
     case F32:
@@ -798,6 +802,10 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       return sizeof(uint32_t);
     case U64:
       return sizeof(uint64_t);
+    case F8E5M2:
+      return sizeof(float) / 4;
+    case F8E4M3FN:
+      return sizeof(float) / 4;
     case BF16:
       return sizeof(float) / 2;
     case F16:
@@ -1057,82 +1065,6 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
 /* static */ Shape ShapeUtil::DropDegenerateDimensions(const Shape& shape) {
   return FilterDimensions(
       [&](int64_t dim) -> bool { return shape.dimensions()[dim] != 1; }, shape);
-}
-
-namespace {
-
-// Helper for ForEachSubshape which visits the subshapes of the given shape in
-// DFS pre-order starting with the index.
-Status ForEachSubshapeHelper(const Shape& shape,
-                             const ShapeUtil::StatusVisitorFunction& func,
-                             ShapeIndex* index) {
-  TF_RETURN_IF_ERROR(func(shape, *index));
-  if (shape.IsTuple()) {
-    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
-      index->push_back(i);
-      TF_RETURN_IF_ERROR(ForEachSubshapeHelper(
-          ShapeUtil::GetTupleElementShape(shape, i), func, index));
-      index->pop_back();
-    }
-  }
-  return OkStatus();
-}
-
-// Helper for ForEachMutableSubshape which visits the subshapes of the given
-// shape in DFS pre-order starting with the index.
-Status ForEachMutableSubshapeHelper(
-    Shape* shape, const ShapeUtil::MutatingStatusVisitorFunction& func,
-    ShapeIndex* index) {
-  TF_RETURN_IF_ERROR(func(shape, *index));
-  if (shape->IsTuple()) {
-    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(*shape); ++i) {
-      index->push_back(i);
-      TF_RETURN_IF_ERROR(ForEachMutableSubshapeHelper(
-          shape->mutable_tuple_shapes(i), func, index));
-      index->pop_back();
-    }
-  }
-  return OkStatus();
-}
-
-}  // namespace
-
-/* static */ void ShapeUtil::ForEachSubshape(const Shape& shape,
-                                             const VisitorFunction& func) {
-  ShapeIndex index;
-  ForEachSubshapeHelper(
-      shape,
-      [&func](const Shape& subshape, const ShapeIndex& index) {
-        func(subshape, index);
-        return OkStatus();
-      },
-      &index)
-      .IgnoreError();
-}
-
-/* static */ void ShapeUtil::ForEachMutableSubshape(
-    Shape* shape, const MutatingVisitorFunction& func) {
-  ShapeIndex index;
-  ForEachMutableSubshapeHelper(
-      shape,
-      [&func](Shape* subshape, const ShapeIndex& index) {
-        func(subshape, index);
-        return OkStatus();
-      },
-      &index)
-      .IgnoreError();
-}
-
-/* static */ Status ShapeUtil::ForEachSubshapeWithStatus(
-    const Shape& shape, const StatusVisitorFunction& func) {
-  ShapeIndex index;
-  return ForEachSubshapeHelper(shape, func, &index);
-}
-
-/* static */ Status ShapeUtil::ForEachMutableSubshapeWithStatus(
-    Shape* shape, const MutatingStatusVisitorFunction& func) {
-  ShapeIndex index;
-  return ForEachMutableSubshapeHelper(shape, func, &index);
 }
 
 /* static */ Shape ShapeUtil::PermuteDimensions(

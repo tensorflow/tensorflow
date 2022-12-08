@@ -32,9 +32,9 @@ limitations under the License.
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -131,9 +131,9 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
       if (zero_point < std::numeric_limits<uint8_t>::min() ||
           zero_point > std::numeric_limits<uint8_t>::max()) {
         TF_LITE_KERNEL_LOG(context,
-                           "unsupported zero-point value (%f) for UINT8 tensor "
+                           "unsupported zero-point value (%d) for UINT8 tensor "
                            "%d in XNNPACK delegate",
-                           scale, t);
+                           zero_point, t);
         return xnn_datatype_invalid;
       }
 
@@ -192,7 +192,7 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
         if (zero_point < std::numeric_limits<int8_t>::min() ||
             zero_point > std::numeric_limits<int8_t>::max()) {
           TF_LITE_KERNEL_LOG(context,
-                             "unsupported zero-point value (%f) for INT8 "
+                             "unsupported zero-point value (%d) for INT8 "
                              "tensor %d in XNNPACK delegate",
                              zero_point, t);
           return xnn_datatype_invalid;
@@ -576,12 +576,12 @@ class Delegate {
 
  private:
   TfLiteDelegate delegate_ = {
-      reinterpret_cast<void*>(this),  // .data_
-      DelegatePrepare,                // .Prepare
-      nullptr,                        // .CopyFromBufferHandle
-      nullptr,                        // .CopyToBufferHandle
-      nullptr,                        // .FreeBufferHandle
-      kTfLiteDelegateFlagsNone,       // .flags
+      reinterpret_cast<void*>(this),             // .data_
+      DelegatePrepare,                           // .Prepare
+      nullptr,                                   // .CopyFromBufferHandle
+      nullptr,                                   // .CopyToBufferHandle
+      nullptr,                                   // .FreeBufferHandle
+      kTfLiteDelegateFlagsPerOperatorProfiling,  // .flags
   };
 
   // Unpacked data for quasi-static tensors, i.e. tensors produced by
@@ -797,7 +797,8 @@ class Subgraph {
     }
 
     // XNNPACK Value IDs for TFLite tensors
-    std::vector<uint32_t> xnnpack_tensors(tensors.back() + 1);
+    std::vector<uint32_t> xnnpack_tensors(tensors.empty() ? 0
+                                                          : tensors.back() + 1);
     for (int t : tensors) {
       if (context->tensors[t].type == kTfLiteResource) {
         // We should never see a resource tensor if we are not handling variable
@@ -1084,9 +1085,10 @@ class Subgraph {
     for (size_t node_index = 0; node_index < num_operators; ++node_index) {
       operator_name = &operator_names[name_len];
       name_len += strlen(operator_name) + 1;
-      profiler->AddEvent(operator_name,
-                         Profiler::EventType::DELEGATE_OPERATOR_INVOKE_EVENT,
-                         operator_timings[node_index], node_index);
+      profiler->AddEvent(
+          operator_name,
+          Profiler::EventType::DELEGATE_PROFILED_OPERATOR_INVOKE_EVENT,
+          operator_timings[node_index], node_index);
     }
     return kTfLiteOk;
   }
@@ -5429,6 +5431,12 @@ class Subgraph {
         &padding_top, &padding_bottom, &padding_left, &padding_right,
         &adjustment_height, &adjustment_width));
 
+    float output_min = -std::numeric_limits<float>::infinity();
+    float output_max = +std::numeric_limits<float>::infinity();
+    TF_LITE_ENSURE_STATUS(ConvertActivationToOutputRange(
+        logging_context, node_index, deconv_params->activation, &output_min,
+        &output_max));
+
     if (subgraph != nullptr) {
       const xnn_status status = xnn_define_deconvolution_2d(
           subgraph,
@@ -5447,8 +5455,8 @@ class Subgraph {
           /*groups=*/1,
           /*group_input_channels=*/input_channels,
           /*group_output_channels=*/output_channels,
-          /*output_min=*/-std::numeric_limits<float>::infinity(),
-          /*output_max=*/+std::numeric_limits<float>::infinity(),
+          /*output_min=*/output_min,
+          /*output_max=*/output_max,
           /*input_id=*/xnnpack_tensors[input_tensor_index],
           /*filter_id=*/xnnpack_tensors[filter_tensor_index],
           /*bias_id=*/xnnpack_tensor_bias,

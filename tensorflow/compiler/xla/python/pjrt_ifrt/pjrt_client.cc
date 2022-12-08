@@ -62,7 +62,8 @@ StatusOr<std::unique_ptr<Array>> PjRtClient::MakeArrayFromHostBuffer(
       PjRtArray::PjRtBuffers({std::shared_ptr<PjRtBuffer>(buffer.release())}));
 }
 
-StatusOr<std::unique_ptr<Array>> PjRtClient::AssembleArray(
+StatusOr<std::unique_ptr<Array>>
+PjRtClient::AssembleArrayFromSingleDeviceArrays(
     Shape shape, std::shared_ptr<const Sharding> sharding,
     absl::Span<Array* const> arrays, ArrayCopySemantics semantics) {
   DCHECK(this);

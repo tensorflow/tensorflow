@@ -236,7 +236,7 @@ ParseResult ParseReplicateOpOperands(
   llvm::SmallVector<Type, 8> packed_region_arg_types;
   do {
     OpAsmParser::UnresolvedOperand operand_type;
-    if (parser->parseOptionalOperand(operand_type).hasValue()) {
+    if (parser->parseOptionalOperand(operand_type).has_value()) {
       packed_inputs->emplace_back(operand_type);
       if (parser->parseKeyword("as",
                                " between packed input and block argument") ||
@@ -439,7 +439,7 @@ void BuildReplicateOp(
   DCHECK_GE(n, 2);
   state->addAttribute("n", builder->getI32IntegerAttr(n));
 
-  if (devices.has_value()) state->addAttribute("devices", devices.getValue());
+  if (devices.has_value()) state->addAttribute("devices", devices.value());
 
   Region* region = state->addRegion();
   region->push_back(new Block);
@@ -479,7 +479,7 @@ LogicalResult ReplicateOp::verify() {
 
   // Check number of devices, if set, matches `n`.
   if (op.getDevices().has_value()) {
-    for (auto device_attr : op.getDevices().getValue().getValue()) {
+    for (auto device_attr : op.getDevices().value().getValue()) {
       auto device_list = device_attr.getValue().dyn_cast_or_null<ArrayAttr>();
       if (!device_list)
         return op.emitError()

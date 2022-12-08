@@ -66,9 +66,8 @@ Attribute convertAttr(Attribute hloAttr) {
         attr.getKernelSpatialDimensions(), attr.getOutputBatchDimension(),
         attr.getOutputFeatureDimension(), attr.getOutputSpatialDimensions());
   }
-  if (auto attr = hloAttr.dyn_cast<mhlo::CustomCallApiVersionAttr>()) {
-    RETURN_CONVERTED_ENUM_ATTR(CustomCallApiVersion);
-  }
+  // NOTE: We cannot process CustomCallApiVersionAttr here because
+  // `dyn_cast<mhlo::CustomCallApiVersionAttr>()` succeeds for IntegerAttr too.
   if (auto attr = hloAttr.dyn_cast<mhlo::DotDimensionNumbersAttr>()) {
     return stablehlo::DotDimensionNumbersAttr::get(
         attr.getContext(), attr.getLhsBatchingDimensions(),
@@ -160,6 +159,20 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
       if (dimensionNumbers.find('?') != std::string::npos) return failure();
     }
 
+    if constexpr (std::is_same<HloOpTy, mhlo::AllToAllOp>::value) {
+      // StableHLO AllToAll doesn't support the tuple form yet.
+      // Proposal: https://github.com/openxla/stablehlo/issues/574.
+      if (hloOp.getNumOperands() != 1) return failure();
+    }
+
+    if constexpr (std::is_same<HloOpTy, mhlo::CustomCallOp>::value) {
+      // StableHLO CustomCall doesn't support dictionary backend config.
+      // Proposal: https://github.com/openxla/stablehlo/issues/637
+      auto backendConfig = hloOp.getBackendConfig();
+      if (backendConfig && !backendConfig->template isa<mlir::StringAttr>())
+        return failure();
+    }
+
     // Convert MHLO types to StableHLO equivalents.
     // If a type is not defined in MHLO, then it is unchanged,
     // with the exception of RankedTensorType and TupleType which are
@@ -180,6 +193,16 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
     // with the exception of ArrayAttr which is converted recursively.
     SmallVector<NamedAttribute> stablehloAttrs;
     for (NamedAttribute hloAttr : hloOp->getAttrs()) {
+      if constexpr (std::is_same<HloOpTy, mhlo::CustomCallOp>::value) {
+        if (hloAttr.getName() == "api_version") {
+          // StableHLO CustomCall doesn't support API_VERSION_TYPED_FFI yet.
+          // Proposal: https://github.com/openxla/stablehlo/issues/637.
+          auto attr = hloAttr.getValue().cast<mhlo::CustomCallApiVersionAttr>();
+          if (attr.getValue() ==
+              mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI)
+            return failure();
+        }
+      }
       auto stablehloAttr = convertAttr(hloAttr.getValue());
       if (!stablehloAttr) return failure();
       stablehloAttrs.push_back({hloAttr.getName(), stablehloAttr});

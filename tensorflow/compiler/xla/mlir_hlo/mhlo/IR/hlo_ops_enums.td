@@ -44,6 +44,30 @@ def MHLO_PrecisionConfigAttr:
           TypedArrayAttrBase<MHLO_PrecisionAttr, "Precision Config attribute">>;
 
 //===----------------------------------------------------------------------===//
+// Custom call schedule hints
+//===----------------------------------------------------------------------===//
+
+// These mirror the XLA CustomCallSchedule proto enum.
+def MHLO_CUSTOM_CALL_SCHEDULE_NONE : I32EnumAttrCase<"NONE", 0>;
+def MHLO_CUSTOM_CALL_SCHEDULE_LATEST : I32EnumAttrCase<"LATEST", 1>;
+def MHLO_CUSTOM_CALL_SCHEDULE_EARLIEST : I32EnumAttrCase<"EARLIEST", 2>;
+
+// mhlo.custom_call_schedule gives us a scheduling hint for placing calls
+// LATEST indicates that the operation should be scheduled just before the first
+//   user in the use/def chain.
+// EARLIEST indicates that the operation should be scheduled just after the last
+//   operation that defines an argument of this operation in the use/def chain.
+// NONE indicates no hint for the compiler.
+def MHLO_CustomCallSchedule : I32EnumAttr<"CustomCallSchedule",
+    "Specifies the desired schedule for the custom-call.",
+    [MHLO_CUSTOM_CALL_SCHEDULE_NONE, MHLO_CUSTOM_CALL_SCHEDULE_LATEST, MHLO_CUSTOM_CALL_SCHEDULE_EARLIEST]> {
+  let genSpecializedAttr = 0;
+  let cppNamespace = "::mlir::mhlo";
+}
+
+def MHLO_CustomCallScheduleAttr : EnumAttr<MHLO_Dialect, MHLO_CustomCallSchedule, "custom_call_schedule">;
+
+//===----------------------------------------------------------------------===//
 // Domain Metadata Kind  enum definitions.
 //===----------------------------------------------------------------------===//
 
@@ -93,12 +117,15 @@ def MHLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING :
     I32EnumAttrCase<"API_VERSION_STATUS_RETURNING", 2>;
 def MHLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING_UNIFIED :
     I32EnumAttrCase<"API_VERSION_STATUS_RETURNING_UNIFIED", 3>;
+def MHLO_CUSTOM_CALL_API_VERSION_TYPED_FFI :
+    I32EnumAttrCase<"API_VERSION_TYPED_FFI", 4>;
 def MHLO_CustomCallApiVersionAttr :
     I32EnumAttr<"CustomCallApiVersion", "Custom call API version", [
         MHLO_CUSTOM_CALL_API_VERISON_UNSPECIFIED,
         MHLO_CUSTOM_CALL_API_VERSION_ORIGINAL,
         MHLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING,
-        MHLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING_UNIFIED
+        MHLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING_UNIFIED,
+        MHLO_CUSTOM_CALL_API_VERSION_TYPED_FFI
     ]> {
   let cppNamespace = "::mlir::mhlo";
 }

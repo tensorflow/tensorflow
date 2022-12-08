@@ -1220,7 +1220,7 @@ Status GetOrCreateKernelAndDevice(
 
       ctx.reuse_rendezvous_for_functions_mu()->lock();
       ctx.SetReuseRendezvousForFunctions(reuse_rendezvous_for_functions);
-      auto rendezvous_creator = ctx.RendezvousCreator();
+      auto rendezvous_creator = ctx.RendezvousFactory();
       ctx.SetReuseRendezvousForFunctions(
           reuse_rendezvous_for_functions_original_value);
       ctx.reuse_rendezvous_for_functions_mu()->unlock();

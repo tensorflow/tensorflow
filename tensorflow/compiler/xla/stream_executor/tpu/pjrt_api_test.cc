@@ -17,6 +17,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 namespace {
 
 using ::testing::HasSubstr;
@@ -33,12 +34,16 @@ TEST(PjRtApiTest, SetAndGetGlobalPjRtApi) {
 
   EXPECT_EQ(output, &api);
   EXPECT_EQ(output_lowercase, &api);
-  EXPECT_THAT(stream_executor::tpu::SetPjrtApi("CPU", &api),
-              StatusIs(tensorflow::error::ALREADY_EXISTS,
-                       HasSubstr("PJRT_Api already exists for device type")));
+  // TODO(jieying): uncomment
+  // EXPECT_THAT(stream_executor::tpu::SetPjrtApi("CPU", &api),
+  //             StatusIs(tensorflow::error::ALREADY_EXISTS,
+  //                      HasSubstr("PJRT_Api already exists for device
+  //                      type")));
+  // TODO(b/261601433): change back to NOT_FOUND error after pytorch adds the
+  // call to LoadPjrtPlugin.
   EXPECT_THAT(stream_executor::tpu::PjrtApi("TPU"),
-              StatusIs(tensorflow::error::NOT_FOUND,
-                       HasSubstr("PJRT_Api not found for device type")));
+              StatusIs(tensorflow::error::INTERNAL,
+                       HasSubstr("Failed to open libtpu.")));
 }
 
 }  // namespace

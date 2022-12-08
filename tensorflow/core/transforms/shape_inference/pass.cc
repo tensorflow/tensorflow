@@ -208,8 +208,8 @@ void ShapeInference::runOnOperation() {
       ShapedTypeComponents result = std::get<1>(it);
       TensorType inferred_type;
       if (result.hasRank()) {
-        inferred_type =
-            GetTypeFromTFTensorShape(result.getDims(), result.getElementType());
+        inferred_type = mlir::RankedTensorType::get(result.getDims(),
+                                                    result.getElementType());
       } else {
         inferred_type = UnrankedTensorType::get(result.getElementType());
       }

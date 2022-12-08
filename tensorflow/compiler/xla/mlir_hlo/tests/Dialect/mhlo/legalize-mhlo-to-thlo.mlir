@@ -76,7 +76,7 @@ func.func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?x
   // CHECK:      %[[CONCATENATE:.*]] = thlo.concatenate
   // CHECK-NEXT:     ins(%[[A]] : tensor<?x?xi32>, %[[B]] : tensor<?x?xi32>, %[[C]] : tensor<?x?xi32>)
   // CHECK-NEXT:     outs(%[[INIT]] : tensor<?x?xi32>)
-  // CHECK-NEXT:     {dimension = 1 : i64}
+  // CHECK-NEXT:     dimension = 1
   // CHECK:      return %[[CONCATENATE]]
   %concat = "mhlo.concatenate"(%a, %b, %c) { dimension = 1 } : (tensor<?x?xi32>, tensor<?x?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
   func.return %concat : tensor<?x?xi32>
@@ -93,7 +93,7 @@ func.func @concatenate_with_static_info(%a: tensor<64x32xi32>, %b: tensor<64x16x
   // CHECK:      %[[CONCAT:.*]] = thlo.concatenate
   // CHECK-NEXT:     ins(%[[A]] : tensor<64x32xi32>, %[[B]] : tensor<64x16xi32>, %[[C]] : tensor<64x?xi32>)
   // CHECK-NEXT:     outs(%[[INIT]] : tensor<64x?xi32>)
-  // CHECK-NEXT:     {dimension = 1 : i64}
+  // CHECK-NEXT:     dimension = 1
   // CHECK:      return %[[CONCAT]]
   %concat = "mhlo.concatenate"(%a, %b, %c) { dimension = 1 } : (tensor<64x32xi32>, tensor<64x16xi32>, tensor<64x?xi32>) -> tensor<64x?xi32>
   func.return %concat : tensor<64x?xi32>
@@ -262,8 +262,8 @@ func.func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 // CHECK:       thlo.sort
 // CHECK-NEXT:  ins(%[[IN0]] : tensor<16x16xf32>, %[[IN1]] : tensor<16x16xi32>)
 // CHECK-NEXT:  outs(%[[INIT0]] : tensor<16x16xf32>, %[[INIT1]] : tensor<16x16xi32>)
-// CHECK-DAG:   dimension = 1 : i64
-// CHECK-DAG:   is_stable = true
+// CHECK-NEXT:  dimension = 1
+// CHECK-NEXT:  is_stable = true
 // CHECK:       (%[[FLOAT0:.*]]: f32, %[[FLOAT1:.*]]: f32, %[[INT0:.*]]: i32, %[[INT1:.*]]: i32)
 // CHECK-DAG:     %[[TENSOR0:.*]] = tensor.from_elements %[[FLOAT0]] : tensor<f32>
 // CHECK-DAG:     %[[TENSOR1:.*]] = tensor.from_elements %[[FLOAT1]] : tensor<f32>

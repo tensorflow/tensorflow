@@ -56,6 +56,9 @@ def tflite_copts():
     }) + select({
         clean_dep("//tensorflow/lite:tensorflow_profiler_config"): ["-DTF_LITE_TENSORFLOW_PROFILER"],
         "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow/lite/delegates:tflite_debug_delegate"): ["-DTFLITE_DEBUG_DELEGATE"],
+        "//conditions:default": [],
     })
 
     return copts + tflite_copts_extra()
@@ -143,7 +146,13 @@ def tflite_linkopts_no_undefined():
     report errors for undefined symbols at runtime.
     """
     return if_oss(
-        ["-Wl,--no-undefined"],
+        select({
+            "//tensorflow:ios": [
+                # iOS linker uses "--undefined error" instead of "--no-undefined".
+                "-Wl,-undefined,error",
+            ],
+            "//conditions:default": ["-Wl,--no-undefined"],
+        }),
         select({
             # Can't enable errors for undefined symbols for asan/msan/tsan mode,
             # since undefined symbols in shared libraries (references to symbols
@@ -152,6 +161,10 @@ def tflite_linkopts_no_undefined():
             "//tools/cpp:asan_build": [],
             "//tools/cpp:msan_build": [],
             "//tools/cpp:tsan_build": [],
+            "//tensorflow:ios": [
+                # iOS linker uses "--undefined error" instead of "--no-undefined".
+                "-Wl,-undefined,error",
+            ],
             "//conditions:default": ["-Wl,--no-undefined"],
         }),
     )
@@ -467,7 +480,7 @@ def tflite_custom_cc_library(
         gen_selected_ops(
             name = "%s_registration" % name,
             model = models,
-            testonly = kwargs.get("testonly", default = False),
+            testonly = kwargs.get("testonly", False),
         )
         real_srcs.append(":%s_registration" % name)
         real_srcs.append("//tensorflow/lite:create_op_resolver_with_selected_ops.cc")
@@ -603,7 +616,7 @@ def tflite_custom_c_library(
         gen_selected_ops(
             name = "%s_registration" % name,
             model = models,
-            testonly = kwargs.get("testonly", default = False),
+            testonly = kwargs.get("testonly", False),
         )
 
         if experimental:
@@ -657,12 +670,12 @@ def tflite_custom_c_library(
         deps = [
             op_resolver_deps,
             "//tensorflow/lite:builtin_ops",
-            "//tensorflow/lite/c:common",
             "//tensorflow/lite/c:c_api_without_op_resolver_without_alwayslink",
             "//tensorflow/lite/core:private_headers",
             # TODO(bekzhan): Remove this dependency after we move c_api_opaque.h to tflite/core/.
             "//tensorflow/lite/core/c:private_c_api_types",
             "//tensorflow/lite/core/c:private_c_api_without_op_resolver_without_alwayslink",
+            "//tensorflow/lite/core/c:private_common",
             "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         ] + experimental_deps,
         **kwargs

@@ -181,15 +181,15 @@ bool DynamicShapeIsCompatible(const xla::Shape& dynamic_shape,
 }
 
 // For dynamic inputs, copy them and attach metadata of shape sizes to the
-// end of the tensor.
+// beginning of the tensor.
 //
 // The buffer for dynamic shapes contains three parts:
 // +--------+
+// |Metadata|
+// +--------+
 // |Payload |
 // +--------+
-// | Padding|
-// +--------+
-// |Metadata|
+// |Padding |
 // +--------+
 //
 // Metadata contains the sizes of shape without padding, eventually
@@ -515,7 +515,8 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
     // If cancellation manager is already cancelled or cancelling, it means
     // another failure has occurred earlier and this TpuExecuteOp is cancelled
     // regardless of whether itself is an error.
-    already_cancelled = cancellation_manager->IsCancelRequested();
+    already_cancelled = cancellation_manager->IsCancelling() ||
+                        cancellation_manager->IsCancelled();
     if (already_cancelled) {
       return errors::Cancelled(
           "RPC cancelled, not running TPU program on device ", device_ordinal);

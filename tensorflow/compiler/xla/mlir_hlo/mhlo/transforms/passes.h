@@ -61,6 +61,10 @@ createLegalizeSparseChloToLinalgPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createHloCanonicalizeReductionPass();
 
+// Expand feature rich mhlo ops to simpler mhlo ops.
+std::unique_ptr<OperationPass<func::FuncOp>>
+createMhloExpandOpsSimplifierPass();
+
 // Rewrites scatter into transposes, reshapes and a simpler scatter.
 std::unique_ptr<OperationPass<func::FuncOp>> createHloCanonicalizeScatterPass();
 

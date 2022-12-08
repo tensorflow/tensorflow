@@ -52,10 +52,10 @@ using tensorflow::CoordinationServiceConfig;
 using tensorflow::DeviceInfo;
 using tensorflow::KeyValueEntry;
 
+namespace {
 auto* enabled_usage_metric =
     monitoring::Gauge<bool, 0>::New("/coordination_service/agent/enabled",
                                     "Tracks usage of coordination service.");
-namespace {
 
 constexpr absl::Duration kDefaultClusterRegisterTimeout = absl::Hours(1);
 constexpr absl::Duration kDefaultHeartbeatTimeout = absl::Seconds(10);
@@ -67,9 +67,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   CoordinationServiceAgentImpl() = default;
   ~CoordinationServiceAgentImpl() override {
     Status s = Shutdown();
-    if (!s.ok()) {
-      LOG(ERROR) << "Coordination agent shutdown failed with status: " << s;
-    }
+    VLOG(10) << "Coordination agent dtor failed with status: " << s;
   }
   Status Initialize(Env* env, const std::string& job_name, int task_id,
                     const CoordinationServiceConfig& configs,
@@ -449,7 +447,6 @@ Status CoordinationServiceAgentImpl::ReportError(const Status& error) {
 }
 
 Status CoordinationServiceAgentImpl::Shutdown() {
-  LOG(INFO) << "Coordination agent has initiated Shutdown().";
   Status status = OkStatus();
   bool is_connected = false;
   {
@@ -458,6 +455,7 @@ Status CoordinationServiceAgentImpl::Shutdown() {
   }
   // Disconnect agent from service.
   if (!configs_.agent_destruction_without_shutdown() && is_connected) {
+    LOG(INFO) << "Coordination agent has initiated Shutdown().";
     ShutdownTaskRequest request;
     *request.mutable_source_task() = task_;
     ShutdownTaskResponse response;
@@ -489,11 +487,14 @@ Status CoordinationServiceAgentImpl::Shutdown() {
   {
     mutex_lock l(state_mu_);
     if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) {
-      status = MakeCoordinationError(errors::FailedPrecondition(absl::StrCat(
+      const std::string status_message = absl::StrCat(
           "Shutdown() was called while coordination agent is in error state, "
           "implying that distributed execution failed. Note: agent will still "
           "shutdown anyway. Agent status: ",
-          status_.ToString())));
+          status_.ToString());
+      status =
+          MakeCoordinationError(errors::FailedPrecondition(status_message));
+      LOG(ERROR) << status_message;
     }
     state_ = CoordinatedTaskState::TASKSTATE_DISCONNECTED;
   }

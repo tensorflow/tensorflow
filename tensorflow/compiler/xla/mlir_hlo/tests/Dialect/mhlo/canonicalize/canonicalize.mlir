@@ -837,7 +837,7 @@ func.func @dynamic_iota_is_static(%arg0 : tensor<1xindex>) -> tensor<4xi32> {
 
 // CHECK-LABEL: @dynamic_iota_is_static_constant_arg
 func.func @dynamic_iota_is_static_constant_arg(%arg0: tensor<5xi32>) -> tensor<?xi32> {
-  // CHECK-NOTE: mhlo.dynamic_iota
+  // CHECK-NOT: mhlo.dynamic_iota
   // CHECK: [[RESULT:%.*]] = "mhlo.iota"
   // CHECK: [[CAST:%.*]] = tensor.cast [[RESULT]]
   // CHECK: return [[CAST]]

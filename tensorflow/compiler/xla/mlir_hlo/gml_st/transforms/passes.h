@@ -57,6 +57,11 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass(
     StringRef distributionLabel = "");
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass();
 
+/// Pass to tile the root operation and to greedily fuse producers into it.
+std::unique_ptr<OperationPass<func::FuncOp>> createGreedyTilingAndFusionPass(
+    bool distribute, ArrayRef<int64_t> tileSizes, StringRef distributionLabel);
+std::unique_ptr<OperationPass<func::FuncOp>> createGreedyTilingAndFusionPass();
+
 // Pass to collapse dimensions of bcasts, reductions, and cwise ops.
 std::unique_ptr<OperationPass<func::FuncOp>> createCollapseShapePass();
 std::unique_ptr<OperationPass<func::FuncOp>> createCollapseShapePass(
@@ -84,12 +89,20 @@ std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeGmlStLoopsPass(
     bool vectorizeGmlStOps = false,
     ArrayRef<StringRef> distributionLabels = {});
 
+/// Pass to vectorize gml_st.for loops that are tiled perfectly.
+std::unique_ptr<OperationPass<func::FuncOp>>
+createVectorizePerfectlyTiledLoopsPass();
+
+/// Pass to lower vector.contract.
+std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorContractPass();
+
 /// Pass to transform a thlo.scatter op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();
 
 /// Pass to transform a linalg.matmul op for CPU backend.
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForCpuPass(
-    ArrayRef<int64_t> tileSizes = llvm::None);
+    ArrayRef<int64_t> matmulTileSizes = llvm::None,
+    bool lowerToMmt4DOp = false);
 
 /// Pass to transform a linalg.map op for CPU backend.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
@@ -97,7 +110,8 @@ createTransformMapForCpuPass(int64_t tileSize = 1);
 
 /// Pass to transform a linalg.reduce op for CPU backend.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createTransformReduceForCpuPass(ArrayRef<int64_t> reduceTileSizes = {});
+createTransformReduceForCpuPass(int64_t vectorSize = 8, int64_t tileSize1D = 32,
+                                ArrayRef<int64_t> tileSizes2D = {});
 
 /// Pass to transform a linalg.transpose op for CPU backend.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>

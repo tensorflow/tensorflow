@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "thlo/IR/thlo_ops.h"
 
@@ -118,22 +119,6 @@ struct ScalarizeLinalgOp : public OpInterfaceRewritePattern<LinalgOp> {
   }
 };
 
-// Extracts a point using gml_st.materialize and gml_st.tile with 1 element.
-Value getPoint(OpBuilder &b, Location loc, Value tensor, ValueRange indices) {
-  IntegerAttr oneAttr = b.getIndexAttr(1);
-
-  auto tensorType = tensor.getType().cast<RankedTensorType>();
-  int64_t tensorRank = tensorType.getRank();
-
-  SmallVector<OpFoldResult> offsets(indices.begin(), indices.end());
-  SmallVector<OpFoldResult> sizes(tensorRank, oneAttr);
-  SmallVector<OpFoldResult> strides(tensorRank, oneAttr);
-
-  Value tile = b.create<gml_st::TileOp>(loc, offsets, sizes, strides);
-  return b.create<gml_st::MaterializeOp>(loc, tensorType.getElementType(),
-                                         tensor, tile);
-}
-
 // Returns `startIndices`[0, :] for `startIndices` of shape 1xn. Returns None if
 // startIndices has a different shape.
 Optional<SmallVector<Value>> extractStartIndices(
@@ -217,10 +202,14 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
                   .create<scf::IfOp>(
                       loc, initType, indexIsInBounds,
                       [&](OpBuilder &thenBuilder, Location thenLoc) {
-                        Value updateValue =
-                            getPoint(thenBuilder, loc, updates, updateIndex);
-                        Value currentValue =
-                            getPoint(thenBuilder, loc, initBlockArg, initIndex);
+                        Value updateValue = gml_st::materializePoint(
+                            thenBuilder, loc, updates,
+                            getAsOpFoldResult(updateIndex),
+                            /*useExtractSlice=*/false);
+                        Value currentValue = gml_st::materializePoint(
+                            thenBuilder, loc, initBlockArg,
+                            getAsOpFoldResult(initIndex),
+                            /*useExtractSlice=*/false);
 
                         // Combine update with the value in the output.
                         Block *body = scatterOp.getBody();
@@ -328,7 +317,9 @@ struct ScalarizeGatherOp : public OpRewritePattern<thlo::GatherOp> {
           SmallVector<OpFoldResult> ones(initRank, oneAttr);
           Value tile = nestedBuilder.create<gml_st::TileOp>(
               bodyLoc, SmallVector<OpFoldResult>(ivs), ones, ones);
-          Value val = getPoint(nestedBuilder, bodyLoc, operand, readIndices);
+          Value val = gml_st::materializePoint(nestedBuilder, bodyLoc, operand,
+                                               getAsOpFoldResult(readIndices),
+                                               /*useExtractSlice=*/false);
           nestedBuilder.create<gml_st::SetYieldOp>(bodyLoc, val,
                                                    loopInits.front(), tile);
         });
@@ -345,7 +336,7 @@ struct ScalarizeConcatenateOp : public OpRewritePattern<thlo::ConcatenateOp> {
   LogicalResult matchAndRewrite(thlo::ConcatenateOp concatenateOp,
                                 PatternRewriter &rewriter) const override {
     Location loc = concatenateOp.getLoc();
-    int64_t concatDim = concatenateOp.getDimension();
+    int64_t concatDim = concatenateOp.getDimension().getSExtValue();
 
     auto initTensor = concatenateOp.getInit();
     auto initType = initTensor.getType();

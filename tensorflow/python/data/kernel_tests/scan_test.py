@@ -22,6 +22,7 @@ from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
+from tensorflow.python.data.ops import scan_op
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -282,7 +283,7 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     data = variables.Variable(initial_value=array_ops.zeros((1, 1000, 1000)))
     dataset = dataset_ops.Dataset.from_tensor_slices(data)
-    dataset = dataset_ops._ScanDataset(
+    dataset = scan_op._ScanDataset(
         dataset, np.int64(1), scan_fn, use_default_device=use_default_device)
     get_next = self.getNext(dataset)
 

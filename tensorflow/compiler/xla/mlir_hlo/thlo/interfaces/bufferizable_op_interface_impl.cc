@@ -79,8 +79,8 @@ static LogicalResult bufferizeDestinationStyleOpInterface(
   // Clone the op, but use the new operands. Move the existing block into the
   // new op. Since the new op does not have any tensor results, it does not
   // return anything.
-  auto newOp = cast<DestinationStyleOpInterface>(op.cloneWithoutRegions(
-      rewriter, op.getLoc(), /*resultTypes=*/TypeRange{}, newOperands));
+  auto newOp = cast<DestinationStyleOpInterface>(cloneWithoutRegions(
+      rewriter, op, /*resultTypes=*/TypeRange{}, newOperands));
 
   assert(op->getNumRegions() <= 1);
   if (op->getNumRegions() == 1) {

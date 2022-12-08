@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -142,8 +143,43 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
   CustomCallOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
       : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
 
+  // Rewrite custom call with `API_VERSION_TYPED_FFI` version into XLA runtime
+  // custom calls bypassing custom call adaptor.
+  LogicalResult rewriteTypedCustomCall(CustomCallOp op,
+                                       PatternRewriter& rewriter) const {
+    // TODO(ezhulenev): Support target arg mapping, or explain why we do not
+    // need them for typed custom calls.
+    if (op.getTargetArgMapping())
+      return op.emitOpError(
+          "API_VERSION_TYPED_FFI custom calls do not "
+          "support target arg mapping");
+
+    // Create a custom call function declaration.
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    func::FuncOp callee =
+        custom_calls_.GetOrCreate(b, op.getCallTargetName(), op);
+    callee->setAttr("rt.dynamic", UnitAttr::get(b.getContext()));
+
+    // Forward backend config to the custom call implementation.
+    auto dict = op.getBackendConfig()
+                    ? op.getBackendConfig()->cast<mlir::DictionaryAttr>()
+                    : nullptr;
+    llvm::SmallVector<NamedAttribute> backend_config(dict.begin(), dict.end());
+
+    // Call the custom call function forwarding user-defined attributes.
+    auto call = rewriter.replaceOpWithNewOp<func::CallOp>(
+        op, callee.getName(), TypeRange(), op.getOperands());
+    AppendCustomCallAttrs(call, backend_config);
+
+    return success();
+  }
+
   LogicalResult matchAndRewrite(CustomCallOp op,
                                 PatternRewriter& rewriter) const override {
+    // Typed custom calls lowered directly to XLA runtime custom calls.
+    if (op.getApiVersion() == mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI)
+      return rewriteTypedCustomCall(op, rewriter);
+
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
     // By default all operands passed to the custom call handler.

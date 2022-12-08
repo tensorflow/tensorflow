@@ -1243,6 +1243,10 @@ int64_t ShardCountAtDim(const HloSharding& sharding, int64_t dim) {
   if (sharding.IsTileMaximal()) {
     return 1;
   }
+  if (dim == -1) {
+    // -1 is used as a placeholder in non-existing dims like DotConvDimsMapping.
+    return 1;
+  }
   return sharding.tile_assignment().dim(dim);
 }
 

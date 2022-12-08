@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -2613,15 +2614,14 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   Status Preprocess(HloInstruction* instruction) override {
-    auto previous = instructions_by_name_.find(instruction->name());
-    TF_RET_CHECK(previous == instructions_by_name_.end())
-        << "HLO has name that is not unique within module:\n"
-        << instruction->ToString()
-        << " in computation: " << instruction->parent()->name()
-        << "\nPrevious HLO with same name:\n"
-        << previous->second->ToString()
-        << " in computation: " << previous->second->parent()->name();
-    instructions_by_name_[instruction->name()] = instruction;
+    auto [it, inserted] =
+        instructions_by_name_.insert({instruction->name(), instruction});
+    TF_RET_CHECK(inserted) << "HLO has name that is not unique within module:\n"
+                           << instruction->ToString() << " in computation: "
+                           << instruction->parent()->name()
+                           << "\nPrevious HLO with same name:\n"
+                           << it->second->ToString() << " in computation: "
+                           << it->second->parent()->name();
 
     if (instruction->has_sharding()) {
       Status status =
@@ -2656,6 +2656,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         }
       }
     }
+    TF_RETURN_IF_ERROR(VerifyF8Usage(instruction));
 
     return OkStatus();
   }
@@ -2681,6 +2682,35 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     }
     return OkStatus();
   }
+
+  static bool HasFp8Operand(HloInstruction* instruction) {
+    for (HloInstruction* operand : instruction->operands()) {
+      if (ShapeUtil::HasPrimitiveType(operand->shape(), F8E5M2) ||
+          ShapeUtil::HasPrimitiveType(operand->shape(), F8E4M3FN)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static Status VerifyF8Usage(HloInstruction* instruction) {
+    bool has_fp8_operand =
+        absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
+          return ShapeUtil::HasPrimitiveType(operand->shape(), F8E5M2) ||
+                 ShapeUtil::HasPrimitiveType(operand->shape(), F8E4M3FN);
+        });
+    // TODO(b/259609697): Support FP8 operands in all instructions that support
+    // inputs of other floating-point dtypes. Currently the CPU and GPU backends
+    // only support FP8 operands in the convert instruction.
+    if (has_fp8_operand && instruction->opcode() != HloOpcode::kConvert) {
+      return InvalidArgument(
+          "FP8 is currently only supported in convert instructions, but got "
+          "instruction with FP8 input: %s",
+          instruction->ToString());
+    }
+    return OkStatus();
+  }
+
   absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name_;
   const HloVerifierOpts& opts_;
   std::optional<int64_t> num_devices_;

@@ -20,7 +20,6 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "absl/base/casts.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -796,4 +795,17 @@ std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
   return std::make_unique<HloDotInstruction>(
       shape, lhs, rhs, dot_dimension_numbers, precision_config);
 }
+
+bool IsMlirLoweringEnabled() {
+  char* xla_flags = getenv("XLA_FLAGS");
+  if (!xla_flags) {
+    return false;
+  }
+  return !absl::StrContains(xla_flags, "--xla_cpu_use_xla_runtime=false") &&
+         !absl::StrContains(xla_flags,
+                            "--xla_cpu_enable_mlir_lowering=false") &&
+         (absl::StrContains(xla_flags, "--xla_cpu_use_xla_runtime") ||
+          absl::StrContains(xla_flags, "--xla_cpu_enable_mlir_lowering"));
+}
+
 }  // namespace xla

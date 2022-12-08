@@ -52,7 +52,7 @@ and the following optional parameters:
 
 *   `delegate`: `string` \
     If provided, tries to use the specified delegate on the test Interpreter.
-    Valid values: "nnapi", "gpu", "hexagon".
+    Valid values: "nnapi", "gpu", "hexagon", "coreml".
 
     NOTE: Please refer to the
     [Hexagon delegate documentation](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/hexagon_delegate.md)
@@ -117,3 +117,9 @@ adb shell /data/local/tmp/run_eval \
 ```
 adb pull /data/local/tmp/inference_diff.txt ~/accuracy_tool
 ```
+
+## Running the binary on iOS
+
+Follow the instructions [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/evaluation/tasks/ios/README.md)
+to run the binary on iOS using the
+[iOS evaluation app](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/evaluation/tasks/ios).

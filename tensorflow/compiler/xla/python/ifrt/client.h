@@ -66,7 +66,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
       std::function<void()> on_done_with_host_buffer) = 0;
 
   // Builds a larger array out of individual per-device shards.
-  virtual StatusOr<std::unique_ptr<Array>> AssembleArray(
+  virtual StatusOr<std::unique_ptr<Array>> AssembleArrayFromSingleDeviceArrays(
       Shape shape, std::shared_ptr<const Sharding> sharding,
       absl::Span<Array* const> arrays, ArrayCopySemantics semantics) = 0;
 

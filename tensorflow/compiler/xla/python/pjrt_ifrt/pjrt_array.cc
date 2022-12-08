@@ -80,6 +80,7 @@ StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
     case xla::PrimitiveType::F64:
     case xla::PrimitiveType::C64:
     case xla::PrimitiveType::C128:
+    case xla::PrimitiveType::TOKEN:
       return DType(static_cast<DType::Kind>(static_cast<int>(primitive_type)));
     default:
       return InvalidArgument("Invalid XLA PrimitiveType: %d",
@@ -118,10 +119,34 @@ StatusOr<std::unique_ptr<Array>> PjRtArray::Create(
       static_cast<PjRtClient*>(client), dtype, std::move(shape),
       std::move(sharding), PjRtBuffers({std::move(pjrt_buffer)})));
 }
+
 StatusOr<std::unique_ptr<Array>> PjRtArray::Create(
     Client* client, std::unique_ptr<PjRtBuffer> pjrt_buffer) {
   return PjRtArray::Create(client,
                            std::shared_ptr<PjRtBuffer>(pjrt_buffer.release()));
+}
+
+StatusOr<std::unique_ptr<Array>> PjRtArray::Create(Client* client, Shape shape,
+                                                   PjRtBuffers pjrt_buffers) {
+  TF_ASSIGN_OR_RETURN(
+      auto dtype, xla::ifrt::ToDType(
+                      pjrt_buffers.front()->on_device_shape().element_type()));
+  DeviceList::Devices devices;
+  devices.reserve(pjrt_buffers.size());
+  std::vector<Shape> shapes;
+  shapes.reserve(pjrt_buffers.size());
+
+  for (const auto& pjrt_buffer : pjrt_buffers) {
+    devices.push_back(pjrt_buffer->device());
+    shapes.push_back(Shape(pjrt_buffer->on_device_shape().dimensions()));
+  }
+  return PjRtArray::Create(
+      client, dtype, std::move(shape),
+      ifrt::OpaqueSharding::Create(
+          xla::ifrt::DeviceList(std::move(devices)),
+          xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
+              std::move(shapes))),
+      std::move(pjrt_buffers));
 }
 
 PjRtArray::PjRtArray(PjRtClient* client, DType dtype, Shape shape,
@@ -133,12 +158,12 @@ PjRtArray::PjRtArray(PjRtClient* client, DType dtype, Shape shape,
       sharding_(std::move(sharding)),
       pjrt_buffers_(std::move(pjrt_buffers)) {}
 
-StatusOr<std::vector<std::unique_ptr<Array>>> PjRtArray::Explode(
-    ArrayCopySemantics semantics) {
+StatusOr<std::vector<std::unique_ptr<Array>>>
+PjRtArray::DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
   DCHECK(this);
   std::vector<std::unique_ptr<Array>> result;
   result.reserve(sharding_->devices().size());
-  TF_ASSIGN_OR_RETURN(auto shape_and_shardings, sharding_->Explode(shape_));
+  TF_ASSIGN_OR_RETURN(auto shape_and_shardings, sharding_->Disassemble(shape_));
   for (int i = 0; i < sharding_->devices().size(); ++i) {
     PjRtBuffers buffers;
     buffers.reserve(1);

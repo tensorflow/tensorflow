@@ -21,6 +21,7 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -243,6 +244,24 @@ void AssertOp::getCanonicalizationPatterns(RewritePatternSet &results,
 }
 
 //===----------------------------------------------------------------------===//
+// BatchFunctionOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BatchFunctionOp::verifySymbolUses(
+    SymbolTableCollection &symbolTable) {
+  StringAttr func_attr = getFAttr().getRootReference();
+  func::FuncOp func =
+      symbolTable.lookupNearestSymbolFrom<func::FuncOp>(*this, func_attr);
+
+  if (!func) {
+    return emitError("'f' attribute refers to an undefined function: ")
+           << func_attr.getValue();
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BatchMatMulV2Op & BatchMatMulOp
 //===----------------------------------------------------------------------===//
 
@@ -306,8 +325,8 @@ static LogicalResult Verify(OpT op) {
   // Check output batch dim with potential broadcasting.
   ArrayRef<int64_t> output_shape = output_ty.getShape();
   for (int i = 0; i < result_batch_shape.size(); ++i) {
-    if (output_shape[i] != ShapedType::kDynamicSize &&
-        result_batch_shape[i] != ShapedType::kDynamicSize &&
+    if (output_shape[i] != ShapedType::kDynamic &&
+        result_batch_shape[i] != ShapedType::kDynamic &&
         output_shape[i] != result_batch_shape[i])
       return op.emitOpError()
              << "has mismatching input batch dimension "
@@ -327,14 +346,14 @@ static LogicalResult Verify(OpT op) {
   int64_t expected_out_row_dim = op.getAdjX() ? x_col_dim : x_row_dim;
   int64_t expected_out_col_dim = op.getAdjY() ? y_row_dim : y_col_dim;
 
-  if (expected_out_row_dim != ShapedType::kDynamicSize &&
-      out_row_dim != ShapedType::kDynamicSize &&
+  if (expected_out_row_dim != ShapedType::kDynamic &&
+      out_row_dim != ShapedType::kDynamic &&
       out_row_dim != expected_out_row_dim)
     return op.emitOpError()
            << "found invalid output dimension on row, expected "
            << expected_out_row_dim << " but got " << out_row_dim;
-  if (expected_out_col_dim != ShapedType::kDynamicSize &&
-      out_col_dim != ShapedType::kDynamicSize &&
+  if (expected_out_col_dim != ShapedType::kDynamic &&
+      out_col_dim != ShapedType::kDynamic &&
       out_col_dim != expected_out_col_dim)
     return op.emitOpError()
            << "found invalid output dimension on col, expected "
@@ -364,7 +383,7 @@ LogicalResult BatchToSpaceOp::verify() {
   // Op already has a constraint that block_size >= 2.
   int64_t block_size = op.getBlockSize();
 
-  llvm::SmallVector<int64_t, 4> input_shape(4, ShapedType::kDynamicSize);
+  llvm::SmallVector<int64_t, 4> input_shape(4, ShapedType::kDynamic);
   auto input_type = op.getInput().getType().cast<TensorType>();
   if (input_type.hasRank()) {
     if (input_type.getRank() != 4)
@@ -372,7 +391,7 @@ LogicalResult BatchToSpaceOp::verify() {
              << "requires input to be a 4D tensor, but got " << input_type;
 
     int64_t input_batch = input_type.getDimSize(0);
-    if (input_batch != ShapedType::kDynamicSize &&
+    if (input_batch != ShapedType::kDynamic &&
         input_batch % (block_size * block_size) != 0) {
       return op.emitOpError()
              << "requires input batch (dimension 0) to be evenly divisible "
@@ -426,8 +445,7 @@ LogicalResult BatchToSpaceOp::verify() {
              << "requires output to be a 4D tensor, but got " << output_type;
 
     auto static_dims = [](int64_t dim_a, int64_t dim_b) {
-      return dim_a != ShapedType::kDynamicSize &&
-             dim_b != ShapedType::kDynamicSize;
+      return dim_a != ShapedType::kDynamic && dim_b != ShapedType::kDynamic;
     };
 
     auto output_shape = output_type.getShape();
@@ -569,8 +587,8 @@ LogicalResult BiasAddOp::verify() {
       tensorflow::GetTensorFeatureDimIndex(value_ty.getRank(), format);
   int64_t feature_dim = value_ty.getDimSize(feature_dim_idx);
   int64_t bias_len = bias_ty.getDimSize(0);
-  if (feature_dim != ShapedType::kDynamicSize &&
-      bias_len != ShapedType::kDynamicSize && feature_dim != bias_len) {
+  if (feature_dim != ShapedType::kDynamic && bias_len != ShapedType::kDynamic &&
+      feature_dim != bias_len) {
     return op.emitOpError()
            << "requires channel dimension and feature dimension to match; "
               "found "
@@ -1033,6 +1051,25 @@ OpFoldResult CastOp::fold(ArrayRef<Attribute> operands) {
   Value operand = getOperand();
   if (getType() == operand.getType()) return operand;
   return {};
+}
+
+//===----------------------------------------------------------------------===//
+// CollectiveReduceV2Op
+//===----------------------------------------------------------------------===//
+
+// For `CollectiveReduceV2Op` we have two cases:
+// 1) If at least one ordering token is present, then we purely rely on ordering
+//    tokens for side effect modeling and ignore the op-based effect
+//    `TF_CollectiveReduceOrderingEffect` for which this function is relevant
+//    (note that returning `std::nullopt` here signals exactly that).
+// 2) If no ordering token is present, then we treat the op conservatively which
+//    means that different op instances need dependencies. This is realized by
+//    always returning the same string ("") in this case. In fact, we could
+//    return any string here, as long as it is the same string for all op
+//    instances without ordering tokens.
+std::optional<std::string> CollectiveReduceV2Op::GetResourceInstanceStr() {
+  return getNorderingToken() == 0 ? std::optional<std::string>("")
+                                  : std::nullopt;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1723,7 +1760,7 @@ static LogicalResult Verify(OpT op) {
     return failure();
   }
 
-  int64_t input_channels = ShapedType::kDynamicSize;
+  int64_t input_channels = ShapedType::kDynamic;
   if (auto ty = op.getInput().getType().template dyn_cast<RankedTensorType>()) {
     absl::string_view data_format(op.getDataFormat().data(),
                                   op.getDataFormat().size());
@@ -1734,7 +1771,7 @@ static LogicalResult Verify(OpT op) {
     input_channels = ty.getDimSize(idx);
   }
 
-  int64_t filter_channels = ShapedType::kDynamicSize;
+  int64_t filter_channels = ShapedType::kDynamic;
   if (auto ty =
           op.getFilter().getType().template dyn_cast<RankedTensorType>()) {
     int idx = tensorflow::GetFilterTensorInputChannelsDimIndex(
@@ -1812,7 +1849,7 @@ static LogicalResult inferConvReturnTypeComponents(
 
   // Output always have `num_dims` rank. All dimensions are initialized to
   // dynamic size and can be partially inferred.
-  SmallVector<int64_t, 4> return_shape(num_dims, ShapedType::kDynamicSize);
+  SmallVector<int64_t, 4> return_shape(num_dims, ShapedType::kDynamic);
   // Output batch and channel dimension can be obtained using utilities from
   // tensorflow/core/util/tensor_format.h.
   if (input_ty.hasRank()) {
@@ -2086,18 +2123,18 @@ LogicalResult DataFormatVecPermuteOp::verify() {
 
   if (rank == 1) {
     int64_t dim0 = input_ty.getDimSize(0);
-    if (dim0 != ShapedType::kDynamicSize && dim0 != 4 && dim0 != 2)
+    if (dim0 != ShapedType::kDynamic && dim0 != 4 && dim0 != 2)
       return op.emitOpError("requires 1D input of size 4 or size 2");
   }
 
   if (rank == 2) {
     int64_t dim0 = input_ty.getDimSize(0);
-    if (dim0 != ShapedType::kDynamicSize && dim0 != 4)
+    if (dim0 != ShapedType::kDynamic && dim0 != 4)
       return op.emitOpError(
           "requires first dimensions of 2D input to be of size 4");
 
     int64_t dim1 = input_ty.getDimSize(1);
-    if (dim1 != ShapedType::kDynamicSize && dim1 != 2)
+    if (dim1 != ShapedType::kDynamic && dim1 != 2)
       return op.emitOpError(
           "requires second dimensions of 2D input to be of size 2");
   }
@@ -2444,28 +2481,33 @@ std::string GetAbsDeviceStr(Operation *op, uint64_t device_ordinal) {
   return absl::StrCat(device_str, ":", device_ordinal_str);
 }
 
-std::string
+std::optional<std::string>
 EnqueueTPUEmbeddingArbitraryTensorBatchOp::GetResourceInstanceStr() {
   return GetAbsDeviceStr(*this, getDeviceOrdinal());
 }
 
-std::string EnqueueTPUEmbeddingBatchOp::GetResourceInstanceStr() {
+std::optional<std::string>
+EnqueueTPUEmbeddingBatchOp::GetResourceInstanceStr() {
   return GetAbsDeviceStr(*this, getDeviceOrdinal());
 }
 
-std::string EnqueueTPUEmbeddingIntegerBatchOp::GetResourceInstanceStr() {
+std::optional<std::string>
+EnqueueTPUEmbeddingIntegerBatchOp::GetResourceInstanceStr() {
   return GetAbsDeviceStr(*this, getDeviceOrdinal());
 }
 
-std::string EnqueueTPUEmbeddingRaggedTensorBatchOp::GetResourceInstanceStr() {
+std::optional<std::string>
+EnqueueTPUEmbeddingRaggedTensorBatchOp::GetResourceInstanceStr() {
   return GetAbsDeviceStr(*this, getDeviceOrdinal());
 }
 
-std::string EnqueueTPUEmbeddingSparseBatchOp::GetResourceInstanceStr() {
+std::optional<std::string>
+EnqueueTPUEmbeddingSparseBatchOp::GetResourceInstanceStr() {
   return GetAbsDeviceStr(*this, getDeviceOrdinal());
 }
 
-std::string EnqueueTPUEmbeddingSparseTensorBatchOp::GetResourceInstanceStr() {
+std::optional<std::string>
+EnqueueTPUEmbeddingSparseTensorBatchOp::GetResourceInstanceStr() {
   return GetAbsDeviceStr(*this, getDeviceOrdinal());
 }
 
@@ -2485,8 +2527,8 @@ OpFoldResult EnsureShapeOp::fold(llvm::ArrayRef<mlir::Attribute>) {
   if (shape_constraint.has_value() &&
       shape_constraint->size() == type.getShape().size()) {
     for (int i = 0; i < shape_constraint->size(); ++i) {
-      if (!ShapedType::isDynamic(shape_constraint.getValue()[i]) &&
-          type.getDimSize(i) != shape_constraint.getValue()[i]) {
+      if (!ShapedType::isDynamic(shape_constraint.value()[i]) &&
+          type.getDimSize(i) != shape_constraint.value()[i]) {
         return {};
       }
     }
@@ -3102,7 +3144,7 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
 
 LogicalResult LegacyCallOp::verifySymbolUses(
     SymbolTableCollection &symbolTable) {
-  StringAttr func_attr = cast<SymbolRefAttr>(getFAttr()).getRootReference();
+  StringAttr func_attr = getFAttr().getAttr();
   StringRef func_name = func_attr.getValue();
   func::FuncOp func =
       symbolTable.lookupNearestSymbolFrom<func::FuncOp>(*this, func_attr);

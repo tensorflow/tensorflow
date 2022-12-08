@@ -304,9 +304,13 @@ cc_library(
     # Public visibility is needed for external TF/XLA backends.
     visibility = ["//visibility:public"],
     deps = XLA_DEVICE_DEPS + [
+        ":device_compilation_cache",
         ":device_compilation_profiler",
+        ":device_compiler_client",
+        ":device_executable_persistor",
         ":flags_headers",
         ":xla_compilation_cache",
+        ":xla_device_compiler_client",
         "//tensorflow/core/tpu:tpu_defs",
     ],
     alwayslink = 1,
@@ -484,15 +488,16 @@ cc_library(
         "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
     ],
     deps = [
+        ":device_compilation_cache",
+        ":device_compilation_cluster_signature",
         ":device_compilation_profiler",
+        ":device_compiler_client",
+        ":device_executable_persistor",
         ":flags",
         ":tf_graph_to_hlo_compiler",
         ":xla_cluster_util",
         ":xla_compilation_cache_proto_cc",
         ":xla_compile_util",
-        "//tensorflow/compiler/mlir:array_container_utils",
-        "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
-        "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -524,31 +529,17 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "xla_compilation_cache_test",
-    srcs = [
-        "xla_compilation_cache_test.cc",
-    ],
-    deps = [
-        ":flags",
-        ":xla_compilation_cache",
-        ":xla_cpu_jit",
-        "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
     name = "xla_compilation_cache_disable_test",
     srcs = [
         "xla_compilation_cache_disable_test.cc",
     ],
     deps = [
+        ":device_compilation_cache",
         ":device_compilation_profiler",
         ":flags",
         ":xla_compilation_cache",
         ":xla_cpu_jit",
+        ":xla_device_compiler_client",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla/client:client_library",
@@ -1292,6 +1283,94 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "device_compiler_client",
+    srcs = ["device_compiler_client.cc"],
+    hdrs = ["device_compiler_client.h"],
+    visibility = [
+        ":internal",
+        "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla/client:executable_build_options",
+        "//tensorflow/core/util:determinism",
+    ],
+)
+
+tf_cc_test(
+    name = "device_compiler_client_test",
+    srcs = ["device_compiler_client_test.cc"],
+    deps = [
+        ":device_compiler_client",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "xla_device_compiler_client",
+    srcs = ["xla_device_compiler_client.cc"],
+    hdrs = ["xla_device_compiler_client.h"],
+    deps = [
+        ":device_compiler_client",
+        "//tensorflow/compiler/xla/client:local_client",
+    ],
+)
+
+cc_library(
+    name = "device_executable_persistor",
+    hdrs = ["device_executable_persistor.h"],
+    deps = [
+        ":xla_compilation_cache_proto_cc",
+        ":xla_device_compiler_client",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "device_compilation_cache",
+    hdrs = ["device_compilation_cache.h"],
+    deps = [
+        ":device_compilation_cluster_signature",
+        ":device_compiler_client",
+        ":xla_compile_util",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework_lite",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "device_compilation_cluster_signature",
+    srcs = ["device_compilation_cluster_signature.cc"],
+    hdrs = ["device_compilation_cluster_signature.h"],
+    deps = ["//tensorflow/compiler/tf2xla:xla_compiler"],
+)
+
+tf_cc_test(
+    name = "device_compilation_cluster_signature_test",
+    srcs = [
+        "device_compilation_cluster_signature_test.cc",
+    ],
+    deps = [
+        ":device_compilation_cluster_signature",
+        ":flags",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 tf_cc_test(
     name = "device_compilation_profiler_test",
     srcs = ["device_compilation_profiler_test.cc"],
@@ -1300,6 +1379,42 @@ tf_cc_test(
         ":xla_activity_proto_cc",
         "//tensorflow/compiler/jit/tests:xla_compilation_cache_test_helper",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cc_test(
+    name = "device_executable_persistor_test",
+    srcs = ["device_executable_persistor_test.cc"],
+    deps = [
+        ":device_compiler_client",
+        ":device_executable_persistor",
+        ":xla_compilation_cache_proto_cc",
+        ":xla_cpu_device",
+        ":xla_cpu_jit",
+        ":xla_device_compiler_client",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:math_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:executable_build_options",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cc_test(
+    name = "device_compilation_cache_test",
+    srcs = ["device_compilation_cache_test.cc"],
+    deps = [
+        ":device_compilation_cache",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_googletest//:gtest_main",
     ],
 )

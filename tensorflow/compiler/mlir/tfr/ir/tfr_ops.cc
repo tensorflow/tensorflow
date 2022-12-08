@@ -93,7 +93,7 @@ class TFRInlinerInterface : public DialectInlinerInterface {
     auto retValOp = dyn_cast<TFRReturnOp>(op);
     if (!retValOp) return;
 
-    for (auto ret_value : llvm::zip(valuesToRepl, retValOp.operands())) {
+    for (auto ret_value : llvm::zip(valuesToRepl, retValOp.getOperands())) {
       std::get<0>(ret_value).replaceAllUsesWith(std::get<1>(ret_value));
     }
   }

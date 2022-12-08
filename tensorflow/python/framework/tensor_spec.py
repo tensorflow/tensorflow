@@ -18,15 +18,19 @@ from typing import Type
 
 import numpy as np
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.function import trace_type
 from tensorflow.core.protobuf import struct_pb2
+from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import _pywrap_utils
+from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -207,6 +211,27 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
       True if spec_or_tensor is compatible with self.
     """
     return super(TensorSpec, self).is_compatible_with(spec_or_tensor)
+
+  def _placeholder_value(self, placeholder_context):
+    """Generates a graph_placholder with the given TensorSpec information."""
+    if placeholder_context.use_default_placeholder:
+      return super()._placeholder_value(placeholder_context)
+
+    name = self.name or placeholder_context.naming_scope
+    try:
+      placeholder = graph_placeholder(self.dtype, self.shape, name=name)
+    except ValueError as e:
+      # Sometimes parameter names are not valid op names, so fall back to
+      # unnamed placeholders.
+      logging.warning(e)
+      placeholder = graph_placeholder(self.dtype, self.shape)
+    if name is not None:
+      # Record the requested/user-specified name in case it's different than
+      # the uniquified name, for validation when exporting signatures.
+      placeholder.op._set_attr(  # pylint: disable=protected-access
+          "_user_specified_name",
+          attr_value_pb2.AttrValue(s=compat.as_bytes(name)))
+    return placeholder
 
   @classmethod
   def from_spec(cls, spec, name=None):

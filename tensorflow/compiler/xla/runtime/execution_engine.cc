@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "llvm/IR/Attributes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -143,7 +144,15 @@ static absl::Status SetUpExportedFunction(llvm::Module &module,
   }
 
   // Call the implementation function with the extracted arguments.
-  builder.CreateCall(func, args);
+  auto *call = builder.CreateCall(func, args);
+
+  // Force LLVM to inline original function into the interface function.
+  call->addFnAttr(llvm::Attribute::AlwaysInline);
+
+  // And make sure that we do not keep exported function in the binary if we do
+  // not have other callers.
+  func->setLinkage(llvm::GlobalValue::LinkageTypes::PrivateLinkage);
+
   builder.CreateRetVoid();
 
   // Always keep the frame pointer inside jit-compiled modules, so that we can

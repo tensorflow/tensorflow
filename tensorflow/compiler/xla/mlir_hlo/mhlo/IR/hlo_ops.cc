@@ -27,6 +27,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -153,7 +154,7 @@ void AsyncBundleType::getFlattenedTypes(SmallVectorImpl<Type>& types) {
 
 namespace {
 
-static constexpr int64_t kDynamicSizePrintValue = -1;
+static constexpr int64_t kDynamicPrintValue = -1;
 
 void createArgs(ArrayRef<OpAsmParser::UnresolvedOperand> operands,
                 ArrayRef<Type> types,
@@ -263,7 +264,7 @@ static LogicalResult rngInferReturnTypeComponents(
       inferredReturnShapes.emplace_back(elementType);
       return success();
     }
-    shapeVector.resize(size, ShapedType::kDynamicSize);
+    shapeVector.resize(size, ShapedType::kDynamic);
     inferredReturnShapes.emplace_back(shapeVector, elementType);
     return success();
   }
@@ -377,12 +378,11 @@ LogicalResult ReduceScatterOp::verify() {
   auto operandType = getOperand().getType().cast<TensorType>();
   bool operandTypeRanked = operandType.isa<RankedTensorType>();
   Block& block = getComputation().front();
-  SmallVector<TensorType> accumulatorSubshapes;
   if (failed(hlo::verifyReducerShape(
           this->getLoc(), block, {operandType},
           {RankedTensorType::get({}, operandType.getElementType())},
           /*numInputs=*/1, /*allowedDimensions=*/{},
-          /*allInputsUnranked=*/!operandTypeRanked, accumulatorSubshapes)))
+          /*allInputsUnranked=*/!operandTypeRanked)))
     return failure();
 
   return mlir::hlo::verifyReduceScatter(
@@ -748,10 +748,12 @@ void CustomCallOp::build(
     ::mlir::mhlo::CustomCallApiVersionAttr apiVersion,
     ::mlir::ArrayAttr calledComputations, ::mlir::ArrayAttr operandLayouts,
     ::mlir::ArrayAttr resultLayouts) {
-  return CustomCallOp::build(odsBuilder, odsState, resultType, operands,
-                             callTargetName, hasSideEffect, backendConfig,
-                             apiVersion, calledComputations, operandLayouts,
-                             resultLayouts, nullptr);
+  return CustomCallOp::build(
+      odsBuilder, odsState, resultType, operands, callTargetName, hasSideEffect,
+      backendConfig, apiVersion, calledComputations,
+      CustomCallScheduleAttr::get(odsBuilder.getContext(),
+                                  CustomCallSchedule::NONE),
+      operandLayouts, resultLayouts, nullptr);
 }
 
 LogicalResult CustomCallOp::verify() {
@@ -888,6 +890,24 @@ LogicalResult CustomCallOp::verify() {
              << "operand part has type " << operandPart
              << " and output part has type " << outputPart;
   }
+
+  // Check backend_config attribute.
+  if (auto backendConfig = getBackendConfig()) {
+    if (getApiVersion() == CustomCallApiVersion::API_VERSION_TYPED_FFI) {
+      // Typed FFI custom calls require `backend_config` to be a DictionaryAttr.
+      if (backendConfig->isa<mlir::StringAttr>())
+        return emitOpError()
+               << "unsupported user-encoded backend config,"
+                  " backend config must be a dictionary attribute.";
+    } else {
+      // Older API versions require user-encoded `backend_config` string.
+      if (backendConfig->isa<mlir::DictionaryAttr>())
+        return emitOpError()
+               << "unsupported dictionary attribute backend config, backend"
+                  " config must be a user-encoded string attribute.";
+    }
+  }
+
   return success();
 }
 
@@ -991,25 +1011,6 @@ LogicalResult DotOp::inferReturnTypes(
   auto lhsType = op.getLhs().getType().cast<ShapedType>();
   auto rhsType = op.getRhs().getType().cast<ShapedType>();
   inferredReturnTypes.push_back(inferDotReturnType(lhsType, rhsType));
-  return success();
-}
-
-LogicalResult DotOp::verify() {
-  auto lhsType = getLhs().getType().cast<ShapedType>();
-  auto rhsType = getRhs().getType().cast<ShapedType>();
-  auto resultType = getType().cast<ShapedType>();
-  auto expectReturnType = inferDotReturnType(lhsType, rhsType);
-  if (!expectReturnType) {
-    return emitError() << "Unexpected operands type: " << lhsType << " and "
-                       << rhsType;
-  }
-  if (resultType.hasRank() && expectReturnType.hasRank()) {
-    if (resultType.getShape() != expectReturnType.getShape()) {
-      return emitError() << "Unexpected result type: has " << resultType
-                         << " but inferred " << expectReturnType
-                         << " from operands " << lhsType << " and " << rhsType;
-    }
-  }
   return success();
 }
 
@@ -1694,7 +1695,7 @@ LogicalResult reifyGatherShape(Op* op, OpBuilder& builder, ValueRange operands,
 
   Location loc = op->getLoc();
   int resultRank = resultTy.getRank();
-  Type shapeElTy = startIndices.getType().cast<ShapedType>().getElementType();
+  Type shapeElTy = builder.getIndexType();
   auto toShapeElType = [&](Value v) {
     return maybeCastTo(builder, loc, v, shapeElTy);
   };
@@ -1764,8 +1765,8 @@ LogicalResult GatherOp::inferReturnTypeComponents(
     return failure();
 
   auto getSliceDim = [&sliceSizesAttr](int64_t index) -> int64_t {
-    return sliceSizesAttr.getValues<int64_t>()[index] == kDynamicSizePrintValue
-               ? ShapedType::kDynamicSize
+    return sliceSizesAttr.getValues<int64_t>()[index] == kDynamicPrintValue
+               ? ShapedType::kDynamic
                : sliceSizesAttr.getValues<int64_t>()[index];
   };
 
@@ -1829,7 +1830,7 @@ LogicalResult DynamicGatherOp::inferReturnTypeComponents(
                           errorEmitter)))
     return failure();
 
-  auto getSliceDim = [](int64_t index) { return ShapedType::kDynamicSize; };
+  auto getSliceDim = [](int64_t index) { return ShapedType::kDynamic; };
   return inferGatherReturnTypeComponents(operandShape, startIndicesShape,
                                          getSliceDim, dimensionNumbers,
                                          inferredReturnShapes, errorEmitter);
@@ -2366,7 +2367,7 @@ SmallVector<int64_t> inferConvolutionOpReturnShape(
                              .getKernelOutputFeatureDimension()];
 
   outputDimensions[op.getDimensionNumbers().getOutputBatchDimension()] =
-      hlo::isDynamicDimSize(inputBatch) ? ShapedType::kDynamicSize
+      hlo::isDynamicDimSize(inputBatch) ? ShapedType::kDynamic
                                         : inputBatch / op.getBatchGroupCount();
   outputDimensions[op.getDimensionNumbers().getOutputFeatureDimension()] =
       kernelOutputFeatures;
@@ -2756,7 +2757,33 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   AllToAllOp::Adaptor adaptor(operands, attributes, regions);
-  Type operandType = adaptor.getOperand().getType();
+
+  bool isArrayAllToAll = adaptor.getSplitDimension() &&
+                         adaptor.getConcatDimension() &&
+                         adaptor.getSplitCount();
+  if (!isArrayAllToAll) {
+    if (adaptor.getSplitDimension() || adaptor.getConcatDimension() ||
+        adaptor.getSplitCount()) {
+      return emitOptionalError(location,
+                               "TupleAllToAll should not have split_dimension, "
+                               "concat_dimension or split_count attributes");
+    }
+
+    // TupleAllToAll has identical result and operand shapes.
+    for (int64_t i = 0; i < operands.size(); ++i) {
+      inferredReturnShapes.emplace_back(
+          operands[i].getType().cast<ShapedType>());
+    }
+
+    return success();
+  }
+
+  if (adaptor.getOperand().size() != 1) {
+    return emitOptionalError(location,
+                             "ArrayAllToAll should have exactly one operand");
+  }
+
+  Type operandType = adaptor.getOperand()[0].getType();
   RankedTensorType operandRankedType = operandType.dyn_cast<RankedTensorType>();
   if (!operandRankedType) {
     inferredReturnShapes.emplace_back(
@@ -2765,8 +2792,8 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
   }
 
   int64_t inputRank = operandRankedType.getRank();
-  int64_t splitDimension = static_cast<int64_t>(adaptor.getSplitDimension());
-  int64_t concatDimension = static_cast<int64_t>(adaptor.getConcatDimension());
+  int64_t splitDimension = static_cast<int64_t>(*adaptor.getSplitDimension());
+  int64_t concatDimension = static_cast<int64_t>(*adaptor.getConcatDimension());
   if (splitDimension >= inputRank || splitDimension < 0) {
     return emitOptionalError(location, "AllToAll split_dimension ",
                              splitDimension,
@@ -2780,9 +2807,9 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
 
   // If operand is ranked, size of split dimension should be a multiple of split
   // count.
-  int64_t splitCount = adaptor.getSplitCount();
+  int64_t splitCount = *adaptor.getSplitCount();
   auto splitDimSize = operandRankedType.getDimSize(splitDimension);
-  if (splitDimSize != ShapedType::kDynamicSize &&
+  if (splitDimSize != ShapedType::kDynamic &&
       (splitDimSize % splitCount != 0)) {
     return emitOptionalError(
         location, "split dimension has size ", splitDimSize,
@@ -2790,10 +2817,10 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
   }
   SmallVector<int64_t> resultShape(operandRankedType.getShape().begin(),
                                    operandRankedType.getShape().end());
-  if (resultShape[splitDimension] != ShapedType::kDynamicSize) {
+  if (resultShape[splitDimension] != ShapedType::kDynamic) {
     resultShape[splitDimension] /= splitCount;
   }
-  if (resultShape[concatDimension] != ShapedType::kDynamicSize) {
+  if (resultShape[concatDimension] != ShapedType::kDynamic) {
     resultShape[concatDimension] *= splitCount;
   }
   inferredReturnShapes.emplace_back(resultShape,
@@ -2943,6 +2970,27 @@ LogicalResult BatchNormInferenceOp::inferReturnTypeComponents(
   return hlo::inferBatchNormInferenceOp(
       location, adaptor.getOperand(), adaptor.getScale(),
       adaptor.getFeatureIndex(), inferredReturnShapes);
+}
+
+//===----------------------------------------------------------------------===//
+// BitcastOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult BitcastOp::fold(ArrayRef<Attribute>) {
+  if (getResult().getType() != getOperand().getType()) {
+    return {};
+  }
+
+  auto sourceLayout =
+      getOperation()->getAttrOfType<DenseIntElementsAttr>("source_layout");
+  auto resultLayout =
+      getOperation()->getAttrOfType<DenseIntElementsAttr>("result_layout");
+
+  if (sourceLayout == resultLayout) {
+    return getOperand();
+  }
+
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -3787,7 +3835,7 @@ LogicalResult ConcatenateOp::inferReturnTypes(
     // If the dimension is dynamic we know the output dimension is dynamic.
     auto dim = type.getShape()[dimension];
     if (ShapedType::isDynamic(dim)) {
-      outShape[dimension] = ShapedType::kDynamicSize;
+      outShape[dimension] = ShapedType::kDynamic;
       break;
     }
 
@@ -4575,6 +4623,71 @@ LogicalResult ReduceWindowOp::fold(ArrayRef<Attribute> operands,
   return failure();
 }
 
+// Builder that takes a constructor for its region and infers result types
+void ReduceWindowOp::build(
+    OpBuilder& odsBuilder, OperationState& odsState, ValueRange inputs,
+    ValueRange init_values, DenseIntElementsAttr window_dimensions,
+    /*optional*/ DenseIntElementsAttr window_strides,
+    /*optional*/ DenseIntElementsAttr base_dilations,
+    /*optional*/ DenseIntElementsAttr window_dilations,
+    /*optional*/ DenseIntElementsAttr padding,
+    function_ref<void(OpBuilder&, Location, ValueRange)> bodyBuilder) {
+  odsState.addOperands(inputs);
+  odsState.addOperands(init_values);
+  odsState.addAttribute(getWindowDimensionsAttrName(odsState.name),
+                        window_dimensions);
+  if (window_strides) {
+    odsState.addAttribute(getWindowStridesAttrName(odsState.name),
+                          window_strides);
+  }
+  if (base_dilations) {
+    odsState.addAttribute(getBaseDilationsAttrName(odsState.name),
+                          base_dilations);
+  }
+  if (window_dilations) {
+    odsState.addAttribute(getWindowDilationsAttrName(odsState.name),
+                          window_dilations);
+  }
+  if (padding) {
+    odsState.addAttribute(getPaddingAttrName(odsState.name), padding);
+  }
+  Region* region = odsState.addRegion();
+
+  llvm::SmallVector<Type> blockArgTypes;
+  llvm::SmallVector<Location> locs;
+  auto numValues = inputs.size() + init_values.size();
+  blockArgTypes.reserve(numValues);
+  locs.reserve(numValues);
+  for (auto i : inputs) {
+    auto iType = i.getType().cast<ShapedType>();
+    blockArgTypes.push_back(iType.cloneWith(
+        llvm::makeArrayRef<int64_t>(std::nullopt), iType.getElementType()));
+    locs.push_back(i.getLoc());
+  }
+  for (auto i : init_values) {
+    auto iType = i.getType().cast<ShapedType>();
+    blockArgTypes.push_back(iType.cloneWith(
+        llvm::makeArrayRef<int64_t>(std::nullopt), iType.getElementType()));
+    locs.push_back(i.getLoc());
+  }
+
+  {
+    OpBuilder::InsertionGuard g(odsBuilder);
+    Block* body =
+        odsBuilder.createBlock(region, /*insertPt=*/{}, blockArgTypes, locs);
+    bodyBuilder(odsBuilder, odsState.location, body->getArguments());
+  }
+
+  llvm::SmallVector<mlir::Type, 2> inferredReturnTypes;
+  if (mlir::succeeded(ReduceWindowOp::inferReturnTypes(
+          odsBuilder.getContext(), odsState.location, odsState.operands,
+          odsState.attributes.getDictionary(odsState.getContext()),
+          odsState.regions, inferredReturnTypes)))
+    odsState.addTypes(inferredReturnTypes);
+  else
+    llvm::report_fatal_error("Failed to infer result type(s).");
+}
+
 //===----------------------------------------------------------------------===//
 // ReducePrecisionOp
 //===----------------------------------------------------------------------===//
@@ -5320,7 +5433,7 @@ LogicalResult SelectOp::inferReturnTypeComponents(
     for (auto dim : llvm::zip(trueType.getShape(), falseType.getShape())) {
       dims.push_back(std::get<0>(dim) == std::get<1>(dim)
                          ? std::get<0>(dim)
-                         : ShapedType::kDynamicSize);
+                         : ShapedType::kDynamic);
     }
     outputType = ShapedTypeComponents(dims, trueType.getElementType());
   }
@@ -5389,13 +5502,13 @@ LogicalResult SetDimensionSizeOp::inferReturnTypes(
   }
 
   auto shape = llvm::to_vector<4>(inputType.getShape());
-  llvm::SmallVector<int64_t, 4> bounds(rank, ShapedType::kDynamicSize);
+  llvm::SmallVector<int64_t, 4> bounds(rank, ShapedType::kDynamic);
   if (auto encoding =
           inputType.getEncoding().dyn_cast_or_null<TypeExtensionsAttr>())
     bounds = llvm::to_vector<4>(encoding.getBounds());
 
-  if (shape[dim] != ShapedType::kDynamicSize) bounds[dim] = shape[dim];
-  shape[dim] = ShapedType::kDynamicSize;
+  if (shape[dim] != ShapedType::kDynamic) bounds[dim] = shape[dim];
+  shape[dim] = ShapedType::kDynamic;
 
   DenseIntElementsAttr sizeAttr;
   if (matchPattern(adaptor.getSize(), m_Constant(&sizeAttr))) {
@@ -5403,14 +5516,13 @@ LogicalResult SetDimensionSizeOp::inferReturnTypes(
         sizeAttr.getSplatValue<IntegerAttr>().getValue().getSExtValue();
     if (splat == bounds[dim]) {
       shape[dim] = splat;
-      bounds[dim] = ShapedType::kDynamicSize;
+      bounds[dim] = ShapedType::kDynamic;
     }
   }
 
   auto extensions = TypeExtensionsAttr::get(context, bounds);
   auto resultType =
-      llvm::all_of(bounds,
-                   [](int64_t v) { return v == ShapedType::kDynamicSize; })
+      llvm::all_of(bounds, [](int64_t v) { return v == ShapedType::kDynamic; })
           ? RankedTensorType::get(shape, inputType.getElementType())
           : RankedTensorType::get(shape, inputType.getElementType(),
                                   extensions);
@@ -5468,7 +5580,7 @@ LogicalResult PadOp::inferReturnTypeComponents(
   SmallVector<int64_t> resultShape;
   for (int i = 0, e = inputShape.size(); i < e; i++) {
     if (hlo::isDynamicDimSize(inputShape[i])) {
-      resultShape.push_back(ShapedType::kDynamicSize);
+      resultShape.push_back(ShapedType::kDynamic);
       continue;
     }
 
@@ -5893,6 +6005,18 @@ void ReshapeOp::getCanonicalizationPatterns(RewritePatternSet& results,
 
 LogicalResult ReplicaIdOp::inferReturnTypes(
     MLIRContext* context, Optional<Location>, ValueRange operands,
+    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  inferredReturnTypes.push_back(RankedTensorType::get(
+      /*shape=*/{}, IntegerType::get(context, 32, IntegerType::Unsigned)));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// PartitionId Op
+//===----------------------------------------------------------------------===//
+
+LogicalResult PartitionIdOp::inferReturnTypes(
+    MLIRContext* context, Optional<Location>, ValueRange /*operands*/,
     DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
   inferredReturnTypes.push_back(RankedTensorType::get(
       /*shape=*/{}, IntegerType::get(context, 32, IntegerType::Unsigned)));
@@ -6504,7 +6628,7 @@ LogicalResult SliceOp::inferReturnTypes(
   shape.reserve(rank);
   for (int64_t i = 0, e = rank; i != e; i++) {
     if (hlo::isDynamicDimSize(rankedTy.getDimSize(i))) {
-      shape.push_back(ShapedType::kDynamicSize);
+      shape.push_back(ShapedType::kDynamic);
       continue;
     }
     // P3.
@@ -7281,13 +7405,12 @@ LogicalResult SelectAndScatterOp::verify() {
 
   // P2.
   Block& scatterBlock = getScatter().front();
-  SmallVector<TensorType> accumulatorSubshapes;
   if (failed(hlo::verifyReducerShape(
           this->getLoc(), scatterBlock,
           {RankedTensorType::get({}, sourceType.getElementType())},
           {initValueType},
           /*numInputs=*/1, /*allowedDimensions=*/{},
-          /*allInputsUnranked=*/false, accumulatorSubshapes)))
+          /*allInputsUnranked=*/false)))
     return failure();
 
   // P3.
@@ -7495,7 +7618,6 @@ LogicalResult ScatterOp::verify() {
 
   // P2.
   Block& block = getUpdateComputation().front();
-  SmallVector<TensorType> accumulatorSubshapes;
   SmallVector<TensorType> inputTypes, initValueTypes;
   for (int64_t i = 0; i < static_cast<int64_t>(numOperands); i++) {
     inputTypes.push_back(operandTypes[i]);
@@ -7505,7 +7627,7 @@ LogicalResult ScatterOp::verify() {
   if (failed(hlo::verifyReducerShape(
           this->getLoc(), block, inputTypes, initValueTypes, numOperands,
           /*allowedDimensions=*/{},
-          /*allInputsUnranked=*/!allOperandTypesRanked, accumulatorSubshapes)))
+          /*allInputsUnranked=*/!allOperandTypesRanked)))
     return failure();
 
   // P3.
@@ -8025,6 +8147,8 @@ using mlir::hlo::printSelectOpType;
 using mlir::hlo::parseSelectOpType;
 using mlir::hlo::printTupleOpType;
 using mlir::hlo::parseTupleOpType;
+using mlir::hlo::printCustomCallTarget;
+using mlir::hlo::parseCustomCallTarget;
 using mlir::hlo::printExponentMantissa;
 using mlir::hlo::parseExponentMantissa;
 // clang-format on
@@ -8332,7 +8456,7 @@ ParseResult parseCommaSeparatedDynamicShapes(AsmParser& parser,
                                              SmallVectorImpl<int64_t>& shape) {
   auto parseElt = [&]() -> ParseResult {
     if (!parser.parseOptionalQuestion()) {
-      shape.push_back(ShapedType::kDynamicSize);
+      shape.push_back(ShapedType::kDynamic);
       return success();
     }
     return parser.parseInteger(shape.emplace_back());

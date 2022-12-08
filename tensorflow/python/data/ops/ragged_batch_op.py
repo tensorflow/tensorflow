@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """The implementation of `tf.data.Dataset.ragged_batch`."""
-from tensorflow.python.data.ops import batch_op
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import nest
@@ -23,14 +22,13 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops.ragged import ragged_tensor
 
 
-def ragged_batch(input_dataset,
-                 batch_size,
-                 drop_remainder=False,
-                 row_splits_dtype=dtypes.int64,
-                 name=None):
+def _ragged_batch(input_dataset,
+                  batch_size,
+                  drop_remainder=False,
+                  row_splits_dtype=dtypes.int64,
+                  name=None):
   ragged_dataset = _DenseToRaggedDataset(input_dataset, row_splits_dtype, name)
-  return batch_op.BatchDataset(
-      ragged_dataset, batch_size=batch_size, drop_remainder=drop_remainder)
+  return ragged_dataset.batch(batch_size, drop_remainder)
 
 
 class _DenseToRaggedDataset(dataset_ops.UnaryDataset):
@@ -102,7 +100,7 @@ class _DenseToRaggedDataset(dataset_ops.UnaryDataset):
     self._mapped_dataset = input_dataset.map(map_fn)
     self._name = name
     variant = self._mapped_dataset._variant_tensor  # pylint: disable=protected-access
-    super(_DenseToRaggedDataset, self).__init__(input_dataset, variant)
+    super().__init__(input_dataset, variant)
 
   @property
   def element_spec(self):

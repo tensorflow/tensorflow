@@ -173,7 +173,7 @@ mlir::RankedTensorType GetBufferType(mlir::Type ty) {
                       .dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>();
   if (encoding && !encoding.getBounds().empty()) {
     for (int64_t dim = 0; dim < rank; ++dim) {
-      if (dims[dim] == mlir::ShapedType::kDynamicSize) {
+      if (dims[dim] == mlir::ShapedType::kDynamic) {
         dims[dim] = encoding.getBounds()[dim];
       }
     }
@@ -413,11 +413,14 @@ void CreateConvertMlirToXlaHloPipeline(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
   pm.addPass(mlir::TF::CreatePromoteResourcesToArgsPass());
   pm.addPass(mlir::createSymbolDCEPass());
+
+  // Sink constants to regions so that ops requiring constant operands can
+  // access the constant and there is no indirection through control flow region
+  // arguments. Also, note that this pass is in MHLO but it is generic and sinks
+  // constants for all ops with regions.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createSinkConstantsToControlFlowPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  // TODO(b/171426148): We cannot completely remove region to functional control
-  // flow conversion from this pipeline yet as it causes some unit tests to
-  // fail.
-  pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
   // LegalizeTFControlFlow encapsulates arguments for control flow operations
   // with a tuple argument which break the assumption of resource lifting
   // inside PromoteResourcesToArgs.

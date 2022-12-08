@@ -1449,16 +1449,19 @@ void LaunchConvBackpropInputOpImpl(
   }
   // Shape: batch, filters, z, y, x.
   Tensor pre_transformed_in_backprop;
+  TensorShape pre_transformed_in_backprop_shape;
+  OP_REQUIRES_OK(
+      context, ShapeFromFormatWithStatus(compute_data_format,
+                                         compatible_input_shape.dim_size(0),
+                                         {{compatible_input_shape.dim_size(2),
+                                           compatible_input_shape.dim_size(3),
+                                           compatible_input_shape.dim_size(4)}},
+                                         compatible_input_shape.dim_size(1),
+                                         &pre_transformed_in_backprop_shape));
   OP_REQUIRES_OK(context,
-                 context->allocate_temp(
-                     DataTypeToEnum<T>::value,
-                     ShapeFromFormat(compute_data_format,
-                                     compatible_input_shape.dim_size(0),
-                                     {{compatible_input_shape.dim_size(2),
-                                       compatible_input_shape.dim_size(3),
-                                       compatible_input_shape.dim_size(4)}},
-                                     compatible_input_shape.dim_size(1)),
-                     &pre_transformed_in_backprop));
+                 context->allocate_temp(DataTypeToEnum<T>::value,
+                                        pre_transformed_in_backprop_shape,
+                                        &pre_transformed_in_backprop));
 
   auto out_backprop_ptr =
       AsDeviceMemory(transformed_out_backprop.template flat<T>().data(),
@@ -1517,14 +1520,17 @@ void LaunchConvBackpropInputOpImpl(
 
   if (rows_odd || cols_odd || planes_odd) {
     Tensor in_backprop_remove_padding;
+    TensorShape in_backprop_remove_padding_shape;
+    OP_REQUIRES_OK(
+        context,
+        ShapeFromFormatWithStatus(
+            compute_data_format, dims.batch_size,
+            {{dims.input_size(0), dims.input_size(1), dims.input_size(2)}},
+            dims.in_depth, &in_backprop_remove_padding_shape));
     OP_REQUIRES_OK(context,
-                   context->allocate_temp(
-                       DataTypeToEnum<T>::value,
-                       ShapeFromFormat(compute_data_format, dims.batch_size,
-                                       {{dims.input_size(0), dims.input_size(1),
-                                         dims.input_size(2)}},
-                                       dims.in_depth),
-                       &in_backprop_remove_padding));
+                   context->allocate_temp(DataTypeToEnum<T>::value,
+                                          in_backprop_remove_padding_shape,
+                                          &in_backprop_remove_padding));
 
     // Remove the padding for odd spatial dimensions.
     functor::PadInput<GPUDevice, T, int, 5>()(
@@ -1803,15 +1809,16 @@ void LaunchConvBackpropFilterOpImpl(
 
   Tensor compatible_input;
   if (rows_odd || cols_odd || planes_odd) {
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(
-                       DataTypeToEnum<T>::value,
-                       ShapeFromFormat(data_format, dims.batch_size,
-                                       {{dims.input_size(0) + planes_odd,
-                                         dims.input_size(1) + rows_odd,
-                                         dims.input_size(2) + cols_odd}},
-                                       dims.in_depth),
-                       &compatible_input));
+    TensorShape compatible_input_shape;
+    OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                data_format, dims.batch_size,
+                                {{dims.input_size(0) + planes_odd,
+                                  dims.input_size(1) + rows_odd,
+                                  dims.input_size(2) + cols_odd}},
+                                dims.in_depth, &compatible_input_shape));
+    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                                   compatible_input_shape,
+                                                   &compatible_input));
     functor::PadInput<GPUDevice, T, int, 5>()(
         context->template eigen_device<GPUDevice>(),
         To32Bit(input.tensor<T, 5>()), {{0, 0, 0}},

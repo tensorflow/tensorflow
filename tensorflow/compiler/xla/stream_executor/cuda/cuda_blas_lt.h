@@ -27,6 +27,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_utils.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 
@@ -74,9 +75,10 @@ class BlasLt {
     kReLU = 2,                      // Apply point-wise ReLU function
     kBias = 4,                      // Add broadcasted bias vector
     kBiasThenReLU = kBias | kReLU,  // Apply bias and then ReLU transform
-    kGeLU = 32,  // Apply GELU point-wise transform to the results
-    kBiasThenGeLUApproximate =
-        kBias | kGeLU,  // Apply bias and then GeLU Tanh transform
+    kGELU = 32,                // Apply GELU point-wise transform to the results
+    kGELUWithAux = 32 | 1024,  // Apply GELU with auxiliary output.
+    kBiasThenGELU = kBias | kGELU,  // Apply bias and then approximate GELU.
+    kBiasThenGELUWithAux = kBiasThenGELU | 1024,
   };
 
   // Describes the location of pointers for the scaling factors alpha and beta.
@@ -155,6 +157,7 @@ class BlasLt {
                         const MatmulAlgorithm& algorithm,
                         ScratchAllocator& scratch_allocator,
                         const DeviceMemory<CD>& bias = {},
+                        const DeviceMemoryBase& aux = DeviceMemory<uint8_t>{},
                         blas::ProfileResult* profile_result = nullptr) {
     if (AsCudaDataType(blas::ToDataType<Scale>::value) !=
         plan.op_desc.scale_type()) {
@@ -189,7 +192,7 @@ class BlasLt {
     }
 
     return DoMatmul(stream, plan, alpha.opaque(), a, b, beta.opaque(), c, d,
-                    algorithm, scratch_allocator, bias, profile_result);
+                    algorithm, scratch_allocator, bias, aux, profile_result);
   }
 
  private:
@@ -199,7 +202,7 @@ class BlasLt {
                         DeviceMemoryBase c, DeviceMemoryBase d,
                         const MatmulAlgorithm& algorithm,
                         ScratchAllocator& scratch_allocator,
-                        DeviceMemoryBase bias,
+                        DeviceMemoryBase bias, DeviceMemoryBase aux,
                         blas::ProfileResult* profile_result);
 
   gpu::GpuExecutor* parent_;

@@ -265,6 +265,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"compute_cap_major", kDevCapComputeCapMajor},
       {"compute_cap_minor", kDevCapComputeCapMinor},
       {"peak_teraflops_per_second", kDevCapPeakTeraflopsPerSecond},
+      {"peak_bw_gigabytes_per_second", kDevCapPeakBwGigabytesPerSecond},
       {"peak_hbm_bw_gigabytes_per_second", kDevCapPeakHbmBwGigabytesPerSecond},
       {"device_vendor", kDevVendor},
       // Batching related.

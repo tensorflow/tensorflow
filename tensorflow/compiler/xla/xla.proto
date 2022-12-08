@@ -434,7 +434,9 @@ message DebugOptions {
   // available and recommended for Ampere+ GPUs.
   bool xla_gpu_use_runtime_fusion = 181;
 
-  // Next id: 182
+  bool xla_dump_latency_hiding_schedule = 182;
+
+  // Next id: 183
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -520,6 +522,70 @@ message ExecutionOptions {
   // sharding of operations when multiple computation would be chained and
   // merged together.
   bool allow_spmd_sharding_propagation_to_output = 14;
+}
+
+// Serialization of HloModuleConfig. See the C++ class definition for
+// descriptions of each field.
+// There are no guarantees of backwards or forwards compatibility.
+message HloModuleConfigProto {
+  message ShardableValueUpdatePairProto {
+    int64 input_parameter_number = 1;
+    repeated int64 parameter_shape_index = 2;
+    repeated int64 output_shape_index = 3;
+  }
+  enum FusionConfigCollection {
+    OFF = 0;       // Do not collect configuration.
+    PER_EDGE = 1;  // Collect per-edge configuration.
+    PER_NODE = 2;  // Collect per-node configuration.
+  }
+
+  message BoolList {
+    repeated bool vals = 1;
+  }
+  message Int64List {
+    repeated int64 vals = 1;
+  }
+  message Int64ListList {
+    repeated Int64List lists = 1;
+  }
+
+  xla.ProgramShapeProto entry_computation_layout = 1;
+  uint64 seed = 2;
+  int32 launch_id = 3;
+  int64 replica_count = 4;
+  int64 num_partitions = 5;
+  repeated bool param_requires_broadcast_via_collectives = 6;
+  bool use_spmd_partitioning = 7;
+  bool use_auto_spmd_partitioning = 8;
+  repeated int64 auto_spmd_partitioning_mesh_shape = 9;
+  repeated int64 auto_spmd_partitioning_mesh_ids = 10;
+  bool deduplicate_hlo = 11;
+  int64 intra_op_parallelism_threads = 12;
+  string device_type = 13;
+
+  DebugOptions debug_options = 14;
+  DeviceAssignmentProto static_device_assignment = 15;
+  repeated ShardableValueUpdatePairProto shardable_value_update_pairs = 16;
+  bool alias_passthrough_params = 17;
+  bool content_aware_computation_sorting = 18;
+  FusionConfigCollection fusion_config_collection = 19;
+
+  repeated BoolList fusion_config = 20;
+  map<string, Int64List> dot_config = 21;
+  repeated Int64ListList layout_config = 22;
+
+  repeated uint64 memory_space_assignment_config = 23;
+  repeated BoolList phase_ordering_config = 24;
+  int32 phase_index = 25;
+  map<string, string> flag_config = 26;
+  bool allow_spmd_sharding_propagation_to_output = 27;
+  map<string, int64> analysis_allowance_map = 28;
+  xla.PrecisionConfig.Precision matrix_unit_operand_precision = 29;
+}
+
+message HloModuleProtoWithConfig {
+  HloModuleProto hlo_module = 1;
+  HloModuleConfigProto config = 2;
 }
 
 message GetDeviceHandlesRequest {
@@ -721,4 +787,18 @@ message UnpackRequest {
 
 message UnpackResponse {
   repeated GlobalDataHandle tied_data = 1;
+}
+
+// A trace estimated by the Latency Hiding Scheduler.
+message ScheduleProto {
+  message Instruction {
+    // Instruction id (matches the id in HloInstructionProto).
+    int64 id = 1;
+
+    // Start and end timestamps in cycles.
+    double start_timestamp_cycles = 2;
+    double end_timestamp_cycles = 3;
+  }
+
+  repeated Instruction instructions = 1;
 }

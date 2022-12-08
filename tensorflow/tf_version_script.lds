@@ -14,7 +14,9 @@ tensorflow {
     *PyInit_*;
     *SE_*;
     *SP_*;
-    *tsl*profiler*RemoteProfilerSession*;
+    *tsl*;
+    *lite*;
+    *TFL*;
   local:
     *;
 };

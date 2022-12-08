@@ -127,13 +127,13 @@ void rewriteAffineOpAfterPeeling(RewriterBase &rewriter, Operation *mainLoop,
   mainLoop->walk([&](OpTy affineOp) {
     AffineMap map = affineOp.getAffineMap();
     (void)scf::rewritePeeledMinMaxOp(rewriter, affineOp, map,
-                                     affineOp.operands(), IsMin, mainIv, ub,
+                                     affineOp.getOperands(), IsMin, mainIv, ub,
                                      step, /*insideLoop=*/true);
   });
   remainderLoop->walk([&](OpTy affineOp) {
     AffineMap map = affineOp.getAffineMap();
     (void)scf::rewritePeeledMinMaxOp(rewriter, affineOp, map,
-                                     affineOp.operands(), IsMin, remainderIv,
+                                     affineOp.getOperands(), IsMin, remainderIv,
                                      ub, step, /*insideLoop=*/false);
   });
 }
@@ -165,14 +165,14 @@ FailureOr<LoopTy> peelAndCanonicalizeGmlStLoopImpl(RewriterBase &rewriter,
 
 template <typename LoopTy>
 PeelingResult peelAllLoopsImpl(LoopTy loop, mlir::PatternRewriter &rewriter) {
-  setTransformationAttr(rewriter, loop, kPeeledMarker);
+  setLabel(loop, kPeelingAppliedLabel);
   PeelingResult peelingResult;
   for (unsigned peeledIdx = 0; peeledIdx < loop.getNumLoops(); ++peeledIdx) {
     auto peel =
         peelAndCanonicalizeGmlStLoopImpl<LoopTy>(rewriter, loop, peeledIdx);
     if (failed(peel)) continue;
     // Mark the new loop if one was created.
-    setTransformationAttr(rewriter, *peel, kPeeledMarker);
+    setLabel(peel->getOperation(), kPeelingAppliedLabel);
     peelingResult.push_back(*peel);
   }
   return peelingResult;

@@ -32,9 +32,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_tpu.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/libtftpu.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/pjrt_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api_dlsym_set_fn.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
@@ -181,8 +179,7 @@ stream_executor::port::Status TryAcquireTpuLock() {
             "The TPU is already in use by another process probably owned by "
             "another user. Run \"$ sudo lsof -w /dev/accel0\" to figure out "
             "which process is using the TPU. If you still get this message, "
-            "run \"$ sudo rm /tmp/libtpu_lockfile\". Not attempting to load "
-            "libtpu.so in this process.");
+            "run \"$ sudo rm /tmp/libtpu_lockfile\".");
       }
     } else {
       return ::tsl::OkStatus();
@@ -218,19 +215,6 @@ stream_executor::port::Status InitializeTpuLibrary(void* library_handle) {
   }
 
   return s;
-}
-
-typedef const PJRT_Api* (*PjRtFuncPtr)();
-stream_executor::port::Status MaybeInitializePjRt(void* library_handle) {
-  PjRtFuncPtr fptr = &GetTpuPjrtApi;
-  *reinterpret_cast<void**>(&fptr) = dlsym(library_handle, "GetTpuPjrtApi");
-  if (fptr == nullptr) {
-    LOG(INFO) << "GetTpuPjrtApi not found. PjrtApi will not be used.";
-  } else {
-    LOG(INFO) << "GetTpuPjrtApi was found";
-    TF_RETURN_IF_ERROR(stream_executor::tpu::SetPjrtApi("TPU", fptr()));
-  }
-  return ::tsl::OkStatus();
 }
 
 namespace {
@@ -270,6 +254,9 @@ void InitializeCreateGcsFileSystemFnPtr() {
   });
 }
 }  // namespace
+
+// TODO(b/261484192): refactor this function to align with supporting different
+// PJRT plugins.
 stream_executor::port::Status FindAndLoadTpuLibrary() {
   const char* env_value = getenv("TPU_LIBRARY_PATH");
   const char* libtpu_path =
@@ -281,7 +268,6 @@ stream_executor::port::Status FindAndLoadTpuLibrary() {
     // Try to acquire exclusive access.
     TF_RETURN_IF_ERROR(TryAcquireTpuLock());
     TF_RETURN_IF_ERROR(InitializeTpuLibrary(library));
-    TF_RETURN_IF_ERROR(MaybeInitializePjRt(library));
   }
 
   InitializeCreateGcsFileSystemFnPtr();

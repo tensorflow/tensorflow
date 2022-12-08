@@ -14,13 +14,27 @@
             *   Using functools.wraps on a function with different signature
             *   Using functools.partial with an invalid tf.function input
 
-*   `tfconfig.experimental.enable_mlir_graph_optimization`:
+*   `tf.config.experimental.enable_mlir_graph_optimization`:
 
     * Experimental API removed.
 
-*   `tfconfig.experimental.disable_mlir_graph_optimization`:
+*   `tf.config.experimental.disable_mlir_graph_optimization`:
 
     * Experimental API removed.
+
+*   `tf.keras`
+
+    * Improvements and fixes in Keras loss masking: 
+        
+        * Whether you represent a ragged tensor as a `tf.RagedTensor` or using
+          [keras masking](https://www.tensorflow.org/guide/keras/masking_and_padding),
+          the returned loss values should be the identical to each other.
+          In previous versions Keras may have silently ignored the mask.
+        * If you use masked losses with Keras the loss values may be different
+          in TensorFlow `2.12` compared to previous versions.
+        * In cases where the mask was previously ignored, you will now get
+          an error if you pass a mask with an incompatible shape.
+
 
 # Known Caveats
 
@@ -30,11 +44,6 @@
 
 # Major Features and Improvements
 
-*   `tf.math`:
-
-    *   Added `math_ops.segment_sum_v2` that takes `num_segments` as an
-        additional input for efficient implementation with XLA.
-
 *   `tf.lite`:
 
     *   Add 16-bit float type support for built-in op `fill`.
@@ -42,6 +51,10 @@
 
 *   `tf.keras`:
 
+    *   The new Keras model saving format (`.keras`) is available. You can start
+        using it via `model.save(f"{fname}.keras", save_format="keras_v3")`.
+        In the future it will become the default for all files with the `.keras`
+        extension. This file format targets the Python runtime only.
     *   Added utility `tf.keras.utils.FeatureSpace`, a one-stop shop for
         structured data preprocessing and encoding.
     *   Added `tf.SparseTensor` input support to `tf.keras.layers.Embedding`
@@ -55,6 +68,7 @@
         `layers.BatchNormalization` with `synchronized=True` instead.
     *   Updated `tf.keras.layers.BatchNormalization` to support masking of the
         inputs (`mask` argument) when computing the mean and variance.
+    *   Add `tf.keras.layers.Identity`, a placeholder pass-through layer.
 
 *   `tf.experimental.dtensor`:
 
@@ -71,9 +85,16 @@
     *   Added a new `rerandomize_each_iteration` argument for the
         `tf.data.Dataset.random()` operation, which controls whether the
         sequence of generated random numbers should be re-randomized every epoch
-        (the default behavior) or not. If `seed` is set and
+        or not (the default behavior). If `seed` is set and
         `rerandomize_each_iteration=True`, the `random()` operation will
         produce a different (deterministic) sequence of numbers every epoch.
+    *   Added a new `rerandomize_each_iteration` argument for the
+        `tf.data.Dataset.sample_from_datasets()` operation, which controls
+        whether the sequence of generated random numbers used for sampling
+        should be re-randomized every epoch or not. If `seed` is set and
+        `rerandomize_each_iteration=True`, the `sample_from_datasets()`
+        operation will use a different (deterministic) sequence of numbers every
+        epoch.
 
 # Bug Fixes and Other Changes
 
@@ -85,6 +106,10 @@
   * Added non-experimental aliases for `tf.random.split` and
     `tf.random.fold_in`, the experimental endpoints are still available
     so no code changes are necessary.
+* `tf.experimental.ExtensionType`
+  * Added function `experimental.extension_type.as_dict()`, which converts an
+    instance of `tf.experimental.ExtensionType` to a `dict` representation.
+
 
 # Thanks to our Contributors
 

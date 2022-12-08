@@ -3636,7 +3636,7 @@ def matmul(a,
       for some support for `tf.sparse.SparseTensor` multiplication.
     b_is_sparse: If `True`, `b` is treated as a sparse matrix. Notice, this
       **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
-      that assume most values in `a` are zero.
+      that assume most values in `b` are zero.
       See `tf.sparse.sparse_dense_matmul`
       for some support for `tf.sparse.SparseTensor` multiplication.
     output_type: The output datatype if needed. Defaults to None in which case
@@ -4072,10 +4072,10 @@ def add_n(inputs, name=None):
 
   See Also:
 
-  * `tf.reduce_sum(inputs, axis=0)` - This performe the same mathematical
+  * `tf.reduce_sum(inputs, axis=0)` - This performs the same mathematical
     operation, but `tf.add_n` may be more efficient because it sums the
     tensors directly. `reduce_sum` on the other hand calls
-    `tf.convert_to_tensor` on the list of tensors, unncessairly stacking them
+    `tf.convert_to_tensor` on the list of tensors, unnecessarily stacking them
     into a single tensor before summing.
 
   Args:

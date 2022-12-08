@@ -239,7 +239,7 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
 
     auto combiner_or = DetectCombiner(tiled_op);
     if (failed(combiner_or)) return failure();
-    Operation *combiner = combiner_or.getValue();
+    Operation *combiner = combiner_or.value();
 
     auto accumulator = rewriter.create<GenericOp>(
         tiled_op.getLoc(), partial_result.getType(),

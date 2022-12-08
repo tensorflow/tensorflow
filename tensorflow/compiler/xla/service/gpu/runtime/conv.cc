@@ -20,11 +20,13 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/Sequence.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/attribute_exporter.h"
 
 namespace xla {
 namespace gpu {
@@ -37,12 +39,13 @@ using xla::runtime::StridedMemrefView;
 using llvm::ArrayRef;
 using mlir::StringRef;
 
+namespace lmhlo_gpu = ::mlir::lmhlo_gpu;
+namespace mhlo = ::mlir::mhlo;
+
 // TODO(jacksonstokes): Add caching layer for convolution configs and runners.
 
 // TODO(ezhulenev): We need to find a better way to pass structured attributes
 // to JitRt custom calls.
-
-// TODO(ezhulenev): Add caching layer for convolution configs and runners.
 
 namespace {
 
@@ -70,15 +73,15 @@ struct SideInputAttrs {
 }  // namespace
 
 absl::StatusOr<ConvRunnerCache::Entry> ConvRunnerCache::GetOrCreate(
-    int64_t uid, absl::FunctionRef<absl::StatusOr<GpuConvConfig>()> config) {
+    Key key, absl::FunctionRef<absl::StatusOr<GpuConvConfig>()> config) {
   absl::MutexLock lock(&mutex_);
-  auto it = runners_.find(uid);
+  auto it = runners_.find(key);
   if (it != runners_.end()) return Entry{&it->second.first, &it->second.second};
 
   absl::StatusOr<GpuConvConfig> cfg = config();
   if (!cfg.ok()) return cfg.status();
 
-  auto emplaced = runners_.try_emplace(uid, *cfg, *cfg);
+  auto emplaced = runners_.try_emplace(key, *cfg, *cfg);
   return Entry{&emplaced.first->second.first, &emplaced.first->second.second};
 }
 
@@ -201,8 +204,8 @@ struct Conv {
     if (side_input_scale.has_value()) side_input_attrs = {*side_input_scale};
 
     // Get the convolution runner from the cache.
-    absl::StatusOr<ConvRunnerCache::Entry> runner =
-        runners->GetOrCreate(uid, [&]() -> absl::StatusOr<GpuConvConfig> {
+    absl::StatusOr<ConvRunnerCache::Entry> runner = runners->GetOrCreate(
+        {run_options->stream(), uid}, [&]() -> absl::StatusOr<GpuConvConfig> {
           GpuConvDescriptor descriptor = GetConvDescriptor(
               kind, operand0, operand1, output, scratch, conv_dims,
               {window_strides, padding, lhs_dilation, rhs_dilation,
@@ -274,16 +277,17 @@ template <CudnnConvKind kind>
 static bool ConvFn(runtime::ExecutionContext* ctx, void** args, void** attrs,
                    void** rets) {
   static auto* handler =
-      BindConvAttributes(CustomCall::Bind("xla.gpu.conv")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const DebugOptions*>()
-                             .Arg<runtime::StridedMemrefView>()  // operand0
-                             .Arg<runtime::StridedMemrefView>()  // operand1
-                             .Value(std::nullopt)                // bias
-                             .Value(std::nullopt)                // side_input
-                             .Arg<runtime::StridedMemrefView>()  // output
-                             .Arg<runtime::FlatMemrefView>()     // scratch
-                         )
+      BindConvAttributes(
+          CustomCall::Bind("xla.gpu.conv")
+              .UserData<const ServiceExecutableRunOptions*>()
+              .UserData<const DebugOptions*>()
+              .Arg<runtime::StridedMemrefView>()                   // operand0
+              .Arg<runtime::StridedMemrefView>()                   // operand1
+              .Value(std::optional<runtime::FlatMemrefView>())     // bias
+              .Value(std::optional<runtime::StridedMemrefView>())  // side_input
+              .Arg<runtime::StridedMemrefView>()                   // output
+              .Arg<runtime::FlatMemrefView>()                      // scratch
+          )
           .To<checks>(Conv::Handler(kind))
           .release();
 
@@ -294,16 +298,17 @@ template <CudnnConvKind kind>
 static bool ConvFusedFn(runtime::ExecutionContext* ctx, void** args,
                         void** attrs, void** rets) {
   static auto* handler =
-      BindConvAttributes(CustomCall::Bind("xla.gpu.conv.fused")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const DebugOptions*>()
-                             .Arg<runtime::StridedMemrefView>()  // operand0
-                             .Arg<runtime::StridedMemrefView>()  // operand1
-                             .Arg<runtime::FlatMemrefView>()     // bias
-                             .Value(std::nullopt)                // side_input
-                             .Arg<runtime::StridedMemrefView>()  // output
-                             .Arg<runtime::FlatMemrefView>()     // scratch
-                         )
+      BindConvAttributes(
+          CustomCall::Bind("xla.gpu.conv.fused")
+              .UserData<const ServiceExecutableRunOptions*>()
+              .UserData<const DebugOptions*>()
+              .Arg<runtime::StridedMemrefView>()                   // operand0
+              .Arg<runtime::StridedMemrefView>()                   // operand1
+              .Arg<runtime::FlatMemrefView>()                      // bias
+              .Value(std::optional<runtime::StridedMemrefView>())  // side_input
+              .Arg<runtime::StridedMemrefView>()                   // output
+              .Arg<runtime::FlatMemrefView>()                      // scratch
+          )
           .Attr<se::dnn::ActivationMode>("activation_mode")
           .To<checks>(Conv::Handler(kind))
           .release();
@@ -331,6 +336,48 @@ static bool ConvFuseSideInputdFn(runtime::ExecutionContext* ctx, void** args,
           .release();
 
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
+}
+
+void PopulateConvAttrEncoding(runtime::CustomCallAttrEncodingSet& encoding) {
+  encoding.Add<runtime::EnumAttrEncoding<lmhlo_gpu::ActivationAttr,
+                                         lmhlo_gpu::Activation,
+                                         se::dnn::ActivationMode>>(
+      [](lmhlo_gpu::Activation value) -> se::dnn::ActivationMode {
+        return ConvertConvActivationMode(value).value();
+      });
+
+  using ConvDimsAttr = mhlo::ConvDimensionNumbersAttr;
+  encoding.Add<
+      xla::runtime::AggregateAttrEncoding<ConvDimsAttr, ConvDimensionNumbers>>(
+      encoding,
+      xla::runtime::AggregateAttrDef<ConvDimsAttr>()
+          .Add("input_batch_dim", &ConvDimsAttr::getInputBatchDimension)
+          .Add("input_feature_dim", &ConvDimsAttr::getInputFeatureDimension)
+          .Add("input_spatial_dims", &ConvDimsAttr::getInputSpatialDimensions)
+          .Add("kernel_in_feature_dim",
+               &ConvDimsAttr::getKernelInputFeatureDimension)
+          .Add("kernel_out_feature_dim",
+               &ConvDimsAttr::getKernelOutputFeatureDimension)
+          .Add("kernel_spatial_dims", &ConvDimsAttr::getKernelSpatialDimensions)
+          .Add("output_batch_dim", &ConvDimsAttr::getOutputBatchDimension)
+          .Add("output_feature_dim", &ConvDimsAttr::getOutputFeatureDimension)
+          .Add("output_spatial_dims",
+               &ConvDimsAttr::getOutputSpatialDimensions));
+
+  using ConvConfigAttr = lmhlo_gpu::ConvolutionBackendConfigAttr;
+  encoding.Add<
+      xla::runtime::AggregateAttrEncoding<ConvConfigAttr, ConvBackendConfig>>(
+      encoding,
+      xla::runtime::AggregateAttrDef<ConvConfigAttr>()
+          .Add("algorithm", &ConvConfigAttr::getAlgorithm)
+          .Add("tensor_ops_enabled", &ConvConfigAttr::getTensorOpsEnabled)
+          .Add("is_cudnn_frontend", &ConvConfigAttr::getIsCudnnFrontend)
+          .Add("knob_ids", &ConvConfigAttr::getKnobIds)
+          .Add("knob_values", &ConvConfigAttr::getKnobValues)
+          .Add("operand_0_layout", &ConvConfigAttr::getOperand_0Layout)
+          .Add("operand_1_layout", &ConvConfigAttr::getOperand_1Layout)
+          .Add("result_layout", &ConvConfigAttr::getResultLayout)
+          .Add("workspace_size", &ConvConfigAttr::getWorkspaceSize));
 }
 
 void RegisterConvCustomCalls(runtime::DirectCustomCallRegistry& registry) {

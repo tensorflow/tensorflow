@@ -58,10 +58,11 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
   // HLO -> Linalg
   pm.addNestedPass<FuncOp>(mhlo::createChloLegalizeToHloPass());
   pm.addPass(createCanonicalizerPass());  // Clean up shape.assuming ops.
-  pm.addNestedPass<FuncOp>(mhlo::createLegalizeHloToLinalgPass());
-
   // Tiling either for softmax or for elementwise
   if (experimentalSoftmax) {
+    pm.addNestedPass<FuncOp>(
+        mhlo::createLegalizeHloToLinalgPass(/*enablePrimitiveOps=*/true));
+
     // Simplify unit dimension.
     pm.addPass(mlir::createLinalgFoldUnitExtentDimsPass());
 
@@ -74,10 +75,14 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
 
     // Tile parallel dimensions of the softmax-like patterns and distribute them
     // across warps. Warps remain independant of each other.
-    pm.addNestedPass<FuncOp>(gml_st::createTilingSoftmaxPass(
+    pm.addNestedPass<FuncOp>(gml_st::createGreedyTilingAndFusionPass(
         /*distribute=*/true, blockTileDim, kBlockDistributionLabel));
-    pm.addNestedPass<FuncOp>(gml_st::createTilingSoftmaxPass(
+    pm.addPass(createCanonicalizerPass());
+    pm.addPass(createCSEPass());
+    pm.addNestedPass<FuncOp>(gml_st::createGreedyTilingAndFusionPass(
         /*distribute=*/true, warpTileDim, kWarpDistributionLabel));
+    pm.addPass(createCanonicalizerPass());
+    pm.addPass(createCSEPass());
 
     // GPU-specific tiling for ops on the warp level.
     pm.addNestedPass<FuncOp>(gml_st::createTilingGpuWarpPass());
@@ -87,6 +92,9 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
         /*vectorizeGmlStOps=*/true, /*distributionLabels=*/{
             kWarpDistributionLabel, kThreadDistributionLabel}));
   } else {
+    pm.addNestedPass<FuncOp>(
+        mhlo::createLegalizeHloToLinalgPass(/*enablePrimitiveOps=*/false));
+
     pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
         /*distribute=*/true, blockTileDim, kBlockDistributionLabel));
     pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(

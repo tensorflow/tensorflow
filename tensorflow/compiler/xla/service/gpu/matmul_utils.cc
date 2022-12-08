@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -329,13 +330,15 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   const Shape& lhs_shape = gemm->operand(0)->shape();
   const Shape& rhs_shape = gemm->operand(1)->shape();
   const DotDimensionNumbers& dot_dims = config.dot_dimension_numbers();
+  const Shape& output_shape =
+      gemm->shape().IsTuple() ? gemm->shape().tuple_shapes(0) : gemm->shape();
 
   return GemmConfig::For(
       lhs_shape, dot_dims.lhs_batch_dimensions(),
       dot_dims.lhs_contracting_dimensions(), rhs_shape,
       dot_dims.rhs_batch_dimensions(), dot_dims.rhs_contracting_dimensions(),
-      /*output_shape=*/gemm->shape(), config.alpha_real(), config.alpha_imag(),
-      config.beta(), algorithm, se::blas::kDefaultComputePrecision);
+      output_shape, config.alpha_real(), config.alpha_imag(), config.beta(),
+      algorithm, se::blas::kDefaultComputePrecision);
 }
 
 /*static*/ StatusOr<GemmConfig> GemmConfig::For(mlir::lmhlo_gpu::GEMMOp op) {
@@ -347,7 +350,7 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   int64_t compute_precision = 0;  // Default
   if (op.getPrecisionConfig().has_value()) {
     auto precision_config = op.getPrecisionConfig();
-    for (auto attr : precision_config.getValue()) {
+    for (auto attr : precision_config.value()) {
       int64_t value = static_cast<int64_t>(
           attr.template cast<mlir::mhlo::PrecisionAttr>().getValue());
       if (value > compute_precision) {
@@ -399,6 +402,20 @@ se::blas::DataType GetScaleType(se::blas::DataType c_type,
 
 namespace {
 
+// This struct contains the metadata of a matrix, e.g., its base address and
+// dimensions.
+struct MatrixDescriptor {
+  se::DeviceMemoryBase data;
+  int64_t leading_dim_stride;
+  int64_t batch_stride;
+  se::blas::Transpose transpose;
+
+  template <typename T>
+  se::DeviceMemory<T> cast() const {
+    return se::DeviceMemory<T>(data);
+  }
+};
+
 // BLAS GeMM's output is column-major. If we require row-major, use identity:
 // C^T = (A @ B)^T = B^T @ A^T.
 bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
@@ -420,8 +437,8 @@ se::blas::Transpose AsBlasTranspose(MatrixLayout::Order order) {
              : se::blas::Transpose::kTranspose;
 }
 
-se::blas::MatrixDescriptor GetMatrixDesc(const MatrixLayout& layout,
-                                         se::DeviceMemoryBase data) {
+MatrixDescriptor GetMatrixDesc(const MatrixLayout& layout,
+                               se::DeviceMemoryBase data) {
   return {
       data,
       layout.leading_dim_stride,
@@ -432,10 +449,10 @@ se::blas::MatrixDescriptor GetMatrixDesc(const MatrixLayout& layout,
 
 template <typename Input, typename Output>
 Status DoGemmWithAlgorithm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
-                           const se::blas::MatrixDescriptor& lhs,
-                           const se::blas::MatrixDescriptor& rhs,
-                           const se::blas::MatrixDescriptor& output,
-                           Output alpha, Output beta, se::Stream* stream,
+                           const MatrixDescriptor& lhs,
+                           const MatrixDescriptor& rhs,
+                           const MatrixDescriptor& output, Output alpha,
+                           Output beta, se::Stream* stream,
                            se::blas::AlgorithmType algorithm,
                            se::blas::ComputePrecision compute_precision,
                            se::blas::ProfileResult* profile_result) {
@@ -463,9 +480,8 @@ Status DoGemmWithAlgorithm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
 
 template <typename Input>
 Status DoGemm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
-              const se::blas::MatrixDescriptor& lhs,
-              const se::blas::MatrixDescriptor& rhs,
-              const se::blas::MatrixDescriptor& output, Input alpha, Input beta,
+              const MatrixDescriptor& lhs, const MatrixDescriptor& rhs,
+              const MatrixDescriptor& output, Input alpha, Input beta,
               se::Stream* stream,
               std::optional<se::blas::AlgorithmType> algorithm,
               se::blas::ComputePrecision compute_precision,
@@ -515,10 +531,9 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
   int64_t m = output_layout.num_rows;
   int64_t n = output_layout.num_cols;
   int64_t k = lhs_layout.num_cols;
-  se::blas::MatrixDescriptor lhs = GetMatrixDesc(lhs_layout, lhs_buffer);
-  se::blas::MatrixDescriptor rhs = GetMatrixDesc(rhs_layout, rhs_buffer);
-  se::blas::MatrixDescriptor output =
-      GetMatrixDesc(output_layout, output_buffer);
+  MatrixDescriptor lhs = GetMatrixDesc(lhs_layout, lhs_buffer);
+  MatrixDescriptor rhs = GetMatrixDesc(rhs_layout, rhs_buffer);
+  MatrixDescriptor output = GetMatrixDesc(output_layout, output_buffer);
   int64_t batch_size = output_layout.batch_size;
 
   if (!algorithm) algorithm = config.algorithm;
@@ -588,10 +603,29 @@ StatusOr<bool> EpilogueAddsVectorBias(GemmBackendConfig_Epilogue epilogue) {
     case GemmBackendConfig::DEFAULT:
     case GemmBackendConfig::RELU:
     case GemmBackendConfig::GELU:
+    case GemmBackendConfig::GELU_AUX:
       return false;
     case GemmBackendConfig::BIAS:
-    case GemmBackendConfig::BIASRELU:
-    case GemmBackendConfig::BIASGELU:
+    case GemmBackendConfig::BIAS_RELU:
+    case GemmBackendConfig::BIAS_GELU:
+    case GemmBackendConfig::BIAS_GELU_AUX:
+      return true;
+    default:
+      return InternalError("Unknown Epilogue.");
+  }
+}
+
+StatusOr<bool> EpilogueHasAuxiliaryOutput(GemmBackendConfig_Epilogue epilogue) {
+  switch (epilogue) {
+    case GemmBackendConfig::DEFAULT:
+    case GemmBackendConfig::RELU:
+    case GemmBackendConfig::GELU:
+    case GemmBackendConfig::BIAS:
+    case GemmBackendConfig::BIAS_RELU:
+    case GemmBackendConfig::BIAS_GELU:
+      return false;
+    case GemmBackendConfig::GELU_AUX:
+    case GemmBackendConfig::BIAS_GELU_AUX:
       return true;
     default:
       return InternalError("Unknown Epilogue.");
@@ -645,15 +679,22 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
   switch (epilogue) {
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Default:
       return se::cuda::BlasLt::Epilogue::kDefault;
-    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Bias:
-      return se::cuda::BlasLt::Epilogue::kBias;
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Relu:
       return se::cuda::BlasLt::Epilogue::kReLU;
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Gelu:
+      return se::cuda::BlasLt::Epilogue::kGELU;
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::GeluAux:
+      return se::cuda::BlasLt::Epilogue::kGELUWithAux;
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Bias:
+      return se::cuda::BlasLt::Epilogue::kBias;
     case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::BiasRelu:
       return se::cuda::BlasLt::Epilogue::kBiasThenReLU;
-    default:
-      return InternalError("unknown epilogue");
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::BiasGelu:
+      return se::cuda::BlasLt::Epilogue::kBiasThenGELU;
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::BiasGeluAux:
+      return se::cuda::BlasLt::Epilogue::kBiasThenGELUWithAux;
   }
+  return InternalError("unexpected epilogue value");
 }
 
 /*static*/ StatusOr<MatmulPlan> MatmulPlan::For(
@@ -661,9 +702,9 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
   mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
 
   int64_t compute_precision = 0;  // Default
-  if (op.getPrecisionConfig().hasValue()) {
+  if (op.getPrecisionConfig().has_value()) {
     auto precision_config = op.getPrecisionConfig();
-    for (auto attr : precision_config.getValue()) {
+    for (auto attr : precision_config.value()) {
       int64_t value = static_cast<int64_t>(
           attr.template cast<mlir::mhlo::PrecisionAttr>().getValue());
       if (value > compute_precision) {
@@ -736,6 +777,7 @@ Status MatmulPlan::DoMatmul(se::Stream* stream, se::DeviceMemoryBase a_buffer,
                             se::DeviceMemoryBase c_buffer,
                             se::DeviceMemoryBase d_buffer,
                             se::DeviceMemoryBase bias_buffer,
+                            se::DeviceMemoryBase aux_buffer,
                             const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
                             se::ScratchAllocator& scratch_allocator,
                             se::blas::ProfileResult* profile_result) const {
@@ -758,13 +800,14 @@ Status MatmulPlan::DoMatmul(se::Stream* stream, se::DeviceMemoryBase a_buffer,
       se::DeviceMemory<Input>(a_buffer), se::DeviceMemory<Input>(b_buffer),
       se::HostOrDeviceScalar<Scale>(beta), se::DeviceMemory<Input>(c_buffer),
       output, algorithm, scratch_allocator,
-      se::DeviceMemory<Input>(bias_buffer), profile_result);
+      se::DeviceMemory<Input>(bias_buffer), aux_buffer, profile_result);
 }
 
 Status MatmulPlan::ExecuteOnStream(
     se::Stream* stream, se::DeviceMemoryBase a_buffer,
     se::DeviceMemoryBase b_buffer, se::DeviceMemoryBase c_buffer,
     se::DeviceMemoryBase d_buffer, se::DeviceMemoryBase bias_buffer,
+    se::DeviceMemoryBase aux_buffer,
     const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
     se::ScratchAllocator& scratch_allocator,
     se::blas::ProfileResult* profile_result) const {
@@ -774,28 +817,28 @@ Status MatmulPlan::ExecuteOnStream(
 
   switch (plan_.d_desc.type()) {
     case CUDA_R_16F:
-      return DoMatmul<Eigen::half, float>(stream, a_buffer, b_buffer, c_buffer,
-                                          d_buffer, bias_buffer, algorithm,
-                                          scratch_allocator, profile_result);
+      return DoMatmul<Eigen::half, float>(
+          stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,
+          aux_buffer, algorithm, scratch_allocator, profile_result);
     case CUDA_R_16BF:
       return DoMatmul<Eigen::bfloat16, float>(
           stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,
-          algorithm, scratch_allocator, profile_result);
+          aux_buffer, algorithm, scratch_allocator, profile_result);
     case CUDA_R_32F:
       return DoMatmul<float>(stream, a_buffer, b_buffer, c_buffer, d_buffer,
-                             bias_buffer, algorithm, scratch_allocator,
-                             profile_result);
+                             bias_buffer, aux_buffer, algorithm,
+                             scratch_allocator, profile_result);
     case CUDA_R_64F:
       return DoMatmul<double>(stream, a_buffer, b_buffer, c_buffer, d_buffer,
-                              bias_buffer, algorithm, scratch_allocator,
-                              profile_result);
+                              bias_buffer, aux_buffer, algorithm,
+                              scratch_allocator, profile_result);
     case CUDA_C_32F:
       return DoMatmul<complex64>(stream, a_buffer, b_buffer, c_buffer, d_buffer,
-                                 bias_buffer, algorithm, scratch_allocator,
-                                 profile_result);
+                                 bias_buffer, aux_buffer, algorithm,
+                                 scratch_allocator, profile_result);
     case CUDA_C_64F:
       return DoMatmul<complex128>(stream, a_buffer, b_buffer, c_buffer,
-                                  d_buffer, bias_buffer, algorithm,
+                                  d_buffer, bias_buffer, aux_buffer, algorithm,
                                   scratch_allocator, profile_result);
     default:
       return InternalError("Unexpected dtype");

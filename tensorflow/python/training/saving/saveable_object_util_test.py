@@ -222,5 +222,30 @@ class SaveableCompatibilityEndToEndTest(test.TestCase):
     self.assertEqual(10, self.evaluate(to_convert.read()))
 
 
+class HasSerializeToTensorTest(test.TestCase):
+  def test_has_serialize_to_tensor(self):
+    class ReturnsTrue(base.Trackable):
+      def _serialize_to_tensors(self):
+        return {}
+
+    class ReturnsFalse(base.Trackable):
+      pass
+
+    class SubclassReturnsFalse(ReturnsTrue):
+      def _gather_saveables_for_checkpoint(self):
+        return {}
+
+    self.assertTrue(saveable_object_util.trackable_has_serialize_to_tensor(
+        ReturnsTrue()))
+    self.assertFalse(saveable_object_util.trackable_has_serialize_to_tensor(
+        ReturnsFalse()))
+
+    # This should return False, because even though its parent class has
+    # `_serialize_to_tensors`, the class itself defines
+    # `_gather_saveables_for_checkpoint`.
+    self.assertFalse(saveable_object_util.trackable_has_serialize_to_tensor(
+        SubclassReturnsFalse()))
+
+
 if __name__ == "__main__":
   test.main()

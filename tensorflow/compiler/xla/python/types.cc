@@ -18,7 +18,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/python/lib/core/bfloat16.h"
+#include "tensorflow/tsl/python/lib/core/bfloat16.h"
 
 namespace xla {
 
@@ -72,7 +72,7 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
     case U64:
       return py::dtype::of<uint64_t>();
     case BF16: {
-      py::handle bfloat16(tensorflow::Bfloat16Dtype());
+      py::handle bfloat16(tsl::Bfloat16Dtype());
       return py::dtype::from_args(py::reinterpret_borrow<py::object>(bfloat16));
     }
     case F16:
@@ -105,7 +105,7 @@ const NumpyScalarTypes& GetNumpyScalarTypes() {
     dtypes->np_uint32 = py::object(numpy.attr("uint32"));
     dtypes->np_uint64 = py::object(numpy.attr("uint64"));
     dtypes->np_bfloat16 =
-        py::reinterpret_borrow<py::object>(tensorflow::Bfloat16Dtype());
+        py::reinterpret_borrow<py::object>(tsl::Bfloat16Dtype());
     dtypes->np_float16 = py::object(numpy.attr("float16"));
     dtypes->np_float32 = py::object(numpy.attr("float32"));
     dtypes->np_float64 = py::object(numpy.attr("float64"));

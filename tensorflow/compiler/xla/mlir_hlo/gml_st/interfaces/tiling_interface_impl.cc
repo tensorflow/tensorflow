@@ -21,10 +21,9 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Interfaces/DestinationStyleOpInterface.h"
-#include "thlo/IR/thlo_ops.h"
 
 namespace mlir {
 namespace gml_st {
@@ -67,7 +66,8 @@ struct ExternalLinalgOpTilingInterface
   // Instantiate the tiled implementation of the operation.
   TilingInterface getTiledImplementation(Operation *op, OpBuilder &b,
                                          ArrayRef<OpFoldResult> offsets,
-                                         ArrayRef<OpFoldResult> sizes) const {
+                                         ArrayRef<OpFoldResult> sizes,
+                                         bool useExtractSlice) const {
     Location loc = op->getLoc();
     linalg::LinalgOp linalgOp = cast<linalg::LinalgOp>(op);
     OperandRange valuesToTile = linalgOp->getOperands();
@@ -86,20 +86,12 @@ struct ExternalLinalgOpTilingInterface
         tiledOperands.push_back(valueToTile);
         continue;
       }
-
-      int64_t rank = valueToTileTy.getRank();
-      SmallVector<OpFoldResult> valueToTileSizes{
-          tensor::getMixedSizes(b, loc, valueToTile)};
-      SmallVector<OpFoldResult> zeros(rank, b.getI64IntegerAttr(0));
-      SmallVector<OpFoldResult> ones(rank, b.getI64IntegerAttr(1));
-      Value set =
+      tiledOperands.push_back(
           sliceParams.has_value()
-              ? b.create<TileOp>(loc, sliceParams->offsets, sliceParams->sizes,
-                                 sliceParams->strides)
-              : b.create<TileOp>(loc, zeros, valueToTileSizes, ones);
-
-      Value materializedTile = b.create<MaterializeOp>(loc, valueToTile, set);
-      tiledOperands.push_back(materializedTile);
+              ? materializeSlice(b, loc, valueToTile, sliceParams->offsets,
+                                 sliceParams->sizes, sliceParams->strides,
+                                 useExtractSlice)
+              : materializeIdentitySlice(b, loc, valueToTile, useExtractSlice));
     }
 
     SmallVector<Type> resultTensorTypes = llvm::to_vector(llvm::map_range(
@@ -107,8 +99,7 @@ struct ExternalLinalgOpTilingInterface
           return tiledOperands[opOperand->getOperandNumber()].getType();
         }));
 
-    Operation *tiledOp =
-        linalgOp.clone(b, loc, resultTensorTypes, tiledOperands);
+    Operation *tiledOp = clone(b, linalgOp, resultTensorTypes, tiledOperands);
     offsetIndices(b, cast<linalg::LinalgOp>(tiledOp), offsets);
 
     return {tiledOp};
@@ -152,7 +143,7 @@ struct ExternalLinalgOpTilingInterface
     }
 
     TilingInterface tiledOp = tilingInterfaceOp.getTiledImplementation(
-        b, iterationTileOffsets, iterationTileSizes);
+        b, iterationTileOffsets, iterationTileSizes, /*useExtractSlice=*/false);
 
     return tiledOp->getResult(resultNumber);
   }
@@ -162,6 +153,8 @@ struct ExternalLinalgOpTilingInterface
 
 void registerGmlStTilingInterfaceExternalModels(DialectRegistry &registry) {
   registry.addExtension(+[](MLIRContext *ctx, linalg::LinalgDialect *) {
+    linalg::BroadcastOp::attachInterface<
+        ExternalLinalgOpTilingInterface<linalg::BroadcastOp>>(*ctx);
     linalg::FillOp::attachInterface<
         ExternalLinalgOpTilingInterface<linalg::FillOp>>(*ctx);
     linalg::GenericOp::attachInterface<
@@ -170,6 +163,8 @@ void registerGmlStTilingInterfaceExternalModels(DialectRegistry &registry) {
         ExternalLinalgOpTilingInterface<linalg::MapOp>>(*ctx);
     linalg::MatmulOp::attachInterface<
         ExternalLinalgOpTilingInterface<linalg::MatmulOp>>(*ctx);
+    linalg::Mmt4DOp::attachInterface<
+        ExternalLinalgOpTilingInterface<linalg::Mmt4DOp>>(*ctx);
     linalg::ReduceOp::attachInterface<
         ExternalLinalgOpTilingInterface<linalg::ReduceOp>>(*ctx);
     linalg::TransposeOp::attachInterface<

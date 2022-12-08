@@ -83,8 +83,7 @@ inline void PopulateTFToMhloPatterns(
     // Adding fallback Tf2XlaPatterns is needed to make the patterns work.
     // Add TF->HLO legalization patterns via TF2XLA fallback.
     ::mlir::mhlo::PopulateLegalizeTfWithTf2XlaPatterns(
-        tf2xla_fallback_device_type.getValue(), *patterns, context,
-        prefer_tf2xla);
+        tf2xla_fallback_device_type.value(), *patterns, context, prefer_tf2xla);
   }
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to

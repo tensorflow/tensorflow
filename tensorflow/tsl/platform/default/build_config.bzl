@@ -709,9 +709,6 @@ def tf_additional_device_tracer_srcs():
 def tf_additional_test_deps():
     return []
 
-def tf_kernel_tests_linkstatic():
-    return 0
-
 def tf_additional_lib_deps():
     """Additional dependencies needed to build TF libraries."""
     return [

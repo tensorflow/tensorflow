@@ -654,6 +654,8 @@ INSTANTIATE_TEST_SUITE_P(Test, GetOptimizationsTest,
                                            GetOptimizationTestCase4()));
 
 TEST(DeterministicOpsTest, GetOptimizations) {
+  // TODO(b/259305727): Re-enable for MacOS when the bug is fixed.
+#if !defined(__APPLE__)
   tsl::test::DeterministicOpsScope det_scope;
   Options options;
   // options.deterministic should be ignored when deterministic ops are enabled.
@@ -663,6 +665,7 @@ TEST(DeterministicOpsTest, GetOptimizations) {
   EXPECT_THAT(std::vector<string>(actual_enabled.begin(), actual_enabled.end()),
               ::testing::UnorderedElementsAreArray({"make_deterministic"}));
   EXPECT_EQ(actual_disabled.size(), 0);
+#endif
 }
 
 REGISTER_DATASET_EXPERIMENT("test_only_experiment",

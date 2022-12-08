@@ -330,6 +330,12 @@ class XlaOpRegistry {
 #define REGISTER_XLA_OP(NAME, OP) \
   REGISTER_XLA_OP_UNIQ_HELPER(__COUNTER__, NAME, OP)
 
+#define REGISTER_XLA_CONV_OP(BUILDER, OP)                                      \
+  REGISTER_XLA_OP(BUILDER.TypeConstraint("T", GetXlaConvTypesForNonGpu()), OP) \
+  REGISTER_XLA_OP(BUILDER.TypeConstraint("T", GetXlaConvTypesForGpu())         \
+                      .Device(DEVICE_GPU_XLA_JIT),                             \
+                  OP)
+
 class XlaOpRegistrationBuilder {
  public:
   // Starts an operator registration chain.

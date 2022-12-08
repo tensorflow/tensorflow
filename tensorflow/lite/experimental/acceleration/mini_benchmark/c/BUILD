@@ -29,9 +29,8 @@ cc_library(
     srcs = ["c_api.cc"],
     hdrs = ["c_api.h"],
     deps = [
-        "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:benchmark_result_evaluator",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:blocking_validator_runner",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:validator_runner_options",

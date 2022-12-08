@@ -342,7 +342,9 @@ mlir::LogicalResult InsertInitialLayoutsFromComputeLayout(
 
     auto* expander = SPMDExpanderRegistry::Global()->GetPropagateFnForOp(op);
     if (expander == nullptr) {
-      op->emitOpError() << "does not implement layout propagation";
+      op->emitOpError()
+          << "does not implement layout propagation. Please file a feature "
+             "request to TF DTensor. (component id: 833864)";
       return mlir::WalkResult::interrupt();
     }
 
@@ -570,7 +572,9 @@ mlir::LogicalResult UpdateLayoutsForOp(
     llvm::DenseSet<mlir::Value>& is_updated) {
   auto* expander = SPMDExpanderRegistry::Global()->GetPropagateFnForOp(op);
   if (expander == nullptr)
-    return op->emitOpError() << "does not implement layout propagation";
+    return op->emitOpError()
+           << "does not implement layout propagation. Please file a feature "
+              "request to TF DTensor. (component id: 833864)";
 
   // Get input and output layouts for this op from the merged_layouts map.
   llvm::DenseMap<int, Layout> input_layouts(op->getNumOperands());
@@ -1025,36 +1029,6 @@ void LogLayoutsAndOps(const int stage, const uint64_t module_hash,
   }
   (void)file_writer->Close();
   LOG(INFO) << "Dumped MLIR module to " << prefix;
-}
-
-// Canonicalizer and DCE transformation passes may removed ops in the graph and
-// result in multiple consecutive DTensorLayout ops. Detect all such cases and
-// replace unnecessary DTensorLayout ops with Identity ops.
-mlir::LogicalResult ReplaceAuxiliaryDTensorLayoutOpsWithIdentity(
-    mlir::ModuleOp module) {
-  llvm::SmallVector<mlir::TF::DTensorLayout, 4> layout_ops;
-  module.walk([&](mlir::TF::DTensorLayout op) { layout_ops.emplace_back(op); });
-
-  for (auto layout_op : llvm::reverse(layout_ops)) {
-    auto input_op = layout_op.getInput().getDefiningOp();
-    if (auto input_layout_op =
-            llvm::dyn_cast_or_null<mlir::TF::DTensorLayout>(input_op)) {
-      // Check that layout of input DTensorLayout op is equivalent to
-      // the layout of its connected DTensorLayout op.
-      if (layout_op.getLayout() != input_layout_op.getLayout())
-        return layout_op.emitOpError(
-            "Found inconsistent layout. This should never happen.");
-
-      // Replace DTensorLayout op with identity op.
-      mlir::OpBuilder builder(layout_op);
-      auto identity = builder.create<mlir::TF::IdentityOp>(
-          layout_op->getLoc(), layout_op.getType(), layout_op.getInput());
-      layout_op.getOutput().replaceAllUsesWith(identity.getOutput());
-      layout_op.erase();
-    }
-  }
-
-  return mlir::success();
 }
 
 // Inserts/changes DTensorLayout op after IfRegion op and results of then/else

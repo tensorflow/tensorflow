@@ -8,6 +8,10 @@ load(
 )
 load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
+load(
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -46,6 +50,8 @@ package_group(
         "//tensorflow/compiler/xla/service/gpu/runtime/...",
     ],
 )
+
+exports_files(["run_lit.sh"])
 
 # Filegroup used to collect source files for dependency checking.
 filegroup(
@@ -249,7 +255,7 @@ cc_library(
         "statusor.h",
     ],
     linkopts = select({
-        "//tensorflow:freebsd": ["-lexecinfo"],
+        "//tensorflow/tsl:freebsd": ["-lexecinfo"],
         "//conditions:default": [],
     }),
     visibility = ["//visibility:public"],
@@ -1074,6 +1080,12 @@ cc_library(
     hdrs = ["side_effect_util.h"],
 )
 
+cc_library(
+    name = "lazy",
+    hdrs = ["lazy.h"],
+    deps = ["@com_google_absl//absl/functional:any_invocable"],
+)
+
 tf_proto_library(
     name = "autotune_results_proto",
     srcs = ["autotune_results.proto"],
@@ -1095,19 +1107,19 @@ xla_py_proto_library(
 
 cc_library(
     name = "autotune_serialize",
-    srcs = ["autotune_serialize.cc"],
-    hdrs = ["autotune_serialize.h"],
+    srcs = if_cuda_is_configured(["autotune_serialize.cc"]),
+    hdrs = if_cuda_is_configured(["autotune_serialize.h"]),
     # TODO(aminim): There appears to be an in-progress refactoring in TF/XLA to
     # mark rules as compatible_with GCE.  The rules that this depends on are
     # not yet marked as compatible, so this one can't be either (yet).
     compatible_with = [],
     visibility = ["//visibility:public"],
-    deps = [
+    deps = if_cuda_is_configured([
         ":autotune_results_proto_cc",
         ":statusor",
         "//tensorflow/compiler/xla/service/gpu:gemm_algorithm_picker",
         "//tensorflow/compiler/xla/service/gpu:gpu_conv_algorithm_picker",
-    ],
+    ]),
 )
 
 # -----------------------------------------------------------------------------
@@ -1138,7 +1150,7 @@ cc_header_only_library(
         ":xla_data_proto_cc",
         ":xla_proto_cc",
         "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:stream_executor_headers_lib",
     ],

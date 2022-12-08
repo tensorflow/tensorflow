@@ -76,6 +76,21 @@ def TilingSoftmaxPass : Pass<"gml-tiling-softmax", "mlir::func::FuncOp"> {
   ];
 }
 
+def GreedyTilingAndFusionPass : Pass<"gml-greedy-tiling-and-fusion",
+    "mlir::func::FuncOp"> {
+  let summary = "Pass to tile the root operation and to greedily fuse "
+      "producers into it.";
+  let constructor = "::mlir::gml_st::createGreedyTilingAndFusionPass()";
+  let options = [
+    Option<"distribute", "distribute", "bool", /*default=*/"true",
+           "Generate gml_st.parallel or gml_st.for">,
+    ListOption<"tileSizes", "tile-sizes", "int64_t",
+               "Tile sizes", "llvm::cl::ZeroOrMore">,
+    Option<"distributionLabel", "distribution-label", "std::string",
+           /*default=*/"", "Distribution label for generated gml_st.parallel">,
+  ];
+}
+
 def CollapseShapePass : Pass<"gml-collapse-shape", "mlir::func::FuncOp"> {
   let summary = "Collapse dimensions of bcasts, reductions, and cwise ops";
   let description = [{
@@ -148,6 +163,21 @@ def VectorizeGmlStLoopsPass :
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }
 
+def VectorizePerfectlyTiledLoopsPass :
+    Pass<"vectorize-perfectly-tiled-loops", "mlir::func::FuncOp"> {
+  let summary = "Pass to vectorize gml_st.for loops that are tiled perfectly.";
+  let constructor = "::mlir::gml_st::createVectorizePerfectlyTiledLoopsPass()";
+  let dependentDialects = ["::mlir::vector::VectorDialect"];
+}
+
+def LowerVectorContractPass :
+    Pass<"lower-vector-contract", "mlir::func::FuncOp"> {
+  let summary = "Pass to lower vector.contract";
+  let constructor = "::mlir::gml_st::createLowerVectorContractPass()";
+  let dependentDialects = ["::mlir::vector::VectorDialect",
+                           "::mlir::gml_st::GmlStDialect"];
+}
+
 def TransformScatterForCpuPass :
     Pass<"xla-cpu-transform-scatter", "mlir::func::FuncOp"> {
   let summary = "Transform scatter ops for running on CPU";
@@ -162,6 +192,8 @@ def TransformMatmulForCpuPass :
   let constructor = "createTransformMatmulForCpuPass()";
 
   let options = [
+    Option<"lowerToMmt4D", "lower-to-mmt4d", "bool", "false",
+           "If true, lower linalg.matmul into linalg.mmt4d">,
     ListOption<"tileSizes", "tile-sizes", "int64_t",
                "Tile sizes for a `linalg.matmul`">,
   ];
@@ -198,7 +230,12 @@ def TransformReduceForCpuPass :
   let constructor = "createTransformReduceForCpuPass()";
 
   let options = [
-    ListOption<"tileSizes", "tile-sizes", "int64_t",
-               "Tile sizes for a `linalg.reduce`">,
+    Option<"vectorSize", "vector-size", "int64_t", "8",
+           "Vector size for a 1D `linalg.reduce`">,
+    Option<"tileSize1D", "tile-size-1d", "int64_t", "32",
+               "Tile size for a 1D `linalg.reduce`">,
+    ListOption<"tileSizes2D", "tile-sizes-2d", "int64_t",
+               "Tile sizes for a `linalg.reduce`. tileSizes[0] is the parallel "
+               "dimension and tileSizes[1] is the reduction dimension.">,
   ];
 }

@@ -49,10 +49,10 @@ tensorflow::tfprof::SerializeToString
 [//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool] # graph_analyze
 tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
 
-[//tensorflow/python:bfloat16_lib] # bfloat16
-tensorflow::RegisterNumpyBfloat16
-tensorflow::Bfloat16Dtype
-tensorflow::Float8_E4M3B11Dtype
+[//tensorflow/tsl/python/lib/core:bfloat16_lib] # bfloat16
+tsl::RegisterNumpyBfloat16
+tsl::Bfloat16Dtype
+tsl::Float8_E4M3B11Dtype
 
 [//tensorflow/python:py_func_lib] # py_func
 tensorflow::InitializePyTrampoline
@@ -276,9 +276,9 @@ tensorflow::GetHandleShapeAndType
 tensorflow::SetHandleShapeAndType
 tensorflow::AddWhileInputHack
 
-[//tensorflow/python:numpy_lib] # tf_session
-tensorflow::ImportNumpy
-_tensorflow_numpy_api
+[//tensorflow/tsl/python/lib/core:numpy] # tf_session
+tsl::ImportNumpy
+_tsl_numpy_api
 
 [//tensorflow/python/client:tf_session_helper] # tf_session
 tensorflow::TF_NewSessionRef
@@ -368,12 +368,9 @@ tsl::ProfilerSession::CollectData
 tsl::ProfilerSession::Status
 tsl::ProfilerSession::~ProfilerSession
 
-[//tensorflow/core/profiler/rpc:profiler_server_impl] # profiler
-tensorflow::profiler::ProfilerServer::StartProfilerServer
-tensorflow::profiler::ProfilerServer::~ProfilerServer
-
-[//tensorflow/core/profiler/convert:hlo_to_tools_data_impl] # profiler
-tensorflow::profiler::ConvertHloProtoToToolData
+[//tensorflow/tsl/profiler/rpc:profiler_server_impl] # profiler
+tsl::profiler::ProfilerServer::StartProfilerServer
+tsl::profiler::ProfilerServer::~ProfilerServer
 
 [//tensorflow/core/profiler/rpc/client:profiler_client_impl] # profiler
 tensorflow::profiler::ProfileGrpc

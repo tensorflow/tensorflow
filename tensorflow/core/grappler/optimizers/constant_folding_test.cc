@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
+#include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -1953,112 +1954,6 @@ TEST_F(ConstantFoldingTest, SwitchNodes) {
   EXPECT_EQ(2, tensors.size());
   test::ExpectTensorEqual<int>(tensors_expected[0], tensors[0]);
   test::ExpectTensorNear<float>(tensors_expected[1], tensors[1], 1e-5);
-}
-
-TEST_F(ConstantFoldingTest, MergeNodes) {
-  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
-
-  Output x =
-      ops::RandomNormal(scope.WithOpName("x"), {3, 5}, DataType::DT_FLOAT);
-  Output y =
-      ops::RandomNormal(scope.WithOpName("y"), {3, 5}, DataType::DT_FLOAT);
-  Output const1 =
-      ops::Const(scope.WithOpName("const1").WithControlDependencies(x), 2.7f,
-                 TensorShape({3, 5}));
-  Output const2 =
-      ops::Const(scope.WithOpName("const2"), 3.14f, TensorShape({3, 5}));
-  Output const3 =
-      ops::Const(scope.WithOpName("const3").WithControlDependencies(x), 3.14f,
-                 TensorShape({3, 5}));
-
-  // Create 3 merge nodes: m1 is foldable, m2 and m3 aren't.
-  ops::Merge m1(scope.WithOpName("m1"), {x, const1, const2});
-  ops::Merge m2(scope.WithOpName("m2"), {const1, const3});
-  ops::Merge m3(scope.WithOpName("m3"), {x, y});
-  // m4 is not foldable because the only constant input
-  // has a control input, so we cannot know if it will be
-  // triggered.
-  ops::Merge m4(scope.WithOpName("m4"), {x, const1});
-
-  ops::Identity out1(scope.WithOpName("out1"), m1.output);
-  ops::Identity idx1(scope.WithOpName("idx1"), m1.value_index);
-  ops::Identity out2(scope.WithOpName("out2"), m2.output);
-  ops::Identity idx2(scope.WithOpName("idx2"), m2.value_index);
-  ops::Identity out3(scope.WithOpName("out3"), m3.output);
-  ops::Identity idx3(scope.WithOpName("idx3"), m3.value_index);
-  ops::Identity out4(scope.WithOpName("out4"), m4.output);
-  ops::Identity idx4(scope.WithOpName("idx4"), m4.value_index);
-
-  GrapplerItem item;
-  item.fetch = {"out1", "idx1", "out2", "idx2", "out3", "idx3", "out4", "idx4"};
-  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
-
-  ConstantFolding optimizer(/*cpu_device=*/nullptr);
-  GraphDef output;
-  Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
-  TF_EXPECT_OK(status);
-
-  EXPECT_EQ(19, output.node_size());
-  int found_nodes = 0;
-  for (const auto& node : output.node()) {
-    if (node.name() == "out1") {
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("^m1", node.input(0));
-      ++found_nodes;
-    } else if (node.name() == "idx1") {
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("^m1", node.input(0));
-      ++found_nodes;
-    } else if (node.name() == "ConstantFolding/m1") {
-      EXPECT_EQ("Const", node.op());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("^m1", node.input(0));
-      ++found_nodes;
-    } else if (node.name() == "ConstantFolding/m1_index") {
-      EXPECT_EQ("Const", node.op());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("^m1", node.input(0));
-      ++found_nodes;
-    } else if (node.name() == "out2") {
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("m2", node.input(0));
-      ++found_nodes;
-    } else if (node.name() == "idx2") {
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("m2:1", node.input(0));
-      ++found_nodes;
-    } else if (node.name() == "out3") {
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("m3", node.input(0));
-      ++found_nodes;
-    } else if (node.name() == "idx3") {
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("m3:1", node.input(0));
-      ++found_nodes;
-    } else if (node.name() == "out4") {
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("m4", node.input(0));
-      ++found_nodes;
-    } else if (node.name() == "idx4") {
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("m4:1", node.input(0));
-      ++found_nodes;
-    }
-  }
-  // Make sure the graph contains all the nodes we're expecting.
-  EXPECT_EQ(8, found_nodes);
-
-  std::vector<string> fetch = {"out1", "idx1"};
-  auto tensors = EvaluateNodes(output, fetch);
-  EXPECT_EQ(2, tensors.size());
-  const Tensor& out_value = tensors[0];
-  EXPECT_EQ(3 * 5, out_value.NumElements());
-  for (int i = 0; i < 3 * 5; ++i) {
-    EXPECT_EQ(3.14f, out_value.flat<float>()(i));
-  }
-  const Tensor& out_idx = tensors[1];
-  EXPECT_EQ(1, out_idx.NumElements());
-  EXPECT_EQ(2, out_idx.flat<int32>()(0));
 }
 
 TEST_F(ConstantFoldingTest, SplitRemoval) {

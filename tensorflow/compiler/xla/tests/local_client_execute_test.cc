@@ -793,6 +793,11 @@ XLA_TEST_F(LocalClientExecuteTest, CompilePartitionedExecutable) {
 
 XLA_TEST_F(LocalClientExecuteTest,
            DISABLED_ON_INTERPRETER(SizeOfGeneratedCodeInBytes)) {
+  if (IsMlirLoweringEnabled()) {
+    // SizeOfGeneratedCodeInBytes is not supported by the MLIR pipeline.
+    GTEST_SKIP();
+  }
+
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
   constexpr int size = 100000;

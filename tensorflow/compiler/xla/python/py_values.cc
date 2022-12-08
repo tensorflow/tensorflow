@@ -12,13 +12,29 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// Must be included first
+// clang-format off
+#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+// clang-format on
 
 #include "tensorflow/compiler/xla/python/py_values.h"
 
+// NOLINTBEGIN
+#include <exception>
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+// NOLINTEND
+
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
+#ifdef JAX_ENABLE_IFRT
+#include "tensorflow/compiler/xla/python/ifrt/array.h"
+#include "tensorflow/compiler/xla/python/ifrt/shape.h"
+#include "tensorflow/compiler/xla/python/ifrt/sharding.h"
+#endif
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/python/numpy.h"
 #include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
@@ -26,6 +42,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace py = pybind11;
@@ -34,12 +52,22 @@ namespace xla {
 
 namespace {
 
+#ifdef JAX_ENABLE_IFRT
+using DevicePutFunc = std::function<StatusOr<DevicePutResult>(
+    py::handle, ifrt::Client*, ifrt::Device*, const DevicePutOptions& options)>;
+#else
 using DevicePutFunc = std::function<StatusOr<DevicePutResult>(
     py::handle, PjRtDevice*, const DevicePutOptions& options)>;
+#endif
 
 template <typename T, typename SquashedT>
 StatusOr<DevicePutResult> HandlePythonScalar(py::handle obj,
+#ifdef JAX_ENABLE_IFRT
+                                             ifrt::Client* client,
+                                             ifrt::Device* to_device,
+#else
                                              PjRtDevice* to_device,
+#endif
                                              const DevicePutOptions& options) {
   T data;
 
@@ -70,6 +98,17 @@ StatusOr<DevicePutResult> HandlePythonScalar(py::handle obj,
   // Must release the GIL before BufferFromHostBuffer because backends may
   // decide to block/sleep for device buffer allocation.
   py::gil_scoped_release gil_release;
+#ifdef JAX_ENABLE_IFRT
+  TF_ASSIGN_OR_RETURN(auto ifrt_dtype, xla::ifrt::ToDType(type));
+  TF_ASSIGN_OR_RETURN(
+      auto ifrt_array,
+      client->MakeArrayFromHostBuffer(
+          ptr, ifrt_dtype, /*shape=*/ifrt::Shape({}), /*byte_strides=*/{},
+          ifrt::SingleDeviceSharding::Create(to_device),
+          ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/{}));
+  return DevicePutResult(std::move(ifrt_array), /*weak_type=*/true);
+#else
   TF_ASSIGN_OR_RETURN(
       auto buffer,
       to_device->client()->BufferFromHostBuffer(
@@ -77,9 +116,16 @@ StatusOr<DevicePutResult> HandlePythonScalar(py::handle obj,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/nullptr, to_device));
   return DevicePutResult(std::move(buffer), /*weak_type=*/true);
+#endif
 }
 
-StatusOr<DevicePutResult> HandlePythonInt(py::handle obj, PjRtDevice* to_device,
+StatusOr<DevicePutResult> HandlePythonInt(py::handle obj,
+#ifdef JAX_ENABLE_IFRT
+                                          ifrt::Client* client,
+                                          ifrt::Device* to_device,
+#else
+                                          PjRtDevice* to_device,
+#endif
                                           const DevicePutOptions& options) {
   void* ptr;
   PrimitiveType type;
@@ -114,6 +160,17 @@ StatusOr<DevicePutResult> HandlePythonInt(py::handle obj, PjRtDevice* to_device,
   // Must release the GIL before BufferFromHostBuffer because backends may
   // decide to block/sleep for device buffer allocation.
   py::gil_scoped_release gil_release;
+#ifdef JAX_ENABLE_IFRT
+  TF_ASSIGN_OR_RETURN(auto ifrt_dtype, xla::ifrt::ToDType(type));
+  TF_ASSIGN_OR_RETURN(
+      auto ifrt_array,
+      client->MakeArrayFromHostBuffer(
+          ptr, ifrt_dtype, /*shape=*/xla::ifrt::Shape({}), /*byte_strides=*/{},
+          ifrt::SingleDeviceSharding::Create(to_device),
+          ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr));
+  return DevicePutResult(std::move(ifrt_array), /*weak_type=*/true);
+#else
   TF_ASSIGN_OR_RETURN(
       auto buffer,
       to_device->client()->BufferFromHostBuffer(
@@ -121,10 +178,17 @@ StatusOr<DevicePutResult> HandlePythonInt(py::handle obj, PjRtDevice* to_device,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/nullptr, to_device));
   return DevicePutResult(std::move(buffer), /*weak_type=*/true);
+#endif
 }
 
 template <typename T, typename SquashedT = T>
-StatusOr<DevicePutResult> HandleNumpyScalar(py::handle h, PjRtDevice* to_device,
+StatusOr<DevicePutResult> HandleNumpyScalar(py::handle h,
+#ifdef JAX_ENABLE_IFRT
+                                            ifrt::Client* client,
+                                            ifrt::Device* to_device,
+#else
+                                            PjRtDevice* to_device,
+#endif
                                             const DevicePutOptions& options) {
   T data;
   SquashedT data_squashed;
@@ -147,6 +211,17 @@ StatusOr<DevicePutResult> HandleNumpyScalar(py::handle h, PjRtDevice* to_device,
   // Must release the GIL before BufferFromHostBuffer because backends may
   // decide to block/sleep for device buffer allocation.
   py::gil_scoped_release gil_release;
+#ifdef JAX_ENABLE_IFRT
+  TF_ASSIGN_OR_RETURN(auto ifrt_dtype, xla::ifrt::ToDType(type));
+  TF_ASSIGN_OR_RETURN(
+      auto ifrt_array,
+      client->MakeArrayFromHostBuffer(
+          ptr, ifrt_dtype, /*shape=*/xla::ifrt::Shape({}), /*byte_strides=*/{},
+          ifrt::SingleDeviceSharding::Create(to_device),
+          ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr));
+  return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
+#else
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtBuffer> buffer,
       to_device->client()->BufferFromHostBuffer(
@@ -154,9 +229,16 @@ StatusOr<DevicePutResult> HandleNumpyScalar(py::handle h, PjRtDevice* to_device,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/nullptr, to_device));
   return DevicePutResult(std::move(buffer), /*weak_type=*/false);
+#endif
 }
 
-StatusOr<DevicePutResult> HandleNumpyArray(py::handle h, PjRtDevice* to_device,
+StatusOr<DevicePutResult> HandleNumpyArray(py::handle h,
+#ifdef JAX_ENABLE_IFRT
+                                           ifrt::Client* client,
+                                           ifrt::Device* to_device,
+#else
+                                           PjRtDevice* to_device,
+#endif
                                            const DevicePutOptions& options) {
   py::array array = py::cast<py::array>(h);
   TF_ASSIGN_OR_RETURN(PrimitiveType type, DtypeToPrimitiveType(array.dtype()));
@@ -183,8 +265,13 @@ StatusOr<DevicePutResult> HandleNumpyArray(py::handle h, PjRtDevice* to_device,
     byte_strides[i] = array.strides(i);
   }
   const void* data = array.data();
+#ifdef JAX_ENABLE_IFRT
+  ifrt::Client::HostBufferSemantics host_buffer_semantics =
+      ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall;
+#else
   PjRtClient::HostBufferSemantics host_buffer_semantics =
       PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall;
+#endif
   std::function<void()> on_done_with_host_buffer;
   if (options.allow_zero_copy) {
     std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
@@ -192,17 +279,32 @@ StatusOr<DevicePutResult> HandleNumpyArray(py::handle h, PjRtDevice* to_device,
     on_done_with_host_buffer =
         [py_buffer_ref{
             std::move(py_buffer_ref)}]() { /* keeps py_buffer_ref alive */ };
+#ifdef JAX_ENABLE_IFRT
+    host_buffer_semantics = ifrt::Client::HostBufferSemantics::kZeroCopy;
+#else
     host_buffer_semantics = PjRtClient::HostBufferSemantics::kZeroCopy;
+#endif
   }
   // Must release the GIL before BufferFromHostBuffer because backends may
   // decide to block/sleep for device buffer allocation.
   py::gil_scoped_release gil_release;
+#ifdef JAX_ENABLE_IFRT
+  TF_ASSIGN_OR_RETURN(auto ifrt_dtype, xla::ifrt::ToDType(squashed_type));
+  TF_ASSIGN_OR_RETURN(
+      auto ifrt_array,
+      client->MakeArrayFromHostBuffer(
+          data, ifrt_dtype, ifrt::Shape(dims), byte_strides,
+          xla::ifrt::SingleDeviceSharding::Create(to_device),
+          host_buffer_semantics, std::move(on_done_with_host_buffer)));
+  return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
+#else
   TF_ASSIGN_OR_RETURN(
       auto buffer,
       to_device->client()->BufferFromHostBuffer(
           data, squashed_type, dims, byte_strides, host_buffer_semantics,
           std::move(on_done_with_host_buffer), to_device));
   return DevicePutResult(std::move(buffer), /*weak_type=*/false);
+#endif
 }
 
 StatusOr<DevicePutResult> PyBufferHelper(py::handle obj, py::handle py_buffer,
@@ -211,24 +313,50 @@ StatusOr<DevicePutResult> PyBufferHelper(py::handle obj, py::handle py_buffer,
   bool weak_type = buffer->weak_type()
                        ? *buffer->weak_type()
                        : py::cast<bool>(obj.attr("aval").attr("weak_type"));
-  if (buffer->buffer()->device() == to_device) {
+#ifdef JAX_ENABLE_IFRT
+  if (buffer->ifrt_array()->sharding().devices().front() == to_device) {
     return DevicePutResult(
-        buffer->buffer(), weak_type,
+        buffer->ifrt_array(), weak_type,
+        /*owning_pybuffer=*/py::reinterpret_borrow<py::object>(py_buffer));
+  } else {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<ifrt::Array> copied_ifrt_array,
+                        buffer->ifrt_array()->Reshard(
+                            ifrt::SingleDeviceSharding::Create(to_device),
+                            ifrt::ArrayCopySemantics::kReuseInput));
+    return DevicePutResult(std::move(copied_ifrt_array), weak_type);
+  }
+#else
+  if (buffer->pjrt_buffer()->device() == to_device) {
+    return DevicePutResult(
+        buffer->pjrt_buffer(), weak_type,
         /*owning_pybuffer=*/py::reinterpret_borrow<py::object>(py_buffer));
   } else {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> copied_buffer,
-                        buffer->buffer()->CopyToDevice(to_device));
+                        buffer->pjrt_buffer()->CopyToDevice(to_device));
     return DevicePutResult(std::move(copied_buffer), weak_type);
   }
+#endif
 }
 
-StatusOr<DevicePutResult> HandlePyBuffer(py::handle obj, PjRtDevice* to_device,
+StatusOr<DevicePutResult> HandlePyBuffer(py::handle obj,
+#ifdef JAX_ENABLE_IFRT
+                                         ifrt::Client* client,
+                                         ifrt::Device* to_device,
+#else
+                                         PjRtDevice* to_device,
+#endif
                                          const DevicePutOptions& options) {
   return PyBufferHelper(obj, obj, PyBuffer::AsPyBufferUnchecked(obj),
                         to_device);
 }
 
-StatusOr<DevicePutResult> HandlePyArray(py::handle obj, PjRtDevice* to_device,
+StatusOr<DevicePutResult> HandlePyArray(py::handle obj,
+#ifdef JAX_ENABLE_IFRT
+                                        ifrt::Client* client,
+                                        ifrt::Device* to_device,
+#else
+                                        PjRtDevice* to_device,
+#endif
                                         const DevicePutOptions& options) {
   auto py_array = py::reinterpret_borrow<PyArray>(obj);
 
@@ -241,10 +369,31 @@ StatusOr<DevicePutResult> HandlePyArray(py::handle obj, PjRtDevice* to_device,
   if (py_array.sharding().get_type() == jax::PmapSharding::type()) {
     // We are only handling single device case for PmapSharding here. For other
     // cases, it fallbacks to python.
+#ifdef JAX_ENABLE_IFRT
+    return HandleNumpyArray(obj.attr("_value"), client, to_device, options);
+#else
     return HandleNumpyArray(obj.attr("_value"), to_device, options);
+#endif
   }
 
-  PjRtBuffer* buffer = py_array.GetBuffer(0);
+#ifdef JAX_ENABLE_IFRT
+  ifrt::Array* ifrt_array = py_array.ifrt_array();
+  if (ifrt_array == nullptr) {
+    return InvalidArgument("Array has been deleted.");
+  }
+  if (ifrt_array->sharding().devices().front() == to_device) {
+    return DevicePutResult(
+        ifrt_array, py_array.weak_type(),
+        /*owning_pybuffer=*/py::reinterpret_borrow<py::object>(obj));
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<ifrt::Array> copied_ifrt_array,
+        ifrt_array->Reshard(ifrt::SingleDeviceSharding::Create(to_device),
+                            ifrt::ArrayCopySemantics::kReuseInput));
+    return DevicePutResult(std::move(copied_ifrt_array), py_array.weak_type());
+  }
+#else
+  PjRtBuffer* buffer = py_array.pjrt_buffer(0);
   if (buffer->device() == to_device) {
     return DevicePutResult(
         buffer, py_array.weak_type(),
@@ -254,10 +403,16 @@ StatusOr<DevicePutResult> HandlePyArray(py::handle obj, PjRtDevice* to_device,
                         buffer->CopyToDevice(to_device));
     return DevicePutResult(std::move(copied_buffer), py_array.weak_type());
   }
+#endif
 }
 
 StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
+#ifdef JAX_ENABLE_IFRT
+                                            ifrt::Client* client,
+                                            ifrt::Device* to_device,
+#else
                                             PjRtDevice* to_device,
+#endif
                                             const DevicePutOptions& options) {
   // Handle Python DeviceArray objects provided they have a .device_buffer field
   // Otherwise, fallback to handling as a NumPy array, since we do not
@@ -265,7 +420,11 @@ StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
   // in JAX is handled by this path.
   py::object buffer = py::getattr(obj, "device_buffer", py::none());
   if (buffer.is_none()) {
+#ifdef JAX_ENABLE_IFRT
+    return HandleNumpyArray(obj, client, to_device, options);
+#else
     return HandleNumpyArray(obj, to_device, options);
+#endif
   }
 
   return PyBufferHelper(obj, buffer, py::cast<PyBuffer*>(buffer), to_device);
@@ -273,7 +432,13 @@ StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
 
 }  // namespace
 
-StatusOr<DevicePutResult> DevicePut(py::handle arg, PjRtDevice* to_device,
+StatusOr<DevicePutResult> DevicePut(py::handle arg,
+#ifdef JAX_ENABLE_IFRT
+                                    ifrt::Client* client,
+                                    ifrt::Device* to_device,
+#else
+                                    PjRtDevice* to_device,
+#endif
                                     const DevicePutOptions& options) {
   tsl::profiler::TraceMe traceme("DevicePut");
   static const absl::flat_hash_map<PyObject*, DevicePutFunc>* const handlers =
@@ -350,13 +515,21 @@ StatusOr<DevicePutResult> DevicePut(py::handle arg, PjRtDevice* to_device,
   if (arg.get_type() == PyArray::type()) {
     auto array = py::reinterpret_borrow<PyArray>(arg);
     if (array.fastpath_enabled()) {
+#ifdef JAX_ENABLE_IFRT
+      return HandlePyArray(arg, client, to_device, options);
+#else
       return HandlePyArray(arg, to_device, options);
+#endif
     }
   }
 
   // Fast-path for the most common case of PyBuffer.
   if (arg.get_type().ptr() == PyBuffer::type()) {
+#ifdef JAX_ENABLE_IFRT
+    return HandlePyBuffer(arg, client, to_device, options);
+#else
     return HandlePyBuffer(arg, to_device, options);
+#endif
   }
 
   auto res = handlers->find(arg.get_type().ptr());
@@ -364,7 +537,11 @@ StatusOr<DevicePutResult> DevicePut(py::handle arg, PjRtDevice* to_device,
     for (auto base_class : arg.get_type().attr("__mro__")) {
       res = handlers->find(base_class.ptr());
       if (res != handlers->end()) {
+#ifdef JAX_ENABLE_IFRT
+        return res->second(arg, client, to_device, options);
+#else
         return res->second(arg, to_device, options);
+#endif
       }
     }
     return InvalidArgument(
@@ -374,7 +551,11 @@ StatusOr<DevicePutResult> DevicePut(py::handle arg, PjRtDevice* to_device,
                   "(see implementation), or Python scalars. Got type ",
                   py::cast<std::string>(py::str(arg.get_type()))));
   }
+#ifdef JAX_ENABLE_IFRT
+  return res->second(arg, client, to_device, options);
+#else
   return res->second(arg, to_device, options);
+#endif
 }
 
 bool IsFloat0(py::array arg) {
@@ -560,8 +741,21 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
   if (arg.get_type() == PyArray::type()) {
     auto array = py::reinterpret_borrow<PyArray>(arg);
     if (array.fastpath_enabled()) {
-      auto dtype = array.GetBuffer(0)->on_device_shape().element_type();
+#ifdef JAX_ENABLE_IFRT
+      ifrt::Array* ifrt_array = array.ifrt_array();
+      if (ifrt_array == nullptr) {
+        return xla::InvalidArgument("Array has been deleted.");
+      }
+      TF_ASSIGN_OR_RETURN(auto primitive_type,
+                          ifrt::ToPrimitiveType(ifrt_array->dtype()));
+      return PyArgSignature(primitive_type, array.shape(), array.weak_type());
+#else
+      if (array.IsDeleted()) {
+        return xla::InvalidArgument("Array has been deleted.");
+      }
+      auto dtype = array.pjrt_buffer(0)->on_device_shape().element_type();
       return PyArgSignature(dtype, array.shape(), array.weak_type());
+#endif
     }
   }
 
@@ -571,9 +765,16 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
     bool weak_type = buffer->weak_type().has_value()
                          ? *buffer->weak_type()
                          : py::cast<bool>(arg.attr("aval").attr("weak_type"));
-    return PyArgSignature(buffer->buffer()->on_device_shape().element_type(),
-                          buffer->buffer()->on_device_shape().dimensions(),
+#ifdef JAX_ENABLE_IFRT
+    TF_ASSIGN_OR_RETURN(auto primitive_type,
+                        ifrt::ToPrimitiveType(buffer->ifrt_array()->dtype()));
+    return PyArgSignature(primitive_type, buffer->ifrt_array()->shape().dims(),
                           weak_type);
+#else
+    return PyArgSignature(
+        buffer->pjrt_buffer()->on_device_shape().element_type(),
+        buffer->pjrt_buffer()->on_device_shape().dimensions(), weak_type);
+#endif
   }
 
   // Fast-path for ShardedDeviceArray.

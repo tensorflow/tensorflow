@@ -133,7 +133,7 @@ bool IsBoundedOrStatic(mlir::Type ty) {
   int64_t rank = ranked_ty.getRank();
   for (int64_t dim = 0; dim < rank; ++dim) {
     if (ranked_ty.isDynamicDim(dim) &&
-        encoding.getBounds()[dim] == mlir::ShapedType::kDynamicSize)
+        encoding.getBounds()[dim] == mlir::ShapedType::kDynamic)
       return false;
   }
   return true;
@@ -280,14 +280,20 @@ static xla::Layout ExtractLayout(
   return xla::LayoutUtil::MakeDescendingLayout(rank);
 }
 
-static xla::Shape ExtractXlaShape(mlir::Operation* op) {
+// Returns a failure or a valid XLA shape corresponding to the given op's
+// results.
+static mlir::FailureOr<xla::Shape> ExtractXlaShape(mlir::Operation* op) {
   if (auto attr = op->getAttrOfType<mlir::StringAttr>(kDefaultLayoutAttrName)) {
     return *xla::ParseShape(
         absl::string_view(attr.getValue().data(), attr.getValue().size()));
   } else {
     std::vector<xla::Shape> subshapes;
-    for (mlir::Value result : op->getResults()) {
+    for (auto [index, result] : llvm::enumerate(op->getResults())) {
       subshapes.push_back(xla::TypeToShape(result.getType()));
+      if (subshapes.back().element_type() == xla::PRIMITIVE_TYPE_INVALID) {
+        return op->emitError()
+               << "result #" << index << " type is not supported";
+      }
     }
     if (subshapes.size() > 1) {
       return xla::ShapeUtil::MakeTupleShape(subshapes);
@@ -340,7 +346,7 @@ static std::unique_ptr<xla::PrecisionConfig> Convert_precision_config(
   if (!optional_precision_config_attr.has_value()) return nullptr;
 
   auto precision_config = std::make_unique<xla::PrecisionConfig>();
-  for (auto attr : optional_precision_config_attr.getValue()) {
+  for (auto attr : optional_precision_config_attr.value()) {
     xla::PrecisionConfig::Precision p;
     auto operand_precision =
         mlir::mhlo::stringifyPrecision(
@@ -407,7 +413,7 @@ xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandleAttr attr) {
 std::optional<xla::ChannelHandle> Convert_channel_handle(
     llvm::Optional<mlir::mhlo::ChannelHandleAttr> attr) {
   if (!attr.has_value()) return std::nullopt;
-  return Convert_channel_handle(attr.getValue());
+  return Convert_channel_handle(attr.value());
 }
 
 // Converts the comparison_direction string attribute into the XLA enum. The
@@ -801,6 +807,36 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
       operand, computation, Convert_replica_groups(op.getReplicaGroups()),
       Convert_channel_handle(op.getChannelHandle()), std::nullopt,
       Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+  return success();
+}
+
+LogicalResult ExportXlaOp(AllToAllOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+
+  SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op.getOperation(), op.getOperands(), ctx, operands))) {
+    return failure();
+  }
+
+  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(op.getOperation());
+  if (failed(shape_or)) return failure();
+  if (shape_or->IsTuple()) {
+    std::optional<xla::Layout> layout = std::nullopt;
+    if (shape_or->has_layout()) {
+      layout = shape_or->layout();
+    }
+    auto tuple = xla::AllToAllTuple(
+        operands, Convert_replica_groups(op.getReplicaGroups()), layout);
+    for (auto [index, result] : llvm::enumerate(op.getResults())) {
+      value_map[result] = xla::GetTupleElement(tuple, index);
+    }
+  } else {
+    // ArrayAllToAll always has exactly one operand (checked in the verifier).
+    value_map[op->getResults()[0]] = xla::AllToAll(
+        operands[0], *op.getSplitDimension(), *op.getConcatDimension(),
+        *op.getSplitCount(), Convert_replica_groups(op.getReplicaGroups()));
+  }
+
   return success();
 }
 
@@ -1469,10 +1505,36 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   if (failed(GetTuple(op, op.getInputs(), ctx, args))) return failure();
   auto xla_api_version = xla::ConvertCustomCallApiVersion(op.getApiVersion());
   if (!xla_api_version.ok()) return failure();
+
+  // CustomCallOp backend config can be either a string if we use any of the
+  // older custom call API versions, or a dictionary attribute if we use typed
+  // FFI. We always pass it as a string to the HLO instruction. If it was a
+  // dictionary attribute we rely on MLIR printing to convert it to string.
+  std::string backend_config;
+
+  if (*xla_api_version == xla::CustomCallApiVersion::API_VERSION_TYPED_FFI) {
+    // Serialize backend config dictionary as a string.
+    if (auto dict = op.getBackendConfig()
+                        .value_or(mlir::Attribute())
+                        .dyn_cast_or_null<mlir::DictionaryAttr>()) {
+      llvm::raw_string_ostream(backend_config) << dict;
+    }
+  } else {
+    // Forward backend config string to the HLO instruction.
+    if (auto str = op.getBackendConfig()
+                       .value_or(mlir::Attribute())
+                       .dyn_cast_or_null<mlir::StringAttr>()) {
+      llvm::raw_string_ostream(backend_config) << str.strref();
+    }
+  }
+
   auto& value_map = *ctx.values;
   auto aliasInfo =
       xla::ConvertCustomCallOutputOperandAliasing(op.getOutputOperandAliases());
   auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
+  auto custom_call_schedule =
+      xla::ConvertCustomCallSchedule(op.getCustomCallSchedule());
+  if (!custom_call_schedule.ok()) return failure();
   if (op.getCalledComputations().size() == 1) {
     mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
         op.getCalledComputations()[0].cast<FlatSymbolRefAttr>());
@@ -1481,37 +1543,36 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
         ctx.converter->GetLoweredComputation(callee);
     value_map[result] = xla::CustomCallWithComputation(
         ctx.builder, std::string(op.getCallTargetName()), args, computation,
-        xla::TypeToShape(result.getType()), std::string(op.getBackendConfig()),
+        xla::TypeToShape(result.getType()), backend_config,
         op.getHasSideEffect(), output_operand_aliasing,
         /*literal=*/nullptr,
-        /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
+        /*schedule=*/*custom_call_schedule,
         /*api_version=*/*xla_api_version);
     return success();
   }
 
   if (op.getOperandLayouts() && op.getResultLayouts()) {
     auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
-        op.getOperandTypes(), op.getOperandLayouts().getValue());
+        op.getOperandTypes(), op.getOperandLayouts().value());
     xla::Shape result_shape_with_layout = GetCustomCallResultShapeWithLayout(
-        result.getType(), op.getResultLayouts().getValue());
+        result.getType(), op.getResultLayouts().value());
     value_map[result] = xla::CustomCallWithLayout(
         ctx.builder, std::string(op.getCallTargetName()), args,
-        result_shape_with_layout, operand_shapes_with_layout,
-        std::string(op.getBackendConfig()), op.getHasSideEffect(),
-        output_operand_aliasing,
+        result_shape_with_layout, operand_shapes_with_layout, backend_config,
+        op.getHasSideEffect(), output_operand_aliasing,
         /*literal=*/nullptr,
-        /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
+        /*schedule=*/*custom_call_schedule,
         /*api_version=*/*xla_api_version);
     return success();
   }
 
-  value_map[result] = xla::CustomCall(
-      ctx.builder, std::string(op.getCallTargetName()), args,
-      xla::TypeToShape(result.getType()), std::string(op.getBackendConfig()),
-      op.getHasSideEffect(), output_operand_aliasing,
-      /*literal=*/nullptr,
-      /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
-      /*api_version=*/*xla_api_version);
+  value_map[result] =
+      xla::CustomCall(ctx.builder, std::string(op.getCallTargetName()), args,
+                      xla::TypeToShape(result.getType()), backend_config,
+                      op.getHasSideEffect(), output_operand_aliasing,
+                      /*literal=*/nullptr,
+                      /*schedule=*/*custom_call_schedule,
+                      /*api_version=*/*xla_api_version);
   return success();
 }
 
@@ -2079,7 +2140,7 @@ LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
   for (auto operand : op.getInputs()) operands.push_back(values[operand]);
 
   auto fusion_kind_string =
-      mlir::mhlo::stringifyFusionKind(op.getFusionKind().getValue());
+      mlir::mhlo::stringifyFusionKind(op.getFusionKind().value());
   xla::XlaOp fusion = xla::internal::XlaBuilderFriend::BuildFusion(
       ctx.builder, operands,
       absl::string_view(fusion_kind_string.data(), fusion_kind_string.size()),
@@ -2394,7 +2455,9 @@ LogicalResult ConvertToHloModule::Lower(
       auto* shape = xla::internal::XlaBuilderFriend::GetInstruction(xla_op)
                         ->mutable_shape();
       // TODO(kramm): merge this with ConvertLayout.
-      *shape = ExtractXlaShape(inst).ToProto();
+      mlir::FailureOr<xla::Shape> mlir_shape_or = ExtractXlaShape(inst);
+      if (failed(mlir_shape_or)) return failure();
+      *shape = mlir_shape_or->ToProto();
     }
 
     return success();
@@ -2529,8 +2592,10 @@ LogicalResult ConvertToHloModule::Lower(
           "expected shaped type during constant mhlo -> hlo translation");
     }
 
+    mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(inst);
+    if (failed(shape_or)) return failure();
     auto literal_or =
-        CreateArrayLiteralFromAttr(const_attr, ExtractXlaShape(inst).layout());
+        CreateArrayLiteralFromAttr(const_attr, shape_or->layout());
     if (!literal_or.ok())
       return inst->emitError(literal_or.status().ToString());
     auto constant = xla::ConstantLiteral(builder, literal_or.value());

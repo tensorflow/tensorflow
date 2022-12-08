@@ -183,7 +183,7 @@ StatusOr<se::cuda::BlasLt::Epilogue> GetBlasLtEpilogOp(
   } else if (fusion == FusedComputationType::kBiasAddWithRelu) {
     return se::cuda::BlasLt::Epilogue::kBiasThenReLU;
   } else if (fusion == FusedComputationType::kBiasAddWithGeluApproximate) {
-    return se::cuda::BlasLt::Epilogue::kBiasThenGeLUApproximate;
+    return se::cuda::BlasLt::Epilogue::kBiasThenGELU;
   } else {
     return errors::Internal("Unsupported fusion for BlasLt Matmul");
   }

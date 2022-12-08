@@ -219,7 +219,7 @@ def TFGraph_ReturnOp : TFG_IntrinsicOp<"return",
     similarly for the function results,
   }];
 
-  let arguments = (ins Variadic<AnyType>:$operands,
+  let arguments = (ins Variadic<AnyType>,
                        TFGraph_DictionaryArrayAttr:$control_ret_attrs);
 
   let builders = [

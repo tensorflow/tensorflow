@@ -193,6 +193,11 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       const Tensor& grad_tensor =
           MklGetInput(context, kInputTensorIndexInputGradient);
 
+      // For empty tensor, avg_pool_3d_grad in oneDNN doesn't handle this case
+      if (orig_input_tensor.NumElements() == 0 ||
+          grad_tensor.NumElements() == 0)
+        return;
+
       MklDnnShape orig_input_mkl_shape, grad_mkl_shape;
       GetMklShape(context, kInputTensorIndexInputShape, &orig_input_mkl_shape,
                   this->native_format_);

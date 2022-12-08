@@ -36,24 +36,24 @@ using llvm::Optional;
 //===----------------------------------------------------------------------===//
 
 void ExportOp::build(OpBuilder &builder, OperationState &result,
-                     func::FuncOp function_ref) {
+                     FunctionOpInterface function_ref) {
   result.addAttribute("function_ref", SymbolRefAttr::get(function_ref));
 }
 
 void ExportOp::build(OpBuilder &builder, OperationState &result,
-                     func::FuncOp function_ref, unsigned ordinal) {
+                     FunctionOpInterface function_ref, unsigned ordinal) {
   build(builder, result, function_ref);
   result.addAttribute("ordinal", builder.getI32IntegerAttr(ordinal));
 }
 
 LogicalResult ExportOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   Operation *op = getOperation();
-  auto func = symbolTable.lookupNearestSymbolFrom<func::FuncOp>(
+  auto func = symbolTable.lookupNearestSymbolFrom<FunctionOpInterface>(
       op, getFunctionRefAttr());
 
   // Function reference must reference a valid FuncOp operation.
   if (!func) {
-    return op->emitError() << "func.func op named '" << getFunctionRef()
+    return op->emitError() << "func op named '" << getFunctionRef()
                            << "' not found for export";
   }
 
@@ -65,9 +65,9 @@ Optional<unsigned> ExportOp::ordinal() {
   return llvm::None;
 }
 
-mlir::func::FuncOp ExportOp::exported(mlir::SymbolTable &sym_table) {
-  return sym_table.lookupNearestSymbolFrom<func::FuncOp>(getOperation(),
-                                                         getFunctionRefAttr());
+FunctionOpInterface ExportOp::exported(mlir::SymbolTable &sym_table) {
+  return sym_table.lookupNearestSymbolFrom<FunctionOpInterface>(
+      getOperation(), getFunctionRefAttr());
 }
 
 //===----------------------------------------------------------------------===//
@@ -123,7 +123,7 @@ void TraceOp::build(OpBuilder &builder, OperationState &result,
 
 MutableOperandRange YieldOp::getMutableSuccessorOperands(
     Optional<unsigned> index) {
-  return operandsMutable();
+  return getArgumentsMutable();
 }
 
 }  // namespace runtime

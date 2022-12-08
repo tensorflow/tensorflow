@@ -38,7 +38,8 @@ void TelemetryProfiler::AddEvent(const char* tag, EventType event_type,
       break;
     }
     case EventType::OPERATOR_INVOKE_EVENT:
-    case EventType::DELEGATE_OPERATOR_INVOKE_EVENT: {
+    case EventType::DELEGATE_OPERATOR_INVOKE_EVENT:
+    case EventType::DELEGATE_PROFILED_OPERATOR_INVOKE_EVENT: {
       ReportOpInvokeEvent(tag, metric, event_metadata1, event_metadata2);
       break;
     }
@@ -70,7 +71,8 @@ uint32_t TelemetryProfiler::BeginEvent(const char* tag, EventType event_type,
                                        int64_t event_metadata2) {
   switch (event_type) {
     case EventType::OPERATOR_INVOKE_EVENT:
-    case EventType::DELEGATE_OPERATOR_INVOKE_EVENT: {
+    case EventType::DELEGATE_OPERATOR_INVOKE_EVENT:
+    case EventType::DELEGATE_PROFILED_OPERATOR_INVOKE_EVENT: {
       return ReportBeginOpInvokeEvent(tag, event_metadata1, event_metadata2);
     }
     default:

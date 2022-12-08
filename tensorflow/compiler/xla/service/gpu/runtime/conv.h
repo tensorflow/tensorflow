@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
@@ -60,9 +61,15 @@ struct ConvBackendConfig {
 // Registers XLA Gpu runtime Conv custom calls.
 void RegisterConvCustomCalls(runtime::DirectCustomCallRegistry& registry);
 
+// Add conv arguments and attributes encoding for custom HLO enums and
+// structs, so that we can pass them to custom calls.
+void PopulateConvAttrEncoding(runtime::CustomCallAttrEncodingSet& encoding);
+
 // Cache conv runners between invocations of convolution custom calls.
 class ConvRunnerCache {
  public:
+  using Key = std::pair<::stream_executor::Stream*, int64_t>;
+
   struct Entry {
     MaybeFusedConvRunner* runner;
     GpuConvConfig* config;
@@ -72,12 +79,12 @@ class ConvRunnerCache {
   // the given id, or creates a new one using user-provided config construction
   // function.
   absl::StatusOr<Entry> GetOrCreate(
-      int64_t uid, absl::FunctionRef<absl::StatusOr<GpuConvConfig>()> config);
+      Key key, absl::FunctionRef<absl::StatusOr<GpuConvConfig>()> config);
 
  private:
   mutable absl::Mutex mutex_;
 
-  absl::node_hash_map<int64_t, std::pair<MaybeFusedConvRunner, GpuConvConfig>>
+  absl::node_hash_map<Key, std::pair<MaybeFusedConvRunner, GpuConvConfig>>
       runners_ ABSL_GUARDED_BY(mutex_);
 };
 

@@ -31,9 +31,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/transforms.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 
@@ -79,9 +81,6 @@ void AddLinalgTransformations(OpPassManager& pm,
       options.vector_size, options.reduction_1d_tile_size,
       options.reduction_2d_tile_sizes));
 
-  pm.addNestedPass<FuncOp>(
-      mlir::gml_st::createTransformMatmulForCpuPass(options.matmul_tile_sizes));
-
   if (options.vectorize && options.codegen_transpose)
     pm.addNestedPass<FuncOp>(CreateTileTransposePass());
   pm.addNestedPass<FuncOp>(CreateTileCWisePass(options.vector_size));
@@ -96,6 +95,7 @@ void AddLinalgTransformations(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(CreateTileFillPass(options.vector_size));
   pm.addNestedPass<FuncOp>(mlir::gml_st::createCollapseMaterializeOpsPass());
   pm.addNestedPass<FuncOp>(mlir::gml_st::createVectorizeGmlStLoopsPass());
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createLowerVectorContractPass());
 }
 
 void AddBufferizationPasses(OpPassManager& pm) {
@@ -121,6 +121,11 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(std::make_unique<AddTensorflowProducerVersion>());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addPass(mlir::createCanonicalizerPass());
+
+  // This will add regions to IfOp/WhileOp (turning them into IfRegionOp
+  // and WhileRegionOp), but be aware that those regions will still contain
+  // calls.
+  pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
 
   // Transform TF operation to HLO.
   pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
@@ -168,7 +173,9 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // Transform HLO operations to Linalg and Standard.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeControlFlowPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeSortPass());
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
+  pm.addNestedPass<FuncOp>(xla::cpu::createLegalizeCollectiveOpsPass());
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass(
+      /*enablePrimitiveOps=*/options.enable_xla_cpu_transformations));
   pm.addPass(mlir::mhlo::createLegalizeToArithmeticPass());
   pm.addNestedPass<FuncOp>(
       mlir::mhlo::createLegalizeHloShapeOpsToStandardPass());
@@ -196,8 +203,20 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // Convert complex types.
   pm.addPass(mlir::createConvertComplexToStandardPass());
 
-  // Add linalg passes to perform fusion, tiling, peeling and vectorization.
-  AddLinalgTransformations(pm, options);
+  // Add passes to perform fusion, tiling, peeling and vectorization.
+  if (options.enable_xla_cpu_transformations) {
+    mlir::gml_st::GmlStCPUPipelineOptions gml_st_opts;
+    gml_st_opts.vectorize = options.vectorize;
+    gml_st_opts.vectorSize = options.vector_size;
+    gml_st_opts.reduction1DTileSize = options.reduction_1d_tile_size;
+    gml_st_opts.reduction2DTileSizes = options.reduction_2d_tile_sizes;
+    gml_st_opts.matmulTileSizes = options.matmul_tile_sizes;
+    gml_st_opts.lowerToMmt4d = options.lower_to_mmt4d;
+
+    mlir::gml_st::addTileableOpsTransformationsForCPU(pm, gml_st_opts);
+  } else {
+    AddLinalgTransformations(pm, options);
+  }
 
   // Inline everything, bufferization doesn't model ownership across calls.
   pm.addPass(mlir::createInlinerPass());

@@ -224,14 +224,9 @@ LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(
 
 SubViewOp createSubView(Location loc, Value source, TileOp tile,
                         PatternRewriter& rewriter) {
-  auto asIntArray = [](ArrayAttr array) {
-    return llvm::to_vector(llvm::map_range(array, [](Attribute attr) {
-      return attr.cast<IntegerAttr>().getInt();
-    }));
-  };
   Type memRefType = SubViewOp::inferResultType(
-      source.getType().cast<MemRefType>(), asIntArray(tile.getStaticOffsets()),
-      asIntArray(tile.getStaticSizes()), asIntArray(tile.getStaticStrides()));
+      source.getType().cast<MemRefType>(), tile.getStaticOffsets(),
+      tile.getStaticSizes(), tile.getStaticStrides());
   return rewriter.create<SubViewOp>(
       loc, memRefType, source, tile.getOffsets(), tile.getSizes(),
       tile.getStrides(), tile.getStaticOffsets(), tile.getStaticSizes(),
