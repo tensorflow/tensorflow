@@ -3013,6 +3013,24 @@ func.func @reduce_dim0(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<4xi
 
 // -----
 
+func.func @reduce_dynamic_output(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<?xi32> {
+  %0 = "mhlo.reduce"(%arg0, %arg1) ({
+  ^bb0(%arg3: tensor<i32>, %arg4 : tensor<i32>):
+    %1 = mhlo.maximum %arg3, %arg4 : tensor<i32>
+    "mhlo.return"(%1) : (tensor<i32>) -> ()
+  }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<5x4xi32>, tensor<i32>) -> tensor<?xi32>
+  func.return %0 : tensor<?xi32>
+}
+
+// Regression test: just check that this lowers successfully.
+// CHECK-LABEL: @reduce_dynamic_output
+// CHECK: linalg.generic
+
+// CHECK-PRIMITIVE-LABEL: @reduce_dynamic_output
+// CHECK-PRIMITIVE: linalg.reduce
+
+// -----
+
 func.func @reduce_init_const(%arg0: tensor<1x10xf32>) -> tensor<1xf32> {
   %cst = arith.constant dense<0xFF800000> : tensor<f32>
   %0 = "mhlo.reduce"(%arg0, %cst) ({

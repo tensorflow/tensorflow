@@ -2186,12 +2186,24 @@ struct ReduceOpToReduceConverter : public OpConversionPattern<mhlo::ReduceOp> {
       operandTypes.push_back(operandType);
       initValue = rewriter.createOrFold<tensor::ExtractOp>(loc, initValue);
       auto tensorResultType = resultType.cast<RankedTensorType>();
+      // For linalg.reduce, the result type's dimensions must match the input's
+      // dimensions, whereas MHLO allows replacing static dimensions with
+      // dynamic ones.
+      SmallVector<int64_t> resultShape;
+      SmallVector<Value, 8> dynShape;
+      for (auto [index, dim] :
+           llvm::enumerate(operand.getType().cast<ShapedType>().getShape())) {
+        if (!llvm::is_contained(reductionDims, index)) {
+          resultShape.push_back(dim);
+          if (ShapedType::isDynamic(dim)) {
+            dynShape.push_back(
+                rewriter.create<tensor::DimOp>(loc, operand, index));
+          }
+        }
+      }
 
-      SmallVector<Value, 8> dynShape = getReduceOpEmptyTensorDynSizes(
-          rewriter, loc, operand, tensorResultType, reductionDims);
       Value emptyTensor = rewriter.create<tensor::EmptyOp>(
-          loc, tensorResultType.getShape(), tensorResultType.getElementType(),
-          dynShape);
+          loc, resultShape, tensorResultType.getElementType(), dynShape);
       Value filledTensor =
           rewriter.create<linalg::FillOp>(loc, initValue, emptyTensor).result();
       outputs.push_back(filledTensor);
@@ -2230,7 +2242,14 @@ struct ReduceOpToReduceConverter : public OpConversionPattern<mhlo::ReduceOp> {
     rewriter.applySignatureConversion(&region, signatureConverter,
                                       getTypeConverter());
 
-    rewriter.replaceOp(op, linalgOp.getResults());
+    // Cast the result to the correct type.
+    SmallVector<Value> results;
+    for (auto [result, resultType] :
+         llvm::zip(linalgOp.getResults(), resultTypes)) {
+      results.push_back(
+          rewriter.createOrFold<tensor::CastOp>(loc, resultType, result));
+    }
+    rewriter.replaceOp(op, results);
     return success();
   }
 };
