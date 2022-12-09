@@ -36,9 +36,9 @@ func.func @reduce_add_static(%input: tensor<100x10xf32>,
 //       CHECK:           %[[OUT_SLICE_2:.*]] = gml_st.materialize
 
 //       CHECK:           %[[REDUCED:.*]] = linalg.reduce
-//  CHECK-NEXT:             ins(%[[IN_SLICE_2]] : tensor<2x?xf32>)
-//  CHECK-NEXT:             outs(%[[OUT_SLICE_2]] : tensor<?xf32>)
-//  CHECK-NEXT:             dimensions = [0]
+//  CHECK-SAME:             ins(%[[IN_SLICE_2]] : tensor<2x?xf32>)
+//  CHECK-SAME:             outs(%[[OUT_SLICE_2]] : tensor<?xf32>)
+//  CHECK-SAME:             dimensions = [0]
 
 //       CHECK:           gml_st.set_yield %[[REDUCED]]
 //       CHECK:         gml_st.set_yield %[[FOR]]
@@ -153,14 +153,14 @@ func.func @reduce_map_fuse(%arg0: tensor<10x100xf32>,
 //       CHECK:           %[[ARG1_SLICE_2:.*]] = gml_st.materialize
 //       CHECK:           %[[INIT_SLICE_2:.*]] = gml_st.materialize
 //       CHECK:           %[[MAPPED:.*]] = linalg.map
-//  CHECK-NEXT:             ins(%[[ARG0_SLICE_2]], %[[ARG1_SLICE_2]]
-//  CHECK-NEXT:             outs(%[[INIT_SLICE_2]] : tensor<?x2xf32>)
+//  CHECK-SAME:             ins(%[[ARG0_SLICE_2]], %[[ARG1_SLICE_2]]
+//  CHECK-SAME:             outs(%[[INIT_SLICE_2]] : tensor<?x2xf32>)
 
 //       CHECK:           %[[OUT_SLICE_2:.*]] = gml_st.materialize
 //       CHECK:           %[[REDUCED:.*]] = linalg.reduce
-//  CHECK-NEXT:             ins(%[[MAPPED]] : tensor<?x2xf32>)
-//  CHECK-NEXT:             outs(%[[OUT_SLICE_2]] : tensor<?xf32>)
-//  CHECK-NEXT:             dimensions = [1]
+//  CHECK-SAME:             ins(%[[MAPPED]] : tensor<?x2xf32>)
+//  CHECK-SAME:             outs(%[[OUT_SLICE_2]] : tensor<?xf32>)
+//  CHECK-SAME:             dimensions = [1]
 
 //       CHECK:           gml_st.set_yield %[[REDUCED]]
 //       CHECK:         gml_st.set_yield %[[FOR]]
@@ -204,16 +204,16 @@ func.func @reduce_1d_static(%arg0: tensor<100xf32>) -> tensor<f32> {
 //       CHECK:   %[[INIT_TILE:.*]] = gml_st.tile [0] [8] [1]
 //       CHECK:   %[[INIT_SLICE:.*]] = gml_st.materialize %[[ACC]][%[[INIT_TILE]]]
 //       CHECK:   %[[TILED_REDUCE:.*]] = linalg.reduce
-//  CHECK-NEXT:     ins(%[[SHAPED_SLICE]]
-//  CHECK-NEXT:     outs(%[[INIT_SLICE]]
-//  CHECK-NEXT:     dimensions = [0]
+//  CHECK-SAME:     ins(%[[SHAPED_SLICE]]
+//  CHECK-SAME:     outs(%[[INIT_SLICE]]
+//  CHECK-SAME:     dimensions = [0]
 //       CHECK:   gml_st.set_yield %[[TILED_REDUCE]]
 //  CHECK-NEXT: } : tensor<8xf32>
 
 //       CHECK: %[[HORIZONTAL_REDUCE:.*]] = linalg.reduce
-//  CHECK-NEXT:   ins(%[[TILE_RESULT]]
-//  CHECK-NEXT:   outs(%[[FILL0]]
-//  CHECK-NEXT:   dimensions = [0]
+//  CHECK-SAME:   ins(%[[TILE_RESULT]]
+//  CHECK-SAME:   outs(%[[FILL0]]
+//  CHECK-SAME:   dimensions = [0]
 
 //       CHECK: %[[REMAINDER_RESULT:.*]] = gml_st.for (%[[J:.*]]) = (%[[C96]]) to
 //  CHECK-SAME:     (%[[C100]]) step (%[[C32]]) outs (%[[ACC1:.*]] = %[[HORIZONTAL_REDUCE]]
@@ -222,9 +222,9 @@ func.func @reduce_1d_static(%arg0: tensor<100xf32>) -> tensor<f32> {
 //       CHECK:   %[[INIT_TILE1:.*]] = gml_st.tile [] [] []
 //       CHECK:   %[[INIT_SLICE1:.*]] = gml_st.materialize %[[ACC]][%[[INIT_TILE1]]]
 //       CHECK:   %[[REMAINDER_REDUCE:.*]] = linalg.reduce
-//  CHECK-NEXT:     ins(%[[INPUT_SLICE1]]
-//  CHECK-NEXT:     outs(%[[INIT_SLICE1]]
-//  CHECK-NEXT:     dimensions = [0]
+//  CHECK-SAME:     ins(%[[INPUT_SLICE1]]
+//  CHECK-SAME:     outs(%[[INIT_SLICE1]]
+//  CHECK-SAME:     dimensions = [0]
 //       CHECK:   gml_st.set_yield %[[REMAINDER_REDUCE]]
 //  CHECK-NEXT: } : tensor<f32>
 //       CHECK: return %[[REMAINDER_RESULT]]
