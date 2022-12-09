@@ -1105,12 +1105,16 @@ LogicalResult DotGeneralOp::verify() {
     auto rhsShape = rhsType.getShape();
 
     for (auto [lhs, rhs] : llvm::zip(lhsBatchingDims, rhsBatchingDims)) {
+      if (hlo::isDynamicDimSize(lhsShape[lhs])) continue;
+      if (hlo::isDynamicDimSize(rhsShape[rhs])) continue;
       if (lhsShape[lhs] != rhsShape[rhs]) {
         return emitOpError() << "batching dimension sizes must match for "
                                 "lhs/rhs";
       }
     }
     for (auto [lhs, rhs] : llvm::zip(lhsContractingDims, rhsContractingDims)) {
+      if (hlo::isDynamicDimSize(lhsShape[lhs])) continue;
+      if (hlo::isDynamicDimSize(rhsShape[rhs])) continue;
       if (lhsShape[lhs] != rhsShape[rhs]) {
         return emitOpError() << "contracting dimension sizes must match for "
                                 "lhs/rhs";
