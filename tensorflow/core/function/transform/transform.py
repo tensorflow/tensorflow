@@ -29,6 +29,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import custom_gradient as custom_gradient_lib
 from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import handle_data_util
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import compat
 
 _TensorType = Union[ops.EagerTensor, ops.Tensor]
@@ -310,9 +311,11 @@ def _replicate_gradient_functions(
     try:
       grad_fn = def_function.function(custom_gradient).get_concrete_function(
           None, *op.inputs)
-    except Exception as e:
-      raise ValueError("Error when tracing gradients for",
-                       replicated_graph) from e
+    except Exception:  # pylint: disable=broad-except
+      # TODO(xjun): Figure out why tracing of custom_gradient will fail.
+      tf_logging.exception(
+          f"Error when tracing gradients for {replicated_graph}.")
+      continue
 
     # Re-bind all captures to values within the replicated graph.
     remapped_captures = []
