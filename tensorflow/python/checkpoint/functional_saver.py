@@ -69,13 +69,14 @@ class _SingleDeviceSaver(object):
           # A tensor value of `None` indicates that this SaveableObject gets
           # recorded in the object graph, but that no value is saved in the
           # checkpoint.
-          if tensor_value is None:
-            continue
-          tensors.append(tensor_value)
+          if tensor_value is not None:
+            tensor_names.append(tensor.name)
+            tensors.append(tensor_value)
+            slice_specs.append(tensor.slice_spec)
         else:
+          tensor_names.append(checkpoint_key)
           tensors.append(tensor)
-        tensor_names.append(checkpoint_key)
-        slice_specs.append(slice_spec)
+          slice_specs.append(slice_spec)
     save_device = options.experimental_io_device or (
         len(tensors) and saveable_object_util.set_cpu0(tensors[0].device))
     save_device = save_device or "cpu:0"
@@ -101,8 +102,12 @@ class _SingleDeviceSaver(object):
     for checkpoint_key, tensor_slices in self._tensor_slice_dict.items():
       for slice_spec, tensor in tensor_slices.items():
         tensor_dtypes.append(tensor.dtype)
-        slice_specs.append(slice_spec)
-        tensor_names.append(checkpoint_key)
+        if isinstance(tensor, saveable_object.SaveSpec):
+          slice_specs.append(tensor.slice_spec)
+          tensor_names.append(tensor.name)
+        else:
+          slice_specs.append(slice_spec)
+          tensor_names.append(checkpoint_key)
 
     restore_device = options.experimental_io_device or "cpu:0"
     with ops.device(restore_device):
