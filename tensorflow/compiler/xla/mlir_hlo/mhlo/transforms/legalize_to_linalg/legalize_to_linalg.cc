@@ -149,6 +149,14 @@ Value extractIndexFromTensor(OpBuilder& builder, Location loc, Value tensor,
                    loc, builder.getIndexType(), extracted);
 }
 
+/// Ensures a tensor has the same shape (not including the element type) as
+/// another.
+Value coerceTensorShape(OpBuilder& builder, Location loc,
+                        TypedValue<ShapedType> value, ShapedType targetType) {
+  return builder.createOrFold<tensor::CastOp>(
+      loc, targetType.cloneWith(None, value.getType().getElementType()), value);
+}
+
 /// Returns true if the given `dimensionNumbers` from a mhlo.convolution op
 /// follows a canonical form:
 ///
@@ -1984,11 +1992,15 @@ class MapOpToMapConverter : public OpConversionPattern<mhlo::MapOp> {
            "Expected a pointwise map");
 
     Location loc = op.getLoc();
-    Value output =
-        getEmptyTensorFor(rewriter, loc, resultType, op, adaptor.getOperands());
+    Value operand0 = adaptor.getOperands()[0];
+    Value operand1 = coerceTensorShape(rewriter, loc, adaptor.getOperands()[1],
+                                       operand0.getType());
+    Value output = rewriter.create<tensor::EmptyOp>(
+        loc, tensor::getMixedSizes(rewriter, loc, operand0),
+        resultType.getElementType());
 
     auto linalgOp = rewriter.create<linalg::MapOp>(
-        loc, adaptor.getOperands(), output,
+        loc, ValueRange{operand0, operand1}, output,
         /*bodyBuild=*/nullptr, linalg::getPrunedAttributeList(op));
 
     // Convert the signature of the body. We scalarize the operands and add a
@@ -2006,7 +2018,9 @@ class MapOpToMapConverter : public OpConversionPattern<mhlo::MapOp> {
 
     rewriter.applySignatureConversion(&region, signatureConverter,
                                       getTypeConverter());
-    rewriter.replaceOp(op, linalgOp.getResults());
+    auto result = rewriter.createOrFold<tensor::CastOp>(loc, resultType,
+                                                        linalgOp.getResults());
+    rewriter.replaceOp(op, result);
     return success();
   }
 };
@@ -3845,17 +3859,22 @@ class SelectOpToMapConverter : public OpConversionPattern<mhlo::SelectOp> {
     const bool isScalarPred = isScalar(op.getPred());
 
     Value predValue;
-    ValueRange mappedInputs = adaptor.getOperands();
+    SmallVector<Value> mappedInputs = adaptor.getOperands();
     // If predicate is a scalar, do not pass it as an argument to linalg.map,
     // because linalg.map does not support broadcasting scalar values. Instead,
     // extract the value and use it in the map block directly.
     if (isScalarPred) {
       predValue = rewriter.create<tensor::ExtractOp>(loc, adaptor.getPred());
-      mappedInputs = mappedInputs.drop_front();
+      mappedInputs.erase(mappedInputs.begin());
     }
 
     auto emptyTensor =
         getEmptyTensorFor(rewriter, loc, *resultTy, op, op.getOperands());
+
+    // Cast all inputs to the same shape as the init tensor.
+    for (auto& input : mappedInputs) {
+      input = coerceTensorShape(rewriter, loc, input, emptyTensor.getType());
+    }
 
     auto linalgOp = rewriter.create<linalg::MapOp>(
         loc, mappedInputs, emptyTensor,
@@ -3916,9 +3935,15 @@ class PointwiseToLinalgMapConverter : public OpConversionPattern<OpTy> {
       return failure();
 
     // Find input/output values and types.
-    ValueRange inputs = adaptor.getOperands();
     Value emptyTensor =
         getEmptyTensorFor(rewriter, loc, *resultTy, op, adaptor.getOperands());
+
+    // Cast all inputs to the same shape as the init tensor.
+    SmallVector<Value> inputs;
+    for (Value input : adaptor.getOperands()) {
+      inputs.push_back(
+          coerceTensorShape(rewriter, loc, input, emptyTensor.getType()));
+    }
     auto mapOp = rewriter.create<linalg::MapOp>(
         loc, inputs, emptyTensor,
         [&](OpBuilder& b, Location loc, ValueRange args) {

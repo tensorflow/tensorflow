@@ -926,6 +926,16 @@ func.func @select_scalar_pred_dyn(%pred : tensor<i1>, %lhs: tensor<2x?xf32>, %rh
 
 // -----
 
+// CHECK-LABEL: func @select_mixed
+func.func @select_mixed(%pred: tensor<2x?xi1>, %lhs: tensor<?x2xf32>,
+             %rhs: tensor<2x2xf32>) -> tensor<?x2xf32> {
+  %0 = "mhlo.select"(%pred, %lhs, %rhs)
+         : (tensor<2x?xi1>, tensor<?x2xf32>, tensor<2x2xf32>) -> (tensor<?x2xf32>)
+  func.return %0 : tensor<?x2xf32>
+}
+
+// -----
+
 // CHECK-DAG: #[[OPERAND_MAP:.+]] = affine_map<(d0, d1, d2) -> ()>
 // CHECK-DAG: #[[RESULT_MAP:.+]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
 // CHECK-LABEL: func @broadcast_scalar
@@ -2874,6 +2884,21 @@ func.func @clamp_dynamic(%lb : tensor<?xf32>, %x : tensor<?xf32>, %ub : tensor<?
 
 // -----
 
+func.func @clamp_mixed(%lb : tensor<4xf32>, %x : tensor<?xf32>, %ub : tensor<?xf32>)
+    -> tensor<?xf32> {
+  %0 = "mhlo.clamp"(%lb, %x, %ub) : (tensor<4xf32>, tensor<?xf32>,
+      tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: @clamp_mixed
+// CHECK: linalg.generic
+
+// CHECK-PRIMITIVE-LABEL: @clamp_mixed
+// CHECK-PRIMITIVE: linalg.map
+
+// -----
+
 func.func @map_compare(%arg0: tensor<?xcomplex<f32>>,
                        %arg1: tensor<?xcomplex<f32>>) -> tensor<?xi1> {
   %0 = "mhlo.map"(%arg0, %arg1) ({
@@ -2921,6 +2946,26 @@ func.func @map_compare(%arg0: tensor<?xcomplex<f32>>,
 // CHECK-PRIMITIVE: linalg.yield %[[CMP]] : i1
 // CHECK-PRIMITIVE: }
 // CHECK-PRIMITIVE: return %[[MAP]] : tensor<?xi1>
+
+// -----
+
+func.func @map_mixed(%arg0: tensor<?xf32>,
+                     %arg1: tensor<4xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.map"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {dimensions = dense<0> : tensor<1xi64>}
+  : (tensor<?xf32>, tensor<4xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: @map_mixed
+// CHECK: linalg.generic
+
+// CHECK-PRIMITIVE-LABEL: @map_mixed
+// CHECK-PRIMITIVE: linalg.map
+
 // -----
 
 func.func @reduce_add(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<5xi32> {
