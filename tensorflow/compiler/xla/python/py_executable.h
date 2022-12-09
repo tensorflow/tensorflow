@@ -180,7 +180,7 @@ class PyLoadedExecutable
   // Short-term escape hatch to get PjRtLoadedExecutable from PyExecutable.
   // TODO(hyeontaek): Migrate all users of this method to be agnostic of PjRt.
   PjRtLoadedExecutable* pjrt_executable() const {
-    auto* exec = llvm::dyn_cast_or_null<ifrt::PjRtLoadedExecutable>(
+    auto* exec = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleLoadedExecutable>(
         ifrt_loaded_executable_.get());
     if (exec == nullptr) {
       throw XlaRuntimeError(
@@ -189,7 +189,7 @@ class PyLoadedExecutable
     return exec->pjrt_loaded_executable();
   }
   std::shared_ptr<PjRtLoadedExecutable> shared_ptr_pjrt_executable() {
-    auto* exec = llvm::dyn_cast_or_null<ifrt::PjRtLoadedExecutable>(
+    auto* exec = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleLoadedExecutable>(
         ifrt_loaded_executable_.get());
     if (exec == nullptr) {
       throw XlaRuntimeError(

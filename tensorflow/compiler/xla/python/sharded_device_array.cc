@@ -153,7 +153,8 @@ ShardedDeviceArray::pjrt_buffers() {
 
 #ifdef JAX_ENABLE_IFRT
   TF_ASSIGN_OR_RETURN(auto* ifrt_array, ifrt_array());
-  auto* pjrt_array = llvm::dyn_cast_or_null<xla::ifrt::PjRtArray>(ifrt_array);
+  auto* pjrt_array =
+      llvm::dyn_cast_or_null<xla::ifrt::PjRtCompatibleArray>(ifrt_array);
   if (pjrt_array == nullptr) {
     throw xla::XlaRuntimeError(
         "This operation is implemented for a PjRt-compatible backend only.");

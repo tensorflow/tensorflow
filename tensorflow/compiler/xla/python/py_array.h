@@ -181,7 +181,8 @@ class PyArray : public pybind11::object {
     if (ifrt_array_ptr == nullptr) {
       return {};
     }
-    auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtArray>(ifrt_array_ptr);
+    auto* arr =
+        llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array_ptr);
     if (arr == nullptr) {
       throw XlaRuntimeError(
           "This operation is implemented for a PjRt-compatible backend only.");

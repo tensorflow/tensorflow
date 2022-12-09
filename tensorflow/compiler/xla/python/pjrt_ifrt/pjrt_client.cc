@@ -85,7 +85,7 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
       return InvalidArgument("Only PjRtArray is supported: arrays[%d]=%s", i,
                              arrays[i]->DebugString());
     }
-    const auto* array = static_cast<const PjRtArray*>(arrays[i]);
+    auto* array = static_cast<PjRtArray*>(arrays[i]);
     if (array->dtype() != dtype) {
       return InvalidArgument(
           "Every input must have the same dtype: %s (shard 0) vs. %s (shard "

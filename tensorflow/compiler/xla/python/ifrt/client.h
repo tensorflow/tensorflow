@@ -99,7 +99,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
 
   // TODO(hyeontaek): Potentially remove this method to encourage supporting
   // only ahead-of-time compilation.
-  virtual Compiler* GetDefaultCompiler() const = 0;
+  virtual Compiler* GetDefaultCompiler() = 0;
 
   static char ID;  // NOLINT
 };

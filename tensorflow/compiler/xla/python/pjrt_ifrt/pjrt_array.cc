@@ -91,8 +91,8 @@ StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
 StatusOr<std::unique_ptr<Array>> PjRtArray::Create(
     Client* client, DType dtype, Shape shape,
     std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers) {
-  if (!llvm::isa_and_nonnull<PjRtClient>(client)) {
-    return InvalidArgument("PjRtClient expected");
+  if (!llvm::isa_and_nonnull<PjRtCompatibleClient>(client)) {
+    return InvalidArgument("PjRtCompatibleClient expected");
   }
   if (pjrt_buffers.empty()) {
     return InvalidArgument("pjrt_buffers must be non-empty");
@@ -101,22 +101,22 @@ StatusOr<std::unique_ptr<Array>> PjRtArray::Create(
     return InvalidArgument("device and buffer counts mismatch: %d vs. %d",
                            sharding->devices().size(), pjrt_buffers.size());
   }
-  return std::unique_ptr<Array>(
-      new PjRtArray(static_cast<PjRtClient*>(client), dtype, std::move(shape),
-                    std::move(sharding), std::move(pjrt_buffers)));
+  return std::unique_ptr<Array>(new PjRtArray(
+      static_cast<PjRtCompatibleClient*>(client), dtype, std::move(shape),
+      std::move(sharding), std::move(pjrt_buffers)));
 }
 
 StatusOr<std::unique_ptr<Array>> PjRtArray::Create(
     Client* client, std::shared_ptr<PjRtBuffer> pjrt_buffer) {
-  if (!llvm::isa_and_nonnull<PjRtClient>(client)) {
-    return InvalidArgument("PjRtClient expected");
+  if (!llvm::isa_and_nonnull<PjRtCompatibleClient>(client)) {
+    return InvalidArgument("PjRtCompatibleClient expected");
   }
   TF_ASSIGN_OR_RETURN(auto dtype,
                       ToDType(pjrt_buffer->on_device_shape().element_type()));
   Shape shape(pjrt_buffer->on_device_shape().dimensions());
   auto sharding = SingleDeviceSharding::Create(pjrt_buffer->device());
   return std::unique_ptr<Array>(new PjRtArray(
-      static_cast<PjRtClient*>(client), dtype, std::move(shape),
+      static_cast<PjRtCompatibleClient*>(client), dtype, std::move(shape),
       std::move(sharding), PjRtBuffers({std::move(pjrt_buffer)})));
 }
 
@@ -149,7 +149,7 @@ StatusOr<std::unique_ptr<Array>> PjRtArray::Create(Client* client, Shape shape,
       std::move(pjrt_buffers));
 }
 
-PjRtArray::PjRtArray(PjRtClient* client, DType dtype, Shape shape,
+PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
                      std::shared_ptr<const Sharding> sharding,
                      PjRtBuffers pjrt_buffers)
     : client_(client),

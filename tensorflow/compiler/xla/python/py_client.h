@@ -112,7 +112,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // TODO(hyeontaek): Migrate all users of this method to be agnostic of PjRt.
   xla::PjRtClient* pjrt_client() const {
     auto* pjrt_client =
-        llvm::dyn_cast_or_null<ifrt::PjRtClient>(ifrt_client_.get());
+        llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(ifrt_client_.get());
     if (pjrt_client == nullptr) {
       throw XlaRuntimeError(
           "This operation is implemented for a PjRt-compatible backend only.");
@@ -121,7 +121,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   }
   std::shared_ptr<PjRtClient> shared_ptr_pjrt_client() {
     auto* pjrt_client =
-        llvm::dyn_cast_or_null<ifrt::PjRtClient>(ifrt_client_.get());
+        llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(ifrt_client_.get());
     if (pjrt_client == nullptr) {
       throw XlaRuntimeError(
           "This operation is implemented for a PjRt-compatible backend only.");

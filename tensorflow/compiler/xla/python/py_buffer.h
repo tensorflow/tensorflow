@@ -87,7 +87,8 @@ class PyBuffer {
   // Short-term escape hatch to get PjRtBuffer from PyBuffer.
   // TODO(hyeontaek): Migrate all users of this method to be agnostic of PjRt.
   PjRtBuffer* pjrt_buffer() const {
-    auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtArray>(ifrt_array_.get());
+    auto* arr =
+        llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array_.get());
     if (arr == nullptr) {
       throw XlaRuntimeError(
           "This operation is implemented for a PjRt-compatible backend only.");
@@ -98,7 +99,8 @@ class PyBuffer {
   // Short-term escape hatch to get PjRtBuffer from PyBuffer.
   // TODO(hyeontaek): Migrate all users of this method to be agnostic of PjRt.
   std::shared_ptr<PjRtBuffer> shared_ptr_pjrt_buffer() const {
-    auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtArray>(ifrt_array_.get());
+    auto* arr =
+        llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array_.get());
     if (arr == nullptr) {
       throw XlaRuntimeError(
           "This operation is implemented for a PjRt-compatible backend only.");
@@ -406,7 +408,8 @@ class PyShardedBuffer {
 #ifdef JAX_ENABLE_IFRT
   PyBuffer::object GetPyBuffer(int device_id) const {
     // TODO(hyeontaek): Remove this method. This method will not scale well.
-    auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtArray>(ifrt_array_.get());
+    auto* arr =
+        llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array_.get());
     if (arr == nullptr) {
       throw XlaRuntimeError(
           "This operation is implemented for a PjRt-compatible backend only.");
@@ -446,7 +449,8 @@ class PyShardedBuffer {
   // Short-term escape hatch to get PjRtBuffer from PyShardedBuffer.
   // TODO(hyeontaek): Migrate all users of this method to be agnostic of PjRt.
   PjRtBuffer* pjrt_buffer(int device_id) const {
-    auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtArray>(ifrt_array_.get());
+    auto* arr =
+        llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array_.get());
     if (arr == nullptr) {
       throw XlaRuntimeError(
           "This operation is implemented for a PjRt-compatible backend only.");

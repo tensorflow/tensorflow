@@ -206,15 +206,15 @@ Status PyClient::Defragment() {
       if (array->ifrt_array == nullptr) {
         continue;
       }
-      auto* arr =
-          llvm::dyn_cast_or_null<ifrt::PjRtArray>(array->ifrt_array.get());
+      auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(
+          array->ifrt_array.get());
       if (arr == nullptr) {
         throw XlaRuntimeError(
             "This operation is implemented for a PjRt-compatible backend "
             "only.");
       }
-      absl::Span<std::shared_ptr<PjRtBuffer>> pjrt_buffers =
-          arr->pjrt_buffers();
+      TF_ASSIGN_OR_RETURN(absl::Span<std::shared_ptr<PjRtBuffer>> pjrt_buffers,
+                          arr->mutable_pjrt_buffers());
 #else
       absl::Span<std::shared_ptr<PjRtBuffer>> pjrt_buffers =
           absl::MakeSpan(array->pjrt_buffers);
@@ -669,8 +669,8 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
     if (array->ifrt_array == nullptr) {
       continue;
     }
-    auto* arr =
-        llvm::dyn_cast_or_null<ifrt::PjRtArray>(array->ifrt_array.get());
+    auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(
+        array->ifrt_array.get());
     // TODO(hyeontaek): Support non-PjRt Arrays.
     if (arr == nullptr) {
       throw XlaRuntimeError(
