@@ -69,6 +69,8 @@
     *   Updated `tf.keras.layers.BatchNormalization` to support masking of the
         inputs (`mask` argument) when computing the mean and variance.
     *   Add `tf.keras.layers.Identity`, a placeholder pass-through layer.
+    *   Add `show_trainable` option to `tf.keras.utils.model_to_dot` to display
+        layer trainable status in model plots.
 
 *   `tf.experimental.dtensor`:
 
