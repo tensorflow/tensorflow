@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -100,26 +101,42 @@ struct GpuTargetConfig {
   GpuTargetConfig() = default;
   explicit GpuTargetConfig(const stream_executor::GpuTargetConfigProto& proto)
       : gpu_device_info(proto.gpu_device_info()),
-        cuda_compute_capability(proto.cuda_compute_capability()),
-        rocm_compute_capability(proto.rocm_compute_capability()),
-        platform_name(proto.platform_name()) {}
+        platform_name(proto.platform_name()) {
+    if (proto.has_cuda_compute_capability()) {
+      stream_executor::CudaComputeCapability cuda_compute_capability(
+          proto.cuda_compute_capability());
+      gpu_version = cuda_compute_capability;
+    } else {
+      CHECK(proto.has_rocm_compute_capability());
+      stream_executor::RocmComputeCapability rocm_compute_capability(
+          proto.rocm_compute_capability());
+      gpu_version = rocm_compute_capability;
+    }
+  }
 
   stream_executor::GpuTargetConfigProto ToProto() const {
     stream_executor::GpuTargetConfigProto proto;
     *proto.mutable_gpu_device_info() = gpu_device_info.ToProto();
-    *proto.mutable_cuda_compute_capability() =
-        cuda_compute_capability.ToProto();
-    *proto.mutable_rocm_compute_capability() =
-        rocm_compute_capability.ToProto();
+
+    if (std::holds_alternative<stream_executor::CudaComputeCapability>(
+            gpu_version)) {
+      auto cuda_compute_capability =
+          std::get<stream_executor::CudaComputeCapability>(gpu_version);
+      *proto.mutable_cuda_compute_capability() =
+          cuda_compute_capability.ToProto();
+    } else {
+      auto rocm_compute_capability =
+          std::get<stream_executor::RocmComputeCapability>(gpu_version);
+      *proto.mutable_rocm_compute_capability() =
+          rocm_compute_capability.ToProto();
+    }
+
     proto.set_platform_name(platform_name);
     return proto;
   }
 
   GpuDeviceInfo gpu_device_info;
-  // CUDA "CC" major value, -1 if not available.
-  stream_executor::CudaComputeCapability cuda_compute_capability{-1, -1};
-  // ROCm gfx arch,  "gfx000" if not available.
-  stream_executor::RocmComputeCapability rocm_compute_capability{"gfx000"};
+  GpuVersion gpu_version;
   std::string platform_name;
 };
 

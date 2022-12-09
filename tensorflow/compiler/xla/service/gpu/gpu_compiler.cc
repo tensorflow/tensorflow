@@ -167,6 +167,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
@@ -1543,14 +1544,26 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
     const std::any& target_config = options.target_config();
     auto* gpu_target_config = std::any_cast<GpuTargetConfig>(&target_config);
+
     if (gpu_target_config) {
+      // CUDA "CC" major value, -1 if not available.
+      se::CudaComputeCapability cuda_compute_capability{-1, -1};
+      // ROCm gfx arch,  "gfx000" if not available.
+      se::RocmComputeCapability rocm_compute_capability{"gfx000"};
+      if (auto* cuda = std::get_if<se::CudaComputeCapability>(
+              &(gpu_target_config->gpu_version))) {
+        cuda_compute_capability = *cuda;
+      } else {
+        rocm_compute_capability =
+            std::get<se::RocmComputeCapability>(gpu_target_config->gpu_version);
+      }
+
       TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
           module.get(), &llvm_context, target_triple_, data_layout_,
           gpu_target_config->platform_name, options.PlatformId(),
-          gpu_target_config->gpu_device_info,
-          gpu_target_config->cuda_compute_capability,
-          gpu_target_config->rocm_compute_capability, GetCanShareBuffer(),
-          pointer_size_, &compile_module_results));
+          gpu_target_config->gpu_device_info, cuda_compute_capability,
+          rocm_compute_capability, GetCanShareBuffer(), pointer_size_,
+          &compile_module_results));
     } else {
       CHECK(options.executor() != nullptr);
       auto stream_exec = options.executor();
@@ -1576,7 +1589,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
           backend_result,
           CompileToTargetBinary(
               module->config(), std::move(compile_module_results.llvm_module),
-              gpu_target_config->cuda_compute_capability, options.executor(),
+              gpu_target_config->gpu_version, options.executor(),
               {options.device_allocator()}, module.get()));
     } else {
       TF_ASSIGN_OR_RETURN(
