@@ -6984,25 +6984,31 @@ xla_cc_binary(
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/util:command_line_flags",
+        "@stablehlo//:register",
     ]),
 )
 
 # A simple test of xla_aot_compile which generates an output file from an mhlo file.
 xla_aot_compile_cpu(
     name = "xla_aot_compile_test_cpu_executable",
-    mhlo = "xla_aot_compile_test.mlir",
+    module = "xla_aot_compile_test.mlir",
+)
+
+xla_aot_compile_cpu(
+    name = "xla_aot_compile_stablehlo_test_cpu_executable",
+    module = "xla_aot_compile_stablehlo_test.mlir",
 )
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable",
     gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
-    mhlo = "xla_aot_compile_test.mlir",
+    module = "xla_aot_compile_test.mlir",
 )
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_constant",
     gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
-    mhlo = "xla_aot_compile_test_constant.mlir",
+    module = "xla_aot_compile_test_constant.mlir",
 )
 
 tf_cc_test(
@@ -7021,6 +7027,31 @@ tf_cc_test(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:resource_loader",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:test",
+    ]),
+)
+
+tf_cc_test(
+    name = "xla_aot_compile_stablehlo_cpu_test",
+    srcs = if_cuda_is_configured(["xla_aot_compile_stablehlo_cpu_test.cc"]),
+    data = if_cuda_is_configured([
+        ":xla_aot_compile_stablehlo_test_cpu_executable",
+    ]),
+    tags = ["no_oss"],
+    deps = if_cuda_is_configured([
+        ":cpu_plugin",
+        ":platform_util",
+        "@com_google_googletest//:gtest_main",
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:resource_loader",
