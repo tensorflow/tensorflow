@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker_v2
@@ -28,7 +29,8 @@ from tensorflow.python.platform import test
 
 class DilationTest(test.TestCase):
 
-  def _VerifyValues(self, image, kernel, strides, rates, padding, out, use_gpu):
+  def _VerifyValues(self, image, kernel, strides, rates, padding, out, use_gpu,
+                    dtype=dtypes.float32):
     """Verifies the output values of the dilation function.
 
     Args:
@@ -45,8 +47,8 @@ class DilationTest(test.TestCase):
 
     with self.cached_session(use_gpu=use_gpu):
       out_tensor = nn_ops.dilation2d(
-          constant_op.constant(image),
-          constant_op.constant(kernel),
+          constant_op.constant(image, dtype=dtype),
+          constant_op.constant(kernel, dtype=dtype),
           strides=strides,
           rates=rates,
           padding=padding,
@@ -180,8 +182,20 @@ class DilationTest(test.TestCase):
       self._testDilationSamePaddingRate(use_gpu)
       self._testDilationValidPaddingUnevenStride(use_gpu)
 
+  def testDilationBfloat16(self):
+    for use_gpu in True, False:
+      self._VerifyValues(
+          image=[[[[.1], [.2]], [[.3], [.4]]]],
+          kernel=[[[.4], [.3]], [[.1], [.0]]],
+          strides=[1, 1],
+          rates=[1, 1],
+          padding="VALID",
+          out=[[[[.5]]]],
+          use_gpu=use_gpu,
+          dtype=dtypes.bfloat16)
+
   def _ConstructAndTestGradient(self, image_shape, kernel_shape, strides, rates,
-                                padding, use_gpu):
+                                padding, use_gpu, dtype=dtypes.float32):
     """Verifies the gradients of the dilation function.
 
     Args:
@@ -201,9 +215,10 @@ class DilationTest(test.TestCase):
     strides = [1] + strides + [1]
     rates = [1] + rates + [1]
 
-    image_tensor = constant_op.constant(image, shape=image_shape, name="input")
+    image_tensor = constant_op.constant(
+        image, shape=image_shape, name="input", dtype=dtype)
     kernel_tensor = constant_op.constant(
-        kernel, shape=kernel_shape, name="filter")
+        kernel, shape=kernel_shape, name="filter", dtype=dtype)
 
     def compute_dilation2d(image_tensor, kernel_tensor):
       return nn_ops.dilation2d(
@@ -226,7 +241,10 @@ class DilationTest(test.TestCase):
         err = max(err1, err2)
 
     print("Dilation gradient error = %f" % err)
-    self.assertLess(err, 1e-4)
+    if dtype == dtypes.bfloat16:
+      self.assertLess(err, 1.5)
+    else:
+      self.assertLess(err, 1e-4)
 
   def _testDilationGradValidPadding_1x1x1(self, use_gpu):
     self._ConstructAndTestGradient(
@@ -330,6 +348,18 @@ class DilationTest(test.TestCase):
       self._testDilationGradSamePadding_2x2x1(use_gpu)
       self._testDilationGradSamePaddingBatch_2x2x1(use_gpu)
       self._testDilationGradSamePadding_2x2x4(use_gpu)
+  
+  def testDilationGradBfloat16(self):
+    for use_gpu in True, False:
+      self._ConstructAndTestGradient(
+          image_shape=[1, 3, 3, 1],
+          kernel_shape=[1, 1, 1],
+          strides=[1, 1],
+          rates=[1, 1],
+          padding="VALID",
+          use_gpu=use_gpu,
+          dtype=dtypes.bfloat16)
+
 
 
 class ErosionTest(test.TestCase):
