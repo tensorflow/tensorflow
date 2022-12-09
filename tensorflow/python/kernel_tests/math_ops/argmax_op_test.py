@@ -96,6 +96,16 @@ class ArgMaxTest(test.TestCase):
     self._testTieBreaking(np.float32)
     self._testDim(np.float32)
 
+  def testFloat16(self):
+    self._testBasic(np.float16)
+    self._testTieBreaking(np.float16)
+    self._testDim(np.float16)
+
+  def testBfloat16(self):
+    self._testBasic(dtypes.bfloat16.as_numpy_dtype)
+    self._testTieBreaking(dtypes.bfloat16.as_numpy_dtype)
+    self._testDim(dtypes.bfloat16.as_numpy_dtype)
+
   def testFloatInt32Output(self):
     x = np.asarray(100 * np.random.randn(200), dtype=np.float32)
     expected_values = x.argmax()
