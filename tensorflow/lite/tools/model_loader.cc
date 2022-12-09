@@ -67,8 +67,9 @@ bool MmapModelLoader::InitInternal() {
     return false;
   }
   model_ = FlatBufferModel::VerifyAndBuildFromAllocation(std::move(allocation));
-  if (!FLATBUFFERS_LITTLEENDIAN)
-    model_ = FlatBufferModel::ByteConvertModel(std::move(model_));
+  #if FLATBUFFERS_LITTLEENDIAN == 0
+  model_ = FlatBufferModel::ByteConvertModel(std::move(model_));
+  #endif
   return true;
 }
 

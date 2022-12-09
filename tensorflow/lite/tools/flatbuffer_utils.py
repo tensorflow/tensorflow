@@ -255,9 +255,11 @@ def byte_swap_tflite_model_obj(model, from_endiness, to_endiness):
   if model is None:
     return
   # Get all the constant buffers, byte swapping them as per their data types
+  buffer_swapped = []
   for subgraph in model.subgraphs:
     for tensor in subgraph.tensors:
       if (tensor.buffer>0 and tensor.buffer<len(model.buffers) and 
+        tensor.buffer not in buffer_swapped and 
         model.buffers[tensor.buffer].data is not None):
         if tensor.type in [1, 7, 16]: 
           # [FLOAT16, INT16, UINT16], defined as per TFLite schema
@@ -273,6 +275,7 @@ def byte_swap_tflite_model_obj(model, from_endiness, to_endiness):
             8, from_endiness, to_endiness)
         else:
           continue
+        buffer_swapped.append(tensor.buffer)
 
 
 def byte_swap_tflite_buffer(tflite_model, from_endiness, to_endiness):

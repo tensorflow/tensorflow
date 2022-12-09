@@ -59,10 +59,11 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
   error_reporter = ValidateErrorReporter(error_reporter);
   std::unique_ptr<FlatBufferModel> model = BuildFromAllocation(
     GetAllocationFromFile(filename, error_reporter),error_reporter);
-  if (FLATBUFFERS_LITTLEENDIAN)
-    return model;
-  else
-    return ByteConvertModel(std::move(model), error_reporter);
+  #if FLATBUFFERS_LITTLEENDIAN == 1
+  return model;
+  #else
+  return ByteConvertModel(std::move(model), error_reporter);
+  #endif
 }
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
@@ -72,10 +73,11 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
   std::unique_ptr<FlatBufferModel> model = VerifyAndBuildFromAllocation(
       GetAllocationFromFile(filename, error_reporter), extra_verifier,
       error_reporter);
-  if (FLATBUFFERS_LITTLEENDIAN)
-    return model;
-  else
-    return ByteConvertModel(std::move(model), error_reporter);
+  #if FLATBUFFERS_LITTLEENDIAN == 1
+  return model;
+  #else
+  return ByteConvertModel(std::move(model), error_reporter);
+  #endif
 }
 #endif
 
@@ -97,6 +99,8 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromBuffer(
   return VerifyAndBuildFromAllocation(std::move(allocation), extra_verifier,
                                       error_reporter);
 }
+
+#if FLATBUFFERS_LITTLEENDIAN == 0
 
 void FlatBufferModel::ByteSwapSerializedModel(std::string* serialized_model){
   const uint8_t* buffer =
@@ -143,17 +147,20 @@ void FlatBufferModel::ByteSwapBuffer(int8_t tensor_type, size_t buffer_size,
 }
 
 void FlatBufferModel::ByteSwapTFLiteModel(const tflite::Model* tfl_model){
+  bool buffer_swapped[tfl_model->buffers()->size()] = {};
   for (size_t subgraph_idx = 0; subgraph_idx < tfl_model->subgraphs()->size();
        subgraph_idx++) {
     const tflite::SubGraph* subgraph = tfl_model->subgraphs()->Get(subgraph_idx);
     for (size_t ts_idx = 0; ts_idx < subgraph->tensors()->size(); ts_idx++) {
       const tflite::Tensor* tensor = subgraph->tensors()->Get(ts_idx);
-      if(tensor->buffer()>0 && tensor->buffer()<tfl_model->buffers()->size()){
+      if(tensor->buffer()>0 && tensor->buffer()<tfl_model->buffers()->size()
+          && !buffer_swapped[tensor->buffer()]){
         const tflite::Buffer* buffer_ = (*tfl_model->buffers())[tensor->buffer()];
         if (!buffer_ || !buffer_->data()) continue;
         auto* buffer = buffer_->data();
         uint8_t* buff_ = const_cast<uint8_t*>(buffer->data());
         ByteSwapBuffer(tensor->type(), buffer->size(), buff_);
+        buffer_swapped[tensor->buffer()] = true;
       }
     }
   }
@@ -190,21 +197,26 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::ByteSwapFlatBufferModel(
 
 void FlatBufferModel::ByteSwapTFLiteModelT(tflite::ModelT* tfl_modelt){
   size_t bytes_per_elem = 0;
+  bool buffer_swapped[tfl_modelt->buffers.size()] = {};
   for (size_t subgraph_idx = 0; subgraph_idx < tfl_modelt->subgraphs.size();
        subgraph_idx++) {
     tflite::SubGraphT* subgraph = tfl_modelt->subgraphs.at(subgraph_idx).get();
     for (size_t ts_idx = 0; ts_idx < subgraph->tensors.size(); ts_idx++) {
       tflite::TensorT* tensor = subgraph->tensors[ts_idx].get();
-      if(tensor->buffer>0 && tensor->buffer<tfl_modelt->buffers.size()){
+      if(tensor->buffer>0 && tensor->buffer<tfl_modelt->buffers.size()
+        && !buffer_swapped[tensor->buffer]){
         const auto* buffer = &(tfl_modelt->buffers[tensor->buffer].get()->data);
         if(buffer && buffer->data()) {
           uint8_t* buff_ = const_cast<uint8_t*>(buffer->data());
           ByteSwapBuffer(tensor->type, buffer->size(), buff_);
+          buffer_swapped[tensor->buffer] = true;
         }
       }
     }
   }
 }
+
+#endif
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromAllocation(
     std::unique_ptr<Allocation> allocation, ErrorReporter* error_reporter) {

@@ -23,7 +23,9 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#if FLATBUFFERS_LITTLEENDIAN == 0
 #include "tensorflow/lite/core/model_builder.h"
+#endif
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration.pb.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/proto_to_flatbuffer.h"
@@ -115,9 +117,9 @@ TEST_F(ValidatorTest, HappyPathOnCpuWithCustomValidation) {
   // Dump the model with input to temp.
   std::string serialized_str(reinterpret_cast<const char*>(
       model_with_input.GetBufferPointer()),model_with_input.GetSize());
-  if (!FLATBUFFERS_LITTLEENDIAN)
-    tflite::FlatBufferModel::ByteSwapSerializedModel(&serialized_str);
-
+  #if FLATBUFFERS_LITTLEENDIAN == 0
+  tflite::FlatBufferModel::ByteSwapSerializedModel(&serialized_str);
+  #endif
   std::string model_path = MiniBenchmarkTestHelper::DumpToTempFile(
       "mobilenet_quant_with_input.tflite", 
       reinterpret_cast<const unsigned char*>(serialized_str.c_str()),
