@@ -17,8 +17,8 @@ tensorflow/core/tfrt/saved_model/saved_model_mira_impl.h:
 tensorflow/core/tfrt/tpu/tpu_resources.h:
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h:
 tensorflow/dtensor/build_defs:.bzl
-tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal.cc:
-tensorflow/dtensor/mlir/utils/update_tpu_metadata.cc:
+tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal:.cc
+tensorflow/dtensor/mlir/utils/update_tpu_metadata:.cc
 tensorflow/dtensor/python/tests/test_backend_name:.py
 tensorflow/examples/custom_ops_doc/multiplex_1/BUILD:
 tensorflow/examples/custom_ops_doc/multiplex_1/multiplex_1_op.py:
