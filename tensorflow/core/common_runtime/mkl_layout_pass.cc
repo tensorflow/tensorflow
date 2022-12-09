@@ -499,7 +499,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.fused_conv2d,
                       native_fmt ? csinfo_.mkl_native_fused_conv2d
                                  : csinfo_.mkl_fused_conv2d,
-                      CopyAttrsFusedConv2DCheckConstFilter, FusedConv2DRewrite,
+                      CopyAttrsAllCheckConstFilter, FusedConv2DRewrite,
                       GetRewriteCause()});
     rinfo_.push_back({csinfo_.fused_conv3d, csinfo_.mkl_native_fused_conv3d,
                       CopyAttrsAllCheckConstFilter, AlwaysRewrite,
@@ -2022,9 +2022,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static void CopyAttrsConvCheckConstFilter(const Node* orig_node,
                                             NodeBuilder* nb,
                                             bool change_format = false);
-  static void CopyAttrsFusedConv2DCheckConstFilter(const Node* orig_node,
-                                                   NodeBuilder* nb,
-                                                   bool change_format = false);
   static void CopyAttrsFromPadAndConv2D(const Node* orig_node1,
                                         const Node* orig_node2, NodeBuilder* nb,
                                         bool change_format = false);
@@ -2445,14 +2442,6 @@ Status MklLayoutRewritePass::CopyInputs(
   // of Input slots because inputs of type list could be unfolded.
   auto old_node_input_size = old_node_inputs.size();
 
-  if (old_node->type_string() == "_FusedConv2D") {
-    // [TODO(intel-tf)]
-    // commit 5be9a5 updates _FusedConv2D with additional host_args,
-    // but mkl version currently doesn't have this input arg, needs to
-    // remove this extra input when replace node with mkl node.
-    old_node_input_slots--;
-  }
-
   DCHECK_GE(old_node_input_size, old_node_input_slots);
 
   // Let's copy all inputs of old node to new node.
@@ -2718,60 +2707,6 @@ void MklLayoutRewritePass::CopyAttrsFromPadAndConv2D(const Node* orig_node1,
   nb->Attr("data_format", data_format);
   nb->Attr("use_cudnn_on_gpu", use_cudnn_on_gpu);
   nb->Attr("Tpaddings", Tpaddings);
-}
-
-void MklLayoutRewritePass::CopyAttrsFusedConv2DCheckConstFilter(
-    const Node* orig_node, NodeBuilder* nb, bool change_format) {
-  DataType T;
-  int num_args;
-  string data_format;
-  string padding;
-  std::vector<int32> strides;
-  std::vector<int32> dilations;
-  std::vector<int32> explicit_paddings;
-  float epsilon;
-  std::vector<string> fused_ops;
-  float leakyrelu_alpha;
-  bool use_cudnn_on_gpu;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "num_args", &num_args));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "fused_ops", &fused_ops));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "epsilon", &epsilon));
-  TF_CHECK_OK(
-      GetNodeAttr(orig_node->def(), "leakyrelu_alpha", &leakyrelu_alpha));
-  TF_CHECK_OK(
-      GetNodeAttr(orig_node->def(), "use_cudnn_on_gpu", &use_cudnn_on_gpu));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-  nb->Attr("num_args", num_args);
-  nb->Attr("strides", strides);
-  nb->Attr("padding", padding);
-  nb->Attr("data_format", data_format);
-  nb->Attr("dilations", dilations);
-  nb->Attr("epsilon", epsilon);
-  nb->Attr("fused_ops", fused_ops);
-  nb->Attr("leakyrelu_alpha", leakyrelu_alpha);
-  nb->Attr("use_cudnn_on_gpu", use_cudnn_on_gpu);
-
-  // Check `explicit_paddings` first because some Conv ops don't have
-  // this attribute.
-  if (TryGetNodeAttr(orig_node->def(), "explicit_paddings",
-                     &explicit_paddings) &&
-      !explicit_paddings.empty()) {
-    nb->Attr("explicit_paddings", explicit_paddings);
-  }
-
-  // Check and set filter attribute.
-  Node* filter_node = nullptr;
-  TF_CHECK_OK(orig_node->input_node(1, &filter_node));
-  nb->Attr("is_filter_const", filter_node->IsConstant());
 }
 
 void MklLayoutRewritePass::CopyAttrsFromPadAndFusedConv2D(

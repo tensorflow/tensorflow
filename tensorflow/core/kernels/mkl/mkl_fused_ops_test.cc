@@ -286,14 +286,17 @@ class MklFusedConv2DOpTest : public OpsTestBase {
                            const int padding, int stride = 1) {
     DataType dtype = DataTypeToEnum<T>::v();
     int num_args = static_cast<int>(args.size());
+    int num_host_args = 0;
 
     NodeDefBuilder builder =
         NodeDefBuilder("fused_conv_op", "_MklNativeFusedConv2D")
             .Input(FakeInput(dtype))
             .Input(FakeInput(dtype))
             .Input(FakeInput(num_args, dtype))
+            .Input(FakeInput(num_host_args, DT_FLOAT))
             .Attr("T", dtype)
             .Attr("num_args", num_args)
+            .Attr("num_host_args", num_host_args)
             .Attr("strides", {1, stride, stride, 1})
             .Attr("padding",
                   padding == kInvalidPaddingValue ? "SAME" : "EXPLICIT")
