@@ -81,14 +81,14 @@ StatusOr<std::string> PjRtExecutable::Serialize() const {
 }
 
 StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
-    PjRtClient* client,
+    PjRtCompatibleClient* client,
     std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable) {
   return Create(client, std::shared_ptr<xla::PjRtLoadedExecutable>(
                             pjrt_loaded_executable.release()));
 }
 
 StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
-    PjRtClient* client,
+    PjRtCompatibleClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable) {
   // TODO(hyeontaek): We should request output sharding instead of the entire
   // HLO modules once PjRt supports it.
@@ -112,7 +112,7 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
 }
 
 StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
-    PjRtClient* client, const XlaComputation& computation,
+    PjRtCompatibleClient* client, const XlaComputation& computation,
     CompileOptions options) {
   VLOG(3) << "PjRtLoadedExecutable::Create";
   VLOG(3) << computation.proto().DebugString();
@@ -164,7 +164,7 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
 
 StatusOr<std::unique_ptr<LoadedExecutable>>
 PjRtLoadedExecutable::CreateInternal(
-    PjRtClient* client,
+    PjRtCompatibleClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
     const xla::Shape& result_shape,
     const xla::HloSharding* result_hlo_sharding) {

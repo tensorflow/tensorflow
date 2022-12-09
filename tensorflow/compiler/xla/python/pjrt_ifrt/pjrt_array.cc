@@ -89,11 +89,8 @@ StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
 }
 
 StatusOr<std::unique_ptr<Array>> PjRtArray::Create(
-    Client* client, DType dtype, Shape shape,
+    PjRtCompatibleClient* client, DType dtype, Shape shape,
     std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers) {
-  if (!llvm::isa_and_nonnull<PjRtCompatibleClient>(client)) {
-    return InvalidArgument("PjRtCompatibleClient expected");
-  }
   if (pjrt_buffers.empty()) {
     return InvalidArgument("pjrt_buffers must be non-empty");
   }
@@ -107,10 +104,7 @@ StatusOr<std::unique_ptr<Array>> PjRtArray::Create(
 }
 
 StatusOr<std::unique_ptr<Array>> PjRtArray::Create(
-    Client* client, std::shared_ptr<PjRtBuffer> pjrt_buffer) {
-  if (!llvm::isa_and_nonnull<PjRtCompatibleClient>(client)) {
-    return InvalidArgument("PjRtCompatibleClient expected");
-  }
+    PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer) {
   TF_ASSIGN_OR_RETURN(auto dtype,
                       ToDType(pjrt_buffer->on_device_shape().element_type()));
   Shape shape(pjrt_buffer->on_device_shape().dimensions());
@@ -121,12 +115,13 @@ StatusOr<std::unique_ptr<Array>> PjRtArray::Create(
 }
 
 StatusOr<std::unique_ptr<Array>> PjRtArray::Create(
-    Client* client, std::unique_ptr<PjRtBuffer> pjrt_buffer) {
+    PjRtCompatibleClient* client, std::unique_ptr<PjRtBuffer> pjrt_buffer) {
   return PjRtArray::Create(client,
                            std::shared_ptr<PjRtBuffer>(pjrt_buffer.release()));
 }
 
-StatusOr<std::unique_ptr<Array>> PjRtArray::Create(Client* client, Shape shape,
+StatusOr<std::unique_ptr<Array>> PjRtArray::Create(PjRtCompatibleClient* client,
+                                                   Shape shape,
                                                    PjRtBuffers pjrt_buffers) {
   TF_ASSIGN_OR_RETURN(
       auto dtype, xla::ifrt::ToDType(

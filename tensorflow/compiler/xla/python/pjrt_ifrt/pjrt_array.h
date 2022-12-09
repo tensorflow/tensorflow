@@ -56,19 +56,20 @@ class PjRtArray final
 
   // General array construction.
   static StatusOr<std::unique_ptr<Array>> Create(
-      Client* client, DType dtype, Shape shape,
+      PjRtCompatibleClient* client, DType dtype, Shape shape,
       std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers);
 
   // Shorthand for a single-shard array construction.
   static StatusOr<std::unique_ptr<Array>> Create(
-      Client* client, std::shared_ptr<PjRtBuffer> pjrt_buffer);
+      PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer);
   static StatusOr<std::unique_ptr<Array>> Create(
-      Client* client, std::unique_ptr<PjRtBuffer> pjrt_buffer);
+      PjRtCompatibleClient* client, std::unique_ptr<PjRtBuffer> pjrt_buffer);
 
   // Shorthand for a multi-shard array construction using OpaqueSharding.
   // TODO(hyeontaek): Remove this once IFRT Sharding and JAX Sharding is unified
   // so that OpaqueSharding can be replaced with a real Sharding.
-  static StatusOr<std::unique_ptr<Array>> Create(Client* client, Shape shape,
+  static StatusOr<std::unique_ptr<Array>> Create(PjRtCompatibleClient* client,
+                                                 Shape shape,
                                                  PjRtBuffers pjrt_buffers);
 
   // PjRtCompatibleArray implementation.
@@ -87,7 +88,7 @@ class PjRtArray final
 
   ~PjRtArray() override = default;
 
-  Client* client() const override {
+  PjRtCompatibleClient* client() const override {
     DCHECK(this);
     return client_;
   }

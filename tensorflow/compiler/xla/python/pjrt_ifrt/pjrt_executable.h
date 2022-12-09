@@ -134,10 +134,10 @@ class PjRtLoadedExecutable final
   // xla::PjRtLoadedExecutable has fixed output dtypes/shapes/shardings.
   // PjRtLoadedExecutable::GetHloModules() must be implemented.
   static StatusOr<std::unique_ptr<LoadedExecutable>> Create(
-      PjRtClient* client,
+      PjRtCompatibleClient* client,
       std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable);
   static StatusOr<std::unique_ptr<LoadedExecutable>> Create(
-      PjRtClient* client,
+      PjRtCompatibleClient* client,
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable);
 
   // Creates PjRtExecutable from xla::XlaComputation. We expect that
@@ -146,7 +146,7 @@ class PjRtLoadedExecutable final
   // allow_spmd_sharding_propagation_to_output enabled,
   // PjRtLoadedExecutable::GetHloModules() must be implemented.
   static StatusOr<std::unique_ptr<LoadedExecutable>> Create(
-      PjRtClient* client, const XlaComputation& computation,
+      PjRtCompatibleClient* client, const XlaComputation& computation,
       CompileOptions options);
 
   // PjRtCompatibleLoadedExecutable implementation.
@@ -205,7 +205,7 @@ class PjRtLoadedExecutable final
     return pjrt_loaded_executable_->GetHloModules();
   }
 
-  Client* client() const override {
+  PjRtCompatibleClient* client() const override {
     DCHECK(this);
     return client_;
   }
@@ -237,13 +237,13 @@ class PjRtLoadedExecutable final
 
  private:
   static StatusOr<std::unique_ptr<LoadedExecutable>> CreateInternal(
-      PjRtClient* client,
+      PjRtCompatibleClient* client,
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
       const xla::Shape& result_shape,
       const xla::HloSharding* result_hlo_sharding);
 
   PjRtLoadedExecutable(
-      PjRtClient* client,
+      PjRtCompatibleClient* client,
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
       DeviceList devices, std::vector<DType> output_dtypes,
       std::vector<Shape> output_shapes,
@@ -255,7 +255,7 @@ class PjRtLoadedExecutable final
         output_shapes_(std::move(output_shapes)),
         output_shardings_(std::move(output_shardings)) {}
 
-  PjRtClient* client_;
+  PjRtCompatibleClient* client_;
   std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable_;
   DeviceList devices_;
   std::vector<DType> output_dtypes_;
