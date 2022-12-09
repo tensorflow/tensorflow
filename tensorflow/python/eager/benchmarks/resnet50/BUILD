@@ -43,6 +43,7 @@ cuda_py_test(
     shard_count = 4,
     tags = [
         "no_windows",  # TODO(b/141617449): needs investigation
+	"no_pip",
         "optonly",
         "oss_serial",
         "v1only",
@@ -61,6 +62,7 @@ cuda_py_test(
     shard_count = 7,
     tags = [
         "no_windows",  # TODO(b/141617449): needs investigation
+	"no_pip",
         "optonly",
         "oss_serial",
         "v1only",
@@ -82,6 +84,7 @@ cuda_py_test(
     shard_count = 4,
     tags = [
         "no_windows",  # TODO(b/141617449): needs investigation
+	"no_pip",
         "noasan",
         "nomsan",
         "notsan",
