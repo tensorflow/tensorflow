@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/all_reduce_combiner.h"
 #include "tensorflow/compiler/xla/service/all_reduce_contiguous.h"
 #include "tensorflow/compiler/xla/service/all_reduce_folder.h"
+#include "tensorflow/compiler/xla/service/all_reduce_promotion.h"
 #include "tensorflow/compiler/xla/service/all_reduce_reassociate.h"
 #include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
 #include "tensorflow/compiler/xla/service/async_collective_creator.h"
@@ -83,7 +84,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gather_simplifier.h"
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
 #include "tensorflow/compiler/xla/service/gpu/all_reduce_blueconnect.h"
-#include "tensorflow/compiler/xla/service/gpu/all_reduce_promotion.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/conv_layout_normalization.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
@@ -587,7 +587,9 @@ Status GpuCompiler::OptimizeHloModule(
     collectives_pipeline.AddPass<AllGatherBroadcastReorder>();
 
     // promote 16 bit integer all-reduce and reduce-scatter to 32-bit.
-    collectives_pipeline.AddPass<AllReducePromotion>();
+    const std::pair<PrimitiveType, PrimitiveType> ar_promoted_types[] = {
+        {U16, U32}, {S16, S32}};
+    collectives_pipeline.AddPass<AllReducePromotion>(ar_promoted_types);
     // Remove dead computations left over after ar/rs promotion.
     collectives_pipeline.AddPass<HloDCE>();
 

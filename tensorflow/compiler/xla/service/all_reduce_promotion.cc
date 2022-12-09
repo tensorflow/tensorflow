@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/all_reduce_promotion.h"
+#include "tensorflow/compiler/xla/service/all_reduce_promotion.h"
 
 #include <memory>
 #include <string>
+#include <utility>
 
 namespace xla {
-namespace gpu {
 
 namespace {
 bool IsAllReduce(const HloInstruction* inst) {
@@ -55,8 +55,10 @@ std::unique_ptr<HloInstruction> CloneAllReduce(
 }  // namespace
 
 // Promote 16-bit integer all-reduce and reduce-scatter to 32-bit integer types.
-AllReducePromotion::AllReducePromotion()
-    : pass_({{U16, U32}, {S16, S32}}, IsAllReduce, CloneAllReduce) {}
+// {{U16, U32}, {S16, S32}}
+AllReducePromotion::AllReducePromotion(
+    absl::Span<std::pair<PrimitiveType, PrimitiveType> const> from_to_types)
+    : pass_(from_to_types, IsAllReduce, CloneAllReduce) {}
 
 StatusOr<bool> AllReducePromotion::Run(
     HloModule* module,
@@ -64,5 +66,4 @@ StatusOr<bool> AllReducePromotion::Run(
   return pass_.Run(module, execution_threads);
 }
 
-}  // namespace gpu
 }  // namespace xla

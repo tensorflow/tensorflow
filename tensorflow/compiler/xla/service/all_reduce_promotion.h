@@ -13,17 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_ALL_REDUCE_PROMOTION_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_ALL_REDUCE_PROMOTION_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_ALL_REDUCE_PROMOTION_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_ALL_REDUCE_PROMOTION_H_
 
+#include <utility>
 #include "tensorflow/compiler/xla/service/change_op_data_type.h"
 
 namespace xla {
-namespace gpu {
 
 class AllReducePromotion : public HloModulePass {
  public:
-  AllReducePromotion();
+  explicit AllReducePromotion(
+      absl::Span<std::pair<PrimitiveType, PrimitiveType> const> from_to_types);
   absl::string_view name() const override { return "all-reduce-promotion"; }
 
   using HloPassInterface::Run;
@@ -35,6 +36,5 @@ class AllReducePromotion : public HloModulePass {
   ChangeOpDataType pass_;
 };
 
-}  // namespace gpu
 }  // namespace xla
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_ALL_REDUCE_PROMOTION_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_ALL_REDUCE_PROMOTION_H_

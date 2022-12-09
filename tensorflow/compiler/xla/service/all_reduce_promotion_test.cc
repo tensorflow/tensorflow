@@ -13,20 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/all_reduce_promotion.h"
+#include "tensorflow/compiler/xla/service/all_reduce_promotion.h"
 
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
-namespace gpu {
 namespace {
 namespace m = ::xla::match;
 
 class AllReducePromotionTest : public HloTestBase {
  public:
-  AllReducePromotion pass_;
+  AllReducePromotion pass_{{{U16, U32}, {S16, S32}}};
 };
 
 TEST_F(AllReducePromotionTest, SimplePromotionAllReduce) {
@@ -90,5 +89,4 @@ TEST_F(AllReducePromotionTest, SimplePromotionReduceScatter) {
 }
 
 }  // namespace
-}  // namespace gpu
 }  // namespace xla

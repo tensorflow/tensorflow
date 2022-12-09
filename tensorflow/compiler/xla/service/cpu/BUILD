@@ -241,6 +241,7 @@ cc_library(
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "//tensorflow/compiler/xla/service/spmd:stateful_rng_spmd_partitioner",
         "//tensorflow/compiler/xla/service:all_gather_decomposer",
+        "//tensorflow/compiler/xla/service:all_reduce_promotion",
         "//tensorflow/compiler/xla/service:all_to_all_decomposer",
         "//tensorflow/compiler/xla/service:bfloat16_normalization",
         "//tensorflow/compiler/xla/service:bitcast_dtypes_expander",
