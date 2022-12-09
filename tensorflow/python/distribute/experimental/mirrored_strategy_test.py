@@ -19,6 +19,7 @@ import numpy as np
 
 from tensorflow.dtensor.python import d_variable
 from tensorflow.dtensor.python import layout
+from tensorflow.dtensor.python import mesh_util
 from tensorflow.dtensor.python.tests import test_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute.experimental import mirrored_strategy
@@ -131,6 +132,50 @@ class InvalidMeshTest(test_util.DTensorBaseTest):
     with self.assertRaisesRegex(
         ValueError, 'The mesh for MirroredStrategy must be 1D, received: 2D'):
       mirrored_strategy.MirroredStrategy(self.mesh_2d)
+
+
+class StrategyCreationTest(test_util.DTensorBaseTest):
+
+  def setUp(self):
+    super().setUp()
+    device_type = test_util.preferred_device_type()
+    if device_type != 'TPU':
+      test_util.reset_logical_devices(device_type, 2)
+    self.device_type = device_type
+
+  def test_explicit_device_list(self):
+
+    device_list = [f'/{self.device_type}:{i}' for i in range(2)]
+    strategy = mirrored_strategy.MirroredStrategy(devices=device_list)
+    mesh = strategy._mesh
+    self.assertEqual(mesh.num_local_devices(), 2)
+    self.assertEqual(mesh.shape(), [2,])
+    self.assertEqual(mesh.dim_names, ['batch'])
+    self.assertIn(
+        f'/job:localhost/replica:0/task:0/device:{self.device_type}:0',
+        mesh.local_devices()[0])
+    self.assertIn(
+        f'/job:localhost/replica:0/task:0/device:{self.device_type}:1',
+        mesh.local_devices()[1])
+
+  def test_implicit_device_list(self):
+    strategy = mirrored_strategy.MirroredStrategy()
+    mesh = strategy._mesh
+    self.assertEqual(mesh.num_local_devices(), 2)
+    self.assertEqual(mesh.shape(), [2,])
+    self.assertIn(
+        f'/job:localhost/replica:0/task:0/device:{self.device_type}:0',
+        mesh.local_devices()[0])
+    self.assertIn(
+        f'/job:localhost/replica:0/task:0/device:{self.device_type}:1',
+        mesh.local_devices()[1])
+
+  def test_mesh_with_device_list(self):
+    device_list = [f'/{self.device_type}:{i}' for i in range(2)]
+    mesh = mesh_util.create_mesh([('batch', 2)], devices=device_list)
+    with self.assertRaisesRegex(
+        ValueError, 'Mesh and devices can not be provided at the same time'):
+      _ = mirrored_strategy.MirroredStrategy(mesh=mesh, devices=device_list)
 
 
 if __name__ == '__main__':
