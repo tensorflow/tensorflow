@@ -1397,7 +1397,7 @@ def tf_cc_test(
         **kwargs
     )
 
-def tf_cc_test_noshared(
+def tf_cc_shared_test(
         name,
         srcs,
         deps,
@@ -1425,34 +1425,16 @@ def tf_cc_test_noshared(
             ],
             clean_dep("//third_party/compute_library:build_with_acl"): ["-fopenmp"],
         }) + linkopts + _rpath_linkopts(name),
-        deps = deps + [
-            "//tensorflow/c/experimental/filesystem:filesystem_interface",
-            "//tensorflow/c/experimental/stream_executor:stream_executor",
-            "//tensorflow/c:env",
-            "//tensorflow/c:kernels",
-            "//tensorflow/c:kernels_experimental",
-            "//tensorflow/c:logging",
-            "//tensorflow/c:ops",
-            "//tensorflow/cc/saved_model:fingerprinting_impl",
-            "//tensorflow/cc/saved_model:loader_lite_impl",
-            "//tensorflow/cc/saved_model:metrics_impl",
-            "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
-            "//tensorflow/core/common_runtime:core_cpu_impl",
-            "//tensorflow/core:framework_internal_impl",
-            "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
-            "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
-            "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
-            "//tensorflow/core:lib_internal_impl",
-            "//tensorflow/core/profiler:profiler_impl",
-            "//tensorflow/core/util:determinism",  # Must be linked and exported to libtensorflow_framework.so.
-            "//tensorflow/lite/kernels/shim:tf_kernel_shim",
-            "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
-        ] + select({
-            "//tensorflow:macos": [],
-            "//conditions:default": [
-                "//tensorflow/core/data:captured_function",
+        deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
+            [
+                clean_dep("//third_party/mkl:intel_binary_blob"),
             ],
-        }) + tf_binary_dynamic_kernel_deps(kernels),
+        ),
+        dynamic_deps = if_static(
+            extra_deps = [],
+            macos = ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+            otherwise = ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+        ),
         data = data + tf_binary_dynamic_kernel_dsos(),
         exec_properties = tf_exec_properties(kwargs),
         **kwargs
