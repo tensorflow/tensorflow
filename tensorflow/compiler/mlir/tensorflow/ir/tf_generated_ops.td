@@ -20653,12 +20653,12 @@ def TF_XdivyOp : TF_Op<"Xdivy", [Pure, ResultsBroadcastableShape, TF_SameOperand
   let summary = "Returns 0 if x == 0, and x / y otherwise, elementwise.";
 
   let arguments = (ins
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$x,
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$y
+    TF_FpOrComplexTensor:$x,
+    TF_FpOrComplexTensor:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$z
+    TF_FpOrComplexTensor:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -21704,12 +21704,12 @@ def TF_Xlog1pyOp : TF_Op<"Xlog1py", [Pure, TF_SameOperandsAndResultElementTypeRe
   let summary = "Returns 0 if x == 0, and x * log1p(y) otherwise, elementwise.";
 
   let arguments = (ins
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$x,
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$y
+    TF_FpOrComplexTensor:$x,
+    TF_FpOrComplexTensor:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$z
+    TF_FpOrComplexTensor:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -21720,12 +21720,12 @@ def TF_XlogyOp : TF_Op<"Xlogy", [Pure, ResultsBroadcastableShape, TF_SameOperand
   let summary = "Returns 0 if x == 0, and x * log(y) otherwise, elementwise.";
 
   let arguments = (ins
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$x,
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$y
+    TF_FpOrComplexTensor:$x,
+    TF_FpOrComplexTensor:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$z
+    TF_FpOrComplexTensor:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
