@@ -31,6 +31,7 @@ alias(
         "@local_config_cuda//:is_cuda_enabled",
         "@local_config_cuda//cuda:using_clang",
     ),
+    visibility = ["//visibility:public"],
 )
 
 selects.config_setting_group(
@@ -39,6 +40,7 @@ selects.config_setting_group(
         ":is_cuda_enabled",
         ":oss",
     ],
+    visibility = ["//visibility:public"],
 )
 
 # Crosses between framework_shared_object and a bunch of other configurations
