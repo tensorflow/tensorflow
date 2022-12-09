@@ -77,6 +77,21 @@ tf_cuda_library(
     }),
 )
 
+tf_cc_test(
+    name = "eager_executor_test",
+    srcs = ["eager_executor_test.cc"],
+    deps = [
+        ":core",
+        ":eager_executor",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+    ],
+)
+
 tf_cuda_library(
     name = "context",
     srcs = [
