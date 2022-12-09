@@ -21,9 +21,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_tpu.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace stream_executor {
 namespace tpu {
@@ -70,32 +70,20 @@ xla::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api) {
   return tsl::OkStatus();
 }
 
-// TODO(b/261137756): InitializePjRtTpu is specific for libtpu. Change this
-// method to also support other plugin.
-typedef const PJRT_Api* (*PjRtFuncPtr)();
-static xla::Status InitializePjRtTpu(void* library_handle) {
-  PjRtFuncPtr fptr = &GetTpuPjrtApi;
-  *reinterpret_cast<void**>(&fptr) = dlsym(library_handle, "GetTpuPjrtApi");
-  if (fptr == nullptr) {
-    LOG(INFO) << "GetTpuPjrtApi not found. PjrtApi will not be used.";
-    return tsl::OkStatus();
-  }
-  LOG(INFO) << "GetTpuPjrtApi was found";
-  TF_RETURN_IF_ERROR(stream_executor::tpu::SetPjrtApi("TPU", fptr()));
-  return tsl::OkStatus();
-}
-
 xla::Status LoadPjrtPlugin(absl::string_view device_type,
                            absl::string_view library_path) {
-  if (absl::AsciiStrToLower(device_type) != "tpu") {
-    return tsl::errors::Unimplemented(
-        "LoadPjrtPlugin only implemented for TPU, got: %s", device_type);
-  }
   void* library = dlopen(library_path.data(), RTLD_NOW);
   if (library == nullptr) {
-    return tsl::errors::Internal("Failed to open libtpu.");
+    return tsl::errors::Internal("Failed to open ", library_path);
   }
-  TF_RETURN_IF_ERROR(InitializePjRtTpu(library));
+  const PJRT_Api* (*fptr)();
+  *reinterpret_cast<void**>(&fptr) = dlsym(library, "GetPjrtApi");
+  if (fptr == nullptr) {
+    return tsl::errors::NotFound("GetPjrtApi not found in ", library_path);
+  }
+  LOG(INFO) << "GetPjrtApi was found for " << device_type << " at "
+            << library_path;
+  TF_RETURN_IF_ERROR(stream_executor::tpu::SetPjrtApi(device_type, fptr()));
   return tsl::OkStatus();
 }
 

@@ -32,7 +32,7 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
-        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_tpu_hdrs",
+        "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
