@@ -227,7 +227,15 @@ TEST_F(ValidatorRunnerTest, ShouldUseNnApiSl) {
   while (event_count < settings.size()) {
     events = validator.GetAndFlushEventsToLog();
     event_count += events.size();
+    // Duplicating the sleep(1) from CheckConfigurations() method above in this
+    // file. The validation is done in a separate process, this is likely needed
+    // to properly wait for the async process to finish.
+#ifndef _WIN32
+    sleep(1);
+#endif  // !_WIN32
   }
+  ASSERT_EQ(validator.TriggerMissingValidation(settings), 0);
+
   EXPECT_TRUE(WasNnApiSlInvoked());
 }
 
