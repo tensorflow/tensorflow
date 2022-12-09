@@ -342,13 +342,16 @@ gentbl_cc_library(
 cc_library(
     name = "vhlo_ops",
     srcs = [
+        "stablehlo/dialect/VhloBytecode.cpp",
         "stablehlo/dialect/VhloOps.cpp",
     ],
     hdrs = [
+        "stablehlo/dialect/VhloBytecode.h",
         "stablehlo/dialect/VhloOps.h",
     ],
     includes = ["."],
     deps = [
+        ":base",
         ":stablehlo_assembly_format",
         ":version",
         ":vhlo_attrs_inc_gen",

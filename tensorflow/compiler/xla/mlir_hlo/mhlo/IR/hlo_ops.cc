@@ -8186,10 +8186,14 @@ struct HLOInlinerInterface : public DialectInlinerInterface {
   }
 };
 
-struct HLOBoundedDialectInterface : public hlo::BoundedDialectInterface {
-  using BoundedDialectInterface::BoundedDialectInterface;
+struct HLOBoundedDialectInterface : public hlo::HloDialectInterface {
+  using HloDialectInterface::HloDialectInterface;
 
-  Attribute createBoundedAttr(ArrayRef<int64_t> bounds) const override {
+  Type createTokenType() const override {
+    return TokenType::get(getDialect()->getContext());
+  }
+
+  Attribute createTypeExtensions(ArrayRef<int64_t> bounds) const override {
     return TypeExtensionsAttr::get(getDialect()->getContext(), bounds);
   }
 };
