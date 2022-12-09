@@ -164,6 +164,7 @@ xla_cc_binary(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/platform:protobuf",
+        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
     ],
 )
 

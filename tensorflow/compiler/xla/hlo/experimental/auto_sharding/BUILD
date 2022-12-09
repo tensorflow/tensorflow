@@ -147,7 +147,9 @@ xla_cc_binary(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/stream_executor:dnn",
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
         "//tensorflow/tsl/platform:platform_port",
+        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
     ],
 )
