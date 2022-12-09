@@ -99,10 +99,8 @@ ClientAndPtr<T> WrapWithClient(std::shared_ptr<PyClient> client, T* contents) {
 class PyClient : public std::enable_shared_from_this<PyClient> {
  public:
 #ifdef JAX_ENABLE_IFRT
-  explicit PyClient(std::unique_ptr<ifrt::Client> ifrt_client);
   explicit PyClient(std::shared_ptr<ifrt::Client> ifrt_client);
 #else
-  explicit PyClient(std::unique_ptr<PjRtClient> pjrt_client);
   explicit PyClient(std::shared_ptr<PjRtClient> pjrt_client);
 #endif
   virtual ~PyClient();

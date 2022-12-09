@@ -55,14 +55,6 @@ namespace xla {
 namespace py = pybind11;
 
 #ifdef JAX_ENABLE_IFRT
-PyClient::PyClient(std::unique_ptr<ifrt::Client> ifrt_client)
-    : PyClient(std::shared_ptr<ifrt::Client>(ifrt_client.release())) {}
-#else
-PyClient::PyClient(std::unique_ptr<PjRtClient> pjrt_client)
-    : PyClient(std::shared_ptr<PjRtClient>(std::move(pjrt_client))) {}
-#endif
-
-#ifdef JAX_ENABLE_IFRT
 PyClient::PyClient(std::shared_ptr<ifrt::Client> ifrt_client)
     : ifrt_client_(std::move(ifrt_client)) {
   CHECK(ifrt_client_);
