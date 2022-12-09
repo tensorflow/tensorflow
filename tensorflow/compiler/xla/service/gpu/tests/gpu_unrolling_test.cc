@@ -45,7 +45,6 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
   // The default unrolling factor is 4.
   HloModuleConfig config;
   auto debug_options = GetDebugOptionsFromFlags();
-  debug_options.set_xla_gpu_enable_softmax_fusion(false);
   debug_options.set_xla_gpu_enable_mlir_lowering(false);
   config.set_debug_options(debug_options);
   auto hlo_module = ParseAndReturnVerifiedModule(kAddModule, config).value();
@@ -78,7 +77,6 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
 TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
   HloModuleConfig config;
   auto debug_options = HloTestBase::GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_enable_softmax_fusion(false);
   debug_options.set_xla_gpu_enable_mlir_lowering(false);
   config.set_debug_options(debug_options);
 
