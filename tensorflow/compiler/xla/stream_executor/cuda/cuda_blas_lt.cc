@@ -281,6 +281,7 @@ port::Status BlasLt::DoMatmul(Stream* stream, const BlasLt::MatmulPlan& plan,
     }
 
     if (aux != nullptr) {
+#if CUDA_VERSION >= 11040
       TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
                                  CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_POINTER,
                                  aux.opaque()));
@@ -303,6 +304,10 @@ port::Status BlasLt::DoMatmul(Stream* stream, const BlasLt::MatmulPlan& plan,
       TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
                                  CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_BATCH_STRIDE,
                                  output_batch_stride));
+#else
+      return port::InternalError(
+          "Auxiliary inputs / outputs require cublasLt >= 11.4");
+#endif
     }
 
     gpu::ScopedActivateExecutorContext sac{parent_};
