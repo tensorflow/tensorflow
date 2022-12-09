@@ -210,6 +210,22 @@ TEST_F(PatternMatcherTest, AnyOf) {
                                                match::ConstantScalar(2))));
 }
 
+TEST_F(PatternMatcherTest, AnyOfInstructionIsInstructionPattern) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module ENTRY test { ROOT constant = f16[] constant(1) })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  EXPECT_TRUE(
+      Match(root, match::AnyOf<HloInstruction>(match::ConstantScalar(0),
+                                               match::ConstantScalar(1))));
+  EXPECT_FALSE(
+      Match(root, match::AnyOf<HloInstruction>(match::ConstantScalar(0),
+                                               match::ConstantScalar(1))
+                      .WithName("foo")));
+}
+
 TEST_F(PatternMatcherTest, ConstantScalar) {
   using match::ConstantEffectiveScalar;
   using match::ConstantScalar;
@@ -942,23 +958,22 @@ TEST_F(PatternMatcherTest, HloInstructionMatcherAnyOrderDescribeTo) {
 
 TEST_F(PatternMatcherTest, AnyOfMatcherDescribeToAndExplain) {
   EXPECT_DESC_AND_EXPLANATION(
-      SetName("c", HloInstruction::CreateConstant(LiteralUtil::CreateR0(0))),
-      m::AnyOf<HloInstruction>(m::Op().WithName("foo"),
-                               m::Op().WithName("bar")),
+      ShapeUtil::MakeScalarShape(S32),
+      m::AnyOf<Shape>(m::Shape().WithRank(1), m::Shape().WithElementType(F32)),
       "any of:\n"
-      " - an HloInstruction named \"foo\" OR\n"
-      " - an HloInstruction named \"bar\"",
+      " - a shape that has 1 dimension OR\n"
+      " - a shape with element type F32",
       "None of the following matchers succeeded:\n"
       "Matcher #1\n"
-      " - an HloInstruction named \"foo\"\n"
+      " - a shape that has 1 dimension\n"
       "failed with\n"
-      " - HloInstruction not named \"foo\"\n"
-      "   in c = s32[] constant(0)\n"
+      " - Shape does not have rank 1\n"
+      "   in s32[]\n"
       "Matcher #2\n"
-      " - an HloInstruction named \"bar\"\n"
+      " - a shape with element type F32\n"
       "failed with\n"
-      " - HloInstruction not named \"bar\"\n"
-      "   in c = s32[] constant(0)");
+      " - Shape does not have element type F32\n"
+      "   in s32[]");
 }
 
 TEST_F(PatternMatcherTest, Parameter) {
@@ -1241,91 +1256,5 @@ TEST_F(PatternMatcherTest, CustomCallMatchers) {
       root, m::CustomCall("test_target", m::Parameter(1), m::Parameter(0))));
 }
 
-TEST_F(PatternMatcherTest, OptionalUnaryOp) {
-  constexpr char kModuleStr[] = R"(
-    HloModule test_module
-
-    ENTRY test {
-      p0 = f32[] parameter(0)
-      cos = cosine(p0)
-      ROOT out = f32[] abs(cos)
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
-  auto* root = hlo_module->entry_computation()->root_instruction();
-
-  EXPECT_TRUE(Match(
-      root,
-      m::OptionalUnaryOp({HloOpcode::kBitcast, HloOpcode::kCos}, m::Abs())));
-  EXPECT_TRUE(
-      Match(root, m::OptionalUnaryOp({HloOpcode::kBitcast, HloOpcode::kCos},
-                                     m::Abs(m::Cos()))));
-  EXPECT_TRUE(Match(
-      root, m::OptionalUnaryOp({HloOpcode::kCos, HloOpcode::kAbs}, m::Cos())));
-  EXPECT_FALSE(Match(
-      root,
-      m::OptionalUnaryOp({HloOpcode::kCos, HloOpcode::kAbs}, m::Bitcast())));
-  EXPECT_FALSE(Match(
-      root,
-      m::OptionalUnaryOp({HloOpcode::kCos, HloOpcode::kBitcast}, m::Cos())));
-
-  std::string description = absl::StrCat(
-      "an HloInstruction which optionally matches a unary operand with one of "
-      "the opcodes {",
-      HloOpcodeString(HloOpcode::kCos), ", ", HloOpcodeString(HloOpcode::kAbs),
-      "} before matching an HloInstruction with opcode ",
-      HloOpcodeString(HloOpcode::kBitcast), ".");
-  std::string explanation = absl::StrCat(
-      "HloInstruction doesn't have opcode ",
-      HloOpcodeString(HloOpcode::kBitcast),
-      "\nin cos = f32[] cosine(f32[] p0) ",
-      "and the HloInstruction doesn't have opcode ",
-      HloOpcodeString(HloOpcode::kBitcast), "\nin out = f32[] abs(f32[] cos)");
-  EXPECT_DESC_AND_EXPLANATION(
-      root,
-      m::OptionalUnaryOp({HloOpcode::kCos, HloOpcode::kAbs}, m::Bitcast()),
-      description.c_str(), explanation.c_str());
-
-  description = absl::StrCat(
-      "an HloInstruction which optionally matches a unary operand with one of "
-      "the opcodes {",
-      HloOpcodeString(HloOpcode::kCos), ", ",
-      HloOpcodeString(HloOpcode::kBitcast),
-      "} before matching an HloInstruction with opcode ",
-      HloOpcodeString(HloOpcode::kCos), ".");
-  explanation = absl::StrCat(
-      "The HloInstruction doesn't have one of the opcodes {",
-      HloOpcodeString(HloOpcode::kCos), ", ",
-      HloOpcodeString(HloOpcode::kBitcast),
-      "} and the HloInstruction doesn't have opcode ",
-      HloOpcodeString(HloOpcode::kCos), "\nin out = f32[] abs(f32[] cos)");
-  EXPECT_DESC_AND_EXPLANATION(
-      root,
-      m::OptionalUnaryOp({HloOpcode::kCos, HloOpcode::kBitcast}, m::Cos()),
-      description.c_str(), explanation.c_str());
-
-  HloInstruction* instr = nullptr;
-  EXPECT_TRUE(Match(
-      root, m::OptionalUnaryOp(&instr, {HloOpcode::kBitcast, HloOpcode::kCos},
-                               m::Abs())));
-  EXPECT_EQ(instr->opcode(), HloOpcode::kAbs);
-  instr = nullptr;
-  EXPECT_TRUE(Match(
-      root, m::OptionalUnaryOp(&instr, {HloOpcode::kBitcast, HloOpcode::kCos},
-                               m::Abs(m::Cos()))));
-  EXPECT_EQ(instr->opcode(), HloOpcode::kAbs);
-  instr = nullptr;
-  EXPECT_TRUE(
-      Match(root, m::OptionalUnaryOp(&instr, {HloOpcode::kCos, HloOpcode::kAbs},
-                                     m::Cos())));
-  EXPECT_EQ(instr->opcode(), HloOpcode::kAbs);
-  EXPECT_FALSE(
-      Match(root, m::OptionalUnaryOp(&instr, {HloOpcode::kCos, HloOpcode::kAbs},
-                                     m::Bitcast())));
-  EXPECT_FALSE(Match(
-      root, m::OptionalUnaryOp(&instr, {HloOpcode::kCos, HloOpcode::kBitcast},
-                               m::Bitcast())));
-}
 }  // namespace
 }  // namespace xla

@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 
@@ -282,21 +281,22 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 
   Status HandleAdd(HloInstruction *instr) override {
-    HloInstruction *bias, *existing_gemm, *optional_slice;
+    HloInstruction *bias, *existing_gemm;
+    HloInstruction *optional_slice = nullptr;
     // Attempt to elide broadcast and fuse addition of a vector bias into GEMM,
     // including when slicing is applied to the result.
     if (Match(instr,
-              m::AddAnyOrder(m::OptionalUnaryOp(
-                                 &optional_slice, {HloOpcode::kSlice},
-                                 CublasLtMatmul(&existing_gemm).WithOneUser())
-                                 .WithOneUser(),
-                             m::Broadcast(&bias, m::Op()).WithOneUser()))) {
+              m::AddAnyOrder(
+                  m::AnyOf<HloInstruction>(
+                      m::Slice(&optional_slice,
+                               CublasLtMatmul(&existing_gemm).WithOneUser()),
+                      CublasLtMatmul(&existing_gemm))
+
+                      .WithOneUser(),
+                  m::Broadcast(&bias, m::Op()).WithOneUser()))) {
       TF_ASSIGN_OR_RETURN(
           bool was_fused,
-          FuseVectorBiasAdd(
-              instr, bias, existing_gemm,
-              (optional_slice->opcode() == HloOpcode::kSlice ? optional_slice
-                                                             : nullptr)));
+          FuseVectorBiasAdd(instr, bias, existing_gemm, optional_slice));
 
       if (was_fused) {
         return OkStatus();
@@ -362,22 +362,22 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 
   Status HandleMaximum(HloInstruction *instr) override {
-    HloInstruction *existing_gemm, *optional_slice_or_bitcast, *zeros;
+    HloInstruction *existing_gemm, *zeros;
+    HloInstruction *optional_slice_or_bitcast = nullptr;
     // Attempt to elide maximum and fuse ReLU activation into GEMM, including
     // when slicing or bitcasting is applied to the result.
-    if (Match(instr, m::MaximumAnyOrder(
-                         m::OptionalUnaryOp(
-                             &optional_slice_or_bitcast,
-                             {HloOpcode::kBitcast, HloOpcode::kSlice},
-                             CublasLtMatmul(&existing_gemm).WithOneUser())
-                             .WithOneUser(),
-                         BcastConstScalar(&zeros, 0).WithOneUser()))) {
-      TF_RETURN_IF_ERROR(FuseReluActivation(
-          instr, zeros, existing_gemm,
-          (optional_slice_or_bitcast->opcode() == HloOpcode::kSlice ||
-                   optional_slice_or_bitcast->opcode() == HloOpcode::kBitcast
-               ? optional_slice_or_bitcast
-               : nullptr)));
+    if (Match(instr,
+              m::MaximumAnyOrder(
+                  m::AnyOf<HloInstruction>(
+                      m::Slice(&optional_slice_or_bitcast,
+                               CublasLtMatmul(&existing_gemm).WithOneUser()),
+                      m::Bitcast(&optional_slice_or_bitcast,
+                                 CublasLtMatmul(&existing_gemm).WithOneUser()),
+                      CublasLtMatmul(&existing_gemm))
+                      .WithOneUser(),
+                  BcastConstScalar(&zeros, 0).WithOneUser()))) {
+      TF_RETURN_IF_ERROR(FuseReluActivation(instr, zeros, existing_gemm,
+                                            optional_slice_or_bitcast));
     }
     return OkStatus();
   }
