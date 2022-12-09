@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/random.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -401,6 +402,108 @@ TEST_F(RemoteTensorHandleTest, UnknownRemoteDevice) {
   EXPECT_EQ(h->BackingDeviceName(&s), d2->name());
   TF_EXPECT_OK(s);
   EXPECT_EQ(h->device(), d2);
+  h->Unref();
+  context->Unref();
+}
+
+TEST(TensorHandle_LocalTest, TensorFromDeviceSameDevice) {
+  std::vector<std::unique_ptr<Device>> devices;
+  devices.emplace_back(
+      CreateDevice("CPU", "/job:localhost/replica:0/task:0/device:CPU:0"));
+  devices.emplace_back(
+      CreateDevice("CPU", "/job:localhost/replica:0/task:0/device:CPU:1"));
+  StaticDeviceMgr device_mgr(std::move(devices));
+
+  EagerContext* context = new EagerContext(
+      SessionOptions(),
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
+      /* async= */ false, &device_mgr,
+      /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
+      /* cluster_flr= */ nullptr);
+
+  tensorflow::DataType dtype = DT_FLOAT;
+  TensorShape shape = {};
+
+  Tensor t0(dtype, shape);
+  Device* d0 = device_mgr.ListDevices().at(1);
+  TensorHandle* h =
+      TensorHandle::CreateLocalHandle(std::move(t0), d0, d0, d0, context);
+
+  const Tensor* tensor_from_device;
+  TF_EXPECT_OK(h->TensorFromDevice(d0, &tensor_from_device));
+
+  h->Unref();
+  context->Unref();
+}
+
+TEST(TensorHandle_LocalTest, TensorFromDeviceDifferentDevice) {
+  std::vector<std::unique_ptr<Device>> devices;
+  devices.emplace_back(
+      CreateDevice("CPU", "/job:localhost/replica:0/task:0/device:CPU:0"));
+  devices.emplace_back(
+      CreateDevice("CPU", "/job:localhost/replica:0/task:0/device:CPU:1"));
+  devices.emplace_back(
+      CreateDevice("CPU", "/job:worker/replica:0/task:2/device:CPU:0"));
+  StaticDeviceMgr device_mgr(std::move(devices));
+
+  EagerContext* context = new EagerContext(
+      SessionOptions(),
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
+      /* async= */ false, &device_mgr,
+      /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
+      /* cluster_flr= */ nullptr);
+
+  tensorflow::DataType dtype = DT_FLOAT;
+  TensorShape shape = {};
+
+  Tensor t0(dtype, shape);
+  Device* d0 = device_mgr.ListDevices().at(1);
+  TensorHandle* h =
+      TensorHandle::CreateLocalHandle(std::move(t0), d0, d0, d0, context);
+
+  Device* d1 = device_mgr.ListDevices().at(2);
+  tensorflow::Tensor tensor;
+  TF_EXPECT_OK(h->CopyToDevice(*context, d1, &tensor));
+  TF_EXPECT_OK(h->AddLocalMirror(std::move(tensor), d1));
+
+  const Tensor* tensor_from_device;
+  TF_EXPECT_OK(h->TensorFromDevice(d1, &tensor_from_device));
+
+  h->Unref();
+  context->Unref();
+}
+
+TEST(TensorHandle_LocalTest, TensorFromDeviceInvalidDevice) {
+  std::vector<std::unique_ptr<Device>> devices;
+  devices.emplace_back(
+      CreateDevice("CPU", "/job:localhost/replica:0/task:0/device:CPU:0"));
+  devices.emplace_back(
+      CreateDevice("CPU", "/job:localhost/replica:0/task:0/device:CPU:1"));
+  devices.emplace_back(
+      CreateDevice("CPU", "/job:worker/replica:0/task:2/device:CPU:0"));
+  StaticDeviceMgr device_mgr(std::move(devices));
+
+  EagerContext* context = new EagerContext(
+      SessionOptions(),
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
+      /* async= */ false, &device_mgr,
+      /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
+      /* cluster_flr= */ nullptr);
+
+  tensorflow::DataType dtype = DT_FLOAT;
+  TensorShape shape = {};
+
+  Tensor t0(dtype, shape);
+  Device* d0 = device_mgr.ListDevices().at(1);
+  TensorHandle* h =
+      TensorHandle::CreateLocalHandle(std::move(t0), d0, d0, d0, context);
+
+  Device* d1 = device_mgr.ListDevices().at(2);
+
+  const Tensor* tensor_from_device;
+  EXPECT_THAT(h->TensorFromDevice(d1, &tensor_from_device),
+              tensorflow::testing::StatusIs(tensorflow::error::INTERNAL));
+
   h->Unref();
   context->Unref();
 }

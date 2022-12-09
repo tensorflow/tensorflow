@@ -380,15 +380,13 @@ tf_cc_test(
     srcs = ["tensor_handle_test.cc"],
     deps = [
         ":core",
-        ":eager_operation",
-        ":execute",
         ":tensor_handle",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@com_google_absl//absl/memory",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 
