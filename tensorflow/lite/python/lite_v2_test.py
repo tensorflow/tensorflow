@@ -247,7 +247,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertEqual(sub_output['output_0'], -2)
     output_details = sub_signature_runner.get_output_details()
     self.assertEqual(1, len(output_details))
-    self.assertEqual('StatefulPartitionedCall:0',
+    self.assertEqual('StatefulPartitionedCall_1:0',
                      output_details['output_0']['name'])
     self.assertEqual(np.float32, output_details['output_0']['dtype'])
     self.assertTrue(([1] == output_details['output_0']['shape']).all())
@@ -2161,7 +2161,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     output_details = sub_signature_runner.get_output_details()
     self.assertLen(output_details, 1)
     self.assertStartsWith(output_details['output_0']['name'],
-                          'StatefulPartitionedCall:0')
+                          'StatefulPartitionedCall_1:0')
     self.assertEqual(inference_input_output_type.as_numpy_dtype,
                      output_details['output_0']['dtype'])
     self.assertTrue(([1] == output_details['output_0']['shape']).all())
