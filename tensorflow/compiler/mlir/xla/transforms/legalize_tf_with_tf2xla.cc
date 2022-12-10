@@ -406,6 +406,7 @@ bool IsOpAllowedForTesting(Operation* op) {
       new llvm::SmallDenseSet<mlir::TypeID, 16>{
     // Op used to verify handling of XlaExpression of kind constant.
     TypeID::get<TF::ConstOp>(),
+    TypeID::get<TF::CaseOp>(),
   };
   // clang-format on
   auto abstractOp = op->getRegisteredInfo();
@@ -559,7 +560,16 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
   }
 
   for (const auto& attr : op_->getAttrs()) {
-    if (attr.getValue().isa<SymbolRefAttr>()) {
+    Attribute attr_value = attr.getValue();
+    bool has_symbol_ref = false;
+    if (attr_value.isa<SymbolRefAttr>()) {
+      has_symbol_ref = true;
+    } else if (auto array_attr = attr_value.dyn_cast<ArrayAttr>()) {
+      if (!array_attr.empty() && array_attr.begin()->isa<SymbolRefAttr>()) {
+        has_symbol_ref = true;
+      }
+    }
+    if (has_symbol_ref) {
       return op_->emitRemark()
              << "ops with symbol references are not supported";
     }
