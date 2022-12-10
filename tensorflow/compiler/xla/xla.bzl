@@ -5,7 +5,6 @@ load(
     "clean_dep",
     "if_tsl_link_protobuf",
 )
-load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
 
 def xla_py_proto_library(**kwargs):
     # Note: we don't currently define a proto library target for Python in OSS.
@@ -46,12 +45,12 @@ def xla_cc_test(
         name,
         deps = [],
         **kwargs):
-    tsl_cc_test(
+    native.cc_test(
         name = name,
         deps = deps + if_tsl_link_protobuf(
             [],
             [
-                # clean_dep("@com_google_protobuf//:protobuf"),
+                clean_dep("@com_google_protobuf//:protobuf"),
                 # TODO(zacmustin): remove these in favor of more granular dependencies in each test.
                 "//tensorflow/compiler/xla:xla_proto_cc_impl",
                 "//tensorflow/compiler/xla:xla_data_proto_cc_impl",
