@@ -232,6 +232,8 @@ filegroup(
         "@stablehlo//:LICENSE",
         "@tblib_archive//:LICENSE",
         "@termcolor_archive//:COPYING.txt",
+        "@tf_runtime//:LICENSE",
+        "@tf_runtime//third_party/llvm_derived:LICENSE",
         "@typing_extensions_archive//:LICENSE",
         "@zlib//:zlib.h",
     ] + select({

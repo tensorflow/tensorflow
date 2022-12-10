@@ -446,10 +446,10 @@ cc_library(
     hdrs = ["pjrt_future.h"],
     visibility = [":friends"],
     deps = [
-        "//tensorflow/tsl/concurrency:async_value",
-        "//tensorflow/tsl/concurrency:ref_count",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/types:span",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:support",
     ],
 )
 
@@ -461,12 +461,12 @@ cc_library(
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/tsl/concurrency:async_value",
         "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@tf_runtime//:hostcontext",
     ],
 )
 
@@ -475,8 +475,8 @@ tf_cc_test(
     srcs = ["tracked_tfrt_cpu_device_buffer_test.cc"],
     deps = [
         ":tracked_tfrt_cpu_device_buffer",
-        "//tensorflow/tsl/concurrency:async_value",
         "@com_google_googletest//:gtest_main",
+        "@tf_runtime//:hostcontext",
     ],
 )
 
@@ -514,7 +514,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/cpu:cpu_executable",
         "//tensorflow/compiler/xla/service/cpu:cpu_xfeed",
-        "//tensorflow/tsl/concurrency:async_value",
         "//tensorflow/tsl/platform:denormal",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:setround",
@@ -526,6 +525,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:support",
     ],
 )
 
