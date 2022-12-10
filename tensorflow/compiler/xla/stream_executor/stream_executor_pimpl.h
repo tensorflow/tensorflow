@@ -380,6 +380,7 @@ class StreamExecutor {
   // Returns the list of supported algorithms for the specified convolution
   // operation.
   bool GetConvolveAlgorithms(dnn::ConvolutionKind kind,
+                             dnn::DataType input_type,
                              std::vector<dnn::AlgorithmDesc>* out_algorithms);
 
   // Returns the supported algorithms / execution plans for a convolution.
