@@ -2832,6 +2832,26 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
   return success();
 }
 
+void AllToAllOp::build(OpBuilder& odsBuilder, OperationState& odsState,
+                       Type resultType, Value operand,
+                       IntegerAttr splitDimension, IntegerAttr concatDimension,
+                       IntegerAttr splitCount,
+                       DenseIntElementsAttr replicaGroups) {
+  AllToAllOp::build(odsBuilder, odsState, resultType, operand, splitDimension,
+                    concatDimension, splitCount, replicaGroups,
+                    /*channel_handle=*/nullptr);
+}
+
+void AllToAllOp::build(OpBuilder& odsBuilder, OperationState& odsState,
+                       ::mlir::TypeRange resultType, ::mlir::ValueRange operand,
+                       IntegerAttr splitDimension, IntegerAttr concatDimension,
+                       IntegerAttr splitCount,
+                       DenseIntElementsAttr replicaGroups) {
+  AllToAllOp::build(odsBuilder, odsState, resultType, operand, splitDimension,
+                    concatDimension, splitCount, replicaGroups,
+                    /*channel_handle=*/nullptr);
+}
+
 //===----------------------------------------------------------------------===//
 // AllGatherOp
 //===----------------------------------------------------------------------===//

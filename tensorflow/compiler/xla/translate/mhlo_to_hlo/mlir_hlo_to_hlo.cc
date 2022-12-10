@@ -839,7 +839,8 @@ LogicalResult ExportXlaOp(AllToAllOp op, OpLoweringContext ctx) {
       layout = shape_or->layout();
     }
     auto tuple = xla::AllToAllTuple(
-        operands, Convert_replica_groups(op.getReplicaGroups()), layout);
+        operands, Convert_replica_groups(op.getReplicaGroups()), layout,
+        Convert_channel_handle(op.getChannelHandle()));
     for (auto [index, result] : llvm::enumerate(op.getResults())) {
       value_map[result] = xla::GetTupleElement(tuple, index);
     }
@@ -847,7 +848,8 @@ LogicalResult ExportXlaOp(AllToAllOp op, OpLoweringContext ctx) {
     // ArrayAllToAll always has exactly one operand (checked in the verifier).
     value_map[op->getResults()[0]] = xla::AllToAll(
         operands[0], *op.getSplitDimension(), *op.getConcatDimension(),
-        *op.getSplitCount(), Convert_replica_groups(op.getReplicaGroups()));
+        *op.getSplitCount(), Convert_replica_groups(op.getReplicaGroups()),
+        /*layout=*/std::nullopt, Convert_channel_handle(op.getChannelHandle()));
   }
 
   return success();

@@ -1394,6 +1394,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           loc, return_types, operands, nullptr, nullptr, nullptr,
           replica_groups_attr);
 
+      if (all_to_all->channel_id().has_value()) {
+        auto handle = ConvertChannelHandle(all_to_all->channel_id().value());
+        result.setChannelHandleAttr(
+            handle.getValue().cast<mlir::mhlo::ChannelHandleAttr>());
+      }
+
       if (result_tuple_ty) {
         return func_builder
             ->create<mlir::mhlo::TupleOp>(loc, result_type, result.getResults())

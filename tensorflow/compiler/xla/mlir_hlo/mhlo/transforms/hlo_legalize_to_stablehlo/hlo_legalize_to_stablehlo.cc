@@ -163,6 +163,9 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
       // StableHLO AllToAll doesn't support the tuple form yet.
       // Proposal: https://github.com/openxla/stablehlo/issues/574.
       if (hloOp.getNumOperands() != 1) return failure();
+      // StableHLO AllToAll doesn't support ChannelHandle attribute yet.
+      // Proposal: https://github.com/openxla/stablehlo/issues/660
+      if (hloOp.getChannelHandle().has_value()) return failure();
     }
 
     if constexpr (std::is_same<HloOpTy, mhlo::CustomCallOp>::value) {

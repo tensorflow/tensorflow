@@ -1474,10 +1474,27 @@ def MHLO_AllToAllOp : MHLO_Op<"all_to_all",
     OptionalAttr<I64Attr>:$split_dimension,
     OptionalAttr<I64Attr>:$concat_dimension,
     OptionalAttr<I64Attr>:$split_count,
-    I64ElementsAttr:$replica_groups
+    I64ElementsAttr:$replica_groups,
+    OptionalAttr<MHLO_ChannelHandle>:$channel_handle
   );
   let results = (outs Variadic<MHLO_Tensor>);
   let hasCustomHLOConverter = 1;
+
+  // channel_handle is only used for the SPMD partitioner, so we add a
+  // simplified builder method for convenience.
+  let builders = [
+    OpBuilder<(ins
+      "::mlir::Type":$result_type, "::mlir::Value":$operand,
+      "::mlir::IntegerAttr": $split_dimension,
+      "::mlir::IntegerAttr": $concat_dimension,
+      "::mlir::IntegerAttr": $split_count,
+      "::mlir::DenseIntElementsAttr": $replica_groups)>,
+    OpBuilder<(ins
+      "::mlir::TypeRange":$result_type, "::mlir::ValueRange":$operand,
+      "::mlir::IntegerAttr": $split_dimension,
+      "::mlir::IntegerAttr": $concat_dimension,
+      "::mlir::IntegerAttr": $split_count,
+      "::mlir::DenseIntElementsAttr": $replica_groups)>];
 }
 
 def MHLO_ReduceOp: MHLO_ShapedInterfaceOp<"reduce", [

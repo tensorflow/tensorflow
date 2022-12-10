@@ -1851,6 +1851,20 @@ func.func @op_add_dependency(%arg0: tensor<16xf32>, %arg1: !mhlo.token) -> tenso
 
 // -----
 
+func.func private @op_all_to_all_channel_handle(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
+  // expected-error@+1 {{failed to legalize operation 'mhlo.all_to_all' that was explicitly marked illegal}}
+  %0 = "mhlo.all_to_all"(%arg0) {
+    split_dimension = 1 : i64,
+    concat_dimension = 0 : i64,
+    split_count = 4 : i64,
+    replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
+  } : (tensor<4x16xf32>) -> tensor<16x4xf32>
+  func.return %0 : tensor<16x4xf32>
+}
+
+// -----
+
 func.func private @op_all_to_all_tuple(%arg0: tensor<128x4xf32>,
     %arg1: tensor<128x4xf32>) -> (tensor<128x4xf32>, tensor<128x4xf32>) {
   // expected-error@+1 {{failed to legalize operation 'mhlo.all_to_all' that was explicitly marked illegal}}

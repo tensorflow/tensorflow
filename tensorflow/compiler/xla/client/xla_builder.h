@@ -832,16 +832,20 @@ class XlaBuilder {
   XlaOp AllToAll(XlaOp operand, int64_t split_dimension,
                  int64_t concat_dimension, int64_t split_count,
                  absl::Span<const ReplicaGroup> replica_groups,
-                 const std::optional<Layout>& layout = std::nullopt);
+                 const std::optional<Layout>& layout = std::nullopt,
+                 const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
-  XlaOp AllToAllTuple(absl::Span<const XlaOp> operands,
-                      absl::Span<const ReplicaGroup> replica_groups,
-                      const std::optional<Layout>& layout);
+  XlaOp AllToAllTuple(
+      absl::Span<const XlaOp> operands,
+      absl::Span<const ReplicaGroup> replica_groups,
+      const std::optional<Layout>& layout,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
-  XlaOp AllToAllTuple(XlaOp operand, int64_t split_dimension,
-                      int64_t concat_dimension, int64_t split_count,
-                      absl::Span<const ReplicaGroup> replica_groups,
-                      const std::optional<Layout>& layout);
+  XlaOp AllToAllTuple(
+      XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
+      int64_t split_count, absl::Span<const ReplicaGroup> replica_groups,
+      const std::optional<Layout>& layout,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
   XlaOp CollectivePermute(
       XlaOp operand,
@@ -1448,14 +1452,17 @@ class XlaBuilder {
   friend XlaOp AllToAll(XlaOp operand, int64_t split_dimension,
                         int64_t concat_dimension, int64_t split_count,
                         absl::Span<const ReplicaGroup> replica_groups,
-                        const std::optional<Layout>& layout);
+                        const std::optional<Layout>& layout,
+                        const std::optional<ChannelHandle>& channel_id);
   friend XlaOp AllToAllTuple(absl::Span<const XlaOp> operands,
                              absl::Span<const ReplicaGroup> replica_groups,
-                             const std::optional<Layout>& layout);
+                             const std::optional<Layout>& layout,
+                             const std::optional<ChannelHandle>& channel_id);
   friend XlaOp AllToAllTuple(XlaOp operand, int64_t split_dimension,
                              int64_t concat_dimension, int64_t split_count,
                              absl::Span<const ReplicaGroup> replica_groups,
-                             const std::optional<Layout>& layout);
+                             const std::optional<Layout>& layout,
+                             const std::optional<ChannelHandle>& channel_id);
   friend XlaOp CollectivePermute(
       XlaOp operand,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
@@ -1613,9 +1620,10 @@ class XlaBuilder {
       absl::Span<const XlaComputation* const> branch_computations,
       absl::Span<const XlaOp> branch_operands);
 
-  XlaOp AllToAllArray(XlaOp operand, int64_t split_dimension,
-                      int64_t concat_dimension, int64_t split_count,
-                      absl::Span<const ReplicaGroup> replica_groups);
+  XlaOp AllToAllArray(
+      XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
+      int64_t split_count, absl::Span<const ReplicaGroup> replica_groups,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
   // Creates an op with the given opcode and the output shape.
   virtual StatusOr<XlaOp> AddOpWithShape(HloOpcode opcode, const Shape& shape,
@@ -2457,16 +2465,20 @@ XlaOp ReduceScatter(
 XlaOp AllToAll(XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
                int64_t split_count,
                absl::Span<const ReplicaGroup> replica_groups = {},
-               const std::optional<Layout>& layout = std::nullopt);
+               const std::optional<Layout>& layout = std::nullopt,
+               const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
-XlaOp AllToAllTuple(absl::Span<const XlaOp> operand,
-                    absl::Span<const ReplicaGroup> replica_groups = {},
-                    const std::optional<Layout>& layout = std::nullopt);
+XlaOp AllToAllTuple(
+    absl::Span<const XlaOp> operand,
+    absl::Span<const ReplicaGroup> replica_groups = {},
+    const std::optional<Layout>& layout = std::nullopt,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
-XlaOp AllToAllTuple(XlaOp operand, int64_t split_dimension,
-                    int64_t concat_dimension, int64_t split_count,
-                    absl::Span<const ReplicaGroup> replica_groups = {},
-                    const std::optional<Layout>& layout = std::nullopt);
+XlaOp AllToAllTuple(
+    XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
+    int64_t split_count, absl::Span<const ReplicaGroup> replica_groups = {},
+    const std::optional<Layout>& layout = std::nullopt,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
 // Enqueues an collective operation that sends and receives data cross replicas.
 //
