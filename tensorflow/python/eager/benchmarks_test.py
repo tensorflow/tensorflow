@@ -48,13 +48,16 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
@@ -114,6 +117,9 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     # used for conv2d benchmarks
     self._m_8_28_28_3 = random_ops.random_uniform((8, 28, 28, 3))
     self._m_1_3_3_1 = random_ops.random_uniform((1, 3, 3, 1))
+
+    # used for embedding benchmarks
+    self._m_10000_by_16 = random_ops.random_uniform((10000, 16))
 
   def _get_benchmark_name(self):
     """Mostly copied from benchmark.py _get_name()."""
@@ -1618,6 +1624,43 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
   def benchmark_tf_range_return_int64_GPU(self):
     self._benchmark_tf_range_return(dtype=dtypes.int64, device=GPU)
+
+  def _benchmark_embedding_lookup_sparse_sparse_input(self, batch_size=32000, device=GPU):
+    def func(sp_ids):
+      return embedding_ops.embedding_lookup_sparse(self._m_10000_by_16, sp_ids, None)
+
+    with context.device(device):
+      values = random_ops.random_uniform(shape=(batch_size,),
+                        minval=1,
+                        maxval=10000,
+                        dtype=dtypes.int64)
+      value_rowids = ops.EagerTensor(np.arange(batch_size), device=device)
+
+      ragged_input = ragged_tensor.RaggedTensor.from_value_rowids(values, value_rowids)
+      sparse_input = sparse_ops.from_dense(ragged_input.to_tensor())
+      func(sparse_input)
+      self._run(lambda: func(sparse_input), num_iters=2000)
+
+  def benchmark_tf_embedding_lookup_sparse_sparse_input(self):
+    self._benchmark_embedding_lookup_sparse_sparse_input()
+
+  def _benchmark_embedding_lookup_sparse_ragged_input(self, batch_size=32000, device=GPU):
+    def func(sp_ids):
+      return embedding_ops.embedding_lookup_sparse(self._m_10000_by_16, sp_ids, None, allow_dense_grads=True)
+
+    with context.device(device):
+      values = random_ops.random_uniform(shape=(batch_size,),
+                        minval=1,
+                        maxval=10000,
+                        dtype=dtypes.int64)
+      value_rowids = ops.EagerTensor(np.arange(batch_size), device=device)
+
+      ragged_input = ragged_tensor.RaggedTensor.from_value_rowids(values, value_rowids)
+      func(ragged_input)
+      self._run(lambda: func(ragged_input), num_iters=2000)
+
+  def benchmark_tf_embedding_lookup_sparse_ragged_input(self):
+    self._benchmark_embedding_lookup_sparse_ragged_input()
 
 if __name__ == "__main__":
   test.main()
