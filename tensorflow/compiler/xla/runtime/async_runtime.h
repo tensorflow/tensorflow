@@ -22,9 +22,9 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "tensorflow/tsl/concurrency/async_value.h"
+#include "tensorflow/tsl/concurrency/ref_count.h"
 #include "tensorflow/tsl/platform/threadpool.h"
-#include "tfrt/concurrency/async_value.h"  // from @tf_runtime
-#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
 namespace mlir {
 namespace runtime {

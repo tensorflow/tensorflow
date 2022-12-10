@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/jit_compiler.h"
 #include "tensorflow/compiler/xla/runtime/async_values_cache.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/xla/runtime/constraints.h"
-#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/concurrency/chain.h"  // from @tf_runtime
+#include "tensorflow/tsl/concurrency/async_value_ref.h"
+#include "tensorflow/tsl/concurrency/chain.h"
 
 namespace xla {
 namespace runtime {

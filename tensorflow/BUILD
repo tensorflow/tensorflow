@@ -16,7 +16,6 @@ load(
     "tf_custom_op_library_additional_deps_impl",
     "tf_monitoring_python_deps",
     "tf_native_cc_binary",
-    "tsl_async_value_deps",
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -122,7 +121,7 @@ PACKAGE_STATIC_DEPS = [
     "@clog//:__subpackages__",
     "@flatbuffers//:__subpackages__",
     "@nccl_archive//:__subpackages__",
-] + tsl_async_value_deps()
+]
 
 package(
     # copybara:uncomment default_applicable_licenses = [":license"],

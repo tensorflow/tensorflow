@@ -46,8 +46,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/concurrency/async_value_ref.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
-#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 
 namespace xla {
 
@@ -232,12 +232,12 @@ class TfrtCpuClient final : public PjRtClient {
     return eigen_intraop_device_.get();
   }
 
-  tfrt::AsyncValueRef<CpuEvent> GetLastCollectiveLaunchEvent() {
+  tsl::AsyncValueRef<CpuEvent> GetLastCollectiveLaunchEvent() {
     absl::MutexLock lock(&mu_);
     return last_collective_launch_event_.CopyRef();
   }
 
-  void SetLastCollectiveLaunchEvent(tfrt::AsyncValueRef<CpuEvent> event) {
+  void SetLastCollectiveLaunchEvent(tsl::AsyncValueRef<CpuEvent> event) {
     absl::MutexLock lock(&mu_);
     last_collective_launch_event_ = std::move(event);
   }
@@ -257,7 +257,6 @@ class TfrtCpuClient final : public PjRtClient {
   // Thread pool for running PjRtClient tasks.
   std::unique_ptr<tsl::thread::ThreadPool> pjrt_client_thread_pool_;
 
-  // TODO(zhangqiaorjc): Use tfrt::compat::EigenHostContextThreadPool.
   std::unique_ptr<tsl::thread::ThreadPool> eigen_intraop_pool_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_intraop_device_;
 
@@ -272,7 +271,7 @@ class TfrtCpuClient final : public PjRtClient {
   // TODO(zhangqiaorjc): Explore alternatives that allow multiple concurrent
   // collectives.
   mutable absl::Mutex mu_;
-  tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event_
+  tsl::AsyncValueRef<CpuEvent> last_collective_launch_event_
       ABSL_GUARDED_BY(mu_);
 
   // A cache for transpose plans. We use transposes to convert
@@ -351,7 +350,7 @@ class TfrtCpuBuffer final : public PjRtBuffer {
            on_device_shape_.tuple_shapes_size() == 0;
   }
 
-  StatusOr<tfrt::AsyncValueRef<Literal>> CopyToHostAsyncInternal(
+  StatusOr<tsl::AsyncValueRef<Literal>> CopyToHostAsyncInternal(
       bool discard_cached_copy, std::optional<xla::Layout> layout);
 
   // Acquires the device buffer for shared read-only usages, and it also adds
@@ -360,7 +359,7 @@ class TfrtCpuBuffer final : public PjRtBuffer {
   // nullptr if the buffer is already donated or there is outstanding external
   // references.
   TrackedTfrtCpuDeviceBuffer* AcquireUsage(
-      tfrt::AsyncValueRef<CpuEvent> usage_event);
+      tsl::AsyncValueRef<CpuEvent> usage_event);
 
   // A helper class for managing a pending donation. It should be committed upon
   // success. Otherwise, the donated buffer is returned to the TfrtCpuBuffer.
@@ -574,7 +573,7 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options,
-      tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event,
+      tsl::AsyncValueRef<CpuEvent> last_collective_launch_event,
       bool fill_future, TfrtCpuDevice* device = nullptr);
 
   TfrtCpuClient* client_;

@@ -55,11 +55,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/concurrency/async_value_ref.h"
 #include "tensorflow/tsl/platform/denormal.h"
 #include "tensorflow/tsl/platform/setround.h"
 #include "tensorflow/tsl/profiler/lib/connected_traceme.h"
-#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/support/forward_decls.h"  // from @tf_runtime
 
 namespace xla {
 namespace {
@@ -71,7 +70,7 @@ namespace {
 // robust by using setting the AsyncValue in the destructor.
 class MarkEventReadyOnExit {
  public:
-  explicit MarkEventReadyOnExit(tfrt::AsyncValueRef<CpuEvent> event)
+  explicit MarkEventReadyOnExit(tsl::AsyncValueRef<CpuEvent> event)
       : event_(std::move(event)) {}
 
   MarkEventReadyOnExit(const MarkEventReadyOnExit&) = delete;
@@ -83,22 +82,16 @@ class MarkEventReadyOnExit {
     if (event_) event_.SetStateConcrete();
   }
 
-  tfrt::AsyncValueRef<CpuEvent> Release() && { return std::move(event_); }
+  tsl::AsyncValueRef<CpuEvent> Release() && { return std::move(event_); }
 
  private:
-  tfrt::AsyncValueRef<CpuEvent> event_;
+  tsl::AsyncValueRef<CpuEvent> event_;
 };
 
 }  // namespace
 
 static const char kCpuPlatformName[] = "cpu";
 static constexpr size_t kSmallDataTransferByteSize = 102400;  // 100 KiB
-
-static tfrt::AsyncValueRef<CpuEvent> GetOrCreateReadyEvent() {
-  static const auto* ready_event = new tfrt::AsyncValueRef<CpuEvent>(
-      tfrt::MakeAvailableAsyncValueRef<CpuEvent>());
-  return ready_event->CopyRef();
-}
 
 static void EnqueueWork(tsl::thread::ThreadPool* pool,
                         absl::AnyInvocable<void()> callee) {
@@ -113,7 +106,7 @@ static void EnqueueWork(tsl::thread::ThreadPool* pool,
 // Enqueue to PjRtClient pool when all `values` are ready.
 static void EnqueueWorkWhenReady(
     tsl::thread::ThreadPool* pool,
-    llvm::ArrayRef<tfrt::RCReference<tfrt::AsyncValue>> values,
+    llvm::ArrayRef<tsl::RCReference<tsl::AsyncValue>> values,
     absl::AnyInvocable<void()> callee) {
   RunWhenReady(values, [pool, callee = std::move(callee)]() mutable {
     EnqueueWork(pool, std::move(callee));
@@ -191,7 +184,7 @@ TfrtCpuClient::TfrtCpuClient(
           new Eigen::ThreadPoolDevice(eigen_intraop_pool_->AsEigenThreadPool(),
                                       eigen_intraop_pool_->NumThreads())),
       last_collective_launch_event_(
-          tfrt::MakeAvailableAsyncValueRef<CpuEvent>()),
+          tsl::MakeAvailableAsyncValueRef<CpuEvent>()),
       transpose_cache_(1024) {
   for (const std::unique_ptr<TfrtCpuDevice>& device : owned_devices_) {
     devices_.push_back(device.get());
@@ -551,7 +544,7 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
 
 StatusOr<std::unique_ptr<TfrtCpuBuffer>> AllocateDestinationBuffer(
     const Shape& on_device_shape,
-    absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> definition_events,
+    absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events,
     TfrtCpuDevice* device, TfrtCpuClient* client) {
   absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers;
   if (!on_device_shape.IsTuple()) {
@@ -591,7 +584,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateViewOfDeviceBuffer(
   buffers.push_back(std::move(non_owning_buffer));
   auto tracked_device_buffer = std::make_unique<TrackedTfrtCpuDeviceBuffer>(
       /*is_tuple=*/false, std::move(buffers),
-      /*definition_event=*/tfrt::MakeAvailableAsyncValueRef<CpuEvent>(),
+      /*definition_event=*/tsl::MakeAvailableAsyncValueRef<CpuEvent>(),
       std::move(on_delete_callback));
   return std::unique_ptr<PjRtBuffer>(std::make_unique<TfrtCpuBuffer>(
       shape, std::move(tracked_device_buffer), this,
@@ -629,7 +622,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
       ((absl::bit_cast<std::uintptr_t>(data) &
         (cpu_function_runtime::MinAlign() - 1)) == 0);
   absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers;
-  absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> definition_events;
+  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events;
   std::function<void()> on_delete_callback;
   size_t byte_size = ShapeUtil::ByteSizeOf(shape);
   if (can_use_zero_copy) {
@@ -675,8 +668,8 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
           on_done_with_host_buffer = nullptr;
         }
       } else {
-        tfrt::AsyncValueRef<CpuEvent> copy_event =
-            tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
+        tsl::AsyncValueRef<CpuEvent> copy_event =
+            tsl::MakeConstructedAsyncValueRef<CpuEvent>();
         definition_events.push_back(copy_event.CopyRef());
         EnqueueWork(pjrt_client_thread_pool(),
                     [device_buffer = std::move(device_buffer), dst_data_ptr,
@@ -713,12 +706,12 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostLiteral(
 
   // Add a placeholder definition event for each leaf buffer when creating the
   // buffer. They are set only after h2d dispatch.
-  absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> definition_events;
-  absl::InlinedVector<tfrt::RCReference<tfrt::AsyncValue>, 4> avs;
+  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events;
+  absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4> avs;
   int num_leaf_buffers = shape.IsTuple() ? shape.tuple_shapes_size() : 1;
   for (int i = 0; i < num_leaf_buffers; ++i) {
-    tfrt::AsyncValueRef<CpuEvent> definition_event =
-        tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
+    tsl::AsyncValueRef<CpuEvent> definition_event =
+        tsl::MakeConstructedAsyncValueRef<CpuEvent>();
     definition_events.push_back(definition_event.CopyRef());
     avs.push_back(std::move(definition_event));
   }
@@ -727,7 +720,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostLiteral(
                           shape, std::move(definition_events),
                           tensorflow::down_cast<TfrtCpuDevice*>(device), this));
 
-  auto usage_event = tfrt::MakeAvailableAsyncValueRef<CpuEvent>();
+  auto usage_event = tsl::MakeAvailableAsyncValueRef<CpuEvent>();
   auto* device_buffer = output_buffer->AcquireUsage(std::move(usage_event));
   CHECK(device_buffer);
   if (!shape.IsTuple()) {
@@ -869,10 +862,10 @@ void TfrtCpuBuffer::Delete() {
 
   // Now that all holds have completed and no more can be added, we can get
   // the final set of usage events.
-  absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> usage_events =
+  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> usage_events =
       device_buffer->LockUseAndTransferUsageEvents();
 
-  std::vector<tfrt::AsyncValue*> event_avs;
+  std::vector<tsl::AsyncValue*> event_avs;
   event_avs.reserve(usage_events.size() + 1);
   for (auto& event : usage_events) {
     event_avs.push_back(event.GetAsyncValue());
@@ -907,7 +900,7 @@ StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>> TfrtCpuBuffer::Release(
       ReleaseBufferLocked();
   if (device_buffer == nullptr) return {nullptr};
 
-  absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> events;
+  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> events;
   // Now that all holds have completed and no more can be added, we can get
   // the final set of usage events.
   events = device_buffer->LockUseAndTransferUsageEvents();
@@ -931,7 +924,7 @@ StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>> TfrtCpuBuffer::Release(
 }
 
 TrackedTfrtCpuDeviceBuffer* TfrtCpuBuffer::AcquireUsage(
-    tfrt::AsyncValueRef<CpuEvent> usage_event) {
+    tsl::AsyncValueRef<CpuEvent> usage_event) {
   absl::MutexLock lock(&mu_);
   if (!tracked_device_buffer_) {
     return nullptr;
@@ -981,7 +974,7 @@ StatusOr<Shape> TfrtCpuBuffer::logical_on_device_shape() {
     return on_device_shape_;
   }
 
-  auto usage_event = tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
+  auto usage_event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
   auto* device_buffer = AcquireUsage(usage_event);
   if (device_buffer == nullptr) {
     return InvalidArgument(
@@ -1004,19 +997,9 @@ StatusOr<Shape> TfrtCpuBuffer::logical_on_device_shape() {
   return ret_shape;
 }
 
-static std::vector<tfrt::RCReference<tfrt::AsyncValue>> GetAsyncValues(
-    absl::Span<const tfrt::AsyncValueRef<CpuEvent>> events) {
-  std::vector<tfrt::RCReference<tfrt::AsyncValue>> avs;
-  avs.reserve(events.size());
-  for (const auto& ev : events) {
-    avs.push_back(ev.CopyRCRef());
-  }
-  return avs;
-}
-
-static std::vector<tfrt::RCReference<tfrt::AsyncValue>> CopyAsyncValues(
-    absl::Span<const tfrt::RCReference<tfrt::AsyncValue>> events) {
-  std::vector<tfrt::RCReference<tfrt::AsyncValue>> avs;
+static std::vector<tsl::RCReference<tsl::AsyncValue>> CopyAsyncValues(
+    absl::Span<const tsl::RCReference<tsl::AsyncValue>> events) {
+  std::vector<tsl::RCReference<tsl::AsyncValue>> avs;
   avs.reserve(events.size());
   for (const auto& ev : events) {
     avs.push_back(ev.CopyRef());
@@ -1030,7 +1013,7 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
     return PjRtFuture<Status>(
         InvalidArgument("ToLiteral called on empty tuple"));
   }
-  auto usage_event = tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
+  auto usage_event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
   auto* device_buffer = AcquireUsage(usage_event);
   if (device_buffer == nullptr) {
     return PjRtFuture<Status>(InvalidArgument(
@@ -1038,9 +1021,9 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
   }
   MarkEventReadyOnExit ready_on_exit(std::move(usage_event));
 
-  std::vector<tfrt::RCReference<tfrt::AsyncValue>> device_buffer_wait_avs = {
+  std::vector<tsl::RCReference<tsl::AsyncValue>> device_buffer_wait_avs = {
       device_buffer->definition_event().CopyRCRef()};
-  std::vector<tfrt::RCReference<tfrt::AsyncValue>> device_buffer_wait_avs_copy =
+  std::vector<tsl::RCReference<tsl::AsyncValue>> device_buffer_wait_avs_copy =
       CopyAsyncValues(device_buffer_wait_avs);
 
   bool should_sync_copy = device_buffer_wait_avs.empty() &&
@@ -1062,7 +1045,7 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
     // Unblock ToLiteral caller.
     return PjRtFuture<Status>(OkStatus());
   } else {
-    auto ready_event = tfrt::MakeUnconstructedAsyncValueRef<Status>();
+    auto ready_event = tsl::MakeUnconstructedAsyncValueRef<Status>();
     // Wait for buffer definition events to finish before d2h dispatch. D2H
     // dispatch should be in parallel, e.g. one Execute event finish may trigger
     // multiple outputs' D2H, they should happen in different threads in
@@ -1146,7 +1129,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
   }
 
   // Copy each leaf buffer to a destination buffer.
-  auto usage_event = tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
+  auto usage_event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
   auto* src_device_buffer = AcquireUsage(usage_event);
   if (src_device_buffer == nullptr) {
     return InvalidArgument("CopyToDevice called on deleted or donated buffer");
@@ -1156,7 +1139,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
   int num_leaf_buffers = src_device_buffer->Buffers().size();
   absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> src_buffers;
   absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> dst_buffers;
-  absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> dst_definition_events;
+  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> dst_definition_events;
   src_buffers.reserve(num_leaf_buffers);
   dst_buffers.reserve(num_leaf_buffers);
   dst_definition_events.reserve(num_leaf_buffers);
@@ -1168,7 +1151,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
     src_buffers.push_back(std::move(src_buffer));
     dst_buffers.push_back(std::move(dst_buffer));
     dst_definition_events.push_back(
-        tfrt::MakeConstructedAsyncValueRef<CpuEvent>());
+        tsl::MakeConstructedAsyncValueRef<CpuEvent>());
   }
 
   // Wait for src buffer definition events to finish before d2d dispatch.
@@ -1211,7 +1194,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
 }
 
 PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
-  tfrt::AsyncValueRef<CpuEvent> definition_event;
+  tsl::AsyncValueRef<CpuEvent> definition_event;
   {
     absl::MutexLock lock(&mu_);
     if (!tracked_device_buffer_) {
@@ -1230,8 +1213,8 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
     }
     return PjRtFuture<Status>(OkStatus());
   } else {
-    tfrt::AsyncValueRef<Status> status_event =
-        tfrt::MakeUnconstructedAsyncValueRef<Status>();
+    tsl::AsyncValueRef<Status> status_event =
+        tsl::MakeUnconstructedAsyncValueRef<Status>();
 
     definition_event.AndThen(
         [definition_event = definition_event.AsPtr(), status_event]() {
@@ -1432,8 +1415,8 @@ static std::vector<xla::cpu::BufferDesc> MakeXLARuntimeDescriptorTable(
 StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     const RunId& run_id, const ExecuteOptions& options,
-    tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event,
-    bool fill_future, TfrtCpuDevice* device) {
+    tsl::AsyncValueRef<CpuEvent> last_collective_launch_event, bool fill_future,
+    TfrtCpuDevice* device) {
   tsl::profiler::TraceMe traceme("TfrtCpuExecutable::ExecuteHelper");
 
   std::shared_ptr<DeviceAssignment> device_assignment;
@@ -1471,7 +1454,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
   // `execute_event` indicates whether cpu computation is complete and whether
   // there was an error.
-  auto execute_event = tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
+  auto execute_event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
   MarkEventReadyOnExit ready_on_exit(execute_event);
 
   absl::InlinedVector<TfrtCpuBuffer::DonationTransaction, 4>
@@ -1485,7 +1468,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
   // This also ensures that the returned `execute_event` dominates all inputs'
   // events, and thus output buffer only need to contain `execute_event` as the
   // single definition event.
-  std::vector<tfrt::RCReference<tfrt::AsyncValue>> input_deps;
+  std::vector<tsl::RCReference<tsl::AsyncValue>> input_deps;
   input_deps.reserve(argument_handles.size());
 
   auto donate_it = parameters_that_must_be_donated_.begin();
@@ -1563,7 +1546,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     tracked_buffers.clear();
     tuplized_arg = std::make_unique<TrackedTfrtCpuDeviceBuffer>(
         /*is_tuple=*/true, std::move(leaf_buffers),
-        /*definition_event=*/tfrt::MakeAvailableAsyncValueRef<CpuEvent>());
+        /*definition_event=*/tsl::MakeAvailableAsyncValueRef<CpuEvent>());
     tracked_buffers.emplace_back(false, tuplized_arg.get());
   }
 
@@ -1656,7 +1639,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     if (is_a_collective_launch) {
       client_->SetLastCollectiveLaunchEvent(execute_event.CopyRef());
     }
-    std::vector<tfrt::RCReference<tfrt::AsyncValue>> input_deps_avs_copy =
+    std::vector<tsl::RCReference<tsl::AsyncValue>> input_deps_avs_copy =
         CopyAsyncValues(input_deps);
     EnqueueWorkWhenReady(
         client()->pjrt_client_thread_pool(), input_deps,
@@ -1726,7 +1709,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
       absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> sub_buffer;
       sub_buffer.push_back(std::move(result_buffers[i]));
       // Program execution writes to output buffers so it's a definition event.
-      absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> definition_events;
+      absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events;
       definition_events.push_back(execute_event.CopyRef());
       auto leaf_tracked_device_buffer =
           std::make_unique<TrackedTfrtCpuDeviceBuffer>(
@@ -1748,7 +1731,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
   }
   std::optional<PjRtFuture<Status>> future;
   if (fill_future) {
-    auto done_event = tfrt::MakeUnconstructedAsyncValueRef<Status>();
+    auto done_event = tsl::MakeUnconstructedAsyncValueRef<Status>();
     execute_event.AndThen(
         [done_event = done_event.CopyRef(), event = execute_event.CopyRef()]() {
           Status s;
@@ -1805,7 +1788,7 @@ TfrtCpuExecutable::Execute(
 
     auto statusor = ExecuteHelper(
         argument_handles[0], replica, partition, run_id, options,
-        /*last_collective_launch_event=*/tfrt::AsyncValueRef<CpuEvent>(),
+        /*last_collective_launch_event=*/tsl::AsyncValueRef<CpuEvent>(),
         returned_futures.has_value());
 
     if (!statusor.ok()) {
@@ -1822,7 +1805,7 @@ TfrtCpuExecutable::Execute(
     // are run at the same time. We conservatively run only one collective at a
     // time, because we may not have enough threads to run arbitrary number of
     // collectives concurrently.
-    tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event =
+    tsl::AsyncValueRef<CpuEvent> last_collective_launch_event =
         client_->GetLastCollectiveLaunchEvent();
 
     absl::Mutex mu;
@@ -1900,7 +1883,7 @@ TfrtCpuExecutable::ExecuteSharded(
               argument_handles, addressable_device_logical_ids_[i].replica,
               addressable_device_logical_ids_[i].partition, RunId(), options,
               /*last_collective_launch_event=*/
-              tfrt::AsyncValueRef<CpuEvent>(), fill_future));
+              tsl::AsyncValueRef<CpuEvent>(), fill_future));
       returned_future = std::move(result.future);
       return std::move(result.buffers);
     }
@@ -1937,7 +1920,7 @@ TfrtCpuExecutable::ExecutePortable(
           argument_handles,
           /*replica=*/0,
           /*partition=*/0, RunId(), options,
-          /*last_collective_launch_event=*/tfrt::AsyncValueRef<CpuEvent>(),
+          /*last_collective_launch_event=*/tsl::AsyncValueRef<CpuEvent>(),
           fill_future, tensorflow::down_cast<TfrtCpuDevice*>(device)));
   returned_future = std::move(result.future);
   return std::move(result.buffers);
