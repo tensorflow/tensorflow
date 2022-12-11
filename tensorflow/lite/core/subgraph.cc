@@ -805,27 +805,6 @@ TfLiteStatus Subgraph::CheckInputAndOutputForOverlap(const int* input_indices,
   return kTfLiteOk;
 }
 
-TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
-                                     size_t dims_size, size_t* bytes) {
-  TF_LITE_ENSURE(&context_, bytes != nullptr);
-  // When 'dims_size' is 0, we simply assume it's a scalar. Therefore, we start
-  // 'count' as 1.
-  size_t count = 1;
-  for (int k = 0; k < dims_size; k++) {
-    size_t old_count = count;
-    TF_LITE_ENSURE_MSG(
-        &context_,
-        MultiplyAndCheckOverflow(old_count, dims[k], &count) == kTfLiteOk,
-        "BytesRequired number of elements overflowed.\n");
-  }
-  size_t type_size = 0;
-  TF_LITE_ENSURE_OK(&context_, GetSizeOfType(&context_, type, &type_size));
-  TF_LITE_ENSURE_MSG(
-      &context_, MultiplyAndCheckOverflow(type_size, count, bytes) == kTfLiteOk,
-      "BytesRequired number of bytes overflowed.\n");
-  return kTfLiteOk;
-}
-
 TfLiteStatus Subgraph::AllocateTensors() {
   if (!consistent_) {
     ReportError("AllocateTensors() called on inconsistent model.");
@@ -1610,8 +1589,9 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
   if (type != kTfLiteString && type != kTfLiteResource &&
       type != kTfLiteVariant && sparsity == nullptr) {
     size_t required_bytes;
-    TF_LITE_ENSURE_OK(&context_,
-                      BytesRequired(type, dims, ndims, &required_bytes));
+    TF_LITE_ENSURE_OK(
+        &context_,
+        tflite::BytesRequired(type, dims, ndims, &required_bytes, context_));
     TF_LITE_ENSURE_EQ(&context_, required_bytes, bytes);
   }
 
@@ -1664,8 +1644,9 @@ TfLiteStatus Subgraph::SetTensorParametersReadWrite(
     // many bytes we will need based on the dimensions. String tensors are
     // allocated dynamically and we can't know ahead of time how much space
     // they will require.
-    TF_LITE_ENSURE_OK(&context_,
-                      BytesRequired(type, dims, ndims, &required_bytes));
+    TF_LITE_ENSURE_OK(
+        &context_,
+        tflite::BytesRequired(type, dims, ndims, &required_bytes, context_));
   }
 
   TfLiteAllocationType allocation_type = kTfLiteArenaRw;
@@ -1715,8 +1696,9 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
     if (tensor->type != kTfLiteString && tensor->type != kTfLiteResource &&
         tensor->type != kTfLiteVariant) {
       size_t bytesRequired;
-      TfLiteStatus status = BytesRequired(tensor->type, new_size->data,
-                                          new_size->size, &bytesRequired);
+      TfLiteStatus status =
+          tflite::BytesRequired(tensor->type, new_size->data, new_size->size,
+                                &bytesRequired, context_);
       if (status != kTfLiteOk) {
         TfLiteIntArrayFree(new_size);
         return kTfLiteError;
