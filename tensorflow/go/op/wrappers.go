@@ -56859,7 +56859,8 @@ func XlaBroadcastHelper(scope *Scope, lhs tf.Output, rhs tf.Output, broadcast_di
 //
 //	args: A list of `Tensor` with possibly different types to be passed as arguments
 //
-// to the HLO module.
+// to the HLO module. These are all non-dimension arguments. The dimension
+// arguments are computed at JIT time.
 //
 //	version: Changes when we change the semantics of the op, to support backwards
 //
