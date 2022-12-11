@@ -20748,7 +20748,8 @@ E.g., the specification "2.1" denotes the value args[2].shape[1].
 
   let arguments = (ins
     Arg<Variadic<TF_Tensor>, [{A list of `Tensor` with possibly different types to be passed as arguments
-to the HLO module.}]>:$args,
+to the HLO module. These are all non-dimension arguments. The dimension
+arguments are computed at JIT time.}]>:$args,
 
     I64Attr:$version,
     StrAttr:$module,
