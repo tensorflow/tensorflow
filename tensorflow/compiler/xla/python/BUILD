@@ -5,11 +5,14 @@ load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
+load(
+    "//tensorflow/compiler/xla:xla.bzl",
+    "xla_cc_test",
+    "xla_py_test_deps",
+)
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
-    "tf_cc_test",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//tensorflow/tsl:tsl.default.bzl", "tsl_pybind_extension")
@@ -574,7 +577,7 @@ cc_library(
     }),
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "outfeed_receiver_test_cpu",
     size = "small",
     srcs = ["outfeed_receiver_test.cc"],
