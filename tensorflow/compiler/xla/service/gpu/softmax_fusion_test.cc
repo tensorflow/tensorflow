@@ -162,6 +162,33 @@ ENTRY main {
   EXPECT_FALSE(fusion.Run(module.get()).value());
 }
 
+TEST_F(SoftmaxFusionTest, SingleSoftmaxPatternWrongReductionComputation) {
+  const std::string& hlo_string = R"(
+
+HloModule softmax
+
+or_computation {
+  arg_0 = s32[] parameter(0)
+  arg_1 = s32[] parameter(1)
+  converted_arg_0 = pred[] convert(arg_0)
+  converted_arg_1 = pred[] convert(arg_1)
+  or = pred[] or(converted_arg_0, converted_arg_1)
+  ROOT result = s32[] convert(or)
+}
+
+ENTRY main {
+  param_0 = s32[128,127]{1,0} parameter(0)
+  constant_neg_inf = s32[] constant(0)
+  reduce = s32[128]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=or_computation
+  broadcast = s32[128,127]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = s32[128,127]{1,0} subtract(param_0, broadcast)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  SoftmaxFusion fusion;
+  EXPECT_FALSE(fusion.Run(module.get()).value());
+}
+
 TEST_F(SoftmaxFusionTest, SingleSoftmaxPatternRowsNotLargerThanColumns) {
   const std::string& hlo_string = R"(
 
@@ -1099,6 +1126,88 @@ INSTANTIATE_TEST_SUITE_P(
          std::make_tuple(127, 125), std::make_tuple(128, 128),
          std::make_tuple(9216, 150), std::make_tuple(0, 0)}),
     TestDataToString);
+
+struct ReductionParams {
+  std::string reduction_op;
+  std::string element_type;
+  std::string init_value;
+  ReductionParams(std::string reduction_op, std::string element_type,
+                  std::string init_value)
+      : reduction_op(reduction_op),
+        element_type(element_type),
+        init_value(init_value) {}
+};
+
+class SoftmaxFusionReductionEnd2EndTest
+    : public HloTestBase,
+      public ::testing::WithParamInterface<ReductionParams> {
+ private:
+  DebugOptions GetDebugOptionsForTest() override {
+    auto debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_softmax_fusion(true);
+    return debug_options;
+  }
+};
+
+TEST_P(SoftmaxFusionReductionEnd2EndTest, SingleSoftmaxPattern) {
+  const std::string& hlo_string_template = R"(
+HloModule softmax
+
+reduce_computation {
+  arg_0 = $1[] parameter(0)
+  arg_1 = $1[] parameter(1)
+  ROOT result = $1[] $0(arg_0, arg_1)
+}
+
+ENTRY main {
+  param_0 = $1[18,17]{1,0} parameter(0)
+  init = $1[] constant($2)
+  reduce = $1[18]{0} reduce(param_0, init), dimensions={1}, to_apply=reduce_computation
+  broadcast = $1[18,17]{1,0} broadcast(reduce), dimensions={0}
+  ROOT result = $1[18,17]{1,0} $0(param_0, broadcast)
+}
+)";
+  ReductionParams params = GetParam();
+  std::string hlo_string =
+      absl::Substitute(hlo_string_template, params.reduction_op,
+                       params.element_type, params.init_value);
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  auto initial_module = module->Clone();
+  SoftmaxFusion fusion;
+  EXPECT_TRUE(fusion.Run(module.get()).value());
+
+  EXPECT_TRUE(RunAndCompare(std::move(initial_module), ErrorSpec(1e-3, 1e-3)));
+}
+
+std::string ReductionTestDataToString(
+    const ::testing::TestParamInfo<ReductionParams>& data) {
+  return absl::StrCat(data.param.reduction_op, "_", data.param.element_type);
+}
+
+INSTANTIATE_TEST_SUITE_P(SoftmaxFusionReductionTestSuite,
+                         SoftmaxFusionReductionEnd2EndTest,
+                         ::testing::ValuesIn({
+                             ReductionParams("add", "f16", "0.0"),
+                             ReductionParams("add", "f32", "0.0"),
+                             ReductionParams("add", "s16", "0"),
+                             ReductionParams("add", "s32", "0"),
+                             ReductionParams("multiply", "f16", "1.0"),
+                             ReductionParams("multiply", "f32", "1.0"),
+                             ReductionParams("multiply", "s16", "1"),
+                             ReductionParams("multiply", "s32", "1"),
+                             ReductionParams("minimum", "f16", "inf"),
+                             ReductionParams("minimum", "f32", "inf"),
+                             ReductionParams("minimum", "s16", "32767"),
+                             ReductionParams("minimum", "s32", "2147483647"),
+                             ReductionParams("maximum", "f16", "-inf"),
+                             ReductionParams("maximum", "f32", "-inf"),
+                             ReductionParams("maximum", "s16", "-32768"),
+                             ReductionParams("maximum", "s32", "-2147483648"),
+                             ReductionParams("and", "pred", "true"),
+                             ReductionParams("or", "pred", "false"),
+                             ReductionParams("xor", "pred", "false"),
+                         }),
+                         ReductionTestDataToString);
 
 }  // anonymous namespace
 }  // namespace gpu

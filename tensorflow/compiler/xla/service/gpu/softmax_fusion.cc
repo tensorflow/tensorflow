@@ -57,6 +57,26 @@ bool ShapeInvolvesComplexNumbers(const Shape& shape) {
   return false;
 }
 
+bool IsSupportedReductionElementType(PrimitiveType element_type) {
+  return element_type == F16 || element_type == F32 || element_type == S32 ||
+         element_type == S16 || element_type == PRED;
+}
+
+bool IsSupportedReductionComputation(HloComputation* computation) {
+  static const absl::flat_hash_set<HloOpcode>* const kSupportedOpcodes =
+      new absl::flat_hash_set<HloOpcode>{
+          HloOpcode::kAdd,     HloOpcode::kMultiply, HloOpcode::kMaximum,
+          HloOpcode::kMinimum, HloOpcode::kAnd,      HloOpcode::kOr,
+          HloOpcode::kXor};
+  HloInstruction* root = computation->root_instruction();
+  if (root->operand_count() != 2 ||
+      root->operand(0)->opcode() != HloOpcode::kParameter ||
+      root->operand(1)->opcode() != HloOpcode::kParameter) {
+    return false;
+  }
+  return kSupportedOpcodes->contains(root->opcode());
+}
+
 bool MatchesSoftmaxPattern(HloInstruction* instr) {
   // Match the following pattern:
   //
@@ -138,7 +158,9 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
   // The reduction should reduce the last dimension of the operand shape.
   if (reduce_or_unary->opcode() != HloOpcode::kReduce ||
       reduce_or_unary->dimensions().size() != 1 ||
-      reduce_or_unary->shape().element_type() == F64 ||
+      !IsSupportedReductionElementType(
+          reduce_or_unary->shape().element_type()) ||
+      !IsSupportedReductionComputation(reduce_or_unary->to_apply()) ||
       reduce_or_unary->dimensions()[0] != reduce_or_unary->shape().rank()) {
     return false;
   }
