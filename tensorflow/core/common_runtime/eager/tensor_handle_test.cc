@@ -40,7 +40,8 @@ TEST(TensorHandle_ShapeTest, AsyncShape) {
   auto ctx = new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      &device_mgr, false, nullptr, nullptr);
+      &device_mgr, false, nullptr, nullptr, nullptr,
+      /*run_eager_op_as_function=*/true);
   TensorHandle* sync_th =
       TensorHandle::CreateLocalHandle(std::move(t), nullptr, nullptr, ctx);
   TensorHandle* async_th = TensorHandle::CreateEmptyLocalHandle(
@@ -108,7 +109,8 @@ class PackedTensorHandleTest : public ::testing::Test {
         tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
         /* async= */ false, device_mgr_,
         /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
-        /* cluster_flr= */ nullptr);
+        /* cluster_flr= */ nullptr, /*collective_executor_mgr=*/nullptr,
+        /*run_eager_op_as_function=*/true);
   }
 
   ~PackedTensorHandleTest() override {
@@ -256,7 +258,8 @@ TEST(TensorHandle_ResourceDeviceTest, OnLocalDevice) {
   auto ctx = new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      &local_device_mgr, false, nullptr, nullptr);
+      &local_device_mgr, false, nullptr, nullptr, nullptr,
+      /*run_eager_op_as_function=*/true);
 
   tensorflow::DataType dtype = DT_RESOURCE;
   TensorShape shape = {2};
@@ -288,7 +291,8 @@ TEST(TensorHandle_ResourceDeviceTest, OnRemoteDevice) {
   auto ctx = new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      &local_device_mgr, false, nullptr, nullptr);
+      &local_device_mgr, false, nullptr, nullptr, nullptr,
+      /*run_eager_op_as_function=*/true);
 
   std::unique_ptr<Device> d0(
       CreateDevice("CPU", "/job:worker/task:0/device:CPU:0", false));
@@ -344,7 +348,8 @@ class RemoteTensorHandleTest : public ::testing::Test {
         tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
         /* async= */ false, device_mgr_,
         /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
-        /* cluster_flr= */ nullptr);
+        /* cluster_flr= */ nullptr, /*collective_executor_mgr=*/nullptr,
+        /*run_eager_op_as_function=*/true);
   }
 
   ~RemoteTensorHandleTest() override {
@@ -383,7 +388,8 @@ TEST_F(RemoteTensorHandleTest, UnknownRemoteDevice) {
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
       /* async= */ false, &device_mgr,
       /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
-      /* cluster_flr= */ nullptr);
+      /* cluster_flr= */ nullptr, /*collective_executor_mgr=*/nullptr,
+      /*run_eager_op_as_function=*/true);
 
   tensorflow::DataType dtype = DT_FLOAT;
   TensorShape shape = {};
@@ -419,7 +425,8 @@ TEST(TensorHandle_LocalTest, TensorFromDeviceSameDevice) {
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
       /* async= */ false, &device_mgr,
       /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
-      /* cluster_flr= */ nullptr);
+      /* cluster_flr= */ nullptr, /*collective_executor_mgr=*/nullptr,
+      /*run_eager_op_as_function=*/true);
 
   tensorflow::DataType dtype = DT_FLOAT;
   TensorShape shape = {};
@@ -451,7 +458,8 @@ TEST(TensorHandle_LocalTest, TensorFromDeviceDifferentDevice) {
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
       /* async= */ false, &device_mgr,
       /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
-      /* cluster_flr= */ nullptr);
+      /* cluster_flr= */ nullptr, /*collective_executor_mgr=*/nullptr,
+      /*run_eager_op_as_function=*/true);
 
   tensorflow::DataType dtype = DT_FLOAT;
   TensorShape shape = {};
@@ -488,7 +496,8 @@ TEST(TensorHandle_LocalTest, TensorFromDeviceInvalidDevice) {
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
       /* async= */ false, &device_mgr,
       /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
-      /* cluster_flr= */ nullptr);
+      /* cluster_flr= */ nullptr, /*collective_executor_mgr=*/nullptr,
+      /*run_eager_op_as_function=*/true);
 
   tensorflow::DataType dtype = DT_FLOAT;
   TensorShape shape = {};
@@ -518,7 +527,8 @@ TEST(TensorHandle_DeviceNameTest, OnLocalDevice) {
   auto ctx = new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      &local_device_mgr, false, nullptr, nullptr);
+      &local_device_mgr, false, nullptr, nullptr, nullptr,
+      /*run_eager_op_as_function=*/true);
 
   Device* dcpu = local_device_mgr.ListDevices()[0];
   Device* dgpu = local_device_mgr.ListDevices()[1];
