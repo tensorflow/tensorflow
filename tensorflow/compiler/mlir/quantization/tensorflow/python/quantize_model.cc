@@ -88,7 +88,7 @@ struct ExportOptions {
 // Add passes for transforming the MLIR module op so that it can be exported
 // back to GraphDef. Roughly, this consists of:
 //   1) Inserting the @main function, which will become the main Graph.
-//   2) Duplicates shape-determining constants.
+//   2) Duplicating shape-determining constants.
 //   3) Converting TF dialect -> tf_executor dialect.
 //   4) Adding initializer function's ops into @main function for correct
 //      resource initialization when loading the exported model.
@@ -210,6 +210,7 @@ absl::StatusOr<std::string> GetLocalTempFilename() {
 // will return a non-OK status if it already exists or permission is denied.
 // TODO(b/261652258): Make sure this works for when there are non-frozen
 // variables in the model.
+// TODO(b/262189534): Move this to a separate file for better testing.
 absl::Status UnfreezeConstantsAndSaveVariables(
     const absl::string_view checkpoint_dir, mlir::MLIRContext &ctx,
     mlir::ModuleOp module_op) {
@@ -232,7 +233,18 @@ absl::Status UnfreezeConstantsAndSaveVariables(
     return tsl::ToAbslStatus(create_dir_status);
   }
 
-  return SaveVariablesToCheckpoint(checkpoint_dir, module_op);
+  if (const absl::Status variable_save_status =
+          SaveVariablesToCheckpoint(checkpoint_dir, module_op);
+      !variable_save_status.ok()) {
+    return variable_save_status;
+  }
+
+  return RunPasses(/*name=*/kTfQuantCreateRestoreOpStepName,
+                   /*add_passes_func=*/
+                   [](mlir::PassManager &pm) {
+                     pm.addPass(mlir::quant::CreateInsertRestoreOpPass());
+                   },
+                   ctx, module_op);
 }
 
 // Sets up and runs the passes for exporting `module_op`. The behavior of the

@@ -28,15 +28,17 @@ namespace internal {
 
 // Names of the TensorFlow Quantization steps. These names are used primarily
 // for debugging.
-static constexpr absl::string_view kTfQuantPtqPreCalibrationStepName =
+inline constexpr absl::string_view kTfQuantPtqPreCalibrationStepName =
     "tf_quant_ptq_pre_calibration";
-static constexpr absl::string_view kTfQuantPtqPostCalibrationStepName =
+inline constexpr absl::string_view kTfQuantPtqPostCalibrationStepName =
     "tf_quant_ptq_post_calibration";
-static constexpr absl::string_view kTfQuantQatStepName = "tf_quant_qat";
-static constexpr absl::string_view kTfQuantPtqDynamicRangeStepName =
+inline constexpr absl::string_view kTfQuantQatStepName = "tf_quant_qat";
+inline constexpr absl::string_view kTfQuantPtqDynamicRangeStepName =
     "tf_quant_ptq_dynamic_range";
-static constexpr absl::string_view kTfQuantConstantUnfreezingStepName =
+inline constexpr absl::string_view kTfQuantConstantUnfreezingStepName =
     "tf_quant_constant_unfreezing";
+inline constexpr absl::string_view kTfQuantCreateRestoreOpStepName =
+    "tf_quant_create_restore_op";
 
 absl::StatusOr<ExportedModel> QuantizeQatModel(
     absl::string_view saved_model_path, absl::string_view exported_names_str,
