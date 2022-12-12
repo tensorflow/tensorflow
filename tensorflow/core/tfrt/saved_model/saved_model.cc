@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
@@ -388,6 +389,7 @@ tensorflow::Status IsInputSpecsCorrect(
 }
 
 tensorflow::Status CheckInputSpecs(
+    const tensorflow::SessionMetadata& model_metadata,
     const SavedModel::RunOptions& run_options, absl::string_view signature_name,
     const internal::Signature& signature,
     absl::Span<const tensorflow::Tensor> input_tensors) {
@@ -398,17 +400,22 @@ tensorflow::Status CheckInputSpecs(
 
   auto status = IsInputSpecsCorrect(signature_name, signature, input_tensors);
   if (!status.ok()) {
+    const auto error_string =
+        absl::StrCat("model: ", model_metadata.name(),
+                     ", version: ", model_metadata.version(),
+                     ", error: ", status.error_message());
     if (!run_options.validate_input_specs_dry_run) {
-      return status;
+      return tensorflow::errors::InvalidArgument(error_string);
     }
     LOG_EVERY_N_SEC(ERROR, 5)
-        << "TFRT input specs validation failed: " << status;
+        << "TFRT input specs validation failed, " << error_string;
   }
 
   return OkStatus();
 }
 
 tensorflow::Status PreprocessSignature(
+    const tensorflow::SessionMetadata& model_metadata,
     const SavedModel::RunOptions& run_options, absl::string_view signature_name,
     const tensorflow::SignatureDef& signature_def,
     const internal::Signature& signature,
@@ -418,8 +425,8 @@ tensorflow::Status PreprocessSignature(
     std::vector<std::string>& output_tensor_names) {
   const auto& input_names = signature.input_names;
 
-  TF_RETURN_IF_ERROR(
-      CheckInputSpecs(run_options, signature_name, signature, input_tensors));
+  TF_RETURN_IF_ERROR(CheckInputSpecs(model_metadata, run_options,
+                                     signature_name, signature, input_tensors));
 
   TF_RET_CHECK(input_tensors.size() == signature_def.inputs().size())
       << "Incorrect input size for signature: " << signature_name
@@ -746,7 +753,8 @@ tensorflow::Status SavedModelImpl::Run(
     output_tensor_names.reserve(signature.output_names.size());
 
     TF_RETURN_IF_ERROR(
-        PreprocessSignature(run_options, name, signature_def, signature, inputs,
+        PreprocessSignature(options_.graph_execution_options.model_metadata,
+                            run_options, name, signature_def, signature, inputs,
                             /*visited_feed_tensor_names=*/nullptr,
                             input_tensors, output_tensor_names));
 
@@ -754,7 +762,9 @@ tensorflow::Status SavedModelImpl::Run(
                                 /*target_tensor_names=*/{}, outputs);
   }
 
-  TF_RETURN_IF_ERROR(CheckInputSpecs(run_options, name, signature, inputs));
+  TF_RETURN_IF_ERROR(
+      CheckInputSpecs(options_.graph_execution_options.model_metadata,
+                      run_options, name, signature, inputs));
 
   const tfrt::Function* func;
   tfrt::ResourceContext* resource_context;
@@ -832,7 +842,8 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
     const auto& signature = signatures_.at(signature_name);
 
     TF_RETURN_IF_ERROR(PreprocessSignature(
-        run_options, signature_name, signature_def, signature, input_tensors,
+        options_.graph_execution_options.model_metadata, run_options,
+        signature_name, signature_def, signature, input_tensors,
         &visited_feed_tensor_names, flat_inputs, flat_output_names));
   }
 
