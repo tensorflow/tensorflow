@@ -4244,6 +4244,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status_headers",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
 )
 
