@@ -190,11 +190,9 @@ GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
         runtime::CreateDefaultXlaGpuRuntimeCompilationPipeline(passes, copts);
       };
 
-  // TODO(b/241296710): LLVM optimizations interact badly with the memory
-  // loads and stores pattern generated in very large XLA programs, and can
-  // take minutes to run. Currently we do not expect any expensive code
-  // running on the host, so we can safely disable optimization passes.
-  opts.compiler.jit_code_opt_level = llvm::CodeGenOpt::None;
+  // Do not run expensive optimization passes because we do not expect any
+  // non-trivial host code in XLA:GPU host executables.
+  opts.compiler.jit_code_opt_level = llvm::CodeGenOpt::Less;
 
   // Instantiate new JitExecutable from the MLIR source.
   auto jit_executable =
