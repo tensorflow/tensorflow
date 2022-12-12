@@ -3974,14 +3974,9 @@ def log_softmax_v2(logits, axis=None, name=None):
   return _wrap_2d_function(logits, gen_nn_ops.log_softmax, axis, name)
 
 
-def _ensure_xent_args(name, sentinel, labels, logits):
-  # Make sure that all arguments were passed as named arguments.
-  if sentinel is not None:
-    raise ValueError(
-        f"Only call {name} with named arguments (labels=..., logits=..., ...). "
-        f"Received unnamed argument: {sentinel}")
+def _ensure_xent_args(name, labels, logits):
   if labels is None or logits is None:
-    raise ValueError("Both `labels` and `logits` must be provided. "
+    raise ValueError(f"Both `labels` and `logits` must be provided for {name}"
                      f"Received: labels={labels} and logits={logits}")
 
 
@@ -4184,7 +4179,6 @@ See `tf.nn.softmax_cross_entropy_with_logits_v2`.
 @dispatch.add_dispatch_support
 @deprecation.deprecated(date=None, instructions=_XENT_DEPRECATION)
 def softmax_cross_entropy_with_logits(
-    _sentinel=None,  # pylint: disable=invalid-name
     labels=None,
     logits=None,
     dim=-1,
@@ -4221,7 +4215,6 @@ def softmax_cross_entropy_with_logits(
   this function.**
 
   Args:
-    _sentinel: Used to prevent positional parameters. Internal, do not use.
     labels: Each vector along the class dimension should hold a valid
       probability distribution e.g. for the case in which labels are of shape
       `[batch_size, num_classes]`, each row of `labels[i]` must be a valid
@@ -4238,8 +4231,7 @@ def softmax_cross_entropy_with_logits(
     not have the last dimension of `labels`.
   """
   dim = deprecated_argument_lookup("axis", axis, "dim", dim)
-  _ensure_xent_args("softmax_cross_entropy_with_logits", _sentinel, labels,
-                    logits)
+  _ensure_xent_args("softmax_cross_entropy_with_logits", labels, logits)
 
   with ops.name_scope(name, "softmax_cross_entropy_with_logits_sg",
                       [logits, labels]) as name:
@@ -4281,7 +4273,6 @@ def _sparse_softmax_cross_entropy_with_rank_2_logits(logits, labels, name):
 @tf_export(v1=["nn.sparse_softmax_cross_entropy_with_logits"])
 @dispatch.add_dispatch_support
 def sparse_softmax_cross_entropy_with_logits(
-    _sentinel=None,  # pylint: disable=invalid-name
     labels=None,
     logits=None,
     name=None):
@@ -4314,7 +4305,6 @@ def sparse_softmax_cross_entropy_with_logits(
   this function.**
 
   Args:
-    _sentinel: Used to prevent positional parameters. Internal, do not use.
     labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-1}]` (where `r` is rank of
       `labels` and result) and dtype `int32` or `int64`. Each entry in `labels`
       must be an index in `[0, num_classes)`. Other values will raise an
@@ -4334,8 +4324,7 @@ def sparse_softmax_cross_entropy_with_logits(
     ValueError: If logits are scalars (need to have rank >= 1) or if the rank
       of the labels is not equal to the rank of the logits minus one.
   """
-  _ensure_xent_args("sparse_softmax_cross_entropy_with_logits", _sentinel,
-                    labels, logits)
+  _ensure_xent_args("sparse_softmax_cross_entropy_with_logits", labels, logits)
 
   # TODO(pcmurray) Raise an error when the label is not an index in
   # [0, num_classes). Note: This could break users who call this with bad
