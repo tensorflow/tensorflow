@@ -5,6 +5,14 @@ load(
     "clean_dep",
     "if_tsl_link_protobuf",
 )
+load(
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
+load(
+    "//tensorflow/tsl/platform:build_config_root.bzl",
+    "tf_exec_properties",
+)
 
 def xla_py_proto_library(**kwargs):
     # Note: we don't currently define a proto library target for Python in OSS.
@@ -48,19 +56,35 @@ def xla_cc_test(
     native.cc_test(
         name = name,
         deps = deps + if_tsl_link_protobuf(
-            [],
-            [
-                clean_dep("@com_google_protobuf//:protobuf"),
-                # TODO(zacmustin): remove these in favor of more granular dependencies in each test.
-                "//tensorflow/compiler/xla:xla_proto_cc_impl",
-                "//tensorflow/compiler/xla:xla_data_proto_cc_impl",
-                "//tensorflow/compiler/xla/service:hlo_proto_cc_impl",
-                "//tensorflow/compiler/xla/service/gpu:backend_configs_cc_impl",
-                "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc_impl",
-                "//tensorflow/tsl/profiler/utils:time_utils_impl",
-                "//tensorflow/tsl/profiler/backends/cpu:traceme_recorder_impl",
-                "//tensorflow/tsl/protobuf:protos_all_cc_impl",
-            ],
-        ),
+                   [],
+                   [
+                       clean_dep("@com_google_protobuf//:protobuf"),
+                       # TODO(zacmustin): remove these in favor of more granular dependencies in each test.
+                       "//tensorflow/compiler/xla:xla_proto_cc_impl",
+                       "//tensorflow/compiler/xla:xla_data_proto_cc_impl",
+                       "//tensorflow/compiler/xla/service:hlo_proto_cc_impl",
+                       "//tensorflow/compiler/xla/service/gpu:backend_configs_cc_impl",
+                       "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc_impl",
+                       "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
+                       "//tensorflow/compiler/xla/stream_executor:device_id_utils",
+                       "//tensorflow/compiler/xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
+                       "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init_impl",
+                       "//tensorflow/tsl/profiler/utils:time_utils_impl",
+                       "//tensorflow/tsl/profiler/backends/cpu:annotation_stack_impl",
+                       "//tensorflow/tsl/profiler/backends/cpu:traceme_recorder_impl",
+                       "//tensorflow/tsl/protobuf:autotuning_proto_cc_impl",
+                       "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
+                       "//tensorflow/tsl/protobuf:protos_all_cc_impl",
+                       "//tensorflow/tsl/platform:env_impl",
+                       "//tensorflow/tsl/framework:allocator",
+                       "//tensorflow/tsl/framework:allocator_registry_impl",
+                   ],
+               ) +
+               if_cuda_is_configured([
+                   "//tensorflow/compiler/xla/stream_executor/cuda:cuda_stream",
+                   "//tensorflow/compiler/xla/stream_executor/cuda:all_runtime",
+                   "//tensorflow/compiler/xla/stream_executor/cuda:stream_executor_cuda",
+               ]),
+        exec_properties = tf_exec_properties(kwargs),
         **kwargs
     )

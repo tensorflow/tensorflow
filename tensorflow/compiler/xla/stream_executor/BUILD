@@ -784,9 +784,7 @@ xla_cc_test(
     srcs = ["stream_test.cc"],
     deps = [
         ":stream_executor",
-        ":stream_executor_impl",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform",
-        "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
     ],
@@ -798,8 +796,6 @@ xla_cc_test(
     srcs = ["dnn_test.cc"],
     deps = [
         ":dnn",
-        ":stream_executor_impl",
-        "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
     ],

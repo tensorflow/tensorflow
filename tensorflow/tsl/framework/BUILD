@@ -153,7 +153,7 @@ cc_library(
         "tracking_allocator.h",
     ],
     visibility = [
-        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
+        "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/core:__subpackages__",
         "//tensorflow/tsl:__subpackages__",
     ],
