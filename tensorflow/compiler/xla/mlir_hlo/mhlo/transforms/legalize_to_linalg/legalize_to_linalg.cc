@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -154,7 +155,8 @@ Value extractIndexFromTensor(OpBuilder& builder, Location loc, Value tensor,
 Value coerceTensorShape(OpBuilder& builder, Location loc,
                         TypedValue<ShapedType> value, ShapedType targetType) {
   return builder.createOrFold<tensor::CastOp>(
-      loc, targetType.cloneWith(None, value.getType().getElementType()), value);
+      loc, targetType.cloneWith(std::nullopt, value.getType().getElementType()),
+      value);
 }
 
 /// Returns true if the given `dimensionNumbers` from a mhlo.convolution op
