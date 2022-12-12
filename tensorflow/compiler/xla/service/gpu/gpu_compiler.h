@@ -99,41 +99,9 @@ class GpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
 
 struct GpuTargetConfig {
   GpuTargetConfig() = default;
-  explicit GpuTargetConfig(const stream_executor::GpuTargetConfigProto& proto)
-      : gpu_device_info(proto.gpu_device_info()),
-        platform_name(proto.platform_name()) {
-    if (proto.has_cuda_compute_capability()) {
-      stream_executor::CudaComputeCapability cuda_compute_capability(
-          proto.cuda_compute_capability());
-      gpu_version = cuda_compute_capability;
-    } else {
-      CHECK(proto.has_rocm_compute_capability());
-      stream_executor::RocmComputeCapability rocm_compute_capability(
-          proto.rocm_compute_capability());
-      gpu_version = rocm_compute_capability;
-    }
-  }
+  explicit GpuTargetConfig(const stream_executor::GpuTargetConfigProto& proto);
 
-  stream_executor::GpuTargetConfigProto ToProto() const {
-    stream_executor::GpuTargetConfigProto proto;
-    *proto.mutable_gpu_device_info() = gpu_device_info.ToProto();
-
-    if (std::holds_alternative<stream_executor::CudaComputeCapability>(
-            gpu_version)) {
-      auto cuda_compute_capability =
-          std::get<stream_executor::CudaComputeCapability>(gpu_version);
-      *proto.mutable_cuda_compute_capability() =
-          cuda_compute_capability.ToProto();
-    } else {
-      auto rocm_compute_capability =
-          std::get<stream_executor::RocmComputeCapability>(gpu_version);
-      *proto.mutable_rocm_compute_capability() =
-          rocm_compute_capability.ToProto();
-    }
-
-    proto.set_platform_name(platform_name);
-    return proto;
-  }
+  se::GpuTargetConfigProto ToProto() const;
 
   GpuDeviceInfo gpu_device_info;
   GpuVersion gpu_version;
@@ -157,6 +125,13 @@ class GpuCompiler : public LLVMCompiler {
       const HloModule* hlo_module) override;
 
   virtual GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) = 0;
+  GpuTargetConfig GetGpuTargetConfig(se::StreamExecutor* stream_exec) {
+    GpuTargetConfig gpu_target_config;
+    gpu_target_config.gpu_device_info = GetGpuDeviceInfo(stream_exec);
+    gpu_target_config.gpu_version = GetGpuVersion(stream_exec);
+    gpu_target_config.platform_name = stream_exec->platform()->Name();
+    return gpu_target_config;
+  }
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
