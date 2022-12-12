@@ -59,6 +59,34 @@ cc_library(
     ],
     deps = [
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/python/lib/core:numpy",
+        "//third_party/eigen3",
+        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "float8_hdr",
+    hdrs = [
+        "float8.h",
+    ],
+    deps = [
+        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
+    ],
+)
+
+cc_library(
+    name = "float8_lib",
+    srcs = [
+        "float8.cc",
+    ],
+    hdrs = [
+        "float8.h",
+    ],
+    deps = [
+        ":custom_float",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:types",
         "//tensorflow/tsl/python/lib/core:numpy",
         "//third_party/eigen3",
@@ -74,5 +102,15 @@ cc_library(
     deps = [
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
+    ],
+)
+
+# Directory-level target.
+cc_library(
+    name = "core",
+    deps = [
+        ":bfloat16_lib",
+        ":float8_lib",
+        ":numpy",
     ],
 )

@@ -52,7 +52,16 @@ tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
 [//tensorflow/tsl/python/lib/core:bfloat16_lib] # bfloat16
 tsl::RegisterNumpyBfloat16
 tsl::Bfloat16Dtype
+tsl::Bfloat16NumpyType
 tsl::Float8_E4M3B11Dtype
+
+[//tensorflow/tsl/python/lib/core:float8_lib] # float8_e4m3fn, float8_e5m2
+tsl::RegisterNumpyFloat8e4m3fn
+tsl::Float8e4m3fnDtype
+tsl::Float8e4m3fnNumpyType
+tsl::RegisterNumpyFloat8e5m2
+tsl::Float8e5m2Dtype
+tsl::Float8e5m2NumpyType
 
 [//tensorflow/python:py_func_lib] # py_func
 tensorflow::InitializePyTrampoline

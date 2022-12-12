@@ -17,7 +17,7 @@ limitations under the License.
 #include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
-#include "tensorflow/python/lib/core/float8.h"
+#include "tensorflow/tsl/python/lib/core/float8.h"
 
 #include <array>   // NOLINT
 #include <cmath>   // NOLINT
@@ -27,11 +27,9 @@ limitations under the License.
 // Place `<locale>` before <Python.h> to avoid a build failure in macOS.
 #include <Python.h>
 
-#include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/python/lib/core/custom_float.h"
+#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/python/lib/core/custom_float.h"
 
 namespace tsl {
 namespace custom_float_internal {
@@ -143,9 +141,7 @@ struct TypeDescriptor<float8_e5m2>
 };
 
 }  // namespace custom_float_internal
-}  // namespace tsl
 
-namespace tensorflow {
 namespace {
 
 // Initializes the module.
@@ -227,4 +223,4 @@ int Float8e5m2NumpyType() {
   return tsl::custom_float_internal::TypeDescriptor<float8_e5m2>::Dtype();
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

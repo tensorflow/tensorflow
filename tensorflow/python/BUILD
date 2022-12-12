@@ -297,6 +297,11 @@ alias(
     actual = "//tensorflow/python/util:tf_decorator",
 )
 
+# Deprecated.  Use
+#   //third_party/tensorflow/tsl/python/lib/core:bfloat16_lib
+# for the bfloat16-specific dependency, or
+#   //third_party/tensorflow/tsl/python/lib/core
+# for all custom types and python utilities.
 alias(
     name = "bfloat16_lib",
     actual = "//tensorflow/python/lib/core:bfloat16_lib",
@@ -3347,7 +3352,6 @@ pywrap_tensorflow_macro(
     ] + tsl_async_value_deps(),
     win_def_file = ":pywrap_tensorflow_filtered_def_file",
     deps = [
-        ":bfloat16_lib",
         ":safe_ptr",
         "//tensorflow/python/grappler:cost_analyzer_lib",
         "//tensorflow/python/grappler:model_analyzer_lib",
@@ -3404,7 +3408,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
         "//tensorflow/tsl/profiler/rpc/client:profiler_client_impl",
-        "//tensorflow/tsl/python/lib/core:numpy",
+        "//tensorflow/tsl/python/lib/core",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/core/profiler/backends/cpu:python_tracer",
         "//tensorflow/dtensor/cc:dtensor_device_cc",
@@ -3416,7 +3420,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/client:tf_session_helper",
         "//tensorflow/python/eager:pywrap_tfe_lib",
-        "//tensorflow/python/lib/core:custom_types_lib",
         "//tensorflow/compiler/mlir/python:mlir",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
@@ -3464,6 +3467,7 @@ filegroup(
     name = "win_lib_files_for_exported_symbols",
     srcs = [
         "//tensorflow/tsl/python/lib/core:bfloat16_lib",  # bfloat16
+        "//tensorflow/tsl/python/lib/core:float8_lib",  # float8_e4m3fn, float8_e5m2
         "//tensorflow/python/grappler:cost_analyzer_lib",
         "//tensorflow/python/util:cpp_nest",
         "//tensorflow/python/util:cpp_python_util",

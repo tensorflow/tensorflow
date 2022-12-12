@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PYTHON_LIB_CORE_FLOAT8_H_
-#define TENSORFLOW_PYTHON_LIB_CORE_FLOAT8_H_
+#ifndef TENSORFLOW_TSL_PYTHON_LIB_CORE_FLOAT8_H_
+#define TENSORFLOW_TSL_PYTHON_LIB_CORE_FLOAT8_H_
 
 #include <Python.h>
 
-namespace tensorflow {
+namespace tsl {
 
 // Register the float8_e4m3fn numpy type. Returns true on success.
 bool RegisterNumpyFloat8e4m3fn();
@@ -38,6 +38,6 @@ PyObject* Float8e5m2Dtype();
 // Returns the id number of the float8_e5m2 numpy type.
 int Float8e5m2NumpyType();
 
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_PYTHON_LIB_CORE_FLOAT8_H_
+#endif  // TENSORFLOW_TSL_PYTHON_LIB_CORE_FLOAT8_H_
