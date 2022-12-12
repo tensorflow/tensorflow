@@ -412,7 +412,7 @@ def if_not_mobile_or_arm_or_lgpl_restricted(a):
     })
 
 def tsl_grpc_cc_dependencies():
-    return ["//tensorflow/tsl:grpc++"]
+    return [clean_dep("//tensorflow/tsl:grpc++")]
 
 # Bazel rule for collecting the header files that a target depends on.
 def _transitive_hdrs_impl(ctx):
