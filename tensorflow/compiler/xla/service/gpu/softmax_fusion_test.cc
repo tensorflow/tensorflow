@@ -999,6 +999,29 @@ ENTRY main {
   EXPECT_FALSE(fusion.Run(module.get()).value());
 }
 
+TEST_F(SoftmaxFusionTest, SoftmaxMatcherIgnoresPatternWithUnsignedProducer) {
+  const std::string& hlo_string = R"(
+HloModule softmax
+
+add_computation {
+  arg0 = u32[] parameter(0)
+  arg1 = u32[] parameter(1)
+  ROOT add = u32[] add(arg0, arg1)
+}
+
+ENTRY main {
+  param_0 = u32[128,127]{1,0} parameter(0)
+  param_1 = u32[] parameter(1)
+  reduce = u32[128]{0} reduce(param_0, param_1), dimensions={1}, to_apply=add_computation
+  broadcast = u32[128,127]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = u32[128,127]{1,0} subtract(param_0, broadcast)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  SoftmaxFusion fusion;
+  EXPECT_FALSE(fusion.Run(module.get()).value());
+}
+
 TEST_F(SoftmaxFusionTest, FuseableOpsInvolvingComplexNumbersBeforeProducer) {
   const std::string& hlo_string = R"(
 HloModule softmax
@@ -1014,6 +1037,30 @@ ENTRY main {
   %constant_zero = f32[] constant(0)
   %abs = f32[13,3]{1,0} abs(c64[13,3]{1,0} %param_0)
   %cosine = f32[13,3]{1,0} cosine(f32[13,3]{1,0} %abs)
+  %reduce = f32[13]{0} reduce(f32[13,3]{1,0} %cosine, f32[] %constant_zero), dimensions={1}, to_apply=add_computation
+  %broadcast = f32[13,3]{1,0} broadcast(f32[13]{0} %reduce), dimensions={0}
+  ROOT add = f32[13,3]{1,0} add(f32[13,3]{1,0} %cosine, f32[13,3]{1,0} %broadcast)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(SoftmaxFusionTest, FuseableOpsInvolvingUnsignedBeforeProducer) {
+  const std::string& hlo_string = R"(
+HloModule softmax
+
+add_computation {
+  arg0 = f32[] parameter(0)
+  arg1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg0, arg1)
+}
+
+ENTRY main {
+  %param_0 = u32[13,3]{1,0} parameter(0)
+  %constant_zero = f32[] constant(0)
+  %convert = f32[13,3]{1,0} convert(u32[13,3]{1,0} %param_0)
+  %cosine = f32[13,3]{1,0} cosine(f32[13,3]{1,0} %convert)
   %reduce = f32[13]{0} reduce(f32[13,3]{1,0} %cosine, f32[] %constant_zero), dimensions={1}, to_apply=add_computation
   %broadcast = f32[13,3]{1,0} broadcast(f32[13]{0} %reduce), dimensions={0}
   ROOT add = f32[13,3]{1,0} add(f32[13,3]{1,0} %cosine, f32[13,3]{1,0} %broadcast)
