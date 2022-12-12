@@ -256,21 +256,26 @@ def byte_swap_tflite_model_obj(model, from_endiness, to_endiness):
     return
   # Get all the constant buffers, byte swapping them as per their data types
   buffer_swapped = []
+  types_of_16_bits = [schema_fb.TensorType.FLOAT16,
+    schema_fb.TensorType.INT16, schema_fb.TensorType.UINT16]
+  types_of_32_bits = [schema_fb.TensorType.FLOAT32,
+    schema_fb.TensorType.INT32, schema_fb.TensorType.COMPLEX64,
+    schema_fb.TensorType.UINT32]
+  types_of_64_bits = [schema_fb.TensorType.INT64,
+    schema_fb.TensorType.FLOAT64, schema_fb.TensorType.COMPLEX128,
+    schema_fb.TensorType.UINT64]
   for subgraph in model.subgraphs:
     for tensor in subgraph.tensors:
       if (tensor.buffer>0 and tensor.buffer<len(model.buffers) and 
         tensor.buffer not in buffer_swapped and 
         model.buffers[tensor.buffer].data is not None):
-        if tensor.type in [1, 7, 16]: 
-          # [FLOAT16, INT16, UINT16], defined as per TFLite schema
+        if tensor.type in types_of_16_bits: 
           byte_swap_buffer_content(model.buffers[tensor.buffer], 
             2, from_endiness, to_endiness)
-        elif tensor.type in [0, 2, 8, 15]:
-          # [FLOAT32, INT32, COMPLEX64, UINT32], defined as per TFLite schema
+        elif tensor.type in types_of_32_bits:
           byte_swap_buffer_content(model.buffers[tensor.buffer], 
             4, from_endiness, to_endiness)
-        elif tensor.type in [4, 10, 11, 12]:
-          # [INT64, FLOAT64, COMPLEX128, UINT64], defined as per TFLite schema
+        elif tensor.type in types_of_64_bits:
           byte_swap_buffer_content(model.buffers[tensor.buffer], 
             8, from_endiness, to_endiness)
         else:
