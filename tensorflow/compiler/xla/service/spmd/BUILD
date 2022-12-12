@@ -1,7 +1,7 @@
 # Description: SPMD partitioning pass.
 
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -77,7 +77,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "spmd_partitioner_test",
     srcs = ["spmd_partitioner_test.cc"],
     deps = [
@@ -99,7 +99,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "canonicalize_all_gather_for_cse_test",
     srcs = ["canonicalize_all_gather_for_cse_test.cc"],
     deps = [
@@ -129,7 +129,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "schedule_aware_collective_ops_cse_test",
     srcs = ["schedule_aware_collective_ops_cse_test.cc"],
     deps = [
@@ -171,7 +171,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "stateful_rng_spmd_partitioner_test",
     srcs = ["stateful_rng_spmd_partitioner_test.cc"],
     deps = [
@@ -208,7 +208,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "collective_permute_motion_test",
     srcs = ["collective_permute_motion_test.cc"],
     deps = [
