@@ -6122,6 +6122,7 @@ filegroup(
         "cast_op_impl_complex64.cc",
         "cast_op_impl_double.cc",
         "cast_op_impl_float.cc",
+        "cast_op_impl_float8.cc",
         "cast_op_impl_half.cc",
         "cast_op_impl_int16.cc",
         "cast_op_impl_int32.cc",
