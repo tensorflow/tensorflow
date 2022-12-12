@@ -1,4 +1,3 @@
-load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
@@ -256,7 +255,6 @@ cc_library(
 cc_library(
     name = "nvtx_utils",
     hdrs = ["nvtx_utils.h"],
-    defines = if_nccl(["NCCL_ENABLED=1"]),
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/strings",
@@ -270,7 +268,6 @@ cc_library(
     name = "scoped_annotation",
     hdrs = ["scoped_annotation.h"],
     visibility = ["//visibility:public"],
-    defines = if_nccl(["NCCL_ENABLED=1"]),
     deps = [
         ":nvtx_utils",
         "@com_google_absl//absl/strings",

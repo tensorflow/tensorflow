@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/default/logging.h"
 
-#ifdef NCCL_ENABLED
+#if GOOGLE_CUDA
 #include "nvtx3/nvToolsExt.h"
 #endif
 
@@ -29,7 +29,7 @@ namespace profiler {
 namespace nvtx {
 
 // Some typedef to help build without NVTX.
-#ifndef NCCL_ENABLED
+#if !GOOGLE_CUDA
   typedef void* nvtxEventAttributes_t;
   typedef void* nvtxDomainHandle_t;
 #endif
@@ -37,7 +37,7 @@ namespace nvtx {
 // A helper function that return the domains to use if NVTX profiling
 // is enabled.
 inline std::optional<nvtxDomainHandle_t> GetNVTXDomain() {
-#ifdef NCCL_ENABLED
+#if GOOGLE_CUDA
   static nvtxDomainHandle_t domain;
   static bool is_enabled = [] {
     bool _is_enabled = false;
@@ -57,7 +57,7 @@ inline std::optional<nvtxDomainHandle_t> GetNVTXDomain() {
 
 // A helper function to decide whether to enable CUDA NVTX profiling ranges.
 inline bool RangesEnabled() {
-#ifdef NCCL_ENABLED
+#if GOOGLE_CUDA
   return GetNVTXDomain().has_value();
 #else
   return false;
@@ -68,7 +68,7 @@ inline bool RangesEnabled() {
 // has been consumed by an NVTX API.
 inline void MakeAttributes(const char* msg, nvtxEventAttributes_t* result) {
   *result = {0};
-#ifdef NCCL_ENABLED
+#if GOOGLE_CUDA
   result->version = NVTX_VERSION;
   result->size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
   result->messageType = NVTX_MESSAGE_TYPE_ASCII;

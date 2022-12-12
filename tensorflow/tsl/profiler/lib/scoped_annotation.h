@@ -47,7 +47,7 @@ class ScopedAnnotation {
  public:
   explicit ScopedAnnotation(absl::string_view name) {
 #if !defined(IS_MOBILE_PLATFORM)
-#ifdef NCCL_ENABLED
+#if GOOGLE_CUDA
     std::optional<nvtxDomainHandle_t> domain =
         tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
@@ -68,7 +68,7 @@ class ScopedAnnotation {
 
   explicit ScopedAnnotation(const string& name) {
 #if !defined(IS_MOBILE_PLATFORM)
-#ifdef NCCL_ENABLED
+#if GOOGLE_CUDA
     std::optional<nvtxDomainHandle_t> domain =
         tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
@@ -86,7 +86,7 @@ class ScopedAnnotation {
 
   explicit ScopedAnnotation(string&& name) {
 #if !defined(IS_MOBILE_PLATFORM)
-#ifdef NCCL_ENABLED
+#if GOOGLE_CUDA
     std::optional<nvtxDomainHandle_t> domain =
         tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
@@ -105,7 +105,7 @@ class ScopedAnnotation {
   template <typename NameGeneratorT>
   explicit ScopedAnnotation(NameGeneratorT name_generator) {
 #if !defined(IS_MOBILE_PLATFORM)
-#ifdef NCCL_ENABLED
+#if GOOGLE_CUDA
     std::optional<nvtxDomainHandle_t> domain =
         tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
@@ -129,7 +129,7 @@ class ScopedAnnotation {
     // fail probably due to compiler in that presubmit config.
     std::atomic_thread_fence(std::memory_order_acquire);
 #if !defined(IS_MOBILE_PLATFORM)
-#ifdef NCCL_ENABLED
+#if GOOGLE_CUDA
     std::optional<nvtxDomainHandle_t> domain =
         tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
