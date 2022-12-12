@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
-#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/dtensor/cc/dtensor_device.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -332,7 +331,6 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       .def(py::init(&Mesh::CreateMesh))
       .def_property_readonly("name", &Mesh::name)
       .def_property_readonly("dim_names", &Mesh::MeshDimNames)
-      .def_property_readonly("size", &Mesh::num_devices)
       .def("__contains__", &Mesh::IsMeshDim, py::arg("dim_name"))
       .def("to_string", &Mesh::ToString,
            "Returns string representation of Mesh.")
@@ -340,17 +338,6 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
            "Returns True if a Mesh contains the given dimension name.")
       .def("device_type", &Mesh::device_type,
            "Returns the device_type of a Mesh.")
-      .def("num_local_devices", &Mesh::num_local_devices,
-           "Returns the number of local devices.")
-      .def("min_global_device_id", &Mesh::min_global_device_id,
-           "Returns the minimum global device ID.")
-      .def("is_remote", &Mesh::is_remote,
-           "Returns True if a Mesh contains only remote devices.")
-      .def("local_device_ids", &Mesh::local_device_ids,
-           "Returns a list of local device IDs.")
-      .def("local_devices", &Mesh::local_devices,
-           "Returns a list of local device specs represented as strings.")
-      .def("shape", &Mesh::dim_sizes, "Returns the shape of the mesh.")
       .def("use_xla_spmd", &Mesh::use_xla_spmd,
            "Returns True if Mesh will use XLA for SPMD instead of DTensor "
            "SPMD.");

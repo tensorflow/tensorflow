@@ -191,7 +191,6 @@ filegroup(
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
         "//third_party/icu/data:LICENSE",
-        "@pybind11_abseil//pybind11_abseil:LICENSE",
         "@FP16//:LICENSE",
         "@FXdiv//:LICENSE",
         "@XNNPACK//:LICENSE",
