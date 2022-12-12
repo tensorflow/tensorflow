@@ -134,7 +134,10 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
   pass_options.upper_cost_threshold = options.upper_cost_threshold;
   pass_options.merge_inter_dependent_streams =
       options.merge_inter_dependent_streams;
-  tensorflow::CreateTfExecutorToTfrtPipeline(pm, pass_options);
+  Status status = tensorflow::CreateTfExecutorToTfrtPipeline(pm, pass_options);
+  if (!status.ok()) {
+    return diag_handler.Combine(status);
+  }
 
   if (mlir::failed(pm.run(module)))
     return diag_handler.Combine(tensorflow::errors::Internal(
