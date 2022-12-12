@@ -1,12 +1,9 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
-)
-load(
     "//tensorflow/compiler/xla:xla.bzl",
     "xla_cc_binary",
+    "xla_cc_test",
     "xla_py_grpc_library",
 )
 load(
@@ -77,7 +74,7 @@ xla_cc_binary(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "grpc_client_test",
     srcs = ["grpc_client_test.cc"],
     data = [
