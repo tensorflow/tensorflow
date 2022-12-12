@@ -310,23 +310,38 @@ class _EagerDefinedFunction(object):
     function_def.ParseFromString(compat.as_bytes(proto_data))
     return function_def
 
-  def add_to_graph(self, g=None):
+  def add_to_graph(self, g=None, overwrite=False):
     """Add the function to the current context or a graph, if supplied.
 
     Args:
       g: the graph to add the function to. If not supplied, the function will
         be added to the current context.
+      overwrite: A bool. If True, this function will overwrite any existing
+        function of the same signature name in the graph `g` or context.
     """
     # pylint: disable=protected-access
     if not g and context.executing_eagerly():
       ctx = context.context()
-      if not ctx.has_function(self.name):
+      if ctx.has_function(self.name):
+        if overwrite:
+          ctx.remove_function(self.name)
+          ctx.add_function_def(self.definition)
+      else:
         ctx.add_function_def(self.definition)
     else:
-      if not g._is_function(self.name):
+      if g._is_function(self.name):
+        if overwrite:
+          g._remove_function(self.name)
+          g._add_function(self)
+      else:
         g._add_function(self)
+
       for f in self.graph._functions.values():
-        if not g._is_function(f.name):
+        if g._is_function(f.name):
+          if overwrite:
+            g._remove_function(f.name)
+            g._add_function(f)
+        else:
           g._add_function(f)
     # pylint: enable=protected-access
 
@@ -1970,12 +1985,14 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
             self._func_graph.structured_outputs),
         expand_composites=False)
 
-  def add_to_graph(self, g=None):
+  def add_to_graph(self, g=None, overwrite=False):
     """Registers the function, adds it to the graph g or default graph.
 
     Args:
       g: If specified, registers the function with this graph. Defaults to the
         current context (either the default graph or the eager context).
+      overwrite: A bool. If True, its forward function will overwrite
+        any existing function of the same signature name in the graph `g`.
     """
     # If we are not executing eagerly, adds the function to default graph if no
     # graph is specified.
@@ -1984,7 +2001,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
 
     if not context.executing_eagerly() and not g:
       g = ops.get_default_graph()
-    self._delayed_rewrite_functions.forward().add_to_graph(g)
+    self._delayed_rewrite_functions.forward().add_to_graph(g, overwrite)
 
   def add_gradient_functions_to_graph(self, g=None):
     """Add forward/backward functions to graph `g` or the current context."""
