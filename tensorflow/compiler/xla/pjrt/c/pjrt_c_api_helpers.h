@@ -29,6 +29,7 @@ namespace pjrt {
 
 ABSL_CONST_INIT extern const absl::string_view kHloFormat;
 ABSL_CONST_INIT extern const absl::string_view kMlirFormat;
+ABSL_CONST_INIT extern const absl::string_view kHloWithConfigFormat;
 
 using PJRT_ClientDeleter = std::function<void(PJRT_Client*)>;
 

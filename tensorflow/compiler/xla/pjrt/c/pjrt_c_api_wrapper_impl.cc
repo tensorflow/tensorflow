@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -24,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
@@ -469,7 +471,7 @@ PJRT_Error* PJRT_Executable_NumOutputs(PJRT_Executable_NumOutputs_Args* args) {
   if (shape.IsTuple()) {
     args->num_outputs = shape.tuple_shapes_size();
   } else {
-    // The output size is 1 is it is not a tuple.
+    // The output size is 1, as it is not a tuple.
     args->num_outputs = 1;
   }
   return nullptr;
@@ -485,6 +487,72 @@ PJRT_Error* PJRT_Executable_SizeOfGeneratedCodeInBytes(
   args->size_in_bytes =
       args->executable->executable->SizeOfGeneratedCodeInBytes();
   return nullptr;
+}
+
+static xla::Status VerifyOptimizedProgramArgs(
+    PJRT_Executable_OptimizedProgram_Args* args) {
+  TF_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_OptimizedProgram_Args",
+      PJRT_Executable_OptimizedProgram_Args_STRUCT_SIZE, args->struct_size));
+  TF_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Program", PJRT_Program_STRUCT_SIZE, args->program->struct_size));
+  return xla::OkStatus();
+}
+
+static xla::StatusOr<std::shared_ptr<xla::HloModule>> GetOptimizedProgramModule(
+    const PJRT_Executable_OptimizedProgram_Args* args) {
+  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<xla::HloModule>> hlo_modules,
+                      args->executable->executable->GetHloModules());
+  if (hlo_modules.empty()) {
+    return xla::InvalidArgument(
+        "Can't get the optimized program for executable "
+        "`%s`: HLO modules is empty.",
+        args->executable->executable->name());
+  }
+  if (hlo_modules.size() > 1) {
+    return xla::Unimplemented(
+        "Can't get the optimized program for executable "
+        "`%s`: MPMD execution is not supported by PJRT C API",
+        args->executable->executable->name());
+  }
+  return std::move(hlo_modules[0]);
+}
+
+PJRT_Error* PJRT_Executable_OptimizedProgram(
+    PJRT_Executable_OptimizedProgram_Args* args) {
+  PJRT_RETURN_IF_ERROR(VerifyOptimizedProgramArgs(args));
+  PJRT_Program* program = args->program;
+  program->format = kHloWithConfigFormat.data();
+  program->format_size = kHloWithConfigFormat.size();
+  PJRT_ASSIGN_OR_RETURN(std::shared_ptr<xla::HloModule> hlo_module,
+                        GetOptimizedProgramModule(args));
+  PJRT_ASSIGN_OR_RETURN(xla::HloModuleProtoWithConfig proto,
+                        hlo_module->ToProtoWithConfig());
+  if (program->code == nullptr) {
+    program->code_size = proto.ByteSizeLong();
+    if (program->code_size >= 2ull * 1024 * 1024 * 1024) {
+      return new PJRT_Error{xla::ResourceExhausted(
+          "%s: HLO program serialization would require more than the max "
+          "supported protobuff size of 2 GiB.",
+          __func__)};
+    }
+    return nullptr;
+  } else {
+    if (program->code_size < proto.ByteSizeLong()) {
+      return new PJRT_Error{
+          xla::InvalidArgument("`program->code_size` %d < required bytes %d",
+                               program->code_size, proto.ByteSizeLong()),
+      };
+    }
+    bool succeeded = proto.SerializeToArray(program->code, program->code_size);
+    if (!succeeded) {
+      return new PJRT_Error{
+          xla::ResourceExhausted("%s: HLO program serialization exceeds max "
+                                 "supported protobuff size of 2 GiB.",
+                                 __func__)};
+    }
+    return nullptr;
+  }
 }
 
 PJRT_Error* PJRT_Executable_Delete(PJRT_Executable_Delete_Args* args) {

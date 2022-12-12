@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 // TODO(skyewm): remove when everything goes through C API
@@ -31,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/pjrt_api.h"
@@ -229,7 +231,7 @@ static StatusOr<std::unique_ptr<PjRtLoadedExecutable>> InitializeArgsAndCompile(
   PJRT_Program program;
   program.struct_size = PJRT_Program_STRUCT_SIZE;
   program.priv = nullptr;
-  program.code = code.c_str();
+  program.code = const_cast<char*>(code.c_str());
   program.code_size = code.size();
   program.format = format.c_str();
   program.format_size = format.size();
@@ -557,6 +559,43 @@ void PjRtCApiExecutable::InitDevices() {
   }
 }
 
+StatusOr<std::vector<std::shared_ptr<HloModule>>>
+PjRtCApiExecutable::GetHloModules() const {
+  PJRT_Executable_OptimizedProgram_Args args;
+  args.struct_size = PJRT_Executable_OptimizedProgram_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = executable_.get();
+  PJRT_Program program;
+  program.struct_size = PJRT_Program_STRUCT_SIZE;
+  program.priv = nullptr;
+  program.code = nullptr;
+  args.program = &program;
+
+  const PJRT_Api* api = pjrt_c_api();
+  RETURN_STATUS_IF_ERROR(api->PJRT_Executable_OptimizedProgram(&args), api);
+
+  constexpr size_t TWO_GIBIBYTES = 2ull * 1024 * 1024 * 1024;
+  const size_t code_size = args.program->code_size;
+  CHECK(code_size < TWO_GIBIBYTES);
+  std::string code(code_size, ' ');
+  args.program->code = code.data();
+  RETURN_STATUS_IF_ERROR(api->PJRT_Executable_OptimizedProgram(&args), api);
+
+  absl::string_view program_format(program.format, program.format_size);
+  if (program_format != ::pjrt::kHloWithConfigFormat) {
+    return xla::InternalError(
+        "expected program format `hlo_with_config` but got %s", program_format);
+  }
+
+  HloModuleProtoWithConfig proto;
+  proto.ParseFromString(code);
+  std::vector<std::shared_ptr<HloModule>> out;
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      HloModule::CreateFromProtoWithConfig(proto));
+  out.push_back(std::move(module));
+  return out;
+}
+
 static std::vector<std::vector<PJRT_Buffer*>> Convert2DCppBuffersToCBuffers(
     absl::Span<const std::vector<PjRtBuffer*>> cpp_lists) {
   std::vector<std::vector<PJRT_Buffer*>> c_lists;
@@ -586,7 +625,6 @@ Convert2DCBuffersToCppBuffers(PJRT_Buffer*** c_lists, size_t outer_size,
   }
   return ret;
 }
-
 
 xla::StatusOr<PJRT_Executable_Execute_Args>
 PjRtCApiExecutable::GetCommonExecuteArgs(
