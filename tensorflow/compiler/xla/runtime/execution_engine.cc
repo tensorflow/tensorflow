@@ -32,11 +32,11 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "llvm/IR/Attributes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/TargetSelect.h"
-#include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
 
 namespace xla {
@@ -145,23 +145,15 @@ static absl::Status SetUpExportedFunction(llvm::Module &module,
 
   // Call the implementation function with the extracted arguments.
   auto *call = builder.CreateCall(func, args);
-  builder.CreateRetVoid();
 
-  // Make sure that we do not keep exported function in the binary if we do not
-  // have any other callers.
+  // Force LLVM to inline original function into the interface function.
+  call->addFnAttr(llvm::Attribute::AlwaysInline);
+
+  // And make sure that we do not keep exported function in the binary if we do
+  // not have other callers.
   func->setLinkage(llvm::GlobalValue::LinkageTypes::PrivateLinkage);
 
-  // Explicitly inline implementation function into the interface function,
-  // because it potentially can have thousands of arguments and it interacts
-  // badly with various SCCP passes in LLVM.
-  llvm::InlineFunctionInfo ifi;
-
-  // If inlined function is a coroutine (result of lowering async function),
-  // then we have to mark the interface function as a corotuine as well.
-  bool is_coro = func->isPresplitCoroutine();
-  if (auto inlined = llvm::InlineFunction(*call, ifi); inlined.isSuccess()) {
-    if (is_coro) callee->setPresplitCoroutine();
-  }
+  builder.CreateRetVoid();
 
   // Always keep the frame pointer inside jit-compiled modules, so that we can
   // correctly walk the stack when collecting profiles at run time.
@@ -239,6 +231,13 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
   module->setDataLayout(options.target_machine->createDataLayout());
   module->setTargetTriple(options.target_machine->getTargetTriple().str());
 
+  // Run an optimization pipeline over the LLVM module.
+  auto transformer = options.make_optimizing_transformer(
+      options.opt_level, /*sizeLevel=*/0, options.target_machine);
+  if (auto err = transformer(module_ptr))
+    return InternalError("failed to run optimization pipeline: %s",
+                         ToString(err));
+
   // Set up exported functions interface functions in the LLVM module.
   for (std::string_view name : exported) {
     if (auto status = SetUpExportedFunction(*module, name); !status.ok())
@@ -246,13 +245,6 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
           "failed to set up exported function %s interface: %s", name,
           status.message());
   }
-
-  // Run an optimization pipeline over the LLVM module.
-  auto transformer = options.make_optimizing_transformer(
-      options.opt_level, /*sizeLevel=*/0, options.target_machine);
-  if (auto err = transformer(module_ptr))
-    return InternalError("failed to run optimization pipeline: %s",
-                         ToString(err));
 
   // Callback to create the object layer with a user-provided section memory
   // mapper and JIT event listeners.
