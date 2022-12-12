@@ -7119,47 +7119,14 @@ LogicalResult TransposeOp::reifyReturnTypeShapes(
   return success();
 }
 
-// Method for InferTypeOpInterface: infer the return type from the operand type
-// and the permutation.
 LogicalResult TransposeOp::inferReturnTypes(
-    MLIRContext* /*context*/, Optional<Location> loc, ValueRange operands,
-    DictionaryAttr attributes, RegionRange,
+    MLIRContext*, Optional<Location> loc, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  auto type = operands[0].getType();
-  auto rankedTy = type.dyn_cast<RankedTensorType>();
-  if (!rankedTy) {
-    auto shapedTy = type.dyn_cast<ShapedType>();
-    inferredReturnTypes.emplace_back(shapedTy);
-    return success();
-  }
-  auto permutation = attributes.getAs<DenseIntElementsAttr>("permutation");
-  int64_t rank = rankedTy.getRank();
-  if (permutation.getType().getRank() != 1)
-    return emitOptionalError(loc, "TransposeOp permutation has rank ",
-                             permutation.getType().getRank(),
-                             " instead of rank 1");
-
-  if (permutation.size() != rank)
-    return emitOptionalError(loc, "TransposeOp operand rank ", rank,
-                             " does not match permutation size ",
-                             permutation.size());
-
-  std::vector<int64_t> range(rank);
-  std::iota(range.begin(), range.end(), 0);
-  if (!std::is_permutation(range.begin(), range.end(), permutation.begin()))
-    return emitOptionalError(loc,
-                             "attribute permutation must be a permutation"
-                             " of [",
-                             range, "] but got ", permutation);
-
-  SmallVector<int64_t> resultShape;
-  ArrayRef<int64_t> inputShape = rankedTy.getShape();
-  for (int64_t dim : permutation.getValues<int64_t>()) {
-    resultShape.push_back(inputShape[dim]);
-  }
-  inferredReturnTypes.emplace_back(RankedTensorType::get(
-      resultShape, rankedTy.getElementType(), rankedTy.getEncoding()));
-  return success();
+  TransposeOp::Adaptor adaptor(operands, attributes, regions);
+  LogicalResult result = hlo::inferTransposeOp(
+      loc, adaptor.getOperand(), adaptor.getPermutation(), inferredReturnTypes);
+  return result;
 }
 
 //===----------------------------------------------------------------------===//
