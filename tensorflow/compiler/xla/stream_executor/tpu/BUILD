@@ -426,7 +426,7 @@ cc_library(
         ":pjrt_api",
         ":tpu_api",
         ":tpu_api_dlsym_set_fn",
-        ":tpu_executor",
+        ":tpu_executor_base",
         ":tpu_executor_c_api_hdrs",
         ":tpu_executor_init_fns",
         ":tpu_library_init_fns",
