@@ -168,6 +168,12 @@ tsl_gpu_library(
     ],
     copts = tsl_copts(),
     linkstatic = True,
+    visibility = [
+        "//tensorflow/compiler/tf2xla:__subpackages__",
+        "//tensorflow/compiler/xla:__subpackages__",
+        "//tensorflow/core/common_runtime/gpu:__subpackages__",
+        "//tensorflow/stream_executor:__subpackages__",
+    ],
     deps = [
         "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
         "//tensorflow/compiler/xla/stream_executor:platform",
