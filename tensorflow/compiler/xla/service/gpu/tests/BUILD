@@ -555,7 +555,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_kernel_tiling_test",
     srcs = ["gpu_kernel_tiling_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + ["no_rocm"],
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
