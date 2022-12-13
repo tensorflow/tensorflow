@@ -333,7 +333,7 @@ mlir::LogicalResult CombineAllReduceOps(
         group_assignment_attr,
         GroupAssignment::ReplicaToDeviceMap::DefaultReplicaToDeviceMap(
             num_slices, slice_size));
-    // LINT.ThenChange(//tensorflow/dtensor/mlir/utils/collective_lowering_google.inc)
+    // LINT.ThenChange(//tensorflow/dtensor/mlir/utils/collective_lowering_google.cc)
     if (!group_assignment.ok()) {
       return all_reduce.emitOpError(
           llvm::formatv("Failed to create a GroupAssignment due to {0}",
