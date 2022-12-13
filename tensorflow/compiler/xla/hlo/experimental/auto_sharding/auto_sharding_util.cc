@@ -1860,7 +1860,6 @@ bool AdjustShardingsWithPartialMeshShape(
     if (!inst->has_sharding()) {
       continue;
     }
-    LOG(INFO) << inst->ToString();
     if (inst->shape().IsTuple()) {
       ShapeTree<HloSharding> output_tuple_sharding(inst->shape(), Undefined());
       std::vector<HloSharding> output_flattened_shardings;
