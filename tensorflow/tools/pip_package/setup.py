@@ -33,11 +33,7 @@ import fnmatch
 import os
 import re
 import sys
-<<<<<<< HEAD
-import io
-=======
 import platform
->>>>>>> upstream/master
 
 from setuptools import Command
 from setuptools import find_packages

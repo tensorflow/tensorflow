@@ -86,15 +86,6 @@ FfiStatus TestModule::Impl(TestModuleState* state, StridedBufferArg input0,
   return FfiStatus::Ok();
 }
 
-<<<<<<< HEAD
-// TODO(ezhulenev): We have to register stubs in the XLA custom call registry to
-// suppress errors during Thunk emissions. This stub should never be called,
-// and instead XLA will call into registered FFI handlers. Remove this hack!
-static void Abort() { LOG(FATAL) << "Custom call stub must never be called"; }
-XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("test.ffi", Abort, absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value()));
-
-=======
->>>>>>> upstream/master
 XLA_TEST_F(FfiTest, Basic) {
   // Register XLA FFI module with the runtime.
   TestModule ffi_module(GetXlaFfiApi());
