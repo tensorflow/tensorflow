@@ -997,28 +997,6 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
       return ops.convert_to_tensor(
           self._get(), dtype=dtype, name=name, as_ref=as_ref)
 
-  def _map_resources(self, save_options):
-    """For implementing `Trackable`."""
-    # Initialize for self._primary first, so that obj_map[self._primary] and
-    # resource_map[self._primary.handle] contain mapped values.
-    obj_map, resource_map = self._primary._map_resources(save_options)  # pylint:disable=protected-access
-    for v in [v for v in self._values if v != self._primary]:
-
-      if (save_options.experimental_variable_policy  # pylint:disable=protected-access
-          ._expand_distributed_variables()):
-        v_obj_map, v_resource_map = v._map_resources(save_options)  # pylint:disable=protected-access
-        obj_map.update(v_obj_map)
-        resource_map.update(v_resource_map)
-      else:
-        obj_map[v] = obj_map[self._primary]
-        resource_map[v.handle] = resource_map[self._primary.handle]
-    obj_map[self] = obj_map[self._primary]
-    resource_map[self] = resource_map[self._primary.handle]
-    if self._packed_var is not None:
-      resource_map[self._packed_var.packed_handle] = resource_map[
-          self._primary.handle]
-    return obj_map, resource_map
-
   def _export_to_saved_model_graph(self,
                                    object_map=None,
                                    tensor_map=None,
