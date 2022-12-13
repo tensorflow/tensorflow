@@ -7,6 +7,7 @@ tensorflow/compat_template_v1.__init__:.py
 tensorflow/compiler/mlir/glob_lit_test.bzl:
 tensorflow/compiler/mlir/quantization/tensorflow/internal_visibility_allowlist.bzl:
 tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h:
+tensorflow/compiler/xla/glob_lit_test.bzl:
 tensorflow/compiler/xla/mlir_hlo/WORKSPACE:
 tensorflow/compiler/xla/stream_executor/build_defs.bzl:
 tensorflow/core/platform/default/build_config/BUILD:

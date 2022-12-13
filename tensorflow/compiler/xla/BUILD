@@ -1120,6 +1120,15 @@ cc_library(
     ]),
 )
 
+filegroup(
+    name = "litfiles",
+    srcs = [
+        "runlit.cfg.py",
+        "runlit.site.cfg.py",
+    ],
+    visibility = ["//third_party/compiler/xla:__subpackages__"],
+)
+
 # -----------------------------------------------------------------------------
 
 # copybara:uncomment_begin(google-only)
