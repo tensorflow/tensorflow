@@ -288,6 +288,7 @@ py_strict_library(
         ":function_serialization",
         ":revived_types",
         ":signature_constants",
+        "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/python:composite_tensor",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
@@ -297,6 +298,7 @@ py_strict_library(
         "//tensorflow/python/eager:function",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_decorator",
         "@absl_py//absl/logging",
     ],
 )

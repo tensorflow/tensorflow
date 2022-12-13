@@ -18,6 +18,8 @@ import collections
 import inspect
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
 
+from absl import logging
+
 from tensorflow.core.function import trace_type
 from tensorflow.python.types import trace
 
@@ -165,6 +167,20 @@ class FunctionType(inspect.Signature):
         default_values[p.name] = p.default
     return default_values
 
+  def bind_with_defaults(self, args, kwargs, default_values):
+    """Returns BoundArguments with default values filled in."""
+    bound_arguments = self.bind(*args, **kwargs)
+    bound_arguments.apply_defaults()
+
+    with_default_args = collections.OrderedDict()
+    for name, value in bound_arguments.arguments.items():
+      if value is CAPTURED_DEFAULT_VALUE:
+        with_default_args[name] = default_values[name]
+      else:
+        with_default_args[name] = value
+    bound_arguments = inspect.BoundArguments(self, with_default_args)
+    return bound_arguments
+
   def is_supertype_of(self, other: "FunctionType") -> bool:
     """Returns True if self is a supertype of other FunctionType."""
     if len(self.parameters) != len(other.parameters):
@@ -249,11 +265,13 @@ class FunctionType(inspect.Signature):
     return (f"FunctionType(parameters={list(self.parameters.values())!r}, "
             f"captures={self.captures})")
 
+MAX_SANITIZATION_WARNINGS = 5
+sanitization_warnings_given = 0
 
-# TODO(fmuham): Raise warning here when load-bearing.
-# In future, replace warning with exception.
+
+# TODO(fmuham): In future, replace warning with exception.
 def sanitize_arg_name(name: str) -> str:
-  """Sanitizes Spec names.
+  """Sanitizes function argument names.
 
   Matches Graph Node and Python naming conventions.
 
@@ -269,11 +287,16 @@ def sanitize_arg_name(name: str) -> str:
   """
   # Lower case and replace non-alphanumeric chars with '_'
   swapped = "".join([c if c.isalnum() else "_" for c in name.lower()])
+  result = swapped if swapped[0].isalpha() else "arg_" + swapped
 
-  if swapped[0].isalpha():
-    return swapped
-  else:
-    return "arg_" + swapped
+  global sanitization_warnings_given
+  if name != result and sanitization_warnings_given < MAX_SANITIZATION_WARNINGS:
+    logging.warning(
+        "`%s` is not a valid tf.function parameter name. Sanitizing to `%s`.",
+        name, result)
+    sanitization_warnings_given += 1
+
+  return result
 
 
 # TODO(fmuham): Consider forcing kind to be always POSITIONAL_OR_KEYWORD.

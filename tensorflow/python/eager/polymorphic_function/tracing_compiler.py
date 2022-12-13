@@ -322,8 +322,7 @@ class TracingCompiler:
         self._function_spec.canonicalize_function_inputs(args, kwargs))
 
     if self.input_signature is not None:
-      args = self.input_signature
-      kwargs = {}
+      args = (*self.input_signature, *args[len(self.input_signature):])
 
     # Get runtime values of captures
     captures = self._captures_container.get_snapshot()

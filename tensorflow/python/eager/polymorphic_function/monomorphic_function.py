@@ -21,6 +21,7 @@ import pprint
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.function import trace_type
+from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import backprop
@@ -1510,9 +1511,14 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
           f"positional arguments, got {len(args)}.")
     args = list(args)
     kwargs = dict(kwargs)
+    kwargs = {
+        function_type_lib.sanitize_arg_name(k): v for k, v in kwargs.items()
+    }
     for keyword in self._arg_keywords[len(args):]:
       try:
-        args.append(kwargs.pop(compat.as_str(keyword)))
+        args.append(
+            kwargs.pop(
+                function_type_lib.sanitize_arg_name(compat.as_str(keyword))))
       except KeyError:
         specified_keywords = (
             list(self._arg_keywords[:len(args)]) + list(kwargs.keys()))
@@ -1601,6 +1607,10 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
       name = self._function_spec.arg_names[i]
       self._structured_signature_check_arg_type(arg, spec, name,
                                                 signature_context)
+    kwarg_specs = {
+        function_type_lib.sanitize_arg_name(k): v
+        for k, v in kwarg_specs.items()
+    }
     for (name, arg) in kwargs.items():
       self._structured_signature_check_arg_type(arg, kwarg_specs[name], name,
                                                 signature_context)
