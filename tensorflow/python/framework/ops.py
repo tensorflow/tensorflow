@@ -3672,15 +3672,6 @@ class Graph(object):
     if self._graph_def_versions.min_consumer < 12:
       self._graph_def_versions.min_consumer = 12
 
-  def _remove_function(self, name):
-    self._check_not_finalized()
-    if not self._is_function(name):
-      raise ValueError(f"Function {name!r} is not found in {self!r}.")
-
-    with self._c_graph.get() as c_graph:
-      pywrap_tf_session.TF_GraphRemoveFunction(c_graph, compat.as_bytes(name))
-      del self._functions[compat.as_str(name)]
-
   @property
   def building_function(self):
     """Returns True iff this graph represents a function."""
