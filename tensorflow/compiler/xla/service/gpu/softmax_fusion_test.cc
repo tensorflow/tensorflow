@@ -504,8 +504,8 @@ add_computation {
 }
 
 ENTRY main {
-  parameter_1.6 = f32[32,150]{1,0} parameter(0)
-  broadcast.599 = f32[32,4,72,150]{3,2,1,0} broadcast(parameter_1.6), dimensions={0,3}
+  parameter_1.6 = f32[32,72,150]{2,1,0} parameter(0)
+  broadcast.599 = f32[32,4,72,150]{3,2,1,0} broadcast(parameter_1.6), dimensions={0,2,3}
   constant.474 = f32[] constant(-inf)
   reduce.45 = f32[32,4,72]{2,1,0} reduce(broadcast.599, constant.474), dimensions={3}, to_apply=max_computation
   broadcast.600 = f32[32,4,72,150]{3,2,1,0} broadcast(reduce.45), dimensions={0,1,2}

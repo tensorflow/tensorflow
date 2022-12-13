@@ -284,9 +284,7 @@ bool IsSupportedBroadcast(HloInstruction* hlo) {
     // If there is a broadcast dimension in the part of dimensions that are
     // collapsed into 1 dimension, then all those rank - 1 dimensions need to be
     // broadcast dimensions.
-    if (hlo->dimensions(0) < rank - 1 &&
-        (hlo->dimensions().size() < rank - 1 ||
-         hlo->dimensions()[rank - 1] != rank - 1)) {
+    if (hlo->dimensions(0) < rank - 1 && hlo->dimensions().size() < rank) {
       return false;
     }
   }
