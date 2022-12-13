@@ -200,7 +200,7 @@ template <typename StdScalarOp>
 struct MapMhloOpToScalarOpImpl<StdScalarOp> {
   Value operator()(Location loc, ArrayRef<Type> resultTypes,
                    ArrayRef<Type> /*argTypes*/, ValueRange args, OpBuilder* b) {
-    return b->template create<StdScalarOp>(loc, resultTypes, args, mlir::None);
+    return b->template create<StdScalarOp>(loc, resultTypes, args, llvm::None);
   }
 };
 
@@ -211,7 +211,7 @@ struct MapMhloOpToScalarOpImpl<SupportedType, StdScalarOp, Args...> {
     Type elementType = getElementTypeOrSelf(argTypes.front());
     if (SupportedType{}(elementType)) {
       return b->template create<StdScalarOp>(loc, resultTypes, args,
-                                             mlir::None);
+                                             llvm::None);
     }
     return MapMhloOpToScalarOpImpl<Args...>{}(loc, resultTypes, argTypes, args,
                                               b);
@@ -627,20 +627,20 @@ inline Value mapConvertOpToStdScalarOp(Location loc, ArrayRef<Type> targetTypes,
   if (IsUnsignedIntegerType{}(sourceType) &&
       mlir::arith::UIToFPOp::areCastCompatible(convertedSourceType,
                                                targetType)) {
-    return b->create<mlir::arith::UIToFPOp>(loc, resultTypes, args, mlir::None);
+    return b->create<mlir::arith::UIToFPOp>(loc, resultTypes, args, llvm::None);
   }
   if (mlir::arith::SIToFPOp::areCastCompatible(sourceType, targetType)) {
-    return b->create<mlir::arith::SIToFPOp>(loc, resultTypes, args, mlir::None);
+    return b->create<mlir::arith::SIToFPOp>(loc, resultTypes, args, llvm::None);
   }
   if (sourceType.isa<FloatType>() && targetType.isa<FloatType>()) {
     auto src = sourceType.cast<FloatType>();
     auto res = targetType.cast<FloatType>();
     if (src.getWidth() > res.getWidth()) {
       return b->create<mlir::arith::TruncFOp>(loc, resultTypes, args,
-                                              mlir::None);
+                                              llvm::None);
     }
     if (src.getWidth() < res.getWidth()) {
-      return b->create<mlir::arith::ExtFOp>(loc, resultTypes, args, mlir::None);
+      return b->create<mlir::arith::ExtFOp>(loc, resultTypes, args, llvm::None);
     }
     // There's no direct conversion between different 16 bit floating point
     // types, so go through 32 bit float.
@@ -673,16 +673,16 @@ inline Value mapConvertOpToStdScalarOp(Location loc, ArrayRef<Type> targetTypes,
     auto res = targetType.cast<IntegerType>();
     if (src.getWidth() > res.getWidth()) {
       return b->create<mlir::arith::TruncIOp>(loc, resultTypes, args,
-                                              mlir::None);
+                                              llvm::None);
     }
     if (src.getWidth() < res.getWidth()) {
       // Special case boolean values, so they get casted to `1` instead of `-1`.
       if (IsUnsignedIntegerType{}(src)) {
         return b->create<mlir::arith::ExtUIOp>(loc, resultTypes, args,
-                                               mlir::None);
+                                               llvm::None);
       }
       return b->create<mlir::arith::ExtSIOp>(loc, resultTypes, args,
-                                             mlir::None);
+                                             llvm::None);
     }
     // No conversion is needed for the same width integers
     return args.front();
@@ -690,11 +690,11 @@ inline Value mapConvertOpToStdScalarOp(Location loc, ArrayRef<Type> targetTypes,
   if (targetType.isUnsignedInteger() &&
       mlir::arith::FPToUIOp::areCastCompatible(convertedSourceType,
                                                targetType)) {
-    return b->create<mlir::arith::FPToUIOp>(loc, resultTypes, args, mlir::None);
+    return b->create<mlir::arith::FPToUIOp>(loc, resultTypes, args, llvm::None);
   }
   if (mlir::arith::FPToSIOp::areCastCompatible(convertedSourceType,
                                                targetType)) {
-    return b->create<mlir::arith::FPToSIOp>(loc, resultTypes, args, mlir::None);
+    return b->create<mlir::arith::FPToSIOp>(loc, resultTypes, args, llvm::None);
   }
   if (targetType.isa<ComplexType>()) {
     Type targetElementType = targetType.cast<ComplexType>().getElementType();

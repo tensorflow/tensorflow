@@ -331,13 +331,14 @@ OpFoldResult PackOp::fold(ArrayRef<Attribute> operands) {
   // integer element in it and has an expected rank.
   auto get_const_int = [](Value value, int expected_rank) -> Optional<int64_t> {
     auto const_op = dyn_cast_or_null<ConstOp>(value.getDefiningOp());
-    if (!const_op) return None;
+    if (!const_op) return llvm::None;
 
     auto value_attr = const_op.getValue().dyn_cast<DenseIntElementsAttr>();
-    if (!value_attr || value_attr.getNumElements() != 1) return None;
+    if (!value_attr || value_attr.getNumElements() != 1) return llvm::None;
 
     auto value_ty = value_attr.getType();
-    if (!value_ty.hasRank() || value_ty.getRank() != expected_rank) return None;
+    if (!value_ty.hasRank() || value_ty.getRank() != expected_rank)
+      return llvm::None;
 
     auto splat = value_attr.getSplatValue<IntegerAttr>();
     return splat.getValue().getSExtValue();

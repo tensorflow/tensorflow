@@ -94,7 +94,7 @@ Optional<tensorflow::PartialTensorShape> GetShapeFromMlirType(Type t) {
             ConvertMlirShapeToTF(ranked_type.getShape()), &shape);
     if (status.ok()) return shape;
   }
-  return None;
+  return llvm::None;
 }
 
 // Extracts a PartialTensorShape from the MLIR attr.
@@ -106,7 +106,7 @@ Optional<tensorflow::PartialTensorShape> GetShapeFromMlirAttr(Value v) {
       int arg_idx = arg.getArgNumber();
       auto attrs =
           func_op.getArgAttrOfType<ArrayAttr>(arg_idx, "tf._output_shapes");
-      if (!attrs || attrs.size() != 1) return None;
+      if (!attrs || attrs.size() != 1) return llvm::None;
 
       // "tf._output_shapes" in certain models may not store the shape as
       // ShapeAttr, ignore them because we don't know how to interpret it.
@@ -115,7 +115,7 @@ Optional<tensorflow::PartialTensorShape> GetShapeFromMlirAttr(Value v) {
         return tensorflow::PartialTensorShape(shape_attr.getShape());
     }
   }
-  return None;
+  return llvm::None;
 }
 
 // Gets the subtype's shape and data type for `type`. Templated to support both
@@ -168,7 +168,7 @@ LogicalResult ReportErrorFromShapeFunction(Optional<Location> location,
 // Extracts shape from a shape handle and inference context.
 Optional<SmallVector<int64_t, 8>> GetShapeFromHandle(InferenceContext& context,
                                                      const ShapeHandle& sh) {
-  if (!context.RankKnown(sh)) return None;
+  if (!context.RankKnown(sh)) return llvm::None;
   SmallVector<int64_t, 8> shape;
   for (int dim : llvm::seq<int>(0, context.Rank(sh)))
     shape.push_back(context.Value(context.Dim(sh, dim)));

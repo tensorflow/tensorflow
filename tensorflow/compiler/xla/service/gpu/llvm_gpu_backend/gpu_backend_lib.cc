@@ -408,7 +408,7 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
   llvm::StandardInstrumentations si(module->getContext(), false);
   si.registerCallbacks(pic, &fam);
 
-  llvm::PassBuilder pb(target_machine, pto, llvm::None, &pic);
+  llvm::PassBuilder pb(target_machine, pto, std::nullopt, &pic);
   pb.registerModuleAnalyses(mam);
   pb.registerCGSCCAnalyses(cgam);
   pb.registerFunctionAnalyses(fam);
@@ -751,7 +751,7 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   std::string error_message;
   int lld_result =
       llvm::sys::ExecuteAndWait(*lld_program, llvm_ir::AsArrayRef(lld_args),
-                                llvm::None, {}, 0, 0, &error_message);
+                                std::nullopt, {}, 0, 0, &error_message);
   if (lld_result) {
     return xla::InternalError("ld.lld execute fail: %s, error code %d",
                               error_message, lld_result);

@@ -1765,7 +1765,9 @@ static Status GetMlirAllocationInfo(mlir::func::FuncOp func,
   }
 
   for (int i = 0; i < func.getNumArguments(); i++) {
-    for (const mlir::NamedAttribute& attr : func.getArgAttrs(i)) {
+    llvm::ArrayRef<mlir::NamedAttribute> attrs =
+        mlir::function_interface_impl::getArgAttrs(func, i);
+    for (const mlir::NamedAttribute& attr : attrs) {
       TF_RET_CHECK(attr.getName() == "lmhlo.params" ||
                    attr.getName() == "lmhlo.param_shape_index" ||
                    attr.getName() == "lmhlo.constant_name" ||
