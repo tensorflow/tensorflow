@@ -38,9 +38,7 @@ class PrintOpStatsPass : public PassWrapper<PrintOpStatsPass, OperationPass<>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrintOpStatsPass)
 
   explicit PrintOpStatsPass(raw_ostream *os = &llvm::errs())
-      : accepted_dialects_(TFL::mhlo::GetAcceptedDialects()),
-        os_(os),
-        total_ops_(0) {}
+      : accepted_dialects_(GetAcceptedDialects()), os_(os), total_ops_(0) {}
 
   // Prints the resultant operation statistics pos_t iterating over the module.
   void runOnOperation() override;
@@ -118,7 +116,7 @@ void PrintOpStatsPass::printSummary() {
   num_dialect = 0;
   // Print the number of unconverted ops in the non-accepted dialects.
   for (const auto &dialect_name : sorted_dialect) {
-    if (!TFL::mhlo::IsAcceptedDialect(dialect_name, accepted_dialects_)) {
+    if (!IsAcceptedDialect(dialect_name, accepted_dialects_)) {
       *os_ << absl::StrFormat("%d %s ops", dialect_count_[dialect_name],
                               absl::AsciiStrToUpper(dialect_name));
       if (++num_dialect < num_unaccepted) {
@@ -130,9 +128,8 @@ void PrintOpStatsPass::printSummary() {
   *os_ << "\n\n";
 
   for (const auto &op_with_dialect_name : sorted_op) {
-    if (!TFL::mhlo::IsAcceptedOp(dialect_name_of_[op_with_dialect_name],
-                                 op_name_of_[op_with_dialect_name],
-                                 accepted_dialects_)) {
+    if (!IsAcceptedOp(dialect_name_of_[op_with_dialect_name],
+                      op_name_of_[op_with_dialect_name], accepted_dialects_)) {
       *os_ << absl::StrFormat("- %s: %4d occurrences \n", op_with_dialect_name,
                               op_with_dialect_count_[op_with_dialect_name]);
     }

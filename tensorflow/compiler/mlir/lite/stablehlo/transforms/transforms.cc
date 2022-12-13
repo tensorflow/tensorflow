@@ -32,7 +32,7 @@ namespace odml {
 
 void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
                             bool smuggle_disallowed_ops) {
-  pm.addPass(mlir::TFL::mhlo::CreateRenameEntrypointToMainPass());
+  pm.addPass(CreateRenameEntrypointToMainPass());
   // TODO(b/230572023): Consider improving shape inference for While op instead
   // of dropping the attribute. This need not be correct for models not trained
   // on TPU.
@@ -59,15 +59,14 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
       mlir::quant::CreateConvertTFQuantOpsToMHLOPass());
   pm.addPass(mhlo::createLegalizeTFControlFlowPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addNestedPass<func::FuncOp>(mlir::TFL::mhlo::CreateTFToMhloPass(
+  pm.addNestedPass<func::FuncOp>(CreateTFToMhloPass(
       /*skip_quantization_ops=*/false, skip_resize));
   pm.addPass(mlir::createCanonicalizerPass());
   if (smuggle_disallowed_ops) {
-    pm.addNestedPass<func::FuncOp>(
-        mlir::TFL::mhlo::CreateSmuggleDisallowedOpsPass());
+    pm.addNestedPass<func::FuncOp>(CreateSmuggleDisallowedOpsPass());
     pm.addPass(mlir::createCanonicalizerPass());
   }
-  pm.addPass(mlir::TFL::mhlo::CreateDropSavedModelSemanticsPass());
+  pm.addPass(CreateDropSavedModelSemanticsPass());
 }
 
 void AddStablehloOptimizationPasses(OpPassManager& pm) {

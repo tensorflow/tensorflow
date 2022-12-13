@@ -249,7 +249,7 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
   // Convert MHLO MLIR to TFLite Custom Op MLIR
   // TODO(b/260112687): will be switching to StableHLO dialect in the future
   pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFL::mhlo::CreateMhloToTflPass());
+      mlir::odml::CreateMhloToTflPass());
   if (failed(pass_manager.run(module))) {
     return statusHandler.ConsumeStatus();
   }

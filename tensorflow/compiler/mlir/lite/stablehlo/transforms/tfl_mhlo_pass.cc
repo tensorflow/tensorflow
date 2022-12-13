@@ -43,8 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
 
 namespace mlir {
-namespace TFL {
-namespace mhlo {
+namespace odml {
 
 class TflToMhloPass
     : public mlir::PassWrapper<TflToMhloPass,
@@ -65,10 +64,10 @@ class TflToMhloPass
     registry.insert<::mlir::mhlo::MhloDialect>();
     registry.insert<shape::ShapeDialect>();
   }
-  inline ConstBytesAttr CustomOption(OpBuilder* builder,
-                                     const std::string& content) {
-    return ConstBytesAttr::get(builder->getContext(),
-                               StringRef(content.data(), content.size()));
+  inline TFL::ConstBytesAttr CustomOption(OpBuilder* builder,
+                                          const std::string& content) {
+    return TFL::ConstBytesAttr::get(builder->getContext(),
+                                    StringRef(content.data(), content.size()));
   }
 
   std::vector<int64_t> FlatbufferVecToMlirVec(const flexbuffers::Vector& vec) {
@@ -201,6 +200,5 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateTflToMhloPass() {
 
 static PassRegistration<TflToMhloPass> pass;
 
-}  // namespace mhlo
-}  // namespace TFL
+}  // namespace odml
 }  // namespace mlir

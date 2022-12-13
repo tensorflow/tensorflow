@@ -22,8 +22,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 
 namespace mlir {
-namespace TFL {
-namespace mhlo {
+namespace odml {
 
 std::vector<std::string> GetAcceptedDialects() {
   // It returns the default list of accepted dialects.
@@ -72,6 +71,5 @@ bool IsAcceptedOp(llvm::StringRef dialect_name, llvm::StringRef op_name,
   return dialect_name != "mhlo" || IsMhloOpAllowed(op_name);
 }
 
-}  // namespace mhlo
-}  // namespace TFL
+}  // namespace odml
 }  // namespace mlir

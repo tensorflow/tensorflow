@@ -54,8 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/rewriters.h"
 
 namespace mlir {
-namespace TFL {
-namespace mhlo {
+namespace odml {
 
 namespace {
 
@@ -98,10 +97,10 @@ struct ConvertMhloAtan2ToTflCustomOp
   explicit ConvertMhloAtan2ToTflCustomOp(::mlir::MLIRContext *context)
       : OpConversionPattern<::mlir::mhlo::Atan2Op>(context) {}
 
-  ConstBytesAttr BuildEmptyConstBytesAttr(Operation *op) const {
+  TFL::ConstBytesAttr BuildEmptyConstBytesAttr(Operation *op) const {
     OpBuilder builder(op);
 
-    return ConstBytesAttr::get(builder.getContext(), StringRef());
+    return TFL::ConstBytesAttr::get(builder.getContext(), StringRef());
   }
 
   ::mlir::LogicalResult matchAndRewrite(
@@ -194,6 +193,5 @@ static PassRegistration<TFMhloTFLPass> pass([] {
   return CreateTFMhloTFLPass();
 });
 
-}  // namespace mhlo
-}  // namespace TFL
+}  // namespace odml
 }  // namespace mlir

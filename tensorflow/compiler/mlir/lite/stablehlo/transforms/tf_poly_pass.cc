@@ -55,8 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
 
 namespace mlir {
-namespace TFL {
-namespace mhlo {
+namespace odml {
 
 static bool isTFOp(Operation *op) {
   return op->getDialect()->getNamespace() == "tf";
@@ -126,7 +125,7 @@ class TFPolyPass
     for (auto &idx_args : llvm::enumerate(block->getArguments())) {
       tf_op->setOperand(idx_args.index(), idx_args.value());
     }
-    builder->create<YieldOp>(loc, tf_op->getResults());
+    builder->create<TFL::YieldOp>(loc, tf_op->getResults());
     return tf_op;
   }
 
@@ -199,6 +198,5 @@ static PassRegistration<TFPolyPass> pass([] {
   return CreateTFPolyPass(options);
 });
 
-}  // namespace mhlo
-}  // namespace TFL
+}  // namespace odml
 }  // namespace mlir

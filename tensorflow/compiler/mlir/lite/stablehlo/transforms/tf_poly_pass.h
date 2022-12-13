@@ -24,8 +24,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
-namespace TFL {
-namespace mhlo {
+namespace odml {
 
 // Creates a pass which transforms TF Ops to multiple representations.
 // Only use this to TF ops that cannot convert to tflite fully.
@@ -35,8 +34,7 @@ struct PolyCallOptions {
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTFPolyPass(
     PolyCallOptions options);
 
-}  // namespace mhlo
-}  // namespace TFL
+}  // namespace odml
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_TF_POLY_PASS_H_

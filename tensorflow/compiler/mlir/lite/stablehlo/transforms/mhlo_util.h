@@ -51,8 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/rewriters.h"
 
 namespace mlir {
-namespace TFL {
-namespace mhlo {
+namespace odml {
 
 std::vector<std::string> GetAcceptedDialects();
 
@@ -99,8 +98,7 @@ inline void PopulateTFToMhloPatterns(
   ::mlir::chlo::ConstantLikeOp::getCanonicalizationPatterns(*patterns, context);
 }
 
-}  // namespace mhlo
-}  // namespace TFL
+}  // namespace odml
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_MHLO_UTIL_H_

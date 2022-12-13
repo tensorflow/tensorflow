@@ -21,8 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
-namespace TFL {
-namespace mhlo {
+namespace odml {
 
 class TFToMhloPass
     : public mlir::PassWrapper<TFToMhloPass,
@@ -111,6 +110,5 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateTFToMhloPass(
 
 static PassRegistration<TFToMhloPass> pass;
 
-}  // namespace mhlo
-}  // namespace TFL
+}  // namespace odml
 }  // namespace mlir

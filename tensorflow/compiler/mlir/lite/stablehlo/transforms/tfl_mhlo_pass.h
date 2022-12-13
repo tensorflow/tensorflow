@@ -23,14 +23,12 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
-namespace TFL {
-namespace mhlo {
+namespace odml {
 
 // Creates a pass which transforms TFLite to MHLO Ops.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTflToMhloPass();
 
-}  // namespace mhlo
-}  // namespace TFL
+}  // namespace odml
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_TFL_MHLO_PASS_H_

@@ -181,7 +181,7 @@ tensorflow::Status ConvertStableHLOToFlatbuffer(mlir::ModuleOp module,
                                                 std::string* flatbuffer_str) {
   // Convert StableHLO MLIR to TFLite Custom Op MLIR
   mlir::PassManager mhlo_tfl_pm(module->getContext());
-  mhlo_tfl_pm.addNestedPass<func::FuncOp>(TFL::mhlo::CreateMhloToTflPass());
+  mhlo_tfl_pm.addNestedPass<func::FuncOp>(CreateMhloToTflPass());
   if (failed(mhlo_tfl_pm.run(module))) {
     return tensorflow::errors::Aborted("HLO to TFL passes failed.");
   }
