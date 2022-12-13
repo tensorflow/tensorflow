@@ -79,6 +79,8 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #include "tensorflow/tsl/framework/fixedpoint/FixedPoint.h"
+#include "tensorflow/tsl/lib/io/zstd/zstd_compression_options.h"
+#include "tensorflow/tsl/lib/io/zstd/zstd_outputbuffer.h"
 
 namespace tensorflow {
 namespace data {
@@ -89,6 +91,8 @@ string ToString(CompressionType compression_type) {
       return "ZLIB";
     case CompressionType::GZIP:
       return "GZIP";
+    case CompressionType::ZSTD:
+      return "ZSTD";
     case CompressionType::RAW:
       return "RAW";
     case CompressionType::UNCOMPRESSED:
@@ -105,10 +109,22 @@ io::ZlibCompressionOptions GetZlibCompressionOptions(
       return io::ZlibCompressionOptions::GZIP();
     case CompressionType::RAW:
       return io::ZlibCompressionOptions::RAW();
-    case CompressionType::UNCOMPRESSED:
+    default:
       LOG(WARNING) << "ZlibCompressionOptions does not have an option for "
                    << ToString(compression_type);
       return io::ZlibCompressionOptions::DEFAULT();
+  }
+}
+
+tsl::io::ZstdCompressionOptions GetZstdCompressionOptions(
+    CompressionType compression_type) {
+  switch (compression_type) {
+    case CompressionType::ZSTD:
+      return tsl::io::ZstdCompressionOptions::DEFAULT();
+    default:
+      LOG(WARNING) << "ZstdCompressionOptions does not have an option for "
+                   << ToString(compression_type);
+      return tsl::io::ZstdCompressionOptions::DEFAULT();
   }
 }
 
@@ -135,6 +151,15 @@ Status WriteDataToFile(const string& filename, const char* data,
     TF_RETURN_IF_ERROR(out.Append(data));
     TF_RETURN_IF_ERROR(out.Flush());
     TF_RETURN_IF_ERROR(out.Close());
+  } else if (params.compression_type == CompressionType::ZSTD) {
+    auto zstd_compression_options =
+        GetZstdCompressionOptions(params.compression_type);
+    tsl::io::ZstdOutputBuffer out(file_writer.get(), params.input_buffer_size,
+                                  params.output_buffer_size,
+                                  zstd_compression_options);
+    TF_RETURN_IF_ERROR(out.Append(data));
+    TF_RETURN_IF_ERROR(out.Flush());
+    TF_RETURN_IF_ERROR(out.Close());
   } else {
     return tensorflow::errors::InvalidArgument(
         "Unsupported compression_type: ", ToString(params.compression_type));
@@ -154,7 +179,13 @@ Status WriteDataToTFRecordFile(const string& filename,
   TF_RETURN_IF_ERROR(env->NewWritableFile(filename, &file_writer));
   auto options = io::RecordWriterOptions::CreateRecordWriterOptions(
       ToString(params.compression_type));
-  options.zlib_options.input_buffer_size = params.input_buffer_size;
+  if (params.compression_type == CompressionType::ZLIB ||
+      params.compression_type == CompressionType::GZIP) {
+    options.zlib_options.input_buffer_size = params.input_buffer_size;
+  } else if (params.compression_type == CompressionType::ZSTD) {
+    options.zstd_options.input_buffer_size = params.input_buffer_size;
+    options.zstd_options.output_buffer_size = params.output_buffer_size;
+  }
   io::RecordWriter record_writer(file_writer.get(), options);
   for (const auto& record : records) {
     TF_RETURN_IF_ERROR(record_writer.WriteRecord(record));

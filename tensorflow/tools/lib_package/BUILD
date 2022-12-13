@@ -164,6 +164,7 @@ genrule(
         "@tf_runtime//:LICENSE",
         "@tf_runtime//third_party/llvm_derived:LICENSE",
         "@zlib//:zlib.h",
+        "@zstd//:LICENSE",
     ] + select({
         "//tensorflow:linux_aarch64": [],
         "//conditions:default": ["@nasm//:LICENSE"],
@@ -230,6 +231,7 @@ genrule(
         "@tf_runtime//:LICENSE",
         "@tf_runtime//third_party/llvm_derived:LICENSE",
         "@zlib//:zlib.h",
+        "@zstd//:LICENSE",
     ] + select({
         "//tensorflow:linux_aarch64": [],
         "//conditions:default": ["@nasm//:LICENSE"],

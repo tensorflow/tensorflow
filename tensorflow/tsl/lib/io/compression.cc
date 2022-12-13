@@ -23,6 +23,7 @@ const char kNone[] = "";
 const char kGzip[] = "GZIP";
 const char kSnappy[] = "SNAPPY";
 const char kZlib[] = "ZLIB";
+const char kZstd[] = "ZSTD";
 
 }  // namespace compression
 }  // namespace io

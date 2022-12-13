@@ -46,6 +46,9 @@ RecordReaderOptions RecordReaderOptions::CreateRecordReaderOptions(
     options.zlib_options = io::ZlibCompressionOptions::GZIP();
   } else if (compression_type == compression::kSnappy) {
     options.compression_type = io::RecordReaderOptions::SNAPPY_COMPRESSION;
+  } else if (compression_type == compression::kZstd) {
+    options.compression_type = io::RecordReaderOptions::ZSTD_COMPRESSION;
+    options.zstd_options = io::ZstdCompressionOptions::DEFAULT();
   } else if (compression_type != compression::kNone) {
     LOG(ERROR) << "Unsupported compression_type:" << compression_type
                << ". No compression will be used.";
@@ -77,6 +80,11 @@ RecordReader::RecordReader(RandomAccessFile* file,
     input_stream_.reset(
         new SnappyInputStream(input_stream_.release(),
                               options.snappy_options.output_buffer_size, true));
+  } else if (options.compression_type ==
+             RecordReaderOptions::ZSTD_COMPRESSION) {
+    input_stream_.reset(new ZstdInputStream(
+        input_stream_.release(), options.zstd_options.input_buffer_size,
+        options.zstd_options.output_buffer_size, options.zstd_options, true));
   } else if (options.compression_type == RecordReaderOptions::NONE) {
     // Nothing to do.
   } else {

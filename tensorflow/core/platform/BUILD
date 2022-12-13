@@ -1206,6 +1206,7 @@ tf_cc_tests(
         "//tensorflow/core:test_main",
         "//tensorflow/tsl/platform:logging",
         "@zlib",
+        "@zstd", # TODO: @IAL32 can this be removed or is it necessary?
     ],
 )
 

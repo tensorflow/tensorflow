@@ -11,6 +11,7 @@ package(
         "//tensorflow/c/experimental/filesystem:__pkg__",
         "//tensorflow/c/experimental/filesystem/plugins/posix:__pkg__",
         "//tensorflow/tsl/lib/io/snappy:__pkg__",
+        "//tensorflow/tsl/lib/io/zstd:__pkg__",
         "//tensorflow/compiler/xla:__subpackages__",
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
@@ -146,6 +147,8 @@ cc_library(
         ":snappy_inputstream",
         ":zlib_compression_options",
         ":zlib_inputstream",
+        ":zstd_compression_options",
+        ":zstd_inputstream",
         "//tensorflow/tsl/lib/hash:crc32c",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
@@ -167,6 +170,8 @@ cc_library(
         ":snappy_outputbuffer",
         ":zlib_compression_options",
         ":zlib_outputbuffer",
+        ":zstd_compression_options",
+        ":zstd_outputbuffer",
         "//tensorflow/tsl/lib/hash:crc32c",
         "//tensorflow/tsl/platform:coding",
         "//tensorflow/tsl/platform:cord",
@@ -197,6 +202,21 @@ alias(
 alias(
     name = "snappy_compression_options",
     actual = "//tensorflow/tsl/lib/io/snappy:snappy_compression_options",
+)
+
+alias(
+    name = "zstd_inputstream",
+    actual = "//tensorflow/tsl/lib/io/zstd:zstd_inputstream",
+)
+
+alias(
+    name = "zstd_outputbuffer",
+    actual = "//tensorflow/tsl/lib/io/zstd:zstd_outputbuffer",
+)
+
+alias(
+    name = "zstd_compression_options",
+    actual = "//tensorflow/tsl/lib/io/zstd:zstd_compression_options",
 )
 
 cc_library(
@@ -356,6 +376,9 @@ filegroup(
         "//tensorflow/tsl/lib/io/snappy:snappy_inputbuffer.h",
         "//tensorflow/tsl/lib/io/snappy:snappy_inputstream.h",
         "//tensorflow/tsl/lib/io/snappy:snappy_outputbuffer.h",
+        "//tensorflow/tsl/lib/io/zstd:zstd_compression_options.h",
+        "//tensorflow/tsl/lib/io/zstd:zstd_inputstream.h",
+        "//tensorflow/tsl/lib/io/zstd:zstd_outputbuffer.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -390,6 +413,9 @@ filegroup(
         "//tensorflow/tsl/lib/io/snappy:snappy_inputbuffer.h",
         "//tensorflow/tsl/lib/io/snappy:snappy_inputstream.h",
         "//tensorflow/tsl/lib/io/snappy:snappy_outputbuffer.h",
+        "//tensorflow/tsl/lib/io/zstd:zstd_compression_options.h",
+        "//tensorflow/tsl/lib/io/zstd:zstd_inputstream.h",
+        "//tensorflow/tsl/lib/io/zstd:zstd_outputbuffer.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

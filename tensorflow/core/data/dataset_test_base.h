@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
+#include "tensorflow/tsl/lib/io/zstd/zstd_compression_options.h"
 
 namespace tensorflow {
 namespace data {
@@ -94,7 +95,13 @@ std::vector<Tensor> CreateTensors(
   return result;
 }
 
-enum class CompressionType { ZLIB = 0, GZIP = 1, RAW = 2, UNCOMPRESSED = 3 };
+enum class CompressionType {
+  ZLIB = 0,
+  GZIP = 1,
+  RAW = 2,
+  ZSTD = 3,
+  UNCOMPRESSED = 4
+};
 
 // Returns a string representation for the given compression type.
 string ToString(CompressionType compression_type);
@@ -103,6 +110,12 @@ string ToString(CompressionType compression_type);
 // type. Note that `CompressionType::UNCOMPRESSED` is not supported because
 // `ZlibCompressionOptions` does not have an option.
 io::ZlibCompressionOptions GetZlibCompressionOptions(
+    CompressionType compression_type);
+
+// Gets the specified zstd compression options according to the compression
+// type. Note that `CompressionType::UNCOMPRESSED` is not supported because
+// `ZstdCompressionOptions` does not have an option.
+tsl::io::ZstdCompressionOptions GetZstdCompressionOptions(
     CompressionType compression_type);
 
 // Used to specify parameters when writing data into files with compression.

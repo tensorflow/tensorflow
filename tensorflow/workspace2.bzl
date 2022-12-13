@@ -579,6 +579,15 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://zlib.net/fossils/zlib-1.2.13.tar.gz"),
     )
 
+    tf_http_archive(
+        name = "zstd",
+        build_file = "//third_party:zstd.BUILD",
+        sha256 = "7c42d56fac126929a6a85dbc73ff1db2411d04f104fae9bdea51305663a83fd0",
+        strip_prefix = "zstd-1.5.2",
+        system_build_file = "//third_party/systemlibs:zstd.BUILD",
+        urls = tf_mirror_urls("https://github.com/facebook/zstd/releases/download/v1.5.2/zstd-1.5.2.tar.gz"),
+    )
+
     # LINT.IfChange
     tf_http_archive(
         name = "fft2d",

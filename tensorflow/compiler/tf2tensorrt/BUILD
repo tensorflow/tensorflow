@@ -1033,6 +1033,7 @@ pybind_extension(
         "@snappy//:__subpackages__",
         "//:__subpackages__",
         "@zlib//:__subpackages__",
+        "@zstd//:__subpackages__",
     ],
     deps = [
         ":common_utils",

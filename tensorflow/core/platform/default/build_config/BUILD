@@ -22,5 +22,6 @@ cc_library(
         "@fft2d",
         "@highwayhash//:sip_hash",
         "@zlib",
+        "@zstd", # TODO: @IAL32 is this ok or can this be removed?
     ],
 )

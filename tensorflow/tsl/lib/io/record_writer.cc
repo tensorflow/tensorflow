@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/tsl/lib/hash/crc32c.h"
 #include "tensorflow/tsl/lib/io/compression.h"
+#include "tensorflow/tsl/lib/io/zstd/zstd_outputbuffer.h"
 #include "tensorflow/tsl/platform/coding.h"
 #include "tensorflow/tsl/platform/env.h"
 
@@ -29,6 +30,10 @@ bool IsZlibCompressed(const RecordWriterOptions& options) {
 
 bool IsSnappyCompressed(const RecordWriterOptions& options) {
   return options.compression_type == RecordWriterOptions::SNAPPY_COMPRESSION;
+}
+
+bool IsZstdCompressed(const RecordWriterOptions& options) {
+  return options.compression_type == RecordWriterOptions::ZSTD_COMPRESSION;
 }
 }  // namespace
 
@@ -49,6 +54,9 @@ RecordWriterOptions RecordWriterOptions::CreateRecordWriterOptions(
     options.zlib_options = io::ZlibCompressionOptions::GZIP();
   } else if (compression_type == compression::kSnappy) {
     options.compression_type = io::RecordWriterOptions::SNAPPY_COMPRESSION;
+  } else if (compression_type == compression::kZstd) {
+    options.compression_type = io::RecordWriterOptions::ZSTD_COMPRESSION;
+    options.zstd_options = io::ZstdCompressionOptions::DEFAULT();
   } else if (compression_type != compression::kNone) {
     LOG(ERROR) << "Unsupported compression_type:" << compression_type
                << ". No compression will be used.";
@@ -79,6 +87,12 @@ RecordWriter::RecordWriter(WritableFile* dest,
     dest_ =
         new SnappyOutputBuffer(dest, options.snappy_options.input_buffer_size,
                                options.snappy_options.output_buffer_size);
+  } else if (IsZstdCompressed(options)) {
+    ZstdOutputBuffer* zstd_output_buffer = new ZstdOutputBuffer(
+        dest, options.zstd_options.input_buffer_size,
+        options.zstd_options.output_buffer_size, options.zstd_options);
+
+    dest_ = zstd_output_buffer;
   } else if (options.compression_type == RecordWriterOptions::NONE) {
     // Nothing to do
   } else {
@@ -138,7 +152,8 @@ Status RecordWriter::WriteRecord(const absl::Cord& data) {
 
 Status RecordWriter::Close() {
   if (dest_ == nullptr) return OkStatus();
-  if (IsZlibCompressed(options_) || IsSnappyCompressed(options_)) {
+  if (IsZlibCompressed(options_) || IsSnappyCompressed(options_) ||
+      IsZstdCompressed(options_)) {
     Status s = dest_->Close();
     delete dest_;
     dest_ = nullptr;

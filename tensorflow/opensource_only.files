@@ -318,6 +318,7 @@ third_party/systemlibs/sqlite.BUILD:
 third_party/systemlibs/syslibs_configure.bzl:
 third_party/systemlibs/termcolor.BUILD:
 third_party/systemlibs/zlib.BUILD:
+third_party/systemlibs/zstd.BUILD
 third_party/tblib.BUILD:
 third_party/tensorrt/BUILD.tpl:
 third_party/tensorrt/BUILD:
@@ -338,3 +339,4 @@ third_party/tflite_smartreply.BUILD:
 third_party/typing_extensions.BUILD:
 third_party/wrapt.BUILD:
 third_party/zlib.BUILD:
+third_party/zstd.BUILD

@@ -298,6 +298,12 @@ TEST_F(RecordioTest, NonSequentialReadsWithCompression) {
       RecordReaderOptions::CreateRecordReaderOptions("ZLIB"));
 }
 
+TEST_F(RecordioTest, NonSequentialReadsWithZstdCompression) {
+  TestNonSequentialReads(
+      RecordWriterOptions::CreateRecordWriterOptions("ZSTD"),
+      RecordReaderOptions::CreateRecordReaderOptions("ZSTD"));
+}
+
 // Tests of all the error paths in log_reader.cc follow:
 void AssertHasSubstr(StringPiece s, StringPiece expected) {
   EXPECT_TRUE(absl::StrContains(s, expected))
@@ -342,6 +348,11 @@ TEST_F(RecordioTest, ReadErrorWithBuffering) {
 TEST_F(RecordioTest, ReadErrorWithCompression) {
   TestReadError(RecordWriterOptions::CreateRecordWriterOptions("ZLIB"),
                 RecordReaderOptions::CreateRecordReaderOptions("ZLIB"));
+}
+
+TEST_F(RecordioTest, ReadErrorWithZstdCompression) {
+  TestReadError(RecordWriterOptions::CreateRecordWriterOptions("ZSTD"),
+                RecordReaderOptions::CreateRecordReaderOptions("ZSTD"));
 }
 
 TEST_F(RecordioTest, CorruptLength) {

@@ -1369,6 +1369,9 @@ cc_library(
         "//tensorflow/core/lib/io:zlib_compression_options",
         "//tensorflow/core/lib/io:zlib_inputstream",
         "//tensorflow/core/lib/io:zlib_outputbuffer",
+        "//tensorflow/tsl/lib/io:zstd_compression_options",
+        "//tensorflow/tsl/lib/io:zstd_inputstream",
+        "//tensorflow/tsl/lib/io:zstd_outputbuffer",
         "//tensorflow/core/lib/math:math_util",
         "//tensorflow/tsl/lib/math:math_util",
         "//tensorflow/core/lib/wav:wav_io",
@@ -1449,6 +1452,7 @@ cc_library(
         "//tensorflow/core/util:reporter",  # TODO(gunan): REMOVE as soon as cc_shared_library is supported.
         "@snappy",
         "@zlib",
+        "@zstd",
         "@double_conversion//:double-conversion",
         "@com_google_protobuf//:protobuf",
     ] + select({
@@ -1879,6 +1883,7 @@ tf_cc_tests(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@zlib",
+        "@zstd",
     ],
 )
 

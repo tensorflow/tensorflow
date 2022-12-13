@@ -14,6 +14,10 @@ tf_class {
     name: "ZLIB"
     mtype: "<type \'int\'>"
   }
+  member {
+    name: "ZSTD"
+    mtype: "<type \'int\'>"
+  }
   member_method {
     name: "__init__"
   }

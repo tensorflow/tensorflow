@@ -236,6 +236,7 @@ filegroup(
         "@tf_runtime//third_party/llvm_derived:LICENSE",
         "@typing_extensions_archive//:LICENSE",
         "@zlib//:zlib.h",
+        "@zstd//:LICENSE",
     ] + select({
         "//tensorflow:linux_aarch64": [],
         "//conditions:default": [

@@ -111,6 +111,7 @@ PACKAGE_STATIC_DEPS = [
     "@snappy//:__subpackages__",
     "@upb//:__subpackages__",
     "@zlib//:__subpackages__",
+    "@zstd//:__subpackages__",
     "@dlpack//:__subpackages__",
     "@arm_neon_2_x86_sse//:__subpackages__",
     "@cpuinfo//:__subpackages__",
