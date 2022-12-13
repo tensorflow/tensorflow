@@ -517,6 +517,47 @@ TEST(TensorHandle_LocalTest, TensorFromDeviceInvalidDevice) {
   context->Unref();
 }
 
+TEST(TensorHandle_ResourceShapeMirror, CreateAndCheckMirror) {
+  std::vector<std::unique_ptr<Device>> devices;
+  devices.emplace_back(
+      CreateDevice("CPU", "/job:localhost/replica:0/task:0/device:CPU:0"));
+  devices.emplace_back(
+      CreateDevice("CPU", "/job:localhost/replica:0/task:0/device:CPU:1"));
+  devices.emplace_back(
+      CreateDevice("CPU", "/job:localhost/replica:0/task:0/device:CPU:2"));
+  StaticDeviceMgr device_mgr(std::move(devices));
+
+  EagerContext* context = new EagerContext(
+      SessionOptions(),
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
+      /* async= */ false, &device_mgr,
+      /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
+      /* cluster_flr= */ nullptr, /*collective_executor_mgr=*/nullptr,
+      /*run_eager_op_as_function=*/true);
+
+  tensorflow::DataType dtype = DT_RESOURCE;
+  TensorShape shape = {};
+
+  Tensor t0(dtype, shape);
+  Device* d0 = device_mgr.ListDevices().at(1);
+  TensorHandle* h =
+      TensorHandle::CreateLocalHandle(std::move(t0), d0, d0, d0, context);
+
+  Device* d1 = device_mgr.ListDevices().at(2);
+  int64_t op_id = 1;
+  int output_num = 2;
+  EXPECT_FALSE(h->HasResourceShapeMirror(d1, context->GetContextViewId()));
+
+  TF_EXPECT_OK(h->AddResourceShapeMirror(d1, op_id, output_num, context));
+  EXPECT_TRUE(h->HasResourceShapeMirror(d1, context->GetContextViewId()));
+
+  // Adding a duplicate leads to failure
+  EXPECT_THAT(h->AddResourceShapeMirror(d1, op_id, output_num, context),
+              tensorflow::testing::StatusIs(tensorflow::error::INTERNAL));
+  h->Unref();
+  context->Unref();
+}
+
 TEST(TensorHandle_DeviceNameTest, OnLocalDevice) {
   std::vector<std::unique_ptr<Device>> devices;
   devices.emplace_back(
