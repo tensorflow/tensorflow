@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -40,11 +41,11 @@ namespace mlir {
 namespace quant {
 namespace {
 
+using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
+using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::tensorflow::kImportModelDefaultGraphFuncName;
 
 constexpr char kEntryFunctionAttr[] = "tf.entry_function";
-constexpr char kExportedNameAttr[] = "tf_saved_model.exported_names";
-constexpr char kIndexPathAttr[] = "tf_saved_model.index_path";
 
 // The ConvertMlirToGraphdef requires the provided input module to have a main
 // function, which might not exist in case of multi-signature graphs. In that
@@ -78,7 +79,8 @@ bool HasMainFunction(ModuleOp& module) {
 
 // Checks if a FuncOp is exported.
 bool IsExported(func::FuncOp op) {
-  auto exported_names = op->getAttrOfType<ArrayAttr>(kExportedNameAttr);
+  auto exported_names =
+      op->getAttrOfType<ArrayAttr>(kTfSavedModelExportedNamesAttr);
   return exported_names && !exported_names.empty();
 }
 
@@ -106,8 +108,9 @@ void SetFunctionPrivate(func::FuncOp& func) {
     }
   }
 
+  auto iface = cast<FunctionOpInterface>(func.getOperation());
   for (int i = 0; i < func.getNumArguments(); ++i) {
-    for (auto& attr : func.getArgAttrs(i)) {
+    for (auto& attr : iface.getArgAttrs(i)) {
       const StringAttr& attr_name = attr.getName();
       if (attr_name.getValue().startswith("tf_saved_model.")) {
         func.removeArgAttr(i, attr_name);
@@ -115,7 +118,7 @@ void SetFunctionPrivate(func::FuncOp& func) {
     }
   }
   for (int i = 0; i < func.getNumResults(); ++i) {
-    for (auto& attr : func.getResultAttrs(i)) {
+    for (auto& attr : iface.getResultAttrs(i)) {
       const StringAttr& attr_name = attr.getName();
       if (attr_name.getValue().startswith("tf_saved_model.")) {
         func.removeResultAttr(i, attr_name);
@@ -254,7 +257,7 @@ bool CreateMainFunction(ModuleOp& module) {
   auto dictAttr = DictionaryAttr::get(context, func_attrs);
   main_func->setAttr(StringAttr::get(context, kEntryFunctionAttr), dictAttr);
   main_func->setAttr(
-      kExportedNameAttr,
+      kTfSavedModelExportedNamesAttr,
       builder.getStrArrayAttr({kImportModelDefaultGraphFuncName}));
 
   if (input_names.size() != main_func.getNumArguments() ||
@@ -271,14 +274,14 @@ bool CreateMainFunction(ModuleOp& module) {
   const int num_args = main_func.getNumArguments();
   for (int i = 0; i < num_args; ++i) {
     main_func.setArgAttr(
-        i, kIndexPathAttr,
+        i, kTfSavedModelIndexPathAttr,
         ArrayAttr::get(context, {StringAttr::get(context, input_names[i])}));
   }
 
   const int num_results = main_func.getNumResults();
   for (int i = 0; i < num_results; ++i) {
     main_func.setResultAttr(
-        i, kIndexPathAttr,
+        i, kTfSavedModelIndexPathAttr,
         ArrayAttr::get(context, {StringAttr::get(context, output_names[i])}));
   }
 

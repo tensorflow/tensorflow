@@ -3351,20 +3351,22 @@ XlaOp XlaBuilder::ReduceScatter(
 XlaOp XlaBuilder::AllToAll(XlaOp operand, int64_t split_dimension,
                            int64_t concat_dimension, int64_t split_count,
                            absl::Span<const ReplicaGroup> replica_groups,
-                           const std::optional<Layout>& layout) {
+                           const std::optional<Layout>& layout,
+                           const std::optional<ChannelHandle>& channel_id) {
   // Array all_to_all may need to violate layout constraint to be legal so use
   // the tuple version.
   if (layout.has_value()) {
     return AllToAllTuple(operand, split_dimension, concat_dimension,
-                         split_count, replica_groups, layout);
+                         split_count, replica_groups, layout, channel_id);
   }
   return AllToAllArray(operand, split_dimension, concat_dimension, split_count,
-                       replica_groups);
+                       replica_groups, channel_id);
 }
 
-XlaOp XlaBuilder::AllToAllArray(XlaOp operand, int64_t split_dimension,
-                                int64_t concat_dimension, int64_t split_count,
-                                absl::Span<const ReplicaGroup> replica_groups) {
+XlaOp XlaBuilder::AllToAllArray(
+    XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
+    int64_t split_count, absl::Span<const ReplicaGroup> replica_groups,
+    const std::optional<ChannelHandle>& channel_id) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(
@@ -3384,6 +3386,9 @@ XlaOp XlaBuilder::AllToAllArray(XlaOp operand, int64_t split_dimension,
       }
     }
     instr.add_dimensions(split_dimension);
+    if (channel_id.has_value()) {
+      instr.set_channel_id(channel_id->handle());
+    }
     TF_ASSIGN_OR_RETURN(
         XlaOp all_to_all,
         AddInstruction(std::move(instr), HloOpcode::kAllToAll, {operand}));
@@ -3416,9 +3421,11 @@ XlaOp XlaBuilder::AllToAllArray(XlaOp operand, int64_t split_dimension,
   });
 }
 
-XlaOp XlaBuilder::AllToAllTuple(absl::Span<const XlaOp> operands,
-                                absl::Span<const ReplicaGroup> replica_groups,
-                                const std::optional<Layout>& layout) {
+XlaOp XlaBuilder::AllToAllTuple(
+    absl::Span<const XlaOp> operands,
+    absl::Span<const ReplicaGroup> replica_groups,
+    const std::optional<Layout>& layout,
+    const std::optional<ChannelHandle>& channel_id) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(auto operand_shapes, this->GetOperandShapes(operands));
@@ -3449,15 +3456,19 @@ XlaOp XlaBuilder::AllToAllTuple(absl::Span<const XlaOp> operands,
     for (const ReplicaGroup& group : replica_groups) {
       *instr.add_replica_groups() = group;
     }
+    if (channel_id.has_value()) {
+      instr.set_channel_id(channel_id->handle());
+    }
 
     return AddInstruction(std::move(instr), HloOpcode::kAllToAll, operands);
   });
 }
 
-XlaOp XlaBuilder::AllToAllTuple(XlaOp operand, int64_t split_dimension,
-                                int64_t concat_dimension, int64_t split_count,
-                                absl::Span<const ReplicaGroup> replica_groups,
-                                const std::optional<Layout>& layout) {
+XlaOp XlaBuilder::AllToAllTuple(
+    XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
+    int64_t split_count, absl::Span<const ReplicaGroup> replica_groups,
+    const std::optional<Layout>& layout,
+    const std::optional<ChannelHandle>& channel_id) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
 
@@ -3485,7 +3496,8 @@ XlaOp XlaBuilder::AllToAllTuple(XlaOp operand, int64_t split_dimension,
     }
 
     // Handle data communication.
-    XlaOp alltoall = this->AllToAllTuple(slices, replica_groups, layout);
+    XlaOp alltoall =
+        this->AllToAllTuple(slices, replica_groups, layout, channel_id);
 
     // Concat the N received parts.
     std::vector<XlaOp> received;
@@ -4961,25 +4973,30 @@ XlaOp ReduceScatter(const XlaOp operand, const XlaComputation& computation,
 XlaOp AllToAll(const XlaOp operand, int64_t split_dimension,
                int64_t concat_dimension, int64_t split_count,
                absl::Span<const ReplicaGroup> replica_groups,
-               const std::optional<Layout>& layout) {
+               const std::optional<Layout>& layout,
+               const std::optional<ChannelHandle>& channel_id) {
   return operand.builder()->AllToAll(operand, split_dimension, concat_dimension,
-                                     split_count, replica_groups, layout);
+                                     split_count, replica_groups, layout,
+                                     channel_id);
 }
 
 XlaOp AllToAllTuple(absl::Span<const XlaOp> operands,
                     absl::Span<const ReplicaGroup> replica_groups,
-                    const std::optional<Layout>& layout) {
+                    const std::optional<Layout>& layout,
+                    const std::optional<ChannelHandle>& channel_id) {
   CHECK(!operands.empty());
-  return operands[0].builder()->AllToAllTuple(operands, replica_groups, layout);
+  return operands[0].builder()->AllToAllTuple(operands, replica_groups, layout,
+                                              channel_id);
 }
 
 XlaOp AllToAllTuple(const XlaOp operand, int64_t split_dimension,
                     int64_t concat_dimension, int64_t split_count,
                     absl::Span<const ReplicaGroup> replica_groups,
-                    const std::optional<Layout>& layout) {
+                    const std::optional<Layout>& layout,
+                    const std::optional<ChannelHandle>& channel_id) {
   return operand.builder()->AllToAllTuple(operand, split_dimension,
                                           concat_dimension, split_count,
-                                          replica_groups, layout);
+                                          replica_groups, layout, channel_id);
 }
 
 XlaOp CollectivePermute(

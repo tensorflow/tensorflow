@@ -322,6 +322,15 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_TRANSPOSE_CONV: {
+      auto transpose_conv_params =
+          reinterpret_cast<TfLiteTransposeConvParams*>(op_sig.builtin_data);
+
+      // TransposeConvOp has fused activation function from version 4.
+      if (transpose_conv_params != nullptr &&
+          transpose_conv_params->activation) {
+        return 4;
+      }
+
       if (op_sig.inputs.size() == 4 &&
           op_sig.inputs.at(3).type != kTfLiteNoType) {
         return 3;

@@ -196,9 +196,8 @@ Status Conv2DBackpropComputeInputShape(const Tensor& input_sizes,
           "Conv2DBackpropInput: elements of input_sizes must be >= 0, not ",
           output_height, "x", output_width);
     }
-    *input_shape = ShapeFromFormat(data_format, batch_size, output_height,
-                                   output_width, output_depth);
-    return OkStatus();
+    return ShapeFromFormatWithStatus(data_format, batch_size, output_height,
+                                     output_width, output_depth, input_shape);
   }
 
   return errors::InvalidArgument(

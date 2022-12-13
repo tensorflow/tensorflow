@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 
@@ -41,7 +42,11 @@ HloModuleImporter::HloModuleImporter(mlir::ModuleOp module,
 }
 
 Status HloModuleImporter::Import(const xla::HloModule& hlo_module) {
-  llvm::cast<mlir::ModuleOp>(symbol_table_.getOp()).setName(hlo_module.name());
+  auto module = llvm::cast<mlir::ModuleOp>(symbol_table_.getOp());
+  module.setName(hlo_module.name());
+  module->setAttr("mhlo.cross_program_prefetches",
+                  ConvertCrossProgramPrefetches(
+                      hlo_module.CrossProgramPrefetches(), &builder_));
 
   if (!import_all_computation_)
     // Only import the entry computation, any reachable one will be imported

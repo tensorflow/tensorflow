@@ -63,17 +63,14 @@ void printDstStyleOp(
     DstOpTy op, OpAsmPrinter &p,
     function_ref<SmallVector<StringRef>(DstOpTy op, OpAsmPrinter &)>
         printAttrsFn = nullptr) {
-  p.increaseIndent();
   if (op.getNumDpsInputs() != 0) {
-    p.printNewline();
-    p << "ins(";
+    p << " ins(";
     llvm::interleaveComma(
         op.getOperands().take_front(op.getNumDpsInputs()), p,
         [&](Value input) { p << input << " : " << input.getType(); });
     p << ")";
   }
-  p.printNewline();
-  p << "outs(";
+  p << " outs(";
   llvm::interleaveComma(
       op.getOperands().take_back(op.getNumDpsInits()), p,
       [&](Value output) { p << output << " : " << output.getType(); });
@@ -81,10 +78,12 @@ void printDstStyleOp(
 
   // Print attributes with custom printing logic.
   SmallVector<StringRef> elidedAttrs;
-  if (printAttrsFn) elidedAttrs = printAttrsFn(op, p);
+  if (printAttrsFn) {
+    p << ' ';
+    elidedAttrs = printAttrsFn(op, p);
+  }
 
   p.printOptionalAttrDict(op->getAttrs(), elidedAttrs);
-  p.decreaseIndent();
 }
 
 ParseResult parseKeywordOperandListWithTypes(
@@ -433,7 +432,6 @@ void ConcatenateOp::print(OpAsmPrinter &p) {
   printDstStyleOp<ConcatenateOp>(
       *this, p,
       [](ConcatenateOp op, OpAsmPrinter &p) -> SmallVector<StringRef> {
-        p.printNewline();
         p << op.getDimensionAttrName().str() << " = " << op.getDimension();
 
         return {op.getDimensionAttrName()};
@@ -503,7 +501,6 @@ void DynamicBroadcastInDimOp::print(OpAsmPrinter &p) {
       *this, p,
       [](DynamicBroadcastInDimOp op,
          OpAsmPrinter &p) -> SmallVector<StringRef> {
-        p.printNewline();
         printDenseI64ArrayAttr(p, op.getBroadcastDimensionsAttrName(),
                                op.getBroadcastDimensions());
         return {op.getBroadcastDimensionsAttrName()};
@@ -917,11 +914,8 @@ ParseResult SortOp::parse(OpAsmParser &parser, OperationState &result) {
 void SortOp::print(OpAsmPrinter &p) {
   printDstStyleOp<SortOp>(
       *this, p, [](SortOp op, OpAsmPrinter &p) -> SmallVector<StringRef> {
-        p.printNewline();
-        p << op.getDimensionAttrName().str() << " = " << op.getDimension();
-
-        p.printNewline();
-        p << op.getIsStableAttrName().str() << " = " << op.getIsStable();
+        p << op.getDimensionAttrName().str() << " = " << op.getDimension()
+          << ' ' << op.getIsStableAttrName().str() << " = " << op.getIsStable();
         return {op.getDimensionAttrName(), op.getIsStableAttrName()};
       });
 
@@ -1095,6 +1089,35 @@ FailureOr<Value> SortOp::generateResultTileValue(OpBuilder &b,
                                                  ArrayRef<OpFoldResult> sizes) {
   return getTiledImplementation(b, offsets, sizes, /*useExtractSlice=*/false)
       ->getResult(resultNumber);
+}
+
+//===----------------------------------------------------------------------===//
+// ReverseOp
+//===----------------------------------------------------------------------===//
+
+ParseResult ReverseOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseDstStyleOp(
+      parser, result, [&](OpAsmParser &parser, NamedAttrList &attributes) {
+        return parseDenseI64ArrayAttr(parser, attributes, "reverse_dimensions");
+      });
+}
+
+void ReverseOp::print(OpAsmPrinter &p) {
+  printDstStyleOp<ReverseOp>(
+      *this, p, [](ReverseOp op, OpAsmPrinter &p) -> SmallVector<StringRef> {
+        printDenseI64ArrayAttr(p, op.getReverseDimensionsAttrName(),
+                               op.getReverseDimensions());
+        return {op.getReverseDimensionsAttrName()};
+      });
+}
+
+LogicalResult ReverseOp::verify() {
+  return verifyDestinationStyleOp(getOperation());
+}
+
+void ReverseOp::getAsmResultNames(
+    function_ref<void(Value, StringRef)> setNameFn) {
+  setNameFn(getResult(), "reversed");
 }
 
 }  // namespace thlo

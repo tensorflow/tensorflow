@@ -32,6 +32,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Registers XLA Gpu runtime graph launch custom calls.
+void RegisterGraphLaunchCustomCalls(
+    runtime::DirectCustomCallRegistry& registry);
+
 #if GOOGLE_CUDA
 struct GraphInstance;  // Forward declare
 
@@ -77,10 +81,6 @@ struct GraphInstance {};
 class GraphInstances : public runtime::StateVector<GraphInstance> {};
 
 #endif  // #if GOOGLE_CUDA
-
-// Registers XLA Gpu runtime graph launch custom calls.
-void RegisterGraphLaunchCustomCalls(
-    runtime::DirectCustomCallRegistry& registry);
 
 }  // namespace gpu
 }  // namespace xla

@@ -113,7 +113,8 @@ class CollectiveOpsTest : public HloTestBase {
     TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
                             ExecuteReplicated(std::move(module), {&input_value},
                                               /*num_replicas=*/kNumReplicas,
-                                              /*use_threads=*/true));
+                                              /*use_threads=*/true,
+                                              /*run_hlo_passes=*/true));
     for (int replica_idx = 0; replica_idx < kNumReplicas; replica_idx++) {
       EXPECT_TRUE(LiteralTestUtil::NearOrEqual(
           expected_value, results[replica_idx], ErrorSpec{1e-5, 1e-5}));
@@ -229,8 +230,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_half) {
   TestAllOpsForReduce<Eigen::half>();
 }
 
-XLA_TEST_F(CollectiveOpsTest,
-           DISABLED_ON_CPU(AllReduceTwoReplicasOneOperand_bfloat16)) {
+XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_bfloat16) {
   TestAllOpsForReduce<bfloat16>();
 }
 
@@ -1544,6 +1544,42 @@ XLA_TEST_F(CollectiveOpsTest, ReduceScatter_16BitInt) {
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint16_t>({21}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint16_t>({31}, results[1]);
+}
+
+XLA_TEST_F(CollectiveOpsTest, AllReduceBFloat16Min) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  min {
+    a = bf16[] parameter(0)
+    b = bf16[] parameter(1)
+    ROOT min.2 = bf16[] minimum(a, b)
+  }
+
+  ENTRY test_computation {
+    id32 = u32[] replica-id()
+    one = u32[] constant(1)
+    id32_1 = u32[] add(id32, one)
+    id = bf16[] convert(id32_1)
+    id2 = bf16[2] broadcast(id), dimensions={}
+    ROOT cp = bf16[2] all-reduce(id2), replica_groups={}, to_apply=min
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  const bfloat16 one = static_cast<bfloat16>(1.0f);
+  for (const Literal& result : results) {
+    LiteralTestUtil::ExpectR1Equal<bfloat16>({one, one}, result);
+  }
 }
 
 }  // namespace

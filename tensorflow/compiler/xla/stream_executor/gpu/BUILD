@@ -32,6 +32,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/tf2xla:__subpackages__",
+        "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/compiler/xla/pjrt:__subpackages__",
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
@@ -167,6 +168,12 @@ tsl_gpu_library(
     ],
     copts = tsl_copts(),
     linkstatic = True,
+    visibility = [
+        "//tensorflow/compiler/tf2xla:__subpackages__",
+        "//tensorflow/compiler/xla:__subpackages__",
+        "//tensorflow/core/common_runtime/gpu:__subpackages__",
+        "//tensorflow/stream_executor:__subpackages__",
+    ],
     deps = [
         "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
         "//tensorflow/compiler/xla/stream_executor:platform",

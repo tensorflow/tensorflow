@@ -139,13 +139,14 @@ def LHLOGPU_GEMMOp : LHLOGPU_Op<"gemm"> {
     OptionalAttr<I64Attr>:$algorithm);
 }
 
-def LHLOGPU_CublasLtMatmulOp : LHLOGPU_Op<"cublas.lt.matmul"> {
+def LHLOGPU_CublasLtMatmulOp : LHLOGPU_Op<"cublas.lt.matmul", [AttrSizedOperandSegments]> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$a,
     Arg<LHLO_Buffer, "", [MemRead]>:$b,
     Arg<LHLO_Buffer, "", [MemRead]>:$c,
     Arg<LHLO_Buffer, "", [MemWrite]>:$d,
     Arg<Optional<LHLO_Buffer>, "", [MemRead]>:$bias,
+    Arg<Optional<LHLO_Buffer>, "", [MemRead, MemWrite]>:$aux,
     MHLO_DotDimensionNumbers:$dot_dimension_numbers,
     MHLO_PrecisionConfigAttr:$precision_config,
     F64Attr:$alpha_real,

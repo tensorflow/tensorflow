@@ -1,4 +1,5 @@
-// RUN: mlir-hlo-opt %s -test-gml-st-bufferization -canonicalize -cse \
+// RUN: mlir-hlo-opt %s -empty-tensor-to-alloc-tensor \
+// RUN:   -test-gml-st-bufferization -canonicalize -cse \
 // RUN:   -split-input-file | FileCheck %s
 
 func.func @set_tile(%input: tensor<?x?xf32>) -> tensor<2x4xf32> {
@@ -190,7 +191,7 @@ func.func @nested_parallel_with_vector(%init : tensor<?x32xf32>)
 // CHECK:             gml_st.set_yield
 // CHECK-SAME:          vector<1x4xf32> into vector<1x32xf32>[!gml_st.tile<1x4>]
 // CHECK:           vector.transfer_write %[[RESVEC]], %[[INITTILE]]
-// CHWECK-SAME:         vector<1x32xf32>, memref<1x32xf32
+// CHECK-SAME:         vector<1x32xf32>, memref<1x32xf32
 // CHECK:         return %[[INIT]] : memref<?x32xf32>
 
 

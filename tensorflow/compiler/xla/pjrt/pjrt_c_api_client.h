@@ -158,11 +158,8 @@ class PjRtCApiClient : public PjRtClient {
   StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
-  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() override {
-    if (kPjRtCApiBypass) {
-      VLOG(1) << "PJRT C API BYPASS: GetHloCostAnalysis";
-      return wrapped_->GetHloCostAnalysis();
-    }
+  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+      const override {
     return Unimplemented("PJRT C API does not support GetHloCostAnalysis");
   }
 
@@ -462,13 +459,7 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
   }
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
-      const override {
-    if (kPjRtCApiBypass) {
-      VLOG(1) << "PJRT C API BYPASS: GetHloModules";
-      return wrapped()->GetHloModules();
-    }
-    return Unimplemented("PJRT C API does not support GetHloModules");
-  }
+      const override;
 
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,

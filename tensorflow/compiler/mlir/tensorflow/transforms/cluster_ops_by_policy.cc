@@ -100,7 +100,7 @@ void ValuesConstraintSet::Walk(
 Optional<ValueConstraint> ValuesConstraintSet::GetConstraint(
     Value value) const {
   auto it = constraints_.find(value);
-  if (it == constraints_.end()) return None;
+  if (it == constraints_.end()) return llvm::None;
   return it->getSecond();
 }
 

@@ -67,11 +67,21 @@ namespace {
 #define GEN_PASS_DEF_DTENSORALLGATHERLOWERING
 #define GEN_PASS_DEF_DTENSORALLSCATTERLOWERING
 #include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
+}  // namespace
+
+namespace internal {
+#ifdef PLATFORM_GOOGLE
+mlir::LogicalResult EmitAllReduceForXlaGoogle(
+    mlir::MLIRContext& context, mlir::OpBuilder& builder,
+    mlir::TF::DTensorAllReduceOp all_reduce,
+    mlir::DenseIntElementsAttr group_assignment_attr, int32 key_base,
+    mlir::Operation** final_op);
+#endif
 
 namespace ops_util = ::mlir::TF::collection_ops_util;
 constexpr int32 kUninitializedGroupKey = 0;
 
-static std::atomic<int32> tf_collective_instance_key_base{0};
+std::atomic<int32> tf_collective_instance_key_base{0};
 
 bool HasEnableReuseGroupKey() {
   // FIXME(b/258703996): use tsl::ReadBoolFromEnvVar()
@@ -85,39 +95,25 @@ bool HasEnableReuseGroupKey() {
   return true;
 }
 
-}  // namespace
-}  // namespace dtensor
-}  // namespace tensorflow
-
-#ifdef PLATFORM_GOOGLE
-// Use the Google internal version of EmitAllReduceForXla.
-#include "collective_lowering_google.inc"
-#else
-namespace tensorflow {
-namespace dtensor {
-namespace {
-constexpr char kCrossReplica[] = "CrossReplica";
-
 mlir::LogicalResult EmitAllReduceForXla(
     mlir::MLIRContext& context, mlir::OpBuilder& builder,
     mlir::TF::DTensorAllReduceOp all_reduce,
     mlir::DenseIntElementsAttr group_assignment_attr, int32 key_base,
     mlir::Operation** final_op) {
+#ifdef PLATFORM_GOOGLE
+  return EmitAllReduceForXlaGoogle(context, builder, all_reduce,
+                                   group_assignment_attr, key_base, final_op);
+#else
+  constexpr char kCrossReplica[] = "CrossReplica";
+
   // For TPUs, lower to XlaAllReduce straightforwardly.
   *final_op = builder.create<mlir::TF::XlaAllReduceOp>(
       all_reduce.getLoc(), all_reduce.getResult().getType(),
       all_reduce.getInput(), all_reduce.getGroupAssignment(),
       all_reduce.getReduceOpAttr(), builder.getStringAttr(kCrossReplica));
   return mlir::success();
-}
-}  // namespace
-}  // namespace dtensor
-}  // namespace tensorflow
 #endif
-
-namespace tensorflow {
-namespace dtensor {
-namespace {
+}
 
 llvm::SmallVector<int32_t, 4> GetGroupKeyOffsets(
     const mlir::DenseIntElementsAttr& group_assignment, int32_t* group_size) {
@@ -263,6 +259,7 @@ mlir::Operation* EmitCollectiveReduce(
   }
   return collective_reduce;
 }
+
 // Emits TransposeOp with permuting passed dim_idx with first axis.
 mlir::Operation* EmitTransposeOp(mlir::OpBuilder& builder,
                                  const mlir::Location& loc, mlir::Value input,
@@ -353,6 +350,7 @@ mlir::Operation* EmitCollectiveGather(
 
   return collective_gather;
 }
+
 mlir::LogicalResult LowerAllReduceOpImpl(
     mlir::MLIRContext& context, mlir::OpBuilder& builder,
     mlir::TF::DTensorAllReduceOp all_reduce, mlir::Value* value) {
@@ -400,7 +398,7 @@ mlir::LogicalResult LowerAllReduceOpImpl(
     mlir::Value relative_device_id =
         builder.create<mlir::TF::SubOp>(loc, device_id, start_device_id);
 
-    final_op = EmitCollectiveReduce(
+    final_op = internal::EmitCollectiveReduce(
         builder, loc, all_reduce.getInput(), all_reduce.getReduceOp().str(),
         group_assignment_attr, key_base, relative_device_id,
         /*host_group_size=*/group_size, all_reduce.getDeviceType().str());
@@ -1076,6 +1074,9 @@ mlir::LogicalResult LowerAllScatterOp(
   return mlir::LogicalResult::success();
 }
 
+}  // namespace internal
+
+namespace {
 struct DTensorAllReduceLowering
     : public impl::DTensorAllReduceLoweringBase<DTensorAllReduceLowering> {
   void runOnOperation() override {
@@ -1090,7 +1091,7 @@ struct DTensorAllReduceLowering
 
     // Replace every DTensorAllReduce op with device-specific implementations.
     for (auto& all_reduce : all_reduces)
-      if (mlir::failed(LowerAllReduceOp(context, all_reduce)))
+      if (mlir::failed(internal::LowerAllReduceOp(context, all_reduce)))
         return signalPassFailure();
   }
 };
@@ -1113,7 +1114,7 @@ struct DTensorReduceScatterLowering
 
     // Replace every DTensorAllReduce op with device-specific implementations.
     for (auto& all_reduce : all_reduces)
-      if (mlir::failed(LowerReduceScatterOp(all_reduce)))
+      if (mlir::failed(internal::LowerReduceScatterOp(all_reduce)))
         return signalPassFailure();
   }
 };
@@ -1130,7 +1131,7 @@ struct DTensorAllGatherLowering
     });
 
     for (mlir::TF::DTensorAllGatherOp all_gather : all_gathers)
-      if (mlir::failed(LowerAllGatherOp(all_gather)))
+      if (mlir::failed(internal::LowerAllGatherOp(all_gather)))
         return signalPassFailure();
   }
 };
@@ -1147,7 +1148,7 @@ struct DTensorAllScatterLowering
     });
 
     for (mlir::TF::DTensorAllScatterOp all_scatter : all_scatters)
-      if (mlir::failed(LowerAllScatterOp(all_scatter)))
+      if (mlir::failed(internal::LowerAllScatterOp(all_scatter)))
         return signalPassFailure();
   }
 };

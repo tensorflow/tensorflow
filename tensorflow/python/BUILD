@@ -297,6 +297,11 @@ alias(
     actual = "//tensorflow/python/util:tf_decorator",
 )
 
+# Deprecated.  Use
+#   //third_party/tensorflow/tsl/python/lib/core:bfloat16_lib
+# for the bfloat16-specific dependency, or
+#   //third_party/tensorflow/tsl/python/lib/core
+# for all custom types and python utilities.
 alias(
     name = "bfloat16_lib",
     actual = "//tensorflow/python/lib/core:bfloat16_lib",
@@ -1268,6 +1273,7 @@ py_library(
         ":array_ops_gen",
         ":control_flow_ops_gen",
         ":control_flow_util",
+        ":functional_ops_gen",
         ":logging_ops_gen",
         ":math_ops",
         ":platform",
@@ -1279,6 +1285,7 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_should_use",
     ],
@@ -3255,8 +3262,14 @@ pywrap_tensorflow_macro(
     name = "pywrap_tensorflow_internal",
     srcs = ["pywrap_tensorflow_internal.cc"],
     dynamic_deps = select({
-        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
-        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+        "//tensorflow:macos": [
+            "//tensorflow:libtensorflow_cc.%s.dylib" % VERSION,
+            "//tensorflow:libtensorflow_framework.%s.dylib" % VERSION,
+        ],
+        "//conditions:default": [
+            "//tensorflow:libtensorflow_cc.so.%s" % VERSION,
+            "//tensorflow:libtensorflow_framework.so.%s" % VERSION,
+        ],
         "//tensorflow:windows": [],
     }),
     exports_filter = [
@@ -3338,7 +3351,6 @@ pywrap_tensorflow_macro(
     ] + tsl_async_value_deps(),
     win_def_file = ":pywrap_tensorflow_filtered_def_file",
     deps = [
-        ":bfloat16_lib",
         ":safe_ptr",
         "//tensorflow/python/grappler:cost_analyzer_lib",
         "//tensorflow/python/grappler:model_analyzer_lib",
@@ -3373,7 +3385,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/c/experimental/gradients/tape",
         "//tensorflow/cc/saved_model:fingerprinting_impl",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc",
         "//tensorflow/core/data/service:dispatcher_client",
         "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/core/data/service:server_lib",
@@ -3395,7 +3407,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
         "//tensorflow/tsl/profiler/rpc/client:profiler_client_impl",
-        "//tensorflow/tsl/python/lib/core:numpy",
+        "//tensorflow/tsl/python/lib/core",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/core/profiler/backends/cpu:python_tracer",
         "//tensorflow/dtensor/cc:dtensor_device_cc",
@@ -3407,7 +3419,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/client:tf_session_helper",
         "//tensorflow/python/eager:pywrap_tfe_lib",
-        "//tensorflow/python/lib/core:custom_types_lib",
         "//tensorflow/compiler/mlir/python:mlir",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
@@ -3431,7 +3442,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core/profiler:profiler_impl",
         "//tensorflow/core/util:determinism",
-        "//tensorflow/stream_executor:stream_executor_impl",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
     ] + if_static([
         "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/core/platform:enable_tf2_utils",
@@ -3454,7 +3465,8 @@ pywrap_tensorflow_macro(
 filegroup(
     name = "win_lib_files_for_exported_symbols",
     srcs = [
-        ":bfloat16_lib",  # bfloat16
+        "//tensorflow/tsl/python/lib/core:bfloat16_lib",  # bfloat16
+        "//tensorflow/tsl/python/lib/core:float8_lib",  # float8_e4m3fn, float8_e5m2
         "//tensorflow/python/grappler:cost_analyzer_lib",
         "//tensorflow/python/util:cpp_nest",
         "//tensorflow/python/util:cpp_python_util",
@@ -4154,9 +4166,12 @@ tf_python_pybind_extension(
         "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/tsl/python/lib/core:numpy_hdr",
     ],
-    # Only include TensorFlow header-only targets here.
-    # If a cc_library needs to depend on TensorFlow .cc files through srcs or
-    # deps, then you can use cc_header_only_library to keep only headers.
+    dynamic_deps = [":_pywrap_tensorflow_internal.so"] + select({
+        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+        "//tensorflow:windows": [],
+    }),
+    static_deps = tf_python_pybind_static_deps(),
     deps = [
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/lib/core:pybind11_lib",

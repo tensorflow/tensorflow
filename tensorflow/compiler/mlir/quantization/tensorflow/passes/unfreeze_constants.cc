@@ -41,6 +41,7 @@ namespace mlir {
 namespace quant {
 namespace {
 
+using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
 using ::mlir::tf_saved_model::SessionInitializerOp;
@@ -99,7 +100,7 @@ func::FuncOp CreateInitializerFunc(SymbolTable& symbol_table,
   builder.createBlock(&init_func.getBody(), /*insertPt=*/init_func.begin(),
                       /*arg_types=*/{}, /*arg_locs=*/{});
 
-  init_func->setAttr("tf_saved_model.exported_names",
+  init_func->setAttr(kTfSavedModelExportedNamesAttr,
                      builder.getStrArrayAttr(
                          {"tf_saved_model.session_initializer_restore_op"}));
   init_func->setAttr(

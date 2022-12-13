@@ -187,7 +187,6 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         },
         "tf.nn.softmax_cross_entropy_with_logits": {
             "dim": "axis",
-            "_sentinel": None,
         },
         "tf.nn.softmax_cross_entropy_with_logits_v2": {
             "dim": "axis"

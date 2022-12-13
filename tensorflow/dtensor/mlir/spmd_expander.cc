@@ -72,9 +72,18 @@ Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
 
   if (computed_layout.empty() && op->getNumResults() != 0) {
     return errors::InvalidArgument(
-        absl::StrCat("No attachced layout found for op : ", OpName(op),
+        absl::StrCat("No attached layout found for op : ", OpName(op),
                      " This might be due to an error in layout propagation.")
             .c_str());
+  }
+
+  // If op is on an XLA SPMD mesh, then set layout and skip expansion.
+  TF_ASSIGN_OR_RETURN(const Mesh& mesh, ExtractDeviceMeshEnclosingCluster(op));
+  if (mesh.use_xla_spmd()) {
+    *output = op;
+    SetLayoutOnOp(*output, absl::Span<std::optional<Layout>>(
+                               computed_layout.data(), computed_layout.size()));
+    return OkStatus();
   }
 
   // `op` may be removed/replaced from the graph during SPMD expansion, so

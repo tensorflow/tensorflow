@@ -82,36 +82,36 @@ func.func @softmax(%arg0: tensor<64x128xf32>) -> tensor<64x128xf32> {
 // CHECK-NEXT:     %[[MATERIALIZE_5:.*]] = gml_st.materialize %[[MATERIALIZE_0]][%[[TILE_5]]]
 
 // CHECK-NEXT:     %[[REDUCE:.*]] = linalg.reduce
-// CHECK-NEXT:         ins(%[[MATERIALIZE_4]] : tensor<1x128xf32>)
-// CHECK-NEXT:         outs(%[[MATERIALIZE_5]] : tensor<1xf32>)
-// CHECK-NEXT:         dimensions = [1]
+// CHECK-SAME:         ins(%[[MATERIALIZE_4]] : tensor<1x128xf32>)
+// CHECK-SAME:         outs(%[[MATERIALIZE_5]] : tensor<1xf32>)
+// CHECK-SAME:         dimensions = [1]
 
 // CHECK:          %[[MATERIALIZE_6:.*]] = gml_st.materialize %[[MATERIALIZE_1]][%[[TILE_4]]]
 // CHECK-NEXT:     %[[BROADCAST:.*]] = linalg.broadcast
-// CHECK-NEXT:         ins(%[[REDUCE]] : tensor<1xf32>)
-// CHECK-NEXT:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
-// CHECK-NEXT:         dimensions = [1]
+// CHECK-SAME:         ins(%[[REDUCE]] : tensor<1xf32>)
+// CHECK-SAME:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
+// CHECK-SAME:         dimensions = [1]
 
 // CHECK:          %[[MAP:.*]] = linalg.map
-// CHECK-NEXT:         ins(%[[MATERIALIZE_4]], %[[BROADCAST]] : tensor<1x128xf32>, tensor<1x128xf32>)
-// CHECK-NEXT:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
+// CHECK-SAME:         ins(%[[MATERIALIZE_4]], %[[BROADCAST]] : tensor<1x128xf32>, tensor<1x128xf32>)
+// CHECK-SAME:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
 
 // CHECK:          %[[MAP_0:.*]] = linalg.map
-// CHECK-NEXT:         ins(%[[MAP]] : tensor<1x128xf32>)
-// CHECK-NEXT:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
+// CHECK-SAME:         ins(%[[MAP]] : tensor<1x128xf32>)
+// CHECK-SAME:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
 
 // CHECK:          %[[MATERIALIZE_8:.*]] = gml_st.materialize %[[MATERIALIZE_3]][%[[TILE_5]]]
 // CHECK-NEXT:          %[[REDUCE_0:.*]] = linalg.reduce
-// CHECK-NEXT:         ins(%[[MAP_0]] : tensor<1x128xf32>)
-// CHECK-NEXT:         outs(%[[MATERIALIZE_8]] : tensor<1xf32>)
+// CHECK-SAME:         ins(%[[MAP_0]] : tensor<1x128xf32>)
+// CHECK-SAME:         outs(%[[MATERIALIZE_8]] : tensor<1xf32>)
 
 // CHECK:          %[[BROADCAST_0:.*]] = linalg.broadcast
-// CHECK-NEXT:         ins(%[[REDUCE_0]] : tensor<1xf32>)
-// CHECK-NEXT:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
+// CHECK-SAME:         ins(%[[REDUCE_0]] : tensor<1xf32>)
+// CHECK-SAME:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
 
 // CHECK:          %[[MAP_1:.*]] = linalg.map
-// CHECK-NEXT:         ins(%[[MAP_0]], %[[BROADCAST_0]] : tensor<1x128xf32>, tensor<1x128xf32>)
-// CHECK-NEXT:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
+// CHECK-SAME:         ins(%[[MAP_0]], %[[BROADCAST_0]] : tensor<1x128xf32>, tensor<1x128xf32>)
+// CHECK-SAME:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
 // CHECK:          gml_st.set_yield %[[MAP_1]] into %[[MATERIALIZE_1]][%[[TILE_4]]]
 // CHECK:        gml_st.set_yield %[[PARALLEL_0]] into %[[EMPTY_0]][%[[TILE]]]
 // CHECK:      return %[[PARALLEL]]

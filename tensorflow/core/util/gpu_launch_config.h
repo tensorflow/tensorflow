@@ -289,11 +289,22 @@ Gpu3DLaunchConfig GetGpu3DLaunchConfig(int xdim, int ydim, int zdim,
 #elif TENSORFLOW_USE_ROCM
   hipError_t err = hipGetDevice(&dev);
   CHECK_EQ(err, hipSuccess);
+<<<<<<< HEAD
   err = hipDeviceGetAttribute(&xthreadlimit, hipDeviceAttributeMaxBlockDimX, dev);
   CHECK_EQ(err, hipSuccess);
   err = hipDeviceGetAttribute(&ythreadlimit, hipDeviceAttributeMaxBlockDimY, dev);
   CHECK_EQ(err, hipSuccess);
   err = hipDeviceGetAttribute(&zthreadlimit, hipDeviceAttributeMaxBlockDimZ, dev);
+=======
+  err =
+      hipDeviceGetAttribute(&xthreadlimit, hipDeviceAttributeMaxBlockDimX, dev);
+  CHECK_EQ(err, hipSuccess);
+  err =
+      hipDeviceGetAttribute(&ythreadlimit, hipDeviceAttributeMaxBlockDimY, dev);
+  CHECK_EQ(err, hipSuccess);
+  err =
+      hipDeviceGetAttribute(&zthreadlimit, hipDeviceAttributeMaxBlockDimZ, dev);
+>>>>>>> upstream/master
   CHECK_EQ(err, hipSuccess);
   err = hipDeviceGetAttribute(&xgridlimit, hipDeviceAttributeMaxGridDimX, dev);
   CHECK_EQ(err, hipSuccess);

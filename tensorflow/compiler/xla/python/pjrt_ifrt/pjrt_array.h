@@ -36,8 +36,19 @@ StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype);
 // Converts `xla::PrimitiveType` into IFRT `DType`.
 StatusOr<DType> ToDType(xla::PrimitiveType primitive_type);
 
+// PjRt-compatible `Array` interface that wraps a list of `xla::PjRtBuffer`s.
+class PjRtCompatibleArray
+    : public llvm::RTTIExtends<PjRtCompatibleArray, Array> {
+ public:
+  // APIs that allow direct access to `PjRtBuffer` for PjRt-only operations.
+  virtual absl::Span<const std::shared_ptr<PjRtBuffer>> pjrt_buffers() = 0;
+  virtual StatusOr<absl::Span<std::shared_ptr<PjRtBuffer>>>
+  mutable_pjrt_buffers() = 0;
+};
+
 // `Array` implementation that wraps a list of `xla::PjRtBuffer`s.
-class PjRtArray final : public llvm::RTTIExtends<PjRtArray, Array> {
+class PjRtArray final
+    : public llvm::RTTIExtends<PjRtArray, PjRtCompatibleArray> {
  public:
   static constexpr int kPjRtBufferInlineSize = 1;
   using PjRtBuffers =
@@ -45,35 +56,41 @@ class PjRtArray final : public llvm::RTTIExtends<PjRtArray, Array> {
 
   // General array construction.
   static StatusOr<std::unique_ptr<Array>> Create(
-      Client* client, DType dtype, Shape shape,
+      PjRtCompatibleClient* client, DType dtype, Shape shape,
       std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers);
 
   // Shorthand for a single-shard array construction.
   static StatusOr<std::unique_ptr<Array>> Create(
-      Client* client, std::shared_ptr<PjRtBuffer> pjrt_buffer);
+      PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer);
   static StatusOr<std::unique_ptr<Array>> Create(
-      Client* client, std::unique_ptr<PjRtBuffer> pjrt_buffer);
+      PjRtCompatibleClient* client, std::unique_ptr<PjRtBuffer> pjrt_buffer);
 
-  absl::Span<const std::shared_ptr<PjRtBuffer>> pjrt_buffers() const {
+  // Shorthand for a multi-shard array construction using OpaqueSharding.
+  // TODO(hyeontaek): Remove this once IFRT Sharding and JAX Sharding is unified
+  // so that OpaqueSharding can be replaced with a real Sharding.
+  static StatusOr<std::unique_ptr<Array>> Create(PjRtCompatibleClient* client,
+                                                 Shape shape,
+                                                 PjRtBuffers pjrt_buffers);
+
+  // PjRtCompatibleArray implementation.
+
+  absl::Span<const std::shared_ptr<PjRtBuffer>> pjrt_buffers() override {
     DCHECK(this);
     return pjrt_buffers_;
   }
-  absl::Span<std::shared_ptr<PjRtBuffer>> pjrt_buffers() {
+  StatusOr<absl::Span<std::shared_ptr<PjRtBuffer>>> mutable_pjrt_buffers()
+      override {
     DCHECK(this);
     return absl::MakeSpan(pjrt_buffers_);
-  }
-  PjRtBuffer* pjrt_buffer(int device_id) const {
-    DCHECK(this);
-    return pjrt_buffers_[device_id].get();
   }
 
   // Array implementation.
 
   ~PjRtArray() override = default;
 
-  Client* client() const override {
+  PjRtCompatibleClient* client() const override {
     DCHECK(this);
-    return const_cast<PjRtClient*>(client_);
+    return client_;
   }
 
   DType dtype() const override {
@@ -93,8 +110,8 @@ class PjRtArray final : public llvm::RTTIExtends<PjRtArray, Array> {
     return sharding_;
   }
 
-  StatusOr<std::vector<std::unique_ptr<Array>>> Explode(
-      ArrayCopySemantics semantics) override;
+  StatusOr<std::vector<std::unique_ptr<Array>>>
+  DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) override;
 
   ABSL_MUST_USE_RESULT
   Future<Status> CopyToHostBuffer(
@@ -115,10 +132,10 @@ class PjRtArray final : public llvm::RTTIExtends<PjRtArray, Array> {
   static char ID;  // NOLINT
 
  private:
-  PjRtArray(PjRtClient* client, DType dtype, Shape shape,
+  PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
             std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers);
 
-  PjRtClient* client_;
+  PjRtCompatibleClient* client_;
   DType dtype_;
   Shape shape_;
   std::shared_ptr<const Sharding> sharding_;

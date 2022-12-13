@@ -24,6 +24,10 @@ limitations under the License.
 namespace tensorflow {
 namespace dtensor {
 
+// Mhlo sharding string attribute, used for setting hlo sharding on ops, inputs,
+// and outputs of a function for XLA SPMD.
+constexpr char kXlaShardingAttr[] = "mhlo.sharding";
+
 // Returns an ::xla::OpSharding protobuf from `layout`.
 StatusOr<::xla::OpSharding> ConvertLayoutToXlaOpSharding(const Layout& layout);
 

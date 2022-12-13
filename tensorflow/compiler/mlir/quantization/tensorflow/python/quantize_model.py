@@ -765,7 +765,8 @@ def _dynamic_range_quantize(
       exported_model.graph_def,
       output_directory,
       signature_def_map,
-      tags={tag_constants.SERVING})
+      tags=tags,
+      init_op_name=exported_model.init_node_name)
 
   return saved_model_load(output_directory)
 

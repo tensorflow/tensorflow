@@ -1031,36 +1031,6 @@ void LogLayoutsAndOps(const int stage, const uint64_t module_hash,
   LOG(INFO) << "Dumped MLIR module to " << prefix;
 }
 
-// Canonicalizer and DCE transformation passes may removed ops in the graph and
-// result in multiple consecutive DTensorLayout ops. Detect all such cases and
-// replace unnecessary DTensorLayout ops with Identity ops.
-mlir::LogicalResult ReplaceAuxiliaryDTensorLayoutOpsWithIdentity(
-    mlir::ModuleOp module) {
-  llvm::SmallVector<mlir::TF::DTensorLayout, 4> layout_ops;
-  module.walk([&](mlir::TF::DTensorLayout op) { layout_ops.emplace_back(op); });
-
-  for (auto layout_op : llvm::reverse(layout_ops)) {
-    auto input_op = layout_op.getInput().getDefiningOp();
-    if (auto input_layout_op =
-            llvm::dyn_cast_or_null<mlir::TF::DTensorLayout>(input_op)) {
-      // Check that layout of input DTensorLayout op is equivalent to
-      // the layout of its connected DTensorLayout op.
-      if (layout_op.getLayout() != input_layout_op.getLayout())
-        return layout_op.emitOpError(
-            "Found inconsistent layout. This should never happen.");
-
-      // Replace DTensorLayout op with identity op.
-      mlir::OpBuilder builder(layout_op);
-      auto identity = builder.create<mlir::TF::IdentityOp>(
-          layout_op->getLoc(), layout_op.getType(), layout_op.getInput());
-      layout_op.getOutput().replaceAllUsesWith(identity.getOutput());
-      layout_op.erase();
-    }
-  }
-
-  return mlir::success();
-}
-
 // Inserts/changes DTensorLayout op after IfRegion op and results of then/else
 // branches to ensure that the return values of IfRegion ops are consistent.
 // After layout propagation, layouts of return value of tf.IfRegion op, and

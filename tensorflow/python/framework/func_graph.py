@@ -1494,35 +1494,34 @@ def _get_defun_inputs(args, names, placeholder_context, structured_args):
     names = [None] * len(args)
 
   for arg_value, name in zip(args, names):
-    for val in composite_tensor_utils.flatten_with_variables_or_variable_specs(
-        arg_value):
-      function_inputs.append(_get_defun_input(val, name, placeholder_context))
+    placeholder_context.update_naming_scope(name)
+    if isinstance(arg_value, type_spec.TypeSpec):
+      function_inputs.append(arg_value._placeholder_value(placeholder_context))  # pylint: disable=protected-access
+    else:
+      for val in composite_tensor_utils.flatten_with_variables_or_variable_specs(
+          arg_value):
+        function_inputs.append(_get_defun_input(val, placeholder_context))
   return nest.pack_sequence_as(
       structured_args,
       nest.flatten(function_inputs, expand_composites=True),
       expand_composites=True)
 
 
-def _get_defun_input(arg, name, placeholder_context):
+def _get_defun_input(arg, placeholder_context):
   """Maps a python function arg to a graph-construction input."""
   func_graph = ops.get_default_graph()
+  name = placeholder_context.naming_scope
   if isinstance(arg, (tensor_spec.TensorSpec, ops.Tensor,
                       resource_variable_ops.VariableSpec)):
+    input_arg = arg
     if isinstance(arg, ops.Tensor):
       input_arg = tensor_spec.TensorSpec.from_tensor(arg, name=name)
-    elif isinstance(arg, resource_variable_ops.VariableSpec):
-      input_arg = arg
-      if input_arg.name is None:
-        input_arg._name = name  # pylint: disable=protected-access
-    else:
-      input_arg = (tensor_spec.TensorSpec.from_spec(arg, name=name)
-                   if arg.name is None else arg)
     placeholder = input_arg._placeholder_value(placeholder_context)  # pylint: disable=protected-access
     if isinstance(arg, ops.Tensor):
       handle_data_util.copy_handle_data(arg, placeholder)
     return placeholder
   # TODO(b/246437883): Investigate how to remove this branch.
-  if isinstance(arg, resource_variable_ops.BaseResourceVariable):
+  elif isinstance(arg, resource_variable_ops.BaseResourceVariable):
     # Capture arg variables to create placeholders for them. These will be
     # removed as captures after the function is traced (since otherwise we'd
     # just add it back with a new placeholder when the variable was referenced).

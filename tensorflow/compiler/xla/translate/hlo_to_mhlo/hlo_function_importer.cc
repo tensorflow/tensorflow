@@ -69,6 +69,7 @@ namespace xla {
 
 namespace {
 
+constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
 constexpr char kShardingAttr[] = "mhlo.sharding";
 
 // Note: This sanitization function causes an irreversible many-to-one mapping
@@ -198,10 +199,21 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncDone(
   attributes.push_back(builder_->getNamedAttr("execution_thread",
                                               builder_->getStringAttr("main")));
 
-  auto op = func_builder->create<mlir::mhlo::AsyncDoneOp>(
-      loc, Untuple(result_type), operands, attributes);
-  return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
-                                  result_type);
+  auto start_tuple = async_start.getResult()
+                         .getType()
+                         .cast<mlir::mhlo::AsyncBundleType>()
+                         .getTypes()[1]
+                         .dyn_cast<mlir::TupleType>();
+  if (start_tuple && start_tuple.getType(0).isa<mlir::TupleType>()) {
+    auto op = func_builder->create<mlir::mhlo::AsyncDoneOp>(
+        loc, result_type, operands, attributes);
+    return {op};
+  } else {
+    auto op = func_builder->create<mlir::mhlo::AsyncDoneOp>(
+        loc, Untuple(result_type), operands, attributes);
+    return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
+                                    result_type);
+  }
 }
 
 void HloFunctionImporter::ReplaceBlockArgumentsWithImplicitOperands(
@@ -621,6 +633,17 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         kShardingAttr,
         builder_->getStringAttr(
             instruction->sharding().ToProto().SerializeAsString())));
+  }
+
+  llvm::SmallVector<NamedAttribute, 4> frontend_attributes;
+  for (const auto& [k, v] : instruction->frontend_attributes().map()) {
+    frontend_attributes.push_back(
+        builder_->getNamedAttr(k, builder_->getStringAttr(v)));
+  }
+  if (!frontend_attributes.empty()) {
+    attributes.push_back(builder_->getNamedAttr(
+        kFrontendAttributesAttr,
+        builder_->getDictionaryAttr(frontend_attributes)));
   }
 
   switch (instruction->opcode()) {
@@ -1101,6 +1124,15 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       if (copy_start_instruction->is_cross_program_prefetch()) {
         attributes.push_back(builder_->getNamedAttr("is_cross_program_prefetch",
                                                     builder_->getUnitAttr()));
+        // Cross-program prefetch allows copy ops to accept tuples, in which
+        // case, we need to double-wrap inputs and outputs in tuples.
+        if (operands[0].getType().isa<mlir::TupleType>()) {
+          auto result_types = result_type.cast<mlir::TupleType>().getTypes();
+          result_type = mlir::TupleType::get(
+              context_, {mlir::TupleType::get(context_, {result_types[0]}),
+                         mlir::TupleType::get(context_, {result_types[1]}),
+                         result_types[2]});
+        }
       }
       return ImportOldStyleAsyncStart<mlir::mhlo::CopyOp>(
           attributes, operands, loc, result_type, func_builder, "copy_",
@@ -1361,6 +1393,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto result = func_builder->create<mlir::mhlo::AllToAllOp>(
           loc, return_types, operands, nullptr, nullptr, nullptr,
           replica_groups_attr);
+
+      if (all_to_all->channel_id().has_value()) {
+        auto handle = ConvertChannelHandle(all_to_all->channel_id().value());
+        result.setChannelHandleAttr(
+            handle.getValue().cast<mlir::mhlo::ChannelHandleAttr>());
+      }
 
       if (result_tuple_ty) {
         return func_builder

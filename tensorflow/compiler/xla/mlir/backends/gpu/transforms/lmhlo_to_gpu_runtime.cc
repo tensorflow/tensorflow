@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/uid_generator.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
@@ -240,8 +241,9 @@ class FftOpLowering : public OpRewritePattern<FftOp> {
   static constexpr const char kCustomCallTarget[] = "xla.gpu.fft";
 
  public:
-  FftOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
-      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+  FftOpLowering(MLIRContext* ctx, UidGenerator& uid,
+                CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), uid_(uid), custom_calls_(custom_calls) {}
 
   LogicalResult matchAndRewrite(FftOp op,
                                 PatternRewriter& rewriter) const override {
@@ -251,7 +253,8 @@ class FftOpLowering : public OpRewritePattern<FftOp> {
 
     llvm::SmallVector<NamedAttribute> custom_call_attrs = {
         {b.getStringAttr("fft_length"), op.getFftLengthAttr()},
-        {b.getStringAttr("fft_type"), op.getFftTypeAttr()}};
+        {b.getStringAttr("fft_type"), op.getFftTypeAttr()},
+        {b.getStringAttr("uid"), b.getI64IntegerAttr(uid_.uid())}};
 
     // Convert Fft to a function call.
     auto call = rewriter.replaceOpWithNewOp<func::CallOp>(
@@ -261,6 +264,7 @@ class FftOpLowering : public OpRewritePattern<FftOp> {
   }
 
  private:
+  UidGenerator& uid_;
   CustomCallDeclarations& custom_calls_;
 };
 
@@ -889,8 +893,11 @@ void ConvertLmhloToGpuRuntimePass::runOnOperation() {
   // Convert lmhlo operations to XLA gpu runtime custom calls.
   RewritePatternSet patterns(ctx);
   patterns.insert<TerminatorOpLowering, CaseOpLowering, WhileOpLowering>(ctx);
-  patterns.insert<InfeedOpLowering, OutfeedOpLowering, CustomCallOpLowering,
-                  FftOpLowering>(ctx, custom_calls);
+  patterns.insert<InfeedOpLowering, OutfeedOpLowering, CustomCallOpLowering>(
+      ctx, custom_calls);
+
+  UidGenerator fft_uid;
+  patterns.insert<FftOpLowering>(ctx, fft_uid, custom_calls);
 
   // Assign shared unique id to each unique pair of async start-done operations,
   // all other collective operations will get assigned uid.

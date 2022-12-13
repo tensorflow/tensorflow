@@ -455,8 +455,8 @@ bool IsPrimitiveTypeName(absl::string_view name);
 // For example,
 //  IsCanonicalRepresentation<float>(F32)          // true
 //  IsCanonicalRepresentation<xla::bfloat16>(BF16) // true
-//  IsCanonicalRepresentation<uint32_t>(S8)        // true, 8 <= 32
-//  IsCanonicalRepresentation<uint8_t>(S16)        // false, 16 > 8
+//  IsCanonicalRepresentation<int32_t>(S8)         // true, 8 <= 32
+//  IsCanonicalRepresentation<uint16_t>(S16)       // false, unsigned.
 template <typename T>
 bool IsCanonicalRepresentation(PrimitiveType type) {
   switch (type) {

@@ -43,9 +43,11 @@ add_mlir_library(GmlStPasses
   tiling_softmax/tiling_softmax.cc
   transform_map_for_cpu/transform_map_for_cpu.cc
   transform_matmul_for_cpu/transform_matmul_for_cpu.cc
+  transform_matmul_for_triton/transform_matmul_for_triton.cc
   transform_reduce_for_cpu/transform_reduce_for_cpu.cc
   transform_transpose_for_cpu/transform_transpose_for_cpu.cc
   transform_scatter_for_cpu/transform_scatter_for_cpu.cc
+  transform_sort_for_cpu/transform_sort_for_cpu.cc
   vectorization/vectorization.cc
 
   DEPENDS

@@ -940,7 +940,6 @@ class GpuTracer : public profiler::ProfilerInterface {
  private:
   Status DoStart();
   Status DoStop();
-  Status DoCollectData(XSpace* space);
 
   RocmTracerOptions GetRocmTracerOptions();
 

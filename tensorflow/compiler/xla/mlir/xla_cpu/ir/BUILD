@@ -16,6 +16,7 @@ td_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        "//tensorflow/compiler/xla/mlir_hlo:hlo_ops_td_files",
         "@llvm-project//mlir:BufferizableOpInterfaceTdFiles",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
@@ -96,6 +97,7 @@ cc_library(
         ":xla_cpu_dialect_inc_gen",
         ":xla_cpu_enums_inc_gen",
         ":xla_cpu_inc_gen",
+        "//tensorflow/compiler/xla/mlir_hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:BufferizationDialect",
         "@llvm-project//mlir:IR",

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -24,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
@@ -39,6 +41,7 @@ limitations under the License.
 
 // TODO(b/238999986): Remove this.
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace pjrt {
 
@@ -259,10 +262,7 @@ PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
     PJRT_RETURN_IF_ERROR(
         tsl::errors::InvalidArgument(ProgramFormatErrorMsg(format_str)));
   }
-  // TODO(b/237545405): Implement creation methods for PJRT_Executable.
-  args->executable = new PJRT_Executable{std::move(executable), args->client};
-  PopulatePjrtExecutableAddressableDevices(args->executable);
-  args->executable->populated = true;
+  args->executable = new PJRT_Executable(std::move(executable), args->client);
   return nullptr;
 }
 
@@ -444,13 +444,6 @@ PJRT_Error* PJRT_Executable_AddressableDevices(
       "PJRT_Executable_AddressableDevices_Args",
       PJRT_Executable_AddressableDevices_Args_STRUCT_SIZE, args->struct_size));
 
-  // TODO(b/237545405): Implement creation methods for PJRT_Executable that can
-  // populate addressable_devices on instantiation,  and use this logic there
-  if (!args->executable->populated) {
-    PopulatePjrtExecutableAddressableDevices(args->executable);
-    args->executable->populated = true;
-  }
-
   args->num_addressable_devices = args->executable->addressable_devices.size();
   args->addressable_devices = args->executable->addressable_devices.data();
   return nullptr;
@@ -478,7 +471,7 @@ PJRT_Error* PJRT_Executable_NumOutputs(PJRT_Executable_NumOutputs_Args* args) {
   if (shape.IsTuple()) {
     args->num_outputs = shape.tuple_shapes_size();
   } else {
-    // The output size is 1 is it is not a tuple.
+    // The output size is 1, as it is not a tuple.
     args->num_outputs = 1;
   }
   return nullptr;
@@ -494,6 +487,72 @@ PJRT_Error* PJRT_Executable_SizeOfGeneratedCodeInBytes(
   args->size_in_bytes =
       args->executable->executable->SizeOfGeneratedCodeInBytes();
   return nullptr;
+}
+
+static xla::Status VerifyOptimizedProgramArgs(
+    PJRT_Executable_OptimizedProgram_Args* args) {
+  TF_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_OptimizedProgram_Args",
+      PJRT_Executable_OptimizedProgram_Args_STRUCT_SIZE, args->struct_size));
+  TF_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Program", PJRT_Program_STRUCT_SIZE, args->program->struct_size));
+  return xla::OkStatus();
+}
+
+static xla::StatusOr<std::shared_ptr<xla::HloModule>> GetOptimizedProgramModule(
+    const PJRT_Executable_OptimizedProgram_Args* args) {
+  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<xla::HloModule>> hlo_modules,
+                      args->executable->executable->GetHloModules());
+  if (hlo_modules.empty()) {
+    return xla::InvalidArgument(
+        "Can't get the optimized program for executable "
+        "`%s`: HLO modules is empty.",
+        args->executable->executable->name());
+  }
+  if (hlo_modules.size() > 1) {
+    return xla::Unimplemented(
+        "Can't get the optimized program for executable "
+        "`%s`: MPMD execution is not supported by PJRT C API",
+        args->executable->executable->name());
+  }
+  return std::move(hlo_modules[0]);
+}
+
+PJRT_Error* PJRT_Executable_OptimizedProgram(
+    PJRT_Executable_OptimizedProgram_Args* args) {
+  PJRT_RETURN_IF_ERROR(VerifyOptimizedProgramArgs(args));
+  PJRT_Program* program = args->program;
+  program->format = kHloWithConfigFormat.data();
+  program->format_size = kHloWithConfigFormat.size();
+  PJRT_ASSIGN_OR_RETURN(std::shared_ptr<xla::HloModule> hlo_module,
+                        GetOptimizedProgramModule(args));
+  PJRT_ASSIGN_OR_RETURN(xla::HloModuleProtoWithConfig proto,
+                        hlo_module->ToProtoWithConfig());
+  if (program->code == nullptr) {
+    program->code_size = proto.ByteSizeLong();
+    if (program->code_size >= 2ull * 1024 * 1024 * 1024) {
+      return new PJRT_Error{xla::ResourceExhausted(
+          "%s: HLO program serialization would require more than the max "
+          "supported protobuff size of 2 GiB.",
+          __func__)};
+    }
+    return nullptr;
+  } else {
+    if (program->code_size < proto.ByteSizeLong()) {
+      return new PJRT_Error{
+          xla::InvalidArgument("`program->code_size` %d < required bytes %d",
+                               program->code_size, proto.ByteSizeLong()),
+      };
+    }
+    bool succeeded = proto.SerializeToArray(program->code, program->code_size);
+    if (!succeeded) {
+      return new PJRT_Error{
+          xla::ResourceExhausted("%s: HLO program serialization exceeds max "
+                                 "supported protobuff size of 2 GiB.",
+                                 __func__)};
+    }
+    return nullptr;
+  }
 }
 
 PJRT_Error* PJRT_Executable_Delete(PJRT_Executable_Delete_Args* args) {
@@ -594,6 +653,66 @@ PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args) {
     }
   }
 
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_Serialize_Args",
+      PJRT_Executable_Serialize_Args_STRUCT_SIZE, args->struct_size));
+  const xla::PjRtLoadedExecutable& executable = *args->executable->executable;
+  std::string serialization;
+  const PJRT_Client* client = args->executable->client;
+  PJRT_ASSIGN_OR_RETURN(serialization,
+                        client->client->SerializeExecutable(executable));
+
+  PJRT_SerializedExecutable* serialized_exec = new PJRT_SerializedExecutable;
+  if (serialized_exec == nullptr) {
+    return new PJRT_Error{xla::ResourceExhausted(
+        "Out of memory for `PJRT_Executable_Serialize()`")};
+  }
+  serialized_exec->serialized = std::move(serialization);
+  args->serialized_executable = serialized_exec;
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Executable_Deserialize(
+    PJRT_Executable_Deserialize_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_Deserialize_Args",
+      PJRT_Executable_Deserialize_Args_STRUCT_SIZE, args->struct_size));
+  absl::string_view serialized(args->serialized_executable,
+                               args->serialized_executable_size);
+
+  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+                        args->client->client->DeserializeExecutable(
+                            serialized, /*options=*/std::nullopt));
+
+  args->deserialized_executable =
+      new PJRT_Executable{std::move(executable), args->client};
+  return nullptr;
+}
+
+// -------------------------- Serialized Executables ---------------------------
+
+PJRT_Error* PJRT_SerializedExecutable_Destroy(
+    PJRT_SerializedExecutable_Destroy_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_SerializedExecutable_Destroy_Args",
+      PJRT_SerializedExecutable_Destroy_Args_STRUCT_SIZE, args->struct_size));
+  if (args->serialized_executable != nullptr) {
+    delete args->serialized_executable;
+  }
+  return nullptr;
+}
+
+PJRT_Error* PJRT_SerializedExecutable_Data(
+    PJRT_SerializedExecutable_Data_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_SerializedExecutable_Data_Args",
+      PJRT_SerializedExecutable_Data_Args_STRUCT_SIZE, args->struct_size));
+  args->data = args->serialized_executable->serialized.c_str();
+  args->data_size = args->serialized_executable->serialized.size();
   return nullptr;
 }
 
@@ -812,3 +931,9 @@ PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args) {
 }
 
 }  // namespace pjrt
+
+PJRT_Executable::PJRT_Executable(
+    std::unique_ptr<xla::PjRtLoadedExecutable> executable, PJRT_Client* client)
+    : executable(std::move(executable)), client(client) {
+  pjrt::PopulatePjrtExecutableAddressableDevices(this);
+}

@@ -238,7 +238,8 @@ void eliminateEqualOps(PatternRewriter& rewriter, Block& block) {
 }
 
 void eliminateTriviallyDeadUsers(PatternRewriter& rewriter, Operation* op) {
-  for (auto* user : llvm::make_early_inc_range(op->getUsers())) {
+  for (auto* user :
+       DenseSet<Operation*>(op->getUsers().begin(), op->getUsers().end())) {
     if (isOpTriviallyDead(user)) rewriter.eraseOp(user);
   }
 }

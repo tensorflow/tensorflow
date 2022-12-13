@@ -97,6 +97,10 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
       return diag_handler.Combine(tensorflow::errors::Internal(
           "Failed to process TPUPartitionedCallOp for fallback execution"));
     }
+  } else if (options.device_target == TfrtDeviceInfraTarget::kGpu &&
+             options.use_bridge_for_gpu) {
+    TF_RETURN_IF_ERROR(
+        mlir::TF::RunTFXLABridge(module, /*enable_logging=*/VLOG_IS_ON(1)));
   }
 
   if (VLOG_IS_ON(1)) {
@@ -120,6 +124,9 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
   pass_options.enable_optimizer = options.enable_optimizer;
   pass_options.target_tpurt =
       (options.device_target == TfrtDeviceInfraTarget::kTpurt);
+  pass_options.target_gpu =
+      (options.device_target == TfrtDeviceInfraTarget::kGpu);
+  pass_options.use_bridge_for_gpu = options.use_bridge_for_gpu;
   pass_options.tpu_fuse_ops = options.tpu_fuse_ops;
   pass_options.use_tpu_host_allocator_for_inputs =
       options.use_tpu_host_allocator_for_inputs;
@@ -134,7 +141,10 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
   pass_options.upper_cost_threshold = options.upper_cost_threshold;
   pass_options.merge_inter_dependent_streams =
       options.merge_inter_dependent_streams;
-  tensorflow::CreateTfExecutorToTfrtPipeline(pm, pass_options);
+  Status status = tensorflow::CreateTfExecutorToTfrtPipeline(pm, pass_options);
+  if (!status.ok()) {
+    return diag_handler.Combine(status);
+  }
 
   if (mlir::failed(pm.run(module)))
     return diag_handler.Combine(tensorflow::errors::Internal(

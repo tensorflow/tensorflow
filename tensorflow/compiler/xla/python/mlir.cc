@@ -71,6 +71,12 @@ std::string PrintModule(mlir::ModuleOp module) {
   return s;
 }
 
+void EnablePrintBeforeAndAfter(mlir::PassManager& pm) {
+  auto print_before = [](mlir::Pass*, mlir::Operation*) { return true; };
+  auto print_after = [](mlir::Pass*, mlir::Operation*) { return true; };
+  pm.enableIRPrinting(print_before, print_after);
+}
+
 // Converts an XlaComputation to an MHLO mlir::Module string. Exists for
 // backwards compatibility.
 // TODO(phawkins): port remaining users of XlaComputations to use mlir::Modules
@@ -101,9 +107,11 @@ StatusOr<XlaComputation> PyMlirModuleToXlaComputation(std::string mlir_module,
 
 StatusOr<std::string> PyMhloToStablehlo(std::string mlir_module) {
   mlir::MLIRContext context;
+  if (VLOG_IS_ON(3)) context.disableMultithreading();
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseModule(&context, mlir_module));
   mlir::PassManager pm(&context);
+  if (VLOG_IS_ON(3)) EnablePrintBeforeAndAfter(pm);
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
   if (!mlir::succeeded(pm.run(*module))) {
     return tsl::errors::InvalidArgument("MHLO => StableHLO failed");
@@ -113,9 +121,11 @@ StatusOr<std::string> PyMhloToStablehlo(std::string mlir_module) {
 
 StatusOr<std::string> PyStablehloToMhlo(std::string mlir_module) {
   mlir::MLIRContext context;
+  if (VLOG_IS_ON(3)) context.disableMultithreading();
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseModule(&context, mlir_module));
   mlir::PassManager pm(&context);
+  if (VLOG_IS_ON(3)) EnablePrintBeforeAndAfter(pm);
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   if (!mlir::succeeded(pm.run(*module))) {
     return tsl::errors::InvalidArgument("StableHLO => MHLO failed");

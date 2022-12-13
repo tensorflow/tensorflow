@@ -44,12 +44,6 @@ using ::tensorflow::testing::IsOkAndHolds;
 using ::testing::IsEmpty;
 using ::testing::SizeIs;
 
-tstring LocalTempFilename() {
-  std::string path;
-  CHECK(Env::Default()->LocalTempFilename(&path));
-  return tstring(path);
-}
-
 StatusOr<std::vector<std::vector<Tensor>>> GetIteratorOutput(
     standalone::Iterator& iterator) {
   bool end_of_input = false;

@@ -135,11 +135,7 @@ static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
   // Convert async dialect to LLVM once everything else is in the LLVM dialect.
   pm.addPass(mlir::createConvertAsyncToLLVMPass());
 
-  {
-    mlir::OpPassManager& fpm = pm.nest<mlir::func::FuncOp>();
-    fpm.addPass(mlir::createConvertMathToLLVMPass());
-  }
-  pm.addPass(mlir::createConvertMathToLibmPass());
+  pm.addPass(xla::CreateMathLegalizationPass(!opts.disable_math_optimizations));
 
   // Convert everything else to LLVM dialect.
   mlir::LowerVectorToLLVMOptions vector_to_llvm_opts;

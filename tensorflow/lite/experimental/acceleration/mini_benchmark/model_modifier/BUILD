@@ -117,11 +117,11 @@ cc_test(
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:call",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_mobilenet_model",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:mini_benchmark_test_helper",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:model_loader",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/tools:model_loader",
         "@com_google_googletest//:gtest_main",
     ],
 )

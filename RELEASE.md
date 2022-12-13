@@ -14,13 +14,27 @@
             *   Using functools.wraps on a function with different signature
             *   Using functools.partial with an invalid tf.function input
 
-*   `tfconfig.experimental.enable_mlir_graph_optimization`:
+*   `tf.config.experimental.enable_mlir_graph_optimization`:
 
     * Experimental API removed.
 
-*   `tfconfig.experimental.disable_mlir_graph_optimization`:
+*   `tf.config.experimental.disable_mlir_graph_optimization`:
 
     * Experimental API removed.
+
+*   `tf.keras`
+
+    * Improvements and fixes in Keras loss masking: 
+        
+        * Whether you represent a ragged tensor as a `tf.RagedTensor` or using
+          [keras masking](https://www.tensorflow.org/guide/keras/masking_and_padding),
+          the returned loss values should be the identical to each other.
+          In previous versions Keras may have silently ignored the mask.
+        * If you use masked losses with Keras the loss values may be different
+          in TensorFlow `2.12` compared to previous versions.
+        * In cases where the mask was previously ignored, you will now get
+          an error if you pass a mask with an incompatible shape.
+
 
 # Known Caveats
 
@@ -37,6 +51,10 @@
 
 *   `tf.keras`:
 
+    *   The new Keras model saving format (`.keras`) is available. You can start
+        using it via `model.save(f"{fname}.keras", save_format="keras_v3")`.
+        In the future it will become the default for all files with the `.keras`
+        extension. This file format targets the Python runtime only.
     *   Added utility `tf.keras.utils.FeatureSpace`, a one-stop shop for
         structured data preprocessing and encoding.
     *   Added `tf.SparseTensor` input support to `tf.keras.layers.Embedding`
@@ -50,6 +68,9 @@
         `layers.BatchNormalization` with `synchronized=True` instead.
     *   Updated `tf.keras.layers.BatchNormalization` to support masking of the
         inputs (`mask` argument) when computing the mean and variance.
+    *   Add `tf.keras.layers.Identity`, a placeholder pass-through layer.
+    *   Add `show_trainable` option to `tf.keras.utils.model_to_dot` to display
+        layer trainable status in model plots.
 
 *   `tf.experimental.dtensor`:
 

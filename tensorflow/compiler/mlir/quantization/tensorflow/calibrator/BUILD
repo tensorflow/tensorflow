@@ -66,6 +66,7 @@ tf_kernel_library(
     srcs = ["custom_aggregator_op.cc"],
     compatible_with = get_compatible_with_cloud(),
     visibility = [
+        "//tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:__pkg__",
     ],
     deps = [

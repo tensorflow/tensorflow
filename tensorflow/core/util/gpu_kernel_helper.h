@@ -116,6 +116,7 @@ Status GpuLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
     return errors::Internal(cudaGetErrorString(result));
   }
 #elif TENSORFLOW_USE_ROCM
+<<<<<<< HEAD
   auto result = hipLaunchKernel(func_ptr, grid_dim, block_dim, arg_ptrs.data(),
                                 shared_memory_size_bytes, stream);
   if (result != hipSuccess) {
@@ -127,6 +128,11 @@ Status GpuLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
             << "shared_memory_size_bytes = " << shared_memory_size_bytes;
     return errors::Internal(hipGetErrorString(result));
   }
+=======
+  hipLaunchKernelGGL(function, grid_dim, block_dim, shared_memory_size_bytes,
+                     stream, std::forward<Args>(arguments)...);
+  TF_RETURN_IF_CUDA_ERROR(hipGetLastError());
+>>>>>>> upstream/master
 #endif
   return OkStatus();
 }

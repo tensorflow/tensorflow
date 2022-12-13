@@ -186,20 +186,6 @@ class AlgorithmConfig {
 typedef int64_t ComputePrecision;
 constexpr ComputePrecision kDefaultComputePrecision = 0;
 
-// This struct contains the metadata of a matrix, e.g., its base address and
-// dimensions.
-struct MatrixDescriptor {
-  DeviceMemoryBase data;
-  int64_t leading_dim_stride;
-  int64_t batch_stride;
-  Transpose transpose;
-
-  template <typename T>
-  DeviceMemory<T> cast() const {
-    return DeviceMemory<T>(data);
-  }
-};
-
 // BLAS support interface -- this can be derived from a GPU executor when the
 // underlying platform has an BLAS library implementation available. See
 // StreamExecutor::AsBlas().

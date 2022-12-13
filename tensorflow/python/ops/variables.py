@@ -2754,6 +2754,18 @@ class RefVariable(VariableV1, core.Tensor):
         " if you want a new python Tensor object.", 1)
     return self**other
 
+  def _serialize_to_tensors(self):
+    """Implements Trackable._serialize_to_tensors."""
+    return {trackable.VARIABLE_VALUE_KEY: self}
+
+  def _restore_from_tensors(self, restored_tensors):
+    """Implements Trackable._restore_from_tensors."""
+    restored_tensor = restored_tensors[trackable.VARIABLE_VALUE_KEY]
+    return state_ops.assign(
+        self,
+        restored_tensor,
+        validate_shape=self.get_shape().is_fully_defined())
+
 
 def _try_guard_against_uninitialized_dependencies(name, initial_value):
   """Attempt to guard against dependencies on uninitialized variables.

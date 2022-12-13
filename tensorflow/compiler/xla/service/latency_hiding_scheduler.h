@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
 
@@ -90,8 +91,7 @@ class LatencyEstimator {
   virtual TimeCost GetLatencyBetween(const HloGraphNode& from,
                                      const HloGraphNode& target) const = 0;
   // Uses the approximate or cost model function for NodeCost based on a flag.
-  virtual LatencyEstimator::TimeCost NodeCost(
-      const HloInstruction* node) const = 0;
+  virtual TimeCost NodeCost(const HloInstruction* node) const = 0;
   virtual ~LatencyEstimator() = default;
 };
 
@@ -104,8 +104,7 @@ class ApproximateLatencyEstimator : public LatencyEstimator {
   TimeCost GetLatencyBetween(const HloGraphNode& from,
                              const HloGraphNode& target) const override;
   // Uses the approximate or cost model function for NodeCost based on a flag.
-  LatencyEstimator::TimeCost NodeCost(
-      const HloInstruction* instr) const override;
+  TimeCost NodeCost(const HloInstruction* instr) const override;
 };
 
 // Helper class to keep track of which instructions are to be supported and
@@ -632,6 +631,10 @@ class DefaultSchedulerCore : public SchedulerCore {
   virtual HloGraphNode* FindAndExtractBestNodeAvailable(
       SchedulingState& sched_state,
       DefaultSchedulerCore::ShouldSkipNodeFunction should_skip_node);
+  void DumpLatencyHidingSchedule(
+      const HloComputation* computation, const HloScheduleGraph& schedule_graph,
+      const std::vector<HloInstruction*>& instructions,
+      const DebugOptions& debug_options);
 
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes_;
   std::unique_ptr<ModulePressureState> module_pressure_state_;

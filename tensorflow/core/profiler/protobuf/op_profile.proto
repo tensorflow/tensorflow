@@ -83,4 +83,6 @@ message Metrics {
   double raw_time = 11;            // Elapsed core-time in picoseconds.
   double raw_flops = 12;           // Total floating-point operations performed.
   double raw_bytes_accessed = 13;  // Total bytes accessed (include read/write).
+  // Total HBM bytes accessed (include read/write).
+  double raw_hbm_bytes_accessed = 14;
 }

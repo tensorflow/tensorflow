@@ -154,13 +154,18 @@ struct MatchOption {
   // If true, actually capture matched item into the user pointer.
   bool capture;
 
+  // If true, require all operands prescribed in pattern to have one user.
+  bool single_user_only;
+
   // An explanation for why we failed to match is streamed here, if not-null.
   std::ostream* explain_os;
 };
 
 template <typename Value, typename Pattern>
 bool Match(Value* value, const Pattern& pattern,
-           MatchOption option = {/*.capture=*/true, /*.explain_os=*/nullptr}) {
+           MatchOption option = {/*.capture=*/true,
+                                 /*.single_user_only=*/false,
+                                 /*.explain_os=*/nullptr}) {
   if (option.capture) {
     auto new_option = option;
     new_option.capture = false;
@@ -169,6 +174,34 @@ bool Match(Value* value, const Pattern& pattern,
     }
   }
   return pattern.Match(value, option);
+}
+
+// Recursively requires all operands of the top-level operation prescribed in
+// pattern (but not the top-level operation itself) to have one user. The
+// behavior is identical to calling Match(value, pattern) with WithOneUser()
+// applied to all prescribed operands at all levels in pattern.
+//
+// Example:
+// p0 = parameter(0)
+// add = add(p0, p0)
+// mul = multiply(p0, p0)
+//
+// MatchSingleUserOnly(p0, m::Op()) -> true
+// (Top-level operation in the pattern is not required to have one user).
+//
+// MatchSingleUserOnly(add, m::Add()) -> true
+// (Only operands prescribed in the pattern are required to have one user).
+//
+// MatchSingleUserOnly(add, m::Add(m::Op(), m::Op()) -> false
+// (Operands prescribed in the pattern have two users).
+//
+// The previous line is equivalent to:
+// Match(add, m::Add(m::Op().WithOneUser(), m::Op().WithOneUser()) -> false.
+template <typename Value, typename Pattern>
+bool MatchSingleUserOnly(Value* value, const Pattern& pattern) {
+  MatchOption option = {/*.capture=*/true, /*.single_user_only=*/true,
+                        /*.explain_os=*/nullptr};
+  return Match(value, pattern, option);
 }
 
 // If `enable_logging` is false, this is identical to Match(instr, pattern).
@@ -197,7 +230,9 @@ bool MatchAndLogIfFailed(HloInstruction* instr, absl::string_view desc,
     return matched;
   }
   std::stringstream os;
-  CHECK(!Match(instr, pattern, {/*capture=*/false, /*explain_os=*/&os}));
+  CHECK(!Match(
+      instr, pattern,
+      {/*capture=*/false, /*.single_user_only=*/false, /*explain_os=*/&os}));
   LOG(ERROR) << "Failed to match " << desc << ":\n" << os.str();
   return false;
 }
@@ -628,15 +663,6 @@ class AnyOfPattern {
 };
 
 }  // namespace detail
-
-// Returns a pattern that represents the logical disjunction of the input
-// patterns. The returned pattern matches from left to right, and stops on the
-// first match.
-template <typename Item, typename... Patterns>
-auto AnyOf(const Patterns&... patterns) {
-  return detail::AnyOfPattern<typename std::remove_const<Item>::type,
-                              Patterns...>(patterns...);
-}
 
 // Creates a layout pattern that will capture the matched layout in the
 // argument.
@@ -1269,58 +1295,6 @@ class HloInstructionPatternOpcodeImpl {
   bool invert_;
 };
 
-// An HloInstructionPattern implementation that optionally matches a unary
-// operand with a given opcode before matching a given pattern.
-template <typename PatternType, typename PatternImpl>
-class HloInstructionPatternOptionalUnaryOpImpl {
- public:
-  explicit HloInstructionPatternOptionalUnaryOpImpl(
-      absl::Span<const HloOpcode> opcodes,
-      const HloInstructionPattern<PatternType, PatternImpl>& pattern)
-      : opcodes_(opcodes), pattern_(pattern) {}
-
-  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
-    // Compare the opcode of the instruction with the entries of opcodes_.
-    if (absl::c_linear_search(opcodes_, inst->opcode())) {
-      // Additionally, the operand of the instruction must match the given
-      // operand pattern.
-      if (pattern_.Match(HloOperand(inst, 0), option)) {
-        return true;
-      } else {
-        EXPLAIN << " and the ";
-      }
-    } else {
-      EXPLAIN << "The HloInstruction doesn't have one of the opcodes {"
-              << absl::StrJoin(opcodes_, ", ",
-                               [](std::string* out, const HloOpcode opcode) {
-                                 absl::StrAppend(out, HloOpcodeString(opcode));
-                               })
-              << "} and the ";
-    }
-    // In the transparent case, the instruction matches the given operand
-    // pattern.
-    if (pattern_.Match(inst, option, /*explain_instruction=*/false)) {
-      return true;
-    }
-    return false;
-  }
-
-  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
-    *os << "which optionally matches a unary operand with one of the opcodes {"
-        << absl::StrJoin(opcodes_, ", ",
-                         [](std::string* out, const HloOpcode opcode) {
-                           absl::StrAppend(out, HloOpcodeString(opcode));
-                         })
-        << "} before matching ";
-    pattern_.DescribeTo(os, indent);
-    *os << ".";
-  }
-
- private:
-  absl::Span<const HloOpcode> opcodes_;
-  const HloInstructionPattern<PatternType, PatternImpl> pattern_;
-};
-
 // An HloInstructionPattern implementation that matches only if the instruction
 // has one of a given list of custom call targets.
 class HloInstructionCustomCallTargetImpl {
@@ -1454,6 +1428,13 @@ class HloInstructionPatternOperandImpl {
       EXPLAIN << "\nin operand " << operand_index_;
       return false;
     }
+    if (option.single_user_only &&
+        inst->operand(operand_index_)->user_count() != 1) {
+      EXPLAIN << "Operand " << operand_index_ << " of HloInstruction has "
+              << inst->operand(operand_index_)->user_count()
+              << " users. Expected 1.";
+      return false;
+    }
     return true;
   }
 
@@ -1549,6 +1530,16 @@ class HloInstructionPatternBinaryOperandsAnyOrderImpl {
     if (inst->operand_count() != 2) {
       EXPLAIN << "HloInstruction did not have two operands";
       return false;
+    }
+
+    if (option.single_user_only) {
+      for (int i = 0; i < 2; ++i) {
+        if (inst->operand(i)->user_count() != 1) {
+          EXPLAIN << "Operand " << i << " of HloInstruction has "
+                  << inst->operand(i)->user_count() << " users. Expected 1.";
+          return false;
+        }
+      }
     }
 
     // If we're not generating explanations, this is pretty simple.
@@ -1998,17 +1989,6 @@ class HloInstructionPattern {
     return AppendImpl(HloInstructionPatternNameImpl(name));
   }
 
-  // Modifies the pattern to optionally match a unary operand with a given
-  // opcode before matching a given pattern.
-  template <typename PatternType, typename PatternImpl>
-  constexpr auto WithOptionalUnaryOp(
-      absl::Span<const HloOpcode> opcodes,
-      const HloInstructionPattern<PatternType, PatternImpl>& pattern) const {
-    return AppendImpl(
-        HloInstructionPatternOptionalUnaryOpImpl<PatternType, PatternImpl>(
-            opcodes, pattern));
-  }
-
   // Modifies the pattern to match only if the instruction has the given opcode.
   auto WithOpcode(HloOpcode opcode) const {
     return AppendImpl(HloInstructionPatternOpcodeImpl(opcode, false));
@@ -2192,7 +2172,32 @@ class HloInstructionPattern {
   HloInstructionType** matched_inst_;
 };
 
+template <typename Item, typename... Patterns>
+struct AnyOfImpl {
+  auto operator()(const Patterns&... patterns) const {
+    return AnyOfPattern<typename std::remove_const<Item>::type, Patterns...>(
+        patterns...);
+  }
+};
+
+template <typename... Patterns>
+struct AnyOfImpl<HloInstruction, Patterns...> {
+  auto operator()(const Patterns&... patterns) const {
+    auto any_of = AnyOfPattern<HloInstruction, Patterns...>(patterns...);
+    return HloInstructionPattern<HloInstruction, decltype(any_of)>(
+        std::move(any_of), /*matched_inst=*/nullptr);
+  }
+};
+
 }  // namespace detail
+
+// Returns a pattern that represents the logical disjunction of the input
+// patterns. The returned pattern matches from left to right, and stops on the
+// first match.
+template <typename Item, typename... Patterns>
+auto AnyOf(const Patterns&... patterns) {
+  return detail::AnyOfImpl<Item, Patterns...>()(patterns...);
+}
 
 // Creates an instruction pattern that will capture the matched instruction in
 // the argument.
@@ -2225,22 +2230,6 @@ XLA_NULLOP_PATTERN(Rng)
 XLA_NULLOP_PATTERN(PartitionId)
 XLA_NULLOP_PATTERN(ReplicaId)
 #undef XLA_NULLOP_PATTERN
-
-// A pattern which optionally matches a unary operand with a given opcode before
-// matching a given pattern.
-template <typename Pattern>
-inline auto OptionalUnaryOp(absl::Span<const HloOpcode> ops,
-                            Pattern&& pattern) {
-  return Op().WithOptionalUnaryOp(ops, std::forward<Pattern>(pattern));
-}
-
-template <typename HloInstructionType, typename Pattern>
-inline auto OptionalUnaryOp(HloInstructionType** matched_inst,
-                            absl::Span<const HloOpcode> ops,
-                            Pattern&& pattern) {
-  return Op(matched_inst)
-      .WithOptionalUnaryOp(ops, std::forward<Pattern>(pattern));
-}
 
 // Helpers for unary instructions.
 #define XLA_UNOP_PATTERN(NAME)                                       \

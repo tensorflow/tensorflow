@@ -187,6 +187,7 @@ struct ReturnResults {
         tensor_proto->add_sizes(size);
       }
 
+      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(data, size_in_bytes);
       tensor_proto->set_contents(std::string(data, size_in_bytes));
       tensor_proto->set_dtype(desc->dtype());
 

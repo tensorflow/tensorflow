@@ -216,19 +216,21 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     """Generates a graph_placholder with the given TensorSpec information."""
     if placeholder_context.use_default_placeholder:
       return super()._placeholder_value(placeholder_context)
+
+    name = self.name or placeholder_context.naming_scope
     try:
-      placeholder = graph_placeholder(self.dtype, self.shape, name=self.name)
+      placeholder = graph_placeholder(self.dtype, self.shape, name=name)
     except ValueError as e:
       # Sometimes parameter names are not valid op names, so fall back to
       # unnamed placeholders.
       logging.warning(e)
       placeholder = graph_placeholder(self.dtype, self.shape)
-    if self.name is not None:
+    if name is not None:
       # Record the requested/user-specified name in case it's different than
       # the uniquified name, for validation when exporting signatures.
       placeholder.op._set_attr(  # pylint: disable=protected-access
           "_user_specified_name",
-          attr_value_pb2.AttrValue(s=compat.as_bytes(self.name)))
+          attr_value_pb2.AttrValue(s=compat.as_bytes(name)))
     return placeholder
 
   @classmethod

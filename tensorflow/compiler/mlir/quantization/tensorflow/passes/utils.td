@@ -110,11 +110,6 @@ def CloneTypeWithF32ElementType : NativeCodeCall<
 def CloneTypeWithI32ElementType : NativeCodeCall<
   "CloneTypeWithNewElementType($0.getType(), $_builder.getI32Type())">;
 
-// By default, the generated code uses  the `create` method without the output
-// type field. However, for many ops, the output type field is always required.
-class CreateOpWithOutputType<string op_name> : NativeCodeCall<
-  "$_builder.create<"# op_name #">($_loc, $0...)">;
-
 // Checks if the value is a float constant and its splat value is equal to `x`.
 class IsSplatValueEqual<string x> : Constraint<CPred<
   "IsSplatValueEqual<float>($0, "# x #")">>;
