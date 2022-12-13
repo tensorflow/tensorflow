@@ -34,7 +34,7 @@ ENTRY %indexed_conditional () -> f32[] {
 // CHECK:     %[[RES_1:.*]] = mhlo.negate %[[OPERAND_1]] : tensor<f32>
 // CHECK:     mhlo.return %[[RES_1]] : tensor<f32>
 // CHECK:   },  {
-// CHECK:     %[[RES_2:.*]] = mhlo.copy %[[OPERAND_2]] : (tensor<f32>) -> tensor<f32>
+// CHECK:     %[[RES_2:.*]] = mhlo.copy %[[OPERAND_2]] :  tensor<f32>
 // CHECK:     mhlo.return %[[RES_2]] : tensor<f32>
 // CHECK:   },  {
 // CHECK:     %[[RES_3:.*]] = mhlo.floor %[[OPERAND_3]] : tensor<f32>
@@ -99,7 +99,7 @@ ENTRY %indexed_conditional () -> f32[] {
 // CHECK-NEXT:      %[[RES_1:.*]] = mhlo.negate %[[OPERAND_1]] : tensor<f32>
 // CHECK-NEXT:      mhlo.return %[[RES_1]], %[[RES_1]] : tensor<f32>, tensor<f32>
 // CHECK-NEXT:    },  {
-// CHECK-NEXT:      %[[RES_2:.*]] = mhlo.copy %[[OPERAND_1]] : (tensor<f32>) -> tensor<f32>
+// CHECK-NEXT:      %[[RES_2:.*]] = mhlo.copy %[[OPERAND_1]] :  tensor<f32>
 // CHECK-NEXT:      mhlo.return %[[RES_2]], %[[RES_2]] : tensor<f32>, tensor<f32>
 // CHECK-NEXT:    },  {
 // CHECK-NEXT:      %[[FLOOR_1:.*]] = mhlo.floor %[[OPERAND_2]] : tensor<f32>

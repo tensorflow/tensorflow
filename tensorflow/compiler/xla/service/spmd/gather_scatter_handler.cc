@@ -23,10 +23,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
@@ -1405,7 +1405,8 @@ StatusOr<HloInstruction*> PartitionScatter(
           indices.Replicate().hlo(), update_hlos, scatter->to_apply(),
           scatter->scatter_dimension_numbers(), scatter->indices_are_sorted(),
           scatter->unique_indices()));
-  new_scatter->set_sharding(HloSharding::Replicate());
+  new_scatter->set_sharding(
+      HloSharding::Replicate().NormalizeTupleSharding(new_scatter->shape()));
   new_scatter =
       PartitionedHlo(new_scatter, new_scatter->shape(), operands[0].state())
           .Reshard(output_sharding)

@@ -31,6 +31,7 @@ limitations under the License.
 
 #include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -345,13 +346,25 @@ class ShapeUtil {
                                 dimensions);
   }
 
-  // Constructs a new shape with the given minor_to_major order in its Layout.
-  // Returns a value shape such that shape.has_layout().
-  static Shape MakeShapeWithLayout(
+  // Constructs a new dense array shape with the given minor_to_major order in
+  // its Layout. Returns a value shape such that shape.has_layout().
+  static Shape MakeShapeWithDenseLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dimensions,
       absl::Span<const int64_t> minor_to_major,
-      absl::Span<const DimLevelType> dim_level_types = {},
-      absl::Span<const Tile> tiles = {}, int64_t memory_space = 0,
+      absl::Span<const Tile> tiles = {}, int64_t memory_space = 0);
+
+  // Constructs a new sparse array shape with the given minor_to_major order and
+  // dim_level_types in its Layout. Returns a value shape such that
+  // shape.has_layout().
+  static Shape MakeShapeWithSparseLayout(
+      PrimitiveType element_type, absl::Span<const int64_t> dimensions,
+      absl::Span<const int64_t> minor_to_major,
+      absl::Span<const DimLevelType> dim_level_types,
+      absl::Span<const bool> dim_unique = {},
+      absl::Span<const bool> dim_ordered = {},
+      PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
+      PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID,
+      int64_t memory_space = 0,
       std::optional<Shape> physical_shape = std::nullopt);
 
   // Constructs a new shape with the given dimension `dim` as the most major
@@ -466,24 +479,49 @@ class ShapeUtil {
   // Calls the given visitor function for each subshape of the given shape.
   // Subshapes are visited in DFS pre-order starting with the entire shape
   // (index {}).
-  using VisitorFunction = std::function<void(const Shape& /*subshape*/,
-                                             const ShapeIndex& /*index*/)>;
-  static void ForEachSubshape(const Shape& shape, const VisitorFunction& func);
-  using MutatingVisitorFunction =
-      std::function<void(Shape* /*subshape*/, const ShapeIndex& /*index*/)>;
-  static void ForEachMutableSubshape(Shape* shape,
-                                     const MutatingVisitorFunction& func);
+  //
+  // The visitor function must have the signature
+  //
+  //   void fn(const Shape& subshape, const ShapeIndex& index), or
+  //   void fn(Shape* subshape, const ShapeIndex& index) (mutable version)
+  template <typename Fn>
+  static void ForEachSubshape(const Shape& shape, Fn&& fn) {
+    ForEachSubshapeWithStatus(shape, [&](const Shape& subshape,
+                                         const ShapeIndex& index) {
+      fn(subshape, index);
+      return OkStatus();
+    }).IgnoreError();
+  }
+  template <typename Fn>
+  static void ForEachMutableSubshape(Shape* shape, Fn&& fn) {
+    ForEachMutableSubshapeWithStatus(shape, [&](Shape* subshape,
+                                                const ShapeIndex& index) {
+      fn(subshape, index);
+      return OkStatus();
+    }).IgnoreError();
+  }
 
   // Variants of ForEach(Mutable)Subshape which propagate Status from the
   // visitor function.
-  using StatusVisitorFunction = std::function<Status(
-      const Shape& /*subshape*/, const ShapeIndex& /*index*/)>;
-  static Status ForEachSubshapeWithStatus(const Shape& shape,
-                                          const StatusVisitorFunction& func);
-  using MutatingStatusVisitorFunction =
-      std::function<Status(Shape* /*subshape*/, const ShapeIndex& /*index*/)>;
-  static Status ForEachMutableSubshapeWithStatus(
-      Shape* shape, const MutatingStatusVisitorFunction& func);
+  //
+  // Visitor function must have the signature
+  //
+  //   Status fn(const Shape& subshape, const ShapeIndex& index), or
+  //   Status fn(Shape* subshape, const ShapeIndex& index) (mutable version)
+  //
+  template <typename Fn>
+  static Status ForEachSubshapeWithStatus(const Shape& shape, Fn&& fn) {
+    return ForEachMutableSubshapeWithStatus(
+        const_cast<Shape*>(&shape),
+        [&](Shape* subshape, const ShapeIndex& index) -> Status {
+          return fn(*const_cast<const Shape*>(subshape), index);
+        });
+  }
+  template <typename Fn>
+  static Status ForEachMutableSubshapeWithStatus(Shape* shape, Fn&& fn) {
+    ShapeIndex index;
+    return ForEachMutableSubshapeWithStatusHelper(shape, fn, &index);
+  }
 
   // Returns true if `shape` (which must be an array) with degenerate dimensions
   // (dimensions with bound 1).
@@ -567,14 +605,28 @@ class ShapeUtil {
   // Precondition: Both input_shape and output_shape have explicit layouts.
   static bool TransposeIsBitcast(const Shape& input_shape,
                                  const Shape& output_shape,
-                                 absl::Span<const int64_t> dimension_mapping);
+                                 absl::Span<const int64_t> dimension_mapping,
+                                 bool ignore_element_type = false);
 
   // Returns whether a reshape from `input_shape` to `output_shape` is a
   // bitcast, when minor_to_major in layout is considered.
   //
   // Precondition: Both input_shape and output_shape have explicit layouts.
   static bool ReshapeIsBitcast(const Shape& input_shape,
-                               const Shape& output_shape);
+                               const Shape& output_shape,
+                               bool ignore_element_type = false);
+
+  // Returns whether there is a bitcasting reshape or transpose from `a` to `b`.
+  //
+  // Precondition: Both input_shape and output_shape have explicit layouts.
+  static bool IsReshapeOrTransposeBitcast(const Shape& a, const Shape& b,
+                                          bool ignore_element_type = false);
+
+  // If the given bitcast is a transpose, deduce and return `dimensions`
+  // attribute of such a transpose. Otherwise, return nullptr.
+  static std::optional<std::vector<int64_t>>
+  DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
+                                      const Shape& output_shape);
 
   // Find a physical layout for 'output_shape' such that
   // ShapeUtil::ReshapeIsBitcast(input_shape, output_shape_with_layout) returns
@@ -599,7 +651,7 @@ class ShapeUtil {
   // For examples:
   // • `FilterDimensions((< 2), T[m, n, k]) = T[m, n]`
   // • `FilterDimensions(is_even_number, T[m, n, k]) = T[m, k]`
-  static Shape FilterDimensions(const std::function<bool(int64_t)>& p,
+  static Shape FilterDimensions(absl::FunctionRef<bool(int64_t)> p,
                                 Shape shape);
 
   // Returns true if `dynamic_shape` has dimensions that are less-equal to the
@@ -612,7 +664,7 @@ class ShapeUtil {
                                        const xla::Shape& bounded_shape);
 
   using ForEachVisitorFunction =
-      std::function<StatusOr<bool>(absl::Span<const int64_t>)>;
+      absl::FunctionRef<StatusOr<bool>(absl::Span<const int64_t>)>;
 
   // Iterates through all the shape indexes, in minor to major order,
   // starting from the base indexes, incrementing by the incr steps, up to
@@ -665,7 +717,7 @@ class ShapeUtil {
   }
 
   using ForEachParallelVisitorFunction =
-      std::function<StatusOr<bool>(absl::Span<const int64_t>, int)>;
+      absl::FunctionRef<StatusOr<bool>(absl::Span<const int64_t>, int)>;
 
   // A parallel version of ForEachIndex(WithStatus). This can only be used if
   // the visitor_function is thread-safe and the order of iteration does not
@@ -675,9 +727,18 @@ class ShapeUtil {
       absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
       const ForEachParallelVisitorFunction& visitor_function);
 
+  static Status ForEachIndexParallelWithStatus(
+      const Shape& shape, absl::Span<const int64_t> base,
+      absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
+      const ForEachParallelVisitorFunction& visitor_function);
+
   // Convenience wrapper which doesn't take `base`, `count` and `incr`
   // explicitly, but iterates over every element in `shape` instead.
   static void ForEachIndexParallel(
+      const Shape& shape,
+      const ForEachParallelVisitorFunction& visitor_function);
+
+  static Status ForEachIndexParallelWithStatus(
       const Shape& shape,
       const ForEachParallelVisitorFunction& visitor_function);
 
@@ -735,6 +796,23 @@ class ShapeUtil {
   // Validates all of the non-layout properties of the shape -- this is a helper
   // used by both the layout-optional and layout-required public method.
   static Status ValidateShapeWithOptionalLayoutInternal(const Shape& shape);
+
+  // Helper for ForEachSubshape which visits the subshapes of the given shape in
+  // DFS pre-order starting with the index.
+  template <typename Fn>
+  static Status ForEachMutableSubshapeWithStatusHelper(Shape* shape, Fn&& fn,
+                                                       ShapeIndex* index) {
+    TF_RETURN_IF_ERROR(fn(shape, *index));
+    if (shape->IsTuple()) {
+      for (int64_t i = 0; i < ShapeUtil::TupleElementCount(*shape); ++i) {
+        index->push_back(i);
+        TF_RETURN_IF_ERROR(ForEachMutableSubshapeWithStatusHelper(
+            shape->mutable_tuple_shapes(i), fn, index));
+        index->pop_back();
+      }
+    }
+    return OkStatus();
+  }
 
   // Keeps track of the iteration state for the ForEach...Internal routines
   struct ForEachState {

@@ -14,7 +14,7 @@
 # ==============================================================================
 """Test configs for pad."""
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -112,7 +112,7 @@ def make_pad_tests(options):
           dtype=tf.int32, name="padding", shape=shape)
       input_tensors = [input_tensor, paddings]
 
-    out = tf.pad(input_tensor, paddings=paddings)
+    out = tf.pad(tensor=input_tensor, paddings=paddings)
     return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

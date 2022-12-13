@@ -19,21 +19,26 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 
 namespace tensorflow {
 namespace quantization {
 namespace internal {
 
-// Represents an exported TensorFlow model. It consists of a GraphDef and extra
-// metadata required for building a SavedModel.
-struct ExportedModel {
-  GraphDef graph_def = {};
-
-  // Name of the initialization node used for initializing resources like
-  // hash tables upon loading.
-  std::string init_node_name = "";
-};
+// Names of the TensorFlow Quantization steps. These names are used primarily
+// for debugging.
+inline constexpr absl::string_view kTfQuantPtqPreCalibrationStepName =
+    "tf_quant_ptq_pre_calibration";
+inline constexpr absl::string_view kTfQuantPtqPostCalibrationStepName =
+    "tf_quant_ptq_post_calibration";
+inline constexpr absl::string_view kTfQuantQatStepName = "tf_quant_qat";
+inline constexpr absl::string_view kTfQuantPtqDynamicRangeStepName =
+    "tf_quant_ptq_dynamic_range";
+inline constexpr absl::string_view kTfQuantConstantUnfreezingStepName =
+    "tf_quant_constant_unfreezing";
+inline constexpr absl::string_view kTfQuantCreateRestoreOpStepName =
+    "tf_quant_create_restore_op";
 
 absl::StatusOr<ExportedModel> QuantizeQatModel(
     absl::string_view saved_model_path, absl::string_view exported_names_str,

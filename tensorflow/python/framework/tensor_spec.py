@@ -18,15 +18,19 @@ from typing import Type
 
 import numpy as np
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.function import trace_type
 from tensorflow.core.protobuf import struct_pb2
+from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import _pywrap_utils
+from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -131,10 +135,44 @@ class DenseSpec(type_spec.TypeSpec):
 @type_spec.register("tf.TensorSpec")
 class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
                  trace_type.Serializable):
-  """Describes a tf.Tensor.
+  """Describes the type of a tf.Tensor.
 
-  Metadata for describing the `tf.Tensor` objects accepted or returned
-  by some TensorFlow APIs.
+  >>> t = tf.constant([[1,2,3],[4,5,6]])
+  >>> tf.TensorSpec.from_tensor(t)
+  TensorSpec(shape=(2, 3), dtype=tf.int32, name=None)
+
+  Contains metadata for describing the the nature of `tf.Tensor` objects
+  accepted or returned by some TensorFlow APIs.
+
+  For example, it can be used to constrain the type of inputs accepted by
+  a tf.function:
+
+  >>> @tf.function(input_signature=[tf.TensorSpec([1, None])])
+  ... def constrained_foo(t):
+  ...   print("tracing...")
+  ...   return t
+
+  Now the `tf.function` is able to assume that `t` is always of the type
+  `tf.TensorSpec([1, None])` which will avoid retracing as well as enforce the
+  type restriction on inputs.
+
+  As a result, the following call with tensor of type `tf.TensorSpec([1, 2])`
+  triggers a trace and succeeds:
+  >>> constrained_foo(tf.constant([[1., 2]])).numpy()
+  tracing...
+  array([[1., 2.]], dtype=float32)
+
+  The following subsequent call with tensor of type `tf.TensorSpec([1, 4])`
+  does not trigger a trace and succeeds:
+  >>> constrained_foo(tf.constant([[1., 2, 3, 4]])).numpy()
+  array([[1., 2., 3., 4.], dtype=float32)
+
+  But the following call with tensor of type `tf.TensorSpec([2, 2])` fails:
+  >>> constrained_foo(tf.constant([[1., 2], [3, 4]])).numpy()
+  Traceback (most recent call last):
+  ...
+  ValueError: Python inputs incompatible with input_signature
+
   """
 
   __slots__ = []
@@ -173,6 +211,27 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
       True if spec_or_tensor is compatible with self.
     """
     return super(TensorSpec, self).is_compatible_with(spec_or_tensor)
+
+  def _placeholder_value(self, placeholder_context):
+    """Generates a graph_placholder with the given TensorSpec information."""
+    if placeholder_context.use_default_placeholder:
+      return super()._placeholder_value(placeholder_context)
+
+    name = self.name or placeholder_context.naming_scope
+    try:
+      placeholder = graph_placeholder(self.dtype, self.shape, name=name)
+    except ValueError as e:
+      # Sometimes parameter names are not valid op names, so fall back to
+      # unnamed placeholders.
+      logging.warning(e)
+      placeholder = graph_placeholder(self.dtype, self.shape)
+    if name is not None:
+      # Record the requested/user-specified name in case it's different than
+      # the uniquified name, for validation when exporting signatures.
+      placeholder.op._set_attr(  # pylint: disable=protected-access
+          "_user_specified_name",
+          attr_value_pb2.AttrValue(s=compat.as_bytes(name)))
+    return placeholder
 
   @classmethod
   def from_spec(cls, spec, name=None):

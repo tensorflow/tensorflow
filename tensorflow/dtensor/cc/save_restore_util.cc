@@ -161,7 +161,7 @@ SaveOpSpecs BuildPerDeviceSave(
                     prefix.getType().dyn_cast<mlir::RankedTensorType>(), prefix,
                     StringScalarConst(builder, prefix.getLoc(),
                                       DeviceSuffix(device_id, total_devices)))
-                .z();
+                .getZ();
         // Generate new prefix based on device_id and save op index, only when
         // we need a new save_op.
         new_prefixes.push_back(new_prefix);

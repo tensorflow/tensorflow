@@ -250,7 +250,8 @@ PartialTensorShape ConvertTypeToTensorShape(const Type& type) {
 
   if (auto tensor_type = type.dyn_cast<RankedTensorType>()) {
     TensorShapeProto tensor_shape_proto;
-    ConvertToTensorShapeProto(tensor_type.getShape(), &tensor_shape_proto);
+    ConvertToTensorShapeProto(ConvertMlirShapeToTF(tensor_type.getShape()),
+                              &tensor_shape_proto);
     return PartialTensorShape(tensor_shape_proto);
   }
 
@@ -265,7 +266,9 @@ ShapeAttr ConvertTypeToTensorShapeAttr(const Type& type) {
   }
 
   if (auto tensor_type = type.dyn_cast<RankedTensorType>()) {
-    return ShapeAttr::get(type.getContext(), tensor_type.getShape());
+    return ShapeAttr::get(
+        type.getContext(),
+        llvm::makeArrayRef(ConvertMlirShapeToTF(tensor_type.getShape())));
   }
 
   // If type is not a RankedTensor or UnrankedTensor, it must be a scalar.
@@ -484,6 +487,25 @@ Status ConvertToTensor(const ElementsAttr attr, Tensor* output_tensor) {
     return InvalidArgument("Couldn't convert tensor proto to tensor.");
   }
   return ::tensorflow::OkStatus();
+}
+
+llvm::SmallVector<int64_t> ConvertMlirShapeToTF(llvm::ArrayRef<int64_t> shape) {
+  return llvm::to_vector(llvm::map_range(shape, [](int64_t dim) {
+    return mlir::ShapedType::isDynamic(dim) ? -1 : dim;
+  }));
+}
+
+llvm::SmallVector<int64_t> ConvertTFShapeToMlir(llvm::ArrayRef<int64_t> shape) {
+  return llvm::to_vector(llvm::map_range(shape, [](int64_t dim) {
+    return dim == -1 ? mlir::ShapedType::kDynamic : dim;
+  }));
+}
+
+mlir::RankedTensorType GetTypeFromTFTensorShape(llvm::ArrayRef<int64_t> shape,
+                                                mlir::Type elementType,
+                                                mlir::Attribute encoding) {
+  return mlir::RankedTensorType::get(ConvertTFShapeToMlir(shape), elementType,
+                                     encoding);
 }
 
 }  // namespace tfg

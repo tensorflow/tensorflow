@@ -52,25 +52,16 @@ createGpuKernelToRocdlPass();
 /// to `pm`. `blockTileDim`, `warpTileDim` and `threadTileDim` indicate the
 /// size of the subproblem that will be operated on by the block, warp, and
 /// thread level, respectively.
-struct HloToGpuPipelineOptions
-    : public PassPipelineOptions<HloToGpuPipelineOptions> {
-  ListOption<int64_t> blockTileDim{
-      *this, "block-tile",
-      llvm::cl::desc("dimensions of the subproblem processed by the block")};
-  ListOption<int64_t> warpTileDim{
-      *this, "warp-tile",
-      llvm::cl::desc("dimensions of the subproblem processed by the warp")};
-  ListOption<int64_t> threadTileDim{
-      *this, "thread-tile",
-      llvm::cl::desc("dimensions of the subproblem processed by the thread")};
-  Option<bool> experimentalSoftmax{
-      *this, "experimental-softmax",
-      llvm::cl::desc(
-          "enable the experimental variant of this pipeline for softmax"),
-      llvm::cl::init(false)};
-};
-void createHloToGpuPipeline(OpPassManager& pm,
-                            const HloToGpuPipelineOptions& options);
+void createHloToGpuPipeline(OpPassManager& pm, ArrayRef<int64_t> blockTileDim,
+                            ArrayRef<int64_t> warpTileDim,
+                            ArrayRef<int64_t> threadTileDim,
+                            bool experimentalSoftmax);
+
+/// Creates a pipeline that converts operations in HLO dialect to Triton
+/// kernels. `blockTileDim`, indicates the block-level tile size that the
+/// problem will be tiled to.
+void createHloToTritonPipeline(OpPassManager& pm,
+                               ArrayRef<int64_t> blockTileDim);
 
 #define GEN_PASS_REGISTRATION
 #include "mlir-hlo/Transforms/gpu_passes.h.inc"

@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 
+#include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace xla {
@@ -61,6 +64,7 @@ raw_ostream& operator<<(raw_ostream& os, const FlatMemrefView& view) {
 
 void PopulateCustomCallTypeIdNames(TypeIDNameRegistry& r) {
   r.Register<Tagged<void*>>("__type_id_opaque");
+  r.Register<Tagged<std::nullopt_t>>("__type_id_nullopt");
   r.Register<Tagged<std::string_view>>("__type_id_string");
   r.Register<Tagged<CustomCall::FunctionOrdinal>>("__type_id_function_ordinal");
 

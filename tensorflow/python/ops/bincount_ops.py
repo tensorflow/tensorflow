@@ -116,11 +116,8 @@ def bincount(arr,
   """
   name = "bincount" if name is None else name
   with ops.name_scope(name):
-    # TODO(b/255381064) fix any internal tests that need the following codeblock
-    # and then delete this codeblock
-    if (not binary_output and (axis is None or axis == 0)
-        and not isinstance(arr, ragged_tensor.RaggedTensor)
-        and not isinstance(arr, sparse_tensor.SparseTensor)):
+    # Somehow forward compatible needs to be False.
+    if not binary_output and axis is None:
       arr = ops.convert_to_tensor(arr, name="arr", dtype=dtypes.int32)
       array_is_nonempty = math_ops.reduce_prod(array_ops.shape(arr)) > 0
       output_size = math_ops.cast(array_is_nonempty, dtypes.int32) * (

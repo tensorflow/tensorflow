@@ -237,7 +237,7 @@ func.func @compute_reshape_shape(%arg0: tensor<?x?xf32>, %arg1: index)
   %mul = mhlo.multiply %casted, %casted : tensor<2xi32>
 // CHECK:  %[[MUL:.*]] = mhlo.multiply
   %crs = mhlo.compute_reshape_shape %arg1, %mul
-      : index, tensor<2xi32> -> tensor<2xi32>
+      : (index, tensor<2xi32>) -> tensor<2xi32>
   func.return %crs : tensor<2xi32>
 // CHECK: return %[[MUL]] : tensor<2xi32>
 }
@@ -249,7 +249,7 @@ func.func @compute_reshape_shape(%arg0: tensor<2xi32>, %arg1: index)
     -> tensor<2xi32> {
   %mul = mhlo.multiply %arg0, %arg0 : tensor<2xi32>
   %crs = mhlo.compute_reshape_shape %arg1, %mul
-      : index, tensor<2xi32> -> tensor<2xi32>
+      : (index, tensor<2xi32>) -> tensor<2xi32>
 // CHECK: mhlo.compute_reshape_shape
   func.return %crs : tensor<2xi32>
 }
@@ -270,7 +270,7 @@ func.func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
   %dim02 = tensor.dim %arg0, %c2 : tensor<?x8x?x64xf32>
   %s1_ = tensor.from_elements %dim02, %dim00, %c512 : tensor<3xindex>
   %s1 = arith.index_cast %s1_ : tensor<3xindex> to tensor<3xi32>
-  %w = mhlo.cstr_reshapable %n0, %s1 : index, tensor<3xi32>
+  %w = mhlo.cstr_reshapable %n0, %s1 : (index, tensor<3xi32>) -> !shape.witness
   func.return %w : !shape.witness
 }
 
@@ -292,7 +292,7 @@ func.func @redundant_cstr_reshapable_less_obvious(%arg0 : tensor<?x4x?x64xf32>)
   %dim02 = tensor.dim %arg0, %c2 : tensor<?x4x?x64xf32>
   %dim02_ = arith.index_cast %dim02 : index to i32
   %s1 = tensor.from_elements %dim02_, %dim00_twice_, %c128 : tensor<3xi32>
-  %w = mhlo.cstr_reshapable %n0, %s1 : index, tensor<3xi32>
+  %w = mhlo.cstr_reshapable %n0, %s1 : (index, tensor<3xi32>) -> !shape.witness
   func.return %w : !shape.witness
 }
 
@@ -312,7 +312,7 @@ func.func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
   %dim02 = tensor.dim %arg0, %c2 : tensor<?x8x?x64xf32>
   %dim02_ = arith.index_cast %dim02 : index to i32
   %s1 = tensor.from_elements %dim02_, %cminus1, %c128 : tensor<3xi32>
-  %w = mhlo.cstr_reshapable %n0, %s1 : index, tensor<3xi32>
+  %w = mhlo.cstr_reshapable %n0, %s1 : (index, tensor<3xi32>) -> !shape.witness
   func.return %w : !shape.witness
 }
 
@@ -332,7 +332,7 @@ func.func @nonredundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
   %dim02 = tensor.dim %arg0, %c2 : tensor<?x8x?x64xf32>
   %dim02_ = arith.index_cast %dim02 : index to i32
   %s1 = tensor.from_elements %dim02_, %cminus1, %c42 : tensor<3xi32>
-  %w = mhlo.cstr_reshapable %n0, %s1 : index, tensor<3xi32>
+  %w = mhlo.cstr_reshapable %n0, %s1 : (index, tensor<3xi32>) -> !shape.witness
   func.return %w : !shape.witness
 }
 
@@ -354,7 +354,7 @@ func.func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
   %dim00_ = arith.index_cast %dim00 : index to i32
   %dim02_ = arith.index_cast %dim02 : index to i32
   %s1 = tensor.from_elements %dim02_, %dim00_ , %c64, %cminus1 : tensor<4xi32>
-  %w = mhlo.cstr_reshapable %n0, %s1 : index, tensor<4xi32>
+  %w = mhlo.cstr_reshapable %n0, %s1 : (index, tensor<4xi32>) -> !shape.witness
   func.return %w : !shape.witness
 }
 
@@ -384,12 +384,12 @@ func.func @reshape_integration(%arg0: tensor<512x512xf32>,
   %1 = shape.shape_of %arg1 : tensor<?x8x?x64xf32> -> tensor<4xindex>
   %2 = shape.num_elements %1 : tensor<4xindex> -> index
   // CHECK: %[[W:.*]] = mhlo.cstr_reshapable
-  %3 = mhlo.cstr_reshapable %2, %arg2 : index, tensor<4xi32>
+  %3 = mhlo.cstr_reshapable %2, %arg2 : (index, tensor<4xi32>) -> !shape.witness
   // CHECK: shape.assuming %[[W]]
   %4 = shape.assuming %3 -> (tensor<?x8x?x64xf32>) {
     // CHECK: %[[SHAPE:.*]] = mhlo.compute_reshape_shape %{{.*}}, %[[DYN_SHAPE]]
     %20 = mhlo.compute_reshape_shape %2, %arg2
-        : index, tensor<4xi32> -> tensor<4xi32>
+        : (index, tensor<4xi32>) -> tensor<4xi32>
     // CHECK: mhlo.dynamic_reshape %arg1, %[[SHAPE]]
     %21 = "mhlo.dynamic_reshape"(%arg1, %20)
         : (tensor<?x8x?x64xf32>, tensor<4xi32>) -> tensor<?x8x?x64xf32>
@@ -417,12 +417,12 @@ func.func @reshape_integration(%arg0: tensor<512x512xf32>,
   %16 = shape.shape_of %6 : tensor<?x?x64x8xf32> -> tensor<4xindex>
   %17 = shape.num_elements %16 : tensor<4xindex> -> index
   // CHECK-NOT: cstr_reshapable
-  %18 = mhlo.cstr_reshapable %17, %15 : index, tensor<2xi32>
+  %18 = mhlo.cstr_reshapable %17, %15 : (index, tensor<2xi32>) -> !shape.witness
   // CHECK-NOT: assuming
   %19 = shape.assuming %18 -> (tensor<?x512xf32>) {
     // CHECK-NOT: compute_reshape_shape
     %20 = mhlo.compute_reshape_shape %17, %15
-        : index, tensor<2xi32> -> tensor<2xi32>
+        : (index, tensor<2xi32>) -> tensor<2xi32>
     // CHECK: tensor.collapse_shape
     %21 = "mhlo.dynamic_reshape"(%6, %20)
         : (tensor<?x?x64x8xf32>, tensor<2xi32>) -> tensor<?x512xf32>

@@ -25,8 +25,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/c_api_opaque.h"
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
 #include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/interpreter.h"
@@ -51,7 +51,8 @@ using test_utils::TestTwoDelegates;
 namespace {
 
 TEST_F(TestDelegate, NullDelegate) {
-  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(nullptr),
+  TfLiteDelegate* delegate = nullptr;
+  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(delegate),
             kTfLiteDelegateError);
 }
 
@@ -495,7 +496,7 @@ struct OpaqueTestDelegate {
 
 // Ensure that the runtime correctly interacts with a delegate that uses the
 // 'TfLiteOpaqueDelegateBuilder'.  This test:
-// 1. Defines a delegate that will replace the full graph will a delegate
+// 1. Defines a delegate that will replace the full graph with a delegate
 //    kernel.
 // 2. Associates the model's output tensor with the delegate and marks the
 //    output tensor's data as stale, to prompt the runtime to use the delegate's
@@ -514,18 +515,19 @@ TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
   ASSERT_NE(model, nullptr);
   constexpr int kNumTensorElements = 1 * 8 * 8 * 3;
 
-  TfLiteOpaqueDelegateBuilder opaque_delegate{};
-  opaque_delegate.data = &delegate_state;
-  opaque_delegate.CopyFromBufferHandle =
+  TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
+  opaque_delegate_builder.data = &delegate_state;
+  opaque_delegate_builder.CopyFromBufferHandle =
       OpaqueTestDelegate::CopyFromBufferHandle;
-  opaque_delegate.FreeBufferHandle = OpaqueTestDelegate::FreeBufferHandle;
-  opaque_delegate.Prepare = OpaqueTestDelegate::Prepare;
+  opaque_delegate_builder.FreeBufferHandle =
+      OpaqueTestDelegate::FreeBufferHandle;
+  opaque_delegate_builder.Prepare = OpaqueTestDelegate::Prepare;
+  TfLiteOpaqueDelegateStruct* opaque_delegate =
+      TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
   tflite::InterpreterBuilder builder(*model, resolver);
-  TfLiteDelegate tflite_delegate{};
-  tflite_delegate.opaque_delegate_builder = &opaque_delegate;
-  builder.AddDelegate(&tflite_delegate);
+  builder.AddDelegate(opaque_delegate);
   std::unique_ptr<tflite::Interpreter> interpreter;
   builder(&interpreter);
   ASSERT_NE(interpreter, nullptr);
@@ -544,9 +546,17 @@ TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
   int first_buffer_handle = 1;
   const int kOutputTensorIndex = 2;
   interpreter->SetBufferHandle(kOutputTensorIndex, first_buffer_handle,
-                               &tflite_delegate);
+                               opaque_delegate);
   TfLiteTensor* output_t = interpreter->output_tensor(0);
   output_t->data_is_stale = true;
+
+  // Check that we can get the same buffer handle and delegate pointer back.
+  TfLiteBufferHandle loaded_buffer_handle = kTfLiteNullBufferHandle;
+  TfLiteOpaqueDelegateStruct* loaded_opaque_delegate = nullptr;
+  interpreter->GetBufferHandle(kOutputTensorIndex, &loaded_buffer_handle,
+                               &loaded_opaque_delegate);
+  EXPECT_EQ(loaded_buffer_handle, first_buffer_handle);
+  EXPECT_EQ(loaded_opaque_delegate, opaque_delegate);
 
   // Run inference
   ASSERT_EQ(interpreter->Invoke(), kTfLiteOk);
@@ -564,7 +574,7 @@ TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
   // associated with it will free the previously installed buffer handle.
   int second_buffer_handle = first_buffer_handle + 1;
   interpreter->SetBufferHandle(kOutputTensorIndex, second_buffer_handle,
-                               &tflite_delegate);
+                               opaque_delegate);
   EXPECT_FALSE(delegate_state.copy_from_buffer_handle_called);
   EXPECT_EQ(delegate_state.buffer_handle, first_buffer_handle);
   EXPECT_TRUE(delegate_state.free_buffer_handle_called);
@@ -576,6 +586,7 @@ TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
   EXPECT_FALSE(delegate_state.copy_from_buffer_handle_called);
   EXPECT_EQ(delegate_state.buffer_handle, second_buffer_handle);
   EXPECT_TRUE(delegate_state.free_buffer_handle_called);
+  TfLiteOpaqueDelegateDelete(opaque_delegate);
 }
 
 TEST_F(TestDelegate, DelegateCustomOpResolution) {
@@ -1098,6 +1109,46 @@ class TestDelegateWithDynamicTensors : public ::testing::Test {
   TfLiteDelegate delegate_;
 };
 
+TfLiteRegistrationExternal* CreateTfLiteRegistrationExternal() {
+  auto registration = TfLiteRegistrationExternalCreate(
+      kTfLiteBuiltinDelegate, "OpaqueDelegateKernel", 1);
+  TfLiteRegistrationExternalSetPrepare(
+      registration,
+      [](TfLiteOpaqueContext* context,
+         TfLiteOpaqueNode* opaque_node) -> TfLiteStatus {
+        // If tensors are resized, the runtime should propagate shapes
+        // automatically if 'kTfLiteDelegateFlagsRequirePropagatedShapes' flag
+        // is set.
+
+        // Output 0 should be dynamic.
+        TfLiteOpaqueTensor* output0 =
+            TfLiteOpaqueNodeGetOutput(context, opaque_node, 0);
+        EXPECT_EQ(kTfLiteDynamic, TfLiteOpaqueTensorGetAllocationType(output0));
+
+        // Output 1 has the same shape as input.
+        const TfLiteOpaqueTensor* input =
+            TfLiteOpaqueNodeGetInput(context, opaque_node, 0);
+        const TfLiteOpaqueTensor* output1 =
+            TfLiteOpaqueNodeGetOutput(context, opaque_node, 1);
+
+        if (TfLiteOpaqueTensorNumDims(input) !=
+            TfLiteOpaqueTensorNumDims(output1)) {
+          return kTfLiteError;
+        }
+        // When 'kTfLiteDelegateFlagsRequirePropagatedShapes' is *not* set then
+        // changes to the dimensions of the 'input' tensor won't automatically
+        // propagate to the 'output1' tensor dimensions.
+        if (TfLiteOpaqueTensorDim(input, 0) !=
+            TfLiteOpaqueTensorDim(output1, 0)) {
+          return kTfLiteError;
+        }
+
+        return kTfLiteOk;
+      });
+
+  return registration;
+}
+
 class TestOpaqueDelegateBuilderWithDynamicTensors
     : public TestDelegateWithDynamicTensors {
  public:
@@ -1112,26 +1163,17 @@ class TestOpaqueDelegateBuilderWithDynamicTensors
         [](TfLiteOpaqueContext* opaque_context,
            struct TfLiteOpaqueDelegateStruct* opaque_delegate,
            void* data) -> TfLiteStatus {
-      // Note, ideally this function should not perform any casts on the
-      // provided opaque context or opaque delegate. However, the APIs that
-      // allow a caller to load an execution plan by providing an opaque
-      // context, or replace nodes with a delegate kernel by providing an opaque
-      // delegate, are added in child CLs.
       TfLiteIntArray* execution_plan;
-      TfLiteContext* context = reinterpret_cast<TfLiteContext*>(opaque_context);
-      TfLiteDelegate* delegate =
-          reinterpret_cast<TfLiteDelegate*>(opaque_delegate);
-      TF_LITE_ENSURE_STATUS(
-          context->GetExecutionPlan(context, &execution_plan));
-      TfLiteStatus status = context->ReplaceNodeSubsetsWithDelegateKernels(
-          context, DelegateRegistration(), execution_plan, delegate);
-      return status;
+      TfLiteOpaqueContextGetExecutionPlan(opaque_context, &execution_plan);
+      return TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
+          opaque_context, CreateTfLiteRegistrationExternal(), execution_plan,
+          opaque_delegate);
     };
     delegate_external_.flags = kTfLiteDelegateFlagsNone;
   }
 
  private:
-  TfLiteOpaqueDelegateBuilder delegate_external_;
+  TfLiteOpaqueDelegateBuilder delegate_external_{};
 };
 
 TEST_F(TestDelegateWithDynamicTensors, DisallowDynamicTensors) {
@@ -1427,7 +1469,8 @@ TEST_P(TestFP16Delegation, NonDelegatedInterpreterWorks) {
 }
 
 TEST_F(TestFP16Delegation, NullDelegate) {
-  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(nullptr),
+  TfLiteDelegate* delegate = nullptr;
+  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(delegate),
             kTfLiteDelegateError);
   // Verify that resulting interpreter still works, despite null delegate.
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);

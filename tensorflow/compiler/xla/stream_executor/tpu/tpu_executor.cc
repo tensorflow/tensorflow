@@ -18,13 +18,13 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/cleanup/cleanup.h"
-#include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_event.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_timer.h"
+#include "tensorflow/tsl/c/tsl_status.h"
 
 using stream_executor::DeviceMemoryBase;
 
@@ -190,7 +190,7 @@ TpuExecutor::GetStreamImplementation() {
 std::unique_ptr<::stream_executor::internal::EventInterface>
 TpuExecutor::CreateEventImplementation() {
   SE_Event* tpu_event = tpu::ExecutorApiFn()->TpuEvent_NewFn(executor_);
-  auto ptr = std::make_unique<TpuEvent>(tpu_event);
+  auto ptr = std::make_unique<stream_executor::tpu::TpuEvent>(tpu_event);
   tpu_platform().InsertEvent(ptr.get(), tpu_event);
   return ptr;
 }
@@ -350,10 +350,10 @@ struct HostCallbackContext {
   std::function<Status()> callback;
 };
 
-TF_Status* HostCallbackTrampoline(void* ctx) {
+TSL_Status* HostCallbackTrampoline(void* ctx) {
   HostCallbackContext* host_ctx = reinterpret_cast<HostCallbackContext*>(ctx);
   Status status = host_ctx->callback();
-  TF_Status* c_status = tpu::ExecutorApiFn()->TpuStatus_CreateFn(
+  TSL_Status* c_status = tpu::ExecutorApiFn()->TpuStatus_CreateFn(
       status.code(), status.error_message().c_str());
   delete host_ctx;
   return c_status;

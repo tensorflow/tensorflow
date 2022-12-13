@@ -19,15 +19,15 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/dynamic_window_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
@@ -170,7 +170,7 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
   Status HandleDomain(HloInstruction* hlo) override;
 
  private:
-  using OperandDynamicDimensionFn = std::function<Status(
+  using OperandDynamicDimensionFn = absl::FunctionRef<Status(
       HloInstruction* operand, ShapeIndex index, int64_t dimension,
       int64_t operand_index, HloInstruction* dynamic_size)>;
 
@@ -196,10 +196,10 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
                                         int64_t dimension);
 
   Status ForEachOperandDynamicDimension(HloInstruction* inst,
-                                        const OperandDynamicDimensionFn&);
+                                        OperandDynamicDimensionFn);
   Status ForEachDynamicDimensionInOperand(HloInstruction* inst,
                                           int64_t operand_index,
-                                          const OperandDynamicDimensionFn&);
+                                          OperandDynamicDimensionFn);
   Status ForEachDynamicDimension(HloInstruction* inst,
                                  const DynamicDimensionFn& fn);
 
@@ -1985,8 +1985,7 @@ Status DynamicDimensionInferenceVisitor::InsertShapeCheck(
 }
 
 Status DynamicDimensionInferenceVisitor::ForEachDynamicDimensionInOperand(
-    HloInstruction* inst, int64_t operand_index,
-    const OperandDynamicDimensionFn& fn) {
+    HloInstruction* inst, int64_t operand_index, OperandDynamicDimensionFn fn) {
   auto iter =
       parent_->per_hlo_dynamic_dimensions_.find(inst->operand(operand_index));
   if (iter != parent_->per_hlo_dynamic_dimensions_.end()) {
@@ -2003,7 +2002,7 @@ Status DynamicDimensionInferenceVisitor::ForEachDynamicDimensionInOperand(
 }
 
 Status DynamicDimensionInferenceVisitor::ForEachOperandDynamicDimension(
-    HloInstruction* inst, const OperandDynamicDimensionFn& fn) {
+    HloInstruction* inst, OperandDynamicDimensionFn fn) {
   for (int64_t operand_index = 0; operand_index < inst->operand_count();
        ++operand_index) {
     TF_RETURN_IF_ERROR(

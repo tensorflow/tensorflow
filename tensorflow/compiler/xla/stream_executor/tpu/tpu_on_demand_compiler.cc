@@ -16,11 +16,11 @@ limitations under the License.
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
@@ -207,7 +207,10 @@ class TpuCompiler : public Compiler {
     ApiConverter::ToC(shape, &host_shape);
     ExecutorApiFn()->TpuCompiler_DefaultDeviceShapeRepresentationFn(
         compiler_, &host_shape, &device_shape);
-    return ApiConverter::FromC(&device_shape);
+    ApiConverter::Destroy(&host_shape);
+    Shape result = ApiConverter::FromC(&device_shape);
+    ApiConverter::Destroy(&device_shape);
+    return result;
   }
 
  private:

@@ -823,6 +823,10 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_GATHER_CPU);
 
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GATHER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GATHER_GPU);
+TF_CALL_bfloat16(REGISTER_GATHER_GPU);
+
+#undef REGISTER_GATHER_GPU
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Variant objects themselves sit on CPU, even if they contain data
 // pointing to a device.
@@ -840,9 +844,6 @@ REGISTER_KERNEL_BUILDER(Name("ResourceGather")
                             .TypeConstraint<Variant>("dtype")
                             .TypeConstraint<int64_t>("Tindices"),
                         ResourceGatherOp<CPUDevice, Variant, int64>)
-
-#undef REGISTER_GATHER_GPU
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef REGISTER_GATHER_CPU
 #undef REGISTER_GATHER_ALL_INDICES
@@ -895,6 +896,7 @@ TF_CALL_ALL_TYPES(REGISTER_GATHER_ND_CPU);
 #define REGISTER_GATHER_ND_GPU(type) REGISTER_GATHER_ND_ALL_INDICES(GPU, type)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GATHER_ND_GPU);
+TF_CALL_bfloat16(REGISTER_GATHER_ND_GPU);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GATHER_ND_GPU);
 
 #undef REGISTER_GATHER_ND_GPU
@@ -1193,11 +1195,26 @@ TF_CALL_variant(REGISTER_SCATTER_UPDATE_CPU);
 #define REGISTER_SCATTER_UPDATE_GPU(type) REGISTER_SCATTER_UPDATE(type, GPU);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_ARITHMETIC_GPU);
+TF_CALL_bfloat16(REGISTER_SCATTER_ARITHMETIC_GPU);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_SCATTER_ARITHMETIC_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_MINMAX_GPU);
+TF_CALL_bfloat16(REGISTER_SCATTER_MINMAX_GPU);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_SCATTER_MINMAX_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_UPDATE_GPU);
+TF_CALL_bfloat16(REGISTER_SCATTER_UPDATE_GPU);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_SCATTER_UPDATE_GPU);
+
+REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("resource")
+                            .TypeConstraint<bool>("dtype")
+                            .TypeConstraint<int32>("Tindices"),
+                        ResourceScatterUpdateOp<GPUDevice, bool, int32,
+                                                scatter_op::UpdateOp::ASSIGN>)
+#undef REGISTER_SCATTER_ARITHMETIC_GPU
+#undef REGISTER_SCATTER_MINMAX_GPU
+#undef REGISTER_SCATTER_UPDATE_GPU
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                             .Device(DEVICE_DEFAULT)
@@ -1208,13 +1225,6 @@ REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                         ResourceScatterUpdateOp<CPUDevice, Variant, int32,
                                                 scatter_op::UpdateOp::ASSIGN>)
 REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("resource")
-                            .TypeConstraint<bool>("dtype")
-                            .TypeConstraint<int32>("Tindices"),
-                        ResourceScatterUpdateOp<GPUDevice, bool, int32,
-                                                scatter_op::UpdateOp::ASSIGN>)
-REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("resource")
                             .HostMemory("indices")
@@ -1222,10 +1232,6 @@ REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                             .TypeConstraint<int64_t>("Tindices"),
                         ResourceScatterUpdateOp<CPUDevice, Variant, int64,
                                                 scatter_op::UpdateOp::ASSIGN>)
-#undef REGISTER_SCATTER_ARITHMETIC_GPU
-#undef REGISTER_SCATTER_MINMAX_GPU
-#undef REGISTER_SCATTER_UPDATE_GPU
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef REGISTER_SCATTER_ARITHMETIC
 #undef REGISTER_SCATTER_ARITHMETIC_CPU

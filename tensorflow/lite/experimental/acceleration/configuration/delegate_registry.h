@@ -19,6 +19,6 @@ limitations under the License.
 /// For documentation, see
 /// third_party/tensorflow/lite/core/experimental/acceleration/configuration/delegate_registry.h.
 // NOLINTEND(whitespace/line_length)
-#include "tensorflow/lite/core/experimental/acceleration/configuration/delegate_registry.h"
+#include "tensorflow/lite/core/experimental/acceleration/configuration/delegate_registry.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_DELEGATE_REGISTRY_H_

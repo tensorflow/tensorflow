@@ -52,7 +52,7 @@ int replace(OP op, int count) {
 
   auto new_op = builder.create<TF::IteratorOp>(
       op->getLoc(), op->getResultTypes()[0], name, /*container=*/"",
-      op.output_types(), op.output_shapes());
+      op.getOutputTypes(), op.getOutputShapes());
   op->getResults()[0].replaceAllUsesWith(new_op->getResults()[0]);
   if (op->use_empty()) op->erase();
   return count;

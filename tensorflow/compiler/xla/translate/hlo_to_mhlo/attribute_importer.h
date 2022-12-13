@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -54,6 +54,11 @@ mlir::mhlo::ConvDimensionNumbersAttr ConvertConvDimensionNumbers(
 mlir::ArrayAttr ConvertCustomCallOutputOperandAliasing(
     const std::vector<std::pair<xla::ShapeIndex,
                                 std::pair<int64_t, xla::ShapeIndex>>>& aliaInfo,
+    mlir::Builder* builder);
+
+// Converts the list of prefetches.
+mlir::ArrayAttr ConvertCrossProgramPrefetches(
+    absl::Span<const std::pair<int64_t, ShapeIndex>> prefetches,
     mlir::Builder* builder);
 
 StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type);

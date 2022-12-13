@@ -169,6 +169,7 @@ int64_t GetComputationSize(Node node) {
 void PopulateOpMetricsNode(const OpMetrics& op_metrics,
                            double peak_gigaflops_per_second_per_core,
                            double peak_gibibytes_per_second_per_core,
+                           double peak_hbm_gibibytes_per_second_per_core,
                            uint64_t total_time_ps, Node* node) {
   DCHECK_EQ(ChildrenTimePs(op_metrics), 0);
 
@@ -198,9 +199,22 @@ void PopulateOpMetricsNode(const OpMetrics& op_metrics,
   metrics->set_flops(flops_utilization * metrics->time());
 
   // TODO(b/219984562): Use hierarchical roofline.
-  double mem_bw_utilization = SafeDivide(GibiBytesPerSecondPerCore(op_metrics),
-                                         peak_gibibytes_per_second_per_core);
-  metrics->set_memory_bandwidth(mem_bw_utilization);
+  // For now, capture both overall and off-chip memory utilization.
+  double mem_bw_utilization =
+      SafeDivide(GibiBytesPerSecondPerCore(op_metrics, -1,
+                                           OpMetrics::MemoryAccessed::UNKNOWN),
+                 peak_gibibytes_per_second_per_core);
+  metrics->set_memory_bandwidth_util(mem_bw_utilization);
+
+  const uint64 kHbm = 1;
+  double mem_bw_gibibytes_per_second = GibiBytesPerSecondPerCore(
+      op_metrics, kHbm, OpMetrics::MemoryAccessed::UNKNOWN);
+  mem_bw_utilization = SafeDivide(mem_bw_gibibytes_per_second,
+                                  peak_hbm_gibibytes_per_second_per_core);
+  metrics->set_hbm_bandwidth_util(mem_bw_utilization);
+
+  metrics->set_raw_hbm_bytes_accessed(GibiToGiga(mem_bw_gibibytes_per_second) *
+                                      PicoToNano(op_metrics.time_ps()));
 }
 
 // Sets the total time on the root node metrics.
@@ -329,10 +343,12 @@ void OpProfileBuilder::AddOp(const OpMetrics& op_metrics) {
 
 void OpProfileBuilder::Finalize(double peak_gigaflops_per_second_per_core,
                                 double peak_gibibytes_per_second_per_core,
+                                double peak_hbm_gibibytes_per_second_per_core,
                                 uint64_t total_time_ps) {
   for (const auto& [node, op_metrics] : metrics_) {
     PopulateOpMetricsNode(op_metrics, peak_gigaflops_per_second_per_core,
-                          peak_gibibytes_per_second_per_core, total_time_ps,
+                          peak_gibibytes_per_second_per_core,
+                          peak_hbm_gibibytes_per_second_per_core, total_time_ps,
                           node);
   }
   SetTotalTime(total_time_ps, root_);

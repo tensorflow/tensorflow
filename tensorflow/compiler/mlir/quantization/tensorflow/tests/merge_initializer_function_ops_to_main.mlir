@@ -313,6 +313,42 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 
 // -----
 
+// Initializer function of type "restore_op" does not have the requirement
+// that the arguments should have no usages. This mlir snippet should not emit
+// an error.
+
+// CHECK-LABEL: module
+module attributes {tf_saved_model.semantics} {
+  "tf_saved_model.session_initializer"() {initializers = [@NoOp]} : () -> ()
+
+  func.func @NoOp(%arg: tensor<!tf_type.string> {tf_saved_model.index_path = ["file_prefix"]})
+    attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp"], tf_saved_model.initializer_type = "restore_op"} {
+    tf_executor.graph {
+      %out, %ctl = tf_executor.island wraps "tf.Const"() {value = dense<""> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
+      %out_0, %ctl_0 = tf_executor.island wraps "tf.Const"() {value = dense<"var_0"> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
+      %out_1, %ctl_1 = tf_executor.island wraps "tf.VarHandleOp"() {container = "", shared_name = "var_0", device = "/device:CPU:0"} : () -> tensor<!tf_type.resource<tensor<2xf32>>>
+      %out_2, %ctl_2 = tf_executor.island wraps "tf.RestoreV2"(%arg, %out_0, %out) {} : (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<2xf32>
+      %ctl_3 = tf_executor.island wraps "tf.AssignVariableOp"(%out_1, %out_2) : (tensor<!tf_type.resource<tensor<2xf32>>>, tensor<2xf32>) -> ()
+      tf_executor.fetch %ctl_2 : !tf_executor.control
+    }
+    return
+  }
+
+  func.func @main() attributes {tf.entry_function = {inputs = "", outputs = ""}, tf_saved_model.exported_names = ["main"]} {
+    tf_executor.graph {
+      tf_executor.fetch
+    }
+    return
+  }
+// Nothing happens to @main since the ops from "restore_op" are not added to @main.
+// CHECK: func.func @main()
+// CHECK-NEXT: tf_executor.graph
+// CHECK-NEXT: tf_executor.fetch
+// CHECK: return
+}
+
+// -----
+
 // @main function must exist in a valid input module for this pass.
 
 // expected-error @+1 {{Main function op not found.}}

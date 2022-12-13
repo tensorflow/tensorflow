@@ -14,9 +14,9 @@
  See the License for the specific language governing permissions and
  limitations under the License.
  *******************************************************************************
- 
+
 diff --git a/src/cpu/aarch64/acl_convolution_utils.cpp b/src/cpu/aarch64/acl_convolution_utils.cpp
-index 6a840b973..47a3a4a92 100644
+index fc93d2aa9..6ebac0d17 100644
 --- a/src/cpu/aarch64/acl_convolution_utils.cpp
 +++ b/src/cpu/aarch64/acl_convolution_utils.cpp
 @@ -54,10 +54,12 @@ status_t acl_init_conf(acl_conv_conf_t &acp, memory_desc_t &src_md,
@@ -73,7 +73,7 @@ index 6a840b973..47a3a4a92 100644
      acp.weights_info = arm_compute::WeightsInfo(
          false,
          kw,
-@@ -297,6 +311,10 @@ status_t init_conf_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
+@@ -302,6 +316,10 @@ status_t init_conf_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
          const primitive_attr_t &attr) {
      acp.is_indirect = false;
  
@@ -84,7 +84,7 @@ index 6a840b973..47a3a4a92 100644
      // General Compute Library checks, memory tags are also set there
      CHECK(acl_init_conf(acp, src_md, weights_md, dst_md, bias_md, cd, attr));
  
-@@ -325,7 +343,8 @@ status_t init_conf_indirect_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
+@@ -330,7 +348,8 @@ status_t init_conf_indirect_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
      auto math_mode = get_fpmath_mode();
      // Indirect convolution results in slowdown for low thread count or 1x1
      // kernels, so fall back to GEMM-based convolution in these cases
@@ -94,7 +94,7 @@ index 6a840b973..47a3a4a92 100644
                  weights_md.dims[3] == 1, // kw
                  (!math_mode && dnnl_get_max_threads() < 28))) {
          return status::unimplemented;
-@@ -350,6 +369,27 @@ status_t init_conf_indirect_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
+@@ -355,6 +374,27 @@ status_t init_conf_indirect_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
      return status::success;
  }
  
@@ -122,7 +122,7 @@ index 6a840b973..47a3a4a92 100644
  status_t init_conf_wino(acl_conv_conf_t &acp, memory_desc_t &src_md,
          memory_desc_t &weights_md, memory_desc_t &dst_md,
          memory_desc_t &bias_md, const convolution_desc_t &cd,
-@@ -359,7 +399,8 @@ status_t init_conf_wino(acl_conv_conf_t &acp, memory_desc_t &src_md,
+@@ -364,7 +404,8 @@ status_t init_conf_wino(acl_conv_conf_t &acp, memory_desc_t &src_md,
      // Under these conditions, fallback to faster GEMM-based convolution
      // unless the user explicitly specifies Winograd algorithm
      // clang-format off
@@ -217,10 +217,10 @@ index 000000000..1beb8b8af
 +}
 diff --git a/src/cpu/aarch64/acl_depthwise_convolution.hpp b/src/cpu/aarch64/acl_depthwise_convolution.hpp
 new file mode 100644
-index 000000000..97e0a3a30
+index 000000000..d84fc4fb5
 --- /dev/null
 +++ b/src/cpu/aarch64/acl_depthwise_convolution.hpp
-@@ -0,0 +1,137 @@
+@@ -0,0 +1,139 @@
 +/*******************************************************************************
 +* Copyright 2022 Arm Ltd. and affiliates
 +*
@@ -266,7 +266,9 @@ index 000000000..97e0a3a30
 +            &acl_obj_->wei_tensor,
 +            acp.with_bias ? &acl_obj_->bia_tensor : nullptr,
 +            &acl_obj_->dst_tensor,
-+            acp.padstride_info);
++            acp.padstride_info,
++            1, // depth multiplier default value
++            acp.act_info);
 +
 +        // clang-format on
 +        return status::success;

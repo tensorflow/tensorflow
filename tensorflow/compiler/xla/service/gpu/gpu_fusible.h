@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_FUSIBLE_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_FUSIBLE_H_
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 
 // TODO(b/112957171): Extract logic to determine fusibility of HLO ops from
@@ -53,6 +53,10 @@ struct FusionInfoCache {
   absl::flat_hash_map<const HloInstruction*, int64_t> shared_memory_usage;
   absl::flat_hash_map<const HloInstruction*, int64_t> num_unnested_reductions;
 };
+
+// Returns projected shared memory usage of a given instruction in bytes.
+int64_t SharedMemoryUsage(const HloInstruction& instr,
+                          FusionInfoCache* cache = nullptr);
 
 inline constexpr int64_t MaxOperandsAndOutputsPerFusion() { return 64; }
 

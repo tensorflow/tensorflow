@@ -172,6 +172,10 @@ tf_class {
     argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "build_from_config"
+    argspec: "args=[\'self\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "call"
     argspec: "args=[\'self\', \'inputs\', \'training\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
@@ -198,6 +202,10 @@ tf_class {
   member_method {
     name: "from_config"
     argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_build_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_config"

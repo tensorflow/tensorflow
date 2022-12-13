@@ -30,6 +30,8 @@ from tensorflow.python.autograph.pyct.static_analysis import activity
 
 FreeVar = collections.namedtuple("FreeVar", ["name", "is_function", "obj"])
 
+_fn_log_cache = dict()
+
 
 def _parse_and_analyze(func):
   """Parse and analyze Python Function code."""
@@ -256,10 +258,23 @@ def generate_free_var_logging(fn, fn_threshold=5, var_threshold=10):
     return None
   fn = _handle_wrap_partial_func(fn)
 
-  fn_vars_map = _detect_function_free_vars(fn)
+  if not (hasattr(fn, "__module__") and hasattr(fn, "__qualname__")):
+    return None
+  fn_key = (fn.__module__, fn.__qualname__)
+  # To prevent log spam, only generate logging once for each tf.function
+  if fn_key in _fn_log_cache:
+    return None
+
+  try:
+    fn_vars_map = _detect_function_free_vars(fn)
+  except Exception:  # pylint: disable=broad-except
+    # Only for logging purpose, do not raise errors to users
+    return None
+
   # If not free vars detected, return None
   if not fn_vars_map:
-    return None
+    _fn_log_cache[fn_key] = None
+    return _fn_log_cache[fn_key]
 
   logging_txt = []
   tf_fn_name = _make_callable_signature(fn)
@@ -276,8 +291,12 @@ def generate_free_var_logging(fn, fn_threshold=5, var_threshold=10):
 
   # Show the free vars info of the tf.function at the top
   fn_threshold -= 1
-  tf_fn_line = one_line_logging(tf_fn_name, fn_vars_map[tf_fn_name],
-                                var_threshold)
+  try:
+    tf_fn_line = one_line_logging(tf_fn_name, fn_vars_map[tf_fn_name],
+                                  var_threshold)
+  except Exception:  # pylint: disable=broad-except
+    # Only for logging purpose, do not raise error to users
+    return ""
 
   # Functions that are defined outside of tf.function
   outside_fn_lines = []
@@ -304,32 +323,7 @@ def generate_free_var_logging(fn, fn_threshold=5, var_threshold=10):
   logging_txt = [explanation_line, tf_fn_line] + outside_fn_lines
   if ellipsis_line:
     logging_txt.append(ellipsis_line)
+  logging_txt = "\n".join(logging_txt)
 
-  return "\n".join(logging_txt)
-
-
-class FreevarDetector():
-  """Generate logging string for free vars detection and cache results."""
-
-  def __init__(self):
-    self.cache = dict()
-
-  def logging_free_vars(self, fn):
-    """Return logging string for free vars detection."""
-    if not (hasattr(fn, "__module__") and hasattr(fn, "__qualname__")):
-      return None
-
-    fn_key = (fn.__module__, fn.__qualname__)
-
-    # To prevent log spam, only generate logging once for each function
-    if fn_key in self.cache:
-      return None
-
-    try:
-      logging_txt = generate_free_var_logging(fn)
-    except Exception:  # pylint: disable=broad-except
-      # Only for logging purpose, do not raise errors to users
-      logging_txt = None
-    self.cache[fn_key] = logging_txt
-
-    return self.cache[fn_key]
+  _fn_log_cache[fn_key] = logging_txt
+  return _fn_log_cache[fn_key]

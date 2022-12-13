@@ -243,7 +243,7 @@ constexpr DataTypeSet kAllTypes =
     ToSet(DT_BOOL) | ToSet(DT_QINT8) | ToSet(DT_QUINT8) | ToSet(DT_QINT16) |
     ToSet(DT_QUINT16) | ToSet(DT_QINT32) | ToSet(DT_HALF) | ToSet(DT_RESOURCE) |
     ToSet(DT_VARIANT) | ToSet(DT_UINT32) | ToSet(DT_UINT64) |
-    ToSet(DT_BFLOAT16);
+    ToSet(DT_BFLOAT16) | ToSet(DT_FLOAT8_E5M2) | ToSet(DT_FLOAT8_E4M3FN);
 inline const DataTypeSet& AllTypes() { return kAllTypes; }
 
 #if !defined(IS_MOBILE_PLATFORM) || defined(SUPPORT_SELECTIVE_REGISTRATION)
@@ -262,8 +262,8 @@ const DataTypeSet kNumberTypes =
     ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) | ToSet(DT_INT64) | ToSet(DT_INT32) |
     ToSet(DT_UINT8) | ToSet(DT_UINT16) | ToSet(DT_INT16) | ToSet(DT_INT8) |
     ToSet(DT_COMPLEX64) | ToSet(DT_COMPLEX128) | ToSet(DT_QINT8) |
-    ToSet(DT_QUINT8) | ToSet(DT_QINT32) | ToSet(DT_HALF) | ToSet(DT_UINT32) |
-    ToSet(DT_UINT64) | ToSet(DT_BFLOAT16);
+    ToSet(DT_QUINT8) | ToSet(DT_QINT16) | ToSet(DT_QUINT16) | ToSet(DT_QINT32) |
+    ToSet(DT_HALF) | ToSet(DT_UINT32) | ToSet(DT_UINT64) | ToSet(DT_BFLOAT16);
 inline const DataTypeSet& NumberTypes() { return kNumberTypes; }
 
 constexpr DataTypeSet kQuantizedTypes = ToSet(DT_QINT8) | ToSet(DT_QUINT8) |
@@ -377,6 +377,8 @@ MATCH_TYPE_AND_ENUM(quint16, DT_QUINT16);
 MATCH_TYPE_AND_ENUM(qint32, DT_QINT32);
 MATCH_TYPE_AND_ENUM(bfloat16, DT_BFLOAT16);
 MATCH_TYPE_AND_ENUM(Eigen::half, DT_HALF);
+MATCH_TYPE_AND_ENUM(float8_e5m2, DT_FLOAT8_E5M2);
+MATCH_TYPE_AND_ENUM(float8_e4m3fn, DT_FLOAT8_E4M3FN);
 MATCH_TYPE_AND_ENUM(ResourceHandle, DT_RESOURCE);
 MATCH_TYPE_AND_ENUM(Variant, DT_VARIANT);
 
@@ -453,14 +455,16 @@ constexpr DataTypeSet kDataTypesCanUseMemcpy =
     ToSet(DT_COMPLEX64) | ToSet(DT_COMPLEX128) | ToSet(DT_INT64) |
     ToSet(DT_UINT64) | ToSet(DT_BOOL) | ToSet(DT_QINT8) | ToSet(DT_QUINT8) |
     ToSet(DT_QINT16) | ToSet(DT_QUINT16) | ToSet(DT_QINT32) |
-    ToSet(DT_BFLOAT16) | ToSet(DT_HALF);
+    ToSet(DT_BFLOAT16) | ToSet(DT_HALF) | ToSet(DT_FLOAT8_E5M2) |
+    ToSet(DT_FLOAT8_E4M3FN);
 inline bool DataTypeCanUseMemcpy(DataType dt) {
   return kDataTypesCanUseMemcpy.Contains(dt);
 }
 
 // Returns true iff 'dt' is a real, non-quantized floating point type.
 constexpr DataTypeSet kDataTypeIsFloating =
-    ToSet(DT_HALF) | ToSet(DT_BFLOAT16) | ToSet(DT_FLOAT) | ToSet(DT_DOUBLE);
+    ToSet(DT_HALF) | ToSet(DT_BFLOAT16) | ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) |
+    ToSet(DT_FLOAT8_E4M3FN) | ToSet(DT_FLOAT8_E5M2);
 inline bool DataTypeIsFloating(DataType dt) {
   return kDataTypeIsFloating.Contains(dt);
 }

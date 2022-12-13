@@ -461,7 +461,7 @@ class DistributedVariableTraceType(trace.TraceType):
   def most_specific_common_supertype(self, others):
     return self if all(self == other for other in others) else None
 
-  def _placeholder_value(self):
+  def _placeholder_value(self, placeholder_context):
     return self.distributed_variable
 
   def __hash__(self) -> int:
@@ -997,27 +997,39 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
       return ops.convert_to_tensor(
           self._get(), dtype=dtype, name=name, as_ref=as_ref)
 
-  def _map_resources(self, save_options):
-    """For implementing `Trackable`."""
+  def _export_to_saved_model_graph(self,
+                                   object_map=None,
+                                   tensor_map=None,
+                                   options=None,
+                                   **kwargs):
     # Initialize for self._primary first, so that obj_map[self._primary] and
     # resource_map[self._primary.handle] contain mapped values.
-    obj_map, resource_map = self._primary._map_resources(save_options)  # pylint:disable=protected-access
+    resource_list = self._primary._export_to_saved_model_graph(  # pylint:disable=protected-access
+        object_map=object_map,
+        tensor_map=tensor_map,
+        options=options,
+        **kwargs)
     for v in [v for v in self._values if v != self._primary]:
-
-      if (save_options.experimental_variable_policy  # pylint:disable=protected-access
+      if (options.experimental_variable_policy  # pylint:disable=protected-access
           ._expand_distributed_variables()):
-        v_obj_map, v_resource_map = v._map_resources(save_options)  # pylint:disable=protected-access
-        obj_map.update(v_obj_map)
-        resource_map.update(v_resource_map)
+        resource_list.extend(
+            v._export_to_saved_model_graph(  # pylint:disable=protected-access
+                object_map=object_map,
+                tensor_map=tensor_map,
+                options=options,
+                **kwargs))  # pylint:disable=protected-access
       else:
-        obj_map[v] = obj_map[self._primary]
-        resource_map[v.handle] = resource_map[self._primary.handle]
-    obj_map[self] = obj_map[self._primary]
-    resource_map[self] = resource_map[self._primary.handle]
+        object_map[v] = object_map[self._primary]
+        tensor_map[v.handle] = tensor_map[self._primary.handle]
+        resource_list.append(v.handle)
+    object_map[self] = object_map[self._primary]
+    tensor_map[self] = tensor_map[self._primary.handle]
+    resource_list.append(self)
     if self._packed_var is not None:
-      resource_map[self._packed_var.packed_handle] = resource_map[
+      tensor_map[self._packed_var.packed_handle] = tensor_map[
           self._primary.handle]
-    return obj_map, resource_map
+      resource_list.append(self._packed_var.packed_handle)
+    return resource_list
 
   def _write_object_proto(self, proto, options):
     """Update a SavedObject proto for the caller.

@@ -27,13 +27,12 @@ limitations under the License.
 #include <fstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_tpu.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/libtftpu.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/pjrt_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api_dlsym_set_fn.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
@@ -173,14 +172,14 @@ stream_executor::port::Status TryAcquireTpuLock() {
       auto pid = FindLibtpuProcess();
       if (pid.ok()) {
         return tsl::errors::Aborted(absl::StrCat(
-            "libtpu.so is already in use by process with pid ", pid.value(),
+            "The TPU is already in use by process with pid ", pid.value(),
             ". Not attempting to load libtpu.so in this process."));
       } else {
         return tsl::errors::Aborted(
-            "libtpu.so already in use by another process probably owned by "
+            "The TPU is already in use by another process probably owned by "
             "another user. Run \"$ sudo lsof -w /dev/accel0\" to figure out "
-            "which process is using the TPU. Not attempting to load "
-            "libtpu.so in this process.");
+            "which process is using the TPU. If you still get this message, "
+            "run \"$ sudo rm /tmp/libtpu_lockfile\".");
       }
     } else {
       return ::tsl::OkStatus();
@@ -216,18 +215,6 @@ stream_executor::port::Status InitializeTpuLibrary(void* library_handle) {
   }
 
   return s;
-}
-
-typedef const PJRT_Api* (*PjRtFuncPtr)();
-void InitializePjRt(void* library_handle) {
-  PjRtFuncPtr fptr = &GetTpuPjrtApi;
-  *reinterpret_cast<void**>(&fptr) = dlsym(library_handle, "GetTpuPjrtApi");
-  if (fptr == nullptr) {
-    LOG(INFO) << "GetTpuPjrtApi not found";
-  } else {
-    LOG(INFO) << "GetTpuPjrtApi was found";
-    tensorflow::tpu::SetPjrtApi(fptr());
-  }
 }
 
 namespace {
@@ -267,6 +254,9 @@ void InitializeCreateGcsFileSystemFnPtr() {
   });
 }
 }  // namespace
+
+// TODO(b/261484192): refactor this function to align with supporting different
+// PJRT plugins.
 stream_executor::port::Status FindAndLoadTpuLibrary() {
   const char* env_value = getenv("TPU_LIBRARY_PATH");
   const char* libtpu_path =
@@ -278,7 +268,6 @@ stream_executor::port::Status FindAndLoadTpuLibrary() {
     // Try to acquire exclusive access.
     TF_RETURN_IF_ERROR(TryAcquireTpuLock());
     TF_RETURN_IF_ERROR(InitializeTpuLibrary(library));
-    InitializePjRt(library);
   }
 
   InitializeCreateGcsFileSystemFnPtr();

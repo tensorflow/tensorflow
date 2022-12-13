@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/tsl/distributed_runtime/rpc/grpc_util.h"
 
+#include <algorithm>
+#include <limits>
+#include <vector>
+
+#include "grpcpp/impl/codegen/proto_utils.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/random.h"
 
 namespace tsl {
@@ -68,5 +74,54 @@ int64_t ComputeBackoffMicroseconds(int current_retry_attempt, int64_t min_delay,
       GenerateUniformRandomNumberBetween(1.0 - kBackoffRandMult, 1.0);
 
   return std::max(static_cast<int64_t>(first_term + second_term), min_delay);
+}
+
+::grpc::Status GrpcMaybeUnparseProto(const protobuf::Message& src,
+                                     grpc::ByteBuffer* dst) {
+  bool own_buffer;
+  return ::grpc::GenericSerialize<::grpc::ProtoBufferWriter,
+                                  protobuf::Message>(src, dst, &own_buffer);
+}
+
+bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, protobuf::Message* dst) {
+  ::grpc::ProtoBufferReader reader(src);
+  return dst->ParseFromZeroCopyStream(&reader);
+}
+
+// GrpcMaybeUnparseProto from a string simply copies the string to the
+// ByteBuffer.
+::grpc::Status GrpcMaybeUnparseProto(const string& src, grpc::ByteBuffer* dst) {
+  ::grpc::Slice s(src.data(), src.size());
+  ::grpc::ByteBuffer buffer(&s, 1);
+  dst->Swap(&buffer);
+  return ::grpc::Status::OK;
+}
+
+// GrpcMaybeParseProto simply copies bytes into the string.
+bool GrpcMaybeParseProto(grpc::ByteBuffer* src, string* dst) {
+  dst->clear();
+  dst->reserve(src->Length());
+  std::vector<::grpc::Slice> slices;
+  if (!src->Dump(&slices).ok()) {
+    return false;
+  }
+  for (const ::grpc::Slice& s : slices) {
+    dst->append(reinterpret_cast<const char*>(s.begin()), s.size());
+  }
+  return true;
+}
+
+// GrpcMaybeParseProto simply copies bytes into the tstring.
+bool GrpcMaybeParseProto(grpc::ByteBuffer* src, tstring* dst) {
+  dst->clear();
+  dst->reserve(src->Length());
+  std::vector<::grpc::Slice> slices;
+  if (!src->Dump(&slices).ok()) {
+    return false;
+  }
+  for (const ::grpc::Slice& s : slices) {
+    dst->append(reinterpret_cast<const char*>(s.begin()), s.size());
+  }
+  return true;
 }
 }  // namespace tsl

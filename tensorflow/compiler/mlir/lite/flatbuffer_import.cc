@@ -72,6 +72,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
@@ -110,6 +111,9 @@ namespace errors = tensorflow::errors;
 namespace tfl = mlir::TFL;
 
 namespace {
+
+using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
+using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 
 bool IsQuantized(const TensorT& tensor) {
   return (tensor.quantization != nullptr) &&
@@ -849,7 +853,10 @@ StatusOr<Operation*> ConvertOp(
 
       mlir::SmallVector<mlir::Attribute, 4> shape;
       for (auto s : new_shape) {
-        shape.push_back(builder.getI32IntegerAttr(static_cast<int32_t>(s)));
+        // TODO(b/259719789): clean up dynamic shape check (e.g. into a
+        // discrete function) once bug is completely fixed.
+        shape.push_back(builder.getI32IntegerAttr(
+            mlir::ShapedType::isDynamic(s) ? -1 : static_cast<int32_t>(s)));
       }
       auto output_shape = DenseElementsAttr::get(shape_type, shape);
       auto shape_op = builder.create<tfl::ConstOp>(loc, output_shape);
@@ -907,8 +914,11 @@ StatusOr<Operation*> ConvertOp(
         for (const auto& dim :
              llvm::enumerate(shape_attr.getValues<llvm::APInt>())) {
           const int64_t size = dim.value().getSExtValue();
-          shape.push_back(
-              builder.getI32IntegerAttr(static_cast<int32_t>(size)));
+          // TODO(b/259719789): clean up dynamic shape check (e.g. into a
+          // discrete function) once bug is completely fixed.
+          shape.push_back(builder.getI32IntegerAttr(
+              mlir::ShapedType::isDynamic(size) ? -1
+                                                : static_cast<int32_t>(size)));
           ++dim_size;
         }
         auto shape_type = tensorflow::GetTypeFromTFTensorShape(
@@ -1077,8 +1087,8 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
         builder.setInsertionPointAfter(cst.getOperation());
         auto new_op = builder.create<tfl::QConstOp>(
             cst.getLoc(), new_output_type, mlir::TypeAttr::get(new_output_type),
-            cst.valueAttr());
-        full_range_const = new_op.output();
+            cst.getValueAttr());
+        full_range_const = new_op.getOutput();
       }
       use.set(full_range_const);
     }
@@ -1118,8 +1128,6 @@ void SetSignature(
     FuncOp func, const tflite::SignatureDefT* signature,
     const std::vector<std::unique_ptr<tflite::TensorT>>& tensors) {
   auto* context = func->getContext();
-  static const char kSignatureDefIndexPath[] = "tf_saved_model.index_path";
-  static const char kExportedNameAttr[] = "tf_saved_model.exported_names";
   static const char kEntryFunctionAttributes[] = "tf.entry_function";
 
   auto dict_attr =
@@ -1140,7 +1148,7 @@ void SetSignature(
       return;
     }
     func.setArgAttr(
-        arg_index, kSignatureDefIndexPath,
+        arg_index, kTfSavedModelIndexPathAttr,
         mlir::ArrayAttr::get(context, {mlir::StringAttr::get(
                                           context, input_pair.value()->name)}));
   }
@@ -1155,14 +1163,14 @@ void SetSignature(
       func->emitWarning("Invalid signature tensors specified.");
       return;
     }
-    func.setResultAttr(arg_index, kSignatureDefIndexPath,
+    func.setResultAttr(arg_index, kTfSavedModelIndexPathAttr,
                        mlir::ArrayAttr::get(
                            context, {mlir::StringAttr::get(
                                         context, output_pair.value()->name)}));
     seen_indices.insert(arg_index);
   }
   func->setAttr(
-      kExportedNameAttr,
+      kTfSavedModelExportedNamesAttr,
       mlir::ArrayAttr::get(
           context, {mlir::StringAttr::get(context, signature->signature_key)}));
 }
@@ -1220,7 +1228,7 @@ mlir::ResultRange MaybeWrapInControlNode(mlir::Operation* op,
   auto ctrl_op = op_builder.create<mlir::TFL::ControlNodeOp>(
       op_loc, cloned_op->getResultTypes(),
       mlir::TFL::ControlType::get(op->getContext()), control_tokens);
-  ctrl_op.body().takeBody(region);
+  ctrl_op.getBody().takeBody(region);
 
   // Store the control_token output for use by downstream nodes.
   maybe_control_node->second.outgoing = ctrl_op.getControl();
@@ -1512,11 +1520,11 @@ void AddRegionsForTflWhileOp(mlir::ModuleOp module) {
   module.walk([&](mlir::TFL::WhileOp while_op) {
     auto cond = symbol_table.lookup<mlir::func::FuncOp>(
         while_op->getAttr("cond").cast<mlir::FlatSymbolRefAttr>().getValue());
-    AddCallOpInWhileOpRegion(while_op.cond(), cond);
+    AddCallOpInWhileOpRegion(while_op.getCond(), cond);
     while_op->removeAttr("cond");
     auto body = symbol_table.lookup<mlir::func::FuncOp>(
         while_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
-    AddCallOpInWhileOpRegion(while_op.body(), body);
+    AddCallOpInWhileOpRegion(while_op.getBody(), body);
     while_op->removeAttr("body");
   });
 }

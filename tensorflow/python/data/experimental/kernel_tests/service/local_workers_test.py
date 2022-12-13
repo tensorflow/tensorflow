@@ -24,6 +24,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 
+import multiprocessing
 
 class LocalWorkersTest(data_service_test_base.TestBase, parameterized.TestCase):
   """Tests reading from local workers if `target_workers` is `local`."""
@@ -134,7 +135,12 @@ class LocalWorkersTest(data_service_test_base.TestBase, parameterized.TestCase):
     cluster = multi_process_cluster.MultiProcessCluster(
         num_local_workers=num_local_workers,
         num_remote_workers=num_remote_workers)
-    num_elements = 300
+    # Because the elements in datasets are prefetched one per
+    # CPU core, a static number here may be excessively large
+    # for small numbers of CPU cores, or too small for high
+    # CPU core count machines, or probably both.
+    # In this case the below formula should satisfy both needs.
+    num_elements = 50 + (multiprocessing.cpu_count() * 2)
     num_consumers = 8
     iterators = []
     for _ in range(num_consumers):

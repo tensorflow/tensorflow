@@ -21,7 +21,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <memory>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 
 #include "absl/container/flat_hash_set.h"
@@ -74,7 +76,7 @@ constexpr absl::string_view QuantTraitValues[] = {"fully_quantizable",
 
 constexpr double kNearZeroTolerance = 1.0e-6;
 
-using QuantParams = mlir::quant::QuantizedType;
+using QuantParams = QuantizedType;
 using QuantSpec = QuantizationSpecs;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
 using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
@@ -107,16 +109,21 @@ struct OpQuantSpec {
   llvm::DenseMap<SignedInteger, QuantParamsForResults> restricted_output_params;
 
   // Coefficient operand index and whether supporting per-channel quantization.
-  // For QAT, this information is carried by the FakeQuant*/QDQ ops, but
-  // post-training quantization, the quantization parameters need to be inferred
-  // from the tensor content and op property. A "-1" value indicates the
-  // operand doesn't support per-channel quantization.
+  // For QAT, this information is carried by the FakeQuant*/Quantize/Dequantize
+  // ops, but post-training quantization, the quantization parameters need to be
+  // inferred from the tensor content and op property. A "-1" value indicates
+  // the operand doesn't support per-channel quantization.
   llvm::DenseMap<int, int> coeff_op_quant_dim;
 
   // Indices of quantizable operands. Biases are not included in this field,
   // the indices of biases can be found in the `biases_params`.
   absl::flat_hash_set<int> quantizable_operands;
 };
+
+// A function signature for getting the particular OpQuantSpec for the provided
+// op.
+using OpQuantSpecGetter =
+    std::function<std::unique_ptr<OpQuantSpec>(Operation*)>;
 
 // Quantization scale spec of an op. The information defined in the MLIR
 // interfaces FixedOutputRangeInterface and SameOperandsAndResultsScale should
@@ -136,6 +143,11 @@ struct OpQuantScaleSpec {
     return true;
   };
 };
+
+// A function signature for getting the particular OpQuantScaleSpec for the
+// provided op.
+using OpQuantScaleSpecGetter =
+    std::function<std::unique_ptr<OpQuantScaleSpec>(Operation*)>;
 
 // Used in TFL Numeric Verify
 struct NumericVerifySpec {
@@ -162,14 +174,6 @@ struct QuantPassSpec {
   QuantSpec quant_spec;
 };
 
-// A function signature for getting the particular OpQuantSpec for the provided
-// op.
-typedef std::unique_ptr<OpQuantSpec> (*OpQuantSpecGetter)(Operation* op);
-// A function signature for getting the particular OpQuantScaleSpec for the
-// provided op.
-typedef std::unique_ptr<OpQuantScaleSpec> (*OpQuantScaleSpecGetter)(
-    Operation* op);
-
 // Re-calculates scales again in float instead of simply downcasting existing
 // scales.
 quant::QuantizedType DownCastScale(quant::QuantizedType type,
@@ -190,7 +194,7 @@ inline std::string GetTensorNameFromLoc(Location loc) {
   return "";
 }
 
-template <typename Q, typename DQ>
+template <typename QuantizeOpT, typename DequantizeOpT>
 struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
   ConvertStatsToQDQs(int num_bits, bool narrow_range, bool is_signed,
                      bool legacy_float_scale, MLIRContext* context)
@@ -253,10 +257,11 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
 
     rewriter.setInsertionPointAfter(op.getOperation());
     Type result_type = quant_type.castFromExpressedType(op.getType());
-    auto q = rewriter.create<Q>(op.getLoc(), result_type, op.getArg());
+    auto q =
+        rewriter.create<QuantizeOpT>(op.getLoc(), result_type, op.getArg());
     q->setAttr(kVolatileOpAttrName, rewriter.getUnitAttr());
 
-    auto dq = rewriter.create<DQ>(op.getLoc(), op.getType(), q);
+    auto dq = rewriter.create<DequantizeOpT>(op.getLoc(), op.getType(), q);
     op.getResult().replaceAllUsesWith(dq);
     q.getOperation()->replaceUsesOfWith(dq, op.getArg());
     op.erase();
@@ -330,8 +335,8 @@ inline void CreateVerifier<void>(Operation* quantizing_op,
 
 // A base rewrite pattern which matches any N-in-M-out operations with
 // quantization parameters propagated to at least one of its operands. The
-// quantization parameters are annotated by the Q/DQ op pairs. Each
-// matched pattern are rewritten by its quantized alternatives.
+// quantization parameters are annotated by the QuantizeOp/DequantizeOp pairs.
+// Each matched pattern are rewritten by its quantized alternatives.
 //
 // The concrete pattern, extends from this base pattern, can specify whether it
 // allows dynamic range quantized operands and results for the operations in the
@@ -346,16 +351,17 @@ inline void CreateVerifier<void>(Operation* quantizing_op,
 // Full integer quantization disallows "DynamicRangeQuantized" operands or
 // results. Dynamic range quantization allows "DynamicRangeQuantized" operands
 // and results.
-template <typename ConcretTy, typename Q, typename DQ, typename VERIFIER,
-          typename RootOp = DQ>
+template <typename ConcreteT, typename QuantizeOpT, typename DequantizeOpT,
+          typename VerifierT, typename RootOpT = DequantizeOpT>
 class QuantizationPattern : public RewritePattern {
  public:
-  using BaseType = QuantizationPattern<ConcretTy, Q, DQ, VERIFIER, RootOp>;
+  using BaseType = QuantizationPattern<ConcreteT, QuantizeOpT, DequantizeOpT,
+                                       VerifierT, RootOpT>;
 
   explicit QuantizationPattern(MLIRContext* context,
                                const QuantPassSpec& quant_params)
       // Set the score to a large number so it is always preferred.
-      : RewritePattern(RootOp::getOperationName(), 300, context),
+      : RewritePattern(RootOpT::getOperationName(), 300, context),
         quant_params_(quant_params) {}
 
   LogicalResult matchAndRewrite(Operation* op,
@@ -363,24 +369,25 @@ class QuantizationPattern : public RewritePattern {
     llvm::SmallVector<Operation*, 4> quantizing_ops;
 
     // Collect all the ops to quantize, as the user / producer of the root op.
-    if (std::is_same<RootOp, DQ>::value) {
+    if constexpr (std::is_same_v<RootOpT, DequantizeOpT>) {
       if (op->getNumResults() != 1) {
         return failure();
       }
       auto users = op->getResult(0).getUsers();
       quantizing_ops.append(users.begin(), users.end());
-    } else if (std::is_same<RootOp, Q>::value) {
+    } else if constexpr (std::is_same_v<RootOpT, QuantizeOpT>) {
       if (op->getNumOperands() != 1) {
         return failure();
       }
       Value quantize_operand = op->getOperand(0);
       if (QuantizedType::getQuantizedElementType(quantize_operand.getType())) {
-        // The input of this Q op has already been quantized, i.e. rescale.
+        // The input of this QuantizeOp has already been quantized, i.e.
+        // rescale.
         return failure();
       }
       DenseFPElementsAttr attr;
       if (matchPattern(quantize_operand, m_Constant(&attr))) {
-        // Const->Q pattern will be handled separately.
+        // Const-> QuantizeOp pattern will be handled separately.
         return failure();
       }
       if (Operation* quantizing_op = quantize_operand.getDefiningOp()) {
@@ -403,7 +410,7 @@ class QuantizationPattern : public RewritePattern {
     // preceding dequantize ops and succeding quantize ops.
     for (Operation* quantizing_op : quantizing_ops) {
       // If it is requantize op, we shouldn't rewrite this op.
-      if (llvm::isa<Q, DQ>(quantizing_op)) {
+      if (llvm::isa<QuantizeOpT, DequantizeOpT>(quantizing_op)) {
         return failure();
       }
 
@@ -416,7 +423,7 @@ class QuantizationPattern : public RewritePattern {
       }
 
       if (IsOpNotQuantizable(quantizing_op) &&
-          !static_cast<const ConcretTy*>(this)->IsQuantizableCustomOp(
+          !static_cast<const ConcreteT*>(this)->IsQuantizableCustomOp(
               quantizing_op, custom_map)) {
         if (!(enable_verify && enable_whole_model_verify)) {
           return failure();
@@ -455,7 +462,7 @@ class QuantizationPattern : public RewritePattern {
 
       // An op with float inputs and outputs are expected when it's used by a
       // NumericVerify op. Skip this op.
-      if (enable_verify && UsedBy<VERIFIER>(quantizing_op)) {
+      if (enable_verify && UsedBy<VerifierT>(quantizing_op)) {
         continue;
       }
 
@@ -471,17 +478,17 @@ class QuantizationPattern : public RewritePattern {
         }
 
         auto ele_type = operand.getType().cast<TensorType>().getElementType();
-        if (static_cast<const ConcretTy*>(this)
+        if (static_cast<const ConcreteT*>(this)
                 ->AllowDynamicRangeQuantizedOperand(quantizing_op,
                                                     custom_map)) {
-          auto dq_op = dyn_cast_or_null<DQ>(operand.getDefiningOp());
+          auto dq_op = dyn_cast_or_null<DequantizeOpT>(operand.getDefiningOp());
 
           if (dq_op && inference_type == tensorflow::DT_QINT8 &&
-              !static_cast<const ConcretTy*>(this)->IsWeightOnlyOp(
+              !static_cast<const ConcreteT*>(this)->IsWeightOnlyOp(
                   quantizing_op, ops_blocklist, weight_only_quantization,
                   custom_map)) {
-            // Dynamic range quantization is applied by having Q as an input.
-            // Only int8 weight is supported for now.
+            // Dynamic range quantization is applied by having QuantizeOp as an
+            // input. Only int8 weight is supported for now.
             inputs.push_back(dq_op.getOperand());
           } else {
             // Otherwise, it's the case where the operand is activations or the
@@ -489,11 +496,12 @@ class QuantizationPattern : public RewritePattern {
             inputs.push_back(operand);
           }
         } else {
-          if (auto dq_op = dyn_cast_or_null<DQ>(operand.getDefiningOp())) {
+          if (auto dq_op =
+                  dyn_cast_or_null<DequantizeOpT>(operand.getDefiningOp())) {
             inputs.push_back(dq_op.getOperand());
           } else if (!ele_type.isF32()) {
             // If the operand is an integer tensor, then it doesn't require the
-            // DQ op in the pattern.
+            // DequantizeOp in the pattern.
             inputs.push_back(operand);
           } else {
             return failure();
@@ -519,9 +527,10 @@ class QuantizationPattern : public RewritePattern {
         }
         Type result_ele_type =
             result.getType().cast<TensorType>().getElementType();
-        // If the user is the Quantize op, it must be the only user.
-        if (result.hasOneUse() && llvm::isa<Q>(*result.user_begin())) {
-          auto user = llvm::cast<Q>(*result.user_begin());
+        // If the user is the QuantizeOp, it must be the only user.
+        if (result.hasOneUse() &&
+            llvm::isa<QuantizeOpT>(*result.user_begin())) {
+          auto user = llvm::cast<QuantizeOpT>(*result.user_begin());
           outputs_replaced.insert(
               {user.getResult(), enumerated_result.index()});
           output_types.push_back(user.getType());
@@ -530,7 +539,7 @@ class QuantizationPattern : public RewritePattern {
           // D op in the pattern.
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());
-        } else if (static_cast<const ConcretTy*>(this)
+        } else if (static_cast<const ConcreteT*>(this)
                        ->AllowDynamicRangeQuantizedResult(quantizing_op,
                                                           custom_map)) {
           outputs_replaced.insert({result, enumerated_result.index()});
@@ -565,12 +574,12 @@ class QuantizationPattern : public RewritePattern {
       // To verify the numericals, the original floating-point ops are
       // preserved in the graph. The result of these floating-point ops are sent
       // to a numeric verifier op as the reference.
-      if (enable_verify && !std::is_same<VERIFIER, void>()) {
+      if (enable_verify && !std::is_same_v<VerifierT, void>) {
         // For constant operands, the floating-point constant is duplicated in
         // case it is quantized.
         for (int i = 0, e = quantized_op->getNumOperands(); i < e; ++i) {
           auto def = quantized_op->getOperand(i).getDefiningOp();
-          if (auto q = llvm::dyn_cast_or_null<Q>(def)) {
+          if (auto q = llvm::dyn_cast_or_null<QuantizeOpT>(def)) {
             DenseFPElementsAttr attr;
             if (!matchPattern(q.getOperand(), m_Constant(&attr))) {
               continue;
@@ -589,8 +598,8 @@ class QuantizationPattern : public RewritePattern {
                    .isa<FloatType>()) {
             continue;
           }
-          CreateVerifier<VERIFIER>(quantizing_op, quantized_op, rewriter, i,
-                                   quant_params_);
+          CreateVerifier<VerifierT>(quantizing_op, quantized_op, rewriter, i,
+                                    quant_params_);
 
           if (enable_whole_model_verify) {
             RewireFloatModelBackbone(quantized_op, quantizing_op);
@@ -623,7 +632,7 @@ class QuantizationPattern : public RewritePattern {
       if (IsOpNotQuantizable(float_op)) {
         // For not quantizable ops, search for dequantize attached to the
         // quantized op of the output.
-        if (Operation* quantize_op = dyn_cast_or_null<Q>(
+        if (Operation* quantize_op = dyn_cast_or_null<QuantizeOpT>(
                 *quantized_op->getResult(i).getUsers().begin())) {
           result = quantize_op->getResult(0);
         } else {
@@ -638,12 +647,12 @@ class QuantizationPattern : public RewritePattern {
       for (auto user : result.getUsers()) {
         // Skip the Requantize op and set the user to the following dequantize
         // op. This happens when the quantizer tries to match the scale conflict
-        // with Q - Q(requant) - DQ op triples. The correct float op should be
-        // the user of the last DQ op.
-        if (llvm::isa<Q>(user)) {
+        // with QuantizeOp - QuantizeOp(requant) - DequantizeOp triples. The
+        // correct float op should be the user of the last DequantizeOp.
+        if (llvm::isa<QuantizeOpT>(user)) {
           user = *user->getResult(0).getUsers().begin();
         }
-        if (auto dequantize = llvm::dyn_cast<DQ>(user)) {
+        if (auto dequantize = llvm::dyn_cast<DequantizeOpT>(user)) {
           // Replace all uses, except not quantizable ops that are being used in
           // the float backbone.
           dequantize.getResult().replaceUsesWithIf(
@@ -674,15 +683,15 @@ Type ConvertSignedQuantizedToUnsigned(Type signed_tensor_type, Location loc);
 
 // Converts quantize ops with unsigned quantized types to these with signed
 // quantized types and preserves the scales.
-template <typename Q>
-struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
-  using BaseType = ConvertUnsignedToSigned<Q>;
+template <typename QuantizeOpT>
+struct ConvertUnsignedToSigned : public OpRewritePattern<QuantizeOpT> {
+  using BaseType = ConvertUnsignedToSigned<QuantizeOpT>;
   using QType = quant::QuantizedType;
 
   explicit ConvertUnsignedToSigned(MLIRContext* context)
-      : OpRewritePattern<Q>(context, 1) {}
+      : OpRewritePattern<QuantizeOpT>(context, 1) {}
 
-  LogicalResult matchAndRewrite(Q op,
+  LogicalResult matchAndRewrite(QuantizeOpT op,
                                 PatternRewriter& rewriter) const override {
     Type output_type = op.getResult().getType();
     auto qtype = QType::getQuantizedElementType(output_type);
@@ -728,18 +737,18 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
     if (!new_qtype) return failure();
     Type new_output_type = new_qtype.castFromExpressedType(
         QType::castToExpressedType(output_type));
-    rewriter.replaceOpWithNewOp<Q>(op, new_output_type, op.getArg());
+    rewriter.replaceOpWithNewOp<QuantizeOpT>(op, new_output_type, op.getArg());
     return success();
   }
 };
 
 // Fold Extra Requantize ops if the preceding ops has free scale requirement.
-template <typename RQ>
-struct FoldTrivalRequantizeOp : public OpRewritePattern<RQ> {
+template <typename RequantizeOpT>
+struct FoldTrivalRequantizeOp : public OpRewritePattern<RequantizeOpT> {
   explicit FoldTrivalRequantizeOp(MLIRContext* context)
-      : OpRewritePattern<RQ>(context, 1) {}
+      : OpRewritePattern<RequantizeOpT>(context, 1) {}
 
-  LogicalResult matchAndRewrite(RQ op,
+  LogicalResult matchAndRewrite(RequantizeOpT op,
                                 PatternRewriter& rewriter) const override {
     Value pre_quantized = op->getOperand(0);
     auto pre_quantized_type =

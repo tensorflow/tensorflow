@@ -9,13 +9,17 @@ load(
     "tf_proto_library",
 )
 load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
+load(
     "//tensorflow:tensorflow.bzl",
-    "if_cuda_or_rocm",
     "tf_cuda_library",
     "tf_cuda_only_cc_test",
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:__subpackages__"],
     features = ["-layering_check"],
     licenses = ["notice"],
@@ -68,7 +72,9 @@ cc_library(
         "conv_autotune_maps.h",
         "conv_parameters.h",
     ],
-    visibility = ["//tensorflow/core/kernels:__pkg__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 tf_cuda_library(
@@ -78,7 +84,6 @@ tf_cuda_library(
         "conv_parameters.h",
     ],
     deps = [
-        ":autotune_maps_utils",
         ":conv_parameters_proto_cc",
         "//tensorflow/core/platform:hash",
         "//tensorflow/core/platform:protobuf",
@@ -86,26 +91,6 @@ tf_cuda_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
     ],
-)
-
-tf_cuda_library(
-    name = "autotune_maps_utils",
-    srcs = ["autotune_maps_utils.cc"],
-    hdrs = ["autotune_maps_utils.h"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
-    deps = [
-        "@com_google_absl//absl/strings:str_format",
-        "//tensorflow/core/platform:protobuf",
-        "//tensorflow/core/platform:hash",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:statusor",
-    ] + if_cuda_or_rocm(
-        [
-            "//tensorflow/compiler/xla/stream_executor/gpu:gpu_driver_header",
-        ],
-    ),
 )
 
 tf_proto_library(
@@ -142,13 +127,14 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":autotune_map_proto_cc",
-        ":autotune_maps_utils",
         ":conv_autotune_maps",
         ":conv_parameters",
         ":conv_parameters_proto_cc",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
         "//tensorflow/compiler/xla/stream_executor:lazy_op_runner",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stream_executor",
@@ -166,6 +152,7 @@ tf_cuda_only_cc_test(
         ":conv_parameters",
         ":conv_parameters_proto_cc",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_driver_header",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",

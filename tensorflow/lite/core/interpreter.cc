@@ -329,8 +329,7 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
   // by default, in which case, the execution will fall back to default
   // implementation if the XNNPACK delegate fails to be applied.
   for (size_t i = 0; i < delegate_providers.size(); ++i) {
-    auto delegate_ptr =
-        delegate_providers[i](context_->recommended_num_threads);
+    auto delegate_ptr = delegate_providers[i](context_);
     // Note when XNNPACK-by-default is disabled, the corresponding creator (i.e.
     // tflite::MaybeCreateXNNPACKDelegate(...)) will return a nullptr.
     // Therefore, we simply continue with the next one.

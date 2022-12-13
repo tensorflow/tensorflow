@@ -97,13 +97,15 @@ template <typename T>
 void TransposeImpl(const int depth, const int dims, const int32_t* perm,
                    const T* input_data, const int* input_stride, T* output_data,
                    const int* output_stride, const int32_t* output_shape) {
+  const int dimension_size = output_shape[depth];
   if (depth == dims - 1) {
-    for (int i = 0; i < output_shape[depth]; ++i) {
+    const int loop_stride = input_stride[perm[depth]];
+    for (int i = 0; i < dimension_size; ++i) {
       output_data[i] = *input_data;
-      input_data += input_stride[perm[depth]];
+      input_data += loop_stride;
     }
   } else {
-    for (int i = 0; i < output_shape[depth]; ++i) {
+    for (int i = 0; i < dimension_size; ++i) {
       TransposeImpl(depth + 1, dims, perm, input_data, input_stride,
                     output_data, output_stride, output_shape);
 

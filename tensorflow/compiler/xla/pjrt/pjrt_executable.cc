@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
@@ -39,6 +41,32 @@ StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
   if (multi_slice_config != nullptr) {
     output.set_serialized_multi_slice_config(multi_slice_config->Serialize());
   }
+  return output;
+}
+
+StatusOr<CompileOptions> CompileOptions::FromProto(
+    const CompileOptionsProto& proto) {
+  if (!proto.serialized_multi_slice_config().empty()) {
+    return Unimplemented(
+        "multi_slice_config not supported in CompileOptions::FromProto.");
+  }
+
+  CompileOptions output;
+  if (proto.argument_layouts_size() > 0) {
+    std::vector<Shape> output_argument_layouts;
+    output_argument_layouts.reserve(proto.argument_layouts_size());
+    for (const auto& argument_layout : proto.argument_layouts()) {
+      output_argument_layouts.emplace_back(Shape(argument_layout));
+    }
+    output.argument_layouts = std::move(output_argument_layouts);
+  }
+  output.parameter_is_tupled_arguments = proto.parameter_is_tupled_arguments();
+  TF_ASSIGN_OR_RETURN(
+      ExecutableBuildOptions executable_build_options,
+      ExecutableBuildOptionsFromProto(proto.executable_build_options()));
+  output.executable_build_options = executable_build_options;
+  output.compile_portable_executable = proto.compile_portable_executable();
+  output.profile_version = proto.profile_version();
   return output;
 }
 

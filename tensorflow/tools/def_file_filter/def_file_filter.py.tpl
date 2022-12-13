@@ -42,11 +42,19 @@ DUMPBIN_CMD = "\"{}\" /SYMBOLS".format("%{dumpbin_bin_path}")
 EXCLUDE_RE = re.compile(r"RTTI|deleting destructor|::internal::")
 
 # Include if matched before exclude
-INCLUDEPRE_RE = re.compile(r"google::protobuf::internal::ExplicitlyConstructed|"
+INCLUDEPRE_RE = re.compile(r"absl::lts_[0-9]+::base_internal::ThrowStdOutOfRange|" # for _pywrap_tfe
+                           r"absl::lts_[0-9]+::str_format_internal::FormatArgImpl|" # for _pywrap_tfe
+                           r"absl::lts_[0-9]+::ByChar|" # for _pywrap_tfe
+                           r"absl::lts_[0-9]+::numbers_internal::FastIntToBuffer|" # for _pywrap_tfe
+                           r"absl::lts_[0-9]+::StrCat|" # for _pywrap_tfe
+                           r"absl::lts_[0-9]+::StrAppend|" # for _pywrap_tfe
+                           r"google::protobuf::internal::ExplicitlyConstructed|"
                            r"google::protobuf::internal::ArenaImpl::AllocateAligned|" # for contrib/data/_prefetching_ops
                            r"google::protobuf::internal::ArenaImpl::AddCleanup|" # for contrib/data/_prefetching_ops
                            r"google::protobuf::internal::LogMessage|" # for contrib/data/_prefetching_ops
                            r"google::protobuf::Arena::OnArenaAllocation|" # for contrib/data/_prefetching_ops
+                           r"google::protobuf::MessageLite::SerializeAsString|" # for pywrap_saved_model
+                           r"google::protobuf::MessageLite::ParseFromString|" # for pywrap_saved_model
                            r"absl::Mutex::ReaderLock|" # for //tensorflow/contrib/rnn:python/ops/_gru_ops.so and more ops
                            r"absl::Mutex::ReaderUnlock|" # for //tensorflow/contrib/rnn:python/ops/_gru_ops.so and more ops
                            r"tensorflow::internal::LogMessage|"
@@ -141,7 +149,7 @@ def get_symbols(path_to_lib, re_filter):
   # Example symbol line:
   # 954 00000000 SECT2BD notype ()    External    | ?IsSequence@swig@tensorflow@@YA_NPEAU_object@@@Z (bool __cdecl tensorflow::swig::IsSequence(struct _object *))
   # Anomaly symbol line:
-  # 00B 00000000 SECT4  notype       External     | _tensorflow_numpy_api.
+  # 00B 00000000 SECT4  notype       External     | _tsl_numpy_api.
   sym_filtered = []
   re_filter_comp = re.compile(r"{}".format(re_filter))
 
@@ -278,6 +286,11 @@ def main():
     def_fp.write("\t ?MaybeSavedModelDirectory@tensorflow@@YA_NAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z\n")
     def_fp.write("\t ?_TensorShapeProto_default_instance_@tensorflow@@3VTensorShapeProtoDefaultTypeInternal@1@A\n")
     def_fp.write("\t ?_GraphDef_default_instance_@tensorflow@@3VGraphDefDefaultTypeInternal@1@A\n")
+    def_fp.write("\t ??_7HistogramProto@tensorflow@@6B@\n")
+    def_fp.write("\t ??_7ConfigProto@tensorflow@@6B@\n") # for _pywrap_tfe
+    def_fp.write("\t ??_7CoordinatedTask@tensorflow@@6B@\n") # for _pywrap_tfe
+    def_fp.write("\t ??0CoordinatedTask@tensorflow@@QEAA@XZ\n") # for _pywrap_tfe
+    def_fp.write("\t ?InternalSwap@CoordinatedTask@tensorflow@@AEAAXPEAV12@@Z\n") # for _pywrap_tfe
 
     # Each symbols returned by undname matches the same position in candidates.
     # We compare on undname but use the decorated name from candidates.
