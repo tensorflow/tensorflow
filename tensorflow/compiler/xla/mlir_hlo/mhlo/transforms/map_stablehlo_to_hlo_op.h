@@ -25,16 +25,12 @@ namespace mlir {
 namespace stablehlo {
 
 template <typename HloOpTy>
-struct HloToStablehloOpImpl {
-  using Type = std::false_type;
-};
+struct HloToStablehloOpImpl;
 template <typename HloOpTy>
 using HloToStablehloOp = typename HloToStablehloOpImpl<HloOpTy>::Type;
 
 template <typename StablehloOpTy>
-struct StablehloToHloOpImpl {
-  using Type = std::false_type;
-};
+struct StablehloToHloOpImpl;
 template <typename StablehloOpTy>
 using StablehloToHloOp = typename StablehloToHloOpImpl<StablehloOpTy>::Type;
 
