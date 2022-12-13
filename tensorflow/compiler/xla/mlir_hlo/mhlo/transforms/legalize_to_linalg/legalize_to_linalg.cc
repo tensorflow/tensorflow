@@ -3828,75 +3828,6 @@ class DotGeneralOpConversion : public OpConversionPattern<mhlo::DotGeneralOp> {
   }
 };
 
-class SelectOpToMapConverter : public OpConversionPattern<mhlo::SelectOp> {
- public:
-  using OpConversionPattern<mhlo::SelectOp>::OpConversionPattern;
-
-  LogicalResult matchAndRewrite(
-      mhlo::SelectOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter& rewriter) const final {
-    Location loc = op.getLoc();
-
-    // Find result type, if on tensors.
-    Optional<ShapedType> resultTy;
-    resultTy = typeConverter->convertType(op.getType()).dyn_cast<ShapedType>();
-
-    // Check result type compatibility.
-    if (!resultTy || !resultTy->hasRank() ||
-        !(resultTy->getElementType().isSignlessIntOrFloat() ||
-          resultTy->getElementType().isa<ComplexType>())) {
-      return rewriter.notifyMatchFailure(
-          op, "mismatched operand/result types or iterator count");
-    }
-
-    auto isScalar = [&](Value v) {
-      return v.getType().cast<ShapedType>().getRank() == 0;
-    };
-
-    if (allOperandsAreScalarTensors(op) && isInBodyOfLinalgOps(op))
-      return failure();
-
-    // Predicate in mhlo.select can be a shaped type with the same size as other
-    // operands, or a scalar.
-    const bool isScalarPred = isScalar(op.getPred());
-
-    Value predValue;
-    SmallVector<Value> mappedInputs = adaptor.getOperands();
-    // If predicate is a scalar, do not pass it as an argument to linalg.map,
-    // because linalg.map does not support broadcasting scalar values. Instead,
-    // extract the value and use it in the map block directly.
-    if (isScalarPred) {
-      predValue = rewriter.create<tensor::ExtractOp>(loc, adaptor.getPred());
-      mappedInputs.erase(mappedInputs.begin());
-    }
-
-    auto emptyTensor =
-        getEmptyTensorFor(rewriter, loc, *resultTy, op, op.getOperands());
-
-    // Cast all inputs to the same shape as the init tensor.
-    for (auto& input : mappedInputs) {
-      input = coerceTensorShape(rewriter, loc, input, emptyTensor.getType());
-    }
-
-    auto linalgOp = rewriter.create<linalg::MapOp>(
-        loc, mappedInputs, emptyTensor,
-        [&](OpBuilder& b, Location loc, ValueRange args) {
-          // If predicate is scalar, the block has two arguments (on_true,
-          // on_false) and the predicate value is extracted outside of the
-          // block. If predicate is shaped, the block has three arguments (pred,
-          // on_true, on_false).
-          Value innerResult = b.create<arith::SelectOp>(
-              loc, getElementTypeOrSelf(emptyTensor),
-              isScalarPred ? ValueRange{predValue, args[0], args[1]} : args);
-          b.create<linalg::YieldOp>(loc, innerResult);
-        },
-        linalg::getPrunedAttributeList(op));
-
-    rewriter.replaceOp(op, linalgOp.getResult());
-    return success();
-  }
-};
-
 /// Converts a HLO operation to a linalg.map op that contains the corresponding
 /// scalar operations.
 template <typename OpTy>
@@ -3908,16 +3839,16 @@ class PointwiseToLinalgMapConverter : public OpConversionPattern<OpTy> {
       OpTy op, typename OpTy::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
-    auto getRank = [](Value v) {
-      return v.getType().cast<ShapedType>().getRank();
-    };
-    int64_t maxRank = getRank(adaptor.getOperands().front());
+    int64_t maxRank = getMaxRank(adaptor);
 
-    // Apply only if all operands have the same rank.
-    if (!llvm::all_of(adaptor.getOperands(),
-                      [&](Value v) { return getRank(v) == maxRank; })) {
-      return rewriter.notifyMatchFailure(op,
-                                         "Operands must have the same rank.");
+    // Apply only if all operands are scalar or have the same rank. Some ops,
+    // like `mhlo.select`, support implicit broadcasting of scalars.
+    if (!llvm::all_of(adaptor.getOperands(), [&](Value v) {
+          int64_t r = getRank(v);
+          return r == 0 || r == maxRank;
+        })) {
+      return rewriter.notifyMatchFailure(
+          op, "Operands must be of same rank or scalar.");
     }
 
     // Find result type, if on tensors.
@@ -3933,30 +3864,69 @@ class PointwiseToLinalgMapConverter : public OpConversionPattern<OpTy> {
           op, "mismatched operand/result types or iterator count");
     }
 
-    if (allOperandsAreScalarTensors(op) && isInBodyOfLinalgOps(op))
-      return failure();
+    // All-scalar pointwise ops inside of linalg ops are processes by
+    // ScalarHloToArithmeticPattern.
+    if (maxRank == 0 && isInBodyOfLinalgOps(op)) return failure();
 
     // Find input/output values and types.
     Value emptyTensor =
         getEmptyTensorFor(rewriter, loc, *resultTy, op, adaptor.getOperands());
 
-    // Cast all inputs to the same shape as the init tensor.
-    SmallVector<Value> inputs;
+    // Mapped inputs are cast to the same shape as the init tensor.
+    // Values from scalar inputs are extracted and used directly in the block.
+    SmallVector<Value> mappedInputs;
+    SmallVector<Value> scalarInputs;
     for (Value input : adaptor.getOperands()) {
-      inputs.push_back(
-          coerceTensorShape(rewriter, loc, input, emptyTensor.getType()));
+      if (getRank(input) == maxRank) {
+        mappedInputs.push_back(
+            coerceTensorShape(rewriter, loc, input, emptyTensor.getType()));
+        scalarInputs.push_back(nullptr);
+      } else {
+        scalarInputs.push_back(rewriter.create<tensor::ExtractOp>(loc, input));
+      }
     }
+
     auto mapOp = rewriter.create<linalg::MapOp>(
-        loc, inputs, emptyTensor,
+        loc, mappedInputs, emptyTensor,
         [&](OpBuilder& b, Location loc, ValueRange args) {
           Value innerResult = mhlo::MhloOpToStdScalarOp::mapOp(
-              op, getElementTypeOrSelf(emptyTensor), args, &b);
+              op, getElementTypeOrSelf(emptyTensor),
+              interleaveScalarAndBlockArgs(scalarInputs, args), &b);
           b.create<linalg::YieldOp>(loc, innerResult);
         },
         linalg::getPrunedAttributeList(op));
 
     rewriter.replaceOp(op, mapOp->getResults());
     return success();
+  }
+
+ protected:
+  int64_t getRank(Value v) const {
+    return v.getType().cast<ShapedType>().getRank();
+  }
+
+  int64_t getMaxRank(typename OpTy::Adaptor adaptor) const {
+    int64_t maxRank = 0;
+    for (auto operand : adaptor.getOperands()) {
+      maxRank = std::max(maxRank, getRank(operand));
+    }
+    return maxRank;
+  }
+
+  // Inserts block arguments in places where scalar inputs have a nullptr.
+  SmallVector<Value> interleaveScalarAndBlockArgs(ValueRange scalarInputs,
+                                                  ValueRange blockArgs) const {
+    SmallVector<Value> result;
+    auto argsIter = blockArgs.begin();
+    for (Value scalarInput : scalarInputs) {
+      if (scalarInput) {
+        result.push_back(scalarInput);
+      } else {
+        result.push_back(*argsIter);
+        ++argsIter;
+      }
+    }
+    return result;
   }
 };
 
@@ -4105,6 +4075,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgMapConverter<mhlo::RoundNearestEvenOp>,
       PointwiseToLinalgMapConverter<mhlo::RoundOp>,
       PointwiseToLinalgMapConverter<mhlo::RsqrtOp>,
+      PointwiseToLinalgMapConverter<mhlo::SelectOp>,
       PointwiseToLinalgMapConverter<mhlo::ShiftLeftOp>,
       PointwiseToLinalgMapConverter<mhlo::ShiftRightArithmeticOp>,
       PointwiseToLinalgMapConverter<mhlo::ShiftRightLogicalOp>,
@@ -4115,7 +4086,6 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgMapConverter<mhlo::TanhOp>,
       PointwiseToLinalgMapConverter<mhlo::XorOp>,
       ReduceOpToReduceConverter,
-      SelectOpToMapConverter,
       TransposeOpToTransposeConverter
     >(typeConverter, context);
   } else {
