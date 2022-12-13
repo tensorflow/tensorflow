@@ -291,7 +291,7 @@ static absl::Status LaunchGraph(
 //===----------------------------------------------------------------------===//
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    Launch, LaunchGraph, checks,
+    Launch, FunctionWrapper<LaunchGraph>(), checks,
     CustomCall::Bind("xla.gpu.cuda.graph.launch")
         .UserData<const ServiceExecutableRunOptions*>()
         .UserData<const std::string*>()
