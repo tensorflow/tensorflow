@@ -89,8 +89,9 @@ inline constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
 
 class PjRtClient;
 
-using PjRtDeviceAttribute =
-    std::variant<std::string, int64_t, std::vector<int64_t>>;
+using PjRtValueType =
+    std::variant<std::string, int64_t, std::vector<int64_t>, float>;
+using PjRtDeviceAttribute = PjRtValueType;
 
 class PjRtDevice {
  public:
@@ -453,7 +454,8 @@ class PjRtClient {
   }
 
   // Returns a backend-specific HLO cost analysis visitor.
-  virtual StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() = 0;
+  virtual StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+      const = 0;
 
   // Compile `computation` with given `options`.
   virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
@@ -1148,6 +1150,12 @@ class PjRtLoadedExecutable : public PjRtExecutable {
   virtual PjRtClient* client() const = 0;
 
   virtual const DeviceAssignment& device_assignment() const = 0;
+
+  // Returns named values for cost properties of this executable (such as
+  // operations, size of input/outputs, and run time estimate). Properties may
+  // differ for different platforms.
+  virtual StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+  GetCostAnalysis() const;
 
   // The replica and partition indices of device_assignment to be run by this
   // client. On single-host platforms without partitioning, this is all replicas

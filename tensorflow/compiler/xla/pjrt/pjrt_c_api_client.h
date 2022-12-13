@@ -158,11 +158,8 @@ class PjRtCApiClient : public PjRtClient {
   StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
-  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() override {
-    if (kPjRtCApiBypass) {
-      VLOG(1) << "PJRT C API BYPASS: GetHloCostAnalysis";
-      return wrapped_->GetHloCostAnalysis();
-    }
+  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+      const override {
     return Unimplemented("PJRT C API does not support GetHloCostAnalysis");
   }
 
