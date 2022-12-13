@@ -33,52 +33,40 @@ using ::xla::runtime::HloTrace;
 using ::tsl::profiler::ScopedAnnotationStack;
 
 //===----------------------------------------------------------------------===//
-
-namespace {
-
-struct ActivityStart {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
-  absl::StatusOr<int64_t> operator()(runtime::HloTrace annotation) const {
-    return ScopedAnnotationStack::ActivityStart([&] {
-      // We use the same tracing annotation scheme as the ThunkSequence (see
-      // implementation of `GetThunkInfo` in `ir_emitter_unnested.cc`).
-      return absl::StrFormat("Thunk:#hlo_op=%s,hlo_module=%s,program_id=%d#",
-                             annotation.hlo_op, annotation.module,
-                             annotation.program_id);
-    });
-  }
-
-  static ActivityStart Handler() { return ActivityStart(); }
-};
-
-struct ActivityEnd {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
-  absl::Status operator()(int64_t activity_id) const {
-    ScopedAnnotationStack::ActivityEnd(activity_id);
-    return absl::OkStatus();
-  }
-
-  static ActivityEnd Handler() { return ActivityEnd(); }
-};
-
-}  // namespace
-
-//===----------------------------------------------------------------------===//
-
-XLA_RUNTIME_DEFINE_CUSTOM_CALL(Start, ActivityStart::Handler(), checks,
-                               CustomCall::Bind("xla.trace.activity_start")
-                                   .Attr<HloTrace>("annotation")
-                                   .Ret<int64_t>());
-
-XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    End, ActivityEnd::Handler(), checks,
-    CustomCall::Bind("xla.trace.activity_end").Arg<int64_t>());
-
+// Type names for encoded attributes.
 //===----------------------------------------------------------------------===//
 
 void RegisterTracingTypeIdNames(runtime::TypeIDNameRegistry& registry) {
   runtime::PopulateTraceTypeIdNames(registry);
 }
+
+//===----------------------------------------------------------------------===//
+// Tracing custom calls implementation.
+//===----------------------------------------------------------------------===//
+
+static absl::StatusOr<int64_t> ActivityStart(runtime::HloTrace annotation) {
+  return ScopedAnnotationStack::ActivityStart([&] {
+    // We use the same tracing annotation scheme as the ThunkSequence (see
+    // implementation of `GetThunkInfo` in `ir_emitter_unnested.cc`).
+    return absl::StrFormat("Thunk:#hlo_op=%s,hlo_module=%s,program_id=%d#",
+                           annotation.hlo_op, annotation.module,
+                           annotation.program_id);
+  });
+}
+
+static absl::Status ActivityEnd(int64_t activity_id) {
+  ScopedAnnotationStack::ActivityEnd(activity_id);
+  return absl::OkStatus();
+}
+
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(Start, FunctionWrapper<ActivityStart>(), checks,
+                               CustomCall::Bind("xla.trace.activity_start")
+                                   .Attr<HloTrace>("annotation")
+                                   .Ret<int64_t>());
+
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    End, FunctionWrapper<ActivityEnd>(), checks,
+    CustomCall::Bind("xla.trace.activity_end").Arg<int64_t>());
 
 void RegisterTracingCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.trace.activity_start", Start);
