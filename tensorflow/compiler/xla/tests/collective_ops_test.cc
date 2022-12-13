@@ -33,8 +33,13 @@ limitations under the License.
 
 // Tests cross-GPU operations.
 //
-// This test requires at least four GPUs.  For instructions on running this
+// Several tests requires at least four GPUs.  For instructions on running this
 // within Google, see go/multi-gpu-unit-test.
+
+#define SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(x)                     \
+  if (num_devices_ < x) {                                         \
+    GTEST_SKIP() << "Test requires at least " << x << " devices"; \
+  }
 
 namespace xla {
 namespace {
@@ -457,10 +462,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_ThreeReplicaGroups) {
   // Test a prime number so it's not all powers of 2.
   const int64_t kNumElems = 137;
   const int64_t kNumReplicas = 4;
-
-  if (kNumReplicas >= num_devices_) {
-    GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
-  }
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -507,10 +509,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_Degenerate) {
       }
     )";
   static constexpr int kNumReplicas = 4;
-
-  if (kNumReplicas >= num_devices_) {
-    GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
-  }
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -636,9 +635,7 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Simple) {
   }
   )";
   const int64_t kNumReplicas = 4;
-  if (kNumReplicas >= num_devices_) {
-    GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
-  }
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -673,9 +670,7 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Degenerate) {
   }
   )";
   const int64_t kNumReplicas = 4;
-  if (kNumReplicas >= num_devices_) {
-    GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
-  }
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -709,9 +704,7 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_NotDegenerate) {
   }
   )";
   const int64_t kNumReplicas = 4;
-  if (kNumReplicas >= num_devices_) {
-    GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
-  }
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -746,9 +739,7 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Rotate) {
   }
   )";
   const int64_t kNumReplicas = 4;
-  if (kNumReplicas >= num_devices_) {
-    GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
-  }
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -792,9 +783,8 @@ XLA_TEST_F(CollectiveOpsTest, AllToAll_EmptyReplicaGroups) {
   }
   )";
   const int64_t kNumReplicas = 4;
-  if (kNumReplicas >= num_devices_) {
-    GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
-  }
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -837,9 +827,7 @@ XLA_TEST_F(CollectiveOpsTest, AllToAll_OrderedReplicaGroups) {
   }
   )";
   const int64_t kNumReplicas = 4;
-  if (kNumReplicas >= num_devices_) {
-    GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
-  }
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -877,9 +865,7 @@ XLA_TEST_F(CollectiveOpsTest, AllToAll_TwoReplicaGroups) {
   }
   )";
   const int64_t kNumReplicas = 4;
-  if (kNumReplicas >= num_devices_) {
-    GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
-  }
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -909,9 +895,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllToAll_SplitDimension)) {
   }
   )";
   const int64_t kNumReplicas = 4;
-  if (kNumReplicas >= num_devices_) {
-    GTEST_SKIP() << "Need atleast " << kNumReplicas << " devices for this test";
-  }
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
