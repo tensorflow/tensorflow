@@ -83,11 +83,9 @@ TEST_F(GemmTest, SimpleCase1) {
 }
 
 std::vector<float> diag_matrix(size_t dim, float diag_value) {
-  std::vector<float> r(dim * dim);
+  std::vector<float> r(dim * dim, 0.0f);
   for (size_t i = 0; i < dim; ++i) {
-    for (size_t j = 0; j < dim; ++j) {
-      size_t index = i * dim + j;
-      r[index] = (i == j) ? diag_value : 0.0f;
+      r[i * dim + i] = diag_value;
     }
   }
   return r;
