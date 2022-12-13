@@ -49,7 +49,8 @@ bool ShapeInvolvesUnsupportedElementType(const Shape& shape) {
   if (shape.IsArray() &&
       (shape.element_type() == C64 || shape.element_type() == C128 ||
        shape.element_type() == U8 || shape.element_type() == U16 ||
-       shape.element_type() == U32 || shape.element_type() == U64)) {
+       shape.element_type() == U32 || shape.element_type() == U64 ||
+       shape.element_type() == BF16)) {
     return true;
   } else if (shape.IsTuple()) {
     for (auto& tuple_shape : shape.tuple_shapes())
