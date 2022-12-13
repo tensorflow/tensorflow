@@ -1126,7 +1126,7 @@ filegroup(
         "runlit.cfg.py",
         "runlit.site.cfg.py",
     ],
-    visibility = ["//third_party/compiler/xla:__subpackages__"],
+    visibility = ["//tensorflow/compiler/xla:__subpackages__"],
 )
 
 # -----------------------------------------------------------------------------
