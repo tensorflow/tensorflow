@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/pjrt_api.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::FindAndLoadTpuLibrary
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -450,21 +449,33 @@ void PjRtCApiDevice::InitAttributes() {
     const auto& attribute = args.attributes[i];
     std::string attribute_name(attribute.name, attribute.name_size);
     switch (attribute.type) {
-      case PJRT_Device_Attribute::PJRT_Device_Attribute_kString: {
+      case PJRT_NamedValue::PJRT_NamedValue_kString: {
         std::string string_value(attribute.string_value, attribute.value_size);
         attributes_[attribute_name] = PjRtDeviceAttribute(string_value);
         break;
       }
-      case PJRT_Device_Attribute::PJRT_Device_Attribute_kInt64: {
+      case PJRT_NamedValue::PJRT_NamedValue_kInt64: {
         attributes_[attribute_name] =
             PjRtDeviceAttribute(attribute.int64_value);
         break;
       }
-      case PJRT_Device_Attribute::PJRT_Device_Attribute_kInt64List: {
+      case PJRT_NamedValue::PJRT_NamedValue_kInt64List: {
         const int64_t* array_ptr(attribute.int64_array_value);
         std::vector<int64_t> int64_array(array_ptr,
                                          array_ptr + attribute.value_size);
         attributes_[attribute_name] = PjRtDeviceAttribute(int64_array);
+        break;
+      }
+      // Do not allow other types (such as
+      // PJRT_NamedValue::PJRT_NamedValue_kFloat) since device attributes
+      // currently should not return other types. Also C API client currently
+      // does not support forward compatibility (such as if the underlying
+      // PJRT library is a newer version that returns types not supported by
+      // this client). Failing here to prevent undefined behavior.
+      default: {
+        LOG(FATAL) << "PJRT_Device_Attributes() returned attribute '"
+                   << attribute_name << "' with unsupported type "
+                   << attribute.type << " to PjRtCApiDevice::InitAttributes()";
         break;
       }
     }
@@ -821,6 +832,57 @@ int64_t PjRtCApiExecutable::SizeOfGeneratedCodeInBytes() const {
   pjrt::LogFatalIfPjrtError(
       c_api->PJRT_Executable_SizeOfGeneratedCodeInBytes(&args), c_api);
   return args.size_in_bytes;
+}
+
+StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+PjRtCApiExecutable::GetCostAnalysis() const {
+  // Initialize function call args
+  PJRT_Executable_GetCostAnalysis_Args args;
+  args.struct_size = PJRT_Executable_GetCostAnalysis_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = executable_.get();
+
+  // Make PJRT C API call
+  const PJRT_Api* c_api = pjrt_c_api();
+  RETURN_STATUS_IF_ERROR(c_api->PJRT_Executable_GetCostAnalysis(&args), c_api);
+
+  // Copy returned properties to output map
+  absl::flat_hash_map<std::string, PjRtValueType> output_map;
+  for (auto i = 0; i < args.num_properties; ++i) {
+    switch (args.properties[i].type) {
+      case PJRT_NamedValue::PJRT_NamedValue_kFloat:
+        output_map[args.properties[i].name] = args.properties[i].float_value;
+        break;
+      case PJRT_NamedValue::PJRT_NamedValue_kInt64:
+        output_map[args.properties[i].name] = args.properties[i].int64_value;
+        break;
+      case PJRT_NamedValue::PJRT_NamedValue_kInt64List: {
+        PjRtValueType& output_value = output_map[args.properties[i].name];
+        std::vector<int64_t>& output_int64_list =
+            std::get<std::vector<int64_t>>(output_value);
+        output_int64_list.reserve(args.properties[i].value_size);
+        for (auto j = 0; j < args.properties[i].value_size; ++j) {
+          output_int64_list.push_back(args.properties[i].int64_array_value[j]);
+        }
+        break;
+      }
+      case PJRT_NamedValue::PJRT_NamedValue_kString:
+        output_map[args.properties[i].name] = args.properties[i].string_value;
+        break;
+      // C API client currently does not support forward compatibility (such as
+      // if the underlying PJRT library is a newer version that returns types
+      // not supported by this client). Failing here to prevent undefined
+      // behavior.
+      default:
+        LOG(FATAL) << "PJRT_Executable_GetCostAnalysis() returned attribute '"
+                   << args.properties[i].name << "' with unsupported type '"
+                   << args.properties[i].type
+                   << "' to PjRtCApiExecutable::GetCostAnalysis()";
+        break;
+    }
+  }
+
+  return output_map;
 }
 
 // ---------------------------------- Buffers ----------------------------------

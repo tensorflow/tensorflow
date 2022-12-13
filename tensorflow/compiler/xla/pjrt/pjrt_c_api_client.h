@@ -436,6 +436,9 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
 
+  StatusOr<absl::flat_hash_map<std::string, PjRtValueType>> GetCostAnalysis()
+      const override;
+
   const DeviceAssignment& device_assignment() const override {
     if (kPjRtCApiBypass) {
       VLOG(1) << "PJRT C API BYPASS: device_assignment";

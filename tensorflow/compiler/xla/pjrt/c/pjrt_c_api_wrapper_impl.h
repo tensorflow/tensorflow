@@ -19,11 +19,11 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 
 struct PJRT_Error {
@@ -48,7 +48,7 @@ struct PJRT_Device {
   // The xla::PjRtDevice* is owned by the corresponding xla::PjRtClient.
   xla::PjRtDevice* device;
   // The device specific attributes which are initialized once per device.
-  std::vector<PJRT_Device_Attribute> attributes;
+  std::vector<PJRT_NamedValue> attributes;
 };
 
 struct PJRT_Executable {
@@ -58,6 +58,14 @@ struct PJRT_Executable {
   // addressed by the compiled executable program. `client` owns the objects
   // these point to.
   std::vector<PJRT_Device*> addressable_devices;
+
+  mutable absl::Mutex mutex;
+  // Cost analysis properties and name strings are populated after cost analysis
+  // has been run. These are returned from cost analysis calls, and do not
+  // change after the first call.
+  bool cost_analysis_ran ABSL_GUARDED_BY(mutex) = false;
+  std::vector<std::string> cost_analysis_names;
+  std::vector<PJRT_NamedValue> cost_analysis_properties;
 
   PJRT_Executable(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
                   PJRT_Client* client);
@@ -127,6 +135,8 @@ PJRT_Error* PJRT_Executable_SizeOfGeneratedCodeInBytes(
     PJRT_Executable_SizeOfGeneratedCodeInBytes_Args* args);
 PJRT_Error* PJRT_Executable_OptimizedProgram(
     PJRT_Executable_OptimizedProgram_Args* args);
+PJRT_Error* PJRT_Executable_GetCostAnalysis(
+    PJRT_Executable_GetCostAnalysis_Args* args);
 PJRT_Error* PJRT_Executable_Delete(PJRT_Executable_Delete_Args* args);
 PJRT_Error* PJRT_Executable_IsDeleted(PJRT_Executable_IsDeleted_Args* args);
 PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args);
