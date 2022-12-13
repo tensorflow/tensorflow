@@ -7,7 +7,7 @@ licenses(["notice"])
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
 )
 
 tf_proto_library(
