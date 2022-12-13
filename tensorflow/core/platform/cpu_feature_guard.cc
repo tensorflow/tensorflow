@@ -53,7 +53,7 @@ void CheckFeatureOrDie(CPUFeature feature, const std::string& feature_name) {
 
 // Check if CPU feature is included in the TensorFlow binary.
 void CheckIfFeatureUnused(CPUFeature feature, const std::string& feature_name,
-                          string& missing_instructions) {
+                          std::string& missing_instructions) {
   if (TestCPUFeature(feature)) {
     missing_instructions.append(" ");
     missing_instructions.append(feature_name);
@@ -125,7 +125,7 @@ absl::once_flag g_cpu_feature_guard_warn_once_flag;
 
 void InfoAboutUnusedCPUFeatures() {
   absl::call_once(g_cpu_feature_guard_warn_once_flag, [] {
-    string missing_instructions;
+    std::string missing_instructions;
 
 #ifndef __SSE__
     CheckIfFeatureUnused(CPUFeature::SSE, "SSE", missing_instructions);
