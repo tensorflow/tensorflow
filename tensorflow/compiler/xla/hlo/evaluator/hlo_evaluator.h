@@ -92,6 +92,10 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
     return std::make_unique<HloEvaluator>(max_loop_iterations);
   }
 
+  // Enables subclasses to be notified when a new computation is being
+  // evaluated.
+  virtual void OnEvaluateComputation(const HloComputation& computation) {}
+
   // Evaluates an HLO module and an array of pointers to literals.  Returns the
   // evaluated result as a literal if successful.
   //
