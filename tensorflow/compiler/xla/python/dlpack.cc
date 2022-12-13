@@ -423,9 +423,15 @@ StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
                     ? std::move(cpu_client)
                     : std::move(gpu_client);
 #ifdef JAX_ENABLE_IFRT
+  auto* ifrt_client =
+      llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(client->ifrt_client());
+  if (ifrt_client == nullptr) {
+    throw XlaRuntimeError(
+        "This operation is implemented for a PjRt-compatible backend only.");
+  }
   TF_ASSIGN_OR_RETURN(
       auto ifrt_array,
-      ifrt::PjRtArray::Create(client->ifrt_client(), std::move(pjrt_buffer)));
+      ifrt::PjRtArray::Create(ifrt_client, std::move(pjrt_buffer)));
   return PyBuffer::Make(std::move(client), std::move(ifrt_array),
                         Traceback::Get());
 #else

@@ -469,9 +469,14 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
     pybind11::bytes py_desc = pybind11::bytes(desc);
     auto traceback = Traceback::Get();
 #ifdef JAX_ENABLE_IFRT
-    TF_ASSIGN_OR_RETURN(
-        auto ifrt_array,
-        xla::ifrt::PjRtArray::Create(ifrt_client(), std::move(buffers[i])));
+    auto* client =
+        llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(ifrt_client());
+    if (client == nullptr) {
+      throw XlaRuntimeError(
+          "This operation is implemented for a PjRt-compatible backend only.");
+    }
+    TF_ASSIGN_OR_RETURN(auto ifrt_array, xla::ifrt::PjRtArray::Create(
+                                             client, std::move(buffers[i])));
     auto py_buf =
         PyBuffer::Make(shared_from_this(), std::move(ifrt_array), traceback);
 #else
