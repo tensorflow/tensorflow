@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
@@ -75,7 +76,7 @@ constexpr absl::string_view QuantTraitValues[] = {"fully_quantizable",
 
 constexpr double kNearZeroTolerance = 1.0e-6;
 
-using QuantParams = mlir::quant::QuantizedType;
+using QuantParams = QuantizedType;
 using QuantSpec = QuantizationSpecs;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
 using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
@@ -119,6 +120,11 @@ struct OpQuantSpec {
   absl::flat_hash_set<int> quantizable_operands;
 };
 
+// A function signature for getting the particular OpQuantSpec for the provided
+// op.
+using OpQuantSpecGetter =
+    std::function<std::unique_ptr<OpQuantSpec>(Operation*)>;
+
 // Quantization scale spec of an op. The information defined in the MLIR
 // interfaces FixedOutputRangeInterface and SameOperandsAndResultsScale should
 // be checked first if present.
@@ -137,6 +143,11 @@ struct OpQuantScaleSpec {
     return true;
   };
 };
+
+// A function signature for getting the particular OpQuantScaleSpec for the
+// provided op.
+using OpQuantScaleSpecGetter =
+    std::function<std::unique_ptr<OpQuantScaleSpec>(Operation*)>;
 
 // Used in TFL Numeric Verify
 struct NumericVerifySpec {
@@ -162,14 +173,6 @@ struct QuantPassSpec {
   // Variables related to quantization
   QuantSpec quant_spec;
 };
-
-// A function signature for getting the particular OpQuantSpec for the provided
-// op.
-typedef std::unique_ptr<OpQuantSpec> (*OpQuantSpecGetter)(Operation* op);
-// A function signature for getting the particular OpQuantScaleSpec for the
-// provided op.
-typedef std::unique_ptr<OpQuantScaleSpec> (*OpQuantScaleSpecGetter)(
-    Operation* op);
 
 // Re-calculates scales again in float instead of simply downcasting existing
 // scales.
