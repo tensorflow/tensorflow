@@ -111,6 +111,9 @@
 * `tf.experimental.ExtensionType`
   * Added function `experimental.extension_type.as_dict()`, which converts an
     instance of `tf.experimental.ExtensionType` to a `dict` representation.
+* `stream_executor`
+  * Top level `stream_executor` directory has been deleted, users should use
+    equivalent headers and targets under `compiler/xla/stream_executor`.
 
 
 # Thanks to our Contributors
