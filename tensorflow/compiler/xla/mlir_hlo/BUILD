@@ -1200,6 +1200,7 @@ cc_library(
         "lib/Transforms/gpu_fusion_rewrite.cc",
         "lib/Transforms/gpu_kernel_lowering_passes.cc",
         "lib/Transforms/hlo_to_gpu_pipeline.cc",
+        "lib/Transforms/hlo_to_triton_pipeline.cc",
     ],
     hdrs = ["include/mlir-hlo/Transforms/gpu_passes.h"],
     deps = [
