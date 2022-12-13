@@ -3805,84 +3805,9 @@ LogicalResult ConcatenateOp::inferReturnTypes(
     MLIRContext*, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  if (operands.empty()) {
-    return failure();
-  }
-
-  auto dimensionAttr = attributes.get("dimension").cast<IntegerAttr>();
-  auto dimension = dimensionAttr.getInt();
-
-  auto firstType = (*operands.begin()).getType().cast<ShapedType>();
-  auto outElement = firstType.getElementType();
-
-  // Find the first ranked input to determine the output rank.
-  for (auto type : operands.getTypes()) {
-    auto shapedType = type.cast<ShapedType>();
-    if (shapedType.hasRank()) {
-      firstType = shapedType;
-      break;
-    }
-  }
-
-  // If all inputs are unranked, the result must be unranked.
-  if (!firstType.hasRank()) {
-    inferredReturnTypes.push_back(UnrankedTensorType::get(outElement));
-    return success();
-  }
-
-  auto outShape = llvm::to_vector<6>(firstType.getShape());
-
-  // Determine what the non-concatenate dimensions should be.
-  for (auto type : operands.getTypes()) {
-    auto shapedTy = type.cast<ShapedType>();
-    if (!shapedTy.hasRank()) {
-      continue;
-    }
-
-    for (const auto& it : llvm::enumerate(shapedTy.getShape())) {
-      // If a dimension is not dynamic, the output shape should match.
-      if (ShapedType::isDynamic(outShape[it.index()])) {
-        outShape[it.index()] = it.value();
-      }
-    }
-  }
-
-  outShape[dimension] = 0;
-
-  for (auto operand : operands.getTypes()) {
-    auto type = operand.cast<ShapedType>();
-    if (!type.hasRank()) {
-      inferredReturnTypes.push_back(UnrankedTensorType::get(outElement));
-      return success();
-    }
-
-    // If the dimension is dynamic we know the output dimension is dynamic.
-    auto dim = type.getShape()[dimension];
-    if (ShapedType::isDynamic(dim)) {
-      outShape[dimension] = ShapedType::kDynamic;
-      break;
-    }
-
-    outShape[dimension] += dim;
-  }
-
-  bool allSparse = llvm::all_of(operands.getTypes(), [](Type t) -> bool {
-    return sparse_tensor::getSparseTensorEncoding(t) != nullptr;
-  });
-
-  sparse_tensor::SparseTensorEncodingAttr enc;
-  if (allSparse) {
-    // Picks the encoding from an abitrary input is fine and it will be lowered
-    // correctly by the sparse compiler (though efficiency might vary).
-    // TODO: Extra rules are needed to infer sparse encoding when inputs have
-    // different encodings for better efficiency.
-    enc = sparse_tensor::getSparseTensorEncoding(operands.getTypes()[0]);
-  }
-
-  inferredReturnTypes.push_back(
-      RankedTensorType::get(outShape, outElement, enc));
-
-  return success();
+  ConcatenateOp::Adaptor adaptor(operands, attributes, regions);
+  return hlo::inferConcatenateOp(location, adaptor.getVal(),
+                                 adaptor.getDimension(), inferredReturnTypes);
 }
 
 void ConcatenateOp::getCanonicalizationPatterns(RewritePatternSet& results,
@@ -3957,58 +3882,6 @@ OpFoldResult ConcatenateOp::fold(ArrayRef<Attribute> operands) {
   }
 
   return DenseElementsAttr::get(type, ArrayRef<Attribute>());
-}
-
-LogicalResult ConcatenateOp::verify() {
-  RankedTensorType firstRankedType;
-  int firstRankedIndex;
-  int numOperands = getNumOperands();
-  int64_t concatDimension = static_cast<int64_t>(getDimension());
-  if (concatDimension < 0) {
-    return emitOpError(
-        llvm::formatv("dimension {0} is negative", concatDimension));
-  }
-  for (int i = 0; i < numOperands; i++) {
-    auto secondType = getOperand(i).getType().dyn_cast<ShapedType>();
-    if (!secondType.hasRank()) {
-      continue;
-    }
-
-    if (!firstRankedType) {
-      firstRankedType = secondType.cast<RankedTensorType>();
-      firstRankedIndex = i;
-      if (firstRankedType.getRank() == 0)
-        return emitOpError(
-            llvm::formatv("rank-0 values cannot be concatenated"));
-      if (concatDimension >= firstRankedType.getRank()) {
-        return emitOpError(
-            llvm::formatv("dimension {0} is out-of-bounds for input rank {1}",
-                          concatDimension, firstRankedType.getRank()));
-      }
-      continue;
-    }
-
-    if (firstRankedType.getRank() != secondType.getRank()) {
-      return emitOpError(llvm::formatv(
-          "operands ({0}) and ({1}) do not match rank", firstRankedIndex, i));
-    }
-
-    auto firstShape = firstRankedType.getShape();
-    auto secondShape = secondType.getShape();
-    for (int d = 0; d < firstRankedType.getRank(); ++d) {
-      if (!ShapedType::isDynamic(firstShape[d]) &&
-          !ShapedType::isDynamic(secondShape[d]) &&
-          firstShape[d] != secondShape[d] && d != concatDimension) {
-        return emitOpError(llvm::formatv(
-            "shapes of operand ({0}) and ({1}) do not match at non-concat "
-            "index: ({2}) != ({3}) at non-concat index {4}",
-            firstRankedIndex, i,
-            llvm::make_range(firstShape.begin(), firstShape.end()),
-            llvm::make_range(secondShape.begin(), secondShape.end()), d));
-      }
-    }
-  }
-  return success();
 }
 
 LogicalResult ConcatenateOp::reifyReturnTypeShapes(
@@ -5558,79 +5431,15 @@ LogicalResult SetDimensionSizeOp::inferReturnTypes(
 // PadOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult PadOp::inferReturnTypeComponents(
-    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
+LogicalResult PadOp::inferReturnTypes(
+    MLIRContext*, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+    SmallVectorImpl<Type>& inferredReturnTypes) {
   PadOp::Adaptor adaptor(operands, attributes, regions);
-  auto inputType = adaptor.getOperand().getType().cast<RankedTensorType>();
-  auto padType = adaptor.getPaddingValue().getType().cast<RankedTensorType>();
-
-  if (padType.getRank() != 0) {
-    return emitOptionalError(
-        location, llvm::formatv("padding value type should be a rank-0 "
-                                "tensor, is rank {0}",
-                                padType.getRank()));
-  }
-
-  const auto& paddingLow = adaptor.getEdgePaddingLow();
-  if (paddingLow.getType().getNumElements() != inputType.getRank()) {
-    return emitOptionalError(
-        location,
-        llvm::formatv(
-            "edge_padding_low length ({0}) must match operand rank ({1})",
-            paddingLow.getType().getNumElements(), inputType.getRank()));
-  }
-
-  const auto& paddingHigh = adaptor.getEdgePaddingHigh();
-  if (paddingHigh.getType().getNumElements() != inputType.getRank()) {
-    return emitOptionalError(
-        location,
-        llvm::formatv(
-            "edge_padding_high length ({0}) must match operand rank ({1})",
-            paddingHigh.getType().getNumElements(), inputType.getRank()));
-  }
-
-  const auto& paddingInterior = adaptor.getInteriorPadding();
-  if (paddingInterior.getType().getNumElements() != inputType.getRank()) {
-    return emitOptionalError(
-        location,
-        llvm::formatv(
-            "interior_padding length ({0}) must match operand rank ({1})",
-            paddingInterior.getType().getNumElements(), inputType.getRank()));
-  }
-
-  auto inputShape = inputType.getShape();
-  SmallVector<int64_t> resultShape;
-  for (int i = 0, e = inputShape.size(); i < e; i++) {
-    if (hlo::isDynamicDimSize(inputShape[i])) {
-      resultShape.push_back(ShapedType::kDynamic);
-      continue;
-    }
-
-    int64_t paddingLowVal = paddingLow.getValues<APInt>()[i].getSExtValue();
-    int64_t paddingHighVal = paddingHigh.getValues<APInt>()[i].getSExtValue();
-    int64_t paddingInteriorVal =
-        paddingInterior.getValues<APInt>()[i].getSExtValue();
-    if (paddingInteriorVal < 0) {
-      return emitOptionalError(
-          location, llvm::formatv("Interior padding cannot be negative: {0}",
-                                  paddingInteriorVal));
-    }
-    int64_t expectedOutput =
-        inputShape[i] + paddingLowVal + paddingHighVal +
-        std::max<int64_t>(inputShape[i] - 1, 0LL) * paddingInteriorVal;
-    if (expectedOutput < 0) {
-      return emitOptionalError(
-          location,
-          llvm::formatv("Padding result in negative size for dimension {0}",
-                        i));
-    }
-    resultShape.push_back(expectedOutput);
-  }
-  inferredReturnShapes.emplace_back(resultShape, inputType.getElementType());
-
-  return success();
+  return hlo::inferPadOp(location, adaptor.getOperand(),
+                         adaptor.getPaddingValue(), adaptor.getEdgePaddingLow(),
+                         adaptor.getEdgePaddingHigh(),
+                         adaptor.getInteriorPadding(), inferredReturnTypes);
 }
 
 template <typename T>

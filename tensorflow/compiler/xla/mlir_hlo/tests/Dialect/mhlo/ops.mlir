@@ -935,7 +935,7 @@ func.func @concat_outofbounds_dim(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -
 // -----
 
 func.func @concat_mismatch_rank(%arg0: tensor<1xi32>, %arg1: tensor<2x2xi32>)  -> tensor<3xi32> {
-  // expected-error@+1 {{op operands (0) and (1) do not match rank}}
+  // expected-error@+1 {{operands (0) and (1) do not match rank}}
   %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<2x2xi32>) -> tensor<3xi32>
   func.return %0 : tensor<3xi32>
 }
