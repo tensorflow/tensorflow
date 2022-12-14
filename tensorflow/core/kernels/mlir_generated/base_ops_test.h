@@ -45,9 +45,9 @@ absl::InlinedVector<T, 10> InputAsVector(
 
 template <typename T>
 absl::InlinedVector<T, 10> RepeatInputToMatchShape(
-    absl::InlinedVector<T, 10> input, int64 size) {
+    absl::InlinedVector<T, 10> input, int64_t size) {
   absl::InlinedVector<T, 10> result;
-  for (int64 i = 0; i < size; i++) {
+  for (int64_t i = 0; i < size; i++) {
     auto value = input[i % input.size()];
     result.push_back(value);
   }

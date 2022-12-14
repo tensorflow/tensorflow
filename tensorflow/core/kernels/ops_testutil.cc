@@ -2,7 +2,9 @@
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -175,8 +177,6 @@ Status OpsTestBase::RunOpKernel() {
   test::SetOutputAttrs(params_.get(), &attrs);
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
   params_->slice_reader_cache = &slice_reader_cache_wrapper;
-  CancellationManager default_cancellation_manager;
-  params_->cancellation_manager = &default_cancellation_manager;
   params_->resource_manager = device_->resource_manager();
   params_->function_library = pflr_->GetFLR(device_->name());
 
