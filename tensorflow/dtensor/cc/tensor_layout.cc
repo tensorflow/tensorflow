@@ -212,6 +212,8 @@ StatusOr<Mesh> Mesh::ParseFromProto(const MeshProto& proto) {
     mesh.mesh_dims_[i].size = dim.size();
   }
 
+  mesh.use_xla_spmd_ = proto.use_xla_spmd();
+
   // Check invariants.
   int64 mesh_size = mesh.size();
   int num_devices = proto.global_device_ids_size();
@@ -429,6 +431,7 @@ Mesh Mesh::Empty() { return Mesh(); }
 MeshProto Mesh::ToProto() const {
   MeshProto mesh_proto;
   mesh_proto.set_name(name());
+  mesh_proto.set_use_xla_spmd(use_xla_spmd());
 
   for (const auto& d : local_devices_) {
     mesh_proto.add_local_devices(d);
