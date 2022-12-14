@@ -1146,7 +1146,7 @@ void LaunchConv2DOp<GPUDevice, Eigen::bfloat16>::operator()(
   LaunchConv2DOpImpl<Eigen::bfloat16>(
       ctx, use_cudnn, cudnn_use_autotune, casted_input, casted_filter,
       row_dilation, col_dilation, row_stride, col_stride, padding,
-      explicit_paddings, &casted_out, data_format);
+      explicit_paddings, output, data_format);
 }
 
 // Forward declarations of the functor specializations for GPU.

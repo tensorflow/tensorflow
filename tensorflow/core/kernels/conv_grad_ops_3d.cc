@@ -1613,7 +1613,7 @@ struct LaunchConvBackpropInputOp<Eigen::bfloat16> {
 
     LaunchConvBackpropInputOpImpl<Eigen::bfloat16>(
         ctx, cudnn_use_autotune, casted_out_backprop, casted_filter, dilation,
-        strides, padding, &casted_in_backprop, data_format);
+        strides, padding, in_backprop, data_format);
   }
 };
 
@@ -2068,7 +2068,7 @@ struct LaunchConvBackpropFilterOp<Eigen::bfloat16> {
 
       LaunchConvBackpropFilterOpImpl<Eigen::bfloat16>(
           ctx, cudnn_use_autotune, casted_input, casted_out_backprop, dilation,
-          stride, padding, &casted_filter_backprop, data_format);
+          stride, padding, filter_backprop, data_format);
     }
 };
 

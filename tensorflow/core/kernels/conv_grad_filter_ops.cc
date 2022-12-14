@@ -990,7 +990,7 @@ operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
   LaunchConv2DBackpropFilterOpImpl<Eigen::bfloat16>(
       ctx, use_cudnn, cudnn_use_autotune, casted_out_backprop, casted_input,
       row_dilation, col_dilation, row_stride, col_stride, padding,
-      explicit_paddings, &casted_filter_backprop, data_format);
+      explicit_paddings, filter_backprop, data_format);
 }
 
 // Forward declarations of the functor specializations for GPU.

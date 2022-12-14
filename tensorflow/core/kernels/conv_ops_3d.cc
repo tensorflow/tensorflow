@@ -593,7 +593,7 @@ struct LaunchConvOp<GPUDevice, Eigen::bfloat16> {
 
     LaunchConvOpImpl<Eigen::bfloat16>(ctx, cudnn_use_autotune, casted_input,
                                       casted_filter, dilations, strides,
-                                      padding, data_format, &casted_out);
+                                      padding, data_format, output);
   }
 };
 

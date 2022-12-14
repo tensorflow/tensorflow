@@ -497,10 +497,13 @@ void LaunchConv2DBackpropInputOp<GPUDevice, Eigen::bfloat16>::operator()(
     return;
   }
 
+  // Need to use the address of in_backprop rather than casted_in_backprop,
+  // because the in_backprop might be replaced by a new allocated tensor during
+  // the function call.
   LaunchConv2DBackpropInputOpGpuImpl<Eigen::bfloat16>(
       ctx, use_cudnn, cudnn_use_autotune, casted_out_backprop, casted_filter,
       row_dilation, col_dilation, row_stride, col_stride, padding,
-      explicit_paddings, &casted_in_backprop, data_format);
+      explicit_paddings, in_backprop, data_format);
 }
 
 // Forward declarations of the functor specializations for GPU.
