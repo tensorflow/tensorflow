@@ -412,6 +412,97 @@ TEST_F(RemoteTensorHandleTest, UnknownRemoteDevice) {
   context->Unref();
 }
 
+TEST_F(RemoteTensorHandleTest, PoisonRemote) {
+  std::vector<std::unique_ptr<Device>> devices;
+  devices.emplace_back(
+      CreateDevice("CPU", "/job:worker/replica:0/task:0/device:CPU:0"));
+  devices.emplace_back(
+      CreateDevice("CPU", "/job:worker/replica:0/task:1/device:CPU:0"));
+  devices.emplace_back(
+      CreateDevice("CPU", "/job:worker/replica:0/task:2/device:CPU:0"));
+  StaticDeviceMgr device_mgr(std::move(devices));
+
+  EagerContext* context = new EagerContext(
+      SessionOptions(),
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
+      /* async= */ false, &device_mgr,
+      /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
+      /* cluster_flr= */ nullptr, /*collective_executor_mgr=*/nullptr,
+      /*run_eager_op_as_function=*/true);
+
+  tensorflow::DataType dtype = DT_FLOAT;
+  TensorShape shape = {};
+
+  const string remote_task = "/job:worker/replica:0/task:1";
+  Device* d1 = device_mgr.ListDevices().at(1);
+  TensorHandle* h = TensorHandle::CreateUnshapedRemoteHandle(
+      /*op_id=*/0, /*output_num=*/0, remote_task, dtype, d1, context,
+      /*unknown_device=*/true);
+  EXPECT_EQ(h->device(), d1);
+
+  tensorflow::Status fake_failure_status(tensorflow::error::ABORTED,
+                                         "Fake failure.");
+  h->PoisonRemote(fake_failure_status, d1, context->GetContextViewId());
+
+  Device* d2 = device_mgr.ListDevices().at(2);
+  EXPECT_THAT(
+      h->SetRemoteShapeAndDevice(shape, d1, context->GetContextViewId(),
+                                 d2->name()),
+      tensorflow::testing::StatusIs(fake_failure_status.code(),
+                                    fake_failure_status.error_message()));
+
+  h->Unref();
+  context->Unref();
+}
+
+TEST_F(RemoteTensorHandleTest, PoisonRemoteMirror) {
+  std::vector<std::unique_ptr<Device>> devices;
+  devices.emplace_back(
+      CreateDevice("CPU", "/job:worker/replica:0/task:0/device:CPU:0"));
+  devices.emplace_back(
+      CreateDevice("CPU", "/job:worker/replica:0/task:1/device:CPU:0"));
+  devices.emplace_back(
+      CreateDevice("CPU", "/job:worker/replica:0/task:2/device:CPU:0"));
+  StaticDeviceMgr device_mgr(std::move(devices));
+
+  EagerContext* context = new EagerContext(
+      SessionOptions(),
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
+      /* async= */ false, &device_mgr,
+      /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
+      /* cluster_flr= */ nullptr, /*collective_executor_mgr=*/nullptr,
+      /*run_eager_op_as_function=*/true);
+
+  tensorflow::DataType dtype = DT_FLOAT;
+  TensorShape shape = {};
+
+  const string remote_task = "/job:worker/replica:0/task:1";
+  Device* d1 = device_mgr.ListDevices().at(1);
+  TensorHandle* h = TensorHandle::CreateUnshapedRemoteHandle(
+      /*op_id=*/0, /*output_num=*/0, remote_task, dtype, d1, context,
+      /*unknown_device=*/true);
+  EXPECT_EQ(h->device(), d1);
+
+  Device* d2 = device_mgr.ListDevices().at(2);
+  int64_t op_id = 1;
+  int output_num = 2;
+  TF_ASSERT_OK(
+      h->AddUnshapedRemoteMirror(d2, op_id, output_num, remote_task, context));
+
+  tensorflow::Status fake_failure_status(tensorflow::error::ABORTED,
+                                         "Fake failure.");
+  h->PoisonRemote(fake_failure_status, d2, context->GetContextViewId());
+
+  EXPECT_THAT(
+      h->SetRemoteShapeAndDevice(shape, d2, context->GetContextViewId(),
+                                 d2->name()),
+      tensorflow::testing::StatusIs(fake_failure_status.code(),
+                                    fake_failure_status.error_message()));
+
+  h->Unref();
+  context->Unref();
+}
+
 TEST(TensorHandle_LocalTest, TensorFromDeviceSameDevice) {
   std::vector<std::unique_ptr<Device>> devices;
   devices.emplace_back(
