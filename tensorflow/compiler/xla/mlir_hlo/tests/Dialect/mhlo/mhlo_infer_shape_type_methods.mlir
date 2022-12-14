@@ -545,6 +545,16 @@ func.func @while(%arg0: tensor<4xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %
 
 // -----
 
+// CHECK-LABEL: func @get_dimension_size
+func.func @get_dimension_size(%arg0: tensor<4x2xf32>) -> tensor<index> {
+  %0 = "mhlo.get_dimension_size"(%arg0) {dimension = 1 : i64} : (tensor<4x2xf32>) -> tensor<i32>
+  %1 = "mhlo_test.get_return_types"(%0) : (tensor<i32>) -> tensor<index>
+  // CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = tensor<i32>} : (tensor<i32>) -> tensor<index>
+  func.return %1 : tensor<index>
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // Sparsity
 //===----------------------------------------------------------------------===//

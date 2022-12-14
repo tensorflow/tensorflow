@@ -1843,8 +1843,14 @@ LogicalResult DynamicGatherOp::inferReturnTypeComponents(
 //===----------------------------------------------------------------------===//
 // GetDimensionSizeOp
 //===----------------------------------------------------------------------===//
-//
+
 LogicalResult GetDimensionSizeOp::verify() { return verifyDimAttr(*this); }
+
+LogicalResult GetDimensionSizeOp::inferReturnTypes(
+    MLIRContext* context, Optional<Location> location, ValueRange,
+    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  return hlo::inferGetDimensionSizeOp(context, location, inferredReturnTypes);
+}
 
 /// Fold get_dimension_size when the said shape dimension is a constant.
 OpFoldResult GetDimensionSizeOp::fold(ArrayRef<Attribute> attrs) {
