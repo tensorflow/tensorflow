@@ -93,16 +93,6 @@ std::string CompactOneline(const std::string& input) {
   return result;
 }
 
-// Since Eigen::half doesn't satisfy the absl::bit_cast contract, we need to be
-// able to transparently access the raw 16-bit value contained within.
-template <typename T>
-T GetRawValue(T val) {
-  return val;
-}
-uint16_t GetRawValue(Eigen::half val) {
-  return Eigen::numext::bit_cast<uint16_t>(val);
-}
-
 bool LiteralProtoHasValues(const LiteralProto& proto) {
   return proto.preds_size() || !proto.s8s().empty() || !proto.u8s().empty() ||
          proto.s32s_size() || proto.s64s_size() || proto.u32s_size() ||
@@ -1553,24 +1543,11 @@ Literal ConvertBetweenNativeTypesWithConverter(const LiteralBase& src_literal,
 }
 
 template <typename NativeSrcT, typename NativeDestT>
-typename std::enable_if<std::is_same<NativeSrcT, Eigen::half>::value &&
-                            (std::is_same<NativeDestT, complex64>::value ||
-                             std::is_same<NativeDestT, complex128>::value),
-                        Literal>::type
-ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
+Literal ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
   auto converter = [](NativeSrcT src) {
-    return NativeDestT(static_cast<typename NativeDestT::value_type>(src));
-  };
-  return ConvertBetweenNativeTypesWithConverter<NativeSrcT, NativeDestT>(
-      src_literal, converter);
-}
-
-template <typename NativeSrcT, typename NativeDestT>
-typename std::enable_if<std::is_floating_point<NativeSrcT>::value &&
-                            std::is_integral<NativeDestT>::value,
-                        Literal>::type
-ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
-  auto converter = [](NativeSrcT src) {
+    if constexpr (std::is_same_v<NativeSrcT, NativeDestT>) {
+      return src;
+    }
     // C++ [conv.bool]p1:
     //   A prvalue of arithmetic [...] type can be converted to a prvalue of
     //   type bool. A zero value [...] is converted to false; any other value is
@@ -1583,7 +1560,9 @@ ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
     // may be undefined if the value's magnitude is too large or it is a NaN.
     // Let's choose saturating arithmetic as it captures the spirit of infinity
     // and arbitrarily map NaN to zero.
-    if (!std::is_same<NativeDestT, bool>::value) {
+    if constexpr (!std::is_same_v<NativeDestT, bool> &&
+                  !std::numeric_limits<NativeSrcT>::is_integer &&
+                  std::numeric_limits<NativeDestT>::is_integer) {
       if (src != src) {
         return NativeDestT{0};
       }
@@ -1601,53 +1580,18 @@ ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
 }
 
 template <typename NativeSrcT, typename NativeDestT>
-typename std::enable_if<!(std::is_floating_point<NativeSrcT>::value &&
-                          std::is_integral<NativeDestT>::value) &&
-                            !(std::is_same<NativeSrcT, Eigen::half>::value &&
-                              (std::is_same<NativeDestT, complex64>::value ||
-                               std::is_same<NativeDestT, complex128>::value)),
-                        Literal>::type
-ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
-  auto converter = [](NativeSrcT src) { return static_cast<NativeDestT>(src); };
-  return ConvertBetweenNativeTypesWithConverter<NativeSrcT, NativeDestT>(
-      src_literal, converter);
-}
-
-template <typename NativeSrcT, typename NativeDestT>
-typename std::enable_if<(sizeof(NativeSrcT) == sizeof(NativeDestT) &&
-                         !std::is_same<NativeDestT, Eigen::half>::value),
-                        Literal>::type
-BitcastBetweenNativeTypes(const LiteralBase& src_literal) {
-  auto converter = [](NativeSrcT src) {
-    return absl::bit_cast<NativeDestT>(GetRawValue(src));
-  };
-  return ConvertBetweenNativeTypesWithConverter<NativeSrcT, NativeDestT>(
-      src_literal, converter);
-}
-
-template <typename NativeSrcT, typename NativeDestT>
-typename std::enable_if<(sizeof(NativeSrcT) == sizeof(Eigen::half) &&
-                         std::is_same<NativeDestT, Eigen::half>::value),
-                        Literal>::type
-BitcastBetweenNativeTypes(const LiteralBase& src_literal) {
-  // Eigen::half doesn't satisfy the absl::bit_cast contract, so explicitly
-  // cast to unsigned short first.
-  auto converter = [](NativeSrcT src) {
-    return Eigen::numext::bit_cast<Eigen::half>(
-        absl::bit_cast<uint16_t>(GetRawValue(src)));
-  };
-  return ConvertBetweenNativeTypesWithConverter<NativeSrcT, Eigen::half>(
-      src_literal, converter);
-}
-
-// This template specialization is here to make the compiler happy. bit_cast has
-// a static check that the types are the same size. This specialization should
-// never be used because the source and destination types are checked for
-// identical sizes higher up.
-template <typename NativeSrcT, typename NativeDestT>
-typename std::enable_if<(sizeof(NativeSrcT) != sizeof(NativeDestT)),
-                        Literal>::type
-BitcastBetweenNativeTypes(const LiteralBase& src_literal) {
+Literal BitcastBetweenNativeTypes(const LiteralBase& src_literal) {
+  if constexpr (sizeof(NativeSrcT) == sizeof(NativeDestT)) {
+    auto converter = [](NativeSrcT src) {
+      return Eigen::numext::bit_cast<NativeDestT>(src);
+    };
+    return ConvertBetweenNativeTypesWithConverter<NativeSrcT, NativeDestT>(
+        src_literal, converter);
+  }
+  // This template specialization is here to make the compiler happy. bit_cast
+  // has a static check that the types are the same size. This specialization
+  // should never be used because the source and destination types are checked
+  // for identical sizes higher up.
   LOG(FATAL) << "Invalid bitcast between types of different sizes.";
 }
 
