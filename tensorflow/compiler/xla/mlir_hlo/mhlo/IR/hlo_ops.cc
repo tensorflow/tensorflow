@@ -2558,6 +2558,48 @@ LogicalResult ConvolutionOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// DynamicConvOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+struct DynamicConvIsConv : public OpRewritePattern<mhlo::DynamicConvOp> {
+  using OpRewritePattern<mhlo::DynamicConvOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(mhlo::DynamicConvOp op,
+                                PatternRewriter& rewriter) const override {
+    DenseIntElementsAttr padAttr;
+    if (!matchPattern(op.getDPadding(), m_Constant(&padAttr))) {
+      return rewriter.notifyMatchFailure(op, "non-constant d_padding found");
+    }
+
+    SmallVector<int64_t> padArray;
+    for (APInt pad : padAttr.getValues<APInt>()) {
+      padArray.push_back(pad.getZExtValue());
+    }
+
+    int64_t paddedDimCount = padArray.size() / 2;
+    auto newPadAttr = DenseIntElementsAttr::get(
+        RankedTensorType::get({paddedDimCount, 2}, rewriter.getI64Type()),
+        padArray);
+
+    rewriter.replaceOpWithNewOp<mhlo::ConvolutionOp>(
+        op, op.getType(), op.getLhs(), op.getRhs(), op.getWindowStridesAttr(),
+        newPadAttr, op.getLhsDilationAttr(), op.getRhsDilationAttr(),
+        op.getWindowReversalAttr(), op.getDimensionNumbers(),
+        op.getFeatureGroupCount(), op.getBatchGroupCount(),
+        op.getPrecisionConfigAttr());
+    return success();
+  }
+};
+
+}  // namespace
+
+void DynamicConvOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                                MLIRContext* context) {
+  results.add<DynamicConvIsConv>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // ConvertOp
 //===----------------------------------------------------------------------===//
 
