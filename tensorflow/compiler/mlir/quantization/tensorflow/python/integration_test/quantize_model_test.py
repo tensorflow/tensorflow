@@ -751,12 +751,12 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   def test_matmul_ptq_model_with_unfreeze_constants_raises_error(self):
     input_saved_model_path = self.create_tempdir('input').full_path
     self._create_matmul_model(
-        input_shape=(1, 1024),
-        weight_shape=(1024, 3),
+        input_shape=(1, 4096),
+        weight_shape=(4096, 5),
         saved_model_path=input_saved_model_path)
 
     repr_ds = self._create_data_generator(
-        input_key='input_tensor', shape=(1, 1024), num_examples=2)
+        input_key='input_tensor', shape=(1, 4096), num_examples=2)
 
     tags = {tag_constants.SERVING}
     output_directory = self.create_tempdir().full_path
@@ -1371,6 +1371,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         tags,
         input_key='x',
         output_key='output',
+        input_shape=(1, 16, 16, 8),
+        # Use large filter so that it is target for unfreezing.
+        filter_shape=(256, 8, 8, 4),
         use_variable=True)
 
     signature_keys = [signature_key]
