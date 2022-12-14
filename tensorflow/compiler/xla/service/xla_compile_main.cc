@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
@@ -42,11 +43,11 @@ namespace xla {
 namespace xla_compile {
 
 const char kUsageHeader[] =
-    "xla_compile performs ahead-of-time compilation of a MHLO module,\n"
-    "resulting in an AotCompilationResult compiled for CPU.\n"
+    "xla_compile performs ahead-of-time compilation of an MHLO or StableHLO "
+    "module,\nresulting in an AotCompilationResult compiled for CPU.\n"
     "A typical invocation looks like this:\n"
     "\n"
-    "   $ xla_compile --mhlo_file=mymhlo.mlir --output_file=output "
+    "   $ xla_compile --module_file=mymodule.mlir --output_file=output "
     "--platform=cpu"
     "\n";
 
@@ -76,25 +77,26 @@ StatusOr<std::string> AotCompileGpuExecutable(
   return result;
 }
 
-xla::Status XlaCompileMain(const std::string& mhlo_path,
+xla::Status XlaCompileMain(const std::string& module_path,
                            const std::string& output_path,
                            const std::string& platform,
                            const std::string& gpu_target_config_path) {
-  std::string mhlo_string;
+  std::string module_string;
   TF_RETURN_IF_ERROR(
-      tsl::ReadFileToString(tsl::Env::Default(), mhlo_path, &mhlo_string));
+      tsl::ReadFileToString(tsl::Env::Default(), module_path, &module_string));
 
   mlir::DialectRegistry dialects;
   // TODO(b/248362914): Register all required dialects.
   dialects.insert<mlir::arith::ArithDialect>();
   dialects.insert<mlir::mhlo::MhloDialect>();
   dialects.insert<mlir::func::FuncDialect>();
+  mlir::stablehlo::registerAllDialects(dialects);
 
   // Parse MHLO module.
   auto threading = mlir::MLIRContext::Threading::DISABLED;
   auto ctx = std::make_unique<mlir::MLIRContext>(dialects, threading);
   mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::parseSourceString<mlir::ModuleOp>(mhlo_string, ctx.get());
+      mlir::parseSourceString<mlir::ModuleOp>(module_string, ctx.get());
 
   // Convert Mhlo to Hlo Module.
   XlaComputation xla_computation;
@@ -144,12 +146,13 @@ xla::Status XlaCompileMain(const std::string& mhlo_path,
 // Read the input file containing the MHLO module, and write a Serialized
 // AotCompilationResult to the output file.
 int main(int argc, char* argv[]) {
-  std::string mhlo_path;
+  std::string module_path;
   std::string output_path;
   std::string platform;
   std::string gpu_target_config_path;
   std::vector<tsl::Flag> flag_list = {
-      tsl::Flag("mhlo_file", &mhlo_path, "The path to MHLO file"),
+      tsl::Flag("module_file", &module_path,
+                "The path to the MHLO or StableHLO file"),
       tsl::Flag("output_file", &output_path, "The path to the output file"),
       tsl::Flag("platform", &platform,
                 "The platform on which the built executable runs"),
@@ -169,7 +172,7 @@ int main(int argc, char* argv[]) {
   tsl::port::InitMain(usage.c_str(), &argc, &argv);
 
   xla::Status result = xla::xla_compile::XlaCompileMain(
-      mhlo_path, output_path, platform, gpu_target_config_path);
+      module_path, output_path, platform, gpu_target_config_path);
   if (!result.ok()) {
     LOG(ERROR) << "Compilation failed: " << result.error_message();
     return 1;

@@ -33,7 +33,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -41,11 +43,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_buffer.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
 
@@ -1256,18 +1260,18 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
                                roots.end());
   // Schedule in order bottom up.
   while (!sched_state.ready_set.empty()) {
-      VLOG(10) << "Current ready queue:";
-      XLA_VLOG_LINES(10, [&sched_state]() {
-        struct LogFormatter {
-          void operator()(std::string* out, const HloGraphNode* n) const {
-            out->append(absl::StrCat("\t", n->GetInstr().ToString(),
-                                     " Ready time: ", n->GetReadyTime()));
-          }
-        };
-        return absl::StrJoin(sched_state.ready_set, "\n", LogFormatter());
-      }());
+    VLOG(10) << "Current ready queue:";
+    XLA_VLOG_LINES(10, [&sched_state]() {
+      struct LogFormatter {
+        void operator()(std::string* out, const HloGraphNode* n) const {
+          out->append(absl::StrCat("\t", n->GetInstr().ToString(),
+                                   " Ready time: ", n->GetReadyTime()));
+        }
+      };
+      return absl::StrJoin(sched_state.ready_set, "\n", LogFormatter());
+    }());
 
-      TF_RETURN_IF_ERROR(SchedulingStep(&sched_state));
+    TF_RETURN_IF_ERROR(SchedulingStep(&sched_state));
   }
   if (VLOG_IS_ON(5)) {
     VLOG(5) << "New order";
@@ -1289,7 +1293,38 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
                  .GetNode(sched_state.new_sequence_reversed.back())
                  .GetReadyTime();
   absl::c_reverse(sched_state.new_sequence_reversed);
+
+  const auto& debug_options = xla::GetDebugOptionsFromFlags();
+  if (debug_options.xla_dump_latency_hiding_schedule() &&
+      !absl::StrContains(computation->name(), "region")) {
+    DumpLatencyHidingSchedule(computation, sched_state.sched_graph,
+                              sched_state.new_sequence_reversed, debug_options);
+  }
+
   return std::move(sched_state.new_sequence_reversed);
+}
+
+void DefaultSchedulerCore::DumpLatencyHidingSchedule(
+    const HloComputation* computation, const HloScheduleGraph& schedule_graph,
+    const std::vector<HloInstruction*>& instructions,
+    const DebugOptions& debug_options) {
+  ScheduleProto proto;
+
+  const HloGraphNode& first_node = schedule_graph.GetNode(instructions.front());
+  const double total_time = first_node.GetReadyTime() + first_node.GetCost();
+  for (const HloInstruction* instr : instructions) {
+    const HloGraphNode& instr_node = schedule_graph.GetNode(instr);
+    const double start_time = total_time - instr_node.GetReadyTime();
+    const double end_time = start_time + instr_node.GetCost();
+
+    ScheduleProto::Instruction* instr_msg = proto.add_instructions();
+    instr_msg->set_id(instr->unique_id());
+    instr_msg->set_start_timestamp_cycles(start_time);
+    instr_msg->set_end_timestamp_cycles(end_time);
+  }
+
+  const std::string fn = absl::StrFormat("%s.schedule.pb", computation->name());
+  DumpProtobufToFile(proto, debug_options, fn);
 }
 
 LatencyHidingScheduler::SchedulerStatistics
@@ -1459,15 +1494,13 @@ StatusOr<bool> LatencyHidingScheduler::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(5) << "Original module:";
-  bool is_module_changed = false;
   XLA_VLOG_LINES(5, module->ToString());
   // Currently we expect that a schedule that minimizes memory pressure is
   // provided as a base. It's not necessary for the algorithm itself but it
-  // allows us to not having to think for now to memory pressure.
+  // allows us to not having to think for now about memory pressure.
   std::vector<HloComputation*> computations_to_schedule;
   computations_to_schedule.reserve(module->computation_count());
   // Collect which computations have latency hiding opportunities.
-  // Convert collective permutes to start/done pairs.
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (auto* instr : computation->instructions()) {
@@ -1480,9 +1513,8 @@ StatusOr<bool> LatencyHidingScheduler::Run(
   }
 
   if (computations_to_schedule.empty()) {
-    return is_module_changed;
+    return false;
   }
-  is_module_changed = true;
 
   TF_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
   for (HloComputation* computation : computations_to_schedule) {
@@ -1490,12 +1522,12 @@ StatusOr<bool> LatencyHidingScheduler::Run(
     LogScheduleStatistics(computation);
     TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
                         scheduler_core_->ScheduleComputation(computation));
-    computation->parent()->schedule().set_sequence(
-        computation, absl::MakeConstSpan(new_schedule));
+    module->schedule().set_sequence(computation,
+                                    absl::MakeConstSpan(new_schedule));
     VLOG(1) << "Statistics after scheduling:";
     LogScheduleStatistics(computation);
   }
-  return is_module_changed;
+  return true;
 }
 
 }  // namespace xla

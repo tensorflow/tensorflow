@@ -24,26 +24,14 @@ namespace xla {
 namespace gpu {
 
 using xla::runtime::CustomCall;
-using xla::runtime::Executable;
 using xla::runtime::StridedMemrefView;
 
-namespace {
-
-enum class MemcpyDirection { kDeviceToDevice, kDeviceToHost, kHostToDevice };
+enum class MemcpyDirection { kD2D, kD2H, kH2D };
 
 template <MemcpyDirection direction>
-struct Memcpy {
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          runtime::StridedMemrefView dst,
-                          runtime::StridedMemrefView src) const;
-  static Memcpy Handler() { return Memcpy(); }
-};
-}  // namespace
-
-template <MemcpyDirection direction>
-absl::Status Memcpy<direction>::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    runtime::StridedMemrefView dst, runtime::StridedMemrefView src) const {
+absl::Status MemcpyImpl(const ServiceExecutableRunOptions* run_options,
+                        runtime::StridedMemrefView dst,
+                        runtime::StridedMemrefView src) {
   se::Stream* stream = run_options->stream();
 
   if (dst.sizes != src.sizes) {
@@ -57,16 +45,16 @@ absl::Status Memcpy<direction>::operator()(
   }
 
   switch (direction) {
-    case MemcpyDirection::kDeviceToDevice: {
+    case MemcpyDirection::kD2D: {
       se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
       se::DeviceMemoryBase src_data = GetDeviceAddress(src);
       stream->ThenMemcpy(&dst_data, src_data, src_data.size());
     } break;
-    case MemcpyDirection::kDeviceToHost: {
+    case MemcpyDirection::kD2H: {
       se::DeviceMemoryBase src_data = GetDeviceAddress(src);
       stream->ThenMemcpy(dst.data, src_data, src_data.size());
     } break;
-    case MemcpyDirection::kHostToDevice: {
+    case MemcpyDirection::kH2D: {
       se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
       stream->ThenMemcpy(&dst_data, src.data, dst_data.size());
     } break;
@@ -75,7 +63,7 @@ absl::Status Memcpy<direction>::operator()(
   // TODO(jacksonstokes): H2D and D2H memcpy instead of blocking the execution
   // thread should return an async token that will become available when
   // transfer is completed.
-  if (direction != MemcpyDirection::kDeviceToDevice) {
+  if (direction != MemcpyDirection::kD2D) {
     auto st = stream->BlockHostUntilDone();
     if (!st.ok()) return ToAbslStatus(st);
   }
@@ -83,26 +71,19 @@ absl::Status Memcpy<direction>::operator()(
   return absl::OkStatus();
 }
 
-template <MemcpyDirection direction>
-static bool MemcpyFn(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                     void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.memcpy")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<runtime::StridedMemrefView>()  // dst
-                             .Arg<runtime::StridedMemrefView>()  // src
-                             .To<checks>(Memcpy<direction>::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL_TEMPLATE(
+    MemcpyDirection direction, Memcpy, FunctionWrapper<MemcpyImpl<direction>>(),
+    checks,
+    CustomCall::Bind("xla.gpu.memcpy")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .Arg<runtime::StridedMemrefView>()  // dst
+        .Arg<runtime::StridedMemrefView>()  // src
+);
 
 void RegisterMemcpyCustomCalls(runtime::DirectCustomCallRegistry& registry) {
-  registry.Register("xla.gpu.memcpy.d2d",
-                    &MemcpyFn<MemcpyDirection::kDeviceToDevice>);
-  registry.Register("xla.gpu.memcpy.h2d",
-                    &MemcpyFn<MemcpyDirection::kHostToDevice>);
-  registry.Register("xla.gpu.memcpy.d2h",
-                    &MemcpyFn<MemcpyDirection::kDeviceToHost>);
+  registry.Register("xla.gpu.memcpy.d2d", Memcpy<MemcpyDirection::kD2D>);
+  registry.Register("xla.gpu.memcpy.h2d", Memcpy<MemcpyDirection::kH2D>);
+  registry.Register("xla.gpu.memcpy.d2h", Memcpy<MemcpyDirection::kD2H>);
 }
 
 }  // namespace gpu

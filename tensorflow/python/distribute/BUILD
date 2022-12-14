@@ -24,7 +24,6 @@ py_library(
         ":strategy_test_lib",
         ":test_util",
         ":values_v2",
-        "//tensorflow/python/distribute/experimental:dtensor_test_util",
         "//tensorflow/python/distribute/v1:all_reduce",
     ],
 )
@@ -698,6 +697,7 @@ distribute_py_test(
 tpu_py_test(
     name = "tpu_strategy_test",
     srcs = ["tpu_strategy_test.py"],
+    args = ["--tpu_use_tfrt=true"],
     disable_experimental = True,
     python_version = "PY3",
     tags = ["no_oss"],

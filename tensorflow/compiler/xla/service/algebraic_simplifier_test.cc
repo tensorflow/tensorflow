@@ -2653,56 +2653,6 @@ TEST_F(AlgebraicSimplifierTest, RemoveEmptyConcatenateOperands) {
 }
 
 // Test that reduce of concat is simplified.
-TEST_F(AlgebraicSimplifierTest, SimplifyReduceOfConcatDifferentAxis) {
-  auto m = CreateNewVerifiedModule();
-  const int kParamLength = 100;
-  Shape r3f32 =
-      ShapeUtil::MakeShape(F32, {kParamLength, kParamLength, kParamLength});
-  HloComputation::Builder builder(TestName());
-  HloInstruction* param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, r3f32, "param0"));
-  HloInstruction* param1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, r3f32, "param1"));
-  HloInstruction* param2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, r3f32, "param2"));
-  Shape concat_shape =
-      ShapeUtil::MakeShape(F32, {kParamLength, 3 * kParamLength, kParamLength});
-  HloInstruction* Concatenate =
-      builder.AddInstruction(HloInstruction::CreateConcatenate(
-          concat_shape, {param0, param1, param2}, 1));
-  HloComputation* add_computation = nullptr;
-  {
-    HloComputation::Builder builder(TestName() + ".add");
-    const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
-    HloInstruction* p0 = builder.AddInstruction(
-        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
-    HloInstruction* p1 = builder.AddInstruction(
-        HloInstruction::CreateParameter(1, scalar_shape, "p1"));
-    builder.AddInstruction(
-        HloInstruction::CreateBinary(scalar_shape, HloOpcode::kAdd, p0, p1));
-    add_computation = m->AddEmbeddedComputation(builder.Build());
-  }
-  Shape reduce_shape =
-      ShapeUtil::MakeShape(F32, {3 * kParamLength, kParamLength});
-
-  HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
-  builder.AddInstruction(HloInstruction::CreateReduce(
-      reduce_shape, Concatenate, zero, {0}, add_computation));
-
-  auto computation = m->AddEntryComputation(builder.Build());
-
-  AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).value());
-
-  EXPECT_THAT(
-      computation->root_instruction(),
-      GmockMatch(m::Concatenate(m::Reduce(m::Parameter(0), m::Op().Is(zero)),
-                                m::Reduce(m::Parameter(1), m::Op().Is(zero)),
-                                m::Reduce(m::Parameter(2), m::Op().Is(zero)))));
-}
-
-// Test that reduce of concat is simplified.
 TEST_F(AlgebraicSimplifierTest, SimplifyReduceOfConcat) {
   auto m = CreateNewVerifiedModule();
   const int kParamLength = 100;
@@ -2732,6 +2682,7 @@ TEST_F(AlgebraicSimplifierTest, SimplifyReduceOfConcat) {
         HloInstruction::CreateBinary(scalar_shape, HloOpcode::kAdd, p0, p1));
     add_computation = m->AddEmbeddedComputation(builder.Build());
   }
+  Shape r4f32 = ShapeUtil::MakeShape(F32, {4, 5, 6, 7});
   Shape reduce_shape = ShapeUtil::MakeShape(F32, {kParamLength});
 
   HloInstruction* zero = builder.AddInstruction(
@@ -7937,6 +7888,7 @@ TEST_F(AlgebraicSimplifierTest, AbsEliminationMultiply) {
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
 }
+
 
 TEST_F(AlgebraicSimplifierTest, AbsEliminationPower2) {
   const char* kModuleStr = R"(

@@ -505,6 +505,7 @@ cc_library(
     name = "managed_stack_trace",
     hdrs = ["managed_stack_trace.h"],
     visibility = [
+        "//tensorflow:__pkg__",
         "//tensorflow/c/eager:__pkg__",
         "//tensorflow/compiler/mlir/tensorflow:__pkg__",
         "//tensorflow/core:__pkg__",
@@ -891,6 +892,7 @@ tf_cc_tests(
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:status_matchers",
         "//third_party/eigen3",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_set",

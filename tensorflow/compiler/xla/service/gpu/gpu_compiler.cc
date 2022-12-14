@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/all_reduce_combiner.h"
 #include "tensorflow/compiler/xla/service/all_reduce_contiguous.h"
 #include "tensorflow/compiler/xla/service/all_reduce_folder.h"
+#include "tensorflow/compiler/xla/service/all_reduce_promotion.h"
 #include "tensorflow/compiler/xla/service/all_reduce_reassociate.h"
 #include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
 #include "tensorflow/compiler/xla/service/async_collective_creator.h"
@@ -83,7 +84,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gather_simplifier.h"
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
 #include "tensorflow/compiler/xla/service/gpu/all_reduce_blueconnect.h"
-#include "tensorflow/compiler/xla/service/gpu/all_reduce_promotion.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/conv_layout_normalization.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
@@ -108,7 +108,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
-#include "tensorflow/compiler/xla/service/gpu/jitrt_custom_calls.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
 #include "tensorflow/compiler/xla/service/gpu/move_copy_to_users.h"
@@ -129,7 +128,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
@@ -168,6 +166,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
@@ -310,6 +310,41 @@ GpuXlaRuntimeAotCompilationResult::LoadExecutable(
       GetDebugOptionsFromFlags(), xla_runtime_gpu_executable_.gpu_asm_text(),
       xla_runtime_gpu_executable_.gpu_binary(), std::move(constants),
       gpu_compiler->GetGpuVersion(executor), executor);
+}
+
+GpuTargetConfig::GpuTargetConfig(const se::GpuTargetConfigProto& proto)
+    : gpu_device_info(proto.gpu_device_info()),
+      platform_name(proto.platform_name()) {
+  if (proto.has_cuda_compute_capability()) {
+    stream_executor::CudaComputeCapability cuda_compute_capability(
+        proto.cuda_compute_capability());
+    gpu_version = cuda_compute_capability;
+  } else {
+    CHECK(proto.has_rocm_compute_capability());
+    stream_executor::RocmComputeCapability rocm_compute_capability(
+        proto.rocm_compute_capability());
+    gpu_version = rocm_compute_capability;
+  }
+}
+
+se::GpuTargetConfigProto GpuTargetConfig::ToProto() const {
+  se::GpuTargetConfigProto proto;
+  *proto.mutable_gpu_device_info() = gpu_device_info.ToProto();
+
+  if (std::holds_alternative<se::CudaComputeCapability>(gpu_version)) {
+    auto cuda_compute_capability =
+        std::get<se::CudaComputeCapability>(gpu_version);
+    *proto.mutable_cuda_compute_capability() =
+        cuda_compute_capability.ToProto();
+  } else {
+    auto rocm_compute_capability =
+        std::get<se::RocmComputeCapability>(gpu_version);
+    *proto.mutable_rocm_compute_capability() =
+        rocm_compute_capability.ToProto();
+  }
+
+  proto.set_platform_name(platform_name);
+  return proto;
 }
 
 GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
@@ -588,7 +623,9 @@ Status GpuCompiler::OptimizeHloModule(
     collectives_pipeline.AddPass<AllGatherBroadcastReorder>();
 
     // promote 16 bit integer all-reduce and reduce-scatter to 32-bit.
-    collectives_pipeline.AddPass<AllReducePromotion>();
+    const std::pair<PrimitiveType, PrimitiveType> ar_promoted_types[] = {
+        {U16, U32}, {S16, S32}};
+    collectives_pipeline.AddPass<AllReducePromotion>(ar_promoted_types);
     // Remove dead computations left over after ar/rs promotion.
     collectives_pipeline.AddPass<HloDCE>();
 
@@ -1542,14 +1579,26 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
     const std::any& target_config = options.target_config();
     auto* gpu_target_config = std::any_cast<GpuTargetConfig>(&target_config);
+
     if (gpu_target_config) {
+      // CUDA "CC" major value, -1 if not available.
+      se::CudaComputeCapability cuda_compute_capability{-1, -1};
+      // ROCm gfx arch,  "gfx000" if not available.
+      se::RocmComputeCapability rocm_compute_capability{"gfx000"};
+      if (auto* cuda = std::get_if<se::CudaComputeCapability>(
+              &(gpu_target_config->gpu_version))) {
+        cuda_compute_capability = *cuda;
+      } else {
+        rocm_compute_capability =
+            std::get<se::RocmComputeCapability>(gpu_target_config->gpu_version);
+      }
+
       TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
           module.get(), &llvm_context, target_triple_, data_layout_,
           gpu_target_config->platform_name, options.PlatformId(),
-          gpu_target_config->gpu_device_info,
-          gpu_target_config->cuda_compute_capability,
-          gpu_target_config->rocm_compute_capability, GetCanShareBuffer(),
-          pointer_size_, &compile_module_results));
+          gpu_target_config->gpu_device_info, cuda_compute_capability,
+          rocm_compute_capability, GetCanShareBuffer(), pointer_size_,
+          &compile_module_results));
     } else {
       CHECK(options.executor() != nullptr);
       auto stream_exec = options.executor();
@@ -1575,7 +1624,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
           backend_result,
           CompileToTargetBinary(
               module->config(), std::move(compile_module_results.llvm_module),
-              gpu_target_config->cuda_compute_capability, options.executor(),
+              gpu_target_config->gpu_version, options.executor(),
               {options.device_allocator()}, module.get()));
     } else {
       TF_ASSIGN_OR_RETURN(
@@ -1601,10 +1650,10 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     runtime::CompilationPipelineOptions copts;
 
     // Populate mapping from XLA (SE) enums/structs type id to symbol names.
-    copts.populate_type_id_names = PopulateXlaGpuTypeIdNames;
+    copts.populate_type_id_names = RegisterXlaGpuTypeIdNames;
 
     // For passing LMHLO attributes as XLA (SE) enums/structs to custom calls.
-    copts.populate_attr_encodings = PopulateLmhloToXlaAttrEncoding;
+    copts.populate_attr_encodings = RegisterXlaGpuAttrEncoding;
 
     // Options for constructing XLA runtime JitExecutable.
     runtime::JitExecutable::Options opts;
@@ -1614,7 +1663,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
     // Register XLA Gpu runtime custom calls with the linker.
     opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
-        PopulateXlaGpuCustomCalls, PopulateXlaGpuTypeIdNames);
+        RegisterXlaGpuRuntimeCustomCalls, RegisterXlaGpuTypeIdNames);
 
     opts.compiler.create_compilation_pipeline =
         [copts](xla::runtime::PassManager& passes) {
@@ -1715,7 +1764,9 @@ static Status GetMlirAllocationInfo(mlir::func::FuncOp func,
   }
 
   for (int i = 0; i < func.getNumArguments(); i++) {
-    for (const mlir::NamedAttribute& attr : func.getArgAttrs(i)) {
+    llvm::ArrayRef<mlir::NamedAttribute> attrs =
+        mlir::function_interface_impl::getArgAttrs(func, i);
+    for (const mlir::NamedAttribute& attr : attrs) {
       TF_RET_CHECK(attr.getName() == "lmhlo.params" ||
                    attr.getName() == "lmhlo.param_shape_index" ||
                    attr.getName() == "lmhlo.constant_name" ||

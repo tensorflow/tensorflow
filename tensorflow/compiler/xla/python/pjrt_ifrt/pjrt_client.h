@@ -31,15 +31,31 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
+// PjRt-compatible `Client` interface.
+class PjRtCompatibleClient
+    : public llvm::RTTIExtends<PjRtCompatibleClient, Client> {
+ public:
+  // APIs that allow direct access to `xla::PjRtClient` for PjRt-only
+  // operations.
+  virtual xla::PjRtClient* pjrt_client() = 0;
+  virtual std::shared_ptr<xla::PjRtClient> shared_ptr_pjrt_client() = 0;
+};
+
 // `Client` implementation that wraps `xla::PjRtClient`.
-class PjRtClient final : public llvm::RTTIExtends<PjRtClient, Client> {
+class PjRtClient final
+    : public llvm::RTTIExtends<PjRtClient, PjRtCompatibleClient> {
  public:
   static std::unique_ptr<ifrt::Client> Create(
       std::shared_ptr<xla::PjRtClient> pjrt_client);
   static std::unique_ptr<ifrt::Client> Create(
       std::unique_ptr<xla::PjRtClient> pjrt_client);
 
-  xla::PjRtClient* pjrt_client() const { return pjrt_client_.get(); }
+  // PjRtCompatibleClient implementation.
+
+  xla::PjRtClient* pjrt_client() override { return pjrt_client_.get(); }
+  std::shared_ptr<xla::PjRtClient> shared_ptr_pjrt_client() override {
+    return pjrt_client_;
+  }
 
   // Client implementation.
 
@@ -52,7 +68,7 @@ class PjRtClient final : public llvm::RTTIExtends<PjRtClient, Client> {
       Client::HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) override;
 
-  StatusOr<std::unique_ptr<Array>> AssembleArray(
+  StatusOr<std::unique_ptr<Array>> AssembleArrayFromSingleDeviceArrays(
       Shape shape, std::shared_ptr<const Sharding> sharding,
       absl::Span<Array* const> arrays, ArrayCopySemantics semantics) override;
 
@@ -111,9 +127,9 @@ class PjRtClient final : public llvm::RTTIExtends<PjRtClient, Client> {
     return pjrt_client_->CreateHostToDeviceChannelHandle();
   }
 
-  Compiler* GetDefaultCompiler() const override {
+  Compiler* GetDefaultCompiler() override {
     DCHECK(this);
-    return const_cast<PjRtCompiler*>(&default_compiler_);
+    return &default_compiler_;
   }
 
   static char ID;  // NOLINT

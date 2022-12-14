@@ -131,6 +131,7 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
 namespace cublas_lt {
 
 StatusOr<bool> EpilogueAddsVectorBias(GemmBackendConfig_Epilogue epilogue);
+StatusOr<bool> EpilogueHasAuxiliaryOutput(GemmBackendConfig_Epilogue epilogue);
 
 }  // namespace cublas_lt
 
@@ -154,6 +155,7 @@ class MatmulPlan {
       se::DeviceMemoryBase b_buffer, se::DeviceMemoryBase c_buffer,
       se::DeviceMemoryBase d_buffer,
       se::DeviceMemoryBase bias_buffer,  // may be null
+      se::DeviceMemoryBase aux_buffer,   // may be null
       const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
       se::ScratchAllocator& scratch_allocator,
       se::blas::ProfileResult* profile_result = nullptr) const;
@@ -174,6 +176,7 @@ class MatmulPlan {
                   se::DeviceMemoryBase b_buffer, se::DeviceMemoryBase c_buffer,
                   se::DeviceMemoryBase d_buffer,
                   se::DeviceMemoryBase bias_buffer,  // may be null
+                  se::DeviceMemoryBase aux_buffer,   // may be null
                   const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
                   se::ScratchAllocator& scratch_allocator,
                   se::blas::ProfileResult* profile_result) const;

@@ -6,7 +6,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
-        "//tensorflow:structured_tensor_whitelist",
+        "//tensorflow:structured_tensor_allowlist",
     ],
     licenses = ["notice"],
 )

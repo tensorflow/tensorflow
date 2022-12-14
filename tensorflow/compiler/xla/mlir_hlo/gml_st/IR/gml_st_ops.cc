@@ -659,7 +659,7 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
       auto constant =
           dyn_cast_or_null<arith::ConstantIndexOp>(v.getDefiningOp());
       if (constant) return constant.value();
-      return None;
+      return llvm::None;
     };
     for (auto [lowerBound, upperBound, step, iv] :
          llvm::zip(op.getLowerBound(), op.getUpperBound(), op.getStep(),
@@ -1745,12 +1745,9 @@ void TileOp::build(OpBuilder &b, OperationState &result,
                    ArrayRef<NamedAttribute> attrs) {
   SmallVector<int64_t> staticOffsets, staticSizes, staticStrides;
   SmallVector<Value> dynamicOffsets, dynamicSizes, dynamicStrides;
-  dispatchIndexOpFoldResults(offsets, dynamicOffsets, staticOffsets,
-                             ShapedType::kDynamic);
-  dispatchIndexOpFoldResults(sizes, dynamicSizes, staticSizes,
-                             ShapedType::kDynamic);
-  dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides,
-                             ShapedType::kDynamic);
+  dispatchIndexOpFoldResults(offsets, dynamicOffsets, staticOffsets);
+  dispatchIndexOpFoldResults(sizes, dynamicSizes, staticSizes);
+  dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides);
   auto tileType = TileType::get(b.getContext(), staticSizes);
   build(b, result, tileType, dynamicOffsets, dynamicSizes, dynamicStrides,
         b.getDenseI64ArrayAttr(staticOffsets),

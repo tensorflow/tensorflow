@@ -35,7 +35,6 @@ cc_library(
     name = "fallback_state",
     srcs = ["fallback_state.cc"],
     hdrs = ["fallback_state.h"],
-    # copybara:uncomment compatible_with = ["//buildenv/target:gce"],
     deps = [
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",

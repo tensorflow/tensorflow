@@ -38,13 +38,13 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/call_register.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/constants.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/decode_jpeg_register.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/tools/model_loader.h"
 
 #ifndef TEMP_FAILURE_RETRY
 #ifdef __ANDROID__
@@ -72,8 +72,8 @@ void AppendTensorDataToVector(const TfLiteTensor* tensor,
 }
 
 // Returns whether the tensor is embedded with data.
-inline bool HasTensorData(ModelLoader* model_loader, const Subgraph& graph,
-                          int index) {
+inline bool HasTensorData(tools::ModelLoader* model_loader,
+                          const Subgraph& graph, int index) {
   // TODO(b/247752800): Find a better approach to see if data is embedded,
   // regardless of how the model is loaded.
   const TfLiteTensor* tensor = graph.tensor(index);
@@ -357,6 +357,9 @@ MinibenchmarkStatus Validator::RunValidation(Results* results_out) {
   if (!model_loader_) {
     return kMinibenchmarkModelReadFailed;
   }
+  if (!model_loader_->Init()) {
+    return kMinibenchmarkModelInitFailed;
+  }
 
 #define MB_RETURN_IF_ERROR(s)                 \
   {                                           \
@@ -364,7 +367,6 @@ MinibenchmarkStatus Validator::RunValidation(Results* results_out) {
     if (c != kMinibenchmarkSuccess) return c; \
   }
 
-  MB_RETURN_IF_ERROR(model_loader_->Init());
   // The lifetime of the delegate must be at least as long as the lifetime of
   // any Interpreter.
   int64_t delegate_load_start_time_us = ElapsedTimeMicros();

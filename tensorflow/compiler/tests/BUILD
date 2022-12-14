@@ -2209,6 +2209,37 @@ tf_xla_py_test(
     size = "small",
     srcs = ["where_op_test.py"],
     enable_mlir_bridge = False,
+    enabled_backends = [
+        "cpu",
+        "gpu",
+    ],
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python/compiler/xla:compiler_py",
+    ],
+)
+
+tf_xla_py_test(
+    name = "where_op_tpu_test",
+    size = "small",
+    srcs = ["where_op_test.py"],
+    args = ["--tpu_use_tfrt=true"],
+    disabled_backends = [
+        "cpu",
+        "cpu_ondemand",
+        "gpu",
+    ],
+    enable_mlir_bridge = False,
+    main = "where_op_test.py",
     tags = [
         "no_pip",
         "optonly",

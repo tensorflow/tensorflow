@@ -21,9 +21,10 @@ cc_library(
             "dtensor_embedding_stub.cc",
             "dtensor_embedding_v2_stub.cc",
         ],
+    ) + if_google(
+        ["collective_lowering_google.cc"],
     ),
     hdrs = ["dtensor_mlir_passes_internal.h"],
-    textual_hdrs = [] + if_google(["collective_lowering_google.inc"]),
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",

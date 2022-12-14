@@ -28,6 +28,8 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
+#include "tensorflow/compiler/jit/device_compilation_cache.h"
+#include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
 #include "tensorflow/compiler/jit/device_compilation_profiler.h"
 #include "tensorflow/compiler/jit/device_compiler_client.h"
 #include "tensorflow/compiler/jit/device_executable_persistor.h"
@@ -55,9 +57,8 @@ namespace tensorflow {
 //
 // Since XLA computations must have static shapes, the cache generates a new
 // XLA computation for each new set of input shapes.
-//
-// Currently no cache eviction policy is implemented and the cache grows without
-// bound.
+// TODO(b/255826209): Rename to DeviceCompiler and update comments to reflect
+// functionality.
 class XlaCompilationCache : public ResourceBase {
  public:
   XlaCompilationCache(
@@ -69,17 +70,16 @@ class XlaCompilationCache : public ResourceBase {
           compiler_client);
   ~XlaCompilationCache() override;
 
-  enum class CompileState { kUncompiled, kCompiling, kCompiled };
-
   enum class CompileScope {
     kOp,
     kFunction,
   };
 
   // Compiles a function into a XlaCompiler::CompilationResult that can be used
-  // to execute an XLA Computation. Compilation results are cached.
-  // `function` is the name of a Tensorflow function to compile.
-  // `args` is a description of the arguments to the computation.
+  // to execute an XLA Computation. Compilation results are cached. Compilation
+  // is skipped if there is a cache hit. `function` is the name of a Tensorflow
+  // function to compile. `args` is a description of the arguments to the
+  // computation.
   //
   // `compile_mode` controls the behavior of the compilation cache on a cache
   // miss.  If `compile_mode` is `kLazy` then, based on some profitability
@@ -95,17 +95,16 @@ class XlaCompilationCache : public ResourceBase {
   // xla::LocalExecutable and sets `out_executable` to point to it. The
   // resulting executable pointer may be null if the computation has no
   // non-constant outputs.
-  Status Compile(const XlaCompiler::Options& options,
-                 const NameAttrList& function,
-                 const std::vector<XlaCompiler::Argument>& args,
-                 const XlaCompiler::CompileOptions& compile_options,
-                 DeviceCompileMode compile_mode,
-                 DeviceCompilationProfiler* profiler,
-                 const XlaCompiler::CompilationResult** out_compilation_result,
-                 xla::LocalExecutable** out_executable);
+  Status CompileIfNeeded(
+      const XlaCompiler::Options& options, const NameAttrList& function,
+      const std::vector<XlaCompiler::Argument>& args,
+      const XlaCompiler::CompileOptions& compile_options,
+      DeviceCompileMode compile_mode, DeviceCompilationProfiler* profiler,
+      const XlaCompiler::CompilationResult** out_compilation_result,
+      xla::LocalExecutable** out_executable);
 
   // As above, but for a single op.
-  Status CompileSingleOp(
+  Status CompileSingleOpIfNeeded(
       const XlaCompiler::Options& options,
       const std::vector<XlaCompiler::Argument>& args,
       const XlaCompiler::CompileOptions& compile_options, OpKernelContext* ctx,
@@ -113,53 +112,11 @@ class XlaCompilationCache : public ResourceBase {
       const XlaCompiler::CompilationResult** out_compilation_result,
       xla::LocalExecutable** out_executable);
 
-  struct CompilationResultAndExecutable {
-    const XlaCompiler::CompilationResult* compilation_result;
-    xla::LocalExecutable* executable;
-  };
-
-  // Returns CompilationResultAndExecutable with non-null compilation_result and
-  // executable if the signature is already compiled.
-  // If the signature has not been compiled yet, this function returns a
-  // CompilationResultAndExecutable instance with only nullptrs in it.
-  // Non-ok status means something other than the 2 circumstances above
-  // happened.
-  StatusOr<CompilationResultAndExecutable>
-  GetCompilationResultIfAlreadyCompiled(
-      const NameAttrList& function,
-      absl::Span<const XlaCompiler::Argument> args);
-
   xla::LocalClient* client() const { return compiler_client_->client(); }
   const DeviceType& device_type() const { return persistor_->device_type(); }
+  DeviceCompilationCache<xla::LocalExecutable>* cache() { return cache_.get(); }
 
   string DebugString() const override;
-
-  // Describes the types, shapes and any compile-time constant arguments
-  // to a kernel. Key that uniquely identifies a compilation output.
-  struct Signature {
-    string name;
-
-    // List of args (either as a TensorTypeAndShape or as a Tensor value)
-    // for compile-time constant arguments to the compilation, ordered by
-    // argument number. Tensors must be in host memory.
-    using TensorTypeAndShape =
-        std::pair<DataType, absl::InlinedVector<int64_t, 4>>;
-    absl::InlinedVector<std::variant<Tensor, TensorTypeAndShape>, 8> args;
-
-    bool operator==(const Signature& other) const;
-
-    struct Hash {
-      uint64 operator()(const Signature& signature) const;
-    };
-
-    // Returns a human-readable description of the signature.
-    string HumanString() const;
-  };
-
-  // Builds the signature for a compilation.
-  static StatusOr<Signature> BuildSignature(
-      const NameAttrList& function,
-      absl::Span<const XlaCompiler::Argument> args);
 
  private:
   // Common implementation of Compile and CompileSingleOp. The `OpKernelContext`
@@ -173,54 +130,38 @@ class XlaCompilationCache : public ResourceBase {
       const XlaCompiler::CompilationResult** out_compilation_result,
       xla::LocalExecutable** out_executable);
 
-  // The value associated with a cache entry.
-  struct Entry {
-    mutex mu;
-
-    // The current compilation state for this entry.
-    CompileState compile_state = CompileState::kUncompiled;
-
-    // The number of times a compilation with this signature has been requested.
-    int64_t request_count = 0;
-
-    // Did compilation succeed?
-    Status compilation_status TF_GUARDED_BY(mu);
-
-    // Output of the XlaCompiler.
-    XlaCompiler::CompilationResult compilation_result TF_GUARDED_BY(mu);
-
-    // The XLA executable compiled from <computation>. May be null if no
-    // executable has been built.
-    std::unique_ptr<xla::LocalExecutable> executable TF_GUARDED_BY(mu);
-  };
-
-  Status CompileStrict(const Signature& sig,
-                       const XlaCompiler::CompileOptions& compile_options,
-                       const XlaCompiler::Options& options,
-                       const std::vector<XlaCompiler::Argument>& args,
-                       const NameAttrList& function, CompileScope scope,
-                       OpKernelContext* ctx,
-                       DeviceCompilationProfiler* profiler, Entry* entry)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(entry->mu);
-  Status CompileAsynchronous(const Signature& sig,
+  StatusOr<DeviceCompilationCache<xla::LocalExecutable>::Value> CompileStrict(
+      const DeviceCompilationClusterSignature& sig,
+      const XlaCompiler::CompileOptions& compile_options,
+      const XlaCompiler::Options& options,
+      const std::vector<XlaCompiler::Argument>& args,
+      const NameAttrList& function,
+      DeviceCompilationCache<xla::LocalExecutable>::Value cache_value,
+      CompileScope scope, OpKernelContext* ctx,
+      DeviceCompilationProfiler* profiler, mutex* mu)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(*mu);
+  Status CompileAsynchronous(const DeviceCompilationClusterSignature& sig,
                              const XlaCompiler::CompileOptions& compile_options,
                              const XlaCompiler::Options& options,
                              const std::vector<XlaCompiler::Argument>& args,
                              const NameAttrList& function, CompileScope scope,
                              OpKernelContext* ctx,
-                             DeviceCompilationProfiler* profiler, Entry* entry);
-
-  mutex compile_cache_mu_;
-  absl::flat_hash_map<Signature, std::unique_ptr<Entry>, Signature::Hash> cache_
-      TF_GUARDED_BY(compile_cache_mu_);
+                             DeviceCompilationProfiler* profiler);
 
   std::unique_ptr<
       DeviceExecutablePersistor<xla::LocalExecutable, xla::LocalClient>>
       persistor_;
   std::unique_ptr<DeviceCompilerClient<xla::LocalExecutable, xla::LocalClient>>
       compiler_client_;
+  std::unique_ptr<DeviceCompilationCache<xla::LocalExecutable>> cache_;
+
   // Pool of threads for asynchronous compilations.
   std::unique_ptr<thread::ThreadPool> async_compiler_threads_;
+
+  mutex cluster_mutexes_mu_;
+  absl::flat_hash_map<DeviceCompilationClusterSignature, std::unique_ptr<mutex>,
+                      DeviceCompilationClusterSignature::Hash>
+      cluster_mutexes_ TF_GUARDED_BY(cluster_mutexes_mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompilationCache);
 };

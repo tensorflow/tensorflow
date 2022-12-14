@@ -102,14 +102,18 @@ struct GmlStToGpuPass : public ::impl::GmlStToGpuPassBase<GmlStToGpuPass> {
 }  // namespace
 
 static Value createCombineOp(Location loc, Value lhs, Value rhs,
-                             CombiningKind kind, PatternRewriter& rewriter) {
+                             CombiningKind kind, PatternRewriter& rewriter,
+                             Type elementType) {
   auto helper = [&](auto dummy) {
     return rewriter.create<decltype(dummy)>(loc, lhs, rhs);
   };
+  bool isInt = elementType.isa<IntegerType, IndexType>();
   switch (kind) {
     case CombiningKind::ADD:
+      if (isInt) return helper(arith::AddIOp());
       return helper(arith::AddFOp());
     case CombiningKind::MUL:
+      if (isInt) return helper(arith::MulIOp());
       return helper(arith::MulFOp());
     case CombiningKind::MINUI:
       return helper(arith::MinUIOp());
@@ -209,13 +213,14 @@ LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(
           rewriter.create<arith::TruncIOp>(
               loc, rewriter.getIntegerType(bitWidth), shuffle));
     }
-    result =
-        createCombineOp(loc, result, shuffle, reductionOp.getKind(), rewriter);
+    result = createCombineOp(loc, result, shuffle, reductionOp.getKind(),
+                             rewriter, elementType);
   }
 
   // Combine with init element and broadcast result back to vector.
   Value acc = rewriter.create<ExtractOp>(loc, reductionOp.getAcc(), 0);
-  result = createCombineOp(loc, acc, result, reductionOp.getKind(), rewriter);
+  result = createCombineOp(loc, acc, result, reductionOp.getKind(), rewriter,
+                           elementType);
   rewriter.replaceOpWithNewOp<vector::BroadcastOp>(reductionOp, outType,
                                                    result);
 

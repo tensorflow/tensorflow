@@ -33,42 +33,26 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using ::xla::runtime::CustomCall;
-using ::xla::runtime::Executable;
-using ::xla::runtime::FlatMemrefView;
-using ::xla::runtime::StridedMemrefView;
-
-namespace se = ::stream_executor;
-
-// Implements JitRt custom call that forward to the Xla Custom Call handler.
+// Custom calls with API version API_VERSION_TYPED_FFI lowered directly to an
+// Xla runtime custom calls. Older API versions handled by adapting Xla runtime
+// calling convention to the calling convention expected by the registered
+// handler.
 //
-// Longer term all Xla custom calls probably should be directly implemented as
-// JitRt custom calls. However for smooth migration from Thunks to JitRt we have
-// to seamlessly support all current XLA users.
-
+// Once all Xla backends will use Xla runtime we will deprecate older API
+// version, and migrate all users to API_VERSION_TYPED_FFI.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-namespace {
-struct XlaCustomCall {
-  using Stream = se::gpu::GpuStreamHandle;
 
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          const DebugOptions* debug_options,
-                          runtime::CustomCall::RemainingArgs args,
-                          std::string_view call_target_name,
-                          int32_t api_version,
-                          std::string_view backend_config) const;
-  static XlaCustomCall Handler() { return XlaCustomCall(); }
-};
-}  // namespace
+using xla::runtime::CustomCall;
+using xla::runtime::FlatMemrefView;
+using xla::runtime::StridedMemrefView;
 
-absl::Status XlaCustomCall::operator()(
+static absl::Status XlaCustomCallImpl(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, CustomCall::RemainingArgs args,
     std::string_view call_target_name, int32_t api_version,
-    std::string_view backend_config) const {
+    std::string_view backend_config) {
   // Pattern match custom call to a few special cases, otherwise find the custom
   // call handler regustered with the runtime.
-
   if (call_target_name == kTriangularSolveCallTarget)
     return TriangularSolve::run(run_options, debug_options, args,
                                 backend_config);
@@ -91,8 +75,6 @@ absl::Status XlaCustomCall::operator()(
     }
 
     if (auto strided = args.get<StridedMemrefView>(i); succeeded(strided)) {
-      int64_t size_in_bytes = primitive_util::ByteWidth(strided->dtype);
-      for (int64_t size : strided->sizes) size_in_bytes *= size;
       buffers.push_back(strided->data);
       continue;
     }
@@ -109,9 +91,13 @@ absl::Status XlaCustomCall::operator()(
         "Failed to get arguments as (strided) memref view");
   }
 
+  // Call custom call handler using the calling convention it requires.
+  using ApiVersion = CustomCallApiVersion;
+
   // Original custom call API version that doesn't support returning status.
-  if (api_version == CustomCallApiVersion::API_VERSION_ORIGINAL) {
-    using XlaCustomCallType = void (*)(Stream, void**, const char*, size_t);
+  if (api_version == ApiVersion::API_VERSION_ORIGINAL) {
+    using XlaCustomCallType =
+        void (*)(se::gpu::GpuStreamHandle, void**, const char*, size_t);
     auto xla_call_target = reinterpret_cast<XlaCustomCallType>(call_target);
 
     xla_call_target(se::gpu::AsGpuStreamValue(run_options->stream()),
@@ -122,11 +108,11 @@ absl::Status XlaCustomCall::operator()(
   }
 
   // Xla Custom call API returning status.
-  if (api_version == CustomCallApiVersion::API_VERSION_STATUS_RETURNING ||
-      api_version ==
-          CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED) {
+  if (api_version == ApiVersion::API_VERSION_STATUS_RETURNING ||
+      api_version == ApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED) {
     using XlaCustomCallType =
-        void (*)(Stream, void**, const char*, size_t, XlaCustomCallStatus*);
+        void (*)(se::gpu::GpuStreamHandle, void**, const char*, size_t,
+                 XlaCustomCallStatus*);
     auto xla_call_target = reinterpret_cast<XlaCustomCallType>(call_target);
 
     XlaCustomCallStatus custom_call_status;
@@ -141,26 +127,23 @@ absl::Status XlaCustomCall::operator()(
     }
   }
 
-  return absl::InvalidArgumentError("Incorrect custom call API version");
+  return absl::InvalidArgumentError(
+      absl::StrFormat("Unsupported custom call API version: %d", api_version));
 }
 
-static bool CustomCall(runtime::ExecutionContext* ctx, void** args,
-                       void** attrs, void** rets) {
-  static auto* handler = runtime::CustomCall::Bind("xla.gpu.memcpy")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const DebugOptions*>()
-                             .Arg<CustomCall::RemainingArgs>()  // args
-                             .Attr<std::string_view>("call_target_name")
-                             .Attr<int32_t>("api_version")
-                             .Attr<std::string_view>("backend_config")
-                             .To<checks>(XlaCustomCall::Handler())
-                             .release();
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    XlaCustomCall, FunctionWrapper<XlaCustomCallImpl>(), checks,
+    runtime::CustomCall::Bind("xla.gpu.memcpy")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .UserData<const DebugOptions*>()
+        .Arg<CustomCall::RemainingArgs>()  // args
+        .Attr<std::string_view>("call_target_name")
+        .Attr<int32_t>("api_version")
+        .Attr<std::string_view>("backend_config"));
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
-
-void RegisterCustomCall(runtime::DirectCustomCallRegistry& registry) {
-  registry.Register("xla.gpu.custom_call", &xla::gpu::CustomCall);
+void RegisterXlaClassicCustomCalls(
+    runtime::DirectCustomCallRegistry& registry) {
+  registry.Register("xla.gpu.custom_call", XlaCustomCall);
 }
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -111,16 +111,18 @@ Value transposeReshape(Value arg, Location loc,
   SmallVector<Value> reshapeDims;
   auto multiplyDynamicDims = [&](llvm::ArrayRef<int64_t> dims) -> Value {
     Value dynamicSize = rewriter.create<GetDimensionSizeOp>(
-        loc, RankedTensorType::get({1}, rewriter.getI32Type()), arg,
-        rewriter.getI64IntegerAttr(dims.front()));
-
+        loc, arg, rewriter.getI64IntegerAttr(dims.front()));
+    Value dynamicSizeReshaped = rewriter.create<ReshapeOp>(
+        loc, RankedTensorType::get({1}, rewriter.getI32Type()), dynamicSize);
     for (auto idx : dims.drop_front()) {
       Value dim = rewriter.create<GetDimensionSizeOp>(
-          loc, RankedTensorType::get({1}, rewriter.getI32Type()), arg,
-          rewriter.getI64IntegerAttr(idx));
-      dynamicSize = rewriter.create<MulOp>(loc, dynamicSize, dim);
+          loc, arg, rewriter.getI64IntegerAttr(idx));
+      Value dimReshaped = rewriter.create<ReshapeOp>(
+          loc, RankedTensorType::get({1}, rewriter.getI32Type()), dim);
+      dynamicSizeReshaped =
+          rewriter.create<MulOp>(loc, dynamicSizeReshaped, dimReshaped);
     }
-    return dynamicSize;
+    return dynamicSizeReshaped;
   };
 
   if (leftSize < 0) {
@@ -140,7 +142,6 @@ Value transposeReshape(Value arg, Location loc,
   Value reshapeDimsTensor = rewriter.create<ConcatenateOp>(
       loc, RankedTensorType::get({2}, rewriter.getI32Type()), reshapeDims,
       rewriter.getI64IntegerAttr(0));
-
   return rewriter.create<DynamicReshapeOp>(loc, reshapedType, transposeResult,
                                            reshapeDimsTensor);
 }
@@ -223,7 +224,7 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
     if (op.getPrecisionConfig()) precisionConfig = *op.getPrecisionConfig();
     SmallVector<Type, 1> results;
     LogicalResult res =
-        DotOp::inferReturnTypes(rewriter.getContext(), None, {lhs, rhs},
+        DotOp::inferReturnTypes(rewriter.getContext(), llvm::None, {lhs, rhs},
                                 op->getAttrDictionary(), {}, results);
     (void)res;
     assert(succeeded(res) && "invalid input to dot");
@@ -266,18 +267,22 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
       for (auto contractingDim : contractingDims) {
         for (; index < contractingDim; index++) {
           staticDims.push_back(ty.getDimSize(index));
-          dynDims.push_back(rewriter.create<GetDimensionSizeOp>(
-              loc, RankedTensorType::get({1}, rewriter.getI32Type()), arg,
-              rewriter.getI64IntegerAttr(index)));
+          Value dynDim = rewriter.create<GetDimensionSizeOp>(
+              loc, arg, rewriter.getI64IntegerAttr(index));
+          Value dynDimReshaped = rewriter.create<ReshapeOp>(
+              loc, RankedTensorType::get({1}, rewriter.getI32Type()), dynDim);
+          dynDims.push_back(dynDimReshaped);
         }
         index++;
       }
 
       for (; index < ty.getRank(); index++) {
         staticDims.push_back(ty.getDimSize(index));
-        dynDims.push_back(rewriter.create<GetDimensionSizeOp>(
-            loc, RankedTensorType::get({1}, rewriter.getI32Type()), arg,
-            rewriter.getI64IntegerAttr(index)));
+        Value dynDim = rewriter.create<GetDimensionSizeOp>(
+            loc, arg, rewriter.getI64IntegerAttr(index));
+        Value dynDimReshaped = rewriter.create<ReshapeOp>(
+            loc, RankedTensorType::get({1}, rewriter.getI32Type()), dynDim);
+        dynDims.push_back(dynDimReshaped);
       }
     };
 

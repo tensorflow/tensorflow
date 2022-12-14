@@ -63,17 +63,14 @@ void printDstStyleOp(
     DstOpTy op, OpAsmPrinter &p,
     function_ref<SmallVector<StringRef>(DstOpTy op, OpAsmPrinter &)>
         printAttrsFn = nullptr) {
-  p.increaseIndent();
   if (op.getNumDpsInputs() != 0) {
-    p.printNewline();
-    p << "ins(";
+    p << " ins(";
     llvm::interleaveComma(
         op.getOperands().take_front(op.getNumDpsInputs()), p,
         [&](Value input) { p << input << " : " << input.getType(); });
     p << ")";
   }
-  p.printNewline();
-  p << "outs(";
+  p << " outs(";
   llvm::interleaveComma(
       op.getOperands().take_back(op.getNumDpsInits()), p,
       [&](Value output) { p << output << " : " << output.getType(); });
@@ -81,10 +78,12 @@ void printDstStyleOp(
 
   // Print attributes with custom printing logic.
   SmallVector<StringRef> elidedAttrs;
-  if (printAttrsFn) elidedAttrs = printAttrsFn(op, p);
+  if (printAttrsFn) {
+    p << ' ';
+    elidedAttrs = printAttrsFn(op, p);
+  }
 
   p.printOptionalAttrDict(op->getAttrs(), elidedAttrs);
-  p.decreaseIndent();
 }
 
 ParseResult parseKeywordOperandListWithTypes(
@@ -433,7 +432,6 @@ void ConcatenateOp::print(OpAsmPrinter &p) {
   printDstStyleOp<ConcatenateOp>(
       *this, p,
       [](ConcatenateOp op, OpAsmPrinter &p) -> SmallVector<StringRef> {
-        p.printNewline();
         p << op.getDimensionAttrName().str() << " = " << op.getDimension();
 
         return {op.getDimensionAttrName()};
@@ -503,7 +501,6 @@ void DynamicBroadcastInDimOp::print(OpAsmPrinter &p) {
       *this, p,
       [](DynamicBroadcastInDimOp op,
          OpAsmPrinter &p) -> SmallVector<StringRef> {
-        p.printNewline();
         printDenseI64ArrayAttr(p, op.getBroadcastDimensionsAttrName(),
                                op.getBroadcastDimensions());
         return {op.getBroadcastDimensionsAttrName()};
@@ -535,15 +532,7 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
   auto loc = getLoc();
   auto initRank = getInit().getType().cast<RankedTensorType>().getRank();
 
-  // Create the needed constants only once.
   DenseMap<uint64_t, Value> localIndexConstants;
-  auto getIndexConstant = [&](uint64_t c) -> Value {
-    auto it = localIndexConstants.find(c);
-    if (it != localIndexConstants.end()) return it->second;
-    auto cst = b.create<arith::ConstantIndexOp>(loc, c);
-    localIndexConstants[c] = cst;
-    return cst;
-  };
 
   DenseSet<int64_t> dimensionsThatStay(getBroadcastDimensions().begin(),
                                        getBroadcastDimensions().end());
@@ -558,8 +547,9 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
   operandDims.reserve(operandTy.getRank());
   for (const auto &it : llvm::enumerate(operandTy.getShape())) {
     int64_t d = it.value();
-    Value dim = d == ShapedType::kDynamic ? dynamicDims[dynamicDimsIdx++]
-                                          : getIndexConstant(d);
+    Value dim = d == ShapedType::kDynamic
+                    ? dynamicDims[dynamicDimsIdx++]
+                    : b.create<arith::ConstantIndexOp>(loc, d);
     operandDims.push_back(dim);
   }
 
@@ -570,8 +560,8 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
   SmallVector<Value> operandExpandingDims;
   for (const auto &it : llvm::enumerate(getBroadcastDimensions())) {
     auto operandDim = operandDims[it.index()];
-    auto resultDim =
-        b.create<tensor::DimOp>(loc, getInit(), getIndexConstant(it.value()));
+    auto resultDim = b.create<tensor::DimOp>(
+        loc, getInit(), b.create<arith::ConstantIndexOp>(loc, it.value()));
     operandExpandingDims.push_back(b.create<arith::CmpIOp>(
         loc, arith::CmpIPredicate::ne, operandDim, resultDim));
   }
@@ -581,7 +571,7 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
   int64_t operandRank = operandTy.getRank();
   auto staticOffsets = SmallVector<int64_t>(operandRank, ShapedType::kDynamic);
   SmallVector<Value> operandOffsets;
-  Value zero = getIndexConstant(0);
+  Value zero = b.create<arith::ConstantIndexOp>(loc, 0);
   for (int initId = 0, operandId = 0; initId < initRank; ++initId) {
     if (!dimensionsThatStay.contains(initId)) continue;
     Value isExpanding = operandExpandingDims[operandId++];
@@ -594,7 +584,7 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
   auto staticTileSizes =
       SmallVector<int64_t>(operandRank, ShapedType::kDynamic);
   SmallVector<Value> tileSizes;
-  Value one = getIndexConstant(1);
+  Value one = b.create<arith::ConstantIndexOp>(loc, 1);
   auto tileOpSizes = getValueOrCreateConstantIndexOp(b, loc, sizes);
   for (int initId = 0, operandId = 0; initId < initRank; ++initId) {
     if (!dimensionsThatStay.contains(initId)) continue;
@@ -917,11 +907,8 @@ ParseResult SortOp::parse(OpAsmParser &parser, OperationState &result) {
 void SortOp::print(OpAsmPrinter &p) {
   printDstStyleOp<SortOp>(
       *this, p, [](SortOp op, OpAsmPrinter &p) -> SmallVector<StringRef> {
-        p.printNewline();
-        p << op.getDimensionAttrName().str() << " = " << op.getDimension();
-
-        p.printNewline();
-        p << op.getIsStableAttrName().str() << " = " << op.getIsStable();
+        p << op.getDimensionAttrName().str() << " = " << op.getDimension()
+          << ' ' << op.getIsStableAttrName().str() << " = " << op.getIsStable();
         return {op.getDimensionAttrName(), op.getIsStableAttrName()};
       });
 
@@ -1093,6 +1080,98 @@ FailureOr<Value> SortOp::generateResultTileValue(OpBuilder &b,
                                                  unsigned resultNumber,
                                                  ArrayRef<OpFoldResult> offsets,
                                                  ArrayRef<OpFoldResult> sizes) {
+  return getTiledImplementation(b, offsets, sizes, /*useExtractSlice=*/false)
+      ->getResult(resultNumber);
+}
+
+//===----------------------------------------------------------------------===//
+// ReverseOp
+//===----------------------------------------------------------------------===//
+
+ParseResult ReverseOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseDstStyleOp(
+      parser, result, [&](OpAsmParser &parser, NamedAttrList &attributes) {
+        return parseDenseI64ArrayAttr(parser, attributes, "reverse_dimensions");
+      });
+}
+
+void ReverseOp::print(OpAsmPrinter &p) {
+  printDstStyleOp<ReverseOp>(
+      *this, p, [](ReverseOp op, OpAsmPrinter &p) -> SmallVector<StringRef> {
+        printDenseI64ArrayAttr(p, op.getReverseDimensionsAttrName(),
+                               op.getReverseDimensions());
+        return {op.getReverseDimensionsAttrName()};
+      });
+}
+
+LogicalResult ReverseOp::verify() {
+  return verifyDestinationStyleOp(getOperation());
+}
+
+void ReverseOp::getAsmResultNames(
+    function_ref<void(Value, StringRef)> setNameFn) {
+  setNameFn(getResult(), "reversed");
+}
+
+SmallVector<utils::IteratorType> ReverseOp::getLoopIteratorTypes() {
+  return getParallelIteratorTypes(getType().cast<ShapedType>().getRank() - 1);
+}
+
+SmallVector<Value> ReverseOp::getDestinationOperands(OpBuilder &) {
+  return {getInit()};
+}
+
+SmallVector<Range> ReverseOp::getIterationDomain(OpBuilder &b) {
+  return getIterationDomainForTensor(b, getLoc(), getInit());
+}
+
+namespace {
+SmallVector<OpFoldResult> getInputTileOffsetsForReverse(
+    OpBuilder &b, Location loc, ArrayRef<OpFoldResult> offsets,
+    ArrayRef<int64_t> reverseDimensions, TypedValue<ShapedType> &input) {
+  auto tileOpOffsets = getValueOrCreateConstantIndexOp(b, loc, offsets);
+  SmallVector<OpFoldResult> inputTileOffsets;
+  for (int i = 0; i < tileOpOffsets.size(); ++i) {
+    if (llvm::is_contained(reverseDimensions, i)) {
+      inputTileOffsets.push_back(OpFoldResult{b.create<arith::SubIOp>(
+          loc, b.createOrFold<tensor::DimOp>(loc, input, i),
+          Value(tileOpOffsets[i]))});
+    } else {
+      inputTileOffsets.push_back(tileOpOffsets[i]);
+    }
+  }
+
+  return inputTileOffsets;
+}
+}  // namespace
+
+mlir::gml_st::TilingInterface ReverseOp::getTiledImplementation(
+    OpBuilder &b, ArrayRef<OpFoldResult> offsets, ArrayRef<OpFoldResult> sizes,
+    bool useExtractSlice) {
+  auto loc = getLoc();
+  auto input = getInput();
+  SmallVector<OpFoldResult> inputTileOffsets = getInputTileOffsetsForReverse(
+      b, loc, offsets, getReverseDimensions(), input);
+
+  // Materialize the tile for input and init.
+  SmallVector<Value, 2> tiledInputsAndInits;
+
+  tiledInputsAndInits.push_back(gml_st::materializeSlice(
+      b, loc, input, inputTileOffsets, sizes, useExtractSlice));
+  tiledInputsAndInits.push_back(gml_st::materializeSlice(
+      b, loc, getInit(), offsets, sizes, useExtractSlice));
+  auto tileShape =
+      tiledInputsAndInits.back().getType().cast<ShapedType>().getShape();
+  auto tiledResultType = RankedTensorType::get(
+      tileShape, input.getType().cast<ShapedType>().getElementType());
+
+  return mlir::clone(b, this->getOperation(), tiledResultType,
+                     tiledInputsAndInits);
+}
+
+FailureOr<Value> ReverseOp::generateResultTileValue(
+    OpBuilder &b, unsigned resultNumber, ArrayRef<OpFoldResult> offsets,
+    ArrayRef<OpFoldResult> sizes) {
   return getTiledImplementation(b, offsets, sizes, /*useExtractSlice=*/false)
       ->getResult(resultNumber);
 }

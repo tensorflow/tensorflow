@@ -636,8 +636,9 @@ class Trackable(object):
   def _gather_saveables_for_checkpoint(self):
     """Returns a dictionary of values to checkpoint with this object.
 
-    NOTE: This method is deprecated, please use `_serialize_to_tensors` and
-    `_restore_from_tensors` instead.
+    NOTE: This method is deprecated, prefer implementing `_serialize_to_tensors`
+    and `_restore_from_tensors` instead. This method is only used in the
+    deprecated `tf.compat.v1.train.Saver`.
 
     Keys in the returned dictionary are local to this object and in a separate
     namespace from dependencies. Values may either be `SaveableObject` factories
@@ -673,11 +674,7 @@ class Trackable(object):
     from tensorflow.python.training.saving import saveable_object_util
     # pylint: enable=g-import-not-at-top
     if saveable_object_util.trackable_has_serialize_to_tensor(self):
-
-      def create_saveable(name=""):
-        return saveable_object_util.TrackableSaveable(self, name)
-
-      return {"": create_saveable}
+      return saveable_object_util.saveable_objects_from_trackable(self)
     else:
       return getattr(self, "_self_saveable_object_factories", {})
 
@@ -724,6 +721,10 @@ class Trackable(object):
 
     If the `name` attribute should be saved to the checkpoint, then convert it
     a `tf.Variable`.
+
+    **TF1 Saver Compatibility**
+    If your Trackable needs to be comatible with `tf.compat.v1.train.Saver`,
+    implement `_gather_saveables_from_checkpoint`.
 
     Returns:
       A dictionary mapping names to tensors.

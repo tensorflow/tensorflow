@@ -64,7 +64,7 @@ TEST(XlaCompilationCacheTest, TestDisabledXlaCompilation) {
   core::ScopedUnref profiler_ref(profiler);
 
   // Check that strict compilation is disallowed.
-  Status status = cache->Compile(
+  Status status = cache->CompileIfNeeded(
       XlaCompiler::Options{}, fn, args, XlaCompiler::CompileOptions{},
       DeviceCompileMode::kStrict, profiler, &compilation_result, &executable);
   EXPECT_FALSE(status.ok());
@@ -72,7 +72,7 @@ TEST(XlaCompilationCacheTest, TestDisabledXlaCompilation) {
       absl::StrContains(status.error_message(), "XLA compilation disabled"));
 
   // Check that async compilation is disallowed.
-  status = cache->Compile(
+  status = cache->CompileIfNeeded(
       XlaCompiler::Options{}, fn, args, XlaCompiler::CompileOptions{},
       DeviceCompileMode::kAsync, profiler, &compilation_result, &executable);
   EXPECT_FALSE(status.ok());
@@ -80,7 +80,7 @@ TEST(XlaCompilationCacheTest, TestDisabledXlaCompilation) {
       absl::StrContains(status.error_message(), "XLA compilation disabled"));
 
   // Check that lazy compilation is disallowed.
-  status = cache->Compile(
+  status = cache->CompileIfNeeded(
       XlaCompiler::Options{}, fn, args, XlaCompiler::CompileOptions{},
       DeviceCompileMode::kLazy, profiler, &compilation_result, &executable);
   EXPECT_FALSE(status.ok());

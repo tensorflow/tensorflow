@@ -684,5 +684,36 @@ class CapturesTest(test.TestCase):
     self.assertEmpty(supertype_5.captures)
 
 
+class SanitizationTest(test.TestCase):
+
+  def testRename(self):
+    self.assertEqual("arg_42",
+                     function_type.sanitize_arg_name("42"))
+    self.assertEqual("a42",
+                     function_type.sanitize_arg_name("a42"))
+    self.assertEqual("arg__42",
+                     function_type.sanitize_arg_name("_42"))
+    self.assertEqual("a___",
+                     function_type.sanitize_arg_name("a%$#"))
+    self.assertEqual("arg____",
+                     function_type.sanitize_arg_name("%$#"))
+    self.assertEqual("foo",
+                     function_type.sanitize_arg_name("foo"))
+    self.assertEqual("arg_96ab_cd___53",
+                     function_type.sanitize_arg_name("96ab.cd//?53"))
+
+  def testLogWarning(self):
+
+    with self.assertLogs(level="WARNING") as logs:
+      result = function_type.sanitize_arg_name("96ab.cd//?53")
+
+    self.assertEqual(result, "arg_96ab_cd___53")
+
+    expected_message = (
+        "WARNING:absl:`96ab.cd//?53` is not a valid tf.function parameter name."
+        " Sanitizing to `arg_96ab_cd___53`.")
+    self.assertIn(expected_message, logs.output)
+
+
 if __name__ == "__main__":
   test.main()

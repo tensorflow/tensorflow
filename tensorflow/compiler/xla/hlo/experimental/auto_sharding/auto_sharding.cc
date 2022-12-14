@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/cluster_environment.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/matrix.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/metrics.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
@@ -2795,9 +2796,12 @@ void SaveShardingForInstruction(
     absl::flat_hash_map<std::string, std::vector<HloSharding>>&
         preserve_shardings,
     HloInstruction* inst) {
-  if (inst->has_sharding() && !inst->sharding().IsTuple()) {
+  if (!inst->has_sharding()) {
+    return;
+  }
+  if (!inst->sharding().IsTuple()) {
     preserve_shardings[inst->name()] = {inst->sharding()};
-  } else if (inst->has_sharding() && inst->sharding().IsTuple()) {
+  } else {
     preserve_shardings[inst->name()] = inst->sharding().tuple_elements();
   }
 }
@@ -3685,6 +3689,12 @@ StatusOr<bool> AutoSharding::Run(
   bool module_is_changed = false;
   VLOG(1) << "Start auto sharding pass";
 
+#if !defined(__APPLE__)
+  // Streamz metrics.
+  absl::Time start_time = absl::Now();
+  metrics::RecordAutoShardingInvocations();
+#endif
+
   bool set_to_memory_lower_bound = (option_.memory_budget_per_device == 0);
   TF_RETURN_IF_ERROR(option_.CheckAndSetup());
   VLOG(1) << "AutoShardingOptions:\n" << option_.ToString();
@@ -3962,6 +3972,13 @@ StatusOr<bool> AutoSharding::Run(
   TF_RETURN_IF_ERROR(CanonicalizeLayouts(module));
   XLA_VLOG_LINES(6, absl::StrCat("After auto sharding:\n", module->ToString()));
   DumpHloModuleIfEnabled(*module, "after_auto_spmd_sharding");
+
+#if !defined(__APPLE__)
+  absl::Time end_time = absl::Now();
+  auto duration = end_time - start_time;
+  metrics::RecordAutoShardingCompilationTime(
+      absl::ToInt64Microseconds(duration));
+#endif
   return module_is_changed;
 }
 

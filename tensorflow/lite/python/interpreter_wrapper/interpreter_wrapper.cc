@@ -46,14 +46,6 @@ limitations under the License.
     return error_reporter_->exception(); \
   }
 
-#define TFLITE_PY_TENSOR_BOUNDS_CHECK(i)                                    \
-  if (i >= interpreter_->tensors_size() || i < 0) {                         \
-    PyErr_Format(PyExc_ValueError,                                          \
-                 "Invalid tensor index %d exceeds max tensor index %lu", i, \
-                 interpreter_->tensors_size());                             \
-    return nullptr;                                                         \
-  }
-
 #define TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(i, subgraph_index)             \
   if (i >= interpreter_->subgraph(subgraph_index)->tensors_size() || i < 0) { \
     PyErr_Format(PyExc_ValueError,                                            \
@@ -368,27 +360,32 @@ PyObject* InterpreterWrapper::ResizeInputTensor(int i, PyObject* value,
   Py_RETURN_NONE;
 }
 
-int InterpreterWrapper::NumTensors() const {
+int InterpreterWrapper::NumTensors(int subgraph_index) const {
   if (!interpreter_) {
     return 0;
   }
-  return interpreter_->tensors_size();
+  return interpreter_->subgraph(subgraph_index)->tensors_size();
 }
 
-std::string InterpreterWrapper::TensorName(int i) const {
-  if (!interpreter_ || i >= interpreter_->tensors_size() || i < 0) {
+std::string InterpreterWrapper::TensorName(int tensor_index,
+                                           int subgraph_index) const {
+  const Subgraph* subgraph = interpreter_->subgraph(subgraph_index);
+  if (!interpreter_ || tensor_index >= subgraph->tensors_size() ||
+      tensor_index < 0) {
     return "";
   }
 
-  const TfLiteTensor* tensor = interpreter_->tensor(i);
+  const TfLiteTensor* tensor = subgraph->tensor(tensor_index);
   return tensor->name ? tensor->name : "";
 }
 
-PyObject* InterpreterWrapper::TensorType(int i) const {
+PyObject* InterpreterWrapper::TensorType(int tensor_index,
+                                         int subgraph_index) const {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
+  TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
 
-  const TfLiteTensor* tensor = interpreter_->tensor(i);
+  const Subgraph* subgraph = interpreter_->subgraph(subgraph_index);
+  const TfLiteTensor* tensor = subgraph->tensor(tensor_index);
   if (tensor->type == kTfLiteNoType) {
     PyErr_Format(PyExc_ValueError, "Tensor with no type found.");
     return nullptr;
@@ -402,11 +399,13 @@ PyObject* InterpreterWrapper::TensorType(int i) const {
   return PyArray_TypeObjectFromType(code);
 }
 
-PyObject* InterpreterWrapper::TensorSize(int i) const {
+PyObject* InterpreterWrapper::TensorSize(int tensor_index,
+                                         int subgraph_index) const {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
+  TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
 
-  const TfLiteTensor* tensor = interpreter_->tensor(i);
+  const Subgraph* subgraph = interpreter_->subgraph(subgraph_index);
+  const TfLiteTensor* tensor = subgraph->tensor(tensor_index);
   if (tensor->dims == nullptr) {
     PyErr_Format(PyExc_ValueError, "Tensor with no shape found.");
     return nullptr;
@@ -417,11 +416,13 @@ PyObject* InterpreterWrapper::TensorSize(int i) const {
   return PyArray_Return(reinterpret_cast<PyArrayObject*>(np_array));
 }
 
-PyObject* InterpreterWrapper::TensorSizeSignature(int i) const {
+PyObject* InterpreterWrapper::TensorSizeSignature(int tensor_index,
+                                                  int subgraph_index) const {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
+  TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
 
-  const TfLiteTensor* tensor = interpreter_->tensor(i);
+  const Subgraph* subgraph = interpreter_->subgraph(subgraph_index);
+  const TfLiteTensor* tensor = subgraph->tensor(tensor_index);
   const int32_t* size_signature_data = nullptr;
   int32_t size_signature_size = 0;
   if (tensor->dims_signature != nullptr && tensor->dims_signature->size != 0) {
@@ -437,10 +438,13 @@ PyObject* InterpreterWrapper::TensorSizeSignature(int i) const {
   return PyArray_Return(reinterpret_cast<PyArrayObject*>(np_array));
 }
 
-PyObject* InterpreterWrapper::TensorSparsityParameters(int i) const {
+PyObject* InterpreterWrapper::TensorSparsityParameters(
+    int tensor_index, int subgraph_index) const {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
-  const TfLiteTensor* tensor = interpreter_->tensor(i);
+  TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
+
+  const Subgraph* subgraph = interpreter_->subgraph(subgraph_index);
+  const TfLiteTensor* tensor = subgraph->tensor(tensor_index);
   if (tensor->sparsity == nullptr) {
     return PyDict_New();
   }
@@ -448,17 +452,23 @@ PyObject* InterpreterWrapper::TensorSparsityParameters(int i) const {
   return PyDictFromSparsityParam(*tensor->sparsity);
 }
 
-PyObject* InterpreterWrapper::TensorQuantization(int i) const {
+PyObject* InterpreterWrapper::TensorQuantization(int tensor_index,
+                                                 int subgraph_index) const {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
-  const TfLiteTensor* tensor = interpreter_->tensor(i);
+  TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
+
+  const Subgraph* subgraph = interpreter_->subgraph(subgraph_index);
+  const TfLiteTensor* tensor = subgraph->tensor(tensor_index);
   return PyTupleFromQuantizationParam(tensor->params);
 }
 
-PyObject* InterpreterWrapper::TensorQuantizationParameters(int i) const {
+PyObject* InterpreterWrapper::TensorQuantizationParameters(
+    int tensor_index, int subgraph_index) const {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
-  const TfLiteTensor* tensor = interpreter_->tensor(i);
+  TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
+
+  const Subgraph* subgraph = interpreter_->subgraph(subgraph_index);
+  const TfLiteTensor* tensor = subgraph->tensor(tensor_index);
   const TfLiteQuantization quantization = tensor->quantization;
   float* scales_data = nullptr;
   int32_t* zero_points_data = nullptr;
@@ -489,11 +499,11 @@ PyObject* InterpreterWrapper::TensorQuantizationParameters(int i) const {
   return result;
 }
 
-PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value,
+PyObject* InterpreterWrapper::SetTensor(int tensor_index, PyObject* value,
                                         int subgraph_index) {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_SUBGRAPH_BOUNDS_CHECK(subgraph_index);
-  TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(i, subgraph_index);
+  TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
 
   std::unique_ptr<PyObject, PyDecrefDeleter> array_safe(
       PyArray_FromAny(value, nullptr, 0, 0, NPY_ARRAY_CARRAY, nullptr));
@@ -504,7 +514,8 @@ PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value,
   }
 
   PyArrayObject* array = reinterpret_cast<PyArrayObject*>(array_safe.get());
-  TfLiteTensor* tensor = interpreter_->subgraph(subgraph_index)->tensor(i);
+  TfLiteTensor* tensor =
+      interpreter_->subgraph(subgraph_index)->tensor(tensor_index);
 
   if (python_utils::TfLiteTypeFromPyArray(array) != tensor->type) {
     PyErr_Format(PyExc_ValueError,
@@ -512,7 +523,7 @@ PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value,
                  " Got value of type %s"
                  " but expected type %s for input %d, name: %s ",
                  TfLiteTypeGetName(python_utils::TfLiteTypeFromPyArray(array)),
-                 TfLiteTypeGetName(tensor->type), i, tensor->name);
+                 TfLiteTypeGetName(tensor->type), tensor_index, tensor->name);
     return nullptr;
   }
 
@@ -521,7 +532,7 @@ PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value,
                  "Cannot set tensor: Dimension mismatch."
                  " Got %d"
                  " but expected %d for input %d.",
-                 PyArray_NDIM(array), tensor->dims->size, i);
+                 PyArray_NDIM(array), tensor->dims->size, tensor_index);
     return nullptr;
   }
 
@@ -531,7 +542,8 @@ PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value,
                    "Cannot set tensor: Dimension mismatch."
                    " Got %ld"
                    " but expected %d for dimension %d of input %d.",
-                   PyArray_SHAPE(array)[j], tensor->dims->data[j], j, i);
+                   PyArray_SHAPE(array)[j], tensor->dims->data[j], j,
+                   tensor_index);
       return nullptr;
     }
   }
@@ -688,13 +700,14 @@ PyObject* InterpreterWrapper::GetSubgraphIndexFromSignature(
   return PyLong_FromLong(static_cast<int64_t>(subgraph_index));
 }
 
-PyObject* InterpreterWrapper::GetTensor(int i, int subgraph_index) const {
+PyObject* InterpreterWrapper::GetTensor(int tensor_index,
+                                        int subgraph_index) const {
   // Sanity check accessor
   TfLiteTensor* tensor = nullptr;
   int type_num = 0;
 
-  PyObject* check_result = CheckGetTensorArgs(interpreter_.get(), i, &tensor,
-                                              &type_num, subgraph_index);
+  PyObject* check_result = CheckGetTensorArgs(
+      interpreter_.get(), tensor_index, &tensor, &type_num, subgraph_index);
   if (check_result == nullptr) return check_result;
   Py_XDECREF(check_result);
 
@@ -751,7 +764,7 @@ PyObject* InterpreterWrapper::GetTensor(int i, int subgraph_index) const {
         Py_DECREF(py_object);
         PyErr_Format(PyExc_ValueError,
                      "Could not create PyBytes from string %d of input %d.", j,
-                     i);
+                     tensor_index);
         return nullptr;
       }
       // PyArray_EMPTY produces an array full of Py_None, which we must decref.

@@ -146,6 +146,7 @@ TfLiteStatus TfLiteInterpreterOptionsEnableCancellation(
 static void InitTfLiteRegistration(
     TfLiteRegistration* registration,
     TfLiteRegistrationExternal* registration_external) {
+  registration->builtin_code = registration_external->builtin_code;
   registration->custom_name = registration_external->custom_name;
   registration->version = registration_external->version;
   registration->registration_external = registration_external;

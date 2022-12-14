@@ -933,6 +933,9 @@ Literal LiteralBase::ToStatic() const {
           return;
         }
         for (int64_t i = 0; i < subshape->rank(); ++i) {
+          // GetDynamicSize has a 32-bit return type and may truncate static
+          // dimensions, so make sure to skip.
+          if (!subshape->is_dynamic_dimension(i)) continue;
           subshape->set_dynamic_dimension(i, false);
           subshape->set_dimensions(i, GetDynamicSize(i, index));
         }

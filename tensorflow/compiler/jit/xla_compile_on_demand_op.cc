@@ -154,8 +154,8 @@ Status XlaCompileOnDemandOp::Compile(
     TF_RETURN_IF_ERROR(args.status());
   }
 
-  return (*cache)->CompileSingleOp(options, *args, compile_options, ctx,
-                                   *profiler, result, executable);
+  return (*cache)->CompileSingleOpIfNeeded(options, *args, compile_options, ctx,
+                                           *profiler, result, executable);
 }
 
 void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {

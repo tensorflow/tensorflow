@@ -2614,15 +2614,14 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   Status Preprocess(HloInstruction* instruction) override {
-    auto previous = instructions_by_name_.find(instruction->name());
-    TF_RET_CHECK(previous == instructions_by_name_.end())
-        << "HLO has name that is not unique within module:\n"
-        << instruction->ToString()
-        << " in computation: " << instruction->parent()->name()
-        << "\nPrevious HLO with same name:\n"
-        << previous->second->ToString()
-        << " in computation: " << previous->second->parent()->name();
-    instructions_by_name_[instruction->name()] = instruction;
+    auto [it, inserted] =
+        instructions_by_name_.insert({instruction->name(), instruction});
+    TF_RET_CHECK(inserted) << "HLO has name that is not unique within module:\n"
+                           << instruction->ToString() << " in computation: "
+                           << instruction->parent()->name()
+                           << "\nPrevious HLO with same name:\n"
+                           << it->second->ToString() << " in computation: "
+                           << it->second->parent()->name();
 
     if (instruction->has_sharding()) {
       Status status =

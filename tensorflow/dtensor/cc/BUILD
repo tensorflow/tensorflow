@@ -6,10 +6,11 @@ load(
     "tf_dtensor_tpu_dependencies",
 )
 load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
-load("//tensorflow:tensorflow.bzl", "if_google")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_libtpu")
 
 default_visibility = [
     "//tensorflow/dtensor:dtensor-internal",
+    "//tensorflow:__pkg__",
 ]
 
 package(
@@ -247,20 +248,23 @@ cc_library(
 )
 
 cc_library(
-    name = "default_parallel_executor",
-    srcs = if_google(
-        ["google/default_parallel_executor.cc"],
-        ["default_parallel_executor.cc"],
+    name = "default_parallel_executor_lib",
+    deps = if_libtpu(
+        if_false = if_google(
+            google_value = ["//tensorflow/dtensor/cc/google:default_parallel_executor"],
+            oss_value = [":default_parallel_executor"],
+        ),
+        if_true = [":default_parallel_executor"],
     ),
-    hdrs = ["default_parallel_executor.h"],
+)
+
+cc_library(
+    name = "default_parallel_executor",
+    srcs = ["default_parallel_executor.cc"],
     deps = [
         ":parallel_executor_interface",
-        "//tensorflow/c:tf_status_helper",
-    ] + if_google([
-        # All new dependencies go here as the OSS part has no valid implementation.
-        ":dtensor_device_util",
-        "//learning/infra/mira/distributed/dtensor:mira_parallel_executor",
-    ]),
+        "//tensorflow/core/platform:logging",
+    ],
 )
 
 cc_library(
@@ -280,6 +284,8 @@ cc_library(
     hdrs = ["dtensor_device.h"],
     deps = [
         ":constants",
+        ":default_parallel_executor_lib",
+        ":parallel_executor_interface",
         ":dstatus",
         ":dtensor_device_util",
         ":dtensor_graph_to_mlir_pass",
@@ -289,12 +295,12 @@ cc_library(
         ":small_constant_optimization",
         ":tensor_layout",
         ":tpu_system_interface",
-        ":default_parallel_executor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:tf_status_helper",
@@ -318,6 +324,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_platform_interface",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_topology_external",
+        "//tensorflow/tsl/platform:status",
     ] + tf_dtensor_tpu_dependencies(),
 )
 

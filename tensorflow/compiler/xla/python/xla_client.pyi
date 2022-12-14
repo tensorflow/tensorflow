@@ -101,6 +101,8 @@ def make_tpu_client() -> Client:
 def make_plugin_device_client() -> Client:
   ...
 
+def maybe_load_pjrt_plugins() -> None:
+  ...
 
 class OpMetadata:
 

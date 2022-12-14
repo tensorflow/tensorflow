@@ -22,6 +22,7 @@ include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_dialect.td"
 include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_enums.td"
+include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_base.td"
 
 // Base class for XLA CPU dialect ops.
 class XlaCpu_Op<string mnemonic, list<Trait> traits = []> :
@@ -240,6 +241,42 @@ def OutfeedOp : XlaCpu_Op<"outfeed", [BufferizableOpInterface]> {
     bufferization::BufferRelation bufferRelation(OpResult opResult,
         const bufferization::AnalysisState &state) {
       return bufferization::BufferRelation::Equivalent;
+    }
+  }];
+}
+
+def AddDependencyOp : XlaCpu_Op<"add_dependency", [BufferizableOpInterface]> {
+  let summary = "CPU-specific version of AddDependency";
+  let description = [{
+    The major differences between this and HLO's add_dependency are:
+    - It bufferizes itself.
+  }];
+  let arguments = (ins
+    MHLO_TensorOrToken:$operand,
+    MHLO_Token:$token
+  );
+  let results = (outs MHLO_TensorOrToken);
+  let extraClassDeclaration = [{
+    // Declarations for BufferizableOpInterface:
+    bool bufferizesToMemoryRead(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return opOperand.getOperandNumber() == 0;
+    }
+    bool bufferizesToMemoryWrite(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return false;
+    }
+    SmallVector<OpResult> getAliasingOpResult(
+        OpOperand &opOperand, const bufferization::AnalysisState &state) {
+      if (opOperand.getOperandNumber() == 0 || opOperand.getOperandNumber() == 1)
+        return {};
+      return {getOperation()->getOpResult(0)};
+    }
+    LogicalResult bufferize(RewriterBase &rewriter,
+        const bufferization::BufferizationOptions &options);
+    bufferization::BufferRelation bufferRelation(OpResult opResult,
+        const bufferization::AnalysisState &state) {
+      return bufferization::BufferRelation::None;
     }
   }];
 }

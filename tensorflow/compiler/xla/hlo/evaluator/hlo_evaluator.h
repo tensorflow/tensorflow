@@ -32,8 +32,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
+#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -89,6 +91,10 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
       int64_t max_loop_iterations) {
     return std::make_unique<HloEvaluator>(max_loop_iterations);
   }
+
+  // Enables subclasses to be notified when a new computation is being
+  // evaluated.
+  virtual void OnEvaluateComputation(const HloComputation& computation) {}
 
   // Evaluates an HLO module and an array of pointers to literals.  Returns the
   // evaluated result as a literal if successful.
@@ -242,6 +248,10 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   Status EvaluateInternal(
       HloInstruction* instruction, const ShapeIndex& shape_index = {},
       bool recursively_evaluate_nonconstant_operands = false);
+
+  Status EvaluateParameterFromCallerArgument(HloInstruction* parameter,
+                                             const ShapeIndex& shape_index);
+
   // Make HloEvaluatorTypedVisitor a friend because it is logically part of this
   // class.
   //
@@ -424,6 +434,9 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // instruction at only the given shape index.
   ShapeIndex visitor_shape_index_;
   bool enable_partial_evaluation_ = false;
+
+  std::unique_ptr<CallGraph> call_graph_cache_;
+  std::unique_ptr<TuplePointsToAnalysis> tuple_points_to_analysis_cache_;
 
   // Use fast path that uses eigen in the evaluator.
   bool use_fast_path_ = false;

@@ -1875,7 +1875,9 @@ bool ShardingPropagation::InferShardingFromOperands(
            instruction->opcode() == HloOpcode::kDynamicSlice)) {
         return false;
       }
-      instruction->set_sharding(HloSharding::Manual(op->sharding().metadata()));
+      instruction->set_sharding(
+          HloSharding::Manual(op->sharding().metadata())
+              .NormalizeTupleSharding(instruction->shape()));
       return true;
     }
   }

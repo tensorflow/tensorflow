@@ -78,7 +78,7 @@ py_test(
 #         "//tensorflow/lite/schema:schema_generated.h.oss",
 #     ],
 #     python_version = "PY3",
-#     # TODO(b/217577534): Enable this TAP with FlatBuffer 2.0 migration.
+#     # TODO(b/235550563): Enable this TAP with FlatBuffer 2.0.6 migration.
 #     tags = [
 #         "manual",
 #         "notap",

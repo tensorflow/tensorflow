@@ -87,9 +87,10 @@ Pool3dParameters::Pool3dParameters(OpKernelContext* context,
                                        padding, &out_width, &pad_cols));
 }
 
-TensorShape Pool3dParameters::forward_output_shape() {
-  return ShapeFromFormat(data_format, tensor_in_batch,
-                         {{out_plane, out_height, out_width}}, depth);
+Status Pool3dParameters::forward_output_shape(TensorShape* shape) {
+  return ShapeFromFormatWithStatus(data_format, tensor_in_batch,
+                                   {{out_plane, out_height, out_width}}, depth,
+                                   shape);
 }
 
 template <typename T>
@@ -187,8 +188,10 @@ class Pooling3DOp : public UnaryOp<T> {
     OP_REQUIRES_OK(context, Get3dOutputSize(input_size, window, stride,
                                             padding_, &out, &padding));
 
-    TensorShape out_shape = ShapeFromFormat(data_format_, in_batch,
-                                            {{out[2], out[1], out[0]}}, depth);
+    TensorShape out_shape;
+    OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                data_format_, in_batch,
+                                {{out[2], out[1], out[0]}}, depth, &out_shape));
     Tensor* output;
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
     if (out_shape.num_elements() == 0) return;
@@ -365,8 +368,10 @@ class MaxPooling3dGradOp : public OpKernel {
 
     const int64_t depth = GetTensorDim(tensor_in, data_format_, 'C');
     const int64_t in_batch = GetTensorDim(tensor_in, data_format_, 'N');
-    TensorShape out_shape = ShapeFromFormat(data_format_, in_batch,
-                                            {{out[2], out[1], out[0]}}, depth);
+    TensorShape out_shape;
+    OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                data_format_, in_batch,
+                                {{out[2], out[1], out[0]}}, depth, &out_shape));
     OP_REQUIRES(
         context, tensor_out.shape() == out_shape,
         errors::InvalidArgument("Expected orig_output shape to be ", out_shape,
@@ -717,9 +722,12 @@ class MaxPooling3dGradGradOp : public OpKernel {
     Pool3dParameters params{context,  ksize_,       stride_,
                             padding_, data_format_, tensor_in.shape()};
     if (!context->status().ok()) return;  // params is invalid
-    OP_REQUIRES(context, tensor_out.shape() == params.forward_output_shape(),
+    TensorShape params_forward_output_shape;
+    OP_REQUIRES_OK(context,
+                   params.forward_output_shape(&params_forward_output_shape));
+    OP_REQUIRES(context, tensor_out.shape() == params_forward_output_shape,
                 errors::InvalidArgument("Expected orig_output shape to be ",
-                                        params.forward_output_shape(),
+                                        params_forward_output_shape,
                                         ", but got ", tensor_out.shape()));
     OP_REQUIRES(
         context, out_grad_backprop.shape() == tensor_in.shape(),

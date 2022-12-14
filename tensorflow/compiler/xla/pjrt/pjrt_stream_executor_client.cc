@@ -257,7 +257,7 @@ StatusOr<DeviceAssignment> PjRtStreamExecutorClient::GetDefaultDeviceAssignment(
 }
 
 StatusOr<std::unique_ptr<HloCostAnalysis>>
-PjRtStreamExecutorClient::GetHloCostAnalysis() {
+PjRtStreamExecutorClient::GetHloCostAnalysis() const {
   return std::make_unique<HloCostAnalysis>(
       client_->backend().compiler()->ShapeSizeBytesFunction());
 }

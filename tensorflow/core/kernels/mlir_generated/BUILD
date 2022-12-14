@@ -28,7 +28,7 @@ package(
 package_group(
     name = "friends",
     packages = [
-        "//third_party/car/...",
+        "//waymo/...",
     ],
 )
 

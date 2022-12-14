@@ -15,6 +15,7 @@ package_group(
         # copybara:uncomment "//learning/brain/google/xla/...",
         # copybara:uncomment "//learning/brain/tfrc/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
+        "//tensorflow/c/...",
         "//tensorflow/core/common_runtime/next_pluggable_device/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/tfrt/eager/backends/tpu/...",

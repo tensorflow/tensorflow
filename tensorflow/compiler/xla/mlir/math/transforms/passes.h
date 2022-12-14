@@ -19,15 +19,20 @@ limitations under the License.
 #include <memory>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace xla {
 
 #define GEN_PASS_DECL_MATHOPTIMIZATIONPASS
+#define GEN_PASS_DECL_MATHLEGALIZATIONPASS
 #include "tensorflow/compiler/xla/mlir/math/transforms/passes.h.inc"
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateMathOptimizationPass(bool enable_avx2 = false);
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateMathLegalizationPass(
+    bool enable_approximations = true);
 
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/xla/mlir/math/transforms/passes.h.inc"

@@ -51,6 +51,10 @@
 
 *   `tf.keras`:
 
+    *   The new Keras model saving format (`.keras`) is available. You can start
+        using it via `model.save(f"{fname}.keras", save_format="keras_v3")`.
+        In the future it will become the default for all files with the `.keras`
+        extension. This file format targets the Python runtime only.
     *   Added utility `tf.keras.utils.FeatureSpace`, a one-stop shop for
         structured data preprocessing and encoding.
     *   Added `tf.SparseTensor` input support to `tf.keras.layers.Embedding`
@@ -64,6 +68,9 @@
         `layers.BatchNormalization` with `synchronized=True` instead.
     *   Updated `tf.keras.layers.BatchNormalization` to support masking of the
         inputs (`mask` argument) when computing the mean and variance.
+    *   Add `tf.keras.layers.Identity`, a placeholder pass-through layer.
+    *   Add `show_trainable` option to `tf.keras.utils.model_to_dot` to display
+        layer trainable status in model plots.
 
 *   `tf.experimental.dtensor`:
 
@@ -104,6 +111,9 @@
 * `tf.experimental.ExtensionType`
   * Added function `experimental.extension_type.as_dict()`, which converts an
     instance of `tf.experimental.ExtensionType` to a `dict` representation.
+* `stream_executor`
+  * Top level `stream_executor` directory has been deleted, users should use
+    equivalent headers and targets under `compiler/xla/stream_executor`.
 
 
 # Thanks to our Contributors
@@ -10850,3 +10860,5 @@ answered questions, and were part of inspiring discussions.
 # Release 0.5.0
 
 Initial release of TensorFlow.
+
+<!-- mdformat global-off(b/169948621#comment2) -->

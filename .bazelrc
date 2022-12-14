@@ -149,6 +149,12 @@ build --experimental_cc_shared_library
 # cc_shared_library ensures no library is linked statically more than once.
 build --experimental_link_static_libraries_once=false
 
+# Prevent regressions on those two incompatible changes
+# TODO: remove those flags when they are flipped in the default Bazel version TF uses.
+build --incompatible_enforce_config_setting_visibility
+# TODO: also enable this flag after fixing the visbility violations
+# build --incompatible_config_setting_private_default_visibility
+
 # Default options should come above this line.
 
 # Allow builds using libc++ as a linker library
@@ -272,8 +278,6 @@ build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm --define=using_rocm_hipcc=true
 build:rocm --define=tensorflow_mkldnn_contraction_kernel=0
 build:rocm --repo_env TF_NEED_ROCM=1
-# Disable unused-result on rocm builds.
-build:rocm --copt="-Wno-error=unused-result"
 
 # Options extracted from configure script
 build:numa --define=with_numa_support=true

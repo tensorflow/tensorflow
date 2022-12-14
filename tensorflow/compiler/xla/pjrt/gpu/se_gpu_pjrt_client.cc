@@ -341,8 +341,8 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
       device_vendor_(std::move(device_vendor)),
       slice_index_(slice_index) {
   attributes_ = {
-      {"device_vendor", PjRtDeviceAttribute(device_vendor_)},
-      {"slice_index", PjRtDeviceAttribute(slice_index)},
+      {"device_vendor", device_vendor_},
+      {"slice_index", static_cast<int64_t>(slice_index)},
   };
   to_string_ = absl::StrFormat(
       "StreamExecutorGpuDevice(id=%i, process_index=%i, slice_index=%i)", id,

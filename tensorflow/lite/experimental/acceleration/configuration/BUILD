@@ -65,10 +65,22 @@ genrule(
     tools = [flatc_path],
 )
 
-# Test that changes to the schema preserve binary backwards compatibility.
+# Test that changes to the proto file preserve binary backwards compatibility
+# of the generated FlatBuffer schema, relative to the one generated from the
+# previous proto file.
 flatbuffer_schema_compat_test(
     name = "configuration_abi_stability_test",
     ref_schema = ":configuration.prev.fbs",
+    schema = ":configuration.fbs",
+)
+
+# Test that changes to the proto file OR to the FlatBuffer proto-to-flatbuffer
+# schema conversion itself will preserve binary backwards compatibility of the
+# generated FlatBuffer schema, relative to an older snapshot of the
+# generated FlatBuffer schema.
+flatbuffer_schema_compat_test(
+    name = "configuration_flatbuffer_abi_stability_test",
+    ref_schema = "testdata/configuration.old.fbs",
     schema = ":configuration.fbs",
 )
 

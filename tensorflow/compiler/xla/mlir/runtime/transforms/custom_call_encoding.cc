@@ -344,7 +344,7 @@ static LLVM::GlobalOp EncodeDenseArrayAttribute(Globals &g,
   Type ptr = LLVM::LLVMPointerType::get(ctx);
 
   // Stored array type: !llvm.array<element_type x size>
-  Type element_type = base_array.getType().getElementType();
+  Type element_type = base_array.getElementType();
   Type arr_type = LLVM::LLVMArrayType::get(element_type, size);
 
   // Encoded array type: !llvm.struct<(i64, !llvm.ptr)>.
@@ -751,7 +751,7 @@ FailureOr<EncodedAttr> DenseArrayAttrEncoding::Encode(mlir::SymbolTable &,
                                                       ImplicitLocOpBuilder &b,
                                                       std::string_view name,
                                                       Attribute attr) const {
-  Type elem_type = attr.cast<DenseArrayAttr>().getType().getElementType();
+  Type elem_type = attr.cast<DenseArrayAttr>().getElementType();
 
   Encoded encoded;
   encoded.name = EncodeString(g, b, name, kAttrName);

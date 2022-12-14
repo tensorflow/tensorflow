@@ -190,7 +190,7 @@ TpuExecutor::GetStreamImplementation() {
 std::unique_ptr<::stream_executor::internal::EventInterface>
 TpuExecutor::CreateEventImplementation() {
   SE_Event* tpu_event = tpu::ExecutorApiFn()->TpuEvent_NewFn(executor_);
-  auto ptr = std::make_unique<TpuEvent>(tpu_event);
+  auto ptr = std::make_unique<stream_executor::tpu::TpuEvent>(tpu_event);
   tpu_platform().InsertEvent(ptr.get(), tpu_event);
   return ptr;
 }

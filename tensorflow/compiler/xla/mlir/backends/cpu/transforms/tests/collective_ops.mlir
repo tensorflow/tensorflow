@@ -241,4 +241,16 @@ func.func @outfeed_2_input(%data1: tensor<3xui32>, %data2: tensor<3xi32>, %token
 //  CHECK-SAME: %[[ARG0:.*]]: tensor<3xui32>
 //  CHECK-SAME: %[[ARG1:.*]]: tensor<3xi32>
 //       CHECK: "xla_cpu.outfeed"(%[[ARG0]], %[[ARG1]]) {config = "foobar", result_type = [ui32, i32]}
-//  CHECK-SAME: (tensor<3xui32>, tensor<3xi32>) 
+//  CHECK-SAME: (tensor<3xui32>, tensor<3xi32>)
+
+func.func @add_dependency(%arg0: tensor<16xf32>, %arg1: !mhlo.token) -> tensor<16xf32> {
+  %0 = "mhlo.add_dependency"(%arg0, %arg1) : (tensor<16xf32>, !mhlo.token) -> tensor<16xf32>
+  func.return %0 : tensor<16xf32>
+}
+
+// CHECK-LABEL: @add_dependency
+//  CHECK-SAME: %[[ARG0:.*]]: tensor<16xf32>
+//  CHECK-SAME: %[[ARG1:.*]]: !mhlo.token
+//       CHECK: %[[RES:.*]] = "xla_cpu.add_dependency"
+//  CHECK-SAME: %[[ARG0]], %[[ARG1]]
+//       CHECK: return %[[RES]] : tensor<16xf32>

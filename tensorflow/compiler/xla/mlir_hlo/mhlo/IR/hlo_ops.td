@@ -636,8 +636,7 @@ def MHLO_TanhOp: MHLO_UnaryElementwiseOp<"tanh",
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
-// TODO(gleasonk): Merge MHLO_BinaryElementwiseOp and MHLO_BinaryElementwiseOpNoAssembly
-class MHLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
+class MHLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
     MHLO_Op<mnemonic, traits # [InferShapedTypeOpInterface,
     SameOperandsAndResultShape, Elementwise]> {
   let arguments = (ins
@@ -659,10 +658,7 @@ class MHLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
   }];
 
   let results = (outs MHLO_Tensor:$result);
-}
 
-class MHLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
-    MHLO_BinaryElementwiseOpNoAssembly<mnemonic, traits> {
   let assemblyFormat = [{
     $lhs `,` $rhs attr-dict
       `:` custom<SameOperandsAndResultType>(type($lhs), type($rhs), type($result))
@@ -705,7 +701,7 @@ def MHLO_Atan2Op : MHLO_BinaryElementwiseOp<"atan2",
   }];
 }
 
-def MHLO_ComplexOp: MHLO_BinaryElementwiseOpNoAssembly<"complex", [Pure,
+def MHLO_ComplexOp: MHLO_BinaryElementwiseOp<"complex", [Pure,
     SameOperandsElementType, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Complex operator";
   let description = [{
@@ -1374,6 +1370,7 @@ def MHLO_WhileOp: MHLO_Op<"while", [
   let hasCanonicalizer = 1;
   let hasCustomAssemblyFormat = 1;
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 def MHLO_AllGatherOp : MHLO_Op<"all_gather", [SameOperandsAndResultElementType]> {
@@ -1478,10 +1475,27 @@ def MHLO_AllToAllOp : MHLO_Op<"all_to_all",
     OptionalAttr<I64Attr>:$split_dimension,
     OptionalAttr<I64Attr>:$concat_dimension,
     OptionalAttr<I64Attr>:$split_count,
-    I64ElementsAttr:$replica_groups
+    I64ElementsAttr:$replica_groups,
+    OptionalAttr<MHLO_ChannelHandle>:$channel_handle
   );
   let results = (outs Variadic<MHLO_Tensor>);
   let hasCustomHLOConverter = 1;
+
+  // channel_handle is only used for the SPMD partitioner, so we add a
+  // simplified builder method for convenience.
+  let builders = [
+    OpBuilder<(ins
+      "::mlir::Type":$result_type, "::mlir::Value":$operand,
+      "::mlir::IntegerAttr": $split_dimension,
+      "::mlir::IntegerAttr": $concat_dimension,
+      "::mlir::IntegerAttr": $split_count,
+      "::mlir::DenseIntElementsAttr": $replica_groups)>,
+    OpBuilder<(ins
+      "::mlir::TypeRange":$result_type, "::mlir::ValueRange":$operand,
+      "::mlir::IntegerAttr": $split_dimension,
+      "::mlir::IntegerAttr": $concat_dimension,
+      "::mlir::IntegerAttr": $split_count,
+      "::mlir::DenseIntElementsAttr": $replica_groups)>];
 }
 
 def MHLO_ReduceOp: MHLO_ShapedInterfaceOp<"reduce", [
@@ -2019,7 +2033,6 @@ def MHLO_ConcatenateOp : MHLO_ShapedInterfaceOp<"concatenate",
 
   let hasCanonicalizer = 1;
   let hasFolder = 1;
-  let hasVerifier = 1;
 }
 
 def MHLO_CollectivePermuteOp: MHLO_Op<"collective_permute",
@@ -2101,10 +2114,10 @@ def MHLO_CopyOp: MHLO_Op<"copy", [Pure, HLO_CompatibleOperandsAndResultType]> {
     ```
   }];
   let arguments = (ins
-      MHLO_Tensor:$operand,
+      MHLO_TensorOrTokenOrTuple:$operand,
       UnitAttr:$is_cross_program_prefetch
   );
-  let results = (outs MHLO_Tensor:$result);
+  let results = (outs MHLO_TensorOrTokenOrTuple:$result);
   let hasCustomHLOConverter = 1;
   let hasFolder = 1;
 
@@ -2373,7 +2386,8 @@ def MHLO_GatherOp: MHLO_Op<"gather", [InferTensorTypeWithReify, Pure]> {
   let hasCanonicalizer = 1;
 }
 
-def MHLO_GetDimensionSizeOp: MHLO_Op<"get_dimension_size", [Pure]> {
+def MHLO_GetDimensionSizeOp: MHLO_Op<"get_dimension_size", [Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "GetDimensionSize operator";
   let description = [{
     Returns the size of the given dimension of the operand.
@@ -2666,7 +2680,8 @@ def MHLO_PartitionIdOp : MHLO_Op<"partition_id", [
 }
 
 def MHLO_PadOp: MHLO_ShapedInterfaceOp<"pad",
-      [Pure, SameOperandsAndResultElementType, InferTensorType]> {
+      [Pure, SameOperandsAndResultElementType,
+      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Pad operator";
   let description = [{
     Pads edges and between the elements of `operand` with the `padding_value`
@@ -2830,11 +2845,21 @@ def MHLO_ReduceWindowOp: MHLO_Op<"reduce_window", [
       build($_builder, $_state, TypeRange(result_type), ValueRange(operand),
             ValueRange(init_value), window_dimensions, window_strides,
             base_dilations, window_dilations, padding);
-    }]>
+    }]>,
+    OpBuilder<(ins "ValueRange":$operands,
+      "ValueRange":$init_values,
+      "DenseIntElementsAttr":$window_dimensions,
+      "DenseIntElementsAttr":$window_strides,
+      "DenseIntElementsAttr":$base_dilations,
+      "DenseIntElementsAttr":$window_dilations,
+      "DenseIntElementsAttr":$padding,
+      "function_ref<void(OpBuilder &, Location, ValueRange)>":$bodyBuilder
+    )>,
   ];
 
   let hasCustomHLOConverter = 1;
   let hasFolder = 1;
+  let hasVerifier = 1;
   // TODO(hinsu): Implement custom printer and parser.
 
   let extraClassDeclaration = [{
@@ -3264,6 +3289,7 @@ def MHLO_DynamicConvOp : MHLO_Op<"dynamic_conv", [Pure]> {
        MHLO_Tensor:$d_padding),
     MHLO_ConvolutionAttributes.attributes);
   let results = (outs MHLO_Tensor);
+  let hasCanonicalizer = 1;
   let hasCustomHLOConverter = 1;
 }
 

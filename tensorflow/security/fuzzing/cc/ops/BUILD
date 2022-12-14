@@ -5,13 +5,14 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_cc_shared_test",
     "tf_cc_test",
 )
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 # A trivial fuzzer with no pre-specified corpus.
-tf_cc_test(
+tf_cc_shared_test(
     name = "identity_fuzz",
     srcs = ["identity_fuzz.cc"],
     tags = ["no_oss"],

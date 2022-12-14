@@ -27,6 +27,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -377,12 +378,11 @@ LogicalResult ReduceScatterOp::verify() {
   auto operandType = getOperand().getType().cast<TensorType>();
   bool operandTypeRanked = operandType.isa<RankedTensorType>();
   Block& block = getComputation().front();
-  SmallVector<TensorType> accumulatorSubshapes;
   if (failed(hlo::verifyReducerShape(
           this->getLoc(), block, {operandType},
           {RankedTensorType::get({}, operandType.getElementType())},
           /*numInputs=*/1, /*allowedDimensions=*/{},
-          /*allInputsUnranked=*/!operandTypeRanked, accumulatorSubshapes)))
+          /*allInputsUnranked=*/!operandTypeRanked)))
     return failure();
 
   return mlir::hlo::verifyReduceScatter(
@@ -467,7 +467,7 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(XorOp)
 //===----------------------------------------------------------------------===//
 
 Type maybeTupleFromTypes(MLIRContext* ctx, ArrayRef<Type> types) {
-  if (types.size() == 1) return types[0];
+  if (types.size() == 1 && !types[0].isa<TupleType>()) return types[0];
   return TupleType::get(ctx, TypeRange(types));
 }
 
@@ -1105,12 +1105,16 @@ LogicalResult DotGeneralOp::verify() {
     auto rhsShape = rhsType.getShape();
 
     for (auto [lhs, rhs] : llvm::zip(lhsBatchingDims, rhsBatchingDims)) {
+      if (hlo::isDynamicDimSize(lhsShape[lhs])) continue;
+      if (hlo::isDynamicDimSize(rhsShape[rhs])) continue;
       if (lhsShape[lhs] != rhsShape[rhs]) {
         return emitOpError() << "batching dimension sizes must match for "
                                 "lhs/rhs";
       }
     }
     for (auto [lhs, rhs] : llvm::zip(lhsContractingDims, rhsContractingDims)) {
+      if (hlo::isDynamicDimSize(lhsShape[lhs])) continue;
+      if (hlo::isDynamicDimSize(rhsShape[rhs])) continue;
       if (lhsShape[lhs] != rhsShape[rhs]) {
         return emitOpError() << "contracting dimension sizes must match for "
                                 "lhs/rhs";
@@ -1839,8 +1843,14 @@ LogicalResult DynamicGatherOp::inferReturnTypeComponents(
 //===----------------------------------------------------------------------===//
 // GetDimensionSizeOp
 //===----------------------------------------------------------------------===//
-//
+
 LogicalResult GetDimensionSizeOp::verify() { return verifyDimAttr(*this); }
+
+LogicalResult GetDimensionSizeOp::inferReturnTypes(
+    MLIRContext* context, Optional<Location> location, ValueRange,
+    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  return hlo::inferGetDimensionSizeOp(context, location, inferredReturnTypes);
+}
 
 /// Fold get_dimension_size when the said shape dimension is a constant.
 OpFoldResult GetDimensionSizeOp::fold(ArrayRef<Attribute> attrs) {
@@ -2554,6 +2564,48 @@ LogicalResult ConvolutionOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// DynamicConvOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+struct DynamicConvIsConv : public OpRewritePattern<mhlo::DynamicConvOp> {
+  using OpRewritePattern<mhlo::DynamicConvOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(mhlo::DynamicConvOp op,
+                                PatternRewriter& rewriter) const override {
+    DenseIntElementsAttr padAttr;
+    if (!matchPattern(op.getDPadding(), m_Constant(&padAttr))) {
+      return rewriter.notifyMatchFailure(op, "non-constant d_padding found");
+    }
+
+    SmallVector<int64_t> padArray;
+    for (APInt pad : padAttr.getValues<APInt>()) {
+      padArray.push_back(pad.getZExtValue());
+    }
+
+    int64_t paddedDimCount = padArray.size() / 2;
+    auto newPadAttr = DenseIntElementsAttr::get(
+        RankedTensorType::get({paddedDimCount, 2}, rewriter.getI64Type()),
+        padArray);
+
+    rewriter.replaceOpWithNewOp<mhlo::ConvolutionOp>(
+        op, op.getType(), op.getLhs(), op.getRhs(), op.getWindowStridesAttr(),
+        newPadAttr, op.getLhsDilationAttr(), op.getRhsDilationAttr(),
+        op.getWindowReversalAttr(), op.getDimensionNumbers(),
+        op.getFeatureGroupCount(), op.getBatchGroupCount(),
+        op.getPrecisionConfigAttr());
+    return success();
+  }
+};
+
+}  // namespace
+
+void DynamicConvOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                                MLIRContext* context) {
+  results.add<DynamicConvIsConv>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // ConvertOp
 //===----------------------------------------------------------------------===//
 
@@ -2826,6 +2878,26 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
   inferredReturnShapes.emplace_back(resultShape,
                                     operandRankedType.getElementType());
   return success();
+}
+
+void AllToAllOp::build(OpBuilder& odsBuilder, OperationState& odsState,
+                       Type resultType, Value operand,
+                       IntegerAttr splitDimension, IntegerAttr concatDimension,
+                       IntegerAttr splitCount,
+                       DenseIntElementsAttr replicaGroups) {
+  AllToAllOp::build(odsBuilder, odsState, resultType, operand, splitDimension,
+                    concatDimension, splitCount, replicaGroups,
+                    /*channel_handle=*/nullptr);
+}
+
+void AllToAllOp::build(OpBuilder& odsBuilder, OperationState& odsState,
+                       ::mlir::TypeRange resultType, ::mlir::ValueRange operand,
+                       IntegerAttr splitDimension, IntegerAttr concatDimension,
+                       IntegerAttr splitCount,
+                       DenseIntElementsAttr replicaGroups) {
+  AllToAllOp::build(odsBuilder, odsState, resultType, operand, splitDimension,
+                    concatDimension, splitCount, replicaGroups,
+                    /*channel_handle=*/nullptr);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3781,84 +3853,9 @@ LogicalResult ConcatenateOp::inferReturnTypes(
     MLIRContext*, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  if (operands.empty()) {
-    return failure();
-  }
-
-  auto dimensionAttr = attributes.get("dimension").cast<IntegerAttr>();
-  auto dimension = dimensionAttr.getInt();
-
-  auto firstType = (*operands.begin()).getType().cast<ShapedType>();
-  auto outElement = firstType.getElementType();
-
-  // Find the first ranked input to determine the output rank.
-  for (auto type : operands.getTypes()) {
-    auto shapedType = type.cast<ShapedType>();
-    if (shapedType.hasRank()) {
-      firstType = shapedType;
-      break;
-    }
-  }
-
-  // If all inputs are unranked, the result must be unranked.
-  if (!firstType.hasRank()) {
-    inferredReturnTypes.push_back(UnrankedTensorType::get(outElement));
-    return success();
-  }
-
-  auto outShape = llvm::to_vector<6>(firstType.getShape());
-
-  // Determine what the non-concatenate dimensions should be.
-  for (auto type : operands.getTypes()) {
-    auto shapedTy = type.cast<ShapedType>();
-    if (!shapedTy.hasRank()) {
-      continue;
-    }
-
-    for (const auto& it : llvm::enumerate(shapedTy.getShape())) {
-      // If a dimension is not dynamic, the output shape should match.
-      if (ShapedType::isDynamic(outShape[it.index()])) {
-        outShape[it.index()] = it.value();
-      }
-    }
-  }
-
-  outShape[dimension] = 0;
-
-  for (auto operand : operands.getTypes()) {
-    auto type = operand.cast<ShapedType>();
-    if (!type.hasRank()) {
-      inferredReturnTypes.push_back(UnrankedTensorType::get(outElement));
-      return success();
-    }
-
-    // If the dimension is dynamic we know the output dimension is dynamic.
-    auto dim = type.getShape()[dimension];
-    if (ShapedType::isDynamic(dim)) {
-      outShape[dimension] = ShapedType::kDynamic;
-      break;
-    }
-
-    outShape[dimension] += dim;
-  }
-
-  bool allSparse = llvm::all_of(operands.getTypes(), [](Type t) -> bool {
-    return sparse_tensor::getSparseTensorEncoding(t) != nullptr;
-  });
-
-  sparse_tensor::SparseTensorEncodingAttr enc;
-  if (allSparse) {
-    // Picks the encoding from an abitrary input is fine and it will be lowered
-    // correctly by the sparse compiler (though efficiency might vary).
-    // TODO: Extra rules are needed to infer sparse encoding when inputs have
-    // different encodings for better efficiency.
-    enc = sparse_tensor::getSparseTensorEncoding(operands.getTypes()[0]);
-  }
-
-  inferredReturnTypes.push_back(
-      RankedTensorType::get(outShape, outElement, enc));
-
-  return success();
+  ConcatenateOp::Adaptor adaptor(operands, attributes, regions);
+  return hlo::inferConcatenateOp(location, adaptor.getVal(),
+                                 adaptor.getDimension(), inferredReturnTypes);
 }
 
 void ConcatenateOp::getCanonicalizationPatterns(RewritePatternSet& results,
@@ -3933,58 +3930,6 @@ OpFoldResult ConcatenateOp::fold(ArrayRef<Attribute> operands) {
   }
 
   return DenseElementsAttr::get(type, ArrayRef<Attribute>());
-}
-
-LogicalResult ConcatenateOp::verify() {
-  RankedTensorType firstRankedType;
-  int firstRankedIndex;
-  int numOperands = getNumOperands();
-  int64_t concatDimension = static_cast<int64_t>(getDimension());
-  if (concatDimension < 0) {
-    return emitOpError(
-        llvm::formatv("dimension {0} is negative", concatDimension));
-  }
-  for (int i = 0; i < numOperands; i++) {
-    auto secondType = getOperand(i).getType().dyn_cast<ShapedType>();
-    if (!secondType.hasRank()) {
-      continue;
-    }
-
-    if (!firstRankedType) {
-      firstRankedType = secondType.cast<RankedTensorType>();
-      firstRankedIndex = i;
-      if (firstRankedType.getRank() == 0)
-        return emitOpError(
-            llvm::formatv("rank-0 values cannot be concatenated"));
-      if (concatDimension >= firstRankedType.getRank()) {
-        return emitOpError(
-            llvm::formatv("dimension {0} is out-of-bounds for input rank {1}",
-                          concatDimension, firstRankedType.getRank()));
-      }
-      continue;
-    }
-
-    if (firstRankedType.getRank() != secondType.getRank()) {
-      return emitOpError(llvm::formatv(
-          "operands ({0}) and ({1}) do not match rank", firstRankedIndex, i));
-    }
-
-    auto firstShape = firstRankedType.getShape();
-    auto secondShape = secondType.getShape();
-    for (int d = 0; d < firstRankedType.getRank(); ++d) {
-      if (!ShapedType::isDynamic(firstShape[d]) &&
-          !ShapedType::isDynamic(secondShape[d]) &&
-          firstShape[d] != secondShape[d] && d != concatDimension) {
-        return emitOpError(llvm::formatv(
-            "shapes of operand ({0}) and ({1}) do not match at non-concat "
-            "index: ({2}) != ({3}) at non-concat index {4}",
-            firstRankedIndex, i,
-            llvm::make_range(firstShape.begin(), firstShape.end()),
-            llvm::make_range(secondShape.begin(), secondShape.end()), d));
-      }
-    }
-  }
-  return success();
 }
 
 LogicalResult ConcatenateOp::reifyReturnTypeShapes(
@@ -4555,7 +4500,14 @@ LogicalResult ReduceWindowOp::inferReturnTypeComponents(
       location, adaptor.getInputs(), adaptor.getInitValues(),
       adaptor.getWindowDimensions(), adaptor.getWindowStrides(),
       adaptor.getBaseDilations(), adaptor.getWindowDilations(),
-      adaptor.getPadding(), adaptor.getBody(), inferredReturnShapes);
+      adaptor.getPadding(), inferredReturnShapes);
+}
+
+LogicalResult ReduceWindowOp::verify() {
+  return hlo::verifyReduceWindowOp(getLoc(), getInputs(), getInitValues(),
+                                   getWindowDimensions(), getWindowStrides(),
+                                   getBaseDilations(), getWindowDilations(),
+                                   getPadding(), getBody());
 }
 
 // Get the operation used for reduction applied to `result_index`th result. Its
@@ -4621,6 +4573,71 @@ LogicalResult ReduceWindowOp::fold(ArrayRef<Attribute> operands,
   }
 
   return failure();
+}
+
+// Builder that takes a constructor for its region and infers result types
+void ReduceWindowOp::build(
+    OpBuilder& odsBuilder, OperationState& odsState, ValueRange inputs,
+    ValueRange init_values, DenseIntElementsAttr window_dimensions,
+    /*optional*/ DenseIntElementsAttr window_strides,
+    /*optional*/ DenseIntElementsAttr base_dilations,
+    /*optional*/ DenseIntElementsAttr window_dilations,
+    /*optional*/ DenseIntElementsAttr padding,
+    function_ref<void(OpBuilder&, Location, ValueRange)> bodyBuilder) {
+  odsState.addOperands(inputs);
+  odsState.addOperands(init_values);
+  odsState.addAttribute(getWindowDimensionsAttrName(odsState.name),
+                        window_dimensions);
+  if (window_strides) {
+    odsState.addAttribute(getWindowStridesAttrName(odsState.name),
+                          window_strides);
+  }
+  if (base_dilations) {
+    odsState.addAttribute(getBaseDilationsAttrName(odsState.name),
+                          base_dilations);
+  }
+  if (window_dilations) {
+    odsState.addAttribute(getWindowDilationsAttrName(odsState.name),
+                          window_dilations);
+  }
+  if (padding) {
+    odsState.addAttribute(getPaddingAttrName(odsState.name), padding);
+  }
+  Region* region = odsState.addRegion();
+
+  llvm::SmallVector<Type> blockArgTypes;
+  llvm::SmallVector<Location> locs;
+  auto numValues = inputs.size() + init_values.size();
+  blockArgTypes.reserve(numValues);
+  locs.reserve(numValues);
+  for (auto i : inputs) {
+    auto iType = i.getType().cast<ShapedType>();
+    blockArgTypes.push_back(iType.cloneWith(
+        llvm::makeArrayRef<int64_t>(std::nullopt), iType.getElementType()));
+    locs.push_back(i.getLoc());
+  }
+  for (auto i : init_values) {
+    auto iType = i.getType().cast<ShapedType>();
+    blockArgTypes.push_back(iType.cloneWith(
+        llvm::makeArrayRef<int64_t>(std::nullopt), iType.getElementType()));
+    locs.push_back(i.getLoc());
+  }
+
+  {
+    OpBuilder::InsertionGuard g(odsBuilder);
+    Block* body =
+        odsBuilder.createBlock(region, /*insertPt=*/{}, blockArgTypes, locs);
+    bodyBuilder(odsBuilder, odsState.location, body->getArguments());
+  }
+
+  llvm::SmallVector<mlir::Type, 2> inferredReturnTypes;
+  if (mlir::succeeded(ReduceWindowOp::inferReturnTypes(
+          odsBuilder.getContext(), odsState.location, odsState.operands,
+          odsState.attributes.getDictionary(odsState.getContext()),
+          odsState.regions, inferredReturnTypes)))
+    odsState.addTypes(inferredReturnTypes);
+  else
+    llvm::report_fatal_error("Failed to infer result type(s).");
 }
 
 //===----------------------------------------------------------------------===//
@@ -5096,22 +5113,18 @@ ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
 }
 
 LogicalResult ReduceOp::inferReturnTypeComponents(
-    MLIRContext*, Optional<Location>, ValueShapeRange operands,
+    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   ReduceOp::Adaptor adaptor(operands, attributes, regions);
-  for (auto input : adaptor.getInputs()) {
-    ShapedType outputType =
-        getReduceResultType(input.getType(), adaptor.getDimensions());
-    inferredReturnShapes.emplace_back(outputType);
-  }
-  return success();
+  return hlo::inferReduceOp(location, adaptor.getInputs(),
+                            adaptor.getInitValues(), adaptor.getDimensions(),
+                            inferredReturnShapes);
 }
 
 LogicalResult ReduceOp::verify() {
-  SmallVector<ShapedTypeComponents> unusedReturnShapes;
-  return hlo::inferReduceOp(getLoc(), getInputs(), getInitValues(),
-                            getDimensions(), getBody(), unusedReturnShapes);
+  return hlo::verifyReduceOp(getLoc(), getInputs(), getInitValues(),
+                             getDimensions(), getBody());
 }
 
 // Enable constant folding to occur within the region of the ReduceOp
@@ -5469,79 +5482,15 @@ LogicalResult SetDimensionSizeOp::inferReturnTypes(
 // PadOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult PadOp::inferReturnTypeComponents(
-    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
+LogicalResult PadOp::inferReturnTypes(
+    MLIRContext*, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+    SmallVectorImpl<Type>& inferredReturnTypes) {
   PadOp::Adaptor adaptor(operands, attributes, regions);
-  auto inputType = adaptor.getOperand().getType().cast<RankedTensorType>();
-  auto padType = adaptor.getPaddingValue().getType().cast<RankedTensorType>();
-
-  if (padType.getRank() != 0) {
-    return emitOptionalError(
-        location, llvm::formatv("padding value type should be a rank-0 "
-                                "tensor, is rank {0}",
-                                padType.getRank()));
-  }
-
-  const auto& paddingLow = adaptor.getEdgePaddingLow();
-  if (paddingLow.getType().getNumElements() != inputType.getRank()) {
-    return emitOptionalError(
-        location,
-        llvm::formatv(
-            "edge_padding_low length ({0}) must match operand rank ({1})",
-            paddingLow.getType().getNumElements(), inputType.getRank()));
-  }
-
-  const auto& paddingHigh = adaptor.getEdgePaddingHigh();
-  if (paddingHigh.getType().getNumElements() != inputType.getRank()) {
-    return emitOptionalError(
-        location,
-        llvm::formatv(
-            "edge_padding_high length ({0}) must match operand rank ({1})",
-            paddingHigh.getType().getNumElements(), inputType.getRank()));
-  }
-
-  const auto& paddingInterior = adaptor.getInteriorPadding();
-  if (paddingInterior.getType().getNumElements() != inputType.getRank()) {
-    return emitOptionalError(
-        location,
-        llvm::formatv(
-            "interior_padding length ({0}) must match operand rank ({1})",
-            paddingInterior.getType().getNumElements(), inputType.getRank()));
-  }
-
-  auto inputShape = inputType.getShape();
-  SmallVector<int64_t> resultShape;
-  for (int i = 0, e = inputShape.size(); i < e; i++) {
-    if (hlo::isDynamicDimSize(inputShape[i])) {
-      resultShape.push_back(ShapedType::kDynamic);
-      continue;
-    }
-
-    int64_t paddingLowVal = paddingLow.getValues<APInt>()[i].getSExtValue();
-    int64_t paddingHighVal = paddingHigh.getValues<APInt>()[i].getSExtValue();
-    int64_t paddingInteriorVal =
-        paddingInterior.getValues<APInt>()[i].getSExtValue();
-    if (paddingInteriorVal < 0) {
-      return emitOptionalError(
-          location, llvm::formatv("Interior padding cannot be negative: {0}",
-                                  paddingInteriorVal));
-    }
-    int64_t expectedOutput =
-        inputShape[i] + paddingLowVal + paddingHighVal +
-        std::max<int64_t>(inputShape[i] - 1, 0LL) * paddingInteriorVal;
-    if (expectedOutput < 0) {
-      return emitOptionalError(
-          location,
-          llvm::formatv("Padding result in negative size for dimension {0}",
-                        i));
-    }
-    resultShape.push_back(expectedOutput);
-  }
-  inferredReturnShapes.emplace_back(resultShape, inputType.getElementType());
-
-  return success();
+  return hlo::inferPadOp(location, adaptor.getOperand(),
+                         adaptor.getPaddingValue(), adaptor.getEdgePaddingLow(),
+                         adaptor.getEdgePaddingHigh(),
+                         adaptor.getInteriorPadding(), inferredReturnTypes);
 }
 
 template <typename T>
@@ -6805,19 +6754,16 @@ void SortOp::build(OpBuilder& builder, OperationState& state,
 }
 
 LogicalResult SortOp::inferReturnTypeComponents(
-    MLIRContext*, Optional<Location>, ValueShapeRange operands,
+    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   SortOp::Adaptor adaptor(operands, attributes, regions);
-  for (auto resultType : adaptor.getInputs().getTypes())
-    inferredReturnShapes.emplace_back(resultType.cast<ShapedType>());
-  return success();
+  return hlo::inferSortOp(location, adaptor.getInputs(), inferredReturnShapes);
 }
 
 LogicalResult SortOp::verify() {
-  SmallVector<ShapedTypeComponents> unusedReturnShapes;
-  return hlo::inferSortOp(getLoc(), getInputs(), getDimension(),
-                          getComparator(), unusedReturnShapes);
+  return hlo::verifySortOp(getLoc(), getInputs(), getDimension(),
+                           getComparator());
 }
 
 /// Drops the operands if the results are not used and they are not used in
@@ -7030,47 +6976,14 @@ LogicalResult TransposeOp::reifyReturnTypeShapes(
   return success();
 }
 
-// Method for InferTypeOpInterface: infer the return type from the operand type
-// and the permutation.
 LogicalResult TransposeOp::inferReturnTypes(
-    MLIRContext* /*context*/, Optional<Location> loc, ValueRange operands,
-    DictionaryAttr attributes, RegionRange,
+    MLIRContext*, Optional<Location> loc, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  auto type = operands[0].getType();
-  auto rankedTy = type.dyn_cast<RankedTensorType>();
-  if (!rankedTy) {
-    auto shapedTy = type.dyn_cast<ShapedType>();
-    inferredReturnTypes.emplace_back(shapedTy);
-    return success();
-  }
-  auto permutation = attributes.getAs<DenseIntElementsAttr>("permutation");
-  int64_t rank = rankedTy.getRank();
-  if (permutation.getType().getRank() != 1)
-    return emitOptionalError(loc, "TransposeOp permutation has rank ",
-                             permutation.getType().getRank(),
-                             " instead of rank 1");
-
-  if (permutation.size() != rank)
-    return emitOptionalError(loc, "TransposeOp operand rank ", rank,
-                             " does not match permutation size ",
-                             permutation.size());
-
-  std::vector<int64_t> range(rank);
-  std::iota(range.begin(), range.end(), 0);
-  if (!std::is_permutation(range.begin(), range.end(), permutation.begin()))
-    return emitOptionalError(loc,
-                             "attribute permutation must be a permutation"
-                             " of [",
-                             range, "] but got ", permutation);
-
-  SmallVector<int64_t> resultShape;
-  ArrayRef<int64_t> inputShape = rankedTy.getShape();
-  for (int64_t dim : permutation.getValues<int64_t>()) {
-    resultShape.push_back(inputShape[dim]);
-  }
-  inferredReturnTypes.emplace_back(RankedTensorType::get(
-      resultShape, rankedTy.getElementType(), rankedTy.getEncoding()));
-  return success();
+  TransposeOp::Adaptor adaptor(operands, attributes, regions);
+  LogicalResult result = hlo::inferTransposeOp(
+      loc, adaptor.getOperand(), adaptor.getPermutation(), inferredReturnTypes);
+  return result;
 }
 
 //===----------------------------------------------------------------------===//
@@ -7340,13 +7253,12 @@ LogicalResult SelectAndScatterOp::verify() {
 
   // P2.
   Block& scatterBlock = getScatter().front();
-  SmallVector<TensorType> accumulatorSubshapes;
   if (failed(hlo::verifyReducerShape(
           this->getLoc(), scatterBlock,
           {RankedTensorType::get({}, sourceType.getElementType())},
           {initValueType},
           /*numInputs=*/1, /*allowedDimensions=*/{},
-          /*allInputsUnranked=*/false, accumulatorSubshapes)))
+          /*allInputsUnranked=*/false)))
     return failure();
 
   // P3.
@@ -7554,7 +7466,6 @@ LogicalResult ScatterOp::verify() {
 
   // P2.
   Block& block = getUpdateComputation().front();
-  SmallVector<TensorType> accumulatorSubshapes;
   SmallVector<TensorType> inputTypes, initValueTypes;
   for (int64_t i = 0; i < static_cast<int64_t>(numOperands); i++) {
     inputTypes.push_back(operandTypes[i]);
@@ -7564,7 +7475,7 @@ LogicalResult ScatterOp::verify() {
   if (failed(hlo::verifyReducerShape(
           this->getLoc(), block, inputTypes, initValueTypes, numOperands,
           /*allowedDimensions=*/{},
-          /*allInputsUnranked=*/!allOperandTypesRanked, accumulatorSubshapes)))
+          /*allInputsUnranked=*/!allOperandTypesRanked)))
     return failure();
 
   // P3.
@@ -7906,8 +7817,11 @@ LogicalResult WhileOp::inferReturnTypes(
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   WhileOp::Adaptor adaptor(operands, attributes, regions);
-  return hlo::inferWhileOp(location, adaptor.getOperand(), adaptor.getCond(),
-                           adaptor.getBody(), inferredReturnTypes);
+  return hlo::inferWhileOp(location, adaptor.getOperand(), inferredReturnTypes);
+}
+
+LogicalResult WhileOp::verify() {
+  return hlo::verifyWhileOp(getLoc(), getOperand(), getCond(), getBody());
 }
 
 /// Print a `while` op.
@@ -8123,10 +8037,14 @@ struct HLOInlinerInterface : public DialectInlinerInterface {
   }
 };
 
-struct HLOBoundedDialectInterface : public hlo::BoundedDialectInterface {
-  using BoundedDialectInterface::BoundedDialectInterface;
+struct HLOBoundedDialectInterface : public hlo::HloDialectInterface {
+  using HloDialectInterface::HloDialectInterface;
 
-  Attribute createBoundedAttr(ArrayRef<int64_t> bounds) const override {
+  Type createTokenType() const override {
+    return TokenType::get(getDialect()->getContext());
+  }
+
+  Attribute createTypeExtensions(ArrayRef<int64_t> bounds) const override {
     return TypeExtensionsAttr::get(getDialect()->getContext(), bounds);
   }
 };
@@ -8946,6 +8864,22 @@ static LogicalResult verifyArgResultAliasAttr(StringAttr attrName,
   return success();
 }
 
+// Each CrossProgramPrefetchAttr specifies a parameter and a ShapeIndex
+// (1) the parameter must be valid
+// (2) there must be a subshape at the given indices
+LogicalResult verifyCrossProgramPrefetchAttr(CrossProgramPrefetchAttr cpp,
+                                             ModuleOp module) {
+  func::FuncOp main = module.lookupSymbol<func::FuncOp>("main");
+  if (cpp.getParameter() >= main.getNumArguments()) return failure();
+  auto type = main.getArgument(cpp.getParameter()).getType();
+  for (auto index : cpp.getIndices()) {
+    auto tupleType = type.dyn_cast<TupleType>();
+    if (!tupleType) return failure();
+    type = tupleType.getType(index);
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // Builder utilities
 //===----------------------------------------------------------------------===//
@@ -9039,6 +8973,19 @@ LogicalResult MhloDialect::verifyOperationAttribute(Operation* op,
       return op->emitOpError()
              << "attribute " << attr.getName()
              << " can only be used on function-like operations";
+  }
+  if (attr.getName() == "mhlo.cross_program_prefetches") {
+    auto arrayAttr = attr.getValue().dyn_cast<ArrayAttr>();
+    if (!arrayAttr) return failure();
+    for (auto attrElt : arrayAttr) {
+      auto prefetchAttr = attrElt.dyn_cast<CrossProgramPrefetchAttr>();
+      if (!prefetchAttr) return failure();
+      auto module = dyn_cast<ModuleOp>(op);
+      if (!module) return failure();
+      if (failed(verifyCrossProgramPrefetchAttr(prefetchAttr, module))) {
+        return failure();
+      }
+    }
   }
   return success();
 }

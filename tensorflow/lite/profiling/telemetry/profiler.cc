@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/lite/core/api/profiler.h"
 
-namespace tflite {
+namespace tflite::telemetry {
 
 void TelemetryProfiler::AddEvent(const char* tag, EventType event_type,
                                  uint64_t metric, int64_t event_metadata1,
@@ -38,7 +38,8 @@ void TelemetryProfiler::AddEvent(const char* tag, EventType event_type,
       break;
     }
     case EventType::OPERATOR_INVOKE_EVENT:
-    case EventType::DELEGATE_OPERATOR_INVOKE_EVENT: {
+    case EventType::DELEGATE_OPERATOR_INVOKE_EVENT:
+    case EventType::DELEGATE_PROFILED_OPERATOR_INVOKE_EVENT: {
       ReportOpInvokeEvent(tag, metric, event_metadata1, event_metadata2);
       break;
     }
@@ -53,9 +54,9 @@ void TelemetryProfiler::AddEventWithData(const char* tag, EventType event_type,
   switch (event_type) {
     case EventType::TELEMETRY_REPORT_SETTINGS:
     case EventType::TELEMETRY_DELEGATE_REPORT_SETTINGS: {
-      auto* settings = reinterpret_cast<const TelemetrySettings*>(data);
+      auto* settings = reinterpret_cast<const TfLiteTelemetrySettings*>(data);
       if (settings) {
-        ReportSettings(tag, *settings);
+        ReportSettings(tag, settings);
       }
       break;
     }
@@ -70,7 +71,8 @@ uint32_t TelemetryProfiler::BeginEvent(const char* tag, EventType event_type,
                                        int64_t event_metadata2) {
   switch (event_type) {
     case EventType::OPERATOR_INVOKE_EVENT:
-    case EventType::DELEGATE_OPERATOR_INVOKE_EVENT: {
+    case EventType::DELEGATE_OPERATOR_INVOKE_EVENT:
+    case EventType::DELEGATE_PROFILED_OPERATOR_INVOKE_EVENT: {
       return ReportBeginOpInvokeEvent(tag, event_metadata1, event_metadata2);
     }
     default:
@@ -84,4 +86,4 @@ void TelemetryProfiler::EndEvent(uint32_t event_handle) {
   ReportEndOpInvokeEvent(event_handle);
 }
 
-}  // namespace tflite
+}  // namespace tflite::telemetry

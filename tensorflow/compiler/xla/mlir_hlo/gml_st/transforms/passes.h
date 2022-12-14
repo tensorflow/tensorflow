@@ -89,6 +89,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeGmlStLoopsPass(
     bool vectorizeGmlStOps = false,
     ArrayRef<StringRef> distributionLabels = {});
 
+/// Pass to vectorize gml_st.for loops that are tiled perfectly.
+std::unique_ptr<OperationPass<func::FuncOp>>
+createVectorizePerfectlyTiledLoopsPass();
+
 /// Pass to lower vector.contract.
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorContractPass();
 
@@ -99,6 +103,11 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForCpuPass(
     ArrayRef<int64_t> matmulTileSizes = llvm::None,
     bool lowerToMmt4DOp = false);
+
+/// Pass to transform a linalg.matmul op for Triton.
+std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForTritonPass(
+    ArrayRef<int64_t> matmulTileSizes = llvm::None,
+    StringRef distributionLabel = "");
 
 /// Pass to transform a linalg.map op for CPU backend.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
@@ -112,6 +121,10 @@ createTransformReduceForCpuPass(int64_t vectorSize = 8, int64_t tileSize1D = 32,
 /// Pass to transform a linalg.transpose op for CPU backend.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformTransposeForCpuPass(ArrayRef<int64_t> tileSizes = llvm::None);
+
+/// Pass to transform a thlo.sort op for CPU backend.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createTransformSortForCpuPass();
 
 #define GEN_PASS_REGISTRATION
 #include "gml_st/transforms/passes.h.inc"

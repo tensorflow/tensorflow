@@ -33,6 +33,7 @@ import fnmatch
 import os
 import re
 import sys
+import platform
 
 from setuptools import Command
 from setuptools import find_packages
@@ -129,6 +130,22 @@ REQUIRED_PACKAGES = [
                         'keras-nightly ~= 2.12.0.dev'),
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
+
+FAKE_REQUIRED_PACKAGES = [
+    # The depedencies here below are not actually used but are needed for
+    # package managers like poetry to parse as they are confused by the
+    # different architectures having different requirements.
+    # The entries here should be a simple duplicate of those in the collaborator
+    # build section.
+    standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws') + '==' +
+    _VERSION + ';platform_system=="Linux" and (platform_machine=="arm64" or '
+    'platform_machine=="aarch64")',
+    standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
+    _VERSION + ';platform_system=="Windows"',
+]
+
+if platform.system() == 'Linux' and platform.machine() == 'x86_64':
+  REQUIRED_PACKAGES.append(FAKE_REQUIRED_PACKAGES)
 
 if collaborator_build:
   # If this is a collaborator build, then build an "installer" wheel and
@@ -335,7 +352,7 @@ setup(
         'install_headers': InstallHeaders,
         'install': InstallCommand,} if not collaborator_build else {},
     # Supported Python versions
-    python_requires='>=3.7',
+    python_requires='>=3.8',
     # PyPI package information.
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
@@ -346,7 +363,6 @@ setup(
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: Apache Software License',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',

@@ -1059,11 +1059,16 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunk(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(bias, GetAllocationSlice(matmul.getBias()));
   }
 
+  BufferAllocation::Slice aux;
+  if (matmul.getAux() != nullptr) {
+    TF_ASSIGN_OR_RETURN(aux, GetAllocationSlice(matmul.getAux()));
+  }
+
   TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan plan,
                       cublas_lt::MatmulPlan::For(matmul));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
       GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b, c, d,
-      bias);
+      bias, aux);
 
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
@@ -1213,7 +1218,14 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
 
   void* call_target = CustomCallTargetRegistry::Global()->Lookup(
       call_target_name, std::string(platform_name()));
-  if (!call_target) {
+
+  // Typed custom calls only are supported by XLA runtime. It's ok to emit a
+  // thunk with an unresolved custom call target, as we'll never execute it.
+  bool is_typed_custom_call =
+      custom_call.getApiVersion() ==
+      mlir::mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI;
+
+  if (!call_target && !is_typed_custom_call) {
     return Unimplemented(
         "No registered implementation for custom call to \"%s\"",
         call_target_name);

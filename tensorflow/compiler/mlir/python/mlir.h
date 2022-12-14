@@ -103,6 +103,10 @@ std::string ExperimentalRunPassPipeline(const std::string &mlir_txt,
                                         bool show_debug_info,
                                         TF_Status *status);
 
+// Writes the input textual MLIR as bytecode to output file.
+void ExperimentalWriteBytecode(const std::string &filename,
+                               const std::string &mlir_txt, TF_Status *status);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_PYTHON_MLIR_H_

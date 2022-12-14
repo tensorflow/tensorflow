@@ -1,4 +1,4 @@
-// RUN: tf-mhlo-tfl-opt %s -split-input-file -mhlo-optimize | FileCheck %s
+// RUN: odml-to-stablehlo-opt %s -split-input-file -mhlo-optimize | FileCheck %s
 
 // CHECK-LABEL: testDotToDotGeneralVectorVector
 func.func @testDotToDotGeneralVectorVector(%arg0: tensor<3072xf32>, %arg1: tensor<3072xf32>) -> tensor<f32> {

@@ -6,6 +6,7 @@ load("//tensorflow/lite/experimental/acceleration/mini_benchmark:build_defs.bzl"
 load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary")
 load("//tensorflow:tensorflow.bzl", "clean_dep")
 load("@build_bazel_rules_android//android:rules.bzl", "android_binary")
+load(":proto.bzl", "proto_data")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -18,7 +19,10 @@ android_binary(
     srcs = glob([
         "src/**/*.java",
     ]),
-    assets = [":mobilenet_float_with_validation.tflite"],
+    assets = [
+        ":mobilenet_float_with_validation.tflite",
+        ":default_latency_criteria",
+    ],
     assets_dir = "",
     custom_package = "org.tensorflow.lite.benchmark.delegate_performance",
     manifest = "AndroidManifest.xml",
@@ -45,9 +49,28 @@ tflite_jni_binary(
     srcs = ["jni/delegate_performance_benchmark_jni.cc"],
     deps = [
         ":accuracy_benchmark",
+        ":delegate_performance_cc_proto",  # Unused
         ":latency_benchmark",
         "//tensorflow/lite/java/jni",
     ],
+)
+
+proto_library(
+    name = "delegate_performance_proto",
+    srcs = ["proto/delegate_performance.proto"],
+)
+
+cc_proto_library(
+    name = "delegate_performance_cc_proto",
+    deps = [":delegate_performance_proto"],
+)
+
+proto_data(
+    name = "default_latency_criteria",
+    src = "proto/default_latency_criteria.textproto",
+    out = "default_latency_criteria.binarypb",
+    proto_deps = [":delegate_performance_proto"],
+    proto_name = "tflite.proto.benchmark.LatencyCriteria",
 )
 
 cc_library(
@@ -66,7 +89,7 @@ cc_library(
     hdrs = ["jni/accuracy_benchmark.h"],
     deps = [
         "//tensorflow/lite:minimal_logging",
-        "@flatbuffers//:public_headers_lib",
+        "@flatbuffers",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:blocking_validator_runner",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",

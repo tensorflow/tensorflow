@@ -386,4 +386,29 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "model_loader",
+    srcs = ["model_loader.cc"],
+    hdrs = ["model_loader.h"],
+    deps = [
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite:model_builder",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "model_loader_test",
+    srcs = ["model_loader_test.cc"],
+    data = ["//tensorflow/lite/java/demo/app/src/main/assets:mobilenet_v1_1.0_224.tflite"],
+    deps = [
+        ":model_loader",
+        "//tensorflow/lite:model_builder",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
+    ],
+)
+
 tflite_portable_test_suite()

@@ -947,7 +947,6 @@ class GpuTracer : public profiler::ProfilerInterface {
  private:
   Status DoStart();
   Status DoStop();
-  Status DoCollectData(XSpace* space);
 
   RocmTracerOptions GetRocmTracerOptions();
 
@@ -1101,11 +1100,6 @@ Status GpuTracer::Stop() {
   return OkStatus();
 }
 
-Status GpuTracer::DoCollectData(XSpace* space) {
-  if (rocm_trace_collector_) rocm_trace_collector_->Export(space);
-  return OkStatus();
-}
-
 Status GpuTracer::CollectData(XSpace* space) {
   switch (profiling_state_) {
     case State::kNotStarted:
@@ -1121,7 +1115,7 @@ Status GpuTracer::CollectData(XSpace* space) {
       VLOG(3) << "No trace data collected";
       return OkStatus();
     case State::kStoppedOk: {
-      DoCollectData(space);
+      if (rocm_trace_collector_) rocm_trace_collector_->Export(space);
       return OkStatus();
     }
   }
