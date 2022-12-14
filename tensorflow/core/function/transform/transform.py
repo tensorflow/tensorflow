@@ -126,6 +126,11 @@ def transform_function(
   else:
     mlir_pipelines = [mlir_pipeline]
 
+  nested_fn_transforms = (
+      nested_fn_transforms if nested_fn_transforms is not None else {})
+  nested_mlir_transforms = (
+      nested_mlir_transforms if nested_mlir_transforms is not None else {})
+
   # Extract the `ConcreteFunction` from the `tf.function.`
   if inputs is not None:
     cf = f.get_concrete_function(*inputs)
@@ -135,8 +140,8 @@ def transform_function(
   # Promote all library functions to the parent scope so that any replicated
   # functions can also re-use them.
   graph = ops.get_default_graph()
-  for _, eager_def_func in cf._func_graph._functions.items():  # pylint: disable=protected-access
-    eager_def_func.add_to_graph(graph)
+  for edf in cf.graph._functions.values():  # pylint: disable=protected-access
+    edf.add_to_graph(graph, overwrite=False)
 
   # Initialize the `runtime_client`.
   eager_ctx = runtime_client.GlobalPythonEagerContext()
@@ -156,11 +161,7 @@ def transform_function(
     transform_fn(fndef)
 
   # Apply a transform to any of the nested _EagerDefinedFunctions(EDF) if
-  # `nested_fn_transforms` is provided.
-  nested_fn_transforms = (
-      nested_fn_transforms if nested_fn_transforms is not None else {})
-  nested_mlir_transforms = (
-      nested_mlir_transforms if nested_mlir_transforms is not None else {})
+  # `nested_fn_transforms` or `nested_mlir_transforms` is provided.
   if nested_fn_transforms or nested_mlir_transforms:
     nested_functions = cf.graph._functions  # pylint: disable=protected-access
 
@@ -179,7 +180,7 @@ def transform_function(
         edf_mlir_pipeline = nested_mlir_transforms.get(edf_name, [])
         transformed_edf = transform_eager_defined_function(
             rt, nested_functions[edf_name], edf_transform_fn, edf_mlir_pipeline)
-        transformed_edf.add_to_graph(graph)
+        transformed_edf.add_to_graph(graph, overwrite=True)
         transformed_edf_name = compat.as_str(transformed_edf.name)
         transformed_nested_functions[transformed_edf_name] = transformed_edf
         nested_transforms_map[edf_name] = transformed_edf_name
@@ -236,8 +237,8 @@ def transform_function(
   # Register the ConcreteFunction with the python Graph.
   if nested_fn_transforms or nested_mlir_transforms:
     for transformed_edf in transformed_nested_functions.values():
-      transformed_edf.add_to_graph(updated_cf.graph)
-  updated_cf.add_to_graph(graph)
+      transformed_edf.add_to_graph(updated_cf.graph, overwrite=True)
+  updated_cf.add_to_graph(graph, overwrite=True)
 
   return updated_cf
 

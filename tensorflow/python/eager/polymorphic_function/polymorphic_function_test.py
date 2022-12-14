@@ -4883,6 +4883,31 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(f(1), array_ops.constant(2))
 
+  def testGraphRemoveFunction(self):
+    @polymorphic_function.function
+    def g(x):
+      return x + 1
+
+    @polymorphic_function.function
+    def f(x):
+      return g(x)
+
+    graph = f.get_concrete_function(constant_op.constant(1)).graph
+    graph_def = graph.as_graph_def()
+    func_name = graph_def.library.function[0].signature.name
+
+    self.assertLen(graph_def.library.function, 1)
+    self.assertTrue(graph._is_function(func_name))
+
+    graph._remove_function(func_name)
+    updated_graph_def = graph.as_graph_def()
+
+    self.assertEmpty(updated_graph_def.library.function)
+    self.assertFalse(graph._is_function(func_name))
+
+    with self.assertRaisesRegex(ValueError, 'not found'):
+      graph._remove_function(func_name)
+
 if __name__ == '__main__':
   ops.enable_eager_execution()
   test.main()
