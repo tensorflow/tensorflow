@@ -292,13 +292,11 @@ ValidatorRunnerImpl::ValidationEntrypointHelper::Validate() {
 ValidatorRunnerImpl::ValidationEntrypointHelper::EntrypointFunc*
 ValidatorRunnerImpl::ValidationEntrypointHelper::LoadEntrypoint() {
 #ifndef _WIN32
-  TF_LITE_REPORT_ERROR(error_reporter_, "ifndef");
   // We use dlsym() to lookup the entrypoint function every time because this
   // helper is used in a multi-threaded environment.
   return reinterpret_cast<int (*)(int, char**)>(
       dlsym(RTLD_DEFAULT, validation_entrypoint_name_.c_str()));
 #endif  // !_WIN32
-  TF_LITE_REPORT_ERROR(error_reporter_, "endif");
   return nullptr;
 }
 
