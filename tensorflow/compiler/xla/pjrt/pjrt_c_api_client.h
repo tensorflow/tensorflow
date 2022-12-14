@@ -175,6 +175,7 @@ class PjRtCApiClient : public PjRtClient {
   StatusOr<std::string> SerializeExecutable(
       const PjRtLoadedExecutable& executable) const override;
 
+  // `PjRtCApiClient::DeserializeExecutable()` ignores `CompileOptions` arg
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
       absl::string_view serialized,
       std::optional<CompileOptions> options) override;
@@ -502,6 +503,7 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
   }
 
   const PJRT_Api* pjrt_c_api() const { return client_->pjrt_c_api(); }
+  const PJRT_Executable* c_executable() const { return executable_.get(); }
 
  private:
   PjRtCApiClient* client_;

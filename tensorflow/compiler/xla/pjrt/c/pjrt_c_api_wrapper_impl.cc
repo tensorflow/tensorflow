@@ -256,9 +256,7 @@ static void PopulatePjrtExecutableAddressableDevices(
   const std::vector<PJRT_Device*>& client_devices =
       executable->client->addressable_devices;
 
-  CHECK(client_devices.size() >= num_addressable_devices)
-      << ": client->addressable_devices is not bigger than "
-         "executable->addressable_devices()";
+  CHECK_GE(client_devices.size(), num_addressable_devices);
 
   for (int i = 0; i < num_addressable_devices; ++i) {
     xla::PjRtDevice* cpp_device = cpp_devices[i];
@@ -761,7 +759,7 @@ PJRT_Error* PJRT_Executable_Deserialize(
                             serialized, /*options=*/std::nullopt));
 
   args->deserialized_executable =
-      new PJRT_Executable{std::move(executable), args->client};
+      new PJRT_Executable(std::move(executable), args->client);
   return nullptr;
 }
 
