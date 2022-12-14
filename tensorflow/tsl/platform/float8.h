@@ -49,7 +49,7 @@ class float8_base {
   }
 
   constexpr bool operator==(const Derived& other) const {
-    if (Eigen::numext::isnan(derived())) {
+    if (Eigen::numext::isnan(derived()) || Eigen::numext::isnan(other)) {
       return false;
     } else if ((rep() & 0x7F) == 0) {
       return (other.rep() & 0x7F) == 0;
@@ -161,10 +161,10 @@ class float8_e4m3fn : public float8_base<float8_e4m3fn> {
       : Base(rep, ConstructFromRepTag{}) {}
 
  public:
-  constexpr float8_e4m3fn() : Base() {}
+  constexpr float8_e4m3fn() = default;
 
   template <typename T,
-            typename EnableIf = std::enable_if<std::is_arithmetic<T>::value>>
+            typename EnableIf = std::enable_if<std::is_arithmetic_v<T>>>
   explicit EIGEN_DEVICE_FUNC float8_e4m3fn(T f)
       : float8_e4m3fn(ConvertFrom(static_cast<float>(f))) {}
   explicit EIGEN_DEVICE_FUNC float8_e4m3fn(double f64)
@@ -179,7 +179,7 @@ class float8_e4m3fn : public float8_base<float8_e4m3fn> {
       : float8_e4m3fn(ConvertFrom(f8)) {}
 
   template <typename T,
-            typename EnableIf = std::enable_if<std::is_arithmetic<T>::value>>
+            typename EnableIf = std::enable_if<std::is_arithmetic_v<T>>>
   explicit EIGEN_DEVICE_FUNC operator T() const {
     return static_cast<T>(static_cast<float>(*this));
   }
@@ -211,10 +211,10 @@ class float8_e5m2 : public float8_base<float8_e5m2> {
       : Base(rep, ConstructFromRepTag{}) {}
 
  public:
-  constexpr float8_e5m2() : Base() {}
+  constexpr float8_e5m2() = default;
 
   template <typename T,
-            typename EnableIf = std::enable_if<std::is_arithmetic<T>::value>>
+            typename EnableIf = std::enable_if<std::is_arithmetic_v<T>>>
   explicit EIGEN_DEVICE_FUNC float8_e5m2(T f)
       : float8_e5m2(ConvertFrom(static_cast<float>(f))) {}
   explicit EIGEN_DEVICE_FUNC float8_e5m2(double f64)
@@ -229,7 +229,7 @@ class float8_e5m2 : public float8_base<float8_e5m2> {
       : float8_e5m2(ConvertFrom(f8)) {}
 
   template <typename T,
-            typename EnableIf = std::enable_if<std::is_arithmetic<T>::value>>
+            typename EnableIf = std::enable_if<std::is_arithmetic_v<T>>>
   explicit EIGEN_DEVICE_FUNC operator T() const {
     return static_cast<T>(static_cast<float>(*this));
   }

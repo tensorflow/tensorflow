@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_IMPORT_MODEL_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_IMPORT_MODEL_H_
 
+#include <vector>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -41,8 +43,12 @@ Status ConvertFunctionToBef(
     tfrt::BefBuffer* bef_buffer);
 
 // Converts an MLIR `module` in TF dialect to TFRT's Binary Executable Format.
+// If `xla_func_defs` is not null, the MLIR functions for XLA clusters in
+// the form of XlaLaunch will be exported and saved in `xla_func_defs`. The
+// nested functions will also be exported.
 Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
-                          mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer);
+                          mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer,
+                          std::vector<FunctionDef>* xla_func_defs = nullptr);
 
 }  // namespace tensorflow
 

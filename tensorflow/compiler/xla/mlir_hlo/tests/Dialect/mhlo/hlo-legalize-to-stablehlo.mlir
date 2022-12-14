@@ -1988,7 +1988,12 @@ func.func @op_fusion(%arg0: tensor<f32>) -> tensor<f32> {
     ^bb0(%arg1: tensor<f32>):
       "mhlo.return"(%arg1) : (tensor<f32>) -> ()
   }) {
-    fusion_kind = #mhlo<fusion_kind kCustom>
+    fusion_kind = #mhlo<fusion_kind kCustom>,
+    output_operand_aliases = [
+      #mhlo.output_operand_alias<output_tuple_indices = [],
+                                 operand_index = 0,
+                                 operand_tuple_indices = []>
+    ]
   } : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }

@@ -329,15 +329,10 @@ TEST_F(XlaBuilderTest, InfeedWithTokenWithFrontendAttributes) {
 
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
 
-  std::string str;
-  llvm::raw_string_ostream ostream{str};
-  module_->print(ostream);
-  ostream.flush();
-
   // Verify that the frontend attributes are correctly set for the entire
   // module.
   ExpectHasSubstr(
-      str,
+      GetMlirOpString(module_.get()),
       R"(%0 = mhlo.create_token {mhlo.frontend_attributes = {test_name = "test_value"}} : !mhlo.token
   %1:2 = "mhlo.infeed"(%0) {infeed_config = "", mhlo.frontend_attributes = {test_name = "test_value"}} : (!mhlo.token) -> (tensor<4x8xf32>, !mhlo.token)
   %2 = mhlo.tuple %1#0, %1#1 {mhlo.frontend_attributes = {test_name = "test_value"}} : tuple<tensor<4x8xf32>, !mhlo.token>)");

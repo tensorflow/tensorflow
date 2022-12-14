@@ -115,7 +115,7 @@ xla::StatusOr<xla::ifrt::Array*> ShardedDeviceArray::ifrt_array() {
     return xla::InvalidArgument("ShardedDeviceArray has been deleted.");
   }
   const int num_devices = device_buffers_->size();
-  std::vector<xla::ifrt::Array*> ifrt_arrays;
+  std::vector<tsl::RCReference<xla::ifrt::Array>> ifrt_arrays;
   ifrt_arrays.reserve(num_devices);
   std::vector<xla::ifrt::Shape> shapes;
   shapes.reserve(num_devices);
@@ -125,7 +125,7 @@ xla::StatusOr<xla::ifrt::Array*> ShardedDeviceArray::ifrt_array() {
     // Note that invariants guarantee the cast should never fail.
     TF_ASSIGN_OR_RETURN(xla::PyBuffer * pybuffer,
                         xla::PyBuffer::AsPyBuffer(handle));
-    ifrt_arrays.push_back(pybuffer->ifrt_array());
+    ifrt_arrays.push_back(tsl::FormRef(pybuffer->ifrt_array()));
     shapes.push_back(pybuffer->ifrt_array()->shape());
     devices.push_back(pybuffer->ifrt_array()->sharding().devices().front());
   }
@@ -136,10 +136,11 @@ xla::StatusOr<xla::ifrt::Array*> ShardedDeviceArray::ifrt_array() {
       xla::ifrt::DeviceList(std::move(devices)),
       xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
           std::move(shapes)));
-  TF_ASSIGN_OR_RETURN(auto ifrt_array,
-                      client->AssembleArrayFromSingleDeviceArrays(
-                          std::move(shape), std::move(sharding), ifrt_arrays,
-                          xla::ifrt::ArrayCopySemantics::kReuseInput));
+  TF_ASSIGN_OR_RETURN(
+      auto ifrt_array,
+      client->AssembleArrayFromSingleDeviceArrays(
+          std::move(shape), std::move(sharding), absl::MakeSpan(ifrt_arrays),
+          xla::ifrt::ArrayCopySemantics::kReuseInput));
   ifrt_array_ = std::move(ifrt_array);
   return ifrt_array_->get();
 }

@@ -211,12 +211,7 @@ struct ParsedArgumentsAsBuffers {
 #ifdef JAX_ENABLE_IFRT
   xla::ifrt::Client* ifrt_client;
   // The following is only valid if the parsing succeeds.
-  std::vector<xla::ifrt::Array*> ifrt_arg_arrays;
-  // We may need to keep these objects around, because:
-  // (a) we need to extend the lifetime of objects created within
-  //    `CopyBuffersToDevice`
-  // (b) `ifrt_arg_arrays` do not maintain ownership
-  std::vector<std::unique_ptr<xla::ifrt::Array>> ifrt_keep_alive;
+  std::vector<tsl::RCReference<xla::ifrt::Array>> ifrt_arg_arrays;
 #else
   // The following is only valid if the parsing succeeds.
   std::vector<xla::PjRtBuffer*> arg_buffers;

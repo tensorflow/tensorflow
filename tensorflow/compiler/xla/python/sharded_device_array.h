@@ -341,7 +341,7 @@ class ShardedDeviceArray {
   std::optional<pybind11::object> one_replica_buffer_indices_ = std::nullopt;
 
 #ifdef JAX_ENABLE_IFRT
-  std::optional<std::unique_ptr<xla::ifrt::Array>> ifrt_array_ = std::nullopt;
+  std::optional<tsl::RCReference<xla::ifrt::Array>> ifrt_array_ = std::nullopt;
 #endif
 
   // The device_buffers as a C++ object. As this is what we consume from C++

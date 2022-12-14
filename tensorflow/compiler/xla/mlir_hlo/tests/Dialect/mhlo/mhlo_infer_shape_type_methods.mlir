@@ -519,6 +519,18 @@ func.func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 
 // -----
 
+// CHECK-LABEL: func @outfeed
+func.func @outfeed(%arg0: tensor<3x3x3xi32>, %arg1: !mhlo.token) -> !mhlo.token {
+  %0 = "mhlo.outfeed"(%arg0, %arg1) {
+    outfeed_config = ""
+  } : (tensor<3x3x3xi32>, !mhlo.token) -> !mhlo.token
+  %1 = "mhlo_test.get_return_types"(%0) : (!mhlo.token) -> !mhlo.token
+  // CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = !mhlo.token} : (!mhlo.token) -> !mhlo.token
+  func.return %1 : !mhlo.token
+}
+
+// -----
+
 // CHECK-LABEL: func @while
 func.func @while(%arg0: tensor<4xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<4xf32>, %arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<f32>, %arg8: tensor<i32>) -> tensor<index> {
   %cst = arith.constant dense<-1> : tensor<i32>
@@ -554,6 +566,44 @@ func.func @get_dimension_size(%arg0: tensor<4x2xf32>) -> tensor<index> {
 }
 
 // -----
+
+// CHECK-LABEL: @dynamic_update_slice
+func.func @dynamic_update_slice(%arg0: tensor<4x4xi32>, %arg1: tensor<2x2xi32>, %arg2: tensor<i64>, %arg3: tensor<i64>) -> tensor<4x4xindex> {
+  %0 = "mhlo.dynamic_update_slice"(%arg0, %arg1, %arg2, %arg3) : (tensor<4x4xi32>, tensor<2x2xi32>, tensor<i64>, tensor<i64>) -> tensor<4x4xi32>
+  %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<4x4xi32>) -> tensor<4x4xindex>
+  // CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [4, 4], element_type0 = i32} : (tensor<4x4xi32>) -> tensor<4x4xindex>
+  func.return %1 : tensor<4x4xindex>
+}
+
+// -----
+
+// CHECK-LABEL: func @create_token
+func.func @create_token() -> !mhlo.token {
+  %0 = "mhlo.create_token"() : () -> !mhlo.token
+  %1 = "mhlo_test.get_return_types"(%0) : (!mhlo.token) -> !mhlo.token
+  // CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = !mhlo.token} : (!mhlo.token) -> !mhlo.token
+  func.return %1 : !mhlo.token
+}
+
+// -----
+
+// CHECK-LABEL: func @after_all_empty_arg
+func.func @after_all_empty_arg() -> !mhlo.token {
+  %0 = "mhlo.after_all"() : () -> !mhlo.token
+  %1 = "mhlo_test.get_return_types"(%0) : (!mhlo.token) -> !mhlo.token
+  // CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = !mhlo.token} : (!mhlo.token) -> !mhlo.token
+  func.return %1 : !mhlo.token
+}
+
+// -----
+
+// CHECK-LABEL: func @after_all
+func.func @after_all(%arg0: !mhlo.token, %arg1: !mhlo.token) -> !mhlo.token {
+  %0 = "mhlo.after_all"(%arg0, %arg1) : (!mhlo.token, !mhlo.token) -> !mhlo.token
+  %1 = "mhlo_test.get_return_types"(%0) : (!mhlo.token) -> !mhlo.token
+  // CHECK: %1 = "mhlo_test.return_types"(%0) {types0 = !mhlo.token} : (!mhlo.token) -> !mhlo.token
+  func.return %1 : !mhlo.token
+}
 
 //===----------------------------------------------------------------------===//
 // Sparsity
@@ -809,4 +859,16 @@ func.func @partition_id() -> tensor<*xindex> {
   // CHECK: types0 = tensor<ui32>
   %1 = "mhlo_test.get_return_types"(%result) : (tensor<ui32>) -> tensor<*xindex>
   func.return %1 : tensor<*xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @send
+func.func @send(%arg0: !mhlo.token) -> !mhlo.token {
+  %result = "mhlo.send"(%arg0) {
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 2>
+  } : (!mhlo.token) -> !mhlo.token
+  // CHECK: types0 = !mhlo.token
+  %1 = "mhlo_test.get_return_types"(%result) : (!mhlo.token) -> !mhlo.token
+  func.return %1 : !mhlo.token
 }

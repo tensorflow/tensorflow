@@ -1545,7 +1545,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
 
   auto& value_map = *ctx.values;
   auto aliasInfo =
-      xla::ConvertCustomCallOutputOperandAliasing(op.getOutputOperandAliases());
+      xla::ConvertOutputOperandAliasing(op.getOutputOperandAliases());
   auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
   auto custom_call_schedule =
       xla::ConvertCustomCallSchedule(op.getCustomCallSchedule());
@@ -2151,6 +2151,9 @@ LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
     return failure();
 
   auto& values = *ctx.values;
+  auto aliasInfo =
+      xla::ConvertOutputOperandAliasing(op.getOutputOperandAliases());
+  auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
   llvm::SmallVector<xla::XlaOp, 4> operands;
   for (auto operand : op.getInputs()) operands.push_back(values[operand]);
 
@@ -2159,7 +2162,7 @@ LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
   xla::XlaOp fusion = xla::internal::XlaBuilderFriend::BuildFusion(
       ctx.builder, operands,
       absl::string_view(fusion_kind_string.data(), fusion_kind_string.size()),
-      fused_computation);
+      fused_computation, output_operand_aliasing);
   if (op.getNumResults() == 1) {
     values[op.getResult(0)] = fusion;
   } else {

@@ -631,6 +631,17 @@ LogicalResult AsyncDoneOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// AfterAllOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AfterAllOp::inferReturnTypes(
+    MLIRContext* context, Optional<Location> location, ValueRange,
+    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  auto dialect = context->getLoadedDialect<MhloDialect>();
+  return hlo::inferAfterAllOp(dialect, location, inferredReturnTypes);
+}
+
+//===----------------------------------------------------------------------===//
 // ConstantOp
 //===----------------------------------------------------------------------===//
 
@@ -734,6 +745,73 @@ void ConstantOp::print(::mlir::OpAsmPrinter& p) {
   p.printOptionalAttrDict((*this)->getAttrs(), /*elidedAttrs=*/{"value"});
   p << ' ';
   p.printStrippedAttrOrType(getValueAttr());
+}
+
+//===----------------------------------------------------------------------===//
+// Helper function to verify output operand aliasing (FusionOp and CustomCallOp)
+//===----------------------------------------------------------------------===//
+
+template <typename CallableOpType>
+LogicalResult verifyOutputOperandAliasing(CallableOpType* op) {
+  auto aliasArrayAttr = op->getOutputOperandAliases();
+  for (auto attr : aliasArrayAttr) {
+    auto alias = attr.template cast<OutputOperandAliasAttr>();
+    auto outputTupleIndices = alias.getOutputTupleIndices();
+    auto operandIndex = alias.getOperandIndex();
+    auto operandTupleIndices = alias.getOperandTupleIndices();
+    if (operandIndex < 0 ||
+        operandIndex >= static_cast<int64_t>(op->getInputs().size()))
+      return op->emitOpError()
+             << "expects operandIndex in the output_operand_alias attribute "
+                "to be in range [0, "
+             << op->getInputs().size() << "); got: " << operandIndex << ".";
+    Type operandPart = op->getOperand(operandIndex).getType();
+    for (auto i : operandTupleIndices) {
+      if (!operandPart.isa<TupleType>() ||
+          i >= static_cast<int64_t>(operandPart.cast<TupleType>().size()) ||
+          i < 0)
+        return op->emitOpError()
+               << "operand_tuple_indices in the output_operand_alias "
+                  "attribute out of bounds";
+      operandPart = operandPart.cast<TupleType>().getType(i);
+    }
+    Type outputPart =
+        op->getNumResults() > 1
+            ? TupleType::get(op->getContext(), op->getResultTypes())
+            : op->getResult(0).getType();
+    for (auto i : outputTupleIndices) {
+      if (!outputPart.isa<TupleType>() ||
+          i >= static_cast<int64_t>(outputPart.cast<TupleType>().size()) ||
+          i < 0)
+        return op->emitOpError()
+               << "output_tuple_indices in the output_operand_alias "
+                  "attribute out of bounds";
+      outputPart = outputPart.cast<TupleType>().getType(i);
+    }
+    if (operandPart != outputPart)
+      return op->emitOpError()
+             << "shapes mismatch in the output_operand_alias attribute: "
+             << "operand part has type " << operandPart
+             << " and output part has type " << outputPart;
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// FusionOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult FusionOp::verify() { return verifyOutputOperandAliasing(this); }
+
+//===----------------------------------------------------------------------===//
+// CreateTokenOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CreateTokenOp::inferReturnTypes(
+    MLIRContext* context, Optional<Location> location, ValueRange,
+    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  auto dialect = context->getLoadedDialect<MhloDialect>();
+  return hlo::inferCreateTokenOp(dialect, location, inferredReturnTypes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -847,49 +925,7 @@ LogicalResult CustomCallOp::verify() {
   }
 
   // Check output_operand_aliases
-
-  auto aliasArrayAttr = getOutputOperandAliases();
-  for (auto attr : aliasArrayAttr) {
-    auto alias = attr.cast<OutputOperandAliasAttr>();
-    auto outputTupleIndices = alias.getOutputTupleIndices();
-    auto operandIndex = alias.getOperandIndex();
-    auto operandTupleIndices = alias.getOperandTupleIndices();
-
-    if (operandIndex < 0 ||
-        operandIndex >= static_cast<int64_t>(getInputs().size()))
-      return emitOpError()
-             << "expects operandIndex in the output_operand_alias attribute "
-                "to be in range [0, "
-             << getInputs().size() << "); got: " << operandIndex << ".";
-
-    Type operandPart = getOperand(operandIndex).getType();
-    for (auto i : operandTupleIndices) {
-      if (!operandPart.isa<TupleType>() ||
-          i >= static_cast<int64_t>(operandPart.cast<TupleType>().size()) ||
-          i < 0)
-        return emitOpError()
-               << "operand_tuple_indices in the output_operand_alias "
-                  "attribute out of bounds";
-      operandPart = operandPart.cast<TupleType>().getType(i);
-    }
-    Type outputPart = getNumResults() > 1
-                          ? TupleType::get(getContext(), getResultTypes())
-                          : getResult(0).getType();
-    for (auto i : outputTupleIndices) {
-      if (!outputPart.isa<TupleType>() ||
-          i >= static_cast<int64_t>(outputPart.cast<TupleType>().size()) ||
-          i < 0)
-        return emitOpError()
-               << "output_tuple_indices in the output_operand_alias "
-                  "attribute out of bounds";
-      outputPart = outputPart.cast<TupleType>().getType(i);
-    }
-    if (operandPart != outputPart)
-      return emitOpError()
-             << "shapes mismatch in the output_operand_alias attribute: "
-             << "operand part has type " << operandPart
-             << " and output part has type " << outputPart;
-  }
+  if (failed(verifyOutputOperandAliasing(this))) return failure();
 
   // Check backend_config attribute.
   if (auto backendConfig = getBackendConfig()) {
@@ -2079,27 +2115,14 @@ LogicalResult DynamicIotaOp::reifyReturnTypeShapes(
 // DynamicUpdateSliceOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult DynamicUpdateSliceOp::verify() {
-  OperandRange indices = getStartIndices();
-  if (indices.size() <= 1) return success();
-
-  // Note: start_indices is constrained to Variadic<HLO_ScalarIntTensor>, so it
-  // is OK to cast indices to ShapedType here.
-  auto idxTensor = indices.take_front().front().getType().cast<ShapedType>();
-  Type firstElemTy = idxTensor.getElementType();
-  Type elemTy;
-
-  for (auto idx : llvm::drop_begin(indices, 1)) {
-    idxTensor = idx.getType().cast<ShapedType>();
-    elemTy = idxTensor.getElementType();
-
-    if (firstElemTy != elemTy) {
-      return emitOpError() << "start indices must have same element type "
-                              "(encountered mismatch: "
-                           << firstElemTy << " vs " << elemTy << ")";
-    }
-  }
-  return success();
+LogicalResult DynamicUpdateSliceOp::inferReturnTypeComponents(
+    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  DynamicUpdateSliceOp::Adaptor adaptor(operands, attributes, regions);
+  return hlo::inferDynamicUpdateSliceOp(
+      location, adaptor.getOperand(), adaptor.getUpdate(),
+      adaptor.getStartIndices(), inferredReturnShapes);
 }
 
 OpFoldResult DynamicUpdateSliceOp::fold(ArrayRef<Attribute> operands) {
@@ -4463,6 +4486,28 @@ LogicalResult MapOp::reifyReturnTypeShapes(
 }
 
 //===----------------------------------------------------------------------===//
+// OutfeedOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult OutfeedOp::inferReturnTypes(
+    MLIRContext* context, Optional<Location> location, ValueRange,
+    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  auto dialect = context->getLoadedDialect<MhloDialect>();
+  return hlo::inferOutfeedOp(dialect, location, inferredReturnTypes);
+}
+
+//===----------------------------------------------------------------------===//
+// SendOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult SendOp::inferReturnTypes(
+    MLIRContext* context, Optional<Location> location, ValueRange,
+    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  auto dialect = context->getLoadedDialect<MhloDialect>();
+  return hlo::inferSendOp(dialect, location, inferredReturnTypes);
+}
+
+//===----------------------------------------------------------------------===//
 // RecvOp
 //===----------------------------------------------------------------------===//
 
@@ -5225,6 +5270,18 @@ LogicalResult ReduceOp::reifyReturnTypeShapes(
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// OptimizationBarrierOp
+//===----------------------------------------------------------------------===//
+LogicalResult OptimizationBarrierOp::inferReturnTypes(
+    MLIRContext*, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  OptimizationBarrierOp::Adaptor adaptor(operands, attributes);
+  return hlo::inferOptimizationBarrierOp(location, adaptor.getOperand(),
+                                         inferredReturnTypes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -8015,7 +8072,7 @@ namespace mhlo {
 //===----------------------------------------------------------------------===//
 
 namespace {
-struct HLOInlinerInterface : public DialectInlinerInterface {
+struct MhloDialectInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
 
   // Allow all call operations to be inlined.
@@ -8037,7 +8094,7 @@ struct HLOInlinerInterface : public DialectInlinerInterface {
   }
 };
 
-struct HLOBoundedDialectInterface : public hlo::HloDialectInterface {
+struct MhloHloDialectInterface : public hlo::HloDialectInterface {
   using HloDialectInterface::HloDialectInterface;
 
   Type createTokenType() const override {
@@ -8060,8 +8117,8 @@ MhloDialect::MhloDialect(MLIRContext* context)
 #define GET_OP_LIST
 #include "mhlo/IR/hlo_ops.cc.inc"
       >();
-  addInterfaces<HLOBoundedDialectInterface>();
-  addInterfaces<HLOInlinerInterface>();
+  addInterfaces<MhloHloDialectInterface>();
+  addInterfaces<MhloDialectInlinerInterface>();
   addBytecodeInterface(this);
   addTypes<TokenType, AsyncBundleType>();
   addAttributes<

@@ -568,3 +568,33 @@ func.func @trace(%ctx: !rt.execution_context) -> tensor<?xf32> {
   }
   return %0 : tensor<?xf32>
 }
+
+// -----
+
+// CHECK: llvm.mlir.global internal constant @__rt_c123(123 : i32)
+
+// CHECK: func @custom_call(
+// CHECK:   %[[CTX:.*]]: !llvm.ptr
+// CHECK: )
+func.func @custom_call(%arg0: !rt.execution_context) {
+  // CHECK: llvm.mlir.addressof @__rt_c123 : !llvm.ptr
+  // CHECK: call @target
+  %c123 = arith.constant 123 : i32
+  rt.call %arg0["target"] (%c123) : (i32) -> ()
+  func.return
+}
+
+// -----
+
+// CHECK: llvm.mlir.global internal constant @__rt_cst(1.234560e+02 : f32)
+
+// CHECK: func @custom_call(
+// CHECK:   %[[CTX:.*]]: !llvm.ptr
+// CHECK: )
+func.func @custom_call(%arg0: !rt.execution_context) {
+  // CHECK: llvm.mlir.addressof @__rt_cst : !llvm.ptr
+  // CHECK: call @target
+  %cst = arith.constant 123.456 : f32
+  rt.call %arg0["target"] (%cst) : (f32) -> ()
+  func.return
+}

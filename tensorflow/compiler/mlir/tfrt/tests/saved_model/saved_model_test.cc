@@ -26,6 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+using ::testing::SizeIs;
 
 TEST(SavedModelTest, MapSignatures) {
   std::string saved_model_mlir_path = tensorflow::GetDataDependencyFilepath(
@@ -99,6 +100,31 @@ TEST(SavedModelTest, CompileToBEF) {
   tfrt::BefBuffer bef_buffer;
   TfrtCompileOptions options;
   TF_ASSERT_OK(ConvertTfMlirToBef(options, module.get(), &bef_buffer));
+}
+
+TEST(SavedModelTest, ConvertTfMlirToBefWithXlaFuncExport) {
+  std::string saved_model_mlir_path = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/compiler/mlir/tfrt/tests/saved_model/testdata/"
+      "xla_launch.mlir");
+
+  mlir::DialectRegistry registry;
+  mlir::RegisterAllTensorFlowDialects(registry);
+  mlir::MLIRContext context(registry);
+  auto module =
+      mlir::parseSourceFile<mlir::ModuleOp>(saved_model_mlir_path, &context);
+  ASSERT_TRUE(module);
+
+  tfrt::BefBuffer bef_buffer;
+  TfrtCompileOptions options;
+  options.device_target = TfrtDeviceInfraTarget::kGpu;
+  options.use_bridge_for_gpu = true;
+  std::vector<FunctionDef> xla_func_defs;
+  TF_ASSERT_OK(
+      ConvertTfMlirToBef(options, module.get(), &bef_buffer, &xla_func_defs));
+
+  // The module contains an XLA function, as well as a while body and a while
+  // condition within the XLA function.
+  EXPECT_THAT(xla_func_defs, SizeIs(3));
 }
 
 // TODO(b/162442824): Add a SavedModel test that covers the error pass.

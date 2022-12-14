@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -32,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -927,7 +929,16 @@ FailureOr<EncodedArg> ScalarArgEncoding::Encode(Globals &g,
 
   Encoded encoded;
   encoded.type_id = EncodeTypeId(g, b, ScalarRuntimeTypeId(type));
-  encoded.value = PackValue(b, converted);
+
+  // Encode constant arguments as global values.
+  if (IntegerAttr cst; matchPattern(converted, m_Constant(&cst))) {
+    std::string name = llvm::formatv("__rt_c{0}", cst.getValue());
+    encoded.value = g.GetOrCreate(b, cst, name);
+  } else if (FloatAttr cst; matchPattern(converted, m_Constant(&cst))) {
+    encoded.value = g.GetOrCreate(b, cst, "__rt_cst");
+  } else {
+    encoded.value = PackValue(b, converted);
+  }
 
   return encoded;
 }

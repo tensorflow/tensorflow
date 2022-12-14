@@ -15,12 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 
+#include <deque>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/match.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -31,6 +36,65 @@ limitations under the License.
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
 
 namespace tensorflow {
+
+namespace {
+
+// Exports all XLA functions in the form of XlaLaunch, and their nested
+// functions.
+Status ExportXlaFunctions(mlir::ModuleOp module,
+                          std::vector<FunctionDef>* xla_func_defs) {
+  // Find all XLA functions.
+  std::vector<std::string> xla_functions;
+  module.walk([&](mlir::TF::XlaLaunchOp xla_launch_op) {
+    std::string func_name =
+        xla_launch_op.getFunctionAttr().getRootReference().str();
+    xla_functions.push_back(func_name);
+  });
+
+  // Convert all XLA functions and their nested functions.
+  std::deque<std::string> queue;
+  for (const std::string& func : xla_functions) {
+    queue.push_back(func);
+  }
+
+  const mlir::SymbolTable symbol_table(module);
+  absl::flat_hash_set<std::string> visited;
+  while (!queue.empty()) {
+    const std::string func_name = queue.front();
+    queue.pop_front();
+
+    if (visited.contains(func_name)) continue;
+
+    const auto func_op = symbol_table.lookup<mlir::func::FuncOp>(func_name);
+    if (!func_op) {
+      return tensorflow::errors::Internal(
+          absl::StrCat("Function ", func_name, " is not found."));
+    }
+    FunctionDef func_def;
+    TF_RETURN_IF_ERROR(ConvertMlirFunctionToFunctionLibraryDef(
+        func_op, GraphExportConfig(), &func_def));
+    xla_func_defs->push_back(func_def);
+
+    // Visit each op in the function and find out referenced functions from the
+    // attributes.
+    func_op->walk([&](mlir::SymbolUserOpInterface op) {
+      for (const mlir::NamedAttribute& attr : op->getAttrs()) {
+        if (const auto sym =
+                attr.getValue().dyn_cast<mlir::FlatSymbolRefAttr>()) {
+          mlir::Operation* func =
+              mlir::SymbolTable::lookupNearestSymbolFrom(op, sym);
+          if (func) {
+            queue.push_back(sym.getValue().str());
+          }
+        }
+      }
+    });
+    visited.insert(func_name);
+  }
+  return OkStatus();
+}
+
+}  // namespace
 
 Status ConvertFunctionToBef(
     mlir::StringRef function_name, const tensorflow::FunctionBody* fbody,
@@ -62,7 +126,8 @@ Status ConvertFunctionToBef(
 }
 
 Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
-                          mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer) {
+                          mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer,
+                          std::vector<FunctionDef>* xla_func_defs) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
   if (options.device_target == TfrtDeviceInfraTarget::kTpurt) {
@@ -101,6 +166,10 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
              options.use_bridge_for_gpu) {
     TF_RETURN_IF_ERROR(
         mlir::TF::RunTFXLABridge(module, /*enable_logging=*/VLOG_IS_ON(1)));
+
+    if (xla_func_defs != nullptr) {
+      TF_RETURN_IF_ERROR(ExportXlaFunctions(module, xla_func_defs));
+    }
   }
 
   if (VLOG_IS_ON(1)) {

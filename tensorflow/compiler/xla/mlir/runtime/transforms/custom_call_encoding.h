@@ -23,6 +23,7 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -60,8 +61,9 @@ namespace runtime {
 //
 // Custom call arguments are encoded as an array of pointers allocated on the
 // stack. Each individual argument is also encoded on the stack, because
-// arguments are run time values and we can't encode them in the constant
-// section.
+// arguments are typically run time values and we can't encode them in the
+// constant section. Statically known arguments (constants) can be encoded as
+// global values together with attributes.
 
 // Forward declare class declared below.
 class Globals;
@@ -75,7 +77,10 @@ class CustomCallArgEncoding {
  public:
   struct Encoded {
     mlir::LLVM::GlobalOp type_id;  // llvm.mlir.global external $type_name : i64
-    mlir::LLVM::AllocaOp value;    // llvm.alloca 1 x ArgType
+
+    // Statically known arguments might be encoded as global constants,
+    // otherwise it will be `!llvm.alloca 1 x ArgType`.
+    std::variant<mlir::LLVM::AllocaOp, mlir::LLVM::GlobalOp> value;
   };
 
   virtual ~CustomCallArgEncoding() = default;

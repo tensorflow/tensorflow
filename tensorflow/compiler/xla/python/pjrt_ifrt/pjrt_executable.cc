@@ -259,7 +259,7 @@ PjRtLoadedExecutable::CreateInternal(
 }
 
 StatusOr<PjRtLoadedExecutable::ExecuteResult> PjRtLoadedExecutable::Execute(
-    absl::Span<Array* const> args, const ExecuteOptions& options,
+    absl::Span<tsl::RCReference<Array>> args, const ExecuteOptions& options,
     std::optional<DeviceList> devices) {
   DCHECK(this);
   // TODO(hyeontaek): Check input sharding consistency.
@@ -275,7 +275,7 @@ StatusOr<PjRtLoadedExecutable::ExecuteResult> PjRtLoadedExecutable::Execute(
     argument_handles[i].reserve(args.size());
   }
   for (int i = 0; i < args.size(); ++i) {
-    auto* pjrt_array = llvm::dyn_cast_or_null<PjRtArray>(args[i]);
+    auto* pjrt_array = llvm::dyn_cast_or_null<PjRtArray>(args[i].get());
     if (!pjrt_array) {
       return InvalidArgument(
           "Only PjRtArray is supported, but argument %d is %s", i,
@@ -348,7 +348,7 @@ StatusOr<PjRtLoadedExecutable::ExecuteResult> PjRtLoadedExecutable::Execute(
   }
 
   // Convert 2-level PjRtBuffer vectors into an Array vector.
-  std::vector<std::unique_ptr<Array>> outputs;
+  std::vector<tsl::RCReference<Array>> outputs;
   // TODO(hyeontaek): Check output dtype/shape consistency with the actual
   // output.
   if (pjrt_outputs.size() != num_computations) {

@@ -951,7 +951,7 @@ class CollectiveInitializeCommunicatorOpKernel : public AsyncOpKernel {
     device_type_ = c->device_type();
   }
 
-  Status CheckInputs(Tensor group_size_t, Tensor group_key_t) {
+  Status CheckInputs(Tensor group_size_t, Tensor group_key_t, Tensor rank_t) {
     if (group_size_t.dims() > 0) {
       return errors::InvalidArgument(
           "Unexpected dimensions on input group_size. "
@@ -960,14 +960,31 @@ class CollectiveInitializeCommunicatorOpKernel : public AsyncOpKernel {
     }
     if (group_key_t.dims() > 0) {
       return errors::InvalidArgument(
-          "Unexpected dimensions on input group_key, got ",
+          "Unexpected dimensions on input group_key. ",
+          "It shoulbe a scalar, got tensor with shape ",
           group_key_t.shape().DebugString());
+    }
+    if (rank_t.dims() > 0) {
+      return errors::InvalidArgument(
+          "Unexpected dimensions on input rank. ",
+          "It shoulbe a scalar, got tensor with shape ",
+          rank_t.shape().DebugString());
     }
 
     auto group_size = group_size_t.unaligned_flat<int32>()(0);
     if (group_size <= 0) {
       return errors::InvalidArgument(
           "group_size must be positive integer but got ", group_size);
+    }
+    auto rank = rank_t.unaligned_flat<int32>()(0);
+    if (rank < 0) {
+      return errors::InvalidArgument(
+          "rank must be non-negative integer but got ", rank);
+    }
+    if (rank >= group_size) {
+      return errors::InvalidArgument(
+          "rank must be less than group size but got ", rank,
+          " >= ", group_size);
     }
     return OkStatus();
   }
@@ -977,7 +994,8 @@ class CollectiveInitializeCommunicatorOpKernel : public AsyncOpKernel {
     auto rank_t = c->input(1);
     auto group_size_t = c->input(2);
 
-    OP_REQUIRES_OK_ASYNC(c, CheckInputs(group_size_t, group_key_t), done);
+    OP_REQUIRES_OK_ASYNC(c, CheckInputs(group_size_t, group_key_t, rank_t),
+                         done);
 
     auto group_size = group_size_t.unaligned_flat<int32>()(0);
     auto group_key = group_key_t.unaligned_flat<int32>()(0);

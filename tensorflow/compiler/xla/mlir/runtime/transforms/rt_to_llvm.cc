@@ -217,6 +217,13 @@ class IsOkOpLowering : public OpConversionPattern<IsOkOp> {
 // Convert rt.custom_call to the corresponding runtime API call.
 //===----------------------------------------------------------------------===//
 
+static Value AsPtr(ImplicitLocOpBuilder &b,
+                   std::variant<LLVM::AllocaOp, LLVM::GlobalOp> &v) {
+  if (auto *alloca = std::get_if<LLVM::AllocaOp>(&v))
+    return alloca->getResult();
+  return Globals::AddrOf(b, std::get<LLVM::GlobalOp>(v));
+}
+
 static LLVM::GlobalOp EncodeEmptyArgsRets(Globals &g, ImplicitLocOpBuilder &b,
                                           std::string_view symbol_base) {
   // Empty args/rets is just an array with a single pointer to size (zero).
@@ -264,6 +271,7 @@ static LLVM::GlobalOp EncodeTypeTable(Globals &g, ImplicitLocOpBuilder &b,
 
 struct EncodedArguments {
   std::variant<LLVM::AllocaOp, LLVM::GlobalOp> encoded;  // `args` argument
+  SmallVector<std::variant<LLVM::AllocaOp, LLVM::GlobalOp>> values;
 };
 
 static FailureOr<EncodedArguments> EncodeArguments(
@@ -274,8 +282,10 @@ static FailureOr<EncodedArguments> EncodeArguments(
 
   // Encode empty arguments as a global array (skip the status type).
   if (operands.drop_front().empty()) {
-    return EncodedArguments{EncodeEmptyArgsRets(g, b, "__rt_empty_args")};
+    return EncodedArguments{EncodeEmptyArgsRets(g, b, "__rt_empty_args"), {}};
   }
+
+  EncodedArguments arguments;
 
   // Encode all arguments as a set of pointers (skip the execution context).
   for (auto tuple : llvm::drop_begin(llvm::zip(operands, converted))) {
@@ -328,7 +338,8 @@ static FailureOr<EncodedArguments> EncodeArguments(
   for (auto &pair : llvm::enumerate(encoded)) {
     CustomCallArgEncoding::Encoded encoded = pair.value();
     int64_t offset = 2 + pair.index();
-    insert_value(encoded.value, offset);
+    insert_value(AsPtr(b, encoded.value), offset);
+    arguments.values.push_back(encoded.value);
   }
 
   // Always create an `alloca` in the parent function entry block.
@@ -347,8 +358,10 @@ static FailureOr<EncodedArguments> EncodeArguments(
   // Store constructed arguments array on the stack.
   b.create<LLVM::StoreOp>(arr, alloca.getRes());
 
-  // Return an alloca that encodes the custom call arguments.
-  return EncodedArguments{alloca};
+  // Alloca that encodes the custom call arguments.
+  arguments.encoded = alloca;
+
+  return arguments;
 }
 
 // Encodes attributes into the global constant (array of pointers to the
@@ -376,19 +389,20 @@ static FailureOr<LLVM::GlobalOp> EncodeAttributes(
 
 struct EncodedResults {
   std::variant<LLVM::AllocaOp, LLVM::GlobalOp> encoded;  // `rets` argument
-  SmallVector<LLVM::AllocaOp> allocas;  // storage for values of results
+  SmallVector<LLVM::AllocaOp> allocas;                   // encoded returns
 };
 
 static FailureOr<EncodedResults> EncodeResults(
     CallOp op, CustomCallRetEncodingSet &encodings, Globals &g,
     ImplicitLocOpBuilder &b, TypeRange ret_types, TypeRange converted_types) {
   llvm::SmallVector<CustomCallRetEncoding::Encoded> encoded;
-  EncodedResults results;
 
   // Encode empty returns as a global array (skip the status type).
   if (ret_types.drop_front().empty()) {
     return EncodedResults{EncodeEmptyArgsRets(g, b, "__rt_empty_rets"), {}};
   }
+
+  EncodedResults results;
 
   // Encode all returns as a set of pointers (skip the status type).
   for (auto tuple : llvm::drop_begin(llvm::zip(ret_types, converted_types))) {
@@ -515,14 +529,6 @@ class CallOpLowering : public OpConversionPattern<CallOp> {
                               converted_ret_types);
     if (failed(rets)) return op.emitOpError() << "failed to encode results";
 
-    // Returns a pointer to the encoded array that can be either on a stack as
-    // an alloca or as a global array.
-    auto as_ptr = [&](std::variant<LLVM::AllocaOp, LLVM::GlobalOp> &v) {
-      if (auto *alloca = std::get_if<LLVM::AllocaOp>(&v))
-        return alloca->getResult();
-      return Globals::AddrOf(b, std::get<LLVM::GlobalOp>(v));
-    };
-
     // Creates a dynamic custom call resolved by name at run time.
     auto call_dynamic = [&]() -> func::CallOp {
       auto callee = Globals::AddrOf(
@@ -530,8 +536,8 @@ class CallOpLowering : public OpConversionPattern<CallOp> {
 
       return b.create<func::CallOp>(
           kCustomCall, TypeRange(rewriter.getI1Type()),
-          ValueRange({adaptor.getCtx(), callee, as_ptr(args->encoded),
-                      Globals::AddrOf(b, *attrs), as_ptr(rets->encoded)}));
+          ValueRange({adaptor.getCtx(), callee, AsPtr(b, args->encoded),
+                      Globals::AddrOf(b, *attrs), AsPtr(b, rets->encoded)}));
     };
 
     // Creates a direct custom call resolved at link time.
@@ -541,8 +547,8 @@ class CallOpLowering : public OpConversionPattern<CallOp> {
 
       return b.create<func::CallOp>(
           op.getCallee(), TypeRange(rewriter.getI1Type()),
-          ValueRange({adaptor.getCtx(), as_ptr(args->encoded),
-                      Globals::AddrOf(b, *attrs), as_ptr(rets->encoded)}));
+          ValueRange({adaptor.getCtx(), AsPtr(b, args->encoded),
+                      Globals::AddrOf(b, *attrs), AsPtr(b, rets->encoded)}));
     };
 
     // Build a call operation and result decoding right after the original op.

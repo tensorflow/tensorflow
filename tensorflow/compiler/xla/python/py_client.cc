@@ -410,9 +410,9 @@ StatusOr<py::object> PyClient::BufferFromPyval(
 #endif
 
 #ifdef JAX_ENABLE_IFRT
-  if (put.owned_ifrt_array) {
+  if (put.ifrt_array) {
     auto traceback = Traceback::Get();
-    return PyBuffer::Make(shared_from_this(), std::move(put.owned_ifrt_array),
+    return PyBuffer::Make(shared_from_this(), std::move(put.ifrt_array),
                           std::move(traceback));
   } else {
     return py::reinterpret_borrow<py::object>(put.owning_pybuffer);

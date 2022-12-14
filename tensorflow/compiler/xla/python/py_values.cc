@@ -316,10 +316,10 @@ StatusOr<DevicePutResult> PyBufferHelper(py::handle obj, py::handle py_buffer,
 #ifdef JAX_ENABLE_IFRT
   if (buffer->ifrt_array()->sharding().devices().front() == to_device) {
     return DevicePutResult(
-        buffer->ifrt_array(), weak_type,
+        tsl::FormRef(buffer->ifrt_array()), weak_type,
         /*owning_pybuffer=*/py::reinterpret_borrow<py::object>(py_buffer));
   } else {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<ifrt::Array> copied_ifrt_array,
+    TF_ASSIGN_OR_RETURN(tsl::RCReference<ifrt::Array> copied_ifrt_array,
                         buffer->ifrt_array()->Reshard(
                             ifrt::SingleDeviceSharding::Create(to_device),
                             ifrt::ArrayCopySemantics::kReuseInput));
@@ -383,11 +383,11 @@ StatusOr<DevicePutResult> HandlePyArray(py::handle obj,
   }
   if (ifrt_array->sharding().devices().front() == to_device) {
     return DevicePutResult(
-        ifrt_array, py_array.weak_type(),
+        tsl::FormRef(ifrt_array), py_array.weak_type(),
         /*owning_pybuffer=*/py::reinterpret_borrow<py::object>(obj));
   } else {
     TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<ifrt::Array> copied_ifrt_array,
+        tsl::RCReference<ifrt::Array> copied_ifrt_array,
         ifrt_array->Reshard(ifrt::SingleDeviceSharding::Create(to_device),
                             ifrt::ArrayCopySemantics::kReuseInput));
     return DevicePutResult(std::move(copied_ifrt_array), py_array.weak_type());

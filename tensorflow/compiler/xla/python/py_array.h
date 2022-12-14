@@ -40,7 +40,7 @@ struct PyArray_Storage {
                   bool committed, std::shared_ptr<PyClient> py_client,
                   std::shared_ptr<Traceback> traceback,
 #ifdef JAX_ENABLE_IFRT
-                  std::unique_ptr<ifrt::Array> ifrt_array
+                  tsl::RCReference<ifrt::Array> ifrt_array
 #else
                   std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers
 #endif
@@ -90,7 +90,7 @@ struct PyArray_Storage {
   std::shared_ptr<PyClient> py_client;
   std::shared_ptr<Traceback> traceback;
 #ifdef JAX_ENABLE_IFRT
-  std::unique_ptr<ifrt::Array> ifrt_array;
+  tsl::RCReference<ifrt::Array> ifrt_array;
 #else
   std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers;
 #endif
@@ -136,7 +136,7 @@ class PyArray : public pybind11::object {
           std::shared_ptr<PyClient> py_client,
           std::shared_ptr<Traceback> traceback,
 #ifdef JAX_ENABLE_IFRT
-          std::unique_ptr<ifrt::Array> ifrt_array,
+          tsl::RCReference<ifrt::Array> ifrt_array,
 #else
           std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers,
 #endif
@@ -249,7 +249,7 @@ class PyArray : public pybind11::object {
   void CheckAndRearrange();
 
 #ifdef JAX_ENABLE_IFRT
-  void SetIfrtArray(std::unique_ptr<ifrt::Array> ifrt_array);
+  void SetIfrtArray(tsl::RCReference<ifrt::Array> ifrt_array);
 #else
   void SetPjRtBuffers(std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers);
 #endif

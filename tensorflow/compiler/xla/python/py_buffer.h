@@ -57,7 +57,7 @@ class PyBuffer {
 
 #ifdef JAX_ENABLE_IFRT
   static object Make(std::shared_ptr<PyClient> client,
-                     std::unique_ptr<ifrt::Array> ifrt_array,
+                     tsl::RCReference<ifrt::Array> ifrt_array,
                      std::shared_ptr<Traceback> traceback);
 #else
   static object Make(std::shared_ptr<PyClient> client,
@@ -272,7 +272,8 @@ class PyBuffer {
   // PyBuffer objects must not be allocated directly since they must always live
   // on the Python heap. Use Make() instead.
 #ifdef JAX_ENABLE_IFRT
-  PyBuffer(std::shared_ptr<PyClient> client, std::unique_ptr<ifrt::Array> array,
+  PyBuffer(std::shared_ptr<PyClient> client,
+           tsl::RCReference<ifrt::Array> array,
            std::shared_ptr<Traceback> traceback);
 #else
   PyBuffer(std::shared_ptr<PyClient> client, std::shared_ptr<PjRtBuffer> buffer,
@@ -291,7 +292,7 @@ class PyBuffer {
   };
   std::shared_ptr<PyClient> client_;
 #ifdef JAX_ENABLE_IFRT
-  std::unique_ptr<ifrt::Array> ifrt_array_;
+  tsl::RCReference<ifrt::Array> ifrt_array_;
 #else
   std::shared_ptr<PjRtBuffer> buffer_;
 #endif
@@ -329,7 +330,7 @@ class PyShardedBuffer {
 
 #ifdef JAX_ENABLE_IFRT
   PyShardedBuffer(std::shared_ptr<PyClient> client,
-                  std::unique_ptr<ifrt::Array> ifrt_array,
+                  tsl::RCReference<ifrt::Array> ifrt_array,
                   std::shared_ptr<Traceback> traceback, bool sticky = false)
       : client_(std::move(client)),
         ifrt_array_(std::move(ifrt_array)),
@@ -530,7 +531,7 @@ class PyShardedBuffer {
 
   std::shared_ptr<PyClient> client_;
 #ifdef JAX_ENABLE_IFRT
-  std::unique_ptr<ifrt::Array> ifrt_array_;
+  tsl::RCReference<ifrt::Array> ifrt_array_;
 #else
   std::vector<std::shared_ptr<PjRtBuffer> > buffers_;
 #endif

@@ -13,25 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/python/ifrt/array.h"
+#ifndef TENSORFLOW_DTENSOR_CC_MESH_TYPE_H_
+#define TENSORFLOW_DTENSOR_CC_MESH_TYPE_H_
 
-#include <memory>
-#include <vector>
+#include "tensorflow/c/conversion_macros.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 
-namespace xla {
-namespace ifrt {
+namespace tensorflow {
 
-char Array::ID = 0;
-
-std::vector<Array*> MakeArrayPointerList(
-    absl::Span<const tsl::RCReference<Array>> arrays) {
-  std::vector<Array*> result;
-  result.reserve(arrays.size());
-  for (const auto& array : arrays) {
-    result.push_back(array.get());
-  }
-  return result;
+extern "C" {
+typedef struct TF_Mesh TF_Mesh;
 }
+DEFINE_CONVERSION_FUNCTIONS(dtensor::Mesh, TF_Mesh);
 
-}  // namespace ifrt
-}  // namespace xla
+typedef struct TF_Layout TF_Layout;
+DEFINE_CONVERSION_FUNCTIONS(dtensor::Layout, TF_Layout);
+
+}  // namespace tensorflow
+#endif  // TENSORFLOW_DTENSOR_CC_MESH_TYPE_H_

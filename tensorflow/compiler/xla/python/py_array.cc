@@ -41,7 +41,7 @@ namespace {
 namespace py = pybind11;
 
 #ifdef JAX_ENABLE_IFRT
-std::unique_ptr<ifrt::Array> CreateIfRtArrayFromPyBuffers(
+tsl::RCReference<ifrt::Array> CreateIfRtArrayFromPyBuffers(
     py::dtype dtype, absl::Span<const int64_t> shape,
     absl::Span<const PyBuffer::object> py_buffers) {
   if (py_buffers.empty()) {
@@ -51,7 +51,7 @@ std::unique_ptr<ifrt::Array> CreateIfRtArrayFromPyBuffers(
 
   auto* ifrt_client = py_buffers.front().buf()->client()->ifrt_client();
 
-  std::vector<ifrt::Array*> ifrt_arrays;
+  std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
   ifrt_arrays.reserve(py_buffers.size());
   ifrt::DeviceList::Devices devices;
   devices.reserve(py_buffers.size());
@@ -59,7 +59,7 @@ std::unique_ptr<ifrt::Array> CreateIfRtArrayFromPyBuffers(
   shapes.reserve(py_buffers.size());
 
   for (const auto& py_buffer : py_buffers) {
-    ifrt_arrays.push_back(py_buffer.buf()->ifrt_array());
+    ifrt_arrays.push_back(tsl::FormRef(py_buffer.buf()->ifrt_array()));
     devices.push_back(ifrt_arrays.back()->sharding().devices()[0]);
     shapes.push_back(ifrt_arrays.back()->shape());
   }
@@ -69,7 +69,7 @@ std::unique_ptr<ifrt::Array> CreateIfRtArrayFromPyBuffers(
           ifrt::DeviceList(std::move(devices)),
           xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
               std::move(shapes))),
-      ifrt_arrays, ifrt::ArrayCopySemantics::kReuseInput);
+      absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput);
   if (!ifrt_array.ok()) {
     // TODO(hyeontaek): Return a Status.
     throw py::value_error(ifrt_array.status().ToString());
@@ -77,14 +77,14 @@ std::unique_ptr<ifrt::Array> CreateIfRtArrayFromPyBuffers(
   return *std::move(ifrt_array);
 }
 
-std::unique_ptr<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
+tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
     py::object dtype, absl::Span<const int64_t> shape,
     absl::Span<const PyArray> py_arrays) {
   if (py_arrays.empty()) {
     // TODO(hyeontaek): Return a Status.
     throw py::value_error("At least one array must be provided.");
   }
-  std::vector<ifrt::Array*> ifrt_arrays;
+  std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
   ifrt_arrays.reserve(py_arrays.size());
   ifrt::DeviceList::Devices devices;
   devices.reserve(py_arrays.size());
@@ -93,7 +93,7 @@ std::unique_ptr<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
 
   for (const auto& py_array : py_arrays) {
     DCHECK_EQ(py_array.num_shards(), 1);
-    ifrt_arrays.push_back(py_array.ifrt_array());
+    ifrt_arrays.push_back(tsl::FormRef(py_array.ifrt_array()));
     devices.push_back(ifrt_arrays.back()->sharding().devices().front());
     shapes.push_back(ifrt_arrays.back()->shape());
   }
@@ -110,7 +110,7 @@ std::unique_ptr<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
           ifrt::DeviceList(std::move(devices)),
           xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
               std::move(shapes))),
-      ifrt_arrays, ifrt::ArrayCopySemantics::kReuseInput);
+      absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput);
   if (!ifrt_array.ok()) {
     // TODO(hyeontaek): Return a Status.
     throw py::value_error(ifrt_array.status().ToString());
@@ -292,7 +292,7 @@ PyArray::PyArray(py::object aval, bool weak_type, py::dtype dtype,
                  std::shared_ptr<PyClient> py_client,
                  std::shared_ptr<Traceback> traceback,
 #ifdef JAX_ENABLE_IFRT
-                 std::unique_ptr<ifrt::Array> ifrt_array,
+                 tsl::RCReference<ifrt::Array> ifrt_array,
 #else
                  std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers,
 #endif
@@ -326,7 +326,7 @@ const PyArray::Storage& PyArray::GetStorage() const {
 void PyArray::CheckAndRearrange() { this->attr("_check_and_rearrange")(); }
 
 #ifdef JAX_ENABLE_IFRT
-void PyArray::SetIfrtArray(std::unique_ptr<ifrt::Array> ifrt_array) {
+void PyArray::SetIfrtArray(tsl::RCReference<ifrt::Array> ifrt_array) {
   GetStorage().ifrt_array = std::move(ifrt_array);
 }
 #else
@@ -392,7 +392,7 @@ py::object PyArray::arrays() {
 Status PyArray::set_arrays(py::object obj) {
   if (obj.is_none()) {
 #ifdef JAX_ENABLE_IFRT
-    SetIfrtArray(nullptr);
+    SetIfrtArray(tsl::RCReference<ifrt::Array>());
 #else
     pjrt_buffers().clear();
 #endif
@@ -410,9 +410,9 @@ Status PyArray::set_arrays(py::object obj) {
   if (list.empty()) return OkStatus();
 
 #ifdef JAX_ENABLE_IFRT
-  SetIfrtArray(nullptr);
+  SetIfrtArray(tsl::RCReference<ifrt::Array>());
   py_buffers().clear();
-  std::vector<ifrt::Array*> ifrt_arrays;
+  std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
   ifrt_arrays.reserve(list.size());
   ifrt::DeviceList::Devices devices;
   devices.reserve(list.size());
@@ -436,7 +436,7 @@ Status PyArray::set_arrays(py::object obj) {
 #ifdef JAX_ENABLE_IFRT
     // TODO(hyeontaek): This should return an error instead of failing.
     CHECK(py_buffer->ifrt_array() != nullptr);
-    ifrt_arrays.push_back(py_buffer->ifrt_array());
+    ifrt_arrays.push_back(tsl::FormRef(py_buffer->ifrt_array()));
     devices.push_back(ifrt_arrays.back()->sharding().devices().front());
     shapes.push_back(ifrt_arrays.back()->shape());
 #else
@@ -452,7 +452,7 @@ Status PyArray::set_arrays(py::object obj) {
               ifrt::DeviceList(std::move(devices)),
               xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
                   std::move(shapes))),
-          ifrt_arrays, ifrt::ArrayCopySemantics::kReuseInput));
+          absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput));
   SetIfrtArray(std::move(array));
 #endif
   return OkStatus();

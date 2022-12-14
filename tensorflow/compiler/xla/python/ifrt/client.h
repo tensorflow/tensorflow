@@ -59,16 +59,17 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   //
   // TODO(hyeontaek): Consider changing `on_done_with_host_buffer` into a
   // returned `Future<Status>` for consistency with other IFRT APIs.
-  virtual StatusOr<std::unique_ptr<Array>> MakeArrayFromHostBuffer(
+  virtual StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       std::shared_ptr<const Sharding> sharding, HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) = 0;
 
   // Builds a larger array out of individual per-device shards.
-  virtual StatusOr<std::unique_ptr<Array>> AssembleArrayFromSingleDeviceArrays(
+  virtual StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
       Shape shape, std::shared_ptr<const Sharding> sharding,
-      absl::Span<Array* const> arrays, ArrayCopySemantics semantics) = 0;
+      absl::Span<tsl::RCReference<Array>> arrays,
+      ArrayCopySemantics semantics) = 0;
 
   // The following APIs are taken from `xla::PjRtClient` for fast prototyping.
   // Most of the APIs will be factored out as a `Platform`/`Topology` in the

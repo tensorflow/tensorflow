@@ -106,9 +106,9 @@ class PjitFunction {
 // Prepares the input PjRtBuffers from the python arguments. This is equivalent
 // to shard_args() in pxla.py but for only a few supported cases.
 #ifdef JAX_ENABLE_IFRT
-xla::StatusOr<std::vector<xla::ifrt::Array*>> PrepareIfrtInputs(
-    const xla::PyLoadedExecutable& executable,
-    ParsedArgumentsAsBuffers& arguments) {
+xla::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
+                  ParsedArgumentsAsBuffers& arguments) {
 #else
 xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
     const xla::PyLoadedExecutable& executable,
@@ -118,7 +118,7 @@ xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
   int num_args = arguments.flat_dynamic_args.size();
 
 #ifdef JAX_ENABLE_IFRT
-  std::vector<xla::ifrt::Array*> num_args_arrays(num_args);
+  std::vector<tsl::RCReference<xla::ifrt::Array>> num_args_arrays(num_args);
 #else
   std::vector<std::vector<xla::PjRtBuffer*>> num_computation_num_args_buffers(
       addressable_devices.size());
@@ -170,10 +170,9 @@ xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
           auto copied_ifrt_array,
           ifrt_array->Reshard(std::move(sharding),
                               xla::ifrt::ArrayCopySemantics::kReuseInput));
-      num_args_arrays[i] = copied_ifrt_array.get();
-      arguments.ifrt_keep_alive.push_back(std::move(copied_ifrt_array));
+      num_args_arrays[i] = std::move(copied_ifrt_array);
     } else {
-      num_args_arrays[i] = ifrt_array;
+      num_args_arrays[i] = tsl::FormRef(ifrt_array);
     }
 #else
     if (cpp_sharding->num_devices() == 1) {
@@ -338,13 +337,14 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
   }
 
   // A vector of [num_outputs].
-  std::vector<std::unique_ptr<xla::ifrt::Array>> output_arrays;
+  std::vector<tsl::RCReference<xla::ifrt::Array>> output_arrays;
   {
     py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(
-        auto result, cache_entry->executable->ifrt_executable()->Execute(
-                         *num_args_arrays, cache_entry->executable->options(),
-                         /*devices=*/std::nullopt));
+    TF_ASSIGN_OR_RETURN(auto result,
+                        cache_entry->executable->ifrt_executable()->Execute(
+                            absl::MakeSpan(*num_args_arrays),
+                            cache_entry->executable->options(),
+                            /*devices=*/std::nullopt));
     output_arrays = std::move(result.outputs);
   }
 
