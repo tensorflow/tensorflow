@@ -12,38 +12,39 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_LITE_PROFILING_TELEMETRY_C_TELEMETRY_SETTING_H_
+#define TENSORFLOW_LITE_PROFILING_TELEMETRY_C_TELEMETRY_SETTING_H_
 
-#ifndef TENSORFLOW_LITE_PROFILING_TELEMETRY_TELEMETRY_SETTINGS_H_
-#define TENSORFLOW_LITE_PROFILING_TELEMETRY_TELEMETRY_SETTINGS_H_
+#include <stdint.h>
 
-#include <map>
-#include <string>
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
 
-#include "tensorflow/lite/profiling/telemetry/telemetry_status.h"
-
-namespace tflite {
-
-// TFLite model and interpreter settings that will be reported by telemetry.
-struct TelemetrySettings {
+// TFLite model, interpreter or delegate settings that will be reported by
+// telemetry.
+// Note: This struct does not comply with ABI stability.
+typedef struct TfLiteTelemetrySettings {
   // Source of the settings. Determines how `data` is interpreted.
-  TelemetrySource source;
+  // See tflite::telemetry::TelemetrySource for definition.
+  uint32_t source;
+
   // Settings data. Interpretation based on `source`.
   // If `source` is TFLITE_INTERPRETER, the type of `data` will
   // be `TelemetryInterpreterSettings`.
   // Otherwise, the data is provided by the individual delegate.
   // Owned by the caller that exports TelemetrySettings (e.g. Interpreter).
-  const void* data = nullptr;
-};
+  const void* data;
+} TfLiteTelemetrySettings;
 
 // TfLite model information and settings of the interpreter.
-struct TelemetryInterpreterSettings {
-  TelemetryInterpreterSettings() = default;
+// Note: This struct does not comply with ABI stability.
+typedef struct TfLiteTelemetryInterpreterSettings {
+  // TODO(b/261369329): Deserialize and export conversion metadata here.
+} TfLiteTelemetryInterpreterSettings;
 
-  // Metadata from the TfLite model.
-  // Owned by the interpreter.
-  std::map<std::string, std::string>* model_metadata = nullptr;
-};
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus
 
-}  // namespace tflite
-
-#endif  // TENSORFLOW_LITE_PROFILING_TELEMETRY_TELEMETRY_SETTINGS_H_
+#endif  // TENSORFLOW_LITE_PROFILING_TELEMETRY_C_TELEMETRY_SETTING_H_
