@@ -113,6 +113,12 @@ def if_libtpu(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
+def if_macos(a, otherwise = []):
+    return select({
+        clean_dep("//tensorflow/tsl:macos"): a,
+        "//conditions:default": otherwise,
+    })
+
 def if_windows(a, otherwise = []):
     return select({
         clean_dep("//tensorflow/tsl:windows"): a,

@@ -51,7 +51,7 @@ template_rule(
     src = "include/hwloc/autogen/config.h.in",
     out = "include/hwloc/autogen/config.h",
     substitutions = select({
-        "@org_tensorflow//tensorflow:linux_x86_64": _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS,
+        "@org_tensorflow//tensorflow/tsl:linux_x86_64": _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS,
         "//conditions:default": _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS,
     }),
 )
@@ -259,21 +259,21 @@ cc_library(
         "include/private/private.h",
         "include/private/xml.h",
     ] + select({
-        "@org_tensorflow//tensorflow:linux_x86_64": [
+        "@org_tensorflow//tensorflow/tsl:linux_x86_64": [
             "hwloc/topology-linux.c",
             "include/hwloc/linux.h",
             "hwloc/topology-x86.c",
             "include/private/cpuid-x86.h",
         ],
-        "@org_tensorflow//tensorflow:linux_aarch64": [
+        "@org_tensorflow//tensorflow/tsl:linux_aarch64": [
             "hwloc/topology-linux.c",
             "include/hwloc/linux.h",
         ],
-        "@org_tensorflow//tensorflow:linux_ppc64le": [
+        "@org_tensorflow//tensorflow/tsl:linux_ppc64le": [
             "hwloc/topology-linux.c",
             "include/hwloc/linux.h",
         ],
-        "@org_tensorflow//tensorflow:freebsd": [
+        "@org_tensorflow//tensorflow/tsl:freebsd": [
             "hwloc/topology-freebsd.c",
             "hwloc/topology-x86.c",
             "include/private/cpuid-x86.h",

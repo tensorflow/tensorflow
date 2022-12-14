@@ -77,7 +77,7 @@ cc_library(
         "src/transport/net.cc",
     ],
     linkopts = select({
-        "@org_tensorflow//tensorflow:macos": [],
+        "@org_tensorflow//tensorflow/tsl:macos": [],
         "//conditions:default": ["-lrt"],
     }),
     deps = [
@@ -111,7 +111,7 @@ cc_library(
     hdrs = ["src/nccl.h"],
     include_prefix = "third_party/nccl",
     linkopts = select({
-        "@org_tensorflow//tensorflow:macos": [],
+        "@org_tensorflow//tensorflow/tsl:macos": [],
         "//conditions:default": ["-lrt"],
     }),
     strip_include_prefix = "src",
