@@ -930,6 +930,7 @@ xla_cc_test(
     deps = [
         ":gemm_algorithm_picker",
         ":gemm_rewriter",
+        "//tensorflow/compiler/xla:autotune_results_proto_cc",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
