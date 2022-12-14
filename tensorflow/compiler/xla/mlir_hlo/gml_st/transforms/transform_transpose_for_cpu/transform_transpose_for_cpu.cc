@@ -50,6 +50,10 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
                                 PatternRewriter &rewriter) const override {
     if (hasLabel(op, kTransposeTransformedLabel)) return failure();
 
+    if (isa<gml_st::ParallelOp, gml_st::ForOp>(op->getParentOp()))
+      return rewriter.notifyMatchFailure(
+          op, "has already been tiled by another pass.");
+
     auto tilingResult =
         tile(options, rewriter, cast<TilingInterface>(op.getOperation()));
     if (failed(tilingResult)) return failure();

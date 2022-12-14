@@ -102,6 +102,10 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       return rewriter.notifyMatchFailure(reduceOp,
                                          "has already been transformed.");
 
+    if (isa<gml_st::ParallelOp, gml_st::ForOp>(reduceOp->getParentOp()))
+      return rewriter.notifyMatchFailure(
+          reduceOp, "has already been tiled by another pass.");
+
     if (failed(validateOp(reduceOp, rewriter, /*expectedRank=*/1)))
       return failure();
 

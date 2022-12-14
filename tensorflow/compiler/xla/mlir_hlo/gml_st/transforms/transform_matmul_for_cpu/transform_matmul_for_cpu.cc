@@ -519,6 +519,10 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
       return rewriter.notifyMatchFailure(matmulOp,
                                          "has already been transformed.");
 
+    if (isa<gml_st::ParallelOp, gml_st::ForOp>(matmulOp->getParentOp()))
+      return rewriter.notifyMatchFailure(
+          matmulOp, "has already been tiled by another pass.");
+
     SmallVector<Operation *> fusionCluster = getFusionCluster(matmulOp);
 
     // First element of the cluster is always the root for tiling.
