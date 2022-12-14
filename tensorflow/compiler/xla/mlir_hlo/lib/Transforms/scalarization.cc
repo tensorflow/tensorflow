@@ -183,60 +183,69 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
     SmallVector<Value> lbs(updatesRank, zero);
     SmallVector<Value> steps(updatesRank, one);
 
-    auto loop = b.create<gml_st::ForOp>(
-        TypeRange(ValueRange{init}), lbs, updatesDimValues, steps, init,
-        [&](OpBuilder &nestedBuilder, Location bodyLoc, ValueRange updateIndex,
-            ValueRange loopInits) {
-          Value initBlockArg = loopInits.front();
+    SmallVector<Value> limitIndex{
+        ArrayRef<Value>(updatesDimValues).drop_front()};
+    for (const auto &en : llvm::enumerate(*scatterIndices)) {
+      limitIndex[en.index()] =
+          b.create<arith::AddIOp>(loc, limitIndex[en.index()], en.value());
+      limitIndex[en.index()].print(llvm::errs());
+    }
+    for (auto &value : limitIndex) {
+      value = b.create<arith::SubIOp>(loc, value, one);
+    }
 
-          auto initIndex = llvm::to_vector(updateIndex.drop_front());
-          for (const auto &en : llvm::enumerate(*scatterIndices)) {
-            initIndex[en.index()] = nestedBuilder.create<arith::AddIOp>(
-                bodyLoc, initIndex[en.index()], en.value());
-          }
+    Value indexIsInBounds =
+        isValidIndex(b, loc, limitIndex, initDimValues, zero);
+    auto ifOp = b.create<scf::IfOp>(
+        loc, TypeRange(ValueRange{init}), indexIsInBounds,
+        [&](OpBuilder &thenBuilder, Location thenLoc) {
+          auto loop = thenBuilder.create<gml_st::ForOp>(
+              thenLoc, TypeRange(ValueRange{init}), lbs, updatesDimValues,
+              steps, init,
+              [&](OpBuilder &nestedBuilder, Location bodyLoc,
+                  ValueRange updateIndex, ValueRange loopInits) {
+                Value initBlockArg = loopInits.front();
 
-          Value indexIsInBounds =
-              isValidIndex(nestedBuilder, loc, initIndex, initDimValues, zero);
-          Value maybeUpdatedInit =
-              nestedBuilder
-                  .create<scf::IfOp>(
-                      loc, initType, indexIsInBounds,
-                      [&](OpBuilder &thenBuilder, Location thenLoc) {
-                        Value updateValue = gml_st::materializePoint(
-                            thenBuilder, loc, updates,
-                            getAsOpFoldResult(updateIndex),
-                            /*useExtractSlice=*/false);
-                        Value currentValue = gml_st::materializePoint(
-                            thenBuilder, loc, initBlockArg,
-                            getAsOpFoldResult(initIndex),
-                            /*useExtractSlice=*/false);
+                auto initIndex = llvm::to_vector(updateIndex.drop_front());
+                for (const auto &en : llvm::enumerate(*scatterIndices)) {
+                  initIndex[en.index()] = nestedBuilder.create<arith::AddIOp>(
+                      bodyLoc, initIndex[en.index()], en.value());
+                }
 
-                        // Combine update with the value in the output.
-                        Block *body = scatterOp.getBody();
-                        BlockAndValueMapping bvm;
-                        bvm.map(body->getArgument(0), updateValue);
-                        bvm.map(body->getArgument(1), currentValue);
+                Value updateValue = gml_st::materializePoint(
+                    thenBuilder, loc, updates, getAsOpFoldResult(updateIndex),
+                    /*useExtractSlice=*/false);
+                Value currentValue =
+                    gml_st::materializePoint(thenBuilder, loc, initBlockArg,
+                                             getAsOpFoldResult(initIndex),
+                                             /*useExtractSlice=*/false);
 
-                        for (Operation &op : body->without_terminator())
-                          thenBuilder.clone(op, bvm);
+                // Combine update with the value in the output.
+                Block *body = scatterOp.getBody();
+                BlockAndValueMapping bvm;
+                bvm.map(body->getArgument(0), updateValue);
+                bvm.map(body->getArgument(1), currentValue);
 
-                        // Wrap every scalar result into a tensor using
-                        // `tensor.from_elements`.
-                        auto combinedValue =
-                            bvm.lookup(body->getTerminator()->getOperand(0));
-                        Value updatedInit = thenBuilder.create<InsertOp>(
-                            thenLoc, combinedValue, initBlockArg, initIndex);
-                        thenBuilder.create<scf::YieldOp>(thenLoc, updatedInit);
-                      },
-                      [&](OpBuilder &elseBuilder, Location elseLoc) {
-                        elseBuilder.create<scf::YieldOp>(elseLoc, initBlockArg);
-                      })
-                  .getResult(0);
+                for (Operation &op : body->without_terminator())
+                  thenBuilder.clone(op, bvm);
 
-          nestedBuilder.create<gml_st::SetYieldOp>(bodyLoc, maybeUpdatedInit,
-                                                   initBlockArg, initTile);
+                // Wrap every scalar result into a tensor using
+                // `tensor.from_elements`.
+                auto combinedValue =
+                    bvm.lookup(body->getTerminator()->getOperand(0));
+                Value updatedInit = thenBuilder.create<InsertOp>(
+                    thenLoc, combinedValue, initBlockArg, initIndex);
+
+                nestedBuilder.create<gml_st::SetYieldOp>(
+                    bodyLoc, updatedInit, initBlockArg, initTile);
+              });
+
+          thenBuilder.create<scf::YieldOp>(thenLoc, loop.getResults());
+        },
+        [&](OpBuilder &elseBuilder, Location elseLoc) {
+          elseBuilder.create<scf::YieldOp>(elseLoc, init);
         });
-    rewriter.replaceOp(scatterOp, loop.getResults());
+    rewriter.replaceOp(scatterOp, ifOp.getResults());
     return success();
   }
 
