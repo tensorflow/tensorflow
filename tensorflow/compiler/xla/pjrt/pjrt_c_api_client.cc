@@ -279,6 +279,10 @@ StatusOr<std::string> PjRtCApiClient::SerializeExecutable(
 
   RETURN_STATUS_IF_ERROR(api->PJRT_Executable_Serialize(&ser_args), api);
   PJRT_SerializedExecutable* c_serialized_exec = ser_args.serialized_executable;
+  std::unique_ptr<PJRT_SerializedExecutable,
+                  ::pjrt::PJRT_SerializedExecutableDeleter>
+      serialized_executable(c_serialized_exec,
+                            ::pjrt::MakeSerializedExecutableDeleter(api));
 
   PJRT_SerializedExecutable_Data_Args data_args;
   data_args.struct_size = PJRT_SerializedExecutable_Data_Args_STRUCT_SIZE;
