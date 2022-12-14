@@ -1118,7 +1118,12 @@ func.func @op_pad(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> tensor<16xf32> {
 }
 // CHECK-LABEL: "op_pad"
 
-// PartitionIdOp aka mhlo.partition_id is unsupported at the moment (see negative test below).
+func.func @op_partition_id() -> tensor<ui32> {
+  // CHECK: "stablehlo.partition_id"() : () -> tensor<ui32>
+  %0 = "mhlo.partition_id"() : () -> tensor<ui32>
+  func.return %0 : tensor<ui32>
+}
+// CHECK-LABEL: "op_partition_id"
 
 func.func @op_popcnt(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK: "stablehlo.popcnt"(%arg0) : (tensor<i32>) -> tensor<i32>
@@ -1986,14 +1991,6 @@ func.func @op_fusion(%arg0: tensor<f32>) -> tensor<f32> {
     fusion_kind = #mhlo<fusion_kind kCustom>
   } : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
-}
-
-// -----
-
-func.func @op_partition_id() -> tensor<ui32> {
-  // expected-error@+1 {{failed to legalize operation 'mhlo.partition_id' that was explicitly marked illegal}}
-  %0 = "mhlo.partition_id"() : () -> tensor<ui32>
-  func.return %0 : tensor<ui32>
 }
 
 // -----

@@ -4452,7 +4452,14 @@ LogicalResult ReduceWindowOp::inferReturnTypeComponents(
       location, adaptor.getInputs(), adaptor.getInitValues(),
       adaptor.getWindowDimensions(), adaptor.getWindowStrides(),
       adaptor.getBaseDilations(), adaptor.getWindowDilations(),
-      adaptor.getPadding(), adaptor.getBody(), inferredReturnShapes);
+      adaptor.getPadding(), inferredReturnShapes);
+}
+
+LogicalResult ReduceWindowOp::verify() {
+  return hlo::verifyReduceWindowOp(getLoc(), getInputs(), getInitValues(),
+                                   getWindowDimensions(), getWindowStrides(),
+                                   getBaseDilations(), getWindowDilations(),
+                                   getPadding(), getBody());
 }
 
 // Get the operation used for reduction applied to `result_index`th result. Its
@@ -5058,22 +5065,18 @@ ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
 }
 
 LogicalResult ReduceOp::inferReturnTypeComponents(
-    MLIRContext*, Optional<Location>, ValueShapeRange operands,
+    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   ReduceOp::Adaptor adaptor(operands, attributes, regions);
-  for (auto input : adaptor.getInputs()) {
-    ShapedType outputType =
-        getReduceResultType(input.getType(), adaptor.getDimensions());
-    inferredReturnShapes.emplace_back(outputType);
-  }
-  return success();
+  return hlo::inferReduceOp(location, adaptor.getInputs(),
+                            adaptor.getInitValues(), adaptor.getDimensions(),
+                            inferredReturnShapes);
 }
 
 LogicalResult ReduceOp::verify() {
-  SmallVector<ShapedTypeComponents> unusedReturnShapes;
-  return hlo::inferReduceOp(getLoc(), getInputs(), getInitValues(),
-                            getDimensions(), getBody(), unusedReturnShapes);
+  return hlo::verifyReduceOp(getLoc(), getInputs(), getInitValues(),
+                             getDimensions(), getBody());
 }
 
 // Enable constant folding to occur within the region of the ReduceOp
@@ -6703,19 +6706,16 @@ void SortOp::build(OpBuilder& builder, OperationState& state,
 }
 
 LogicalResult SortOp::inferReturnTypeComponents(
-    MLIRContext*, Optional<Location>, ValueShapeRange operands,
+    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   SortOp::Adaptor adaptor(operands, attributes, regions);
-  for (auto resultType : adaptor.getInputs().getTypes())
-    inferredReturnShapes.emplace_back(resultType.cast<ShapedType>());
-  return success();
+  return hlo::inferSortOp(location, adaptor.getInputs(), inferredReturnShapes);
 }
 
 LogicalResult SortOp::verify() {
-  SmallVector<ShapedTypeComponents> unusedReturnShapes;
-  return hlo::inferSortOp(getLoc(), getInputs(), getDimension(),
-                          getComparator(), unusedReturnShapes);
+  return hlo::verifySortOp(getLoc(), getInputs(), getDimension(),
+                           getComparator());
 }
 
 /// Drops the operands if the results are not used and they are not used in
@@ -7769,8 +7769,11 @@ LogicalResult WhileOp::inferReturnTypes(
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   WhileOp::Adaptor adaptor(operands, attributes, regions);
-  return hlo::inferWhileOp(location, adaptor.getOperand(), adaptor.getCond(),
-                           adaptor.getBody(), inferredReturnTypes);
+  return hlo::inferWhileOp(location, adaptor.getOperand(), inferredReturnTypes);
+}
+
+LogicalResult WhileOp::verify() {
+  return hlo::verifyWhileOp(getLoc(), getOperand(), getCond(), getBody());
 }
 
 /// Print a `while` op.

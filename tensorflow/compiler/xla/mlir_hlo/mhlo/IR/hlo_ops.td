@@ -1370,6 +1370,7 @@ def MHLO_WhileOp: MHLO_Op<"while", [
   let hasCanonicalizer = 1;
   let hasCustomAssemblyFormat = 1;
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 def MHLO_AllGatherOp : MHLO_Op<"all_gather", [SameOperandsAndResultElementType]> {
@@ -2857,6 +2858,7 @@ def MHLO_ReduceWindowOp: MHLO_Op<"reduce_window", [
 
   let hasCustomHLOConverter = 1;
   let hasFolder = 1;
+  let hasVerifier = 1;
   // TODO(hinsu): Implement custom printer and parser.
 
   let extraClassDeclaration = [{

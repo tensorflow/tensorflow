@@ -1098,6 +1098,13 @@ func.func @op_pad(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> tensor<16xf32> {
 }
 // CHECK-LABEL: "op_pad"
 
+func.func @op_partition_id() -> tensor<ui32> {
+  // CHECK: "mhlo.partition_id"() : () -> tensor<ui32>
+  %0 = "stablehlo.partition_id"() : () -> tensor<ui32>
+  func.return %0 : tensor<ui32>
+}
+// CHECK-LABEL: "op_partition_id"
+
 func.func @op_popcnt(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK: "mhlo.popcnt"(%arg0) : (tensor<i32>) -> tensor<i32>
   %0 = "stablehlo.popcnt"(%arg0) : (tensor<i32>) -> tensor<i32>
