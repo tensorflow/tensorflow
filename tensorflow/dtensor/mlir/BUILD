@@ -511,6 +511,7 @@ cc_library(
     deps = [
         ":op_utils",
         ":tf_dtensor_dialect",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/core:lib",
         "//tensorflow/dtensor/cc:dstatus",
