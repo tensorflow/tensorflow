@@ -190,6 +190,7 @@ Status SessionMgr::CreateSession(
 
     // Create a private copy of the DeviceMgr for the WorkerSession.
     std::vector<std::unique_ptr<Device>> renamed_devices;
+    renamed_devices.reserve(worker_env_->local_devices.size());
     for (Device* d : worker_env_->local_devices) {
       renamed_devices.push_back(RenamedDevice::NewRenamedDevice(
           worker_name, d, false, isolate_session_state));
