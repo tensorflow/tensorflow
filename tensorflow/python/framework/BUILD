@@ -439,7 +439,7 @@ py_library(
         "convert_to_constants.py",
     ],
     srcs_version = "PY3",
-    visibility = visibility,
+    visibility = visibility + ["//platforms/darwinn:__subpackages__"],
     deps = [
         ":dtypes",
         ":ops",
