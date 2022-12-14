@@ -113,7 +113,7 @@ inline PrimitiveType NativeToPrimitiveType<tsl::float8_e5m2>() {
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3>() {
+inline PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3fn>() {
   return F8E4M3FN;
 }
 
@@ -441,7 +441,7 @@ struct PrimitiveTypeToNative<BF16> {
 };
 template <>
 struct PrimitiveTypeToNative<F8E4M3FN> {
-  using type = tsl::float8_e4m3;
+  using type = tsl::float8_e4m3fn;
 };
 template <>
 struct PrimitiveTypeToNative<F8E5M2> {

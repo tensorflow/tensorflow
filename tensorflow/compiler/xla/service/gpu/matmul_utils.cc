@@ -293,18 +293,16 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
 
   // TODO(cjfj): We should also check that the batch, contracting and
   // non-contracting dimensions match in size and relative physical location.
+  // TODO(philipphack): Check the remaining dimensions in the FP8 case once
+  // cuBLASLt supports the NN configuration.
   if (lhs_shape.element_type() != F8E4M3FN &&
       lhs_shape.element_type() != F8E5M2) {
     TF_RET_CHECK(lhs_layout.num_cols == rhs_layout.num_rows);
     TF_RET_CHECK(output_layout.num_rows == lhs_layout.num_rows);
     TF_RET_CHECK(output_layout.num_cols == rhs_layout.num_cols);
-    TF_RET_CHECK(c_layout.num_rows == output_layout.num_rows);
-    TF_RET_CHECK(c_layout.num_cols == output_layout.num_cols);
-  } else {
-    TF_RET_CHECK(lhs_layout.num_cols == rhs_layout.num_cols);
-    TF_RET_CHECK(output_layout.num_rows == lhs_layout.num_rows);
-    TF_RET_CHECK(output_layout.num_cols == rhs_layout.num_rows);
   }
+  TF_RET_CHECK(c_layout.num_rows == output_layout.num_rows);
+  TF_RET_CHECK(c_layout.num_cols == output_layout.num_cols);
   TF_RET_CHECK((lhs_layout.batch_size == output_layout.batch_size) ||
                (lhs_layout.batch_size == 1));
   TF_RET_CHECK((rhs_layout.batch_size == output_layout.batch_size) ||
@@ -727,7 +725,7 @@ struct CudaToNativeT;
 
 template <>
 struct CudaToNativeT<CUDA_R_8F_E4M3> {
-  using type = tsl::float8_e4m3;
+  using type = tsl::float8_e4m3fn;
 };
 template <>
 struct CudaToNativeT<CUDA_R_8F_E5M2> {
@@ -864,14 +862,12 @@ Status MatmulPlan::DoMatmul(
       stream, plan_, se::HostOrDeviceScalar<Scale>(alpha),
       se::DeviceMemory<A>(a_buffer), se::DeviceMemory<B>(b_buffer),
       se::HostOrDeviceScalar<Scale>(beta), se::DeviceMemory<C>(c_buffer),
-      output, algorithm, scratch_allocator,
-      se::DeviceMemory<Input>(bias_buffer), aux_buffer,
-      se::DeviceMemory<Scale>(a_scale_buffer),
+      output, algorithm, scratch_allocator, se::DeviceMemory<C>(bias_buffer),
+      aux_buffer, se::DeviceMemory<Scale>(a_scale_buffer),
       se::DeviceMemory<Scale>(b_scale_buffer),
       se::DeviceMemory<Scale>(c_scale_buffer),
       se::DeviceMemory<Scale>(d_scale_buffer),
-      se::DeviceMemory<Scale>(d_amax_buffer), se::DeviceMemory<C>(bias_buffer),
-      profile_result);
+      se::DeviceMemory<Scale>(d_amax_buffer), profile_result);
 }
 
 Status MatmulPlan::ExecuteOnStream(
@@ -899,8 +895,9 @@ Status MatmulPlan::ExecuteOnStream(
                     CudaToNativeT<BTYPE>::type, CudaToNativeT<CTYPE>::type, \
                     CudaToNativeT<DTYPE>::type>(                            \
         stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,        \
-        a_scale_buffer, b_scale_buffer, c_scale_buffer, d_scale_buffer,     \
-        d_amax_buffer, algorithm, scratch_allocator, profile_result);       \
+        aux_buffer, a_scale_buffer, b_scale_buffer, c_scale_buffer,         \
+        d_scale_buffer, d_amax_buffer, algorithm, scratch_allocator,        \
+        profile_result);                                                    \
   }
 
   // FP8 compatible type combinations (see cuBLASLt documentation):

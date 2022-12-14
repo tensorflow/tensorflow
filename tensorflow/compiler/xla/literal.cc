@@ -1189,7 +1189,7 @@ std::string LiteralBase::GetAsString(absl::Span<const int64_t> multi_index,
       return StrCat(Get<uint64_t>(multi_index, shape_index));
     case F8E4M3FN:
       return RoundTripFpToString(
-          Get<tsl::float8_e4m3>(multi_index, shape_index));
+          Get<tsl::float8_e4m3fn>(multi_index, shape_index));
     case F8E5M2:
       return RoundTripFpToString(
           Get<tsl::float8_e5m2>(multi_index, shape_index));
@@ -2078,7 +2078,8 @@ bool LiteralBase::IsAllFloat(float value) const {
   Literal scalar(ShapeUtil::MakeScalarShape(ty));
   switch (ty) {
     case F8E4M3FN:
-      scalar.Set<tsl::float8_e4m3>({}, static_cast<tsl::float8_e4m3>(value));
+      scalar.Set<tsl::float8_e4m3fn>({},
+                                     static_cast<tsl::float8_e4m3fn>(value));
       break;
     case F8E5M2:
       scalar.Set<tsl::float8_e5m2>({}, static_cast<tsl::float8_e5m2>(value));
@@ -2352,7 +2353,7 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       break;
     case F8E4M3FN:
       *proto->mutable_f8e4m3fns() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e4m3>().data()),
+          reinterpret_cast<const char*>(data<tsl::float8_e4m3fn>().data()),
           size_bytes_dense());
       break;
     case F8E5M2:
@@ -2494,7 +2495,8 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
 
     case F8E4M3FN: {
       const std::string& s(proto.f8e4m3fns());
-      TF_RET_CHECK(data<tsl::float8_e4m3>().size() * sizeof(tsl::float8_e4m3) ==
+      TF_RET_CHECK(data<tsl::float8_e4m3fn>().size() *
+                       sizeof(tsl::float8_e4m3fn) ==
                    s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {

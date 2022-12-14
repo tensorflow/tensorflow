@@ -149,17 +149,21 @@ class BlasLt {
       size_t max_algorithm_count = 128);
 
   template <typename A, typename B, typename C, typename D, typename Scale>
-  port::Status DoMatmul(
-      Stream* stream, const MatmulPlan& plan,
-      const HostOrDeviceScalar<Scale>& alpha, const DeviceMemory<A>& a,
-      const DeviceMemory<B>& b, const HostOrDeviceScalar<Scale>& beta,
-      const DeviceMemory<C>& c, DeviceMemory<D>& d,
-      const MatmulAlgorithm& algorithm, ScratchAllocator& scratch_allocator,
-      const DeviceMemory<C>& bias = {},           const DeviceMemoryBase& aux = DeviceMemory<uint8_t>{},
-      const DeviceMemory<Scale>& a_scale, const DeviceMemory<Scale>& b_scale,
-      const DeviceMemory<Scale>& c_scale, const DeviceMemory<Scale>& d_scale,
-      const DeviceMemory<Scale>& d_amax,
-      blas::ProfileResult* profile_result = nullptr) {
+  port::Status DoMatmul(Stream* stream, const MatmulPlan& plan,
+                        const HostOrDeviceScalar<Scale>& alpha,
+                        const DeviceMemory<A>& a, const DeviceMemory<B>& b,
+                        const HostOrDeviceScalar<Scale>& beta,
+                        const DeviceMemory<C>& c, DeviceMemory<D>& d,
+                        const MatmulAlgorithm& algorithm,
+                        ScratchAllocator& scratch_allocator,
+                        const DeviceMemory<C>& bias = {},
+                        const DeviceMemoryBase& aux = DeviceMemory<uint8_t>{},
+                        const DeviceMemory<Scale>& a_scale = {},
+                        const DeviceMemory<Scale>& b_scale = {},
+                        const DeviceMemory<Scale>& c_scale = {},
+                        const DeviceMemory<Scale>& d_scale = {},
+                        const DeviceMemory<Scale>& d_amax = {},
+                        blas::ProfileResult* profile_result = nullptr) {
     if (AsCudaDataType(blas::ToDataType<Scale>::value) !=
         plan.op_desc.scale_type()) {
       return port::InvalidArgumentError("mismatched scale types");
@@ -193,8 +197,8 @@ class BlasLt {
     }
 
     return DoMatmul(stream, plan, alpha.opaque(), a, b, beta.opaque(), c, d,
-                    algorithm, scratch_allocator, bias, aux, a_scale, b_scale, c_scale,
-                    d_scale, d_amax, bias, profile_result);
+                    algorithm, scratch_allocator, bias, aux, a_scale, b_scale,
+                    c_scale, d_scale, d_amax, profile_result);
   }
 
   template <typename A, typename B, typename C, typename D, typename Scale>
@@ -206,9 +210,10 @@ class BlasLt {
                         const MatmulAlgorithm& algorithm,
                         ScratchAllocator& scratch_allocator,
                         const DeviceMemory<C>& bias = {},
+                        const DeviceMemoryBase& aux = DeviceMemory<uint8_t>{},
                         blas::ProfileResult* profile_result = nullptr) {
     return DoMatmul(stream, plan, alpha, a, b, beta, c, d, algorithm,
-                    scratch_allocator, {}, {}, {}, {}, {}, bias,
+                    scratch_allocator, bias, aux, {}, {}, {}, {}, {},
                     profile_result);
   }
 

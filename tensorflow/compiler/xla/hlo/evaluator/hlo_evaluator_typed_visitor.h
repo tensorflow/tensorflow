@@ -481,7 +481,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                    (elem_operand < ElementwiseT(0));
           }
           if constexpr (std::is_same_v<NativeT, tsl::float8_e5m2> ||
-                        std::is_same_v<NativeT, tsl::float8_e4m3> ||
+                        std::is_same_v<NativeT, tsl::float8_e4m3fn> ||
                         std::is_floating_point_v<NativeT>) {
             return std::isnan(elem_operand)
                        ? elem_operand

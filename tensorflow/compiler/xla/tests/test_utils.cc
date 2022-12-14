@@ -241,21 +241,20 @@ void PopulateWithFloatingPointData<tsl::float8_e5m2>(Literal* literal,
 }
 
 template <>
-void PopulateWithFloatingPointData<tsl::float8_e4m3>(Literal* literal,
-                                                     std::minstd_rand0* engine,
-                                                     bool no_duplicates,
-                                                     bool use_large_range) {
+void PopulateWithFloatingPointData<tsl::float8_e4m3fn>(
+    Literal* literal, std::minstd_rand0* engine, bool no_duplicates,
+    bool use_large_range) {
   CHECK(engine != nullptr);
   CHECK_EQ(literal->shape().element_type(),
-           primitive_util::NativeToPrimitiveType<tsl::float8_e4m3>());
+           primitive_util::NativeToPrimitiveType<tsl::float8_e4m3fn>());
   if (no_duplicates) {
-    PopulateWithNoDuplicateData<tsl::float8_e4m3>(literal, engine);
+    PopulateWithNoDuplicateData<tsl::float8_e4m3fn>(literal, engine);
   } else if (use_large_range) {
-    PopulateWithRandomFullRangeFloatingPointData<tsl::float8_e4m3>(literal,
-                                                                   engine);
+    PopulateWithRandomFullRangeFloatingPointData<tsl::float8_e4m3fn>(literal,
+                                                                     engine);
   } else {
-    PopulateWithRandomFloatingPointData<tsl::float8_e4m3, float>(literal,
-                                                                 engine);
+    PopulateWithRandomFloatingPointData<tsl::float8_e4m3fn, float>(literal,
+                                                                   engine);
   }
 }
 
@@ -343,7 +342,7 @@ StatusOr<Literal> MakeFakeLiteralInternal(
           &literal, engine, no_duplicates, use_large_range);
       break;
     case F8E4M3FN:
-      PopulateWithFloatingPointData<tsl::float8_e4m3>(
+      PopulateWithFloatingPointData<tsl::float8_e4m3fn>(
           &literal, engine, no_duplicates, use_large_range);
       break;
     case BF16:

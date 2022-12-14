@@ -168,7 +168,7 @@ static std::string GenericRoundTripFpToString(FloatT value) {
                          static_cast<double>(value));
 }
 
-std::string RoundTripFpToString(tsl::float8_e4m3 value) {
+std::string RoundTripFpToString(tsl::float8_e4m3fn value) {
   std::string result = GenericRoundTripFpToString(value);
   RoundTripNanPayloadF8(value, &result);
   return result;

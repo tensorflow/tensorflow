@@ -588,6 +588,9 @@ static PrimitiveType ScalarPrimitiveType(Type type) {
   if (type.isInteger(64)) return PrimitiveType::S64;
 
   // Floating point types.
+  if (type.isFloat8E4M3FN()) return PrimitiveType::F8E4M3FN;
+  if (type.isFloat8E5M2()) return PrimitiveType::F8E5M2;
+  if (type.isF32()) return PrimitiveType::F32;
   if (type.isF16()) return PrimitiveType::F16;
   if (type.isF32()) return PrimitiveType::F32;
   if (type.isF64()) return PrimitiveType::F64;

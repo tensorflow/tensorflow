@@ -239,7 +239,7 @@ bool IsNan(NativeT value) {
 }
 
 // Converts the given floating-point value to a string.
-std::string FpValueToString(tsl::float8_e4m3 value) {
+std::string FpValueToString(tsl::float8_e4m3fn value) {
   return absl::StrFormat("%10.4g", static_cast<double>(value));
 }
 
@@ -281,7 +281,7 @@ double FpAbsoluteValue(NativeT value) {
 }
 
 template <>
-double FpAbsoluteValue(tsl::float8_e4m3 value) {
+double FpAbsoluteValue(tsl::float8_e4m3fn value) {
   return FpAbsoluteValue<float>(static_cast<float>(value));
 }
 
@@ -859,7 +859,7 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
         ShapeUtil::ElementsIn(expected.shape()) >= 64);
     switch (expected.shape().element_type()) {
       case F8E4M3FN:
-        return NearComparator<tsl::float8_e4m3>::Compare(
+        return NearComparator<tsl::float8_e4m3fn>::Compare(
             expected, actual, shape_index, error, use_detailed_message,
             miscompare_callback);
       case F8E5M2:

@@ -816,7 +816,8 @@ HloEvaluator::HloEvaluator(int64_t max_loop_iterations)
   typed_visitors_[S64] =
       std::make_unique<HloEvaluatorTypedVisitor<int64_t>>(this);
   typed_visitors_[F8E4M3FN] =
-      std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e4m3, float>>(this);
+      std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e4m3fn, float>>(
+          this);
   typed_visitors_[F8E5M2] =
       std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e5m2, float>>(this);
   typed_visitors_[F16] =

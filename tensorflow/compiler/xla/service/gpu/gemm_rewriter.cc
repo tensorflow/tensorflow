@@ -211,7 +211,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       se::CudaComputeCapability cuda_compute_capability)
       : cuda_compute_capability_(cuda_compute_capability) {}
   Status HandleDot(HloInstruction *instr) override {
-    HloInstruction *a, *b, *a_scale, *b_scale;
+    HloInstruction *a, *b, *a_scale, *b_scale, *a_binary, *b_binary;
     if (IsMatrixMultiplication(*instr)) {
       CHECK(!instr->IsRank2Transpose());
       HloInstruction *lhs = instr->mutable_operand(0);
@@ -239,20 +239,44 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       instr = gemm_call;
     }
 
-    // Attempt to elide FP8 GEMMs with scaled inputs as described by steps 1
-    // through 3 of RFC #22 (https://github.com/openxla/xla/discussions/22) and
-    // rewrite into a Custom Call.
-    if (Match(
-            instr,
-            m::CustomCall(
-                kCublasLtMatmulCallTarget,
-                m::MultiplyAnyOrder(m::Convert(m::Op(&a)).WithOneUser(),
-                                    m::Broadcast(m::Op(&a_scale)).WithOneUser())
-                    .WithOneUser(),
-                m::MultiplyAnyOrder(m::Convert(m::Op(&b)).WithOneUser(),
-                                    m::Broadcast(m::Op(&b_scale)).WithOneUser())
-                    .WithOneUser()))) {
-      return F8Scaled(instr, a, b, a_scale, b_scale);
+    // Attempt to elide an FP8 GEMM with scaled inputs as described by steps 1
+    // through 3 detailed above and rewrite into a Custom Call.
+    if (Match(instr,
+              m::CustomCall(
+                  kCublasLtMatmulCallTarget,
+                  m::AnyOf<HloInstruction>(
+                      m::MultiplyAnyOrder(&a_binary, m::Convert(m::Op(&a)),
+                                          m::Broadcast(m::Op(&a_scale))),
+                      m::Divide(&a_binary, m::Convert(m::Op(&a)),
+                                m::Broadcast(m::Op(&a_scale)))),
+                  m::AnyOf<HloInstruction>(
+                      m::MultiplyAnyOrder(&b_binary, m::Convert(m::Op(&b)),
+                                          m::Broadcast(m::Op(&b_scale))),
+                      m::Divide(&b_binary, m::Convert(m::Op(&b)),
+                                m::Broadcast(m::Op(&b_scale))))))) {
+      TF_ASSIGN_OR_RETURN(
+          bool created_call,
+          CreateF8CustomCall(
+              instr, a, b, a_scale, b_scale,
+              /*a_mult_scale=*/a_binary->opcode() == HloOpcode::kMultiply,
+              /*b_mult_scale=*/b_binary->opcode() == HloOpcode::kMultiply));
+      if (created_call) {
+        return OkStatus();
+      }
+    }
+
+    // Attempt to rewrite an FP8 GEMM directly operating on the unscaled but
+    // possibly type converted FP8 operands into a Custom Call.
+    if (Match(instr,
+              m::AnyOf<HloInstruction>(
+                  m::CustomCall(kCublasLtMatmulCallTarget,
+                                m::Convert(m::Op(&a)), m::Convert(m::Op(&b))),
+                  m::CustomCall(kCublasLtMatmulCallTarget, m::Op(&a),
+                                m::Op(&b))))) {
+      TF_ASSIGN_OR_RETURN(bool created_call, CreateF8CustomCall(instr, a, b));
+      if (created_call) {
+        return OkStatus();
+      }
     }
     return OkStatus();
   }
@@ -421,7 +445,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 
   Status HandleConvert(HloInstruction *instr) override {
-    HloInstruction *bias, *clamp_lower, *clamp_upper, *d_scale, *existing_gemm;
+    HloInstruction *bias, *clamp_lower, *clamp_upper, *d_scale, *existing_gemm,
+        *binary;
     if (Match(
             instr,
             m::Convert(m::AddAnyOrder(
@@ -438,24 +463,35 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // Attempt to elide the scaling and conversion of the result of an FP8
     // GEMM, including the optional calculation of the maximum of the absolute
     // values before scaling, and adapt the Custom Call.
-    if (Match(
-            instr,
-            m::Convert(
-                m::Clamp(m::Broadcast(m::Constant(&clamp_lower)),
-                         m::Divide(m::CustomCall(&existing_gemm,
-                                                 kCublasLtMatmulF8CallTarget),
-                                   m::Broadcast(m::Op(&d_scale)).WithOneUser())
-                             .WithOneUser(),
-                         m::Broadcast(m::Constant(&clamp_upper)))
-                    .WithOneUser()))) {
-      return F8ConvertD(instr, existing_gemm, d_scale, clamp_lower,
-                        clamp_upper);
+    if (Match(instr,
+              m::Convert(
+                  m::Clamp(
+                      m::Broadcast(m::ConstantScalar(&clamp_lower)),
+                      m::AnyOf<HloInstruction>(
+                          m::Divide(&binary,
+                                    m::CustomCall(&existing_gemm,
+                                                  kCublasLtMatmulF8CallTarget),
+                                    m::Broadcast(m::Op(&d_scale))),
+                          m::MultiplyAnyOrder(
+                              &binary,
+                              m::CustomCall(&existing_gemm,
+                                            kCublasLtMatmulF8CallTarget),
+                              m::Broadcast(m::Op(&d_scale)))),
+                      m::Broadcast(m::ConstantScalar(&clamp_upper)))
+                      .WithOneUser()))) {
+      return F8ConvertD(
+          instr, existing_gemm, d_scale, clamp_lower, clamp_upper,
+          /*mult_scale=*/binary->opcode() == HloOpcode::kMultiply);
     }
     return OkStatus();
   }
 
-  Status F8Scaled(HloInstruction *instr, HloInstruction *a, HloInstruction *b,
-                  HloInstruction *a_scale, HloInstruction *b_scale) {
+  StatusOr<bool> CreateF8CustomCall(HloInstruction *instr, HloInstruction *a,
+                                    HloInstruction *b,
+                                    HloInstruction *a_scale = nullptr,
+                                    HloInstruction *b_scale = nullptr,
+                                    bool a_mult_scale = true,
+                                    bool b_mult_scale = true) {
     // FP8 GEMM kernels are only available on Hopper and newer architectures.
     if (!cuda_compute_capability_.IsAtLeast(
             se::CudaComputeCapability::HOPPER)) {
@@ -470,35 +506,46 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
            b->shape().element_type() == F8E5M2) ||
           (a->shape().element_type() == F8E5M2 &&
            b->shape().element_type() == F8E4M3FN))) {
-      return OkStatus();
-    }
-
-    if (!ShapeUtil::IsScalar(a_scale->shape()) ||
-        !ShapeUtil::IsScalar(b_scale->shape())) {
-      return OkStatus();
+      return false;
     }
 
     // cuBLASLt FP8 GEMM kernels require the operand sizes to be multiples
     // of 16.
     for (int i = 0; i < a->shape().dimensions_size(); ++i) {
       if (a->shape().dimensions(i) % 16) {
-        return OkStatus();
+        return false;
       }
     }
     for (int i = 0; i < b->shape().dimensions_size(); ++i) {
       if (b->shape().dimensions(i) % 16) {
-        return OkStatus();
+        return false;
       }
     }
 
     // cuBLASLt FP8 GEMM kernels require the scaling factors to be in F32
-    // format.
-    HloInstruction *a_scale_f32 =
-        instr->AddInstruction(HloInstruction::CreateConvert(
-            ShapeUtil::MakeScalarShape(F32), a_scale));
-    HloInstruction *b_scale_f32 =
-        instr->AddInstruction(HloInstruction::CreateConvert(
-            ShapeUtil::MakeScalarShape(F32), b_scale));
+    // format. Set the factors to one when no scaling factors were captured.
+    Literal one_literal = LiteralUtil::One(F32);
+    HloInstruction *one = instr->AddInstruction(
+        HloInstruction::CreateConstant(one_literal.Clone()));
+    std::array<bool, 2> mult_scale{a_mult_scale, b_mult_scale};
+    std::array<HloInstruction *, 2> scales{a_scale, b_scale}, inv_scales,
+        scales_f32;
+    for (int i = 0; i < scales.size(); ++i) {
+      if (scales[i]) {
+        if (!ShapeUtil::IsScalar(scales[i]->shape())) {
+          return false;
+        }
+        if (!mult_scale[i]) {
+          inv_scales[i] = instr->AddInstruction(HloInstruction::CreateBinary(
+              scales[i]->shape(), HloOpcode::kDivide, one, scales[i]));
+        }
+        scales_f32[i] = instr->AddInstruction(HloInstruction::CreateConvert(
+            ShapeUtil::MakeScalarShape(F32),
+            mult_scale[i] ? scales[i] : inv_scales[i]));
+      } else {
+        scales_f32[i] = one;
+      }
+    }
 
     PrimitiveType c_type;
     switch (instr->shape().element_type()) {
@@ -514,20 +561,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         c_type = F32;
         break;
       default:
-        return OkStatus();
+        return false;
     }
 
-    // TODO(philipphack): Consider enabling the epilogue fusion of a matrix bias
-    // for FP8 GEMMs.
+    // TODO(philipphack): Consider enabling epilogue fusions and the addition of
+    // a matrix bias for FP8 GEMMs.
     Literal c_literal = LiteralUtil::Zero(c_type);
     HloInstruction *c = instr->AddInstruction(
         HloInstruction::CreateConstant(c_literal.Clone()));
     HloInstruction *c_bcast = instr->AddInstruction(
         HloInstruction::CreateBroadcast(instr->shape(), c, {}));
-
-    Literal one_literal = LiteralUtil::One(F32);
-    HloInstruction *one = instr->AddInstruction(
-        HloInstruction::CreateConstant(one_literal.Clone()));
 
     // cuBLASLt FP8 GEMM kernels currently require the first operand, i.e. A, to
     // be transposed. If the result of the GEMM is not in column major order, A
@@ -535,17 +578,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // TODO(philipphack): Remove once cuBLASLt supports the NN configuration.
     TF_ASSIGN_OR_RETURN(auto gemm_config,
                         instr->backend_config<GemmBackendConfig>());
-    HloInstruction *a_or_b_transp;
     TF_ASSIGN_OR_RETURN(bool is_col_major,
                         OutputIsColumnMajor(instr, gemm_config));
     if (is_col_major) {
-      a_or_b_transp = instr->AddInstruction(HloInstruction::CreateTranspose(
+      a = instr->AddInstruction(HloInstruction::CreateTranspose(
           ShapeUtil::MakeShape(
               a->shape().element_type(),
               {a->shape().dimensions(1), a->shape().dimensions(0)}),
           a, {1, 0}));
     } else {
-      a_or_b_transp = instr->AddInstruction(HloInstruction::CreateTranspose(
+      b = instr->AddInstruction(HloInstruction::CreateTranspose(
           ShapeUtil::MakeShape(
               b->shape().element_type(),
               {b->shape().dimensions(1), b->shape().dimensions(0)}),
@@ -555,8 +597,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     std::unique_ptr<HloInstruction> new_custom_call =
         HloInstruction::CreateCustomCall(
             instr->shape(),
-            {is_col_major ? a_or_b_transp : a, is_col_major ? b : a_or_b_transp,
-             c_bcast, a_scale_f32, b_scale_f32, one, one},
+            {a, b, c_bcast, scales_f32[0], scales_f32[1], one, one},
             kCublasLtMatmulF8CallTarget);
 
     TF_RETURN_IF_ERROR(new_custom_call->set_backend_config(gemm_config));
@@ -564,18 +605,18 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_RETURN_IF_ERROR(
         ReplaceWithNewInstruction(instr, std::move(new_custom_call)));
 
-    return OkStatus();
+    return true;
   }
 
   Status F8ConvertD(HloInstruction *instr, HloInstruction *existing_gemm,
                     HloInstruction *d_scale, HloInstruction *clamp_lower,
-                    HloInstruction *clamp_upper) {
+                    HloInstruction *clamp_upper, bool mult_scale = false) {
     // Verify the data types and the operands of clamp.
     if (instr->shape().element_type() == F8E4M3FN) {
       if (!clamp_lower->literal().IsAllFloat(
-              float(std::numeric_limits<tsl::float8_e4m3>::lowest())) ||
+              float(std::numeric_limits<tsl::float8_e4m3fn>::lowest())) ||
           !clamp_upper->literal().IsAllFloat(
-              float(std::numeric_limits<tsl::float8_e4m3>::max()))) {
+              float(std::numeric_limits<tsl::float8_e4m3fn>::max()))) {
         return OkStatus();
       }
     } else if (instr->shape().element_type() == F8E5M2) {
@@ -586,6 +627,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         return OkStatus();
       }
     } else {
+      return OkStatus();
+    }
+
+    if (!ShapeUtil::IsScalar(d_scale->shape())) {
       return OkStatus();
     }
 
@@ -623,10 +668,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return OkStatus();
     }
 
-    if (!ShapeUtil::IsScalar(d_scale->shape())) {
-      return OkStatus();
-    }
-
     // Change the data type of C to BF16 as required by cuBLASLt for GEMMs with
     // FP8 outputs (see cuBLASLt documentation).
     Literal c_literal = LiteralUtil::Zero(BF16);
@@ -637,18 +678,19 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
             ShapeUtil::ChangeElementType(instr->shape(), BF16), c, {}));
     TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(2, c_bcast));
 
-    // Invert the scaling factor of D and convert to F32.
-    Literal one_literal = LiteralUtil::One(d_scale->shape().element_type());
-    HloInstruction *one = instr->AddInstruction(
-        HloInstruction::CreateConstant(one_literal.Clone()));
-    HloInstruction *d_scale_inv =
-        instr->AddInstruction(HloInstruction::CreateBinary(
-            d_scale->shape(), HloOpcode::kDivide, one, d_scale));
-    HloInstruction *d_scale_inv_f32 =
+    // If necessary, invert the scaling factor of D and convert to F32.
+    if (!mult_scale) {
+      Literal one_literal = LiteralUtil::One(d_scale->shape().element_type());
+      HloInstruction *one = instr->AddInstruction(
+          HloInstruction::CreateConstant(one_literal.Clone()));
+      d_scale = instr->AddInstruction(HloInstruction::CreateBinary(
+          d_scale->shape(), HloOpcode::kDivide, one, d_scale));
+    }
+    HloInstruction *d_scale_f32 =
         instr->AddInstruction(HloInstruction::CreateConvert(
-            ShapeUtil::MakeScalarShape(F32), d_scale_inv));
+            ShapeUtil::MakeScalarShape(F32), d_scale));
 
-    TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(6, d_scale_inv_f32));
+    TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(6, d_scale_f32));
 
     // If present, elide the calculation of the maximum of the absolute values
     // of the result of the GEMM.
@@ -977,11 +1019,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     const PrimitiveType a_dtype = instr->operand(0)->shape().element_type();
     const PrimitiveType b_dtype = instr->operand(1)->shape().element_type();
 
-    if (a_dtype != b_dtype) {
-      // AType must match BType.
-      return false;
-    }
-
     using se::blas::ComputationType;
     using se::blas::DataType;
     // This matrix of supported types is taken directly from cublasLt
@@ -989,59 +1026,95 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // https://docs.nvidia.com/cuda/cublas/index.html#cublasLtMatmul
     const std::array<
         std::tuple<ComputationType, DataType /*scale_type*/,
-                   PrimitiveType /*a_dtype*/, DataType /*output_dtype*/>,
-        18>
+                   PrimitiveType /*a_dtype*/, PrimitiveType /*b_dtype*/,
+                   DataType /*output_dtype*/>,
+        32>
         supported_type_combinations = {{
+            // FP8 types:
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+             PrimitiveType::F8E4M3FN, DataType::kBF16},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+             PrimitiveType::F8E4M3FN, DataType::kF8E4M3FN},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+             PrimitiveType::F8E4M3FN, DataType::kHalf},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+             PrimitiveType::F8E4M3FN, DataType::kFloat},
+
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+             PrimitiveType::F8E5M2, DataType::kBF16},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+             PrimitiveType::F8E5M2, DataType::kF8E4M3FN},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+             PrimitiveType::F8E5M2, DataType::kF8E5M2},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+             PrimitiveType::F8E5M2, DataType::kHalf},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E4M3FN,
+             PrimitiveType::F8E5M2, DataType::kFloat},
+
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
+             PrimitiveType::F8E4M3FN, DataType::kBF16},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
+             PrimitiveType::F8E4M3FN, DataType::kF8E4M3FN},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
+             PrimitiveType::F8E4M3FN, DataType::kF8E5M2},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
+             PrimitiveType::F8E4M3FN, DataType::kHalf},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2,
+             PrimitiveType::F8E4M3FN, DataType::kFloat},
+
+            // Other data types:
             {ComputationType::kF16, DataType::kHalf, PrimitiveType::F16,
-             DataType::kHalf},
+             PrimitiveType::F16, DataType::kHalf},
 
             {ComputationType::kI32, DataType::kInt32, PrimitiveType::S8,
-             DataType::kInt32},
+             PrimitiveType::S8, DataType::kInt32},
             {ComputationType::kI32, DataType::kFloat, PrimitiveType::S8,
-             DataType::kInt8},
+             PrimitiveType::S8, DataType::kInt8},
 
             {ComputationType::kF32, DataType::kFloat, PrimitiveType::BF16,
-             DataType::kBF16},
+             PrimitiveType::BF16, DataType::kBF16},
             {ComputationType::kF32, DataType::kFloat, PrimitiveType::F16,
-             DataType::kHalf},
+             PrimitiveType::F16, DataType::kHalf},
             {ComputationType::kF32, DataType::kFloat, PrimitiveType::S8,
-             DataType::kFloat},
+             PrimitiveType::S8, DataType::kFloat},
             {ComputationType::kF32, DataType::kFloat, PrimitiveType::BF16,
-             DataType::kFloat},
+             PrimitiveType::BF16, DataType::kFloat},
             {ComputationType::kF32, DataType::kFloat, PrimitiveType::F16,
-             DataType::kFloat},
+             PrimitiveType::F16, DataType::kFloat},
             {ComputationType::kF32, DataType::kFloat, PrimitiveType::F32,
-             DataType::kFloat},
+             PrimitiveType::F32, DataType::kFloat},
 
             // There would be an entry here for A/BType complex int8, but we do
             // not support that type.
             {ComputationType::kF32, DataType::kComplexFloat, PrimitiveType::C64,
-             DataType::kComplexFloat},
+             PrimitiveType::C64, DataType::kComplexFloat},
 
             {ComputationType::kF16AsF32, DataType::kFloat, PrimitiveType::F32,
-             DataType::kFloat},
+             PrimitiveType::F32, DataType::kFloat},
             {ComputationType::kF16AsF32, DataType::kComplexFloat,
-             PrimitiveType::C64, DataType::kComplexFloat},
+             PrimitiveType::C64, PrimitiveType::C64, DataType::kComplexFloat},
 
             {ComputationType::kBF16AsF32, DataType::kFloat, PrimitiveType::F32,
-             DataType::kFloat},
+             PrimitiveType::F32, DataType::kFloat},
             {ComputationType::kBF16AsF32, DataType::kComplexFloat,
-             PrimitiveType::C64, DataType::kComplexFloat},
+             PrimitiveType::C64, PrimitiveType::C64, DataType::kComplexFloat},
 
             {ComputationType::kTF32AsF32, DataType::kFloat, PrimitiveType::F32,
-             DataType::kFloat},
+             PrimitiveType::F32, DataType::kFloat},
             {ComputationType::kTF32AsF32, DataType::kComplexFloat,
-             PrimitiveType::C64, DataType::kComplexFloat},
+             PrimitiveType::C64, PrimitiveType::C64, DataType::kComplexFloat},
 
             {ComputationType::kF64, DataType::kDouble, PrimitiveType::F64,
-             DataType::kDouble},
+             PrimitiveType::F64, DataType::kDouble},
             {ComputationType::kF64, DataType::kComplexDouble,
-             PrimitiveType::C128, DataType::kComplexDouble},
+             PrimitiveType::C128, PrimitiveType::C128,
+             DataType::kComplexDouble},
         }};
 
     return absl::c_linear_search(
         supported_type_combinations,
-        std::make_tuple(compute_type, scale_type, a_dtype, output_dtype));
+        std::make_tuple(compute_type, scale_type, a_dtype, b_dtype,
+                        output_dtype));
   }
 
   StatusOr<bool> OutputIsColumnMajor(
