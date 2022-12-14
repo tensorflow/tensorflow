@@ -1,6 +1,4 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
@@ -31,29 +29,6 @@ cc_library(
         "@llvm-project//mlir:Pass",
     ],
     alwayslink = 1,
-)
-
-gentbl_cc_library(
-    name = "mhlo_tfl_legalize_patterns_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
-    includes = [
-        "//tensorflow/compiler/xla/mlir_hlo/include/",
-    ],
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "transforms/generated_mhlo_tfl_legalize_patterns.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "transforms/mhlo_tfl_legalize_patterns.td",
-    deps = [
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
-        "//tensorflow/compiler/xla/mlir_hlo:hlo_ops_td_files",
-        "@llvm-project//mlir:ArithOpsTdFiles",
-        "@llvm-project//mlir:FuncTdFiles",
-    ],
 )
 
 cc_library(
@@ -178,78 +153,6 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "tf_mhlo_tfl",
-    srcs = [
-        "transforms/tf_mhlo_tfl_pass.cc",
-    ],
-    hdrs = [
-        "transforms/tf_mhlo_tfl_pass.h",
-    ],
-    copts = [
-        "-Ithird_party",
-    ],
-    deps = [
-        ":mhlo_tfl_legalize_patterns_inc_gen",
-        ":mhlo_util",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
-        "//tensorflow/compiler/xla/mlir_hlo",
-        "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
-        "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:TransformUtils",
-        "@stablehlo//:chlo_ops",
-        "@stablehlo//:register",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "tf_poly",
-    srcs = [
-        "transforms/tf_poly_pass.cc",
-    ],
-    hdrs = [
-        "transforms/tf_poly_pass.h",
-    ],
-    copts = [
-        "-Ithird_party",
-    ],
-    deps = [
-        ":mhlo_tfl_legalize_patterns_inc_gen",
-        ":mhlo_util",
-        ":tf_mhlo",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
-        "//tensorflow/compiler/xla/mlir_hlo",
-        "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:TransformUtils",
-        "@stablehlo//:chlo_ops",
-        "@stablehlo//:register",
     ],
     alwayslink = 1,
 )
@@ -492,8 +395,6 @@ tf_cc_binary(
         ":mhlo_tfl",
         ":optimize",
         ":tf_mhlo",
-        ":tf_mhlo_tfl",
-        ":tf_poly",
         ":tfl_mhlo",
         ":unfuse_batch_norm_pass",
         "//tensorflow/compiler/mlir:passes",
