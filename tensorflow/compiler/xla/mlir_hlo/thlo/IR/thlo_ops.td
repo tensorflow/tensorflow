@@ -265,6 +265,7 @@ def THLO_SortOp : THLO_DstStyleOp<"sort", [
 }
 
 def THLO_ReverseOp : THLO_DstStyleOp<"reverse", [
+    DeclareOpInterfaceMethods<TilingInterface>,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,]> {
   let summary = "Destination-style twin for the `mhlo.reverse`";
   let description = [{
