@@ -815,12 +815,14 @@ TEST_F(GpuKernelTilingTest, RowReductionCorrectShmemUsage) {
   )";
   auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
   auto expected_ir = is_built_with_rocm_ ? R"(
-; CHECK: initial_value_addr = internal unnamed_addr addrspace({{[0-9]*}}) global [1024 x float] poison, align 4
+; CHECK: %FUSION_LDS.t = type { [1 x [1 x [2 x float]]] }
+; CHECK: @FUSION_LDS = internal addrspace(3) global %FUSION_LDS.t undef, align 8
   )"
                                          : R"(
 ; CHECK: shared_cache = private unnamed_addr addrspace({{[0-9]*}}) global [1 x [1 x [2 x float]]]
   )";
-  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
+  CompileAndVerifyIr(std::move(hlo_module), 
+                      MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
 }
 

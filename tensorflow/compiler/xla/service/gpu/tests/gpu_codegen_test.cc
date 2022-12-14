@@ -77,7 +77,10 @@ std::string GpuCodegenTest::MakePlatformSpecificLlvm(absl::string_view input) {
             ? "%[[LOGICAL_T2:.*]] = extractvalue { i1, i64 } %[[LOGICAL_T1]], 0"
             : "0"},
        {"BR_CAL", is_built_with_rocm_ ? "br i1 %[[LOGICAL_T2]],"
-                                      : "br i1 %[[LOGICAL_T0]]"}});
+                                      : "br i1 %[[LOGICAL_T0]]"},
+       {
+        "FUSION_LDS" , is_built_with_rocm_ ? "llvm.amdgcn.kernel.fusion.lds"
+                                               : "0"}});
 }
 
 }  // namespace gpu
