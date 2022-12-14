@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <deque>
 #include <memory>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
