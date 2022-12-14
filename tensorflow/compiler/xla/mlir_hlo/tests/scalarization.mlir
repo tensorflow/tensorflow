@@ -550,3 +550,18 @@ func.func @linalg_matmul(%lhs: tensor<1x1xf32>,
 // CHECK-NEXT:      %[[ADD:.*]] = arith.addf %[[OUT_ELEM]], %[[MUL]]
 // CHECK-NEXT:       tensor.from_elements %[[ADD]]
 
+// -----
+
+func.func @thlo_reverse(%arg : tensor<1x1xf32>,
+                                    %init: tensor<1x1xf32>)
+                                    -> tensor<1x1xf32>  {
+  %0 = thlo.reverse ins(%arg : tensor<1x1xf32>)
+        outs(%init : tensor<1x1xf32>)
+        reverse_dimensions = [0, 1]
+  func.return %0 : tensor<1x1xf32>
+}
+// CHECK-LABEL: @thlo_reverse(
+//  CHECK-SAME: %[[ARG:.*]]: tensor<1x1xf32>, %[[INIT:.*]]: tensor<1x1xf32>)
+      // CHECK:   %[[C0:.*]] = arith.constant 0 : index
+//  CHECK-NEXT:   %[[ELEM:.*]] = tensor.extract %[[ARG]][%[[C0]], %[[C0]]]
+//  CHECK-NEXT:   %[[UPDATED:.*]] = tensor.insert %[[ELEM]] into %[[INIT]][%[[C0]], %[[C0]]]

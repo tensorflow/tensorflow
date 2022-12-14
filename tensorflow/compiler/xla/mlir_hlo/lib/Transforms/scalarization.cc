@@ -414,35 +414,58 @@ struct ScalarizeConcatenateOp : public OpRewritePattern<thlo::ConcatenateOp> {
   }
 };
 
+namespace {
+LogicalResult scalarizeOp(Operation *op, PatternRewriter &rewriter,
+                          TypedValue<ShapedType> &input,
+                          TypedValue<ShapedType> &output) {
+  ImplicitLocOpBuilder b(op->getLoc(), rewriter);
+
+  auto outputType = output.getType().dyn_cast<RankedTensorType>();
+  if (!outputType)
+    return rewriter.notifyMatchFailure(
+        op, "failed to cast output to RankedTensorType");
+  if (!hasSingleElement(outputType))
+    return rewriter.notifyMatchFailure(
+        op, "has output with number of elements not equal to 1");
+
+  auto inputType = input.getType().dyn_cast<RankedTensorType>();
+  if (!inputType)
+    return rewriter.notifyMatchFailure(
+        op, "failed to cast input to RankedTensorType");
+
+  Value zero = b.create<arith::ConstantIndexOp>(0);
+  llvm::SmallVector<Value> indicesInput(inputType.getRank(), zero);
+  llvm::SmallVector<Value> indicesOutput(outputType.getRank(), zero);
+
+  Value extractedValue = b.create<ExtractOp>(input, indicesInput);
+  Value result =
+      b.create<tensor::InsertOp>(extractedValue, output, indicesOutput);
+
+  rewriter.replaceOp(op, result);
+  return success();
+}
+}  // namespace
+
 struct ScalarizeDynamicBroadcastInDimOp
     : public OpRewritePattern<thlo::DynamicBroadcastInDimOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(thlo::DynamicBroadcastInDimOp broadcastOp,
                                 PatternRewriter &rewriter) const override {
-    Location loc = broadcastOp.getLoc();
-    ImplicitLocOpBuilder b(loc, rewriter);
-
-    auto output = broadcastOp.getInit();
-    auto outputType = output.getType().dyn_cast<RankedTensorType>();
-    if (!outputType) return failure();
-
-    if (!hasSingleElement(outputType)) return failure();
-
     auto input = broadcastOp.getOperand();
-    auto inputType = input.getType().dyn_cast<RankedTensorType>();
-    if (!inputType) return failure();
+    auto output = broadcastOp.getInit();
+    return scalarizeOp(broadcastOp, rewriter, input, output);
+  }
+};
 
-    Value zero = b.create<arith::ConstantIndexOp>(0);
-    llvm::SmallVector<Value> indicesInput(inputType.getRank(), zero);
-    llvm::SmallVector<Value> indicesOutput(outputType.getRank(), zero);
+struct ScalarizeReverseOp : public OpRewritePattern<thlo::ReverseOp> {
+  using OpRewritePattern::OpRewritePattern;
 
-    Value extractedValue = b.create<ExtractOp>(input, indicesInput);
-    Value result =
-        b.create<tensor::InsertOp>(extractedValue, output, indicesOutput);
-
-    rewriter.replaceOp(broadcastOp, result);
-    return success();
+  LogicalResult matchAndRewrite(thlo::ReverseOp reverseOp,
+                                PatternRewriter &rewriter) const override {
+    auto input = reverseOp.getInput();
+    auto output = reverseOp.getInit();
+    return scalarizeOp(reverseOp, rewriter, input, output);
   }
 };
 
@@ -517,6 +540,7 @@ struct ScalarizationPass
         ScalarizeDynamicBroadcastInDimOp,
         ScalarizeGatherOp,
         ScalarizeLinalgOp,
+        ScalarizeReverseOp,
         ScalarizeScatterOp
     >(context);
     // clang-format on
