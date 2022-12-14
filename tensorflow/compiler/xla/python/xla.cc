@@ -386,11 +386,13 @@ PYBIND11_MODULE(xla_extension, m) {
 #endif
       },
       py::arg("max_inflight_computations") = 32);
-  m.def("get_tfrt_tpu_c_api_client",
-        []() -> StatusOr<std::shared_ptr<PyClient>> {
+  // TODO(b/262050449): move out from `#ifdef XLA_PYTHON_ENABLE_TPU` when
+  // GetCApiClient does not depend on TPU.
+  m.def("get_c_api_client",
+        [](std::string platform_name) -> StatusOr<std::shared_ptr<PyClient>> {
           py::gil_scoped_release gil_release;
           TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> c_api_client,
-                              GetCApiClient("TPU"));
+                              GetCApiClient(platform_name));
 #ifdef JAX_ENABLE_IFRT
           return std::make_shared<PyClient>(
               ifrt::PjRtClient::Create(std::move(c_api_client)));

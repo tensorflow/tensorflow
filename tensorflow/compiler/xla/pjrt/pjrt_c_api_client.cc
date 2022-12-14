@@ -1146,7 +1146,10 @@ PjRtFuture<Status> PjRtCApiBuffer::GetReadyFuture() {
 StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     absl::string_view device_type) {
 #if !defined(PLATFORM_GOOGLE) || defined(LIBTPU_STATIC)
-  TF_RETURN_IF_ERROR(tensorflow::tpu::FindAndLoadTpuLibrary());
+  if (absl::AsciiStrToLower(device_type) == "tpu") {
+    // TODO(b/261484192): handle device specific initialization.
+    TF_RETURN_IF_ERROR(tensorflow::tpu::FindAndLoadTpuLibrary());
+  }
 #endif
   TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api,
                       stream_executor::tpu::PjrtApi(device_type));
