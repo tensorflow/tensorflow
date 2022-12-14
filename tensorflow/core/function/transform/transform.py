@@ -14,7 +14,7 @@
 # ==============================================================================
 """High level TF Function transformation API."""
 
-from typing import Optional, Callable, Union, List, Iterator, Dict
+from typing import Any, Optional, Callable, Union, Iterator
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
@@ -25,7 +25,6 @@ from tensorflow.python.eager.polymorphic_function import saved_model_utils
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import custom_gradient as custom_gradient_lib
 from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import handle_data_util
@@ -38,17 +37,17 @@ _FunctionDefTransformerType = Callable[[function_pb2.FunctionDef], None]
 
 def transform_function(
     f: def_function.Function,
-    inputs: Optional[Union[List[tensor_spec.TensorSpec],
-                           List[ops.Tensor]]] = None,
+    inputs: Optional[list[Any]] = None,
+    kw_inputs: Optional[dict[str, Any]] = None,
     transform_fn: Optional[Union[_FunctionDefTransformerType,
-                                 List[_FunctionDefTransformerType]]] = None,
-    mlir_pipeline: Optional[Union[str, List[str]]] = None,
-    nested_fn_transforms: Optional[Dict[
+                                 list[_FunctionDefTransformerType]]] = None,
+    mlir_pipeline: Optional[Union[str, list[str]]] = None,
+    nested_fn_transforms: Optional[dict[
         str, Optional[Union[_FunctionDefTransformerType,
-                            List[_FunctionDefTransformerType]]]]] = None,
-    nested_mlir_transforms: Optional[Dict[str,
+                            list[_FunctionDefTransformerType]]]]] = None,
+    nested_mlir_transforms: Optional[dict[str,
                                           Optional[Union[str,
-                                                         List[str]]]]] = None,
+                                                         list[str]]]]] = None,
 ) -> function_lib.ConcreteFunction:
   """Applies a transformation to a tf.function to produce a new callable.
 
@@ -94,6 +93,9 @@ def transform_function(
     inputs: The inputs or input_signature of the tf.function. This does not need
       to be specified if the `input_signature` was specified in the tf.function
       decorator.
+    kw_inputs: The keyword inputs of the tf.function. This does not need to be
+      specified if the `input_signature` was specified in the tf.function
+      decorator.
     transform_fn: A single transformation function or a list of transformation
       functions to apply on the `FunctionDef`.
     mlir_pipeline: A single MLIR pass or a list of MLIR passes to transform the
@@ -132,8 +134,10 @@ def transform_function(
       nested_mlir_transforms if nested_mlir_transforms is not None else {})
 
   # Extract the `ConcreteFunction` from the `tf.function.`
-  if inputs is not None:
-    cf = f.get_concrete_function(*inputs)
+  if inputs is not None or kw_inputs is not None:
+    inputs = [] if inputs is None else inputs
+    kw_inputs = {} if kw_inputs is None else kw_inputs
+    cf = f.get_concrete_function(*inputs, **kw_inputs)
   else:
     cf = f.get_concrete_function()
 
@@ -247,8 +251,8 @@ def transform_eager_defined_function(
     rt: runtime_client.Runtime,
     f: function_lib._EagerDefinedFunction,
     transform_fn: Union[_FunctionDefTransformerType,
-                        List[_FunctionDefTransformerType]],
-    mlir_pipeline: Union[str, List[str]],
+                        list[_FunctionDefTransformerType]],
+    mlir_pipeline: Union[str, list[str]],
 ) -> function_lib._EagerDefinedFunction:
   """Applies transforms on an _EagerDefinedFunction."""
   transform_fns = (
@@ -380,7 +384,7 @@ def _get_outer_most_capture(
 
 
 def _ops_with_custom_gradients(
-    operations: List[ops.Operation]) -> Iterator[tuple[str, ops.Operation]]:
+    operations: list[ops.Operation]) -> Iterator[tuple[str, ops.Operation]]:
   """Returns an iterator over ops having custom_gradients."""
   for op in operations:
     try:
