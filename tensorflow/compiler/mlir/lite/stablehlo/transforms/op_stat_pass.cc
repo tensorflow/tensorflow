@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/mhlo_util.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_util.h"
 
 namespace mlir {
 namespace odml {

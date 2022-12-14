@@ -1,4 +1,4 @@
-// RUN: tf-mhlo-tfl-opt %s -unfuse-mhlo-batch-norm-pass -cse -verify-diagnostics | FileCheck %s
+// RUN: odml-to-stablehlo-opt %s -unfuse-mhlo-batch-norm-pass -cse -verify-diagnostics | FileCheck %s
 
 // CHECK-LABEL: @batchNormInference_2D_inner_features
 // CHECK-SAME: %[[X:[^:[:space:]]+]]

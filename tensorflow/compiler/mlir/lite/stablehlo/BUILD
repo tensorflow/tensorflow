@@ -21,7 +21,7 @@ cc_library(
         "-Ithird_party",
     ],
     deps = [
-        ":mhlo_util",
+        ":stablehlo_util",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -32,12 +32,12 @@ cc_library(
 )
 
 cc_library(
-    name = "mhlo_tfl",
+    name = "stablehlo_tfl",
     srcs = [
-        "transforms/mhlo_tfl_pass.cc",
+        "transforms/stablehlo_tfl_pass.cc",
     ],
     hdrs = [
-        "transforms/mhlo_tfl_pass.h",
+        "transforms/stablehlo_tfl_pass.h",
     ],
     copts = [
         "-Ithird_party",
@@ -59,12 +59,12 @@ cc_library(
 )
 
 cc_library(
-    name = "mhlo_util",
+    name = "stablehlo_util",
     srcs = [
-        "transforms/mhlo_util.cc",
+        "transforms/stablehlo_util.cc",
     ],
     hdrs = [
-        "transforms/mhlo_util.h",
+        "transforms/stablehlo_util.h",
     ],
     copts = [
         "-Ithird_party",
@@ -103,7 +103,7 @@ cc_library(
         "-Ithird_party",
     ],
     deps = [
-        ":mhlo_util",
+        ":stablehlo_util",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -124,7 +124,7 @@ cc_library(
         "-Ithird_party",
     ],
     deps = [
-        ":mhlo_util",
+        ":stablehlo_util",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/xla/mlir_hlo",
         "@llvm-project//llvm:Support",
@@ -137,18 +137,18 @@ cc_library(
 )
 
 cc_library(
-    name = "tf_mhlo",
+    name = "tf_stablehlo",
     srcs = [
-        "transforms/tf_mhlo_pass.cc",
+        "transforms/tf_stablehlo_pass.cc",
     ],
     hdrs = [
-        "transforms/tf_mhlo_pass.h",
+        "transforms/tf_stablehlo_pass.h",
     ],
     copts = [
         "-Ithird_party",
     ],
     deps = [
-        ":mhlo_util",
+        ":stablehlo_util",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -158,12 +158,12 @@ cc_library(
 )
 
 cc_library(
-    name = "tfl_mhlo",
+    name = "tfl_stablehlo",
     srcs = [
-        "transforms/tfl_mhlo_pass.cc",
+        "transforms/tfl_stablehlo_pass.cc",
     ],
     hdrs = [
-        "transforms/tfl_mhlo_pass.h",
+        "transforms/tfl_stablehlo_pass.h",
     ],
     copts = [
         "-Ithird_party",
@@ -203,7 +203,7 @@ cc_library(
         ":optimize",
         ":rename_entrypoint_to_main",
         ":smuggle_disallowed_ops",
-        ":tf_mhlo",
+        ":tf_stablehlo",
         ":unfuse_batch_norm_pass",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
@@ -226,7 +226,7 @@ cc_library(
         "-Ithird_party",
     ],
     deps = [
-        ":mhlo_util",
+        ":stablehlo_util",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
     ],
@@ -244,7 +244,7 @@ cc_library(
         "-Ithird_party",
     ],
     deps = [
-        ":mhlo_util",
+        ":stablehlo_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -353,8 +353,8 @@ tf_cc_binary(
     copts = ["-O3"],
     deps = [
         ":check_accepted_ops_pass",
-        ":mhlo_tfl",
         ":op_stat_pass",
+        ":stablehlo_tfl",
         ":transforms",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir:init_mlir",
@@ -386,16 +386,16 @@ tf_cc_binary(
 )
 
 tf_cc_binary(
-    name = "tf-mhlo-tfl-opt",
+    name = "odml-to-stablehlo-opt",
     testonly = True,
     tags = ["hostonly"],
     deps = [
         ":fold_broadcast_pass",
         ":fuse_convolution_pass",
-        ":mhlo_tfl",
         ":optimize",
-        ":tf_mhlo",
-        ":tfl_mhlo",
+        ":stablehlo_tfl",
+        ":tf_stablehlo",
+        ":tfl_stablehlo",
         ":unfuse_batch_norm_pass",
         "//tensorflow/compiler/mlir:passes",
         "//tensorflow/compiler/mlir:tf_mlir_opt_main",

@@ -1,4 +1,4 @@
-// RUN: tf-mhlo-tfl-opt %s -constant-fold-broadcast-pass -cse -verify-diagnostics | FileCheck %s
+// RUN: odml-to-stablehlo-opt %s -constant-fold-broadcast-pass -cse -verify-diagnostics | FileCheck %s
 
 // CHECK-LABEL: @foldBroadcastInDimBeforeMulOp_bcast_dim_1D_float
 func.func @foldBroadcastInDimBeforeMulOp_bcast_dim_1D_float() -> (tensor<1x1x2x4xf32>) {

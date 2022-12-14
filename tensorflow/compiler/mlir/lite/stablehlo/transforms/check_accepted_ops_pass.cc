@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/mhlo_util.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_util.h"
 
 namespace mlir {
 namespace odml {
