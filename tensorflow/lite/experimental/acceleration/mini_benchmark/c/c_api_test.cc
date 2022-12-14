@@ -193,11 +193,12 @@ TEST_F(CApiTest, SucceedWithCustomValidationAndPassingRule) {
   EXPECT_THAT(events, testing::Not(testing::IsEmpty()));
   for (auto& event : events) {
     EXPECT_EQ(event->event_type(), tflite::BenchmarkEventType_END);
+    EXPECT_TRUE(event->result()->ok());
   }
   TfLiteMiniBenchmarkResultFree(result);
 }
 
-TEST_F(CApiTest, ReturnEmptyWhenAccuracyCheckFail) {
+TEST_F(CApiTest, ReturnNotOkWhenAccuracyCheckFail) {
   if (!should_perform_test_) {
     std::cerr << "Skipping test";
     return;
@@ -230,7 +231,11 @@ TEST_F(CApiTest, ReturnEmptyWhenAccuracyCheckFail) {
 
   EXPECT_THAT(result->init_status, tflite::acceleration::kMinibenchmarkSuccess);
 
-  EXPECT_THAT(events, testing::IsEmpty());
+  EXPECT_THAT(events, testing::Not(testing::IsEmpty()));
+  for (auto& event : events) {
+    EXPECT_EQ(event->event_type(), tflite::BenchmarkEventType_END);
+    EXPECT_FALSE(event->result()->ok());
+  }
   TfLiteMiniBenchmarkResultFree(result);
 }
 
@@ -254,7 +259,7 @@ TEST_F(CApiTest, ReturnFailStatusWhenModelPathInvalid) {
   TfLiteMiniBenchmarkResultFree(result);
 }
 
-TEST_F(CApiTest, ReturnEmptyWhenTestTimedOut) {
+TEST_F(CApiTest, ReturnErrorWhenTestTimedOut) {
   if (!should_perform_test_) {
     std::cerr << "Skipping test";
     return;
@@ -274,8 +279,15 @@ TEST_F(CApiTest, ReturnEmptyWhenTestTimedOut) {
       TfLiteBlockingValidatorRunnerTriggerValidation(&settings);
 
   EXPECT_THAT(result->init_status, tflite::acceleration::kMinibenchmarkSuccess);
-  EXPECT_EQ(result->flatbuffer_data, nullptr);
-  EXPECT_EQ(result->flatbuffer_data_size, 0);
+  std::vector<const tflite::BenchmarkEvent*> events =
+      ToBenchmarkEvents(result->flatbuffer_data, result->flatbuffer_data_size);
+
+  EXPECT_THAT(result->init_status, tflite::acceleration::kMinibenchmarkSuccess);
+
+  EXPECT_THAT(events, testing::Not(testing::IsEmpty()));
+  for (auto& event : events) {
+    EXPECT_EQ(event->event_type(), tflite::BenchmarkEventType_ERROR);
+  }
   TfLiteMiniBenchmarkResultFree(result);
 }
 

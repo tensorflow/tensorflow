@@ -79,9 +79,8 @@ class CResultEvaluator
 };
 
 // Allocate memory in minibenchmark_result and serialize benchmark_events to it.
-void CreateData(
-    const std::vector<const tflite::BenchmarkEvent*>& benchmark_events,
-    TfLiteMiniBenchmarkResult& minibenchmark_result) {
+void CreateData(std::vector<FlatBufferBuilder> benchmark_events,
+                TfLiteMiniBenchmarkResult& minibenchmark_result) {
   if (benchmark_events.empty()) {
     return;
   }
@@ -89,10 +88,11 @@ void CreateData(
   std::vector<uint8_t> data;
   data.reserve(kPerBenchmarkEventSize * benchmark_events.size());
   auto cur = data.begin();
-  for (auto& event : benchmark_events) {
+  for (auto& event_data : benchmark_events) {
     FlatBufferBuilder fbb;
     tflite::BenchmarkEventT event_obj;
-    event->UnPackTo(&event_obj);
+    flatbuffers::GetRoot<tflite::BenchmarkEvent>(event_data.GetBufferPointer())
+        ->UnPackTo(&event_obj);
     fbb.FinishSizePrefixed(CreateBenchmarkEvent(fbb, &event_obj));
     data.insert(cur, fbb.GetBufferPointer(),
                 fbb.GetBufferPointer() + fbb.GetSize());

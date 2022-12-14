@@ -89,7 +89,7 @@ cc_library(
     hdrs = ["jni/accuracy_benchmark.h"],
     deps = [
         "//tensorflow/lite:minimal_logging",
-        "@flatbuffers//:public_headers_lib",
+        "@flatbuffers",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:blocking_validator_runner",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",

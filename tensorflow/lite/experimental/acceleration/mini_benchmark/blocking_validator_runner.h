@@ -41,9 +41,10 @@ class BlockingValidatorRunner {
 
   MinibenchmarkStatus Init();
 
-  // Trigger the validation tests with for_settings, and return the successful
-  // test result.
-  std::vector<const BenchmarkEvent*> TriggerValidation(
+  // Trigger the validation tests with for_settings, and return the test result.
+  // Each for_settings will have a corresponding result. The result is of schema
+  // BenchmarkEvent.
+  std::vector<flatbuffers::FlatBufferBuilder> TriggerValidation(
       const std::vector<const TFLiteSettings*>& for_settings);
 
  private:
