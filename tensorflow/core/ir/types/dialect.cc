@@ -536,6 +536,10 @@ TensorFlowType TensorFlowRefType::get(Type type) {
     return DoubleRefType::get(ctx);
   } else if (type.isBF16()) {
     return Bfloat16RefType::get(ctx);
+  } else if (type.isFloat8E4M3FN()) {
+    return Float8E4M3FNRefType::get(ctx);
+  } else if (type.isFloat8E5M2()) {
+    return Float8E5M2RefType::get(ctx);
   } else if (auto complex_type = type.dyn_cast<ComplexType>()) {
     Type etype = complex_type.getElementType();
     if (etype.isF32()) {
@@ -580,6 +584,8 @@ Type TensorFlowRefType::RemoveRef() {
   if (isa<FloatRefType>()) return FloatType::getF32(ctx);
   if (isa<DoubleRefType>()) return FloatType::getF64(ctx);
   if (isa<Bfloat16RefType>()) return FloatType::getBF16(ctx);
+  if (isa<Float8E4M3FNType>()) return FloatType::getFloat8E4M3FN(ctx);
+  if (isa<Float8E5M2Type>()) return FloatType::getFloat8E5M2(ctx);
   if (isa<BoolRefType>()) return IntegerType::get(ctx, 1);
   if (isa<Int8RefType>()) return IntegerType::get(ctx, 8);
   if (isa<Int16RefType>()) return IntegerType::get(ctx, 16);
