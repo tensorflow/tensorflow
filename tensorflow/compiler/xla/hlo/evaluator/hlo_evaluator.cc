@@ -856,6 +856,7 @@ StatusOr<Literal> HloEvaluator::Evaluate(
   CHECK(computation.parent() != nullptr);
   XLA_VLOG_LINES(
       2, "HloEvaluator::Evaluate computation:\n" + computation.ToString());
+  OnEvaluateComputation(computation);
 
   if (arg_literals.size() != computation.num_parameters()) {
     return InvalidArgument(

@@ -151,6 +151,13 @@ func.func @custom_call(%arg0: !rt.execution_context) {
 // -----
 
 // CHECK: global internal constant @__rt_custom_call_name("target\00")
+
+// CHECK: global internal constant @__rt_empty_rets()
+// CHECK: {
+// CHECK:   llvm.mlir.undef : !llvm.array<1 x ptr>
+// CHECK:    llvm.mlir.addressof @__rt_zero : !llvm.ptr
+// CHECK: }
+
 // CHECK: global internal constant @__rt_num_attrs(0 : i64)
 
 // CHECK: global internal constant @__rt_custom_call_attrs()
@@ -159,21 +166,21 @@ func.func @custom_call(%arg0: !rt.execution_context) {
 // CHECK:   llvm.mlir.addressof @__rt_num_attrs : !llvm.ptr
 // CHECK: }
 
-// CHECK: global internal constant @__rt_num_args(0 : i64)
+// CHECK: global internal constant @__rt_empty_args()
+// CHECK: {
+// CHECK:   llvm.mlir.undef : !llvm.array<1 x ptr>
+// CHECK:    llvm.mlir.addressof @__rt_zero : !llvm.ptr
+// CHECK: }
 
 // CHECK: func @dynamic_custom_call(
 // CHECK:   %[[CTX:.*]]: !llvm.ptr
 // CHECK: )
 func.func @dynamic_custom_call(%arg0: !rt.execution_context) {
 
-  // CHECK: %[[C1:.*]] = arith.constant 1 : i32
-  // CHECK: %[[RETS:.*]] = llvm.alloca %[[C1]] x !llvm.array<1 x ptr>
-
-  // CHECK: %[[C1_0:.*]] = arith.constant 1 : i32
-  // CHECK: %[[ARGS:.*]] = llvm.alloca %[[C1_0]] x !llvm.array<1 x ptr>
-
   // CHECK: %[[CALLEE_ADDR:.*]] = llvm.mlir.addressof @__rt_custom_call_name
+  // CHECK: %[[ARGS:.*]] = llvm.mlir.addressof @__rt_empty_args
   // CHECK: %[[ATTRS:.*]] = llvm.mlir.addressof @__rt_custom_call_attrs
+  // CHECK: %[[RETS:.*]] = llvm.mlir.addressof @__rt_empty_rets
 
   // CHECK: %[[STATUS:.*]] = call @runtimeCustomCall(%[[CTX]], %[[CALLEE_ADDR]],
   // CHECK-SAME:                                     %[[ARGS]], %[[ATTRS]],
@@ -310,10 +317,7 @@ func.func @custom_call(%arg0: !rt.execution_context) {
 
 // -----
 
-// CHECK: llvm.mlir.global internal constant @__rt_rets_type_table
-// CHECK: llvm.mlir.undef : !llvm.array<0 x ptr>
-// CHECK: llvm.return {{.*}} : !llvm.array<0 x ptr>
-// CHECK: llvm.mlir.global internal constant @__rt_num_rets(0 : i64)
+// CHECK: llvm.mlir.global internal constant @__rt_empty_rets()
 
 // CHECK: llvm.mlir.global internal constant @__rt_num_attrs(0 : i64)
 // CHECK: llvm.mlir.global internal constant @__rt_custom_call_attrs
@@ -329,7 +333,6 @@ func.func @custom_call(%arg0: !rt.execution_context) {
 func.func @custom_call(%arg0: !rt.execution_context, %arg1 : f32) {
   // CHECK-DAG: %[[MEM:.*]] = llvm.alloca {{.*}} x f32
   // CHECK-DAG: %[[ARGS:.*]] = llvm.alloca {{.*}} x !llvm.array<3 x ptr>
-  // CHECK-DAG: %[[RETS:.*]] = llvm.alloca {{.*}} x !llvm.array<1 x ptr>
 
   // CHECK-DAG: %[[N_ARGS:.*]] = llvm.mlir.addressof @__rt_num_args
   // CHECK-DAG: llvm.store %[[ARG]], %[[MEM]]
@@ -339,12 +342,10 @@ func.func @custom_call(%arg0: !rt.execution_context, %arg1 : f32) {
   // CHECK: llvm.intr.lifetime.start -1, %[[ARGS]]
   // CHECK: llvm.store {{.*}}, %[[ARGS]] : !llvm.array<3 x ptr>, !llvm.ptr
 
-  // CHECK: llvm.intr.lifetime.start -1, %[[RETS]]
-  // CHECK: llvm.store {{.*}}, %[[RETS]] : !llvm.array<1 x ptr>, !llvm.ptr
+  // CHECK: %[[RETS:.*]] = llvm.mlir.addressof @__rt_empty_rets
 
   // CHECK: call @target
   // CHECK: llvm.intr.lifetime.end -1, %[[ARGS]]
-  // CHECK: llvm.intr.lifetime.end -1, %[[RETS]]
   rt.call %arg0["target"] (%arg1) : (f32) -> ()
   func.return
 }

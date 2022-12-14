@@ -125,6 +125,10 @@ struct TfrtCompileOptions {
 
   // Whether to compile to sync TFRT dialect.
   bool compile_to_sync_tfrt_dialect = false;
+
+  // Whether to use bridge for GPU.
+  // TODO(b/260915352): Remove the flag and default to using bridge.
+  bool use_bridge_for_gpu = false;
 };
 
 std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options);

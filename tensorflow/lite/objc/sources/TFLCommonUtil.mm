@@ -18,7 +18,7 @@
 #import "tensorflow/lite/objc/apis/TFLTensor.h"
 
 #ifdef COCOAPODS
-@import TensorFlowLiteC;
+#import <TensorFlowLiteC/TensorFlowLiteC.h>
 #else
 #include "tensorflow/lite/core/c/c_api.h"
 #endif  // COCOAPODS

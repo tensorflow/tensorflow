@@ -27,8 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
-namespace TFL {
-namespace mhlo {
+namespace odml {
 
 namespace {
 
@@ -84,6 +83,5 @@ std::unique_ptr<Pass> CreateSmuggleDisallowedOpsPass() {
 
 static PassRegistration<SmuggleDisallowedOpsPass> pass;
 
-}  // namespace mhlo
-}  // namespace TFL
+}  // namespace odml
 }  // namespace mlir

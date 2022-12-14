@@ -54,7 +54,7 @@ Optional<std::unique_ptr<tflite::ModelT>> InjectStatsToFullyConnected(
   auto model_ptr = tflite::FlatBufferModel::VerifyAndBuildFromBuffer(
       buffer.data(), buffer.size());
   if (nullptr == model_ptr) {
-    return llvm::None;
+    return std::nullopt;
   }
   std::unique_ptr<tflite::ModelT> model(model_ptr->GetModel()->UnPack());
 

@@ -1404,7 +1404,7 @@ HoistCwiseBinaryOutOfConcat::GetHoistParams(
 
   // Concat result type must be a ranked tensor.
   auto ranked = op.getType().dyn_cast<RankedTensorType>();
-  if (!ranked) return None;
+  if (!ranked) return llvm::None;
 
   // TODO(ezhulenev): Add support for more valid concat patterns.
 
@@ -1439,7 +1439,7 @@ HoistCwiseBinaryOutOfConcat::GetHoistParams(
                        op.getType(),
                        /*scalar_operand_idx=*/0};
   }
-  return None;
+  return llvm::None;
 }
 
 }  // namespace

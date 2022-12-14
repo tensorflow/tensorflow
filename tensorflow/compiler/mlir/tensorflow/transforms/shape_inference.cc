@@ -2321,7 +2321,7 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
 
   llvm::SmallVector<ShapedTypeComponents, 4> inferred_return_shapes;
   if (failed(InferReturnTypeComponentsForTFOp(
-          /*location=*/None, op, graph_version_, operand_as_constant_fn,
+          /*location=*/llvm::None, op, graph_version_, operand_as_constant_fn,
           op_result_as_shape_fn, result_element_type_fn,
           inferred_return_shapes)))
     return false;

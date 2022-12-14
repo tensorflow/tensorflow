@@ -283,7 +283,8 @@ class XlaBuilder {
   // As a result they are set on the computation builder and all the
   // instructions generated via the computation builder will have the same
   // frontend attributes attached to them.
-  void SetFrontendAttributes(const FrontendAttributes& frontend_attributes) {
+  virtual void SetFrontendAttributes(
+      const FrontendAttributes& frontend_attributes) {
     frontend_attributes_ = frontend_attributes;
   }
 

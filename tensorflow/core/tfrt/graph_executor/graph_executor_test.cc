@@ -100,10 +100,13 @@ TEST_F(GraphExecutorTest, Extend) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   GraphExecutor::Options options(runtime.get());
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto fallback_state,
-      tensorflow::tfrt_stub::FallbackState::Create(
-          CreateDefaultSessionOptions(options), graph_def.library()));
+  auto session_options = CreateDefaultSessionOptions(options);
+  // Disable optimizations for static graph to allow calls to Session::Extend.
+  session_options.config.mutable_experimental()
+      ->set_disable_optimize_for_static_graph(true);
+  TF_ASSERT_OK_AND_ASSIGN(auto fallback_state,
+                          tensorflow::tfrt_stub::FallbackState::Create(
+                              session_options, graph_def.library()));
   auto tpu_model_resource = std::make_unique<tfrt::tpu::TpuModelResource>();
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_executor,

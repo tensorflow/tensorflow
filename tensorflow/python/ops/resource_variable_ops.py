@@ -665,17 +665,18 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     return gen_state_ops.resource_count_up_to(
         self.handle, limit=limit, T=self.dtype)
 
-  def _map_resources(self, save_options):
+  def _export_to_saved_model_graph(self, object_map=None, tensor_map=None,
+                                   options=None, **kwargs):
     """For implementing `Trackable`."""
     new_variable = None
-    if save_options.experimental_variable_policy._save_variable_devices():  # pylint:disable=protected-access
+    if options.experimental_variable_policy._save_variable_devices():  # pylint:disable=protected-access
       with ops.device(self.device):
         new_variable = copy_to_graph_uninitialized(self)
     else:
       new_variable = copy_to_graph_uninitialized(self)
-    obj_map = {self: new_variable}
-    resource_map = {self.handle: new_variable.handle}
-    return obj_map, resource_map
+    object_map[self] = new_variable
+    tensor_map[self.handle] = new_variable.handle
+    return [self.handle]
 
   def _read_variable_op(self, no_copy=False):
     """Reads the value of the variable.

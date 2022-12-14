@@ -3,11 +3,15 @@
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load(
-    "//tensorflow:tensorflow.bzl",
+    "//tensorflow/tsl:tsl.bzl",
     "if_cuda_or_rocm",
-    "tf_cc_test",
 )
-load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary", "xla_py_proto_library")
+load(
+    "//tensorflow/compiler/xla:xla.bzl",
+    "xla_cc_binary",
+    "xla_cc_test",
+    "xla_py_proto_library",
+)
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
@@ -227,7 +231,7 @@ xla_cc_binary(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "hlo_extractor_test",
     srcs = ["hlo_extractor_test.cc"],
     deps = [
@@ -307,7 +311,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "hlo_module_loader_test",
     srcs = ["hlo_module_loader_test.cc"],
     deps = [
@@ -424,7 +428,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "hlo_control_flow_flattening_test",
     srcs = ["hlo_control_flow_flattening_test.cc"],
     deps = [

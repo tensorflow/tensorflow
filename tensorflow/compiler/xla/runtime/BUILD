@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
 load("//tensorflow/tsl/platform:build_config.bzl", "tf_platform_deps")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
@@ -6,7 +6,7 @@ load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//tensorflow:internal",
+        "//tensorflow/compiler/xla:internal",
         "@tf_runtime//:friends",
     ],
     licenses = ["notice"],
@@ -31,7 +31,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "arguments_test",
     srcs = ["arguments_test.cc"],
     deps = [
@@ -105,7 +105,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "custom_call_test",
     srcs = ["custom_call_test.cc"],
     deps = [
@@ -151,7 +151,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "diagnostics_test",
     srcs = ["diagnostics_test.cc"],
     deps = [
@@ -202,7 +202,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "executable_test",
     srcs = ["executable_test.cc"],
     tags = ["nomsan"],  # TODO(ezhulenev): Find msan error in LLVM coroutine passes
@@ -259,7 +259,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "ffi_test",
     srcs = ["ffi_test.cc"],
     deps = [
@@ -321,7 +321,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "map_by_type_test",
     srcs = ["map_by_type_test.cc"],
     deps = [
@@ -369,7 +369,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "module_test",
     srcs = ["module_test.cc"],
     deps = [
@@ -390,7 +390,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "results_test",
     srcs = ["results_test.cc"],
     deps = [
@@ -419,7 +419,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "state_test",
     srcs = ["state_test.cc"],
     deps = [
@@ -446,7 +446,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "symbolic_shape_test",
     srcs = ["symbolic_shape_test.cc"],
     deps = [
@@ -506,7 +506,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "type_id_test",
     srcs = ["type_id_test.cc"],
     deps = [

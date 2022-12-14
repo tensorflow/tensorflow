@@ -504,8 +504,8 @@ add_computation {
 }
 
 ENTRY main {
-  parameter_1.6 = f32[32,150]{1,0} parameter(0)
-  broadcast.599 = f32[32,4,72,150]{3,2,1,0} broadcast(parameter_1.6), dimensions={0,3}
+  parameter_1.6 = f32[32,72,150]{2,1,0} parameter(0)
+  broadcast.599 = f32[32,4,72,150]{3,2,1,0} broadcast(parameter_1.6), dimensions={0,2,3}
   constant.474 = f32[] constant(-inf)
   reduce.45 = f32[32,4,72]{2,1,0} reduce(broadcast.599, constant.474), dimensions={3}, to_apply=max_computation
   broadcast.600 = f32[32,4,72,150]{3,2,1,0} broadcast(reduce.45), dimensions={0,1,2}
@@ -1060,6 +1060,30 @@ ENTRY main {
   %param_0 = u32[13,3]{1,0} parameter(0)
   %constant_zero = f32[] constant(0)
   %convert = f32[13,3]{1,0} convert(u32[13,3]{1,0} %param_0)
+  %cosine = f32[13,3]{1,0} cosine(f32[13,3]{1,0} %convert)
+  %reduce = f32[13]{0} reduce(f32[13,3]{1,0} %cosine, f32[] %constant_zero), dimensions={1}, to_apply=add_computation
+  %broadcast = f32[13,3]{1,0} broadcast(f32[13]{0} %reduce), dimensions={0}
+  ROOT add = f32[13,3]{1,0} add(f32[13,3]{1,0} %cosine, f32[13,3]{1,0} %broadcast)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(SoftmaxFusionTest, FuseableOpsInvolvingBfloat16BeforeProducer) {
+  const std::string& hlo_string = R"(
+HloModule softmax
+
+add_computation {
+  arg0 = f32[] parameter(0)
+  arg1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg0, arg1)
+}
+
+ENTRY main {
+  %param_0 = bf16[13,3]{1,0} parameter(0)
+  %constant_zero = f32[] constant(0)
+  %convert = f32[13,3]{1,0} convert(bf16[13,3]{1,0} %param_0)
   %cosine = f32[13,3]{1,0} cosine(f32[13,3]{1,0} %convert)
   %reduce = f32[13]{0} reduce(f32[13,3]{1,0} %cosine, f32[] %constant_zero), dimensions={1}, to_apply=add_computation
   %broadcast = f32[13,3]{1,0} broadcast(f32[13]{0} %reduce), dimensions={0}

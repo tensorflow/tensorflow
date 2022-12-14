@@ -1,4 +1,5 @@
-// RUN: mlir-hlo-opt %s -test-gml-st-bufferization -canonicalize -cse \
+// RUN: mlir-hlo-opt %s -empty-tensor-to-alloc-tensor \
+// RUN:   -test-gml-st-bufferization -canonicalize -cse \
 // RUN:   -split-input-file | FileCheck %s
 
 func.func @set_tile(%input: tensor<?x?xf32>) -> tensor<2x4xf32> {

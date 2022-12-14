@@ -183,6 +183,7 @@ def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/hip")
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/rocprim")
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/rocsolver")
+        inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/rocblas")
     else:
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/hip/include")
 

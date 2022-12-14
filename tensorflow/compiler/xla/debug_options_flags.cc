@@ -98,7 +98,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_shape_checks(DebugOptions::RUNTIME);
   opts.set_xla_cpu_enable_mlir_lowering(false);
   opts.set_xla_gpu_enable_mlir_lowering(true);
-  opts.set_xla_gpu_enable_softmax_fusion(false);
+  opts.set_xla_gpu_enable_softmax_fusion(true);
   opts.set_xla_gpu_normalize_layouts(true);
   opts.set_xla_gpu_simplify_all_fp_conversions(true);
   opts.set_xla_dump_latency_hiding_schedule(false);

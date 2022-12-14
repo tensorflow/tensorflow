@@ -32,7 +32,7 @@ limitations under the License.
 
 using namespace mlir;
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   mlir::registerAllPasses();
   mlir::hlo::registerLMHLOTransformsPasses();
   mlir::registerLMHLOGPUTransformsPasses();
@@ -66,6 +66,18 @@ int main(int argc, char **argv) {
         return createHloToGpuPipeline(pm, opts.blockTileDim, opts.warpTileDim,
                                       opts.threadTileDim,
                                       opts.experimentalSoftmax);
+      });
+
+  struct HloToTritonPipelineOptions
+      : public PassPipelineOptions<HloToTritonPipelineOptions> {
+    ListOption<int64_t> blockTileDim{
+        *this, "block-tile",
+        llvm::cl::desc("dimensions of the subproblem processed by the block")};
+  };
+  mlir::PassPipelineRegistration<HloToTritonPipelineOptions>(
+      "hlo-to-triton-pipeline", "Pipeline to transform HLO to Triton dialect.",
+      [](OpPassManager& pm, const HloToTritonPipelineOptions& opts) {
+        return createHloToTritonPipeline(pm, opts.blockTileDim);
       });
 
   mlir::DialectRegistry registry;

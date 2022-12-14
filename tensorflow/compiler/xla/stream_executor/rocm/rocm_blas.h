@@ -48,6 +48,11 @@ struct RocBlasTypeConversionHelper<Eigen::half> {
 };
 
 template <>
+struct RocBlasTypeConversionHelper<Eigen::bfloat16> {
+  using mapped_type = rocblas_bfloat16;
+};
+
+template <>
 struct RocBlasTypeConversionHelper<std::complex<float>> {
   using mapped_type = rocblas_float_complex;
 };

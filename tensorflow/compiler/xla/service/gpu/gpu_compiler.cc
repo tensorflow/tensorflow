@@ -128,7 +128,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
@@ -1765,7 +1764,9 @@ static Status GetMlirAllocationInfo(mlir::func::FuncOp func,
   }
 
   for (int i = 0; i < func.getNumArguments(); i++) {
-    for (const mlir::NamedAttribute& attr : func.getArgAttrs(i)) {
+    llvm::ArrayRef<mlir::NamedAttribute> attrs =
+        mlir::function_interface_impl::getArgAttrs(func, i);
+    for (const mlir::NamedAttribute& attr : attrs) {
       TF_RET_CHECK(attr.getName() == "lmhlo.params" ||
                    attr.getName() == "lmhlo.param_shape_index" ||
                    attr.getName() == "lmhlo.constant_name" ||

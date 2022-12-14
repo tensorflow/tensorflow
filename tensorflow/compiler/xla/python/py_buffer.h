@@ -109,14 +109,24 @@ class PyBuffer {
   }
 
   void SetPjRtBuffer(std::shared_ptr<PjRtBuffer> buffer) {
-    auto ifrt_array =
-        xla::ifrt::PjRtArray::Create(client_->ifrt_client(), std::move(buffer));
+    auto* client = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(
+        client_->ifrt_client());
+    if (client == nullptr) {
+      throw XlaRuntimeError(
+          "This operation is implemented for a PjRt-compatible backend only.");
+    }
+    auto ifrt_array = xla::ifrt::PjRtArray::Create(client, std::move(buffer));
     TF_CHECK_OK(ifrt_array.status());
     ifrt_array_ = *std::move(ifrt_array);
   }
   void SetPjRtBuffer(std::unique_ptr<PjRtBuffer> buffer) {
-    auto ifrt_array =
-        xla::ifrt::PjRtArray::Create(client_->ifrt_client(), std::move(buffer));
+    auto* client = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(
+        client_->ifrt_client());
+    if (client == nullptr) {
+      throw XlaRuntimeError(
+          "This operation is implemented for a PjRt-compatible backend only.");
+    }
+    auto ifrt_array = xla::ifrt::PjRtArray::Create(client, std::move(buffer));
     TF_CHECK_OK(ifrt_array.status());
     ifrt_array_ = *std::move(ifrt_array);
   }
@@ -414,10 +424,15 @@ class PyShardedBuffer {
       throw XlaRuntimeError(
           "This operation is implemented for a PjRt-compatible backend only.");
     }
+    auto* ifrt_client = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(
+        client_->ifrt_client());
+    if (ifrt_client == nullptr) {
+      throw XlaRuntimeError(
+          "This operation is implemented for a PjRt-compatible backend only.");
+    }
     auto& pjrt_buffer = arr->pjrt_buffers().at(device_id);
     auto py_buffer = PyBuffer::Make(
-        client_,
-        ifrt::PjRtArray::Create(client_->ifrt_client(), pjrt_buffer).value(),
+        client_, ifrt::PjRtArray::Create(ifrt_client, pjrt_buffer).value(),
         traceback_);
     if (sticky_) {
       TF_CHECK_OK(py_buffer.buf()->set_sticky_device(pjrt_buffer->device()));

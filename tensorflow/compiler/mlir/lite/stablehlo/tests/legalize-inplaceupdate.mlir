@@ -1,4 +1,4 @@
-// RUN: tf-mhlo-tfl-opt %s -tf-mhlo | FileCheck %s
+// RUN: odml-to-stablehlo-opt %s -tf-stablehlo | FileCheck %s
 
 module attributes {tf.versions = {producer = 888 : i32}} {
 

@@ -315,6 +315,24 @@ FunctionDef XTimesFour() {
       {{"y", "y:y:0"}});
 }
 
+FunctionDef XTimesFourInt32() {
+  return FDH::Create(
+      // Name
+      "XTimesFourInt32",
+      // Args
+      {"x: int32"},
+      // Return values
+      {"y: int32"},
+      // Attr def
+      {},
+      // Nodes
+      {
+          {{"x2"}, "XTimesTwoInt32", {"x"}},
+          {{"y"}, "XTimesTwoInt32", {"x2:y:0"}},
+      },
+      {{"y", "y:y:0"}});
+}
+
 FunctionDef XTimes16() {
   return FDH::Create(
       // Name

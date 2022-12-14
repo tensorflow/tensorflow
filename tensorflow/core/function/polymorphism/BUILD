@@ -72,6 +72,7 @@ pytype_strict_library(
     deps = [
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/types",
+        "@absl_py//absl/logging",
     ],
 )
 

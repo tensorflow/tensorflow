@@ -4,7 +4,7 @@ load("//tensorflow/tsl:tsl.bzl", "if_with_tpu_support")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )
 

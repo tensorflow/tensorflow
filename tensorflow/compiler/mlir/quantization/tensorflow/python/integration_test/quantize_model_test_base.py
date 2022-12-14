@@ -164,14 +164,18 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         return True
     return False
 
-  def _create_simple_tf1_conv_model(self,
-                                    use_variable_for_filter=False
-                                   ) -> Tuple[core.Tensor, core.Tensor]:
+  def _create_simple_tf1_conv_model(
+      self,
+      input_shape: Sequence[int] = (1, 3, 4, 3),
+      filter_shape: Sequence[int] = (2, 3, 3, 2),
+      use_variable_for_filter=False) -> Tuple[core.Tensor, core.Tensor]:
     """Creates a basic convolution model.
 
     This is intended to be used for TF1 (graph mode) tests.
 
     Args:
+      input_shape: Shape of the input tensor.
+      filter_shape: Shape of the filter.
       use_variable_for_filter: Setting this to `True` makes the filter for the
         conv operation a `tf.Variable`.
 
@@ -179,10 +183,10 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       in_placeholder: Input tensor placeholder.
       output_tensor: The resulting tensor of the convolution operation.
     """
-    in_placeholder = array_ops.placeholder(dtypes.float32, shape=[1, 3, 4, 3])
+    in_placeholder = array_ops.placeholder(dtypes.float32, shape=input_shape)
 
     filters = random_ops.random_uniform(
-        shape=(2, 3, 3, 2), minval=-1., maxval=1.)
+        shape=filter_shape, minval=-1., maxval=1.)
     if use_variable_for_filter:
       filters = variables.Variable(filters)
 
@@ -623,13 +627,17 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
                 shape=input_shape, dtype=dtypes.float32, name='input_tensor')))
     return model
 
-  def _create_and_save_tf1_conv_model(self,
-                                      saved_model_path: str,
-                                      signature_key: str,
-                                      tags: Collection[str],
-                                      input_key: str,
-                                      output_key: str,
-                                      use_variable=False) -> core.Tensor:
+  def _create_and_save_tf1_conv_model(
+      self,
+      saved_model_path: str,
+      signature_key: str,
+      tags: Collection[str],
+      input_key: str,
+      output_key: str,
+      *,
+      input_shape: Sequence[int] = (1, 3, 4, 3),
+      filter_shape: Sequence[int] = (2, 3, 3, 2),
+      use_variable: bool = False) -> core.Tensor:
     """Creates and saves a simple convolution model.
 
     This is intended to be used for TF1 (graph mode) tests.
@@ -641,6 +649,8 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       tags: Set of tags associated with the model.
       input_key: The key to the input tensor.
       output_key: The key to the output tensor.
+      input_shape: Shape of the input tensor.
+      filter_shape: Shape of the filter.
       use_variable: Setting this to `True` makes the filter for the conv
         operation a `tf.Variable`.
 
@@ -649,6 +659,8 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     """
     with ops.Graph().as_default(), session.Session() as sess:
       in_placeholder, output_tensor = self._create_simple_tf1_conv_model(
+          input_shape=input_shape,
+          filter_shape=filter_shape,
           use_variable_for_filter=use_variable)
 
       if use_variable:

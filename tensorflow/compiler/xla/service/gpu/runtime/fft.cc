@@ -23,37 +23,61 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/state.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
+#include "tensorflow/compiler/xla/stream_executor/fft.h"
 
 namespace xla {
-namespace gpu {
 
 using xla::runtime::CustomCall;
 using xla::runtime::State;
 using xla::runtime::StridedMemrefView;
 
-using llvm::ArrayRef;
+//===----------------------------------------------------------------------===//
+// Register FFT attributes decoding with the Xla runtime.
+//===----------------------------------------------------------------------===//
+
+namespace runtime {
+
+XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(se::fft::Type);
+
+}  // namespace runtime
+
+//===----------------------------------------------------------------------===//
+// Encoding from MHLO attributes to Xla runtime aggregate attributes.
+//===----------------------------------------------------------------------===//
+
+namespace gpu {
 
 namespace mhlo = ::mlir::mhlo;
 
-namespace {
-struct Fft {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          State<std::unique_ptr<FftPlanCache>> state,
-                          runtime::StridedMemrefView input,
-                          runtime::StridedMemrefView output,
-                          ArrayRef<int64_t> fft_length,
-                          se::fft::Type fft_type) const;
-  static Fft Handler() { return Fft(); }
-};
-}  // namespace
+static se::fft::Type ConvertFftType(mhlo::FftType type) {
+  switch (type) {
+    case mhlo::FftType::FFT:
+      return se::fft::Type::kC2CForward;
+    case mhlo::FftType::IFFT:
+      return se::fft::Type::kC2CInverse;
+    case mhlo::FftType::RFFT:
+      return se::fft::Type::kR2C;
+    case mhlo::FftType::IRFFT:
+      return se::fft::Type::kC2R;
+    default:
+      return se::fft::Type::kInvalid;
+  }
+}
 
-absl::Status Fft::operator()(const ServiceExecutableRunOptions* run_options,
-                             State<std::unique_ptr<FftPlanCache>> state,
-                             runtime::StridedMemrefView input,
-                             runtime::StridedMemrefView output,
-                             ArrayRef<int64_t> fft_length,
-                             se::fft::Type fft_type) const {
+void PopulateFftAttrEncoding(runtime::CustomCallAttrEncodingSet& encoding) {
+  encoding.Add<runtime::EnumAttrEncoding<mhlo::FftTypeAttr, mhlo::FftType,
+                                         se::fft::Type>>(ConvertFftType);
+}
+
+//===----------------------------------------------------------------------===//
+// FFT custom call implementation.
+//===----------------------------------------------------------------------===//
+
+static absl::Status FftImpl(const ServiceExecutableRunOptions* run_options,
+                            State<std::unique_ptr<FftPlanCache>> state,
+                            StridedMemrefView input, StridedMemrefView output,
+                            llvm::ArrayRef<int64_t> fft_length,
+                            se::fft::Type fft_type) {
   se::Stream* stream = run_options->stream();
   se::StreamExecutor* executor = stream->parent();
 
@@ -93,36 +117,19 @@ absl::Status Fft::operator()(const ServiceExecutableRunOptions* run_options,
 }
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
-    Fft, Fft::Handler(), checks,
+    Fft, FunctionWrapper<FftImpl>(), checks,
     CustomCall::Bind("xla.gpu.fft")
         .UserData<const ServiceExecutableRunOptions*>()
         .State<std::unique_ptr<FftPlanCache>>("uid")
-        .Arg<runtime::StridedMemrefView>()  // input
-        .Arg<runtime::StridedMemrefView>()  // output
-        .Attr<ArrayRef<int64_t>>("fft_length")
+        .Arg<StridedMemrefView>()  // input
+        .Arg<StridedMemrefView>()  // output
+        .Attr<llvm::ArrayRef<int64_t>>("fft_length")
         .Attr<se::fft::Type>("fft_type"));
 
-void PopulateFftAttrEncoding(runtime::CustomCallAttrEncodingSet& encoding) {
-  encoding.Add<runtime::EnumAttrEncoding<mhlo::FftTypeAttr, mhlo::FftType,
-                                         se::fft::Type>>(
-      [](mhlo::FftType value) -> se::fft::Type {
-        switch (value) {
-          case mhlo::FftType::FFT:
-            return se::fft::Type::kC2CForward;
-          case mhlo::FftType::IFFT:
-            return se::fft::Type::kC2CInverse;
-          case mhlo::FftType::RFFT:
-            return se::fft::Type::kR2C;
-          case mhlo::FftType::IRFFT:
-            return se::fft::Type::kC2R;
-          default:
-            return se::fft::Type::kInvalid;
-        }
-      });
-}
+//===----------------------------------------------------------------------===//
 
 void RegisterFftCustomCalls(runtime::DirectCustomCallRegistry& registry) {
-  registry.Register("xla.gpu.fft", &xla::gpu::Fft);
+  registry.Register("xla.gpu.fft", Fft);
 }
 
 }  // namespace gpu

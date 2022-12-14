@@ -1370,6 +1370,7 @@ def MHLO_WhileOp: MHLO_Op<"while", [
   let hasCanonicalizer = 1;
   let hasCustomAssemblyFormat = 1;
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 def MHLO_AllGatherOp : MHLO_Op<"all_gather", [SameOperandsAndResultElementType]> {
@@ -2032,7 +2033,6 @@ def MHLO_ConcatenateOp : MHLO_ShapedInterfaceOp<"concatenate",
 
   let hasCanonicalizer = 1;
   let hasFolder = 1;
-  let hasVerifier = 1;
 }
 
 def MHLO_CollectivePermuteOp: MHLO_Op<"collective_permute",
@@ -2386,7 +2386,8 @@ def MHLO_GatherOp: MHLO_Op<"gather", [InferTensorTypeWithReify, Pure]> {
   let hasCanonicalizer = 1;
 }
 
-def MHLO_GetDimensionSizeOp: MHLO_Op<"get_dimension_size", [Pure]> {
+def MHLO_GetDimensionSizeOp: MHLO_Op<"get_dimension_size", [Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "GetDimensionSize operator";
   let description = [{
     Returns the size of the given dimension of the operand.
@@ -2679,7 +2680,8 @@ def MHLO_PartitionIdOp : MHLO_Op<"partition_id", [
 }
 
 def MHLO_PadOp: MHLO_ShapedInterfaceOp<"pad",
-      [Pure, SameOperandsAndResultElementType, InferTensorType]> {
+      [Pure, SameOperandsAndResultElementType,
+      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Pad operator";
   let description = [{
     Pads edges and between the elements of `operand` with the `padding_value`
@@ -2857,6 +2859,7 @@ def MHLO_ReduceWindowOp: MHLO_Op<"reduce_window", [
 
   let hasCustomHLOConverter = 1;
   let hasFolder = 1;
+  let hasVerifier = 1;
   // TODO(hinsu): Implement custom printer and parser.
 
   let extraClassDeclaration = [{
@@ -3286,6 +3289,7 @@ def MHLO_DynamicConvOp : MHLO_Op<"dynamic_conv", [Pure]> {
        MHLO_Tensor:$d_padding),
     MHLO_ConvolutionAttributes.attributes);
   let results = (outs MHLO_Tensor);
+  let hasCanonicalizer = 1;
   let hasCustomHLOConverter = 1;
 }
 

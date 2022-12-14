@@ -49,19 +49,19 @@ class LegalizeCollectiveOpsPass
 
 Optional<xla_cpu::ReductionKind> MatchReductionComputation(Region& region) {
   if (!region.hasOneBlock()) {
-    return None;
+    return llvm::None;
   }
 
   auto ret = dyn_cast<mhlo::ReturnOp>(region.front().getTerminator());
   if (!ret || ret->getNumOperands() != 1) {
-    return None;
+    return llvm::None;
   }
 
   auto computation = ret.getOperand(0).getDefiningOp();
   if (computation->getNumOperands() != 2 ||
       computation->getOperand(0) != region.front().getArgument(0) ||
       computation->getOperand(1) != region.front().getArgument(1)) {
-    return None;
+    return llvm::None;
   }
 
   if (isa<mhlo::AddOp>(computation)) {
@@ -79,7 +79,7 @@ Optional<xla_cpu::ReductionKind> MatchReductionComputation(Region& region) {
 
   auto type = computation->getOperandTypes().front().dyn_cast<ShapedType>();
   if (!type || !type.getElementType().isInteger(1)) {
-    return None;
+    return llvm::None;
   }
 
   if (isa<mhlo::AndOp>(computation)) {
@@ -89,7 +89,7 @@ Optional<xla_cpu::ReductionKind> MatchReductionComputation(Region& region) {
     return xla_cpu::ReductionKind::ALL_REDUCE_MAX;
   }
 
-  return None;
+  return llvm::None;
 }
 
 // Returns a `tensor.empty` with the same shape as `tensor`.

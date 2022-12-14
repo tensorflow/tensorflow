@@ -113,6 +113,12 @@ def if_libtpu(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
+def if_macos(a, otherwise = []):
+    return select({
+        clean_dep("//tensorflow/tsl:macos"): a,
+        "//conditions:default": otherwise,
+    })
+
 def if_windows(a, otherwise = []):
     return select({
         clean_dep("//tensorflow/tsl:windows"): a,
@@ -177,15 +183,15 @@ def if_no_default_logger(a):
 # Combine with 'if_gpu_is_configured' (XLA) or 'if_cuda_or_rocm' (otherwise).
 def if_nccl(if_true, if_false = []):
     return select({
-        "//tensorflow/tsl:no_nccl_support": if_false,
-        "//tensorflow/tsl:windows": if_false,
+        clean_dep("//tensorflow/tsl:no_nccl_support"): if_false,
+        clean_dep("//tensorflow/tsl:windows"): if_false,
         "//conditions:default": if_true,
     })
 
 def if_with_tpu_support(if_true, if_false = []):
     """Shorthand for select()ing whether to build API support for TPUs when building TSL"""
     return select({
-        "//tensorflow/tsl:with_tpu_support": if_true,
+        clean_dep("//tensorflow/tsl:with_tpu_support"): if_true,
         "//conditions:default": if_false,
     })
 

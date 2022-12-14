@@ -4167,9 +4167,12 @@ tf_python_pybind_extension(
         "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/tsl/python/lib/core:numpy_hdr",
     ],
-    # Only include TensorFlow header-only targets here.
-    # If a cc_library needs to depend on TensorFlow .cc files through srcs or
-    # deps, then you can use cc_header_only_library to keep only headers.
+    dynamic_deps = [":_pywrap_tensorflow_internal.so"] + select({
+        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+        "//tensorflow:windows": [],
+    }),
+    static_deps = tf_python_pybind_static_deps(),
     deps = [
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/lib/core:pybind11_lib",

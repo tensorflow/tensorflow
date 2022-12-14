@@ -1494,15 +1494,13 @@ StatusOr<bool> LatencyHidingScheduler::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(5) << "Original module:";
-  bool is_module_changed = false;
   XLA_VLOG_LINES(5, module->ToString());
   // Currently we expect that a schedule that minimizes memory pressure is
   // provided as a base. It's not necessary for the algorithm itself but it
-  // allows us to not having to think for now to memory pressure.
+  // allows us to not having to think for now about memory pressure.
   std::vector<HloComputation*> computations_to_schedule;
   computations_to_schedule.reserve(module->computation_count());
   // Collect which computations have latency hiding opportunities.
-  // Convert collective permutes to start/done pairs.
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (auto* instr : computation->instructions()) {
@@ -1515,9 +1513,8 @@ StatusOr<bool> LatencyHidingScheduler::Run(
   }
 
   if (computations_to_schedule.empty()) {
-    return is_module_changed;
+    return false;
   }
-  is_module_changed = true;
 
   TF_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
   for (HloComputation* computation : computations_to_schedule) {
@@ -1525,12 +1522,12 @@ StatusOr<bool> LatencyHidingScheduler::Run(
     LogScheduleStatistics(computation);
     TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
                         scheduler_core_->ScheduleComputation(computation));
-    computation->parent()->schedule().set_sequence(
-        computation, absl::MakeConstSpan(new_schedule));
+    module->schedule().set_sequence(computation,
+                                    absl::MakeConstSpan(new_schedule));
     VLOG(1) << "Statistics after scheduling:";
     LogScheduleStatistics(computation);
   }
-  return is_module_changed;
+  return true;
 }
 
 }  // namespace xla
