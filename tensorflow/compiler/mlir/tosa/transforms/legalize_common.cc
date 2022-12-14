@@ -2679,7 +2679,7 @@ static Value convertGenericReduceOp(PatternRewriter& rewriter, Operation* op,
           .value();
 
   auto transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
-      rewriter, loc, UnrankedTensorType::get(rewriter.getI32Type()), input,
+      rewriter, loc, UnrankedTensorType::get(input_etype), input,
       perms_value);
 
   auto reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
