@@ -1,6 +1,5 @@
-# TODO(zacmustin): describe this package.
-# TODO(zacmustin): branch this file properly from tf/python/lib/core/BUILD. This is just to avoid
-# lots of annoying merge conflicts.
+# Description:
+# Implementation of custom numpy floats.
 
 package(
     default_visibility = [
