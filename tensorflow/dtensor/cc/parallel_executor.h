@@ -49,6 +49,9 @@ class ParallelExecutor {
       const TFE_OpAttrs* attributes) const = 0;
 };
 
+// Factory method for Default ParallelExecutor instance.
+std::unique_ptr<ParallelExecutor> CreateDefaultParallelExecutor();
+
 }  // namespace dtensor
 }  // namespace tensorflow
 
