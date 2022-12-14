@@ -17,38 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_STABLEHLO_UTIL_H_
 
 #include <string>
+#include <vector>
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Block.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
-#include "stablehlo/dialect/Register.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/rewriters.h"
 
 namespace mlir {
 namespace odml {
@@ -59,44 +30,10 @@ std::vector<std::string> GetAcceptedDialects();
 bool IsAcceptedDialect(llvm::StringRef dialect_name,
                        const std::vector<std::string> &accepted_dialects);
 
-// Is MHLO op allowed in the TF to MHLO conversion result?
-bool IsMhloOpAllowed(StringRef op_name);
-
 // The consolidated logic to verify if each final op is acceptable or not.
 // Also see `PrintOpStatsPass` and `CheckAcceptedOpsPass`.
 bool IsAcceptedOp(llvm::StringRef dialect_name, llvm::StringRef op_name,
                   const std::vector<std::string> &accepted_dialects);
-
-// Adds patterns which map TF Ops to MHLO Ops.
-inline void PopulateTFToMhloPatterns(
-    MLIRContext *context, bool legalize_chlo,
-    llvm::Optional<StringRef> tf2xla_fallback_device_type, bool prefer_tf2xla,
-    RewritePatternSet *patterns) {
-  // Add TF->HLO legalization patterns.
-  ::mlir::mhlo::PopulateLegalizeTfPatterns(context, patterns);
-
-  // Add TF->TF lowering patterns.
-  TF::PopulateTFLoweringBeforeHLOPatterns(context, patterns);
-
-  if (tf2xla_fallback_device_type) {
-    // Adding fallback Tf2XlaPatterns is needed to make the patterns work.
-    // Add TF->HLO legalization patterns via TF2XLA fallback.
-    ::mlir::mhlo::PopulateLegalizeTfWithTf2XlaPatterns(
-        tf2xla_fallback_device_type.value(), *patterns, context, prefer_tf2xla);
-  }
-
-  // Populate with CHLO->HLO lowerings to account for TF ops legalized to
-  // client HLO (CHLO) first.
-  // https://github.com/tensorflow/mlir-hlo
-  if (legalize_chlo) {
-    chlo::populateDecomposeChloPatterns(context, patterns);
-    chlo::populateChloBroadcastingPatterns(context, patterns);
-  }
-  // ConstantLike op is convenient to create splat constants, but is
-  // canonicalized to plain HLO constant if statically shaped. Add the
-  // canonicalization pattern to pattern list to enable multi-hop lowering.
-  ::mlir::chlo::ConstantLikeOp::getCanonicalizationPatterns(*patterns, context);
-}
 
 }  // namespace odml
 }  // namespace mlir

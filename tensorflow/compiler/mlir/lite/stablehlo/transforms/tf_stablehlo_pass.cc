@@ -18,8 +18,26 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
+#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/rewriters.h"
 
 namespace mlir {
 namespace odml {
@@ -71,11 +89,13 @@ void TFToStablehloPass::runOnOperation() {
   MLIRContext *context = func->getContext();
 
   RewritePatternSet patterns(context);
-  // Add TF to MHLO patterns.
-  PopulateTFToMhloPatterns(
-      context, /*legalize_chlo=*/true,
-      /*tf2xla_fallback_device_type=*/llvm::StringRef("XLA_CPU_JIT"),
-      /*prefer_tf2xla=*/false, &patterns);
+  mhlo::PopulateLegalizeTfPatterns(context, &patterns);
+  TF::PopulateTFLoweringBeforeHLOPatterns(context, &patterns);
+  mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns, context,
+                                             /*prefer_tf2xla=*/false);
+  chlo::populateDecomposeChloPatterns(context, &patterns);
+  chlo::populateChloBroadcastingPatterns(context, &patterns);
+  chlo::ConstantLikeOp::getCanonicalizationPatterns(patterns, context);
 
   ConversionTarget target(*context);
   target.addIllegalDialect<chlo::ChloDialect>();

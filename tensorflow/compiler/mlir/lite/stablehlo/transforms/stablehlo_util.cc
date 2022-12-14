@@ -17,28 +17,18 @@ limitations under the License.
 
 #include <algorithm>
 #include <string>
+#include <vector>
 
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/StringRef.h"
 
 namespace mlir {
 namespace odml {
 
-std::vector<std::string> GetAcceptedDialects() {
-  // It returns the default list of accepted dialects.
-  std::vector<std::string> accepted_dialects({"mhlo", "builtin", "func"});
-  return accepted_dialects;
-}
-
-bool IsAcceptedDialect(llvm::StringRef dialect_name,
-                       const std::vector<std::string>& accepted_dialects) {
-  return std::find(accepted_dialects.begin(), accepted_dialects.end(),
-                   dialect_name) != accepted_dialects.end();
-}
-
-bool IsMhloOpAllowed(StringRef op_name) {
+namespace {
+bool IsMhloOpAllowed(llvm::StringRef op_name) {
   // As per go/compute-ir-ops-v01.
-  static DenseSet<StringRef>* denylist = new DenseSet<StringRef>{
+  static llvm::DenseSet<llvm::StringRef>* denylist = new llvm::DenseSet<
+      llvm::StringRef>{
       // (R2) Part 1: Internal ops.
       "bitcast", "fusion",
       // (R2) Part 2: Modularity ops.
@@ -63,6 +53,19 @@ bool IsMhloOpAllowed(StringRef op_name) {
       // "dynamic-slice", "dynamic-update-slice"
   };
   return !denylist->contains(op_name);
+}
+}  // namespace
+
+std::vector<std::string> GetAcceptedDialects() {
+  // It returns the default list of accepted dialects.
+  std::vector<std::string> accepted_dialects({"mhlo", "builtin", "func"});
+  return accepted_dialects;
+}
+
+bool IsAcceptedDialect(llvm::StringRef dialect_name,
+                       const std::vector<std::string>& accepted_dialects) {
+  return std::find(accepted_dialects.begin(), accepted_dialects.end(),
+                   dialect_name) != accepted_dialects.end();
 }
 
 bool IsAcceptedOp(llvm::StringRef dialect_name, llvm::StringRef op_name,
