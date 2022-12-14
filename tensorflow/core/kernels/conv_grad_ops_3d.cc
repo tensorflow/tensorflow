@@ -1580,11 +1580,12 @@ struct LaunchConvBackpropInputOp<Eigen::bfloat16> {
     auto* stream = ctx->op_device_context()->stream();
     const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
         se::CudaComputeCapability::AMPERE);
-    Tensor casted_out_backprop = out_backprop;
-    Tensor casted_filter = filter;
-    Tensor casted_in_backprop = *in_backprop;
 
     if (cast_to_float) {
+      Tensor casted_out_backprop = out_backprop;
+      Tensor casted_filter = filter;
+      Tensor casted_in_backprop = *in_backprop;
+
       const GPUDevice& device = ctx->eigen_device<GPUDevice>();
       functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
       OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, out_backprop.shape(),
@@ -1612,8 +1613,8 @@ struct LaunchConvBackpropInputOp<Eigen::bfloat16> {
     }
 
     LaunchConvBackpropInputOpImpl<Eigen::bfloat16>(
-        ctx, cudnn_use_autotune, casted_out_backprop, casted_filter, dilation,
-        strides, padding, in_backprop, data_format);
+        ctx, cudnn_use_autotune, out_backprop, filter, dilation, strides,
+        padding, in_backprop, data_format);
   }
 };
 
@@ -2035,40 +2036,42 @@ struct LaunchConvBackpropFilterOp<Eigen::bfloat16> {
       auto* stream = ctx->op_device_context()->stream();
       const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
           se::CudaComputeCapability::AMPERE);
-      Tensor casted_input = input;
-      Tensor casted_out_backprop = out_backprop;
-      Tensor casted_filter_backprop = *filter_backprop;
 
       if (cast_to_float) {
-      const GPUDevice& device = ctx->eigen_device<GPUDevice>();
-      functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
-      OP_REQUIRES_OK(
-          ctx, ctx->allocate_temp(DT_FLOAT, input.shape(), &casted_input));
-      cast(device, casted_input.template flat<float>(),
-           input.template flat<Eigen::bfloat16>());
+        Tensor casted_input = input;
+        Tensor casted_out_backprop = out_backprop;
+        Tensor casted_filter_backprop = *filter_backprop;
 
-      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, out_backprop.shape(),
-                                             &casted_out_backprop));
-      cast(device, casted_out_backprop.template flat<float>(),
-           out_backprop.template flat<Eigen::bfloat16>());
+        const GPUDevice& device = ctx->eigen_device<GPUDevice>();
+        functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
+        OP_REQUIRES_OK(
+            ctx, ctx->allocate_temp(DT_FLOAT, input.shape(), &casted_input));
+        cast(device, casted_input.template flat<float>(),
+             input.template flat<Eigen::bfloat16>());
 
-      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, filter_backprop->shape(),
-                                             &casted_filter_backprop));
+        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, out_backprop.shape(),
+                                               &casted_out_backprop));
+        cast(device, casted_out_backprop.template flat<float>(),
+             out_backprop.template flat<Eigen::bfloat16>());
 
-      LaunchConvBackpropFilterOpImpl<float>(
-          ctx, cudnn_use_autotune, casted_input, casted_out_backprop, dilation,
-          stride, padding, &casted_filter_backprop, data_format);
+        OP_REQUIRES_OK(ctx,
+                       ctx->allocate_temp(DT_FLOAT, filter_backprop->shape(),
+                                          &casted_filter_backprop));
 
-      functor::CastFunctor<GPUDevice, Eigen::bfloat16, float> cast_back;
-      const Tensor& casted_filter_backprop_const = casted_filter_backprop;
-      cast_back(device, filter_backprop->template flat<Eigen::bfloat16>(),
-                casted_filter_backprop_const.template flat<float>());
-      return;
+        LaunchConvBackpropFilterOpImpl<float>(
+            ctx, cudnn_use_autotune, casted_input, casted_out_backprop,
+            dilation, stride, padding, &casted_filter_backprop, data_format);
+
+        functor::CastFunctor<GPUDevice, Eigen::bfloat16, float> cast_back;
+        const Tensor& casted_filter_backprop_const = casted_filter_backprop;
+        cast_back(device, filter_backprop->template flat<Eigen::bfloat16>(),
+                  casted_filter_backprop_const.template flat<float>());
+        return;
       }
 
       LaunchConvBackpropFilterOpImpl<Eigen::bfloat16>(
-          ctx, cudnn_use_autotune, casted_input, casted_out_backprop, dilation,
-          stride, padding, filter_backprop, data_format);
+          ctx, cudnn_use_autotune, input, out_backprop, dilation, stride,
+          padding, filter_backprop, data_format);
     }
 };
 
