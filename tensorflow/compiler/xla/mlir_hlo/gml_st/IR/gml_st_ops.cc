@@ -1745,12 +1745,9 @@ void TileOp::build(OpBuilder &b, OperationState &result,
                    ArrayRef<NamedAttribute> attrs) {
   SmallVector<int64_t> staticOffsets, staticSizes, staticStrides;
   SmallVector<Value> dynamicOffsets, dynamicSizes, dynamicStrides;
-  dispatchIndexOpFoldResults(offsets, dynamicOffsets, staticOffsets,
-                             ShapedType::kDynamic);
-  dispatchIndexOpFoldResults(sizes, dynamicSizes, staticSizes,
-                             ShapedType::kDynamic);
-  dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides,
-                             ShapedType::kDynamic);
+  dispatchIndexOpFoldResults(offsets, dynamicOffsets, staticOffsets);
+  dispatchIndexOpFoldResults(sizes, dynamicSizes, staticSizes);
+  dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides);
   auto tileType = TileType::get(b.getContext(), staticSizes);
   build(b, result, tileType, dynamicOffsets, dynamicSizes, dynamicStrides,
         b.getDenseI64ArrayAttr(staticOffsets),
