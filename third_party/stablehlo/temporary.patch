@@ -15,6 +15,53 @@ diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Ba
  }
  
  // Returns true if the given types are the same for the purposes of HLO type
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -25,6 +25,7 @@
+ #include <cstdint>
+ #include <functional>
+ #include <numeric>
++#include <optional>
+ #include <set>
+ #include <unordered_map>
+ #include <utility>
+@@ -255,7 +256,7 @@
+ LogicalResult ReduceScatterOp::verify() {
+   if (failed(hlo::verifyReplicaGroups(getLoc(), getReplicaGroups(),
+                                       /*allGroupsMustHaveSameSize=*/true,
+-                                      /*expectedGroupSize=*/llvm::None)))
++                                      /*expectedGroupSize=*/std::nullopt)))
+     return failure();
+   auto operandType = getOperand().getType().cast<TensorType>();
+   bool operandTypeRanked = operandType.isa<RankedTensorType>();
+@@ -2006,7 +2007,7 @@
+ LogicalResult AllGatherOp::verify() {
+   if (failed(hlo::verifyReplicaGroups(getLoc(), getReplicaGroups(),
+                                       /*allGroupsMustHaveSameSize=*/true,
+-                                      /*expectedGroupSize=*/llvm::None)))
++                                      /*expectedGroupSize=*/std::nullopt)))
+     return failure();
+ 
+   auto operandType = getOperand().getType().dyn_cast<RankedTensorType>();
+@@ -2063,7 +2064,7 @@
+ LogicalResult AllReduceOp::verify() {
+   if (failed(hlo::verifyReplicaGroups(getLoc(), getReplicaGroups(),
+                                       /*allGroupsMustHaveSameSize=*/false,
+-                                      /*expectedGroupSize=*/llvm::None)))
++                                      /*expectedGroupSize=*/std::nullopt)))
+     return failure();
+ 
+   auto operandType = getOperand().getType().cast<TensorType>();
+@@ -5488,7 +5489,7 @@
+ 
+   // Use TOTALORDER comparison type instead of the default comparison if the
+   // element type is of type float.
+-  llvm::Optional<StringRef> compareType = llvm::None;
++  llvm::Optional<StringRef> compareType = std::nullopt;
+   for (auto const& elementType : elementTypes)
+     if (elementType.isa<FloatType>()) {
+       compareType.emplace("TOTALORDER");
 diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
 --- stablehlo/stablehlo/dialect/TypeInference.cpp
 +++ stablehlo/stablehlo/dialect/TypeInference.cpp
