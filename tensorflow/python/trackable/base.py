@@ -745,27 +745,6 @@ class Trackable(object):
     """
     raise NotImplementedError
 
-  def _map_resources(self, save_options):  # pylint: disable=unused-argument
-    """Makes new resource handle ops corresponding to existing resource tensors.
-
-    Internal sub-classes can override this to inform model saving how to add new
-    resource handle ops to the main GraphDef of a SavedModel (TF 1.x style
-    graph), which allows session based APIs (e.g, C++ loader API) to interact
-    with resources owned by this object.
-
-    Args:
-      save_options: A tf.saved_model.SaveOptions instance.
-
-    Returns:
-      A tuple of (object_map, resource_map):
-        object_map: A dictionary mapping from objects that hold existing
-          resource tensors to replacement objects created to hold the new
-          resource tensors.
-        resource_map: A dictionary mapping from existing resource tensors to
-          newly created resource tensors.
-    """
-    return {}, {}
-
   def _serialize_to_proto(self, object_proto=None, **kwargs):
     """Returns a proto of any type to be saved into the SavedModel.
 
@@ -1044,9 +1023,9 @@ class Trackable(object):
     return {name: ref for name, ref in self._checkpoint_dependencies}
 
   def _export_to_saved_model_graph(self,
-                                   object_map=None,
-                                   tensor_map=None,
-                                   options=None,
+                                   object_map,
+                                   tensor_map,
+                                   options,
                                    **kwargs):
     """Creates a copy of this object's tensors onto SavedModel graph.
 
@@ -1072,8 +1051,6 @@ class Trackable(object):
     Returns:
       Flat list of original tensors that have been copied.
     """
-    del kwargs  # Unused.
-    self_object_map, self_tensor_map = self._map_resources(options)
-    object_map.update(self_object_map)
-    tensor_map.update(self_tensor_map)
-    return list(self_tensor_map.keys())
+    _, _, _ = object_map, tensor_map, options
+    del kwargs
+    return []
