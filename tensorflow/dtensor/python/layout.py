@@ -707,7 +707,7 @@ class Layout(object):
   def unravel(self, unpacked_tensors: List[np.ndarray]) -> np.ndarray:
     """Convert a flattened list of shards into a sharded array."""
     unravelled = np.ndarray([self.num_shards(i) for i in range(self.rank)],
-                            dtype=np.object)
+                            dtype=object)
     for offset, loc in enumerate(self.offset_to_shard()):
       unravelled[loc] = unpacked_tensors[offset]
     return unravelled
