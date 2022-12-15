@@ -77,6 +77,21 @@ tf_cuda_library(
     }),
 )
 
+tf_cc_test(
+    name = "eager_executor_test",
+    srcs = ["eager_executor_test.cc"],
+    deps = [
+        ":core",
+        ":eager_executor",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+    ],
+)
+
 tf_cuda_library(
     name = "context",
     srcs = [
@@ -328,6 +343,18 @@ tf_cuda_library(
     }),
 )
 
+tf_cc_test(
+    name = "tensor_handle_data_test",
+    srcs = ["tensor_handle_data_test.cc"],
+    deps = [
+        ":core",
+        ":tensor_handle_data",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
+    ],
+)
+
 tf_cuda_library(
     name = "tensor_handle",
     srcs = [
@@ -368,15 +395,13 @@ tf_cc_test(
     srcs = ["tensor_handle_test.cc"],
     deps = [
         ":core",
-        ":eager_operation",
-        ":execute",
         ":tensor_handle",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@com_google_absl//absl/memory",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 
@@ -710,6 +735,27 @@ tf_cuda_library(
             "//tensorflow/core:protos_all_cc",
         ],
     }),
+)
+
+tf_cc_test(
+    name = "placement_utils_test",
+    srcs = ["placement_utils_test.cc"],
+    deps = [
+        ":core",
+        ":eager_operation",
+        ":execute",
+        ":placement_utils",
+        ":tensor_handle",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:device_mgr",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:array",
+        "@com_google_googletest//:gtest",
+    ],
 )
 
 tf_cuda_library(

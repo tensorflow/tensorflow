@@ -27,6 +27,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -377,12 +378,11 @@ LogicalResult ReduceScatterOp::verify() {
   auto operandType = getOperand().getType().cast<TensorType>();
   bool operandTypeRanked = operandType.isa<RankedTensorType>();
   Block& block = getComputation().front();
-  SmallVector<TensorType> accumulatorSubshapes;
   if (failed(hlo::verifyReducerShape(
           this->getLoc(), block, {operandType},
           {RankedTensorType::get({}, operandType.getElementType())},
           /*numInputs=*/1, /*allowedDimensions=*/{},
-          /*allInputsUnranked=*/!operandTypeRanked, accumulatorSubshapes)))
+          /*allInputsUnranked=*/!operandTypeRanked)))
     return failure();
 
   return mlir::hlo::verifyReduceScatter(
@@ -467,7 +467,7 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(XorOp)
 //===----------------------------------------------------------------------===//
 
 Type maybeTupleFromTypes(MLIRContext* ctx, ArrayRef<Type> types) {
-  if (types.size() == 1) return types[0];
+  if (types.size() == 1 && !types[0].isa<TupleType>()) return types[0];
   return TupleType::get(ctx, TypeRange(types));
 }
 
@@ -1105,12 +1105,16 @@ LogicalResult DotGeneralOp::verify() {
     auto rhsShape = rhsType.getShape();
 
     for (auto [lhs, rhs] : llvm::zip(lhsBatchingDims, rhsBatchingDims)) {
+      if (hlo::isDynamicDimSize(lhsShape[lhs])) continue;
+      if (hlo::isDynamicDimSize(rhsShape[rhs])) continue;
       if (lhsShape[lhs] != rhsShape[rhs]) {
         return emitOpError() << "batching dimension sizes must match for "
                                 "lhs/rhs";
       }
     }
     for (auto [lhs, rhs] : llvm::zip(lhsContractingDims, rhsContractingDims)) {
+      if (hlo::isDynamicDimSize(lhsShape[lhs])) continue;
+      if (hlo::isDynamicDimSize(rhsShape[rhs])) continue;
       if (lhsShape[lhs] != rhsShape[rhs]) {
         return emitOpError() << "contracting dimension sizes must match for "
                                 "lhs/rhs";
@@ -2826,6 +2830,26 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
   inferredReturnShapes.emplace_back(resultShape,
                                     operandRankedType.getElementType());
   return success();
+}
+
+void AllToAllOp::build(OpBuilder& odsBuilder, OperationState& odsState,
+                       Type resultType, Value operand,
+                       IntegerAttr splitDimension, IntegerAttr concatDimension,
+                       IntegerAttr splitCount,
+                       DenseIntElementsAttr replicaGroups) {
+  AllToAllOp::build(odsBuilder, odsState, resultType, operand, splitDimension,
+                    concatDimension, splitCount, replicaGroups,
+                    /*channel_handle=*/nullptr);
+}
+
+void AllToAllOp::build(OpBuilder& odsBuilder, OperationState& odsState,
+                       ::mlir::TypeRange resultType, ::mlir::ValueRange operand,
+                       IntegerAttr splitDimension, IntegerAttr concatDimension,
+                       IntegerAttr splitCount,
+                       DenseIntElementsAttr replicaGroups) {
+  AllToAllOp::build(odsBuilder, odsState, resultType, operand, splitDimension,
+                    concatDimension, splitCount, replicaGroups,
+                    /*channel_handle=*/nullptr);
 }
 
 //===----------------------------------------------------------------------===//
@@ -4621,6 +4645,71 @@ LogicalResult ReduceWindowOp::fold(ArrayRef<Attribute> operands,
   }
 
   return failure();
+}
+
+// Builder that takes a constructor for its region and infers result types
+void ReduceWindowOp::build(
+    OpBuilder& odsBuilder, OperationState& odsState, ValueRange inputs,
+    ValueRange init_values, DenseIntElementsAttr window_dimensions,
+    /*optional*/ DenseIntElementsAttr window_strides,
+    /*optional*/ DenseIntElementsAttr base_dilations,
+    /*optional*/ DenseIntElementsAttr window_dilations,
+    /*optional*/ DenseIntElementsAttr padding,
+    function_ref<void(OpBuilder&, Location, ValueRange)> bodyBuilder) {
+  odsState.addOperands(inputs);
+  odsState.addOperands(init_values);
+  odsState.addAttribute(getWindowDimensionsAttrName(odsState.name),
+                        window_dimensions);
+  if (window_strides) {
+    odsState.addAttribute(getWindowStridesAttrName(odsState.name),
+                          window_strides);
+  }
+  if (base_dilations) {
+    odsState.addAttribute(getBaseDilationsAttrName(odsState.name),
+                          base_dilations);
+  }
+  if (window_dilations) {
+    odsState.addAttribute(getWindowDilationsAttrName(odsState.name),
+                          window_dilations);
+  }
+  if (padding) {
+    odsState.addAttribute(getPaddingAttrName(odsState.name), padding);
+  }
+  Region* region = odsState.addRegion();
+
+  llvm::SmallVector<Type> blockArgTypes;
+  llvm::SmallVector<Location> locs;
+  auto numValues = inputs.size() + init_values.size();
+  blockArgTypes.reserve(numValues);
+  locs.reserve(numValues);
+  for (auto i : inputs) {
+    auto iType = i.getType().cast<ShapedType>();
+    blockArgTypes.push_back(iType.cloneWith(
+        llvm::makeArrayRef<int64_t>(std::nullopt), iType.getElementType()));
+    locs.push_back(i.getLoc());
+  }
+  for (auto i : init_values) {
+    auto iType = i.getType().cast<ShapedType>();
+    blockArgTypes.push_back(iType.cloneWith(
+        llvm::makeArrayRef<int64_t>(std::nullopt), iType.getElementType()));
+    locs.push_back(i.getLoc());
+  }
+
+  {
+    OpBuilder::InsertionGuard g(odsBuilder);
+    Block* body =
+        odsBuilder.createBlock(region, /*insertPt=*/{}, blockArgTypes, locs);
+    bodyBuilder(odsBuilder, odsState.location, body->getArguments());
+  }
+
+  llvm::SmallVector<mlir::Type, 2> inferredReturnTypes;
+  if (mlir::succeeded(ReduceWindowOp::inferReturnTypes(
+          odsBuilder.getContext(), odsState.location, odsState.operands,
+          odsState.attributes.getDictionary(odsState.getContext()),
+          odsState.regions, inferredReturnTypes)))
+    odsState.addTypes(inferredReturnTypes);
+  else
+    llvm::report_fatal_error("Failed to infer result type(s).");
 }
 
 //===----------------------------------------------------------------------===//
@@ -7030,47 +7119,14 @@ LogicalResult TransposeOp::reifyReturnTypeShapes(
   return success();
 }
 
-// Method for InferTypeOpInterface: infer the return type from the operand type
-// and the permutation.
 LogicalResult TransposeOp::inferReturnTypes(
-    MLIRContext* /*context*/, Optional<Location> loc, ValueRange operands,
-    DictionaryAttr attributes, RegionRange,
+    MLIRContext*, Optional<Location> loc, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  auto type = operands[0].getType();
-  auto rankedTy = type.dyn_cast<RankedTensorType>();
-  if (!rankedTy) {
-    auto shapedTy = type.dyn_cast<ShapedType>();
-    inferredReturnTypes.emplace_back(shapedTy);
-    return success();
-  }
-  auto permutation = attributes.getAs<DenseIntElementsAttr>("permutation");
-  int64_t rank = rankedTy.getRank();
-  if (permutation.getType().getRank() != 1)
-    return emitOptionalError(loc, "TransposeOp permutation has rank ",
-                             permutation.getType().getRank(),
-                             " instead of rank 1");
-
-  if (permutation.size() != rank)
-    return emitOptionalError(loc, "TransposeOp operand rank ", rank,
-                             " does not match permutation size ",
-                             permutation.size());
-
-  std::vector<int64_t> range(rank);
-  std::iota(range.begin(), range.end(), 0);
-  if (!std::is_permutation(range.begin(), range.end(), permutation.begin()))
-    return emitOptionalError(loc,
-                             "attribute permutation must be a permutation"
-                             " of [",
-                             range, "] but got ", permutation);
-
-  SmallVector<int64_t> resultShape;
-  ArrayRef<int64_t> inputShape = rankedTy.getShape();
-  for (int64_t dim : permutation.getValues<int64_t>()) {
-    resultShape.push_back(inputShape[dim]);
-  }
-  inferredReturnTypes.emplace_back(RankedTensorType::get(
-      resultShape, rankedTy.getElementType(), rankedTy.getEncoding()));
-  return success();
+  TransposeOp::Adaptor adaptor(operands, attributes, regions);
+  LogicalResult result = hlo::inferTransposeOp(
+      loc, adaptor.getOperand(), adaptor.getPermutation(), inferredReturnTypes);
+  return result;
 }
 
 //===----------------------------------------------------------------------===//
@@ -7340,13 +7396,12 @@ LogicalResult SelectAndScatterOp::verify() {
 
   // P2.
   Block& scatterBlock = getScatter().front();
-  SmallVector<TensorType> accumulatorSubshapes;
   if (failed(hlo::verifyReducerShape(
           this->getLoc(), scatterBlock,
           {RankedTensorType::get({}, sourceType.getElementType())},
           {initValueType},
           /*numInputs=*/1, /*allowedDimensions=*/{},
-          /*allInputsUnranked=*/false, accumulatorSubshapes)))
+          /*allInputsUnranked=*/false)))
     return failure();
 
   // P3.
@@ -7554,7 +7609,6 @@ LogicalResult ScatterOp::verify() {
 
   // P2.
   Block& block = getUpdateComputation().front();
-  SmallVector<TensorType> accumulatorSubshapes;
   SmallVector<TensorType> inputTypes, initValueTypes;
   for (int64_t i = 0; i < static_cast<int64_t>(numOperands); i++) {
     inputTypes.push_back(operandTypes[i]);
@@ -7564,7 +7618,7 @@ LogicalResult ScatterOp::verify() {
   if (failed(hlo::verifyReducerShape(
           this->getLoc(), block, inputTypes, initValueTypes, numOperands,
           /*allowedDimensions=*/{},
-          /*allInputsUnranked=*/!allOperandTypesRanked, accumulatorSubshapes)))
+          /*allInputsUnranked=*/!allOperandTypesRanked)))
     return failure();
 
   // P3.
@@ -8123,10 +8177,14 @@ struct HLOInlinerInterface : public DialectInlinerInterface {
   }
 };
 
-struct HLOBoundedDialectInterface : public hlo::BoundedDialectInterface {
-  using BoundedDialectInterface::BoundedDialectInterface;
+struct HLOBoundedDialectInterface : public hlo::HloDialectInterface {
+  using HloDialectInterface::HloDialectInterface;
 
-  Attribute createBoundedAttr(ArrayRef<int64_t> bounds) const override {
+  Type createTokenType() const override {
+    return TokenType::get(getDialect()->getContext());
+  }
+
+  Attribute createTypeExtensions(ArrayRef<int64_t> bounds) const override {
     return TypeExtensionsAttr::get(getDialect()->getContext(), bounds);
   }
 };
@@ -8946,6 +9004,22 @@ static LogicalResult verifyArgResultAliasAttr(StringAttr attrName,
   return success();
 }
 
+// Each CrossProgramPrefetchAttr specifies a parameter and a ShapeIndex
+// (1) the parameter must be valid
+// (2) there must be a subshape at the given indices
+LogicalResult verifyCrossProgramPrefetchAttr(CrossProgramPrefetchAttr cpp,
+                                             ModuleOp module) {
+  func::FuncOp main = module.lookupSymbol<func::FuncOp>("main");
+  if (cpp.getParameter() >= main.getNumArguments()) return failure();
+  auto type = main.getArgument(cpp.getParameter()).getType();
+  for (auto index : cpp.getIndices()) {
+    auto tupleType = type.dyn_cast<TupleType>();
+    if (!tupleType) return failure();
+    type = tupleType.getType(index);
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // Builder utilities
 //===----------------------------------------------------------------------===//
@@ -9039,6 +9113,19 @@ LogicalResult MhloDialect::verifyOperationAttribute(Operation* op,
       return op->emitOpError()
              << "attribute " << attr.getName()
              << " can only be used on function-like operations";
+  }
+  if (attr.getName() == "mhlo.cross_program_prefetches") {
+    auto arrayAttr = attr.getValue().dyn_cast<ArrayAttr>();
+    if (!arrayAttr) return failure();
+    for (auto attrElt : arrayAttr) {
+      auto prefetchAttr = attrElt.dyn_cast<CrossProgramPrefetchAttr>();
+      if (!prefetchAttr) return failure();
+      auto module = dyn_cast<ModuleOp>(op);
+      if (!module) return failure();
+      if (failed(verifyCrossProgramPrefetchAttr(prefetchAttr, module))) {
+        return failure();
+      }
+    }
   }
   return success();
 }

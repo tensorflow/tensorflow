@@ -169,16 +169,16 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     };
 
     // Create a tiled loop
-    auto tiledLoop =
-        rewriter
-            .create<ForOp>(loc, filledVector.getType(), zero, tileableBound,
-                           tileSizeValue, filledVector, tiledLoopBodyBuilder)
-            .getResult(0);
+    auto tiledLoop = rewriter.create<ForOp>(loc, filledVector.getType(), zero,
+                                            tileableBound, tileSizeValue,
+                                            filledVector, tiledLoopBodyBuilder);
+    setLabel(tiledLoop, kPerfectlyTiledLoopLabel);
 
     // Create `linalg.reduce` from tensor<VECTOR_SIZExELEM_TYPE> to
     // tensor<ELEM_TYPE>.
-    auto horizontalReduce = cloneReduceOp(rewriter, reduceOp, tiledLoop,
-                                          reduceOp.getInits().front());
+    auto horizontalReduce =
+        cloneReduceOp(rewriter, reduceOp, tiledLoop.getResult(0),
+                      reduceOp.getInits().front());
 
     auto remainderLoopBodyBuilder = [&](OpBuilder &b, Location loc,
                                         ValueRange ivs, ValueRange inits) {
@@ -343,20 +343,13 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     if (auto loop =
             dyn_cast_or_null<ParallelOp>(tilingParallelDimsResult->loop)) {
       auto peelingResult = peelAllLoops(loop, rewriter);
-      // Mark all for loops inside remainder parallel loops as peeled to prevent
-      // downstream peeling pass from peeling them.
-      for (auto *remParLoop : peelingResult) {
-        remParLoop->walk([&](Operation *childOp) {
-          if (isa<ForOp>(childOp)) {
-            setLabel(childOp, kPeelingAppliedLabel);
-          }
-        });
-      }
     }
 
-    // Peel reduction loop inside the main parallel loop.
+    // Peel reduction loop inside the main parallel loop, label the main loop as
+    // "perfectly tiled" one, to enable vectorization after canonicalization.
     if (auto loop = dyn_cast_or_null<ForOp>(tilingReductionDimsResult->loop)) {
-      peelAllLoops(loop, rewriter);
+      auto peelingResult = peelAllLoops(loop, rewriter);
+      setLabel(loop, kPerfectlyTiledLoopLabel);
     }
 
     return success();

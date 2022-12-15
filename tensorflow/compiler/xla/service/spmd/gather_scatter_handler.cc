@@ -1405,7 +1405,8 @@ StatusOr<HloInstruction*> PartitionScatter(
           indices.Replicate().hlo(), update_hlos, scatter->to_apply(),
           scatter->scatter_dimension_numbers(), scatter->indices_are_sorted(),
           scatter->unique_indices()));
-  new_scatter->set_sharding(HloSharding::Replicate());
+  new_scatter->set_sharding(
+      HloSharding::Replicate().NormalizeTupleSharding(new_scatter->shape()));
   new_scatter =
       PartitionedHlo(new_scatter, new_scatter->shape(), operands[0].state())
           .Reshard(output_sharding)

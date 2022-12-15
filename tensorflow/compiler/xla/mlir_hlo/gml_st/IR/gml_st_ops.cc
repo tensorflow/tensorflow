@@ -659,7 +659,7 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
       auto constant =
           dyn_cast_or_null<arith::ConstantIndexOp>(v.getDefiningOp());
       if (constant) return constant.value();
-      return None;
+      return llvm::None;
     };
     for (auto [lowerBound, upperBound, step, iv] :
          llvm::zip(op.getLowerBound(), op.getUpperBound(), op.getStep(),

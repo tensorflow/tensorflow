@@ -486,13 +486,13 @@ bool Conv2DInputShapeCanTransform(Value input) {
 // Get block argument id and number of users for the input arg.
 Optional<BlockArgumentInfo> GetBlockArgNum(Value arg) {
   if (auto block_arg = arg.dyn_cast<mlir::BlockArgument>()) {
-    if (!Conv2DInputShapeCanTransform(arg)) return None;
+    if (!Conv2DInputShapeCanTransform(arg)) return llvm::None;
     unsigned num_users =
         std::distance(block_arg.getUsers().begin(), block_arg.getUsers().end());
     BlockArgumentInfo block_arg_info = {block_arg.getArgNumber(), num_users};
     return block_arg_info;
   }
-  return None;
+  return llvm::None;
 }
 
 // Gets input block argument id and number of users for the input recursively.
@@ -520,7 +520,7 @@ Optional<BlockArgumentInfo> GetInputBlockArgNum(Value input) {
     cast_op = dyn_cast_or_null<TF::CastOp>(next_input.getDefiningOp());
   }
 
-  return None;
+  return llvm::None;
 }
 
 // Checks if a convoluton can apply SpaceToDepth transform.
@@ -528,7 +528,7 @@ Optional<BlockArgumentInfo> GetInputBlockArgNum(Value input) {
 // and its input feature size smaller than 8 can be transformed.
 Optional<BlockArgumentInfo> GetConv2DInputArgNum(TF::Conv2DOp conv2d) {
   if (conv2d.getDataFormat() != "NHWC" || conv2d.getStrides().size() != 4) {
-    return None;
+    return llvm::None;
   }
   // Current supported ops between convolution input and the block arguments are
   // PadOp and CastOp.

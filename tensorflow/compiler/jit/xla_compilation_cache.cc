@@ -17,14 +17,18 @@ limitations under the License.
 
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "absl/base/call_once.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/variant.h"
+#include "tensorflow/compiler/jit/device_compilation_cache.h"
+#include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
 #include "tensorflow/compiler/jit/device_compilation_profiler.h"
 #include "tensorflow/compiler/jit/device_compiler_client.h"
 #include "tensorflow/compiler/jit/device_executable_persistor.h"
@@ -67,65 +71,30 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+// Print something that users can search for to definitively ascertain that XLA
+// was used for their TF model.
+//
+// Prints only once to avoid spamming LOG(INFO).
+void LogOnceXlaCompiledFirstCluster() {
+  static absl::once_flag log_once;
+  absl::call_once(log_once, [] {
+    LOG(INFO) << "Compiled cluster using XLA!  This line is logged at most "
+                 "once for the lifetime of the process.";
+  });
+}
 
-using TensorTypeAndShape = XlaCompilationCache::Signature::TensorTypeAndShape;
-
-// Functor that converts a Signature's arg to a human readable string.
-struct SignatureHumanStringAppender {
-  explicit SignatureHumanStringAppender(string* dest) : dest(dest) {}
-  string* dest;
-  void operator()(const Tensor& arg) {
-    absl::StrAppend(dest, "; ", arg.DebugString());
+Status EligibleToPersist(DeviceCompileState compile_state,
+                         const xla::LocalExecutable* executable) {
+  if (compile_state != DeviceCompileState::kCompiled) {
+    return errors::FailedPrecondition(
+        "Cache entry to serialize is not compiled.");
   }
-  void operator()(const TensorTypeAndShape& arg) {
-    absl::StrAppend(dest, ",", DataTypeString(arg.first));
-    absl::StrAppend(dest, " [", absl::StrJoin(arg.second, ","), "]");
+  if (executable == nullptr) {
+    return errors::FailedPrecondition(
+        "LocalExecutable not found for cache entry to serialize.");
   }
-};
-
-// Functor that compares the arg values of two different signatures. Returns
-// true when the args are not equal.
-struct SignatureNotEqual {
-  bool operator()(const Tensor& arg, const Tensor& other) {
-    return arg.dtype() != other.dtype() || arg.shape() != other.shape() ||
-           arg.tensor_data() != other.tensor_data();
-  }
-  bool operator()(const TensorTypeAndShape& arg,
-                  const TensorTypeAndShape& other) {
-    return arg.first != other.first || arg.second != other.second;
-  }
-  bool operator()(const Tensor& arg, const TensorTypeAndShape& other) {
-    return true;
-  }
-  bool operator()(const TensorTypeAndShape& arg, const Tensor& other) {
-    return true;
-  }
-};
-
-// Functor that incrementally computes a Signature's hash given its current hash
-// and one of its args.
-struct SignatureHashCombiner {
-  explicit SignatureHashCombiner(const uint64 h) : h(h) {}
-  uint64 h;
-  uint64 operator()(const Tensor& arg) {
-    h = Hash64Combine(h, std::hash<int>()(static_cast<int>(arg.dtype())));
-    h = Hash64Combine(
-        h, Hash64(arg.tensor_data().data(), arg.tensor_data().size()));
-    for (int dim = 0; dim < arg.dims(); ++dim) {
-      h = Hash64Combine(h, std::hash<int>()(arg.dim_size(dim)));
-    }
-    return h;
-  }
-  uint64 operator()(const TensorTypeAndShape& arg) {
-    h = Hash64Combine(h, std::hash<int>()(static_cast<int>(arg.first)));
-    h = Hash64Combine(h, std::hash<int>()(arg.second.size()));
-    for (int dim : arg.second) {
-      h = Hash64Combine(h, std::hash<int>()(dim));
-    }
-    return h;
-  }
-};
-
+  return OkStatus();
+}
 }  // namespace
 
 XlaCompilationCache::XlaCompilationCache(
@@ -137,14 +106,15 @@ XlaCompilationCache::XlaCompilationCache(
         compiler_client)
     : persistor_(std::move(persistor)),
       compiler_client_(std::move(compiler_client)) {
+  cache_ = std::make_unique<DeviceCompilationCache<xla::LocalExecutable>>();
   async_compiler_threads_ = std::make_unique<tensorflow::thread::ThreadPool>(
       tensorflow::Env::Default(), "async_compiler_threads",
       kNumAsyncDeviceCompilerThreads);
 }
 
 XlaCompilationCache::~XlaCompilationCache() {
-  // Ensure any use of our programs have completed by waiting for all stream
-  // executors to complete.
+  // Since programs are owned by the cache, ensure any use of our programs have
+  // completed by waiting for all stream executors to complete.
   compiler_client_->WaitForProgramsToFinish();
   // Wait for all outstanding compilations to finish.
   // Resetting the pointer explicitly in the top level destructor.
@@ -164,63 +134,7 @@ string XlaCompilationCache::DebugString() const {
   return "XLA JIT compilation cache";
 }
 
-// Compute a string signature which encodes the shapes of the
-// arguments in the supplied list.
-string XlaCompilationCache::Signature::HumanString() const {
-  string result = name;
-  for (const auto& a : args) {
-    std::visit(SignatureHumanStringAppender(&result), a);
-  }
-  return result;
-}
-
-bool XlaCompilationCache::Signature::operator==(const Signature& other) const {
-  if (name != other.name) return false;
-  if (args.size() != other.args.size()) return false;
-  for (int i = 0, end = args.size(); i < end; ++i) {
-    if (std::visit(SignatureNotEqual(), args[i], other.args[i])) {
-      return false;
-    }
-  }
-  return true;
-}
-
-uint64 XlaCompilationCache::Signature::Hash::operator()(
-    const XlaCompilationCache::Signature& signature) const {
-  uint64 h = std::hash<string>()(signature.name);
-  for (const auto& arg : signature.args) {
-    h = absl::visit(SignatureHashCombiner(h), arg);
-  }
-  return h;
-}
-
-StatusOr<XlaCompilationCache::Signature> XlaCompilationCache::BuildSignature(
-    const NameAttrList& function,
-    absl::Span<const XlaCompiler::Argument> args) {
-  Signature signature;
-  signature.name = Canonicalize(function.name(), AttrSlice(&function.attr()));
-
-  for (const XlaCompiler::Argument& arg : args) {
-    switch (arg.kind) {
-      case XlaCompiler::Argument::kConstant:
-      case XlaCompiler::Argument::kConstantResource:
-        signature.args.push_back(arg.constant_value);
-        break;
-      case XlaCompiler::Argument::kParameter:
-      case XlaCompiler::Argument::kResource:
-        signature.args.push_back(
-            TensorTypeAndShape(arg.type, arg.DimensionSizesAsInlinedVector()));
-        break;
-      default:
-        return errors::InvalidArgument(
-            "Unhandled argument kind in XlaCompilationCache: ",
-            arg.HumanString());
-    }
-  }
-  return std::move(signature);
-}
-
-Status XlaCompilationCache::Compile(
+Status XlaCompilationCache::CompileIfNeeded(
     const XlaCompiler::Options& options, const NameAttrList& function,
     const std::vector<XlaCompiler::Argument>& args,
     const XlaCompiler::CompileOptions& compile_options,
@@ -232,7 +146,7 @@ Status XlaCompilationCache::Compile(
                      profiler, out_compilation_result, out_executable);
 }
 
-Status XlaCompilationCache::CompileSingleOp(
+Status XlaCompilationCache::CompileSingleOpIfNeeded(
     const XlaCompiler::Options& options,
     const std::vector<XlaCompiler::Argument>& args,
     const XlaCompiler::CompileOptions& compile_options, OpKernelContext* ctx,
@@ -252,97 +166,88 @@ Status XlaCompilationCache::CompileSingleOp(
                      out_compilation_result, out_executable);
 }
 
-namespace {
-// Print something that users can search for to definitively ascertain that XLA
-// was used for their TF model.
-//
-// Prints only once to avoid spamming LOG(INFO).
-void LogOnceXlaCompiledFirstCluster() {
-  static absl::once_flag log_once;
-  absl::call_once(log_once, [] {
-    LOG(INFO) << "Compiled cluster using XLA!  This line is logged at most "
-                 "once for the lifetime of the process.";
-  });
-}
-
-Status EligibleToPersist(XlaCompilationCache::CompileState compile_state,
-                         const xla::LocalExecutable* executable) {
-  if (compile_state != XlaCompilationCache::CompileState::kCompiled) {
-    return errors::FailedPrecondition(
-        "Cache entry to serialize is not compiled.");
-  }
-  if (executable == nullptr) {
-    return errors::FailedPrecondition(
-        "LocalExecutable not found for cache entry to serialize.");
-  }
-  return OkStatus();
-}
-}  // namespace
-
-Status XlaCompilationCache::CompileStrict(
-    const Signature& sig, const XlaCompiler::CompileOptions& compile_options,
+StatusOr<DeviceCompilationCache<xla::LocalExecutable>::Value>
+XlaCompilationCache::CompileStrict(
+    const DeviceCompilationClusterSignature& sig,
+    const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::Options& options,
     const std::vector<XlaCompiler::Argument>& args,
-    const NameAttrList& function, CompileScope scope, OpKernelContext* ctx,
-    DeviceCompilationProfiler* profiler, Entry* entry) {
+    const NameAttrList& function,
+    DeviceCompilationCache<xla::LocalExecutable>::Value cache_value,
+    CompileScope scope, OpKernelContext* ctx,
+    DeviceCompilationProfiler* profiler, mutex* mu) {
   tensorflow::Env* env = tensorflow::Env::Default();
   const uint64 compile_start_us = env->NowMicros();
 
   TfGraphToHloCompiler compiler(options);
-  entry->compile_state = CompileState::kCompiled;
+  cache_value.compile_state = DeviceCompileState::kCompiled;
+
+  std::unique_ptr<xla::LocalExecutable> out_executable;
+  auto out_compilation_result =
+      std::make_unique<XlaCompiler::CompilationResult>();
+
   if (scope == CompileScope::kOp) {
-    entry->compilation_status = compiler.CompileSingleOp(
-        compile_options, ctx, args, &entry->compilation_result);
+    cache_value.compilation_status = compiler.CompileSingleOp(
+        compile_options, ctx, args, out_compilation_result.get());
   } else {
     CHECK(scope == CompileScope::kFunction);  // Crash OK
-    entry->compilation_status = compiler.Compile(
-        compile_options, function, args, &entry->compilation_result);
+    cache_value.compilation_status = compiler.Compile(
+        compile_options, function, args, out_compilation_result.get());
   }
-  TF_RETURN_IF_ERROR(entry->compilation_status);
-  TF_RET_CHECK(entry->executable.get() == nullptr);
-  TF_RET_CHECK(entry->compilation_result.computation != nullptr);
+  TF_RETURN_IF_ERROR(cache_value.compilation_status);
+  TF_RET_CHECK(cache_value.executable == nullptr);
+  TF_RET_CHECK(out_compilation_result->computation != nullptr);
 
   auto loaded_executable = persistor_->TryToLoadExecutable(
-      Signature::Hash()(sig), sig.HumanString(), options,
-      entry->compilation_result, compiler_client_.get());
+      DeviceCompilationClusterSignature::Hash()(sig), sig.HumanString(),
+      options, *out_compilation_result, compiler_client_.get());
 
   if (loaded_executable.has_value()) {
-    entry->compilation_status = loaded_executable->status();
+    cache_value.compilation_status = loaded_executable->status();
     if (loaded_executable->ok()) {
-      entry->executable = *std::move(*loaded_executable);
+      out_executable = *std::move(*loaded_executable);
     }
   } else {
     auto built_executable =
-        compiler_client_->BuildExecutable(options, entry->compilation_result);
-    entry->compilation_status = built_executable.status();
+        compiler_client_->BuildExecutable(options, *out_compilation_result);
+    cache_value.compilation_status = built_executable.status();
     if (built_executable.ok()) {
-      entry->executable = *std::move(built_executable);
+      out_executable = *std::move(built_executable);
     }
 
     TF_RETURN_IF_ERROR(
-        EligibleToPersist(entry->compile_state, entry->executable.get()));
+        EligibleToPersist(cache_value.compile_state, out_executable.get()));
     TF_RETURN_IF_ERROR(persistor_->TryToPersistExecutable(
-        Signature::Hash()(sig), sig.HumanString(), options,
-        entry->compilation_result, *entry->executable, compiler_client_.get()));
+        DeviceCompilationClusterSignature::Hash()(sig), sig.HumanString(),
+        options, *out_compilation_result, *out_executable,
+        compiler_client_.get()));
   }
+
+  cache_value.compilation_result = out_compilation_result.get();
+  cache_value.executable = out_executable.get();
+  cache_->Store(sig, cache_value.compile_state, cache_value.compilation_status,
+                std::move(out_compilation_result), std::move(out_executable));
 
   const uint64 compile_end_us = env->NowMicros();
   const uint64 compile_time_us = compile_end_us - compile_start_us;
 
   LogOnceXlaCompiledFirstCluster();
-  return profiler->RegisterCompilation(function, compile_time_us,
-                                       loaded_executable.has_value());
+  TF_RETURN_IF_ERROR(profiler->RegisterCompilation(
+      function, compile_time_us, loaded_executable.has_value()));
+  return cache_value;
 }
 
 Status XlaCompilationCache::CompileAsynchronous(
-    const Signature& signature,
+    const DeviceCompilationClusterSignature& signature,
     const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::Options& options,
     const std::vector<XlaCompiler::Argument>& args,
     const NameAttrList& function, CompileScope scope, OpKernelContext* ctx,
-    DeviceCompilationProfiler* profiler, Entry* entry) {
+    DeviceCompilationProfiler* profiler) {
   // Explicitly capture all required data by value for async compilation.
-  entry->compile_state = CompileState::kCompiling;
+  // Update compilation state in cache.
+  cache_->Store(signature, DeviceCompileState::kCompiling, std::nullopt,
+                std::nullopt, std::nullopt);
   profiler->IncrementOngoingAsyncCompilations();
   // Don't move the above code into the thread function as it synchronously
   // updates the async compilation state!
@@ -355,27 +260,23 @@ Status XlaCompilationCache::CompileAsynchronous(
   // entry) do not get freed until the lambda has finished.
   const std::string& function_name = function.name();
   async_compiler_threads_->Schedule([=] {
-    Entry local_entry;
     VLOG(2) << "Starting asynchronous compilation of cluster " << function_name
             << '.';
-    // We don't need to lock local_entry.mu, but do it anyway to satisfy
-    // thread safety analysis.
-    mutex_lock entry_lock(local_entry.mu);
-    Status s = CompileStrict(signature, compile_options, options, args,
-                             function, scope, ctx, profiler, &local_entry);
+    // We don't need to lock mu, but do it anyway to satisfy thread safety
+    // analysis.
+    mutex mu;
+    mutex_lock lock(mu);
+    auto s =
+        CompileStrict(signature, compile_options, options, args, function,
+                      DeviceCompilationCache<xla::LocalExecutable>::Value(),
+                      scope, ctx, profiler, &mu);
     VLOG(2) << "Finished asynchronous compililation of cluster "
             << function_name << '.';
     profiler->DecrementOngoingAsyncCompilations();
-    {  // Populate original entry with compilation result.
-      mutex_lock entry_lock(entry->mu);
-      if (!s.ok()) {
-        entry->compilation_status = s;
-      } else {
-        entry->compilation_status = local_entry.compilation_status;
-      }
-      entry->compilation_result = local_entry.compilation_result;
-      entry->compile_state = local_entry.compile_state;
-      entry->executable = std::move(local_entry.executable);
+    // Update compilation status in cache.
+    if (!s.ok()) {
+      cache_->Store(signature, std::nullopt, s.status(), std::nullopt,
+                    std::nullopt);
     }
   });
   return OkStatus();
@@ -398,21 +299,16 @@ Status XlaCompilationCache::CompileImpl(
       VLOG(3) << i << ": " << args[i].HumanString();
     }
   }
-  TF_ASSIGN_OR_RETURN(Signature signature, BuildSignature(function, args));
+  TF_ASSIGN_OR_RETURN(auto signature,
+                      DeviceCompilationClusterSignature::Build(function, args));
 
-  // The outer lock protects the existence of the cache entry. It does not
-  // protect the contents of the cache entry.
-  Entry* entry;
+  // The outer lock protects the existence of the mutex in the map.
+  mutex* cluster_mutex;
   {
-    mutex_lock lock(compile_cache_mu_);
-    // Find or create a cache entry.
-    auto cache_entry = cache_.find(signature);
-    if (cache_entry == cache_.end()) {
-      auto inserted_entry =
-          cache_.emplace(signature, std::make_unique<Entry>());
-      cache_entry = inserted_entry.first;
-    }
-    entry = cache_entry->second.get();
+    mutex_lock lock(cluster_mutexes_mu_);
+    auto it =
+        cluster_mutexes_.emplace(signature, std::make_unique<mutex>()).first;
+    cluster_mutex = it->second.get();
   }
 
   profiler->RegisterExecution(function);
@@ -426,14 +322,16 @@ Status XlaCompilationCache::CompileImpl(
   // Acquire the cache entry lock and compile, if necessary.
   // TODO(phawkins): this locking will need to be restructured when we implement
   // cache eviction.
-  mutex_lock entry_lock(entry->mu);
-  int64_t current_request_count = ++entry->request_count;
+  mutex_lock cluster_compile_lock(*cluster_mutex);
+  auto cache_value = cache_->LookupOrCreate(signature);
+
+  int64_t current_request_count = cache_value.request_count;
   VLOG(2) << "Compilation cache entry hit: "
-          << static_cast<int>(entry->compile_state)
+          << static_cast<int>(cache_value.compile_state)
           << " signature: " << human_signature << " with request count "
           << current_request_count;
 
-  CompileState state = entry->compile_state;
+  DeviceCompileState state = cache_value.compile_state;
   *out_compilation_result = nullptr;
   *out_executable = nullptr;
 
@@ -442,7 +340,7 @@ Status XlaCompilationCache::CompileImpl(
   // not yet hit the compilation threshold and no compilation happens this
   // round. This is to avoid non-determanism of when compilation is disallowed,
   // for example by changing the threshold.
-  if (state == CompileState::kUncompiled && FailOnXlaCompilation()) {
+  if (state == DeviceCompileState::kUncompiled && FailOnXlaCompilation()) {
     VLOG(1) << "XLA compilation disabled: " << function.name() << "\n"
             << absl::StrJoin(
                    args, "\n",
@@ -453,7 +351,7 @@ Status XlaCompilationCache::CompileImpl(
     return errors::Internal("XLA compilation disabled");
   }
 
-  if (state == CompileState::kUncompiled) {
+  if (state == DeviceCompileState::kUncompiled) {
     XLA_SCOPED_LOGGING_TIMER("Compilation of XLA executable");
     if (!profiler->ShouldCompileCluster(function, compile_mode,
                                         current_request_count)) {
@@ -464,25 +362,26 @@ Status XlaCompilationCache::CompileImpl(
               << human_signature;
       TF_RETURN_IF_ERROR(CompileAsynchronous(signature, compile_options,
                                              options, args, function, scope,
-                                             ctx, profiler, entry));
+                                             ctx, profiler));
       return OkStatus();
     } else {
       VLOG(2) << "Instantly compiling for signature: " << human_signature;
-      TF_RETURN_IF_ERROR(CompileStrict(signature, compile_options, options,
-                                       args, function, scope, ctx, profiler,
-                                       entry));
+      TF_ASSIGN_OR_RETURN(
+          cache_value,
+          CompileStrict(signature, compile_options, options, args, function,
+                        cache_value, scope, ctx, profiler, cluster_mutex));
     }
-  } else if (state == CompileState::kCompiling) {
+  } else if (state == DeviceCompileState::kCompiling) {
     VLOG(2) << "Ongoing asynchronous compilation for signature: "
             << human_signature;
     return OkStatus();
-  } else if (state == CompileState::kCompiled) {
+  } else if (state == DeviceCompileState::kCompiled) {
     VLOG(2) << "Already Compiled for signature: " << human_signature;
   }
 
-  TF_RETURN_IF_ERROR(entry->compilation_status);
-  *out_compilation_result = &entry->compilation_result;
-  *out_executable = entry->executable.get();
+  TF_RETURN_IF_ERROR(cache_value.compilation_status);
+  *out_compilation_result = cache_value.compilation_result;
+  *out_executable = cache_value.executable;
   return OkStatus();
 }
 

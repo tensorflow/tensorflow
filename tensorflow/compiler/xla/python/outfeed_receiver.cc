@@ -398,10 +398,17 @@ Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
           << "] SendSpecialHeader cons=" << consumer_id;
   XlaBuilder builder(
       absl::StrFormat("special_outfeed_header_%d_%d", consumer_id, device_idx));
-  XlaOp send =
+
+  // XLA Next doesn't support returning tokens from computations, so we use
+  // add-dependency to return a constant while ensuring the side-effect is still
+  // executed.
+  XlaOp cst_operand = xla::ConstantR0<int32_t>(&builder, 0);
+  XlaOp outfeed =
       AddOutfeedToBuilder(&builder, CreateToken(&builder), consumer_id, {})
           .value();
-  XlaComputation computation = builder.Build(send).value();
+  XlaOp add_dep = xla::internal::XlaBuilderFriend::BuildAddDependency(
+      &builder, cst_operand, outfeed, ShapeUtil::MakeScalarShape(S32));
+  XlaComputation computation = builder.Build(add_dep).value();
 
   CompileOptions compile_options;
   compile_options.executable_build_options.set_num_replicas(1);

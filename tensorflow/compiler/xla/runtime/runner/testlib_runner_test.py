@@ -60,7 +60,6 @@ class TestlibRunnerTest(absltest.TestCase):
         np.array_equal(res, np.array([43.0, 44.0, 45.0], dtype=np.float32)))
 
   def testTensorReturn(self):
-    self.skipTest('fails on msan build')  # b/261046394
     module = """
       func.func @returntensor(%arg0: memref<?xf32>) -> memref<4xf32> {
       %out = memref.alloc() : memref<4xf32>

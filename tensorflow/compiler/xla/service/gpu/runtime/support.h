@@ -29,6 +29,9 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+template <auto T>
+using FunctionWrapper = xla::runtime::CustomCall::FunctionWrapper<T>;
+
 struct DotDimensionNumbers {
   llvm::ArrayRef<int64_t> lhs_batch;
   llvm::ArrayRef<int64_t> lhs_contract;

@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -98,28 +99,12 @@ class GpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
 
 struct GpuTargetConfig {
   GpuTargetConfig() = default;
-  explicit GpuTargetConfig(const stream_executor::GpuTargetConfigProto& proto)
-      : gpu_device_info(proto.gpu_device_info()),
-        cuda_compute_capability(proto.cuda_compute_capability()),
-        rocm_compute_capability(proto.rocm_compute_capability()),
-        platform_name(proto.platform_name()) {}
+  explicit GpuTargetConfig(const stream_executor::GpuTargetConfigProto& proto);
 
-  stream_executor::GpuTargetConfigProto ToProto() const {
-    stream_executor::GpuTargetConfigProto proto;
-    *proto.mutable_gpu_device_info() = gpu_device_info.ToProto();
-    *proto.mutable_cuda_compute_capability() =
-        cuda_compute_capability.ToProto();
-    *proto.mutable_rocm_compute_capability() =
-        rocm_compute_capability.ToProto();
-    proto.set_platform_name(platform_name);
-    return proto;
-  }
+  se::GpuTargetConfigProto ToProto() const;
 
   GpuDeviceInfo gpu_device_info;
-  // CUDA "CC" major value, -1 if not available.
-  stream_executor::CudaComputeCapability cuda_compute_capability{-1, -1};
-  // ROCm gfx arch,  "gfx000" if not available.
-  stream_executor::RocmComputeCapability rocm_compute_capability{"gfx000"};
+  GpuVersion gpu_version;
   std::string platform_name;
 };
 
@@ -140,6 +125,13 @@ class GpuCompiler : public LLVMCompiler {
       const HloModule* hlo_module) override;
 
   virtual GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) = 0;
+  GpuTargetConfig GetGpuTargetConfig(se::StreamExecutor* stream_exec) {
+    GpuTargetConfig gpu_target_config;
+    gpu_target_config.gpu_device_info = GetGpuDeviceInfo(stream_exec);
+    gpu_target_config.gpu_version = GetGpuVersion(stream_exec);
+    gpu_target_config.platform_name = stream_exec->platform()->Name();
+    return gpu_target_config;
+  }
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,

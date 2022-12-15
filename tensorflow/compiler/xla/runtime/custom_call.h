@@ -161,6 +161,33 @@ class CustomCall {
 
   static CustomCallBinding<> Bind(std::string callee);
   static CustomCallBinding<> Bind(std::string callee, const Options& opts);
+
+  // This is a helper template that allows to convert functions pointers from
+  // the run time values to compile time values (template arguments) with
+  // automatic template arguments inference.
+  //
+  // Example:
+  //
+  //   static LogicalResult Foo(int32_t arg) {... }
+  //
+  //   template<typename Callable>
+  //   void call(Callable callable) { callable(42); }
+  //
+  //   call(Foo);                     // `Foo` passed as a runtime value
+  //   call(FunctionWrapper<Foo>())   // `Foo` passed as a template argument
+  //
+  // In the first case compiler will not be able to inline `Foo` into the `call`
+  // body. However in the second case it can do that, because function pointer
+  // is a statically known value (template non-type argument).
+  template <auto fn>
+  struct FunctionWrapper;
+
+  template <typename Ret, typename... Args, Ret (*fn)(Args...)>
+  struct FunctionWrapper<fn> {
+    LLVM_ATTRIBUTE_ALWAYS_INLINE Ret operator()(Args... args) const {
+      return fn(args...);
+    }
+  };
 };
 
 // Forward declare template defined below.
@@ -1647,7 +1674,7 @@ auto AggregateDecoder(Members... m) {
 // XLA Custom Call helper macro for registering custom call handlers.
 //===----------------------------------------------------------------------===//
 
-#define XLA_RUNTIME_DEFINE_CUSTOM_CALL_WITH_CHECKS(fn, impl, checks, bind) \
+#define XLA_RUNTIME_DEFINE_CUSTOM_CALL(fn, impl, checks, bind)             \
   static bool fn(::xla::runtime::ExecutionContext* ctx, void** args,       \
                  void** attrs, void** rets) {                              \
     static auto* handler = bind.To<checks>(impl).release();                \
@@ -1655,9 +1682,14 @@ auto AggregateDecoder(Members... m) {
         xla::runtime::Executable::Call(ctx, *handler, args, attrs, rets)); \
   }
 
-#define XLA_RUNTIME_DEFINE_CUSTOM_CALL(fn, impl, bind) \
-  XLA_RUNTIME_DEFINE_CUSTOM_CALL_WITH_CHECKS(          \
-      fn, impl, ::xla::runtime::CustomCall::RuntimeChecks::kDefault, bind)
+#define XLA_RUNTIME_DEFINE_CUSTOM_CALL_TEMPLATE(param, fn, impl, checks, bind) \
+  template <param>                                                             \
+  static bool fn(::xla::runtime::ExecutionContext* ctx, void** args,           \
+                 void** attrs, void** rets) {                                  \
+    static auto* handler = bind.To<checks>(impl).release();                    \
+    return ::xla::runtime::succeeded(                                          \
+        xla::runtime::Executable::Call(ctx, *handler, args, attrs, rets));     \
+  }
 
 //===----------------------------------------------------------------------===//
 // Declare/define an explicit specialization for TypeID for types used

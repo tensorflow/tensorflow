@@ -40,7 +40,7 @@ func.func @matmul_tensors(
 // CHECK: %[[SUB_ARG_2:.*]] = tensor.extract_slice %[[A2]][%[[I]], %[[J]]]
 
 // CHECK: %[[PROD:.*]] = linalg.matmul ins(%[[SUB_ARG_0]], %[[SUB_ARG_1]]
-// CHECK-SE: outs(%[[SUB_ARG_2]] : [[TY]]) -> [[TY]]
+// CHECK-SAME: outs(%[[SUB_ARG_2]] : [[TY]]) -> [[TY]]
 
 // CHECK: %[[O:.*]] = tensor.insert_slice %[[PROD]] into %[[A2]][%[[I]], %[[J]]]
 // CHECK: gml_st.yield %[[O]] : [[TY]]

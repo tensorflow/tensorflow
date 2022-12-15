@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 
 struct PJRT_Error {
@@ -57,9 +58,9 @@ struct PJRT_Executable {
   // addressed by the compiled executable program. `client` owns the objects
   // these point to.
   std::vector<PJRT_Device*> addressable_devices;
-  // TODO(b/237545405): Remove `populated` once we implement creation methods
-  // for PJRT_Executable that can populate addressable_devices on instantiation.
-  bool populated = false;
+
+  PJRT_Executable(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+                  PJRT_Client* client);
 };
 
 struct PJRT_Buffer {
@@ -74,6 +75,10 @@ struct PJRT_Event {
   // variable allows C API users to check for error status any time after
   // Await() has been called.
   std::optional<xla::Status> status;
+};
+
+struct PJRT_SerializedExecutable {
+  std::string serialized;
 };
 
 namespace pjrt {
@@ -120,9 +125,18 @@ PJRT_Error* PJRT_Executable_AddressableDevices(
 PJRT_Error* PJRT_Executable_NumOutputs(PJRT_Executable_NumOutputs_Args* args);
 PJRT_Error* PJRT_Executable_SizeOfGeneratedCodeInBytes(
     PJRT_Executable_SizeOfGeneratedCodeInBytes_Args* args);
+PJRT_Error* PJRT_Executable_OptimizedProgram(
+    PJRT_Executable_OptimizedProgram_Args* args);
 PJRT_Error* PJRT_Executable_Delete(PJRT_Executable_Delete_Args* args);
 PJRT_Error* PJRT_Executable_IsDeleted(PJRT_Executable_IsDeleted_Args* args);
 PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args);
+PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args);
+PJRT_Error* PJRT_Executable_Deserialize(PJRT_Executable_Deserialize_Args* args);
+
+PJRT_Error* PJRT_SerializedExecutable_Destroy(
+    PJRT_SerializedExecutable_Destroy_Args* args);
+PJRT_Error* PJRT_SerializedExecutable_Data(
+    PJRT_SerializedExecutable_Data_Args* args);
 
 PJRT_Error* PJRT_Buffer_Destroy(PJRT_Buffer_Destroy_Args* args);
 PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(

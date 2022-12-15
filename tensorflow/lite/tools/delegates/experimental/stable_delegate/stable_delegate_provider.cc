@@ -40,7 +40,6 @@ namespace {
 TfLiteDelegatePtr CreateStableDelegate(const std::string& settings_file_path) {
   TfLiteDelegatePtr null_delegate = CreateNullDelegate();
   if (settings_file_path.empty()) {
-    TFLITE_LOG(ERROR) << "Invalid delegate settings path.";
     return null_delegate;
   }
   delegates::utils::TfLiteSettingsJsonParser parser;

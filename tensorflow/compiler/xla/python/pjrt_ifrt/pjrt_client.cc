@@ -62,7 +62,8 @@ StatusOr<std::unique_ptr<Array>> PjRtClient::MakeArrayFromHostBuffer(
       PjRtArray::PjRtBuffers({std::shared_ptr<PjRtBuffer>(buffer.release())}));
 }
 
-StatusOr<std::unique_ptr<Array>> PjRtClient::AssembleArray(
+StatusOr<std::unique_ptr<Array>>
+PjRtClient::AssembleArrayFromSingleDeviceArrays(
     Shape shape, std::shared_ptr<const Sharding> sharding,
     absl::Span<Array* const> arrays, ArrayCopySemantics semantics) {
   DCHECK(this);
@@ -84,7 +85,7 @@ StatusOr<std::unique_ptr<Array>> PjRtClient::AssembleArray(
       return InvalidArgument("Only PjRtArray is supported: arrays[%d]=%s", i,
                              arrays[i]->DebugString());
     }
-    const auto* array = static_cast<const PjRtArray*>(arrays[i]);
+    auto* array = static_cast<PjRtArray*>(arrays[i]);
     if (array->dtype() != dtype) {
       return InvalidArgument(
           "Every input must have the same dtype: %s (shard 0) vs. %s (shard "

@@ -1,5 +1,5 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
@@ -7,15 +7,15 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )
 
 package_group(
     name = "friends",
     includes = [
-        "//tensorflow:internal",
         "//tensorflow/compiler/xla:friends",
+        "//tensorflow/compiler/xla:internal",
     ],
     packages = [
         "//third_party/australis/...",
@@ -60,14 +60,13 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "semaphore_test",
     srcs = ["semaphore_test.cc"],
     deps = [
         ":semaphore",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/synchronization",
@@ -80,7 +79,7 @@ cc_library(
     hdrs = ["tracked_device_buffer.h"],
     visibility = [
         "//learning/pathways/data_parallel:__pkg__",
-        "//tensorflow:internal",
+        "//tensorflow/compiler/xla:internal",
     ],
     deps = [
         ":event_pool",
@@ -98,7 +97,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "tracked_device_buffer_test",
     srcs = ["tracked_device_buffer_test.cc"],
     deps = [
@@ -150,6 +149,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:fingerprint",
@@ -179,7 +179,7 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "pjrt_client_test_cpu",
     srcs = ["pjrt_client_test_cpu.cc"],
     deps = [
@@ -205,7 +205,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "pjrt_executable_test",
     srcs = ["pjrt_executable_test.cc"],
     deps = [
@@ -233,7 +233,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "pjrt_compiler_test",
     srcs = ["pjrt_compiler_test.cc"],
     deps = [
@@ -290,7 +290,6 @@ cc_library(
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
@@ -323,7 +322,6 @@ cc_library(
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/profiler/lib:connected_traceme",
         "//tensorflow/tsl/profiler/lib:traceme",
-        "//tensorflow/tsl/profiler/lib:traceme_encode",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -337,7 +335,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "pjrt_stream_executor_client_test",
     srcs = ["pjrt_stream_executor_client_test.cc"],
     deps = [
@@ -470,7 +468,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "tracked_tfrt_cpu_device_buffer_test",
     srcs = ["tracked_tfrt_cpu_device_buffer_test.cc"],
     deps = [
@@ -530,7 +528,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "tfrt_cpu_pjrt_client_test",
     srcs = ["tfrt_cpu_pjrt_client_test.cc"],
     deps = [
@@ -551,7 +549,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "lru_cache_test",
     srcs = ["lru_cache_test.cc"],
     deps = [
@@ -589,7 +587,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "transpose_test",
     srcs = ["transpose_test.cc"],
     deps = [
@@ -620,9 +618,11 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_helpers",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_wrapper_impl",  # TODO(skyewm): remove
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",  # TODO(b/238999986): Remove this.
         "//tensorflow/compiler/xla/stream_executor/tpu:pjrt_api",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
@@ -640,7 +640,7 @@ cc_library(
     deps = [":pjrt_client"],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "host_callback_test",
     srcs = ["host_callback_test.cc"],
     deps = [

@@ -38,7 +38,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
@@ -1637,22 +1636,13 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     signature_def_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     input_model_dir = self.create_tempdir('input').full_path
 
-    with session.Session() as sess:
-      input_vocabs_placeholder, lookup_tensor, output_tensor = (
-          self._create_vocab_table_lookup_model_tf1(sess))
+    # Create and save a simple model that involves a hash table.
+    inputs, outputs = self._create_and_save_vocab_table_lookup_model_tf1(
+        input_model_dir, tags, signature_def_key)
 
-      self._save_tf1_model(
-          sess,
-          input_model_dir,
-          signature_def_key,
-          tags,
-          inputs={'input_vocabs': input_vocabs_placeholder},
-          outputs={
-              'lookup': lookup_tensor,  # Table lookup values.
-              'output': output_tensor,
-          },
-          init_op=lookup_ops.tables_initializer(),
-          assets_collection=ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS))
+    # Make sure that the desired input key and output key is present.
+    self.assertIn('input_vocabs', inputs.keys())
+    self.assertIn('lookup', outputs.keys())
 
     # Representative dataset is composed of a set of vocabs for table lookup.
     repr_ds = [{
@@ -1843,8 +1833,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   """Test cases for dynamic range quantization.
 
-  Run all tests cases in both the graph mode (default in TF1) and the eager mode
-  (default in TF2) to ensure support for when TF2 is disabled.
+  Tries to run all tests cases in both the graph mode (default in TF1) and the
+  eager mode (default in TF2) to ensure support for when TF2 is disabled.
   """
 
   @parameterized.named_parameters(
@@ -2260,6 +2250,56 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(
         self._contains_quantized_function_call(output_meta_graphdef))
+
+  # TODO(b/244276332): Allow table initialization in TF2 eager mode.
+  @test_util.deprecated_graph_mode_only
+  def test_table_initialized_when_model_has_table_tf1(self):
+    tags = {tag_constants.SERVING}
+    signature_def_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    input_model_dir = self.create_tempdir('input').full_path
+
+    # Create and save a simple model that involves a hash table.
+    inputs, outputs = self._create_and_save_vocab_table_lookup_model_tf1(
+        input_model_dir, tags, signature_def_key)
+
+    # Make sure that the desired input key and output key is present.
+    self.assertIn('input_vocabs', inputs.keys())
+    self.assertIn('lookup', outputs.keys())
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE))
+
+    signature_def_keys = [signature_def_key]
+    output_model_dir = self.create_tempdir('output').full_path
+
+    quantize_model.quantize(input_model_dir, signature_def_keys, tags,
+                            output_model_dir, quantization_options)
+
+    # Tests table lookup to make sure the table has been initialized
+    # successfully.
+    with session.Session(graph=ops.Graph()) as sess:
+      output_meta_graph_def = saved_model_loader.load(
+          sess, tags=tags, export_dir=output_model_dir)
+
+      self.assertCountEqual(output_meta_graph_def.signature_def.keys(),
+                            signature_def_keys)
+
+      signature_def = output_meta_graph_def.signature_def[signature_def_key]
+
+      input_tensor_name = signature_def.inputs['input_vocabs'].name
+      input_tensor = sess.graph.get_tensor_by_name(input_tensor_name)
+
+      lookup_tensor_name = signature_def.outputs['lookup'].name
+      lookup_tensor = sess.graph.get_tensor_by_name(lookup_tensor_name)
+
+      lookup_val = sess.run(
+          lookup_tensor,
+          feed_dict={
+              input_tensor: np.array([b'model', b'quantization', b'hello'])
+          })
+
+      self.assertAllClose(lookup_val, [1., 2., 0.])
 
 
 if __name__ == '__main__':

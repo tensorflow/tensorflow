@@ -560,11 +560,6 @@ class Subgraph {
                                              const int* output_indices,
                                              int num_outputs);
 
-  // Compute the number of bytes required to represent a tensor with dimensions
-  // specified by the array dims (of length dims_size). Returns the status code
-  // and bytes.
-  TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
-                             size_t* bytes);
 
   // Request an tensor be resized implementation. If the given tensor is of
   // type kTfLiteDynamic it will also be allocated new memory.

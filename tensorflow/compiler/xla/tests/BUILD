@@ -7,8 +7,7 @@ load(
     "tf_cuda_tests_tags",
 )
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -198,6 +197,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo_module_group",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:computation_layout",
         "//tensorflow/compiler/xla/service:hlo_module_util",
@@ -2355,7 +2355,7 @@ xla_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "llvm_compiler_test",
     srcs = ["llvm_compiler_test.cc"],
     tags = tf_cuda_tests_tags(),
@@ -2457,7 +2457,7 @@ xla_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "local_client_aot_test",
     srcs = [
         "local_client_aot_test.cc",
@@ -2546,7 +2546,7 @@ xla_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "hlo_metadata_test",
     srcs = [
         "hlo_metadata_test.cc",
@@ -2618,7 +2618,7 @@ xla_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "literal_test_util_test",
     srcs = ["literal_test_util_test.cc"],
     deps = [
@@ -2679,7 +2679,7 @@ xla_test(
 )
 
 # A demo of test that loads an hlo module from a file and compares results on gpu and cpu.
-tf_cc_test(
+xla_cc_test(
     name = "sample_file_test",
     srcs = ["sample_file_test.cc"],
     data = ["isolated_convolution.hlo"],
@@ -2740,7 +2740,7 @@ xla_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "multiple_devices_on_host_test",
     srcs = ["multiple_devices_on_host_test.cc"],
     args = ["--xla_force_host_platform_device_count=4"],

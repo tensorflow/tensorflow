@@ -95,7 +95,8 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def("AllToAll", &AllToAll, py::arg("operand"), py::arg("split_dimension"),
           py::arg("concat_dimension"), py::arg("split_count"),
           py::arg("replica_groups") = py::list(),
-          py::arg("layout") = std::nullopt);
+          py::arg("layout") = std::nullopt,
+          py::arg("channel_id") = std::nullopt);
   ops.def("ApproxTopK", &ApproxTopK, py::arg("builder"), py::arg("operands"),
           py::arg("init_values"), py::arg("top_k"), py::arg("reduction_dim"),
           py::arg("comparator"), py::arg("recall_target") = 0.9,

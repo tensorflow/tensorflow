@@ -76,12 +76,13 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 %test_all_to_all {
   %parameter = s32[2,2]{1,0} parameter(0)
   // CHECK-NEXT: "mhlo.all_to_all"([[ARG]]) {
+  // CHECK-SAME:   channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME:   concat_dimension = 1 : i64,
   // CHECK-SAME{LITERAL}:   replica_groups = dense<[[1, 2], [3, 0]]> : tensor<2x2xi64>,
   // CHECK-SAME:   split_count = 2 : i64,
   // CHECK-SAME:   split_dimension = 1 : i64
   // CHECK-SAME: } : (tensor<2x2xi32>) -> tensor<2x2xi32>
-  ROOT %all-to-all = s32[2,2]{1,0} all-to-all(s32[2,2]{1,0} %parameter), replica_groups={{1,2}, {3,0}}, dimensions={1}
+  ROOT %all-to-all = s32[2,2]{1,0} all-to-all(s32[2,2]{1,0} %parameter), channel_id=1, replica_groups={{1,2}, {3,0}}, dimensions={1}
 }
 
 // CHECK-LABEL:  func private @test_tuple_all_to_all
@@ -90,9 +91,10 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 %test_tuple_all_to_all {
   %p0 = f32[128,4]{0,1} parameter(0)
   %p1 = f32[128,4]{1,0} parameter(1)
-  // CHECK-NEXT: "mhlo.all_to_all"([[ARG0]], [[ARG1]])
-  // CHECK-SAME: (tensor<128x4xf32>, tensor<128x4xf32>) -> (tensor<128x4xf32>, tensor<128x4xf32>)
-  ROOT %all-to-all = (f32[128,4]{0,1}, f32[128,4]{1,0}) all-to-all(%p0, %p1), replica_groups={{0,1}}
+  // CHECK-NEXT: "mhlo.all_to_all"([[ARG0]], [[ARG1]]) {
+  // CHECK-SAME:   channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
+  // CHECK-SAME: } : (tensor<128x4xf32>, tensor<128x4xf32>) -> (tensor<128x4xf32>, tensor<128x4xf32>)
+  ROOT %all-to-all = (f32[128,4]{0,1}, f32[128,4]{1,0}) all-to-all(%p0, %p1), channel_id=1, replica_groups={{0,1}}
 }
 
 // Test all-reduce
@@ -894,14 +896,14 @@ add {
 }
 
 // CHECK-LABEL:  func private @test_outfeed_with_sharding
-// CHECK-SAME: ([[DATA:%.*]]: tensor<3xi32>, [[TOKEN:%.*]]: !mhlo.token) -> (!mhlo.token {mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"})
+// CHECK-SAME: ([[DATA:%.*]]: tensor<3xi32>, [[TOKEN:%.*]]: !mhlo.token) -> (!mhlo.token {mhlo.sharding = "\08\01\1A\01\01\22\01\00"})
 %test_outfeed_with_sharding (Arg_0.1: s32[3], Arg_1.2: token[]) -> token[] {
   %Arg_0.1 = s32[3] parameter(0)
   %Arg_1.2 = token[] parameter(1)
   // CHECK-NEXT:  "mhlo.outfeed"([[DATA]], [[TOKEN]])
-  // CHECK-SAME: mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"
+  // CHECK-SAME: mhlo.sharding = "\08\01\1A\01\01\22\01\00"
   // CHECK-SAME:  outfeed_config = "foobar"
-  ROOT %outfeed.3 = token[] outfeed(s32[3] %Arg_0.1, token[] %Arg_1.2), outfeed_config="foobar", sharding={devices=[2,1]0,1}
+  ROOT %outfeed.3 = token[] outfeed(s32[3] %Arg_0.1, token[] %Arg_1.2), outfeed_config="foobar", sharding={maximal device=0}
 }
 
 // CHECK-LABEL:  func private @test_outfeed_with_empty_data
@@ -1687,10 +1689,10 @@ add {
  }
 
 // CHECK-LABEL: func private @test_args_and_result_with_sharding
-// CHECK-SAME: ([[Arg:%.*]]: tensor<4xi32> {mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"}) -> (tensor<4xi32> {mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"})
+// CHECK-SAME: ([[Arg:%.*]]: tensor<4xi32> {mhlo.sharding = "\08\03\1A\01\02\22\02\00\01"}) -> (tensor<4xi32> {mhlo.sharding = "\08\03\1A\01\02\22\02\00\01"})
 %test_args_and_result_with_sharding (Arg_0.1: s32[4]) -> s32[4] {
-  %arg0.1 = s32[4] parameter(0), sharding={devices=[2,1]0,1}
-  ROOT %copy.1 = s32[4] copy(%arg0.1), sharding={devices=[2,1]0,1}
+  %arg0.1 = s32[4] parameter(0), sharding={devices=[2]0,1}
+  ROOT %copy.1 = s32[4] copy(%arg0.1), sharding={devices=[2]0,1}
 }
 
 // CHECK-LABEL: func private @named_thread

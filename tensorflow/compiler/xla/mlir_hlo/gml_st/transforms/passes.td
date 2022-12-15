@@ -163,6 +163,13 @@ def VectorizeGmlStLoopsPass :
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }
 
+def VectorizePerfectlyTiledLoopsPass :
+    Pass<"vectorize-perfectly-tiled-loops", "mlir::func::FuncOp"> {
+  let summary = "Pass to vectorize gml_st.for loops that are tiled perfectly.";
+  let constructor = "::mlir::gml_st::createVectorizePerfectlyTiledLoopsPass()";
+  let dependentDialects = ["::mlir::vector::VectorDialect"];
+}
+
 def LowerVectorContractPass :
     Pass<"lower-vector-contract", "mlir::func::FuncOp"> {
   let summary = "Pass to lower vector.contract";
@@ -189,6 +196,20 @@ def TransformMatmulForCpuPass :
            "If true, lower linalg.matmul into linalg.mmt4d">,
     ListOption<"tileSizes", "tile-sizes", "int64_t",
                "Tile sizes for a `linalg.matmul`">,
+  ];
+}
+
+def TransformMatmulForTritonPass :
+    Pass<"xla-triton-transform-matmul", "mlir::func::FuncOp"> {
+  let summary = "Transform matmul ops for lowering to Triton";
+
+  let constructor = "createTransformMatmulForTritonPass()";
+
+  let options = [
+    ListOption<"tileSizes", "tile-sizes", "int64_t",
+               "Tile sizes for a `linalg.matmul`">,
+    Option<"distributionLabel", "distribution-label", "std::string",
+           /*default=*/"", "Distribution label for generated gml_st.parallel">,
   ];
 }
 
@@ -231,4 +252,11 @@ def TransformReduceForCpuPass :
                "Tile sizes for a `linalg.reduce`. tileSizes[0] is the parallel "
                "dimension and tileSizes[1] is the reduction dimension.">,
   ];
+}
+
+def TransformSortForCpuPass :
+    Pass<"gml-st-cpu-transform-sort", "mlir::func::FuncOp"> {
+  let summary = "Transform sort ops for running on CPU";
+
+  let constructor = "createTransformSortForCpuPass()";
 }

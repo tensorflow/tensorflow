@@ -29,6 +29,7 @@ namespace pjrt {
 
 const absl::string_view kHloFormat = "hlo";
 const absl::string_view kMlirFormat = "mlir";
+const absl::string_view kHloWithConfigFormat = "hlo_with_config";
 
 PJRT_ClientDeleter MakeClientDeleter(const PJRT_Api* api) {
   return [api](PJRT_Client* client) -> void {

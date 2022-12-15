@@ -223,7 +223,12 @@ class TypeSpec(
   # TODO(b/223659753): Return the actual Tensor-based value instead of spec.
   def _placeholder_value(self, placeholder_context) -> "TypeSpec":
     """Value used for tracing a function signature with this TraceType."""
-    return self
+    if placeholder_context.use_default_placeholder:
+      return self
+    component_placeholders = nest.map_structure(
+        lambda x: x._placeholder_value(placeholder_context),  # pylint: disable=protected-access
+        self._component_specs)
+    return self._from_components(component_placeholders)
 
   # TODO(b/225058047): Reconsider semantics.
   def is_compatible_with(self, spec_or_value):

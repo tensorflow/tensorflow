@@ -23,6 +23,11 @@ package(
     licenses = ["notice"],
 )
 
+config_setting(
+    name = "tflite_debug_delegate",
+    define_values = {"tflite_debug_delegate": "true"},
+)
+
 cc_library(
     name = "telemetry",
     srcs = ["telemetry.cc"],

@@ -265,6 +265,18 @@ def _normalize_include_path(repository_ctx, path):
         return path[len(crosstool_folder) + 1:]
     return path
 
+def _is_compiler_option_supported(repository_ctx, cc, option):
+    """Checks that `option` is supported by the C compiler. Doesn't %-escape the option."""
+    result = repository_ctx.execute([
+        cc,
+        option,
+        "-o",
+        "/dev/null",
+        "-c",
+        str(repository_ctx.path("tools/cpp/empty.cc")),
+    ])
+    return result.stderr.find(option) == -1
+
 def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
     """Compute the list of default C or C++ include directories."""
     if lang_is_cpp:
@@ -291,6 +303,18 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
         inc_dirs = stderr[index1 + 1:]
     else:
         inc_dirs = stderr[index1 + 1:index2].strip()
+
+    print_resource_dir_supported = _is_compiler_option_supported(
+        repository_ctx,
+        cc,
+        "-print-resource-dir",
+    )
+
+    if print_resource_dir_supported:
+        resource_dir = repository_ctx.execute(
+            [cc, "-print-resource-dir"],
+        ).stdout.strip() + "/share"
+        inc_dirs += "\n" + resource_dir
 
     return [
         _normalize_include_path(repository_ctx, _cxx_inc_convert(p))

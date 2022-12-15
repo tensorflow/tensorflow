@@ -290,8 +290,9 @@ static Status CompileToLocalExecutable(
   compile_options.alias_resource_update =
       !has_ref_vars && may_alias_resource_update;
 
-  return cache->Compile(options, function, args, compile_options, compile_mode,
-                        profiler, compilation_result, executable);
+  return cache->CompileIfNeeded(options, function, args, compile_options,
+                                compile_mode, profiler, compilation_result,
+                                executable);
 }
 
 // Get-or-create thread pool for a given collective.

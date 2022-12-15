@@ -28,10 +28,10 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_validation_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier/custom_validation_embedder.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/lite/tools/model_loader.h"
 
 // Note that these tests are not meant to be completely exhaustive, but to test
 // error propagation.
@@ -54,28 +54,29 @@ class ValidatorTest : public ::testing::Test {
         g_tflite_acceleration_embedded_mobilenet_validation_model_len);
     ASSERT_TRUE(!validation_model_path.empty());
     validation_model_loader_ =
-        std::make_unique<PathModelLoader>(validation_model_path);
+        std::make_unique<tools::PathModelLoader>(validation_model_path);
 
     std::string plain_model_path = MiniBenchmarkTestHelper::DumpToTempFile(
         "mobilenet_quant.tflite",
         g_tflite_acceleration_embedded_mobilenet_model,
         g_tflite_acceleration_embedded_mobilenet_model_len);
     ASSERT_TRUE(!plain_model_path.empty());
-    plain_model_loader_ = std::make_unique<PathModelLoader>(plain_model_path);
+    plain_model_loader_ =
+        std::make_unique<tools::PathModelLoader>(plain_model_path);
 
     compute_settings_fbb_.Finish(CreateComputeSettings(compute_settings_fbb_));
     default_compute_settings_ = flatbuffers::GetRoot<ComputeSettings>(
         compute_settings_fbb_.GetBufferPointer());
   }
 
-  std::unique_ptr<ModelLoader> validation_model_loader_;
-  std::unique_ptr<ModelLoader> plain_model_loader_;
+  std::unique_ptr<tools::ModelLoader> validation_model_loader_;
+  std::unique_ptr<tools::ModelLoader> plain_model_loader_;
   FlatBufferBuilder compute_settings_fbb_;
   const ComputeSettings* default_compute_settings_;
 };
 
 TEST_F(ValidatorTest, HappyPathOnCpuWithEmbeddedValidation) {
-  ASSERT_EQ(validation_model_loader_->Init(), kMinibenchmarkSuccess);
+  ASSERT_TRUE(validation_model_loader_->Init());
   Validator validator(std::move(validation_model_loader_),
                       default_compute_settings_);
   Validator::Results results;
@@ -88,8 +89,8 @@ TEST_F(ValidatorTest, HappyPathOnCpuWithEmbeddedValidation) {
 
 TEST_F(ValidatorTest, HappyPathOnCpuWithCustomValidation) {
   // Setup.
-  ASSERT_EQ(plain_model_loader_->Init(), kMinibenchmarkSuccess);
-  ASSERT_EQ(validation_model_loader_->Init(), kMinibenchmarkSuccess);
+  ASSERT_TRUE(plain_model_loader_->Init());
+  ASSERT_TRUE(validation_model_loader_->Init());
   const SubGraph* main_model =
       plain_model_loader_->GetModel()->GetModel()->subgraphs()->Get(0);
 
@@ -114,7 +115,7 @@ TEST_F(ValidatorTest, HappyPathOnCpuWithCustomValidation) {
       "mobilenet_quant_with_input.tflite", model_with_input.GetBufferPointer(),
       model_with_input.GetSize());
   ASSERT_TRUE(!model_path.empty());
-  auto model_loader = std::make_unique<PathModelLoader>(model_path);
+  auto model_loader = std::make_unique<tools::PathModelLoader>(model_path);
 
   // Execute.
   Validator validator(std::move(model_loader), default_compute_settings_);
@@ -150,7 +151,7 @@ TEST_F(ValidatorTest, NoValidationSubgraph) {
 }
 
 TEST_F(ValidatorTest, NoValidationInputData) {
-  ASSERT_EQ(plain_model_loader_->Init(), kMinibenchmarkSuccess);
+  ASSERT_TRUE(plain_model_loader_->Init());
   FlatBufferBuilder model_with_input;
   CustomValidationEmbedder embedder(1, {{}});
   EXPECT_EQ(embedder.BuildModel(*plain_model_loader_->GetModel()->GetModel(),
@@ -160,7 +161,7 @@ TEST_F(ValidatorTest, NoValidationInputData) {
       "mobilenet_quant_with_input.tflite", model_with_input.GetBufferPointer(),
       model_with_input.GetSize());
   ASSERT_TRUE(!model_path.empty());
-  auto model_loader = std::make_unique<PathModelLoader>(model_path);
+  auto model_loader = std::make_unique<tools::PathModelLoader>(model_path);
 
   Validator validator(std::move(model_loader), default_compute_settings_);
   Validator::Results results;
@@ -175,10 +176,10 @@ TEST_F(ValidatorTest, InvalidModel) {
       g_tflite_acceleration_embedded_mobilenet_validation_model_len - 12000);
   ASSERT_TRUE(!dump_path.empty());
 
-  Validator validator(std::make_unique<PathModelLoader>(dump_path),
+  Validator validator(std::make_unique<tools::PathModelLoader>(dump_path),
                       default_compute_settings_);
   Validator::Results results;
-  EXPECT_EQ(validator.RunValidation(&results), kMinibenchmarkModelBuildFailed);
+  EXPECT_EQ(validator.RunValidation(&results), kMinibenchmarkModelInitFailed);
 }
 
 TEST_F(ValidatorTest, EmptyModelLoader) {

@@ -1005,7 +1005,15 @@ typedef enum TfLiteDelegateFlags {
   // 3. This flag requires that the original execution plan only have ops with
   // valid registrations (and not 'dummy' custom ops like with Flex).
   // WARNING: This feature is experimental and subject to change.
-  kTfLiteDelegateFlagsRequirePropagatedShapes = 2
+  kTfLiteDelegateFlagsRequirePropagatedShapes = 2,
+
+  // This flag can be used by delegates to request per-operator profiling. If a
+  // node is a delegate node, this flag will be checked before profiling. If
+  // set, then the node will not be profiled. The delegate will then add per
+  // operator information using Profiler::EventType::OPERATOR_INVOKE_EVENT and
+  // the results will appear in the operator-wise Profiling section and not in
+  // the Delegate internal section.
+  kTfLiteDelegateFlagsPerOperatorProfiling = 4
 } TfLiteDelegateFlags;
 
 // WARNING: This is an experimental interface that is subject to change.

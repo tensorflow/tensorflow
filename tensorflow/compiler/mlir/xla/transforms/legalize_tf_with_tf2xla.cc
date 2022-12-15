@@ -132,6 +132,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::DiagOp>(),
     TypeID::get<TF::DigammaOp>(),
     TypeID::get<TF::DivNoNanOp>(),
+    TypeID::get<TF::DynamicPartitionOp>(),
     TypeID::get<TF::EluGradOp>(),
     TypeID::get<TF::EluOp>(),
     TypeID::get<TF::EnsureShapeOp>(),
@@ -269,6 +270,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::UniqueOp>(),
     TypeID::get<TF::UnpackOp>(),
     TypeID::get<TF::UpperBoundOp>(),
+    TypeID::get<TF::WhereOp>(),
     TypeID::get<TF::XlaBroadcastHelperOp>(),
     TypeID::get<TF::XlaCustomCallV2Op>(),
     TypeID::get<TF::XlaDynamicUpdateSliceOp>(),
@@ -305,6 +307,7 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::BitcastOp>(),
     TypeID::get<TF::BroadcastToOp>(),
     TypeID::get<TF::CollectivePermuteOp>(),
+    TypeID::get<TF::ComplexOp>(),
     TypeID::get<TF::ConcatV2Op>(),
     TypeID::get<TF::ConjOp>(),
     TypeID::get<TF::Conv2DOp>(),
@@ -316,6 +319,7 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::CumprodOp>(),
     TypeID::get<TF::CumsumOp>(),
     TypeID::get<TF::DepthwiseConv2dNativeOp>(),
+    TypeID::get<TF::DivOp>(),
     TypeID::get<TF::DynamicStitchOp>(),
     TypeID::get<TF::_EagerConstOp>(),
     TypeID::get<TF::EmptyOp>(),
@@ -330,6 +334,7 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::FusedBatchNormV3Op>(),
     TypeID::get<TF::GatherNdOp>(),
     TypeID::get<TF::GatherV2Op>(),
+    TypeID::get<TF::GreaterEqualOp>(),
     TypeID::get<TF::IdentityOp>(),
     TypeID::get<TF::IdentityNOp>(),
     TypeID::get<TF::InplaceUpdateOp>(),
@@ -337,7 +342,9 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::IRFFTOp>(),
     TypeID::get<TF::L2LossOp>(),
     TypeID::get<TF::LegacyCallOp>(),
+    TypeID::get<TF::LessEqualOp>(),
     TypeID::get<TF::LinSpaceOp>(),
+    TypeID::get<TF::LogicalOrOp>(),
     TypeID::get<TF::MatrixDiagPartV3Op>(),
     TypeID::get<TF::MaxOp>(),
     TypeID::get<TF::MaximumOp>(),
@@ -373,12 +380,15 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::SparseSoftmaxCrossEntropyWithLogitsOp>(),
     TypeID::get<TF::SplitOp>(),
     TypeID::get<TF::SplitVOp>(),
+    TypeID::get<TF::SqrtGradOp>(),
+    TypeID::get<TF::SquaredDifferenceOp>(),
     TypeID::get<TF::SqueezeOp>(),
     TypeID::get<TF::StatelessParameterizedTruncatedNormalOp>(),
     TypeID::get<TF::StatefulPartitionedCallOp>(),
     TypeID::get<TF::StopGradientOp>(),
     TypeID::get<TF::StridedSliceGradOp>(),
     TypeID::get<TF::SumOp>(),
+    TypeID::get<TF::TanhGradOp>(),
     TypeID::get<TF::TensorScatterUpdateOp>(),
     TypeID::get<TF::TileOp>(),
     TypeID::get<TF::TopKV2Op>(),
@@ -391,7 +401,9 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::XlaAllReduceOp>(),
     TypeID::get<TF::XlaGatherOp>(),
     TypeID::get<TF::Xlog1pyOp>(),
+    TypeID::get<TF::XlogyOp>(),
     TypeID::get<TF::ZerosLikeOp>(),
+    TypeID::get<TF::ZetaOp>(),
   };
   // clang-format on
   auto abstractOp = op->getRegisteredInfo();
@@ -406,6 +418,7 @@ bool IsOpAllowedForTesting(Operation* op) {
       new llvm::SmallDenseSet<mlir::TypeID, 16>{
     // Op used to verify handling of XlaExpression of kind constant.
     TypeID::get<TF::ConstOp>(),
+    TypeID::get<TF::CaseOp>(),
   };
   // clang-format on
   auto abstractOp = op->getRegisteredInfo();
@@ -559,7 +572,16 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
   }
 
   for (const auto& attr : op_->getAttrs()) {
-    if (attr.getValue().isa<SymbolRefAttr>()) {
+    Attribute attr_value = attr.getValue();
+    bool has_symbol_ref = false;
+    if (attr_value.isa<SymbolRefAttr>()) {
+      has_symbol_ref = true;
+    } else if (auto array_attr = attr_value.dyn_cast<ArrayAttr>()) {
+      if (!array_attr.empty() && array_attr.begin()->isa<SymbolRefAttr>()) {
+        has_symbol_ref = true;
+      }
+    }
+    if (has_symbol_ref) {
       return op_->emitRemark()
              << "ops with symbol references are not supported";
     }

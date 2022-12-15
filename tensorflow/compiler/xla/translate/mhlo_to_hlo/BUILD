@@ -1,6 +1,6 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
 
 package(
@@ -166,7 +166,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "type_to_shape_test",
     srcs = ["type_to_shape_test.cc"],
     deps = [

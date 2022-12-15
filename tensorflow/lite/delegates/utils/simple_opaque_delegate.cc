@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api.h"
-#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
@@ -36,9 +35,9 @@ TfLiteRegistrationExternal* GetDelegateKernelRegistration(
       TfLiteRegistrationExternalCreate(kTfLiteBuiltinDelegate, delegate->Name(),
                                        /*version=*/1);
 
-  tflite::internal::TfLiteRegistrationExternalSetFreeWithData(
-      kernel_registration, kernel_registration,
-      [](void* data, TfLiteOpaqueContext* context, void* buffer) -> void {
+  TfLiteRegistrationExternalSetFree(
+      kernel_registration,
+      [](TfLiteOpaqueContext* context, void* buffer) -> void {
         delete reinterpret_cast<SimpleOpaqueDelegateInterface*>(buffer);
       });
 

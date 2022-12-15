@@ -128,20 +128,42 @@ std::string GetTypeName(const Type type) {
   return type_name;
 }
 
+// Retrieves the value of `tf_saved_model.initializer_type` attribute from the
+// initializer function. Returns "unknown_initializer_type" iff the attribute is
+// not set.
+std::string GetInitializerType(func::FuncOp init_func_op) {
+  const auto initializer_type_attr =
+      init_func_op->getAttrOfType<StringAttr>(kTfSavedModelInitializerTypeAttr);
+
+  if (!initializer_type_attr) {
+    init_func_op->emitWarning()
+        << "Initializer func op does not have tf_saved_model.initializer_type "
+           "attribute. Func op: "
+        << init_func_op.getSymName();
+    return "unknown_initializer_type";
+  }
+
+  return initializer_type_attr.str();
+}
+
 // An initializer function should satisfy the follwing conditions:
-// 1. The arguments should not be used.
+// 1. The arguments should not be used if the type is "init_op" (it assumes
+//    non-variable resources like tables aren't being initialized by the asset
+//    files passed as arguments).
 // 2. Its GraphOp should only have control outputs.
 LogicalResult ValidateInitFunc(func::FuncOp init_func_op) {
-  for (BlockArgument arg : init_func_op.getArguments()) {
-    if (!arg.use_empty()) {
-      const int arg_idx = arg.getArgNumber();
-      const int num_uses = absl::c_distance(arg.getUses());
-      init_func_op.emitError(absl::StrFormat(
-          "Validation failed for the initializer function: %s. "
-          "The initializer function's arguments should have no "
-          "usages. Instead, argument index: %d has number of usages: %d.",
-          init_func_op.getName().str(), arg_idx, num_uses));
-      return failure();
+  if (GetInitializerType(init_func_op) == kTfSavedModelInitializerInitType) {
+    for (BlockArgument arg : init_func_op.getArguments()) {
+      if (!arg.use_empty()) {
+        const int arg_idx = arg.getArgNumber();
+        const int num_uses = absl::c_distance(arg.getUses());
+        init_func_op.emitError(absl::StrFormat(
+            "Validation failed for the initializer function: %s. "
+            "The initializer function's arguments should have no "
+            "usages. Instead, argument index: %d has number of usages: %d.",
+            init_func_op.getName().str(), arg_idx, num_uses));
+        return failure();
+      }
     }
   }
 
@@ -161,24 +183,6 @@ LogicalResult ValidateInitFunc(func::FuncOp init_func_op) {
   }
 
   return success();
-}
-
-// Retrieves the value of `tf_saved_model.initializer_type` attribute from the
-// initializer function. Returns "unknown_initializer_type" iff the attribute is
-// not set.
-std::string GetInitializerType(func::FuncOp init_func_op) {
-  const auto initializer_type_attr =
-      init_func_op->getAttrOfType<StringAttr>(kTfSavedModelInitializerTypeAttr);
-
-  if (!initializer_type_attr) {
-    init_func_op->emitWarning()
-        << "Initializer func op does not have tf_saved_model.initializer_type "
-           "attribute. Func op: "
-        << init_func_op.getSymName();
-    return "unknown_initializer_type";
-  }
-
-  return initializer_type_attr.str();
 }
 
 // Returns initializer_type -> init_func_op mapping from the session_init_op's

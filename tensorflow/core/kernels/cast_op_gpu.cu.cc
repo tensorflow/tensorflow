@@ -54,6 +54,19 @@ CAST_FUNCTORS(GPUDevice);
 
 DEFINE(float, bfloat16);
 
+// Required functors not previously specialized for truncation.
+DEFINE(double, float8_e5m2);
+DEFINE(float, float8_e5m2);
+DEFINE(bfloat16, float8_e5m2);
+DEFINE(Eigen::half, float8_e5m2);
+DEFINE(float8_e5m2, float8_e5m2);
+DEFINE(float8_e4m3fn, float8_e5m2);
+DEFINE(double, float8_e4m3fn);
+DEFINE(float, float8_e4m3fn);
+DEFINE(bfloat16, float8_e4m3fn);
+DEFINE(Eigen::half, float8_e4m3fn);
+DEFINE(float8_e4m3fn, float8_e4m3fn);
+
 #if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 
 // The cast from float to double is still needed for resize_bilinear_op.cc

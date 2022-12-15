@@ -195,8 +195,14 @@ Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
     // gemm is an integer type, because in that case no floating point
     // operations are involved at all! But we still calculate FLOPS because the
     // number is sometimes required for ad-hoc calculations.
+
+    // cublasLt supports auxiliary outputs, so output may be tuple.
+    const Shape& output_shape = custom_call->shape().IsTuple()
+                                    ? custom_call->shape().tuple_shapes(0)
+                                    : custom_call->shape();
+
     current_properties_[kFlopsKey] =
-        GetDotFlops(custom_call->operand(0)->shape(), custom_call->shape(),
+        GetDotFlops(custom_call->operand(0)->shape(), output_shape,
                     gemm_config.dot_dimension_numbers());
     return OkStatus();
   }

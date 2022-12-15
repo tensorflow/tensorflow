@@ -21,7 +21,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-void RegisterCustomCall(runtime::DirectCustomCallRegistry& registry);
+void RegisterXlaClassicCustomCalls(runtime::DirectCustomCallRegistry& registry);
 
 }  // namespace gpu
 }  // namespace xla

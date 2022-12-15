@@ -28,13 +28,13 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/file_lock.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier/custom_validation_embedder.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/runner.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/tools/model_loader.h"
 
 namespace tflite {
 namespace acceleration {
@@ -75,19 +75,17 @@ MinibenchmarkStatus ValidatorRunnerImpl::Init() {
     return status;
   }
 
-  std::unique_ptr<ModelLoader> model_loader =
-      CreateModelLoaderFromPath(fd_or_model_path_);
+  std::unique_ptr<tools::ModelLoader> model_loader =
+      tools::CreateModelLoaderFromPath(fd_or_model_path_);
   if (!model_loader) {
     TF_LITE_REPORT_ERROR(error_reporter_, "Failed to parse model path.");
     return kMinibenchmarkPreconditionNotMet;
   }
 
   // Check that the model can be loaded from disk.
-  status = model_loader->Init();
-  if (status != kMinibenchmarkSuccess) {
-    TF_LITE_REPORT_ERROR(error_reporter_, "Could not load model: %d",
-                         static_cast<int>(status));
-    return status;
+  if (!model_loader->Init()) {
+    TF_LITE_REPORT_ERROR(error_reporter_, "Could not load model");
+    return kMinibenchmarkModelInitFailed;
   }
 
   if (custom_validation_embedder_) {

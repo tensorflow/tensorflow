@@ -207,11 +207,14 @@ void PopulateOpMetricsNode(const OpMetrics& op_metrics,
   metrics->set_memory_bandwidth_util(mem_bw_utilization);
 
   const uint64 kHbm = 1;
-  mem_bw_utilization =
-      SafeDivide(GibiBytesPerSecondPerCore(op_metrics, kHbm,
-                                           OpMetrics::MemoryAccessed::UNKNOWN),
-                 peak_hbm_gibibytes_per_second_per_core);
+  double mem_bw_gibibytes_per_second = GibiBytesPerSecondPerCore(
+      op_metrics, kHbm, OpMetrics::MemoryAccessed::UNKNOWN);
+  mem_bw_utilization = SafeDivide(mem_bw_gibibytes_per_second,
+                                  peak_hbm_gibibytes_per_second_per_core);
   metrics->set_hbm_bandwidth_util(mem_bw_utilization);
+
+  metrics->set_raw_hbm_bytes_accessed(GibiToGiga(mem_bw_gibibytes_per_second) *
+                                      PicoToNano(op_metrics.time_ps()));
 }
 
 // Sets the total time on the root node metrics.

@@ -177,15 +177,15 @@ def if_no_default_logger(a):
 # Combine with 'if_gpu_is_configured' (XLA) or 'if_cuda_or_rocm' (otherwise).
 def if_nccl(if_true, if_false = []):
     return select({
-        "//tensorflow/tsl:no_nccl_support": if_false,
-        "//tensorflow/tsl:windows": if_false,
+        clean_dep("//tensorflow/tsl:no_nccl_support"): if_false,
+        clean_dep("//tensorflow/tsl:windows"): if_false,
         "//conditions:default": if_true,
     })
 
 def if_with_tpu_support(if_true, if_false = []):
     """Shorthand for select()ing whether to build API support for TPUs when building TSL"""
     return select({
-        "//tensorflow/tsl:with_tpu_support": if_true,
+        clean_dep("//tensorflow/tsl:with_tpu_support"): if_true,
         "//conditions:default": if_false,
     })
 
@@ -412,7 +412,7 @@ def if_not_mobile_or_arm_or_lgpl_restricted(a):
     })
 
 def tsl_grpc_cc_dependencies():
-    return ["//tensorflow/tsl:grpc++"]
+    return [clean_dep("//tensorflow/tsl:grpc++")]
 
 # Bazel rule for collecting the header files that a target depends on.
 def _transitive_hdrs_impl(ctx):

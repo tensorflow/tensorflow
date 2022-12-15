@@ -357,6 +357,16 @@ func.func @atan2_with_symbol_ref(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   func.return %0 : tensor<2xf32>
 }
 
+func.func private @branch0(tensor<2xf32>) -> tensor<2xf32>
+func.func private @branch1(tensor<2xf32>) -> tensor<2xf32>
+
+func.func @case_with_symbol_ref(%arg0: tensor<i32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: tf.Case
+  // expected-remark@+1 {{ops with symbol references are not supported}}
+  %0 = "tf.Case"(%arg0, %arg1) {branches = [@branch0, @branch1], is_stateless = false} : (tensor<i32>, tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
 // CHECK-LABEL: const
 func.func @const() -> tensor<2xf32> {
   // CHECK: mhlo.const

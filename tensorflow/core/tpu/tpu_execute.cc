@@ -181,15 +181,15 @@ bool DynamicShapeIsCompatible(const xla::Shape& dynamic_shape,
 }
 
 // For dynamic inputs, copy them and attach metadata of shape sizes to the
-// end of the tensor.
+// beginning of the tensor.
 //
 // The buffer for dynamic shapes contains three parts:
 // +--------+
+// |Metadata|
+// +--------+
 // |Payload |
 // +--------+
-// | Padding|
-// +--------+
-// |Metadata|
+// |Padding |
 // +--------+
 //
 // Metadata contains the sizes of shape without padding, eventually

@@ -37,6 +37,7 @@ namespace {
 struct TestParams {
   bool enable_grappler = false;
   bool enable_lazy_loading = false;
+  bool lazy_loading_use_graph_executor = false;
 };
 
 class SavedModelTest : public ::testing::TestWithParam<TestParams> {};
@@ -53,6 +54,8 @@ TEST_P(SavedModelTest, BasicV1) {
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
   options.enable_lazy_loading = GetParam().enable_lazy_loading;
+  options.lazy_loading_use_graph_executor =
+      GetParam().lazy_loading_use_graph_executor;
   options.graph_execution_options.compile_options.enable_grappler =
       GetParam().enable_grappler;
 
@@ -77,12 +80,13 @@ TEST_P(SavedModelTest, BasicV1) {
 
 // Tests all the value combinations of `TestParams`. For readability, use
 // integers instead of booleans.
-INSTANTIATE_TEST_SUITE_P(SavedModelLiteTest, SavedModelTest,
-                         ::testing::Values(
-                             // The values below are for:
-                             // enable_grappler, enable_lazy_loading
-                             TestParams{0, 0}, TestParams{0, 1},
-                             TestParams{1, 0}, TestParams{1, 1}));
+INSTANTIATE_TEST_SUITE_P(
+    SavedModelLiteTest, SavedModelTest,
+    ::testing::Values(
+        // The values below are for:
+        // enable_grappler, enable_lazy_loading, lazy_loading_use_graph_executor
+        TestParams{0, 0, 0}, TestParams{1, 0, 0}, TestParams{0, 1, 0},
+        TestParams{1, 1, 0}, TestParams{0, 1, 1}, TestParams{1, 1, 1}));
 
 TEST(SavedModelTest, CostMeasurementEnabled) {
   // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated

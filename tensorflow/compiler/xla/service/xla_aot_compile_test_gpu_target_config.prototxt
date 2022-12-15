@@ -30,7 +30,4 @@ gpu_device_info {
 cuda_compute_capability {
   major: 6
 }
-rocm_compute_capability {
-  gcn_arch_name: "gfx000"
-}
 platform_name: "CUDA"

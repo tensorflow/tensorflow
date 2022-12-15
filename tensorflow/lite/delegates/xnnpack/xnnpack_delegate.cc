@@ -576,12 +576,12 @@ class Delegate {
 
  private:
   TfLiteDelegate delegate_ = {
-      reinterpret_cast<void*>(this),  // .data_
-      DelegatePrepare,                // .Prepare
-      nullptr,                        // .CopyFromBufferHandle
-      nullptr,                        // .CopyToBufferHandle
-      nullptr,                        // .FreeBufferHandle
-      kTfLiteDelegateFlagsNone,       // .flags
+      reinterpret_cast<void*>(this),             // .data_
+      DelegatePrepare,                           // .Prepare
+      nullptr,                                   // .CopyFromBufferHandle
+      nullptr,                                   // .CopyToBufferHandle
+      nullptr,                                   // .FreeBufferHandle
+      kTfLiteDelegateFlagsPerOperatorProfiling,  // .flags
   };
 
   // Unpacked data for quasi-static tensors, i.e. tensors produced by
@@ -1085,9 +1085,10 @@ class Subgraph {
     for (size_t node_index = 0; node_index < num_operators; ++node_index) {
       operator_name = &operator_names[name_len];
       name_len += strlen(operator_name) + 1;
-      profiler->AddEvent(operator_name,
-                         Profiler::EventType::DELEGATE_OPERATOR_INVOKE_EVENT,
-                         operator_timings[node_index], node_index);
+      profiler->AddEvent(
+          operator_name,
+          Profiler::EventType::DELEGATE_PROFILED_OPERATOR_INVOKE_EVENT,
+          operator_timings[node_index], node_index);
     }
     return kTfLiteOk;
   }
@@ -5430,6 +5431,12 @@ class Subgraph {
         &padding_top, &padding_bottom, &padding_left, &padding_right,
         &adjustment_height, &adjustment_width));
 
+    float output_min = -std::numeric_limits<float>::infinity();
+    float output_max = +std::numeric_limits<float>::infinity();
+    TF_LITE_ENSURE_STATUS(ConvertActivationToOutputRange(
+        logging_context, node_index, deconv_params->activation, &output_min,
+        &output_max));
+
     if (subgraph != nullptr) {
       const xnn_status status = xnn_define_deconvolution_2d(
           subgraph,
@@ -5448,8 +5455,8 @@ class Subgraph {
           /*groups=*/1,
           /*group_input_channels=*/input_channels,
           /*group_output_channels=*/output_channels,
-          /*output_min=*/-std::numeric_limits<float>::infinity(),
-          /*output_max=*/+std::numeric_limits<float>::infinity(),
+          /*output_min=*/output_min,
+          /*output_max=*/output_max,
           /*input_id=*/xnnpack_tensors[input_tensor_index],
           /*filter_id=*/xnnpack_tensors[filter_tensor_index],
           /*bias_id=*/xnnpack_tensor_bias,

@@ -8451,5 +8451,41 @@ ENTRY %entry {
   EXPECT_TRUE(changed);
 }
 
+TEST_F(ShardingPropagationTest, PropagateReduceManualTuple) {
+  const char* const hlo_string = R"(
+HloModule pjit
+
+orclone {
+  lhs.1 = u32[] parameter(0)
+  rhs.1 = u32[] parameter(2)
+  or.2 = u32[] or(lhs.1, rhs.1)
+  lhs.0 = u32[] parameter(1)
+  rhs.0 = u32[] parameter(3)
+  or.3 = u32[] or(lhs.0, rhs.0)
+  ROOT tuple.4 = (u32[], u32[]) tuple(or.2, or.3)
+}
+
+ENTRY %main.21 {
+  select.104 = u32[2,2]{1,0} parameter(0), sharding={manual}
+  shift-left.5 = u32[2,2]{1,0} parameter(1), sharding={manual}
+  constant.4183 = u32[] constant(0), sharding={manual}
+  reduce.1 = (u32[2]{0}, u32[2]{0}) reduce(shift-left.5, select.104, constant.4183, constant.4183), dimensions={1}, to_apply=orclone
+  ROOT get-tuple-element.13 = u32[2]{0} get-tuple-element(reduce.1), index=0
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+
+  EXPECT_THAT(FindInstruction(module.get(), "reduce.1"),
+              op::Sharding("{{manual}, {manual}}"));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+}
+
 }  // namespace
 }  // namespace xla

@@ -817,6 +817,7 @@ tf_xla_py_test(
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
         "requires-gpu-nvidia",
+        "no_rocm"
     ],
     deps = [
         ":xla_test",
@@ -1449,6 +1450,7 @@ tf_xla_py_test(
     tags = [
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "no_rocm"
     ],
     deps = [
         ":xla_test",
@@ -1709,6 +1711,7 @@ cuda_py_test(
     tags = [
         "no_cuda_asan",  # Times out.
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "no_rocm"
     ],
     xla_enable_strict_auto_jit = False,
     xla_enabled = True,
@@ -2179,6 +2182,7 @@ tf_xla_py_test(
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
+        "no_rocm"
     ],
     use_xla_device = False,
     deps = [
@@ -2212,6 +2216,37 @@ tf_xla_py_test(
     size = "small",
     srcs = ["where_op_test.py"],
     enable_mlir_bridge = False,
+    enabled_backends = [
+        "cpu",
+        "gpu",
+    ],
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python/compiler/xla:compiler_py",
+    ],
+)
+
+tf_xla_py_test(
+    name = "where_op_tpu_test",
+    size = "small",
+    srcs = ["where_op_test.py"],
+    args = ["--tpu_use_tfrt=true"],
+    disabled_backends = [
+        "cpu",
+        "cpu_ondemand",
+        "gpu",
+    ],
+    enable_mlir_bridge = False,
+    main = "where_op_test.py",
     tags = [
         "no_pip",
         "optonly",
