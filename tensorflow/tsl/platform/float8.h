@@ -109,11 +109,13 @@ class float8_base {
     return float{derived()} <= float{other};
   }
 
-  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator>(const Derived& other) {
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator>(
+      const Derived& other) const {
     return float{derived()} > float{other};
   }
 
-  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator>=(const Derived& other) {
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC bool operator>=(
+      const Derived& other) const {
     return float{derived()} >= float{other};
   }
 
