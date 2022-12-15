@@ -2555,7 +2555,7 @@ def MHLO_SelectOp: MHLO_Op<"select", [Pure, HLO_BroadcastingElementwise,
 }
 
 def MHLO_SelectAndScatterOp: MHLO_Op<"select_and_scatter",
-      [RecursiveMemoryEffects]> {
+      [RecursiveMemoryEffects, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "SelectAndScatter operator";
   let description = [{
     Runs a windowed selection `select` function over `operand` with shape

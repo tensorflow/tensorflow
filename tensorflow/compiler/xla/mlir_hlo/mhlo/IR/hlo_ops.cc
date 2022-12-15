@@ -7183,9 +7183,17 @@ OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
 // SelectAndScatterOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult SelectAndScatterOp::inferReturnTypes(
+    MLIRContext*, Optional<Location>, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  SelectAndScatterOp::Adaptor adaptor(operands, attributes, regions);
+  return hlo::inferSelectAndScatterOp(adaptor.getOperand(),
+                                      inferredReturnTypes);
+}
+
 namespace {
-// Infer the return-type of SelectAndScatterOp.
-TensorType inferSelectAndScatterOpReturnType(
+TensorType inferSelectAndScatterOpWindowReturnType(
     TensorType operandType, const ArrayRef<hlo::WindowDimension> window) {
   if (!operandType.hasRank())
     return UnrankedTensorType::get(operandType.getElementType());
@@ -7203,13 +7211,11 @@ TensorType inferSelectAndScatterOpReturnType(
 //   P3. size-of(window_dimension) == rank-of(input),
 //         where input is an element of 'inputs'.
 //   P4. Verify and collect the window attributes.
-//   P5. Verify the return type matches the operand-type.
-//   P6. Check if the result type of window operation matches the source type.
+//   P5. Check if the result type of window operation matches the source type.
 LogicalResult SelectAndScatterOp::verify() {
   auto operandType = getOperand().getType().cast<TensorType>();
   auto initValueType = getInitValue().getType().cast<TensorType>();
   auto sourceType = getSource().getType().cast<TensorType>();
-  auto resultType = getResult().getType().cast<TensorType>();
 
   // P1.
   Block& selectBlock = getSelect().front();
@@ -7277,14 +7283,8 @@ LogicalResult SelectAndScatterOp::verify() {
   if (failed(windowOrErr)) return failure();
 
   // P5.
-  if (!hlo::compatibleShapeAndElementType(operandType, resultType))
-    return emitOpError()
-           << "expects the return-type to match the operand-type, but got "
-           << resultType << " and " << operandType << " resp.";
-
-  // P6.
   auto windowResultType =
-      inferSelectAndScatterOpReturnType(operandType, *windowOrErr);
+      inferSelectAndScatterOpWindowReturnType(operandType, *windowOrErr);
 
   if (!hlo::compatibleShapeAndElementType(windowResultType, sourceType,
                                           /*ignoreFpPrecision=*/true))
