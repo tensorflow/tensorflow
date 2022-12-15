@@ -1780,6 +1780,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
             fused_ops == std::vector<string>{"BiasAdd", "Relu"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Relu6"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Elu"} ||
+            fused_ops == std::vector<string>{"BiasAdd", "_FusedHardSwish"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Add"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu6"} ||
@@ -1812,7 +1813,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     return (fused_ops == std::vector<string>{"BiasAdd"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Relu"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Relu6"} ||
-            fused_ops == std::vector<string>{"BiasAdd", "Elu"});
+            fused_ops == std::vector<string>{"BiasAdd", "Elu"} ||
+            fused_ops == std::vector<string>{"BiasAdd", "_FusedHardSwish"});
   }
 
   // Rewrites input node to a new node specified by its matching rewrite info.
