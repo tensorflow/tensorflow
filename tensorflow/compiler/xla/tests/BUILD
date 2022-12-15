@@ -271,6 +271,7 @@ cc_library(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/tsl/lib/core:bitmap",
+        "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/memory",
@@ -1061,6 +1062,7 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:test",
     ],
 )
