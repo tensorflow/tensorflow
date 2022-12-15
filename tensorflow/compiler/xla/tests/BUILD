@@ -230,7 +230,6 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
-        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
         "@llvm-project//llvm:Support",
     ],
 )
