@@ -1292,4 +1292,21 @@ TEST(OpVersionTest, VersioningExpTest) {
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
+TEST(OpVersionTest, VersioningLogTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_LOG,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+  fake_op_sig = {
+      .op = BuiltinOperator_LOG,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+  fake_op_sig = {
+      .op = BuiltinOperator_LOG,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+}
 }  // namespace tflite

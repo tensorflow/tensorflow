@@ -36,6 +36,7 @@ def _make_elementwise_tests(op, allow_fully_quantize=False, min_value=-100,
             "input_dtype": [tf.float32],
             "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
             "fully_quantize": [True],
+            "quant_16x8": [False, True],
             "input_range": [[min_value, max_value]],
         },
     ]
@@ -77,7 +78,8 @@ def make_sin_tests(options):
 @register_make_test_function()
 def make_log_tests(options):
   """Make a set of tests to do log."""
-  return _make_elementwise_tests(tf.math.log)(options)
+  return _make_elementwise_tests(tf.math.log, allow_fully_quantize=True,
+                                 min_value=.1, max_value=1)(options)
 
 
 @register_make_test_function()

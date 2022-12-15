@@ -157,6 +157,12 @@ func.func @testLogStaticShapeInputAndDynamicShapeOutput(tensor<8 x f32>) -> tens
   func.return %0 : tensor<? x f32>
 }
 
+// CHECK-LABEL: testLogQuantInt8
+func.func @testLogQuantInt8(%arg0: tensor<1x80x128x!quant.uniform<i8:f32, 0.0517647:-128>>) -> tensor<1x80x128x!quant.uniform<i8:f32, 0.0191482:-8>> {
+  %0 = "tfl.log"(%arg0): (tensor<1x80x128x!quant.uniform<i8:f32, 0.0517647:-128>>) -> tensor<1x80x128x!quant.uniform<i8:f32, 0.0191482:-8>>
+  func.return %0 : tensor<1x80x128x!quant.uniform<i8:f32, 0.0191482:-8>>
+}
+
 // CHECK-LABEL: testNeg
 func.func @testNeg(tensor<? x f32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<? x f32>):
