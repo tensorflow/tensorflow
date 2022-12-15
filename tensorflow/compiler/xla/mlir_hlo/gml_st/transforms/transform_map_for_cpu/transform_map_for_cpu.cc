@@ -78,6 +78,12 @@ struct TileMapPattern : public OpRewritePattern<OpType> {
                    fuseFilterFn);
     }
     setLabel(tilingResult->tiledOps.front(), kMapTransformedLabel);
+
+    // Peel parallel loops.
+    if (auto loop = dyn_cast_or_null<ParallelOp>(tilingResult->loop)) {
+      peelAllLoops(loop, rewriter);
+    }
+
     return success();
   }
 
