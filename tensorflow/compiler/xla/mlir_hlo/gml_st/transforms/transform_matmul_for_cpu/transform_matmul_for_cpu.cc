@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
@@ -362,6 +363,54 @@ struct FoldFillGenericOpPattern : public OpRewritePattern<linalg::GenericOp> {
         loc, outputType.getShape(), outputType.getElementType());
     rewriter.replaceOpWithNewOp<linalg::FillOp>(genericOp, fillOp.value(),
                                                 newInitTensor);
+    return success();
+  }
+};
+
+/// Rewrite a tensor::PadOp into a sequence of EmptyOp, FillOp and
+/// MapOp, which would be eligible for tiling/peeling and vectorization.
+struct MapCopyPadOpPattern : public linalg::GeneralizePadOpPattern {
+  explicit MapCopyPadOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
+      : linalg::GeneralizePadOpPattern(context, emitMapCopy, benefit) {}
+
+  static LogicalResult emitMapCopy(PatternRewriter &rewriter,
+                                   tensor::PadOp padOp, Value dest) {
+    auto sourceType = padOp.getSourceType();
+    auto destType = dest.getType().dyn_cast<ShapedType>();
+
+    // TODO(vuson): add support for dynamic shape, which should also be
+    // tiled/peeled/vectorized.
+    if (!sourceType.hasStaticShape() || !destType) return failure();
+
+    ArrayRef<int64_t> shape = sourceType.getShape();
+    int64_t rank = sourceType.getRank();
+    linalg::SliceParameters sliceParams;
+    sliceParams.sizes.reserve(rank);
+    sliceParams.strides =
+        SmallVector<OpFoldResult>(rank, rewriter.getIndexAttr(1));
+    for (unsigned r = 0; r < rank; ++r) {
+      sliceParams.sizes.push_back(rewriter.getIndexAttr(shape[r]));
+    }
+
+    // Extract a slice of source's shape, which is the destination of the copy,
+    // from the tensor to be padded.
+    auto extractOp = rewriter.create<tensor::ExtractSliceOp>(
+        padOp.getLoc(), dest, padOp.getMixedLowPad(), sliceParams.sizes,
+        sliceParams.strides);
+
+    // Perform copy from the source to the extracted slice.
+    auto copy = rewriter.create<linalg::MapOp>(
+        padOp.getLoc(), padOp.getSource(), extractOp.getResult(),
+        [](OpBuilder &b, Location loc, ValueRange args) {
+          b.create<linalg::YieldOp>(loc, args.front());
+        });
+
+    // Insert the extracted slice (with the source's data copied) back into the
+    // tensor to be padded.
+    rewriter.replaceOpWithNewOp<tensor::InsertSliceOp>(
+        padOp, copy.getResult().front(), dest, padOp.getMixedLowPad(),
+        sliceParams.sizes, sliceParams.strides);
+
     return success();
   }
 };
@@ -720,7 +769,10 @@ struct TransformMatmulForCpuPass
       tensor::ExpandShapeOp::getCanonicalizationPatterns(patterns, ctx);
       tensor::EmptyOp::getCanonicalizationPatterns(patterns, ctx);
       linalg::FillOp::getCanonicalizationPatterns(patterns, ctx);
-      patterns.insert<FoldFillGenericOpPattern>(ctx);
+      patterns.add<FoldFillGenericOpPattern>(ctx);
+
+      // Lower tensor.pad to linalg.map.
+      patterns.add<MapCopyPadOpPattern>(ctx);
 
       if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
         return signalPassFailure();

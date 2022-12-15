@@ -611,8 +611,8 @@ bool isFillTiledOrSmall(FillOp fill) {
   if (isInsideGmlStLoop(fill)) return true;
 
   // Allow vectorization for static shapes with low number of elements.
-  auto outputType = fill.output().getType().cast<mlir::RankedTensorType>();
-  return outputType.hasStaticShape() &&
+  auto outputType = fill.output().getType().dyn_cast<mlir::RankedTensorType>();
+  return outputType && outputType.hasStaticShape() &&
          outputType.getNumElements() < kNumElementsThreshold;
 }
 
