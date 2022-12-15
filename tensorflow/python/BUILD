@@ -3467,6 +3467,7 @@ filegroup(
     name = "win_lib_files_for_exported_symbols",
     srcs = [
         "//tensorflow/tsl/python/lib/core:bfloat16_lib",  # bfloat16
+        "//tensorflow/tsl/python/lib/core:custom_casts_lib",
         "//tensorflow/tsl/python/lib/core:float8_lib",  # float8_e4m3fn, float8_e5m2
         "//tensorflow/python/grappler:cost_analyzer_lib",
         "//tensorflow/python/util:cpp_nest",

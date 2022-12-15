@@ -168,6 +168,13 @@ bool Initialize() {
           numpy.get())) {
     return false;
   }
+
+  // Register casts between float8 types.
+  if (!tsl::custom_float_internal::RegisterCustomFloatCast<float8_e4m3fn,
+                                                           float8_e5m2>()) {
+    return false;
+  }
+
   return true;
 }
 

@@ -95,6 +95,26 @@ cc_library(
 )
 
 cc_library(
+    name = "custom_casts_lib",
+    srcs = ["custom_casts.cc"],
+    hdrs = ["custom_casts.h"],
+    deps = [
+        ":bfloat16_lib",
+        ":float8_lib",
+        "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/python/lib/core:numpy",
+        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
+    ],
+)
+
+cc_library(
+    name = "custom_casts_hdr",
+    hdrs = [
+        "custom_casts.h",
+    ],
+)
+
+cc_library(
     name = "numpy",
     srcs = ["numpy.cc"],
     hdrs = ["numpy.h"],
@@ -109,6 +129,7 @@ cc_library(
     name = "core",
     deps = [
         ":bfloat16_lib",
+        ":custom_casts_lib",
         ":float8_lib",
         ":numpy",
     ],

@@ -63,6 +63,9 @@ tsl::RegisterNumpyFloat8e5m2
 tsl::Float8e5m2Dtype
 tsl::Float8e5m2NumpyType
 
+[//tensorflow/tsl/python/lib/core:custom_casts_lib]
+tsl::RegisterCustomCasts
+
 [//tensorflow/python:py_func_lib] # py_func
 tensorflow::InitializePyTrampoline
 
