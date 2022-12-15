@@ -576,9 +576,8 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
       return rewriter.notifyMatchFailure(
           matmulOp, "has already been tiled by another pass.");
 
-    SmallVector<Operation *> fusionCluster = getFusionCluster(matmulOp);
+    SmallVector<Operation *> fusionCluster = findMapFusionCluster(matmulOp);
 
-    // First element of the cluster is always the root for tiling.
     Operation *tilingRoot = fusionCluster[0];
 
     // Tiling of linalg.map requires two dimensions, linalg.matmul requires
@@ -608,6 +607,7 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
     SmallVector<TilingResult> tilingReductionDimsResults;
     for (auto op :
          llvm::to_vector(tilingRoot->getBlock()->getOps<linalg::MatmulOp>())) {
+      // Fusion into the output.
       if (failed(fuseOutputFill(rewriter, op))) return failure();
 
       auto result = tileMatmulReductionDims(rewriter, op);
@@ -641,27 +641,6 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
   }
 
  private:
-  LogicalResult fuseOutputFill(PatternRewriter &rewriter,
-                               linalg::MatmulOp matmulOp) const {
-    // Fusion into the output.
-    Operation *definingOp =
-        matmulOp.getDpsInitOperand(0)->get().getDefiningOp();
-
-    // linalg.fill has already been fused for another matmul.
-    if (isa<linalg::FillOp>(definingOp)) return success();
-
-    auto materialize = dyn_cast<MaterializeOp>(definingOp);
-    if (!materialize) {
-      return rewriter.notifyMatchFailure(
-          matmulOp,
-          "has failed to 'materialize' output during 'linalg.fill' fusion.");
-    }
-    if (materialize.getSource().getDefiningOp<linalg::FillOp>()) {
-      if (failed(fuse(rewriter, materialize))) return failure();
-    }
-    return success();
-  }
-
   FailureOr<TilingResult> tileMatmulReductionDims(
       PatternRewriter &rewriter, linalg::MatmulOp matmulOp) const {
     SmallVector<int64_t> reductionDimsTileSizes{0, 0, reductionDimTileSize};
@@ -679,44 +658,6 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
 
     setLabel(matmulOp, kMatmulTransformedLabel);
     return tilingReductionDimsResult;
-  }
-
-  // Find a cluster of operations that can be tiled and fused together around
-  // the root op. We want to fuse output of linalg.matmul with an elementwise
-  // op. In general case a cluster is a tree that can have multiple leaf-node
-  // matmuls, e.g. map(matmul, map(matmul)).
-  SmallVector<Operation *> getFusionCluster(Operation *rootOp) const {
-    // Find the root operation in the chain of elementwise ops. Current approach
-    // doesn't work well if maps don't form a chain.
-    while (true) {
-      auto users = llvm::to_vector(rootOp->getUsers());
-
-      if (users.size() != 1) break;
-      if (!isa<linalg::MapOp>(users[0])) break;
-
-      rootOp = users[0];
-    }
-
-    // Run BFS  to find all maps and matmul that can be fused in the root op.
-    SmallVector<Operation *> resultOps;
-    SmallVector<Operation *> remainingProducers{rootOp};
-
-    while (!remainingProducers.empty()) {
-      Operation *curOp = remainingProducers.pop_back_val();
-      if (!curOp) continue;
-
-      if (auto matmulOp = dyn_cast<linalg::MatmulOp>(curOp)) {
-        for (auto *u : matmulOp->getUsers())
-          // Do not fuse matmul that is used by another matmul.
-          if (isa<linalg::MatmulOp>(u)) continue;
-        resultOps.push_back(curOp);
-      } else if (auto mapOp = dyn_cast<linalg::MapOp>(curOp)) {
-        resultOps.push_back(curOp);
-        for (auto *operand : mapOp.getDpsInputOperands())
-          remainingProducers.push_back(operand->get().getDefiningOp());
-      }
-    }
-    return resultOps;
   }
 
   int64_t lhsParallelDimTileSize;
