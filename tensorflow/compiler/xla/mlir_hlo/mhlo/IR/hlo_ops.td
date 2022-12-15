@@ -1761,7 +1761,6 @@ def MHLO_BatchNormGradOp : MHLO_Op<"batch_norm_grad", [Pure,
       1DTensorOf<[MHLO_Float]>:$grad_offset);
 
   let hasCustomHLOConverter = 1;
-  let hasVerifier = 1;
 }
 
 def MHLO_BatchNormInferenceOp : MHLO_Op<"batch_norm_inference",
@@ -1786,8 +1785,6 @@ def MHLO_BatchNormInferenceOp : MHLO_Op<"batch_norm_inference",
   );
 
   let results = (outs RankedTensorOf<[MHLO_Float]>:$result);
-
-  let hasVerifier = 1;
 }
 
 def MHLO_BatchNormTrainingOp : MHLO_Op<"batch_norm_training",
@@ -1815,7 +1812,6 @@ def MHLO_BatchNormTrainingOp : MHLO_Op<"batch_norm_training",
       1DTensorOf<[MHLO_Float]>:$batch_mean,
       1DTensorOf<[MHLO_Float]>:$batch_var);
 
-  let hasVerifier = 1;
   let hasCustomHLOConverter = 1;
 }
 

@@ -2965,52 +2965,6 @@ void AllGatherOp::build(OpBuilder& odsBuilder, OperationState& odsState,
 // BatchNormGradOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult verifyBatchNorm(Location loc, Value operand,
-                              int64_t feature_index, Value scale) {
-  auto operandType = operand.getType().cast<RankedTensorType>();
-  if (feature_index >= operandType.getRank())
-    return emitError(loc) << "expects feature_index to be smaller "
-                             "than the rank of operand type; got feature_index "
-                          << feature_index << ", and rank "
-                          << operandType.getRank() << ".";
-
-  if (feature_index < 0)
-    return emitError(loc) << "expects feature_index to be a "
-                          << "non-negative number, got " << feature_index
-                          << ".";
-
-  // Note: the above checks '0 <= feature-index < operandType.getRank()'
-  // imply 'operand_type.getRank() >= 1'.
-
-  const int64_t featureCount = operandType.getDimSize(feature_index);
-  const int64_t scaleShape =
-      scale.getType().cast<RankedTensorType>().getDimSize(0);
-  // As ODS enforces `scale`, `mean`, `variance`, `offset` are AllShapesMatch,
-  // this also infers that featureCount is aligned with them.
-  if (scaleShape != featureCount) {
-    auto dimToStr = [](int64_t dim) {
-      return ShapedType::isDynamic(dim) ? "?" : std::to_string(dim);
-    };
-    return emitError(loc) << "expects the size of scale factor to be "
-                             "same as the feature count,"
-                             " but the size of scale factor is "
-                          << dimToStr(scaleShape)
-                          << " and the feature count is "
-                          << dimToStr(featureCount) << ".";
-  }
-
-  return success();
-}
-
-// Refer ODS for properties that are already enforced including shapes and
-// element types. This verifier includes additional checks.
-LogicalResult BatchNormGradOp::verify() {
-  if (failed(verifyBatchNorm(getLoc(), getOperand(), getFeatureIndex(),
-                             getScale())))
-    return failure();
-  return success();
-}
-
 LogicalResult BatchNormGradOp::inferReturnTypeComponents(
     MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
@@ -3025,15 +2979,6 @@ LogicalResult BatchNormGradOp::inferReturnTypeComponents(
 // BatchNormTrainingOp
 //===----------------------------------------------------------------------===//
 
-// Refer ODS for properties that are already enforced including shapes and
-// element types. This verifier includes additional checks.
-LogicalResult BatchNormTrainingOp::verify() {
-  if (failed(verifyBatchNorm(getLoc(), getOperand(), getFeatureIndex(),
-                             getScale())))
-    return failure();
-  return success();
-}
-
 LogicalResult BatchNormTrainingOp::inferReturnTypeComponents(
     MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
@@ -3047,15 +2992,6 @@ LogicalResult BatchNormTrainingOp::inferReturnTypeComponents(
 //===----------------------------------------------------------------------===//
 // BatchNormInferenceOp
 //===----------------------------------------------------------------------===//
-
-// Refer ODS for properties that are already enforced including shapes and
-// element types. This verifier includes additional checks.
-LogicalResult BatchNormInferenceOp::verify() {
-  if (failed(verifyBatchNorm(getLoc(), getOperand(), getFeatureIndex(),
-                             getScale())))
-    return failure();
-  return success();
-}
 
 LogicalResult BatchNormInferenceOp::inferReturnTypeComponents(
     MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
