@@ -968,8 +968,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       const int64_t feature_group_index =
           out_index[output_z_dim] / output_feature_group_size;
 
-      const int64_t depthwise_multiplier =
-          batch_group_count > 1 ? output_z_size / batch_group_count : 1;
+      const int64_t depthwise_multiplier = output_z_size / batch_group_count;
       const int64_t batch_group_index =
           out_index[output_z_dim] / depthwise_multiplier;
 
@@ -1042,9 +1041,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           // This approach works out automatically for 'groups' in batches
           // with group_size > 1, because we already descend down the batch
           // dimension for the 'output_batch_dim' above.
-          lhs_linear_index +=
-              ((batch_group_index * batch_group_size) % input_batch_size) *
-              lhs_dim_multipliers[input_batch_dim];
+          lhs_linear_index += (batch_group_index * batch_group_size) *
+                              lhs_dim_multipliers[input_batch_dim];
 
           lhs_linear_index += iz * lhs_dim_multipliers[input_z_dim];
           int64_t rhs_linear_index = rhs_linear_spatial_index;
