@@ -156,16 +156,14 @@ class ScatterTest(test.TestCase):
                 np.random.randn(*(indices_shape + extra_shape)), vtype)
 
           # Clips small values to avoid division by zero.
-          def clip_small_values(x):
-            threshold = 1e-4
-            sign = np.sign(x)
+          threshold = np.array(1e-4, dtype=vtype)
+          sign = np.sign(updates)
+          if vtype == np.int32:
+            threshold = 1
+            sign = np.random.choice([-1, 1], updates.shape)
+          updates = np.where(
+              np.abs(updates) < threshold, threshold * sign, updates)
 
-            if isinstance(x, np.int32):
-              threshold = 1
-              sign = np.random.choice([-1, 1])
-            return threshold * sign if np.abs(x) < threshold else x
-
-          updates = np.vectorize(clip_small_values)(updates)
           old = _AsType(np.random.randn(*((first_dim,) + extra_shape)), vtype)
 
           # Scatter via numpy
@@ -180,13 +178,18 @@ class ScatterTest(test.TestCase):
           self.evaluate(ref.initializer)
           self.evaluate(tf_scatter(ref, indices, updates))
           self.assertAllCloseAccordingToType(
-              self.evaluate(ref), new, half_rtol=5e-3, half_atol=5e-3)
+              self.evaluate(ref),
+              new,
+              half_rtol=5e-3,
+              half_atol=5e-3,
+              bfloat16_rtol=5e-2,
+              bfloat16_atol=5e-2)
 
   def _VariableRankTests(self,
                          tf_scatter,
                          repeat_indices=False,
                          updates_are_scalar=False):
-    vtypes = [np.float32, np.float64]
+    vtypes = [np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype]
     if tf_scatter != state_ops.scatter_div:
       vtypes.append(np.int32)
       # float16 is numerically unstable for div

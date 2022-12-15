@@ -15,7 +15,7 @@
 """Utitiles for Cache Key generation based on Function Trace Type."""
 
 import collections.abc
-from typing import Any, Callable, Hashable
+from typing import Any, Callable, Hashable, Optional
 import weakref
 
 from tensorflow.core.function.trace_type import default_types
@@ -84,6 +84,41 @@ class InternalTracingContext(trace.TracingContext):
     return self._is_legacy_signature
 
 
+class InternalPlaceholderContext(trace.PlaceholderContext):
+  """Container with mappings shared across TraceTypes for placeholder values."""
+
+  def __init__(self, use_default_placeholder: bool = True):
+    self._use_default_placeholder = use_default_placeholder
+    self._alias_id_to_placeholder = {}
+    self._naming_scope = None
+
+  def has_placeholder(self, alias_id: Hashable) -> bool:
+    return alias_id in self._alias_id_to_placeholder
+
+  def get_placeholder(self, alias_id: Hashable) -> Hashable:
+    if not self.has_placeholder(alias_id):
+      raise KeyError(f"alias_id: {alias_id} not found in this instance of "
+                     "placeholder context.")
+    return self._alias_id_to_placeholder[alias_id]
+
+  def add_placeholder(self, alias_id: Hashable, placeholder: Hashable) -> None:
+    if alias_id in self._alias_id_to_placeholder:
+      raise KeyError(f"alias id: {alias_id} is already stored in this "
+                     "instance of placeholder context.")
+    self._alias_id_to_placeholder[alias_id] = placeholder
+
+  def update_naming_scope(self, naming_scope: Optional[str]) -> None:
+    self._naming_scope = naming_scope
+
+  @property
+  def naming_scope(self) -> Optional[str]:
+    return self._naming_scope
+
+  @property
+  def use_default_placeholder(self) -> bool:
+    return self._use_default_placeholder
+
+
 def from_value(value: Any,
                context: trace.TracingContext = None) -> trace.TraceType:
   """Returns a TraceType corresponding to the value based on the context.
@@ -102,7 +137,12 @@ def from_value(value: Any,
   if context.is_legacy_signature and isinstance(value, trace.TraceType):
     return value
   elif isinstance(value, trace.SupportsTracingProtocol):
-    return value.__tf_tracing_type__(context)
+    generated_type = value.__tf_tracing_type__(context)
+    if not isinstance(generated_type, trace.TraceType):
+      raise TypeError(
+          "Expected an instance of TraceType for Tracing Protocol call to " +
+          str(value) + " but got " + str(generated_type))
+    return generated_type
 
   if hasattr(value, "__wrapped__"):
     return from_value(value.__wrapped__, context)
@@ -139,6 +179,7 @@ def from_value(value: Any,
     try:
       return default_types.Literal(value)
     except:
-      raise TypeError(
-          f"Python object could not be represented through the generic tracing "
-          f"type. Consider implementing the Tracing Protocol for it: {value!r}")
+      raise TypeError(  # pylint: disable=raise-missing-from
+          f"Could not generate a generic TraceType for {value!r}."
+          f"Please verify that it is immutable/hashable. Otheriwse, consider "
+          f"implementing the Tracing Protocol for it.")

@@ -508,9 +508,9 @@ value of each element in `x`. For example, if x is an input element and y is
 an output element, this operation computes \\(y = |x|\\).
   }];
 
-  let arguments = (ins TFL_TensorOf<[I16, F32, QI8, QI16]>:$x);
+  let arguments = (ins TFL_TensorOf<[I16, I32, F32, QI8, QI16]>:$x);
 
-  let results = (outs TFL_TensorOf<[I16, F32, QI8, QI16]>:$y);
+  let results = (outs TFL_TensorOf<[I16, I32, F32, QI8, QI16]>:$y);
 
   let hasFolder = 1;
 }
@@ -654,7 +654,8 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
     TFL_TensorOfOrNone<[F32, QI32, I64]>:$bias,
     TFL_PaddingAttr:$padding,
     ConfinedAttr<I32Attr, [IntPositive]>:$stride_h,
-    ConfinedAttr<I32Attr, [IntPositive]>:$stride_w
+    ConfinedAttr<I32Attr, [IntPositive]>:$stride_w,
+    TFL_AFAttr:$fused_activation_function
   );
 
   let results = (outs TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$output);
@@ -996,7 +997,7 @@ def TFL_DepthwiseConv2DOp :
                  DynamicRangeQuantizedOpInterface]> {
   let arguments = (
     ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
-    TFL_TensorOf<[F32, QI8, QUI8]>:$filter,
+    TFL_TensorOf<[F32, QI4, QI8, QUI8]>:$filter,
     TFL_1DTensorOfOrNone<[F32, I32, I64]>:$bias,
     I32Attr:$dilation_h_factor,
     I32Attr:$dilation_w_factor,
@@ -1036,7 +1037,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
 
   let arguments = (ins
     TFL_TensorOf<[F32, QI8, QUI8, QI16, QUI16]>:$input,
-    TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$filter,
+    TFL_TensorOf<[F32, QI4, QI8, QUI8, QI16]>:$filter,
     TFL_TensorOfOrNone<[F32, QI32, QUI32]>:$bias,
 
     TFL_AFAttr:$fused_activation_function,
@@ -1774,9 +1775,9 @@ def TFL_FillOp: TFL_Op<"fill", [
   }];
 
   let arguments = (ins TFL_I32OrI64Tensor:$dims,
-                   TFL_TensorOf<[F32, I32, I64, I1, QI8, QI16, TFL_Str]>:$input);
+                   TFL_TensorOf<[F32, F16, I32, I64, I1, QI8, QI16, TFL_Str]>:$input);
 
-  let results = (outs TFL_TensorOf<[F32, I32, I64, I1, QI8, QI16, TFL_Str]>:$result);
+  let results = (outs TFL_TensorOf<[F32, F16, I32, I64, I1, QI8, QI16, TFL_Str]>:$result);
 
   let hasOptions = 0;
 }
@@ -1933,7 +1934,7 @@ def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [Pure,
   // FixedOutputRangeInterface:
   quant::UniformQuantizedType GetFixedOutputRange(
       bool is_signed, int bit_width) {
-    auto result_type = output().getType();
+    auto result_type = getOutput().getType();
     // central_value = min_value / 2 + (max_value - 1) / 2 + 1
     // zero_point = central_value
     // scale = 1. / (central_value - min_value)
@@ -2085,7 +2086,7 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
   // FixedOutputRangeInterface:
   quant::UniformQuantizedType GetFixedOutputRange(
       bool is_signed, int bit_width) {
-    auto result_type = y().getType();
+    auto result_type = getY().getType();
     // zero_point = 0
     // scale = 1. / (max_value + 1)
     return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
@@ -2154,7 +2155,7 @@ def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
   // FixedOutputRangeInterface:
   quant::UniformQuantizedType GetFixedOutputRange(
       bool is_signed, int bit_width) {
-    auto result_type = output().getType();
+    auto result_type = getOutput().getType();
     // zero_point = max_value
     // scale = -log_softmax_output_min / (max_value + 1)
     return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
@@ -2883,6 +2884,24 @@ def TFL_Relu6Op: TFL_Op<"relu6", [
   ];
 }
 
+def TFL_Relu0To1Op: TFL_Op<"relu_0_to_1", [
+    PredOpTrait<"x and y must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    Pure,
+    QuantizableResult,
+    SameOperandsAndResultShape]> {
+  let summary = "Relu0To1 operator";
+
+  let description = [{
+    Element-wise Relu0To1 operator
+      x -> max(0, min(1, x))
+  }];
+
+  let arguments = (ins TFL_TensorOf<[F32, QUI8, QI8]>:$x);
+
+  let results = (outs TFL_TensorOf<[F32, QUI8, QI8]>:$y);
+}
+
 def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
@@ -3201,7 +3220,7 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
   // FixedOutputRangeInterface:
   quant::UniformQuantizedType GetFixedOutputRange(
       bool is_signed, int bit_width) {
-    auto result_type = output().getType();
+    auto result_type = getOutput().getType();
     // zero_point = 0
     // scale = 1. / (max_value + 1)
     return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
@@ -3363,7 +3382,7 @@ def TFL_TanhOp: TFL_Op<"tanh", [
   // FixedOutputRangeInterface:
   quant::UniformQuantizedType GetFixedOutputRange(
       bool is_signed, int bit_width) {
-    auto result_type = output().getType();
+    auto result_type = getOutput().getType();
     // central_value = min_value / 2 + (max_value - 1) / 2 + 1
     // zero_point = central_value
     // scale = 1. / (central_value - min_value)
@@ -3439,7 +3458,7 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [
 def TFL_TransposeOp : TFL_Op<"transpose", [
     Pure,
     QuantizableResult,
-    TFL_OperandHasRankAtMost<0, 5>,
+    TFL_OperandHasRankAtMost<0, 6>,
     TFL_OperandHasRank<1, 1>,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
@@ -4995,7 +5014,7 @@ def TFL_Atan2Op: TFL_Op<"atan2", [
 
   let summary = "Atan2 operation";
   let description = [{
-    The "atan2" operation computes the arctangent of y/x element-wise, 
+    The "atan2" operation computes the arctangent of y/x element-wise,
     respecting signs of the arguments.
   }];
 
@@ -5014,18 +5033,18 @@ def TFL_SignOp: TFL_Op<"sign", [
   SameOperandsAndResultShape,
   SameOperandsAndResultElementType
   ]> {
-  
+
   let summary = "Sign operation";
   let description = [{
     Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, F64]>:$x
+    TFL_TensorOf<[F32, F64, I32]>:$x
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, F64]>:$output
+    TFL_TensorOf<[F32, F64, I32]>:$output
   );
 }
 
@@ -5041,7 +5060,7 @@ def TFL_YieldOp : Op<TFL_Dialect, "yield",
     The operation takes a variable number of operands and produces no results.
     The operand number and types must match the signature of the region that contains the operation.
   }];
-  let arguments = (ins Variadic<AnyType>:$operands);
+  let arguments = (ins Variadic<AnyType>);
 
   // Default builder needed for ensureTerminator
   let builders = [
@@ -5112,12 +5131,12 @@ def TFL_IfOp : Op<TFL_Dialect, "if", [
   let extraClassDeclaration = [{
     OpBuilder getThenBodyBuilder(OpBuilder::Listener *listener = nullptr) {
       Block* body = getBody(0);
-      return results().empty() ? OpBuilder::atBlockTerminator(body, listener)
+      return getResults().empty() ? OpBuilder::atBlockTerminator(body, listener)
                                : OpBuilder::atBlockEnd(body, listener);
     }
     OpBuilder getElseBodyBuilder(OpBuilder::Listener *listener = nullptr) {
       Block* body = getBody(1);
-      return results().empty() ? OpBuilder::atBlockTerminator(body, listener)
+      return getResults().empty() ? OpBuilder::atBlockTerminator(body, listener)
                                : OpBuilder::atBlockEnd(body, listener);
     }
   }];

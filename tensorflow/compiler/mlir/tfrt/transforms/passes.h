@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace mlir {
 class PassManager;
@@ -91,12 +92,6 @@ mlir::LogicalResult TFSavedModelToCoreRTConversionPassRun(
     mlir::MLIRContext* context, mlir::func::FuncOp func,
     mlir::ConversionTarget* target, mlir::RewritePatternSet* patterns,
     CoreRTConverter* corert_converter);
-
-// Create an operation pass that converts each tfrt_dist.remote_execute_func op
-// into a combination of tfrt_dist.register_tfrt_function op and
-// tfrt_dist.remote_execute op.
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateDistRemoteRunEncapsulatePass();
 
 // Create an operation pass that removes the device attribute from every
 // corert.executeop.
@@ -167,12 +162,17 @@ struct TfrtPipelineOptions
       llvm::cl::desc("If true, fallback executeops that produce inputs to tpu "
                      "program will use tpu host allocator."),
       llvm::cl::init(false)};
-  Option<bool> enable_native_ops{
-      *this, "enable-native-ops",
-      llvm::cl::desc(
-          "If true, native ops will be used on an opt-in basis instead of "
-          "fallback ops. If false, no native ops are used."),
-      llvm::cl::init(true)};
+
+  Option<bool> target_gpu{
+      *this, "target-gpu",
+      llvm::cl::desc("If true, target GPU compiler passes."),
+      llvm::cl::init(false)};
+
+  // TODO(b/260915352): Remove the flag and default to using bridge.
+  Option<bool> use_bridge_for_gpu{
+      *this, "use-bridge-for-gpu",
+      llvm::cl::desc("If true, GPU bridge is used."), llvm::cl::init(false)};
+
   Option<bool> func_use_fallback_tensor{
       *this, "func-use-fallback-tensor",
       llvm::cl::desc(
@@ -243,8 +243,8 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager& pm,
 
 // Creates a pipeline of passes that lowers MLIR TF dialect from tf.function to
 // TFRT dialect. SavedModel related conversions are not included.
-void CreateTfExecutorToTfrtPipeline(mlir::PassManager& pm,
-                                    const TfrtPipelineOptions& options);
+tsl::Status CreateTfExecutorToTfrtPipeline(mlir::PassManager& pm,
+                                           const TfrtPipelineOptions& options);
 
 }  // namespace tensorflow
 

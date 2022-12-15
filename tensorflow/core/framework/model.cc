@@ -2568,7 +2568,8 @@ void Model::OptimizeStageBasedParallelism(
     const ModelTiming::NodeTiming* root_timing =
         model_timing.GetTiming(critical_root.second);
     // If timing has not improved, stop optimizing.
-    if (critical_root.first <= root_timing->total_time_nsec) {
+    if (critical_root.first <=
+        (root_timing->total_time_nsec * root_timing->pipeline_ratio)) {
       parallelism_parameter->value -= 1.0;
       break;
     }
@@ -2923,7 +2924,7 @@ void ModelTiming::ComputeAsyncInterleaveManyTotalTime(const Node& node) {
     ++num_active_inputs;
   }
   auto parallelism_param = node.ParameterValue(kParallelism);
-  double parallelism = num_active_inputs;
+  double parallelism = 1.0;
   if (parallelism_param.ok()) {
     parallelism = parallelism_param.value();
   }

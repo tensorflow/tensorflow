@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <utility>
 #include <vector>
 
+#include "llvm/IR/IntrinsicsNVPTX.h"
 #include "tensorflow/tsl/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Attributes.gen.inc"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
@@ -31,11 +33,12 @@ limitations under the License.
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
+#include "llvm/Support/ModRef.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -70,10 +73,12 @@ bool IsFPLiteralWithValue(const HloInstruction* operand, float value) {
 
 GpuElementalIrEmitter::GpuElementalIrEmitter(
     const HloModuleConfig& hlo_module_config, llvm::Module* module,
-    llvm::IRBuilder<>* b, NestedComputer compute_nested)
+    llvm::IRBuilder<>* b, NestedComputer compute_nested,
+    IrEmitterContext* ir_emitter_context)
     : ElementalIrEmitter(module, b),
       hlo_module_config_(hlo_module_config),
-      compute_nested_(std::move(compute_nested)) {}
+      compute_nested_(std::move(compute_nested)),
+      ir_emitter_context_(ir_emitter_context) {}
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
     TargetDeviceFunctionID funcid, absl::Span<llvm::Value* const> operands,
@@ -153,9 +158,11 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
     }
   }
 
-  return EmitDeviceFunctionCall(
-      callee_name, operands, input_types, output_type,
-      {llvm::Attribute::ReadNone, llvm::Attribute::NoUnwind}, b(), name);
+  return EmitDeviceFunctionCall(callee_name, operands, input_types, output_type,
+                                llvm::AttrBuilder(b()->getContext())
+                                    .addMemoryAttr(llvm::MemoryEffects::none())
+                                    .addAttribute(llvm::Attribute::NoUnwind),
+                                b(), name);
 }
 
 llvm_ir::IrArray::Index GpuElementalIrEmitter::GetSourceIndexOfBitcast(
@@ -330,6 +337,17 @@ llvm::Value* GpuElementalIrEmitter::EmitThreadId() {
       EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockDimx, {}, {}, b()),
       b()->getIntNTy(128), /*isSigned=*/true, "threads_per_block");
   return NSWAdd(NSWMul(block_id, threads_per_block), thread_id_in_block);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitF32ToBF16(
+    llvm::Value* f32_value) {
+  if (ir_emitter_context_->cuda_compute_capability().IsAtLeast(8)) {
+    return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_f2bf16_rn,
+                                        {f32_value}, {}, b());
+  } else {
+    // More complex fallback solution.
+    return ElementalIrEmitter::EmitF32ToBF16(f32_value);
+  }
 }
 
 }  // namespace gpu

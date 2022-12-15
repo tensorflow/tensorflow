@@ -15,6 +15,7 @@ load(
 load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -34,7 +35,6 @@ cc_library(
     name = "fallback_state",
     srcs = ["fallback_state.cc"],
     hdrs = ["fallback_state.h"],
-    # copybara:uncomment compatible_with = ["//buildenv/target:gce"],
     deps = [
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",

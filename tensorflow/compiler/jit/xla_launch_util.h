@@ -134,6 +134,10 @@ StatusOr<std::vector<int>> GetConstantInputIndicesFromContext(
 
 std::vector<int> GetResourceVariableIndicesFromContext(OpKernelContext* ctx);
 
+Status SetOutputForConstant(
+    OpKernelContext* ctx, bool requires_copy_to_device,
+    const XlaCompiler::CompilationResult* compilation_result, int output_num);
+
 // Helper class to perform the marshalling of TensorFlow inputs and outputs to
 // ShapedBuffers suitable for passing to an XLA computation.
 class XlaComputationLaunchContext {

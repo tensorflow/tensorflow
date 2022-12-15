@@ -105,13 +105,13 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
   });
   m.def("AddMesh", [](const py::capsule& device_info,
                       const std::string& serialized_mesh, bool is_async,
-                      bool is_host_mesh) {
+                      bool is_host_mesh, int in_flight_nodes_limit) {
     std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
         TF_NewStatus(), TF_DeleteStatus);
     AddMesh(
         serialized_mesh,
         PyCapsule_GetPointer(device_info.ptr(), "TFE_CustomDevice_DeviceInfo"),
-        is_async, is_host_mesh, status.get());
+        is_async, is_host_mesh, in_flight_nodes_limit, status.get());
     if (TF_GetCode(status.get()) != TF_OK) {
       PyErr_SetString(PyExc_ValueError, TF_Message(status.get()));
       throw py::error_already_set();
@@ -337,5 +337,8 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       .def("contains_dim", &Mesh::IsMeshDim, py::arg("dim_name"),
            "Returns True if a Mesh contains the given dimension name.")
       .def("device_type", &Mesh::device_type,
-           "Returns the device_type of a Mesh.");
+           "Returns the device_type of a Mesh.")
+      .def("use_xla_spmd", &Mesh::use_xla_spmd,
+           "Returns True if Mesh will use XLA for SPMD instead of DTensor "
+           "SPMD.");
 }

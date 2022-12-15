@@ -30,10 +30,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/c/common_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
@@ -44,6 +44,7 @@ limitations under the License.
 
 namespace tflite {
 
+#ifndef DOXYGEN_SKIP
 class SingleOpModel;  // Class for friend declarations.
 
 namespace internal {
@@ -55,14 +56,16 @@ namespace test_utils {
 class TestDelegate;  // Class for friend declarations.
 }  // namespace test_utils
 }  // namespace delegates
+#endif  // DOXYGEN_SKIP
 
 class Subgraph {
  public:
+#ifndef DOXYGEN_SKIP
   friend class Interpreter;
   friend class SignatureRunner;
   friend class SingleOpModel;
   friend class internal::CommonOpaqueConversionUtil;
-
+#endif  // DOXYGEN_SKIP
   Subgraph(ErrorReporter* error_reporter,
            TfLiteExternalContext** external_contexts,
            std::vector<std::unique_ptr<Subgraph>>* subgraphs,
@@ -443,8 +446,10 @@ class Subgraph {
   }
 
  private:
+#ifndef DOXYGEN_SKIP
   friend class InterpreterBuilder;
   friend class TestDelegate;
+#endif  // DOXYGEN_SKIP
   // SubgraphAwareProfiler wraps an actual TFLite profiler, such as a
   // BufferedProfiler instance, and takes care of event profiling/tracing in a
   // certain subgraph.
@@ -555,11 +560,6 @@ class Subgraph {
                                              const int* output_indices,
                                              int num_outputs);
 
-  // Compute the number of bytes required to represent a tensor with dimensions
-  // specified by the array dims (of length dims_size). Returns the status code
-  // and bytes.
-  TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
-                             size_t* bytes);
 
   // Request an tensor be resized implementation. If the given tensor is of
   // type kTfLiteDynamic it will also be allocated new memory.

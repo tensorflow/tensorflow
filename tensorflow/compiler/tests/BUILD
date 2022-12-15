@@ -13,6 +13,7 @@ load(
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":internal"],
     licenses = ["notice"],
 )
@@ -1228,6 +1229,7 @@ tf_xla_py_test(
     srcs = ["scan_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
+    shard_count = 6,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
@@ -1444,6 +1446,7 @@ tf_xla_py_test(
     srcs = ["unary_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
+    shard_count = 4,
     tags = [
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -2206,6 +2209,37 @@ tf_xla_py_test(
     size = "small",
     srcs = ["where_op_test.py"],
     enable_mlir_bridge = False,
+    enabled_backends = [
+        "cpu",
+        "gpu",
+    ],
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python/compiler/xla:compiler_py",
+    ],
+)
+
+tf_xla_py_test(
+    name = "where_op_tpu_test",
+    size = "small",
+    srcs = ["where_op_test.py"],
+    args = ["--tpu_use_tfrt=true"],
+    disabled_backends = [
+        "cpu",
+        "cpu_ondemand",
+        "gpu",
+    ],
+    enable_mlir_bridge = False,
+    main = "where_op_test.py",
     tags = [
         "no_pip",
         "optonly",

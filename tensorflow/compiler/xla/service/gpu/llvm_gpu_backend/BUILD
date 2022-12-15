@@ -1,10 +1,11 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -19,12 +20,10 @@ package_group(
 cc_library(
     name = "llvm_gpu_backend",
     srcs = [
-        "dump_ir_pass.cc",
         "gpu_backend_lib.cc",
         "utils.cc",
     ],
     hdrs = [
-        "dump_ir_pass.h",
         "gpu_backend_lib.h",
         "utils.h",
     ],
@@ -44,6 +43,7 @@ cc_library(
         "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:Linker",
+        "@llvm-project//llvm:Passes",
         "@llvm-project//llvm:NVPTXCodeGen",  # buildcleaner: keep
         "@llvm-project//llvm:ObjCARC",  # buildcleaner: keep
         "@llvm-project//llvm:Scalar",
@@ -68,7 +68,7 @@ cc_library(
     ]),
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "utils_test",
     size = "small",
     srcs = ["utils_test.cc"],

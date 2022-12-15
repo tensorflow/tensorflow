@@ -89,7 +89,7 @@ func.func @binary_op_broadcast(%arg0: tensor<4x1xf32>, %arg1: tensor<4x1x4xf32>)
 
 // CHECK-LABEL: func @ternary_op
 func.func @ternary_op(%arg0: tensor<2xi1>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>) -> tensor<2xi32> {
-  // CHECK: "mhlo.select"(%arg0, %arg1, %arg2)
+  // CHECK: mhlo.select %arg0, %arg1, %arg2
   %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   func.return %0: tensor<2xi32>
 }
@@ -354,6 +354,16 @@ func.func @atan2_with_symbol_ref(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // expected-remark@+1 {{ops with symbol references are not supported}}
   %0 = "tf.Atan2"(%arg0, %arg0) {_body = @identity} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
 
+  func.return %0 : tensor<2xf32>
+}
+
+func.func private @branch0(tensor<2xf32>) -> tensor<2xf32>
+func.func private @branch1(tensor<2xf32>) -> tensor<2xf32>
+
+func.func @case_with_symbol_ref(%arg0: tensor<i32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: tf.Case
+  // expected-remark@+1 {{ops with symbol references are not supported}}
+  %0 = "tf.Case"(%arg0, %arg1) {branches = [@branch0, @branch1], is_stateless = false} : (tensor<i32>, tensor<2xf32>) -> tensor<2xf32>
   func.return %0 : tensor<2xf32>
 }
 

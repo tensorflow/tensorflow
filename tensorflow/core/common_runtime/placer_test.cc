@@ -298,6 +298,7 @@ class PlacerTest : public ::testing::Test {
     optimization_options.flib_def = &flib_def;
     optimization_options.device_set = &devices_;
     optimization_options.session_options = &session_options;
+    optimization_options.debug_filename_prefix = "placer_test_";
     Status s = OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::PRE_PLACEMENT, optimization_options);
     if (!s.ok()) {
@@ -310,7 +311,7 @@ class PlacerTest : public ::testing::Test {
 
     Placer placer(graph, "", &graph->flib_def(), devices, nullptr,
                   allow_soft_placement, log_device_placement);
-    return placer.Run();
+    return placer.Run(optimization_options);
   }
 
   Status Place(Graph* graph, DeviceSet* devices) {

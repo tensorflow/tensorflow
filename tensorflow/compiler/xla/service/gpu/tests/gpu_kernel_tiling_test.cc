@@ -65,9 +65,7 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithProperDimensionsTiled) {
           .value();
 
   auto expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @copy
 ; CHECK: call void BARRIER()
-; CHECK: }
 )";
   CompileAndVerifyIr(std::move(hlo_module),
                      MakePlatformSpecificLlvm(expected_ir),
@@ -93,9 +91,7 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithSmallDimensionsNotTiled) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithLayoutAssignment())
           .value();
   auto expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @copy
 ; CHECK-NOT: call void BARRIER()
-; CHECK: }
 )";
   CompileAndVerifyIr(std::move(hlo_module),
                      MakePlatformSpecificLlvm(expected_ir),
@@ -307,50 +303,6 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithPowerOf2OutputElementsUnrolled) {
   const char *expected_ir = R"(
 ; CHECK: store float %{{.*}}, ptr addrspace(1)
 ; CHECK: store float %{{.*}}, ptr addrspace(1)
-)";
-  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
-                     /*match_optimized_ir=*/true);
-  // Check that the kernel runs correctly.
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1.0e-5, 1.0e-5}));
-}
-
-TEST_F(GpuKernelTilingTest,
-       ColumnReductionWithInputLargerThenReduceInputNotUnrolled) {
-  const char *const kHloString = R"(
-  HloModule larger_than_reduce_input_parameter
-
-  reduction22 {
-    x = f32[] parameter(0)
-    y = f32[] parameter(1)
-    ROOT add = f32[] add(x, y)
-  }
-
-  fused_computation {
-    constant0 = f32[] constant(0)
-    arg.1 = f16[1024,512]{1,0} parameter(0)
-    arg.2 = f16[1027,513]{1,0} parameter(1)
-    arg1.conv = f32[1024,512]{1,0} convert(arg.1)
-    arg2.conv = f32[1027,513]{1,0} convert(arg.2)
-    slice2 = f32[1024,512]{1,0} slice(arg2.conv), slice={[2:1026], [1:513]}
-    add2 = f32[1024,512]{1,0} add(arg1.conv, slice2)
-    ROOT reduce = f32[512]{0} reduce(add2, constant0), dimensions={0},
-      to_apply=reduction22
-  }
-
-  ENTRY kernel_entry {
-    arg1 = f16[1024,512]{1,0} parameter(0)
-    arg2 = f16[1027,513]{1,0} parameter(1)
-    ROOT fusion = f32[512]{0} fusion(arg1, arg2), kind=kInput,
-      calls=fused_computation
-  })";
-
-  // Check that one call to llvm.nvvm.atomic is generated.
-  auto hlo_module =
-      ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .value();
-  const char *expected_ir = R"(
-; CHECK: store float %{{.*}}, ptr addrspace(1)
-; CHECK-NOT: store float %{{.*}}, ptr addrspace(1)
 )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);
@@ -791,6 +743,35 @@ ENTRY kernel_entry {
                      /*match_optimized_ir=*/true);
 }
 
+TEST_F(GpuKernelTilingTest, ColumnMultiOutputVectorization) {
+  const char *const kHloString = R"(
+HloModule HandleReductionToVectorAndOtherReduction
+
+add {
+    acc = f16[] parameter(1)
+    op = f16[] parameter(0)
+    ROOT out = f16[] add(acc, op)
+}
+
+ENTRY main {
+    p = f16[4096,4096] parameter(0)
+    l1 = log(p)
+    l2 = log(l1)
+    s = log(l2)
+    z = f16[] constant(0)
+    r1 = f16[4096] reduce(p, z), dimensions={0}, to_apply=add
+    r2 = f16[4096] reduce(s, z), dimensions={0}, to_apply=add
+    ROOT out = (f16[4096], f16[4096]) tuple(r1, r2)
+}
+  )";
+  auto expected_ir = R"(
+; CHECK: load <2 x half>, ptr
+  )";
+  auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
+                     /*match_optimized_ir=*/true);
+}
+
 TEST_F(GpuKernelTilingTest, Hlo021CopyNoOobAccess) {
   const char *const kHloString = R"(
 HloModule primitive_computation_svd.38
@@ -834,7 +815,7 @@ TEST_F(GpuKernelTilingTest, RowReductionCorrectShmemUsage) {
   )";
   auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
   auto expected_ir = is_built_with_rocm_ ? R"(
-; CHECK: initial_value_addr = internal unnamed_addr addrspace({{[0-9]*}}) global [1024 x float] undef, align 4
+; CHECK: initial_value_addr = internal unnamed_addr addrspace({{[0-9]*}}) global [1024 x float] poison, align 4
   )"
                                          : R"(
 ; CHECK: shared_cache = private unnamed_addr addrspace({{[0-9]*}}) global [1 x [1 x [2 x float]]]

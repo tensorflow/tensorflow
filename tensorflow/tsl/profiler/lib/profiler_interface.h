@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_TSL_PROFILER_LIB_PROFILER_INTERFACE_H_
 
 #include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
 namespace profiler {

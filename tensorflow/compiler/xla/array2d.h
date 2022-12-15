@@ -25,6 +25,7 @@ limitations under the License.
 #include <random>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -83,7 +84,7 @@ class Array2D : public Array<T> {
   }
 
   // Applies f to all cells in this array, in row-major order.
-  void Each(std::function<void(int64_t, int64_t, T*)> f) {
+  void Each(absl::FunctionRef<void(int64_t, int64_t, T*)> f) {
     for (int64_t i0 = 0; i0 < n1(); ++i0) {
       for (int64_t i1 = 0; i1 < n2(); ++i1) {
         f(i0, i1, &(*this)(i0, i1));

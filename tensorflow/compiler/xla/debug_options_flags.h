@@ -25,8 +25,17 @@ limitations under the License.
 
 namespace xla {
 
-// Appends flag definitions for debug options to flag_list.
-void AppendDebugOptionsFlags(std::vector<tsl::Flag>* flag_list);
+// Construct flags which write to the debug_options proto when parsed. Existing
+// contents of debug_options is used as the default. Can be called multiple
+// times.
+void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
+                           DebugOptions* debug_options);
+
+// Appends flag definitions for debug options to flag_list. Existing
+// contents of debug_options is used as the default. If debug_options is null,
+// uses global defaults. Modifies global state on first call.
+void AppendDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
+                             DebugOptions* debug_options = nullptr);
 
 // Fetches a DebugOptions proto message from flags provided to the program.
 // Flags must be registered with the flags parser using AppendDebugOptionsFlags

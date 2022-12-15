@@ -351,12 +351,12 @@ void ParametricDotTest::TestImpl() {
   auto prim_type = primitive_util::NativeToPrimitiveType<NativeT>();
   auto result =
       Dot(Parameter(&builder, 0,
-                    ShapeUtil::MakeShapeWithLayout(
+                    ShapeUtil::MakeShapeWithDenseLayout(
                         prim_type, {param.m, param.k},
                         MinorToMajorForIsRowMajor(param.dot_lhs_row_major)),
                     "dot_lhs"),
           Parameter(&builder, 1,
-                    ShapeUtil::MakeShapeWithLayout(
+                    ShapeUtil::MakeShapeWithDenseLayout(
                         prim_type, {param.k, param.n},
                         MinorToMajorForIsRowMajor(param.dot_rhs_row_major)),
                     "dot_rhs"));
@@ -365,7 +365,7 @@ void ParametricDotTest::TestImpl() {
     result =
         Add(result,
             Parameter(&builder, 2,
-                      ShapeUtil::MakeShapeWithLayout(
+                      ShapeUtil::MakeShapeWithDenseLayout(
                           prim_type, {param.m, param.n},
                           MinorToMajorForIsRowMajor(param.addend_row_major)),
                       "addend"));
@@ -680,6 +680,62 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMul) {
       /*expected=*/
       {{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}},
       {x_data.get(), y_data.get()}, this->error_spec_);
+}
+
+template <typename T>
+class DotOperationTestWithCublasLt_F16F32F64CF64 : public DotOperationTest {
+ public:
+  DotOperationTestWithCublasLt_F16F32F64CF64() {
+    bool enable_cublas_lt = false;
+#if GOOGLE_CUDA
+    enable_cublas_lt = true;
+#endif
+    execution_options_.mutable_debug_options()->set_xla_gpu_enable_cublaslt(
+        enable_cublas_lt);
+  }
+};
+TYPED_TEST_CASE(DotOperationTestWithCublasLt_F16F32F64CF64, TypesF16F32F64CF64);
+
+XLA_TYPED_TEST(DotOperationTestWithCublasLt_F16F32F64CF64,
+               GeneralMatMulActivation) {
+  using T = TypeParam;
+
+  XlaBuilder builder(this->TestName());
+  auto x =
+      Parameter(&builder, 0, ShapeUtil::MakeShapeWithType<T>({2, 2, 2}), "x");
+  auto y =
+      Parameter(&builder, 1, ShapeUtil::MakeShapeWithType<T>({2, 2, 2}), "y");
+
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_contracting_dimensions(2);
+  dnums.add_rhs_contracting_dimensions(1);
+  dnums.add_lhs_batch_dimensions(0);
+  dnums.add_rhs_batch_dimensions(0);
+
+  auto dot = DotGeneral(x, y, dnums);
+  auto prim_type = primitive_util::NativeToPrimitiveType<T>();
+  auto x_data =
+      this->client_
+          ->TransferToServer(LiteralUtil::CreateR3FromArray3D<T>(
+              {{{-1.0f, 2.0f}, {3.0f, -4.0f}}, {{5.0f, 6.0f}, {-7.0f, 8.0f}}}))
+          .value();
+
+  auto y_data =
+      this->client_
+          ->TransferToServer(LiteralUtil::CreateR3FromArray3D<T>(
+              {{{1.0f, 0.0f}, {0.0f, -1.0f}}, {{1.0f, 0.0f}, {0.0f, 1.0f}}}))
+          .value();
+  Array3D<T> expected(
+      {{{-1.0f, -2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {-7.0f, 8.0f}}});
+  if (prim_type != C64) {
+    Max(dot,
+        ConstantR3FromArray3D<T>(&builder, {{{0.0f, 0.0f}, {0.0f, 0.0f}},
+                                            {{0.0f, 0.0f}, {0.0f, 0.0f}}}));
+    expected = Array3D<T>(
+        {{{0.0f, 0.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {0.0f, 8.0f}}});
+  }
+  this->template ComputeAndCompareR3<T>(
+      &builder, expected, {x_data.get(), y_data.get()}, this->error_spec_);
 }
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR3LhsR2Rhs) {
@@ -1626,6 +1682,36 @@ ENTRY TransposeOutput {
 )";
 
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+}
+// There was a bug in the Dot Codegen, which is masked for floating-point since
+// Dot for FP opertions are converted to cuBLAS operations. This one tests
+// integer ones to make sure the Dot-Codegen is producing correct code.
+XLA_TEST_F(DotOperationTextTest, IntegerDotTest) {
+  constexpr absl::string_view kHloString = R"(
+  HloModule dot_int_test
+  ENTRY main.4 {
+  Arg_0.1 = s32[4,3,5]{2,1,0} parameter(0)
+  Arg_1.2 = s32[3,5,6]{2,1,0} parameter(1)
+  ROOT dot.3 = s32[5,4,6]{2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={2}, lhs_contracting_dims={1}, rhs_batch_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}, metadata={op_name="jit(dot_general)/jit(main)/dot_general[dimension_numbers=(((1,), (0,)), ((2,), (1,))) precision=(<Precision.HIGHEST: 2>, <Precision.HIGHEST: 2>) preferred_element_type=None]" source_file="third_party/py/jax/tests/lax_vmap_test.py" source_line=79}
+})";
+  EXPECT_TRUE(RunAndCompare(kHloString, ErrorSpec{0, 0}));
+}
+
+XLA_TEST_F(DotOperationTextTest, FPDotTestNoGEMMRewriter) {
+  constexpr absl::string_view kHloString = R"(
+  HloModule dot_int_test
+  ENTRY main.4 {
+  Arg_0.1 = f32[4,3,5]{2,1,0} parameter(0)
+  Arg_1.2 = f32[3,5,6]{2,1,0} parameter(1)
+  ROOT dot.3 = f32[5,4,6]{2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={2}, lhs_contracting_dims={1}, rhs_batch_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}, metadata={op_name="jit(dot_general)/jit(main)/dot_general[dimension_numbers=(((1,), (0,)), ((2,), (1,))) precision=(<Precision.HIGHEST: 2>, <Precision.HIGHEST: 2>) preferred_element_type=None]" source_file="third_party/py/jax/tests/lax_vmap_test.py" source_line=79}
+})";
+  auto mod_config = GetModuleConfigForTest();
+  auto debug_options = GetDebugOptionsForTest();
+  debug_options.add_xla_disable_hlo_passes("cublas-gemm-rewriter");
+  mod_config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString, mod_config));
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{4e-3, 4e-3}));
 }
 
 XLA_TEST_F(DotOperationTextTest, MatrixVectorComplex) {

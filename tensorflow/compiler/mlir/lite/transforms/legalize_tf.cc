@@ -136,7 +136,7 @@ Value GetShape(Value input, Location loc, PatternRewriter& rewriter) {
         RankedTensorType::get(static_shape.size(), rewriter.getIntegerType(64));
     auto static_shape_attr =
         mlir::DenseIntElementsAttr::get(static_shape_type, static_shape);
-    return rewriter.create<TF::ConstOp>(loc, static_shape_attr).output();
+    return rewriter.create<TF::ConstOp>(loc, static_shape_attr).getOutput();
   }
 
   // If the shape is not static, create a new ShapeOp.
@@ -144,7 +144,7 @@ Value GetShape(Value input, Location loc, PatternRewriter& rewriter) {
   return rewriter
       .create<TF::ShapeOp>(loc, input,
                            /*use_32bit=*/false_attr)
-      .output();
+      .getOutput();
 }
 
 mlir::TFL::MirrorPaddingType GetTFLMirrorPaddingFromString(
@@ -205,11 +205,12 @@ LogicalResult ConvertTFConcatV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_concat_op = cast<TF::ConcatV2Op>(op);
 
-  auto values = tf_concat_op.values();
-  auto output_type = tf_concat_op.output().getType();
+  auto values = tf_concat_op.getValues();
+  auto output_type = tf_concat_op.getOutput().getType();
   // Extract axis attribute from constant axis tensor
   ElementsAttr axis;
-  if (!matchPattern(tf_concat_op.axis(), m_Constant(&axis))) return failure();
+  if (!matchPattern(tf_concat_op.getAxis(), m_Constant(&axis)))
+    return failure();
   IntegerAttr axis_int = ExtractSingleElementAsInteger(axis);
 
   // "axis" operand could be a i64 tensor. Resolve it here.
@@ -246,12 +247,12 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
   };
 
   // TODO(jpienaar): Remove once handled via dailect conversion.
-  if (tf_matmul_op.transpose_a()) {
+  if (tf_matmul_op.getTransposeA()) {
     LogicalResult result = success();
     std::tie(result, lhs) = transpose(lhs);
     if (failed(result)) return failure();
   }
-  if (!tf_matmul_op.transpose_b()) {
+  if (!tf_matmul_op.getTransposeB()) {
     LogicalResult result = success();
     std::tie(result, rhs) = transpose(rhs);
     if (failed(result)) return failure();
@@ -275,11 +276,11 @@ LogicalResult ConvertTFPackOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_pack_op = cast<TF::PackOp>(op);
 
-  SmallVector<Value, 4> values(tf_pack_op.values());
-  auto output_type = tf_pack_op.output().getType();
-  auto values_count = rewriter.getI32IntegerAttr(tf_pack_op.N());
+  SmallVector<Value, 4> values(tf_pack_op.getValues());
+  auto output_type = tf_pack_op.getOutput().getType();
+  auto values_count = rewriter.getI32IntegerAttr(tf_pack_op.getN());
   // Axis can be negative.
-  auto axis = rewriter.getI32IntegerAttr(tf_pack_op.axis());
+  auto axis = rewriter.getI32IntegerAttr(tf_pack_op.getAxis());
 
   rewriter.replaceOpWithNewOp<PackOp>(op, output_type, values, values_count,
                                       axis);
@@ -291,11 +292,11 @@ LogicalResult ConvertTFSplitOp::matchAndRewrite(
   auto tf_split_op = cast<TF::SplitOp>(op);
 
   // Number of splits cannot be negative.
-  auto num_split = rewriter.getI32IntegerAttr(tf_split_op.num_split());
+  auto num_split = rewriter.getI32IntegerAttr(tf_split_op.getNumSplit());
 
-  rewriter.replaceOpWithNewOp<TFL::SplitOp>(op, tf_split_op.output().getTypes(),
-                                            tf_split_op.split_dim(),
-                                            tf_split_op.value(), num_split);
+  rewriter.replaceOpWithNewOp<TFL::SplitOp>(
+      op, tf_split_op.getOutput().getTypes(), tf_split_op.getSplitDim(),
+      tf_split_op.getValue(), num_split);
   return success();
 }
 
@@ -304,11 +305,11 @@ LogicalResult ConvertTFSplitVOp::matchAndRewrite(
   auto tf_splitv_op = cast<TF::SplitVOp>(op);
 
   // Number of splits cannot be negative.
-  auto num_split = rewriter.getI32IntegerAttr(tf_splitv_op.num_split());
+  auto num_split = rewriter.getI32IntegerAttr(tf_splitv_op.getNumSplit());
 
   rewriter.replaceOpWithNewOp<TFL::SplitVOp>(
-      op, tf_splitv_op.output().getTypes(), tf_splitv_op.value(),
-      tf_splitv_op.size_splits(), tf_splitv_op.split_dim(), num_split);
+      op, tf_splitv_op.getOutput().getTypes(), tf_splitv_op.getValue(),
+      tf_splitv_op.getSizeSplits(), tf_splitv_op.getSplitDim(), num_split);
   return success();
 }
 
@@ -316,12 +317,12 @@ LogicalResult ConvertTFUnpackOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_unpack_op = cast<TF::UnpackOp>(op);
 
-  auto input = tf_unpack_op.value();
-  auto num = rewriter.getI32IntegerAttr(tf_unpack_op.num());
+  auto input = tf_unpack_op.getValue();
+  auto num = rewriter.getI32IntegerAttr(tf_unpack_op.getNum());
   // Axis can be negative.
-  auto axis = rewriter.getI32IntegerAttr(tf_unpack_op.axis());
+  auto axis = rewriter.getI32IntegerAttr(tf_unpack_op.getAxis());
 
-  rewriter.replaceOpWithNewOp<UnpackOp>(op, tf_unpack_op.output().getTypes(),
+  rewriter.replaceOpWithNewOp<UnpackOp>(op, tf_unpack_op.getOutput().getTypes(),
                                         input, num, axis);
   return success();
 }
@@ -357,7 +358,7 @@ LogicalResult ConvertTFConv3DOp::matchAndRewrite(
       op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
 
   rewriter.replaceOpWithNewOp<TFL::Conv3DOp>(
-      op, tf_op.getType(), tf_op.input(), tf_op.filter(),
+      op, tf_op.getType(), tf_op.getInput(), tf_op.getFilter(),
       /*bias=*/none, dilation_depth_factor, dilation_height_factor,
       dilation_width_factor,
       /*fused_activation_function=*/rewriter.getStringAttr("NONE"), padding,
@@ -397,10 +398,11 @@ LogicalResult ConvertTFConv3DBackpropInputV2Op::matchAndRewrite(
       op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
 
   Value output_shape =
-      CreateCastToInt32(tf_op.input_sizes(), op->getLoc(), rewriter);
+      CreateCastToInt32(tf_op.getInputSizes(), op->getLoc(), rewriter);
 
   rewriter.replaceOpWithNewOp<TFL::Conv3DTransposeOp>(
-      op, tf_op.getType(), output_shape, tf_op.filter(), tf_op.out_backprop(),
+      op, tf_op.getType(), output_shape, tf_op.getFilter(),
+      tf_op.getOutBackprop(),
       /*bias=*/none, dilation_depth_factor, dilation_height_factor,
       dilation_width_factor,
       /*fused_activation_function=*/rewriter.getStringAttr("NONE"), padding,
@@ -422,31 +424,31 @@ bool ConvertTFMatrixDiagV2orV3(Operation* op, PatternRewriter* rewriter) {
 
   if (tf_matrix_diag_v2_or_v3_op.getNumOperands() != 5) return false;
 
-  auto input = tf_matrix_diag_v2_or_v3_op.diagonal();
-  auto output_type = tf_matrix_diag_v2_or_v3_op.output().getType();
+  auto input = tf_matrix_diag_v2_or_v3_op.getDiagonal();
+  auto output_type = tf_matrix_diag_v2_or_v3_op.getOutput().getType();
 
   // Extract k constant tensor and check value = 0.
   ElementsAttr k;
-  if (!matchPattern(tf_matrix_diag_v2_or_v3_op.k(), m_Constant(&k)))
+  if (!matchPattern(tf_matrix_diag_v2_or_v3_op.getK(), m_Constant(&k)))
     return false;
   if (ExtractSingleElementAsInteger(k).getInt() != 0) return false;
 
   // Extract num_rows constant tensor and check value = -1.
   ElementsAttr num_rows;
-  if (!matchPattern(tf_matrix_diag_v2_or_v3_op.num_rows(),
+  if (!matchPattern(tf_matrix_diag_v2_or_v3_op.getNumRows(),
                     m_Constant(&num_rows)))
     return false;
   if (ExtractSingleElementAsInteger(num_rows).getInt() != -1) return false;
 
   // Extract num_cols constant tensor and check value = -1.
   ElementsAttr num_cols;
-  if (!matchPattern(tf_matrix_diag_v2_or_v3_op.num_cols(),
+  if (!matchPattern(tf_matrix_diag_v2_or_v3_op.getNumCols(),
                     m_Constant(&num_cols)))
     return false;
   if (ExtractSingleElementAsInteger(num_cols).getInt() != -1) return false;
 
   // Verify padding_value is a tensor with all 0s.
-  mlir::Value padding_value = tf_matrix_diag_v2_or_v3_op.padding_value();
+  mlir::Value padding_value = tf_matrix_diag_v2_or_v3_op.getPaddingValue();
   mlir::Type element_type =
       padding_value.getType().cast<ShapedType>().getElementType();
   if (element_type.isa<FloatType>()) {
@@ -659,7 +661,7 @@ class ApplyExplicitBroadcasting : public OpRewritePattern<SourceOp> {
                 RankedTensorType::get(symbolic_broadcast_shape.size(),
                                       rewriter.getIntegerType(64)),
                 lhs_shape, rhs_shape)
-            .r0();
+            .getR0();
 
     // Broadcasts inputs using BroadcastTo op.
     auto broadcast_type = RankedTensorType::get(
@@ -668,12 +670,12 @@ class ApplyExplicitBroadcasting : public OpRewritePattern<SourceOp> {
         rewriter
             .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, lhs,
                                        broadcast_shape)
-            .output();
+            .getOutput();
     auto broadcasted_rhs =
         rewriter
             .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, rhs,
                                        broadcast_shape)
-            .output();
+            .getOutput();
 
     // Recreate an op with the above BroadcastTo op results.
     RankedTensorType result_type = RankedTensorType::get(
@@ -725,13 +727,13 @@ class ApplyExplicitBroadcasting : public OpRewritePattern<SourceOp> {
       lhs = rewriter
                 .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, lhs,
                                            new_shape)
-                .output();
+                .getOutput();
     }
     if (result_type.getShape() != rhs_shape) {
       rhs = rewriter
                 .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, rhs,
                                            new_shape)
-                .output();
+                .getOutput();
     }
 
     // Recreate an op with the above Broadcast op results.
@@ -786,12 +788,12 @@ class ApplyExplicitBroadcasting<TF::SelectV2Op>
         rewriter
             .create<TF::BroadcastArgsOp>(op->getLoc(), lhs_shape.getType(),
                                          lhs_shape, rhs_shape)
-            .r0();
+            .getR0();
     broadcast_shape_value =
         rewriter
             .create<TF::BroadcastArgsOp>(op->getLoc(), lhs_shape.getType(),
                                          broadcast_shape_value, cond_shape)
-            .r0();
+            .getR0();
 
     // Broadcasting inputs using BroadcastTo op.
     auto broadcast_type = RankedTensorType::get(
@@ -803,17 +805,17 @@ class ApplyExplicitBroadcasting<TF::SelectV2Op>
                 RankedTensorType::get(symbolic_broadcast_shape,
                                       rewriter.getIntegerType(1)),
                 cond, broadcast_shape_value)
-            .output();
+            .getOutput();
     auto broadcasted_lhs =
         rewriter
             .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, lhs,
                                        broadcast_shape_value)
-            .output();
+            .getOutput();
     auto broadcasted_rhs =
         rewriter
             .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, rhs,
                                        broadcast_shape_value)
-            .output();
+            .getOutput();
 
     // Recreate an op with the above BroadcastTo op results.
     rewriter.replaceOpWithNewOp<TF::SelectV2Op>(
@@ -873,19 +875,19 @@ class ApplyExplicitBroadcasting<TF::SelectV2Op>
       cond = rewriter
                  .create<TF::BroadcastToOp>(op->getLoc(), cond_result_type,
                                             cond, new_shape)
-                 .output();
+                 .getOutput();
     }
     if (result_shape != lhs_shape) {
       lhs = rewriter
                 .create<TF::BroadcastToOp>(op->getLoc(), result_type, lhs,
                                            new_shape)
-                .output();
+                .getOutput();
     }
     if (result_shape != rhs_shape) {
       rhs = rewriter
                 .create<TF::BroadcastToOp>(op->getLoc(), result_type, rhs,
                                            new_shape)
-                .output();
+                .getOutput();
     }
 
     // Recreate an op with the above Broadcast op results.
@@ -934,7 +936,7 @@ void LegalizeTFPass::runOnOperation() {
 
   ConversionTarget target(*context);
   // It is legal to have TF ops in the graph still which can be
-  // used later or in the case of SELECT were we allow TF ops in the final
+  // used later or in the case of SELECT where we allow TF ops in the final
   // graph.
   target.addLegalOp<mlir::arith::ConstantOp>();
   target.addLegalOp<mlir::func::ConstantOp>();

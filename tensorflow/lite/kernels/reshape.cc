@@ -17,8 +17,8 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -148,7 +148,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputTensor, &output));
   if (output->type != kTfLiteString) {
     if (NumInputs(node) == 1 ||
-        IsConstantTensor(GetInput(context, node, kShapeTensor))) {
+        IsConstantOrPersistentTensor(GetInput(context, node, kShapeTensor))) {
       TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
     } else {
       SetTensorToDynamic(output);
@@ -183,7 +183,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     output->bytes = bytes_required;
   }
 
-  memcpy(output->data.raw, input->data.raw, input->bytes);
+  // Only copy data if input and output do not share a buffer.
+  if (output->data.data != input->data.data) {
+    memcpy(output->data.data, input->data.data, input->bytes);
+  }
 
   return kTfLiteOk;
 }

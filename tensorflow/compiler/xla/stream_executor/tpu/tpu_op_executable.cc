@@ -93,7 +93,8 @@ xla::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
   params.stream = stream;
   params.status = status.c_status;
 
-  tpu::OpsApiFn()->TpuExecutable_LoadProgramAndEnqueueToStreamFn(&params);
+  stream_executor::tpu::OpsApiFn()
+      ->TpuExecutable_LoadProgramAndEnqueueToStreamFn(&params);
 
   if (dev_assign != nullptr) {
     stream_executor::tpu::SerializedProto_Free(dev_assign_serialized);
@@ -107,8 +108,8 @@ xla::Shape TpuOpExecutable::HostShapeToDeviceShape(
   XLA_Shape c_host_shape;
   XLA_Shape c_device_shape;
   ApiConverter::ToC(host_shape, &c_host_shape);
-  tpu::OpsApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(&c_host_shape,
-                                                           &c_device_shape);
+  stream_executor::tpu::OpsApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
+      &c_host_shape, &c_device_shape);
   xla::Shape device_shape = ApiConverter::FromC(&c_device_shape);
   ApiConverter::Destroy(&c_host_shape);
   ApiConverter::Destroy(&c_device_shape);
@@ -118,7 +119,8 @@ xla::Shape TpuOpExecutable::HostShapeToDeviceShape(
 int64_t TpuOpExecutable::ShapeSize(const xla::Shape& shape) {
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
-  int64_t size = tpu::OpsApiFn()->HardwareLayout_ShapeSizeFn(&c_shape);
+  int64_t size =
+      stream_executor::tpu::OpsApiFn()->HardwareLayout_ShapeSizeFn(&c_shape);
   ApiConverter::Destroy(&c_shape);
   return size;
 }

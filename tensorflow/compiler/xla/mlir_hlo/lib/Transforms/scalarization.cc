@@ -16,8 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
+#include "gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
@@ -26,7 +25,9 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "thlo/IR/thlo_ops.h"
 
 namespace mlir {
 namespace {
@@ -34,7 +35,7 @@ namespace {
 #define GEN_PASS_DEF_SCALARIZATIONPASS
 #include "mlir-hlo/Transforms/passes.h.inc"
 
-using linalg::GenericOp;
+using linalg::LinalgOp;
 using tensor::ExtractOp;
 using tensor::FromElementsOp;
 using tensor::InsertOp;
@@ -44,78 +45,79 @@ bool hasSingleElement(ShapedTy type) {
   return type.hasStaticShape() && type.getNumElements() == 1;
 }
 
-struct ScalarizeGenericOp : public OpRewritePattern<GenericOp> {
-  using OpRewritePattern::OpRewritePattern;
+struct ScalarizeLinalgOp : public OpInterfaceRewritePattern<LinalgOp> {
+  using OpInterfaceRewritePattern<LinalgOp>::OpInterfaceRewritePattern;
 
-  LogicalResult matchAndRewrite(GenericOp genericOp,
-                                PatternRewriter &rewriter) const override {
-    auto isNonScalar = [](Type type) {
-      return type.isa<TensorType>() &&
-             !hasSingleElement(type.cast<TensorType>());
-    };
-    if (llvm::any_of(genericOp.getOperandTypes(), isNonScalar) ||
-        llvm::any_of(genericOp.getResultTypes(), isNonScalar))
-      return failure();
-
-    // Map block arguments of genericOp to tensor.extract ops of its args.
-    Location loc = genericOp.getLoc();
-    BlockAndValueMapping bvm;
-    for (OpOperand &opOperand : genericOp->getOpOperands()) {
-      Value operandValue = opOperand.get();
-      Type operandType = operandValue.getType();
-      auto bbArg = genericOp.getMatchingBlockArgument(&opOperand);
-      if (!operandType.isa<ShapedType>()) continue;
-
-      SmallVector<Value> indices(
-          operandType.cast<RankedTensorType>().getRank(),
-          rewriter.create<arith::ConstantIndexOp>(loc, 0));
-      Value extractedElement =
-          rewriter.create<ExtractOp>(loc, operandValue, indices);
-      bvm.map(bbArg, extractedElement);
-    }
-
+  static LogicalResult inlinePayload(PatternRewriter &rewriter, Location loc,
+                                     LinalgOp linalgOp, ValueRange argValues) {
     // Clone everything but terminator.
-    Block *body = genericOp.getBody();
-    for (Operation &op : body->without_terminator()) {
-      // `linalg.index` can only result in 0 for scalar linalg.generic.
-      if (auto indexOp = dyn_cast<linalg::IndexOp>(op)) {
+    Block *body = linalgOp.getBlock();
+    BlockAndValueMapping map;
+    map.map(body->getArguments(), argValues);
+    for (auto &op : body->without_terminator()) {
+      if (auto indexOp = dyn_cast<linalg::IndexOp>(&op)) {
         Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
-        bvm.map(indexOp.getResult(), zero);
+        map.map(indexOp.getResult(), zero);
         continue;
       }
-      rewriter.clone(op, bvm);
+      rewriter.clone(op, map);
     }
 
     // Wrap every scalar result into a tensor using `tensor.from_elements`.
     SmallVector<Value> newResults;
     for (auto [resultType, yieldOperand] :
-         llvm::zip(genericOp->getResultTypes(),
+         llvm::zip(linalgOp->getResultTypes(),
                    body->getTerminator()->getOperands())) {
-      auto scalarValue = bvm.lookupOrDefault(yieldOperand);
+      auto scalarValue = map.lookupOrDefault(yieldOperand);
       newResults.push_back(
           rewriter.create<FromElementsOp>(loc, resultType, scalarValue));
     }
-    rewriter.replaceOp(genericOp, newResults);
-
+    rewriter.replaceOp(linalgOp, newResults);
     return success();
   }
+
+  LogicalResult matchAndRewrite(LinalgOp linalgOp,
+                                PatternRewriter &rewriter) const override {
+    // Fail if not every argument is a scalar or a single-element tensor.
+    auto isNonScalar = [](Type type) {
+      return type.isa<mlir::ShapedType>() &&
+             !(type.isa<TensorType>() &&
+               hasSingleElement(type.cast<TensorType>()));
+    };
+
+    if (llvm::any_of(linalgOp->getOperandTypes(), isNonScalar) ||
+        llvm::any_of(linalgOp->getResultTypes(), isNonScalar))
+      return failure();
+    // TODO(aliia): fix scalarization of FillOp.
+    if (auto *fillOp = dyn_cast<linalg::FillOp>(&linalgOp)) return failure();
+
+    // Load the data corresponding to the block arguments that
+    // represent input operands.
+    SmallVector<Value> indexedValues;
+    indexedValues.reserve(linalgOp->getNumOperands());
+    Location loc = linalgOp->getLoc();
+    auto zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+    for (OpOperand &operand : linalgOp->getOpOperands()) {
+      if (!linalgOp.payloadUsesValueFromOperand(&operand)) {
+        indexedValues.push_back(nullptr);
+        continue;
+      }
+      if (linalgOp.isScalar(&operand)) {
+        indexedValues.push_back(operand.get());
+        continue;
+      }
+      Value operandValue = operand.get();
+      Type operandType = operandValue.getType();
+      SmallVector<Value> indices(operandType.cast<RankedTensorType>().getRank(),
+                                 zero);
+      Value load = rewriter.create<ExtractOp>(loc, operandValue, indices);
+      indexedValues.push_back(load);
+    }
+
+    // Inline the op payload and rewrite the operation.
+    return inlinePayload(rewriter, loc, linalgOp, indexedValues);
+  }
 };
-
-// Extracts a point using gml_st.materialize and gml_st.tile with 1 element.
-Value getPoint(OpBuilder &b, Location loc, Value tensor, ValueRange indices) {
-  IntegerAttr oneAttr = b.getIndexAttr(1);
-
-  auto tensorType = tensor.getType().cast<RankedTensorType>();
-  int64_t tensorRank = tensorType.getRank();
-
-  SmallVector<OpFoldResult> offsets(indices.begin(), indices.end());
-  SmallVector<OpFoldResult> sizes(tensorRank, oneAttr);
-  SmallVector<OpFoldResult> strides(tensorRank, oneAttr);
-
-  Value tile = b.create<gml_st::TileOp>(loc, offsets, sizes, strides);
-  return b.create<gml_st::MaterializeOp>(loc, tensorType.getElementType(),
-                                         tensor, tile);
-}
 
 // Returns `startIndices`[0, :] for `startIndices` of shape 1xn. Returns None if
 // startIndices has a different shape.
@@ -181,56 +183,72 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
     SmallVector<Value> lbs(updatesRank, zero);
     SmallVector<Value> steps(updatesRank, one);
 
-    auto loop = b.create<gml_st::ForOp>(
-        TypeRange(ValueRange{init}), lbs, updatesDimValues, steps, init,
-        [&](OpBuilder &nestedBuilder, Location bodyLoc, ValueRange updateIndex,
-            ValueRange loopInits) {
-          Value initBlockArg = loopInits.front();
+    SmallVector<Value> limitIndex{
+        ArrayRef<Value>(updatesDimValues).drop_front()};
+    for (const auto &en : llvm::enumerate(*scatterIndices)) {
+      limitIndex[en.index()] =
+          b.create<arith::AddIOp>(loc, limitIndex[en.index()], en.value());
+      limitIndex[en.index()].print(llvm::errs());
+    }
+    for (auto &value : limitIndex) {
+      value = b.create<arith::SubIOp>(loc, value, one);
+    }
 
-          auto initIndex = llvm::to_vector(updateIndex.drop_front());
-          for (const auto &en : llvm::enumerate(*scatterIndices)) {
-            initIndex[en.index()] = nestedBuilder.create<arith::AddIOp>(
-                bodyLoc, initIndex[en.index()], en.value());
-          }
+    Value indexIsInBounds =
+        isValidIndex(b, loc, limitIndex, initDimValues, zero);
+    indexIsInBounds = b.create<arith::AndIOp>(
+        loc, indexIsInBounds,
+        isValidIndex(b, loc, *scatterIndices, initDimValues, zero));
+    auto ifOp = b.create<scf::IfOp>(
+        loc, TypeRange(ValueRange{init}), indexIsInBounds,
+        [&](OpBuilder &thenBuilder, Location thenLoc) {
+          auto loop = thenBuilder.create<gml_st::ForOp>(
+              thenLoc, TypeRange(ValueRange{init}), lbs, updatesDimValues,
+              steps, init,
+              [&](OpBuilder &nestedBuilder, Location bodyLoc,
+                  ValueRange updateIndex, ValueRange loopInits) {
+                Value initBlockArg = loopInits.front();
 
-          Value indexIsInBounds =
-              isValidIndex(nestedBuilder, loc, initIndex, initDimValues, zero);
-          Value maybeUpdatedInit =
-              nestedBuilder
-                  .create<scf::IfOp>(
-                      loc, initType, indexIsInBounds,
-                      [&](OpBuilder &thenBuilder, Location thenLoc) {
-                        Value updateValue =
-                            getPoint(thenBuilder, loc, updates, updateIndex);
-                        Value currentValue =
-                            getPoint(thenBuilder, loc, initBlockArg, initIndex);
+                auto initIndex = llvm::to_vector(updateIndex.drop_front());
+                for (const auto &en : llvm::enumerate(*scatterIndices)) {
+                  initIndex[en.index()] = nestedBuilder.create<arith::AddIOp>(
+                      bodyLoc, initIndex[en.index()], en.value());
+                }
 
-                        // Combine update with the value in the output.
-                        Block *body = scatterOp.getBody();
-                        BlockAndValueMapping bvm;
-                        bvm.map(body->getArgument(0), updateValue);
-                        bvm.map(body->getArgument(1), currentValue);
+                Value updateValue = gml_st::materializePoint(
+                    thenBuilder, loc, updates, getAsOpFoldResult(updateIndex),
+                    /*useExtractSlice=*/false);
+                Value currentValue =
+                    gml_st::materializePoint(thenBuilder, loc, initBlockArg,
+                                             getAsOpFoldResult(initIndex),
+                                             /*useExtractSlice=*/false);
 
-                        for (Operation &op : body->without_terminator())
-                          thenBuilder.clone(op, bvm);
+                // Combine update with the value in the output.
+                Block *body = scatterOp.getBody();
+                BlockAndValueMapping bvm;
+                bvm.map(body->getArgument(0), updateValue);
+                bvm.map(body->getArgument(1), currentValue);
 
-                        // Wrap every scalar result into a tensor using
-                        // `tensor.from_elements`.
-                        auto combinedValue =
-                            bvm.lookup(body->getTerminator()->getOperand(0));
-                        Value updatedInit = thenBuilder.create<InsertOp>(
-                            thenLoc, combinedValue, initBlockArg, initIndex);
-                        thenBuilder.create<scf::YieldOp>(thenLoc, updatedInit);
-                      },
-                      [&](OpBuilder &elseBuilder, Location elseLoc) {
-                        elseBuilder.create<scf::YieldOp>(elseLoc, initBlockArg);
-                      })
-                  .getResult(0);
+                for (Operation &op : body->without_terminator())
+                  thenBuilder.clone(op, bvm);
 
-          nestedBuilder.create<gml_st::SetYieldOp>(bodyLoc, maybeUpdatedInit,
-                                                   initBlockArg, initTile);
+                // Wrap every scalar result into a tensor using
+                // `tensor.from_elements`.
+                auto combinedValue =
+                    bvm.lookup(body->getTerminator()->getOperand(0));
+                Value updatedInit = thenBuilder.create<InsertOp>(
+                    thenLoc, combinedValue, initBlockArg, initIndex);
+
+                nestedBuilder.create<gml_st::SetYieldOp>(
+                    bodyLoc, updatedInit, initBlockArg, initTile);
+              });
+
+          thenBuilder.create<scf::YieldOp>(thenLoc, loop.getResults());
+        },
+        [&](OpBuilder &elseBuilder, Location elseLoc) {
+          elseBuilder.create<scf::YieldOp>(elseLoc, init);
         });
-    rewriter.replaceOp(scatterOp, loop.getResults());
+    rewriter.replaceOp(scatterOp, ifOp.getResults());
     return success();
   }
 
@@ -259,7 +277,8 @@ struct ScalarizeGatherOp : public OpRewritePattern<thlo::GatherOp> {
 
   LogicalResult matchAndRewrite(thlo::GatherOp gatherOp,
                                 PatternRewriter &rewriter) const override {
-    ImplicitLocOpBuilder b(gatherOp.getLoc(), rewriter);
+    Location loc = gatherOp.getLoc();
+    ImplicitLocOpBuilder b(loc, rewriter);
     auto startIndices = extractStartIndices(b, gatherOp.getStartIndices());
     if (!startIndices) return failure();
 
@@ -267,21 +286,34 @@ struct ScalarizeGatherOp : public OpRewritePattern<thlo::GatherOp> {
     ShapedType initTy = init.getType();
     int64_t initRank = initTy.getRank();
     SmallVector<OpFoldResult> initDimSizes =
-        tensor::getMixedSizes(rewriter, gatherOp.getLoc(), init);
+        tensor::getMixedSizes(b, loc, init);
     SmallVector<Value> initDimSizeValues =
-        getValueOrCreateConstantIndexOp(b, gatherOp.getLoc(), initDimSizes);
+        getValueOrCreateConstantIndexOp(b, loc, initDimSizes);
 
     IntegerAttr oneAttr = b.getI64IntegerAttr(1);
 
     TypedValue<ShapedType> operand = gatherOp.getOperand();
-    SmallVector<Value> operandSizes =
-        tensor::createDimValues(rewriter, gatherOp.getLoc(), operand);
-
+    auto operandSizes = getValueOrCreateConstantIndexOp(
+        b, loc, tensor::createDimValues(b, loc, operand));
     Value zero = b.create<arith::ConstantIndexOp>(0);
     Value one = b.create<arith::ConstantIndexOp>(1);
+
+    SmallVector<Value> sliceSizes{initDimSizeValues.begin() + 1,
+                                  initDimSizeValues.end()};
+    while (sliceSizes.size() < startIndices->size()) {
+      sliceSizes.push_back(one);
+    }
+
+    // Clamp the indices.
+    for (auto &&[startIndex, max, sliceSize] :
+         llvm::zip(*startIndices, operandSizes, sliceSizes)) {
+      auto maxMinusSize = b.createOrFold<arith::SubIOp>(loc, max, sliceSize);
+      startIndex = b.create<arith::MinSIOp>(loc, startIndex, maxMinusSize);
+      startIndex = b.create<arith::MaxSIOp>(loc, startIndex, zero);
+    }
+
     SmallVector<Value> lbs(initRank, zero);
     SmallVector<Value> steps(initRank, one);
-
     rewriter.replaceOpWithNewOp<gml_st::ForOp>(
         gatherOp, TypeRange(ValueRange{init}), lbs, initDimSizeValues, steps,
         init,
@@ -289,28 +321,20 @@ struct ScalarizeGatherOp : public OpRewritePattern<thlo::GatherOp> {
             ValueRange loopInits) {
           // Compute the index in the operand.
           SmallVector<Value> readIndices(operand.getType().getRank(), zero);
-          llvm::copy(ivs, readIndices.begin());
+          llvm::copy(ivs.drop_front(1), readIndices.begin());
           for (auto &&[readIndex, startIndex] :
                llvm::zip(readIndices, *startIndices)) {
             readIndex = nestedBuilder.create<arith::AddIOp>(bodyLoc, readIndex,
                                                             startIndex);
           }
 
-          // Clamp the indices.
-          for (auto &&[readIndex, max] : llvm::zip(readIndices, operandSizes)) {
-            auto maxMinusOne =
-                nestedBuilder.createOrFold<arith::SubIOp>(bodyLoc, max, one);
-            readIndex = nestedBuilder.create<arith::MinSIOp>(bodyLoc, readIndex,
-                                                             maxMinusOne);
-            readIndex =
-                nestedBuilder.create<arith::MaxSIOp>(bodyLoc, readIndex, zero);
-          }
-
           // Materialize the value and yield it.
           SmallVector<OpFoldResult> ones(initRank, oneAttr);
           Value tile = nestedBuilder.create<gml_st::TileOp>(
               bodyLoc, SmallVector<OpFoldResult>(ivs), ones, ones);
-          Value val = getPoint(nestedBuilder, bodyLoc, operand, readIndices);
+          Value val = gml_st::materializePoint(nestedBuilder, bodyLoc, operand,
+                                               getAsOpFoldResult(readIndices),
+                                               /*useExtractSlice=*/false);
           nestedBuilder.create<gml_st::SetYieldOp>(bodyLoc, val,
                                                    loopInits.front(), tile);
         });
@@ -327,7 +351,7 @@ struct ScalarizeConcatenateOp : public OpRewritePattern<thlo::ConcatenateOp> {
   LogicalResult matchAndRewrite(thlo::ConcatenateOp concatenateOp,
                                 PatternRewriter &rewriter) const override {
     Location loc = concatenateOp.getLoc();
-    int64_t concatDim = concatenateOp.getDimension();
+    int64_t concatDim = concatenateOp.getDimension().getSExtValue();
 
     auto initTensor = concatenateOp.getInit();
     auto initType = initTensor.getType();
@@ -405,35 +429,58 @@ struct ScalarizeConcatenateOp : public OpRewritePattern<thlo::ConcatenateOp> {
   }
 };
 
+namespace {
+LogicalResult scalarizeOp(Operation *op, PatternRewriter &rewriter,
+                          TypedValue<ShapedType> &input,
+                          TypedValue<ShapedType> &output) {
+  ImplicitLocOpBuilder b(op->getLoc(), rewriter);
+
+  auto outputType = output.getType().dyn_cast<RankedTensorType>();
+  if (!outputType)
+    return rewriter.notifyMatchFailure(
+        op, "failed to cast output to RankedTensorType");
+  if (!hasSingleElement(outputType))
+    return rewriter.notifyMatchFailure(
+        op, "has output with number of elements not equal to 1");
+
+  auto inputType = input.getType().dyn_cast<RankedTensorType>();
+  if (!inputType)
+    return rewriter.notifyMatchFailure(
+        op, "failed to cast input to RankedTensorType");
+
+  Value zero = b.create<arith::ConstantIndexOp>(0);
+  llvm::SmallVector<Value> indicesInput(inputType.getRank(), zero);
+  llvm::SmallVector<Value> indicesOutput(outputType.getRank(), zero);
+
+  Value extractedValue = b.create<ExtractOp>(input, indicesInput);
+  Value result = b.create<tensor::FromElementsOp>(outputType, extractedValue);
+
+  rewriter.replaceOp(op, result);
+  return success();
+}
+
+}  // namespace
+
 struct ScalarizeDynamicBroadcastInDimOp
     : public OpRewritePattern<thlo::DynamicBroadcastInDimOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(thlo::DynamicBroadcastInDimOp broadcastOp,
                                 PatternRewriter &rewriter) const override {
-    Location loc = broadcastOp.getLoc();
-    ImplicitLocOpBuilder b(loc, rewriter);
-
-    auto output = broadcastOp.getInit();
-    auto outputType = output.getType().dyn_cast<RankedTensorType>();
-    if (!outputType) return failure();
-
-    if (!hasSingleElement(outputType)) return failure();
-
     auto input = broadcastOp.getOperand();
-    auto inputType = input.getType().dyn_cast<RankedTensorType>();
-    if (!inputType) return failure();
+    auto output = broadcastOp.getInit();
+    return scalarizeOp(broadcastOp, rewriter, input, output);
+  }
+};
 
-    Value zero = b.create<arith::ConstantIndexOp>(0);
-    llvm::SmallVector<Value> indicesInput(inputType.getRank(), zero);
-    llvm::SmallVector<Value> indicesOutput(outputType.getRank(), zero);
+struct ScalarizeReverseOp : public OpRewritePattern<thlo::ReverseOp> {
+  using OpRewritePattern::OpRewritePattern;
 
-    Value extractedValue = b.create<ExtractOp>(input, indicesInput);
-    Value result =
-        b.create<tensor::InsertOp>(extractedValue, output, indicesOutput);
-
-    rewriter.replaceOp(broadcastOp, result);
-    return success();
+  LogicalResult matchAndRewrite(thlo::ReverseOp reverseOp,
+                                PatternRewriter &rewriter) const override {
+    auto input = reverseOp.getInput();
+    auto output = reverseOp.getInit();
+    return scalarizeOp(reverseOp, rewriter, input, output);
   }
 };
 
@@ -507,7 +554,8 @@ struct ScalarizationPass
         ScalarizeConcatenateOp,
         ScalarizeDynamicBroadcastInDimOp,
         ScalarizeGatherOp,
-        ScalarizeGenericOp,
+        ScalarizeLinalgOp,
+        ScalarizeReverseOp,
         ScalarizeScatterOp
     >(context);
     // clang-format on

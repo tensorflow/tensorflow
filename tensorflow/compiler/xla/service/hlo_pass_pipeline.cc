@@ -194,8 +194,8 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
     changed |= pass_changed;
     if (pass_changed) {
       VLOG(3) << "  Pass caused changes " << pass->name();
+      TF_RETURN_IF_ERROR(RunInvariantCheckers(hlo, pass_name));
     }
-    TF_RETURN_IF_ERROR(RunInvariantCheckers(hlo, pass_name));
     if (!pass->IsPassPipeline()) {
       compilation_stats_->EndPass(pass_name);
     }

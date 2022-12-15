@@ -65,26 +65,9 @@ class GrpcByteSource : public TensorResponse::Source {
 
 inline string GrpcIdKey() { return "tf-rpc"; }
 
-// Serialize src and store in *dst.
-::grpc::Status GrpcMaybeUnparseProto(const protobuf::Message& src,
-                                     ::grpc::ByteBuffer* dst);
-
-// Parse contents of src and initialize *dst with them.
-bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, protobuf::Message* dst);
-
-// Specialization for TensorResponse
-bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, TensorResponse* dst);
-
-// Copy string src to grpc buffer *dst.
-::grpc::Status GrpcMaybeUnparseProto(const string& src,
-                                     ::grpc::ByteBuffer* dst);
-
-// Copy grpc buffer src to string *dst.
-bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, string* dst);
-
-// Copy grpc buffer src to tstring *dst.
-bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, tstring* dst);
-
+// Decode a TensorResponse without extra copying. This function is an optimized
+// variant of tsl::GrpcMaybeParseProto.
+bool GrpcMaybeParseTensorResponse(::grpc::ByteBuffer* src, TensorResponse* dst);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_UTIL_H_

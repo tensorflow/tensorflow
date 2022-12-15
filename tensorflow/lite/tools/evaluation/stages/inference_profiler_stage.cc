@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <random>
 
+#include "fp16.h"  // from @FP16
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
@@ -97,10 +98,12 @@ TfLiteStatus InferenceProfilerStage::Init(
   for (int i = 0; i < model_info_->inputs.size(); ++i) {
     const TfLiteType model_input_type = model_info_->inputs[i]->type;
     if (model_input_type == kTfLiteUInt8 || model_input_type == kTfLiteInt8 ||
-        model_input_type == kTfLiteFloat32) {
+        model_input_type == kTfLiteFloat32 ||
+        model_input_type == kTfLiteFloat16) {
     } else {
-      LOG(ERROR) << "InferenceProfilerStage only supports float/int8/uint8 "
-                    "input types";
+      LOG(ERROR)
+          << "InferenceProfilerStage only supports float16/float32/int8/uint8 "
+             "input types";
       return kTfLiteError;
     }
     auto* input_shape = model_info_->inputs[i]->dims;
@@ -112,6 +115,7 @@ TfLiteStatus InferenceProfilerStage::Init(
     float_tensors_.emplace_back();
     uint8_tensors_.emplace_back();
     int8_tensors_.emplace_back();
+    float16_tensors_.emplace_back();
   }
   // Preprocess output metadata for calculating diffs later.
   for (int i = 0; i < model_info_->outputs.size(); ++i) {
@@ -119,7 +123,7 @@ TfLiteStatus InferenceProfilerStage::Init(
     if (model_output_type == kTfLiteUInt8 || model_output_type == kTfLiteInt8 ||
         model_output_type == kTfLiteFloat32) {
     } else {
-      LOG(ERROR) << "InferenceProfilerStage only supports float/int8/uint8 "
+      LOG(ERROR) << "InferenceProfilerStage only supports float32/int8/uint8 "
                     "output types";
       return kTfLiteError;
     }
@@ -155,6 +159,19 @@ TfLiteStatus InferenceProfilerStage::Run() {
       GenerateRandomGaussianData(input_num_elements_[i], -1, 1,
                                  &(float_tensors_[i]));
       input_ptrs.push_back(float_tensors_[i].data());
+    } else if (model_input_type == kTfLiteFloat16) {
+      GenerateRandomGaussianData(input_num_elements_[i], -1, 1,
+                                 &(float_tensors_[i]));
+      for (size_t j = 0; j < float_tensors_[i].size(); j++) {
+        float16_tensors_[i][j] =
+            fp16_ieee_from_fp32_value(float_tensors_[i][j]);
+      }
+      input_ptrs.push_back(float16_tensors_[i].data());
+    } else {
+      LOG(ERROR)
+          << "InferenceProfilerStage only supports float16/float32/int8/uint8 "
+             "input types";
+      return kTfLiteError;
     }
   }
 

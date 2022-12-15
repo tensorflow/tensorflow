@@ -30,6 +30,16 @@ RangeDatasetParams NegativeStepRangeDatasetParams() {
   return RangeDatasetParams(/*start=*/10, /*stop=*/0, /*step=*/-3);
 }
 
+RangeDatasetParams Int32OverflowRangeDatasetParames() {
+  return RangeDatasetParams(/*start=*/2'147'483'647LL, /*stop=*/2'147'483'649LL,
+                            /*step=*/1);
+}
+
+RangeDatasetParams UnsignedInt32OverflowRangeDatasetParames() {
+  return RangeDatasetParams(/*start=*/4'294'967'295LL, /*stop=*/4'294'967'297LL,
+                            /*step=*/1);
+}
+
 RangeDatasetParams ZeroStepRangeDatasetParams() {
   return RangeDatasetParams(/*start=*/10, /*stop=*/0, /*step=*/0);
 }
@@ -50,7 +60,15 @@ std::vector<GetNextTestCase<RangeDatasetParams>> GetNextTestCases() {
            CreateTensors<int64_t>(TensorShape({}), {{0}, {3}, {6}, {9}})},
           {/*dataset_params=*/NegativeStepRangeDatasetParams(),
            /*expected_outputs=*/
-           CreateTensors<int64_t>(TensorShape({}), {{10}, {7}, {4}, {1}})}};
+           CreateTensors<int64_t>(TensorShape({}), {{10}, {7}, {4}, {1}})},
+          {/*dataset_params=*/Int32OverflowRangeDatasetParames(),
+           /*expected_outputs=*/
+           CreateTensors<int64_t>(TensorShape({}),
+                                  {{2'147'483'647LL}, {2'147'483'648LL}})},
+          {/*dataset_params=*/UnsignedInt32OverflowRangeDatasetParames(),
+           /*expected_outputs=*/
+           CreateTensors<int64_t>(TensorShape({}),
+                                  {{4'294'967'295LL}, {4'294'967'296LL}})}};
 }
 
 ITERATOR_GET_NEXT_TEST_P(RangeDatasetOpTest, RangeDatasetParams,

@@ -40,6 +40,17 @@ message Event {
     // An encoded version of a MetaGraphDef.
     bytes meta_graph_def = 9;
   }
+
+  // Information of the source that writes the events, this is only logged in
+  // the very first event along with the `file_version` field.
+  SourceMetadata source_metadata = 10;
+}
+
+// Holds the information of the source that writes the events.
+message SourceMetadata {
+  // Low level name of the summary writer, such as
+  // `tensorflow.core.util.events_writer`.
+  string writer = 1;
 }
 
 // Protocol buffer used for logging messages to the events file.

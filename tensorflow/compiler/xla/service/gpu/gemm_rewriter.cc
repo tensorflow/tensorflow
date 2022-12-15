@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
+#include <limits>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -25,21 +29,20 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 
@@ -65,6 +68,24 @@ Status SetName(HloModule *module, HloInstruction *gemm) {
   module->SetAndUniquifyInstrName(
       gemm, is_batch_dot ? "cublas-batch-gemm" : "cublas-gemm");
   return OkStatus();
+}
+
+// Returns whether a given PrimitiveType is supported by cuBLASLt Epilogue
+// Fusion. A table of supported data types can be found in the cuBLASLt
+// documentation: https://docs.nvidia.com/cuda/cublas/index.html#cublasLtMatmul.
+// Note that `Ctype` also describes the output type of the GEMM. Rows with
+// `Non-default epilogue not supported` entries in the last column indicate data
+// types not compatible with Epilogue Fusion.
+bool SupportsEpilogueFusion(PrimitiveType type) {
+  switch (type) {
+    case F16:
+    case BF16:
+    case F32:
+    case F64:
+      return true;
+    default:
+      return false;
+  }
 }
 
 // If the bias is a sequence of ops that depend only on broadcasts of
@@ -116,6 +137,45 @@ HloInstruction *MaybeConstantFoldBias(HloInstruction *bias) {
   }
 
   return bias;
+}
+
+auto Gemm(HloInstruction **instr) {
+  return m::CustomCall(instr, kGemmCallTarget);
+}
+
+auto CublasLtMatmul(HloInstruction **instr) {
+  return m::CustomCall(instr, kCublasLtMatmulCallTarget);
+}
+
+auto GemmOrCublasLtMatmul(HloInstruction **instr) {
+  return m::CustomCall(instr, {kGemmCallTarget, kCublasLtMatmulCallTarget});
+}
+
+auto BcastConstScalar(HloInstruction **instr, double value) {
+  return m::Broadcast(instr, m::ConstantScalar(value));
+}
+
+auto BcastConstScalar(double value) { return BcastConstScalar(nullptr, value); }
+
+auto BcastConstScalarNear(double value) {
+  return m::Broadcast(m::ConstantScalar().WithPredicate(
+      [expected = value](const HloInstruction *instr) {
+        // Not a very robust floating-point comparison, but good enough for our
+        // purposes.
+        std::optional<double> actual =
+            static_cast<const HloConstantInstruction *>(instr)
+                ->literal()
+                .GetAsDouble({});
+        if (!actual.has_value()) return false;
+        double epsilon = 128 * std::numeric_limits<float>::epsilon();
+        return abs(*actual - expected) < (abs(*actual + expected) * epsilon);
+      }));
+}
+
+template <typename Pattern>
+auto OptionalSlice(HloInstruction **optional_slice, Pattern pattern) {
+  return m::AnyOf<HloInstruction>(m::Slice(optional_slice, pattern),
+                                  std::move(pattern));
 }
 
 // The rewriting proceeds in a bottom-up way:
@@ -170,9 +230,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     HloInstruction *alpha, *existing_gemm;
     if (Match(instr,
               m::MultiplyAnyOrder(
-                  m::CustomCall(&existing_gemm,
-                                {kGemmCallTarget, kCublasLtMatmulCallTarget}),
-                  m::Broadcast(m::ConstantScalar(&alpha))))) {
+                  GemmOrCublasLtMatmul(&existing_gemm).WithOneUser(),
+                  m::Broadcast(m::ConstantScalar(&alpha)).WithOneUser()))) {
       TF_ASSIGN_OR_RETURN(auto config,
                           existing_gemm->backend_config<GemmBackendConfig>());
 
@@ -189,23 +248,84 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         config.set_alpha_real(new_alpha.real());
         config.set_alpha_imag(new_alpha.imag());
         TF_RETURN_IF_ERROR(existing_gemm->set_backend_config(config));
-        TF_RETURN_IF_ERROR(ReplaceInstruction(instr, existing_gemm));
+        return ReplaceInstruction(instr, existing_gemm);
       }
+    }
+
+    // Attempt to match approximate GELU activation
+    // (https://arxiv.org/abs/1606.08415), where:
+    // approx_gelu(x) = x * cdf(x)
+    // cdf(x) = 0.5 * (1 + tanh(sqrt(2 / pi) * (x + 0.044715 * x**3))
+    HloInstruction *cdf;
+    if (Match(instr, m::MultiplyAnyOrder(CublasLtMatmul(&existing_gemm),
+                                         m::Op(&cdf).WithOneUser())) &&
+        Match(cdf,
+              m::MultiplyAnyOrder(
+                  BcastConstScalar(0.5),
+                  m::AddAnyOrder(
+                      BcastConstScalar(1.0),
+                      m::Tanh(m::MultiplyAnyOrder(
+                                  BcastConstScalarNear(sqrt(M_2_PI)),
+                                  m::AddAnyOrder(
+                                      m::Op().Is(existing_gemm),
+                                      m::MultiplyAnyOrder(
+                                          BcastConstScalarNear(0.044715),
+                                          m::MultiplyAnyOrder(
+                                              m::Op().Is(existing_gemm),
+                                              m::MultiplyAnyOrder(
+                                                  m::Op().Is(existing_gemm),
+                                                  m::Op().Is(existing_gemm))
+                                                  .WithOneUser())
+                                              .WithOneUser())
+                                          .WithOneUser())
+                                      .WithOneUser())
+                                  .WithOneUser())
+                          .WithOneUser())))) {
+      return FuseGeluActivation(instr, existing_gemm);
     }
     return OkStatus();
   }
 
   Status HandleAdd(HloInstruction *instr) override {
     HloInstruction *bias, *existing_gemm;
+    HloInstruction *optional_slice = nullptr;
+    // Attempt to elide broadcast and fuse addition of a vector bias into GEMM,
+    // including when slicing is applied to the result.
+    if (Match(instr,
+              m::AddAnyOrder(
+                  OptionalSlice(&optional_slice,
+                                CublasLtMatmul(&existing_gemm).WithOneUser())
+                      .WithOneUser(),
+                  m::Broadcast(&bias, m::Op())))) {
+      TF_ASSIGN_OR_RETURN(
+          bool was_fused,
+          FuseVectorBiasAdd(instr, bias, existing_gemm, optional_slice));
 
-    // First, try to match vector bias add, so we might elide the broadcast.
-    if (Match(instr, m::AddAnyOrder(
-                         m::Op(&existing_gemm)
-                             .WithCustomCallTarget(kCublasLtMatmulCallTarget),
-                         m::Broadcast(&bias, m::Op())))) {
-      TF_ASSIGN_OR_RETURN(bool was_fused,
-                          FuseVectorBiasAdd(instr, bias, existing_gemm));
-      if (was_fused) return OkStatus();
+      if (was_fused) {
+        return OkStatus();
+      }
+    }
+
+    // Attempt to elide broadcast and fuse addition of a vector bias into
+    // *batched* GEMM as a matrix bias addition using FuseMatrixBiasAdd.
+    // add(bitcast(gemm(a, b)), broadcast(bias)) ->
+    //   bitcast(add(gemm(a, b), bitcast(broadcast(bias)))) ->
+    //   bitcast(gemm(a, b, bitcast(broadcast(bias)))) (FuseMatrixBiasAdd)
+    //
+    if (Match(instr,
+              m::AddAnyOrder(
+                  m::Bitcast(CublasLtMatmul(&existing_gemm).WithOneUser())
+                      .WithOneUser(),
+                  m::Broadcast(&bias, m::Op()).WithOneUser()))) {
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * new_add,
+          MakeBinaryHlo(HloOpcode::kAdd, existing_gemm,
+                        MakeBitcastHlo(bias, existing_gemm->shape())));
+      TF_RETURN_IF_ERROR(
+          ReplaceInstruction(instr, MakeBitcastHlo(new_add, instr->shape())));
+
+      // Continue below.
+      instr = new_add;
     }
 
     // add(bitcast(gemm(a, b)), bias) ->
@@ -217,14 +337,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // batch-dots.
     //
     // The last stage of the transform may fail (because of any of the checks in
-    // FuseBiasedGemm), but if so that's okay -- we'll have done a useless
+    // FuseMatrixBiasAdd), but if so that's okay -- we'll have done a useless
     // transformation, but it doesn't hurt anything.
-    if (Match(instr, m::AddAnyOrder(
-                         m::Bitcast(m::Op(&existing_gemm)
-                                        .WithCustomCallTarget(kGemmCallTarget)
-                                        .WithOneUser())
-                             .WithOneUser(),
-                         m::Op(&bias)))) {
+    if (Match(instr,
+              m::AddAnyOrder(
+                  m::Bitcast(Gemm(&existing_gemm).WithOneUser()).WithOneUser(),
+                  m::Op(&bias)))) {
       HloInstruction *new_bitcast =
           MakeBitcastHlo(bias, existing_gemm->shape(), &bias->metadata());
       TF_ASSIGN_OR_RETURN(HloInstruction * new_add,
@@ -238,35 +356,76 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     if (Match(instr,
-              m::AddAnyOrder(
-                  m::Op(&existing_gemm)
-                      .WithCustomCallTarget(absl::Span<const absl::string_view>{
-                          kGemmCallTarget, kCublasLtMatmulCallTarget}),
-                  m::Op(&bias)))) {
+              m::AddAnyOrder(GemmOrCublasLtMatmul(&existing_gemm).WithOneUser(),
+                             m::Op(&bias)))) {
       return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
 
     return OkStatus();
   }
 
+  Status HandleMaximum(HloInstruction *instr) override {
+    HloInstruction *existing_gemm, *zeros;
+    HloInstruction *optional_slice_or_bitcast = nullptr;
+    // Attempt to elide maximum and fuse ReLU activation into GEMM, including
+    // when slicing or bitcasting is applied to the result.
+    if (Match(instr,
+              m::MaximumAnyOrder(
+                  m::AnyOf<HloInstruction>(
+                      m::Slice(&optional_slice_or_bitcast,
+                               CublasLtMatmul(&existing_gemm).WithOneUser()),
+                      m::Bitcast(&optional_slice_or_bitcast,
+                                 CublasLtMatmul(&existing_gemm).WithOneUser()),
+                      CublasLtMatmul(&existing_gemm))
+                      .WithOneUser(),
+                  m::Broadcast(&zeros, m::ConstantScalar(0))))) {
+      TF_RETURN_IF_ERROR(FuseReluActivation(instr, zeros, existing_gemm,
+                                            optional_slice_or_bitcast));
+    }
+    return OkStatus();
+  }
+
   Status HandleConvert(HloInstruction *instr) override {
     HloInstruction *bias, *existing_gemm;
+    HloInstruction *optional_slice = nullptr;
+
+    // First, try to match vector bias add, so we might elide the broadcast.
     if (Match(
             instr,
-            m::Convert(m::AddAnyOrder(
-                           m::Convert(m::CustomCall(&existing_gemm,
-                                                    {kGemmCallTarget,
-                                                     kCublasLtMatmulCallTarget})
-                                          .WithElementType(BF16)),
-                           m::Convert(m::Op(&bias).WithElementType(BF16))))
+            m::Convert(
+                m::AddAnyOrder(
+                    m::Convert(OptionalSlice(
+                                   &optional_slice,
+                                   CublasLtMatmul(&existing_gemm).WithOneUser())
+                                   .WithOneUser()
+                                   .WithElementType(BF16))
+                        .WithOneUser(),
+                    m::Broadcast(&bias,
+                                 m::Convert(m::Op().WithElementType(BF16)))))
                 .WithElementType(BF16))) {
+      TF_ASSIGN_OR_RETURN(
+          bool was_fused,
+          FuseVectorBiasAdd(instr, bias, existing_gemm, optional_slice));
+      if (was_fused) return OkStatus();
+    }
+
+    if (Match(instr,
+              m::Convert(
+                  m::AddAnyOrder(m::Convert(GemmOrCublasLtMatmul(&existing_gemm)
+                                                .WithOneUser()
+                                                .WithElementType(BF16))
+                                     .WithOneUser(),
+                                 m::Convert(m::Op(&bias).WithElementType(BF16))
+                                     .WithOneUser())
+                      .WithOneUser())
+                  .WithElementType(BF16))) {
       return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
     return OkStatus();
   }
 
   Status FuseMatrixBiasAdd(HloInstruction *instr, HloInstruction *bias,
-                           HloInstruction *gemm) {
+                           const HloInstruction *gemm) {
     TF_RET_CHECK(bias->shape() == gemm->shape());
 
     // Do not fuse bias into S32 GEMM, as for this datatype cuBLAS only
@@ -300,7 +459,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     operands.insert(operands.begin() + 2, MaybeConstantFoldBias(bias));
 
     std::unique_ptr<HloInstruction> fused_op =
-        gemm->CloneWithNewOperands(instr->shape(), operands);
+        gemm->CloneWithNewOperands(gemm->shape(), operands);
 
     TF_RETURN_IF_ERROR(fused_op->set_backend_config(config));
 
@@ -326,36 +485,45 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           ->set_output_to_operand_aliasing({{{}, {2, {}}}});
     }
     TF_RETURN_IF_ERROR(SetName(instr->GetModule(), fused_op.get()));
-    TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(fused_op)));
-    return OkStatus();
+    return ReplaceWithNewInstruction(instr, std::move(fused_op));
   }
 
-  StatusOr<bool> FuseVectorBiasAdd(HloInstruction *instr,
+  StatusOr<bool> FuseVectorBiasAdd(HloInstruction *add,
                                    HloInstruction *broadcast_bias,
-                                   HloInstruction *matmul) {
-    TF_RET_CHECK(broadcast_bias->shape() == matmul->shape());
+                                   const HloInstruction *gemm,
+                                   HloInstruction *slice = nullptr) {
+    TF_RET_CHECK(ShapeUtil::CompatibleIgnoringElementType(
+        broadcast_bias->shape(), (slice ? slice->shape() : gemm->shape())));
 
-    auto config = matmul->backend_config<GemmBackendConfig>().value();
+    // Verify that the data type is supported by Epilogue Fusion.
+    if (!SupportsEpilogueFusion(gemm->shape().element_type())) {
+      return false;
+    }
+
+    HloInstruction *bias =
+        (gemm->shape().element_type() == BF16)
+            ? broadcast_bias->mutable_operand(0)->mutable_operand(0)
+            : broadcast_bias->mutable_operand(0);
+
+    TF_ASSIGN_OR_RETURN(auto config, gemm->backend_config<GemmBackendConfig>());
 
     // # output column dims == # non-contracting rhs operand dims.
     const DotDimensionNumbers &dot_dims = config.dot_dimension_numbers();
-    size_t num_col_dims = matmul->operand(1)->shape().rank() -
+    size_t num_col_dims = gemm->operand(1)->shape().rank() -
                           dot_dims.rhs_batch_dimensions_size() -
                           dot_dims.rhs_contracting_dimensions_size();
 
-    HloInstruction *bias = broadcast_bias->mutable_operand(0);
-    if ((matmul->user_count() != 1) ||
+    if ((gemm->user_count() != 1) ||
         (config.epilogue() != GemmBackendConfig::DEFAULT) ||
         (bias->shape().rank() != num_col_dims)) {
       return false;
     }
-
     // We require the bias vector to have been broadcast in the most major
     // dimensions; i.e. its most minor physical dimensions align with most minor
-    // physical dimensions of the matmul output.
+    // physical dimensions of the gemm output.
     absl::Span<const int64_t> broadcast_dims = broadcast_bias->dimensions();
     for (size_t i = 0; i < num_col_dims; ++i) {
-      int64_t dim = matmul->shape().layout().minor_to_major(i);
+      int64_t dim = gemm->shape().layout().minor_to_major(i);
 
       // Find the corresponding dimension from the bias vector.
       auto it = absl::c_find(broadcast_dims, dim);
@@ -370,18 +538,98 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    std::vector<HloInstruction *> operands(matmul->operands().begin(),
-                                           matmul->operands().end());
+    // Replace add(gemm, broadcast_bias) with fused new_gemm.
+    config.set_epilogue(GemmBackendConfig::BIAS);
+    std::vector<HloInstruction *> operands(gemm->operands().begin(),
+                                           gemm->operands().end());
     operands.push_back(bias);
 
-    std::unique_ptr<HloInstruction> fused_op =
-        matmul->CloneWithNewOperands(instr->shape(), operands);
+    std::unique_ptr<HloInstruction> result =
+        gemm->CloneWithNewOperands(gemm->shape(), operands);
+    TF_RETURN_IF_ERROR(result->set_backend_config(config));
+    TF_RETURN_IF_ERROR(SetName(result->GetModule(), result.get()));
 
-    config.set_epilogue(GemmBackendConfig::BIAS);
-    TF_RETURN_IF_ERROR(fused_op->set_backend_config(config));
-    TF_RETURN_IF_ERROR(SetName(instr->GetModule(), fused_op.get()));
-    TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(fused_op)));
+    if (slice != nullptr) {
+      result = slice->CloneWithNewOperands(
+          slice->shape(), {slice->parent()->AddInstruction(std::move(result))});
+    }
+
+    TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(add, std::move(result)));
     return true;
+  }
+
+  Status FuseReluActivation(HloInstruction *maximum,
+                            HloInstruction *broadcast_zeros,
+                            const HloInstruction *gemm,
+                            HloInstruction *slice_or_bitcast = nullptr) {
+    TF_RET_CHECK(ShapeUtil::Compatible(
+        broadcast_zeros->shape(),
+        (slice_or_bitcast ? slice_or_bitcast->shape() : gemm->shape())));
+
+    if (!SupportsEpilogueFusion(gemm->shape().element_type())) {
+      return OkStatus();
+    }
+
+    if (gemm->user_count() != 1) {
+      return OkStatus();
+    }
+
+    TF_ASSIGN_OR_RETURN(auto config, gemm->backend_config<GemmBackendConfig>());
+    if (config.epilogue() == GemmBackendConfig::DEFAULT) {
+      config.set_epilogue(GemmBackendConfig::RELU);
+    } else if (config.epilogue() == GemmBackendConfig::BIAS) {
+      config.set_epilogue(GemmBackendConfig::BIAS_RELU);
+    } else {
+      return OkStatus();
+    }
+
+    std::unique_ptr<HloInstruction> result = gemm->Clone();
+    TF_RETURN_IF_ERROR(result->set_backend_config(config));
+    TF_RETURN_IF_ERROR(SetName(maximum->GetModule(), result.get()));
+
+    if (slice_or_bitcast != nullptr) {
+      result = slice_or_bitcast->CloneWithNewOperands(
+          slice_or_bitcast->shape(),
+          {slice_or_bitcast->parent()->AddInstruction(std::move(result))});
+    }
+
+    return ReplaceWithNewInstruction(maximum, std::move(result));
+  }
+
+  Status FuseGeluActivation(HloInstruction *multiply, HloInstruction *gemm) {
+    if (!SupportsEpilogueFusion(gemm->shape().element_type())) {
+      return OkStatus();
+    }
+
+    // There are four users of the gemm output within the GELU calculation.
+    bool has_aux = gemm->user_count() > 4;
+
+    TF_ASSIGN_OR_RETURN(auto config, gemm->backend_config<GemmBackendConfig>());
+    if (config.epilogue() == GemmBackendConfig::DEFAULT) {
+      config.set_epilogue(has_aux ? GemmBackendConfig::GELU_AUX
+                                  : GemmBackendConfig::GELU);
+    } else if (config.epilogue() == GemmBackendConfig::BIAS) {
+      config.set_epilogue(has_aux ? GemmBackendConfig::BIAS_GELU_AUX
+                                  : GemmBackendConfig::BIAS_GELU);
+    } else {
+      return OkStatus();
+    }
+
+    std::unique_ptr<HloInstruction> output = gemm->CloneWithNewShape(
+        has_aux ? ShapeUtil::MakeTupleShape({gemm->shape(), gemm->shape()})
+                : gemm->shape());
+    TF_RETURN_IF_ERROR(output->set_backend_config(config));
+    TF_RETURN_IF_ERROR(SetName(multiply->GetModule(), output.get()));
+
+    if (has_aux) {
+      HloInstruction *tuple_output =
+          gemm->parent()->AddInstruction(std::move(output));
+      TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
+          gemm, HloInstruction::CreateGetTupleElement(tuple_output, 1)));
+      output = HloInstruction::CreateGetTupleElement(tuple_output, 0);
+    }
+
+    return ReplaceWithNewInstruction(multiply, std::move(output));
   }
 
  private:

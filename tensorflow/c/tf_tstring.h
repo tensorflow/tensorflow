@@ -59,4 +59,4 @@ TF_CAPI_EXPORT extern void TF_StringDealloc(TF_TString *tstr);
 } /* end extern "C" */
 #endif
 
-#endif  // THIRD_PARTY_TENSORFLOW_C_TF_TSTRING_H_
+#endif  // TENSORFLOW_C_TF_TSTRING_H_

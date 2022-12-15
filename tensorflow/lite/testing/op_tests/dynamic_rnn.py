@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for dynamic_rnn."""
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -44,8 +44,10 @@ def make_dynamic_rnn_tests(options):
     num_cells = parameters["num_cells"]
     input_shape = (num_batches, time_step_size, input_vec_size)
 
-    input_tensor = tf.placeholder(dtype=parameters["dtype"], shape=input_shape)
-    lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(num_cells, activation=tf.nn.relu)
+    input_tensor = tf.compat.v1.placeholder(
+        dtype=parameters["dtype"], shape=input_shape)
+    lstm_cell = tf.compat.v1.nn.rnn_cell.BasicLSTMCell(
+        num_cells, activation=tf.nn.relu)
 
     output, _ = rnn.dynamic_rnn(
         lstm_cell, input_tensor, dtype=parameters["dtype"])
@@ -53,7 +55,7 @@ def make_dynamic_rnn_tests(options):
 
   def build_inputs(parameters, sess, inputs, outputs):
     """Feed inputs, assign variables, and freeze graph."""
-    sess.run(tf.global_variables_initializer())
+    sess.run(tf.compat.v1.global_variables_initializer())
 
     num_batches = parameters["num_batches"]
     time_step_size = parameters["time_step_size"]

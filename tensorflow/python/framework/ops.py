@@ -104,7 +104,7 @@ _control_flow_api_gauge = monitoring.BoolGauge(
     "/tensorflow/api/enable_control_flow_v2",
     "Whether enable_control_flow_v2() is called.")
 
-_tf_function_api_guage = monitoring.BoolGauge(
+_tf_function_api_gauge = monitoring.BoolGauge(
     "/tensorflow/api/tf_function",
     "Whether tf.function() is used.")
 
@@ -1275,7 +1275,8 @@ class _EagerTensorBase(Tensor):
     """Returns the number of Tensor dimensions."""
     return self.shape.ndims
 
-  @deprecation.deprecated(None, "Use tf.identity instead.")
+  @deprecation.deprecated(
+      None, "Use tf.identity with explicit device placement instead.")
   def cpu(self):
     """A copy of this Tensor with contents backed by host memory."""
     return self._copy(context.context(), "CPU:0")
@@ -1550,7 +1551,7 @@ def pack_eager_tensors(tensors, ctx=None):
   if ctx is None:
     ctx = context.context()
 
-  # Propogate handle data for resource variables
+  # Propagate handle data for resource variables
   packed_tensor = ctx.pack_eager_tensors(tensors)
   if handle_data is not None:
     packed_tensor._handle_data = handle_data  # pylint: disable=protected-access
@@ -3671,6 +3672,15 @@ class Graph(object):
     if self._graph_def_versions.min_consumer < 12:
       self._graph_def_versions.min_consumer = 12
 
+  def _remove_function(self, name):
+    self._check_not_finalized()
+    if not self._is_function(name):
+      raise ValueError(f"Function {name!r} is not found in {self!r}.")
+
+    with self._c_graph.get() as c_graph:
+      pywrap_tf_session.TF_GraphRemoveFunction(c_graph, compat.as_bytes(name))
+      del self._functions[compat.as_str(name)]
+
   @property
   def building_function(self):
     """Returns True iff this graph represents a function."""
@@ -5615,10 +5625,47 @@ def control_dependencies(control_inputs):
 
   See `tf.Graph.control_dependencies` for more details.
 
-  Note: *In TensorFlow 2 with eager and/or Autograph, you should not require
-  this method, as ops execute in the expected order thanks to automatic control
-  dependencies.* Only use `tf.control_dependencies` when working with v1
-  `tf.Graph` code.
+  In TensorFlow 2 with eager and/or Autograph, you should not need this method
+  most of the times, as ops execute in the expected order thanks to automatic
+  control dependencies. Only use it to manually control ordering, for example as
+  a workaround to known issues such as `tf.function` with `tf.debugging.assert*`
+  and `tf.py_function`.
+  For example:
+
+  >>> @tf.function(
+  ...   input_signature=[tf.TensorSpec([None, None], tf.float32),
+  ...                    tf.TensorSpec([None, None], tf.float32)])
+  ... def my_assert_func_1(x, bias):
+  ...   # `tf.function` attempts to execute `tf.math.add` in parallel to
+  ...   # `assert_equal`. As a result an error can get raised from `tf.math.add`
+  ...   # without triggering the assertion error.
+  ...   tf.assert_equal(tf.shape(x)[1],
+  ...                   tf.shape(bias)[1],
+  ...                   message='bad shape')
+  ...   return x + bias
+
+  >>> # Error raised in either `add` or `assert`
+  >>> my_assert_func_1(tf.ones((2, 5)), tf.ones((2, 7)))
+  Traceback (most recent call last):
+     ...
+  InvalidArgumentError: ...
+
+
+  >>> @tf.function(
+  ...   input_signature=[tf.TensorSpec([None, None], tf.float32),
+  ...                    tf.TensorSpec([None, None], tf.float32)])
+  ... def my_assert_func_2(x, bias):
+  ...   with tf.control_dependencies(
+  ...       [tf.assert_equal(tf.shape(x)[1],
+  ...                       tf.shape(bias)[1],
+  ...                       message='bad shape')]):
+  ...     return x + bias
+
+  >>> # Error raised in `assert`
+  >>> my_assert_func_2(tf.ones((2, 5)), tf.ones((2, 7)))
+  Traceback (most recent call last):
+     ...
+  InvalidArgumentError: ...
 
   When eager execution is enabled, any callable object in the `control_inputs`
   list will be called.
@@ -6512,7 +6559,7 @@ class GraphKeys(object):
   # Key to collect local variables that are local to the machine and are not
   # saved/restored.
   LOCAL_VARIABLES = "local_variables"
-  # Key to collect local variables which are used to accumulate interal state
+  # Key to collect local variables which are used to accumulate internal state
   # to be used in tf.metrics.*.
   METRIC_VARIABLES = "metric_variables"
   # Key to collect model variables defined by layers.

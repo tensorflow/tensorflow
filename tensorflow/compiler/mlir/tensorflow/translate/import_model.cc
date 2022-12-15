@@ -141,15 +141,17 @@ namespace tensorflow {
 constexpr size_t kNumThreadToConvertSignatures = 10;
 constexpr absl::string_view kOutputShapesAttrName = "_output_shapes";
 
-using mlir::NamedAttrList;
-using mlir::TensorType;
-using mlir::tf_saved_model::AssetOp;
-using mlir::tf_saved_model::GlobalTensorOp;
-using mlir::tf_saved_model::kTfSavedModelInitializerInitType;
-using mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
-using mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
-using mlir::tf_saved_model::SessionInitializerOp;
-using stream_executor::port::StatusOr;
+using ::mlir::NamedAttrList;
+using ::mlir::TensorType;
+using ::mlir::tf_saved_model::AssetOp;
+using ::mlir::tf_saved_model::GlobalTensorOp;
+using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
+using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
+using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
+using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
+using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
+using ::mlir::tf_saved_model::SessionInitializerOp;
+using ::stream_executor::port::StatusOr;
 
 namespace {
 
@@ -2419,7 +2421,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
     crash_analysis::RemoveReportData(flib_crash_handle);
   });
 
-  VLOG(1) << "Importing: "
+  VLOG(2) << "Importing: "
           << ::tensorflow::DumpGraphToFile("tf_mlir_importer_base", graph,
                                            &flib_def);
 
@@ -2522,7 +2524,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
                           : mlir::func::FuncOp::Visibility::Private;
     function.setVisibility(visibility);
   }
-  VLOG(1) << "Imported: "
+  VLOG(2) << "Imported: "
           << tensorflow::DumpMlirOpToFile("tf_mlir_imported_base",
                                           module.get());
   return module;
@@ -3377,7 +3379,7 @@ Status CreateSavedModelIR(
                                                   call.getResults());
       }
       func->setAttr(
-          "tf_saved_model.exported_names",
+          kTfSavedModelExportedNamesAttr,
           builder.getStrArrayAttr(object_names.GetExportedNames(node_id)));
       const SavedConcreteFunction& concrete_function =
           object_graph.concrete_functions().at(function.concrete_functions(0));
@@ -3410,7 +3412,7 @@ Status CreateSavedModelIR(
             " vs ", bound_input_base, ")");
       }
       for (auto index_path : llvm::enumerate(input_index_paths)) {
-        func.setArgAttr(index_path.index(), "tf_saved_model.index_path",
+        func.setArgAttr(index_path.index(), kTfSavedModelIndexPathAttr,
                         index_path.value());
       }
 
@@ -3437,7 +3439,7 @@ Status CreateSavedModelIR(
             " vs ", func.getNumResults(), ")");
       }
       for (auto index_path : llvm::enumerate(output_index_paths)) {
-        func.setResultAttr(index_path.index(), "tf_saved_model.index_path",
+        func.setResultAttr(index_path.index(), kTfSavedModelIndexPathAttr,
                            index_path.value());
       }
     } else if (object.kind_case() == SavedObject::kVariable) {
@@ -3476,7 +3478,7 @@ Status CreateSavedModelIR(
           /*type=*/mlir::TypeAttr::get(type),
           /*is_mutable=*/builder.getUnitAttr());
       op->setAttr(
-          "tf_saved_model.exported_names",
+          kTfSavedModelExportedNamesAttr,
           builder.getStrArrayAttr(object_names.GetExportedNames(node_id)));
     } else if (object.kind_case() == SavedObject::kConstant) {
       const SavedConstant& constant = object.constant();
@@ -3496,7 +3498,7 @@ Status CreateSavedModelIR(
           /*type=*/mlir::TypeAttr::get(value_attr.getType()),
           /*is_mutable=*/nullptr);
       op->setAttr(
-          "tf_saved_model.exported_names",
+          kTfSavedModelExportedNamesAttr,
           builder.getStrArrayAttr(object_names.GetExportedNames(node_id)));
     }
   }
@@ -3885,7 +3887,7 @@ Status SavedModelSignatureDefImporterLite::ConvertInitializer(
   // Set the exported name of init function to an reserved name for
   // tf_saved_model.
   init_func_op->setAttr(
-      "tf_saved_model.exported_names",
+      kTfSavedModelExportedNamesAttr,
       builder.getStrArrayAttr({absl::StrCat(
           "__tf_saved_model_session_initializer_", target_node_name)}));
   init_func_op->setAttr(kTfSavedModelInitializerTypeAttr,
@@ -3958,18 +3960,28 @@ Status SavedModelSignatureDefImporterLite::ConvertSignature(
       << sig_def_key << ".";
 
   // Use unique SignatureDef key as exported name.
-  func_op->setAttr("tf_saved_model.exported_names",
+  func_op->setAttr(kTfSavedModelExportedNamesAttr,
                    builder.getStrArrayAttr({sig_def_key}));
 
   // Transfer input and output parameter names to index_path attributes.
   for (auto input_and_idx : llvm::enumerate(inputs)) {
-    func_op.setArgAttr(input_and_idx.index(), "tf_saved_model.index_path",
+    func_op.setArgAttr(input_and_idx.index(), kTfSavedModelIndexPathAttr,
                        builder.getStrArrayAttr({input_and_idx.value().first}));
   }
   for (auto output_and_idx : llvm::enumerate(outputs)) {
     func_op.setResultAttr(
-        output_and_idx.index(), "tf_saved_model.index_path",
+        output_and_idx.index(), kTfSavedModelIndexPathAttr,
         builder.getStrArrayAttr({output_and_idx.value().first}));
+  }
+
+  // Add the original TF function name as a function attribute.
+  // TODO(b/258817244) Remove this after TFRT exports functions.
+  for (const auto& [tf_name, mlir_name] : tf_name_to_mlir_name) {
+    auto func_op = sub_symbol_table.lookup<mlir::func::FuncOp>(mlir_name);
+    TF_RET_CHECK(func_op)
+        << "Graphdef importer should have created a function named "
+        << mlir_name << ".";
+    func_op->setAttr("tf._original_func_name", builder.getStringAttr(tf_name));
   }
 
   // Move the converted functions to top level MLIR module.

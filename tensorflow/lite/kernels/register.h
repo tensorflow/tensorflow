@@ -16,6 +16,6 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_REGISTER_H_
 
 /// For documentation, see third_party/tensorflow/lite/core/kernels/register.h.
-#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/kernels/register.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_LITE_KERNELS_REGISTER_H_

@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/python_binding/conversion_utils.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
 #include "tensorflow/compiler/mlir/tfrt/python_tests/python_test_attrs_registration.h"
-#include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tfrt/jitrt/async_task_runner.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
@@ -76,12 +76,11 @@ TfJitRtExecutor::TfJitRtExecutor()
           },
           CreateMallocAllocator(), CreateMultiThreadedWorkQueue(4, 4)) {}
 
-TfJitRtExecutor::Handle TfJitRtExecutor::Compile(const std::string& mlir_module,
-                                                 const std::string& entrypoint,
-                                                 Specialization specialization,
-                                                 bool vectorize,
-                                                 bool codegen_transpose,
-                                                 bool legalize_i1_tensors) {
+TfJitRtExecutor::Handle TfJitRtExecutor::Compile(
+    const std::string& mlir_module, const std::string& entrypoint,
+    Specialization specialization, bool vectorize, bool codegen_transpose,
+    bool legalize_i1_tensors, bool peel, bool enable_xla_cpu_transformations,
+    bool pack_matmul) {
   // Options for the default JitRt compilation pipeline (lowering to LLVM).
   CompilationPipelineOptions copts;
   copts.alignment = EIGEN_MAX_ALIGN_BYTES;
@@ -102,6 +101,9 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(const std::string& mlir_module,
         opts.vectorize = vectorize;
         opts.codegen_transpose = codegen_transpose;
         opts.legalize_i1_tensors = legalize_i1_tensors;
+        opts.peel = peel;
+        opts.enable_xla_cpu_transformations = enable_xla_cpu_transformations;
+        opts.lower_to_mmt4d = pack_matmul;
         tensorflow::CreateTfJitRtPipeline(*passes, opts);
         CreateDefaultJitRtCompilationPipeline(passes, copts);
       };
@@ -289,7 +291,9 @@ PYBIND11_MODULE(_tf_jitrt_executor, m) {
            py::arg("specialization") =
                tensorflow::TfJitRtExecutor::Specialization::kEnabled,
            py::arg("vectorize") = false, py::arg("codegen_transpose") = false,
-           py::arg("legalize_i1_tensors") = false)
+           py::arg("legalize_i1_tensors") = false, py::arg("peel") = true,
+           py::arg("enable_xla_cpu_transformations") = false,
+           py::arg("pack_matmul") = false)
       .def("execute", &tensorflow::TfJitRtExecutor::Execute)
       .def("built_with", &tensorflow::TfJitRtExecutor::BuiltWith,
            py::arg("cpu_feature"));

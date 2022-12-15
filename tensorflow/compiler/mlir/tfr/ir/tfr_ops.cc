@@ -93,7 +93,7 @@ class TFRInlinerInterface : public DialectInlinerInterface {
     auto retValOp = dyn_cast<TFRReturnOp>(op);
     if (!retValOp) return;
 
-    for (auto ret_value : llvm::zip(valuesToRepl, retValOp.operands())) {
+    for (auto ret_value : llvm::zip(valuesToRepl, retValOp.getOperands())) {
       std::get<0>(ret_value).replaceAllUsesWith(std::get<1>(ret_value));
     }
   }
@@ -359,11 +359,15 @@ ParseResult TFRFuncOp::parse(OpAsmParser &parser, OperationState &result) {
          function_interface_impl::VariadicFlag,
          std::string &) { return builder.getFunctionType(arg_types, results); };
   return function_interface_impl::parseFunctionOp(
-      parser, result, /*allowVariadic=*/false, build_func_type);
+      parser, result, /*allowVariadic=*/false,
+      getFunctionTypeAttrName(result.name), build_func_type,
+      getArgAttrsAttrName(result.name), getResAttrsAttrName(result.name));
 }
 
 void TFRFuncOp::print(OpAsmPrinter &p) {
-  function_interface_impl::printFunctionOp(p, *this, /*isVariadic=*/false);
+  function_interface_impl::printFunctionOp(
+      p, *this, /*isVariadic=*/false, getFunctionTypeAttrName(),
+      getArgAttrsAttrName(), getResAttrsAttrName());
 }
 
 }  // namespace TFR
@@ -691,9 +695,9 @@ class RemoveQParamsOp : public OpRewritePattern<TFRQuantQParamsOp> {
       return failure();
     }
     auto scale_cast = rewriter.create<CastOp>(
-        loc, qparams_op.getScale().getType(), scale_op.output());
+        loc, qparams_op.getScale().getType(), scale_op.getOutput());
     auto zp_cast = rewriter.create<CastOp>(loc, qparams_op.getZp().getType(),
-                                           zp_op.output());
+                                           zp_op.getOutput());
 
     qparams_op.getScale().replaceAllUsesWith(scale_cast.getOut());
     qparams_op.getZp().replaceAllUsesWith(zp_cast.getOut());
@@ -773,7 +777,7 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
         loc,
         DenseElementsAttr::get(scale_type, llvm::makeArrayRef(scale_factors)));
     auto result_scale_cast_op = rewriter.create<CastOp>(
-        loc, scale_factor_op.getType(), result_scale_op.output());
+        loc, scale_factor_op.getType(), result_scale_op.getOutput());
     scale_factor_op.getScaleFactor().replaceAllUsesWith(
         result_scale_cast_op.getOut());
     return success();
@@ -810,7 +814,7 @@ class RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
     auto zp_tensor = rewriter.create<TF::ConstOp>(
         loc, RankedTensorType::get({}, zp.getType()), zp_attr);
     auto zp_cast = rewriter.create<CastOp>(
-        loc, rewriter.getType<TFRTensorType>(), zp_tensor.output());
+        loc, rewriter.getType<TFRTensorType>(), zp_tensor.getOutput());
 
     rewriter.setInsertionPoint(rescale_op);
     auto cast_input_to_float_op = rewriter.create<CallOp>(

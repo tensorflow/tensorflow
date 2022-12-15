@@ -6,8 +6,10 @@ load("//tensorflow/lite/experimental/acceleration/mini_benchmark:build_defs.bzl"
 load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary")
 load("//tensorflow:tensorflow.bzl", "clean_dep")
 load("@build_bazel_rules_android//android:rules.bzl", "android_binary")
+load(":proto.bzl", "proto_data")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],
 )
@@ -17,7 +19,10 @@ android_binary(
     srcs = glob([
         "src/**/*.java",
     ]),
-    assets = [":mobilenet_float_with_validation.tflite"],
+    assets = [
+        ":mobilenet_float_with_validation.tflite",
+        ":default_latency_criteria",
+    ],
     assets_dir = "",
     custom_package = "org.tensorflow.lite.benchmark.delegate_performance",
     manifest = "AndroidManifest.xml",
@@ -44,9 +49,28 @@ tflite_jni_binary(
     srcs = ["jni/delegate_performance_benchmark_jni.cc"],
     deps = [
         ":accuracy_benchmark",
+        ":delegate_performance_cc_proto",  # Unused
         ":latency_benchmark",
         "//tensorflow/lite/java/jni",
     ],
+)
+
+proto_library(
+    name = "delegate_performance_proto",
+    srcs = ["proto/delegate_performance.proto"],
+)
+
+cc_proto_library(
+    name = "delegate_performance_cc_proto",
+    deps = [":delegate_performance_proto"],
+)
+
+proto_data(
+    name = "default_latency_criteria",
+    src = "proto/default_latency_criteria.textproto",
+    out = "default_latency_criteria.binarypb",
+    proto_deps = [":delegate_performance_proto"],
+    proto_name = "tflite.proto.benchmark.LatencyCriteria",
 )
 
 cc_library(
@@ -65,16 +89,18 @@ cc_library(
     hdrs = ["jni/accuracy_benchmark.h"],
     deps = [
         "//tensorflow/lite:minimal_logging",
-        "@flatbuffers//:public_headers_lib",
+        "@flatbuffers",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:blocking_validator_runner",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:validator_runner_entrypoint",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:validator_runner_options",
         "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
+        "//tensorflow/lite/experimental/acceleration/configuration:stable_delegate_plugin",
         "//tensorflow/lite/experimental/acceleration/configuration:xnnpack_plugin",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:tool_params",
+        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:tflite_settings_json_parser",
     ] + select({
         # On Android, as the validation runs in a separate process as a
         # different binary, any TFLite delegates to be validated need to
@@ -89,6 +115,12 @@ cc_library(
 cc_test(
     name = "accuracy_benchmark_test",
     srcs = ["jni/accuracy_benchmark_test.cc"],
+    data = [
+        "//tensorflow/lite/delegates/utils/experimental/sample_stable_delegate:tensorflowlite_sample_stable_delegate",
+        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:test_xnnpack_settings.json",
+        "//tensorflow/lite/tools/delegates/experimental/stable_delegate:test_invalid_settings.json",
+        "//tensorflow/lite/tools/delegates/experimental/stable_delegate:test_sample_stable_delegate_settings.json",
+    ],
     deps = [
         ":accuracy_benchmark",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_mobilenet_validation_model",

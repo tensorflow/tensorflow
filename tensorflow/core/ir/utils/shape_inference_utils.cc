@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -90,10 +91,10 @@ Optional<tensorflow::PartialTensorShape> GetShapeFromMlirType(Type t) {
     tensorflow::PartialTensorShape shape;
     const tensorflow::Status status =
         tensorflow::PartialTensorShape::BuildPartialTensorShape(
-            ranked_type.getShape(), &shape);
+            ConvertMlirShapeToTF(ranked_type.getShape()), &shape);
     if (status.ok()) return shape;
   }
-  return None;
+  return llvm::None;
 }
 
 // Extracts a PartialTensorShape from the MLIR attr.
@@ -105,7 +106,7 @@ Optional<tensorflow::PartialTensorShape> GetShapeFromMlirAttr(Value v) {
       int arg_idx = arg.getArgNumber();
       auto attrs =
           func_op.getArgAttrOfType<ArrayAttr>(arg_idx, "tf._output_shapes");
-      if (!attrs || attrs.size() != 1) return None;
+      if (!attrs || attrs.size() != 1) return llvm::None;
 
       // "tf._output_shapes" in certain models may not store the shape as
       // ShapeAttr, ignore them because we don't know how to interpret it.
@@ -114,7 +115,7 @@ Optional<tensorflow::PartialTensorShape> GetShapeFromMlirAttr(Value v) {
         return tensorflow::PartialTensorShape(shape_attr.getShape());
     }
   }
-  return None;
+  return llvm::None;
 }
 
 // Gets the subtype's shape and data type for `type`. Templated to support both
@@ -167,7 +168,7 @@ LogicalResult ReportErrorFromShapeFunction(Optional<Location> location,
 // Extracts shape from a shape handle and inference context.
 Optional<SmallVector<int64_t, 8>> GetShapeFromHandle(InferenceContext& context,
                                                      const ShapeHandle& sh) {
-  if (!context.RankKnown(sh)) return None;
+  if (!context.RankKnown(sh)) return llvm::None;
   SmallVector<int64_t, 8> shape;
   for (int dim : llvm::seq<int>(0, context.Rank(sh)))
     shape.push_back(context.Value(context.Dim(sh, dim)));
@@ -179,7 +180,7 @@ TensorType CreateTensorType(InferenceContext& context, const ShapeHandle& sh,
                             Type element_type) {
   auto shape = GetShapeFromHandle(context, sh);
   if (shape.has_value())
-    return GetTypeFromTFTensorShape(shape.getValue(), element_type, {});
+    return GetTypeFromTFTensorShape(shape.value(), element_type, {});
   return UnrankedTensorType::get(element_type);
 }
 
@@ -189,27 +190,12 @@ ShapedTypeComponents CreateShapedTypeComponents(InferenceContext& context,
                                                 Type element_type) {
   auto shape = GetShapeFromHandle(context, sh);
   if (shape.has_value())
-    return ShapedTypeComponents(shape.getValue(), element_type);
+    return ShapedTypeComponents(ConvertTFShapeToMlir(shape.value()),
+                                element_type);
   return ShapedTypeComponents(element_type);
 }
 
-llvm::SmallVector<int64_t> ConvertTFShapeToMlir(
-    llvm::ArrayRef<int64_t> shapes) {
-  return llvm::to_vector(llvm::map_range(shapes, [](int64_t shape) {
-    return shape == InferenceContext::kUnknownDim
-               ? mlir::ShapedType::kDynamicSize
-               : shape;
-  }));
-}
-
 }  // namespace
-
-mlir::RankedTensorType GetTypeFromTFTensorShape(llvm::ArrayRef<int64_t> shape,
-                                                mlir::Type elementType,
-                                                mlir::Attribute encoding) {
-  return mlir::RankedTensorType::get(ConvertTFShapeToMlir(shape), elementType,
-                                     encoding);
-}
 
 LogicalResult InferReturnTypeComponentsForTFOp(
     Optional<Location> location, Operation* op, ValueRange operands,

@@ -19,6 +19,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_PY_VALUES_H_
 
 #include <memory>
+#include <string>
+#include <tuple>
+#include <utility>
 
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
@@ -28,6 +31,14 @@ limitations under the License.
 namespace xla {
 
 struct DevicePutResult {
+#ifdef JAX_ENABLE_IFRT
+  explicit DevicePutResult(
+      tsl::RCReference<ifrt::Array> ifrt_array, bool weak_type,
+      pybind11::object owning_pybuffer = pybind11::object())
+      : ifrt_array(std::move(ifrt_array)),
+        weak_type(weak_type),
+        owning_pybuffer(owning_pybuffer) {}
+#else
   explicit DevicePutResult(PjRtBuffer* b, bool weak_type,
                            pybind11::object owning_pybuffer)
       : buffer(b), weak_type(weak_type), owning_pybuffer(owning_pybuffer) {}
@@ -36,15 +47,23 @@ struct DevicePutResult {
       : buffer(new_buffer.get()),
         weak_type(weak_type),
         owned_buffer(std::move(new_buffer)) {}
+#endif
 
+#ifdef JAX_ENABLE_IFRT
+  // Points to the on-device array. Not owned.
+  tsl::RCReference<ifrt::Array> ifrt_array;
+#else
   // Points to the on-device buffer. Not owned.
   PjRtBuffer* buffer;
+#endif
   bool weak_type;
 
+#ifndef JAX_ENABLE_IFRT
   // One of owned_buffer or owning_pybuffer is valid. If owned_buffer is
   // non-null, it holds ownership of the buffer. Otherwise owning_pybuffer is
   // the PyBuffer object that owns the buffer.
   std::unique_ptr<PjRtBuffer> owned_buffer;
+#endif
   pybind11::object owning_pybuffer;
 };
 
@@ -61,8 +80,14 @@ struct DevicePutOptions {
   bool squash_64bit_types = false;
   bool allow_zero_copy = true;
 };
+#ifdef JAX_ENABLE_IFRT
+StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, ifrt::Client* client,
+                                    ifrt::Device* to_device,
+                                    const DevicePutOptions& options);
+#else
 StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, PjRtDevice* to_device,
                                     const DevicePutOptions& options);
+#endif
 
 // Returns `true` if `arg` is a JAX float0 array.
 bool IsFloat0(pybind11::array arg);

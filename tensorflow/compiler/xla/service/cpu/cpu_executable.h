@@ -19,11 +19,14 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -33,8 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
@@ -70,7 +71,8 @@ class XlaRuntimeCpuExecutable {
       : executable_(std::move(executable)),
         xla_framework_mapping_(xla_framework_mapping) {}
 
-  Status Execute(const std::vector<BufferDesc>& descriptor_table);
+  Status Execute(const std::vector<BufferDesc>& descriptor_table,
+                 const ExecutableRunOptions* run_options);
 
   runtime::Executable& GetExecutable() {
     if (std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
@@ -85,7 +87,7 @@ class XlaRuntimeCpuExecutable {
     }
   }
 
-  StatusOr<std::string> GetObjFile() const {
+  StatusOr<std::string_view> GetObjFile() const {
     if (!std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
             executable_)) {
       return InternalError("No JitExecutable");
@@ -98,12 +100,10 @@ class XlaRuntimeCpuExecutable {
     if (!obj_file)
       return InternalError("XlaRuntimeCpuExecutable didn't save the obj file");
 
-    std::string data(obj_file->getBuffer().data(),
-                     obj_file->getBuffer().size());
-    return data;
+    return std::string_view(obj_file->getBuffer());
   }
 
-  StatusOr<std::string> GetMlirModule() const {
+  StatusOr<std::string_view> GetMlirModule() const {
     if (!std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
             executable_)) {
       return InternalError("No JitExecutable");
@@ -150,8 +150,9 @@ class CpuExecutable : public Executable {
 
   bool IsXlaRuntime() const { return xla_runtime_executable_ != nullptr; }
 
-  Status ExecuteXlaRuntime(const std::vector<BufferDesc>& descriptor_table) {
-    return xla_runtime_executable_->Execute(descriptor_table);
+  Status ExecuteXlaRuntime(const std::vector<BufferDesc>& descriptor_table,
+                           const ExecutableRunOptions* run_options = nullptr) {
+    return xla_runtime_executable_->Execute(descriptor_table, run_options);
   }
 
   StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
@@ -198,12 +199,12 @@ class CpuExecutable : public Executable {
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
 
-  StatusOr<std::string> GetObjFile() const {
+  StatusOr<std::string_view> GetObjFile() const {
     if (!IsXlaRuntime()) return InternalError("Not an XLA Runtime executable");
     return xla_runtime_executable_->GetObjFile();
   }
 
-  StatusOr<std::string> GetMlirModule() const {
+  StatusOr<std::string_view> GetMlirModule() const {
     if (!IsXlaRuntime()) return InternalError("Not an XLA Runtime executable");
     return xla_runtime_executable_->GetMlirModule();
   }

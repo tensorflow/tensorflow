@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -14,6 +15,7 @@ package_group(
         # copybara:uncomment "//learning/brain/google/xla/...",
         # copybara:uncomment "//learning/brain/tfrc/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
+        "//tensorflow/c/...",
         "//tensorflow/core/common_runtime/next_pluggable_device/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/tfrt/eager/backends/tpu/...",

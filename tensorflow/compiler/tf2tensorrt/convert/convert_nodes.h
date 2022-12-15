@@ -556,6 +556,11 @@ StatusOr<ITensorProxyPtr> ConvertMatMulImpl(const OpConverterParams* params,
                                             TRT_TensorOrWeights input_b,
                                             bool transpose_a, bool transpose_b);
 
+Status ApplyBroadcast(std::unique_ptr<TRT_TensorOrWeights>& operand,
+                      const DimsAdapter& broadcasted_dims,
+                      const OpConverterParams* params,
+                      std::optional<int> op_instance);
+
 std::string convert_range_error_msg(float start, float limit, float delta);
 std::string convert_range_expected_msg(const NodeDef& node_def);
 std::string bool_weight_error_msg(const NodeDef& node_def);

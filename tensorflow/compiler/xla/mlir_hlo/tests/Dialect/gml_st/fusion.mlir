@@ -35,8 +35,6 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
 // CHECK:      %[[EXTRACT_1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
 // CHECK:      %[[EXTRACT_2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
 // CHECK:      %[[INIT:.*]] = tensor.empty(%[[EXTRACT_0]], %[[EXTRACT_1]], %[[EXTRACT_2]])
-// CHECK:      %[[INIT_TILE:.*]] = gml_st.tile
-// CHECK-SAME:     [%[[I]], %[[J]], %[[K]]] [3, 4, %[[ARG_DIM]]]
 // CHECK:      %[[DIM_0:.*]] = tensor.dim %[[ARG]], %[[C0]]
 // CHECK:      %[[DIM_1:.*]] = tensor.dim %[[ARG]], %[[C1]]
 // CHECK:      %[[CMPI_0:.*]] = arith.cmpi ne, %[[DIM_0]], %[[EXTRACT_0]]
@@ -45,11 +43,13 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
 // CHECK:      %[[SELECT_0:.*]] = arith.select %[[CMPI_1]], %[[C0]], %[[K]]
 // CHECK:      %[[SELECT_1:.*]] = arith.select %[[CMPI_0]], %[[C1]], %[[C3]]
 // CHECK:      %[[SELECT_2:.*]] = arith.select %[[CMPI_1]], %[[C1]], %[[ARG_DIM]]
+// CHECK:      %[[INIT_TILE:.*]] = gml_st.tile
+// CHECK-SAME:     [%[[I]], %[[J]], %[[K]]] [3, 4, %[[ARG_DIM]]]
+// CHECK:      %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[INIT_TILE]]]
 // CHECK:      %[[ARG_TILE:.*]] = gml_st.tile
 // CHECK-SAME:     [%[[SELECT]], %[[SELECT_0]]]
 // CHECK-SAME:     [%[[SELECT_1]], %[[SELECT_2]]]
 // CHECK-SAME:     [1, 1]
-// CHECK:      %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[INIT_TILE]]]
 // CHECK:      %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[ARG_TILE]]]
 // CHECK:      %[[DYNAMIC:.*]] = thlo.dynamic_broadcast_in_dim
 // CHECK-SAME:     ins(%[[ARG_SUB]] : tensor<?x?xf32>)
@@ -65,9 +65,9 @@ func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
   %tile = gml_st.tile [%i, %j] [%arg_dim0, %arg_dim1] [1, 1] : !gml_st.tile<?x?>
   %concat = thlo.concatenate
       ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>, %c : tensor<?x?xi32>)
-      outs(%init : tensor<?x?xi32>) {
-      dimension = 1 : i64,
-      op_label = "producer" }
+      outs(%init : tensor<?x?xi32>)
+      dimension = 1
+      { op_label = "producer" }
   %concat_sub = gml_st.materialize %concat[%tile]
       : tensor<?x?xi32>[!gml_st.tile<?x?>] to tensor<?x?xi32>
   func.return { op_label = "consumer" } %concat_sub : tensor<?x?xi32>
@@ -80,8 +80,6 @@ func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
 
 // CHECK-DAG:  %[[C0:.*]] = arith.constant 0
 // CHECK-DAG:  %[[C1:.*]] = arith.constant 1
-// CHECK:      %[[INIT_TILE:.*]] = gml_st.tile
-// CHECK-SAME:     [%[[I]], %[[J]]] [%[[ARG_DIM0]], %[[ARG_DIM1]]]
 
 // CHECK:      %[[DIM_2:.*]] = tensor.dim %[[A]], %[[C1]]
 // CHECK:      %[[MINUI:.*]] = arith.minui %[[J]], %[[DIM_2]]
@@ -115,6 +113,8 @@ func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
 // CHECK-SAME:     [%[[I]], %[[MINUI_3]]]
 // CHECK-SAME:     [%[[ARG_DIM0]], %[[MINUI_4]]]
 // CHECK:      %[[C_SUB:.*]] = gml_st.materialize %[[C]][%[[C_TILE]]]
+// CHECK:      %[[INIT_TILE:.*]] = gml_st.tile
+// CHECK-SAME:     [%[[I]], %[[J]]] [%[[ARG_DIM0]], %[[ARG_DIM1]]]
 // CHECK:      %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[INIT_TILE]]]
 // CHECK:      %[[CONCATENATE:.*]] = thlo.concatenate
 // CHECK-SAME:     ins(%[[A_SUB]] : tensor<?x?xi32>, %[[B_SUB]] : tensor<?x?xi32>,
@@ -296,7 +296,7 @@ func.func @dim_reification_concatenate(%init : tensor<?x?xi32>,
   %concat = thlo.concatenate
       ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>, %c : tensor<?x?xi32>)
       outs(%init : tensor<?x?xi32>)
-      {dimension = 1 : i64}
+      dimension = 1
   %dim = tensor.dim %concat, %c1 : tensor<?x?xi32>
   func.return %dim : index
 }
@@ -331,25 +331,58 @@ func.func @fusion_into_materialize_element(
 
 // -----
 
-#id_map = affine_map<(d0, d1) -> (d0, d1)>
+#map0 = affine_map<(d0, d1, d2) -> (d0, d2)>
+#map1 = affine_map<(d0, d1, d2) -> (d2, d1)>
+#map2 = affine_map<(d0, d1, d2) -> (d0, d1)>
 
-// CHECK:      @fill
-// CHECK-SAME: %[[I:.*]]: index, %[[M:.*]]: index
-func.func @fill(%i : index, %m : index) -> tensor<1xf32> {
-  // CHECK:      %[[CST:.*]] = arith.constant 0.0{{.*}}+00 : f32
-  // CHECK:      %[[EMPTY:.*]] = tensor.empty(%[[M]]) : tensor<?xf32>
-  // CHECK:      %[[TILE:.*]] = gml_st.tile [%[[I]]] [1] [1] : !gml_st.tile<1>
-  // CHECK:      %[[MATERIALIZE:.*]] = gml_st.materialize %[[EMPTY]][%[[TILE]]]
-  // CHECK:      %[[FILL:.*]] = linalg.fill
-  // CHECK-SAME:     ins(%[[CST]] : f32)
-  // CHECK-SAME:     outs(%[[MATERIALIZE]] : tensor<1xf32>)
-  // CHECK:      return {op_label = "consumer"} %[[FILL]]
-  %zero = arith.constant 0.0 : f32
-  %init = tensor.empty(%m) : tensor<?xf32>
-  %fill = linalg.fill { op_label = "producer" } ins(%zero : f32)
-      outs(%init : tensor<?xf32>)  -> tensor<?xf32>
-  %tile = gml_st.tile [%i] [1] [1] : !gml_st.tile<1>
-  %elem =  gml_st.materialize %fill[%tile]
-      : tensor<?xf32>[!gml_st.tile<1>] to tensor<1xf32>
-  return { op_label = "consumer" } %elem : tensor<1xf32>
+func.func @matmul(%lhs: tensor<128x16xf32>,
+                  %rhs: tensor<16x256xf32>) -> tensor<128x256xf32> {
+  %cst = arith.constant 0.000000e+00 : f32
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : index
+  %c8 = arith.constant 8 : index
+  %c16 = arith.constant 16 : index
+  %c128 = arith.constant 128 : index
+  %c256 = arith.constant 256 : index
+
+  %init = tensor.empty() : tensor<128x256xf32>
+  %fill = linalg.fill { op_label = "producer" } ins(%cst : f32)
+      outs(%init : tensor<128x256xf32>) -> tensor<128x256xf32>
+  %matmul = gml_st.parallel (%i, %j) = (%c0, %c0) to (%c128, %c256)
+      step (%c8, %c8) {
+    %lhs_tile = gml_st.tile [%i, 0] [8, 16] [1, 1] : !gml_st.tile<8x16>
+    %lhs_sub = gml_st.materialize %lhs[%lhs_tile]
+      : tensor<128x16xf32>[!gml_st.tile<8x16>] to tensor<8x16xf32>
+    %rhs_tile = gml_st.tile [0, %j] [16, 8] [1, 1] : !gml_st.tile<16x8>
+    %rhs_sub = gml_st.materialize %rhs[%rhs_tile]
+      : tensor<16x256xf32>[!gml_st.tile<16x8>] to tensor<16x8xf32>
+    %out_tile = gml_st.tile [%i, %j] [8, 8] [1, 1] : !gml_st.tile<8x8>
+    %out_sub = gml_st.materialize %fill[%out_tile]
+      : tensor<128x256xf32>[!gml_st.tile<8x8>] to tensor<8x8xf32>
+
+    %matmul_sub = linalg.matmul { op_label="consumer" }
+      ins(%lhs_sub, %rhs_sub : tensor<8x16xf32>, tensor<16x8xf32>)
+      outs(%out_sub : tensor<8x8xf32>) -> tensor<8x8xf32>
+
+    gml_st.set_yield %matmul_sub into %fill[%out_tile]
+      : tensor<8x8xf32> into tensor<128x256xf32>[!gml_st.tile<8x8>]
+  } : tensor<128x256xf32>
+  return %matmul : tensor<128x256xf32>
 }
+// CHECK-LABEL: func.func @matmul(
+// CHECK-SAME:    %[[LHS:.*]]: tensor<128x16xf32>,
+// CHECK-SAME:    %[[RHS:.*]]: tensor<16x256xf32>) -> tensor<128x256xf32> {
+// CHECK:      %[[C0_F32:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK:      %[[C0:.*]] = arith.constant 0 : index
+// CHECK:      %[[EMPTY:.*]] = tensor.empty() : tensor<128x256xf32>
+// CHECK:       gml_st.parallel (%[[I:[a-z0-9]+]], %[[J:[a-z0-9]+]])
+// CHECK:        %[[OUT_TILE:.*]] = gml_st.tile [%[[I]], %[[J]]] [8, 8] [1, 1]
+// CHECK:        %[[OUT_SUB:.*]] = gml_st.materialize %[[EMPTY]][%[[OUT_TILE]]]
+// CHECK:        %[[FILL:.*]] = linalg.fill
+// CHECK-SAME:     outs(%[[OUT_SUB]] : tensor<8x8xf32>) -> tensor<8x8xf32>
+// CHECK:        %[[MATMUL:.*]] = linalg.matmul
+// CHECK-SAME:     outs(%[[FILL]] : tensor<8x8xf32>) -> tensor<8x8xf32>
+// CHECK:        gml_st.set_yield %[[MATMUL]] into %[[EMPTY]][%[[OUT_TILE]]]
+// CHECK-SAME:     : tensor<8x8xf32> into tensor<128x256xf32>[!gml_st.tile<8x8>]
+

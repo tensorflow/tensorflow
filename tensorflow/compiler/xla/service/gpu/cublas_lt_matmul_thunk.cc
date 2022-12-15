@@ -31,7 +31,7 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
     ThunkInfo thunk_info, cublas_lt::MatmulPlan plan, int64_t algorithm_idx,
     BufferAllocation::Slice a_buffer, BufferAllocation::Slice b_buffer,
     BufferAllocation::Slice c_buffer, BufferAllocation::Slice d_buffer,
-    BufferAllocation::Slice bias_buffer)
+    BufferAllocation::Slice bias_buffer, BufferAllocation::Slice aux_buffer)
     : Thunk(Kind::kCublasLtMatmul, thunk_info),
       plan_(std::move(plan)),
       algorithm_idx_(algorithm_idx),
@@ -39,7 +39,8 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
       b_buffer_(b_buffer),
       c_buffer_(c_buffer),
       d_buffer_(d_buffer),
-      bias_buffer_(bias_buffer) {}
+      bias_buffer_(bias_buffer),
+      aux_buffer_(aux_buffer) {}
 
 Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (!algorithm_) {
@@ -58,12 +59,18 @@ Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
     bias = allocs.GetDeviceAddress(bias_buffer_);
   }
 
+  se::DeviceMemoryBase aux;
+  if (aux_buffer_.allocation() != nullptr) {
+    aux = allocs.GetDeviceAddress(aux_buffer_);
+  }
+
   se::OwningScratchAllocator<> scratch_allocator(allocs.device_ordinal(),
                                                  allocs.memory_allocator());
   return plan_.ExecuteOnStream(
       params.stream, allocs.GetDeviceAddress(a_buffer_),
       allocs.GetDeviceAddress(b_buffer_), allocs.GetDeviceAddress(c_buffer_),
-      allocs.GetDeviceAddress(d_buffer_), bias, *algorithm_, scratch_allocator);
+      allocs.GetDeviceAddress(d_buffer_), bias, aux, *algorithm_,
+      scratch_allocator);
 }
 
 }  // namespace gpu

@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/grpc_call.h"
+#include "tensorflow/tsl/protobuf/rpc_options.pb.h"
 
 namespace tensorflow {
 
@@ -535,6 +536,10 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
               AllocatorAttributes alloc_attrs;
               alloc_attrs.set_gpu_compatible(true);
               alloc_attrs.set_on_host(true);
+              profiler::ScopedMemoryDebugAnnotation op_annotation(
+                  "GrpcWorker::RecvTensorAsync::consumer_callback",
+                  request->step_id(), "dynamic", val.dtype(),
+                  [shape = val.shape()]() { return shape.DebugString(); });
               Allocator* alloc = src_dev->GetAllocator(alloc_attrs);
               Tensor* copy = new Tensor(alloc, val.dtype(), val.shape());
               CHECK(send_dev_context)

@@ -32,13 +32,13 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -2251,5 +2251,27 @@ HloSharding MergeShardingDimension(const HloSharding& sharding,
                                      sharding.subgroup_types());
 }
 
+std::shared_ptr<const HloSharding> CreateTupleSharding(
+    const Shape& shape, absl::Span<const HloInstruction* const> elements) {
+  bool any_sharding = false;
+  for (const HloInstruction* element : elements) {
+    any_sharding |= element->has_sharding();
+  }
+  if (!any_sharding) {
+    return nullptr;
+  }
+
+  std::vector<HloSharding> sub_shardings;
+  sub_shardings.reserve(elements.size());
+  for (const HloInstruction* element : elements) {
+    if (element->has_sharding()) {
+      sub_shardings.push_back(element->sharding());
+    } else {
+      sub_shardings.push_back(HloSharding::Replicate());
+    }
+  }
+  return std::make_shared<const HloSharding>(
+      HloSharding::Tuple(shape, sub_shardings));
+}
 }  // namespace hlo_sharding_util
 }  // namespace xla
