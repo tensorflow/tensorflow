@@ -4,6 +4,7 @@
 // RUN: --gml-tiling="tile-sizes=1 distribute=false op-label=tile-1d-point" \
 // RUN: --gml-tiling="tile-sizes=256,512 distribute=false op-label=tile-3d" \
 // RUN: --gml-tiling="tile-sizes=10 distribute=false op-label=tile-1d" \
+// RUN: --gml-tiling="tile-sizes=2,4 distribute=false op-label=tile-pad" \
 // RUN: --cse | \
 // RUN: FileCheck %s --check-prefix=CHECK-FOR
 
@@ -239,10 +240,8 @@ func.func @dynamic_broadcast_in_dim_at_tile(%init : tensor<?x?x?xf32>,
 // CHECK-FOR:         %[[MIN_0:.*]] = affine.min #map{{[0-9]*}}(%[[J]])[%[[INIT_DIM_1]]]
 // CHECK-FOR:         %[[ARG_DIM_0:.*]] = tensor.dim %[[ARG]], %[[C0]]
 // CHECK-FOR:         %[[ARG_DIM_1:.*]] = tensor.dim %[[ARG]], %[[C1]]
-// CHECK-FOR:         %[[OUT_DIM_0:.*]] = tensor.dim %[[OUT]], %[[C0]]
-// CHECK-FOR:         %[[CMPI:.*]] = arith.cmpi ne, %[[ARG_DIM_0]], %[[OUT_DIM_0]]
-// CHECK-FOR:         %[[OUT_DIM_2:.*]] = tensor.dim %[[OUT]], %[[C2]]
-// CHECK-FOR:         %[[CMPI_0:.*]] = arith.cmpi ne, %[[ARG_DIM_1]], %[[OUT_DIM_2]]
+// CHECK-FOR:         %[[CMPI:.*]] = arith.cmpi ne, %[[ARG_DIM_0]], %[[INIT_DIM_0]]
+// CHECK-FOR:         %[[CMPI_0:.*]] = arith.cmpi ne, %[[ARG_DIM_1]], %[[INIT_DIM_2]]
 // CHECK-FOR:         %[[SELECT:.*]] = arith.select %[[CMPI]], %[[C0]], %[[I]]
 // CHECK-FOR:         %[[SELECT_0:.*]] = arith.select %[[CMPI]], %[[C1]], %[[MIN]]
 // CHECK-FOR:         %[[SELECT_1:.*]] = arith.select %[[CMPI_0]], %[[C1]], %[[INIT_DIM_2]]
@@ -525,6 +524,6 @@ func.func @reverse_dynamic(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
 //   CHECK-FOR-DAG:     %[[INIT_TILE:.*]] = gml_st.tile [%[[ITR0]], %[[ITR1]]]
 //   CHECK-FOR-DAG:     %[[INIT_SLICE:.*]] = gml_st.materialize %[[ARG4]][%[[INIT_TILE]]]
 //       CHECK-FOR:     %[[REVERSED:.*]] = thlo.reverse ins(%[[IN_SLICE]]
-//      CHECK-SAME:     outs(%[[INIT_SLICE]]
+//  CHECK-FOR-SAME:     outs(%[[INIT_SLICE]]
 //       CHECK-FOR:   gml_st.set_yield %[[REVERSED]] into %[[ARG4]][%[[INIT_TILE]]]
 //       CHECK-FOR:   return %[[FOR]]

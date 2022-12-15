@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -209,7 +210,7 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
     if (tilingResult->loop != nullptr) {
       rewriter.replaceOp(op, tilingResult->loop->getResults());
     }
-    setLabel(tilingResult->tiledOp, kTileAppliedLabel);
+    setLabel(tilingResult->tiledOps.front(), kTileAppliedLabel);
     return success();
   }
 
@@ -229,8 +230,8 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
   }
 
   void getDependentDialects(DialectRegistry &registry) const final {
-    registry
-        .insert<GmlStDialect, tensor::TensorDialect, linalg::LinalgDialect>();
+    registry.insert<GmlStDialect, tensor::TensorDialect, linalg::LinalgDialect,
+                    scf::SCFDialect>();
     registerGmlStTilingInterfaceExternalModels(registry);
   }
 
@@ -277,6 +278,7 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
     return rewriter.notifyMatchFailure(
         op, "missing tile size computation function");
   }
+  Location loc = op.getLoc();
 
   // 1. Get the range of the loops that are represented by the operation.
   SmallVector<Range> iterationDomain = op.getIterationDomain(rewriter);
@@ -294,48 +296,71 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
   }
 
   if (tileSizeVector.size() < iterationDomain.size()) {
-    auto zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
+    auto zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     tileSizeVector.append(numLoops - tileSizeVector.size(), zero);
   }
 
   if (llvm::all_of(tileSizeVector, mlir::gml_st::isZero)) {
-    return TilingResult{op, nullptr};
+    return TilingResult{{op}, nullptr};
   }
 
   // 3. Materialize an empty loop nest that iterates over the tiles.
-  auto dstOperands = op.getDestinationOperands(rewriter);
+  SmallVector<Value> dstOperands;
+  if (failed(tensor::getOrCreateDestinations(rewriter, loc, op, dstOperands)))
+    return rewriter.notifyMatchFailure(op, "failed to get destinations");
   SmallVector<OpFoldResult> offsets, sizes;
   TilingResult tilingResult;
   tilingResult.loop = generateTileLoopNest(
-      rewriter, op.getLoc(), iterationDomain, tileSizeVector, dstOperands,
+      rewriter, loc, iterationDomain, tileSizeVector, dstOperands,
       options.distribute, options.distributionLabel, offsets, sizes);
   Block *loopBody = &tilingResult.loop->getRegion(0).front();
   Operation *terminator = loopBody->getTerminator();
   rewriter.setInsertionPoint(terminator);
 
   // 4. Insert the tiled implementation within the loop.
-  TilingInterface tiledOp = op.getTiledImplementation(
-      rewriter, offsets, sizes, /*useExtractSlice=*/false);
-  tilingResult.tiledOp = tiledOp.getOperation();
+  tilingResult.tiledOps = op.getTiledImplementation(rewriter, offsets, sizes,
+                                                    /*useExtractSlice=*/false);
 
-  // 5. Add `gml_st.set_yield` terminator.
-  SmallVector<Value> dstSubsets;
-  for (Value dst : tiledOp.getDestinationOperands(rewriter))
-    dstSubsets.push_back(dst.getDefiningOp<MaterializeOp>().getSet());
-  rewriter.replaceOpWithNewOp<SetYieldOp>(
-      terminator, tilingResult.tiledOp->getResults(), dstOperands, dstSubsets);
-
-  // 6. Replace the uses of `outputs` with the output block arguments.
-  if (!options.distribute) {
-    auto forLoop = cast<gml_st::ForOp>(tilingResult.loop);
-    for (auto [dst, regionArg] :
-         llvm::zip(dstOperands, forLoop.getRegionOutputArgs())) {
-      dst.replaceUsesWithIf(regionArg, [&](OpOperand &operand) {
-        return operand.getOwner()->getBlock() == loopBody;
-      });
+  // 5. Compute tiles for the insertion.
+  int64_t numResults = op->getNumResults();
+  SmallVector<Value> outputTiles;
+  auto oneAttr = rewriter.getI64IntegerAttr(1);
+  for (const auto &result : llvm::enumerate(op->getResults())) {
+    SmallVector<OpFoldResult> resultOffsetsList(numResults),
+        resultSizesList(numResults);
+    if (failed(op.getResultTilePosition(rewriter, result.index(), offsets,
+                                        sizes, resultOffsetsList,
+                                        resultSizesList))) {
+      return rewriter.notifyMatchFailure(
+          op, "failed to get slice of result produced");
     }
+    outputTiles.push_back(rewriter.create<TileOp>(
+        loc, resultOffsetsList, resultSizesList,
+        SmallVector<OpFoldResult>(resultSizesList.size(), oneAttr)));
   }
 
+  // 6. Add a `set_yield` terminator, update the uses of `outputs` with the
+  // output bbArgs.
+  if (options.distribute) {
+    rewriter.replaceOpWithNewOp<SetYieldOp>(
+        terminator, tilingResult.tiledOps.front()->getResults(), dstOperands,
+        outputTiles);
+  } else {
+    auto forLoop = cast<gml_st::ForOp>(tilingResult.loop);
+    rewriter.replaceOpWithNewOp<SetYieldOp>(
+        terminator, tilingResult.tiledOps.front()->getResults(),
+        forLoop.getRegionOutputArgs(), outputTiles);
+
+    if (auto dstOp = dyn_cast<DestinationStyleOpInterface>(
+            tilingResult.tiledOps.front())) {
+      for (auto [dst, regionArg] :
+           llvm::zip(dstOperands, forLoop.getRegionOutputArgs())) {
+        dst.replaceUsesWithIf(regionArg, [&](OpOperand &operand) {
+          return isa<MaterializeOp>(operand.getOwner());
+        });
+      }
+    }
+  }
   return tilingResult;
 }
 

@@ -180,8 +180,8 @@ struct TilePartialSoftmaxPattern
           if (failed(tilingResult)) return failure();
 
           rewriter.replaceOp(op, tilingResult->loop->getResults());
-          setLabel(tilingResult->tiledOp, kTileSoftmaxAppliedLabel);
-          return tilingResult->tiledOp;
+          setLabel(tilingResult->tiledOps.front(), kTileSoftmaxAppliedLabel);
+          return tilingResult->tiledOps.front();
         });
   }
 

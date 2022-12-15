@@ -305,7 +305,8 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     if (tilingParallelDimsResult->loop != nullptr) {
       rewriter.replaceOp(reduceOp,
                          tilingParallelDimsResult->loop->getResults());
-      reduceOp = cast<linalg::ReduceOp>(tilingParallelDimsResult->tiledOp);
+      reduceOp =
+          cast<linalg::ReduceOp>(tilingParallelDimsResult->tiledOps.front());
       // Fuse linalg.map ops into the loop.
       fuseGreedily(rewriter, *reduceOp->getBlock(),
                    [](Operation *op) { return isa<linalg::MapOp>(op); });
@@ -335,7 +336,8 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     if (tilingReductionDimsResult->loop != nullptr) {
       rewriter.replaceOp(reduceOp,
                          tilingReductionDimsResult->loop->getResults());
-      reduceOp = cast<linalg::ReduceOp>(tilingReductionDimsResult->tiledOp);
+      reduceOp =
+          cast<linalg::ReduceOp>(tilingReductionDimsResult->tiledOps.front());
       // Fuse linalg.map ops into the loop.
       fuseGreedily(rewriter, *reduceOp->getBlock(),
                    [](Operation *op) { return isa<linalg::MapOp>(op); });

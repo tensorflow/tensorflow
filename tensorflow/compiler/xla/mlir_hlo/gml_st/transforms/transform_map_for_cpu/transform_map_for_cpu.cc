@@ -72,9 +72,10 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
       rewriter.replaceOp(op, tilingResult->loop->getResults());
 
       // Fuse ops into the loop.
-      fuseGreedily(rewriter, *tilingResult->tiledOp->getBlock(), fuseFilterFn);
+      fuseGreedily(rewriter, *tilingResult->tiledOps.front()->getBlock(),
+                   fuseFilterFn);
     }
-    setLabel(tilingResult->tiledOp, kMapTransformedLabel);
+    setLabel(tilingResult->tiledOps.front(), kMapTransformedLabel);
     return success();
   }
 

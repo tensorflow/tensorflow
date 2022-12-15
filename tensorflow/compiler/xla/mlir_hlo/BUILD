@@ -1705,9 +1705,7 @@ cc_library(
     name = "tiling_interface_impl",
     srcs = ["gml_st/interfaces/tiling_interface_impl.cc"],
     hdrs = ["gml_st/interfaces/tiling_interface_impl.h"],
-    includes = [
-        "include",
-    ],
+    includes = ["include"],
     strip_include_prefix = ".",
     deps = [
         ":gml_st",

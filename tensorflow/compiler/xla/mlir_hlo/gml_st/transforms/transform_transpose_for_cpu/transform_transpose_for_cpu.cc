@@ -63,7 +63,7 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
     if (tilingResult->loop != nullptr) {
       rewriter.replaceOp(op, tilingResult->loop->getResults());
     }
-    setLabel(tilingResult->tiledOp, kTransposeTransformedLabel);
+    setLabel(tilingResult->tiledOps.front(), kTransposeTransformedLabel);
 
     // Peel parallel loops, label the main loop as "perfectly tiled" one, to
     // enable vectorization after canonicalization.

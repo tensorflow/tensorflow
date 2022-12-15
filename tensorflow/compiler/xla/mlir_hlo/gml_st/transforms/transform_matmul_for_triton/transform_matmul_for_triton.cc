@@ -92,7 +92,8 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
     if (tilingParallelDimsResult->loop != nullptr) {
       rewriter.replaceOp(matmulOp,
                          tilingParallelDimsResult->loop->getResults());
-      matmulOp = cast<linalg::MatmulOp>(tilingParallelDimsResult->tiledOp);
+      matmulOp =
+          cast<linalg::MatmulOp>(tilingParallelDimsResult->tiledOps.front());
     }
 
     // Fusion into the output.
@@ -117,7 +118,8 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
     if (tilingReductionDimsResult->loop != nullptr) {
       rewriter.replaceOp(matmulOp,
                          tilingReductionDimsResult->loop->getResults());
-      matmulOp = cast<linalg::MatmulOp>(tilingReductionDimsResult->tiledOp);
+      matmulOp =
+          cast<linalg::MatmulOp>(tilingReductionDimsResult->tiledOps.front());
     }
 
     setLabel(matmulOp, kMatmulTransformedLabel);

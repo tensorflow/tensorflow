@@ -62,7 +62,7 @@ struct TileSortPattern : public OpRewritePattern<SortOp> {
     if (tilingResult->loop != nullptr) {
       rewriter.replaceOp(op, tilingResult->loop->getResults());
     }
-    setLabel(tilingResult->tiledOp, kSortTransformedLabel);
+    setLabel(tilingResult->tiledOps.front(), kSortTransformedLabel);
     return success();
   }
 

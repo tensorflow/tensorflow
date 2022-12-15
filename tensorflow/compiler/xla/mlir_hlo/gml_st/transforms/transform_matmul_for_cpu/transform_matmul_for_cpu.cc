@@ -502,7 +502,8 @@ struct Mmt4DTransformPattern : public OpRewritePattern<linalg::Mmt4DOp> {
     // Update the results if tiling occurred.
     if (tilingParallelDimsResult->loop != nullptr) {
       rewriter.replaceOp(mmt4dOp, tilingParallelDimsResult->loop->getResults());
-      mmt4dOp = cast<linalg::Mmt4DOp>(tilingParallelDimsResult->tiledOp);
+      mmt4dOp =
+          cast<linalg::Mmt4DOp>(tilingParallelDimsResult->tiledOps.front());
     }
 
     // Tile the inner parallel loop.
@@ -512,7 +513,8 @@ struct Mmt4DTransformPattern : public OpRewritePattern<linalg::Mmt4DOp> {
     // Update the results if tiling occurred.
     if (tilingParallelDimsResult->loop != nullptr) {
       rewriter.replaceOp(mmt4dOp, tilingParallelDimsResult->loop->getResults());
-      mmt4dOp = cast<linalg::Mmt4DOp>(tilingParallelDimsResult->tiledOp);
+      mmt4dOp =
+          cast<linalg::Mmt4DOp>(tilingParallelDimsResult->tiledOps.front());
     }
 
     std::copy(reductionTileSizes.begin(),
@@ -528,7 +530,8 @@ struct Mmt4DTransformPattern : public OpRewritePattern<linalg::Mmt4DOp> {
     if (tilingReductionDimsResult->loop != nullptr) {
       rewriter.replaceOp(mmt4dOp,
                          tilingReductionDimsResult->loop->getResults());
-      mmt4dOp = cast<linalg::Mmt4DOp>(tilingReductionDimsResult->tiledOp);
+      mmt4dOp =
+          cast<linalg::Mmt4DOp>(tilingReductionDimsResult->tiledOps.front());
     }
 
     // Tile the inner reduction loop.
@@ -539,7 +542,8 @@ struct Mmt4DTransformPattern : public OpRewritePattern<linalg::Mmt4DOp> {
     if (tilingReductionDimsResult->loop != nullptr) {
       rewriter.replaceOp(mmt4dOp,
                          tilingReductionDimsResult->loop->getResults());
-      mmt4dOp = cast<linalg::Mmt4DOp>(tilingReductionDimsResult->tiledOp);
+      mmt4dOp =
+          cast<linalg::Mmt4DOp>(tilingReductionDimsResult->tiledOps.front());
     }
 
     setLabel(mmt4dOp, kMatmulTransformedLabel);
@@ -592,7 +596,7 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
     if (tilingParallelDimsResult->loop != nullptr) {
       rewriter.replaceOp(tilingRoot,
                          tilingParallelDimsResult->loop->getResults());
-      tilingRoot = tilingParallelDimsResult->tiledOp;
+      tilingRoot = tilingParallelDimsResult->tiledOps.front();
 
       // Fuse ops into the loop.
       fuseGreedily(rewriter, *tilingRoot->getBlock(), [&](Operation *op) {
@@ -669,7 +673,8 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
     if (tilingReductionDimsResult->loop != nullptr) {
       rewriter.replaceOp(matmulOp,
                          tilingReductionDimsResult->loop->getResults());
-      matmulOp = cast<linalg::MatmulOp>(tilingReductionDimsResult->tiledOp);
+      matmulOp =
+          cast<linalg::MatmulOp>(tilingReductionDimsResult->tiledOps.front());
     }
 
     setLabel(matmulOp, kMatmulTransformedLabel);
