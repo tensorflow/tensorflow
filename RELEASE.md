@@ -82,7 +82,7 @@
     *   Added support for alternative checkpointing protocol which makes it
         possible to checkpoint the state of the input pipeline without having
         to store the contents of internal buffers. The new functionality can
-        be enabled through the `experimental_symbolic_checkpointing` option of
+        be enabled through the `experimental_symbolic_checkpoint` option of
         `tf.data.Options()`.
     *   Added a new `rerandomize_each_iteration` argument for the
         `tf.data.Dataset.random()` operation, which controls whether the
