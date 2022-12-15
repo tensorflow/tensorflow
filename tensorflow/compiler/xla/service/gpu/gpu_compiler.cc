@@ -332,7 +332,8 @@ GpuXlaRuntimeAotCompilationResult::LoadExecutable(
 
 GpuTargetConfig::GpuTargetConfig(const se::GpuTargetConfigProto& proto)
     : gpu_device_info(proto.gpu_device_info()),
-      platform_name(proto.platform_name()) {
+      platform_name(proto.platform_name()),
+      dnn_version_info(proto.dnn_version_info()) {
   if (proto.has_cuda_compute_capability()) {
     stream_executor::CudaComputeCapability cuda_compute_capability(
         proto.cuda_compute_capability());
@@ -362,6 +363,7 @@ se::GpuTargetConfigProto GpuTargetConfig::ToProto() const {
   }
 
   proto.set_platform_name(platform_name);
+  *proto.mutable_dnn_version_info() = dnn_version_info.ToProto();
   return proto;
 }
 

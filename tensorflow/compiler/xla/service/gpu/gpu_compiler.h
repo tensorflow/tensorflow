@@ -106,6 +106,7 @@ struct GpuTargetConfig {
   GpuDeviceInfo gpu_device_info;
   GpuVersion gpu_version;
   std::string platform_name;
+  se::dnn::VersionInfo dnn_version_info;
 };
 
 // The GPU compiler generates efficient GPU executables.
@@ -130,6 +131,16 @@ class GpuCompiler : public LLVMCompiler {
     gpu_target_config.gpu_device_info = GetGpuDeviceInfo(stream_exec);
     gpu_target_config.gpu_version = GetGpuVersion(stream_exec);
     gpu_target_config.platform_name = stream_exec->platform()->Name();
+
+    // Get dnn::VersionInfo from stream_exec. If it is unavailable, default to
+    // version 0.0.0.
+    if (se::dnn::DnnSupport* dnn = stream_exec->AsDnn()) {
+      se::port::StatusOr<se::dnn::VersionInfo> dnn_version_info =
+          dnn->GetVersion();
+      if (dnn_version_info.ok()) {
+        gpu_target_config.dnn_version_info = *dnn_version_info;
+      }
+    }
     return gpu_target_config;
   }
 

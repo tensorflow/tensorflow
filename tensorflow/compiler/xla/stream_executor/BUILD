@@ -634,6 +634,7 @@ cc_library(
     hdrs = ["dnn.h"],
     deps = [
         ":data_type",
+        ":device_description_proto_cc",
         ":device_memory",
         ":dnn_proto_cc",
         ":stream_executor_headers",
