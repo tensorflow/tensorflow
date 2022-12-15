@@ -619,9 +619,6 @@ class Interpreter {
   TfLiteStatus SetBufferHandle(int tensor_index,
                                TfLiteBufferHandle buffer_handle,
                                TfLiteDelegate* delegate);
-  TfLiteStatus SetBufferHandle(int tensor_index,
-                               TfLiteBufferHandle buffer_handle,
-                               TfLiteOpaqueDelegateStruct* opaque_delegate);
 
   /// \warning This is an experimental API and subject to change. \n
   /// \brief Get the delegate buffer handle, and the delegate which can process
@@ -629,9 +626,6 @@ class Interpreter {
   TfLiteStatus GetBufferHandle(int tensor_index,
                                TfLiteBufferHandle* buffer_handle,
                                TfLiteDelegate** delegate);
-  TfLiteStatus GetBufferHandle(int tensor_index,
-                               TfLiteBufferHandle* buffer_handle,
-                               TfLiteOpaqueDelegateStruct** opaque_delegate);
 
   /// \warning This is an experimental API and subject to change. \n
   /// \brief Sets the profiler to tracing execution. The caller retains
