@@ -391,7 +391,7 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<1x1xf32>,
 // CHECK-SAME:      %[[ARG:.*]]: tensor<1x1xf32>, %[[INIT:.*]]: tensor<1x1x1xf32>)
 // CHECK:                 %[[C0:.*]] = arith.constant 0 : index
 // CHECK-NEXT:      %[[ELEM:.*]] = tensor.extract %[[ARG]][%[[C0]], %[[C0]]]
-// CHECK-NEXT:      %[[UPDATED:.*]] = tensor.insert %[[ELEM]] into %[[INIT]][%[[C0]], %[[C0]], %[[C0]]]
+// CHECK-NEXT:      %[[UPDATED:.*]] = tensor.from_elements %[[ELEM]]
 
 // -----
 
@@ -552,4 +552,4 @@ func.func @thlo_reverse(%arg : tensor<1x1xf32>,
 //  CHECK-SAME: %[[ARG:.*]]: tensor<1x1xf32>, %[[INIT:.*]]: tensor<1x1xf32>)
       // CHECK:   %[[C0:.*]] = arith.constant 0 : index
 //  CHECK-NEXT:   %[[ELEM:.*]] = tensor.extract %[[ARG]][%[[C0]], %[[C0]]]
-//  CHECK-NEXT:   %[[UPDATED:.*]] = tensor.insert %[[ELEM]] into %[[INIT]][%[[C0]], %[[C0]]]
+//  CHECK-NEXT:   %[[UPDATED:.*]] = tensor.from_elements %[[ELEM]]

@@ -447,12 +447,12 @@ LogicalResult scalarizeOp(Operation *op, PatternRewriter &rewriter,
   llvm::SmallVector<Value> indicesOutput(outputType.getRank(), zero);
 
   Value extractedValue = b.create<ExtractOp>(input, indicesInput);
-  Value result =
-      b.create<tensor::InsertOp>(extractedValue, output, indicesOutput);
+  Value result = b.create<tensor::FromElementsOp>(outputType, extractedValue);
 
   rewriter.replaceOp(op, result);
   return success();
 }
+
 }  // namespace
 
 struct ScalarizeDynamicBroadcastInDimOp

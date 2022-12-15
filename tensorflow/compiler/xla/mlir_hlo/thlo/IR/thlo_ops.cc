@@ -1169,14 +1169,19 @@ SmallVector<Range> ReverseOp::getIterationDomain(OpBuilder &b) {
 namespace {
 SmallVector<OpFoldResult> getInputTileOffsetsForReverse(
     OpBuilder &b, Location loc, ArrayRef<OpFoldResult> offsets,
-    ArrayRef<int64_t> reverseDimensions, TypedValue<ShapedType> &input) {
+    ArrayRef<OpFoldResult> tileSizes, ArrayRef<int64_t> reverseDimensions,
+    TypedValue<ShapedType> &input) {
   auto tileOpOffsets = getValueOrCreateConstantIndexOp(b, loc, offsets);
+  auto sizes = getValueOrCreateConstantIndexOp(b, loc, tileSizes);
   SmallVector<OpFoldResult> inputTileOffsets;
   for (int i = 0; i < tileOpOffsets.size(); ++i) {
     if (llvm::is_contained(reverseDimensions, i)) {
-      inputTileOffsets.push_back(OpFoldResult{b.create<arith::SubIOp>(
-          loc, b.createOrFold<tensor::DimOp>(loc, input, i),
-          Value(tileOpOffsets[i]))});
+      inputTileOffsets.push_back(OpFoldResult{b.createOrFold<arith::SubIOp>(
+          loc,
+          b.createOrFold<arith::SubIOp>(
+              loc, b.createOrFold<tensor::DimOp>(loc, input, i),
+              Value(tileOpOffsets[i])),
+          sizes[i])});
     } else {
       inputTileOffsets.push_back(tileOpOffsets[i]);
     }
@@ -1192,7 +1197,7 @@ SmallVector<Operation *> ReverseOp::getTiledImplementation(
   auto loc = getLoc();
   auto input = getInput();
   SmallVector<OpFoldResult> inputTileOffsets = getInputTileOffsetsForReverse(
-      b, loc, offsets, getReverseDimensions(), input);
+      b, loc, offsets, sizes, getReverseDimensions(), input);
 
   // Materialize the tile for input and init.
   SmallVector<Value, 2> tiledInputsAndInits;

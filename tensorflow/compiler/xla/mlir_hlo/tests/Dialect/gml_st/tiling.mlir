@@ -482,9 +482,12 @@ func.func @reverse_static(%input: tensor<100xf32>, %init: tensor<100xf32>)
 
 // CHECK-FOR-LABEL: func @reverse_static
 //  CHECK-FOR-SAME: %[[ARG0:.*]]: tensor<100xf32>, %[[ARG1:.*]]: tensor<100xf32>
+//   CHECK-FOR-DAG:   %[[C10:.*]] = arith.constant 10
+//   CHECK-FOR-DAG:   %[[C100:.*]] = arith.constant 100
 //       CHECK-FOR:   %[[FOR:.*]] = gml_st.for (%[[ITR:.*]]) =
 //  CHECK-FOR-SAME:   outs (%[[ARG3:.*]] = %[[ARG1]]
-//       CHECK-FOR:     %[[IN_TILE_DIM:.*]] = arith.subi
+//       CHECK-FOR:     %[[TEMP_SUB_RES:.*]] = arith.subi %[[C100]], %[[ITR]]
+//       CHECK-FOR:     %[[IN_TILE_DIM:.*]] = arith.subi %[[TEMP_SUB_RES]], %[[C10]]
 //   CHECK-FOR-DAG:     %[[IN_TILE:.*]] = gml_st.tile [%[[IN_TILE_DIM]]]
 //   CHECK-FOR-DAG:     %[[IN_SLICE:.*]] = gml_st.materialize %[[ARG0]][%[[IN_TILE]]]
 //   CHECK-FOR-DAG:     %[[INIT_TILE:.*]] = gml_st.tile [%[[ITR]]]
@@ -515,10 +518,14 @@ func.func @reverse_dynamic(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
 //       CHECK-FOR:   %[[FOR:.*]] = gml_st.for (%[[ITR0:.*]], %[[ITR1:.*]]) =
 //  CHECK-FOR-SAME:   (%[[C0]], %[[C0]]) to (%[[DIM]], %[[DIM0]])
 //  CHECK-FOR-SAME:   outs (%[[ARG4:.*]] = %[[ARG1]]
+//   CHECK-FOR-DAG:     %[[AFFINE_MIN1:.*]] = affine.min
+//   CHECK-FOR-DAG:     %[[AFFINE_MIN2:.*]] = affine.min
 //   CHECK-FOR-DAG:     %[[DIM1:.*]] = tensor.dim %[[ARG0]], %[[C0]]
 //   CHECK-FOR-DAG:     %[[DIM2:.*]] = tensor.dim %[[ARG0]], %[[C1]]
-//   CHECK-FOR-DAG:     %[[IN_TILE_DIM0:.*]] = arith.subi %[[DIM1]], %[[ITR0]]
-//   CHECK-FOR-DAG:     %[[IN_TILE_DIM1:.*]] = arith.subi %[[DIM2]], %[[ITR1]]
+//   CHECK-FOR-DAG:     %[[TEMP_SUB_RES0:.*]] = arith.subi %[[DIM1]], %[[ITR0]]
+//   CHECK-FOR-DAG:     %[[IN_TILE_DIM0:.*]] = arith.subi %[[TEMP_SUB_RES0]], %[[AFFINE_MIN1]]
+//   CHECK-FOR-DAG:     %[[TEMP_SUB_RES1:.*]] = arith.subi %[[DIM2]], %[[ITR1]]
+//   CHECK-FOR-DAG:     %[[IN_TILE_DIM1:.*]] = arith.subi %[[TEMP_SUB_RES1]], %[[AFFINE_MIN2]]
 //   CHECK-FOR-DAG:     %[[IN_TILE:.*]] = gml_st.tile [%[[IN_TILE_DIM0]], %[[IN_TILE_DIM1]]]
 //   CHECK-FOR-DAG:     %[[IN_SLICE:.*]] = gml_st.materialize %[[ARG0]][%[[IN_TILE]]]
 //   CHECK-FOR-DAG:     %[[INIT_TILE:.*]] = gml_st.tile [%[[ITR0]], %[[ITR1]]]
