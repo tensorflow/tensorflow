@@ -30,14 +30,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/executable.pb.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
-#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/util/command_line_flags.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/service/gpu/executable.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
+#endif
 
 namespace xla {
 namespace xla_compile {
@@ -63,6 +66,7 @@ StatusOr<std::string> AotCompileCpuExecutable(
   return result;
 }
 
+#if GOOGLE_CUDA
 StatusOr<std::string> AotCompileGpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
     const gpu::GpuTargetConfig& gpu_target_config) {
@@ -76,6 +80,7 @@ StatusOr<std::string> AotCompileGpuExecutable(
   TF_ASSIGN_OR_RETURN(std::string result, aot_results[0]->SerializeAsString());
   return result;
 }
+#endif
 
 xla::Status XlaCompileMain(const std::string& module_path,
                            const std::string& output_path,
@@ -117,6 +122,7 @@ xla::Status XlaCompileMain(const std::string& module_path,
   std::string result;
   if (platform == "cpu") {
     TF_ASSIGN_OR_RETURN(result, AotCompileCpuExecutable(std::move(hlo_module)));
+#if GOOGLE_CUDA
   } else if (platform == "gpu") {
     // Parse GpuTargetConfig.
     std::string gpu_target_config_string;
@@ -131,6 +137,7 @@ xla::Status XlaCompileMain(const std::string& module_path,
 
     TF_ASSIGN_OR_RETURN(result, AotCompileGpuExecutable(std::move(hlo_module),
                                                         gpu_target_config));
+#endif
   } else {
     return Unimplemented("platform %s not supported", platform);
   }

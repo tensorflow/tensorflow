@@ -6970,9 +6970,9 @@ xla_cc_test(
 
 xla_cc_binary(
     name = "xla_compile",
-    srcs = if_cuda_is_configured(["xla_compile_main.cc"]),
+    srcs = ["xla_compile_main.cc"],
     visibility = ["//visibility:public"],
-    deps = if_cuda_is_configured([
+    deps = [
         ":compiler",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
@@ -6983,14 +6983,15 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/cpu:cpu_executable",
-        "//tensorflow/compiler/xla/service/gpu:executable_proto_cc",
-        "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
-        "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/util:command_line_flags",
         "@stablehlo//:register",
+    ] + if_cuda_is_configured([
+        "//tensorflow/compiler/xla/service/gpu:executable_proto_cc",
+        "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
+        "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
     ]),
 )
 
