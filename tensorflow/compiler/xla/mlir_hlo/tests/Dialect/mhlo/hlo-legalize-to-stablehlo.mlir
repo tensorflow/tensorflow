@@ -1795,6 +1795,25 @@ func.func @type_token_caller(%arg0: !mhlo.token) -> !mhlo.token {
 //       CHECK: function_type = (!stablehlo.token) -> !stablehlo.token
 // CHECK-LABEL: "type_token_caller"
 
+func.func @type_token_region(%arg0: tensor<i1>, %arg1: !mhlo.token) {
+  //      CHECK: "stablehlo.while"(%arg1) ({
+  // CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG2:arg.*]]: !stablehlo.token):
+  // CHECK-NEXT:     "stablehlo.return"(%arg0) : (tensor<i1>) -> ()
+  // CHECK-NEXT:   }, {
+  // CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG2:arg.*]]: !stablehlo.token):
+  // CHECK-NEXT:     "stablehlo.return"(%[[ARG2]]) : (!stablehlo.token) -> ()
+  // CHECK-NEXT: }) : (!stablehlo.token) -> !stablehlo.token
+  %0 = "mhlo.while"(%arg1) ({
+    ^bb0(%arg2: !mhlo.token):
+      mhlo.return %arg0 : tensor<i1>
+    }, {
+    ^bb0(%arg2: !mhlo.token):
+      mhlo.return %arg2 : !mhlo.token
+  }) : (!mhlo.token) -> !mhlo.token
+  return
+}
+// CHECK-LABEL: "type_token_region"
+
 func.func @type_tuple(%arg0: tuple<tensor<f32>>) -> tuple<!mhlo.token> {
   %0 = "mhlo.custom_call"(%arg0) {
     call_target_name = "foo"
@@ -1810,12 +1829,25 @@ func.func @type_tuple(%arg0: tuple<tensor<f32>>) -> tuple<!mhlo.token> {
 
 // -----
 
-func.func @attr_custom_call_schedule(%arg0: tensor<f32>) -> tensor<f32> {
+func.func @attr_custom_call_schedule_fail(%arg0: tensor<f32>) -> tensor<f32> {
   // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
   %0 = "mhlo.custom_call"(%arg0) {
     call_target_name = "foo",
     api_version = 0 : i32,
     custom_call_schedule = #mhlo<custom_call_schedule EARLIEST>
+  } : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// -----
+
+func.func @op_custom_call_custom_call_schedule_success(%arg0: tensor<f32>) -> tensor<f32> {
+  //      CHECK: "stablehlo.custom_call"(%arg0) {
+  // CHECK-SAME:   call_target_name = "foo"
+  // CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
+  %0 = "mhlo.custom_call"(%arg0) {
+    call_target_name = "foo",
+    custom_call_schedule = #mhlo<custom_call_schedule NONE>
   } : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
