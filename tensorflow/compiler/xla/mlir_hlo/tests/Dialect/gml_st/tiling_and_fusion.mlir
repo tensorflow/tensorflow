@@ -76,5 +76,6 @@ func.func @reduce_cwise(%lhs: tensor<32x16xf32>, %rhs: tensor<32x16xf32>)
 // CHECK:         ^bb0(%[[ARG4_0:.*]]: f32, %[[ARG5_0:.*]]: f32):
 // CHECK:           %[[ADDF:.*]] = arith.addf %[[ARG4_0]], %[[ARG5_0]]
 // CHECK:           linalg.yield %[[ADDF]]
-// CHECK:         gml_st.set_yield %[[GENERIC_0]] into %[[ARG3]][%[[TILE_2]]]
+// CHECK:         %[[TILE_2_:.*]] = gml_st.tile [%[[ARG2]]] [8] [1]
+// CHECK:         gml_st.set_yield %[[GENERIC_0]] into %[[ARG3]][%[[TILE_2_]]]
 // CHECK:       return %[[FOR]]
