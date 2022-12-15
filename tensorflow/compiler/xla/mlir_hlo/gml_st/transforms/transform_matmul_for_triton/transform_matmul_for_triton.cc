@@ -106,12 +106,18 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
       return llvm::is_contained(fusionCluster, op);
     });
 
+    auto inputFusionFilterFn = [&](Operation *op) {
+      return isa<linalg::BroadcastOp, linalg::MapOp>(op);
+    };
+
     // Second level tiling: reduction dimension.
     SmallVector<int64_t> reductionDimsTileSizes{0, 0, reductionDimTileSize};
     for (auto op :
          llvm::to_vector(tilingRoot->getBlock()->getOps<linalg::MatmulOp>())) {
       // Fusion into the output.
       if (failed(fuseOutputFill(rewriter, op))) return failure();
+
+      fuseGreedily(rewriter, *op->getBlock(), inputFusionFilterFn);
 
       auto tilingReductionDimsResult = tileMatmul(
           rewriter, op, reductionDimsTileSizes, /*distribute=*/false);
@@ -122,6 +128,8 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
         rewriter.replaceOp(op, tilingReductionDimsResult->loop->getResults());
         op =
             cast<linalg::MatmulOp>(tilingReductionDimsResult->tiledOps.front());
+
+        fuseGreedily(rewriter, *op->getBlock(), inputFusionFilterFn);
       }
 
       setLabel(op, kMatmulTransformedLabel);
