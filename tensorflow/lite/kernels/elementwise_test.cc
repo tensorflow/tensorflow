@@ -399,14 +399,10 @@ TEST(ElementWise, RsqrtNanInt8) {
 
 TEST(ElementWise, RsqrtInt16) {
   const float input_min = -0.8f;
-  const float input_max =
-      0.8f * std::numeric_limits<int16_t>::max() /
-      static_cast<float>(std::numeric_limits<int16_t>::max() + 1);
+  const float input_max = 0.8f;
 
   const float output_min = -2.4f;
-  const float output_max =
-      2.4f * std::numeric_limits<int16_t>::max() /
-      static_cast<float>(std::numeric_limits<int16_t>::max() + 1);
+  const float output_max =  2.4f;
 
   const float kQuantizedTolerance =
       GetLUTTolerance<int16_t>(input_min, input_max, output_min, output_max);
@@ -424,14 +420,10 @@ TEST(ElementWise, RsqrtInt16) {
 
 TEST(ElementWise, RsqrtNanInt16) {
   const float input_min = -0.8f;
-  const float input_max =
-      0.8f * std::numeric_limits<int16_t>::max() /
-      static_cast<float>(std::numeric_limits<int16_t>::max() + 1);
+  const float input_max = 0.8f;
 
   const float output_min = -2.4f;
-  const float output_max =
-      2.4f * std::numeric_limits<int16_t>::max() /
-      static_cast<float>(std::numeric_limits<int16_t>::max() + 1);
+  const float output_max =  2.4f;
 
   const float kQuantizedTolerance =
       GetLUTTolerance<int16_t>(input_min, input_max, output_min, output_max);
