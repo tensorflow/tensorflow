@@ -1612,7 +1612,13 @@ class MklFusedDepthwiseConvOp
 
 // The enum below contains the list of available fused ops. We are storing
 // shifted values for each fused op in order to save bit-shift times.
-enum class oneDNNFusedOps { kBias = 1, kSum = 2, kRelu = 4, kRequantize = 8 };
+enum class oneDNNFusedOps {
+  kBias = 1,
+  kSum = 2,
+  kRelu = 4,
+  kRequantize = 8,
+  kFusedHardSwish = 16
+};
 
 template <typename Device, typename Tinput, typename Tbias, typename Toutput,
           typename Ttemp_output, bool is_depthwise, string legacy_fused_ops[],
@@ -1650,9 +1656,11 @@ class MklQuantizedConvOp
         {"Relu"},
         {"Requantize"},
         {"BiasAdd", "Relu"},
+        {"BiasAdd", "_FusedHardSwish"},
         {"BiasAdd", "Requantize"},
         {"Relu", "Requantize"},
         {"BiasAdd", "Relu", "Requantize"},
+        {"BiasAdd", "_FusedHardSwish", "Requantize"},
         {"BiasAdd", "Sum", "Relu"},
         {"BiasAdd", "Sum", "Relu", "Requantize"}};
 
@@ -1734,7 +1742,8 @@ class MklQuantizedConvOp
         post_op_to_idx_["output_scale"] = 0;
       } else if (fused_ops_[i] == "Sum") {
         post_op_to_idx_["sum"] = idx++;
-      } else if (fused_ops_[i] == "Relu") {
+      } else if (fused_ops_[i] == "Relu" ||
+                 fused_ops_[i] == "_FusedHardSwish") {
         post_op_to_idx_["activation"] = idx++;
       }
     }
@@ -1981,6 +1990,12 @@ class MklQuantizedConvOp
     if (IsFused(oneDNNFusedOps::kRelu)) {
       params.post_op_params[post_op_to_idx_["activation"]] = {
           "activation", dnnl::algorithm::eltwise_relu, {1.0, 0.0, 0.0}, ""};
+    } else if (IsFused(oneDNNFusedOps::kFusedHardSwish)) {
+      params.post_op_params[post_op_to_idx_["activation"]] = {
+          "activation",
+          dnnl::algorithm::eltwise_hardswish,
+          {1.0, 0.0, 0.0},
+          ""};
     }
   }
 
@@ -2177,6 +2192,7 @@ class MklQuantizedConvOp
       {"BiasAdd", oneDNNFusedOps::kBias},
       {"Sum", oneDNNFusedOps::kSum},
       {"Relu", oneDNNFusedOps::kRelu},
+      {"_FusedHardSwish", oneDNNFusedOps::kFusedHardSwish},
       {"Requantize", oneDNNFusedOps::kRequantize}};
   std::shared_ptr<dnnl::memory> summand_;
   std::shared_ptr<dnnl::memory> dst_;
