@@ -93,6 +93,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeGmlStLoopsPass(
 std::unique_ptr<OperationPass<func::FuncOp>>
 createVectorizePerfectlyTiledLoopsPass();
 
+/// Pass to vectorize `memref.copy`.
+std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass();
+
 /// Pass to lower vector.contract.
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorContractPass();
 
@@ -108,6 +111,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForCpuPass(
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForTritonPass(
     ArrayRef<int64_t> matmulTileSizes = llvm::None,
     StringRef distributionLabel = "");
+
+/// Pass to fuse linalg on tensor operations.
+std::unique_ptr<OperationPass<func::FuncOp>> createFusionOfTensorOpsPass();
 
 /// Pass to transform a linalg.map op for CPU backend.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
