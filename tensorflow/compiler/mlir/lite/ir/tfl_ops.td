@@ -2329,7 +2329,7 @@ Rounds the values of a tensor to the nearest integer, element-wise.
   // FixedOutputRangeInterface:
   quant::UniformQuantizedType GetFixedOutputRange(
       bool is_signed, int bit_width) {
-    auto result_type = y().getType();
+    auto result_type = getY().getType();
     // zero_point = 0
     // scale = 1.0
     return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
