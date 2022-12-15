@@ -44,6 +44,18 @@ py_library(
     ],
 )
 
+py_library(
+    name = "preemption_watcher",
+    srcs = ["preemption_watcher.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":failure_handling_util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/util:tf_export",
+        "@absl_py//absl/logging",
+    ],
+)
+
 tf_py_test(
     name = "failure_handler_test",
     timeout = "long",
