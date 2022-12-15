@@ -196,6 +196,9 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
 
     Value indexIsInBounds =
         isValidIndex(b, loc, limitIndex, initDimValues, zero);
+    indexIsInBounds = b.create<arith::AndIOp>(
+        loc, indexIsInBounds,
+        isValidIndex(b, loc, *scatterIndices, initDimValues, zero));
     auto ifOp = b.create<scf::IfOp>(
         loc, TypeRange(ValueRange{init}), indexIsInBounds,
         [&](OpBuilder &thenBuilder, Location thenLoc) {
@@ -292,12 +295,25 @@ struct ScalarizeGatherOp : public OpRewritePattern<thlo::GatherOp> {
     TypedValue<ShapedType> operand = gatherOp.getOperand();
     auto operandSizes = getValueOrCreateConstantIndexOp(
         b, loc, tensor::createDimValues(b, loc, operand));
-
     Value zero = b.create<arith::ConstantIndexOp>(0);
     Value one = b.create<arith::ConstantIndexOp>(1);
+
+    SmallVector<Value> sliceSizes{initDimSizeValues.begin() + 1,
+                                  initDimSizeValues.end()};
+    while (sliceSizes.size() < startIndices->size()) {
+      sliceSizes.push_back(one);
+    }
+
+    // Clamp the indices.
+    for (auto &&[startIndex, max, sliceSize] :
+         llvm::zip(*startIndices, operandSizes, sliceSizes)) {
+      auto maxMinusSize = b.createOrFold<arith::SubIOp>(loc, max, sliceSize);
+      startIndex = b.create<arith::MinSIOp>(loc, startIndex, maxMinusSize);
+      startIndex = b.create<arith::MaxSIOp>(loc, startIndex, zero);
+    }
+
     SmallVector<Value> lbs(initRank, zero);
     SmallVector<Value> steps(initRank, one);
-
     rewriter.replaceOpWithNewOp<gml_st::ForOp>(
         gatherOp, TypeRange(ValueRange{init}), lbs, initDimSizeValues, steps,
         init,
@@ -305,21 +321,11 @@ struct ScalarizeGatherOp : public OpRewritePattern<thlo::GatherOp> {
             ValueRange loopInits) {
           // Compute the index in the operand.
           SmallVector<Value> readIndices(operand.getType().getRank(), zero);
-          llvm::copy(ivs, readIndices.begin());
+          llvm::copy(ivs.drop_front(1), readIndices.begin());
           for (auto &&[readIndex, startIndex] :
                llvm::zip(readIndices, *startIndices)) {
             readIndex = nestedBuilder.create<arith::AddIOp>(bodyLoc, readIndex,
                                                             startIndex);
-          }
-
-          // Clamp the indices.
-          for (auto &&[readIndex, max] : llvm::zip(readIndices, operandSizes)) {
-            auto maxMinusOne =
-                nestedBuilder.createOrFold<arith::SubIOp>(bodyLoc, max, one);
-            readIndex = nestedBuilder.create<arith::MinSIOp>(bodyLoc, readIndex,
-                                                             maxMinusOne);
-            readIndex =
-                nestedBuilder.create<arith::MaxSIOp>(bodyLoc, readIndex, zero);
           }
 
           // Materialize the value and yield it.
