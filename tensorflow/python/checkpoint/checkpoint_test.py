@@ -25,6 +25,7 @@ from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import graph_view
+from tensorflow.python.checkpoint import save_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -112,17 +113,16 @@ class InterfaceTests(test.TestCase):
       # The .name attribute may be globally influenced, but the checkpoint name
       # won't be (tested below).
       self.assertEqual("duplicate_1:0", duplicate.name)
-    named_variables, _, _ = (
-        graph_view.ObjectGraphView(obj).serialize_object_graph())
-    expected_checkpoint_names = (
+
+    expected_checkpoint_names = {
         "a_variable/.ATTRIBUTES/VARIABLE_VALUE",
         "bare_initializer/.ATTRIBUTES/VARIABLE_VALUE",
         "constant_initializer/.ATTRIBUTES/VARIABLE_VALUE",
         "duplicate/.ATTRIBUTES/VARIABLE_VALUE",
         "ones_initializer/.ATTRIBUTES/VARIABLE_VALUE",
-    )
-    self.assertCountEqual(expected_checkpoint_names,
-                          [v.name for v in named_variables])
+    }
+    actual_checkpoint_names = _get_all_checkpoint_names(obj)
+    self.assertEqual(expected_checkpoint_names, set(actual_checkpoint_names))
 
   def testInitNotCalled(self):
 
@@ -190,6 +190,15 @@ class _OwnsMirroredVariables(base.Trackable):
   @property
   def name(self):
     return self.non_dep_variable.name
+
+
+def _get_all_checkpoint_names(root):
+  serialized_tensors, _, _, _ = save_util.serialize_graph_view(
+      graph_view.ObjectGraphView(root))
+  checkpoint_names = []
+  for tensor_dict in serialized_tensors.values():
+    checkpoint_names.extend(tensor_dict.keys())
+  return checkpoint_names
 
 
 class CheckpointingTests(parameterized.TestCase, test.TestCase):
@@ -415,11 +424,10 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     root = autotrackable.AutoTrackable()
     trackable_utils.add_variable(
         root, name=name, shape=[1, 2], dtype=dtypes.float64)
-    (named_variable,), _, _ = graph_view.ObjectGraphView(
-        root).serialize_object_graph()
-    with ops.name_scope("root/" + named_variable.name):
+    checkpoint_key = _get_all_checkpoint_names(root)[0]
+    with ops.name_scope("root/" + checkpoint_key):
       pass  # Make sure we can use this as an op name if we prefix it.
-    return named_variable.name
+    return checkpoint_key
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testVariableNameEscaping(self):
@@ -437,9 +445,8 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     leaf = autotrackable.AutoTrackable()
     root.leaf = leaf
     trackable_utils.add_variable(leaf, name="v", shape=[])
-    (named_variable,), _, _ = graph_view.ObjectGraphView(
-        root).serialize_object_graph()
-    self.assertEqual(r"leaf/v/.ATTRIBUTES/VARIABLE_VALUE", named_variable.name)
+    checkpoint_key = _get_all_checkpoint_names(root)[0]
+    self.assertEqual(r"leaf/v/.ATTRIBUTES/VARIABLE_VALUE", checkpoint_key)
 
   @test_util.run_in_graph_and_eager_modes
   def testLocalNameValidation(self):
@@ -448,10 +455,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     # Dots are escaped, which avoids conflicts with reserved names.
     root._track_trackable(leaf, name=".ATTRIBUTES")
     trackable_utils.add_variable(trackable=leaf, name="a", shape=[])
-    (named_variable,), _, _ = graph_view.ObjectGraphView(
-        root).serialize_object_graph()
+    checkpoint_key = _get_all_checkpoint_names(root)[0]
     self.assertEqual("..ATTRIBUTES/a/.ATTRIBUTES/VARIABLE_VALUE",
-                     named_variable.name)
+                     checkpoint_key)
 
   @test_util.run_in_graph_and_eager_modes
   def testLateDependencyTracking(self):

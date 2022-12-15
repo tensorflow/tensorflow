@@ -363,6 +363,7 @@ py_strict_library(
         "//tensorflow/python/checkpoint:graph_view",
         "//tensorflow/python/checkpoint:save_util_v1",
         "//tensorflow/python/checkpoint:saveable_compat",
+        "//tensorflow/python/checkpoint:tensor_callable",
         "//tensorflow/python/checkpoint:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
