@@ -50,8 +50,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/check_accepted_ops_pass.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/mhlo_tfl_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_tfl_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
@@ -61,10 +61,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_graph_optimization_pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -180,9 +180,9 @@ tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelOrMLIR(
 tensorflow::Status ConvertStableHLOToFlatbuffer(mlir::ModuleOp module,
                                                 std::string* flatbuffer_str) {
   // Convert StableHLO MLIR to TFLite Custom Op MLIR
-  mlir::PassManager mhlo_tfl_pm(module->getContext());
-  mhlo_tfl_pm.addNestedPass<func::FuncOp>(TFL::mhlo::CreateMhloToTflPass());
-  if (failed(mhlo_tfl_pm.run(module))) {
+  mlir::PassManager pm(module->getContext());
+  pm.addNestedPass<func::FuncOp>(CreateStablehloToTflPass());
+  if (failed(pm.run(module))) {
     return tensorflow::errors::Aborted("HLO to TFL passes failed.");
   }
 
@@ -355,7 +355,7 @@ void initAllPasses() {
   mlir::lmhlo::registerAllLmhloPasses();
   // These are in compiler/mlir/xla and not part of the above MHLO passes.
   mlir::mhlo::registerTfXlaPasses();
-  mlir::mhlo::registerXlaPasses();
+  mlir::mhlo::registerXlaFrameworkPasses();
   mlir::mhlo::registerLegalizeTFPass();
   mlir::mhlo::registerLegalizeTFControlFlowPass();
   mlir::mhlo::registerLegalizeTfTypesPassPass();

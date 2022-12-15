@@ -14,7 +14,7 @@
 # ==============================================================================
 """Test configs for mirror_pad."""
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -98,7 +98,7 @@ def make_mirror_pad_tests(options):
       padding_matrix = tf.constant(np.array(parameters["padding_matrix"]))
       input_tensors = [input_tensor]
     output = tf.pad(
-        input_tensor, paddings=padding_matrix, mode=parameters["mode"])
+        tensor=input_tensor, paddings=padding_matrix, mode=parameters["mode"])
 
     return input_tensors, [output]
 

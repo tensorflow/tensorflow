@@ -18,9 +18,10 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/drop_savedmodel_semantics.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/rename_entrypoint_to_main.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/smuggle_disallowed_ops.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/tf_mhlo_pass.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/tf_stablehlo_pass.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
@@ -31,7 +32,7 @@ namespace odml {
 
 void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
                             bool smuggle_disallowed_ops) {
-  pm.addPass(mlir::TFL::mhlo::CreateRenameEntrypointToMainPass());
+  pm.addPass(CreateRenameEntrypointToMainPass());
   // TODO(b/230572023): Consider improving shape inference for While op instead
   // of dropping the attribute. This need not be correct for models not trained
   // on TPU.
@@ -58,18 +59,23 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
       mlir::quant::CreateConvertTFQuantOpsToMHLOPass());
   pm.addPass(mhlo::createLegalizeTFControlFlowPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addNestedPass<func::FuncOp>(mlir::TFL::mhlo::CreateTFToMhloPass(
+  pm.addNestedPass<func::FuncOp>(CreateTFToStablehloPass(
       /*skip_quantization_ops=*/false, skip_resize));
   pm.addPass(mlir::createCanonicalizerPass());
   if (smuggle_disallowed_ops) {
-    pm.addNestedPass<func::FuncOp>(
-        mlir::TFL::mhlo::CreateSmuggleDisallowedOpsPass());
+    pm.addNestedPass<func::FuncOp>(CreateSmuggleDisallowedOpsPass());
     pm.addPass(mlir::createCanonicalizerPass());
   }
-  pm.addPass(mlir::TFL::mhlo::CreateDropSavedModelSemanticsPass());
+  pm.addPass(CreateDropSavedModelSemanticsPass());
 }
 
-void AddStablehloOptimizationPasses(OpPassManager& pm) {}
+void AddStablehloOptimizationPasses(OpPassManager& pm) {
+  pm.addNestedPass<func::FuncOp>(createUnfuseBatchNormPass());
+  pm.addNestedPass<func::FuncOp>(createFuseConvolutionPass());
+  pm.addNestedPass<func::FuncOp>(createFoldBroadcastPass());
+  pm.addNestedPass<func::FuncOp>(createOptimizePass());
+  pm.addPass(mlir::createCanonicalizerPass());
+}
 
 }  // namespace odml
 }  // namespace mlir

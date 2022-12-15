@@ -23,11 +23,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_performance_model.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -249,11 +250,14 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
 
   if (!cost_analysis_) {
     VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
-    cost_analysis_.emplace(GpuHloCostAnalysis::Options{shape_size_function_});
+    cost_analysis_.emplace(
+        GpuHloCostAnalysis::Options{shape_size_function_,
+                                    /*per_second_rates=*/{},
+                                    /*count_multiple_input_accesses=*/true});
     TF_CHECK_OK(computation_->Accept(&cost_analysis_.value()));
   }
 
-  for (HloInstruction* user : producer->users()) {
+  for (const HloInstruction* user : producer->users()) {
     if (cost_analysis_->ProducerConsumerMergedTooLarge(*producer, *user)) {
       ++num_fail_inefficient_fusion_emitter_;
       return FusionDecision{} << "if merged with " << user->name()
@@ -262,7 +266,8 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
   }
 
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-      producer, &*cost_analysis_, gpu_device_info_);
+      producer, &*cost_analysis_, gpu_device_info_, producer->users(),
+      /*multi_output=*/false);
   if (t.time_fused > t.time_unfused) {
     ++num_fail_slower_if_fused_;
     return "will execute slower if fused";
@@ -278,6 +283,12 @@ StatusOr<bool> FusionMerger::Run(
   VLOG(1) << "FusionMerger for module: " << module->name();
   for (auto* computation :
        module->MakeNonfusionComputations(execution_threads)) {
+    // Skip Softmax CustomCall computations.
+    if (computation->IsCustomCallComputation() &&
+        IsSoftmaxCustomCall(*computation->CustomCallInstruction())) {
+      continue;
+    }
+
     VLOG(9) << "Before running FusionInstructionMerger for computation: "
             << computation->name();
     XLA_VLOG_LINES(9, computation->ToString());

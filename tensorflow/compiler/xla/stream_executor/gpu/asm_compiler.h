@@ -92,6 +92,13 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
 port::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
     gpu::GpuContext* context, std::vector<CubinOrPTXImage> images);
 
+port::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
+    absl::string_view preferred_cuda_dir, gpu::GpuContext* context,
+    std::vector<CubinOrPTXImage> images);
+
+std::string FindCudaExecutable(const std::string& binary_name,
+                               const std::string& preferred_cuda_dir);
+
 // On NVIDIA GPUs, returns the CUDA toolkit version supported by the driver,
 port::StatusOr<std::array<int64_t, 3>> GetAsmCompilerVersion(
     const std::string& preferred_cuda_dir);

@@ -52,7 +52,7 @@ bool AreCancellablePermutations(DenseIntElementsAttr perm0,
 // attributes besides `data_format` string.
 template <typename Op>
 LogicalResult UpdateDataFormat(StringRef data_format, Op *op) {
-  auto perm = GetDataFormatPermutation(op->data_format(), data_format);
+  auto perm = GetDataFormatPermutation(op->getDataFormat(), data_format);
   if (perm.empty()) return failure();
 
   // Update data format attribute.
@@ -83,9 +83,10 @@ LogicalResult FoldOperandsPermutation(
 
   // Operation data format after folding `permutation`.
   StringRef target_data_format = [&]() -> StringRef {
-    if (op->data_format() == "NHWC" && permutation.equals(kNchwToNhwc)) {
+    if (op->getDataFormat() == "NHWC" && permutation.equals(kNchwToNhwc)) {
       return "NCHW";  // cancel NCHW->NHWC operand permutation
-    } else if (op->data_format() == "NCHW" && permutation.equals(kNhwcToNchw)) {
+    } else if (op->getDataFormat() == "NCHW" &&
+               permutation.equals(kNhwcToNchw)) {
       return "NHWC";  // cancel NHWC->NCHW operand permutation
     } else {
       return "";
@@ -105,7 +106,7 @@ LogicalResult FoldOperandsPermutation(
   // To bypass %2 we have to change data format to shuffle data format from NCHW
   // to NHWC, which is the reverse of operand permutation (function argument).
   auto reverse_permutation =
-      GetDataFormatPermutation(op->data_format(), target_data_format);
+      GetDataFormatPermutation(op->getDataFormat(), target_data_format);
   if (reverse_permutation.empty()) return failure();
 
   (*op)->setAttr("data_format", StringAttr::get(context, target_data_format));

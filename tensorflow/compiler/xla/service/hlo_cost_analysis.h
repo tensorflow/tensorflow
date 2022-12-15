@@ -17,12 +17,13 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_COST_ANALYSIS_H_
 
 #include <functional>
+#include <memory>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -39,7 +40,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // Each HLO is associated to a vector of properties with the indices given
   // below. Sub-classes can add further properties.
   // MSVC 14.0 limitation requires the consts.
-  typedef std::map<std::string, float, std::less<>> Properties;
+  using Properties = absl::flat_hash_map<std::string, float>;
   // shape_size is a function which returns the size in bytes of the top-level
   // buffer of a shape.
   using ShapeSizeFunction = std::function<int64_t(const Shape&)>;
@@ -63,6 +64,10 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
     // property is bytes accessed, this is the number of bytes that can be
     // processed per second. Is empty if no rates have been set.
     Properties per_second_rates = {};
+    // Operations like broadcast with reused inputs are not handled
+    // efficiently on some platforms. Depending on the goal of the analysis
+    // we may need to count or ignore them.
+    bool count_multiple_input_accesses = false;
 
     // Set the rates used to calculate the time taken by the computation.
     void set_flops_per_second(float value) {
@@ -255,10 +260,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
   // An FMA counts as two floating point operations in these analyzes.
   static constexpr int64_t kFmaFlops = 2;
-
-  // Operations like broadcast with reused inputs are
-  // not handled efficiently on some platforms.
-  virtual bool input_reuse_is_inefficient() const { return false; }
 
   // Small constants can be embedded in the assembly and not require
   // memory access.

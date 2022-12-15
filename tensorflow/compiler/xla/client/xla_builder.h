@@ -36,16 +36,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/hlo/ir/dynamic_parameter_binding.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/stacktrace.h"
 
@@ -61,32 +59,26 @@ struct XlaBuilderFriend {
   static XlaOp BuildAddDependency(XlaBuilder* builder, XlaOp operand,
                                   XlaOp token, const Shape& shape);
 
-  static XlaOp BuildAsyncStart(XlaBuilder* builder,
-                               absl::Span<const XlaOp> operands,
-                               std::string execution_thread, int64_t group_id,
-                               const XlaComputation& called_computation,
-                               const Shape& shape);
-  static XlaOp BuildAsyncStart(XlaBuilder* builder,
-                               absl::Span<const XlaOp> operands,
-                               std::string execution_thread,
-                               const XlaComputation& called_computation,
-                               const Shape& shape);
+  static std::pair<XlaOp, int64_t> BuildAsyncStart(
+      XlaBuilder* builder, absl::Span<const XlaOp> operands,
+      std::string execution_thread, int64_t group_id,
+      const XlaComputation& called_computation, const Shape& shape);
+  static std::pair<XlaOp, int64_t> BuildAsyncStart(
+      XlaBuilder* builder, absl::Span<const XlaOp> operands,
+      std::string execution_thread, const XlaComputation& called_computation,
+      const Shape& shape);
   static XlaOp BuildAsyncUpdate(XlaBuilder* builder, const XlaOp operands,
                                 std::string execution_thread, int64_t group_id,
-                                const XlaComputation& called_computation,
-                                const Shape& shape);
+                                int64_t called_computation, const Shape& shape);
   static XlaOp BuildAsyncUpdate(XlaBuilder* builder, const XlaOp operands,
                                 std::string execution_thread,
-                                const XlaComputation& called_computation,
-                                const Shape& shape);
+                                int64_t called_computation, const Shape& shape);
   static XlaOp BuildAsyncDone(XlaBuilder* builder, const XlaOp operands,
                               std::string execution_thread, int64_t group_id,
-                              const XlaComputation& called_computation,
-                              const Shape& shape);
+                              int64_t called_computation, const Shape& shape);
   static XlaOp BuildAsyncDone(XlaBuilder* builder, const XlaOp operands,
                               std::string execution_thread,
-                              const XlaComputation& called_computation,
-                              const Shape& shape);
+                              int64_t called_computation, const Shape& shape);
 
   static XlaOp BuildAllGatherStart(
       XlaBuilder* builder, XlaOp operand, int64_t all_gather_dimension,
@@ -106,15 +98,41 @@ struct XlaBuilderFriend {
   static XlaOp BuildAllReduceDone(XlaBuilder* builder, const XlaOp operands,
                                   const Shape& shape);
 
-  static XlaOp BuildFusion(XlaBuilder* builder,
-                           absl::Span<const XlaOp> operands,
-                           absl::string_view fusion_kind,
-                           const XlaComputation& fused_computation);
+  static XlaOp BuildCollectivePermuteStart(
+      XlaBuilder* builder, XlaOp operand,
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
+  static XlaOp BuildCollectivePermuteDone(XlaBuilder* builder,
+                                          const XlaOp operands,
+                                          const Shape& shape);
+
+  static XlaOp BuildCopyStart(XlaBuilder* builder, const XlaOp operand,
+                              bool is_cross_program_prefetch);
+  static XlaOp BuildCopyDone(XlaBuilder* builder, const XlaOp operand,
+                             const Shape& shape);
+
+  static XlaOp BuildFusion(
+      XlaBuilder* builder, absl::Span<const XlaOp> operands,
+      absl::string_view fusion_kind, const XlaComputation& fused_computation,
+      absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+          output_operand_aliasing = {});
 
   static XlaOp BuildBitcast(XlaBuilder* builder, XlaOp operand,
                             const Shape& shape);
 
   static XlaOp BuildPartitionId(XlaBuilder* builder, const Shape& shape);
+
+  static XlaOp BuildSend(XlaBuilder* builder, XlaOp operand, XlaOp token,
+                         const ChannelHandle& handle, bool is_host_transfer);
+  static XlaOp BuildSendDone(XlaBuilder* builder, XlaOp operand,
+                             const ChannelHandle& handle,
+                             bool is_host_transfer);
+
+  static XlaOp BuildRecv(XlaBuilder* builder, XlaOp token, const Shape& shape,
+                         const ChannelHandle& handle, bool is_host_transfer);
+  static XlaOp BuildRecvDone(XlaBuilder* builder, XlaOp token,
+                             const Shape& shape, const ChannelHandle& handle,
+                             bool is_host_transfer);
 
   static XlaOp BuildDomain(XlaBuilder* builder, XlaOp operand,
                            const OpSharding entry, const OpSharding exit,
@@ -266,7 +284,8 @@ class XlaBuilder {
   // As a result they are set on the computation builder and all the
   // instructions generated via the computation builder will have the same
   // frontend attributes attached to them.
-  void SetFrontendAttributes(const FrontendAttributes& frontend_attributes) {
+  virtual void SetFrontendAttributes(
+      const FrontendAttributes& frontend_attributes) {
     frontend_attributes_ = frontend_attributes;
   }
 
@@ -361,7 +380,7 @@ class XlaBuilder {
   //
   // This will copy the needed ops/computations to the subgraph.
   StatusOr<XlaComputation> BuildConstantSubGraph(
-      XlaOp root_op, bool dynamic_dimension_is_uint_max = false);
+      XlaOp root_op, bool dynamic_dimension_is_minus_one = false);
 
   // Returns the first error that was encountered while building the
   // computation. When an error is encountered, by default we return a vacuous
@@ -815,16 +834,20 @@ class XlaBuilder {
   XlaOp AllToAll(XlaOp operand, int64_t split_dimension,
                  int64_t concat_dimension, int64_t split_count,
                  absl::Span<const ReplicaGroup> replica_groups,
-                 const std::optional<Layout>& layout = std::nullopt);
+                 const std::optional<Layout>& layout = std::nullopt,
+                 const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
-  XlaOp AllToAllTuple(absl::Span<const XlaOp> operands,
-                      absl::Span<const ReplicaGroup> replica_groups,
-                      const std::optional<Layout>& layout);
+  XlaOp AllToAllTuple(
+      absl::Span<const XlaOp> operands,
+      absl::Span<const ReplicaGroup> replica_groups,
+      const std::optional<Layout>& layout,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
-  XlaOp AllToAllTuple(XlaOp operand, int64_t split_dimension,
-                      int64_t concat_dimension, int64_t split_count,
-                      absl::Span<const ReplicaGroup> replica_groups,
-                      const std::optional<Layout>& layout);
+  XlaOp AllToAllTuple(
+      XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
+      int64_t split_count, absl::Span<const ReplicaGroup> replica_groups,
+      const std::optional<Layout>& layout,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
   XlaOp CollectivePermute(
       XlaOp operand,
@@ -1431,14 +1454,17 @@ class XlaBuilder {
   friend XlaOp AllToAll(XlaOp operand, int64_t split_dimension,
                         int64_t concat_dimension, int64_t split_count,
                         absl::Span<const ReplicaGroup> replica_groups,
-                        const std::optional<Layout>& layout);
+                        const std::optional<Layout>& layout,
+                        const std::optional<ChannelHandle>& channel_id);
   friend XlaOp AllToAllTuple(absl::Span<const XlaOp> operands,
                              absl::Span<const ReplicaGroup> replica_groups,
-                             const std::optional<Layout>& layout);
+                             const std::optional<Layout>& layout,
+                             const std::optional<ChannelHandle>& channel_id);
   friend XlaOp AllToAllTuple(XlaOp operand, int64_t split_dimension,
                              int64_t concat_dimension, int64_t split_count,
                              absl::Span<const ReplicaGroup> replica_groups,
-                             const std::optional<Layout>& layout);
+                             const std::optional<Layout>& layout,
+                             const std::optional<ChannelHandle>& channel_id);
   friend XlaOp CollectivePermute(
       XlaOp operand,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
@@ -1586,14 +1612,20 @@ class XlaBuilder {
                       const std::optional<bool> use_global_device_ids,
                       bool async);
 
+  XlaOp CollectivePermuteImpl(
+      XlaOp operand,
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const std::optional<ChannelHandle>& channel_id, bool async);
+
   XlaOp ConditionalImpl(
       XlaOp branch_index,
       absl::Span<const XlaComputation* const> branch_computations,
       absl::Span<const XlaOp> branch_operands);
 
-  XlaOp AllToAllArray(XlaOp operand, int64_t split_dimension,
-                      int64_t concat_dimension, int64_t split_count,
-                      absl::Span<const ReplicaGroup> replica_groups);
+  XlaOp AllToAllArray(
+      XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
+      int64_t split_count, absl::Span<const ReplicaGroup> replica_groups,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
   // Creates an op with the given opcode and the output shape.
   virtual StatusOr<XlaOp> AddOpWithShape(HloOpcode opcode, const Shape& shape,
@@ -2215,7 +2247,7 @@ XlaOp CustomCallWithComputation(
     absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
         output_operand_aliasing = {},
     const Literal* literal = nullptr,
-    CustomCallSchedule = CustomCallSchedule::SCHEDULE_NONE,
+    CustomCallSchedule schedule = CustomCallSchedule::SCHEDULE_NONE,
     CustomCallApiVersion api_version = API_VERSION_ORIGINAL);
 
 // Overload which constructs a custom call with fixed layouts. The operands will
@@ -2435,16 +2467,20 @@ XlaOp ReduceScatter(
 XlaOp AllToAll(XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
                int64_t split_count,
                absl::Span<const ReplicaGroup> replica_groups = {},
-               const std::optional<Layout>& layout = std::nullopt);
+               const std::optional<Layout>& layout = std::nullopt,
+               const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
-XlaOp AllToAllTuple(absl::Span<const XlaOp> operand,
-                    absl::Span<const ReplicaGroup> replica_groups = {},
-                    const std::optional<Layout>& layout = std::nullopt);
+XlaOp AllToAllTuple(
+    absl::Span<const XlaOp> operand,
+    absl::Span<const ReplicaGroup> replica_groups = {},
+    const std::optional<Layout>& layout = std::nullopt,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
-XlaOp AllToAllTuple(XlaOp operand, int64_t split_dimension,
-                    int64_t concat_dimension, int64_t split_count,
-                    absl::Span<const ReplicaGroup> replica_groups = {},
-                    const std::optional<Layout>& layout = std::nullopt);
+XlaOp AllToAllTuple(
+    XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
+    int64_t split_count, absl::Span<const ReplicaGroup> replica_groups = {},
+    const std::optional<Layout>& layout = std::nullopt,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
 // Enqueues an collective operation that sends and receives data cross replicas.
 //

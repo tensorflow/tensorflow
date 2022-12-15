@@ -6,6 +6,7 @@ load(
 load("//tensorflow:tensorflow.bzl", "if_google", "workspace_root")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -358,6 +359,7 @@ cc_library(
         ":tensor_type_util",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/gpu:api",
         "//tensorflow/lite/delegates/gpu:delegate",
         "//tensorflow/lite/delegates/gpu/common:model",

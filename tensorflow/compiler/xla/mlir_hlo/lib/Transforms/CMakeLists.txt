@@ -24,7 +24,6 @@ add_mlir_library(MLIRBufferTransforms
   copy_removal.cc
   detensorize_scf_ops.cc
   generic_host_to_llvm.cc
-  inline_fusion_pass.cc
   lower_index_cast_pass.cc
   propagate_static_shapes_to_kernel.cc
   scalarization.cc
@@ -58,6 +57,7 @@ add_mlir_library(MLIRHLOGPUTransforms
   gpu_kernel_lowering_passes.cc
   gpu_fusion_rewrite.cc
   hlo_to_gpu_pipeline.cc
+  hlo_to_triton_pipeline.cc
 
   DEPENDS
   LMHLOGPUTransformsPassIncGen
@@ -71,8 +71,10 @@ add_mlir_library(MLIRHLOGPUTransforms
   MLIRGPUOps
   MLIRHLOAnalysis
   MLIRIR
+  MLIRMemRefTransforms
   MLIRPass
   MLIRShapeDialect
   MLIRSCFTransforms
   MLIRTransforms
+  MLIRVectorTransforms
 )

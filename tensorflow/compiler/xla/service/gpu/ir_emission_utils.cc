@@ -24,10 +24,10 @@ limitations under the License.
 
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
@@ -127,8 +127,7 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
   return true;
 }
 
-Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions,
-                           se::CudaComputeCapability cuda_compute_capability) {
+Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions) {
   if (reduction_dimensions.is_row_reduction) {
     int64_t tile_z = std::min(reduction_dimensions.dimensions[0],
                               BatchedReductionRaceFreeBound());
@@ -424,25 +423,6 @@ llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
   return b->CreateAnd(is_thread0, is_block0);
 }
 
-bool IsFusedReductionOutputConsistent(const HloInstruction* inst,
-                                      const HloInstruction* first_reduce) {
-  if (IsReductionFromOrToContiguousDimensions(*inst)) {
-    // Shapes, layouts and dimensions must be the same for all reduces
-    // inside of this fusion.
-    return ShapeUtil::EqualIgnoringElementType(first_reduce->shape(),
-                                               inst->shape()) &&
-           ShapeUtil::EqualIgnoringElementType(
-               first_reduce->operand(0)->shape(), inst->operand(0)->shape()) &&
-           ShapeUtil::EqualIgnoringElementType(
-               first_reduce->operand(1)->shape(), inst->operand(1)->shape()) &&
-           first_reduce->dimensions() == inst->dimensions();
-  }
-  return ShapeUtil::CompatibleIgnoringElementType(
-             first_reduce->operand(0)->shape(), inst->shape()) &&
-         LayoutUtil::Equal(first_reduce->operand(0)->shape().layout(),
-                           inst->shape().layout());
-}
-
 // Given an LMHLO op, returns the operand index of the first output operand.
 //
 // Notice that an operand alised to an output isn't an output, even though in
@@ -545,12 +525,18 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
 
   // We match the following patterns here:
   //  base := ViewOp(arg) | get_global_memref (global_memref) | arg
-  //  root := base | MemRefReinterpretCastOp(base)
+  //  root := base | MemRefReinterpretCastOp(base) | CollapseShapeOp(base)
 
   if (auto cast = mlir::dyn_cast_or_null<mlir::memref::ReinterpretCastOp>(
           v.getDefiningOp())) {
     v = cast.getViewSource();
   }
+  if (auto collapse_shape =
+          mlir::dyn_cast_or_null<mlir::memref::CollapseShapeOp>(
+              v.getDefiningOp())) {
+    v = collapse_shape.getSrc();
+  }
+
   if (auto view =
           mlir::dyn_cast_or_null<mlir::memref::ViewOp>(v.getDefiningOp())) {
     TF_RET_CHECK(view.getSource().isa<mlir::BlockArgument>());
@@ -627,8 +613,8 @@ Shape GetShape(mlir::Value value) {
   return {};
 }
 
-bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
-                         const Vector3& reduction_tiling) {
+bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions) {
+  Vector3 reduction_tiling = GetReductionTiling(reduction_dimensions);
   return (reduction_dimensions.is_row_reduction &&
           reduction_dimensions.dimensions[2] <=
               MinThreadsXRowReduction() * reduction_tiling[2] &&

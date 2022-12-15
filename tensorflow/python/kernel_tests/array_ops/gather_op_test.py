@@ -35,8 +35,8 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
-_TEST_TYPES = (dtypes.int64, dtypes.float32,
-               dtypes.complex64, dtypes.complex128)
+_TEST_TYPES = (dtypes.int64, dtypes.bfloat16, dtypes.float32, dtypes.complex64,
+               dtypes.complex128)
 
 # TODO(virimia): Add a benchmark for gather_v2, with batch_dims and axis set.
 

@@ -592,7 +592,7 @@ class ForLoopTest(testing.AutoGraphTestCase):
     return s
 
   def test_tensor_illegal_input(self):
-    with self.assertRaisesRegex(ValueError, '\'s\' may not be None'):
+    with self.assertRaisesRegex(ValueError, '\'s\' is not allowed to be None'):
       self._basic_loop(None, lambda i, s: s)
     with self.assertRaisesRegex(ValueError, '\'s\' must be defined'):
       self._basic_loop(variable_operators.Undefined(''), lambda i, s: s)
@@ -1021,7 +1021,7 @@ class WhileLoopTest(testing.AutoGraphTestCase):
     return s
 
   def test_tensor_illegal_input(self):
-    with self.assertRaisesRegex(ValueError, "'s' may not be None"):
+    with self.assertRaisesRegex(ValueError, "'s' is not allowed to be None"):
       self._basic_loop(None, lambda i, s: s)
     with self.assertRaisesRegex(ValueError, "'s' must be defined"):
       self._basic_loop(variable_operators.Undefined(''), lambda i, s: s)

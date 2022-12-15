@@ -8,6 +8,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/core:__subpackages__",
         "//tensorflow/tsl:internal",
@@ -20,6 +21,19 @@ package(
 tf_proto_library(
     name = "bfc_memory_map_proto",
     srcs = ["bfc_memory_map.proto"],
+    make_default_target_header_only = True,
+)
+
+tf_proto_library(
+    name = "autotuning_proto",
+    srcs = ["autotuning.proto"],
+    make_default_target_header_only = True,
+    protodeps = [":dnn_proto"],
+)
+
+tf_proto_library(
+    name = "dnn_proto",
+    srcs = ["dnn.proto"],
     make_default_target_header_only = True,
 )
 
@@ -89,6 +103,10 @@ tf_proto_library(
     create_go_proto = False,
     make_default_target_header_only = True,
     protodeps = [
+        # TODO(tlongeri): Conceptually, these fit into protos_all but adding them currently causes
+        # breakages (and they are not actually used).
+        # ":autotuning_proto",
+        # ":dnn_proto",
         ":bfc_memory_map_proto",
         ":coordination_config_proto",
         ":distributed_runtime_payloads_proto",

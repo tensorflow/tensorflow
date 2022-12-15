@@ -30,10 +30,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 
-namespace tensorflow {
-class CoordinationServiceRpcHandler;
-}
-
 namespace tsl {
 class Env;
 
@@ -116,6 +112,10 @@ class CoordinationServiceInterface {
           post_aggregate_device_fn) = 0;
 
   // Register a task to the service.
+  // Possible service errors:
+  //   - InvalidArgument: Unexpected task request.
+  //   - Aborted: (1) task is in error state, or (2) task is in connected state
+  //       with a different incarnation, indicating that it restarted.
   virtual Status RegisterTask(const tensorflow::CoordinatedTask& task,
                               uint64_t incarnation) = 0;
 
@@ -226,7 +226,7 @@ class CoordinationServiceInterface {
                                const tensorflow::CoordinatedTask& task) = 0;
 
  private:
-  friend class tensorflow::CoordinationServiceRpcHandler;
+  friend class CoordinationServiceRpcHandler;
   friend class CoordinationServiceTest_ListClusterDevices_TfDevice_Test;
   friend class CoordinationServiceTest_ListClusterDevices_XlaDevice_Test;
   friend class

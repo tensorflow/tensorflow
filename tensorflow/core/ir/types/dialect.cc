@@ -135,7 +135,7 @@ Type TFTypeDialect::parseType(DialectAsmParser &parser) const {
 
   Type genType;
   auto parse_result = generatedTypeParser(parser, &type_tag, genType);
-  if (parse_result.hasValue()) return genType;
+  if (parse_result.has_value()) return genType;
 
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
   if (type_tag == name) return tftype##Type::get(getContext());
@@ -266,7 +266,7 @@ Attribute FullTypeAttr::parse(AsmParser &parser, Type odsType) {
   if (failed(parser.parseLess())) return {};
   FailureOr<tf_type::FullTypeAttr> ret = RawFullTypeAttrParser(parser);
   if (succeeded(ret) && failed(parser.parseGreater())) return {};
-  return ret.getValueOr(FullTypeAttr());
+  return ret.value_or(FullTypeAttr());
 }
 
 static void RawFullTypeAttrPrint(FullTypeAttr tfattr, AsmPrinter &printer) {
@@ -345,22 +345,6 @@ Attribute FuncAttr::parse(AsmParser &parser, Type type) {
                        dict.cast<DictionaryAttr>());
 }
 
-void FuncAttr::walkImmediateSubElements(
-    function_ref<void(Attribute)> walkAttrsFn,
-    function_ref<void(Type)> walkTypesFn) const {
-  // Walk the dictionary attribute first, so that its index is always 0.
-  walkAttrsFn(getAttrs());
-  // Walk the symbol ref attribute if it isn't empty.
-  if (!getName().getRootReference().getValue().empty()) walkAttrsFn(getName());
-}
-
-Attribute FuncAttr::replaceImmediateSubElements(
-    ArrayRef<Attribute> replAttrs, ArrayRef<Type> replTypes) const {
-  assert(replAttrs.size() == 2 && "invalid number of replacement attributes");
-  return get(getContext(), replAttrs[1].cast<SymbolRefAttr>(),
-             replAttrs[0].cast<DictionaryAttr>());
-}
-
 void PlaceholderAttr::print(AsmPrinter &os) const {
   os << "<" << StringAttr::get(getContext(), getValue()) << ">";
 }
@@ -381,7 +365,7 @@ void ShapeAttr::print(AsmPrinter &os) const {
   os << "<";
   if (hasRank()) {
     auto print_dim = [&](int64_t dim) {
-      if (dim != ShapedType::kDynamicSize)
+      if (dim != ShapedType::kDynamic)
         os << dim;
       else
         os << "?";
@@ -412,7 +396,7 @@ Attribute ShapeAttr::parse(AsmParser &parser, Type type) {
       shape.emplace_back();
       llvm::SMLoc loc = parser.getCurrentLocation();
       if (succeeded(parser.parseOptionalQuestion())) {
-        shape.back() = ShapedType::kDynamicSize;
+        shape.back() = ShapedType::kDynamic;
       } else if (failed(parser.parseInteger(shape.back()))) {
         parser.emitError(loc)
             << "expected an integer or `?` when parsing a tf.shape attribute";
@@ -552,6 +536,10 @@ TensorFlowType TensorFlowRefType::get(Type type) {
     return DoubleRefType::get(ctx);
   } else if (type.isBF16()) {
     return Bfloat16RefType::get(ctx);
+  } else if (type.isFloat8E4M3FN()) {
+    return Float8E4M3FNRefType::get(ctx);
+  } else if (type.isFloat8E5M2()) {
+    return Float8E5M2RefType::get(ctx);
   } else if (auto complex_type = type.dyn_cast<ComplexType>()) {
     Type etype = complex_type.getElementType();
     if (etype.isF32()) {
@@ -596,6 +584,8 @@ Type TensorFlowRefType::RemoveRef() {
   if (isa<FloatRefType>()) return FloatType::getF32(ctx);
   if (isa<DoubleRefType>()) return FloatType::getF64(ctx);
   if (isa<Bfloat16RefType>()) return FloatType::getBF16(ctx);
+  if (isa<Float8E4M3FNType>()) return FloatType::getFloat8E4M3FN(ctx);
+  if (isa<Float8E5M2Type>()) return FloatType::getFloat8E5M2(ctx);
   if (isa<BoolRefType>()) return IntegerType::get(ctx, 1);
   if (isa<Int8RefType>()) return IntegerType::get(ctx, 8);
   if (isa<Int16RefType>()) return IntegerType::get(ctx, 16);

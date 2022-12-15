@@ -10,6 +10,7 @@ load(
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen:friends"],
     licenses = ["notice"],
 )

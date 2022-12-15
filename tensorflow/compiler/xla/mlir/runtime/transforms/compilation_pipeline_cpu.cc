@@ -47,12 +47,12 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/X86Vector/X86VectorToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir/math/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir/memref/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir/transforms/cpu/passes.h"
-#include "tensorflow/compiler/xla/mlir/transforms/math/passes.h"
-#include "tensorflow/compiler/xla/mlir/transforms/memref/passes.h"
 
 namespace xla {
 namespace runtime {
@@ -76,8 +76,11 @@ void RegisterDefaultXlaCpuRuntimeDialects(DialectRegistry& dialects) {
 
 static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
     mlir::OpPassManager& pm, const CpuPipelineOptions& opts) {
+  pm.addPass(mlir::createAsyncFuncToAsyncRuntimePass());
+
   // Convert entry function to the XLA entrypoint.
   pm.addPass(CreateExportRuntimeFunctionsPass());
+  pm.addPass(cpu::createConvertLmhloToCpuRuntimePass());
   pm.addPass(CreateConvertCustomCallsPass());
   pm.addPass(CreateConvertAssertsPass());
 
@@ -87,8 +90,10 @@ static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
 
   // Optimize operations from the math dialect before outlining compute regions
   // into functions to see all constant operands.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      xla::runtime::CreateMathOptimizationPass(opts.math_avx2));
+  if (!opts.disable_math_optimizations) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        xla::CreateMathOptimizationPass(opts.math_avx2));
+  }
 
   // Convert all linalg operations to parallel loops.
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -107,10 +112,12 @@ static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
   // Expand math operations into std/arith dialect operations.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::arith::createArithExpandOpsPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::memref::createExpandOpsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::memref::createExpandStridedMetadataPass());
 
   // Add alignment attribute to all memref allocations.
   pm.addNestedPass<mlir::func::FuncOp>(
-      xla::runtime::CreateAlignedAllocationsPass(opts.alignment));
+      xla::CreateAlignedAllocationsPass(opts.alignment));
 
   // Lower everything down to LLVM dialect.
   pm.addPass(mlir::createConvertLinalgToLLVMPass());
@@ -118,8 +125,6 @@ static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
   pm.addPass(mlir::createConvertSCFToCFPass());
 
   // Convert runtime operations and custom calls to LLVM dialect.
-  pm.addPass(cpu::createConvertLmhloToCpuRuntimePass());
-  pm.addPass(CreateConvertCustomCallsPass());
   const CompilationPipelineOptions& copts = opts.common_options;
   ConvertRuntimeToLLvmOpts rt_to_llvm_opts = {
       copts.populate_type_id_names, copts.populate_type_conversions,
@@ -130,11 +135,7 @@ static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
   // Convert async dialect to LLVM once everything else is in the LLVM dialect.
   pm.addPass(mlir::createConvertAsyncToLLVMPass());
 
-  {
-    mlir::OpPassManager& fpm = pm.nest<mlir::func::FuncOp>();
-    fpm.addPass(mlir::createConvertMathToLLVMPass());
-  }
-  pm.addPass(mlir::createConvertMathToLibmPass());
+  pm.addPass(xla::CreateMathLegalizationPass(!opts.disable_math_optimizations));
 
   // Convert everything else to LLVM dialect.
   mlir::LowerVectorToLLVMOptions vector_to_llvm_opts;

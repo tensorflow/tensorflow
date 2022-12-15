@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -59,7 +60,7 @@ class CustomCallDeclarations {
  private:
   mlir::SymbolTable sym_table_;
 
-  using Key = std::pair<llvm::StringRef, mlir::FunctionType>;
+  using Key = std::pair<mlir::StringAttr, mlir::FunctionType>;
   llvm::DenseMap<Key, mlir::func::FuncOp> custom_calls_;
 };
 

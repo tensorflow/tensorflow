@@ -39,7 +39,7 @@ mlir::ArrayAttr ConvertPrecisionConfig(const PrecisionConfig* config,
     operand_precision_attrs.push_back(mlir::mhlo::PrecisionAttr::get(
         builder->getContext(),
         mlir::mhlo::symbolizePrecision(PrecisionConfig_Precision_Name(prec))
-            .getValue()));
+            .value()));
   }
   return builder->getArrayAttr(operand_precision_attrs);
 }
@@ -109,7 +109,7 @@ mlir::mhlo::ConvDimensionNumbersAttr ConvertConvDimensionNumbers(
       arrayref(dnums.output_spatial_dimensions()));
 }
 
-mlir::ArrayAttr ConvertCustomCallOutputOperandAliasing(
+mlir::ArrayAttr ConvertOutputOperandAliasing(
     const std::vector<std::pair<xla::ShapeIndex,
                                 std::pair<int64_t, xla::ShapeIndex>>>& aliaInfo,
     mlir::Builder* builder) {
@@ -124,6 +124,20 @@ mlir::ArrayAttr ConvertCustomCallOutputOperandAliasing(
     attrs.push_back(attr);
   }
   return builder->getArrayAttr(attrs);
+}
+
+mlir::ArrayAttr ConvertCrossProgramPrefetches(
+    const absl::Span<const std::pair<int64_t, ShapeIndex>> prefetches,
+    mlir::Builder* builder) {
+  llvm::SmallVector<mlir::Attribute, 4> shapes;
+  for (auto [parameter, index] : prefetches) {
+    llvm::SmallVector<int64_t, 4> dims;
+    for (auto dim : index) dims.push_back(dim);
+    shapes.push_back(mlir::mhlo::CrossProgramPrefetchAttr::get(
+        builder->getContext(), parameter, dims));
+  }
+
+  return mlir::ArrayAttr::get(builder->getContext(), shapes);
 }
 
 StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type) {
@@ -169,6 +183,8 @@ StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
     case xla::CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
       return mlir::mhlo::CustomCallApiVersion::
           API_VERSION_STATUS_RETURNING_UNIFIED;
+    case xla::CustomCallApiVersion::API_VERSION_TYPED_FFI:
+      return mlir::mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI;
     default:
       return InvalidArgument("Unknown CustomCallApiVersion enum value #%d (%s)",
                              api_version,

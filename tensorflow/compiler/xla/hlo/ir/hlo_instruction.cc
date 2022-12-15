@@ -424,6 +424,19 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << "No fusion computation with id " << fusion_id;
       instruction =
           CreateFusion(shape, fusion_kind, all_operands(), fused_computation);
+      std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+          output_to_operand_aliasing;
+      for (const auto& aliasing : proto.output_operand_aliasing()) {
+        output_to_operand_aliasing.emplace_back(
+            ShapeIndex(aliasing.output_shape_index().begin(),
+                       aliasing.output_shape_index().end()),
+            std::make_pair(aliasing.operand_index(),
+                           ShapeIndex(aliasing.operand_shape_index().begin(),
+                                      aliasing.operand_shape_index().end())));
+      }
+      auto fusion_instr = DynCast<HloFusionInstruction>(instruction.get());
+      fusion_instr->set_output_to_operand_aliasing(
+          std::move(output_to_operand_aliasing));
       break;
     }
     case HloOpcode::kRng:
@@ -782,14 +795,13 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       *custom_call_instr->mutable_precision_config() = precision_config;
       std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
           output_to_operand_aliasing;
-      for (const auto& aliasing : proto.custom_call_output_operand_aliasing()) {
+      for (const auto& aliasing : proto.output_operand_aliasing()) {
         output_to_operand_aliasing.emplace_back(
             ShapeIndex(aliasing.output_shape_index().begin(),
                        aliasing.output_shape_index().end()),
-            std::pair<int64_t, ShapeIndex>{
-                aliasing.operand_index(),
-                ShapeIndex(aliasing.operand_shape_index().begin(),
-                           aliasing.operand_shape_index().end())});
+            std::make_pair(aliasing.operand_index(),
+                           ShapeIndex(aliasing.operand_shape_index().begin(),
+                                      aliasing.operand_shape_index().end())));
       }
       custom_call_instr->set_output_to_operand_aliasing(
           std::move(output_to_operand_aliasing));
@@ -998,8 +1010,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   instruction->unique_id_ = proto.id();
 
   if (proto.has_sharding()) {
-    TF_ASSIGN_OR_RETURN(const auto& sharding,
+    TF_ASSIGN_OR_RETURN(HloSharding sharding,
                         HloSharding::FromProto(proto.sharding()));
+    // To allow for existing Hlo protos to not fail verification, apply tuple
+    // sharding normalization.
+    sharding = sharding.NormalizeTupleSharding(instruction->shape());
     instruction->set_sharding(sharding);
   }
 
@@ -1554,6 +1569,17 @@ HloInstruction::CreateBitcastConvert(const Shape& shape,
   auto instruction =
       absl::WrapUnique(new HloInstruction(HloOpcode::kBitcastConvert, shape));
   instruction->AppendOperand(operand);
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateStochasticConvert(const Shape& shape,
+                                        HloInstruction* operand,
+                                        HloInstruction* random) {
+  auto instruction = absl::WrapUnique(
+      new HloInstruction(HloOpcode::kStochasticConvert, shape));
+  instruction->AppendOperand(operand);
+  instruction->AppendOperand(random);
   return instruction;
 }
 
@@ -2117,7 +2143,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
-    case HloOpcode::kStochasticConvert:
       CHECK_EQ(new_operands.size(), 2);
       clone = CreateBinary(shape, opcode_, new_operands[0], new_operands[1]);
       break;
@@ -2139,6 +2164,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kBitcastConvert:
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateBitcastConvert(shape, new_operands[0]);
+      break;
+    case HloOpcode::kStochasticConvert:
+      CHECK_EQ(new_operands.size(), 2);
+      clone = CreateStochasticConvert(shape, new_operands[0], new_operands[1]);
       break;
     case HloOpcode::kDynamicUpdateSlice:
       clone = CreateDynamicUpdateSlice(shape, new_operands[0], new_operands[1],
@@ -3044,6 +3073,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kStochasticConvert:
       return true;
 
     // Ternary elementwise operations.
@@ -4922,8 +4952,8 @@ const CholeskyOptions& HloInstruction::cholesky_options() const {
 }
 
 const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
-HloInstruction::custom_call_output_operand_aliasing() const {
-  return Cast<HloCustomCallInstruction>(this)->output_to_operand_aliasing();
+HloInstruction::output_operand_aliasing() const {
+  return Cast<HloCallableInstruction>(this)->output_to_operand_aliasing();
 }
 
 }  // namespace xla

@@ -376,9 +376,8 @@ Status ImportGenericFunction(
     args_attrs.push_back(NamedAttrList{}.getDictionary(context));
     arg_num++;
   }
-  attrs.push_back(
-      builder.getNamedAttr(function_interface_impl::getArgDictAttrName(),
-                           builder.getArrayAttr(args_attrs)));
+  attrs.push_back(builder.getNamedAttr(func_op.getArgAttrsAttrName(),
+                                       builder.getArrayAttr(args_attrs)));
 
   // Process the results attributes now.
   int res_num = 0;
@@ -395,9 +394,8 @@ Status ImportGenericFunction(
     res_attrs.push_back(output_attrs.getDictionary(context));
     ++res_num;
   }
-  attrs.push_back(
-      builder.getNamedAttr(function_interface_impl::getResultDictAttrName(),
-                           builder.getArrayAttr(res_attrs)));
+  attrs.push_back(builder.getNamedAttr(func_op.getResAttrsAttrName(),
+                                       builder.getArrayAttr(res_attrs)));
 
   values_map.clear();
   Block* body = new Block();

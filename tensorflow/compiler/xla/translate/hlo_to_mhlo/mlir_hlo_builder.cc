@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -25,9 +26,12 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/comparison_util.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_function_importer.h"
@@ -36,6 +40,54 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
+
+constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
+
+// Merge two dictionary attributes into one. This function overrides the
+// first dictionary attributes with the second one if there are attributes
+// with the same name.
+mlir::DictionaryAttr MergeTwoDictionaryAttrs(
+    mlir::Operation* op, mlir::DictionaryAttr& original_attributes,
+    mlir::DictionaryAttr& new_attributes) {
+  if (original_attributes == nullptr || original_attributes.empty())
+    return new_attributes;
+
+  if (new_attributes == nullptr || new_attributes.empty())
+    return original_attributes;
+
+  llvm::SmallDenseMap<mlir::StringAttr, mlir::Attribute> result_map;
+
+  for (const auto& attr : original_attributes) {
+    result_map.insert({attr.getName(), attr.getValue()});
+  }
+
+  for (const auto& attr : new_attributes) {
+    result_map.insert({attr.getName(), attr.getValue()});
+  }
+
+  llvm::SmallVector<mlir::NamedAttribute> result;
+  for (auto& attr : result_map) {
+    result.push_back(mlir::NamedAttribute(attr.first, attr.second));
+  }
+  return mlir::DictionaryAttr::get(op->getContext(), result);
+}
+
+// Add frontend attributes to the op.
+// Frontend attributes provide a way to attach custom metadata to any MHLO op.
+//
+// TODO(ziyinh): Remove this logic and use listener to add frontend
+// attributes once the builder supports multiple listeners.
+void AddFrontendAttributesToOperation(
+    mlir::Operation* op, mlir::DictionaryAttr& frontend_attributes) {
+  if (frontend_attributes == nullptr || frontend_attributes.empty()) return;
+  mlir::DictionaryAttr original_attributes =
+      op->getAttr(kFrontendAttributesAttr)
+          .dyn_cast_or_null<mlir::DictionaryAttr>();
+  mlir::DictionaryAttr updated_attributes =
+      MergeTwoDictionaryAttrs(op, original_attributes, frontend_attributes);
+  if (updated_attributes == nullptr || updated_attributes.empty()) return;
+  op->setAttr(kFrontendAttributesAttr, updated_attributes);
+}
 
 static std::string GetMlirOpName(HloOpcode opcode) {
   std::string op_name = HloOpcodeString(opcode);
@@ -85,6 +137,7 @@ StatusOr<XlaOp> MlirHloBuilder::MakeXlaOp(mlir::Value val) {
 
   int64_t handle = reinterpret_cast<int64_t>(val.getAsOpaquePointer());
   handle_to_shape_[handle] = std::move(shape);
+  AddFrontendAttributesToOperation(val.getDefiningOp(), frontend_attributes_);
   return XlaOp(handle, this);
 }
 
@@ -95,6 +148,19 @@ XlaOp MlirHloBuilder::ConstantLiteral(const LiteralSlice& literal) {
     auto op = builder_.create<mlir::mhlo::ConstantOp>(loc_, attr);
     return MakeXlaOp(op);
   });
+}
+
+void MlirHloBuilder::SetFrontendAttributes(
+    const FrontendAttributes& frontend_attributes) {
+  llvm::SmallVector<mlir::NamedAttribute> frontend_named_attributes_vec;
+  for (auto& frontend_attribute : frontend_attributes.map()) {
+    frontend_named_attributes_vec.push_back(builder_.getNamedAttr(
+        frontend_attribute.first,
+        builder_.getStringAttr(frontend_attribute.second)));
+  }
+
+  frontend_attributes_ =
+      builder_.getDictionaryAttr(frontend_named_attributes_vec);
 }
 
 StatusOr<XlaOp> MlirHloBuilder::ConvGeneralDilatedInternal(
@@ -133,7 +199,7 @@ StatusOr<XlaOp> MlirHloBuilder::FftInternal(
   auto op = builder_.create<mlir::mhlo::FftOp>(
       loc_, ty, GetValue(operand),
       mlir::mhlo::FftTypeAttr::get(builder_.getContext(),
-                                   fft_type_attr.getValue()),
+                                   fft_type_attr.value()),
       GetI64ElementsAttr(fft_length, &builder_));
   return MakeXlaOp(op);
 }
@@ -197,21 +263,16 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
       builder_.getNamedAttr("backend_config", builder_.getStringAttr(opaque)));
 
   if (computation && !computation->IsNull()) {
-    llvm::SmallVector<mlir::Attribute> computation_names;
-    for (const auto& computation_proto : computation->proto().computations()) {
-      computation_names.push_back(mlir::SymbolRefAttr::get(
-          builder_.getContext(), computation_proto.name()));
-    }
-    attributes.push_back(builder_.getNamedAttr(
-        "called_computations", builder_.getArrayAttr(computation_names)));
-
     // Create new function(s) to represent the called computations. As a result,
     // this legalization may only be called during a module pass rather than the
     // typical parallelized func pass which is not permitted to create
     // functions.
-    TF_RETURN_IF_ERROR(ImportComputation(
-        computation->proto(),
-        builder_.getBlock()->getParent()->getParentOfType<mlir::ModuleOp>()));
+    TF_ASSIGN_OR_RETURN(auto func,
+                        ImportComputationAsFunc(computation->proto()));
+
+    attributes.push_back(builder_.getNamedAttr(
+        "called_computations", builder_.getArrayAttr({mlir::SymbolRefAttr::get(
+                                   builder_.getContext(), func.getName())})));
   }
 
   TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
@@ -235,6 +296,9 @@ StatusOr<XlaOp> MlirHloBuilder::ReduceInternal(
   TF_RETURN_IF_ERROR(ImportComputation(computation.proto(), &op.getBody(),
                                        /*flatten_region_arg_tuple*/ true));
   if (op.getNumResults() == 1) return MakeXlaOp(op.getResult(0));
+  // Add frontend attributes to the ReduceOp as no MakeXlaOp is called.
+  // TODO(hinsu): Avoid this duplicated call for ops returning multiple results.
+  AddFrontendAttributesToOperation(op, frontend_attributes_);
   auto tuple = builder_.create<mlir::mhlo::TupleOp>(loc_, op.getResults());
   return MakeXlaOp(tuple);
 }
@@ -327,6 +391,10 @@ StatusOr<XlaOp> MlirHloBuilder::SortInternal(const Shape& shape,
       ImportComputation(comparator.proto(), &op.getComparator()));
 
   if (ty.isa<mlir::TupleType>()) {
+    // Add frontend attributes to the SortOp as no MakeXlaOp is called.
+    // TODO(hinsu): Avoid this duplicated call for ops returning multiple
+    // results.
+    AddFrontendAttributesToOperation(op, frontend_attributes_);
     auto tuple = builder_.create<mlir::mhlo::TupleOp>(loc_, op.getResults());
     return MakeXlaOp(tuple);
   }
@@ -357,6 +425,10 @@ StatusOr<XlaOp> MlirHloBuilder::WhileInternal(const Shape& shape,
                                        /*flatten_region_arg_tuple*/ true));
 
   if (ty.isa<mlir::TupleType>()) {
+    // Add frontend attributes to the WhileOp as no MakeXlaOp is called.
+    // TODO(hinsu): Avoid this duplicated call for ops returning multiple
+    // results.
+    AddFrontendAttributesToOperation(op, frontend_attributes_);
     llvm::SmallVector<mlir::Value> flattened_results = op->getResults();
     llvm::MutableArrayRef<mlir::Value> flattened_results_ref(flattened_results);
     auto result = HloFunctionImporter::CreateTupleValue(
@@ -471,6 +543,11 @@ StatusOr<XlaOp> MlirHloBuilder::RngBitGeneratorInternal(
       loc_, flattened_ret_types, algorithm_attr, GetValue(initial_state));
 
   if (ty.isa<mlir::TupleType>()) {
+    // Add frontend attributes to the RngBitGeneratorOp as no MakeXlaOp is
+    // called.
+    // TODO(hinsu): Avoid this duplicated call for ops returning multiple
+    // results.
+    AddFrontendAttributesToOperation(op, frontend_attributes_);
     llvm::SmallVector<mlir::Value> flattened_results = op->getResults();
     llvm::MutableArrayRef<mlir::Value> flattened_results_ref(flattened_results);
     auto result = HloFunctionImporter::CreateTupleValue(
@@ -539,11 +616,11 @@ StatusOr<XlaOp> MlirHloBuilder::Compare(const Shape& shape, XlaOp lhs,
       mlir::mhlo::ComparisonDirectionAttr::get(
           builder_.getContext(), mlir::mhlo::symbolizeComparisonDirection(
                                      ComparisonDirectionToString(direction))
-                                     .getValue()),
+                                     .value()),
       mlir::mhlo::ComparisonTypeAttr::get(
           builder_.getContext(),
           mlir::mhlo::symbolizeComparisonType(ComparisonTypeToString(type))
-              .getValue()));
+              .value()));
   return MakeXlaOp(op.getResult());
 }
 
@@ -581,7 +658,7 @@ StatusOr<XlaOp> MlirHloBuilder::TriangularSolveInternal(
           builder_.getContext(),
           ::mlir::mhlo::symbolizeTranspose(
               TriangularSolveOptions::Transpose_Name(options.transpose_a()))
-              .getValue()));
+              .value()));
   return MakeXlaOp(op);
 }
 
@@ -610,6 +687,9 @@ StatusOr<XlaOp> MlirHloBuilder::InfeedWithTokenInternal(
                                                   /*infeed_config=*/config,
                                                   /*layout=*/layout);
 
+  // Add frontend attributes to the InfeedOp as no MakeXlaOp is called.
+  // TODO(hinsu): Avoid this duplicated call for ops returning multiple results.
+  AddFrontendAttributesToOperation(op, frontend_attributes_);
   llvm::SmallVector<mlir::Value> flattened_results = op->getResults();
   llvm::MutableArrayRef<mlir::Value> flattened_results_ref(flattened_results);
   auto result = HloFunctionImporter::CreateTupleValue(
@@ -741,16 +821,16 @@ Status MlirHloBuilder::ImportComputation(const HloModuleProto& computation,
   TF_ASSIGN_OR_RETURN(auto hlo_module, CreateHloModuleFromProto(computation));
 
   return HloFunctionImporter::ImportAsRegion(*hlo_module->entry_computation(),
-                                             region, &builder_,
+                                             symbol_table_, region, &builder_,
                                              flatten_region_arg_tuple);
 }
 
-Status MlirHloBuilder::ImportComputation(const HloModuleProto& computation,
-                                         mlir::ModuleOp module) {
+StatusOr<mlir::func::FuncOp> MlirHloBuilder::ImportComputationAsFunc(
+    const HloModuleProto& computation) {
   TF_ASSIGN_OR_RETURN(auto hlo_module, CreateHloModuleFromProto(computation));
 
   return HloFunctionImporter::ImportAsFunc(*hlo_module->entry_computation(),
-                                           module, {}, &builder_,
+                                           symbol_table_, {}, &builder_,
                                            /*is_main=*/false);
 }
 

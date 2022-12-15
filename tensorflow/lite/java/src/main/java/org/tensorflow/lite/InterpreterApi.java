@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.tensorflow.lite.InterpreterApi.Options.TfLiteRuntime;
+import org.tensorflow.lite.acceleration.ValidatedAccelerationConfig;
 import org.tensorflow.lite.nnapi.NnApiDelegate;
 
 /**
@@ -98,6 +99,7 @@ public interface InterpreterApi extends AutoCloseable {
       this.delegates = new ArrayList<>(other.delegates);
       this.delegateFactories = new ArrayList<>(other.delegateFactories);
       this.runtime = other.runtime;
+      this.validatedAccelerationConfig = other.validatedAccelerationConfig;
     }
 
     /**
@@ -268,10 +270,22 @@ public interface InterpreterApi extends AutoCloseable {
       return runtime;
     }
 
+    /** Specify the acceleration configuration. */
+    public Options setAccelerationConfig(ValidatedAccelerationConfig config) {
+      this.validatedAccelerationConfig = config;
+      return this;
+    }
+
+    /** Return the acceleration configuration. */
+    public ValidatedAccelerationConfig getAccelerationConfig() {
+      return this.validatedAccelerationConfig;
+    }
+
     TfLiteRuntime runtime = TfLiteRuntime.FROM_APPLICATION_ONLY;
     int numThreads = -1;
     Boolean useNNAPI;
     Boolean allowCancellation;
+    ValidatedAccelerationConfig validatedAccelerationConfig;
 
     // See InterpreterApi.Options#addDelegate.
     final List<Delegate> delegates;

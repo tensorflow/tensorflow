@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/data/serialization_utils.h"
 
 #include <memory>
@@ -22,8 +21,10 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
+#include "tensorflow/core/data/compression_utils.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
@@ -428,7 +429,7 @@ std::string IteratorStateVariant::TypeName() {
 
 IteratorStateVariant::IteratorStateVariant(const IteratorStateVariant& other) {
   if (other.data_) {
-    Decode(*other.data_);
+    data_ = std::make_unique<VariantTensorData>(*other.data_);
   }
 }
 
@@ -439,17 +440,61 @@ Status IteratorStateVariant::InitializeFromVariantData(
 }
 
 void IteratorStateVariant::Encode(VariantTensorData* data) const {
-  *data = *data_;
+  CompressedElement compressed_tensors;
+  Status s = CompressElement(data_->tensors(), &compressed_tensors);
+  if (!s.ok()) {
+    LOG(WARNING) << "Failed to compress iterator state variant: " << s;
+    *data = *data_;
+    return;
+  }
+
+  data->set_type_name(TypeName());
+  data->set_metadata(data_->metadata_string());
+  Tensor tensor(DT_VARIANT, TensorShape({}));
+  tensor.scalar<Variant>()() = std::move(compressed_tensors);
+  *data->add_tensors() = std::move(tensor);
 }
 
 bool IteratorStateVariant::Decode(VariantTensorData data) {
   if (data.type_name() != TypeName()) {
     return false;
   }
-  auto tensor_data = std::make_unique<VariantTensorData>();
-  std::swap(*tensor_data, data);
-  data_ = std::move(tensor_data);
+
+  const CompressedElement* compressed = GetCompressedElement(data);
+  if (!compressed) {
+    data_ = std::make_unique<VariantTensorData>(std::move(data));
+    return true;
+  }
+
+  std::vector<Tensor> tensors;
+  Status s = UncompressElement(*compressed, &tensors);
+  if (!s.ok()) {
+    LOG(WARNING) << "Failed to uncompress iterator state variant: " << s;
+    data_ = std::make_unique<VariantTensorData>(std::move(data));
+    return true;
+  }
+
+  data_ = std::make_unique<VariantTensorData>();
+  data_->set_type_name(TypeName());
+  data_->set_metadata(std::move(data.metadata_string()));
+  for (auto& tensor : tensors) {
+    *data_->add_tensors() = std::move(tensor);
+  }
   return true;
+}
+
+const CompressedElement* IteratorStateVariant::GetCompressedElement(
+    const VariantTensorData& data) {
+  bool should_uncompress =
+      data.tensors_size() == 1 &&
+      TensorShapeUtils::IsScalar(data.tensors(0).shape()) &&
+      data.tensors(0).dtype() == DT_VARIANT;
+  if (!should_uncompress) {
+    return nullptr;
+  }
+
+  const Variant& variant = data.tensors(0).scalar<Variant>()();
+  return variant.get<CompressedElement>();
 }
 
 std::string IteratorStateVariant::DebugString() const {

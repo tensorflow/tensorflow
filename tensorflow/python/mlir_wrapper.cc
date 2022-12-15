@@ -111,4 +111,12 @@ PYBIND11_MODULE(_pywrap_mlir, m) {
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
           return output;
         });
+
+  m.def("ExperimentalWriteBytecode", [](const std::string &filename,
+                                        const std::string &mlir_txt) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    tensorflow::ExperimentalWriteBytecode(filename, mlir_txt, status.get());
+    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+  });
 };

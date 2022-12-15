@@ -13,26 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/test_passes.h"
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "mlir-hlo/Dialect/lhlo/transforms/passes.h"
-#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
-#include "mlir-hlo/Dialect/mhlo/IR/register.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
-#include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
-#include "mlir-hlo/Dialect/thlo/transforms/passes.h"
+#include "gml_st/IR/gml_st_ops.h"
+#include "gml_st/transforms/passes.h"
+#include "gml_st/transforms/test_passes.h"
+#include "lhlo/IR/lhlo_ops.h"
+#include "lhlo/transforms/passes.h"
+#include "lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "mhlo/IR/register.h"
+#include "mhlo/transforms/passes.h"
 #include "mlir-hlo/Transforms/gpu_passes.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "stablehlo/dialect/Register.h"
+#include "thlo/IR/thlo_ops.h"
+#include "thlo/transforms/passes.h"
 
 using namespace mlir;
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   mlir::registerAllPasses();
   mlir::hlo::registerLMHLOTransformsPasses();
   mlir::registerLMHLOGPUTransformsPasses();
@@ -66,6 +66,18 @@ int main(int argc, char **argv) {
         return createHloToGpuPipeline(pm, opts.blockTileDim, opts.warpTileDim,
                                       opts.threadTileDim,
                                       opts.experimentalSoftmax);
+      });
+
+  struct HloToTritonPipelineOptions
+      : public PassPipelineOptions<HloToTritonPipelineOptions> {
+    ListOption<int64_t> blockTileDim{
+        *this, "block-tile",
+        llvm::cl::desc("dimensions of the subproblem processed by the block")};
+  };
+  mlir::PassPipelineRegistration<HloToTritonPipelineOptions>(
+      "hlo-to-triton-pipeline", "Pipeline to transform HLO to Triton dialect.",
+      [](OpPassManager& pm, const HloToTritonPipelineOptions& opts) {
+        return createHloToTritonPipeline(pm, opts.blockTileDim);
       });
 
   mlir::DialectRegistry registry;

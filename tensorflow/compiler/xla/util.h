@@ -475,6 +475,8 @@ constexpr T IPow(T base, int exponent) {
   return result;
 }
 
+// UnsignedIntegerTypeForSize<N> gets an unsigned integer with the given size in
+// bytes.
 template <size_t>
 struct UnsignedIntegerTypeForSize;
 
@@ -498,19 +500,20 @@ struct UnsignedIntegerTypeForSize<8> {
   using type = uint64_t;
 };
 
-template <size_t N>
-struct SignedIntegerTypeForSize {
-  using type = std::make_signed_t<typename UnsignedIntegerTypeForSize<N>::type>;
-};
+template <size_t kBytes>
+using UnsignedIntegerTypeForSizeType =
+    typename UnsignedIntegerTypeForSize<kBytes>::type;
+
+template <size_t kBytes>
+using SignedIntegerTypeForSizeType =
+    std::make_signed_t<UnsignedIntegerTypeForSizeType<kBytes>>;
 
 // Returns the signed magnitude of T.
 template <typename T>
-typename SignedIntegerTypeForSize<sizeof(T)>::type ToSignMagnitude(T input) {
-  auto as_bits =
-      absl::bit_cast<typename SignedIntegerTypeForSize<sizeof(T)>::type>(input);
-  auto sign_mask =
-      absl::bit_cast<typename UnsignedIntegerTypeForSize<sizeof(T)>::type>(
-          tsl::MathUtil::Sign(as_bits));
+SignedIntegerTypeForSizeType<sizeof(T)> ToSignMagnitude(T input) {
+  auto as_bits = absl::bit_cast<SignedIntegerTypeForSizeType<sizeof(T)>>(input);
+  auto sign_mask = absl::bit_cast<UnsignedIntegerTypeForSizeType<sizeof(T)>>(
+      tsl::MathUtil::Sign(as_bits));
   return as_bits ^ (sign_mask >> 1);
 }
 
@@ -541,7 +544,7 @@ constexpr uint64_t NanPayloadBitMask() {
 
 template <typename T>
 T NanWithSignAndPayload(bool sign, uint64_t nan_payload) {
-  using RepT = typename UnsignedIntegerTypeForSize<sizeof(T)>::type;
+  using RepT = UnsignedIntegerTypeForSizeType<sizeof(T)>;
   const T val = std::numeric_limits<T>::quiet_NaN();
   auto rep = absl::bit_cast<RepT>(val);
   rep &= LsbMask<RepT>(std::numeric_limits<RepT>::digits - 1);

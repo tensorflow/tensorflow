@@ -49,6 +49,10 @@ TfLiteDelegateUniquePtr FlexDelegate::Create(
         ->CopyFromBufferHandle(context, buffer_handle, tensor);
   };
   flex_delegate->flags |= kTfLiteDelegateFlagsAllowDynamicTensors;
+  // NOMUTANTS -- this flag has effects in profiler that disable the profiling
+  // of the macro operator "TfLiteFlexDelegate", which only shows in profiler
+  // output string. Adding flag check in Flex tests is currently not necessary.
+  flex_delegate->flags |= kTfLiteDelegateFlagsPerOperatorProfiling;
   reinterpret_cast<FlexDelegate*>(flex_delegate->data_)->base_delegate_ =
       flex_delegate.get();
   return flex_delegate;

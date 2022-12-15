@@ -31,6 +31,9 @@ namespace tensorflow {
 namespace data {
 namespace testing {
 
+// Creates a local tempfile and returns the path.
+std::string LocalTempFilename();
+
 // Returns a test dataset representing
 // tf.data.Dataset.range(range). Useful for testing dataset graph execution.
 DatasetDef RangeDataset(int64_t range);

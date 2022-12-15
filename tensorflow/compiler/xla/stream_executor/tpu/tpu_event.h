@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 
-namespace tensorflow {
+namespace stream_executor {
 namespace tpu {
 
 class TpuEvent : public ::stream_executor::internal::EventInterface {
@@ -34,6 +34,6 @@ class TpuEvent : public ::stream_executor::internal::EventInterface {
 };
 
 }  // namespace tpu
-}  // namespace tensorflow
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_EVENT_H_

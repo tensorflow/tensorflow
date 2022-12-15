@@ -160,13 +160,13 @@ module @jit_f.0 {
       module = """
 module @jit_f.0 {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i32>) {
-    %0 = mhlo.sine %arg1 : tensor<2x?xf32>
+    %0 = stablehlo.sine %arg1 : tensor<2x?xf32>
     return %0, %arg0 : tensor<2x?xf32>, tensor<i32>
   }
 }
 """
       return xla.call_module([x],
-                             version=1,
+                             version=2,
                              module=module,
                              Tout=[x.dtype, np.int32],
                              Sout=[(None, 3), ()],
@@ -184,24 +184,105 @@ module @jit_f.0 {
       module = """
 module @jit_f.0 {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i32>) {
-    %arg0_new = "mhlo.get_dimension_size"(%arg1) {dimension = 1 : i64} : (tensor<2x?xf32>) -> tensor<i32>
+    %arg0_new = "stablehlo.get_dimension_size"(%arg1) {dimension = 1 : i64} : (tensor<2x?xf32>) -> tensor<i32>
     %arg1_new = tensor.cast %arg1 : tensor<2x?xf32> to tensor<2x?xf32>
     %0, %1 = call @dyn_main(%arg0_new, %arg1_new) : (tensor<i32>, tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i32>)
     return %0, %1 : tensor<2x?xf32>, tensor<i32>
   }
   func.func private @dyn_main(%arg0: tensor<i32>, %arg1: tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i32>) {
-    %0 = mhlo.sine %arg1 : tensor<2x?xf32>
+    %0 = stablehlo.sine %arg1 : tensor<2x?xf32>
     return %0, %arg0 : tensor<2x?xf32>, tensor<i32>
   }
 }
 """
-      return xla.call_module([x], version=1,
+      return xla.call_module([x], version=2,
                              module=module,
                              Tout=[x.dtype, np.int32],
                              Sout=[(None, 3), ()],
                              dim_args_spec=['0.1'])
 
     self._assertOpOutputMatchesExpected(f, (x,), (np.sin(x), x.shape[1]))
+
+  def test_dim_args_spec_errors(self):
+    # x, y: f32[2, b, c]
+    x = np.arange(24, dtype=np.float32).reshape((2, 3, 4))
+    y = x
+
+    # Module takes two prefix arguments with the values of b and c
+    #   return (sin(x + y), x.shape[1])
+    module = """
+module @jit_f.0 {
+  func.func public @main(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<2x?x?xf32>, %arg3: tensor<2x?x?xf32>) -> (tensor<2x?x?xf32>, tensor<i32>) {
+    %0 = stablehlo.add %arg2, %arg3 : tensor<2x?x?xf32>
+    %1 = stablehlo.sine %0 : tensor<2x?x?xf32>
+    return %1, %arg0 : tensor<2x?x?xf32>, tensor<i32>
+  }
+}
+"""
+
+    dim_args_spec = ['0.1', '0.2']
+    def f(x, y):
+      return xla.call_module([x, y],
+                             version=2,
+                             module=module,
+                             Tout=[x.dtype, np.int32],
+                             Sout=[(None, 3), ()],
+                             dim_args_spec=dim_args_spec)
+    self._assertOpOutputMatchesExpected(f, (x, y), (np.sin(x + y), x.shape[1]))
+
+    dim_args_spec = ['0.0', '0.0', '0.0', '0.0']  # Too many dim_args_spec
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'The module should have 4 dimension arguments, '
+        'but it has only 4 total arguments'):
+      self._assertOpOutputMatchesExpected(f, (x, y),
+                                          (np.sin(x + y), x.shape[1]))
+
+    dim_args_spec = ['0.0', '0.0', '0.0']  # dim_args_spec refers to non-scalar
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Module argument at index 2 should be a scalar dimension argument '
+        'but has type'):
+      self._assertOpOutputMatchesExpected(f, (x, y),
+                                          (np.sin(x + y), x.shape[1]))
+
+    dim_args_spec = []  # No dim_args_spec
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Module main has dynamic shapes but no dim_args_spec was given'):
+      self._assertOpOutputMatchesExpected(f, (x, y),
+                                          (np.sin(x + y), x.shape[1]))
+
+    dim_args_spec = ['1.0']  # Too few dim_args_spec
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Incorrect number of arguments for XlaCallModule: 2. '
+        'The module has 4 of which 1 were declared to be dimension arguments.'):
+      self._assertOpOutputMatchesExpected(f, (x, y),
+                                          (np.sin(x + y), x.shape[1]))
+
+    dim_args_spec = ['0.b', '0.1']  # axis_idx not a number
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Syntax error in dim_args_spec '0.b'"):
+      self._assertOpOutputMatchesExpected(f, (x, y),
+                                          (np.sin(x + y), x.shape[1]))
+
+    dim_args_spec = ['2.0', '0.1']  # arg_idx too large
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Invalid argument index 2 when the number of non-dimension arguments '
+        "is 2 in dim_arg_spec '2.0'"):
+      self._assertOpOutputMatchesExpected(f, (x, y),
+                                          (np.sin(x + y), x.shape[1]))
+
+    dim_args_spec = ['0.3', '0.1']  # axis_idx too large
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Invalid axis index 3 when the rank of non-dimension argument 0 '
+        "is 3 in dim_arg_spec '0.3'"):
+      self._assertOpOutputMatchesExpected(f, (x, y),
+                                          (np.sin(x + y), x.shape[1]))
 
   def test_dynamic_iota(self):
     x = np.ones((3, 5), dtype=np.int32)
@@ -212,13 +293,13 @@ module @jit_f.0 {
       module = """
 module @jit_fun.1 {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?x5xi32>) -> tensor<?xi32> {
-    %0 = mhlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
-    %1 = "mhlo.dynamic_iota"(%0) {iota_dimension = 0 : i64} : (tensor<1xi32>) -> tensor<?xi32>
+    %0 = stablehlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
+    %1 = "stablehlo.dynamic_iota"(%0) {iota_dimension = 0 : i64} : (tensor<1xi32>) -> tensor<?xi32>
     return %1 : tensor<?xi32>
   }
 }
 """
-      return xla.call_module([x,], version=1,
+      return xla.call_module([x,], version=2,
                              module=module,
                              Tout=[res.dtype],
                              Sout=[(None,)],
@@ -236,17 +317,17 @@ module @jit_fun.1 {
       module = """
 module @jit_fun.0 {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?x4xf32>, %arg2: tensor<2x?x4xf32>) -> (tensor<2x?x4xf32>, tensor<2x?x4xf32>) {
-    %0 = mhlo.constant dense<2> : tensor<1xi32>
-    %2 = mhlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
-    %3 = mhlo.constant dense<4> : tensor<1xi32>
-    %4 = "mhlo.concatenate"(%0, %2, %3) {dimension = 0 : i64} : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xi32>
-    %5 = "mhlo.dynamic_broadcast_in_dim"(%arg1, %4) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (tensor<?x4xf32>, tensor<3xi32>) -> tensor<2x?x4xf32>
-    %6 = mhlo.add %5, %arg2 : (tensor<2x?x4xf32>, tensor<2x?x4xf32>) -> tensor<2x?x4xf32>
+    %0 = stablehlo.constant dense<2> : tensor<1xi32>
+    %2 = stablehlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
+    %3 = stablehlo.constant dense<4> : tensor<1xi32>
+    %4 = "stablehlo.concatenate"(%0, %2, %3) {dimension = 0 : i64} : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xi32>
+    %5 = "stablehlo.dynamic_broadcast_in_dim"(%arg1, %4) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (tensor<?x4xf32>, tensor<3xi32>) -> tensor<2x?x4xf32>
+    %6 = stablehlo.add %5, %arg2 : (tensor<2x?x4xf32>, tensor<2x?x4xf32>) -> tensor<2x?x4xf32>
     return %5, %6 : tensor<2x?x4xf32>, tensor<2x?x4xf32>
   }
 }
 """
-      return xla.call_module([x, y], version=1,
+      return xla.call_module([x, y], version=2,
                              module=module,
                              Tout=[res[0].dtype, res[1].dtype],
                              Sout=[(2, None, 4), (2, None, 4)],
@@ -274,7 +355,7 @@ module @jit_fun{
   }
 }
 """
-      return xla.call_module([x], version=2,
+      return xla.call_module([x], version=1,
                              module=module,
                              Tout=[res.dtype],
                              Sout=[res.shape],
@@ -295,13 +376,36 @@ module @jit_fun_3 {
     return %0 : tensor<?xi32>
   }
   func.func private @f(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xi32> {
-    %0 = mhlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
-    %1 = "mhlo.dynamic_iota"(%0) {iota_dimension = 0 : i64} : (tensor<1xi32>) -> tensor<?xi32>
+    %0 = stablehlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
+    %1 = "stablehlo.dynamic_iota"(%0) {iota_dimension = 0 : i64} : (tensor<1xi32>) -> tensor<?xi32>
     return %1 : tensor<?xi32>
   }
 }
 """
-      return xla.call_module([x,], version=1,
+      return xla.call_module([x,], version=2,
+                             module=module,
+                             Tout=[res.dtype],
+                             Sout=[()],
+                             dim_args_spec=['0.0'])
+
+    self._assertOpOutputMatchesExpected(f, (x,), (res,))
+
+  def test_identity(self):
+    x = np.ones((5,), dtype=np.float32)
+    res = x
+
+    def f(x):  # x: f32[b]
+      module = """
+module @jit_fun_3 {
+  func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+    return %arg1 : tensor<?xf32>
+  }
+}
+"""
+      return xla.call_module([
+          x,
+      ],
+                             version=2,
                              module=module,
                              Tout=[res.dtype],
                              Sout=[()],

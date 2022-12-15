@@ -41,19 +41,19 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_domain_metadata.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
-#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_lexer.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_schedule.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -1210,7 +1210,12 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
 
   // Add shared attributes like metadata to the instruction, if they were seen.
   if (sharding) {
-    instruction->set_sharding(HloSharding::FromProto(sharding.value()).value());
+    // TODO(b/257495070): Eliminate tuple sharding normalization in HLO parser.
+    // Allow existing HLO text with invalid sharding on tuple shapes by
+    // normalizing tuple sharding.
+    HloSharding hlo_sharding = HloSharding::FromProto(sharding.value()).value();
+    hlo_sharding = hlo_sharding.NormalizeTupleSharding(instruction->shape());
+    instruction->set_sharding(hlo_sharding);
   }
   if (parameter_replication) {
     int leaf_count = ShapeUtil::GetLeafCount(instruction->shape());
@@ -2428,12 +2433,24 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
                         &fusion_computation};
       optional<HloInstruction::FusionKind> fusion_kind;
       attrs["kind"] = {/*required=*/true, AttrTy::kFusionKind, &fusion_kind};
+      optional<
+          std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
+          output_to_operand_aliasing;
+      attrs["output_to_operand_aliasing"] = {/*required=*/false,
+                                             AttrTy::kInstructionAliasing,
+                                             &output_to_operand_aliasing};
       if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
         return nullptr;
       }
-      return builder->AddInstruction(HloInstruction::CreateFusion(
+      auto instr = builder->AddInstruction(HloInstruction::CreateFusion(
           *shape, *fusion_kind, operands, *fusion_computation));
+      auto fusion_instr = Cast<HloFusionInstruction>(instr);
+      if (output_to_operand_aliasing.has_value()) {
+        fusion_instr->set_output_to_operand_aliasing(
+            std::move(*output_to_operand_aliasing));
+      }
+      return instr;
     }
     case HloOpcode::kInfeed: {
       optional<std::string> config;
@@ -5024,19 +5041,20 @@ bool HloParserImpl::ParseDimLevelTypes(
     absl::InlinedVector<bool, InlineRank()>* dim_unique,
     absl::InlinedVector<bool, InlineRank()>* dim_ordered) {
   auto parse_and_add_item = [&]() {
-    bool dim_level_type_valid = false;
     if (lexer_.GetKind() == TokKind::kIdent) {
+      bool dim_level_type_valid = false;
+      DimLevelType dim_level_type;
       if (lexer_.GetStrVal() == "D") {
         lexer_.Lex();
-        dim_level_types->push_back(DIM_DENSE);
+        dim_level_type = DIM_DENSE;
         dim_level_type_valid = true;
       } else if (lexer_.GetStrVal() == "C") {
-        dim_level_types->push_back(DIM_COMPRESSED);
         lexer_.Lex();
+        dim_level_type = DIM_COMPRESSED;
         dim_level_type_valid = true;
       } else if (lexer_.GetStrVal() == "S") {
-        dim_level_types->push_back(DIM_SINGLETON);
         lexer_.Lex();
+        dim_level_type = DIM_SINGLETON;
         dim_level_type_valid = true;
       }
       if (dim_level_type_valid) {
@@ -5050,6 +5068,13 @@ bool HloParserImpl::ParseDimLevelTypes(
           new_dim_ordered = false;
           lexer_.Lex();
         }
+        if (!LayoutUtil::ValidateDimLevel(dim_level_type, new_dim_unique,
+                                          new_dim_ordered)) {
+          return Error(
+              lexer_.GetLoc(),
+              "invalid DimLevelType/unique/ordered combination in shape");
+        }
+        dim_level_types->push_back(dim_level_type);
         dim_unique->push_back(new_dim_unique);
         dim_ordered->push_back(new_dim_ordered);
         return true;

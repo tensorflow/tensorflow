@@ -31,15 +31,15 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/dot_as_convolution_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/sharding_op_util.h"
@@ -408,7 +408,7 @@ bool InferDotShardingFromOperands(
                                ? dnums.rhs_non_contracting_dims
                                : dnums.lhs_non_contracting_dims) {
       int64_t d = operand_index == 0 ? dim.lhs : dim.rhs;
-      if (d > 0) {
+      if (d >= 0) {
         contracting_dims.push_back(d);
       }
     }
@@ -939,12 +939,14 @@ Status CheckAndUpdateDeviceAssignmentsInWhileBody(
           return bad_status(instruction, device, channel_instruction,
                             *unique_device);
         }
-      } else if (opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv ||
+      } else if (((opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv) &&
+                  !Cast<HloSendRecvInstruction>(instruction)
+                       ->is_host_transfer())
                  // Cross-replica AllReduces don't have a channel_id, and we
                  // don't enforce any invariant about their device assignment.
-                 ((opcode == HloOpcode::kAllReduce ||
-                   opcode == HloOpcode::kReduceScatter) &&
-                  instruction->channel_id())) {
+                 || ((opcode == HloOpcode::kAllReduce ||
+                      opcode == HloOpcode::kReduceScatter) &&
+                     instruction->channel_id())) {
         channel_instruction = instruction;
         unique_device = device;
         if (!devices_to_instructions.empty()) {
@@ -1435,19 +1437,15 @@ int64_t ComputeNonRootUsers(const HloInstruction* instr) {
           // Set sharding only if it is different. We don't overwrite the
           // metadata if it has the same sharding besides metadata.
           if (!operand->has_sharding() || operand->sharding() != *sharding) {
-            if (operand->has_sharding() && operand->sharding().IsTuple() &&
-                !sharding->IsTuple()) {
+            HloSharding operand_sharding = *sharding;
+            if (operand->shape().IsTuple() && !sharding->IsTuple()) {
               // Expand sharding into tuple sharding per
               // CloneShardingForDomain() in
               // third_party/tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.cc
-              // Create Tuple HloSharding.
-              ShapeTree<HloSharding> output_tuple_sharding(operand->shape(),
-                                                           *sharding);
-              d->mutable_operand(0)->set_sharding(
-                  HloSharding::Tuple(output_tuple_sharding));
-            } else {
-              d->mutable_operand(0)->set_sharding(*sharding);
+              operand_sharding =
+                  HloSharding::SingleTuple(operand->shape(), *sharding);
             }
+            operand->set_sharding(operand_sharding);
           }
         }
         return OkStatus();
@@ -1877,7 +1875,9 @@ bool ShardingPropagation::InferShardingFromOperands(
            instruction->opcode() == HloOpcode::kDynamicSlice)) {
         return false;
       }
-      instruction->set_sharding(HloSharding::Manual(op->sharding().metadata()));
+      instruction->set_sharding(
+          HloSharding::Manual(op->sharding().metadata())
+              .NormalizeTupleSharding(instruction->shape()));
       return true;
     }
   }
@@ -2528,7 +2528,7 @@ StatusOr<bool> ShardingPropagation::Run(
         // propagate it to the other instructions, so they all share the same
         // sharding, in case the user didn't shard all of them. We don't check
         // that user shardings are consistent, because such check is already
-        // done by HloShardingVerifier.
+        // done by HLO verifier.
         const HloInstruction* sharded_inst = nullptr;
         auto related_instructions = get_related_instructions(instruction);
         for (auto inst : related_instructions) {

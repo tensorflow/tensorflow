@@ -2,8 +2,6 @@
 // RUN:     --vectorize-gml-st-loops="vectorize-gml-st-ops=true included-distribution-labels=test" \
 // RUN: | FileCheck %s
 
-#map0 = affine_map<(d0) -> (d0)>
-
 // CHECK-LABEL: @vectorize_gml_st_parallel_op(
 func.func @vectorize_gml_st_parallel_op(
     %arg0: tensor<32xf32>, %arg1: tensor<32xf32>)
@@ -28,14 +26,13 @@ func.func @vectorize_gml_st_parallel_op(
         : tensor<32xf32>[!gml_st.tile<4>] to tensor<4xf32>
       %7 = gml_st.materialize %arg1tile[%tile]
         : tensor<32xf32>[!gml_st.tile<4>] to tensor<4xf32>
-      %9 = linalg.generic {indexing_maps = [#map0, #map0],
-                          iterator_types = ["parallel"]}
-                          ins(%6: tensor<4xf32>)
-                          outs(%7 : tensor<4xf32>) {
-      ^bb0(%arg5: f32, %arg6: f32):
+      %9 = linalg.map
+                ins(%6: tensor<4xf32>)
+                outs(%7 : tensor<4xf32>)
+      (%arg5: f32) {
         %10 = arith.negf %arg5 : f32
         linalg.yield %10 : f32
-      } -> tensor<4xf32>
+      }
       gml_st.set_yield %9 into %arg1tile[%tile]
         : tensor<4xf32> into tensor<32xf32>[!gml_st.tile<4>]
     } : tensor<32xf32>
@@ -55,8 +52,6 @@ func.func @vectorize_gml_st_parallel_op(
 // CHECK:      vector.transfer_write %[[RESULT]], {{%.*}}[%c0]
 
 // -----
-
-#map0 = affine_map<(d0) -> (d0)>
 
 // CHECK-LABEL: @vectorize_gml_st_for_op(
 func.func @vectorize_gml_st_for_op(
@@ -82,14 +77,13 @@ func.func @vectorize_gml_st_for_op(
         : tensor<32xf32>[!gml_st.tile<4>] to tensor<4xf32>
       %7 = gml_st.materialize %out[%tile]
         : tensor<32xf32>[!gml_st.tile<4>] to tensor<4xf32>
-      %9 = linalg.generic {indexing_maps = [#map0, #map0],
-                          iterator_types = ["parallel"]}
-                          ins(%6: tensor<4xf32>)
-                          outs(%7 : tensor<4xf32>) {
-      ^bb0(%arg5: f32, %arg6: f32):
+      %9 = linalg.map
+                ins(%6: tensor<4xf32>)
+                outs(%7 : tensor<4xf32>)
+      (%arg5: f32) {
         %10 = arith.negf %arg5 : f32
         linalg.yield %10 : f32
-      } -> tensor<4xf32>
+      }
       gml_st.set_yield %9 into %out[%tile]
         : tensor<4xf32> into tensor<32xf32>[!gml_st.tile<4>]
     } : tensor<32xf32>
@@ -109,7 +103,7 @@ func.func @vectorize_gml_st_for_op(
 // CHECK:        %[[NEG:.*]] = arith.negf %[[LHSTILE]] : vector<4xf32>
 // CHECK:        gml_st.set_yield %[[NEG]] into %[[OUT]]
 // CHECK-SAME:   vector<4xf32> into vector<32xf32>
-// CHECK:      vector.transfer_write %[[RESULT]], %[[ARG1TILE]][%c0]
+// CHECK:      vector.transfer_write %[[RESULT]], %arg1[%c0]
 
 // -----
 
@@ -155,11 +149,9 @@ func.func @vectorize_loop_on_scalars(
 // CHECK:        %[[NEG:.*]] = arith.negf %[[LHSTILE]] : f32
 // CHECK:        gml_st.set_yield %[[NEG]] into %[[OUT]]
 // CHECK-SAME:   f32 into vector<32xf32>
-// CHECK:      vector.transfer_write %[[RESULT]], %[[ARG1TILE]][%c0]
+// CHECK:      vector.transfer_write %[[RESULT]], %arg1[%c0]
 
 // -----
-
-#map0 = affine_map<(d0) -> (d0)>
 
 // CHECK-LABEL: @skip_vectorization_with_wrong_label(
 func.func @skip_vectorization_with_wrong_label(
@@ -179,14 +171,13 @@ func.func @skip_vectorization_with_wrong_label(
         : tensor<32xf32>[!gml_st.tile<4>] to tensor<4xf32>
       %7 = gml_st.materialize %arg1[%tile]
         : tensor<32xf32>[!gml_st.tile<4>] to tensor<4xf32>
-      %9 = linalg.generic {indexing_maps = [#map0, #map0],
-                          iterator_types = ["parallel"]}
-                          ins(%6 : tensor<4xf32>)
-                          outs(%7 : tensor<4xf32>) {
-      ^bb0(%arg5: f32, %arg6: f32):
+      %9 = linalg.map
+                ins(%6: tensor<4xf32>)
+                outs(%7 : tensor<4xf32>)
+      (%arg5: f32) {
         %10 = arith.negf %arg5 : f32
         linalg.yield %10 : f32
-      } -> tensor<4xf32>
+      }
       gml_st.set_yield %9 into %arg1[%tile]
         : tensor<4xf32> into tensor<32xf32>[!gml_st.tile<4>]
     } : tensor<32xf32>

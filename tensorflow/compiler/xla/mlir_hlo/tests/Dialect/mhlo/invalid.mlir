@@ -132,3 +132,59 @@ func.func @pairwise_type_not_type(%arg0: tensor<1xf64>) -> tensor<1xf64> {
   %0 = mhlo.select %arg0, %arg1, %arg1 : %arg0
   func.return %0 : tensor<1xf64>
 }
+
+// -----
+
+func.func @reduce_precision_no_e_num(%arg0: tensor<3x4xf32>) -> (tensor<3x4xf32>) {
+  // expected-error @+1 {{custom op 'mhlo.reduce_precision' expected exponent mantissa in format e#m#, saw em2}}
+  %0 = mhlo.reduce_precision %arg0, format = em2 : tensor<3x4xf32>
+  func.return %0 : tensor<?x?xf64>
+}
+
+// -----
+
+func.func @reduce_precision_not_literal(%arg0: tensor<3x4xf32>) -> (tensor<3x4xf32>) {
+  // expected-error @+1 {{custom op 'mhlo.reduce_precision' expected valid keyword}}
+  %0 = mhlo.reduce_precision %arg0, format = "e2m2" : tensor<3x4xf32>
+  func.return %0 : tensor<?x?xf64>
+}
+
+// -----
+
+func.func @reduce_precision_no_em(%arg0: tensor<3x4xf32>) -> (tensor<3x4xf32>) {
+  // expected-error @+1 {{custom op 'mhlo.reduce_precision' expected exponent mantissa in format e#m#, saw z4f2}}
+  %0 = mhlo.reduce_precision %arg0, format = z4f2 : tensor<3x4xf32>
+  func.return %0 : tensor<?x?xf64>
+}
+
+// -----
+
+func.func @reduce_precision_em_order(%arg0: tensor<3x4xf32>) -> (tensor<3x4xf32>) {
+  // expected-error @+1 {{custom op 'mhlo.reduce_precision' expected exponent mantissa in format e#m#, saw m2e2}}
+  %0 = mhlo.reduce_precision %arg0, format = m2e2 : tensor<3x4xf32>
+  func.return %0 : tensor<?x?xf64>
+}
+
+// -----
+
+func.func @reduce_precision_no_e(%arg0: tensor<3x4xf32>) -> (tensor<3x4xf32>) {
+  // expected-error @+1 {{custom op 'mhlo.reduce_precision' expected exponent mantissa in format e#m#, saw m2}}
+  %0 = mhlo.reduce_precision %arg0, format = m2 : tensor<3x4xf32>
+  func.return %0 : tensor<?x?xf64>
+}
+
+// -----
+
+func.func @reduce_precision_no_m(%arg0: tensor<3x4xf32>) -> (tensor<3x4xf32>) {
+  // expected-error @+1 {{custom op 'mhlo.reduce_precision' expected exponent mantissa in format e#m#, saw e2}}
+  %0 = mhlo.reduce_precision %arg0, format = e2 : tensor<3x4xf32>
+  func.return %0 : tensor<?x?xf64>
+}
+
+// -----
+
+func.func @reduce_precision_no_m_num(%arg0: tensor<3x4xf32>) -> (tensor<3x4xf32>) {
+  // expected-error @+1 {{custom op 'mhlo.reduce_precision' expected exponent mantissa in format e#m#, saw e2m}}
+  %0 = mhlo.reduce_precision %arg0, format = e2m : tensor<3x4xf32>
+  func.return %0 : tensor<?x?xf64>
+}

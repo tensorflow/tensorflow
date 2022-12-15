@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/profiler/backends/cpu/traceme_recorder.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
 namespace profiler {

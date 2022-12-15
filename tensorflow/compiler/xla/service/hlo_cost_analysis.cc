@@ -14,17 +14,20 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "absl/algorithm/container.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -84,10 +87,16 @@ Status HloCostAnalysis::Postprocess(const HloInstruction* hlo) {
     current_properties_[kOptimalSecondsKey] = optimal_seconds;
   }
 
-  TF_RET_CHECK(hlo_properties_.emplace(hlo, current_properties_).second);
-  for (const auto& property : current_properties_) {
-    properties_sum_[property.first] += property.second;
+  for (const auto& [k, v] : current_properties_) {
+    properties_sum_[k] += v;
   }
+
+  // Move current_properties_ into hlo_properties_ and reset
+  // current_properties_.
+  auto [it_ignored, inserted] =
+      hlo_properties_.emplace(hlo, std::move(current_properties_));
+  current_properties_ = Properties();
+  TF_RET_CHECK(inserted);
 
   return OkStatus();
 }
@@ -522,7 +531,7 @@ Status HloCostAnalysis::HandleReduceWindow(
             << " reported for reduce-window:\n"
             << reduce_window->ToString();
   }
-  if (input_reuse_is_inefficient()) {
+  if (options_.count_multiple_input_accesses) {
     SetOperandUtilization(0, 1.0 * output_element_count * window_element_count /
                                  input_element_count);
     SetOperandBytesAccessed(
@@ -583,7 +592,7 @@ Status HloCostAnalysis::HandleBitcast(const HloInstruction*) {
 }
 
 Status HloCostAnalysis::HandleBroadcast(const HloInstruction* broadcast) {
-  if (input_reuse_is_inefficient()) {
+  if (options_.count_multiple_input_accesses) {
     SetOperandBytesAccessed(0, ShapeUtil::ElementsIn(broadcast->shape()));
     SetOperandUtilization(
         0, 1.0 * ShapeUtil::ElementsIn(broadcast->shape()) /
@@ -1010,7 +1019,7 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
             int64_t size = GetShapeSize(root->operand(1)->shape());
             current_properties_[kBytesAccessedKey] += size;
             SetOutputBytesAccessed(shape_index, size);
-            hlo_properties_[root][GetOperandUtilizationKey(0).c_str()] = 0;
+            hlo_properties_[root][GetOperandUtilizationKey(0)] = 0;
             return;
           }
         } else if (shape_index.size() == 1) {
@@ -1022,7 +1031,7 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
             current_properties_[kBytesAccessedKey] += size;
             SetOutputBytesAccessed(shape_index, size);
             hlo_properties_[root->operand(shape_index[0])]
-                           [GetOperandUtilizationKey(0).c_str()] = 0;
+                           [GetOperandUtilizationKey(0)] = 0;
             return;
           }
         }
@@ -1071,9 +1080,12 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
     if (instr->opcode() == HloOpcode::kConstant &&
         ShapeUtil::ElementsIn(instr->shape()) >
             immediate_constant_max_elements()) {
+      float utilization = hlo_properties_[instr][kUtilizationKey];
+      if (!options_.count_multiple_input_accesses) {
+        utilization = fmin(utilization, 1.0);
+      }
       current_properties_[kBytesAccessedKey] +=
-          GetShapeSize(instr->shape()) *
-          hlo_properties_[instr][kUtilizationKey];
+          GetShapeSize(instr->shape()) * utilization;
     }
   }
 

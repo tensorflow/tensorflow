@@ -867,11 +867,12 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
     // TF::MulOp is used to fold the constant.
     // TODO(b/139192933): switch to the TFL constant folding
     auto new_filter =
-        rewriter.create<TF::MulOp>(mul_op.getLoc(), filter, new_const_val).z();
+        rewriter.create<TF::MulOp>(mul_op.getLoc(), filter, new_const_val)
+            .getZ();
     // If bias isn't None, it needs to be multiplied as well.
     if (!bias.getType().isa<NoneType>()) {
-      bias =
-          rewriter.create<TF::MulOp>(mul_op.getLoc(), bias, constant_val).z();
+      bias = rewriter.create<TF::MulOp>(mul_op.getLoc(), bias, constant_val)
+                 .getZ();
     }
 
     auto fc = rewriter.create<TFL::FullyConnectedOp>(
@@ -978,7 +979,7 @@ struct FuseAffinOpAndMulWithQDQs : public OpRewritePattern<TFL::MulOp> {
     // Rewrite filter constant. Since the folder of TFL::MulOp couldn't
     // broadcast the operands, TF::MulOp is used to fold the constant.
     auto new_filter =
-        rewriter.create<TF::MulOp>(loc, filter, broadcasted_gamma).z();
+        rewriter.create<TF::MulOp>(loc, filter, broadcasted_gamma).getZ();
     // Update the scale in the quantize op.
     auto new_qtype = RescaleQtype(q_op.getQtype(), gamma_cst);
     if (!new_qtype) return failure();
@@ -1586,8 +1587,8 @@ struct OptimizeTopK : public OpRewritePattern<TFL::TopKV2Op> {
     auto k_values_or = ComputeSliceK(values);
     auto k_indices_or = ComputeSliceK(indices);
     if (!k_values_or.has_value() || !k_indices_or.has_value()) return failure();
-    int32_t k_values = k_values_or.getValue();
-    int32_t k_indices = k_indices_or.getValue();
+    int32_t k_values = k_values_or.value();
+    int32_t k_indices = k_indices_or.value();
     // We don't match two SliceOp with different sizes.
     if (k_values != k_indices && !values.use_empty() && !indices.use_empty())
       return failure();

@@ -80,6 +80,10 @@ struct GraphExecutionRunOptions {
 
   // If true, the cost of the op will be measured at the execution time.
   bool enable_cost_measurement = false;
+
+  // If true, just-in-time host compilation is disabled, and then if the
+  // specified graph is not compiled, the execution will return an error.
+  bool disable_compilation = false;
 };
 
 // Creates the default `SessionOptions` from a `GraphExecutionOptions`.

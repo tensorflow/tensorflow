@@ -25,6 +25,8 @@ limitations under the License.
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -171,6 +173,14 @@ class StreamExecutorInterface {
   // See the StreamExecutor interface for comments on the same-named methods.
   virtual port::Status Init(int device_ordinal,
                             DeviceOptions device_options) = 0;
+
+  // This value is cached by the wrapping StreamExecutor instance, so it's OK if
+  // this function is slow.
+  //
+  // The wrapping StreamExecutor will use the platform name if this is nullopt.
+  virtual std::optional<std::string> MakeDeviceDescriptionStr() const {
+    return std::nullopt;
+  }
 
   virtual port::Status GetKernel(const MultiKernelLoaderSpec& spec,
                                  KernelBase* kernel) {

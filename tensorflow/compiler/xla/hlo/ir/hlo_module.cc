@@ -39,10 +39,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/gtl/map_util.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -349,6 +349,13 @@ HloModuleProto HloModule::ToProto() const {
   return proto;
 }
 
+StatusOr<HloModuleProtoWithConfig> HloModule::ToProtoWithConfig() const {
+  HloModuleProtoWithConfig result;
+  TF_ASSIGN_OR_RETURN(*result.mutable_config(), config_.ToProto());
+  *result.mutable_hlo_module() = ToProto();
+  return result;
+}
+
 Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
   absl::flat_hash_set<std::string> computation_names;
   absl::flat_hash_set<int> computation_ids;
@@ -594,6 +601,15 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
     }
   }
   return config;
+}
+
+StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProtoWithConfig(
+    const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal) {
+  auto hlo_module_proto = proto.hlo_module();
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> config_ptr,
+                      HloModuleConfig::CreateFromProto(proto.config()));
+  return HloModule::CreateFromProto(hlo_module_proto, *config_ptr,
+                                    prohibit_empty_literal);
 }
 
 namespace {

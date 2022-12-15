@@ -1,6 +1,5 @@
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
     "tf_proto_library",
 )
 load(
@@ -34,6 +33,7 @@ default_package_visibility = [
 ]
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = default_package_visibility,
     features = [
         "-layering_check",
@@ -505,6 +505,7 @@ cc_library(
     name = "managed_stack_trace",
     hdrs = ["managed_stack_trace.h"],
     visibility = [
+        "//tensorflow:__pkg__",
         "//tensorflow/c/eager:__pkg__",
         "//tensorflow/compiler/mlir/tensorflow:__pkg__",
         "//tensorflow/core:__pkg__",
@@ -732,6 +733,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_wrapper",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_gpu_executor",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
+        "//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
     ] + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),
@@ -754,6 +756,7 @@ tf_kernel_library(
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
         "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
+        "//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
         "//tensorflow/compiler/xla/stream_executor/rocm:hipsparse_wrapper",
     ]),
 )
@@ -862,7 +865,6 @@ tf_cc_tests(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    linkstatic = tf_kernel_tests_linkstatic(),
     visibility = [
         "//tensorflow/core:__pkg__",
     ],
@@ -890,6 +892,7 @@ tf_cc_tests(
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:status_matchers",
         "//third_party/eigen3",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -906,7 +909,6 @@ tf_cc_test(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

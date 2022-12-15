@@ -8,6 +8,7 @@ load(
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -306,6 +307,7 @@ tf_py_test(
     srcs = ["restore_test.py"],
     deps = [
         ":restore",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python/eager:test",
     ],
 )
@@ -423,6 +425,7 @@ tf_py_test(
         ":checkpoint",
         ":saveable_compat",
         ":testdata/generate_checkpoint",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/trackable:base",

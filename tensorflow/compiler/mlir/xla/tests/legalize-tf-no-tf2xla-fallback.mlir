@@ -5555,7 +5555,7 @@ func.func @avgpool_grad_bf16(%grad: tensor<10x12x16x64xbf16>) -> tensor<10x24x32
 
 // CHECK-LABEL: xla_sharding
 func.func @xla_sharding(%arg0: tensor<4x16xf32>) -> tensor<4x16xf32> {
-  // CHECK-NEXT: "mhlo.custom_call"(%arg0) {call_target_name = "Sharding", mhlo.sharding = ""}
+  // CHECK-NEXT: mhlo.custom_call @Sharding(%arg0) {mhlo.sharding = ""}
   %0 = "tf.XlaSharding"(%arg0) {_XlaSharding = "", sharding = ""} : (tensor<4x16xf32>) -> tensor<4x16xf32>
   func.return %0 : tensor<4x16xf32>
 }

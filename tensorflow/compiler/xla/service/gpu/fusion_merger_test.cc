@@ -18,7 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -37,19 +37,9 @@ class FusionMergerTest : public HloTestBase {
     };
   }
 
-  GpuDeviceInfo A6000DeviceInfo() {
-    GpuDeviceInfo d;
-    d.shared_memory_per_core = 100 * 1024;
-    d.core_count = 84;
-    d.fpus_per_core = 128;
-    d.memory_bandwidth = (1 << 30) * 768L;
-    d.l2_cache_size = 6 * 1024 * 1024;
-    d.clock_rate_ghz = 1.410;
-    return d;
-  }
-
  public:
-  FusionMerger fusion_merger_{A6000DeviceInfo(), ShapeSizeBytesFunction()};
+  FusionMerger fusion_merger_{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+                              ShapeSizeBytesFunction()};
   FusionMergerTest() : HloTestBase() {}
 };
 
@@ -473,6 +463,29 @@ ENTRY e {
 })")
                     .value();
   EXPECT_FALSE(fusion_merger_.Run(module.get()).value());
+}
+
+TEST_F(FusionMergerTest, WillMergeSliceIntoReusingConsumer) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+f1 {
+  p01 = s8[1000000] parameter(0)
+  ROOT s0 = s8[10] slice(p01), slice={[0:10]}
+}
+
+f2 {
+  p02 = s8[10] parameter(0)
+  ROOT b0 = s8[10,1000000] broadcast(p02), dimensions={0}
+}
+
+ENTRY e {
+  p0 = s8[1000000] parameter(0)
+  f1 = s8[10] fusion(p0), kind=kLoop, calls=f1
+  ROOT r = s8[10,1000000] fusion(f1), kind=kLoop, calls=f2
+})")
+                    .value();
+  EXPECT_TRUE(fusion_merger_.Run(module.get()).value());
 }
 
 TEST_F(FusionMergerTest, WillMergeExpensiveFusionsIfSavesMemory) {

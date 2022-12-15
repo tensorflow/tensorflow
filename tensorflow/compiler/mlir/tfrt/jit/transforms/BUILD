@@ -4,6 +4,7 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 # TF to TFRT kernels conversion.
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/compiler/mlir/tfrt:friends"],
     licenses = ["notice"],
 )

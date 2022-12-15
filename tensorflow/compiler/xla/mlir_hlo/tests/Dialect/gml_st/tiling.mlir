@@ -3,6 +3,8 @@
 // RUN: --gml-tiling="tile-sizes=1,1 distribute=false op-label=tile-2d-point" \
 // RUN: --gml-tiling="tile-sizes=1 distribute=false op-label=tile-1d-point" \
 // RUN: --gml-tiling="tile-sizes=256,512 distribute=false op-label=tile-3d" \
+// RUN: --gml-tiling="tile-sizes=10 distribute=false op-label=tile-1d" \
+// RUN: --gml-tiling="tile-sizes=2,4 distribute=false op-label=tile-pad" \
 // RUN: --cse | \
 // RUN: FileCheck %s --check-prefix=CHECK-FOR
 
@@ -236,18 +238,16 @@ func.func @dynamic_broadcast_in_dim_at_tile(%init : tensor<?x?x?xf32>,
 // CHECK-FOR-SAME:      outs (%[[OUT:.*]] = %[[INIT]]: tensor<?x?x?xf32>)
 // CHECK-FOR:         %[[MIN:.*]] = affine.min #map{{[0-9]*}}(%[[I]])[%[[INIT_DIM_0]]]
 // CHECK-FOR:         %[[MIN_0:.*]] = affine.min #map{{[0-9]*}}(%[[J]])[%[[INIT_DIM_1]]]
-// CHECK-FOR:         %[[TILE:.*]] = gml_st.tile [%[[I]], %[[J]], %[[C0]]] [%[[MIN]], %[[MIN_0]], %[[INIT_DIM_2]]] [1, 1, 1]
 // CHECK-FOR:         %[[ARG_DIM_0:.*]] = tensor.dim %[[ARG]], %[[C0]]
 // CHECK-FOR:         %[[ARG_DIM_1:.*]] = tensor.dim %[[ARG]], %[[C1]]
-// CHECK-FOR:         %[[OUT_DIM_0:.*]] = tensor.dim %[[OUT]], %[[C0]]
-// CHECK-FOR:         %[[CMPI:.*]] = arith.cmpi ne, %[[ARG_DIM_0]], %[[OUT_DIM_0]]
-// CHECK-FOR:         %[[OUT_DIM_2:.*]] = tensor.dim %[[OUT]], %[[C2]]
-// CHECK-FOR:         %[[CMPI_0:.*]] = arith.cmpi ne, %[[ARG_DIM_1]], %[[OUT_DIM_2]]
+// CHECK-FOR:         %[[CMPI:.*]] = arith.cmpi ne, %[[ARG_DIM_0]], %[[INIT_DIM_0]]
+// CHECK-FOR:         %[[CMPI_0:.*]] = arith.cmpi ne, %[[ARG_DIM_1]], %[[INIT_DIM_2]]
 // CHECK-FOR:         %[[SELECT:.*]] = arith.select %[[CMPI]], %[[C0]], %[[I]]
 // CHECK-FOR:         %[[SELECT_0:.*]] = arith.select %[[CMPI]], %[[C1]], %[[MIN]]
 // CHECK-FOR:         %[[SELECT_1:.*]] = arith.select %[[CMPI_0]], %[[C1]], %[[INIT_DIM_2]]
-// CHECK-FOR:         %[[TILE_0:.*]] = gml_st.tile [%[[SELECT]], %[[C0]]] [%[[SELECT_0]], %[[SELECT_1]]] [1, 1]
+// CHECK-FOR:         %[[TILE:.*]] = gml_st.tile [%[[I]], %[[J]], %[[C0]]] [%[[MIN]], %[[MIN_0]], %[[INIT_DIM_2]]] [1, 1, 1]
 // CHECK-FOR:         %[[MATERIALIZE:.*]] = gml_st.materialize %[[OUT]][%[[TILE]]]
+// CHECK-FOR:         %[[TILE_0:.*]] = gml_st.tile [%[[SELECT]], %[[C0]]] [%[[SELECT_0]], %[[SELECT_1]]] [1, 1]
 // CHECK-FOR:         %[[MATERIALIZE_0:.*]] = gml_st.materialize %[[ARG]][%[[TILE_0]]]
 // CHECK-FOR:         %[[DYNAMIC:.*]] = thlo.dynamic_broadcast_in_dim
 // CHECK-FOR-SAME:        ins(%[[MATERIALIZE_0]]
@@ -336,9 +336,9 @@ func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
     -> tensor<?x?xi32> {
   %concat = thlo.concatenate
       ins(%a : tensor<?x?xi32>, %b : tensor<?x?xi32>, %c : tensor<?x?xi32>)
-      outs(%init : tensor<?x?xi32>) {
-      dimension = 1 : i64,
-      op_label = "tile-2d" }
+      outs(%init : tensor<?x?xi32>)
+      dimension = 1
+      { op_label = "tile-2d" }
   func.return %concat : tensor<?x?xi32>
 }
 
@@ -358,7 +358,6 @@ func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
 // CHECK-FOR-SAME:      outs (%[[ARG6:.*]] = %[[ARG0]]: tensor<?x?xi32>)
 // CHECK-FOR:         %[[MIN:.*]] = affine.min #map{{[0-9]*}}(%[[ARG4]])[%[[DIM]]]
 // CHECK-FOR:         %[[MIN_0:.*]] = affine.min #map{{[0-9]*}}(%[[ARG5]])[%[[DIM_0]]]
-// CHECK-FOR:         %[[TILE:.*]] = gml_st.tile [%[[ARG4]], %[[ARG5]]] [%[[MIN]], %[[MIN_0]]] [1, 1]
 // CHECK-FOR:         %[[DIM_4:.*]] = tensor.dim %[[ARG1]], %[[C1]]
 // CHECK-FOR:         %[[MINUI:.*]] = arith.minui %[[ARG5]], %[[DIM_4]]
 // CHECK-FOR:         %[[SUBI:.*]] = arith.subi %[[DIM_4]], %[[MINUI]]
@@ -383,11 +382,12 @@ func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
 // CHECK-FOR:         %[[MINUI_4:.*]] = arith.minui %[[SUBI_3]], %[[MIN_0]]
 // CHECK-FOR:         %[[TILE_2:.*]] = gml_st.tile [%[[ARG4]], %[[MINUI_3]]] [%[[MIN]], %[[MINUI_4]]] [%[[C1]], %[[C1]]]
 // CHECK-FOR:         %[[MATERIALIZE_1:.*]] = gml_st.materialize %[[ARG3]][%[[TILE_2]]]
+// CHECK-FOR:         %[[TILE:.*]] = gml_st.tile [%[[ARG4]], %[[ARG5]]] [%[[MIN]], %[[MIN_0]]] [1, 1]
 // CHECK-FOR:         %[[MATERIALIZE_2:.*]] = gml_st.materialize %[[ARG6]][%[[TILE]]]
 // CHECK-FOR:         %[[CONCATENATE:.*]] = thlo.concatenate
 // CHECK-FOR-SAME:        ins(%[[MATERIALIZE]] : tensor<?x?xi32>, %[[MATERIALIZE_0]] : tensor<?x?xi32>, %[[MATERIALIZE_1]] : tensor<?x?xi32>)
 // CHECK-FOR-SAME:        outs(%[[MATERIALIZE_2]] : tensor<?x?xi32>)
-// CHECK-FOR-SAME:        {dimension = 1 : i64}
+// CHECK-FOR-SAME:        dimension = 1
 // CHECK-FOR:         gml_st.set_yield %[[CONCATENATE]] into %[[ARG6]][%[[TILE]]]
 // CHECK-FOR:       return %[[FOR]]
 
@@ -401,7 +401,9 @@ func.func @sort(%input1: tensor<?x?x?xf32>, %input2: tensor<?x?x?xi32>,
   %sorted1, %sorted2 = thlo.sort
       ins(%input1: tensor<?x?x?xf32>, %input2: tensor<?x?x?xi32>)
       outs(%init1: tensor<?x?x?xf32>, %init2: tensor<?x?x?xi32>)
-      { dimension = 1 : i64, is_stable = true, op_label = "tile-3d" }
+      dimension = 1
+      is_stable = true
+      {op_label = "tile-3d" }
       (%e11: f32, %e12: f32, %e21: i32, %e22: i32) {
         %gt = arith.cmpf ogt, %e11, %e12: f32
         thlo.yield %gt : i1
@@ -438,8 +440,8 @@ func.func @sort(%input1: tensor<?x?x?xf32>, %input2: tensor<?x?x?xi32>,
 // CHECK-FOR-SAME:        ins(%[[IN0_SUB]] : tensor<?x?x?xf32>, %[[IN1_SUB]] : tensor<?x?x?xi32>)
 // CHECK-FOR-SAME:        outs(%[[INIT0_SUB]] : tensor<?x?x?xf32>, %[[INIT1_SUB]] : tensor<?x?x?xi32>)
 // CHECK-FOR:         gml_st.set_yield
-// CHECK-FOR-SAME:        %[[RESULT_TILE:.*]]#0 into %[[INIT0_]][%[[TILE]]]
-// CHECK-FOR:             %[[RESULT_TILE]]#1 into %[[INIT1_]][%[[TILE]]]
+// CHECK-FOR-SAME:        %[[RESULT_TILE:.*]]0 into %[[INIT0_]][%[[TILE]]]
+// CHECK-FOR:             %[[RESULT_TILE]]1 into %[[INIT1_]][%[[TILE]]]
 
 // -----
 
@@ -453,7 +455,9 @@ func.func @sort2(%input1: tensor<1024x2048x4096xf32>,
           %input2: tensor<1024x2048x4096xi32>)
       outs(%init1: tensor<1024x2048x4096xf32>,
            %init2: tensor<1024x2048x4096xi32>)
-      { dimension = 1 : i64, is_stable = true, op_label = "tile-3d" }
+      dimension = 1
+      is_stable = true
+      { op_label = "tile-3d" }
       (%e11: f32, %e12: f32, %e21: i32, %e22: i32) {
         %gt = arith.cmpf ogt, %e11, %e12: f32
         thlo.yield %gt : i1
@@ -463,3 +467,107 @@ func.func @sort2(%input1: tensor<1024x2048x4096xf32>,
 }
 
 // CHECK-FOR-LABEL: func.func @sort2
+
+// -----
+
+func.func @reverse_static(%input: tensor<100xf32>, %init: tensor<100xf32>)
+  -> tensor<100xf32> {
+  %res = thlo.reverse
+         ins(%input: tensor<100xf32>)
+         outs(%init: tensor<100xf32>)
+         reverse_dimensions = [0]
+         { op_label = "tile-1d" }
+  func.return %res : tensor<100xf32>
+}
+
+// CHECK-FOR-LABEL: func @reverse_static
+//  CHECK-FOR-SAME: %[[ARG0:.*]]: tensor<100xf32>, %[[ARG1:.*]]: tensor<100xf32>
+//       CHECK-FOR:   %[[FOR:.*]] = gml_st.for (%[[ITR:.*]]) =
+//  CHECK-FOR-SAME:   outs (%[[ARG3:.*]] = %[[ARG1]]
+//       CHECK-FOR:     %[[IN_TILE_DIM:.*]] = arith.subi
+//   CHECK-FOR-DAG:     %[[IN_TILE:.*]] = gml_st.tile [%[[IN_TILE_DIM]]]
+//   CHECK-FOR-DAG:     %[[IN_SLICE:.*]] = gml_st.materialize %[[ARG0]][%[[IN_TILE]]]
+//   CHECK-FOR-DAG:     %[[INIT_TILE:.*]] = gml_st.tile [%[[ITR]]]
+//   CHECK-FOR-DAG:     %[[INIT_SLICE:.*]] = gml_st.materialize %[[ARG3]][%[[INIT_TILE]]]
+//       CHECK-FOR:     %[[REVERSED:.*]] = thlo.reverse ins(%[[IN_SLICE]]
+//      CHECK-SAME:     outs(%[[INIT_SLICE]]
+//       CHECK-FOR:   gml_st.set_yield %[[REVERSED]] into %[[ARG3]][%[[INIT_TILE]]]
+//       CHECK-FOR:   return %[[FOR]]
+
+// -----
+
+func.func @reverse_dynamic(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
+  -> tensor<?x?xf32> {
+  %res = thlo.reverse
+         ins(%input: tensor<?x?xf32>)
+         outs(%init: tensor<?x?xf32>)
+         reverse_dimensions = [0, 1]
+         { op_label = "tile-2d" }
+  func.return %res : tensor<?x?xf32>
+}
+
+// CHECK-FOR-LABEL: func @reverse_dynamic(
+//  CHECK-FOR-SAME: %[[ARG0:.*]]: tensor<?x?xf32>, %[[ARG1:.*]]: tensor<?x?xf32>
+//   CHECK-FOR-DAG:   %[[C0:.*]] = arith.constant 0
+//   CHECK-FOR-DAG:   %[[C1:.*]] = arith.constant 1
+//   CHECK-FOR-DAG:   %[[DIM:.*]] = tensor.dim %[[ARG1]], %[[C0]]
+//   CHECK-FOR-DAG:   %[[DIM0:.*]] = tensor.dim %[[ARG1]], %[[C1]]
+//       CHECK-FOR:   %[[FOR:.*]] = gml_st.for (%[[ITR0:.*]], %[[ITR1:.*]]) =
+//  CHECK-FOR-SAME:   (%[[C0]], %[[C0]]) to (%[[DIM]], %[[DIM0]])
+//  CHECK-FOR-SAME:   outs (%[[ARG4:.*]] = %[[ARG1]]
+//   CHECK-FOR-DAG:     %[[DIM1:.*]] = tensor.dim %[[ARG0]], %[[C0]]
+//   CHECK-FOR-DAG:     %[[DIM2:.*]] = tensor.dim %[[ARG0]], %[[C1]]
+//   CHECK-FOR-DAG:     %[[IN_TILE_DIM0:.*]] = arith.subi %[[DIM1]], %[[ITR0]]
+//   CHECK-FOR-DAG:     %[[IN_TILE_DIM1:.*]] = arith.subi %[[DIM2]], %[[ITR1]]
+//   CHECK-FOR-DAG:     %[[IN_TILE:.*]] = gml_st.tile [%[[IN_TILE_DIM0]], %[[IN_TILE_DIM1]]]
+//   CHECK-FOR-DAG:     %[[IN_SLICE:.*]] = gml_st.materialize %[[ARG0]][%[[IN_TILE]]]
+//   CHECK-FOR-DAG:     %[[INIT_TILE:.*]] = gml_st.tile [%[[ITR0]], %[[ITR1]]]
+//   CHECK-FOR-DAG:     %[[INIT_SLICE:.*]] = gml_st.materialize %[[ARG4]][%[[INIT_TILE]]]
+//       CHECK-FOR:     %[[REVERSED:.*]] = thlo.reverse ins(%[[IN_SLICE]]
+//  CHECK-FOR-SAME:     outs(%[[INIT_SLICE]]
+//       CHECK-FOR:   gml_st.set_yield %[[REVERSED]] into %[[ARG4]][%[[INIT_TILE]]]
+//       CHECK-FOR:   return %[[FOR]]
+
+// -----
+
+func.func @static_pad_tensor(%input_tensor: tensor<7x9xf32>,
+    %pad_value: f32) -> tensor<8x16xf32> {
+  %0 = tensor.pad %input_tensor low[0, 0] high[1, 7] {
+    ^bb0(%arg1: index, %arg2: index):
+      tensor.yield %pad_value : f32
+    } { op_label = "tile-pad" }
+    : tensor<7x9xf32> to tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+}
+// CHECK-FOR-LABEL: func @static_pad_tensor(
+//  CHECK-FOR-SAME:     %[[IN:.*]]: tensor<7x9xf32>
+
+// CHECK-FOR-DAG:      %[[C8:.*]] = arith.constant 8
+// CHECK-FOR-DAG:      %[[C16:.*]] = arith.constant 16
+// CHECK-FOR-DAG:      %[[C0:.*]] = arith.constant 0
+// CHECK-FOR-DAG:      %[[C2:.*]] = arith.constant 2
+// CHECK-FOR-DAG:      %[[C4:.*]] = arith.constant 4
+// CHECK-FOR-DAG:      %[[C7:.*]] = arith.constant 7
+// CHECK-FOR-DAG:      %[[C9:.*]] = arith.constant 9
+// CHECK-FOR-DAG:      %[[OUT:.*]] = tensor.empty() : tensor<8x16xf32>
+
+// CHECK-FOR:       gml_st.for (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]]) to (%[[C8]], %[[C16]])
+// CHECK-FOR-SAME:      step (%[[C2]], %[[C4]])
+// CHECK-FOR-SAME:      outs (%[[OUT_:.*]] = %[[OUT]]: tensor<8x16xf32>) {
+// CHECK-FOR:         %[[IN_TILE:.*]] = gml_st.tile
+// CHECK-FOR:         %[[SLICE:.*]] = gml_st.materialize %[[IN:.*]][%[[IN_TILE]]]
+// CHECK-FOR-SAME:      : tensor<7x9xf32>[!gml_st.tile<?x?>] to tensor<?x?xf32>
+
+// CHECK-FOR:         %[[PAD:.*]] = tensor.pad %[[SLICE]] low[0, 0]
+// CHECK-FOR:         ^bb0(%[[VAL_20:.*]]: index, %[[VAL_21:.*]]: index):
+// CHECK-FOR:           tensor.yield %[[VAL_22:.*]] : f32
+// CHECK-FOR:         } : tensor<?x?xf32> to tensor<?x?xf32>
+
+// CHECK-FOR:         %[[CAST:.*]] = tensor.cast %[[PAD]]
+// CHECK-FOR-SAME:      : tensor<?x?xf32> to tensor<2x4xf32>
+// CHECK-FOR:         %[[OUT_TILE:.*]] = gml_st.tile [%[[I]], %[[J]]] [2, 4] [1, 1]
+// CHECK-FOR-SAME:      : !gml_st.tile<2x4>
+// CHECK-FOR:         gml_st.set_yield %[[CAST]] into %[[OUT_]][%[[OUT_TILE]]]
+// CHECK-FOR-SAME:      tensor<2x4xf32> into tensor<8x16xf32>[!gml_st.tile<2x4>]
+// CHECK-FOR:       } : tensor<8x16xf32>
+

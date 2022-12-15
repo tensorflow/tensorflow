@@ -10,6 +10,7 @@ load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 # xla_enable_strict_auto_jit to False to disable XLA tests.
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -121,6 +122,7 @@ cuda_py_test(
         "no_rocm",
         "no_windows",
         "nomac",
+        "requires-net:external",
     ],
     xla_enable_strict_auto_jit = False,
     deps = [

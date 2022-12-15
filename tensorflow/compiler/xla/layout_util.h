@@ -239,6 +239,15 @@ class LayoutUtil {
   // returns Layout::kDefaultMemorySpace.
   static int64_t MemorySpace(const Shape& shape);
 
+  static xla::DimLevelType GetDimLevelType(const Layout& layout, int64_t dim);
+  static bool DimUnique(const Layout& layout, int64_t dim);
+  static bool DimOrdered(const Layout& layout, int64_t dim);
+
+  // Return true iff the given DimLevelType and dim_unique/dim_ordered values
+  // represent a valid encoding.
+  static bool ValidateDimLevel(xla::DimLevelType dim_level_type,
+                               bool dim_unique, bool dim_ordered);
+
  private:
   LayoutUtil(const LayoutUtil&) = delete;
   LayoutUtil& operator=(const LayoutUtil&) = delete;

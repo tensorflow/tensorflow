@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_library", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -45,8 +46,9 @@ py_library(
 
 tf_py_test(
     name = "failure_handler_test",
+    timeout = "long",
     srcs = ["failure_handler_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     tags = [
         "no_windows",  # TODO(b/197981388)
     ],

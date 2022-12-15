@@ -438,14 +438,10 @@ Status Executable::ReturnResults(unsigned ordinal,
     auto results_memory_layout = GetResultsMemoryLayout(fn.runtime_signature);
     if (!results_memory_layout.ok()) return results_memory_layout.status();
 
-    Executable::Function function{std::move(fn.name),
-                                  (*engine)->exported(indexed.index()),
-                                  std::move(fn.signature),
-                                  std::move(fn.runtime_signature),
-                                  std::move(*args_memory_layout),
-                                  std::move(*results_memory_layout)};
-
-    functions.push_back(std::move(function));
+    functions.push_back(Executable::Function(
+        std::move(fn.name), (*engine)->exported(indexed.index()),
+        std::move(fn.signature), std::move(fn.runtime_signature),
+        std::move(*args_memory_layout), std::move(*results_memory_layout)));
   }
 
   return Executable(name, std::move(memory_mapper), std::move(*engine),
@@ -565,11 +561,23 @@ bool CustomCall(ExecutionContext* ctx, const char* target, void** args,
                 void** attrs, void** rets) {
   assert(ctx && target && args && attrs && rets && "must be not null");
   assert(ctx->custom_call_registry && "custom call registry must be not null");
-  if (ctx->custom_call_registry == nullptr) return false;
+
+  const DiagnosticEngine* diagnostic = ctx->diagnostic_engine;
+
+  if (ctx->custom_call_registry == nullptr) {
+    if (diagnostic)
+      diagnostic->EmitError(
+          absl::InternalError("custom call registry is not available"));
+    return false;
+  }
 
   auto* custom_call = ctx->custom_call_registry->Find(target);
-  assert(custom_call && "custom call not found");
-  if (custom_call == nullptr) return false;
+  if (custom_call == nullptr) {
+    if (diagnostic)
+      diagnostic->EmitError(absl::InternalError(absl::StrFormat(
+          "custom call is not registered with runtime: %s", target)));
+    return false;
+  }
 
   return succeeded(custom_call->call(args, attrs, rets, ctx->custom_call_data,
                                      ctx->diagnostic_engine));

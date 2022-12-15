@@ -2,7 +2,10 @@
 
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
-package(licenses = ["notice"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
 
 # CPU-only tests should use tf_py_test, GPU tests use cuda_py_test
 # Please avoid the py_tests and cuda_py_tests (plural) while we

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_PERFORMANCE_MODEL_H_
 
 #include <cstdint>
+#include <vector>
 
 #include "absl/time/time.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
@@ -44,7 +45,9 @@ class GpuPerformanceModel {
   };
   static struct RunTimes EstimateRunTimes(
       const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
-      const GpuDeviceInfo& gpu_device_info);
+      const GpuDeviceInfo& gpu_device_info,
+      const std::vector<HloInstruction*> fused_users = {},
+      bool multi_output = false);
 };
 
 }  // namespace gpu

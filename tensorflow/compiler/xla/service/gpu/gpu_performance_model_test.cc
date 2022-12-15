@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_performance_model.h"
 
 #include <memory>
+#include <utility>
 
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -24,23 +26,22 @@ namespace gpu {
 namespace {
 
 class GpuPerformanceModelTest : public HloTestBase {
+  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
+    return [&](const Shape& shape) {
+      constexpr int64_t kPointerSize = 8;
+      return ShapeUtil::ByteSizeOf(shape, kPointerSize);
+    };
+  }
+
  public:
-  static int64_t shape_size(const Shape& shape) {
-    constexpr int64_t kPointerSize = 8;
-    return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-  }
-  GpuDeviceInfo device_info_;
-  GpuPerformanceModelTest() : HloTestBase() {
-    // Values for RTX A6000.
-    // The reference times in the test cases below are measured
-    // on A6000 by profiling the execution of the HLOs.
-    device_info_.shared_memory_per_core = 100 * 1024;
-    device_info_.core_count = 84;
-    device_info_.fpus_per_core = 128;
-    device_info_.memory_bandwidth = (1 << 30) * 768L;
-    device_info_.l2_cache_size = 6 * 1024 * 1024;
-    device_info_.clock_rate_ghz = 1.410;
-  }
+  HloCostAnalysis::Options options_{ShapeSizeBytesFunction(),
+                                    /*per_second_rates=*/{},
+                                    /*count_multiple_input_accesses=*/true};
+  GpuHloCostAnalysis analysis_{options_};
+  // The reference times in the test cases below are measured
+  // on A6000 by profiling the execution of the HLOs.
+  GpuDeviceInfo device_info_ = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  GpuPerformanceModelTest() : HloTestBase() {}
 };
 
 TEST_F(GpuPerformanceModelTest, LargeWrite) {
@@ -59,11 +60,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis, device_info_);
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   // Dominated by the DRAM bandwidth.
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 57, 10);
 }
@@ -87,11 +87,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(root->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis, device_info_);
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   // Dominated by the kernel launch overhead.
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 2, 1);
 }
@@ -101,27 +100,26 @@ TEST_F(GpuPerformanceModelTest, LargeReadWrite) {
 HloModule m
 
 f {
- p0 = f32[1000000] parameter(0)
- p1 = f32[1000000] parameter(1)
- ROOT a0 = f32[1000000] add(p0, p1)
+ p0 = f32[10000000] parameter(0)
+ p1 = f32[10000000] parameter(1)
+ ROOT a0 = f32[10000000] add(p0, p1)
 }
 
 ENTRY e {
- p0 = f32[1000000] parameter(0)
- p1 = f32[1000000] parameter(1)
- ROOT r.1 = f32[1000000] fusion(p0, p1), kind=kLoop, calls=f
+ p0 = f32[10000000] parameter(0)
+ p1 = f32[10000000] parameter(1)
+ ROOT r.1 = f32[10000000] fusion(p0, p1), kind=kLoop, calls=f
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(root->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis, device_info_);
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   // Dominated by the DRAM bandwidth.
-  EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 18, 3);
+  EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 175, 30);
 }
 
 TEST_F(GpuPerformanceModelTest, L1CacheEffect) {
@@ -129,30 +127,29 @@ TEST_F(GpuPerformanceModelTest, L1CacheEffect) {
 HloModule m
 
 f {
-  p0 = f32[1000] parameter(0)
-  bc0 = f32[1000,1000] broadcast(p0), dimensions={0}
-  b0 = f32[1000000] bitcast(bc0)
-  p1 = f32[1000000] parameter(1)
-  ROOT a0 = f32[1000000] add(b0, p1)
+  p0 = f32[10000] parameter(0)
+  bc0 = f32[10000,1000] broadcast(p0), dimensions={0}
+  b0 = f32[10000000] bitcast(bc0)
+  p1 = f32[10000000] parameter(1)
+  ROOT a0 = f32[10000000] add(b0, p1)
 }
 
 ENTRY e {
-  p0 = f32[1000] parameter(0)
-  p1 = f32[1000000] parameter(1)
-  ROOT r.1 = f32[1000000] fusion(p0, p1), kind=kLoop, calls=f
+  p0 = f32[10000] parameter(0)
+  p1 = f32[10000000] parameter(1)
+  ROOT r.1 = f32[10000000] fusion(p0, p1), kind=kLoop, calls=f
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(root->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis, device_info_);
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   // Parameter 0 read is accelerated by L1 cache even though the total data
   // volume is the same as in the test LargeReadWrite above.
-  EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 11, 1);
+  EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 118, 12);
 }
 
 TEST_F(GpuPerformanceModelTest, L2CacheEffect) {
@@ -176,11 +173,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(root->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis, device_info_);
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   // Parameter 0 read is accelerated by L2 cache (does not fit in L1).
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 123, 12);
 }
@@ -223,11 +219,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(root->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis, device_info_);
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 482, 48);
 }
 
@@ -268,11 +263,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(root->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis, device_info_);
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 312, 31);
 }
 
@@ -313,11 +307,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(root->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis, device_info_);
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 7100, 700);
 }
 
@@ -340,11 +333,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(root->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis, device_info_);
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 1100, 110);
 }
 
@@ -366,11 +358,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(root->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis, device_info_);
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 1400, 140);
 }
 
@@ -412,11 +403,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(root->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis, device_info_);
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 20000, 2000);
 }
 
@@ -458,11 +448,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(root->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis, device_info_);
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 794, 80);
 }
 
@@ -504,11 +493,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(root->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis, device_info_);
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 4700, 470);
 }
 
@@ -540,11 +528,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(root->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis, device_info_);
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 93000, 9300);
 }
 
@@ -576,11 +563,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(root->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis, device_info_);
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 36000, 3600);
 }
 
@@ -621,11 +607,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(root->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis, device_info_);
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 14000, 1400);
 }
 
@@ -666,11 +651,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(root->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis, device_info_);
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 200, 20);
 }
 
@@ -709,11 +693,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(root->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis, device_info_);
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 7800, 780);
 }
 
@@ -743,11 +726,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(root->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis, device_info_);
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 83000, 8000);
 }
 
@@ -788,11 +770,10 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(root->Accept(&analysis_));
 
   GpuPerformanceModel::RunTimes t =
-      GpuPerformanceModel::EstimateRunTimes(root, &analysis, device_info_);
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 6300, 630);
 }
 
@@ -824,13 +805,44 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  GpuHloCostAnalysis analysis({shape_size});
-  ASSERT_IS_OK(root->Accept(&analysis));
+  ASSERT_IS_OK(root->Accept(&analysis_));
 
   HloInstruction* instruction = root;
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-      instruction, &analysis, device_info_);
+      instruction, &analysis_, device_info_);
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 64000, 6400);
+}
+
+TEST_F(GpuPerformanceModelTest, UnusedParameter) {
+  Shape shape = ShapeUtil::MakeShape(F32, {100000});
+
+  auto module = std::make_unique<HloModule>("m", HloModuleConfig{});
+  HloComputation::Builder b("b");
+  auto p0 = b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  auto p1 = b.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+
+  HloComputation::Builder sub_builder("subcomp");
+  HloInstruction* p0f = sub_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "p0f"));
+  // p1f is not used.
+  HloInstruction* p1f = sub_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape, "p1f"));
+  ASSERT_NE(p1f, nullptr);
+  sub_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0f));
+
+  HloComputation* subcomp = module->AddEmbeddedComputation(sub_builder.Build());
+  auto fusion = HloInstruction::CreateFusion(
+      shape, HloInstruction::FusionKind::kLoop, {p0, p1}, subcomp);
+  b.AddInstruction(std::move(fusion));
+  module->AddEntryComputation(b.Build());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  GpuPerformanceModel::RunTimes t =
+      GpuPerformanceModel::EstimateRunTimes(root, &analysis_, device_info_);
+  EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 2, 1);
 }
 
 }  // namespace
