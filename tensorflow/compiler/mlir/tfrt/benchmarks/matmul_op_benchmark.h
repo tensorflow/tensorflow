@@ -69,6 +69,8 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
   TfJitRtPipelineOptions tf_jitrt_opts;
   tf_jitrt_opts.vectorize = tensorflow::GetJitRtFlags().vectorize;
   tf_jitrt_opts.lower_to_mmt4d = tensorflow::GetJitRtFlags().pack_matmul;
+  tf_jitrt_opts.enable_xla_cpu_transformations =
+      tensorflow::GetJitRtFlags().enable_xla_cpu_transformations;
   tf_jitrt_opts.matmul_tile_sizes = {state.range(3), state.range(4),
                                      state.range(5)};
 
