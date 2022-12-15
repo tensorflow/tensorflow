@@ -20,6 +20,7 @@ limitations under the License.
 #include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/fusion/fusion.h"
 #include "gml_st/transforms/passes.h"
+#include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -39,13 +40,14 @@ namespace {
 static constexpr llvm::StringRef kMapTransformedLabel =
     "__map_transformed_label__";
 
-struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
+template <typename OpType>
+struct TileMapPattern : public OpRewritePattern<OpType> {
   TileMapPattern(MLIRContext *context, TilingOptions options,
                  PatternBenefit benefit = 1)
-      : OpRewritePattern<linalg::MapOp>(context, benefit),
+      : OpRewritePattern<OpType>(context, benefit),
         options(std::move(options)) {}
 
-  LogicalResult matchAndRewrite(linalg::MapOp op,
+  LogicalResult matchAndRewrite(OpType op,
                                 PatternRewriter &rewriter) const override {
     if (hasLabel(op, kMapTransformedLabel)) return failure();
 
@@ -54,7 +56,7 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
           op, "has already been tiled by another pass.");
 
     auto fuseFilterFn = [](Operation *op) {
-      return isa<linalg::BroadcastOp, linalg::MapOp>(op);
+      return isa<linalg::BroadcastOp, OpType>(op);
     };
 
     // Find there another linalg.map where this op can be fused.
@@ -81,10 +83,9 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
 
  private:
   // Find the root of the fusion cluster.
-  linalg::MapOp findRootMap(
-      linalg::MapOp op,
-      llvm::function_ref<bool(Operation *)> fuseFilterFn) const {
-    linalg::MapOp rootMap = op;
+  OpType findRootMap(OpType op,
+                     llvm::function_ref<bool(Operation *)> fuseFilterFn) const {
+    OpType rootMap = op;
 
     Operation *curOp = op;
     while (fuseFilterFn(curOp)) {
@@ -93,7 +94,7 @@ struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
       if (users.size() != 1) break;
       curOp = users[0];
 
-      if (auto curMap = dyn_cast<linalg::MapOp>(curOp)) rootMap = curMap;
+      if (auto curMap = dyn_cast<OpType>(curOp)) rootMap = curMap;
     }
     return rootMap;
   }
@@ -118,7 +119,12 @@ struct TransformMapForCpuPass
     mlir::gml_st::TilingOptions opts;
 
     opts.tileSizeComputationFn = [&](OpBuilder &b, Operation *op) {
-      auto numLoops = cast<linalg::MapOp>(op).getNumLoops();
+      assert(isa<linalg::MapOp>(op) ||
+             isa<linalg::FillOp>(op) &&
+                 " only linalg.map or linalg.fill expected");
+      auto numLoops = isa<linalg::MapOp>(op)
+                          ? cast<linalg::MapOp>(op).getNumLoops()
+                          : cast<linalg::FillOp>(op).getNumLoops();
       SmallVector<Value> tiles(
           numLoops, b.create<arith::ConstantIndexOp>(op->getLoc(), 1));
       if (!tiles.empty())
@@ -127,13 +133,17 @@ struct TransformMapForCpuPass
     };
 
     RewritePatternSet patterns(context);
-    patterns.add<TileMapPattern>(context, opts);
+    patterns.add<TileMapPattern<linalg::MapOp>, TileMapPattern<linalg::FillOp>>(
+        context, opts);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();
     }
 
-    f.walk([](linalg::MapOp op) { removeLabel(op, kMapTransformedLabel); });
+    f.walk([](Operation *op) {
+      if (isa<linalg::MapOp, linalg::FillOp>(op))
+        removeLabel(op, kMapTransformedLabel);
+    });
   }
 };
 
