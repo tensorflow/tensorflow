@@ -26,6 +26,19 @@ def TilingInterface : OpInterface<"TilingInterface"> {
   let methods = [
       InterfaceMethod<
         /*desc=*/[{
+          Returns a list of operands into which the result of the
+          tiled implementation is written into. With `tensor`
+          operands, this will be used as the initial tensor into which
+          the tiled results are inserted into. With `memref` operands,
+          this will be the operand into which the result of the tiled
+          operation is written into.
+        }],
+        /*retType=*/"SmallVector<Value>",
+        /*methodName=*/"getDestinationOperands",
+        /*args=*/(ins "OpBuilder &":$b)
+      >,
+      InterfaceMethod<
+        /*desc=*/[{
           Returns a list of iterator types that describe the number of loops.
         }],
         /*retType=*/"SmallVector<utils::IteratorType>",
@@ -66,25 +79,6 @@ def TilingInterface : OpInterface<"TilingInterface"> {
             "ArrayRef<OpFoldResult>":$offsets,
             "ArrayRef<OpFoldResult>":$sizes,
             "bool":$useExtractSlice)
-      >,
-      InterfaceMethod<
-        /*desc=*/[{
-          Method to return the position of the result tile computed by the
-          tiled operation.
-
-          Specifies what tile of the result of the original tensor is computed
-          by the tiled implementation. Expects the same `offsets` and `sizes`
-          as used to obtain the tiled implementation of the operation.
-        }],
-        /*retType=*/"LogicalResult",
-        /*methodName=*/"getResultTilePosition",
-        /*args=*/(ins
-          "OpBuilder &":$b,
-          "unsigned":$resultNumber,
-          "ArrayRef<OpFoldResult> ":$offsets,
-          "ArrayRef<OpFoldResult> ":$sizes,
-          "SmallVector<OpFoldResult> &":$resultOffsets,
-          "SmallVector<OpFoldResult> &":$resultSizes)
       >,
       InterfaceMethod<
         /*desc=*/[{

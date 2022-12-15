@@ -277,7 +277,6 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
     return rewriter.notifyMatchFailure(
         op, "missing tile size computation function");
   }
-  Location loc = op.getLoc();
 
   // 1. Get the range of the loops that are represented by the operation.
   SmallVector<Range> iterationDomain = op.getIterationDomain(rewriter);
@@ -295,7 +294,7 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
   }
 
   if (tileSizeVector.size() < iterationDomain.size()) {
-    auto zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+    auto zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
     tileSizeVector.append(numLoops - tileSizeVector.size(), zero);
   }
 
@@ -304,13 +303,11 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
   }
 
   // 3. Materialize an empty loop nest that iterates over the tiles.
-  SmallVector<Value> dstOperands;
-  if (failed(tensor::getOrCreateDestinations(rewriter, loc, op, dstOperands)))
-    return rewriter.notifyMatchFailure(op, "failed to get destinations");
+  auto dstOperands = op.getDestinationOperands(rewriter);
   SmallVector<OpFoldResult> offsets, sizes;
   TilingResult tilingResult;
   tilingResult.loop = generateTileLoopNest(
-      rewriter, loc, iterationDomain, tileSizeVector, dstOperands,
+      rewriter, op.getLoc(), iterationDomain, tileSizeVector, dstOperands,
       options.distribute, options.distributionLabel, offsets, sizes);
   Block *loopBody = &tilingResult.loop->getRegion(0).front();
   Operation *terminator = loopBody->getTerminator();
@@ -322,40 +319,23 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
   tilingResult.tiledOp = tiledOp.getOperation();
 
   // 5. Add `gml_st.set_yield` terminator.
-  int64_t numResults = op->getNumResults();
-  SmallVector<Value> outputTiles;
-  auto oneAttr = rewriter.getI64IntegerAttr(1);
-  for (const auto &result : llvm::enumerate(op->getResults())) {
-    SmallVector<OpFoldResult> resultOffsetsList(numResults),
-        resultSizesList(numResults);
-    if (failed(op.getResultTilePosition(rewriter, result.index(), offsets,
-                                        sizes, resultOffsetsList,
-                                        resultSizesList))) {
-      return rewriter.notifyMatchFailure(
-          op, "failed to get slice of result produced");
-    }
-    outputTiles.push_back(rewriter.create<TileOp>(
-        loc, resultOffsetsList, resultSizesList,
-        SmallVector<OpFoldResult>(resultSizesList.size(), oneAttr)));
-  }
-
+  SmallVector<Value> dstSubsets;
+  for (Value dst : tiledOp.getDestinationOperands(rewriter))
+    dstSubsets.push_back(dst.getDefiningOp<MaterializeOp>().getSet());
   rewriter.replaceOpWithNewOp<SetYieldOp>(
-      terminator, tilingResult.tiledOp->getResults(), dstOperands, outputTiles);
+      terminator, tilingResult.tiledOp->getResults(), dstOperands, dstSubsets);
 
   // 6. Replace the uses of `outputs` with the output block arguments.
   if (!options.distribute) {
     auto forLoop = cast<gml_st::ForOp>(tilingResult.loop);
-
-    if (auto dstOp =
-            dyn_cast<DestinationStyleOpInterface>(tilingResult.tiledOp)) {
-      for (auto [dst, regionArg] :
-           llvm::zip(dstOperands, forLoop.getRegionOutputArgs())) {
-        dst.replaceUsesWithIf(regionArg, [&](OpOperand &operand) {
-          return operand.getOwner()->getBlock() == loopBody;
-        });
-      }
+    for (auto [dst, regionArg] :
+         llvm::zip(dstOperands, forLoop.getRegionOutputArgs())) {
+      dst.replaceUsesWithIf(regionArg, [&](OpOperand &operand) {
+        return operand.getOwner()->getBlock() == loopBody;
+      });
     }
   }
+
   return tilingResult;
 }
 

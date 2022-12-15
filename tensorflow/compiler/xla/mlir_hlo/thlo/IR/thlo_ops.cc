@@ -219,6 +219,10 @@ SmallVector<utils::IteratorType> ConcatenateOp::getLoopIteratorTypes() {
   return getParallelIteratorTypes(getInit().getType().getRank());
 }
 
+SmallVector<Value> ConcatenateOp::getDestinationOperands(OpBuilder &) {
+  return {getInit()};
+}
+
 SmallVector<Range> ConcatenateOp::getIterationDomain(OpBuilder &b) {
   return getIterationDomainForTensor(b, getLoc(), getInit());
 }
@@ -401,16 +405,6 @@ gml_st::TilingInterface ConcatenateOp::getTiledImplementation(
   return llvm::cast<gml_st::TilingInterface>(tiled.getDefiningOp());
 }
 
-LogicalResult ConcatenateOp::getResultTilePosition(
-    OpBuilder & /*b*/, unsigned /*resultNumber*/,
-    ArrayRef<OpFoldResult> offsets, ArrayRef<OpFoldResult> sizes,
-    SmallVector<OpFoldResult> &resultOffsets,
-    SmallVector<OpFoldResult> &resultSizes) {
-  resultOffsets = llvm::to_vector(offsets);
-  resultSizes = llvm::to_vector(sizes);
-  return success();
-}
-
 FailureOr<Value> ConcatenateOp::generateResultTileValue(
     OpBuilder &b, unsigned resultNumber, ArrayRef<OpFoldResult> offsets,
     ArrayRef<OpFoldResult> sizes) {
@@ -522,6 +516,11 @@ DynamicBroadcastInDimOp::getLoopIteratorTypes() {
   return getParallelIteratorTypes(getInit().getType().getRank());
 }
 
+SmallVector<Value> DynamicBroadcastInDimOp::getDestinationOperands(
+    OpBuilder &) {
+  return {getInit()};
+}
+
 SmallVector<Range> DynamicBroadcastInDimOp::getIterationDomain(OpBuilder &b) {
   return getIterationDomainForTensor(b, getLoc(), getInit());
 }
@@ -616,16 +615,6 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
       loc, TypeRange{tiledResultTy}, tiledOperand, tiledInit,
       getBroadcastDimensionsAttr(), getKnownExpandingDimensionsAttr(),
       getKnownNonexpandingDimensionsAttr());
-}
-
-LogicalResult DynamicBroadcastInDimOp::getResultTilePosition(
-    OpBuilder & /*b*/, unsigned /*resultNumber*/,
-    ArrayRef<OpFoldResult> offsets, ArrayRef<OpFoldResult> sizes,
-    SmallVector<OpFoldResult> &resultOffsets,
-    SmallVector<OpFoldResult> &resultSizes) {
-  resultOffsets = llvm::to_vector(offsets);
-  resultSizes = llvm::to_vector(sizes);
-  return success();
 }
 
 FailureOr<Value> DynamicBroadcastInDimOp::generateResultTileValue(
@@ -723,6 +712,10 @@ SmallVector<utils::IteratorType> ScatterOp::getLoopIteratorTypes() {
   return {utils::IteratorType::reduction};
 }
 
+SmallVector<Value> ScatterOp::getDestinationOperands(OpBuilder &) {
+  return {getInit()};
+}
+
 SmallVector<Range> ScatterOp::getIterationDomain(OpBuilder &b) {
   Value indicesCount = b.create<tensor::DimOp>(getLoc(), getIndices(), 0);
   return {Range{b.getIndexAttr(0), indicesCount, b.getIndexAttr(1)}};
@@ -768,18 +761,6 @@ mlir::gml_st::TilingInterface ScatterOp::getTiledImplementation(
 
   return mlir::clone(b, this->getOperation(), TypeRange{initSlice.getType()},
                      ValueRange{indicesSlice, updateSlice, initSlice});
-}
-
-LogicalResult ScatterOp::getResultTilePosition(
-    OpBuilder &b, unsigned /*resultNumber*/, ArrayRef<OpFoldResult> /*offsets*/,
-    ArrayRef<OpFoldResult> /*sizes*/, SmallVector<OpFoldResult> &resultOffsets,
-    SmallVector<OpFoldResult> &resultSizes) {
-  ScatterOp scatterOp = cast<ScatterOp>(this->getOperation());
-  auto init = scatterOp.getInit();
-  resultOffsets =
-      SmallVector<OpFoldResult>(init.getType().getRank(), b.getIndexAttr(0));
-  resultSizes = tensor::createDimValues(b, scatterOp.getLoc(), init);
-  return success();
 }
 
 FailureOr<Value> ScatterOp::generateResultTileValue(
@@ -831,6 +812,10 @@ SmallVector<utils::IteratorType> GatherOp::getLoopIteratorTypes() {
   return {utils::IteratorType::parallel};
 }
 
+SmallVector<Value> GatherOp::getDestinationOperands(OpBuilder &) {
+  return {getInit()};
+}
+
 SmallVector<Range> GatherOp::getIterationDomain(OpBuilder &b) {
   Value indicesCount = b.create<tensor::DimOp>(getLoc(), getStartIndices(), 0);
   return {Range{b.getIndexAttr(0), indicesCount, b.getIndexAttr(1)}};
@@ -860,20 +845,6 @@ mlir::gml_st::TilingInterface GatherOp::getTiledImplementation(
       .create<GatherOp>(getLoc(), TypeRange{initSlice.getType()},
                         ValueRange{getOperand(), subStartIndices, initSlice})
       .getOperation();
-}
-
-LogicalResult GatherOp::getResultTilePosition(
-    OpBuilder &b, unsigned /*resultNumber*/, ArrayRef<OpFoldResult> offsets,
-    ArrayRef<OpFoldResult> sizes, SmallVector<OpFoldResult> &resultOffsets,
-    SmallVector<OpFoldResult> &resultSizes) {
-  GatherOp gatherOp = cast<GatherOp>(this->getOperation());
-  auto init = gatherOp.getInit();
-  resultOffsets =
-      SmallVector<OpFoldResult>(init.getType().getRank(), b.getIndexAttr(0));
-  resultOffsets.front() = offsets.front();
-  resultSizes = tensor::createDimValues(b, gatherOp.getLoc(), init);
-  resultSizes.front() = sizes.front();
-  return success();
 }
 
 FailureOr<Value> GatherOp::generateResultTileValue(
@@ -1037,6 +1008,10 @@ SmallVector<utils::IteratorType> SortOp::getLoopIteratorTypes() {
   return getParallelIteratorTypes(getType(0).cast<ShapedType>().getRank() - 1);
 }
 
+SmallVector<Value> SortOp::getDestinationOperands(OpBuilder &) {
+  return {getInits()};
+}
+
 SmallVector<Range> SortOp::getIterationDomain(OpBuilder &b) {
   Location loc = getLoc();
   auto oneInit = getInits().front();
@@ -1101,22 +1076,6 @@ mlir::gml_st::TilingInterface SortOp::getTiledImplementation(
                      tiledInputsAndInits);
 }
 
-LogicalResult SortOp::getResultTilePosition(
-    OpBuilder &b, unsigned /*resultNumber*/, ArrayRef<OpFoldResult> offsets,
-    ArrayRef<OpFoldResult> sizes, SmallVector<OpFoldResult> &resultOffsets,
-    SmallVector<OpFoldResult> &resultSizes) {
-  SortOp sortOp = cast<SortOp>(this->getOperation());
-  resultOffsets = llvm::to_vector(offsets);
-  resultSizes = llvm::to_vector(sizes);
-
-  int64_t sortDimIndex = sortOp.getDimension().getSExtValue();
-  Value sortDimValue = b.create<tensor::DimOp>(
-      sortOp.getLoc(), sortOp.getInputs().front(), sortDimIndex);
-  resultOffsets.insert(resultOffsets.begin() + sortDimIndex, b.getIndexAttr(0));
-  resultSizes.insert(resultSizes.begin() + sortDimIndex, sortDimValue);
-  return success();
-}
-
 FailureOr<Value> SortOp::generateResultTileValue(OpBuilder &b,
                                                  unsigned resultNumber,
                                                  ArrayRef<OpFoldResult> offsets,
@@ -1156,6 +1115,10 @@ void ReverseOp::getAsmResultNames(
 
 SmallVector<utils::IteratorType> ReverseOp::getLoopIteratorTypes() {
   return getParallelIteratorTypes(getType().cast<ShapedType>().getRank() - 1);
+}
+
+SmallVector<Value> ReverseOp::getDestinationOperands(OpBuilder &) {
+  return {getInit()};
 }
 
 SmallVector<Range> ReverseOp::getIterationDomain(OpBuilder &b) {
@@ -1204,16 +1167,6 @@ mlir::gml_st::TilingInterface ReverseOp::getTiledImplementation(
 
   return mlir::clone(b, this->getOperation(), tiledResultType,
                      tiledInputsAndInits);
-}
-
-LogicalResult ReverseOp::getResultTilePosition(
-    OpBuilder & /*b*/, unsigned /*resultNumber*/,
-    ArrayRef<OpFoldResult> offsets, ArrayRef<OpFoldResult> sizes,
-    SmallVector<OpFoldResult> &resultOffsets,
-    SmallVector<OpFoldResult> &resultSizes) {
-  resultOffsets = llvm::to_vector(offsets);
-  resultSizes = llvm::to_vector(sizes);
-  return success();
 }
 
 FailureOr<Value> ReverseOp::generateResultTileValue(
