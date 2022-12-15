@@ -2489,7 +2489,9 @@ def MHLO_DynamicReshapeOp: MHLO_ShapedInterfaceOp<"dynamic_reshape", [Pure]> {
   let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
-def MHLO_ScatterOp: MHLO_Op<"scatter", [SameVariadicOperandSize, RecursiveMemoryEffects]> {
+def MHLO_ScatterOp: MHLO_Op<"scatter",
+      [SameVariadicOperandSize, RecursiveMemoryEffects,
+      DeclareOpInterfaceMethods<InferTypeOpInterface>]> { 
   let summary = "Scatter operator";
   let description = [{
     Generates a result which is the value of the input array `operand`,

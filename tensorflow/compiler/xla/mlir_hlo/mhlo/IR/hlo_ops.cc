@@ -7298,6 +7298,15 @@ LogicalResult SelectAndScatterOp::verify() {
 // ScatterOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult ScatterOp::inferReturnTypes(
+    MLIRContext*, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  ScatterOp::Adaptor adaptor(operands, attributes, regions);
+  return hlo::inferScatterOp(location, adaptor.getInputs(),
+                             inferredReturnTypes);
+}
+
 /*
  * We intend to verify the following properties:
  * P1. The 'update_window_dims' must be valid indices of 'updates' tensor.
@@ -7422,7 +7431,6 @@ LogicalResult validateScatterDimensionNumbers(
  *  P5. Valide the bounds of each of the 'updates' w.r.t the operands.
  *  P6. Validate the bounds of each of the 'updates' w.r.t the
  * 'scatter_indices'.
- *  P7. Check return types.
  */
 LogicalResult ScatterOp::verify() {
   // Get the first operand and update, since variadic Scatter is not yet
@@ -7583,16 +7591,6 @@ LogicalResult ScatterOp::verify() {
         }
       }
     }
-  }
-
-  // P7.
-  for (int64_t i = 0; i < static_cast<int64_t>(numOperands); i++) {
-    if (!hlo::compatibleShapeAndElementType(operandTypes[i],
-                                            getResult(i).getType()))
-      return emitOpError()
-             << "expects the return type to be same as the operand type: "
-             << operandTypes[i] << ", but got " << getResult(i).getType()
-             << ".";
   }
 
   return success();
