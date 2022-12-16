@@ -58,6 +58,7 @@ struct DenseUpdate<GPUDevice, T, SUB> {
   template struct functor::DenseUpdate<GPUDevice, T, SUB>;
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
 TF_CALL_INTEGRAL_TYPES(DEFINE_GPU_KERNELS);
+TF_CALL_bfloat16(DEFINE_GPU_KERNELS);
 #undef DEFINE_GPU_KERNELS
 
 #define DEFINE_GPU_KERNELS(T) \
