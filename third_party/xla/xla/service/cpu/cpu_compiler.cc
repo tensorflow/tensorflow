@@ -1590,7 +1590,7 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
       TF_CHECK_OK(
           jit_compiler.AddModule(std::move(module), kernel_dylib_index));
       // Simply roundrobin the kernel dylibs
-      kernel_dylib_index = (kernel_dylib_index + 1) % num_parts;
+      kernel_dylib_index = (kernel_dylib_index + 2) % num_parts;
     }
 
     for (const CompiledSymbolsPart& part : compiled_parts) {
