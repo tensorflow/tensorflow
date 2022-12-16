@@ -46,11 +46,15 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 rocm_major_version=`cat /opt/rocm/.info/version | cut -d "." -f 1`
 rocm_minor_version=`cat /opt/rocm/.info/version | cut -d "." -f 2`
 TF_TEST_FILTER_TAGS_ROCM_VERSION_SPECIFIC=""
-if [[ $rocm_major_version == *"5"* ]]; then
+if [[ $rocm_major_version -ge 5 ]]; then
 	if [[ $rocm_minor_version -lt 3 ]]; then
 		TF_TEST_FILTER_TAGS_ROCM_VERSION_SPECIFIC=",no_rocm_pre_53"	
 	fi
+else
+    TF_TEST_FILTER_TAGS_ROCM_VERSION_SPECIFIC=",no_rocm_pre_53"	
 fi
+
+
 
 # # Export optional variables for running pip.sh
 export TF_TEST_FILTER_TAGS='gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py39,-no_rocm'${TF_TEST_FILTER_TAGS_ROCM_VERSION_SPECIFIC}
