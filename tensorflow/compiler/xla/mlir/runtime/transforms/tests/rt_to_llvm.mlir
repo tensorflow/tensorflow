@@ -598,3 +598,36 @@ func.func @custom_call(%arg0: !rt.execution_context) {
   rt.call %arg0["target"] (%cst) : (f32) -> ()
   func.return
 }
+
+// -----
+// Check that we reuse allocas for encoding arguments on the stack.
+
+// CHECK: func @custom_call(
+// CHECK:   %[[CTX:.*]]: !llvm.ptr,
+// CHECK:   %[[ARG:.*]]: f32
+// CHECK: )
+func.func @custom_call(%arg0: !rt.execution_context, %arg1: f32) {
+  // CHECK: %[[ARGS:.*]] = llvm.alloca {{.*}} x !llvm.array<3 x ptr>
+  // CHECK: %[[ARG_ALLOCA:.*]] = llvm.alloca %{{.*}} x f32
+  // CHECK-NOT: llvm.alloca
+
+  // llvm.intr.lifetime.start -1, %[[ARG_ALLOCA]] : !llvm.ptr
+  // CHECK: llvm.store %[[ARG]], %[[ARG_ALLOCA]] : f32, !llvm.ptr
+  // llvm.intr.lifetime.start -1, %[[ARGS]] : !llvm.ptr
+  // CHECK: llvm.store {{.*}}, %[[ARGS]]
+  // CHECK: call @target
+  rt.call %arg0["target"] (%arg1) : (f32) -> ()
+  // llvm.intr.lifetime.end -1, %[[ARGS]] : !llvm.ptr
+  // llvm.intr.lifetime.end -1, %[[ARG_ALLOCA]] : !llvm.ptr
+
+  // llvm.intr.lifetime.start -1, %[[ARG_ALLOCA]] : !llvm.ptr
+  // CHECK: llvm.store %[[ARG]], %[[ARG_ALLOCA]] : f32, !llvm.ptr
+  // llvm.intr.lifetime.start -1, %[[ARGS]] : !llvm.ptr
+  // CHECK: llvm.store {{.*}}, %[[ARGS]]
+  // CHECK: call @target
+  rt.call %arg0["target"] (%arg1) : (f32) -> ()
+  // llvm.intr.lifetime.end -1, %[[ARGS]] : !llvm.ptr
+  // llvm.intr.lifetime.end -1, %[[ARG_ALLOCA]] : !llvm.ptr
+
+  func.return
+}
