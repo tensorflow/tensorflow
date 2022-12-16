@@ -447,6 +447,74 @@ TEST(HloShardingUtilTest, DeviceGroupsMatch) {
   EXPECT_TRUE(DeviceGroupsAreMatch(lhs, rhs));
 }
 
+TEST(HloShardingUtilTest, IsSubShardingTiledReplicated) {
+  HloSharding rhs_sharding = HloSharding::Replicate();
+  HloSharding lhs_sharding =
+      HloSharding::Tile(Array2D<int64_t>({{0}, {1}, {2}, {3}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubShardingReplicatedTiled) {
+  HloSharding rhs_sharding =
+      HloSharding::Tile(Array2D<int64_t>({{0}, {1}, {2}, {3}}));
+  HloSharding lhs_sharding = HloSharding::Replicate();
+  Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubShardingTiledPartialReplicated) {
+  HloSharding rhs_sharding = HloSharding::Replicate();
+  HloSharding lhs_sharding =
+      HloSharding::PartialTile(Array3D<int64_t>({{{0, 1}}, {{2, 3}}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubShardingReplicatedTiledPartial) {
+  HloSharding rhs_sharding =
+      HloSharding::PartialTile(Array3D<int64_t>({{{0, 1}}, {{2, 3}}}));
+  HloSharding lhs_sharding = HloSharding::Replicate();
+  Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubShardingPartialTiledTiled) {
+  HloSharding rhs_sharding =
+      HloSharding::PartialTile(Array3D<int64_t>({{{0, 1}}, {{2, 3}}}));
+  HloSharding lhs_sharding =
+      HloSharding::Tile(Array3D<int64_t>({{{0}, {1}}, {{2}, {3}}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubShardingIncompatibleTiled) {
+  HloSharding rhs_sharding =
+      HloSharding::Tile(Array2D<int64_t>({{0}, {1}, {2}, {3}}));
+  HloSharding lhs_sharding =
+      HloSharding::Tile(Array2D<int64_t>({{0, 1, 2, 3}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubShardingIncompatibleShapeTiledPartialTiled) {
+  HloSharding rhs_sharding =
+      HloSharding::PartialTile(Array3D<int64_t>({{{0, 1}}, {{2, 3}}}));
+  HloSharding lhs_sharding =
+      HloSharding::Tile(Array2D<int64_t>({{0}, {1}, {2}, {3}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubShardingCompatibleShapeTiledPartialTiled) {
+  HloSharding rhs_sharding =
+      HloSharding::PartialTile(Array3D<int64_t>({{{0, 1}}, {{2, 3}}}));
+  HloSharding lhs_sharding =
+      HloSharding::Tile(Array2D<int64_t>({{0}, {1}, {2}, {3}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {128, 253});
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
 }  // namespace
 }  // namespace hlo_sharding_util
 }  // namespace xla
