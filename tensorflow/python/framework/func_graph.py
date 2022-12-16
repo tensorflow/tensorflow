@@ -1103,6 +1103,7 @@ def func_graph_from_py_func(name,
                             op_return_value=None,
                             collections=None,
                             capture_by_value=None,
+                            create_placeholders=True,
                             acd_record_initial_resource_uses=False):
   """Returns a `FuncGraph` generated from `python_func`.
 
@@ -1141,6 +1142,9 @@ def func_graph_from_py_func(name,
     capture_by_value: An optional boolean. If True, the func graph will capture
       Variables by value instead of reference. By default inherit from outer
       graphs, and failing that will default to False.
+    create_placeholders: An optional boolean. If True, then func graph will
+      create placeholders for the inputs as graph ops. If False, the input args
+      and kwargs will be treated as the input placeholders.
     acd_record_initial_resource_uses: If `True` and `add_control_dependencies`
       is enabled, the results (those marked with
       AutomaticControlDependencies.mark_result) will be annotated with a private
@@ -1171,16 +1175,20 @@ def func_graph_from_py_func(name,
     default_use_resource = current_scope.use_resource
     current_scope.set_use_resource(True)
 
-    placeholder_context = trace_type.InternalPlaceholderContext(
-        use_default_placeholder=False)
+    placeholder_context = trace_type.InternalPlaceholderContext(func_graph)
 
     if signature is not None:
       args = signature
       kwargs = {}
-   # Get placeholders for args and kwargs
-    func_args = _get_defun_inputs_from_args(
-        args, arg_names, placeholder_context)
-    func_kwargs = _get_defun_inputs_from_kwargs(kwargs, placeholder_context)
+
+    if create_placeholders:
+      # Get placeholders for args and kwargs
+      func_args = _get_defun_inputs_from_args(
+          args, arg_names, placeholder_context)
+      func_kwargs = _get_defun_inputs_from_kwargs(kwargs, placeholder_context)
+    else:
+      func_args = args
+      func_kwargs = kwargs
 
     for arg in nest.flatten([func_args, func_kwargs], expand_composites=True):
       if isinstance(arg, ops.Tensor) and arg.dtype == dtypes.resource:
@@ -1509,7 +1517,7 @@ def _get_defun_inputs(args, names, placeholder_context, structured_args):
 
 def _get_defun_input(arg, placeholder_context):
   """Maps a python function arg to a graph-construction input."""
-  func_graph = ops.get_default_graph()
+  func_graph = placeholder_context.context_graph
   name = placeholder_context.naming_scope
   if isinstance(arg, (tensor_spec.TensorSpec, ops.Tensor,
                       resource_variable_ops.VariableSpec)):

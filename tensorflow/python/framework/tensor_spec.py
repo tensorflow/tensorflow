@@ -21,9 +21,9 @@ import numpy as np
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.function import trace_type
 from tensorflow.core.protobuf import struct_pb2
-from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -214,17 +214,9 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
 
   def _placeholder_value(self, placeholder_context):
     """Generates a graph_placholder with the given TensorSpec information."""
-    if placeholder_context.use_default_placeholder:
-      return super()._placeholder_value(placeholder_context)
-
     name = self.name or placeholder_context.naming_scope
-    try:
-      placeholder = graph_placeholder(self.dtype, self.shape, name=name)
-    except ValueError as e:
-      # Sometimes parameter names are not valid op names, so fall back to
-      # unnamed placeholders.
-      logging.warning(e)
-      placeholder = graph_placeholder(self.dtype, self.shape)
+    context_graph = placeholder_context.context_graph
+    placeholder = self._graph_placeholder(context_graph, name=name)
     if name is not None:
       # Record the requested/user-specified name in case it's different than
       # the uniquified name, for validation when exporting signatures.
@@ -232,6 +224,37 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
           "_user_specified_name",
           attr_value_pb2.AttrValue(s=compat.as_bytes(name)))
     return placeholder
+
+  def _graph_placeholder(self, graph, name=None):
+    """Graph-only version of tf.compat.v1.placeholder(), for internal use only."""
+    dtype = self.dtype.base_dtype
+    shape = self.shape
+    dtype_value = attr_value_pb2.AttrValue(type=dtype.as_datatype_enum)
+    if isinstance(shape, (list, tuple)):
+      shape = tensor_shape.TensorShape(shape)
+    shape = attr_value_pb2.AttrValue(shape=shape.as_proto())
+    attrs = {"dtype": dtype_value, "shape": shape}
+    try:
+      op = graph._create_op_internal(  # pylint: disable=protected-access
+          "Placeholder", [], [dtype], input_types=[],
+          attrs=attrs, name=name)
+    except ValueError as e:
+      # TODO(b/262413656) Sometimes parameter names are not valid op names, in
+      # which case an unnamed placeholder is created instead. Update this logic
+      # to sanitize the name instead of falling back on unnamed placeholders.
+      logging.warning(e)
+      op = graph._create_op_internal(  # pylint: disable=protected-access
+          "Placeholder", [], [dtype], input_types=[], attrs=attrs)
+    (result,) = op.outputs
+    if op_callbacks.should_invoke_op_callbacks():
+      # TODO(b/147670703): Once the special-op creation code paths
+      # are unified. Remove this `if` block.
+      callback_outputs = op_callbacks.invoke_op_callbacks(
+          "Placeholder", tuple(), attrs, tuple(op.outputs),
+          op_name=name, graph=graph)
+      if callback_outputs is not None:
+        (result,) = callback_outputs
+    return result
 
   @classmethod
   def from_spec(cls, spec, name=None):

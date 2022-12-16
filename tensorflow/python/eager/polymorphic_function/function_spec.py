@@ -324,7 +324,7 @@ class FunctionSpec(object):
     _, function_type, type_context = function_type_lib.canonicalize_to_monomorphic(
         args, kwargs, self.default_values, captures, self.function_type)
 
-    return function_type, type_context.deletion_observer
+    return function_type, type_context
 
   def signature_summary(self, default_values=False):
     """Returns a string summarizing this function's signature.

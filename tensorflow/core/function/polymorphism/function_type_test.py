@@ -22,6 +22,7 @@ from absl.testing import parameterized
 
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_type
+from tensorflow.python.framework import func_graph
 from tensorflow.python.platform import test
 from tensorflow.python.types import trace
 
@@ -621,9 +622,9 @@ class TypeHierarchyTest(test.TestCase):
         function_type.Parameter("z", function_type.Parameter.KEYWORD_ONLY,
                                 False, trace_type.from_value(3, type_context)),
     ])
-
-    self.assertEqual(foo.placeholder_arguments().args, (1, 2))
-    self.assertEqual(foo.placeholder_arguments().kwargs, {"z": 3})
+    context_graph = func_graph.FuncGraph("test")
+    self.assertEqual(foo.placeholder_arguments(context_graph).args, (1, 2))
+    self.assertEqual(foo.placeholder_arguments(context_graph).kwargs, {"z": 3})
 
 
 class CapturesTest(test.TestCase):
