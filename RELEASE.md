@@ -114,6 +114,10 @@
 * `stream_executor`
   * Top level `stream_executor` directory has been deleted, users should use
     equivalent headers and targets under `compiler/xla/stream_executor`.
+* `tf.nn`
+  * Added `tf.nn.experimental.general_dropout`, which is similar to
+    `tf.random.experimental.stateless_dropout` but accepts a custom sampler
+    function.
 
 
 # Thanks to our Contributors
