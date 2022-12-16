@@ -17,13 +17,34 @@
 #include <gtest/gtest.h>
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/core/function/runtime_client.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/ops.h"
+#include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "tensorflow/core/function/testing/test_pass.h"
 
 namespace tensorflow {
 namespace fuzzing {
 
 using namespace core::function;
 
+EagerContextPtr LocalEagerCtx() {
+  SessionOptions opts;
+  std::vector<std::unique_ptr<Device>> devices;
+  Status&& device_init_status = DeviceFactory::AddDevices(
+      opts, "/job:localhost/replica:0/task:0", &devices);
+  CHECK(device_init_status.ok());  // Crash OK
+
+  return EagerContextPtr(new EagerContext(
+      opts, ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
+      /*async=*/false,
+      /*device_mgr=*/new DynamicDeviceMgr(std::move(devices)),
+      /*device_mgr_owned=*/true,
+      /*rendezvous=*/nullptr,
+      /*cluster_flr=*/nullptr,
+      /*collective_executor_mgr=*/nullptr,
+      /*run_eager_op_as_function=*/true));
+}
 
 FunctionDef EmptyFunctionDefGenerator(int number_of_input_arguments, int number_of_output_arguments) {
   std::vector<string> in_def_vec;
@@ -53,36 +74,162 @@ FunctionDef EmptyFunctionDefGenerator(int number_of_input_arguments, int number_
   return FunctionDefHelper::Create("TestFunction", in_def_vec, out_def_vec, {}, body_nodes, ret_def);
 }
 
+auto NumberOfInputArguments() {
+  return fuzztest::InRange(0, 7);
+}
+
+auto NumberOfOutputArguments() {
+  return fuzztest::InRange(1, 7);
+}
+
 auto FunctionDefDomain() {
-  auto number_of_input_arguments = fuzztest::InRange(0, 7);
-  auto number_of_output_arguments = fuzztest::InRange(0, 7);
-  return fuzztest::Map(EmptyFunctionDefGenerator, number_of_input_arguments, number_of_output_arguments);
+  return fuzztest::Map(EmptyFunctionDefGenerator, NumberOfInputArguments(), NumberOfOutputArguments());
 }
 
 void CreateFunctionFuzz(FunctionDef def) {
-  auto& ctx = GlobalEagerContext();
-  Runtime rt(ctx);
-  TF_ASSERT_OK(rt.CreateFunction(def));
+  auto ctx = LocalEagerCtx();
+  Runtime rt(*ctx);
+  ASSERT_EQ(::tsl::OkStatus(), rt.CreateFunction(def));
 }
 
 FUZZ_TEST(FuzzRuntimeClient, CreateFunctionFuzz).WithDomains(FunctionDefDomain());
 
 void CreateCallFunction(int number_of_input_arguments, int number_of_output_arguments) {
-  auto& ctx = GlobalEagerContext();
-  Runtime rt(ctx);
-  TF_ASSERT_OK(rt.CreateFunction(EmptyFunctionDefGenerator(number_of_input_arguments, number_of_output_arguments)));
+  auto ctx = LocalEagerCtx();
+  Runtime rt(*ctx);
+  ASSERT_EQ(::tsl::OkStatus(), rt.CreateFunction(EmptyFunctionDefGenerator(number_of_input_arguments, number_of_output_arguments)));
 
-  AbstractTensorPtr tensor(ctx.CreateFloatScalar(42));
-  ImmediateTensorHandlePtr handle(ctx.CreateLocalHandle(tensor.get()));
+  AbstractTensorPtr tensor(ctx->CreateFloatScalar(42));
+  ImmediateTensorHandlePtr handle(ctx->CreateLocalHandle(tensor.get()));
   std::vector<AbstractTensorHandle*> args(number_of_input_arguments, handle.get());
 
   StatusOr<ReturnValues> rets = rt.CallFunction("TestFunction", args);
-  TF_ASSERT_OK(rets.status());
+  ASSERT_EQ(::tsl::OkStatus(), rets.status());
   ASSERT_EQ(rets->size(), number_of_output_arguments);
   ASSERT_EQ(rets->at(0)->DataType(), DT_FLOAT);
 }
 
-FUZZ_TEST(FuzzRuntimeClient, CreateCallFunction).WithDomains(fuzztest::InRange(0, 7), fuzztest::InRange(0, 7));
+FUZZ_TEST(FuzzRuntimeClient, CreateCallFunction).WithDomains(NumberOfInputArguments(), NumberOfOutputArguments());
+
+
+
+auto EagerContextWithFunctionDomain() {
+  return fuzztest::Map(
+      [](FunctionDef def) {
+        EagerContextPtr ctx = LocalEagerCtx();
+        Status status = ctx->AddFunctionDef(def);
+        if (!status.ok()) {
+          LOG(FATAL) << "Could not add function definition to EagerContext: "  // Crash OK
+                     << status.error_message();
+        }
+        return ctx;
+      },
+      FunctionDefDomain());
+}
+
+void UpdateFunctionFuzz(EagerContextPtr ctx, FunctionDef def) {
+  Runtime rt(*ctx);
+  ASSERT_EQ(::tsl::OkStatus(), rt.CreateFunction(def));
+}
+
+FUZZ_TEST(FuzzRuntimeClient, UpdateFunctionFuzz).WithDomains(EagerContextWithFunctionDomain(), FunctionDefDomain());
+
+void GetFunctionProtoFuzz(EagerContextPtr ctx) {
+  Runtime rt(*ctx);
+  StatusOr<FunctionDef> fdef_ret = rt.GetFunctionProto("TestFunction");
+  ASSERT_EQ(::tsl::OkStatus(), fdef_ret.status());
+}
+
+FUZZ_TEST(FuzzRuntimeClient, GetFunctionProtoFuzz).WithDomains(EagerContextWithFunctionDomain());
+
+
+std::string MlirFunctionDefGenerator(int number_of_input_arguments, int number_of_output_arguments) {
+  std::stringstream in_def_ss;
+  for (int c = 0; c < number_of_input_arguments; ++c) {
+    if (c > 0) {
+      in_def_ss << ", ";
+    }
+    in_def_ss << "%in" << c <<  ": tensor<i32> {tfg.name = \"in" << c << "\"}";
+  }
+  std::stringstream out_def_ss;
+  for (int c = 0; c < number_of_output_arguments; ++c) {
+    if (c > 0) {
+      out_def_ss << ", ";
+    }
+    if (c < number_of_input_arguments) {
+      out_def_ss << "%in" << c;
+    } else {
+      out_def_ss << "%Const";
+    }
+  }
+  std::stringstream out_type_with_name_ss;
+  for (int c = 1; c < number_of_output_arguments; ++c) {
+    out_type_with_name_ss << ", tensor<i32> {tfg.dtype = i32, tfg.name = \"out" << c << "\"}";
+  }
+  std::stringstream out_type_ss;
+  for (int c = 1; c < number_of_output_arguments; ++c) {
+    out_type_ss << ", tensor<i32>";
+  }
+  std::stringstream ss;
+  ss << "module  {\n"
+        "  tfg.func @TestFunction(" << in_def_ss.str() << ") \n"
+        "     -> (tensor<i32> {tfg.dtype = i32, tfg.name = \"out0\"}" << out_type_with_name_ss.str() << ")\n"
+        "  {\n" <<
+        (number_of_output_arguments > number_of_input_arguments ?
+        "    %Const, %ctl = Const  name(\"retval\") {dtype = i32, value = dense<0> : tensor<i32>} : () -> (tensor<i32>)\n" : "") <<
+        "    return(" << out_def_ss.str() << ") : tensor<i32>" << out_type_ss.str() << "\n"
+        "  }\n"
+        "}\n";
+  return ss.str();
+}
+
+auto MlirFunctionDefDomain() {
+  return fuzztest::Map(MlirFunctionDefGenerator, NumberOfInputArguments(), NumberOfOutputArguments());
+}
+
+void CreateMlirFunctionFuzz(std::string def) {
+  auto ctx = LocalEagerCtx();
+  Runtime rt(*ctx);
+  mlir::MLIRContext mctx;
+  mctx.getOrLoadDialect<mlir::tfg::TFGraphDialect>();
+  auto m = mlir::parseSourceString<mlir::ModuleOp>(def, &mctx);
+  mlir::tfg::GraphFuncOp fop =
+      *m->getBody()->op_begin<mlir::tfg::GraphFuncOp>();
+  // Note: this is the price we'll have to pay until we can properly link
+  // MLIR headers into pybind wrappers (not to be confused with pybind
+  // converters, which are a separate thing - we just talk about header
+  // dependencies here).
+  OpaqueTfgGraphFuncOp* opaque_fop =
+      reinterpret_cast<OpaqueTfgGraphFuncOp*>(&fop);
+  ASSERT_EQ(::tsl::OkStatus(), rt.CreateFunction(opaque_fop));
+}
+
+FUZZ_TEST(FuzzRuntimeClient, CreateMlirFunctionFuzz).WithDomains(MlirFunctionDefDomain());
+
+class TransformFunctionFuzzTest {
+public:
+  TransformFunctionFuzzTest() {
+    EnsureTestPassRegistered();
+  }
+
+  void Fuzz(EagerContextPtr ctx) {
+    Runtime rt(*ctx);
+    ASSERT_EQ(::tsl::OkStatus(), rt.TransformFunction("TestFunction", "test-pass"));
+  }
+
+private:
+  void EnsureTestPassRegistered() {
+    mlir::MLIRContext ctx;
+    mlir::PassManager pm(&ctx);
+    std::string error;
+    llvm::raw_string_ostream error_stream(error);
+    if (mlir::failed(mlir::parsePassPipeline("test-pass", pm, error_stream))) {
+      core::function::testing::RegisterTestPass();
+    }
+  }
+};
+
+FUZZ_TEST_F(TransformFunctionFuzzTest, Fuzz).WithDomains(EagerContextWithFunctionDomain());
 
 }  // end namespace fuzzing
 }  // end namespace tensorflow
