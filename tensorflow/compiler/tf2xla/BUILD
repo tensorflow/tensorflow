@@ -1078,6 +1078,7 @@ cc_library(
     name = "mlir_bridge_pass",
     srcs = ["mlir_bridge_pass.cc"],
     hdrs = ["mlir_bridge_pass.h"],
+    visibility = [":internal"],
     deps = [
         ":tf2xla_defs",
         "//tensorflow/compiler/jit:flags",
