@@ -2872,6 +2872,7 @@ xla_test(
     backends = ["gpu"],
     deps = [
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
+        "//tensorflow/compiler/xla/runtime:ffi",
         "//tensorflow/compiler/xla/runtime/ffi:ffi_api_hdrs",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
