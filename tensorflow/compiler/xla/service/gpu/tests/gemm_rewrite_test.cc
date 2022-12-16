@@ -3499,9 +3499,9 @@ ENTRY test {
                     R"(
 
 ; CHECK-LABEL: ENTRY %test (x: bf16[8,16], y: bf16[16,8], z: bf16[8,8]) -> bf16[8,8] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = bf16[8,16]{1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = bf16[16,8]{1,0} parameter(1)
-; CHECK-NEXT:    [[P2:%[^ ]+]] = bf16[8,8]{1,0} parameter(2)
+; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[8,16]{1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[16,8]{1,0} parameter(1)
+; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[8,8]{1,0} parameter(2)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK:           backend_config="{
@@ -3577,9 +3577,9 @@ ENTRY test {
                     R"(
 
 ; CHECK-LABEL: ENTRY %test (x: bf16[8,16], y: bf16[16,8], z: bf16[8]) -> bf16[8,8] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = bf16[8,16]{1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = bf16[16,8]{1,0} parameter(1)
-; CHECK-NEXT:    [[P2:%[^ ]+]] = bf16[8]{0} parameter(2)
+; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[8,16]{1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[16,8]{1,0} parameter(1)
+; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[8]{0} parameter(2)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK:           backend_config="{
@@ -3624,12 +3624,12 @@ ENTRY test {
                     R"(
 
 ; CHECK-LABEL: ENTRY %test (x: bf16[6,12], y: bf16[12,6], z: bf16[6]) -> bf16[6,6] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = bf16[6,12]{1,0} parameter(0)
-; CHECK-NEXT:    [[C0:%[^ ]+]] = bf16[] constant(0)
-; CHECK-NEXT:    [[P0_PADDED:%[^ ]+]] = bf16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
-; CHECK-NEXT:    [[P1:%[^ ]+]] = bf16[12,6]{1,0} parameter(1)
-; CHECK-NEXT:    [[P1_PADDED:%[^ ]+]] = bf16[16,8]{1,0} pad([[P1]], [[C0]]), padding=0_4x0_2
-; CHECK-NEXT:    [[P2:%[^ ]+]] = bf16[6]{0} parameter(2)
+; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[6,12]{1,0} parameter(0)
+; CHECK-DAG:     [[C0:%[^ ]+]] = bf16[] constant(0)
+; CHECK-DAG:     [[P0_PADDED:%[^ ]+]] = bf16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
+; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[12,6]{1,0} parameter(1)
+; CHECK-DAG:     [[P1_PADDED:%[^ ]+]] = bf16[16,8]{1,0} pad([[P1]], [[C0]]), padding=0_4x0_2
+; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[6]{0} parameter(2)
 ; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK:           backend_config="{
@@ -3672,8 +3672,8 @@ ENTRY test {
                     R"(
 
 ; CHECK-LABEL: ENTRY %test (x: bf16[8,16], y: bf16[16,8]) -> bf16[8,8] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = bf16[8,16]{1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = bf16[16,8]{1,0} parameter(1)
+; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[8,16]{1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[16,8]{1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK:           backend_config="{
@@ -3718,11 +3718,11 @@ ENTRY test {
                     R"(
 
 ; CHECK-LABEL: ENTRY %test (x: bf16[6,12], y: bf16[12,6]) -> bf16[6,6] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = bf16[6,12]{1,0} parameter(0)
-; CHECK-NEXT:    [[C0:%[^ ]+]] = bf16[] constant(0)
-; CHECK-NEXT:    [[P0_PADDED:%[^ ]+]] = bf16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
-; CHECK-NEXT:    [[P1:%[^ ]+]] = bf16[12,6]{1,0} parameter(1)
-; CHECK-NEXT:    [[P1_PADDED:%[^ ]+]] = bf16[16,8]{1,0} pad([[P1]], [[C0]]), padding=0_4x0_2
+; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[6,12]{1,0} parameter(0)
+; CHECK-DAG:     [[C0:%[^ ]+]] = bf16[] constant(0)
+; CHECK-DAG:     [[P0_PADDED:%[^ ]+]] = bf16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
+; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[12,6]{1,0} parameter(1)
+; CHECK-DAG:     [[P1_PADDED:%[^ ]+]] = bf16[16,8]{1,0} pad([[P1]], [[C0]]), padding=0_4x0_2
 ; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK:           backend_config="{
@@ -3768,9 +3768,9 @@ ENTRY test {
                     R"(
 
 ; CHECK-LABEL: ENTRY %test (x: bf16[8,16], y: bf16[16,8], z: bf16[8]) -> bf16[8,8] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = bf16[8,16]{1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = bf16[16,8]{1,0} parameter(1)
-; CHECK-NEXT:    [[P2:%[^ ]+]] = bf16[8]{0} parameter(2)
+; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[8,16]{1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[16,8]{1,0} parameter(1)
+; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[8]{0} parameter(2)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK:           backend_config="{
@@ -3818,12 +3818,12 @@ ENTRY test {
                     R"(
 
 ; CHECK-LABEL: ENTRY %test (x: bf16[6,12], y: bf16[12,6], z: bf16[6]) -> bf16[6,6] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = bf16[6,12]{1,0} parameter(0)
-; CHECK-NEXT:    [[C0:%[^ ]+]] = bf16[] constant(0)
-; CHECK-NEXT:    [[P0_PADDED:%[^ ]+]] = bf16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
-; CHECK-NEXT:    [[P1:%[^ ]+]] = bf16[12,6]{1,0} parameter(1)
-; CHECK-NEXT:    [[P1_PADDED:%[^ ]+]] = bf16[16,8]{1,0} pad([[P1]], [[C0]]), padding=0_4x0_2
-; CHECK-NEXT:    [[P2:%[^ ]+]] = bf16[6]{0} parameter(2)
+; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[6,12]{1,0} parameter(0)
+; CHECK-DAG:     [[C0:%[^ ]+]] = bf16[] constant(0)
+; CHECK-DAG:     [[P0_PADDED:%[^ ]+]] = bf16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
+; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[12,6]{1,0} parameter(1)
+; CHECK-DAG:     [[P1_PADDED:%[^ ]+]] = bf16[16,8]{1,0} pad([[P1]], [[C0]]), padding=0_4x0_2
+; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[6]{0} parameter(2)
 ; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]], [[P2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK:           backend_config="{
