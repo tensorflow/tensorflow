@@ -368,6 +368,8 @@ cc_library(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:human_readable_json",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/profiler/lib:nvtx_utils",
+        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
     ] + if_gpu_is_configured([
         ":triangular_solve_thunk",
         ":cholesky_thunk",

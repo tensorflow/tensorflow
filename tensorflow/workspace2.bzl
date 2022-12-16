@@ -699,6 +699,14 @@ def _tf_repositories():
     )
 
     tf_http_archive(
+        name = "nvtx_archive",
+        build_file = "//third_party:nvtx.BUILD",
+        sha256 = "bb8d1536aad708ec807bc675e12e5838c2f84481dec4005cd7a9bbd49e326ba1",
+        strip_prefix = "NVTX-3.0.1/c/include",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/NVTX/archive/v3.0.1.tar.gz"),
+    )
+
+    tf_http_archive(
         name = "cython",
         build_file = "//third_party:cython.BUILD",
         sha256 = "08dbdb6aa003f03e65879de8f899f87c8c718cd874a31ae9c29f8726da2f5ab0",
