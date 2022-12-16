@@ -781,7 +781,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertAllClose(new_outputs, expected_outputs, atol=0.1023)
 
   # Raises error because the constant unfreezing is not yet fully implemented.
-  @test_util.run_in_graph_and_eager_modes
+  @test_util.deprecated_graph_mode_only
   def test_matmul_ptq_model_with_unfreeze_constants_raises_error(self):
     input_saved_model_path = self.create_tempdir('input').full_path
     self._create_matmul_model(
@@ -1392,7 +1392,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self._contains_quantized_function_call(output_meta_graphdef))
 
   # Raises error because the constant unfreezing is not yet fully implemented.
-  @test_util.run_in_graph_and_eager_modes
+  @test_util.deprecated_graph_mode_only
   def test_ptq_model_with_variable_tf1_saved_model_unfreeze_constants_raises_error(
       self):
     input_saved_model_path = self.create_tempdir('input').full_path
