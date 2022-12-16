@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -86,7 +87,7 @@ LogicalResult tilePartialSoftmax(
     if (commonSource && commonSource != operand)
       return rewriter.notifyMatchFailure(op, "common source != operand");
     commonSource = operand;
-    simpleBcastReductions.push_back(llvm::None);
+    simpleBcastReductions.push_back(std::nullopt);
   }
 
   if (!commonReductionDim || !commonSource)

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_MHLO_TO_SCALAR_OP_H
 #define MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_MHLO_TO_SCALAR_OP_H
 
+#include <optional>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -200,7 +202,8 @@ template <typename StdScalarOp>
 struct MapMhloOpToScalarOpImpl<StdScalarOp> {
   Value operator()(Location loc, ArrayRef<Type> resultTypes,
                    ArrayRef<Type> /*argTypes*/, ValueRange args, OpBuilder* b) {
-    return b->template create<StdScalarOp>(loc, resultTypes, args, llvm::None);
+    return b->template create<StdScalarOp>(loc, resultTypes, args,
+                                           std::nullopt);
   }
 };
 
@@ -211,7 +214,7 @@ struct MapMhloOpToScalarOpImpl<SupportedType, StdScalarOp, Args...> {
     Type elementType = getElementTypeOrSelf(argTypes.front());
     if (SupportedType{}(elementType)) {
       return b->template create<StdScalarOp>(loc, resultTypes, args,
-                                             llvm::None);
+                                             std::nullopt);
     }
     return MapMhloOpToScalarOpImpl<Args...>{}(loc, resultTypes, argTypes, args,
                                               b);
@@ -342,7 +345,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::CbrtOp>(Location loc,
 template <typename PredicateType>
 inline Optional<PredicateType> getCmpPredicate(mhlo::ComparisonDirection,
                                                bool) {
-  return llvm::None;
+  return std::nullopt;
 }
 
 template <>
@@ -357,7 +360,7 @@ inline Optional<arith::CmpFPredicate> getCmpPredicate<arith::CmpFPredicate>(
       .Case("GT", arith::CmpFPredicate::OGT)
       .Case("LE", arith::CmpFPredicate::OLE)
       .Case("LT", arith::CmpFPredicate::OLT)
-      .Default(llvm::None);
+      .Default(std::nullopt);
 }
 
 template <>
@@ -375,7 +378,7 @@ inline Optional<arith::CmpIPredicate> getCmpPredicate<arith::CmpIPredicate>(
             isSigned ? arith::CmpIPredicate::sle : arith::CmpIPredicate::ule)
       .Case("LT",
             isSigned ? arith::CmpIPredicate::slt : arith::CmpIPredicate::ult)
-      .Default(llvm::None);
+      .Default(std::nullopt);
 }
 
 template <>
@@ -627,20 +630,23 @@ inline Value mapConvertOpToStdScalarOp(Location loc, ArrayRef<Type> targetTypes,
   if (IsUnsignedIntegerType{}(sourceType) &&
       mlir::arith::UIToFPOp::areCastCompatible(convertedSourceType,
                                                targetType)) {
-    return b->create<mlir::arith::UIToFPOp>(loc, resultTypes, args, llvm::None);
+    return b->create<mlir::arith::UIToFPOp>(loc, resultTypes, args,
+                                            std::nullopt);
   }
   if (mlir::arith::SIToFPOp::areCastCompatible(sourceType, targetType)) {
-    return b->create<mlir::arith::SIToFPOp>(loc, resultTypes, args, llvm::None);
+    return b->create<mlir::arith::SIToFPOp>(loc, resultTypes, args,
+                                            std::nullopt);
   }
   if (sourceType.isa<FloatType>() && targetType.isa<FloatType>()) {
     auto src = sourceType.cast<FloatType>();
     auto res = targetType.cast<FloatType>();
     if (src.getWidth() > res.getWidth()) {
       return b->create<mlir::arith::TruncFOp>(loc, resultTypes, args,
-                                              llvm::None);
+                                              std::nullopt);
     }
     if (src.getWidth() < res.getWidth()) {
-      return b->create<mlir::arith::ExtFOp>(loc, resultTypes, args, llvm::None);
+      return b->create<mlir::arith::ExtFOp>(loc, resultTypes, args,
+                                            std::nullopt);
     }
     // There's no direct conversion between different 16 bit floating point
     // types, so go through 32 bit float.
@@ -673,16 +679,16 @@ inline Value mapConvertOpToStdScalarOp(Location loc, ArrayRef<Type> targetTypes,
     auto res = targetType.cast<IntegerType>();
     if (src.getWidth() > res.getWidth()) {
       return b->create<mlir::arith::TruncIOp>(loc, resultTypes, args,
-                                              llvm::None);
+                                              std::nullopt);
     }
     if (src.getWidth() < res.getWidth()) {
       // Special case boolean values, so they get casted to `1` instead of `-1`.
       if (IsUnsignedIntegerType{}(src)) {
         return b->create<mlir::arith::ExtUIOp>(loc, resultTypes, args,
-                                               llvm::None);
+                                               std::nullopt);
       }
       return b->create<mlir::arith::ExtSIOp>(loc, resultTypes, args,
-                                             llvm::None);
+                                             std::nullopt);
     }
     // No conversion is needed for the same width integers
     return args.front();
@@ -690,11 +696,13 @@ inline Value mapConvertOpToStdScalarOp(Location loc, ArrayRef<Type> targetTypes,
   if (targetType.isUnsignedInteger() &&
       mlir::arith::FPToUIOp::areCastCompatible(convertedSourceType,
                                                targetType)) {
-    return b->create<mlir::arith::FPToUIOp>(loc, resultTypes, args, llvm::None);
+    return b->create<mlir::arith::FPToUIOp>(loc, resultTypes, args,
+                                            std::nullopt);
   }
   if (mlir::arith::FPToSIOp::areCastCompatible(convertedSourceType,
                                                targetType)) {
-    return b->create<mlir::arith::FPToSIOp>(loc, resultTypes, args, llvm::None);
+    return b->create<mlir::arith::FPToSIOp>(loc, resultTypes, args,
+                                            std::nullopt);
   }
   if (targetType.isa<ComplexType>()) {
     Type targetElementType = targetType.cast<ComplexType>().getElementType();

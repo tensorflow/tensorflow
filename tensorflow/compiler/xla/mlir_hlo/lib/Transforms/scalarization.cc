@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
@@ -125,7 +126,7 @@ Optional<SmallVector<Value>> extractStartIndices(
     ImplicitLocOpBuilder &b, TypedValue<TensorType> startIndices) {
   if (startIndices.getType().getRank() != 2 ||
       startIndices.getType().getDimSize(0) != 1) {
-    return llvm::None;
+    return std::nullopt;
   }
 
   int64_t indexVectorSize = startIndices.getType().getDimSize(1);

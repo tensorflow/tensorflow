@@ -18,6 +18,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -78,7 +79,7 @@ struct SimplifyBroadcasts : public mlir::OpRewritePattern<shape::BroadcastOp> {
 
     // Compute broadcast symbolically.
     SmallVector<Optional<SymbolicBroadcastDimension>> symResult(rank,
-                                                                llvm::None);
+                                                                std::nullopt);
     for (const auto &sInfo : llvm::enumerate(shapesInfo)) {
       size_t dimOffset = rank - sInfo.value().size();
       for (const auto &symExpr : llvm::enumerate(sInfo.value())) {
@@ -659,7 +660,7 @@ llvm::Optional<SmallVector<ReassociationIndices>> requiresReassociationOfKind(
 
   // Return the reassociation if expansion is required.
   if (isStrictlyReassociating) return reassociation;
-  return llvm::None;
+  return std::nullopt;
 }
 
 LogicalResult materializeReshapeAsExpandAndCollapse(

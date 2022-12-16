@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -281,7 +282,7 @@ Value emitBottomUpMergeSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
       b.create<scf::YieldOp>(ValueRange{});
     };
     b.create<scf::ForOp>(/*lowerBound=*/zero, /*upperBound=*/size,
-                         /*step=*/insertionSortSize, /*iterArgs=*/llvm::None,
+                         /*step=*/insertionSortSize, /*iterArgs=*/std::nullopt,
                          forBody);
   }
 
