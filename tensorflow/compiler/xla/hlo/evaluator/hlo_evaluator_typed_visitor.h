@@ -2170,8 +2170,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           // [2] http://open-std.org/JTC1/SC22/WG21/docs/lwg-active.html#2524
           const ReturnT low_val = low.Get<ReturnT>({});
           const ReturnT high_val = high.Get<ReturnT>({});
-          std::uniform_real_distribution<ElementwiseT> generator(low_val,
-                                                                 high_val);
+          std::uniform_real_distribution<ElementwiseT> generator(
+              static_cast<ElementwiseT>(low_val),
+              static_cast<ElementwiseT>(high_val));
           TF_RETURN_IF_ERROR(result.Populate<ReturnT>(
               [&](absl::Span<const int64_t> /*indexes*/) {
                 while (true) {
@@ -2191,7 +2192,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
               parent_->GetEvaluatedLiteralFor(random->operand(1));
 
           std::normal_distribution<ElementwiseT> generator(
-              mean.Get<ReturnT>({}), stddev.Get<ReturnT>({}));
+              static_cast<ElementwiseT>(mean.Get<ReturnT>({})),
+              static_cast<ElementwiseT>(stddev.Get<ReturnT>({})));
 
           TF_RETURN_IF_ERROR(result.Populate<ReturnT>(
               [&](absl::Span<const int64_t> /*indexes*/) {

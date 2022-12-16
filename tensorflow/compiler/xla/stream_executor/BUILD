@@ -172,7 +172,11 @@ cc_library(
 cc_library(
     name = "data_type",
     hdrs = ["data_type.h"],
-    deps = [":dnn_proto_cc"],
+    deps = [
+        ":dnn_proto_cc",
+        "//tensorflow/tsl/platform:float8",
+        "//tensorflow/tsl/protobuf:dnn_proto_cc",
+    ],
 )
 
 cc_library(
@@ -649,6 +653,7 @@ cc_library(
         "//tensorflow/tsl/lib/strings:proto_serialization",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
+        "//tensorflow/tsl/protobuf:dnn_proto_cc",
     ] + if_static(["@com_google_protobuf//:protobuf"]),
 )
 

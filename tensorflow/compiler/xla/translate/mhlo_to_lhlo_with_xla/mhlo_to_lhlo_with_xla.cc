@@ -717,6 +717,10 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
     return EmitCublasLtMatmul(custom_call_instr);
   }
 
+  if (xla::gpu::IsCublasLtMatmulF8(*instr)) {
+    return EmitCublasLtMatmulF8(custom_call_instr);
+  }
+
   if (xla::gpu::IsCustomCallToDnnConvolution(*instr)) {
     return EmitDnnConvolution(custom_call_instr);
   }
@@ -973,6 +977,43 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmul(
       1, 1, 1, 1, has_vector_bias ? 1 : 0, has_aux_output ? 1 : 0};
   op->setAttr(op.getOperandSegmentSizeAttr(),
               builder_.getDenseI32ArrayAttr(operand_sizes));
+
+  TF_ASSIGN_OR_RETURN(lmhlo_gpu::CublasLtMatmulEpilogue epilogue,
+                      AsLhloEpilogue(config.epilogue()));
+  op.setEpilogueAttr(lmhlo_gpu::CublasLtMatmulEpilogueAttr::get(
+      builder_.getContext(), epilogue));
+
+  // Use the first algorithm by default (i.e. fastest according to heuristics).
+  if (config.algorithm_case() !=
+      xla::gpu::GemmBackendConfig::kSelectedAlgorithm) {
+    op.setAlgorithmAttr(builder_.getI64IntegerAttr(0));
+  }
+
+  return op.getOperation();
+}
+
+tsl::StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmulF8(
+    const HloCustomCallInstruction* custom_call) {
+  TF_ASSIGN_OR_RETURN(
+      auto const config,
+      custom_call->backend_config<xla::gpu::GemmBackendConfig>());
+
+  TF_RET_CHECK(custom_call->operand_count() == 7);
+
+  llvm::SmallVector<Value, 9> operands;
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(0), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(1), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(2), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(3), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(4), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(5), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(6), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
+
+  auto op = CreateOpWithoutAttrs<lmhlo_gpu::CublasLtMatmulF8Op>(custom_call,
+                                                                operands);
+
+  SetMatmulAttributes(op, config, builder_);
 
   TF_ASSIGN_OR_RETURN(lmhlo_gpu::CublasLtMatmulEpilogue epilogue,
                       AsLhloEpilogue(config.epilogue()));

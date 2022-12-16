@@ -120,10 +120,12 @@ class Array {
     CHECK(idx == num_elements());
   }
 
-  // Creates a 2D array of a floating-point type (half, bfloat16, float,
+  // Creates a 2D array of a floating-point type (float8, half, bfloat16, float,
   // or double) from an initializer list of float values.
   template <typename T2, typename = typename std::enable_if<
-                             (std::is_same<T, Eigen::half>::value ||
+                             (std::is_same<T, tsl::float8_e4m3fn>::value ||
+                              std::is_same<T, tsl::float8_e5m2>::value ||
+                              std::is_same<T, Eigen::half>::value ||
                               std::is_same<T, bfloat16>::value ||
                               std::is_same<T, float>::value ||
                               std::is_same<T, double>::value) &&

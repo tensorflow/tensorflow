@@ -1054,7 +1054,7 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunk(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto c, GetAllocationSlice(matmul.getC()));
   TF_ASSIGN_OR_RETURN(auto d, GetAllocationSlice(matmul.getD()));
 
-  BufferAllocation::Slice bias;
+  BufferAllocation::Slice bias, a_scale, b_scale, c_scale, d_scale, d_amax;
   if (matmul.getBias() != nullptr) {
     TF_ASSIGN_OR_RETURN(bias, GetAllocationSlice(matmul.getBias()));
   }
@@ -1068,7 +1068,44 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunk(mlir::Operation* op) {
                       cublas_lt::MatmulPlan::For(matmul));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
       GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b, c, d,
-      bias, aux);
+      bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax);
+
+  AddThunkToThunkSequence(std::move(thunk));
+  return OkStatus();
+}
+
+Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
+  auto matmul = mlir::dyn_cast<mlir::lmhlo_gpu::CublasLtMatmulF8Op>(op);
+  TF_RET_CHECK(matmul != nullptr);
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a,
+                      GetAllocationSlice(matmul.getA()));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice b,
+                      GetAllocationSlice(matmul.getB()));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice c,
+                      GetAllocationSlice(matmul.getC()));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d,
+                      GetAllocationSlice(matmul.getD()));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a_scale,
+                      GetAllocationSlice(matmul.getAScale()));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice b_scale,
+                      GetAllocationSlice(matmul.getBScale()));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice c_scale,
+                      GetAllocationSlice(matmul.getCScale()));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d_scale,
+                      GetAllocationSlice(matmul.getDScale()));
+  BufferAllocation::Slice d_amax;
+  if (matmul.getDAmax() != nullptr) {
+    TF_ASSIGN_OR_RETURN(d_amax, GetAllocationSlice(matmul.getDAmax()));
+  }
+
+  BufferAllocation::Slice bias, aux;  // Not used.
+
+  TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan plan,
+                      cublas_lt::MatmulPlan::For(matmul));
+  auto thunk = std::make_unique<CublasLtMatmulThunk>(
+      GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b, c, d,
+      bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax);
 
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
@@ -5281,6 +5318,9 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
 #if GOOGLE_CUDA
   if (mlir::isa<mlir::lmhlo_gpu::CublasLtMatmulOp>(op)) {
     return EmitCublasLtMatmulThunk(op);
+  }
+  if (mlir::isa<mlir::lmhlo_gpu::CublasLtMatmulF8Op>(op)) {
+    return EmitCublasLtMatmulThunkF8(op);
   }
 #endif  // GOOGLE_CUDA
 

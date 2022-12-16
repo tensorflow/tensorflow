@@ -71,6 +71,8 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
       const xla::HloCustomCallInstruction* custom_call);
   tsl::StatusOr<Operation*> EmitCublasLtMatmul(
       const xla::HloCustomCallInstruction* custom_call);
+  tsl::StatusOr<Operation*> EmitCublasLtMatmulF8(
+      const xla::HloCustomCallInstruction* custom_call);
   tsl::StatusOr<Operation*> EmitDnnConvolution(
       const xla::HloCustomCallInstruction* custom_call);
   tsl::StatusOr<Operation*> EmitDnnBatchNorm(
