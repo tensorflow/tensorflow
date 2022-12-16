@@ -477,6 +477,30 @@ tensorflow::Status PreprocessSignature(
   return OkStatus();
 }
 
+Status ConvertTfMlirToBefAndMaybeUpdateFunctionDefLibrary(
+    const tfrt_stub::GraphExecutionOptions& graph_execution_options,
+    mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer,
+    FallbackState* fallback_state) {
+  if (graph_execution_options.enable_tfrt_gpu &&
+      graph_execution_options.compile_options.use_bridge_for_gpu) {
+    // GPU XLA clusters are wrapped in functions, which could be transformed by
+    // bridge. Hence, the MLIR functions for XLA clusters are exported and added
+    // to the function library.
+    std::vector<FunctionDef> xla_func_defs;
+    TF_RETURN_IF_ERROR(
+        tensorflow::ConvertTfMlirToBef(graph_execution_options.compile_options,
+                                       module, bef_buffer, &xla_func_defs));
+    for (const auto& func_def : xla_func_defs) {
+      TF_RETURN_IF_ERROR(fallback_state->AddFunctionDef(func_def));
+    }
+  } else {
+    TF_RETURN_IF_ERROR(tensorflow::ConvertTfMlirToBef(
+        graph_execution_options.compile_options, module, bef_buffer));
+  }
+
+  return OkStatus();
+}
+
 }  // namespace
 
 SavedModel::~SavedModel() = default;  // Out-of-line C++ key function.
@@ -647,23 +671,9 @@ SavedModelImpl::LoadSavedModel(Options options,
                                   meta_graph_def.signature_def(), options);
   }
   tfrt::BefBuffer bef;
-  if (options.graph_execution_options.enable_tfrt_gpu &&
-      options.graph_execution_options.compile_options.use_bridge_for_gpu) {
-    // GPU XLA clusters are wrapped in functions, which could be transformed by
-    // bridge. Hence, the MLIR functions for XLA clusters are exported and added
-    // to the function library.
-    std::vector<FunctionDef> xla_func_defs;
-    RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
-        options.graph_execution_options.compile_options, mlir_module.get(),
-        &bef, &xla_func_defs));
-    for (const auto& func_def : xla_func_defs) {
-      RETURN_IF_ERROR_IN_COMPILE(fallback_state->AddFunctionDef(func_def));
-    }
-  } else {
-    RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
-        options.graph_execution_options.compile_options, mlir_module.get(),
-        &bef));
-  }
+  RETURN_IF_ERROR_IN_COMPILE(ConvertTfMlirToBefAndMaybeUpdateFunctionDefLibrary(
+      options.graph_execution_options, mlir_module.get(), &bef,
+      fallback_state.get()));
 
   const auto compile_duration = absl::Now() - compile_start_time;
   saved_model_compile_time_seconds->GetCell(std::string(saved_model_dir))
@@ -1019,9 +1029,9 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
       runtime(), tpu_model_resource_.get(),
       options_.graph_execution_options.compile_options.device_target);
 
-  RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
-      options_.graph_execution_options.compile_options, module.get(),
-      &loading_result->bef));
+  RETURN_IF_ERROR_IN_COMPILE(ConvertTfMlirToBefAndMaybeUpdateFunctionDefLibrary(
+      options_.graph_execution_options, module.get(), &loading_result->bef,
+      fallback_state_.get()));
 
   // Step 3: Initialize runtime states using special BEF functions.
   ASSIGN_OR_RETURN_IN_INIT(
