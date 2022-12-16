@@ -815,6 +815,11 @@ HloEvaluator::HloEvaluator(int64_t max_loop_iterations)
       std::make_unique<HloEvaluatorTypedVisitor<int32_t>>(this);
   typed_visitors_[S64] =
       std::make_unique<HloEvaluatorTypedVisitor<int64_t>>(this);
+  typed_visitors_[F8E4M3FN] =
+      std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e4m3fn, float>>(
+          this);
+  typed_visitors_[F8E5M2] =
+      std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e5m2, float>>(this);
   typed_visitors_[F16] =
       std::make_unique<HloEvaluatorTypedVisitor<Eigen::half, float>>(this);
   typed_visitors_[F32] =
@@ -826,17 +831,12 @@ HloEvaluator::HloEvaluator(int64_t max_loop_iterations)
   typed_visitors_[C128] =
       std::make_unique<HloEvaluatorTypedVisitor<complex128>>(this);
 
-  // Most of the evaluator computations we use don't support BF16 and F8 (e.g.,
-  // std::ceil, std::tanh). To make evaluator work with these dtypes, we set all
-  // elementwise computations to be done in F32 and do BF16<->F32 or F8<->F32
-  // conversion around the input and the output of the computations.
+  // Most of the evaluator computations we use don't support BF16 (e.g.,
+  // std::ceil, std::tanh). To make evaluator work with BF16, we set all
+  // elementwise computations to be done in F32 and do BF16<->F32 conversion
+  // around the input and the output of the computations.
   typed_visitors_[BF16] =
       std::make_unique<HloEvaluatorTypedVisitor<bfloat16, float>>(this);
-  typed_visitors_[F8E5M2] =
-      std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e5m2, float>>(this);
-  typed_visitors_[F8E4M3FN] =
-      std::make_unique<HloEvaluatorTypedVisitor<tsl::float8_e4m3fn, float>>(
-          this);
 
   typed_visitors_[TUPLE] =
       std::make_unique<FunctionVisitor>([](HloInstruction*) {
