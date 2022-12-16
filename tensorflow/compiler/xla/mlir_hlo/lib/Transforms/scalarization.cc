@@ -188,7 +188,6 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
     for (const auto &en : llvm::enumerate(*scatterIndices)) {
       limitIndex[en.index()] =
           b.create<arith::AddIOp>(loc, limitIndex[en.index()], en.value());
-      limitIndex[en.index()].print(llvm::errs());
     }
     for (auto &value : limitIndex) {
       value = b.create<arith::SubIOp>(loc, value, one);
