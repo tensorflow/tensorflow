@@ -86,6 +86,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:convert_op_folder",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/tsl/platform:bfloat16",
+        "//tensorflow/tsl/platform:float8",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SparseTensorDialect",

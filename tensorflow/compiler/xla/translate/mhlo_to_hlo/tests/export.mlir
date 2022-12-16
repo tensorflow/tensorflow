@@ -598,6 +598,12 @@ func.func @main() {
   // CHECK: c128[] constant((1, 0))
   %cst_10 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f64>>
 
+  // CHECK: f8e5m2[4] constant({1, 2, 3, 4})
+  %cst_11 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E5M2>
+
+  // CHECK: f8e4m3fn[4] constant({1, 2, 3, 4})
+  %cst_12 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E4M3FN>
+
   func.return
 }
 
