@@ -61,6 +61,7 @@ cc_library(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_op_handler",
+        "//tensorflow/core/runtime_fallback/kernel:gpurt_kernels",
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/graph_executor",
