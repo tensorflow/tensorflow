@@ -16,8 +16,8 @@ cc_library(
     hdrs = [
         "test_pass.h",
     ],
+    visibility = ["//tensorflow/security/fuzzing/core/function:__subpackages__"],
     deps = [
-        "//tensorflow/core:test",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/platform:logging",
         "@llvm-project//llvm:Support",
