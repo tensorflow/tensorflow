@@ -52,6 +52,9 @@ struct PjitCacheEntry {
   std::vector<py::object> out_shardings;
   std::vector<bool> out_committed;
   xla::PyTreeDef out_pytree_def;
+  // Bitvector of kept arguments from Jaxpr DCE pass. Used to drop some `args`
+  // in CompiledFunction::Call before calling into compiled computation.
+  std::vector<bool> kept_var_bitvec;
 
   // Ensures a single thread performs the compilation for a given executable.
   //
@@ -108,27 +111,31 @@ class PjitFunction {
 #ifdef JAX_ENABLE_IFRT
 xla::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
 PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
-                  ParsedArgumentsAsBuffers& arguments) {
+                  ParsedArgumentsAsBuffers& arguments,
+                  const std::vector<bool>& kept_args) {
 #else
 xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
     const xla::PyLoadedExecutable& executable,
-    ParsedArgumentsAsBuffers& arguments) {
+    ParsedArgumentsAsBuffers& arguments, const std::vector<bool>& kept_args) {
 #endif
   const auto& addressable_devices = executable.AddressableDevices();
   int num_args = arguments.flat_dynamic_args.size();
 
 #ifdef JAX_ENABLE_IFRT
-  std::vector<tsl::RCReference<xla::ifrt::Array>> num_args_arrays(num_args);
+  std::vector<tsl::RCReference<xla::ifrt::Array>> num_args_arrays;
+  num_args_arrays.reserve(num_args);
 #else
   std::vector<std::vector<xla::PjRtBuffer*>> num_computation_num_args_buffers(
       addressable_devices.size());
-
   for (int i = 0; i < addressable_devices.size(); ++i) {
-    num_computation_num_args_buffers[i].resize(num_args);
+    num_computation_num_args_buffers[i].reserve(num_args);
   }
 #endif
 
   for (int i = 0; i < num_args; ++i) {
+    if (!kept_args[i]) {
+      continue;
+    }
     const py::object& arg = arguments.flat_dynamic_args[i];
 
     xla::PyArray py_array = arg;
@@ -170,9 +177,9 @@ xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
           auto copied_ifrt_array,
           ifrt_array->Reshard(std::move(sharding),
                               xla::ifrt::ArrayCopySemantics::kReuseInput));
-      num_args_arrays[i] = std::move(copied_ifrt_array);
+      num_args_arrays.push_back(std::move(copied_ifrt_array));
     } else {
-      num_args_arrays[i] = tsl::FormRef(ifrt_array);
+      num_args_arrays.push_back(tsl::FormRef(ifrt_array));
     }
 #else
     if (cpp_sharding->num_devices() == 1) {
@@ -181,17 +188,17 @@ xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
         xla::PjRtBuffer* buffer = py_array.pjrt_buffer(j);
 
         if (buffer->device() == to_device) {
-          num_computation_num_args_buffers[j][i] = buffer;
+          num_computation_num_args_buffers[j].push_back(buffer);
         } else {
           TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtBuffer> copied_buffer,
                               buffer->CopyToDevice(to_device));
-          num_computation_num_args_buffers[j][i] = copied_buffer.get();
+          num_computation_num_args_buffers[j].push_back(copied_buffer.get());
           arguments.keep_alive.push_back(std::move(copied_buffer));
         }
       }
     } else {
       for (int j = 0; j < addressable_devices.size(); ++j) {
-        num_computation_num_args_buffers[j][i] = py_array.pjrt_buffer(j);
+        num_computation_num_args_buffers[j].push_back(py_array.pjrt_buffer(j));
       }
     }
 #endif
@@ -330,7 +337,8 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
 
 #ifdef JAX_ENABLE_IFRT
   // A vector of [num_inputs].
-  auto num_args_arrays = PrepareIfrtInputs(*cache_entry->executable, arguments);
+  auto num_args_arrays = PrepareIfrtInputs(*cache_entry->executable, arguments,
+                                           cache_entry->kept_var_bitvec);
   if (!num_args_arrays.ok()) {
     VLOG(2) << "Failed to prepare IFRT inputs: " << num_args_arrays.status();
     return fallback_to_cache_miss();
@@ -370,8 +378,8 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
   }
 #else
   // A vector of [num_devices, num_inputs].
-  auto num_computation_num_args_buffers =
-      PreparePjRtInputs(*cache_entry->executable, arguments);
+  auto num_computation_num_args_buffers = PreparePjRtInputs(
+      *cache_entry->executable, arguments, cache_entry->kept_var_bitvec);
   if (!num_computation_num_args_buffers.ok()) {
     VLOG(2) << "Failed to prepare PjRt inputs: "
             << num_computation_num_args_buffers.status();
@@ -531,6 +539,12 @@ void PjitFunction::PopulateCacheEntry(PjitCacheEntry& cache_entry,
 
   cache_entry.out_pytree_def =
       py::cast<xla::PyTreeDef>(fastpath_data.attr("out_pytree_def"));
+
+  py::list kept_var_bitvec = fastpath_data.attr("kept_var_bitvec");
+  cache_entry.kept_var_bitvec.reserve(kept_var_bitvec.size());
+  for (py::handle k : kept_var_bitvec) {
+    cache_entry.kept_var_bitvec.push_back(py::cast<bool>(k));
+  }
 }
 
 // Helper function used by the tp_clear GC method.
