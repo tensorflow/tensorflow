@@ -101,6 +101,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_to_all_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_permute_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/replica_id_thunk.h"
@@ -2732,8 +2733,9 @@ Status IrEmitterUnnested::EmitReplicaOrPartitionId(mlir::Operation* op) {
   return OkStatus();
 }
 
+template <typename NcclThunkType, typename OpT>
 Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
-  auto collective_permute_op = mlir::cast<mlir::lmhlo::CollectivePermuteOp>(op);
+  auto collective_permute_op = mlir::cast<OpT>(op);
 
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice source_slice,
                       GetAllocationSlice(collective_permute_op.getOperand()));
@@ -2744,8 +2746,9 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
   const int64_t replica_count = hlo_module_config_.replica_count();
   const int64_t partition_count = hlo_module_config_.num_partitions();
 
-  if (NcclCollectivePermuteThunk::IsDegenerate(
-          collective_permute_op, replica_count, partition_count)) {
+  NcclCollectiveThunk::AsyncExecutor* async_executor = nullptr;
+  if (NcclThunkType::IsDegenerate(collective_permute_op, replica_count,
+                                  partition_count)) {
     // For a degenerate collective permute, just generate a copy thunk.
     AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
         GetThunkInfo(op),
@@ -2755,34 +2758,31 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
         /*source_value=*/collective_permute_op.getOperand(),
         /*destination_value=*/collective_permute_op.getOutput()));
   } else {
-    const NcclCollectivePermuteThunk::Buffer buffer = {
+    const NcclCollectiveThunk::Buffer buffer = {
         /*element_count=*/ShapeUtil::ElementsIn(shape),
         /*source_buffer=*/source_slice,
         /*destination_buffer=*/result_slice};
-    auto thunk = std::make_unique<NcclCollectivePermuteThunk>(
-        GetThunkInfo(op), collective_permute_op, replica_count, partition_count,
-        buffer);
+    auto thunk =
+        std::make_unique<NcclThunkType>(GetThunkInfo(op), collective_permute_op,
+                                        replica_count, partition_count, buffer);
+    if constexpr (std::is_same_v<NcclThunkType,
+                                 NcclCollectivePermuteStartThunk>) {
+      async_executor = &thunk->async_executor();
+    }
     AddThunkToThunkSequence(std::move(thunk));
   }
-  return OkStatus();
-}
 
-Status MaybeAddAllReduceStartThunkToMap(
-    absl::flat_hash_map<mlir::Operation*, NcclAllReduceStartThunk*>&
-        all_reduce_start_thunks,
-    mlir::Operation* op, Thunk* thunk) {
-  if (mlir::isa<mlir::lmhlo_gpu::AllReduceStartOp>(op)) {
-    TF_RET_CHECK(all_reduce_start_thunks
-                     .emplace(op, static_cast<NcclAllReduceStartThunk*>(thunk))
-                     .second)
-        << "all-reduce-start with this unique ID already seen";
+  // Signal that start thunk not created with nullptr.
+  if constexpr (std::is_same_v<NcclThunkType,
+                               NcclCollectivePermuteStartThunk>) {
+    async_executors_.insert({op, async_executor});
   }
   return OkStatus();
 }
 
-template <typename NcclThunkType, typename OpTy>
+template <typename NcclThunkType, typename OpT>
 Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
-  OpTy op = mlir::cast<OpTy>(untyped_op);
+  OpT op = mlir::cast<OpT>(untyped_op);
   int64_t replica_count = hlo_module_config_.replica_count();
   int64_t partition_count = hlo_module_config_.num_partitions();
   VLOG(2) << NcclThunkType::GetName() << "; replica count: " << replica_count
@@ -2820,16 +2820,19 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
     auto thunk =
         std::make_unique<NcclThunkType>(GetThunkInfo(op), op,
                                         /*buffers=*/std::move(buffers));
-    // Record thunks for all-reduce-start ops as the done ops need them.
-    TF_RETURN_IF_ERROR(MaybeAddAllReduceStartThunkToMap(
-        all_reduce_start_thunks_, op, thunk.get()));
+
+    if constexpr (std::is_same_v<NcclThunkType, NcclAllReduceStartThunk>) {
+      async_executors_.insert({untyped_op, &thunk->async_executor()});
+    }
+
     AddThunkToThunkSequence(std::move(thunk));
     return OkStatus();
   }
 
-  // Signal that all-reduce-start thunk not created with nullptr.
-  TF_RETURN_IF_ERROR(
-      MaybeAddAllReduceStartThunkToMap(all_reduce_start_thunks_, op, nullptr));
+  // Signal that start thunk not created with nullptr.
+  if constexpr (std::is_same_v<NcclThunkType, NcclAllReduceStartThunk>) {
+    async_executors_.insert({untyped_op, nullptr});
+  }
 
   if (!is_degenerate) {
     CollectiveOpGroupMode group_mode = NcclThunkType::GetGroupMode(op);
@@ -2873,21 +2876,18 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   return OkStatus();
 }
 
-Status IrEmitterUnnested::EmitAllReduceDone(mlir::Operation* op) {
-  auto done_op = mlir::cast<mlir::lmhlo_gpu::AllReduceDoneOp>(op);
-  auto start_op =
-      done_op.getToken().getDefiningOp<mlir::lmhlo_gpu::AllReduceStartOp>();
-  auto it = all_reduce_start_thunks_.find(start_op);
-  TF_RET_CHECK(it != all_reduce_start_thunks_.end())
-      << "couldn't find thunk for all-reduce-start op";
+template <typename NcclThunkType, typename OpT>
+Status IrEmitterUnnested::EmitNcclAsyncDone(mlir::Operation* op) {
+  auto start_op = mlir::cast<OpT>(op).getToken().getDefiningOp();
+  auto async_executor = async_executors_.extract(start_op);
+  TF_RET_CHECK(async_executor) << "couldn't find async executor for start op";
 
-  // Can be null if no all-reduce-start thunk was created (e.g. if the start op
-  // is degenerate), in which case there's nothing to do here.
-  if (it->second != nullptr) {
-    AddThunkToThunkSequence(std::make_unique<NcclAllReduceDoneThunk>(
-        GetThunkInfo(op), *it->second));
+  // Can be null if no start thunk was created (e.g. if the start op is
+  // degenerate), in which case there's nothing to do here.
+  if (async_executor.mapped() != nullptr) {
+    AddThunkToThunkSequence(std::make_unique<NcclThunkType>(
+        GetThunkInfo(op), *async_executor.mapped()));
   }
-  all_reduce_start_thunks_.erase(it);
   return OkStatus();
 }
 
@@ -5381,7 +5381,18 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
   }
 
   if (mlir::isa<mlir::lmhlo::CollectivePermuteOp>(op)) {
-    return EmitCollectivePermute(op);
+    return EmitCollectivePermute<NcclCollectivePermuteThunk,
+                                 mlir::lmhlo::CollectivePermuteOp>(op);
+  }
+
+  if (mlir::isa<mlir::lmhlo_gpu::CollectivePermuteStartOp>(op)) {
+    return EmitCollectivePermute<NcclCollectivePermuteStartThunk,
+                                 mlir::lmhlo_gpu::CollectivePermuteStartOp>(op);
+  }
+
+  if (mlir::isa<mlir::lmhlo_gpu::CollectivePermuteDoneOp>(op)) {
+    return EmitNcclAsyncDone<NcclCollectivePermuteDoneThunk,
+                             mlir::lmhlo_gpu::CollectivePermuteDoneOp>(op);
   }
 
   if (mlir::isa<mlir::lmhlo::AllGatherOp>(op)) {
@@ -5398,7 +5409,8 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
   }
 
   if (mlir::isa<mlir::lmhlo_gpu::AllReduceDoneOp>(op)) {
-    return EmitAllReduceDone(op);
+    return EmitNcclAsyncDone<NcclAllReduceDoneThunk,
+                             mlir::lmhlo_gpu::AllReduceDoneOp>(op);
   }
 
   if (mlir::isa<mlir::lmhlo::ReduceScatterOp>(op)) {

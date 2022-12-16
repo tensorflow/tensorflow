@@ -364,6 +364,10 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitBitcast(instr);
     case HloOpcode::kCollectivePermute:
       return EmitCollectivePermuteOp(instr);
+    case HloOpcode::kCollectivePermuteStart:
+      return EmitCollectivePermuteStartOp(instr);
+    case HloOpcode::kCollectivePermuteDone:
+      return EmitCollectivePermuteDoneOp(instr);
     case HloOpcode::kConditional:
       return EmitCaseOp(instr);
     case HloOpcode::kFft:
@@ -1331,10 +1335,10 @@ LhloDialectEmitter::EmitAllReduceStartOp(const HloInstruction* instr) {
   }
   TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands, /*result_subset=*/{}));
 
-  Location loc = getLocation(instr);
+  mlir::Location loc = getLocation(instr);
   mlir::Type token_type = mlir::mhlo::TokenType::get(builder_.getContext());
   std::array<mlir::Type, 1> result_types = {token_type};
-  lmhlo_gpu::AllReduceStartOp all_reduce_start_op =
+  auto all_reduce_start_op =
       builder_.create<lmhlo_gpu::AllReduceStartOp>(loc, result_types, operands);
 
   auto* all_reduce = xla::Cast<xla::HloAllReduceInstruction>(instr);
@@ -1346,27 +1350,18 @@ LhloDialectEmitter::EmitAllReduceStartOp(const HloInstruction* instr) {
       *instr->called_computations()[0], symbol_table_,
       &all_reduce_start_op.getComputation(), &builder_));
 
-  TF_RET_CHECK(all_reduce_start_ops_.emplace(instr, all_reduce_start_op).second)
-      << "all-reduce-start already lowered";
+  auto [_, was_inserted] =
+      async_tokens_.insert({instr, all_reduce_start_op.getToken()});
+  TF_RET_CHECK(was_inserted) << "all-reduce-start already lowered";
   return all_reduce_start_op;
 }
 
 tsl::StatusOr<lmhlo_gpu::AllReduceDoneOp>
 LhloDialectEmitter::EmitAllReduceDoneOp(const HloInstruction* instr) {
-  auto it = all_reduce_start_ops_.find(instr->operand(0));
-  TF_RET_CHECK(it != all_reduce_start_ops_.end())
-      << "didn't find all-reduce-start op";
-
-  llvm::SmallVector<Value, 4> operands;
-  operands.push_back(it->second.getToken());
-  all_reduce_start_ops_.erase(it);
-
-  for (const HloInstruction* operand : instr->operands()) {
-    TF_RETURN_IF_ERROR(GetOrCreateView(operand, &operands));
-  }
-  // We don't need to add buffers for the outputs, as these always alias inputs.
+  auto token = async_tokens_.extract(instr->operand(0));
+  TF_RET_CHECK(token) << "didn't find all-reduce-start token";
   return builder_.create<lmhlo_gpu::AllReduceDoneOp>(
-      getLocation(instr), /*resultTypes=*/llvm::None, operands);
+      getLocation(instr), /*resultTypes=*/llvm::None, token.mapped());
 }
 
 tsl::StatusOr<lmhlo::ReduceScatterOp> LhloDialectEmitter::EmitReduceScatterOp(
@@ -1398,6 +1393,43 @@ LhloDialectEmitter::EmitCollectivePermuteOp(const HloInstruction* instr) {
   permute_op->setAttr(source_target_pairs_attr.getName(),
                       source_target_pairs_attr.getValue());
   return permute_op;
+}
+
+tsl::StatusOr<lmhlo_gpu::CollectivePermuteStartOp>
+LhloDialectEmitter::EmitCollectivePermuteStartOp(const HloInstruction* instr) {
+  llvm::SmallVector<Value, 2> operands;
+  for (const HloInstruction* operand : instr->operands()) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(operand, &operands));
+  }
+  // Ignore the aliased first output and TPU-specific outputs.
+  TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands, /*result_subset=*/{1}));
+
+  mlir::Location loc = getLocation(instr);
+  mlir::Type token_type = mlir::mhlo::TokenType::get(builder_.getContext());
+  std::array<mlir::Type, 1> result_types = {token_type};
+  auto permute_start_op = builder_.create<lmhlo_gpu::CollectivePermuteStartOp>(
+      loc, result_types, operands);
+
+  auto* permute = xla::Cast<xla::HloCollectivePermuteInstruction>(instr);
+  SetupChannelIdAttribute(permute_start_op, permute, builder_);
+  mlir::NamedAttribute source_target_pairs_attr =
+      xla::HloFunctionImporter::ConvertSourceTargetPairs(
+          permute->source_target_pairs(), &builder_);
+  permute_start_op->setAttr(source_target_pairs_attr.getName(),
+                            source_target_pairs_attr.getValue());
+
+  auto [_, was_inserted] =
+      async_tokens_.insert({instr, permute_start_op.getToken()});
+  TF_RET_CHECK(was_inserted) << "collective-permute-start already lowered";
+  return permute_start_op;
+}
+
+tsl::StatusOr<lmhlo_gpu::CollectivePermuteDoneOp>
+LhloDialectEmitter::EmitCollectivePermuteDoneOp(const HloInstruction* instr) {
+  auto token = async_tokens_.extract(instr->operand(0));
+  TF_RET_CHECK(token) << "didn't find collective-permute-start token";
+  return builder_.create<lmhlo_gpu::CollectivePermuteDoneOp>(
+      getLocation(instr), /*resultTypes=*/llvm::None, token.mapped());
 }
 
 tsl::StatusOr<lmhlo::InfeedOp> LhloDialectEmitter::EmitInfeedOp(
