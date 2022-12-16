@@ -139,7 +139,6 @@ cc_library(
     }),
 )
 
-# TODO(zacmustin): Remove this comment here
 bzl_library(
     name = "build_defs_bzl",
     srcs = ["build_defs.bzl"],
