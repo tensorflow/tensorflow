@@ -361,7 +361,7 @@ void CopyVectorToTfLiteIntArray(const std::vector<int>& vec,
 //
 // +----------------------------------------------+
 // | TfLiteOpaqueDelegateParams                   |
-// | struct TfLiteOpaqueDelegateStruct* delegate; |
+// | struct TfLiteOpaqueDelegate* delegate;       |
 // | void* delegate_data;                         |
 // | TfLiteIntArray* nodes_to_replace;            |--\
 // | TfLiteIntArray* input_tensors;               |--+--\
@@ -435,8 +435,8 @@ TfLiteOpaqueDelegateParams* CreateOpaqueDelegateParams(
                                                            node_subset);
   // The following cast is safe only because this code is part of the
   // TF Lite runtime implementation.  Apps using TF Lite should not rely on
-  // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
-  params->delegate = reinterpret_cast<TfLiteOpaqueDelegateStruct*>(delegate);
+  // TfLiteOpaqueDelegate and TfLiteDelegate being equivalent.
+  params->delegate = reinterpret_cast<TfLiteOpaqueDelegate*>(delegate);
   params->delegate_data = delegate->opaque_delegate_builder->data;
   return params;
 }

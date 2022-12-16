@@ -438,9 +438,9 @@ struct DelegateState {
 struct OpaqueTestDelegate {
   static constexpr int kTestDelegateOutput = 42;
 
-  static inline TfLiteStatus Prepare(
-      TfLiteOpaqueContext* opaque_context,
-      struct TfLiteOpaqueDelegateStruct* opaque_delegate, void* data) {
+  static inline TfLiteStatus Prepare(TfLiteOpaqueContext* opaque_context,
+                                     TfLiteOpaqueDelegate* opaque_delegate,
+                                     void* data) {
     DelegateState* delegate_state = reinterpret_cast<DelegateState*>(data);
     delegate_state->delegate_prepared = true;
 
@@ -464,9 +464,8 @@ struct OpaqueTestDelegate {
   }
 
   static inline TfLiteStatus CopyFromBufferHandle(
-      TfLiteOpaqueContext* context, struct TfLiteOpaqueDelegateStruct* delegate,
-      void* data, TfLiteBufferHandle buffer_handle,
-      TfLiteOpaqueTensor* opaque_tensor) {
+      TfLiteOpaqueContext* context, TfLiteOpaqueDelegate* delegate, void* data,
+      TfLiteBufferHandle buffer_handle, TfLiteOpaqueTensor* opaque_tensor) {
     DelegateState* delegate_state = reinterpret_cast<DelegateState*>(data);
     delegate_state->copy_from_buffer_handle_called = true;
     delegate_state->buffer_handle = buffer_handle;
@@ -484,9 +483,10 @@ struct OpaqueTestDelegate {
     return kTfLiteOk;
   }
 
-  static inline void FreeBufferHandle(
-      TfLiteOpaqueContext* context, struct TfLiteOpaqueDelegateStruct* delegate,
-      void* data, TfLiteBufferHandle* buffer_handle) {
+  static inline void FreeBufferHandle(TfLiteOpaqueContext* context,
+                                      TfLiteOpaqueDelegate* delegate,
+                                      void* data,
+                                      TfLiteBufferHandle* buffer_handle) {
     DelegateState* delegate_state = reinterpret_cast<DelegateState*>(data);
     delegate_state->free_buffer_handle_called = true;
     delegate_state->buffer_handle = *buffer_handle;
@@ -1148,10 +1148,9 @@ class TestOpaqueDelegateBuilderWithDynamicTensors
     // uses its opaque_delegate_builder field.
     delegate_.Prepare = nullptr;
     delegate_.opaque_delegate_builder = &delegate_external_;
-    delegate_external_.Prepare =
-        [](TfLiteOpaqueContext* opaque_context,
-           struct TfLiteOpaqueDelegateStruct* opaque_delegate,
-           void* data) -> TfLiteStatus {
+    delegate_external_.Prepare = [](TfLiteOpaqueContext* opaque_context,
+                                    TfLiteOpaqueDelegate* opaque_delegate,
+                                    void* data) -> TfLiteStatus {
       TfLiteIntArray* execution_plan;
       TfLiteOpaqueContextGetExecutionPlan(opaque_context, &execution_plan);
       return TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
