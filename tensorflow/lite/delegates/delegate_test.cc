@@ -51,8 +51,7 @@ using test_utils::TestTwoDelegates;
 namespace {
 
 TEST_F(TestDelegate, NullDelegate) {
-  TfLiteDelegate* delegate = nullptr;
-  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(delegate),
+  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(nullptr),
             kTfLiteDelegateError);
 }
 
@@ -1459,8 +1458,7 @@ TEST_P(TestFP16Delegation, NonDelegatedInterpreterWorks) {
 }
 
 TEST_F(TestFP16Delegation, NullDelegate) {
-  TfLiteDelegate* delegate = nullptr;
-  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(delegate),
+  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(nullptr),
             kTfLiteDelegateError);
   // Verify that resulting interpreter still works, despite null delegate.
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
