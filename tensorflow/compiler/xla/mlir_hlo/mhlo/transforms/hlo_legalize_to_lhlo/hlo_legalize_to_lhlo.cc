@@ -61,10 +61,7 @@ using BaseOpConversion = OpConversionPattern<T>;
 Value insertDynamicAlloc(Location loc, Value result, Value shapeOperand,
                          ConversionPatternRewriter* rewriter) {
   auto resultType = result.getType().dyn_cast<RankedTensorType>();
-  if (!resultType) {
-    result.getDefiningOp()->emitOpError()
-        << "tensor to buffer conversion expects ranked results";
-  }
+  assert(resultType);
   auto memrefType =
       MemRefType::get(resultType.getShape(), resultType.getElementType());
 
@@ -89,10 +86,7 @@ Value insertDynamicAlloc(Location loc, Value result, Value shapeOperand,
 Value insertAlloc(Location loc, OpResult result,
                   ConversionPatternRewriter* rewriter) {
   auto resultType = result.getType().dyn_cast<RankedTensorType>();
-  if (!resultType || !resultType.hasStaticShape()) {
-    result.getDefiningOp()->emitOpError()
-        << "tensor to buffer conversion expects statically shaped results";
-  }
+  assert(resultType && resultType.hasStaticShape());
   auto memrefType =
       MemRefType::get(resultType.getShape(), resultType.getElementType());
   OpBuilder::InsertionGuard guard(*rewriter);
