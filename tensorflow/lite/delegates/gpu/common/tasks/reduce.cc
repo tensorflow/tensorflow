@@ -79,8 +79,8 @@ int3 GetMaximumPossibleWGSize(const std::vector<int>& ordered_sizes,
   // reduction dims. Otherwise, the reduction size could equal the number of
   // workgroups and the inner loop would just copy the values to the reducer,
   // which is inefficient.
-  const int minimum_loop_reductions = 2;
-  int total_loop_reductions = 4;
+  const int minimum_loop_reductions = 4;
+  int total_loop_reductions = 1;
   for (int i = ordered_sizes.size() - 1; i >= 0; i--) {
     const int wg_index = ordered_sizes.size() - 1 - i;
     if (wg_index >= 3) {
