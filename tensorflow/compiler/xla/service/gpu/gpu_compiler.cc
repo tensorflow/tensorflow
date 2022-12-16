@@ -739,9 +739,18 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<AllReduceBlueConnect>(blueconnect_num_devices_per_host);
     }
 
-    if (debug_options.xla_gpu_enable_async_all_reduce()) {
+    bool async_all_reduce = debug_options.xla_gpu_enable_async_all_reduce();
+    bool async_collective_permute =
+        debug_options.xla_gpu_enable_async_collective_permute();
+
+    if (async_all_reduce || async_collective_permute) {
       AsyncCollectiveCreator::CollectiveCreatorConfig config;
-      config.convert_all_reduce = [](const HloInstruction*) { return true; };
+      config.convert_all_reduce = [=](const HloInstruction*) {
+        return async_all_reduce;
+      };
+      config.convert_collective_permute = [=](const HloInstruction*) {
+        return async_collective_permute;
+      };
       pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
     }
 
