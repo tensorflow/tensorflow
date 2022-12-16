@@ -133,7 +133,7 @@ opt<bool> skip_resize(
 // NOLINTNEXTLINE
 opt<bool> smuggle_disallowed_ops(
     "smuggle-disallowed-ops",
-    llvm::cl::desc("Smuggle disallowed ops via mhlo.custom_calls."),
+    llvm::cl::desc("Smuggle disallowed ops via stablehlo.custom_calls."),
     llvm::cl::Optional, llvm::cl::init(false));
 
 // NOLINTNEXTLINE
@@ -334,7 +334,7 @@ tensorflow::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
   auto conversion_status = ConvertTFToStableHLO(*module, pass_pipeline);
   auto export_path = conversion_status.ok()
                          ? output_path
-                         : absl::StrCat(verbose_dir, "/debug_mhlo.mlir");
+                         : absl::StrCat(verbose_dir, "/debug_stablehlo.mlir");
   return ExportModule(*module, export_path, elide_large_elements_attrs);
 }
 

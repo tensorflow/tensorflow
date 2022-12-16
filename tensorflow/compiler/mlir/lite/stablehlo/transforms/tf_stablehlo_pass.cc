@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/tf_stablehlo_pass.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "llvm/ADT/StringRef.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_util.h"
@@ -37,23 +39,24 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/rewriters.h"
 
 namespace mlir {
 namespace odml {
 
-class TFToStablehloPass
-    : public mlir::PassWrapper<TFToStablehloPass,
+class TFToMhloPass
+    : public mlir::PassWrapper<TFToMhloPass,
                                mlir::OperationPass<mlir::func::FuncOp>> {
  public:
-  explicit TFToStablehloPass(bool skip_quantization_ops = false,
-                             bool skip_resize = false)
+  explicit TFToMhloPass(bool skip_quantization_ops = false,
+                        bool skip_resize = false)
       : PassWrapper() {
     skip_quantization_ops_ = skip_quantization_ops;
     skip_resize_ = skip_resize;
   }
 
-  TFToStablehloPass(const TFToStablehloPass &pass) {
+  TFToMhloPass(const TFToMhloPass &pass) {
     skip_quantization_ops_ = pass.skip_quantization_ops_;
     skip_resize_ = pass.skip_resize_;
   }
@@ -69,9 +72,9 @@ class TFToStablehloPass
   }
 
  public:
-  StringRef getArgument() const final { return "tf-stablehlo"; }
+  StringRef getArgument() const final { return "tf-mhlo"; }
   StringRef getDescription() const final {
-    return "This pass will legalize TF Ops to StableHLO Ops..";
+    return "This pass will legalize TF Ops to MHLO Ops.";
   }
 
  protected:
@@ -84,7 +87,7 @@ class TFToStablehloPass
       ::llvm::cl::desc("Skip tf.ResizeBilinear and tf.ResizeNearestNeighbor")};
 };
 
-void TFToStablehloPass::runOnOperation() {
+void TFToMhloPass::runOnOperation() {
   auto func = getOperation();
   MLIRContext *context = func->getContext();
 
@@ -99,7 +102,7 @@ void TFToStablehloPass::runOnOperation() {
 
   ConversionTarget target(*context);
   target.addIllegalDialect<chlo::ChloDialect>();
-  target.addLegalDialect<mlir::mhlo::MhloDialect>();
+  target.addLegalDialect<mhlo::MhloDialect>();
   target.addLegalDialect<arith::ArithDialect>();
   target.addLegalDialect<func::FuncDialect>();
   target.addLegalDialect<tensor::TensorDialect>();
@@ -124,13 +127,38 @@ void TFToStablehloPass::runOnOperation() {
   }
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateTFToStablehloPass(
-    bool skip_quantization_ops, bool skip_resize) {
-  return std::make_unique<TFToStablehloPass>(skip_quantization_ops,
-                                             skip_resize);
+struct TFToStablehloOptions : public PassPipelineOptions<TFToStablehloOptions> {
+  Option<bool> skip_quantization_ops{*this, "skip-quantization-ops",
+                                     ::llvm::cl::desc("Skip quantization ops")};
+  Option<bool> skip_resize{
+      *this, "skip-resize",
+      ::llvm::cl::desc("Skip tf.ResizeBilinear and tf.ResizeNearestNeighbor")};
+};
+
+void PopulateLegalizeTFToStablehloPipeline(
+    OpPassManager &pm, const TFToStablehloOptions &options) {
+  // TODO(burmako): Migrate this pass from producing MHLO to producing StableHLO
+  // by aligning with the TF/XLA bridge on the corresponding functionality and
+  // reusing their work, perhaps through `LowerToMlProgramAndHlo`.
+  pm.addNestedPass<func::FuncOp>(std::make_unique<TFToMhloPass>(
+      options.skip_quantization_ops, options.skip_resize));
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mhlo::createHloLegalizeToStablehloPass());
 }
 
-static PassRegistration<TFToStablehloPass> pass;
+static PassPipelineRegistration<TFToStablehloOptions>
+    legalize_tf_to_stablehlo_pipeline("tf-stablehlo",
+                                      "Legalize TF ops to StableHLO ops",
+                                      PopulateLegalizeTFToStablehloPipeline);
+
+void AddLegalizeTFToStablehloPasses(OpPassManager &pm,
+                                    bool skip_quantization_ops,
+                                    bool skip_resize) {
+  TFToStablehloOptions options;
+  options.skip_quantization_ops = skip_quantization_ops;
+  options.skip_resize = skip_resize;
+  PopulateLegalizeTFToStablehloPipeline(pm, options);
+}
 
 }  // namespace odml
 }  // namespace mlir

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 
 namespace mlir {
 namespace odml {
@@ -59,9 +60,8 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
       mlir::quant::CreateConvertTFQuantOpsToMHLOPass());
   pm.addPass(mhlo::createLegalizeTFControlFlowPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addNestedPass<func::FuncOp>(CreateTFToStablehloPass(
-      /*skip_quantization_ops=*/false, skip_resize));
-  pm.addPass(mlir::createCanonicalizerPass());
+  AddLegalizeTFToStablehloPasses(pm, /*skip_quantization_ops=*/false,
+                                 skip_resize);
   if (smuggle_disallowed_ops) {
     pm.addNestedPass<func::FuncOp>(CreateSmuggleDisallowedOpsPass());
     pm.addPass(mlir::createCanonicalizerPass());
@@ -70,11 +70,18 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
 }
 
 void AddStablehloOptimizationPasses(OpPassManager& pm) {
+  // The current plan of record is to avoid doing optimization passes
+  // on StableHLO, treating StableHLO purely as an input format, and do all
+  // optimizations via MHLO passes that can be shared with the OpenXLA compiler.
+  // Therefore, this function inserts a StableHLO <=> MHLO roundtrip to make
+  // this happen.
+  pm.addPass(mhlo::createStablehloLegalizeToHloPass());
   pm.addNestedPass<func::FuncOp>(createUnfuseBatchNormPass());
   pm.addNestedPass<func::FuncOp>(createFuseConvolutionPass());
   pm.addNestedPass<func::FuncOp>(createFoldBroadcastPass());
   pm.addNestedPass<func::FuncOp>(createOptimizePass());
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mhlo::createHloLegalizeToStablehloPass());
 }
 
 }  // namespace odml
