@@ -644,12 +644,17 @@ static PrimitiveType ScalarPrimitiveType(Type type) {
 }
 
 static TypeID ArrayRuntimeTypeId(Type elem_type) {
-  if (elem_type.isInteger(8)) return TypeID::get<Tagged<ArrayRef<int8_t>>>();
-  if (elem_type.isInteger(16)) return TypeID::get<Tagged<ArrayRef<int16_t>>>();
-  if (elem_type.isInteger(32)) return TypeID::get<Tagged<ArrayRef<int32_t>>>();
-  if (elem_type.isInteger(64)) return TypeID::get<Tagged<ArrayRef<int64_t>>>();
-  if (elem_type.isF32()) return TypeID::get<Tagged<ArrayRef<float>>>();
-  if (elem_type.isF64()) return TypeID::get<Tagged<ArrayRef<double>>>();
+  if (elem_type.isInteger(8))
+    return TypeID::get<Tagged<absl::Span<const int8_t>>>();
+  if (elem_type.isInteger(16))
+    return TypeID::get<Tagged<absl::Span<const int16_t>>>();
+  if (elem_type.isInteger(32))
+    return TypeID::get<Tagged<absl::Span<const int32_t>>>();
+  if (elem_type.isInteger(64))
+    return TypeID::get<Tagged<absl::Span<const int64_t>>>();
+
+  if (elem_type.isF32()) return TypeID::get<Tagged<absl::Span<const float>>>();
+  if (elem_type.isF64()) return TypeID::get<Tagged<absl::Span<const double>>>();
 
   assert(false && "unsupported type id");
   return TypeID::getFromOpaquePointer(reinterpret_cast<void *>(0xDEADBEEF));
@@ -819,7 +824,7 @@ FailureOr<EncodedAttr> EmptyArrayAttrEncoding::Encode(mlir::SymbolTable &,
                                                       Attribute attr) const {
   Encoded encoded;
   encoded.name = EncodeString(g, b, name, kAttrName);
-  encoded.type_id = EncodeTypeId(g, b, TypeID::get<Tagged<EmptyArrayRef>>());
+  encoded.type_id = EncodeTypeId(g, b, TypeID::get<Tagged<EmptyArray>>());
   encoded.value = EncodeEmptyArrayAttribute(g, b, attr, kAttrValue);
 
   return encoded;

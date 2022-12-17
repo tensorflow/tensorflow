@@ -43,8 +43,6 @@ using xla::runtime::Tagged;
 namespace lmhlo_gpu = ::mlir::lmhlo_gpu;
 namespace mhlo = ::mlir::mhlo;
 
-using llvm::ArrayRef;
-
 //===----------------------------------------------------------------------===//
 // Structs for encoding convolution attributes defined in MHLO dialect.
 //===----------------------------------------------------------------------===//
@@ -54,26 +52,26 @@ namespace gpu {
 struct ConvDimensionNumbers {
   int64_t input_batch_dim;
   int64_t input_feature_dim;
-  ArrayRef<int64_t> input_spatial_dims;
+  absl::Span<const int64_t> input_spatial_dims;
 
   int64_t kernel_in_feature_dim;
   int64_t kernel_out_feature_dim;
-  ArrayRef<int64_t> kernel_spatial_dims;
+  absl::Span<const int64_t> kernel_spatial_dims;
 
   int64_t output_batch_dim;
   int64_t output_feature_dim;
-  ArrayRef<int64_t> output_spatial_dims;
+  absl::Span<const int64_t> output_spatial_dims;
 };
 
 struct ConvBackendConfig {
   int64_t algorithm;
   bool tensor_ops_enabled;
   bool is_cudnn_frontend;
-  ArrayRef<int64_t> knob_ids;
-  ArrayRef<int64_t> knob_values;
-  ArrayRef<int64_t> operand_0_layout;
-  ArrayRef<int64_t> operand_1_layout;
-  ArrayRef<int64_t> result_layout;
+  absl::Span<const int64_t> knob_ids;
+  absl::Span<const int64_t> knob_values;
+  absl::Span<const int64_t> operand_0_layout;
+  absl::Span<const int64_t> operand_1_layout;
+  absl::Span<const int64_t> result_layout;
   int64_t workspace_size;
 };
 
@@ -92,26 +90,26 @@ XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
     // --- input dimensions
     AggregateMember<int64_t>("input_batch_dim"),
     AggregateMember<int64_t>("input_feature_dim"),
-    AggregateMember<ArrayRef<int64_t>>("input_spatial_dims"),
+    AggregateMember<absl::Span<const int64_t>>("input_spatial_dims"),
     // --- kernel dimensions
     AggregateMember<int64_t>("kernel_in_feature_dim"),
     AggregateMember<int64_t>("kernel_out_feature_dim"),
-    AggregateMember<ArrayRef<int64_t>>("kernel_spatial_dims"),
+    AggregateMember<absl::Span<const int64_t>>("kernel_spatial_dims"),
     // --- output dimensions
     AggregateMember<int64_t>("output_batch_dim"),
     AggregateMember<int64_t>("output_feature_dim"),
-    AggregateMember<ArrayRef<int64_t>>("output_spatial_dims"));
+    AggregateMember<absl::Span<const int64_t>>("output_spatial_dims"));
 
 XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
     xla::gpu::ConvBackendConfig,  //
     AggregateMember<int64_t>("algorithm"),
     AggregateMember<bool>("tensor_ops_enabled"),
     AggregateMember<bool>("is_cudnn_frontend"),
-    AggregateMember<ArrayRef<int64_t>>("knob_ids"),
-    AggregateMember<ArrayRef<int64_t>>("knob_values"),
-    AggregateMember<ArrayRef<int64_t>>("operand_0_layout"),
-    AggregateMember<ArrayRef<int64_t>>("operand_1_layout"),
-    AggregateMember<ArrayRef<int64_t>>("result_layout"),
+    AggregateMember<absl::Span<const int64_t>>("knob_ids"),
+    AggregateMember<absl::Span<const int64_t>>("knob_values"),
+    AggregateMember<absl::Span<const int64_t>>("operand_0_layout"),
+    AggregateMember<absl::Span<const int64_t>>("operand_1_layout"),
+    AggregateMember<absl::Span<const int64_t>>("result_layout"),
     AggregateMember<int64_t>("workspace_size"));
 
 }  // namespace runtime
@@ -201,11 +199,11 @@ absl::StatusOr<ConvRunnerCache::Entry> ConvRunnerCache::GetOrCreate(
 namespace {
 
 struct Window {
-  ArrayRef<int64_t> window_strides;
-  ArrayRef<int64_t> padding;
-  ArrayRef<int64_t> lhs_dilation;
-  ArrayRef<int64_t> rhs_dilation;
-  ArrayRef<int64_t> window_reversal;
+  absl::Span<const int64_t> window_strides;
+  absl::Span<const int64_t> padding;
+  absl::Span<const int64_t> lhs_dilation;
+  absl::Span<const int64_t> rhs_dilation;
+  absl::Span<const int64_t> window_reversal;
 };
 
 struct ConvAttrs {
@@ -239,7 +237,7 @@ static GpuConvDescriptor GetConvDescriptor(
 
   // Apply backend config layout to the shape.
   auto apply_layout = [](StridedMemrefView& memref,
-                         ArrayRef<int64_t> minor_to_major) {
+                         absl::Span<const int64_t> minor_to_major) {
     Shape shape = ToShape(memref);
     return ShapeUtil::MakeShapeWithDenseLayout(
         shape.element_type(), shape.dimensions(), minor_to_major);
@@ -324,9 +322,10 @@ static absl::Status ConvImpl(
     // Convolution config
     ConvDimensionNumbers conv_dims,
     // Window config
-    ArrayRef<int64_t> window_strides, ArrayRef<int64_t> padding,
-    ArrayRef<int64_t> lhs_dilation, ArrayRef<int64_t> rhs_dilation,
-    ArrayRef<int64_t> window_reversal,
+    absl::Span<const int64_t> window_strides, absl::Span<const int64_t> padding,
+    absl::Span<const int64_t> lhs_dilation,
+    absl::Span<const int64_t> rhs_dilation,
+    absl::Span<const int64_t> window_reversal,
     // Backend config attributes
     ConvBackendConfig backend_config,
     // Remaining attributes
@@ -394,11 +393,11 @@ static auto BindConvAttributes(runtime::CustomCallBinding<Ts...> binding) {
       // Convolution dimensions numbers
       .template Attr<ConvDimensionNumbers>("conv_dims")
       // Window config
-      .template Attr<ArrayRef<int64_t>>("window_strides")
-      .template Attr<ArrayRef<int64_t>>("padding")
-      .template Attr<ArrayRef<int64_t>>("lhs_dilation")
-      .template Attr<ArrayRef<int64_t>>("rhs_dilation")
-      .template Attr<ArrayRef<int64_t>>("window_reversal")
+      .template Attr<absl::Span<const int64_t>>("window_strides")
+      .template Attr<absl::Span<const int64_t>>("padding")
+      .template Attr<absl::Span<const int64_t>>("lhs_dilation")
+      .template Attr<absl::Span<const int64_t>>("rhs_dilation")
+      .template Attr<absl::Span<const int64_t>>("window_reversal")
       // Backend config attributes
       .template Attr<ConvBackendConfig>("backend_config")
       // Remaining attributes.

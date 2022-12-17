@@ -41,8 +41,6 @@ limitations under the License.1
 namespace xla {
 #if GOOGLE_CUDA
 
-using llvm::ArrayRef;
-
 using xla::runtime::CustomCall;
 using xla::runtime::CustomCallAttrEncodingSet;
 using xla::runtime::EnumAttrEncoding;
@@ -92,7 +90,7 @@ static absl::Status CublasLtMatmulImpl(
     std::optional<StridedMemrefView> d_amax, int64_t algorithm,
     double alpha_real, double alpha_imag, double beta,
     DotDimensionNumbers dot_dims, se::cuda::BlasLt::Epilogue epilogue,
-    ArrayRef<int32_t> precision) {
+    absl::Span<const int32_t> precision) {
   VLOG(3) << "Running CublasLtMatmul";
   se::Stream* stream = run_options->stream();
 
@@ -157,7 +155,7 @@ auto BindMatmulAttributes(runtime::CustomCallBinding<Ts...> binding) {
       .template Attr<double>("beta")
       .template Attr<DotDimensionNumbers>("dot_dims")
       .template Attr<se::cuda::BlasLt::Epilogue>("epilogue")
-      .template Attr<ArrayRef<int32_t>>("precision");
+      .template Attr<absl::Span<const int32_t>>("precision");
 }
 
 auto CublasLtMatmulCall(const char* name) {

@@ -41,13 +41,11 @@ using xla::runtime::CustomCall;
 using xla::runtime::FlatMemrefView;
 using xla::runtime::StridedMemrefView;
 
-using llvm::ArrayRef;
-
 #if XLA_ENABLE_XCCL
-StatusOr<NcclComm::Lock> GetNcclComm(const NcclExecuteParams& params,
-                                     int64_t group_mode, int64_t op_id,
-                                     ArrayRef<int64_t> replica_group_offsets,
-                                     ArrayRef<int64_t> replica_group_values) {
+StatusOr<NcclComm::Lock> GetNcclComm(
+    const NcclExecuteParams& params, int64_t group_mode, int64_t op_id,
+    absl::Span<const int64_t> replica_group_offsets,
+    absl::Span<const int64_t> replica_group_values) {
   // TODO(b/233930690): Pass the attribute below as a nested array.
   // Pass an array of arrays using two vectors; one specifying all the values
   // and another specifying the (ending) offsets of each array in the other
@@ -164,9 +162,10 @@ static absl::Status AsyncDoneImpl(
 static absl::Status CollectivePermuteImplCommon(
     const ServiceExecutableRunOptions* run_options, se::Stream* stream,
     CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
-    ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values, ArrayRef<int64_t> source_peers,
-    ArrayRef<int64_t> target_peers) {
+    absl::Span<const int64_t> replica_group_offsets,
+    absl::Span<const int64_t> replica_group_values,
+    absl::Span<const int64_t> source_peers,
+    absl::Span<const int64_t> target_peers) {
   NcclExecuteParams params(*run_options, run_options->stream());
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
@@ -214,9 +213,10 @@ static absl::Status CollectivePermuteImpl(
     const ServiceExecutableRunOptions* run_options,
     CollectivesSupport* collectives, CustomCall::RemainingArgs args,
     int32_t uid, int64_t group_mode, int64_t op_id,
-    ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values, ArrayRef<int64_t> source_peers,
-    ArrayRef<int64_t> target_peers) {
+    absl::Span<const int64_t> replica_group_offsets,
+    absl::Span<const int64_t> replica_group_values,
+    absl::Span<const int64_t> source_peers,
+    absl::Span<const int64_t> target_peers) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running CollectivePermute";
   se::Stream* stream = run_options->stream();
@@ -241,10 +241,10 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<int32_t>("uid")
         .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
         .Attr<int64_t>("op_id")
-        .Attr<ArrayRef<int64_t>>("replica_group_offsets")
-        .Attr<ArrayRef<int64_t>>("replica_group_values")
-        .Attr<ArrayRef<int64_t>>("source_peers")
-        .Attr<ArrayRef<int64_t>>("target_peers"));
+        .Attr<absl::Span<const int64_t>>("replica_group_offsets")
+        .Attr<absl::Span<const int64_t>>("replica_group_values")
+        .Attr<absl::Span<const int64_t>>("source_peers")
+        .Attr<absl::Span<const int64_t>>("target_peers"));
 
 //===----------------------------------------------------------------------===//
 // CollectivePermuteStart.
@@ -254,9 +254,10 @@ static absl::Status CollectivePermuteStartImpl(
     const ServiceExecutableRunOptions* run_options,
     AsyncCollectivesSupport* async_collectives, CustomCall::RemainingArgs args,
     int32_t uid, int64_t group_mode, int64_t op_id,
-    ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values, ArrayRef<int64_t> source_peers,
-    ArrayRef<int64_t> target_peers) {
+    absl::Span<const int64_t> replica_group_offsets,
+    absl::Span<const int64_t> replica_group_values,
+    absl::Span<const int64_t> source_peers,
+    absl::Span<const int64_t> target_peers) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running CollectivePermuteStart";
   se::Stream* stream = run_options->stream();
@@ -286,10 +287,10 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<int32_t>("uid")
         .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
         .Attr<int64_t>("op_id")
-        .Attr<ArrayRef<int64_t>>("replica_group_offsets")
-        .Attr<ArrayRef<int64_t>>("replica_group_values")
-        .Attr<ArrayRef<int64_t>>("source_peers")
-        .Attr<ArrayRef<int64_t>>("target_peers"));
+        .Attr<absl::Span<const int64_t>>("replica_group_offsets")
+        .Attr<absl::Span<const int64_t>>("replica_group_values")
+        .Attr<absl::Span<const int64_t>>("source_peers")
+        .Attr<absl::Span<const int64_t>>("target_peers"));
 
 //===----------------------------------------------------------------------===//
 // CollectivePermuteDone.
@@ -312,8 +313,8 @@ static absl::Status AllGatherImpl(
     const ServiceExecutableRunOptions* run_options,
     CollectivesSupport* collectives, CustomCall::RemainingArgs args,
     int32_t uid, int64_t group_mode, int64_t op_id,
-    ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values) {
+    absl::Span<const int64_t> replica_group_offsets,
+    absl::Span<const int64_t> replica_group_values) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllGather";
   se::Stream* stream = run_options->stream();
@@ -345,8 +346,8 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<int32_t>("uid")
         .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
         .Attr<int64_t>("op_id")
-        .Attr<ArrayRef<int64_t>>("replica_group_offsets")
-        .Attr<ArrayRef<int64_t>>("replica_group_values"));
+        .Attr<absl::Span<const int64_t>>("replica_group_offsets")
+        .Attr<absl::Span<const int64_t>>("replica_group_values"));
 
 //===----------------------------------------------------------------------===//
 // AllReduce.
@@ -356,8 +357,8 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 static absl::Status AllReduceImplCommon(
     const ServiceExecutableRunOptions* run_options, se::Stream* stream,
     CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
-    int64_t reduction_kind, ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values) {
+    int64_t reduction_kind, absl::Span<const int64_t> replica_group_offsets,
+    absl::Span<const int64_t> replica_group_values) {
   NcclExecuteParams params(*run_options, run_options->stream());
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
@@ -376,8 +377,8 @@ static absl::Status AllReduceImpl(
     const ServiceExecutableRunOptions* run_options,
     CollectivesSupport* collectives, CustomCall::RemainingArgs args,
     int32_t uid, int64_t group_mode, int64_t op_id, int64_t reduction_kind,
-    ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values) {
+    absl::Span<const int64_t> replica_group_offsets,
+    absl::Span<const int64_t> replica_group_values) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllReduce";
   se::Stream* stream = run_options->stream();
@@ -404,8 +405,8 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
         .Attr<int64_t>("op_id")
         .Attr<int64_t>("reduction_kind")  // ReductionKind
-        .Attr<ArrayRef<int64_t>>("replica_group_offsets")
-        .Attr<ArrayRef<int64_t>>("replica_group_values"));
+        .Attr<absl::Span<const int64_t>>("replica_group_offsets")
+        .Attr<absl::Span<const int64_t>>("replica_group_values"));
 
 //===----------------------------------------------------------------------===//
 // AllReduceStart.
@@ -415,8 +416,8 @@ static absl::Status AllReduceStartImpl(
     const ServiceExecutableRunOptions* run_options,
     AsyncCollectivesSupport* async_collectives, CustomCall::RemainingArgs args,
     int64_t group_mode, int64_t op_id, int64_t reduction_kind,
-    ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values, int32_t uid) {
+    absl::Span<const int64_t> replica_group_offsets,
+    absl::Span<const int64_t> replica_group_values, int32_t uid) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllReduceStart";
   se::Stream* stream = run_options->stream();
@@ -445,8 +446,8 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
         .Attr<int64_t>("op_id")
         .Attr<int64_t>("reduction_kind")  // ReductionKind
-        .Attr<ArrayRef<int64_t>>("replica_group_offsets")
-        .Attr<ArrayRef<int64_t>>("replica_group_values")
+        .Attr<absl::Span<const int64_t>>("replica_group_offsets")
+        .Attr<absl::Span<const int64_t>>("replica_group_values")
         .Attr<int32_t>("uid"));
 
 //===----------------------------------------------------------------------===//
@@ -466,13 +467,12 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 // AllToAll.
 //===----------------------------------------------------------------------===//
 
-static absl::Status AllToAllImpl(const ServiceExecutableRunOptions* run_options,
-                                 CollectivesSupport* collectives,
-                                 CustomCall::RemainingArgs args, int32_t uid,
-                                 int64_t group_mode, bool has_split_dimension,
-                                 int64_t op_id,
-                                 ArrayRef<int64_t> replica_group_offsets,
-                                 ArrayRef<int64_t> replica_group_values) {
+static absl::Status AllToAllImpl(
+    const ServiceExecutableRunOptions* run_options,
+    CollectivesSupport* collectives, CustomCall::RemainingArgs args,
+    int32_t uid, int64_t group_mode, bool has_split_dimension, int64_t op_id,
+    absl::Span<const int64_t> replica_group_offsets,
+    absl::Span<const int64_t> replica_group_values) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllToAll";
   se::Stream* stream = run_options->stream();
@@ -505,8 +505,8 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
         .Attr<bool>("has_split_dimension")
         .Attr<int64_t>("op_id")
-        .Attr<ArrayRef<int64_t>>("replica_group_offsets")
-        .Attr<ArrayRef<int64_t>>("replica_group_values"));
+        .Attr<absl::Span<const int64_t>>("replica_group_offsets")
+        .Attr<absl::Span<const int64_t>>("replica_group_values"));
 
 //===----------------------------------------------------------------------===//
 // ReduceScatter.
@@ -516,8 +516,8 @@ static absl::Status ReduceScatterImpl(
     const ServiceExecutableRunOptions* run_options,
     CollectivesSupport* collectives, CustomCall::RemainingArgs args,
     int32_t uid, int64_t group_mode, int64_t op_id, int64_t reduction_kind,
-    ArrayRef<int64_t> replica_group_offsets,
-    ArrayRef<int64_t> replica_group_values) {
+    absl::Span<const int64_t> replica_group_offsets,
+    absl::Span<const int64_t> replica_group_values) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running ReduceScatter";
   se::Stream* stream = run_options->stream();
@@ -551,8 +551,8 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
         .Attr<int64_t>("op_id")
         .Attr<int64_t>("reduction_kind")  // ReductionKind
-        .Attr<ArrayRef<int64_t>>("replica_group_offsets")
-        .Attr<ArrayRef<int64_t>>("replica_group_values"));
+        .Attr<absl::Span<const int64_t>>("replica_group_offsets")
+        .Attr<absl::Span<const int64_t>>("replica_group_values"));
 
 //===----------------------------------------------------------------------===//
 // ReplicaId.
