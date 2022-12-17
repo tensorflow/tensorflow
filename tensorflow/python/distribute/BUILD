@@ -2371,6 +2371,7 @@ tpu_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:summary_test_util",
         "//tensorflow/python/module",
         "//tensorflow/python/platform",
         "//tensorflow/python/tpu:device_assignment",
