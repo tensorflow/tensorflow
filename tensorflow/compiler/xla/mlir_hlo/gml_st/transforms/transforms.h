@@ -25,7 +25,7 @@ limitations under the License.
 
 namespace mlir {
 
-struct OpPassManager;
+class OpPassManager;
 
 namespace linalg {
 

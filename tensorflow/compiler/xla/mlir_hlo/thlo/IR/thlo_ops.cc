@@ -893,7 +893,7 @@ FailureOr<Value> GatherOp::generateResultTileValue(
 
 void SortOp::getAsmResultNames(function_ref<void(Value, StringRef)> setNameFn) {
   ResultRange results = getResults();
-  for (int i = 0; i < results.size(); i++) {
+  for (size_t i = 0; i < results.size(); i++) {
     setNameFn(results[i], "sorted" + std::to_string(i));
   }
 }
@@ -1027,7 +1027,7 @@ LogicalResult SortOp::verify() {
   // is valid, since all inputs are known to have the same shape. `getDimension`
   // returns an unsigned int, so no need to check for negative values.
   size_t referenceRank = referenceShape.size();
-  if (getDimension().getSExtValue() >= referenceRank) {
+  if (getDimension().getSExtValue() >= (int64_t)referenceRank) {
     return emitOpError() << "sorting dimension must be in range [0, "
                          << referenceRank << ") but got "
                          << getDimension().getSExtValue();
@@ -1174,7 +1174,7 @@ SmallVector<OpFoldResult> getInputTileOffsetsForReverse(
   auto tileOpOffsets = getValueOrCreateConstantIndexOp(b, loc, offsets);
   auto sizes = getValueOrCreateConstantIndexOp(b, loc, tileSizes);
   SmallVector<OpFoldResult> inputTileOffsets;
-  for (int i = 0; i < tileOpOffsets.size(); ++i) {
+  for (size_t i = 0; i < tileOpOffsets.size(); ++i) {
     if (llvm::is_contained(reverseDimensions, i)) {
       inputTileOffsets.push_back(OpFoldResult{b.createOrFold<arith::SubIOp>(
           loc,

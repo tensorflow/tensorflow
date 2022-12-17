@@ -135,7 +135,7 @@ Value transpose(mlir::Location loc, PatternRewriter &rewriter, Value input,
       });
 
   return transposedOp.getResult(0);
-};
+}
 
 // Collapses a 4d tensor input to 2d given its target shape.
 // Example: (M1, m0, N1, n0) -> (M, N)
@@ -156,7 +156,7 @@ Value collapseTo2D(mlir::Location loc, PatternRewriter &rewriter, Value input,
 // in the dynamic shape case.
 bool needsPadding(ArrayRef<int64_t> inputShape, ArrayRef<int64_t> tileShape) {
   assert(inputShape.size() == tileShape.size());
-  for (int i = 0; i < inputShape.size(); i++) {
+  for (size_t i = 0; i < inputShape.size(); i++) {
     if (inputShape[i] == ShapedType::kDynamic) {
       return true;
     }
