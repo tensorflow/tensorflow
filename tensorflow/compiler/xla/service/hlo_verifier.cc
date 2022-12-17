@@ -2708,11 +2708,12 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         instruction->opcode() != HloOpcode::kGetTupleElement &&
         instruction->opcode() != HloOpcode::kTranspose &&
         instruction->opcode() != HloOpcode::kDot &&
+        instruction->opcode() != HloOpcode::kFusion &&
         instruction->opcode() != HloOpcode::kCustomCall) {
       return InvalidArgument(
           "FP8 is currently only supported in convert, tuple, "
-          "get-tuple-element, transpose and dot instructions as well as Custom "
-          "Calls, but got instruction with FP8 input: %s",
+          "get-tuple-element, transpose, dot and fusion instructions as well "
+          "as Custom Calls, but got instruction with FP8 input: %s",
           instruction->ToString());
     }
     return OkStatus();
