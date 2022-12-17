@@ -452,6 +452,12 @@ message DebugOptions {
   reserved 5, 117, 133, 139, 176, 178;
 }
 
+message ShardableValueUpdatePairProto {
+  int64 input_parameter_number = 1;
+  repeated int64 parameter_shape_index = 2;
+  repeated int64 output_shape_index = 3;
+}
+
 // These settings control how XLA compiles and/or runs code.  Not all settings
 // will have an effect on every platform.
 //
@@ -525,17 +531,23 @@ message ExecutionOptions {
   // sharding of operations when multiple computation would be chained and
   // merged together.
   bool allow_spmd_sharding_propagation_to_output = 14;
+
+  // Whether to broadcast args across all replicas. One entry per arg.
+  repeated bool param_requires_broadcast_via_collectives = 18;
+
+  // If enabled, the compiler may generate sharding and unsharding programs as
+  // separate HLO modules, and modify the main program's input and output to
+  // be sharded.
+  bool allow_separate_sharding_programs = 19;
+
+  // The list of input/output pairs in the main program that could be sharded.
+  repeated ShardableValueUpdatePairProto shardable_value_update_pairs = 20;
 }
 
 // Serialization of HloModuleConfig. See the C++ class definition for
 // descriptions of each field.
 // There are no guarantees of backwards or forwards compatibility.
 message HloModuleConfigProto {
-  message ShardableValueUpdatePairProto {
-    int64 input_parameter_number = 1;
-    repeated int64 parameter_shape_index = 2;
-    repeated int64 output_shape_index = 3;
-  }
   enum FusionConfigCollection {
     OFF = 0;       // Do not collect configuration.
     PER_EDGE = 1;  // Collect per-edge configuration.
@@ -568,6 +580,7 @@ message HloModuleConfigProto {
 
   DebugOptions debug_options = 14;
   DeviceAssignmentProto static_device_assignment = 15;
+  bool allow_separate_sharding_programs = 30;
   repeated ShardableValueUpdatePairProto shardable_value_update_pairs = 16;
   bool alias_passthrough_params = 17;
   bool content_aware_computation_sorting = 18;

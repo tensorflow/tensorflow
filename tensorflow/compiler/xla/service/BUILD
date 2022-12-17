@@ -5351,12 +5351,26 @@ cc_library(
         ":hlo_proto_cc",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:shape_layout",
-        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "hlo_module_config_test",
+    srcs = ["hlo_module_config_test.cc"],
+    tags = [
+        "no_oss",
+    ],  # b/169705709, no protobuf matchers in OSS.
+    deps = [
+        ":hlo_module_config",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
