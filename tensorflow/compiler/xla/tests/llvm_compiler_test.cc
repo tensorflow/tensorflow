@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
@@ -44,14 +45,15 @@ class GpuDummyCompiler : public GpuCompiler {
   GpuDummyCompiler() : GpuCompiler(kDummyTestId, kDummyTriple, kDummyLayout) {}
 
   Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      HloModule* hlo_module, se::CudaComputeCapability cuda_compute_capability,
       se::DeviceMemoryAllocator* device_allocator) {
     return OkStatus();
   }
 
   Status OptimizeHloPostLayoutAssignment(
-      HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator) {
+      HloModule* hlo_module, se::StreamExecutor* stream_executor,
+      se::DeviceMemoryAllocator* device_allocator,
+      const GpuTargetConfig& gpu_target_config) {
     return OkStatus();
   }
 
