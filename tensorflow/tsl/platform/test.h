@@ -69,6 +69,10 @@ std::string TmpDir();
 // avoiding test specific APIs.
 std::string TensorFlowSrcRoot();
 
+// Returns the path to XLA in the directory containing data
+// dependencies.
+std::string XlaSrcRoot();
+
 // Return a random number generator seed to use in randomized tests.
 // Returns the same value for the lifetime of the process.
 int RandomSeed();
