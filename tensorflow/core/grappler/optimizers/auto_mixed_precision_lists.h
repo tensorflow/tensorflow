@@ -133,8 +133,10 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "LSTMBlockCellGrad",
         "MatMul",
         "Mha",
+        "MhaV2",
         "Tmlp",
         "TmlpV2",
+        "TmlpV3",
     };
 #if TENSORFLOW_USE_ROCM
     if (true) {
