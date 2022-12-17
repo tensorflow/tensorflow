@@ -24,6 +24,6 @@ package_group(
         "//tensorflow/core/...",
         "//tensorflow/dtensor/...",
         "//tensorflow/python/...",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/...",  #  Needs access to C++ API for dtensor device
+        "//tensorflow_federated/cc/core/...",  #  Needs access to C++ API for dtensor device
     ],
 )
