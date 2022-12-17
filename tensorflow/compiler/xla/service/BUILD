@@ -7054,15 +7054,12 @@ xla_aot_compile_gpu(
 
 xla_cc_test(
     name = "xla_aot_compile_cpu_test",
-    srcs = if_cuda_is_configured(["xla_aot_compile_cpu_test.cc"]),
-    data = if_cuda_is_configured([
-        ":xla_aot_compile_test_cpu_executable",
-    ]),
+    srcs = ["xla_aot_compile_cpu_test.cc"],
+    data = [":xla_aot_compile_test_cpu_executable"],
     tags = ["no_oss"],
-    deps = if_cuda_is_configured([
+    deps = [
         ":cpu_plugin",
         ":platform_util",
-        "@com_google_googletest//:gtest_main",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/client:client_library",
@@ -7073,20 +7070,18 @@ xla_cc_test(
         "//tensorflow/tsl/platform:resource_loader",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
-    ]),
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 xla_cc_test(
     name = "xla_aot_compile_stablehlo_cpu_test",
-    srcs = if_cuda_is_configured(["xla_aot_compile_stablehlo_cpu_test.cc"]),
-    data = if_cuda_is_configured([
-        ":xla_aot_compile_stablehlo_test_cpu_executable",
-    ]),
+    srcs = ["xla_aot_compile_stablehlo_cpu_test.cc"],
+    data = [":xla_aot_compile_stablehlo_test_cpu_executable"],
     tags = ["no_oss"],
-    deps = if_cuda_is_configured([
+    deps = [
         ":cpu_plugin",
         ":platform_util",
-        "@com_google_googletest//:gtest_main",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/client:client_library",
@@ -7098,7 +7093,8 @@ xla_cc_test(
         "//tensorflow/tsl/platform:resource_loader",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
-    ]),
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 xla_cc_test(
