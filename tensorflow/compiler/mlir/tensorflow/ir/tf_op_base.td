@@ -187,7 +187,7 @@ def TF_RecvResource : TF_ResourceBase<"Recv">;
 def TF_TPUExecuteResource : TF_ResourceBase<"TPUExecute">;
 def TF_RandomGeneratorResource : TF_ResourceBase<"RandomGenerator">;
 def TF_XlaHostComputeResource : TF_ResourceBase<"XlaHostCompute">;
-def TF_CollectiveOrderingResource : TF_ResourceBase<"CollectiveOrdering">;
+def TF_CollectiveReduceOrderingResource : TF_ResourceBase<"CollectiveReduceOrdering">;
 def TF_NcclAllReduceOrderingResource : TF_ResourceBase<"NcclAllReduceOrdering">;
 
 // Fake resource, see `TF_MustExecute` below.
@@ -253,8 +253,8 @@ def TF_TPUExecuteSideEffect : MemoryEffects<[MemWrite<TF_TPUExecuteResource>]>;
 
 def TF_RandomGeneratorSideEffect : MemoryEffects<[MemWrite<TF_RandomGeneratorResource>]>;
 
-// Special effect for keeping collective ops in order.
-def TF_CollectiveOrderingEffect : MemoryEffects<[MemWrite<TF_CollectiveOrderingResource>]>;
+// Special effect for keeping `CollectiveReduce` ops in order.
+def TF_CollectiveReduceOrderingEffect : MemoryEffects<[MemWrite<TF_CollectiveReduceOrderingResource>]>;
 
 // Special effect for keeping `NcclAllReduce` ops on the same device in order.
 def TF_NcclAllReduceOrderingEffect : MemoryEffects<[MemWrite<TF_NcclAllReduceOrderingResource>]>;

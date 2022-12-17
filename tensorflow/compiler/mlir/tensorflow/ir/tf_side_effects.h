@@ -94,9 +94,9 @@ struct MustExecute : public ::mlir::SideEffects::Resource::Base<MustExecute> {
   StringRef getName() final { return "MustExecute"; }
 };
 
-struct CollectiveOrdering
-    : public ::mlir::SideEffects::Resource::Base<CollectiveOrdering> {
-  StringRef getName() final { return "CollectiveOrdering"; }
+struct CollectiveReduceOrdering
+    : public ::mlir::SideEffects::Resource::Base<CollectiveReduceOrdering> {
+  StringRef getName() final { return "CollectiveReduceOrdering"; }
 };
 
 struct NcclAllReduceOrdering

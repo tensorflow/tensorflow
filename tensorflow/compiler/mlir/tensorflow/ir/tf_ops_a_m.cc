@@ -1054,23 +1054,13 @@ OpFoldResult CastOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
-// CollectiveGatherV2Op
-//===----------------------------------------------------------------------===//
-
-// See comment for `CollectiveReduceV2Op` below.
-std::optional<std::string> CollectiveGatherV2Op::GetResourceInstanceStr() {
-  return getNorderingToken() == 0 ? std::optional<std::string>("")
-                                  : std::nullopt;
-}
-
-//===----------------------------------------------------------------------===//
 // CollectiveReduceV2Op
 //===----------------------------------------------------------------------===//
 
 // For `CollectiveReduceV2Op` we have two cases:
 // 1) If at least one ordering token is present, then we purely rely on ordering
 //    tokens for side effect modeling and ignore the op-based effect
-//    `TF_CollectiveOrderingEffect` for which this function is relevant
+//    `TF_CollectiveReduceOrderingEffect` for which this function is relevant
 //    (note that returning `std::nullopt` here signals exactly that).
 // 2) If no ordering token is present, then we treat the op conservatively which
 //    means that different op instances need dependencies. This is realized by
