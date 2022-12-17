@@ -710,13 +710,13 @@ class ResourceGatherOp : public OpKernel {
     // indices.shape[batch_dims:] + params.shape[batch_dims+1:].
     TensorShape result_shape;
     for (int i = 0; i < batch_dims_; ++i) {
-      result_shape.AddDim(params.dim_size(i));
+      OP_REQUIRES_OK(c, result_shape.AddDimWithStatus(params.dim_size(i)));
     }
     for (int i = batch_dims_; i < indices.dims(); ++i) {
-      result_shape.AddDim(indices.dim_size(i));
+      OP_REQUIRES_OK(c, result_shape.AddDimWithStatus(indices.dim_size(i)));
     }
     for (int i = batch_dims_ + 1; i < params.dims(); ++i) {
-      result_shape.AddDim(params.dim_size(i));
+      OP_REQUIRES_OK(c, result_shape.AddDimWithStatus(params.dim_size(i)));
     }
 
     Tensor* out = nullptr;

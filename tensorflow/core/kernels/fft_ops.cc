@@ -224,7 +224,7 @@ class FFTCPU : public FFTBase {
     TensorShape temp_shape{input_dims[0]};
     for (int i = 1; i <= FFTRank; ++i) {
       input_slice_sizes[i] = fft_shape[i - 1];
-      temp_shape.AddDim(fft_shape[i - 1]);
+      OP_REQUIRES_OK(ctx, temp_shape.AddDimWithStatus(fft_shape[i - 1]));
     }
     OP_REQUIRES(ctx, temp_shape.num_elements() > 0,
                 errors::InvalidArgument("Obtained a FFT shape of 0 elements: ",
@@ -267,7 +267,7 @@ class FFTCPU : public FFTBase {
     for (auto i = 1; i <= FFTRank; i++) {
       input_slice_sizes[i] =
           i == FFTRank ? fft_shape[i - 1] / 2 + 1 : fft_shape[i - 1];
-      full_fft_shape.AddDim(fft_shape[i - 1]);
+      OP_REQUIRES_OK(ctx, full_fft_shape.AddDimWithStatus(fft_shape[i - 1]));
     }
     OP_REQUIRES(ctx, full_fft_shape.num_elements() > 0,
                 errors::InvalidArgument("Obtained a FFT shape of 0 elements: ",
