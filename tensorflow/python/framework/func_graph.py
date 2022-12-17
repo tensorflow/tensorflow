@@ -439,7 +439,9 @@ class FuncGraph(ops.Graph):
 
         if not context.executing_eagerly():
           graph = ops.get_default_graph()
-
+          assert isinstance(
+              graph,
+              FuncGraph), "This API should only be used in TF2 enviroment."
           # In the case of control flow, we need to capture the
           # external_captures (deferred or not) of the body_graph (i.e.
           # `WhileBodyFuncGraph) in `cond_graph` (i.e. WhileCondFuncGraph) and
@@ -834,6 +836,52 @@ class FuncGraph(ops.Graph):
                                               func: Callable[[], Any]) ->...:
     """Implement capturing side input by reference for tf.function.
 
+    Note that this API will only register the capture in the func_graph where
+    it is called. In the case of nested graph, like nested tf.function or
+    tf.while, the outer graph is not aware of this capture in the inner graph.
+    Thus, the outer tf.function will not retrace when the by-ref capture
+    changes. It's the user's responsibility to call this API in the outer
+    func_graph as well if proper retracing is needed.
+
+    For example:
+
+    ```
+    x = 1
+
+    # Correct usage
+    @tf.function
+    def f_1():
+      graph = tf.compat.v1.get_default_graph()
+      # Capture the same x for the outer tf.function
+      graph._experimental_capture_side_input_by_ref("x", lambda: x)
+
+      @tf.function
+      def g():
+        graph = tf.compat.v1.get_default_graph()
+        cap_x = graph._experimental_capture_side_input_by_ref("x", lambda: x)
+        return cap_x + 1
+
+      return g()
+
+    # Incorrect usage
+    @tf.function
+    def f_2():
+
+      @tf.function
+      def g():
+        graph = tf.compat.v1.get_default_graph()
+        cap_x = graph._experimental_capture_side_input_by_ref("x", lambda: x)
+        return cap_x + 1
+
+      return g()
+
+    assert f_1() == 2
+    assert f_2() == 2
+    x = 2
+    assert f_1() == 3
+    assert f_2() == 2  # This is incorrect
+    ```
+
     Args:
       identifier: A hashable object as the key for the capture.
       func: A Python function that takes no arguments and returns the value of
@@ -844,16 +892,6 @@ class FuncGraph(ops.Graph):
         are replaced with placehoders, and non-tensors remain the same.
 
     """
-    # Support manual capture for inner nested tf.function is not possible at the
-    # moment. Inner here means any tf.function wrapped by another tf.function.
-    # Usage inside the outer most tf.function only is fine.
-    # The infeasibility is due to it's impossible to determine the
-    # definition scope of the captured side input. This info is needed when
-    # propagating inner tf.function captures to outer tf.function.
-    if isinstance(self.outer_graph, FuncGraph):
-      raise NotImplementedError(
-          ("Manual side input usage for inner nested tf.function is not "
-           f"supported. Got side input: {identifier}."))
 
     # Prevent repeated captures
     if identifier in self._capture_placeholder_lib:
