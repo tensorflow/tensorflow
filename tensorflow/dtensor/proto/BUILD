@@ -5,7 +5,7 @@ package(
     default_visibility = [
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/dtensor:dtensor-users",
-        "@org_tensorflow_federated//...",
+        "@org_tensorflow_federated//tensorflow_federated:__subpackages__",
     ],
     licenses = ["notice"],
 )
