@@ -150,7 +150,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allocateTensors(
     ThrowException(env, tflite::jni::kIllegalStateException,
                    "Internal error: Unexpected failure when preparing tensor "
                    "allocations: %s",
-                   error_reporter->CachedErrorMessage());
+                   error_reporter->CachedErrorMessage(),
+                   " See https://github.com/tensorflow/tensorflow/issues/40031");
   }
 }
 
@@ -492,6 +493,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
     if (status == kTfLiteDelegateError) {
       ThrowException(env, tflite::jni::kIllegalArgumentException,
                      "Internal error: Failed to apply delegate: %s",
+                     "Check this Stack Overflow question for help:",
+                     "https://stackoverflow.com/questions/71903660/failed-to-apply-delegate-tflitegpudelegate-init-mul-expected-a-3d-tensor-of-s"
                      error_reporter->CachedErrorMessage());
     } else if (status == kTfLiteApplicationError) {
       ThrowException(env, tflite::jni::kIllegalArgumentException,
