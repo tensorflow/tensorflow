@@ -2099,6 +2099,7 @@ xla_test(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
     ],

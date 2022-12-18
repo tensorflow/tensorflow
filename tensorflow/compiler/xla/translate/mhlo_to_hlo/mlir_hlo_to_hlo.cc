@@ -72,6 +72,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/float8.h"
 
 using ::int64_t;
 using ::stream_executor::port::StatusOr;
@@ -2275,6 +2276,8 @@ StatusOr<xla::Literal> CreateArrayLiteralFromAttr(ElementsAttr attr,
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::C128, std::complex<double>)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F16, Eigen::half)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::BF16, Eigen::bfloat16)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F8E5M2, tsl::float8_e5m2)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F8E4M3FN, tsl::float8_e4m3fn)
     default:
       return tsl::errors::Internal(absl::StrCat(  // NOLINT
           "Unsupported type: ", xla::PrimitiveType_Name(shape.element_type())));
