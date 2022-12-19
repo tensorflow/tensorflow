@@ -306,6 +306,8 @@ StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
   graph_execution_state_options.run_placer_grappler_on_functions =
       options.run_placer_grappler_on_functions;
   graph_execution_state_options.enable_tfrt_gpu = options.enable_tfrt_gpu;
+  graph_execution_state_options.use_bridge_for_gpu =
+      options.compile_options.use_bridge_for_gpu;
 
   TF_ASSIGN_OR_RETURN(
       auto graph_execution_state,
