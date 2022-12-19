@@ -7071,6 +7071,12 @@ xla_aot_compile_gpu(
     module = "xla_aot_compile_test_gemm.mlir",
 )
 
+xla_aot_compile_gpu(
+    name = "xla_aot_compile_test_gpu_executable_convolution",
+    gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
+    module = "xla_aot_compile_test_convolution.mlir",
+)
+
 xla_cc_test(
     name = "xla_aot_compile_cpu_test",
     srcs = ["xla_aot_compile_cpu_test.cc"],
@@ -7123,6 +7129,7 @@ xla_cc_test(
         ":xla_aot_compile_test_gpu_executable",
         ":xla_aot_compile_test_gpu_executable_constant",
         ":xla_aot_compile_test_gpu_executable_gemm",
+        ":xla_aot_compile_test_gpu_executable_convolution",
     ]),
     env = {
         "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
