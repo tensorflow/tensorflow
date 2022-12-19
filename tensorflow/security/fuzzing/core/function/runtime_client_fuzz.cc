@@ -21,7 +21,7 @@
 #include "tensorflow/core/ir/ops.h"
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "tensorflow/core/function/testing/test_pass.h"
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace tensorflow {
 namespace fuzzing {
@@ -218,13 +218,20 @@ public:
   }
 
 private:
+  struct TestPassMock
+      : public mlir::PassWrapper<TestPassMock, mlir::OperationPass<mlir::ModuleOp>> {
+    TestPassMock() = default;
+    llvm::StringRef getArgument() const final { return "test-pass"; }
+    void runOnOperation() override {}
+  };
+
   void EnsureTestPassRegistered() {
     mlir::MLIRContext ctx;
     mlir::PassManager pm(&ctx);
     std::string error;
     llvm::raw_string_ostream error_stream(error);
     if (mlir::failed(mlir::parsePassPipeline("test-pass", pm, error_stream))) {
-      core::function::testing::RegisterTestPass();
+      mlir::registerPass([] { return std::make_unique<TestPassMock>(); });
     }
   }
 };
