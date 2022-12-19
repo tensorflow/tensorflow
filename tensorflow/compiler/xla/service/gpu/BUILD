@@ -1122,9 +1122,7 @@ cc_library(
 
 xla_cc_test(
     name = "move_copy_to_users_test",
-    srcs = [
-        "move_copy_to_users_test.cc",
-    ],
+    srcs = ["move_copy_to_users_test.cc"],
     deps = [
         ":move_copy_to_users",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -1143,7 +1141,6 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_conv_rewriter_test",
     srcs = ["gpu_conv_rewriter_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":cublas_cudnn",
         ":gpu_conv_rewriter",
@@ -1345,7 +1342,6 @@ cc_library(
 xla_cc_test(
     name = "gpu_sanitize_constant_names_test",
     srcs = ["gpu_sanitize_constant_names_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_sanitize_constant_names",
         ":ir_emission_utils",
@@ -1432,7 +1428,6 @@ cc_library(
 xla_cc_test(
     name = "gpu_conv_padding_legalization_test",
     srcs = ["gpu_conv_padding_legalization_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":cublas_cudnn",
         ":gpu_conv_padding_legalization",
@@ -1465,7 +1460,6 @@ cc_library(
 xla_cc_test(
     name = "cudnn_support_utils_test",
     srcs = ["cudnn_support_utils_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":cudnn_support_utils",
         "//tensorflow/compiler/xla:status_macros",
@@ -1510,7 +1504,6 @@ cc_library(
 xla_cc_test(
     name = "cudnn_pad_for_convolutions_test",
     srcs = ["cudnn_pad_for_convolutions_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":cublas_cudnn",
         ":cudnn_pad_for_convolutions",
@@ -1544,7 +1537,6 @@ cc_library(
 xla_cc_test(
     name = "cudnn_vectorize_convolutions_test",
     srcs = ["cudnn_vectorize_convolutions_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":cublas_cudnn",
         ":cudnn_vectorize_convolutions",
@@ -1577,7 +1569,6 @@ cc_library(
 xla_cc_test(
     name = "cudnn_simplify_padding_test",
     srcs = ["cudnn_simplify_padding_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":cublas_cudnn",
         ":cudnn_pad_for_convolutions",
@@ -2157,7 +2148,6 @@ cc_library(
 xla_cc_test(
     name = "gpu_layout_assignment_test",
     srcs = ["gpu_layout_assignment_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":cublas_cudnn",
         ":gemm_rewriter",
