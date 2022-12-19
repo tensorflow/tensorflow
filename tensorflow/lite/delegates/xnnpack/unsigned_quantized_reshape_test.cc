@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <random>
+#include <vector>
 
 #include "tensorflow/lite/delegates/xnnpack/reshape_tester.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
