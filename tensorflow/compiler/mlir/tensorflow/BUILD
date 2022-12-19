@@ -1283,6 +1283,7 @@ cc_library(
         "transforms/collection_ops_util.h",
         "transforms/einsum.h",
         "transforms/passes.h",
+        "translate/split_into_island_per_op_pass.h",
     ],
     includes = ["include"],
     textual_hdrs = [
