@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -103,6 +105,23 @@ class NcclCollectiveThunk : public Thunk {
     mlir::Value destination_value;
   };
 
+  class AsyncExecutor {
+   public:
+    // Executes the function on the async communications stream and records a
+    // completion event.
+    Status Execute(
+        absl::FunctionRef<Status(const ExecuteParams&, se::Stream&, ncclComm_t)>
+            fn,
+        const ExecuteParams& params, ncclComm_t comm);
+    // Blocks the compute stream until async communication is complete.
+    Status Await(const ExecuteParams& params);
+
+   private:
+    absl::Mutex mu_;
+    // Store done events (by device ordinal) for the done thunk to wait on.
+    absl::flat_hash_map<int, se::Event> done_events_ ABSL_GUARDED_BY(mu_);
+  };
+
   // Returns whether NCCL operations appear possible to perform; e.g. if we
   // haven't done a build with the CUDA compiler enabled, we can't compile the
   // NCCL header, and thus this will be false.
@@ -125,6 +144,17 @@ class NcclCollectiveThunk : public Thunk {
 #if XLA_ENABLE_XCCL
   bool first_call_to_execute_ = true;
 #endif  // XLA_ENABLE_XCCL
+};
+
+class NcclCollectiveDoneThunk : public Thunk {
+ public:
+  NcclCollectiveDoneThunk(Thunk::Kind kind, ThunkInfo thunk_info,
+                          NcclCollectiveThunk::AsyncExecutor& async);
+
+  Status ExecuteOnStream(const ExecuteParams& params) override;
+
+ private:
+  NcclCollectiveThunk::AsyncExecutor& async_;
 };
 
 // Returns if the given data type is supported by NCCL.

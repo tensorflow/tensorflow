@@ -17,9 +17,17 @@ cc_binary(
 )
 
 cc_library(
+    name = "writer_lib_enum",
+    hdrs = ["enum_mapping.h"],
+    deps = [
+        "//tensorflow/lite:builtin_op_data",
+        "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
+cc_library(
     name = "writer_lib",
     srcs = [
-        "enum_mapping.h",
         "writer_lib.cc",
     ],
     hdrs = [
@@ -37,6 +45,7 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs_with_reflection",
+        "//tensorflow/lite/tools/serialization:writer_lib_enum",
         "//tensorflow/lite/tools/versioning",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

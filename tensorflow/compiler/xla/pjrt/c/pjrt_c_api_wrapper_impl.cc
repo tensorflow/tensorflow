@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 
+#include <cstddef>
 #include <cstring>
 #include <functional>
 #include <memory>
@@ -24,6 +25,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -72,6 +74,57 @@ static PJRT_Device* GetCDevice(const PJRT_Client* client,
   auto iter = c_device_map.find(device);
   CHECK(iter != c_device_map.end());
   return iter->second;
+}
+
+// Performs one-time cost-analysis on an executable if not done already, and
+// populates its cost analysis properties. After this returns successfully,
+// cost analysis properties of the executable can be accessed without mutex.
+static xla::Status PopulateExecutableCostAnalysisIfNeeded(
+    PJRT_Executable* executable) {
+  absl::MutexLock lock(&executable->mutex);
+  if (!executable->cost_analysis_ran) {
+    // Call GetCostAnalysis in the underlying PjRtExecutable
+    using PropertiesMapType =
+        absl::flat_hash_map<std::string, xla::PjRtValueType>;
+    TF_ASSIGN_OR_RETURN(const PropertiesMapType properties,
+                        executable->executable->GetCostAnalysis());
+    // If no output, return empty result
+    if (properties.empty()) {
+      executable->cost_analysis_ran = true;
+      return xla::OkStatus();
+    }
+
+    // Copy each returned property to cost analysis vectors in PJRT_Executable
+    std::vector<PJRT_NamedValue>& cost_analysis_properties =
+        executable->cost_analysis_properties;
+    cost_analysis_properties.resize((properties.size()));
+    std::vector<std::string>& cost_analysis_names =
+        executable->cost_analysis_names;
+    cost_analysis_names.resize(properties.size());
+    size_t i = 0;
+    for (const auto& property : properties) {
+      PJRT_NamedValue& cost_analysis_property = cost_analysis_properties[i];
+      std::string& property_name = cost_analysis_names[i];
+
+      cost_analysis_property.struct_size = PJRT_NamedValue_STRUCT_SIZE;
+      cost_analysis_property.priv = nullptr;
+
+      property_name = property.first;
+      cost_analysis_property.name = property_name.c_str();
+      cost_analysis_property.name_size = property_name.size();
+
+      const xla::PjRtValueType& property_value = property.second;
+      CHECK(std::holds_alternative<float>(property_value))
+          << property_value.index();
+      cost_analysis_property.type = PJRT_NamedValue::PJRT_NamedValue_kFloat;
+      cost_analysis_property.float_value = std::get<float>(property_value);
+      cost_analysis_property.value_size = 1;
+
+      ++i;
+    }
+    executable->cost_analysis_ran = true;
+  }
+  return xla::OkStatus();
 }
 
 // ---------------------------------- Errors -----------------------------------
@@ -203,9 +256,7 @@ static void PopulatePjrtExecutableAddressableDevices(
   const std::vector<PJRT_Device*>& client_devices =
       executable->client->addressable_devices;
 
-  CHECK(client_devices.size() >= num_addressable_devices)
-      << ": client->addressable_devices is not bigger than "
-         "executable->addressable_devices()";
+  CHECK_GE(client_devices.size(), num_addressable_devices);
 
   for (int i = 0; i < num_addressable_devices; ++i) {
     xla::PjRtDevice* cpp_device = cpp_devices[i];
@@ -555,6 +606,25 @@ PJRT_Error* PJRT_Executable_OptimizedProgram(
   }
 }
 
+PJRT_Error* PJRT_Executable_GetCostAnalysis(
+    PJRT_Executable_GetCostAnalysis_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_GetCostAnalysis_Args",
+      PJRT_Executable_GetCostAnalysis_Args_STRUCT_SIZE, args->struct_size));
+
+  PJRT_RETURN_IF_ERROR(
+      PopulateExecutableCostAnalysisIfNeeded(args->executable));
+
+  // Output cost analysis data in PJRT_Executable
+  args->num_properties = args->executable->cost_analysis_properties.size();
+  if (args->num_properties > 0) {
+    args->properties = args->executable->cost_analysis_properties.data();
+  } else {
+    args->properties = nullptr;
+  }
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Executable_Delete(PJRT_Executable_Delete_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Executable_Delete_Args", PJRT_Executable_Delete_Args_STRUCT_SIZE,
@@ -689,7 +759,7 @@ PJRT_Error* PJRT_Executable_Deserialize(
                             serialized, /*options=*/std::nullopt));
 
   args->deserialized_executable =
-      new PJRT_Executable{std::move(executable), args->client};
+      new PJRT_Executable(std::move(executable), args->client);
   return nullptr;
 }
 

@@ -72,6 +72,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/float8.h"
 
 using ::int64_t;
 using ::stream_executor::port::StatusOr;
@@ -1545,7 +1546,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
 
   auto& value_map = *ctx.values;
   auto aliasInfo =
-      xla::ConvertCustomCallOutputOperandAliasing(op.getOutputOperandAliases());
+      xla::ConvertOutputOperandAliasing(op.getOutputOperandAliases());
   auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
   auto custom_call_schedule =
       xla::ConvertCustomCallSchedule(op.getCustomCallSchedule());
@@ -2151,6 +2152,9 @@ LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
     return failure();
 
   auto& values = *ctx.values;
+  auto aliasInfo =
+      xla::ConvertOutputOperandAliasing(op.getOutputOperandAliases());
+  auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
   llvm::SmallVector<xla::XlaOp, 4> operands;
   for (auto operand : op.getInputs()) operands.push_back(values[operand]);
 
@@ -2159,7 +2163,7 @@ LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
   xla::XlaOp fusion = xla::internal::XlaBuilderFriend::BuildFusion(
       ctx.builder, operands,
       absl::string_view(fusion_kind_string.data(), fusion_kind_string.size()),
-      fused_computation);
+      fused_computation, output_operand_aliasing);
   if (op.getNumResults() == 1) {
     values[op.getResult(0)] = fusion;
   } else {
@@ -2272,6 +2276,8 @@ StatusOr<xla::Literal> CreateArrayLiteralFromAttr(ElementsAttr attr,
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::C128, std::complex<double>)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F16, Eigen::half)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::BF16, Eigen::bfloat16)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F8E5M2, tsl::float8_e5m2)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F8E4M3FN, tsl::float8_e4m3fn)
     default:
       return tsl::errors::Internal(absl::StrCat(  // NOLINT
           "Unsupported type: ", xla::PrimitiveType_Name(shape.element_type())));

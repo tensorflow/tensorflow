@@ -109,7 +109,7 @@ mlir::mhlo::ConvDimensionNumbersAttr ConvertConvDimensionNumbers(
       arrayref(dnums.output_spatial_dimensions()));
 }
 
-mlir::ArrayAttr ConvertCustomCallOutputOperandAliasing(
+mlir::ArrayAttr ConvertOutputOperandAliasing(
     const std::vector<std::pair<xla::ShapeIndex,
                                 std::pair<int64_t, xla::ShapeIndex>>>& aliaInfo,
     mlir::Builder* builder) {

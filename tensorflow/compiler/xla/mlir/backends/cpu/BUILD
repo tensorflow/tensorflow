@@ -20,7 +20,6 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:thlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
-        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:MlirOptLib",

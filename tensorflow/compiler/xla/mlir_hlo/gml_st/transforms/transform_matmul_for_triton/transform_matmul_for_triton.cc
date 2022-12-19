@@ -76,47 +76,64 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
       return rewriter.notifyMatchFailure(matmulOp,
                                          "has already been transformed.");
 
-    // First level tiling: parallel dimensions.
+    if (isa<gml_st::ParallelOp, gml_st::ForOp>(matmulOp->getParentOp()))
+      return rewriter.notifyMatchFailure(
+          matmulOp, "has already been tiled by another pass.");
+
+    SmallVector<Operation *> fusionCluster = findMapFusionCluster(matmulOp);
+    Operation *tilingRoot = fusionCluster[0];
+
+    // Tiling of linalg.map requires two dimensions, linalg.matmul requires
+    // three.
     SmallVector<int64_t> parallelDimsTileSizes{lhsParallelDimTileSize,
-                                               rhsParallelDimTileSize, 0};
+                                               rhsParallelDimTileSize};
+    if (isa<linalg::MatmulOp>(tilingRoot)) parallelDimsTileSizes.push_back(0);
+
     auto tilingParallelDimsResult =
-        tileMatmul(rewriter, matmulOp, parallelDimsTileSizes,
+        tileMatmul(rewriter, tilingRoot, parallelDimsTileSizes,
                    /*distribute=*/true, distributionLabel);
     if (failed(tilingParallelDimsResult)) return failure();
 
     // Update the results if tiling occurred.
     if (tilingParallelDimsResult->loop != nullptr) {
-      rewriter.replaceOp(matmulOp,
+      rewriter.replaceOp(tilingRoot,
                          tilingParallelDimsResult->loop->getResults());
-      matmulOp = cast<linalg::MatmulOp>(tilingParallelDimsResult->tiledOp);
+      tilingRoot = tilingParallelDimsResult->tiledOps.front();
     }
 
-    // Fusion into the output.
-    OpOperand *matmulOutput = matmulOp.getDpsInitOperand(0);
-    auto materialize = matmulOutput->get().getDefiningOp<MaterializeOp>();
-    if (!materialize) {
-      return rewriter.notifyMatchFailure(
-          matmulOp,
-          "has failed to 'materialize' output during 'linalg.fill' fusion.");
-    }
-    if (materialize.getSource().getDefiningOp<linalg::FillOp>()) {
-      if (failed(fuse(rewriter, materialize))) return failure();
-    }
+    // Fuse ops into the loop.
+    fuseGreedily(rewriter, *tilingRoot->getBlock(), [&](Operation *op) {
+      return llvm::is_contained(fusionCluster, op);
+    });
+
+    auto inputFusionFilterFn = [&](Operation *op) {
+      return isa<linalg::BroadcastOp, linalg::MapOp>(op);
+    };
 
     // Second level tiling: reduction dimension.
     SmallVector<int64_t> reductionDimsTileSizes{0, 0, reductionDimTileSize};
-    auto tilingReductionDimsResult = tileMatmul(
-        rewriter, matmulOp, reductionDimsTileSizes, /*distribute=*/false);
-    if (failed(tilingReductionDimsResult)) return failure();
+    for (auto op :
+         llvm::to_vector(tilingRoot->getBlock()->getOps<linalg::MatmulOp>())) {
+      // Fusion into the output.
+      if (failed(fuseOutputFill(rewriter, op))) return failure();
 
-    // Update the results if tiling occurred.
-    if (tilingReductionDimsResult->loop != nullptr) {
-      rewriter.replaceOp(matmulOp,
-                         tilingReductionDimsResult->loop->getResults());
-      matmulOp = cast<linalg::MatmulOp>(tilingReductionDimsResult->tiledOp);
+      fuseGreedily(rewriter, *op->getBlock(), inputFusionFilterFn);
+
+      auto tilingReductionDimsResult = tileMatmul(
+          rewriter, op, reductionDimsTileSizes, /*distribute=*/false);
+      if (failed(tilingReductionDimsResult)) return failure();
+
+      // Update the results if tiling occurred.
+      if (tilingReductionDimsResult->loop != nullptr) {
+        rewriter.replaceOp(op, tilingReductionDimsResult->loop->getResults());
+        op =
+            cast<linalg::MatmulOp>(tilingReductionDimsResult->tiledOps.front());
+
+        fuseGreedily(rewriter, *op->getBlock(), inputFusionFilterFn);
+      }
+
+      setLabel(op, kMatmulTransformedLabel);
     }
-
-    setLabel(matmulOp, kMatmulTransformedLabel);
 
     return success();
   }

@@ -91,11 +91,11 @@ std::string HloModuleConfig::compilation_cache_key() const {
   return key;
 }
 
-static void AssignProtoShardableValueUpdatePairs(
-    HloModuleConfigProto& proto,
+/*static*/ void HloModuleConfig::AssignProtoShardableValueUpdatePairs(
+    tsl::protobuf::RepeatedPtrField<ShardableValueUpdatePairProto>*
+        proto_update_pairs,
     const std::vector<HloModuleConfig::ShardableValueUpdatePair>&
         update_pairs) {
-  auto* proto_update_pairs = proto.mutable_shardable_value_update_pairs();
   using ProtoShard = std::decay_t<decltype(proto_update_pairs->at(0))>;
   proto_update_pairs->Reserve(update_pairs.size());
 
@@ -174,10 +174,11 @@ static void AssignProtoPhaseOrderingConfig(
   }
 }
 
-static void AssignStructShardableValueUpdatePairs(
-    HloModuleConfig& config, const HloModuleConfigProto& proto) {
+/*static*/ void HloModuleConfig::AssignStructShardableValueUpdatePairs(
+    HloModuleConfig& config,
+    const tsl::protobuf::RepeatedPtrField<ShardableValueUpdatePairProto>&
+        pairs) {
   std::vector<HloModuleConfig::ShardableValueUpdatePair> cfg_pairs;
-  auto& pairs = proto.shardable_value_update_pairs();
   cfg_pairs.reserve(pairs.size());
   for (const auto& proto_pair : pairs) {
     HloModuleConfig::ShardableValueUpdatePair pair;
@@ -278,7 +279,9 @@ StatusOr<HloModuleConfigProto> HloModuleConfig::ToProto() const {
     auto proto_assignment = proto.mutable_static_device_assignment();
     TF_RETURN_IF_ERROR(static_device_assignment_->Serialize(proto_assignment));
   }
-  AssignProtoShardableValueUpdatePairs(proto, shardable_value_update_pairs_);
+  AssignProtoShardableValueUpdatePairs(
+      proto.mutable_shardable_value_update_pairs(),
+      shardable_value_update_pairs_);
   proto.set_alias_passthrough_params(alias_passthrough_params_);
   proto.set_content_aware_computation_sorting(
       content_aware_computation_sorting_);
@@ -302,6 +305,7 @@ StatusOr<HloModuleConfigProto> HloModuleConfig::ToProto() const {
     proto_analysis_map->insert({std::string(key), value});
   }
   proto.set_matrix_unit_operand_precision(matrix_unit_operand_precision_);
+  proto.set_allow_separate_sharding_programs(allow_separate_sharding_programs_);
   return proto;
 }
 
@@ -342,7 +346,8 @@ StatusOr<std::unique_ptr<HloModuleConfig>> HloModuleConfig::CreateFromProto(
         DeviceAssignment::Deserialize(proto.static_device_assignment()));
     config->static_device_assignment_ = std::move(*device_assignment);
   }
-  AssignStructShardableValueUpdatePairs(*config, proto);
+  AssignStructShardableValueUpdatePairs(*config,
+                                        proto.shardable_value_update_pairs());
   config->alias_passthrough_params_ = proto.alias_passthrough_params();
   config->content_aware_computation_sorting_ =
       proto.content_aware_computation_sorting();
@@ -364,6 +369,8 @@ StatusOr<std::unique_ptr<HloModuleConfig>> HloModuleConfig::CreateFromProto(
                                          proto.analysis_allowance_map().end());
   config->matrix_unit_operand_precision_ =
       proto.matrix_unit_operand_precision();
+  config->allow_separate_sharding_programs_ =
+      proto.allow_separate_sharding_programs();
 
   return std::move(config);
 }

@@ -289,6 +289,40 @@ class TensorNamePreservationTest(quantize_model_test_base.QuantizedModelTest):
         list(original_signature_map.keys()), set(signatures.keys()))
     self.assertDictEqual(original_signature_map, converted_signature_map)
 
+  def test_duplicated_tensor_name(self):
+    with session.Session(graph=ops.Graph()) as sess:
+      input_tensor = array_ops.placeholder(
+          dtypes.float32, shape=[], name='input')
+      q_input = array_ops.fake_quant_with_min_max_args(
+          input_tensor, min=-0.1, max=0.2, num_bits=8, narrow_range=False)
+      sqrt = math_ops.sqrt(q_input, name='sqrt')
+      identity = array_ops.identity(sqrt, name='output')
+
+      input_map = {'input': input_tensor}
+      output_map = {'sqrt': identity}
+      signature = signature_def_utils_impl.predict_signature_def(
+          inputs=input_map, outputs=output_map)
+      signature_map = {'main': signature}
+
+      tags = {tag_constants.SERVING}
+      saved_model_path = self.create_tempdir('input').full_path
+      v1_builder = builder.SavedModelBuilder(saved_model_path)
+      v1_builder.add_meta_graph_and_variables(
+          sess, tags, signature_def_map=signature_map)
+      v1_builder.save()
+
+    output_directory = self.create_tempdir('output').full_path
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE),
+        op_set=quant_opts_pb2.TF)
+    quantize_model.quantize(saved_model_path, signature_map.keys(), tags,
+                            output_directory, quantization_options)
+    converted_signature_map = save_model.get_signatures_from_saved_model(
+        output_directory, signature_keys=signature_map.keys(), tags=tags)
+    # The original and converted model should have the same signature map.
+    self.assertDictEqual(signature_map, converted_signature_map)
+
 
 class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
@@ -747,16 +781,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertAllClose(new_outputs, expected_outputs, atol=0.1023)
 
   # Raises error because the constant unfreezing is not yet fully implemented.
-  @test_util.run_in_graph_and_eager_modes
+  @test_util.deprecated_graph_mode_only
   def test_matmul_ptq_model_with_unfreeze_constants_raises_error(self):
     input_saved_model_path = self.create_tempdir('input').full_path
     self._create_matmul_model(
-        input_shape=(1, 1024),
-        weight_shape=(1024, 3),
+        input_shape=(1, 4096),
+        weight_shape=(4096, 5),
         saved_model_path=input_saved_model_path)
 
     repr_ds = self._create_data_generator(
-        input_key='input_tensor', shape=(1, 1024), num_examples=2)
+        input_key='input_tensor', shape=(1, 4096), num_examples=2)
 
     tags = {tag_constants.SERVING}
     output_directory = self.create_tempdir().full_path
@@ -1358,7 +1392,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self._contains_quantized_function_call(output_meta_graphdef))
 
   # Raises error because the constant unfreezing is not yet fully implemented.
-  @test_util.run_in_graph_and_eager_modes
+  @test_util.deprecated_graph_mode_only
   def test_ptq_model_with_variable_tf1_saved_model_unfreeze_constants_raises_error(
       self):
     input_saved_model_path = self.create_tempdir('input').full_path
@@ -1371,6 +1405,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         tags,
         input_key='x',
         output_key='output',
+        input_shape=(1, 16, 16, 8),
+        # Use large filter so that it is target for unfreezing.
+        filter_shape=(256, 8, 8, 4),
         use_variable=True)
 
     signature_keys = [signature_key]

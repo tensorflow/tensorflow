@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -320,11 +321,10 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  const Status status = PreprocessAndFreezeGraph(
-      module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr);
-  if (!status.ok()) {
-    return absl::InternalError("Failed to preprocess graph: " +
-                               status.error_message());
+  if (const absl::Status preprocess_status = PreprocessAndFreezeGraph(
+          module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr);
+      !preprocess_status.ok()) {
+    return preprocess_status;
   }
 
   if (const absl::Status qat_status =
@@ -394,11 +394,10 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
   }
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  const Status status = PreprocessAndFreezeGraph(
-      module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr);
-  if (!status.ok()) {
-    return absl::InternalError("Failed to preprocess graph: " +
-                               status.error_message());
+  if (const absl::Status preprocess_status = PreprocessAndFreezeGraph(
+          module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr);
+      !preprocess_status.ok()) {
+    return preprocess_status;
   }
 
   if (const absl::Status pre_calib_pass_status = RunPasses(
@@ -537,11 +536,10 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  const Status status = PreprocessAndFreezeGraph(
-      module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr);
-  if (!status.ok()) {
-    return absl::InternalError("Failed to preprocess graph: " +
-                               status.error_message());
+  if (const absl::Status preprocess_status = PreprocessAndFreezeGraph(
+          module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr);
+      !preprocess_status.ok()) {
+    return preprocess_status;
   }
 
   if (const absl::Status ptq_dynamic_range_status = RunPasses(

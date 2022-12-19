@@ -174,6 +174,10 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
       auto backendConfig = hloOp.getBackendConfig();
       if (backendConfig && !backendConfig->template isa<mlir::StringAttr>())
         return failure();
+      // StableHLO CustomCall doesn't support schedules, and there are no plans
+      // to propose them to StableHLO because they are private to XLA.
+      if (hloOp.getCustomCallSchedule() != mhlo::CustomCallSchedule::NONE)
+        return failure();
     }
 
     // Convert MHLO types to StableHLO equivalents.
@@ -197,14 +201,17 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
     SmallVector<NamedAttribute> stablehloAttrs;
     for (NamedAttribute hloAttr : hloOp->getAttrs()) {
       if constexpr (std::is_same<HloOpTy, mhlo::CustomCallOp>::value) {
-        if (hloAttr.getName() == "api_version") {
-          // StableHLO CustomCall doesn't support API_VERSION_TYPED_FFI yet.
-          // Proposal: https://github.com/openxla/stablehlo/issues/637.
-          auto attr = hloAttr.getValue().cast<mhlo::CustomCallApiVersionAttr>();
-          if (attr.getValue() ==
-              mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI)
-            return failure();
-        }
+        // StableHLO CustomCall doesn't support API_VERSION_TYPED_FFI yet.
+        // Proposal: https://github.com/openxla/stablehlo/issues/637.
+        if (hloAttr.getName() == "api_version" &&
+            hloOp.getApiVersion() ==
+                mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI)
+          return failure();
+        // custom_call_schedule is private to XLA, but we still want to allow
+        // #mhlo<custom_call_schedule NONE> (by ignoring it).
+        if (hloAttr.getName() == "custom_call_schedule" &&
+            hloOp.getCustomCallSchedule() == mhlo::CustomCallSchedule::NONE)
+          continue;
       }
       auto stablehloAttr = convertAttr(hloAttr.getValue());
       if (!stablehloAttr) return failure();
@@ -231,6 +238,10 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
          llvm::zip(hloOp->getRegions(), stablehloOp->getRegions())) {
       rewriter.inlineRegionBefore(hloRegion, stablehloRegion,
                                   stablehloRegion.end());
+      if (failed(rewriter.convertRegionTypes(&stablehloRegion,
+                                             *this->getTypeConverter(),
+                                             /*entryConversion=*/nullptr)))
+        return failure();
     }
     return success();
   }

@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/dtensor/cc/default_parallel_executor.h"
+#include <memory>
+
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/dtensor/cc/parallel_executor.h"
 
 namespace tensorflow {
 namespace dtensor {

@@ -209,7 +209,7 @@ class PjRtLoadedExecutable final
     DCHECK(this);
     return client_;
   }
-  StatusOr<ExecuteResult> Execute(absl::Span<Array* const> args,
+  StatusOr<ExecuteResult> Execute(absl::Span<tsl::RCReference<Array>> args,
                                   const ExecuteOptions& options,
                                   std::optional<DeviceList> devices) override;
 

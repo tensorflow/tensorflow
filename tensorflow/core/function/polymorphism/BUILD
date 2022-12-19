@@ -72,6 +72,7 @@ pytype_strict_library(
     deps = [
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/types",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -82,6 +83,7 @@ py_strict_test(
     deps = [
         ":function_type",
         "//tensorflow/core/function/trace_type",
+        "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/types",
         "@absl_py//absl/testing:parameterized",

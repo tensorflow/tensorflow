@@ -89,7 +89,7 @@ void PyBuffer_tp_dealloc(PyObject* self) {
 
 #ifdef JAX_ENABLE_IFRT
 /*static*/ PyBuffer::object PyBuffer::Make(
-    std::shared_ptr<PyClient> client, std::unique_ptr<ifrt::Array> ifrt_array,
+    std::shared_ptr<PyClient> client, tsl::RCReference<ifrt::Array> ifrt_array,
     std::shared_ptr<Traceback> traceback) {
   py::object obj = py::reinterpret_steal<py::object>(PyBuffer_tp_new(
       reinterpret_cast<PyTypeObject*>(type_), nullptr, nullptr));
@@ -134,7 +134,7 @@ py::handle PyBuffer::AsHandle() {
 
 #ifdef JAX_ENABLE_IFRT
 PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
-                   std::unique_ptr<ifrt::Array> ifrt_array,
+                   tsl::RCReference<ifrt::Array> ifrt_array,
                    std::shared_ptr<Traceback> traceback)
     : client_(std::move(client)),
       ifrt_array_(std::move(ifrt_array)),
@@ -253,7 +253,7 @@ StatusOr<py::object> PyBuffer::CopyToDevice(
 
   GlobalPyRefManager()->CollectGarbage();
 #ifdef JAX_ENABLE_IFRT
-  std::unique_ptr<ifrt::Array> out;
+  tsl::RCReference<ifrt::Array> out;
   {
     py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(
@@ -447,7 +447,7 @@ PyShardedBuffer PyShardedBuffer::CreateFromPyBuffers(
   };
 
 #ifdef JAX_ENABLE_IFRT
-  std::vector<ifrt::Array*> arrays;
+  std::vector<tsl::RCReference<ifrt::Array>> arrays;
   arrays.reserve(py_buffers.size());
   ifrt::DeviceList::Devices devices;
   devices.reserve(py_buffers.size());
@@ -456,7 +456,7 @@ PyShardedBuffer PyShardedBuffer::CreateFromPyBuffers(
   for (const auto& py_buffer : py_buffers) {
     // Either all device buffers are sticky or none of them are sticky.
     DCHECK(check_sticky(py_buffer));
-    arrays.push_back(py_buffer.buf()->ifrt_array());
+    arrays.push_back(tsl::FormRef(py_buffer.buf()->ifrt_array()));
     devices.push_back(
         py_buffer.buf()->ifrt_array()->sharding().devices().front());
     shapes.push_back(py_buffer.buf()->ifrt_array()->shape());
@@ -467,7 +467,7 @@ PyShardedBuffer PyShardedBuffer::CreateFromPyBuffers(
           ifrt::DeviceList(std::move(devices)),
           ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
               std::move(shapes))),
-      arrays, ifrt::ArrayCopySemantics::kReuseInput);
+      absl::MakeSpan(arrays), ifrt::ArrayCopySemantics::kReuseInput);
   if (!array.ok()) {
     throw py::value_error(array.status().ToString());
   }

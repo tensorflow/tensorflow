@@ -45,7 +45,9 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
     worker_session_.reset(new WorkerSession(
         "cluster_test_session", "/job:localhost/replica:0/task:0",
         std::move(worker_cache), std::unique_ptr<DeviceMgr>(),
-        std::unique_ptr<GraphMgr>(), nullptr));
+        std::unique_ptr<GraphMgr>(), nullptr,
+        [](WorkerSession* worker_session, bool called,
+           DeviceMgr* remote_device_mgr) { return nullptr; }));
 
     cluster_flr_.reset(new ClusterFunctionLibraryRuntime(worker_session_.get(),
                                                          true, nullptr));

@@ -326,7 +326,7 @@ def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
   let builders = [
     OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$lowerBounds,
       "ValueRange":$upperBounds, "ValueRange":$steps,
-      CArg<"Optional<StringAttr>", "llvm::None">:$distributionType,
+      CArg<"Optional<StringAttr>", "std::nullopt">:$distributionType,
       CArg<"function_ref<void (OpBuilder &, Location, /*ivs=*/ValueRange)>",
       "nullptr">:$bodyBuilderFn)>,
   ];

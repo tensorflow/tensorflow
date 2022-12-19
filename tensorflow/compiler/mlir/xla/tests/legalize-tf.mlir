@@ -4503,8 +4503,8 @@ func.func @conv_dynamic(%arg0: tensor<?x32x32x6xf32>, %arg1: tensor<3x3x3x16xf32
 
 // -----
 
-// CHECK-LABEL: @split_not_match_non_const_split_dim
-func.func @split_not_match_non_const_split_dim(%input: tensor<4x4xf32>, %split_dim: tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>) {
+// CHECK-LABEL: @split_not_match_dynamic_split_dim_input
+func.func @split_not_match_dynamic_split_dim_input(%input: tensor<4x4xf32>, %split_dim: tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>) {
   // CHECK: tf.Split
   %0:2 = "tf.Split"(%split_dim, %input) : (tensor<i32>, tensor<4x4xf32>) -> (tensor<*xf32>, tensor<*xf32>)
   func.return %0#0, %0#1 : tensor<*xf32>, tensor<*xf32>
@@ -4512,8 +4512,8 @@ func.func @split_not_match_non_const_split_dim(%input: tensor<4x4xf32>, %split_d
 
 // -----
 
-// CHECK-LABEL: @split_not_match_unknown_input_dim
-func.func @split_not_match_unknown_input_dim(%input: tensor<4x?x4xf32>) -> (tensor<4x?x4xf32>, tensor<4x?x4xf32>) {
+// CHECK-LABEL: @split_not_match_dynamic_input_shape
+func.func @split_not_match_dynamic_input_shape(%input: tensor<4x?x4xf32>) -> (tensor<4x?x4xf32>, tensor<4x?x4xf32>) {
   %cst = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // CHECK: tensor.dim {{.*}} : tensor<4x?x4xf32>
   // CHECK: arith.divsi {{.*}} : index
@@ -4531,6 +4531,25 @@ func.func @split_not_match_unknown_input_dim(%input: tensor<4x?x4xf32>) -> (tens
 
 // -----
 
+// CHECK-LABEL: @split_not_match_static_split_dim_size
+func.func @split_not_match_static_split_dim_size(%input: tensor<4x?x4xf32>) -> (tensor<2x?x4xf32>, tensor<2x?x4xf32>) {
+  %cst = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: tensor.dim {{.*}} : tensor<4x?x4xf32>
+  // CHECK: arith.divsi {{.*}} : index
+  // CHECK: tensor.from_elements {{.*}} : tensor<3xindex>
+  // CHECK: mhlo.real_dynamic_slice {{.*}} : (tensor<4x?x4xf32>, tensor<3xindex>, tensor<3xindex>, tensor<3xindex>) -> tensor<2x?x4xf32>
+  // CHECK: muli {{.*}} : index
+  // CHECK: muli {{.*}} : index
+  // CHECK: tensor.from_elements {{.*}} : tensor<3xindex>
+  // CHECK: tensor.from_elements {{.*}} : tensor<3xindex>
+  // CHECK: tensor.from_elements {{.*}} : tensor<3xindex>
+  // CHECK: mhlo.real_dynamic_slice {{.*}} : (tensor<4x?x4xf32>, tensor<3xindex>, tensor<3xindex>, tensor<3xindex>) -> tensor<2x?x4xf32>
+  %0:2 = "tf.Split"(%cst, %input) : (tensor<i32>, tensor<4x?x4xf32>) -> (tensor<2x?x4xf32>, tensor<2x?x4xf32>)
+  func.return %0#0, %0#1 : tensor<2x?x4xf32>, tensor<2x?x4xf32>
+}
+
+// -----
+
 // CHECK-LABEL: @split_match_and_split_into_two
 func.func @split_match_and_split_into_two(%input: tensor<4x6xf32>) -> (tensor<2x6xf32>, tensor<2x6xf32>) {
   %cst = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
@@ -4539,18 +4558,6 @@ func.func @split_match_and_split_into_two(%input: tensor<4x6xf32>) -> (tensor<2x
   %0:2 = "tf.Split"(%cst, %input) : (tensor<i32>, tensor<4x6xf32>) -> (tensor<2x6xf32>, tensor<2x6xf32>)
   // CHECK: return %[[ONE]], %[[TWO]]
   func.return %0#0, %0#1 : tensor<2x6xf32>, tensor<2x6xf32>
-}
-
-// -----
-
-// CHECK-LABEL: @split_match_and_split_into_two_dynamic
-func.func @split_match_and_split_into_two_dynamic(%input: tensor<4x?xf32>) -> (tensor<2x?xf32>, tensor<2x?xf32>) {
-  %cst = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-  // CHECK: %[[ONE:.*]] = "mhlo.slice"(%{{.*}}) {limit_indices = dense<[2, -1]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<4x?xf32>) -> tensor<2x?xf32>
-  // CHECK: %[[TWO:.*]] = "mhlo.slice"(%{{.*}}) {limit_indices = dense<[4, -1]> : tensor<2xi64>, start_indices = dense<[2, 0]> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<4x?xf32>) -> tensor<2x?xf32>
-  %0:2 = "tf.Split"(%cst, %input) : (tensor<i32>, tensor<4x?xf32>) -> (tensor<2x?xf32>, tensor<2x?xf32>)
-  // CHECK: return %[[ONE]], %[[TWO]]
-  func.return %0#0, %0#1 : tensor<2x?xf32>, tensor<2x?xf32>
 }
 
 // -----
@@ -4623,19 +4630,6 @@ func.func @splitv_match_and_split_into_three(%input: tensor<4x6xf32>) -> (tensor
 
 // -----
 
-// CHECK-LABEL: @splitv_match_and_split_into_three_dynamic
-func.func @splitv_match_and_split_into_three_dynamic(%input: tensor<?x6xf32>) -> (tensor<?x1xf32>, tensor<?x2xf32>, tensor<?x3xf32>) {
-  %split_sizes = "tf.Const"() {value = dense<[1, 2, 3]> : tensor<3xi32>} : () -> tensor<3xi32>
-  %split_dim = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-  // CHECK: "mhlo.slice"(%{{.*}}) {limit_indices = dense<[-1, 1]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<?x6xf32>) -> tensor<?x1xf32>
-  // CHECK: "mhlo.slice"(%{{.*}}) {limit_indices = dense<[-1, 3]> : tensor<2xi64>, start_indices = dense<[0, 1]> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<?x6xf32>) -> tensor<?x2xf32>
-  // CHECK: "mhlo.slice"(%{{.*}}) {limit_indices = dense<[-1, 6]> : tensor<2xi64>, start_indices = dense<[0, 3]> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<?x6xf32>) -> tensor<?x3xf32>
-  %0:3 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<?x6xf32>, tensor<3xi32>, tensor<i32>) -> (tensor<?x1xf32>, tensor<?x2xf32>, tensor<?x3xf32>)
-  func.return %0#0, %0#1, %0#2 : tensor<?x1xf32>, tensor<?x2xf32>, tensor<?x3xf32>
-}
-
-// -----
-
 // CHECK-LABEL: @splitv_dynamic_dim_in_split_sizes
 func.func @splitv_dynamic_dim_in_split_sizes(%input: tensor<4x6xf32>) -> (tensor<4x1xf32>, tensor<4x2xf32>, tensor<4x3xf32>) {
   %split_sizes = "tf.Const"() {value = dense<[1, -1, 3]> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -4645,6 +4639,17 @@ func.func @splitv_dynamic_dim_in_split_sizes(%input: tensor<4x6xf32>) -> (tensor
   // CHECK: limit_indices = dense<[4, 6]> : tensor<2xi64>, start_indices = dense<[0, 3]> : tensor<2xi64>
   %0:3 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<4x6xf32>, tensor<3xi32>, tensor<i32>) -> (tensor<4x1xf32>, tensor<4x2xf32>, tensor<4x3xf32>)
   func.return %0#0, %0#1, %0#2 : tensor<4x1xf32>, tensor<4x2xf32>, tensor<4x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @splitv_dynamic
+func.func @splitv_dynamic(%input: tensor<?x6xf32>) -> (tensor<?x1xf32>, tensor<?x2xf32>, tensor<?x3xf32>) {
+  %split_sizes = "tf.Const"() {value = dense<[1, 2, 3]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %split_dim = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: tf.SplitV
+  %0:3 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<?x6xf32>, tensor<3xi32>, tensor<i32>) -> (tensor<?x1xf32>, tensor<?x2xf32>, tensor<?x3xf32>)
+  func.return %0#0, %0#1, %0#2 : tensor<?x1xf32>, tensor<?x2xf32>, tensor<?x3xf32>
 }
 
 //===----------------------------------------------------------------------===//

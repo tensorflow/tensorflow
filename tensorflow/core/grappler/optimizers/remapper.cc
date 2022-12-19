@@ -1542,7 +1542,7 @@ bool FindSigmoidAndMul(RemapperContext* ctx, int node_index,
 // LayerNormalization api.
 bool FindMklLayerNorm(RemapperContext* ctx, int node_index,
                       std::map<string, int>* matched_nodes_map,
-                      std::set<int>* remove_node_indices) {
+                      std::set<int>* remove_node_indices, float* epsilon) {
   if (!IsMKLEnabled()) return false;
 
   // The following pattern will be searched in the graph with additional
@@ -1629,6 +1629,11 @@ bool FindMklLayerNorm(RemapperContext* ctx, int node_index,
     NodeDef* fused_batch_norm_node =
         ctx->graph_view.GetNode(matched_nodes_map->at("fused_batch_norm"))
             ->node();
+    if (fused_batch_norm_node->attr().count("epsilon")) {
+      *epsilon = fused_batch_norm_node->attr().at("epsilon").f();
+    } else {
+      *epsilon = 0.001;  // default value.
+    }
     bool is_training = false;
     if (!TryGetNodeAttr(*fused_batch_norm_node, kIsTraining, &is_training) ||
         !is_training)
@@ -2737,7 +2742,8 @@ Status AddMklLayerNorm(RemapperContext* ctx,
                        const std::map<string, int>& matched_nodes_map,
                        const std::set<int>& remove_node_indices,
                        std::vector<bool>* invalidated_nodes,
-                       std::vector<bool>* nodes_to_delete) {
+                       std::vector<bool>* nodes_to_delete,
+                       const float epsilon) {
   auto* pre_reshape_node =
       ctx->graph_view.GetNode(matched_nodes_map.at("pre_reshape"))->node();
   auto* scale_node =
@@ -2755,6 +2761,7 @@ Status AddMklLayerNorm(RemapperContext* ctx,
   auto* attr = fused_node.mutable_attr();
   auto& src_attr = output_node->attr();
   (*attr)["T"] = src_attr.at("T");
+  SetAttrValue(epsilon, &(*attr)["epsilon"]);
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
   Status status;
@@ -3709,10 +3716,12 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       // Remap smaller ops from layernorm python api into _MklLayerNorm
       matched_nodes_map.clear();
       remove_node_indices.clear();
-      if (FindMklLayerNorm(&ctx, i, &matched_nodes_map, &remove_node_indices)) {
+      float epsilon = 0.001;
+      if (FindMklLayerNorm(&ctx, i, &matched_nodes_map, &remove_node_indices,
+                           &epsilon)) {
         TF_RETURN_IF_ERROR(
             AddMklLayerNorm(&ctx, matched_nodes_map, remove_node_indices,
-                            &invalidated_nodes, &nodes_to_delete));
+                            &invalidated_nodes, &nodes_to_delete, epsilon));
         continue;
       }
     }

@@ -186,6 +186,9 @@ class MatOpsDotAddTest
     bool transpose = std::get<2>(GetParam());
 #if GOOGLE_CUDA
     bool use_cublaslt = std::get<3>(GetParam());
+#ifndef GOOGLE_CUDA
+    use_cublaslt = false;
+#endif
     execution_options_.mutable_debug_options()->set_xla_gpu_enable_cublaslt(
         use_cublaslt);
 #endif
@@ -284,6 +287,9 @@ class MatOpsDotAddTest
     bool transpose = std::get<2>(GetParam());
 #if GOOGLE_CUDA
     bool use_cublaslt = std::get<3>(GetParam());
+#ifndef GOOGLE_CUDA
+    use_cublaslt = false;
+#endif
     execution_options_.mutable_debug_options()->set_xla_gpu_enable_cublaslt(
         use_cublaslt);
 #endif
@@ -332,6 +338,10 @@ class MatOpsDotAddTest
     bool transpose = std::get<2>(GetParam());
 #if GOOGLE_CUDA
     bool use_cublaslt = std::get<3>(GetParam());
+#if GOOGLE_CUDA
+#else
+    use_cublaslt = false;
+#endif
     execution_options_.mutable_debug_options()->set_xla_gpu_enable_cublaslt(
         use_cublaslt);
 #endif
@@ -375,6 +385,9 @@ class MatOpsDotAddTest
     bool transpose = std::get<2>(GetParam());
 #if GOOGLE_CUDA
     bool use_cublaslt = std::get<3>(GetParam());
+#ifndef GOOGLE_CUDA
+    use_cublaslt = false;
+#endif
     execution_options_.mutable_debug_options()->set_xla_gpu_enable_cublaslt(
         use_cublaslt);
 #endif

@@ -103,15 +103,16 @@ TEST(ArrayImplTest, AssembleArray) {
                        Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                        /*on_done_with_host_buffer=*/{}));
 
-  std::vector<Array*> arrays({array0.get(), array1.get()});
+  std::vector<tsl::RCReference<Array>> arrays({array0, array1});
   Shape assembled_shape({4, 3});
   auto assembled_sharding = OpaqueSharding::Create(
       DeviceList(DeviceList::Devices({array0->sharding().devices().front(),
                                       array1->sharding().devices().front()})));
-  TF_ASSERT_OK_AND_ASSIGN(auto assembled_array,
-                          client->AssembleArrayFromSingleDeviceArrays(
-                              assembled_shape, assembled_sharding, arrays,
-                              ArrayCopySemantics::kAlwaysCopy));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto assembled_array,
+      client->AssembleArrayFromSingleDeviceArrays(
+          assembled_shape, assembled_sharding, absl::MakeSpan(arrays),
+          ArrayCopySemantics::kAlwaysCopy));
 
   EXPECT_EQ(assembled_array->dtype(), dtype);
   EXPECT_EQ(assembled_array->shape(), assembled_shape);
@@ -144,17 +145,18 @@ TEST(ArrayImplTest, AssembleAndDisassembleArray) {
                        Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                        /*on_done_with_host_buffer=*/{}));
 
-  std::vector<Array*> arrays({array0.get(), array1.get()});
+  std::vector<tsl::RCReference<Array>> arrays({array0, array1});
   std::vector<Shape> single_device_shapes({shape, shape});
   Shape assembled_shape({4, 3});
   auto assembled_sharding = OpaqueSharding::Create(
       DeviceList(DeviceList::Devices({array0->sharding().devices().front(),
                                       array1->sharding().devices().front()})),
       OpaqueSharding::MakeDisassembleFuncFromShapes(single_device_shapes));
-  TF_ASSERT_OK_AND_ASSIGN(auto assembled_array,
-                          client->AssembleArrayFromSingleDeviceArrays(
-                              assembled_shape, assembled_sharding, arrays,
-                              ArrayCopySemantics::kAlwaysCopy));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto assembled_array,
+      client->AssembleArrayFromSingleDeviceArrays(
+          assembled_shape, assembled_sharding, absl::MakeSpan(arrays),
+          ArrayCopySemantics::kAlwaysCopy));
 
   TF_ASSERT_OK_AND_ASSIGN(auto single_device_arrays,
                           assembled_array->DisassembleIntoSingleDeviceArrays(

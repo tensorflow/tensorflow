@@ -1098,6 +1098,13 @@ func.func @op_pad(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> tensor<16xf32> {
 }
 // CHECK-LABEL: "op_pad"
 
+func.func @op_partition_id() -> tensor<ui32> {
+  // CHECK: "mhlo.partition_id"() : () -> tensor<ui32>
+  %0 = "stablehlo.partition_id"() : () -> tensor<ui32>
+  func.return %0 : tensor<ui32>
+}
+// CHECK-LABEL: "op_partition_id"
+
 func.func @op_popcnt(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK: "mhlo.popcnt"(%arg0) : (tensor<i32>) -> tensor<i32>
   %0 = "stablehlo.popcnt"(%arg0) : (tensor<i32>) -> tensor<i32>
@@ -1760,6 +1767,25 @@ func.func @type_token_caller(%arg0: !stablehlo.token) -> !stablehlo.token {
 }
 //       CHECK: function_type = (!mhlo.token) -> !mhlo.token
 // CHECK-LABEL: "type_token_caller"
+
+func.func @type_token_region(%arg0: tensor<i1>, %arg1: !stablehlo.token) {
+  //      CHECK: "mhlo.while"(%arg1) ({
+  // CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG2:arg.*]]: !mhlo.token):
+  // CHECK-NEXT:     "mhlo.return"(%arg0) : (tensor<i1>) -> ()
+  // CHECK-NEXT:   }, {
+  // CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG2:arg.*]]: !mhlo.token):
+  // CHECK-NEXT:     "mhlo.return"(%[[ARG2]]) : (!mhlo.token) -> ()
+  // CHECK-NEXT: }) : (!mhlo.token) -> !mhlo.token
+  %0 = "stablehlo.while"(%arg1) ({
+    ^bb0(%arg2: !stablehlo.token):
+      stablehlo.return %arg0 : tensor<i1>
+    }, {
+    ^bb0(%arg2: !stablehlo.token):
+      stablehlo.return %arg2 : !stablehlo.token
+  }) : (!stablehlo.token) -> !stablehlo.token
+  return
+}
+// CHECK-LABEL: "type_token_region"
 
 func.func @type_tuple(%arg0: tuple<tensor<f32>>) -> tuple<!stablehlo.token> {
   %0 = "stablehlo.custom_call"(%arg0) {

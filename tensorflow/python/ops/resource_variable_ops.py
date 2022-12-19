@@ -23,11 +23,11 @@ import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
+from tensorflow.core.function import trace_type
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
-from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_gradient
@@ -2640,24 +2640,26 @@ class VariableSpec(tensor_spec.DenseSpec):
 
   # TraceType method
   def _placeholder_value(self, placeholder_context):
-    if placeholder_context.use_default_placeholder:
-      return super()._placeholder_value(placeholder_context)
-
     name = self.name or placeholder_context.naming_scope
-    default_graph = ops.get_default_graph()
-    with default_graph.outer_graph.as_default():
-      if placeholder_context.has_placeholder(self.alias_id):
-        # Get reference to the existing variable if alias_id already
-        # exists in the PlaceholderContext
-        variable = placeholder_context.get_placeholder(self.alias_id)
-      else:
-        placeholder = graph_placeholder(dtypes.resource, [], name=name)
-        variable = self._from_components([placeholder])
-        if self.alias_id is not None:
-          placeholder_context.add_placeholder(self.alias_id, variable)
+    context_graph = placeholder_context.context_graph
+    if placeholder_context.has_placeholder(self.alias_id):
+      # Get reference to the existing variable if alias_id already
+      # exists in the PlaceholderContext
+      variable = placeholder_context.get_placeholder(self.alias_id)
+    else:
+      spec = tensor_spec.TensorSpec([], dtypes.resource)
+      spec_context = trace_type.InternalPlaceholderContext(
+          context_graph.outer_graph)
+      spec_context.update_naming_scope(name)
+      placeholder = spec._placeholder_value(spec_context)  # pylint: disable=protected-access
+      variable = self._from_components([placeholder])
+      # (b/262771247) ShardedVariable break without this and VariableSpecs
+      # without alias_id are not TraceTypes.
+      if self.alias_id is not None:
+        placeholder_context.add_placeholder(self.alias_id, variable)
     # Capture the Variable's placeholder within the default graph of
     # the current thread.
-    placeholder = default_graph.capture(variable.handle, name=name)
+    placeholder = context_graph.capture(variable.handle, name=name)
     placeholder.op._set_attr(  # pylint: disable=protected-access
         "_user_specified_name",
         attr_value_pb2.AttrValue(s=compat.as_bytes(name)))

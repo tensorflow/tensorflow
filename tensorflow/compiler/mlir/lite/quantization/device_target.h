@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_DEVICE_TARGET_H_
 
 #include <functional>
+#include <optional>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
@@ -78,7 +79,7 @@ class KernelSpecs {
     if (spec_it != all_signatures_.end()) {
       return spec_it->second;
     } else {
-      return llvm::None;
+      return std::nullopt;
     }
   }
 

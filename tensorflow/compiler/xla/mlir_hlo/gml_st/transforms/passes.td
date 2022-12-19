@@ -98,6 +98,7 @@ def CollapseShapePass : Pass<"gml-collapse-shape", "mlir::func::FuncOp"> {
     number of trailing dimensions remains untouched while the remaining leading
     dimensions will be collapsed where possible.
   }];
+  let constructor = "::mlir::gml_st::createCollapseShapePass()";
   let options = [
     Option<"retainTrailingDims", "retain-trailing-dims", "int64_t",
            /*default=*/"0",
@@ -120,6 +121,7 @@ def GmlStToScf : Pass<"gml-st-to-scf", "mlir::func::FuncOp"> {
 
 def GmlStToGpuPass : Pass<"gml-st-to-gpu", "mlir::func::FuncOp"> {
   let summary = "Lower nested `gml_st.parallel` to `gpu.launch`";
+  let constructor = "::mlir::gml_st::createGmlStToGpuPass()";
   let dependentDialects = ["::mlir::gpu::GPUDialect",
                            "::mlir::vector::VectorDialect",
                            "::mlir::memref::MemRefDialect"];
@@ -133,6 +135,7 @@ def GmlStToGpuPass : Pass<"gml-st-to-gpu", "mlir::func::FuncOp"> {
 
 def GmlStSimtfyPass : Pass<"gml-st-simtfy", "mlir::func::FuncOp"> {
   let summary = "Lower nested `gml_st.parallel` to `gpu.launch`";
+  let constructor = "::mlir::gml_st::createGmlStSimtfyPass()";
   let dependentDialects = ["::mlir::AffineDialect",
                            "::mlir::arith::ArithDialect",
                            "::mlir::gpu::GPUDialect",
@@ -167,6 +170,13 @@ def VectorizePerfectlyTiledLoopsPass :
     Pass<"vectorize-perfectly-tiled-loops", "mlir::func::FuncOp"> {
   let summary = "Pass to vectorize gml_st.for loops that are tiled perfectly.";
   let constructor = "::mlir::gml_st::createVectorizePerfectlyTiledLoopsPass()";
+  let dependentDialects = ["::mlir::vector::VectorDialect"];
+}
+
+def VectorizeCopyPass :
+    Pass<"vectorize-copy", "mlir::func::FuncOp"> {
+  let summary = "Pass to vectorize `memref.copy`.";
+  let constructor = "::mlir::gml_st::createVectorizeCopyPass()";
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }
 

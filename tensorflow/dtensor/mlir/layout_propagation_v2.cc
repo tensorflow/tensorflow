@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -67,6 +68,14 @@ namespace {
 // This value dictates how many times during layout propagation we allow
 // fixing of oscillatory behaviors.
 constexpr int kLayoutPropagationMaxStages = 3;
+
+bool IsProducerResourceOpWithEmptyLayout(const mlir::Value& producer_value,
+                                         const Layout& producer) {
+  return (
+      producer.IsEmpty() &&
+      llvm::isa<mlir::TF::ResourceType>(
+          producer_value.getType().cast<mlir::TensorType>().getElementType()));
+}
 
 bool AllOpResultsHaveLayouts(
     mlir::ModuleOp* module, mlir::Dialect* tf_dialect,
@@ -190,7 +199,7 @@ void FilterkAnySpecs(std::vector<std::string>& proposed_specs) {
 // sharded over is not already sharded over by the producer, then we add that
 // sharding to the producer layout.
 StatusOr<Layout> MergeLayouts(
-    const absl::optional<Layout>& producer,
+    const mlir::Value& producer_value, const absl::optional<Layout>& producer,
     const mlir::DenseMap<mlir::OpOperand*, Layout>& consumers) {
   if (consumers.empty()) return producer.value();
 
@@ -239,7 +248,9 @@ StatusOr<Layout> MergeLayouts(
 
   // Return layout if there is no producer, else move into producer algorithm.
   const Mesh mesh = consumers.begin()->second.mesh();
-  if (!producer) {
+
+  if (!producer ||
+      IsProducerResourceOpWithEmptyLayout(producer_value, *producer)) {
     FilterkAnySpecs(proposed_specs);
     return Layout::GetLayout(proposed_specs, mesh);
   }
@@ -446,7 +457,8 @@ mlir::LogicalResult MergeAndGetUpdatedLayouts(
       }
       continue;
     }
-    auto merged = MergeLayouts(producer_layout, consumer_requests[value]);
+    auto merged =
+        MergeLayouts(value, producer_layout, consumer_requests[value]);
     if (!merged.ok())
       return value.getDefiningOp()->emitOpError()
              << merged.status().error_message();

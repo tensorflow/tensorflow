@@ -15,6 +15,7 @@ cc_library(
     srcs = ["snapshot_stream_writer.cc"],
     hdrs = ["snapshot_stream_writer.h"],
     deps = [
+        ":utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:snapshot_utils",
@@ -27,6 +28,7 @@ cc_library(
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:thread_annotations",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -46,5 +48,31 @@ tf_cc_test(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/protobuf:protos_all_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "utils_test",
+    size = "small",
+    srcs = ["utils_test.cc"],
+    deps = [
+        ":utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/tsl/platform:protobuf",
     ],
 )

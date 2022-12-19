@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -87,6 +86,21 @@ class HloModuleConfig {
   StatusOr<HloModuleConfigProto> ToProto() const;
   static StatusOr<std::unique_ptr<HloModuleConfig>> CreateFromProto(
       const HloModuleConfigProto& proto);
+
+  // Assigns the repeated ShardableValueUpdatePairProto field to the given
+  // values in 'update_pairs'.
+  static void AssignProtoShardableValueUpdatePairs(
+      tsl::protobuf::RepeatedPtrField<ShardableValueUpdatePairProto>*
+          proto_update_pairs,
+      const std::vector<HloModuleConfig::ShardableValueUpdatePair>&
+          update_pairs);
+
+  // Assigns shardable_value_update_pairs_ field in 'config' to the given values
+  // in 'pairs'.
+  static void AssignStructShardableValueUpdatePairs(
+      HloModuleConfig& config,
+      const tsl::protobuf::RepeatedPtrField<ShardableValueUpdatePairProto>&
+          pairs);
 
   // Checks if this config has an entry computation layout already.
   bool has_entry_computation_layout() const {
@@ -150,7 +164,7 @@ class HloModuleConfig {
   }
   int64_t num_partitions() const { return num_partitions_; }
 
-  const std::vector<bool> param_requires_broadcast_via_collectives() const {
+  const std::vector<bool>& param_requires_broadcast_via_collectives() const {
     return param_requires_broadcast_via_collectives_;
   }
   void set_param_requires_broadcast_via_collectives(
@@ -242,7 +256,15 @@ class HloModuleConfig {
     static_device_assignment_ = device_assignment;
   }
 
-  const std::vector<ShardableValueUpdatePair> shardable_value_update_pairs()
+  bool allow_separate_sharding_programs() const {
+    return allow_separate_sharding_programs_;
+  }
+  void set_allow_separate_sharding_programs(
+      bool allow_separate_sharding_programs) {
+    allow_separate_sharding_programs_ = allow_separate_sharding_programs;
+  }
+
+  const std::vector<ShardableValueUpdatePair>& shardable_value_update_pairs()
       const {
     return shardable_value_update_pairs_;
   }
@@ -314,7 +336,7 @@ class HloModuleConfig {
     return &flag_config_;
   }
 
-  const int phase_index() const { return phase_index_; }
+  int phase_index() const { return phase_index_; }
   void set_phase_index(const int phase_index) { phase_index_ = phase_index; }
 
   void set_allow_spmd_sharding_propagation_to_output(
@@ -401,6 +423,8 @@ class HloModuleConfig {
 
   // Compile-time known device assignment.
   std::optional<DeviceAssignment> static_device_assignment_;
+
+  bool allow_separate_sharding_programs_ = false;
 
   std::vector<ShardableValueUpdatePair> shardable_value_update_pairs_;
 

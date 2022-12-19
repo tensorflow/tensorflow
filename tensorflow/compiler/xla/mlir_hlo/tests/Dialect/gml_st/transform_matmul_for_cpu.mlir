@@ -1,6 +1,6 @@
 // RUN: mlir-hlo-opt %s -xla-cpu-transform-matmul="tile-sizes=8,4,2" | FileCheck %s --check-prefixes=CHECK,TRANSFORMED
 // RUN: mlir-hlo-opt %s -xla-cpu-transform-matmul="tile-sizes=8,4,2" | FileCheck %s --check-prefixes=MARKED
-// RUN: mlir-hlo-opt %s -xla-cpu-transform-matmul="lower-to-mmt4d=true" | FileCheck %s --check-prefixes=MMT4D
+// RUN: mlir-hlo-opt %s -xla-cpu-transform-matmul="lower-to-mmt4d=true" | FileCheck %s --check-prefixes=MMT4D,PAD
 
 #id_map = affine_map<(d0, d1) -> (d0, d1)>
 
@@ -62,10 +62,10 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // TRANSFORMED:           %[[MAIN_FILL:.*]] = linalg.fill{{.*}}outs(%[[MAIN_SLICE]]
 // TRANSFORMED:           %[[MAIN_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) to (%[[KUB:.*]]) {{.*}} outs ({{.*}} = %[[MAIN_FILL]]:
 // TRANSFORMED:             %[[MAIN_PAR_MAIN_FOR_MATMUL:.*]] = linalg.matmul
-// TRANSFORMED-NEXT:        gml_st.set_yield %[[MAIN_PAR_MAIN_FOR_MATMUL]]
+// TRANSFORMED:             gml_st.set_yield %[[MAIN_PAR_MAIN_FOR_MATMUL]]
 // TRANSFORMED:           %[[REM_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[KUB]]) {{.*}} outs ({{.*}} = %[[MAIN_FOR]]:
 // TRANSFORMED:             %[[MAIN_PAR_REM_FOR_MATMUL:.*]] = linalg.matmul
-// TRANSFORMED-NEXT:        gml_st.set_yield %[[MAIN_PAR_REM_FOR_MATMUL]]
+// TRANSFORMED     :        gml_st.set_yield %[[MAIN_PAR_REM_FOR_MATMUL]]
 // TRANSFORMED:           gml_st.set_yield %[[REM_FOR]]
 
 // TRANSFORMED:         %[[REM_RHS_PAR:.*]] = gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[JUB]])
@@ -73,7 +73,7 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // TRANSFORMED:           %[[REM_RHS_FILL:.*]] = linalg.fill{{.*}}outs(%[[REM_RHS_SLICE]]
 // TRANSFORMED:           %[[REM_RHS_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) {{.*}} outs ({{.*}} = %[[REM_RHS_FILL]]:
 // TRANSFORMED:             %[[REM_RHS_PAR_MATMUL:.*]] = linalg.matmul
-// TRANSFORMED-NEXT:        gml_st.set_yield %[[REM_RHS_PAR_MATMUL]]
+// TRANSFORMED:             gml_st.set_yield %[[REM_RHS_PAR_MATMUL]]
 // TRANSFORMED:           gml_st.set_yield %[[REM_RHS_FOR]]
 
 // TRANSFORMED:         gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[IUB]], %[[C0]])
@@ -81,7 +81,7 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // TRANSFORMED:           %[[REM_LHS_FILL:.*]] = linalg.fill{{.*}}outs(%[[REM_LHS_SLICE]]
 // TRANSFORMED:           %[[REM_LHS_FOR:.*]] = gml_st.for (%[[K:.*]]) = (%[[C0]]) {{.*}} outs ({{.*}} = %[[REM_LHS_FILL]]:
 // TRANSFORMED:             %[[REM_LHS_PAR_MATMUL:.*]] = linalg.matmul
-// TRANSFORMED-NEXT:        gml_st.set_yield %[[REM_LHS_PAR_MATMUL]]
+// TRANSFORMED:             gml_st.set_yield %[[REM_LHS_PAR_MATMUL]]
 // TRANSFORMED:           gml_st.set_yield %[[REM_LHS_FOR]]
 
 // -----
@@ -191,3 +191,24 @@ func.func @matmul_fuse_output(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
 // CHECK:        linalg.map
 // CHECK:        linalg.map
 // CHECK:        gml_st.set_yield
+
+// -----
+
+func.func @pad(%arg0: tensor<10x10xf32>) -> tensor<16x10xf32> {
+  %cst = arith.constant 0.000000e+00 : f32
+  %padded = tensor.pad %arg0 low[0, 0] high[6, 0] {
+  ^bb0(%arg3: index, %arg4: index):
+    tensor.yield %cst : f32
+  } : tensor<10x10xf32> to tensor<16x10xf32>
+
+  return %padded : tensor<16x10xf32>
+}
+
+// PAD-LABEL:    func @pad(
+
+// PAD:            %[[EMPTY:.*]] = tensor.empty() : tensor<16x10xf32>
+// PAD:            %[[FILL:.*]] = linalg.fill {{.*}} outs(%[[EMPTY]]
+// PAD:            %[[EXTRACT:.*]] = tensor.extract_slice %[[FILL]][0, 0] [10, 10]
+// PAD:            %[[MAP:.*]] = linalg.map ins(%arg0 {{.*}} outs(%[[EXTRACT]]
+// PAD:            %[[INSERT:.*]] = tensor.insert_slice %[[MAP]] into  %[[FILL]][0, 0] [10, 10]
+// PAD:            return %[[INSERT]]

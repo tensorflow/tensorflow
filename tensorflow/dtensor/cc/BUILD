@@ -261,9 +261,9 @@ cc_library(
 cc_library(
     name = "default_parallel_executor",
     srcs = ["default_parallel_executor.cc"],
-    hdrs = ["default_parallel_executor.h"],
     deps = [
         ":parallel_executor_interface",
+        "//tensorflow/core/platform:logging",
     ],
 )
 
@@ -284,7 +284,8 @@ cc_library(
     hdrs = ["dtensor_device.h"],
     deps = [
         ":constants",
-        ":default_parallel_executor",
+        ":default_parallel_executor_lib",
+        ":parallel_executor_interface",
         ":dstatus",
         ":dtensor_device_util",
         ":dtensor_graph_to_mlir_pass",
@@ -338,5 +339,14 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+    ],
+)
+
+cc_library(
+    name = "mesh_type",
+    hdrs = ["mesh_type.h"],
+    deps = [
+        ":tensor_layout",
+        "//tensorflow/c:conversion_macros",
     ],
 )

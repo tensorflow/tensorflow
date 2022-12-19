@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <tuple>
 #include <utility>
 
@@ -257,7 +258,7 @@ void LoopOp::build(OpBuilder &builder, OperationState &result,
                                      ValueRange, ValueRange)>
                        bodyBuilderFn) {
   build(builder, result, lowerBounds, upperBounds, steps, inputs, outputs,
-        iteratorTypes, llvm::None, bodyBuilderFn);
+        iteratorTypes, std::nullopt, bodyBuilderFn);
 }
 
 void LoopOp::build(OpBuilder &builder, OperationState &result,
@@ -659,7 +660,7 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<LoopLikeOp> {
       auto constant =
           dyn_cast_or_null<arith::ConstantIndexOp>(v.getDefiningOp());
       if (constant) return constant.value();
-      return llvm::None;
+      return std::nullopt;
     };
     for (auto [lowerBound, upperBound, step, iv] :
          llvm::zip(op.getLowerBound(), op.getUpperBound(), op.getStep(),
@@ -1745,12 +1746,9 @@ void TileOp::build(OpBuilder &b, OperationState &result,
                    ArrayRef<NamedAttribute> attrs) {
   SmallVector<int64_t> staticOffsets, staticSizes, staticStrides;
   SmallVector<Value> dynamicOffsets, dynamicSizes, dynamicStrides;
-  dispatchIndexOpFoldResults(offsets, dynamicOffsets, staticOffsets,
-                             ShapedType::kDynamic);
-  dispatchIndexOpFoldResults(sizes, dynamicSizes, staticSizes,
-                             ShapedType::kDynamic);
-  dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides,
-                             ShapedType::kDynamic);
+  dispatchIndexOpFoldResults(offsets, dynamicOffsets, staticOffsets);
+  dispatchIndexOpFoldResults(sizes, dynamicSizes, staticSizes);
+  dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides);
   auto tileType = TileType::get(b.getContext(), staticSizes);
   build(b, result, tileType, dynamicOffsets, dynamicSizes, dynamicStrides,
         b.getDenseI64ArrayAttr(staticOffsets),
@@ -1831,14 +1829,14 @@ using AccumulatorRegionBuilderFn =
     function_ref<void(OpBuilder &, Location, Value, Value)>;
 
 void SetYieldOp::build(OpBuilder &builder, OperationState &result) {
-  build(builder, result, llvm::None, llvm::None, llvm::None);
+  build(builder, result, std::nullopt, std::nullopt, std::nullopt);
 }
 
 void SetYieldOp::build(OpBuilder &builder, OperationState &result,
                        ValueRange srcs, ValueRange dsts, ValueRange sets) {
   SmallVector<bool, 2> accumulatorFlags(srcs.size(), false);
   build(builder, result, srcs, dsts, sets,
-        builder.getBoolArrayAttr(accumulatorFlags), llvm::None);
+        builder.getBoolArrayAttr(accumulatorFlags), std::nullopt);
 }
 
 void SetYieldOp::build(

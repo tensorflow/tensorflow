@@ -2846,9 +2846,9 @@ func.func @einsum_dynamic_size_broadcast_dot(%arg0: tensor<?x?x4xf32>, %arg1: te
 
 // -----
 
-// CHECK-LABEL: @clamp
+// CHECK-LABEL: @clamp_static
 // CHECK-SAME: %[[LB:.*]]: tensor<4xf32>, %[[X:.*]]: tensor<4xf32>, %[[UB:.*]]: tensor<4xf32>
-func.func @clamp(%lb : tensor<4xf32>, %x : tensor<4xf32>, %ub : tensor<4xf32>)
+func.func @clamp_static(%lb : tensor<4xf32>, %x : tensor<4xf32>, %ub : tensor<4xf32>)
     -> tensor<4xf32> {
   // CHECK: %[[INIT:.*]] = tensor.empty
   // CHECK: %[[RESULT:.*]] = linalg.generic {{.*}} ins(%[[LB]], %[[X]], %[[UB]] : tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) outs(%[[INIT]] : tensor<4xf32>)
@@ -2862,6 +2862,17 @@ func.func @clamp(%lb : tensor<4xf32>, %x : tensor<4xf32>, %ub : tensor<4xf32>)
       tensor<4xf32>) -> tensor<4xf32>
   func.return %0 : tensor<4xf32>
 }
+
+// CHECK-PRIMITIVE-LABEL: @clamp_static
+// CHECK-PRIMITIVE-SAME: %[[LB:.*]]: tensor<4xf32>, %[[X:.*]]: tensor<4xf32>, %[[UB:.*]]: tensor<4xf32>
+
+// CHECK-PRIMITIVE: %[[INIT:.*]] = tensor.empty
+// CHECK-PRIMITIVE: %[[RESULT:.*]] = linalg.map ins(%[[LB]], %[[X]], %[[UB]] : tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) outs(%[[INIT]] : tensor<4xf32>)
+// CHECK-PRIMITIVE: (%[[SCALAR_LB:.*]]: f32, %[[SCALAR_X:.*]]: f32, %[[SCALAR_UB:.*]]: f32)
+// CHECK-PRIMITIVE:   %[[MAX:.*]] = arith.maxf %[[SCALAR_LB]], %[[SCALAR_X]] : f32
+// CHECK-PRIMITIVE:   %[[MIN:.*]] = arith.minf %[[MAX]], %[[SCALAR_UB]] : f32
+// CHECK-PRIMITIVE:   linalg.yield %[[MIN]]
+// CHECK-PRIMITIVE: return %[[RESULT]] : tensor<4xf32>
 
 // -----
 
@@ -2882,6 +2893,9 @@ func.func @clamp_dynamic(%lb : tensor<?xf32>, %x : tensor<?xf32>, %ub : tensor<?
   func.return %0 : tensor<?xf32>
 }
 
+// CHECK-PRIMITIVE-LABEL: @clamp_dynamic
+// CHECK-PRIMITIVE: linalg.map
+
 // -----
 
 func.func @clamp_mixed(%lb : tensor<4xf32>, %x : tensor<?xf32>, %ub : tensor<?xf32>)
@@ -2895,6 +2909,47 @@ func.func @clamp_mixed(%lb : tensor<4xf32>, %x : tensor<?xf32>, %ub : tensor<?xf
 // CHECK: linalg.generic
 
 // CHECK-PRIMITIVE-LABEL: @clamp_mixed
+// CHECK-PRIMITIVE: linalg.map
+
+// -----
+
+func.func @clamp_scalar(%lb : tensor<f32>, %x : tensor<?xf32>, %ub : tensor<f32>)
+    -> tensor<?xf32> {
+  %0 = "mhlo.clamp"(%lb, %x, %ub) : (tensor<f32>, tensor<?xf32>,
+      tensor<f32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: @clamp_scalar
+// CHECK: linalg.generic
+
+// CHECK-PRIMITIVE-LABEL: @clamp_scalar
+// CHECK-PRIMITIVE-SAME: %[[LB:.*]]: tensor<f32>, %[[X:.*]]: tensor<?xf32>, %[[UB:.*]]: tensor<f32>
+
+// CHECK-PRIMITIVE-DAG: %[[INIT:.*]] = tensor.empty
+// CHECK-PRIMITIVE-DAG: %[[SCALAR_LB:.*]] = tensor.extract %[[LB]]
+// CHECK-PRIMITIVE-DAG: %[[SCALAR_UB:.*]] = tensor.extract %[[UB]]
+// CHECK-PRIMITIVE: %[[RESULT:.*]] = linalg.map ins(%[[X]] : tensor<?xf32>) outs(%[[INIT]] : tensor<?xf32>)
+// CHECK-PRIMITIVE: (%[[SCALAR_X:.*]]: f32)
+// CHECK-PRIMITIVE:   %[[MAX:.*]] = arith.maxf %[[SCALAR_LB]], %[[SCALAR_X]] : f32
+// CHECK-PRIMITIVE:   %[[MIN:.*]] = arith.minf %[[MAX]], %[[SCALAR_UB]] : f32
+// CHECK-PRIMITIVE:   linalg.yield %[[MIN]]
+// CHECK-PRIMITIVE: return %[[RESULT]]
+
+
+// -----
+
+func.func @clamp_scalar_mixed(%lb : tensor<f32>, %x : tensor<?xf32>, %ub : tensor<?xf32>)
+    -> tensor<?xf32> {
+  %0 = "mhlo.clamp"(%lb, %x, %ub) : (tensor<f32>, tensor<?xf32>,
+      tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: @clamp_scalar_mixed
+// CHECK: linalg.generic
+
+// CHECK-PRIMITIVE-LABEL: @clamp_scalar_mixed
 // CHECK-PRIMITIVE: linalg.map
 
 // -----

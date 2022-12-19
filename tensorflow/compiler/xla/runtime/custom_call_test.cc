@@ -696,7 +696,7 @@ TEST(CustomCallTest, MemRefRets) {
   };
 
   auto f = [&](MemrefView arg0) {
-    llvm::ArrayRef<float> data = {reinterpret_cast<float*>(arg0.data), 4};
+    absl::Span<const float> data = {reinterpret_cast<float*>(arg0.data), 4};
     arg_shape = {arg0.sizes.begin(), arg0.sizes.end()};
     arg_data = {data.begin(), data.end()};
     return success();
@@ -870,15 +870,15 @@ TEST(CustomCallTest, MappedEnumAttr) {
 // Structure corresponding to the MLIR attribute.
 struct PairOfDims {
   int64_t rank;
-  llvm::ArrayRef<int64_t> a;
-  llvm::ArrayRef<int64_t> b;
+  absl::Span<const int64_t> a;
+  absl::Span<const int64_t> b;
 };
 
 // Register aggregate attribute decoding.
 XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
     PairOfDims, AggregateMember<int64_t>("rank"),
-    AggregateMember<llvm::ArrayRef<int64_t>>("a"),
-    AggregateMember<llvm::ArrayRef<int64_t>>("b"));
+    AggregateMember<absl::Span<const int64_t>>("a"),
+    AggregateMember<absl::Span<const int64_t>>("b"));
 
 TEST(CustomCallTest, StructAttr) {
   absl::string_view source = R"(

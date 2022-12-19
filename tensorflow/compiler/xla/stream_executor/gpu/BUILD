@@ -37,7 +37,6 @@ package(
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/common_runtime/gpu:__subpackages__",
-        "//tensorflow/stream_executor:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -79,7 +78,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/common_runtime/gpu:__subpackages__",
         "//tensorflow/core/util/autotune_maps:__subpackages__",
-        "//tensorflow/stream_executor:__subpackages__",
     ],
     deps = [
         ":gpu_types_header",
@@ -272,7 +270,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
-        "//tensorflow/stream_executor:__subpackages__",
     ],
     deps = [
         "@com_google_absl//absl/strings",
@@ -289,7 +286,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
-        "//tensorflow/stream_executor:__subpackages__",
     ],
     deps = if_gpu_is_configured([
         ":gpu_asm_opts",
@@ -329,7 +325,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
-        "//tensorflow/stream_executor:__subpackages__",
     ],
     deps = if_gpu_is_configured([
         ":gpu_asm_opts",
@@ -373,7 +368,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
-        "//tensorflow/stream_executor:__subpackages__",
     ],
     deps = if_gpu_is_configured([
         ":asm_compiler",

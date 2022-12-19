@@ -56,6 +56,6 @@ StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
     mlir::mhlo::CustomCallApiVersion api_version);
 
 StatusOr<std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
-ConvertCustomCallOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr);
+ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr);
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_ATTRIBUTE_EXPORTER_H_

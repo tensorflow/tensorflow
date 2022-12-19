@@ -644,29 +644,29 @@ def tf_proto_library(
 
 def tf_additional_lib_hdrs():
     return [
-        "//tensorflow/tsl/platform/default:casts.h",
-        "//tensorflow/tsl/platform/default:context.h",
-        "//tensorflow/tsl/platform/default:cord.h",
-        "//tensorflow/tsl/platform/default:dynamic_annotations.h",
-        "//tensorflow/tsl/platform/default:integral_types.h",
-        "//tensorflow/tsl/platform/default:logging.h",
-        "//tensorflow/tsl/platform/default:mutex.h",
-        "//tensorflow/tsl/platform/default:mutex_data.h",
-        "//tensorflow/tsl/platform/default:notification.h",
-        "//tensorflow/tsl/platform/default:stacktrace.h",
-        "//tensorflow/tsl/platform/default:tracing_impl.h",
-        "//tensorflow/tsl/platform/default:unbounded_work_queue.h",
+        clean_dep("//tensorflow/tsl/platform/default:casts.h"),
+        clean_dep("//tensorflow/tsl/platform/default:context.h"),
+        clean_dep("//tensorflow/tsl/platform/default:cord.h"),
+        clean_dep("//tensorflow/tsl/platform/default:dynamic_annotations.h"),
+        clean_dep("//tensorflow/tsl/platform/default:integral_types.h"),
+        clean_dep("//tensorflow/tsl/platform/default:logging.h"),
+        clean_dep("//tensorflow/tsl/platform/default:mutex.h"),
+        clean_dep("//tensorflow/tsl/platform/default:mutex_data.h"),
+        clean_dep("//tensorflow/tsl/platform/default:notification.h"),
+        clean_dep("//tensorflow/tsl/platform/default:stacktrace.h"),
+        clean_dep("//tensorflow/tsl/platform/default:tracing_impl.h"),
+        clean_dep("//tensorflow/tsl/platform/default:unbounded_work_queue.h"),
     ] + select({
-        "//tensorflow/tsl:windows": [
-            "//tensorflow/tsl/platform/windows:intrinsics_port.h",
-            "//tensorflow/tsl/platform/windows:stacktrace.h",
-            "//tensorflow/tsl/platform/windows:subprocess.h",
-            "//tensorflow/tsl/platform/windows:wide_char.h",
-            "//tensorflow/tsl/platform/windows:windows_file_system.h",
+        clean_dep("//tensorflow/tsl:windows"): [
+            clean_dep("//tensorflow/tsl/platform/windows:intrinsics_port.h"),
+            clean_dep("//tensorflow/tsl/platform/windows:stacktrace.h"),
+            clean_dep("//tensorflow/tsl/platform/windows:subprocess.h"),
+            clean_dep("//tensorflow/tsl/platform/windows:wide_char.h"),
+            clean_dep("//tensorflow/tsl/platform/windows:windows_file_system.h"),
         ],
         "//conditions:default": [
-            "//tensorflow/tsl/platform/default:posix_file_system.h",
-            "//tensorflow/tsl/platform/default:subprocess.h",
+            clean_dep("//tensorflow/tsl/platform/default:posix_file_system.h"),
+            clean_dep("//tensorflow/tsl/platform/default:subprocess.h"),
         ],
     })
 
@@ -727,7 +727,7 @@ def tf_additional_core_deps():
         clean_dep("//tensorflow/tsl:ios"): [],
         clean_dep("//tensorflow/tsl:linux_s390x"): [],
         "//conditions:default": [
-            "//tensorflow/tsl/platform/cloud:gcs_file_system",
+            clean_dep("//tensorflow/tsl/platform/cloud:gcs_file_system"),
         ],
     })
 
@@ -830,10 +830,10 @@ def tf_platform_alias(name, platform_dir = "//tensorflow/tsl/platform/"):
     return [platform_dir + "default:" + name]
 
 def tf_logging_deps():
-    return ["//tensorflow/tsl/platform/default:logging"]
+    return [clean_dep("//tensorflow/tsl/platform/default:logging")]
 
 def tf_resource_deps():
-    return ["//tensorflow/tsl/platform/default:resource"]
+    return [clean_dep("//tensorflow/tsl/platform/default:resource")]
 
 def tf_portable_deps_no_runtime():
     return [
@@ -855,7 +855,7 @@ def if_llvm_aarch64_available(then, otherwise = []):
 
 def if_llvm_system_z_available(then, otherwise = []):
     return select({
-        "//tensorflow/tsl:linux_s390x": then,
+        clean_dep("//tensorflow/tsl:linux_s390x"): then,
         "//conditions:default": otherwise,
     })
 

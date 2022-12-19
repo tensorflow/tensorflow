@@ -34,11 +34,9 @@ TEST(PjRtApiTest, SetAndGetGlobalPjRtApi) {
 
   EXPECT_EQ(output, &api);
   EXPECT_EQ(output_lowercase, &api);
-  // TODO(jieying): uncomment
-  // EXPECT_THAT(stream_executor::tpu::SetPjrtApi("CPU", &api),
-  //             StatusIs(tensorflow::error::ALREADY_EXISTS,
-  //                      HasSubstr("PJRT_Api already exists for device
-  //                      type")));
+  EXPECT_THAT(stream_executor::tpu::SetPjrtApi("CPU", &api),
+              StatusIs(tensorflow::error::ALREADY_EXISTS,
+                       HasSubstr("PJRT_Api already exists for device type")));
   // TODO(b/261601433): change back to NOT_FOUND error after pytorch adds the
   // call to LoadPjrtPlugin.
   EXPECT_THAT(stream_executor::tpu::PjrtApi("TPU"),

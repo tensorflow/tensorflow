@@ -320,10 +320,10 @@ class FunctionSpecTest(test.TestCase, parameterized.TestCase):
         spec.function_type,
         function_type_lib.FunctionType([
             function_type_lib.Parameter(
-                'x', function_type_lib.Parameter.POSITIONAL_ONLY, False,
+                'x', function_type_lib.Parameter.POSITIONAL_OR_KEYWORD, False,
                 type_constraint[0]),
             function_type_lib.Parameter(
-                'y', function_type_lib.Parameter.POSITIONAL_ONLY, False,
+                'y', function_type_lib.Parameter.POSITIONAL_OR_KEYWORD, False,
                 type_constraint[1]),
             function_type_lib.Parameter(
                 'z', function_type_lib.Parameter.KEYWORD_ONLY, True,

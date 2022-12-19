@@ -109,18 +109,8 @@ void TfLiteInterpreterOptionsSetNumThreads(TfLiteInterpreterOptions* options,
 }
 
 void TfLiteInterpreterOptionsAddDelegate(TfLiteInterpreterOptions* options,
-                                         TfLiteDelegate* delegate) {
+                                         TfLiteOpaqueDelegate* delegate) {
   options->delegates.push_back(delegate);
-}
-
-void TfLiteInterpreterOptionsAddOpaqueDelegate(
-    TfLiteInterpreterOptions* options,
-    TfLiteOpaqueDelegateStruct* opaque_delegate) {
-  // The following cast is safe only because this code is part of the TF Lite
-  // runtime implementation.  Apps using TF Lite should not rely on
-  // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
-  TfLiteDelegate* delegate = reinterpret_cast<TfLiteDelegate*>(opaque_delegate);
-  TfLiteInterpreterOptionsAddDelegate(options, delegate);
 }
 
 void TfLiteInterpreterOptionsSetErrorReporter(
@@ -146,6 +136,7 @@ TfLiteStatus TfLiteInterpreterOptionsEnableCancellation(
 static void InitTfLiteRegistration(
     TfLiteRegistration* registration,
     TfLiteRegistrationExternal* registration_external) {
+  registration->builtin_code = registration_external->builtin_code;
   registration->custom_name = registration_external->custom_name;
   registration->version = registration_external->version;
   registration->registration_external = registration_external;

@@ -127,14 +127,14 @@ namespace {
 struct XlaOutfeed {
   absl::Status operator()(const ExecutableRunOptions* run_options,
                           CustomCall::RemainingArgs args,
-                          mlir::ArrayRef<int32_t> result_type) const;
+                          absl::Span<const int32_t> result_type) const;
   static XlaOutfeed Handler() { return XlaOutfeed(); }
 };
 }  // namespace
 
-absl::Status XlaOutfeed::operator()(const ExecutableRunOptions* run_options,
-                                    CustomCall::RemainingArgs args,
-                                    mlir::ArrayRef<int32_t> result_type) const {
+absl::Status XlaOutfeed::operator()(
+    const ExecutableRunOptions* run_options, CustomCall::RemainingArgs args,
+    absl::Span<const int32_t> result_type) const {
   assert(result_type.size() == args.size() &&
          "Result types and input args should be of the same size.");
   for (unsigned i = 0; i < args.size(); ++i) {
@@ -169,7 +169,7 @@ static bool Outfeed(xla::runtime::ExecutionContext* ctx, void** args,
   static auto* handler = CustomCall::Bind("xla.cpu.outfeed")
                              .UserData<const ExecutableRunOptions*>()
                              .Arg<CustomCall::RemainingArgs>()  // args
-                             .Attr<mlir::ArrayRef<int32_t>>("result_type")
+                             .Attr<absl::Span<const int32_t>>("result_type")
                              .To<RuntimeChecks()>(XlaOutfeed::Handler())
                              .release();
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/tsl/lib/strings/proto_serialization.h"
+#include "tensorflow/tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor {
 namespace dnn {
@@ -46,6 +47,8 @@ bool ProtoMapsEqual(const google::protobuf::Map<int64_t, int64_t>& x,
 
 }  // namespace
 
+constexpr DataType ToDataType<tsl::float8_e4m3fn>::value;
+constexpr DataType ToDataType<tsl::float8_e5m2>::value;
 constexpr DataType ToDataType<float>::value;
 constexpr DataType ToDataType<double>::value;
 constexpr DataType ToDataType<Eigen::half>::value;

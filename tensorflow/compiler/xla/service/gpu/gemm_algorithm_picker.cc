@@ -327,6 +327,8 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
                                        *gemm->operand(has_matrix_bias ? 3 : 2),
                                        autotune_config, rng_state));
     }
+    se::DeviceMemoryBase a_scale_buffer, b_scale_buffer, c_scale_buffer,
+        d_scale_buffer, d_amax_buffer;
 
     se::DeviceMemoryBase aux_buffer;
     if (has_aux_output) {
@@ -354,8 +356,9 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
               se::blas::ProfileResult profile_result;
               TF_RETURN_IF_ERROR(plan.ExecuteOnStream(
                   stream, lhs_buffer, rhs_buffer, output_buffer, output_buffer,
-                  bias_buffer, aux_buffer, algorithm, scratch_allocator,
-                  &profile_result));
+                  bias_buffer, aux_buffer, a_scale_buffer, b_scale_buffer,
+                  c_scale_buffer, d_scale_buffer, d_amax_buffer, algorithm,
+                  scratch_allocator, &profile_result));
               return std::move(profile_result);
             }));
 

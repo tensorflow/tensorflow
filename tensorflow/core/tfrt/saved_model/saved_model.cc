@@ -648,8 +648,8 @@ SavedModelImpl::LoadSavedModel(Options options,
   }
   tfrt::BefBuffer bef;
   RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
-      options.graph_execution_options.compile_options, mlir_module.get(),
-      &bef));
+      options.graph_execution_options.compile_options, mlir_module.get(), &bef,
+      fallback_state.get()));
 
   const auto compile_duration = absl::Now() - compile_start_time;
   saved_model_compile_time_seconds->GetCell(std::string(saved_model_dir))
@@ -1007,7 +1007,7 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
 
   RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
       options_.graph_execution_options.compile_options, module.get(),
-      &loading_result->bef));
+      &loading_result->bef, fallback_state_.get()));
 
   // Step 3: Initialize runtime states using special BEF functions.
   ASSIGN_OR_RETURN_IN_INIT(

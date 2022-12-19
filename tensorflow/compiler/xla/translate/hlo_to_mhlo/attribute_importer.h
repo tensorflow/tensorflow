@@ -51,7 +51,7 @@ mlir::mhlo::ConvDimensionNumbersAttr ConvertConvDimensionNumbers(
     const xla::ConvolutionDimensionNumbers& dnums, mlir::Builder* builder);
 
 // Converts the output operand aliasing to attributes.
-mlir::ArrayAttr ConvertCustomCallOutputOperandAliasing(
+mlir::ArrayAttr ConvertOutputOperandAliasing(
     const std::vector<std::pair<xla::ShapeIndex,
                                 std::pair<int64_t, xla::ShapeIndex>>>& aliaInfo,
     mlir::Builder* builder);

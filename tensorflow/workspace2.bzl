@@ -9,6 +9,7 @@ load("//third_party/nccl:nccl_configure.bzl", "nccl_configure")
 load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/py:python_configure.bzl", "python_configure")
 load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
+load("//tensorflow/tools/toolchains:cpus/aarch64/aarch64_compiler_configure.bzl", "aarch64_compiler_configure")
 load("//tensorflow/tools/toolchains:cpus/arm/arm_compiler_configure.bzl", "arm_compiler_configure")
 load("//tensorflow/tools/toolchains/embedded/arm-linux:arm_linux_toolchain_configure.bzl", "arm_linux_toolchain_configure")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
@@ -113,6 +114,9 @@ def _tf_toolchains():
         remote_config_repo_arm = "../arm_compiler",
         remote_config_repo_aarch64 = "../aarch64_compiler",
     )
+
+    # Load aarch64 toolchain
+    aarch64_compiler_configure()
 
     # TFLite crossbuild toolchain for embeddeds Linux
     arm_linux_toolchain_configure(
@@ -695,12 +699,20 @@ def _tf_repositories():
     )
 
     tf_http_archive(
+        name = "nvtx_archive",
+        build_file = "//third_party:nvtx.BUILD",
+        sha256 = "bb8d1536aad708ec807bc675e12e5838c2f84481dec4005cd7a9bbd49e326ba1",
+        strip_prefix = "NVTX-3.0.1/c/include",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/NVTX/archive/v3.0.1.tar.gz"),
+    )
+
+    tf_http_archive(
         name = "cython",
         build_file = "//third_party:cython.BUILD",
-        sha256 = "d530216e015fd365bf3327a176e0073d0e5b8d48781f387336459f10032d776f",
-        strip_prefix = "cython-3.0.0a10",
+        sha256 = "08dbdb6aa003f03e65879de8f899f87c8c718cd874a31ae9c29f8726da2f5ab0",
+        strip_prefix = "cython-3.0.0a11",
         system_build_file = "//third_party/systemlibs:cython.BUILD",
-        urls = tf_mirror_urls("https://github.com/cython/cython/archive/3.0.0a10.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/cython/cython/archive/3.0.0a11.tar.gz"),
     )
 
     # LINT.IfChange
@@ -864,10 +876,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "wrapt",
         build_file = "//third_party:wrapt.BUILD",
-        sha256 = "8a6fb40e8f8b6a66b4ba81a4044c68e6a7b1782f21cfabc06fb765332b4c3e51",
-        strip_prefix = "wrapt-1.11.1/src/wrapt",
+        sha256 = "866211ed43c2639a2452cd017bd38589e83687b1d843817c96b99d2d9d32e8d7",
+        strip_prefix = "wrapt-1.14.1/src/wrapt",
         system_build_file = "//third_party/systemlibs:wrapt.BUILD",
-        urls = tf_mirror_urls("https://github.com/GrahamDumpleton/wrapt/archive/1.11.1.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/GrahamDumpleton/wrapt/archive/1.14.1.tar.gz"),
     )
 
     tf_http_archive(

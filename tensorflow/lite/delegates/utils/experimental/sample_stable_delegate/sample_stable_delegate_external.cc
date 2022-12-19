@@ -26,16 +26,17 @@ limitations under the License.
 
 namespace {
 
-TfLiteDelegate* SampleStableDelegateCreateFunc(const void* tflite_settings) {
+TfLiteOpaqueDelegate* SampleStableDelegateCreateFunc(
+    const void* tflite_settings) {
   auto delegate = std::make_unique<tflite::example::SampleStableDelegate>();
-  return reinterpret_cast<TfLiteDelegate*>(
-      tflite::TfLiteOpaqueDelegateFactory::CreateSimpleDelegate(
-          std::move(delegate)));
+  return tflite::TfLiteOpaqueDelegateFactory::CreateSimpleDelegate(
+      std::move(delegate));
 }
 
-void SampleStableDelegateDestroyFunc(TfLiteDelegate* sample_stable_delegate) {
+void SampleStableDelegateDestroyFunc(
+    TfLiteOpaqueDelegate* sample_stable_delegate) {
   tflite::TfLiteOpaqueDelegateFactory::DeleteSimpleDelegate(
-      reinterpret_cast<TfLiteOpaqueDelegateStruct*>(sample_stable_delegate));
+      sample_stable_delegate);
 }
 
 int SampleStableDelegateErrnoFunc(TfLiteDelegate* sample_stable_delegate) {

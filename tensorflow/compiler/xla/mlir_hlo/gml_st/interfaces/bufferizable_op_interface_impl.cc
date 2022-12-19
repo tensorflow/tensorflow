@@ -16,6 +16,7 @@ limitations under the License.
 #include "gml_st/interfaces/bufferizable_op_interface_impl.h"
 
 #include <iterator>
+#include <optional>
 #include <tuple>
 
 #include "gml_st/IR/gml_st_ops.h"
@@ -339,7 +340,7 @@ struct ParallelOpInterface
     if (auto distType = cast<ParallelOp>(op).getDistributionType())
       distTypeAttr = rewriter.getStringAttr(*distType);
     auto newLoopOp = rewriter.create<ParallelOp>(
-        loopOp.getLoc(), TypeRange{llvm::None}, loopOp.getLowerBound(),
+        loopOp.getLoc(), TypeRange{std::nullopt}, loopOp.getLowerBound(),
         loopOp.getUpperBound(), loopOp.getStep(), distTypeAttr);
 
     // Move the old body into the new loop.

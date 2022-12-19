@@ -15,13 +15,17 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/snapshot_stream_writer.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/data/service/snapshot/utils.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -30,19 +34,36 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace {
+
+constexpr int64_t kDefaultMaxChunkSizeBytes = 10 * (size_t{1} << 30);  // 10GB
+
+constexpr const char kUncommittedChunksDirectory[] = "uncommitted_chunks";
+
+}  // namespace
 
 SnapshotStreamWriter::SnapshotStreamWriter(
     std::unique_ptr<TaskIterator> iterator,
-    const std::string& snapshot_stream_path, Env* env)
-    : snapshot_stream_path_(snapshot_stream_path),
-      env_(env),
+    const std::string& snapshot_stream_path, Env* env,
+    std::optional<int64_t> max_chunk_size_bytes)
+    : env_(env),
+      snapshot_stream_path_(snapshot_stream_path),
+      max_chunk_size_bytes_(max_chunk_size_bytes.has_value()
+                                ? *max_chunk_size_bytes
+                                : kDefaultMaxChunkSizeBytes),
       iterator_(std::move(iterator)),
       snapshot_thread_(RunSnapshotThread()) {}
+
+Status SnapshotStreamWriter::Wait() TF_LOCKS_EXCLUDED(mu_) {
+  snapshot_thread_.reset();
+  mutex_lock l(mu_);
+  return status_;
+}
 
 std::unique_ptr<Thread> SnapshotStreamWriter::RunSnapshotThread() {
   auto snapshot_fn = [this]() TF_LOCKS_EXCLUDED(mu_) {
     Status status = WriteSnapshotFn();
-    {
+    if (!status.ok()) {
       mutex_lock l(mu_);
       status_ = std::move(status);
     }
@@ -53,41 +74,84 @@ std::unique_ptr<Thread> SnapshotStreamWriter::RunSnapshotThread() {
 }
 
 Status SnapshotStreamWriter::WriteSnapshotFn() {
+  TF_RETURN_IF_ERROR(CreateChunksDirectory());
+  while (ShouldWriteChunk()) {
+    TF_RETURN_IF_ERROR(WriteChunk());
+  }
+  return status();
+}
+
+Status SnapshotStreamWriter::CreateChunksDirectory() {
+  return env_->RecursivelyCreateDir(
+      absl::StrCat(snapshot_stream_path_, "/", kUncommittedChunksDirectory));
+}
+
+bool SnapshotStreamWriter::ShouldWriteChunk() const TF_LOCKS_EXCLUDED(mu_) {
+  mutex_lock l(mu_);
+  return !end_of_sequence_ && status_.ok();
+}
+
+Status SnapshotStreamWriter::WriteChunk() {
   // TODO(b/258691666): Support compression.
-  snapshot_util::TFRecordWriter writer(snapshot_stream_path_,
+  snapshot_util::TFRecordWriter writer(GetChunkPath(),
                                        tsl::io::compression::kNone);
   TF_RETURN_IF_ERROR(writer.Initialize(env_));
   auto cleanup = gtl::MakeCleanup([&writer] { writer.Close().IgnoreError(); });
-  while (!IsCancelled()) {
-    std::vector<Tensor> element;
-    bool end_of_sequence = false;
-    {
-      mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(iterator_->GetNext(element, end_of_sequence));
-    }
-    if (end_of_sequence) {
-      return writer.Close();
-    }
-    TF_RETURN_IF_ERROR(writer.WriteTensors(element));
+
+  while (ShouldWriteRecord()) {
+    TF_RETURN_IF_ERROR(WriteRecord(writer));
   }
-  return errors::Cancelled(
-      "The tf.data service snapshot writer has been cancelled.");
+  // TODO(b/258691666): Write checkpoints and move the chunks to the committed
+  // chunks directory.
+  InitializeNextChunk();
+  return OkStatus();
 }
 
-Status SnapshotStreamWriter::Wait() TF_LOCKS_EXCLUDED(mu_) {
-  snapshot_thread_.reset();
+std::string SnapshotStreamWriter::GetChunkPath() const TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
-  return status_;
+  return absl::StrCat(snapshot_stream_path_, "/", kUncommittedChunksDirectory,
+                      "/chunk_", chunk_index_);
+}
+
+bool SnapshotStreamWriter::ShouldWriteRecord() const TF_LOCKS_EXCLUDED(mu_) {
+  mutex_lock l(mu_);
+  return chunk_size_bytes_ < max_chunk_size_bytes_ && !end_of_sequence_ &&
+         status_.ok();
+}
+
+Status SnapshotStreamWriter::WriteRecord(snapshot_util::TFRecordWriter& writer)
+    TF_LOCKS_EXCLUDED(mu_) {
+  std::vector<Tensor> element;
+  bool end_of_sequence = false;
+  {
+    mutex_lock l(mu_);
+    TF_RETURN_IF_ERROR(iterator_->GetNext(element, end_of_sequence));
+    end_of_sequence_ = end_of_sequence;
+  }
+  if (end_of_sequence) {
+    return writer.Close();
+  }
+  TF_RETURN_IF_ERROR(writer.WriteTensors(element));
+  mutex_lock l(mu_);
+  chunk_size_bytes_ += EstimatedSizeBytes(element);
+  return OkStatus();
+}
+
+void SnapshotStreamWriter::InitializeNextChunk() TF_LOCKS_EXCLUDED(mu_) {
+  mutex_lock l(mu_);
+  ++chunk_index_;
+  chunk_size_bytes_ = 0;
 }
 
 void SnapshotStreamWriter::Cancel() TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
-  cancelled_ = true;
+  status_ = errors::Cancelled(
+      "The tf.data service snapshot writer has been cancelled.");
 }
 
-bool SnapshotStreamWriter::IsCancelled() const TF_LOCKS_EXCLUDED(mu_) {
+Status SnapshotStreamWriter::status() const TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
-  return cancelled_;
+  return status_;
 }
 
 }  // namespace data

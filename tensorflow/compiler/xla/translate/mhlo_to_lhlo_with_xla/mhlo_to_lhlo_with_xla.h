@@ -71,6 +71,8 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
       const xla::HloCustomCallInstruction* custom_call);
   tsl::StatusOr<Operation*> EmitCublasLtMatmul(
       const xla::HloCustomCallInstruction* custom_call);
+  tsl::StatusOr<Operation*> EmitCublasLtMatmulF8(
+      const xla::HloCustomCallInstruction* custom_call);
   tsl::StatusOr<Operation*> EmitDnnConvolution(
       const xla::HloCustomCallInstruction* custom_call);
   tsl::StatusOr<Operation*> EmitDnnBatchNorm(
@@ -96,6 +98,10 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   tsl::StatusOr<lmhlo::ReduceScatterOp> EmitReduceScatterOp(
       const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo::CollectivePermuteOp> EmitCollectivePermuteOp(
+      const xla::HloInstruction* instr);
+  tsl::StatusOr<lmhlo_gpu::CollectivePermuteStartOp>
+  EmitCollectivePermuteStartOp(const xla::HloInstruction* instr);
+  tsl::StatusOr<lmhlo_gpu::CollectivePermuteDoneOp> EmitCollectivePermuteDoneOp(
       const xla::HloInstruction* instr);
 
   tsl::StatusOr<lmhlo::RngGetAndUpdateStateOp> EmitRngGetAndUpdateStateOp(
@@ -267,10 +273,8 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   // Convenient "cached" access to this widely used MLIR type (i8).
   Type i8_type_;
 
-  // Map all-reduce-start ops to their LHLO op, so we can connect the
-  // all-reduce-done op with the correct token.
-  absl::flat_hash_map<const xla::HloInstruction*, lmhlo_gpu::AllReduceStartOp>
-      all_reduce_start_ops_;
+  // Map async start ops to their token output, to connect the correct done op.
+  absl::flat_hash_map<const xla::HloInstruction*, mlir::Value> async_tokens_;
 };
 
 // Populate the MLIR `module` with the computation from the `hlo_module` using

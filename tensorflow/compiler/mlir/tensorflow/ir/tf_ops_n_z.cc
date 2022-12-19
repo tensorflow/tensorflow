@@ -3916,20 +3916,20 @@ LogicalResult VerifyScalesAndZeroPoints(UniformQuantizedHybridOp op,
   if (quantization_axis == -1) {
     if (scales_type.hasRank() && scales_type.getRank() != 0) {
       return op.emitOpError(
-          "If quantization_axis is -1, scales must have 0 rank.");
+          "quantization_axis is -1, scales must have 0 rank.");
     }
     if (zero_points_type.hasRank() && zero_points_type.getRank() != 0) {
       return op.emitOpError(
-          "If quantization_axis is -1, zero_points must have 0 rank.");
+          "quantization_axis is -1, zero_points must have 0 rank.");
     }
   } else {
     if (scales_type.hasRank() && scales_type.getRank() != 1) {
       return op.emitOpError(
-          "If quantization_axis is not -1, scales must have 1 rank.");
+          "quantization_axis is not -1, scales must have 1 rank.");
     }
     if (zero_points_type.hasRank() && zero_points_type.getRank() != 1) {
       return op.emitOpError(
-          "If quantization_axis is not -1, zero_points must have 1 rank.");
+          "quantization_axis is not -1, zero_points must have 1 rank.");
     }
     if (scales_type.hasStaticShape() && zero_points_type.hasStaticShape() &&
         scales_type.getNumElements() != zero_points_type.getNumElements()) {

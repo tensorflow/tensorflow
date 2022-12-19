@@ -85,6 +85,7 @@ struct data_type_can_memcpy {
       std::is_same<T, uint8>::value || std::is_same<T, int8>::value ||
       std::is_same<T, bool>::value || std::is_same<T, uint16>::value ||
       std::is_same<T, int16>::value || std::is_same<T, Eigen::half>::value ||
+      std::is_same<T, Eigen::bfloat16>::value ||
       std::is_same<T, int32>::value || std::is_same<T, float>::value ||
       std::is_same<T, int64_t>::value || std::is_same<T, double>::value ||
       std::is_same<T, complex64>::value || std::is_same<T, complex128>::value;
@@ -345,6 +346,7 @@ namespace functor {
 
 TF_CALL_uint8(DECLARE_GPU_SPEC);
 TF_CALL_int8(DECLARE_GPU_SPEC);
+TF_CALL_bfloat16(DECLARE_GPU_SPEC);
 TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_SPEC);
 #undef DECLARE_GPU_SPEC
 #undef DECLARE_GPU_SPEC_DIM
@@ -371,6 +373,7 @@ TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_SPEC);
                           ReverseV2Op<GPUDevice, T, int64>)
 TF_CALL_uint8(REGISTER_GPU_KERNELS);
 TF_CALL_int8(REGISTER_GPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_GPU_KERNELS);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNEL
 

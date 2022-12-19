@@ -1,1 +1,165 @@
+diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Base.h
+--- stablehlo/stablehlo/dialect/Base.h
++++ stablehlo/stablehlo/dialect/Base.h
+@@ -45,9 +45,12 @@
+ 
+ // TODO(zhouxin) change to a better name as it's used by both of size and bound
+ // Check if the dimension size is dynamic.
+-// TODO(zhouxin) add isStaticDimSize() as well.
+ inline static bool isDynamicDimSize(int64_t val) {
+   return ShapedType::isDynamic(val);
++}
++
++inline static bool isStaticDimSize(int64_t val) {
++  return !isDynamicDimSize(val);
+ }
+ 
+ // Returns true if the given types are the same for the purposes of HLO type
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -25,6 +25,7 @@
+ #include <cstdint>
+ #include <functional>
+ #include <numeric>
++#include <optional>
+ #include <set>
+ #include <unordered_map>
+ #include <utility>
+@@ -255,7 +256,7 @@
+ LogicalResult ReduceScatterOp::verify() {
+   if (failed(hlo::verifyReplicaGroups(getLoc(), getReplicaGroups(),
+                                       /*allGroupsMustHaveSameSize=*/true,
+-                                      /*expectedGroupSize=*/llvm::None)))
++                                      /*expectedGroupSize=*/std::nullopt)))
+     return failure();
+   auto operandType = getOperand().getType().cast<TensorType>();
+   bool operandTypeRanked = operandType.isa<RankedTensorType>();
+@@ -2006,7 +2007,7 @@
+ LogicalResult AllGatherOp::verify() {
+   if (failed(hlo::verifyReplicaGroups(getLoc(), getReplicaGroups(),
+                                       /*allGroupsMustHaveSameSize=*/true,
+-                                      /*expectedGroupSize=*/llvm::None)))
++                                      /*expectedGroupSize=*/std::nullopt)))
+     return failure();
+ 
+   auto operandType = getOperand().getType().dyn_cast<RankedTensorType>();
+@@ -2063,7 +2064,7 @@
+ LogicalResult AllReduceOp::verify() {
+   if (failed(hlo::verifyReplicaGroups(getLoc(), getReplicaGroups(),
+                                       /*allGroupsMustHaveSameSize=*/false,
+-                                      /*expectedGroupSize=*/llvm::None)))
++                                      /*expectedGroupSize=*/std::nullopt)))
+     return failure();
+ 
+   auto operandType = getOperand().getType().cast<TensorType>();
+@@ -5488,7 +5489,7 @@
+ 
+   // Use TOTALORDER comparison type instead of the default comparison if the
+   // element type is of type float.
+-  llvm::Optional<StringRef> compareType = llvm::None;
++  llvm::Optional<StringRef> compareType = std::nullopt;
+   for (auto const& elementType : elementTypes)
+     if (elementType.isa<FloatType>()) {
+       compareType.emplace("TOTALORDER");
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -960,18 +960,19 @@
+   auto updateType = update.getType().cast<ShapedType>();
+ 
+   // (C3)
+-  int64_t operandRank = operandType.getRank();
+-  int64_t updateRank = updateType.getRank();
+-  if (updateRank != operandRank)
++  if (updateType.hasRank() && operandType.hasRank() &&
++      updateType.getRank() != operandType.getRank())
+     return emitOptionalError(
+-        location, "update rank does not match operand rank: ", updateRank,
+-        " vs ", operandRank, ".");
++        location,
++        "update rank does not match operand rank: ", updateType.getRank(),
++        " vs ", operandType.getRank(), ".");
+ 
+   // (C4)
+-  if ((int64_t)startIndices.size() != operandRank)
++  if (operandType.hasRank() &&
++      (int64_t)startIndices.size() != operandType.getRank())
+     return emitOptionalError(
+         location, "expects number of start_indices to match operand rank: ",
+-        startIndices.size(), " vs ", operandRank, ".");
++        startIndices.size(), " vs ", operandType.getRank(), ".");
+ 
+   // (C5)
+   if (!startIndices.empty()) {
+@@ -989,17 +990,31 @@
+   }
+ 
+   // (C6)
+-  for (auto [index, dims] : llvm::enumerate(
+-           llvm::zip(operandType.getShape(), updateType.getShape()))) {
+-    auto [operandDim, updateDim] = dims;
+-    if (updateDim < 0 || updateDim > operandDim)
+-      return emitOptionalError(location, "expects size at dimension ", index,
+-                               " of update to be in range [0, ", operandDim,
+-                               "]. Got: ", updateDim, ".");
+-  }
+-
+-  inferredReturnShapes.emplace_back(operandType.getShape(),
+-                                    operandType.getElementType());
++  if (operandType.hasRank() && updateType.hasRank())
++    for (auto [index, dims] : llvm::enumerate(
++             llvm::zip(operandType.getShape(), updateType.getShape()))) {
++      auto [operandDim, updateDim] = dims;
++      if (hlo::isDynamicDimSize(updateDim)) continue;
++      if (hlo::isStaticDimSize(operandDim)) {
++        if (updateDim < 0 || updateDim > operandDim)
++          return emitOptionalError(location, "expects size at dimension ",
++                                   index, " of update to be in range [0, ",
++                                   operandDim, "]. Got: ", updateDim, ".");
++      } else {
++        if (updateDim < 0)
++          return emitOptionalError(
++              location, "expects size at dimension ", index,
++              " of update to be non-negative. Got: ", updateDim, ".");
++      }
++    }
++
++  // (C1)
++  if (operandType.hasRank()) {
++    inferredReturnShapes.emplace_back(operandType.getShape(),
++                                      operandType.getElementType());
++  } else {
++    inferredReturnShapes.emplace_back(operandType.getElementType());
++  }
+   return success();
+ }
+ 
+@@ -1302,6 +1317,13 @@
+ LogicalResult inferSelectAndScatterOp(
+     Value operand, SmallVectorImpl<Type>& inferredReturnTypes) {
+   inferredReturnTypes.push_back(operand.getType());
++  return success();
++}
++
++LogicalResult inferSendOp(Dialect* dialect, Optional<Location> location,
++                          SmallVectorImpl<Type>& inferredReturnTypes) {
++  auto hloDialect = cast<HloDialectInterface>(dialect);
++  inferredReturnTypes.push_back(hloDialect->createTokenType());
+   return success();
+ }
+ 
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/dialect/TypeInference.h
+--- stablehlo/stablehlo/dialect/TypeInference.h
++++ stablehlo/stablehlo/dialect/TypeInference.h
+@@ -197,6 +197,9 @@
+ LogicalResult inferSelectAndScatterOp(
+     Value operand, SmallVectorImpl<Type>& inferredReturnTypes);
+ 
++LogicalResult inferSendOp(Dialect* dialect, Optional<Location> location,
++                          SmallVectorImpl<Type>& inferredReturnTypes);
++
+ LogicalResult inferSliceOp(Optional<Location> location, Value operand,
+                            DenseIntElementsAttr startIndices,
+                            DenseIntElementsAttr limitIndices,
 

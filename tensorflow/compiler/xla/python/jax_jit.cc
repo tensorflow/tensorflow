@@ -652,8 +652,13 @@ CompiledFunction::~CompiledFunction() {
 }
 
 // Returns nullptr if arg has no sticky device
+#ifdef JAX_ENABLE_IFRT
+static xla::StatusOr<std::pair<xla::ifrt::Client*, xla::PjRtDevice*>>
+GetJitArgumentStickyDevice(py::handle arg) {
+#else
 static xla::StatusOr<xla::PjRtDevice*> GetJitArgumentStickyDevice(
     py::handle arg) {
+#endif
   struct PythonTypes {
     py::object device_array;
   };
@@ -674,12 +679,18 @@ static xla::StatusOr<xla::PjRtDevice*> GetJitArgumentStickyDevice(
             "Only single-sharded Array is expected in C++ JIT.");
       }
 
+#ifdef JAX_ENABLE_IFRT
+      if (!py_array.committed()) {
+        return std::pair<xla::ifrt::Client*, xla::PjRtDevice*>{nullptr,
+                                                               nullptr};
+      }
+      return std::pair<xla::ifrt::Client*, xla::PjRtDevice*>{
+          py_array.ifrt_array()->client(),
+          py_array.ifrt_array()->sharding().devices().front()};
+#else
       if (!py_array.committed()) {
         return nullptr;
       }
-#ifdef JAX_ENABLE_IFRT
-      return py_array.ifrt_array()->sharding().devices().front();
-#else
       return py_array.pjrt_buffer(0)->device();
 #endif
     }
@@ -689,22 +700,36 @@ static xla::StatusOr<xla::PjRtDevice*> GetJitArgumentStickyDevice(
   // (Can happen in jit(pmap), e.g. "test_jit_nested_donate_ignored").
   if (arg.get_type().ptr() == xla::PyBuffer::type()) {
     xla::PyBuffer* buffer = xla::PyBuffer::AsPyBufferUnchecked(arg);
+#ifdef JAX_ENABLE_IFRT
+    if (!buffer->sticky_device()) {
+      return std::pair<xla::ifrt::Client*, xla::PjRtDevice*>{nullptr, nullptr};
+    }
+    return std::pair<xla::ifrt::Client*, xla::PjRtDevice*>{
+        buffer->ifrt_array()->client(), buffer->sticky_device()};
+#else
     if (!buffer->sticky_device()) {
       return nullptr;
     }
     return buffer->sticky_device();
+#endif
   }
 
   if (arg.get_type().ptr() == types.device_array.ptr()) {
     if (arg.attr("_device").is_none()) {
+#ifdef JAX_ENABLE_IFRT
+      return std::pair<xla::ifrt::Client*, xla::PjRtDevice*>{nullptr, nullptr};
+#else
       return nullptr;
+#endif
     }
     try {
       // This can fail, e.g. for cloud TPU 2VM buffers.
       TF_ASSIGN_OR_RETURN(xla::PyBuffer * buffer,
                           xla::PyBuffer::AsPyBuffer(arg.attr("device_buffer")));
 #ifdef JAX_ENABLE_IFRT
-      return buffer->ifrt_array()->sharding().devices().front();
+      return std::pair<xla::ifrt::Client*, xla::PjRtDevice*>{
+          buffer->ifrt_array()->client(),
+          buffer->ifrt_array()->sharding().devices().front()};
 #else
       return buffer->pjrt_buffer()->device();
 #endif
@@ -718,16 +743,27 @@ static xla::StatusOr<xla::PjRtDevice*> GetJitArgumentStickyDevice(
     }
   }
 
+#ifdef JAX_ENABLE_IFRT
+  return std::pair<xla::ifrt::Client*, xla::PjRtDevice*>{nullptr, nullptr};
+#else
   return nullptr;
+#endif
 }
 
 // Compute signature for arguments.
 //
 // Returns `OkStatus()` on success. Returning an error should lead to
 // calling the Python fallback.
+#ifdef JAX_ENABLE_IFRT
+xla::Status ComputeSignature(bool jax_enable_x64,
+                             xla::ifrt::Client* default_client,
+                             xla::PjRtDevice* default_device, bool is_committed,
+                             ParsedArgumentsAsBuffers& arguments) {
+#else
 xla::Status ComputeSignature(bool jax_enable_x64,
                              xla::PjRtDevice* default_device, bool is_committed,
                              ParsedArgumentsAsBuffers& arguments) {
+#endif
   tsl::profiler::TraceMe traceme("ComputeSignature");
 
   int num_flat_dynamic_args = arguments.flat_dynamic_args.size();
@@ -737,14 +773,24 @@ xla::Status ComputeSignature(bool jax_enable_x64,
   // https://github.com/google/jax/pull/1916 for the rationale why the
   // computation follows the data locality.
   // It's also similar to PyTorch's behavior.
+#ifdef JAX_ENABLE_IFRT
+  xla::ifrt::Client* ifrt_client = nullptr;
+#endif
   xla::PjRtDevice* data_device = nullptr;
-  if (is_committed) {
-    data_device = default_device;
-  } else {
+  if (!is_committed) {
     for (int i = 0; i < num_flat_dynamic_args; ++i) {
+#ifdef JAX_ENABLE_IFRT
+      TF_ASSIGN_OR_RETURN(
+          auto client_and_device,
+          GetJitArgumentStickyDevice(arguments.flat_dynamic_args[i]));
+      xla::ifrt::Client* client = client_and_device.first;
+      xla::PjRtDevice* device = client_and_device.second;
+#else
+
       TF_ASSIGN_OR_RETURN(
           xla::PjRtDevice * device,
           GetJitArgumentStickyDevice(arguments.flat_dynamic_args[i]));
+#endif
       if (device) {
         if (data_device && (device != data_device)) {
           throw std::invalid_argument(absl::StrCat(
@@ -752,16 +798,26 @@ xla::Status ComputeSignature(bool jax_enable_x64,
               "C++ jax.jit). Arguments are on devices: ",
               device->DebugString(), " and ", data_device->DebugString()));
         } else {
+#ifdef JAX_ENABLE_IFRT
+          ifrt_client = client;
           data_device = device;
+#else
+          data_device = device;
+#endif
         }
       }
     }
   }
   if (!data_device) {
-    // No `DeviceArray` were found default to `default_device`.
+#ifdef JAX_ENABLE_IFRT
+    ifrt_client = default_client;
+#endif
     data_device = default_device;
   }
   CHECK(data_device);
+#ifdef JAX_ENABLE_IFRT
+  arguments.ifrt_client = ifrt_client;
+#endif
   arguments.signature.device = data_device;
 
   arguments.signature.dynamic_arg_signatures.reserve(num_flat_dynamic_args);
@@ -781,7 +837,8 @@ xla::Status CopyBuffersToDevice(
     bool jax_enable_x64, const std::optional<std::vector<bool>>& kept_args,
     ParsedArgumentsAsBuffers& arguments) {
 #ifdef JAX_ENABLE_IFRT
-  std::vector<xla::ifrt::Array*>& ifrt_arg_arrays = arguments.ifrt_arg_arrays;
+  std::vector<tsl::RCReference<xla::ifrt::Array>>& ifrt_arg_arrays =
+      arguments.ifrt_arg_arrays;
 #else
   std::vector<xla::PjRtBuffer*>& arg_buffers = arguments.arg_buffers;
 #endif
@@ -811,11 +868,8 @@ xla::Status CopyBuffersToDevice(
                                   data_device, options));
 
 #ifdef JAX_ENABLE_IFRT
-    ifrt_arg_arrays.push_back(on_device.ifrt_array);
-    if (on_device.owned_ifrt_array) {
-      arguments.ifrt_keep_alive.push_back(
-          std::move(on_device.owned_ifrt_array));
-    } else if (on_device.owning_pybuffer) {
+    ifrt_arg_arrays.push_back(std::move(on_device.ifrt_array));
+    if (on_device.owning_pybuffer) {
       arguments.keep_alive_objects.push_back(
           std::move(on_device.owning_pybuffer));
     }
@@ -1032,9 +1086,6 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::handle callable,
   CHECK(device != nullptr);
 
   ParsedArgumentsAsBuffers arguments;
-#ifdef JAX_ENABLE_IFRT
-  arguments.ifrt_client = client;
-#endif
   arguments.signature.function_name = function_name_;
   size_t num_positional_args = PyVectorcall_NARGS(nargs);
   size_t num_keyword_args = kwnames ? PyTuple_GET_SIZE(kwnames) : 0;
@@ -1054,7 +1105,12 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::handle callable,
   arguments.signature.jax_array = GetEnableJaxArray();
   // The C++ jit do not support Tracers arguments inputs yet. The Python-based
   // jit function will be called if any of the dynamic arguments is unsupported.
+#ifdef JAX_ENABLE_IFRT
+  status =
+      ComputeSignature(jax_enable_x64, client, device, is_committed, arguments);
+#else
   status = ComputeSignature(jax_enable_x64, device, is_committed, arguments);
+#endif
   if (!status.ok()) {
     VLOG(2) << "ComputeSignature failed: " << status;
     return fallback_to_cache_miss();
@@ -1127,14 +1183,14 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::handle callable,
 
 // Executes the computation.
 #ifdef JAX_ENABLE_IFRT
-  std::vector<std::unique_ptr<xla::ifrt::Array>> output_arrays;
+  std::vector<tsl::RCReference<xla::ifrt::Array>> output_arrays;
   {
     py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(
-        auto result,
-        cache_entry->executable->ifrt_executable()->Execute(
-            arguments.ifrt_arg_arrays, cache_entry->executable->options(),
-            /*devices=*/std::nullopt));
+    TF_ASSIGN_OR_RETURN(auto result,
+                        cache_entry->executable->ifrt_executable()->Execute(
+                            absl::MakeSpan(arguments.ifrt_arg_arrays),
+                            cache_entry->executable->options(),
+                            /*devices=*/std::nullopt));
     output_arrays = std::move(result.outputs);
   }
 #else
@@ -1619,50 +1675,50 @@ void BuildJaxjitSubmodule(py::module& m) {
   // (a) it does not support abstract types,
   // (b) it does not set the device stickiness yet.
   // TODO(jblespiau): Finish the replacement of the Python feature.
-  jitlib.def("device_put",
-             [](py::handle obj, bool jax_enable_x64,
-                xla::ClientAndPtr<xla::PjRtDevice> to_device)
-                 -> xla::StatusOr<py::object> {
-               std::shared_ptr<xla::PyClient>& pyclient = to_device.client;
-               xla::DevicePutOptions options;
-               options.squash_64bit_types = !jax_enable_x64;
-               options.allow_zero_copy = true;
+  jitlib.def(
+      "device_put",
+      [](py::handle obj, bool jax_enable_x64,
+         xla::ClientAndPtr<xla::PjRtDevice> to_device)
+          -> xla::StatusOr<py::object> {
+        std::shared_ptr<xla::PyClient>& pyclient = to_device.client;
+        xla::DevicePutOptions options;
+        options.squash_64bit_types = !jax_enable_x64;
+        options.allow_zero_copy = true;
 #ifdef JAX_ENABLE_IFRT
-               xla::StatusOr<xla::DevicePutResult> results = DevicePut(
-                   obj, pyclient->ifrt_client(), to_device.contents, options);
+        xla::StatusOr<xla::DevicePutResult> results = DevicePut(
+            obj, pyclient->ifrt_client(), to_device.contents, options);
 #else
-               xla::StatusOr<xla::DevicePutResult> results =
-                   DevicePut(obj, to_device.contents, options);
+        xla::StatusOr<xla::DevicePutResult> results =
+            DevicePut(obj, to_device.contents, options);
 #endif
-               if (!results.ok()) {
-                 throw xla::XlaRuntimeError(results.status().error_message());
-               }
+        if (!results.ok()) {
+          throw xla::XlaRuntimeError(results.status().error_message());
+        }
 #ifdef JAX_ENABLE_IFRT
-               if (results->owned_ifrt_array) {
-                 auto buffer = xla::PyBuffer::Make(
-                     pyclient, std::move(results->owned_ifrt_array),
-                     xla::Traceback::Get());
+        if (results->ifrt_array) {
+          auto buffer = xla::PyBuffer::Make(
+              pyclient, std::move(results->ifrt_array), xla::Traceback::Get());
 #else
-               if (results->owned_buffer) {
-                 auto buffer = xla::PyBuffer::Make(
-                     pyclient, std::move(results->owned_buffer),
-                     xla::Traceback::Get());
+        if (results->owned_buffer) {
+          auto buffer =
+              xla::PyBuffer::Make(pyclient, std::move(results->owned_buffer),
+                                  xla::Traceback::Get());
 #endif
 
-                 static const auto* jax_core =
-                     new py::module(py::module::import("jax.core"));
-                 static const auto* shaped_array =
-                     new py::handle(jax_core->attr("ShapedArray"));
-                 buffer.buf()->SetAval((*shaped_array)(
-                     buffer.buf()->python_shape(), buffer.buf()->python_dtype(),
-                     results->weak_type));
-                 TF_RETURN_IF_ERROR(buffer.buf()->set_sticky_device(nullptr));
+          static const auto* jax_core =
+              new py::module(py::module::import("jax.core"));
+          static const auto* shaped_array =
+              new py::handle(jax_core->attr("ShapedArray"));
+          buffer.buf()->SetAval((*shaped_array)(buffer.buf()->python_shape(),
+                                                buffer.buf()->python_dtype(),
+                                                results->weak_type));
+          TF_RETURN_IF_ERROR(buffer.buf()->set_sticky_device(nullptr));
 
-                 return std::move(buffer);
-               } else {
-                 return py::cast<py::object>(obj);
-               }
-             });
+          return std::move(buffer);
+        } else {
+          return py::cast<py::object>(obj);
+        }
+      });
 
   py::class_<xla::PyArgSignature> arg_signature(jitlib, "PyArgSignature");
   arg_signature

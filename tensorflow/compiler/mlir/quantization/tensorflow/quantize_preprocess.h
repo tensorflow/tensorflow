@@ -15,12 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_QUANTIZE_PREPROCESS_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_QUANTIZE_PREPROCESS_H_
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/Optional.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 namespace quantization {
@@ -35,16 +35,16 @@ inline constexpr absl::string_view kDefaultTfQuantMlirDumpFilePrefix =
 // `mlir_dump_file_prefix` is primarily used for debugging and does not affect
 // the preprocessing behavior. Instructions for producing MLIR dump files are in
 // the comments of `tensorflow::quantization::MaybeEnableIrPrinting` function.
-Status PreprocessAndFreezeGraph(absl::string_view mlir_dump_file_prefix,
-                                mlir::ModuleOp module_op,
-                                mlir::MLIRContext* context,
-                                llvm::Optional<Session*> session);
+absl::Status PreprocessAndFreezeGraph(absl::string_view mlir_dump_file_prefix,
+                                      mlir::ModuleOp module_op,
+                                      mlir::MLIRContext* context,
+                                      llvm::Optional<Session*> session);
 
 // Overload of `PreprocessAndFreezeGraph` that uses the default MLIR dump file
 // prefix.
-inline Status PreprocessAndFreezeGraph(mlir::ModuleOp module_op,
-                                       mlir::MLIRContext* context,
-                                       llvm::Optional<Session*> session) {
+inline absl::Status PreprocessAndFreezeGraph(mlir::ModuleOp module_op,
+                                             mlir::MLIRContext* context,
+                                             llvm::Optional<Session*> session) {
   return PreprocessAndFreezeGraph(
       /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix, module_op,
       context, session);

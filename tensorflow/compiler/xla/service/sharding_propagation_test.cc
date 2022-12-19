@@ -8487,5 +8487,32 @@ ENTRY %main.21 {
   EXPECT_TRUE(changed);
 }
 
+TEST_F(ShardingPropagationTest, MergeCompatibleTiles) {
+  const char* const hlo_string = R"(
+HloModule pjit
+
+ENTRY %main.21 {
+  p = bf16[8,4,256,1024,12288]{4,3,2,1,0} parameter(0), sharding={devices=[8,1,1,1,1]0,1,2,3,4,5,6,7}
+  p2 = bf16[8,4,256,1024,12288]{4,3,2,1,0} parameter(1), sharding={devices=[4,1,1,1,1,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  c0 =  bf16[8,4,256,1024,12288]{4,3,2,1,0} copy(p)
+  c1 =  bf16[8,4,256,1024,12288]{4,3,2,1,0} copy(p2)
+  a = bf16[8,4,256,1024,12288]{4,3,2,1,0} add(c0, c1)
+  ROOT c2 = bf16[8,4,256,1024,12288]{4,3,2,1,0} copy(a), sharding={devices=[8,1,1,1,1]0,1,2,3,4,5,6,7}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "c1"),
+              op::Sharding("{devices=[8,1,1,1,1]0,1,2,3,4,5,6,7}"));
+}
+
 }  // namespace
 }  // namespace xla

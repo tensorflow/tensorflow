@@ -70,7 +70,6 @@ xla_cc_binary(
     deps = [
         ":grpc_service_main_library",
         "//tensorflow/compiler/xla/service:cpu_plugin",
-        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
     ],
 )
 

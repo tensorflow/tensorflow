@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/ifrt/client.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_compiler.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
 namespace xla {
 namespace ifrt {
@@ -61,16 +62,17 @@ class PjRtClient final
 
   ~PjRtClient() override = default;
 
-  StatusOr<std::unique_ptr<Array>> MakeArrayFromHostBuffer(
+  StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       std::shared_ptr<const Sharding> sharding,
       Client::HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) override;
 
-  StatusOr<std::unique_ptr<Array>> AssembleArrayFromSingleDeviceArrays(
+  StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
       Shape shape, std::shared_ptr<const Sharding> sharding,
-      absl::Span<Array* const> arrays, ArrayCopySemantics semantics) override;
+      absl::Span<tsl::RCReference<Array>> arrays,
+      ArrayCopySemantics semantics) override;
 
   absl::string_view runtime_type() const override {
     DCHECK(this);
