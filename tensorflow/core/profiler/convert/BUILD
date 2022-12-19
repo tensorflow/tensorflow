@@ -472,6 +472,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
         "//tensorflow/core/profiler/utils:xplane_visitor",
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],

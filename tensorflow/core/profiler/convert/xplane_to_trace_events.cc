@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -67,6 +68,9 @@ void ConvertXPlaneToTraceEvents(uint32 device_id, const XPlaneVisitor& xplane,
   // Convert events.
   xplane.ForEachLine([device_id, trace](const XLineVisitor& xline) {
     uint32 resource_id = xline.DisplayId();
+    if (xline.DisplayName() == tsl::profiler::kXlaAsyncOpLineName) {
+      return;
+    }
     xline.ForEachEvent(
         [device_id, resource_id, trace](const XEventVisitor& xevent) {
           int64_t event_type =
