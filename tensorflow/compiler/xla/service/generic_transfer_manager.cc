@@ -62,10 +62,11 @@ Status GenericTransferManager::WriteSingleTupleIndexTable(
 void GenericTransferManager::TransferLiteralFromDevice(
     se::Stream* stream, const ShapedBuffer& device_buffer,
     MutableBorrowingLiteral literal, std::function<void(Status)> done,
-    const TransferMetadata* /*transfer_metadata*/) {
+    const TransferMetadata* transfer_metadata) {
   VLOG(2) << "transferring literal from device ordinal "
           << stream->parent()->device_ordinal()
           << "; device buffer: " << device_buffer;
+
   Status status = [&]() -> Status {
     TF_RET_CHECK(stream->parent()->device_ordinal() ==
                  device_buffer.device_ordinal());
@@ -74,24 +75,41 @@ void GenericTransferManager::TransferLiteralFromDevice(
         device_buffer.on_device_shape(),
         [&](const Shape& subshape, const ShapeIndex& index) -> Status {
           if (subshape.IsArray()) {
-            stream->ThenMemcpy(
-                /*host_dst=*/literal.untyped_data(index),
-                /*gpu_src=*/device_buffer.buffer(index),
+            TF_RETURN_IF_ERROR(TransferBufferFromDevice(
+                stream,
+                /*source=*/device_buffer.buffer(index),
                 // With bounded dynamic shapes, the shape of the device buffer
                 // (bounded allocation) can be bigger than the literal.
                 /*size=*/
                 GetByteSizeRequirement(
-                    ShapeUtil::GetSubshape(literal.shape(), index)));
+                    ShapeUtil::GetSubshape(literal.shape(), index)),
+                /*destination=*/literal.untyped_data(index)));
           }
           return OkStatus();
         }));
     return OkStatus();
   }();
+
   if (!status.ok()) {
     done(status);
     return;
   }
-  done(stream->BlockHostUntilDone());
+
+  // CUDA callbacks are tricky as we cannot call any CUDA driver functions from
+  // within a host callback. As a result, `TransferLiteralFromDevice` must be
+  // very conservative, and is synchronous by default. However, if the user
+  // declares, via the metadata, that their callback is safe to call from a host
+  // callback, we enqueue it and return immediately.
+  if ((transfer_metadata != nullptr) &&
+      tensorflow::down_cast<const LiteralFromDeviceMetadata*>(transfer_metadata)
+          ->callback_is_host_callback_safe) {
+    stream->ThenDoHostCallback([done = std::move(done), stream] {
+      done(stream->ok() ? OkStatus()
+                        : InternalError("`TransferLiteralFromDevice` failed"));
+    });
+  } else {
+    done(stream->BlockHostUntilDone());
+  }
 }
 
 Status GenericTransferManager::TransferLiteralToDeviceAsync(
