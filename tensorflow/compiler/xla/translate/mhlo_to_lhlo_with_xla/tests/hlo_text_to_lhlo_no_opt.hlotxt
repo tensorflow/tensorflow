@@ -442,7 +442,7 @@ HloModule Outfeed
 
 // CHECK: func @main
 // CHECK: "lmhlo.custom_call"
-// CHECK-SAME: call_target_name = "foo"
+// CHECK: call_target_name = "foo"
 // CHECK: "lmhlo.outfeed"
 // CHECK-SAME: config = ""
 // CHECK-SAME: (memref<3xf32>, memref<5xf16>) -> ()
@@ -654,7 +654,7 @@ HloModule CustomCallWithTypedFFIBackendConfig
 
 // CHECK: func @main
 // CHECK: "lmhlo.custom_call"
-// CHECK-SAME: api_version = 4 : i32
+// CHECK: api_version = 4 : i32
 // CHECK-SAME: backend_config = {
 // CHECK-SAME:   user_attr0 = 123 : i32
 // CHECK-SAME:   user_attr1 = dense<42> : tensor<i32>
@@ -676,7 +676,7 @@ HloModule CustomCallWithTokens
 
 // CHECK: func @main
 // CHECK: "lmhlo.custom_call"
-// CHECK-SAME: num_args = 1
+// CHECK: num_args = 1
 // CHECK-SAME: num_results = 2
 // CHECK-SAME: args_to_target_args = []
 // CHECK-SAME: results_to_target_results = [0]
@@ -692,7 +692,7 @@ HloModule CustomCallWithTokens
 
 // CHECK: func @main
 // CHECK: "lmhlo.custom_call"
-// CHECK-SAME: num_args = 3
+// CHECK: num_args = 3
 // CHECK-SAME: num_results = 3
 // CHECK-SAME: args_to_target_args = [1]
 // CHECK-SAME: results_to_target_results = [0, 2]
@@ -710,7 +710,7 @@ HloModule CustomCallWithTokens
 
 // CHECK: func @main
 // CHECK: "lmhlo.custom_call"
-// CHECK-SAME: num_args = 3
+// CHECK: num_args = 3
 // CHECK-SAME: num_results = 1
 // CHECK-SAME: args_to_target_args = [1]
 // CHECK-SAME: results_to_target_results = [0]
@@ -728,7 +728,7 @@ HloModule CustomCallWithTokens
 
 // CHECK: func @main
 // CHECK: "lmhlo.custom_call"
-// CHECK-SAME: num_args = 1
+// CHECK: num_args = 1
 // CHECK-SAME: num_results = 4
 // CHECK-SAME: args_to_target_args = [0]
 // CHECK-SAME: results_to_target_results = [1]
@@ -794,4 +794,36 @@ ENTRY main {
   %parameter.2 = s32[] parameter(1)
   %custom-call = s32[<=2]{0} custom-call(s32[2]{0} %parameter.1, s32[] %parameter.2), custom_call_target="SliceToDynamic"
   ROOT %copy = s32[<=2]{0} copy(s32[<=2]{0} %custom-call)
+}
+
+// -----
+
+HloModule CustomCallNoComputation
+
+// CHECK: "lmhlo.custom_call"
+// CHECK: call_target_name = "__custom"
+
+ENTRY main {
+  param = f32[] parameter(0)
+  ROOT cr = f32[] custom-call(param), custom_call_target="__custom"
+}
+
+// -----
+
+HloModule CustomCallWithComputation
+
+// CHECK: "lmhlo.custom_call"
+// CHECK: %0 = mhlo.add
+// CHECK: mhlo.return %0
+// CHECK: call_target_name = "__custom"
+
+computation1 {
+  param_0 = f32[] parameter(0)
+  ROOT r = f32[] add(param_0, param_0)
+}
+
+ENTRY main {
+  param = f32[] parameter(0)
+  ROOT cr = f32[] custom-call(param), custom_call_target="__custom",
+                                      to_apply=computation1
 }

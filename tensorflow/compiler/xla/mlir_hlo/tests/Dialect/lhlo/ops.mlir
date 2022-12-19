@@ -1081,7 +1081,7 @@ func.func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
 
 // CHECK-LABEL: func @valid_custom_call
 func.func @valid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
-  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) {
+  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) ({}) {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
@@ -1100,7 +1100,7 @@ func.func @valid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
 
 func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
   // expected-error @+1 {{number of entries in the mapping for args (1) should match the number of args for the operation (2)}}
-  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) {
+  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) ({}) {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
@@ -1119,7 +1119,7 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
 
 func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
   // expected-error @+1 {{number of entries in the mapping for results (1) should match the number of results for the operation (2)}}
-  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) {
+  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) ({}) {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
@@ -1138,7 +1138,7 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
 
 func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
   // expected-error @+1 {{entry 0 cannot appear more than once in the mapping for args}}
-  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) {
+  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) ({}) {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
@@ -1157,7 +1157,7 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
 
 func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
   // expected-error @+1 {{entry 1 cannot appear more than once in the mapping for results}}
-  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) {
+  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) ({}) {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
@@ -1176,7 +1176,7 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
 
 func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
   // expected-error @+1 {{entries in mapping for args must be >= 0 and less than target's number of args (4)}}
-  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) {
+  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) ({}) {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
@@ -1195,7 +1195,7 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
 
 func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
   // expected-error @+1 {{entries in mapping for results must be >= 0 and less than target's number of results (3)}}
-  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) {
+  "lmhlo.custom_call"(%arg0, %arg0, %arg1, %arg1) ({}) {
     backend_config = "",
     call_target_name = "foo",
     has_side_effects = false,
