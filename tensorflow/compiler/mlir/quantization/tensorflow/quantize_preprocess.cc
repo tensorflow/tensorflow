@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/Optional.h"
@@ -40,31 +41,30 @@ namespace tensorflow {
 namespace quantization {
 namespace {
 
-Status RunPassesOnModuleOp(const absl::string_view mlir_dump_file_name,
-                           mlir::PassManager& pass_manager,
-                           mlir::ModuleOp module_op) {
+absl::Status RunPassesOnModuleOp(const absl::string_view mlir_dump_file_name,
+                                 mlir::PassManager& pass_manager,
+                                 mlir::ModuleOp module_op) {
   mlir::StatusScopedDiagnosticHandler statusHandler(module_op.getContext(),
                                                     /*propagate=*/true);
 
   const absl::StatusOr<std::unique_ptr<llvm::raw_ostream>> dump_file =
       MaybeEnableIrPrinting(pass_manager, mlir_dump_file_name);
   if (!dump_file.ok()) {
-    return tsl::FromAbslStatus(dump_file.status());
+    return dump_file.status();
   }
 
   if (failed(pass_manager.run(module_op))) {
-    return statusHandler.ConsumeStatus();
+    return tsl::ToAbslStatus(statusHandler.ConsumeStatus());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-Status PreprocessAndFreezeGraph(const absl::string_view mlir_dump_file_prefix,
-                                mlir::ModuleOp module_op,
-                                mlir::MLIRContext* context,
-                                llvm::Optional<Session*> session) {
+absl::Status PreprocessAndFreezeGraph(
+    const absl::string_view mlir_dump_file_prefix, mlir::ModuleOp module_op,
+    mlir::MLIRContext* context, llvm::Optional<Session*> session) {
   mlir::PassManager pm_before_freezing_variables(context);
   mlir::StatusScopedDiagnosticHandler statusHandler(module_op.getContext(),
                                                     /*propagate=*/true);
@@ -83,28 +83,23 @@ Status PreprocessAndFreezeGraph(const absl::string_view mlir_dump_file_prefix,
   pm_after_freezing_variables.addPass(mlir::createCanonicalizerPass());
   pm_after_freezing_variables.addPass(mlir::createInlinerPass());
 
-  if (const auto status = RunPassesOnModuleOp(
+  if (const auto pre_variable_freezing_status = RunPassesOnModuleOp(
           /*mlir_dump_file_name=*/absl::StrCat(
               mlir_dump_file_prefix, "_preprocess_pre_variable_freezing"),
           pm_before_freezing_variables, module_op);
-      !status.ok()) {
-    return status;
+      !pre_variable_freezing_status.ok()) {
+    return pre_variable_freezing_status;
   }
 
   if (session.has_value() && failed(mlir::tf_saved_model::FreezeVariables(
                                  module_op, session.value()))) {
-    return statusHandler.ConsumeStatus();
+    return tsl::ToAbslStatus(statusHandler.ConsumeStatus());
   }
 
-  if (const auto status = RunPassesOnModuleOp(
-          /*mlir_dump_file_name=*/absl::StrCat(
-              mlir_dump_file_prefix, "_preprocess_post_variable_freezing"),
-          pm_after_freezing_variables, module_op);
-      !status.ok()) {
-    return status;
-  }
-
-  return OkStatus();
+  return RunPassesOnModuleOp(
+      /*mlir_dump_file_name=*/absl::StrCat(
+          mlir_dump_file_prefix, "_preprocess_post_variable_freezing"),
+      pm_after_freezing_variables, module_op);
 }
 
 }  // namespace quantization
