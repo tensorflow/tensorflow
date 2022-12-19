@@ -21,7 +21,7 @@ tf_cc_test(
         ":fuzz_helpers",
         "//tensorflow/core/platform:status",
         "@com_google_fuzztest//fuzztest",
-	"@com_google_fuzztest//fuzztest:fuzztest_gtest_main",
+        "@com_google_fuzztest//fuzztest:fuzztest_gtest_main",
     ],
 )
 
