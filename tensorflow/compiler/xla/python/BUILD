@@ -863,7 +863,7 @@ config_setting(
 
 bool_flag(
     name = "enable_ifrt",
-    build_setting_default = False,
+    build_setting_default = True,
 )
 
 config_setting(
