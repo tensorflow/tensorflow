@@ -834,7 +834,6 @@ xla_cc_binary(
         "//tensorflow/tsl/util:determinism",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
-        "//tensorflow/compiler/xla/service/gpu:nvptx_helper",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler_impl",
