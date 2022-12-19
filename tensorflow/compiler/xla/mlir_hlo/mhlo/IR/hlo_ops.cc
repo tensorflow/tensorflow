@@ -2559,10 +2559,12 @@ LogicalResult ConvolutionOp::verify() {
   auto windowOrErr = hlo::verifyWindowAttributesAndInferWindowDimensions(
       windowDimensions, convertDenseIntAttr(getWindowStrides()), padding,
       convertDenseIntAttr(getLhsDilation()),
-      convertDenseIntAttr(getRhsDilation()), getLoc());
+      convertDenseIntAttr(getRhsDilation()),
+      *hlo::convertWindowReversalAttribute(getWindowReversal(), getLoc(),
+                                           "window_reversal"),
+      getLoc());
   if (failed(windowOrErr)) return failure();
 
-  // P4.
   auto actualReturnType = getResult().getType().cast<TensorType>();
   auto actualReturnElementType = actualReturnType.getElementType();
   if (!actualReturnType.hasRank()) return success();
@@ -6953,9 +6955,8 @@ LogicalResult TransposeOp::inferReturnTypes(
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   TransposeOp::Adaptor adaptor(operands, attributes, regions);
-  LogicalResult result = hlo::inferTransposeOp(
-      loc, adaptor.getOperand(), adaptor.getPermutation(), inferredReturnTypes);
-  return result;
+  return hlo::inferTransposeOp(loc, adaptor.getOperand(),
+                               adaptor.getPermutation(), inferredReturnTypes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -7258,7 +7259,7 @@ LogicalResult SelectAndScatterOp::verify() {
 
   auto windowOrErr = hlo::verifyWindowAttributesAndInferWindowDimensions(
       windowDims, convertDenseIntAttr(getWindowStrides()), padding,
-      /*lhs_dilation=*/{}, /*rhs_dilation=*/{}, getLoc());
+      /*lhsDilation=*/{}, /*rhsDilation=*/{}, /*windowReversal=*/{}, getLoc());
   if (failed(windowOrErr)) return failure();
 
   // P5.
@@ -7955,24 +7956,26 @@ using mlir::hlo::printWindowAttributes;
 }  // namespace mhlo
 }  // namespace mlir
 
-// clang-format off
-using mlir::hlo::printSameOperandsAndResultType;
+using mlir::hlo::parseComplexOpType;
+using mlir::hlo::parseCustomCallTarget;
+using mlir::hlo::parseDenseI64Array;
+using mlir::hlo::parseExponentMantissa;
+using mlir::hlo::parsePairwiseOpType;
 using mlir::hlo::parseSameOperandsAndResultType;
-using mlir::hlo::printVariadicSameOperandsAndResultType;
+using mlir::hlo::parseSelectOpType;
+using mlir::hlo::parseTupleOpType;
+using mlir::hlo::parseVariadicOperandWithAttribute;
 using mlir::hlo::parseVariadicSameOperandsAndResultType;
 using mlir::hlo::printComplexOpType;
-using mlir::hlo::parseComplexOpType;
-using mlir::hlo::printPairwiseOpType;
-using mlir::hlo::parsePairwiseOpType;
-using mlir::hlo::printSelectOpType;
-using mlir::hlo::parseSelectOpType;
-using mlir::hlo::printTupleOpType;
-using mlir::hlo::parseTupleOpType;
 using mlir::hlo::printCustomCallTarget;
-using mlir::hlo::parseCustomCallTarget;
+using mlir::hlo::printDenseI64Array;
 using mlir::hlo::printExponentMantissa;
-using mlir::hlo::parseExponentMantissa;
-// clang-format on
+using mlir::hlo::printPairwiseOpType;
+using mlir::hlo::printSameOperandsAndResultType;
+using mlir::hlo::printSelectOpType;
+using mlir::hlo::printTupleOpType;
+using mlir::hlo::printVariadicOperandWithAttribute;
+using mlir::hlo::printVariadicSameOperandsAndResultType;
 
 #define GET_OP_CLASSES
 #include "mhlo/IR/hlo_ops.cc.inc"
