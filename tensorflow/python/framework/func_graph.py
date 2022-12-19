@@ -1033,14 +1033,6 @@ class FuncGraph(ops.Graph):
       self._deferred_captures.popitem()
     memory.dismantle_ordered_dict(self._deferred_captures)
 
-  def capture_distributed_variable(self, variable, placeholder):
-    """Add given distributed variable to captures with given placeholder."""
-    self._captures[id(variable)] = (variable, placeholder)
-    tape.record_operation(
-        "captured_value", [placeholder], [variable],
-        backward_function=lambda x: [x],
-        forward_function=lambda x: [x])
-
   def capture_eager_tensor(self, tensor, name):
     capture = self._captures.get(id(tensor))
     if capture is None:
