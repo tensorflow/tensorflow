@@ -139,14 +139,12 @@ class CustomCall {
   }
 
   template <typename T>
-  ABSL_ATTRIBUTE_ALWAYS_INLINE static bool Isa(RuntimeChecks checks,
-                                               TypeID type_id) {
+  static bool Isa(RuntimeChecks checks, TypeID type_id) {
     return !CheckTypes(checks) || type_id == TypeID::get<Tagged<T>>();
   }
 
   template <typename T, typename U, typename... Ts>
-  ABSL_ATTRIBUTE_ALWAYS_INLINE static bool Isa(RuntimeChecks checks,
-                                               TypeID type_id) {
+  static bool Isa(RuntimeChecks checks, TypeID type_id) {
     return !CheckTypes(checks) || type_id == TypeID::get<Tagged<T>>() ||
            Isa<U, Ts...>(checks, type_id);
   }
@@ -443,7 +441,7 @@ struct DecodedAttr {
 // A convenience wrapper around opaque arguments memory.
 class DecodedArgs {
  public:
-  ABSL_ATTRIBUTE_ALWAYS_INLINE explicit DecodedArgs(void** args) {
+  explicit DecodedArgs(void** args) {
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(args, sizeof(void*));
     size_ = *reinterpret_cast<int64_t*>(args[0]);
     if (size_) {
@@ -473,8 +471,7 @@ class DecodedArgs {
 // A convenience wrapper around opaque attributes memory.
 class DecodedAttrs {
  public:
-  ABSL_ATTRIBUTE_ALWAYS_INLINE explicit DecodedAttrs(void** attrs)
-      : encoded_(attrs + 1) {
+  explicit DecodedAttrs(void** attrs) : encoded_(attrs + 1) {
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(attrs, sizeof(void*));
     size_ = *reinterpret_cast<int64_t*>(attrs[0]);
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(encoded_, 3 * size_ * sizeof(void*));
@@ -751,7 +748,7 @@ struct DecodingContext {
 };
 
 template <typename T, CustomCall::RuntimeChecks checks>
-ABSL_ATTRIBUTE_ALWAYS_INLINE FailureOr<T*> DecodeUserData(
+ABSL_ATTRIBUTE_ALWAYS_INLINE inline FailureOr<T*> DecodeUserData(
     const CustomCall::UserData* user_data) {
   if (!CustomCall::CheckUserData(checks)) return user_data->get<T>();
 
@@ -766,7 +763,7 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE FailureOr<T*> DecodeUserData(
 }
 
 template <typename T, CustomCall::RuntimeChecks checks>
-ABSL_ATTRIBUTE_ALWAYS_INLINE FailureOr<T> DecodeAttr(
+ABSL_ATTRIBUTE_ALWAYS_INLINE inline FailureOr<T> DecodeAttr(
     DecodingOffsets& offsets, absl::Span<const std::string> attrs_names,
     absl::Span<const size_t> attrs_idx, internal::DecodedAttrs attrs) {
   // Find decoded attribute corresponding for the given attribute index.
@@ -1286,7 +1283,8 @@ XLA_RUNTIME_REGISTER_EIGEN_FP_ARG_DECODING(Eigen::half, uint16_t);
                                                                             \
       auto* src = reinterpret_cast<PTR*>(value);                            \
       ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(value, sizeof(PTR));              \
-      return (T){*src};                                                     \
+      T ref{*src};                                                          \
+      return std::move(ref);                                                \
     }                                                                       \
   }
 
