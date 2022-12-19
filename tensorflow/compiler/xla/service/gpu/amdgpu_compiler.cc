@@ -75,7 +75,7 @@ std::string GetROCDLDir(const HloModuleConfig& config) {
 }  // namespace
 
 Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
-    HloModule* hlo_module, se::CudaComputeCapability cuda_compute_capability,
+    HloModule* hlo_module, se::RocmComputeCapability rocm_compute_capability,
     se::DeviceMemoryAllocator* device_allocator) {
   // Convert convolutions into CustomCalls to MIOpen, then canonicalize them
   // (PadInsertion).

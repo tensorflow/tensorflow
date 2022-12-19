@@ -198,13 +198,23 @@ class GpuBfloat16Support : public BFloat16Support {
       : supports_matrix_multiplication_(supports_matrix_multiplication),
         is_conv_bf16_supported_(IsConvBf16Supported(stream_exec)) {}
 
+#if GOOGLE_CUDA
   explicit GpuBfloat16Support(bool supports_matrix_multiplication,
-                              se::dnn::VersionInfo cudnn_version,
-                              se::CudaComputeCapability cuda_compute_capability)
+                              se::dnn::VersionInfo dnn_version_info,
+                              se::CudaComputeCapability cuda_compute_capability
+                            )
       : supports_matrix_multiplication_(supports_matrix_multiplication),
         is_conv_bf16_supported_(
-            IsConvBf16Supported(cudnn_version, cuda_compute_capability)) {}
-
+            IsConvBf16Supported(dnn_version_info, cuda_compute_capability)) {}
+#elif TENSORFLOW_USE_ROCM
+  explicit GpuBfloat16Support(bool supports_matrix_multiplication,
+                              se::dnn::VersionInfo dnn_version_info,
+                              se::RocmComputeCapability rocm_compute_capability
+                            )
+      : supports_matrix_multiplication_(supports_matrix_multiplication),
+        is_conv_bf16_supported_(
+            IsConvBf16Supported(dnn_version_info, rocm_compute_capability)) {}
+#endif
   bool SupportsBF16Operand(const HloInstruction& hlo,
                            int64_t operand_index) const override {
     return BFloat16Support::SupportsBF16Operand(hlo, operand_index) ||
@@ -254,6 +264,7 @@ class GpuBfloat16Support : public BFloat16Support {
   }
 
   static bool IsConvBf16Supported(se::StreamExecutor* stream_exec) {
+#if GOOGLE_CUDA
     if (se::dnn::DnnSupport* dnn = stream_exec->AsDnn()) {
       se::port::StatusOr<se::dnn::VersionInfo> cudnn_version =
           dnn->GetVersion();
@@ -269,12 +280,13 @@ class GpuBfloat16Support : public BFloat16Support {
     }
 #elif TENSORFLOW_USE_ROCM && TF_ROCM_VERSION>=50000
     auto rocm_compute_capability =
-        stream_exec_->GetDeviceDescription().rocm_compute_capability();
+        stream_exec->GetDeviceDescription().rocm_compute_capability();
     return rocm_compute_capability.has_bf16_dtype_support();
 #endif
     return false;
   }
 
+#if GOOGLE_CUDA
   static bool IsConvBf16Supported(
       se::dnn::VersionInfo cudnn_version,
       se::CudaComputeCapability cuda_compute_capability) {
@@ -283,6 +295,13 @@ class GpuBfloat16Support : public BFloat16Support {
              cudnn_version.minor_version() >= 2)) &&
            cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE);
   }
+#elif TENSORFLOW_USE_ROCM
+  static bool IsConvBf16Supported(
+      se::dnn::VersionInfo dnn_version,
+      se::RocmComputeCapability rocm_compute_capability) {
+    return rocm_compute_capability.has_bf16_dtype_support();
+  }
+#endif
 
   bool supports_matrix_multiplication_;
   bool is_conv_bf16_supported_;
@@ -473,11 +492,16 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<AllToAllDecomposer>();
 
     HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
+#if GOOGLE_CUDA
       return !stream_exec->GetDeviceDescription()
                   .cuda_compute_capability()
-                  .IsAtLeast(se::CudaComputeCapability::VOLTA) ||
+                  .IsAtLeast(se::CudaComputeCapability::VOLTA) ||        
              !gpu::IsMatrixMultiplication(*instr);
+#elif TENSORFLOW_USE_ROCM      
+      return !gpu::IsMatrixMultiplication(*instr);
+#endif
     };
+
 
     pipeline.AddPass<OperandUpcaster>(upcaster_filter);
     pipeline.AddPass<ResultCaster>(upcaster_filter);
@@ -525,7 +549,12 @@ Status GpuCompiler::OptimizeHloModule(
     GpuBfloat16Support bf16(
         /*supports_matrix_multiplication=*/true,
         gpu_target_config.dnn_version_info,
-        std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version));
+#if GOOGLE_CUDA        
+        std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version)
+#elif TENSORFLOW_USE_ROCM
+        std::get<se::RocmComputeCapability>(gpu_target_config.gpu_version)
+#endif        
+    );
     pipeline.AddPass<BFloat16Normalization>(&bf16);
 
     pipeline.AddPass<BatchNormExpander>(
@@ -665,7 +694,11 @@ Status GpuCompiler::OptimizeHloModule(
   // canonicalization.
   TF_RETURN_IF_ERROR(OptimizeHloConvolutionCanonicalization(
       hlo_module,
+#if GOOGLE_CUDA      
       std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version),
+#elif TENSORFLOW_USE_ROCM
+      std::get<se::RocmComputeCapability>(gpu_target_config.gpu_version),
+#endif      
       device_allocator));
 
   {
@@ -891,7 +924,12 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   GpuBfloat16Support bf16(
       /*supports_matrix_multiplication=*/false,
       gpu_target_config.dnn_version_info,
-      std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version));
+#if GOOGLE_CUDA      
+      std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version)
+#elif TENSORFLOW_USE_ROCM
+      std::get<se::RocmComputeCapability>(gpu_target_config.gpu_version)
+#endif      
+  );
   pipeline.AddPass<BFloat16Normalization>(&bf16);
 
   // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
@@ -1405,13 +1443,17 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   }
 
   // Test whether LinkModules is supported.
+#if GOOGLE_CUDA  
   TF_ASSIGN_OR_RETURN(bool can_use_link_modules,
                       CanUseLinkModules(module_config));
   if (!can_use_link_modules) {
     return compile_single_module(llvm_module.get(), /*relocatable=*/false,
                                  /*shard_number=*/std::nullopt);
   }
-
+#elif TENSORFLOW_USE_ROCM
+  return compile_single_module(llvm_module.get(), /*relocatable=*/false,
+                              /*shard_number=*/std::nullopt);
+#endif
   std::vector<std::unique_ptr<llvm::Module>> llvm_modules;
   int num_functions = 0;
   for (llvm::Function& func : llvm_module->functions()) {
@@ -1520,7 +1562,6 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
                << maybe_backend_result.status();
     return maybe_backend_result.status();
   }
-
   return std::make_pair(ptx_snippets, std::move(*maybe_backend_result));
 }
 

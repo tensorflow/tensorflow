@@ -37,10 +37,14 @@ limitations under the License.
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/util/command_line_flags.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/executable.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
+#endif
+#if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/service/gpu/amdgpu_compiler.h"
 #endif
 
 namespace xla {
@@ -90,6 +94,7 @@ StatusOr<std::string> AotCompileGpuExecutable(
 }
 #endif
 
+
 xla::Status XlaCompileMain(const std::string& module_path,
                            const std::string& output_path,
                            const std::string& platform,
@@ -130,7 +135,7 @@ xla::Status XlaCompileMain(const std::string& module_path,
   std::string result;
   if (platform == "cpu") {
     TF_ASSIGN_OR_RETURN(result, AotCompileCpuExecutable(std::move(hlo_module)));
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   } else if (platform == "gpu") {
     // Parse GpuTargetConfig.
     std::string gpu_target_config_string;

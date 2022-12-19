@@ -45,7 +45,12 @@ class GpuDummyCompiler : public GpuCompiler {
   GpuDummyCompiler() : GpuCompiler(kDummyTestId, kDummyTriple, kDummyLayout) {}
 
   Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, se::CudaComputeCapability cuda_compute_capability,
+      HloModule* hlo_module, 
+#if GOOGLE_CUDA
+      se::CudaComputeCapability cuda_compute_capability,
+#elif TENSORFLOW_USE_ROCM
+      se::RocmComputeCapability rocm_compute_capability,
+#endif
       se::DeviceMemoryAllocator* device_allocator) {
     return OkStatus();
   }
@@ -58,7 +63,11 @@ class GpuDummyCompiler : public GpuCompiler {
   }
 
   GpuVersion GetGpuVersion(se::StreamExecutor*) override {
+#if GOOGLE_CUDA
     return se::CudaComputeCapability{0, 0};
+#elif TENSORFLOW_USE_ROCM
+    return se::RocmComputeCapability{"gfx908"};    
+#endif      
   }
 
   StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(

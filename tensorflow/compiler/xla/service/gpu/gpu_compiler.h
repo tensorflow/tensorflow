@@ -195,7 +195,12 @@ class GpuCompiler : public LLVMCompiler {
                            const GpuTargetConfig& gpu_target_config);
 
   virtual Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, se::CudaComputeCapability cuda_compute_capability,
+      HloModule* hlo_module, 
+#if GOOGLE_CUDA
+      se::CudaComputeCapability cuda_compute_capability,
+#elif TENSORFLOW_USE_ROCM 
+      se::RocmComputeCapability rocm_compute_capability,
+#endif      
       se::DeviceMemoryAllocator* device_allocator) = 0;
 
   virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() {
