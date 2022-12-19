@@ -15,24 +15,16 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <memory>
 #include <string>
 #include <utility>
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
-#include "mlir/IR/AffineMap.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/Operation.h"
-#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/iterator_range.h"
-#include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Analysis/shape_component_analysis.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -158,125 +150,6 @@ LogicalResult BroadcastOpLowering::matchAndRewrite(
 }
 
 // -------------------------------------------------------------------------- //
-
-// Rewrite mhlo.dynamic_broadcast_in_dim operation into linalg.generic operation
-// if can infer the indexing maps for the operand from the symbolic shapes.
-class DynamicBroadcastInDimOpLowering
-    : public mlir::OpRewritePattern<mhlo::DynamicBroadcastInDimOp> {
- public:
-  using Base = OpRewritePattern<mhlo::DynamicBroadcastInDimOp>;
-
-  explicit DynamicBroadcastInDimOpLowering(MLIRContext* ctx);
-
-  LogicalResult matchAndRewrite(mhlo::DynamicBroadcastInDimOp op,
-                                mlir::PatternRewriter& rewriter) const override;
-};
-
-DynamicBroadcastInDimOpLowering::DynamicBroadcastInDimOpLowering(
-    MLIRContext* ctx)
-    : Base(ctx) {}
-
-// Check if broadcasting `from` to `to_shape` is statically known to only have
-// dimensions that never expand or always expand.
-llvm::Optional<AffineMap> isNonExpandingBroadcast(
-    ShapeComponentAnalysis& analysis, Value from, Value to_shape) {
-  auto in_shape = analysis.GetShapeInfo(from);
-  auto out_shape = analysis.GetValueInfo(to_shape);
-  if (!in_shape || !out_shape) return {};
-
-  SmallVector<AffineExpr> input_map_exprs;
-  size_t rank = out_shape->size();
-  MLIRContext* ctx = (*out_shape)[0].expr.getContext();
-  size_t d = 0;
-  auto affine_zero = getAffineConstantExpr(0, ctx);
-  for (auto zip :
-       llvm::zip(llvm::reverse(*in_shape), llvm::reverse(*out_shape))) {
-    const auto& in = std::get<0>(zip);
-    const auto& out = std::get<1>(zip);
-    bool extend = in.isConstant(1) && !out.isConstant(1);
-    input_map_exprs.push_back(extend ? affine_zero
-                                     : getAffineDimExpr(rank - d - 1, ctx));
-    ++d;
-
-    // Bail if this is neither a known expansion nor a known non-expansion.
-    if (!extend && in != out) return {};
-  }
-  // Any leading dimensions will be expanded.
-  input_map_exprs.resize(in_shape->size(), affine_zero);
-  std::reverse(input_map_exprs.begin(), input_map_exprs.end());
-  return AffineMap::get(/*dimCount=*/rank,
-                        /*symbolCount=*/0, input_map_exprs, ctx);
-}
-
-LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
-    mhlo::DynamicBroadcastInDimOp op, mlir::PatternRewriter& rewriter) const {
-  MLIRContext* ctx = getContext();
-
-  auto in_type = op.getOperand().getType().dyn_cast<RankedTensorType>();
-  auto out_type = op.getResult().getType().dyn_cast<RankedTensorType>();
-  if (!in_type || !out_type) return failure();
-
-  // Check that broadcast is right-aligned (numpy style), so that operand
-  // dimensions broadcasted to match inner-most dimensions of the output.
-  auto bcast_dims = op.getBroadcastDimensions().getValues<int64_t>();
-  auto expected_bcast_dims = llvm::seq<int64_t>(
-      out_type.getRank() - in_type.getRank(), out_type.getRank());
-  if (!llvm::equal(bcast_dims, expected_bcast_dims)) return failure();
-
-  ShapeComponentAnalysis shape_component_analysis;
-  auto input_map = isNonExpandingBroadcast(
-      shape_component_analysis, op.getOperand(), op.getOutputDimensions());
-  if (!input_map) return failure();
-
-  // Resolve dynamic output dimensions for the `tensor.empty` operation.
-  SmallVector<Value> output_dyn_dimensions;
-  Location loc = op.getLoc();
-  int64_t rank = out_type.getRank();
-  for (size_t d = 0; d < rank; ++d) {
-    int64_t output_dim = out_type.getShape()[d];
-
-    // Skip static output dimensions, they will be resolved from the shape.
-    if (output_dim >= 0) continue;
-
-    // Resolve the dynamic size of the output dimension.
-    Value output_dyn_dim = rewriter.create<tensor::ExtractOp>(
-        loc, op.getOutputDimensions(),
-        ValueRange{rewriter.create<ConstantIndexOp>(loc, d)});
-
-    // Symbolic shape analysis might have given us an i32 or i64. Cast to index.
-    if (!output_dyn_dim.getType().isIndex())
-      output_dyn_dim = rewriter.create<IndexCastOp>(
-          loc, rewriter.getIndexType(), output_dyn_dim);
-
-    output_dyn_dimensions.push_back(output_dyn_dim);
-  }
-
-  // Create a tensor.empty operation to initialize output.
-  Value emptyTensor = rewriter.create<tensor::EmptyOp>(
-      loc, out_type.getShape(), out_type.getElementType(),
-      output_dyn_dimensions);
-
-  // Output indexing map is an identity with `rank` number of loops.
-  AffineMap output_map = AffineMap::getMultiDimIdentityMap(rank, ctx);
-
-  // All iterators are parallel.
-  SmallVector<mlir::utils::IteratorType> iterator_types(
-      rank, mlir::utils::IteratorType::parallel);
-
-  rewriter.replaceOpWithNewOp<linalg::GenericOp>(
-      op, /*resultTensorTypes=*/TypeRange{emptyTensor.getType()},
-      /*inputs=*/ValueRange{op.getOperand()},
-      /*outputs=*/ValueRange{emptyTensor},
-      /*indexingMaps=*/llvm::makeArrayRef({*input_map, output_map}),
-      /*iteratorTypes=*/iterator_types,
-      [&](OpBuilder& nested_builder, Location nested_loc, ValueRange args) {
-        nested_builder.create<linalg::YieldOp>(nested_loc, args[0]);
-      });
-
-  return success();
-}
-
-// -------------------------------------------------------------------------- //
 // Optimize function based on the symbolic shape attributes.
 // -------------------------------------------------------------------------- //
 
@@ -285,20 +158,12 @@ struct SymbolicShapeOptimizationPass
           SymbolicShapeOptimizationPass> {
   SymbolicShapeOptimizationPass() = default;
 
-  explicit SymbolicShapeOptimizationPass(bool constraints_only) {
-    this->optimize_only_constraints = constraints_only;
-  }
-
   void runOnOperation() override {
     MLIRContext* ctx = &getContext();
     mlir::RewritePatternSet patterns(ctx);
 
     // Rewrite shape.broadcast based on the symbolic shapes.
     patterns.add<BroadcastOpLowering>(ctx);
-
-    // Rewrite broadcasts based on the symbolic shapes if enabled.
-    if (!optimize_only_constraints)
-      patterns.add<DynamicBroadcastInDimOpLowering>(ctx);
 
     // Add shape dialect canonicalization patterns to fold shape operations
     // after constraints are replaced with constant witness.
@@ -316,9 +181,8 @@ struct SymbolicShapeOptimizationPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateSymbolicShapeOptimizationPass(
-    bool constraints_only) {
-  return std::make_unique<SymbolicShapeOptimizationPass>(constraints_only);
+std::unique_ptr<OperationPass<FuncOp>> CreateSymbolicShapeOptimizationPass() {
+  return std::make_unique<SymbolicShapeOptimizationPass>();
 }
 
 }  // namespace tensorflow

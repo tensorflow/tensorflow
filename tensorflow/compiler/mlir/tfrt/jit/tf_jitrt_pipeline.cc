@@ -142,8 +142,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // Resolve all shape constraints (e.g. broadcast constraints that can be
   // proved statically and changed to const witness) early to allow more
   // efficient broadcast operations moving.
-  pm.addNestedPass<FuncOp>(
-      CreateSymbolicShapeOptimizationPass(/*constraints_only=*/true));
+  pm.addNestedPass<FuncOp>(CreateSymbolicShapeOptimizationPass());
 
   // Analyze shapes and try to simplify the IR early.
   pm.addNestedPass<FuncOp>(mlir::createSymbolicShapeOptimizationPass());
