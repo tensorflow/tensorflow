@@ -2344,10 +2344,14 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "batchnorm_expander_test",
     size = "small",
     srcs = ["batchnorm_expander_test.cc"],
+    backends = [
+        "cpu",
+        "gpu",
+    ],
     deps = [
         ":batchnorm_expander",
         ":hlo_matchers",
