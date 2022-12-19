@@ -19,14 +19,25 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/proto/delegate_performance.pb.h"
+
 namespace tflite {
 namespace benchmark {
 namespace latency {
 
-// Triggers TFLite Benchmark Tool. Passes the arguments from the testing app
-// intent extra directly down to the TFLite Benchmark Tool. Generates
-// report.json and benchmark_result.csv under `result_path`.
-void Benchmark(const std::vector<std::string>& args, const char* result_path);
+// Triggers TFLite Benchmark Tool. Passes the "args" from the testing app to
+// directly to TFLite Benchmark Tool. Converts the "tflite_settings" to
+// command-line options to configure TFLite Benchmark Tool. If the latency
+// benchmarking uses a stable delegate, the "tflite_settings_path" is passed to
+// enable the stable delegate provider.
+//
+// Returns a LatencyResults proto message. If the benchmark tests finish
+// successfully from TFLite Benchmark Tool, the message contains the latency
+// metrics. Otherwise, the message contains the corresponding error.
+proto::benchmark::LatencyResults Benchmark(
+    const std::vector<std::string>& args, const TFLiteSettings& tflite_settings,
+    const std::string& tflite_settings_path);
 
 }  // namespace latency
 }  // namespace benchmark

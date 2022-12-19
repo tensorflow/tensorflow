@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/jni/latency_benchmark.h"
+
 #include <errno.h>
 #include <sys/stat.h>
 
@@ -23,41 +25,29 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
+#include "tensorflow/core/util/stats_calculator.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/profiling/memory_info.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
+#include "tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/proto/delegate_performance.pb.h"
 
 namespace tflite {
 namespace benchmark {
 namespace latency {
 namespace {
 
-bool CreateDir(const char* path) {
-  struct stat st;
-  if (stat(path, &st) != 0) {
-    if (mkdir(path, 0777) != 0 && errno != EEXIST) {
-      return false;
-    }
-  } else if (!S_ISDIR(st.st_mode)) {
-    errno = ENOTDIR;
-    return false;
-  }
-  return true;
-}
+static constexpr char kBenchmarkToolName[] = "(BenchmarkModelAndroid)";
 
-// The listener subscribes to the benchmark lifecycle and outputs the success
-// status of the benchmark to a local json file.
+// The listener subscribes to the benchmark lifecycle and parses the
+// benchmarking results into a LatencyResults proto message. The message will be
+// reported later to the app.
 class DelegatePerformanceReportingListener : public BenchmarkListener {
  public:
-  // Generates `report.json` for the success status of a benchmark run under
-  // `result_path` folder.
-  explicit DelegatePerformanceReportingListener(const char* result_path)
-      : result_path_(result_path) {
-    if (!result_path) {
-      TFLITE_LOG_PROD(TFLITE_LOG_WARNING,
-                      "Report will be be streamed only to local log not to a "
-                      "file since the result path is null.");
-    }
+  void OnBenchmarkStart(const BenchmarkParams& unused) override {
+    results_proto_.set_event_type(proto::benchmark::BENCHMARK_EVENT_TYPE_START);
   }
 
   // TFLite Benchmark Tool triggers this method at the end of a benchmark for
@@ -71,144 +61,164 @@ class DelegatePerformanceReportingListener : public BenchmarkListener {
         status == kTfLiteError
             ? "TFLite error"
             : (status == kTfLiteDelegateError ? "TFLite delegate error"
-                                              : "Unknown error code");
-    Report(status_msg, std::vector<std::pair<std::string, std::string>>());
+                                              : "unexpected TFLite status");
+    TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
+                    "Benchmark failed due to %s with status code %d.",
+                    status_msg.c_str(), status);
+    results_proto_.set_event_type(proto::benchmark::BENCHMARK_EVENT_TYPE_ERROR);
+    results_proto_.mutable_error()->mutable_error_code()->set_tflite_error(
+        status);
+    results_proto_.mutable_error()->set_error_message(status_msg);
+  }
+
+  const proto::benchmark::LatencyResults& GetResults() {
+    return results_proto_;
   }
 
  private:
-  void Report(
-      const std::string& status,
-      const std::vector<std::pair<std::string, std::string>>& contents) {
-    std::string filename = result_path_ + "/report.json";
-    std::ofstream file;
-    file.open(filename.c_str());
-    if (!file.is_open()) {
-      TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Failed to open file %s",
-                      filename.c_str());
-      return;
-    }
-    std::stringstream report;
-    report << "{\n"
-           << "  \"name\": \"TFLite benchmark\",\n"
-           << "  \"status\": \"" << status << "\"";
-    for (const auto& content : contents) {
-      report << ",\n"
-             << "  \"" << content.first << "\": \"" << content.second << "\"";
-    }
-    report << "\n}\n";
-
-    auto report_str = report.str();
-    file << report_str;
-    file.close();
-
-    TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "%s", report_str.c_str());
-  }
-
+  // TODO(b/262399611): Consider putting metric related logic into a separate
+  // file.
   void ReportResult(const BenchmarkResults& results) {
-    std::vector<std::pair<std::string, std::string>> contents;
-    std::stringstream avg_time;
-    avg_time << "init: " << results.startup_latency_us() << ", "
-             << "warmup: " << results.warmup_time_us().avg() << ", "
-             << "inference: " << results.inference_time_us().avg();
-    contents.emplace_back("average time in us", avg_time.str());
-    std::stringstream overall_mem_usage;
-    overall_mem_usage << results.overall_mem_usage();
-    contents.emplace_back("overall memory usage", overall_mem_usage.str());
+    tensorflow::Stat<int64_t> warmup_us = results.warmup_time_us();
+    tensorflow::Stat<int64_t> inference_us = results.inference_time_us();
+    profiling::memory::MemoryUsage init_mem_usage = results.init_mem_usage();
+    profiling::memory::MemoryUsage overall_mem_usage =
+        results.overall_mem_usage();
 
-    Report("OK", contents);
+    AddMetric(/*name=*/"model_size_megabyte",
+              /*value=*/results.model_size_mb());
+    AddMetric(/*name=*/"initialization_latency_us",
+              /*value=*/results.startup_latency_us());
+    AddMetric(/*name=*/"warmup_latency_average_us", /*value=*/warmup_us.avg());
+    AddMetric(/*name=*/"warmup_latency_min_us", /*value=*/warmup_us.min());
+    AddMetric(/*name=*/"warmup_latency_max_us", /*value=*/warmup_us.max());
+    AddMetric(/*name=*/"warmup_latency_standard_deviation",
+              /*value=*/warmup_us.std_deviation());
+    AddMetric(/*name=*/"inference_latency_average_us",
+              /*value=*/inference_us.avg());
+    AddMetric(/*name=*/"inference_latency_min_us",
+              /*value=*/inference_us.min());
+    AddMetric(/*name=*/"inference_latency_max_us",
+              /*value=*/inference_us.max());
+    AddMetric(/*name=*/"inference_latency_standard_deviation",
+              /*value=*/inference_us.std_deviation());
+    AddMetric(/*name=*/"initialization_memory_max_rss_mebibyte",
+              /*value=*/init_mem_usage.mem_footprint_kb / 1024.0);
+    AddMetric(/*name=*/"initialization_memory_total_allocated_mebibyte",
+              /*value=*/init_mem_usage.total_allocated_bytes / 1024.0 / 1024.0);
+    AddMetric(
+        /*name=*/"initialization_memory_in_use_mebibyte",
+        /*value=*/init_mem_usage.in_use_allocated_bytes / 1024.0 / 1024.0);
+    AddMetric(/*name=*/"overall_memory_max_rss_mebibyte",
+              /*value=*/overall_mem_usage.mem_footprint_kb / 1024.0);
+    AddMetric(
+        /*name=*/"overall_memory_total_allocated_mebibyte",
+        /*value=*/overall_mem_usage.total_allocated_bytes / 1024.0 / 1024.0);
+    AddMetric(
+        /*name=*/"overall_memory_in_use_mebibyte",
+        /*value=*/overall_mem_usage.in_use_allocated_bytes / 1024.0 / 1024.0);
+    results_proto_.set_event_type(proto::benchmark::BENCHMARK_EVENT_TYPE_END);
+    TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Benchmark finished.");
   }
 
-  // Root of output path for intermediate results and data.
-  std::string result_path_;
+  void AddMetric(std::string name, float value) {
+    proto::benchmark::BenchmarkMetric* metric = results_proto_.add_metrics();
+    metric->set_name(name);
+    metric->set_value(value);
+  }
+
+  proto::benchmark::LatencyResults results_proto_;
 };
 
-// TODO(b/250877013): expose the results for performance thresholding.
-// `CsvExportingListener` subscribes to the benchmark lifecycle and outputs the
-// results of a benchmark run to local in csv format.
-class CsvExportingListener : public BenchmarkListener {
- public:
-  // Generates `benchmark_result.csv` for performance results of a benchmark run
-  // under `result_path` folder.
-  explicit CsvExportingListener(const char* result_path)
-      : result_path_(result_path) {}
-
-  // TFLite Benchmark Tool triggers this method at the end of a benchmark for
-  // logging the results.
-  void OnBenchmarkEnd(const BenchmarkResults& results) override {
-    WriteBenchmarkResultCsv(results);
+// Converts the input TFLiteSettings into TFLite Benchmark Tool arguments.
+// Please see tensorflow/lite/tools/benchmark.
+std::vector<std::string> ParseArgumentsFromTfLiteSettings(
+    const TFLiteSettings& tflite_settings,
+    const std::string& tflite_settings_path) {
+  std::vector<std::string> args;
+  if (tflite_settings_path.empty()) {
+    return args;
   }
-
- private:
-  void WriteBenchmarkResultCsv(const BenchmarkResults& results) {
-    auto init_us = results.startup_latency_us();
-    auto warmup_us = results.warmup_time_us();
-    auto inference_us = results.inference_time_us();
-    auto init_mem_usage = results.init_mem_usage();
-    auto overall_mem_usage = results.overall_mem_usage();
-
-    std::string filename = result_path_ + "/benchmark_result.csv";
-    std::ofstream file;
-    file.open(filename.c_str());
-    if (!file.is_open()) {
-      TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Failed to open file %s",
-                      filename.c_str());
-      return;
+  if (tflite_settings.stable_delegate_loader_settings()) {
+    args.push_back(absl::StrFormat("--stable_delegate_settings_file=%s",
+                                   tflite_settings_path));
+    return args;
+  }
+  if (tflite_settings.delegate() == Delegate_XNNPACK) {
+    args.push_back("--use_xnnpack=true");
+    if (tflite_settings.xnnpack_settings() &&
+        tflite_settings.xnnpack_settings()->num_threads()) {
+      args.push_back(
+          absl::StrFormat("--num_threads=%d",
+                          tflite_settings.xnnpack_settings()->num_threads()));
+    } else if (tflite_settings.delegate() == Delegate_GPU) {
+      args.push_back("--use_gpu=true");
+      const tflite::GPUSettings* gpu_settings = tflite_settings.gpu_settings();
+      if (gpu_settings) {
+        if (gpu_settings->is_precision_loss_allowed()) {
+          args.push_back("--gpu_precision_loss_allowed=true");
+        }
+        if (gpu_settings->enable_quantized_inference()) {
+          args.push_back("--gpu_experimental_enable_quant=true");
+        }
+        if (gpu_settings->inference_preference() ==
+            GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED) {
+          args.push_back("--gpu_inference_for_sustained_speed=true");
+        }
+        if (gpu_settings->force_backend() == GPUBackend_OPENCL) {
+          args.push_back("--gpu_backend=cl");
+        } else if (gpu_settings->force_backend() == GPUBackend_OPENGL) {
+          args.push_back("--gpu_backend=gl");
+        }
+        if (gpu_settings->cache_directory()) {
+          args.push_back(
+              absl::StrFormat("--delegate_serialize_dir=%s",
+                              gpu_settings->cache_directory()->c_str()));
+        }
+        if (gpu_settings->model_token()) {
+          args.push_back(absl::StrFormat("--delegate_serialize_token=%s",
+                                         gpu_settings->model_token()->c_str()));
+        }
+      }
+    } else if (tflite_settings.disable_default_delegates()) {
+      // Currently TFLite Benchmark Tool doesn't support handling the case with
+      // applying XNNPack delegate explicitly and disabling the XNNPack delegate
+      // as the default delegate at the same time. When the
+      // "disable_default_delegates" configuration is set to true, it only takes
+      // effect if the delegate is not set to XNNPack. Otherwise, the default
+      // delegates will still be enabled.
+      args.push_back("--use_xnnpack=false");
     }
-
-    file << "model_size,init_time,"
-         << "warmup_avg,warmup_min,warmup_max,warmup_stddev,"
-         << "inference_avg,inference_min,inference_max,inference_stddev,"
-         << "init_max_rss,init_total_alloc,init_in_use_alloc,"
-         << "overall_max_rss,overall_total_alloc,overall_in_use_alloc\n";
-    file << results.model_size_mb() << "," << init_us << "," << warmup_us.avg()
-         << "," << warmup_us.min() << "," << warmup_us.max() << ","
-         << warmup_us.std_deviation() << "," << inference_us.avg() << ","
-         << inference_us.min() << "," << inference_us.max() << ","
-         << inference_us.std_deviation() << ","
-         << (init_mem_usage.mem_footprint_kb / 1024.0) << ","
-         << (init_mem_usage.total_allocated_bytes / 1024.0 / 1024.0) << ","
-         << (init_mem_usage.in_use_allocated_bytes / 1024.0 / 1024.0) << ","
-         << (overall_mem_usage.mem_footprint_kb / 1024.0) << ","
-         << (overall_mem_usage.total_allocated_bytes / 1024.0 / 1024.0) << ","
-         << (overall_mem_usage.in_use_allocated_bytes / 1024.0 / 1024.0)
-         << "\n";
-    file.close();
   }
-
-  // Root of output path for intermediate results and data.
-  std::string result_path_;
-};
-
+  return args;
+}
 }  // namespace
 
-void Benchmark(const std::vector<std::string>& args, const char* result_path) {
+proto::benchmark::LatencyResults Benchmark(
+    const std::vector<std::string>& args, const TFLiteSettings& tflite_settings,
+    const std::string& tflite_settings_path) {
   // Constructs a fake argv command-line object for the benchmark.
   std::vector<char*> argv;
-  std::string arg0 = "(BenchmarkModelAndroid)";
-  argv.push_back(const_cast<char*>(arg0.data()));
-  for (auto& arg : args) {
+  argv.push_back(const_cast<char*>(kBenchmarkToolName));
+  // TODO(b/250877013): Remove the "args" argument here by using model file
+  // descriptors for latency benchmarking.
+  for (const std::string& arg : args) {
+    argv.push_back(const_cast<char*>(arg.data()));
+  }
+  std::vector<std::string> args_from_tflite_settings =
+      ParseArgumentsFromTfLiteSettings(tflite_settings, tflite_settings_path);
+  for (const std::string& arg : args_from_tflite_settings) {
     argv.push_back(const_cast<char*>(arg.data()));
   }
 
-  // Create directory `result_path` if it doesn't already exist.
-  if (!CreateDir(result_path)) {
-    TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Failed to create output directory %s.",
-                    result_path);
-    return;
-  }
-
   BenchmarkTfLiteModel benchmark;
-  // Generates general benchmark status JSON report.
-  DelegatePerformanceReportingListener delegatePerformanceReporting(
-      result_path);
+  DelegatePerformanceReportingListener delegatePerformanceReporting;
   benchmark.AddListener(&delegatePerformanceReporting);
-  // Generates performance benchmark result CSV report.
-  CsvExportingListener csvExporting(result_path);
-  benchmark.AddListener(&csvExporting);
-  auto status = benchmark.Run(static_cast<int>(argv.size()), argv.data());
+  TfLiteStatus status = benchmark.Run(argv.size(), argv.data());
   if (status != kTfLiteOk) {
     delegatePerformanceReporting.ReportFailure(status);
   }
+  return delegatePerformanceReporting.GetResults();
 }
 
 }  // namespace latency
