@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
 #include "tensorflow/tsl/platform/test.h"
@@ -100,7 +101,7 @@ TEST(SnapshotStreamWriterTest, WriteSnapshot) {
 
   EXPECT_THAT(
       ReadSnapshot<int64_t>(
-          absl::StrCat(snapshot_path, "/uncommitted_chunks/chunk_0"), range),
+          io::JoinPath(snapshot_path, "uncommitted_chunks", "chunk_0"), range),
       IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 }
 
@@ -116,9 +117,9 @@ TEST(SnapshotStreamWriterTest, WriteSnapshotChunks) {
 
   for (int i = 0; i < 10; ++i) {
     EXPECT_THAT(
-        ReadSnapshot<int64_t>(
-            absl::StrCat(snapshot_path, "/uncommitted_chunks/chunk_", i),
-            /*num_elements=*/1),
+        ReadSnapshot<int64_t>(io::JoinPath(snapshot_path, "uncommitted_chunks",
+                                           absl::StrCat("chunk_", i)),
+                              /*num_elements=*/1),
         IsOkAndHolds(ElementsAre(i)));
   }
 }
@@ -133,7 +134,7 @@ TEST(SnapshotStreamWriterTest, EmptyDataset) {
 
   EXPECT_THAT(
       ReadSnapshot<int64_t>(
-          absl::StrCat(snapshot_path, "/uncommitted_chunks/chunk_0"), 0),
+          io::JoinPath(snapshot_path, "uncommitted_chunks", "chunk_0"), 0),
       IsOkAndHolds(IsEmpty()));
 }
 

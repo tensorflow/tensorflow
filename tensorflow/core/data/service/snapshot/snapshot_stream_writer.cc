@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
@@ -83,7 +84,7 @@ Status SnapshotStreamWriter::WriteSnapshotFn() {
 
 Status SnapshotStreamWriter::CreateChunksDirectory() {
   return env_->RecursivelyCreateDir(
-      absl::StrCat(snapshot_stream_path_, "/", kUncommittedChunksDirectory));
+      io::JoinPath(snapshot_stream_path_, kUncommittedChunksDirectory));
 }
 
 bool SnapshotStreamWriter::ShouldWriteChunk() const TF_LOCKS_EXCLUDED(mu_) {
@@ -109,8 +110,8 @@ Status SnapshotStreamWriter::WriteChunk() {
 
 std::string SnapshotStreamWriter::GetChunkPath() const TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
-  return absl::StrCat(snapshot_stream_path_, "/", kUncommittedChunksDirectory,
-                      "/chunk_", chunk_index_);
+  return io::JoinPath(snapshot_stream_path_, kUncommittedChunksDirectory,
+                      absl::StrCat("chunk_", chunk_index_));
 }
 
 bool SnapshotStreamWriter::ShouldWriteRecord() const TF_LOCKS_EXCLUDED(mu_) {
