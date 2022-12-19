@@ -815,6 +815,7 @@ message ScheduleProto {
     double start_timestamp_cycles = 2;
     double end_timestamp_cycles = 3;
   }
-
   repeated Instruction instructions = 1;
+  // Computation id (matches the id in HloComputationProto).
+  int64 computation_id = 2;
 }

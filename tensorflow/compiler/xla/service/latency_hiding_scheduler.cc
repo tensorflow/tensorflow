@@ -1306,6 +1306,7 @@ void DefaultSchedulerCore::DumpLatencyHidingSchedule(
     const std::vector<HloInstruction*>& instructions,
     const DebugOptions& debug_options) {
   ScheduleProto proto;
+  proto.set_computation_id(computation->unique_id());
 
   const HloGraphNode& first_node = schedule_graph.GetNode(instructions.front());
   const double total_time = first_node.GetReadyTime() + first_node.GetCost();
