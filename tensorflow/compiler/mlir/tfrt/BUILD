@@ -233,7 +233,6 @@ tfrt_cc_library(
     name = "tf_jitrt_request_context",
     srcs = ["jit/tf_jitrt_request_context.cc"],
     hdrs = ["jit/tf_jitrt_request_context.h"],
-    # copybara:uncomment compatible_with = ["//buildenv/target:gce"],
     deps = [
         "//tensorflow/compiler/xla/runtime:async_values_cache",
         "//tensorflow/compiler/xla/runtime:jit_executable",
