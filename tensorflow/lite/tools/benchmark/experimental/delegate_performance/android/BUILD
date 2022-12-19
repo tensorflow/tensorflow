@@ -20,13 +20,14 @@ android_binary(
         "src/**/*.java",
     ]),
     assets = [
-        ":mobilenet_float_with_validation.tflite",
+        ":accuracy_models",
         ":default_latency_criteria",
     ],
-    assets_dir = "",
+    assets_dir = "assets",
     custom_package = "org.tensorflow.lite.benchmark.delegate_performance",
     manifest = "AndroidManifest.xml",
     multidex = "native",
+    nocompress_extensions = [".tflite"],
     # In some platforms we don't have an Android SDK/NDK and this target
     # can't be built. We need to prevent the build system from trying to
     # use the target in that case.
@@ -45,6 +46,32 @@ validation_model(
     jpegs = "//tensorflow/lite/experimental/acceleration/mini_benchmark:odt_classifier_testfiles",
     main_model = "//tensorflow/lite/experimental/acceleration/mini_benchmark/models:mobilenet_v1_1.0_224.tflite",
     metrics_model = "//tensorflow/lite/experimental/acceleration/mini_benchmark/metrics:mobilenet_metrics_tflite",
+)
+
+validation_model(
+    name = "mobilenet_quant_with_validation.tflite",
+    jpegs = "//tensorflow/lite/experimental/acceleration/mini_benchmark:odt_classifier_testfiles",
+    main_model = "//tensorflow/lite/experimental/acceleration/mini_benchmark/models:mobilenet_v1_1.0_224_quant.tflite",
+    metrics_model = "//tensorflow/lite/experimental/acceleration/mini_benchmark/metrics:mobilenet_metrics_tflite",
+)
+
+ACCURACY_MODELS = [
+    "mobilenet_float_with_validation.tflite",
+    "mobilenet_quant_with_validation.tflite",
+]
+
+genrule(
+    name = "accuracy_models",
+    srcs = [":%s" % model for model in ACCURACY_MODELS],
+    outs = ["assets/accuracy/%s" % model for model in ACCURACY_MODELS],
+    cmd = """
+      srcs=($(SRCS))
+      outs=($(OUTS))
+      for ((i = 0; i < $${#srcs[@]}; ++i)); do
+        echo $${srcs[$$i]};
+        cp $${srcs[$$i]} $${outs[$$i]};
+      done
+    """,
 )
 
 tflite_jni_binary(
@@ -84,7 +111,7 @@ java_lite_proto_library(
 proto_data(
     name = "default_latency_criteria",
     src = "proto/default_latency_criteria.textproto",
-    out = "default_latency_criteria.binarypb",
+    out = "assets/proto/default_latency_criteria.binarypb",
     proto_deps = [":delegate_performance_proto"],
     proto_name = "tflite.proto.benchmark.LatencyCriteria",
 )

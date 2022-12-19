@@ -34,6 +34,8 @@ import tflite.BenchmarkEvent;
  * check the test example in
  * tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/README.md.
  *
+ * <p>TODO(b/250877013): Consider improving the app's I/O interfaces.
+ *
  * <p>Generates a Pass/Fail result. The test is a Pass if the target acceleration configuration (the
  * second configuration if more than one TFLiteSettings JSON files are provided) passes the embedded
  * metric thresholds in all models.
@@ -49,7 +51,7 @@ import tflite.BenchmarkEvent;
 public class BenchmarkAccuracyActivity extends Activity {
 
   private static final String TAG = "tflite_BenchmarkAccuracyActivity";
-  private static final String ACCURACY_RESULT_FOLDER = "accuracy";
+  private static final String ACCURACY_FOLDER_NAME = "accuracy";
   private static final String TFLITE_SETTINGS_FILES_INTENT_KEY_0 = "--tflite_settings_files";
   // The test target entry is the second item in the TfLiteSettingsListEntry list.
   private static final int TEST_TARGET_ENTRY_INDEX = 1;
@@ -71,7 +73,7 @@ public class BenchmarkAccuracyActivity extends Activity {
     try {
       // Creates root result folder.
       DelegatePerformanceBenchmark.createResultFolder(
-          getApplicationContext().getFilesDir(), ACCURACY_RESULT_FOLDER);
+          getApplicationContext().getFilesDir(), ACCURACY_FOLDER_NAME);
     } catch (IOException e) {
       Log.e(TAG, "Failed to create result folder", e);
       finish();
@@ -97,7 +99,7 @@ public class BenchmarkAccuracyActivity extends Activity {
     }
     String[] assets;
     try {
-      assets = getAssets().list("");
+      assets = getAssets().list(ACCURACY_FOLDER_NAME);
     } catch (IOException e) {
       Log.e(TAG, "Failed to list files from assets folder.", e);
       return;
@@ -105,7 +107,6 @@ public class BenchmarkAccuracyActivity extends Activity {
     boolean passed = true;
     TfLiteSettingsListEntry targetEntry = tfliteSettingsList.get(TEST_TARGET_ENTRY_INDEX);
     for (String asset : assets) {
-      // TODO(b/252976498): Move the embedded models to a specific folder under Assets.
       if (!asset.endsWith(".tflite")) {
         Log.i(TAG, asset + " is not a model file. Skipping.");
         continue;
@@ -114,12 +115,14 @@ public class BenchmarkAccuracyActivity extends Activity {
       try {
         resultPath =
             DelegatePerformanceBenchmark.createResultFolder(
-                getApplicationContext().getFilesDir(), ACCURACY_RESULT_FOLDER + "/" + asset);
+                getApplicationContext().getFilesDir(), ACCURACY_FOLDER_NAME + "/" + asset);
       } catch (IOException e) {
         Log.e(TAG, "Failed to create result folder for " + asset, e);
-        continue;
+        passed = false;
+        break;
       }
-      try (AssetFileDescriptor modelFileDescriptor = getAssets().openFd(asset)) {
+      try (AssetFileDescriptor modelFileDescriptor =
+          getAssets().openFd(ACCURACY_FOLDER_NAME + "/" + asset)) {
         for (TfLiteSettingsListEntry tfliteSettingsListEntry : tfliteSettingsList) {
           Trace.beginSection("Accuracy Benchmark");
           BenchmarkEvent benchmarkEvent =
@@ -138,6 +141,8 @@ public class BenchmarkAccuracyActivity extends Activity {
         CsvWriter.writeReport(tfliteSettingsList, resultPath + "/report.csv");
       } catch (IOException e) {
         Log.e(TAG, "Failed to open assets file " + asset, e);
+        passed = false;
+        break;
       }
     }
     Log.i(

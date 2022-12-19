@@ -111,7 +111,7 @@ public class BenchmarkLatencyActivity extends Activity {
     // latency criteria file.
     LatencyCriteria latencyCriteria;
     try {
-      InputStream latencyCriteriaFile = getAssets().open("default_latency_criteria.binarypb");
+      InputStream latencyCriteriaFile = getAssets().open("proto/default_latency_criteria.binarypb");
       latencyCriteria = LatencyCriteria.parseFrom(latencyCriteriaFile);
     } catch (IOException e) {
       Log.e(TAG, "Failed to open the latency criteria file", e);
