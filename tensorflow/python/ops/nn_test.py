@@ -21,12 +21,7 @@ import time
 from absl.testing import parameterized
 import numpy as np
 
-<<<<<<< HEAD
-from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2
-=======
 from tensorflow.python.eager import context
->>>>>>> upstream/master
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes

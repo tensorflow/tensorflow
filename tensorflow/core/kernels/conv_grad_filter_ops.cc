@@ -956,15 +956,12 @@ operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
 #if GOOGLE_CUDA
   const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
       se::CudaComputeCapability::AMPERE);
-<<<<<<< HEAD
 #else
   const bool cast_to_float = false;
 #endif
   Tensor casted_input = input;
   Tensor casted_out_backprop = out_backprop;
   Tensor casted_filter_backprop = *filter_backprop;
-=======
->>>>>>> upstream/master
 
   if (cast_to_float) {
     Tensor casted_input = input;

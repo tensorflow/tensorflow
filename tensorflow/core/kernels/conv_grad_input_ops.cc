@@ -469,15 +469,12 @@ void LaunchConv2DBackpropInputOp<GPUDevice, Eigen::bfloat16>::operator()(
 #if GOOGLE_CUDA
   const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
       se::CudaComputeCapability::AMPERE);
-<<<<<<< HEAD
 #else 
   const bool cast_to_float = false;
 #endif
   Tensor casted_out_backprop = out_backprop;
   Tensor casted_filter = filter;
   Tensor casted_in_backprop = *in_backprop;
-=======
->>>>>>> upstream/master
 
   if (cast_to_float) {
     Tensor casted_out_backprop = out_backprop;

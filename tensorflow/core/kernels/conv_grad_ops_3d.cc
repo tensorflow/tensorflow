@@ -1581,15 +1581,12 @@ struct LaunchConvBackpropInputOp<Eigen::bfloat16> {
 #if GOOGLE_CUDA    
     const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
         se::CudaComputeCapability::AMPERE);
-<<<<<<< HEAD
 #else
     const bool cast_to_float = false;
 #endif
     Tensor casted_out_backprop = out_backprop;
     Tensor casted_filter = filter;
     Tensor casted_in_backprop = *in_backprop;
-=======
->>>>>>> upstream/master
 
     if (cast_to_float) {
       Tensor casted_out_backprop = out_backprop;
@@ -2052,14 +2049,9 @@ struct LaunchConvBackpropFilterOp<Eigen::bfloat16> {
 #if GOOGLE_CUDA      
       const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
           se::CudaComputeCapability::AMPERE);
-<<<<<<< HEAD
 #else 
       const bool cast_to_float = false;
 #endif
-=======
-
-      if (cast_to_float) {
->>>>>>> upstream/master
       Tensor casted_input = input;
       Tensor casted_out_backprop = out_backprop;
       Tensor casted_filter_backprop = *filter_backprop;

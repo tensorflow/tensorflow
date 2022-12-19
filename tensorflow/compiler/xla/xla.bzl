@@ -95,14 +95,9 @@ def xla_cc_test(
                    "//tensorflow/compiler/xla/stream_executor/cuda:stream_executor_cuda",
                ]) +
                if_rocm_is_configured([
-<<<<<<< HEAD
-                    "//tensorflow/compiler/xla/stream_executor/rocm:all_runtime",
-                    "//tensorflow/compiler/xla/stream_executor/rocm:stream_executor_rocm",
-=======
                    "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
                    "//tensorflow/compiler/xla/stream_executor/rocm:all_runtime",
                    "//tensorflow/compiler/xla/stream_executor/rocm:stream_executor_rocm",
->>>>>>> upstream/master
                ]),
         exec_properties = tf_exec_properties(kwargs),
         **kwargs

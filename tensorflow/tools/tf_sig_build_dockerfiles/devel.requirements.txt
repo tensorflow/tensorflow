@@ -44,10 +44,4 @@ twine ~= 3.6.0
 # For user tool scripts
 junitparser ~= 2.2.0
 lxml ~= 4.9.1
-<<<<<<< HEAD
 pylint ~= 2.13.9
-virtualenv
-requests
-=======
-pylint ~= 2.13.9
->>>>>>> upstream/master

@@ -253,14 +253,8 @@ class GpuBfloat16Support : public BFloat16Support {
     }
   }
 
-<<<<<<< HEAD
-  bool IsConvBF16Supported() const {
-#if GOOGLE_CUDA
-    if (se::dnn::DnnSupport* dnn = stream_exec_->AsDnn()) {
-=======
   static bool IsConvBf16Supported(se::StreamExecutor* stream_exec) {
     if (se::dnn::DnnSupport* dnn = stream_exec->AsDnn()) {
->>>>>>> upstream/master
       se::port::StatusOr<se::dnn::VersionInfo> cudnn_version =
           dnn->GetVersion();
       if (cudnn_version.ok()) {
