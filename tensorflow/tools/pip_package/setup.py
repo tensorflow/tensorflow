@@ -93,7 +93,7 @@ REQUIRED_PACKAGES = [
     # no longer relies on TF.
     'jax >= 0.3.15',
     'libclang >= 13.0.0',
-    'numpy >= 1.20',
+    'numpy >= 1.23',
     'opt_einsum >= 2.3.2',
     'packaging',
     # TODO(b/182876485): Protobuf 3.20 results in linker errors on Windows
