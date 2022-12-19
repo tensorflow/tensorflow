@@ -636,7 +636,10 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
       it;
   bool inserted;
   std::tie(it, inserted) = executables_.try_emplace(
-      arguments.signature, std::make_unique<PmapCacheEntry>());
+      arguments.signature, std::unique_ptr<PmapCacheEntry>());
+  if (inserted) {
+    it->second = std::make_unique<PmapCacheEntry>();
+  }
   PmapCacheEntry& cache_entry = *(it->second);
 
   if (!cache_entry.compilation_complete.HasBeenNotified()) {
