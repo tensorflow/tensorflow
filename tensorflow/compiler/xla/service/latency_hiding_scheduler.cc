@@ -1320,7 +1320,7 @@ void DefaultSchedulerCore::DumpLatencyHidingSchedule(
     instr_msg->set_end_timestamp_cycles(end_time);
   }
 
-  const std::string fn = absl::StrFormat("%s.schedule.pb", computation->name());
+  const std::string fn = absl::StrFormat("%s.schedule", computation->name());
   DumpProtobufToFile(proto, debug_options, fn);
 }
 
