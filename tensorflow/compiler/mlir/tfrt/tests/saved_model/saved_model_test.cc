@@ -26,7 +26,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-using ::testing::SizeIs;
 
 TEST(SavedModelTest, MapSignatures) {
   std::string saved_model_mlir_path = tensorflow::GetDataDependencyFilepath(
@@ -118,13 +117,19 @@ TEST(SavedModelTest, ConvertTfMlirToBefWithXlaFuncExport) {
   TfrtCompileOptions options;
   options.device_target = TfrtDeviceInfraTarget::kGpu;
   options.use_bridge_for_gpu = true;
-  std::vector<FunctionDef> xla_func_defs;
-  TF_ASSERT_OK(
-      ConvertTfMlirToBef(options, module.get(), &bef_buffer, &xla_func_defs));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<tfrt_stub::FallbackState> fallback_state,
+      tfrt_stub::FallbackState::Create(SessionOptions(), FunctionDefLibrary()));
+  TF_ASSERT_OK(ConvertTfMlirToBef(options, module.get(), &bef_buffer,
+                                  fallback_state.get()));
 
   // The module contains an XLA function, as well as a while body and a while
   // condition within the XLA function.
-  EXPECT_THAT(xla_func_defs, SizeIs(3));
+  EXPECT_EQ(fallback_state->process_function_library_runtime()
+                .GetFunctionLibraryDefinition()
+                ->num_functions(),
+            3);
 }
 
 // TODO(b/162442824): Add a SavedModel test that covers the error pass.
