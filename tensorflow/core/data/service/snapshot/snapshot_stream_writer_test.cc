@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -62,6 +63,17 @@ class RangeIterator : public TaskIterator {
   int64_t next_ = 0;
 };
 
+StatusOr<std::string> CreateSnapshotDirectory() {
+  std::string snapshot_path;
+  if (!Env::Default()->LocalTempFilename(&snapshot_path)) {
+    return errors::FailedPrecondition(
+        "Failed to create local temp file for snapshot.");
+  }
+  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(
+      CommittedChunksDirectory(snapshot_path)));
+  return snapshot_path;
+}
+
 StatusOr<std::unique_ptr<snapshot_util::Reader>> CreateSnapshotReader(
     const std::string& snapshot_path, int64_t num_elements, Env* env) {
   static constexpr int kTFRecordReader = 2;
@@ -92,59 +104,69 @@ StatusOr<std::vector<T>> ReadSnapshot(const std::string& snapshot_path,
 
 TEST(SnapshotStreamWriterTest, WriteSnapshot) {
   const int64_t range = 10;
-  std::string snapshot_path;
-  EXPECT_TRUE(Env::Default()->LocalTempFilename(&snapshot_path));
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
 
   SnapshotStreamWriter snapshot_writer(std::make_unique<RangeIterator>(range),
-                                       snapshot_path, Env::Default());
+                                       snapshot_path, /*stream_id=*/0,
+                                       Env::Default());
   TF_ASSERT_OK(snapshot_writer.Wait());
 
+  // The data is written to the committed chunks directory. The uncommitted
+  // files are deleted.
   EXPECT_THAT(
       ReadSnapshot<int64_t>(
-          io::JoinPath(snapshot_path, "uncommitted_chunks", "chunk_0"), range),
+          tsl::io::JoinPath(CommittedChunksDirectory(snapshot_path), "chunk_0"),
+          range),
       IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+
+  EXPECT_THAT(ReadSnapshot<int64_t>(
+                  tsl::io::JoinPath(UncommittedChunksDirectory(snapshot_path,
+                                                               /*stream_id=*/0),
+                                    "chunk_0"),
+                  range),
+              StatusIs(error::NOT_FOUND));
 }
 
 TEST(SnapshotStreamWriterTest, WriteSnapshotChunks) {
   const int64_t range = 10;
-  std::string snapshot_path;
-  EXPECT_TRUE(Env::Default()->LocalTempFilename(&snapshot_path));
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
 
   SnapshotStreamWriter snapshot_writer(std::make_unique<RangeIterator>(range),
-                                       snapshot_path, Env::Default(),
+                                       snapshot_path,
+                                       /*stream_id=*/0, Env::Default(),
                                        /*max_chunk_size_bytes=*/1);
   TF_ASSERT_OK(snapshot_writer.Wait());
 
   for (int i = 0; i < 10; ++i) {
-    EXPECT_THAT(
-        ReadSnapshot<int64_t>(io::JoinPath(snapshot_path, "uncommitted_chunks",
-                                           absl::StrCat("chunk_", i)),
-                              /*num_elements=*/1),
-        IsOkAndHolds(ElementsAre(i)));
+    EXPECT_THAT(ReadSnapshot<int64_t>(
+                    tsl::io::JoinPath(CommittedChunksDirectory(snapshot_path),
+                                      absl::StrCat("chunk_", i)),
+                    /*num_elements=*/1),
+                IsOkAndHolds(ElementsAre(i)));
   }
 }
 
 TEST(SnapshotStreamWriterTest, EmptyDataset) {
-  std::string snapshot_path;
-  EXPECT_TRUE(Env::Default()->LocalTempFilename(&snapshot_path));
-
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
   SnapshotStreamWriter snapshot_writer(std::make_unique<RangeIterator>(0),
-                                       snapshot_path, Env::Default());
+                                       snapshot_path, /*stream_id=*/0,
+                                       Env::Default());
   TF_ASSERT_OK(snapshot_writer.Wait());
 
   EXPECT_THAT(
       ReadSnapshot<int64_t>(
-          io::JoinPath(snapshot_path, "uncommitted_chunks", "chunk_0"), 0),
+          tsl::io::JoinPath(CommittedChunksDirectory(snapshot_path), "chunk_0"),
+          /*num_elements=*/0),
       IsOkAndHolds(IsEmpty()));
 }
 
 TEST(SnapshotStreamWriterTest, Cancel) {
   const int64_t range = 10000;
-  std::string snapshot_path;
-  EXPECT_TRUE(Env::Default()->LocalTempFilename(&snapshot_path));
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
 
   SnapshotStreamWriter snapshot_writer(std::make_unique<RangeIterator>(range),
-                                       snapshot_path, Env::Default());
+                                       snapshot_path, /*stream_id=*/0,
+                                       Env::Default());
   snapshot_writer.Cancel();
   EXPECT_THAT(snapshot_writer.Wait(), StatusIs(error::CANCELLED));
 }

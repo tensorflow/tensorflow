@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_SNAPSHOT_STREAM_WRITER_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_SNAPSHOT_STREAM_WRITER_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -59,8 +60,8 @@ class SnapshotStreamWriter {
   // snapshot stream. Users can call `Wait` to wait for it to finish.
   // TODO(b/258691666): Create a new `TaskIterator` that persists splits.
   explicit SnapshotStreamWriter(
-      std::unique_ptr<TaskIterator> iterator,
-      const std::string& snapshot_stream_path, Env* env,
+      std::unique_ptr<TaskIterator> iterator, const std::string& snapshot_path,
+      int64_t stream_id, Env* env,
       std::optional<int64_t> max_chunk_size_bytes = std::nullopt);
 
   // Waits for the writer to finish writing the snapshot stream.
@@ -88,8 +89,11 @@ class SnapshotStreamWriter {
   // Writes the next chunk.
   Status WriteChunk();
 
-  // Initializes the next chunk.
-  void InitializeNextChunk();
+  // Returns the path of the current chunk.
+  std::string GetChunkFilePath() const;
+
+  // Commits the current chunk.
+  Status CommitChunk(const std::string& chunk_file_path);
 
   // Returns true if the writer should write the next record to the current
   // chunk.
@@ -98,9 +102,6 @@ class SnapshotStreamWriter {
   // Writes the next record to the current chunk.
   Status WriteRecord(snapshot_util::TFRecordWriter& writer);
 
-  // Returns the path of the current chunk.
-  std::string GetChunkPath() const;
-
   // Returns the status of the writer:
   // - If the snapshotting is successful, returns an OK status.
   // - If any error happens during the snapshot write, returns the error status.
@@ -108,7 +109,8 @@ class SnapshotStreamWriter {
   Status status() const;
 
   Env* const env_;
-  const std::string snapshot_stream_path_;
+  const std::string snapshot_path_;
+  const int64_t stream_id_;
   const int64_t max_chunk_size_bytes_;
 
   mutable mutex mu_;
