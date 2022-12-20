@@ -127,10 +127,10 @@ void MaybeDropEventsForTraceViewer(Trace* trace, uint32 limit) {
                       trace_events->end());
 }
 
-uint64 GetViewerMaxEvents() {
+uint64 GetTraceViewerMaxEvents() {
   constexpr uint64 kMaxEvents = 1000000;
   // Testing only env variable, not recommended for use
-  char* max_events = getenv("PROFILER_VIEW_MAX_EVENTS");
+  char* max_events = getenv("TF_PROFILER_TRACE_VIEWER_MAX_EVENTS");
   if (max_events != nullptr) {
     return std::stoull(max_events, nullptr, 10);
   } else {
@@ -162,7 +162,7 @@ void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
 
   // Trace viewer (non-streaming) has scalability issues, we need to drop
   // events to avoid loading failure for trace viewer.
-  uint64 viewer_max_events = GetViewerMaxEvents();
+  uint64 viewer_max_events = GetTraceViewerMaxEvents();
   MaybeDropEventsForTraceViewer(trace, viewer_max_events);
 }
 
