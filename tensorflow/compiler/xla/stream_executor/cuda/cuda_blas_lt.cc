@@ -280,6 +280,7 @@ port::Status BlasLt::DoMatmul(
                                  CUBLASLT_MATMUL_DESC_BIAS_POINTER,
                                  bias.opaque()));
     }
+#if CUDA_VERSION >= 11080
     if (a_scale != nullptr) {
       TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
                                  CUBLASLT_MATMUL_DESC_A_SCALE_POINTER,
@@ -305,6 +306,13 @@ port::Status BlasLt::DoMatmul(
                                  CUBLASLT_MATMUL_DESC_AMAX_D_POINTER,
                                  d_amax.opaque()));
     }
+#else
+    if (a_scale != nullptr || b_scale != nullptr || c_scale != nullptr ||
+        d_scale != nullptr || d_amax != nullptr) {
+      return port::InternalError(
+          "A/B/C/D scales and amax require cublasLt >= 11.8");
+    }
+#endif
 
     if (aux != nullptr) {
 #if CUDA_VERSION >= 11040
