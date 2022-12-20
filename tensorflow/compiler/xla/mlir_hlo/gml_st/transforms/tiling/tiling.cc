@@ -171,14 +171,17 @@ struct DimOfMaterializedTilePattern : public OpRewritePattern<tensor::DimOp> {
     auto materializeOp = llvm::dyn_cast<MaterializeOp>(def);
     if (!materializeOp) return failure();
 
+    auto tileOp = materializeOp.getSet().getDefiningOp<gml_st::TileOp>();
+    if (!tileOp) return failure();
+
     Optional<int64_t> indexOr = op.getConstantIndex();
     if (!indexOr.has_value()) return failure();
 
     Value tileSizeValue =
-        materializeOp.isDynamicSize(*indexOr)
-            ? materializeOp.getDynamicSize(*indexOr)
+        tileOp.isDynamicSize(*indexOr)
+            ? tileOp.getDynamicSize(*indexOr)
             : rewriter.create<arith::ConstantIndexOp>(
-                  op.getLoc(), materializeOp.getStaticSize(*indexOr));
+                  op.getLoc(), tileOp.getStaticSize(*indexOr));
     rewriter.replaceOp(op, tileSizeValue);
     return success();
   }

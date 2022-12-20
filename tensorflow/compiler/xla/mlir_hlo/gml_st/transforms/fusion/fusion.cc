@@ -76,7 +76,9 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
       auto dimConstantIndex = op.getConstantIndex();
       if (!dimConstantIndex.has_value()) return failure();
 
-      rewriter.replaceOp(op, materializeOp.getSizes()[*dimConstantIndex]);
+      auto tileOp = materializeOp.getSet().getDefiningOp<TileOp>();
+      if (!tileOp) return failure();
+      rewriter.replaceOp(op, tileOp.getSizes()[*dimConstantIndex]);
       return success();
     }
     // Case LinalgOp.
@@ -377,8 +379,14 @@ FailureOr<Value> createFusedOp(PatternRewriter& rewriter,
         materializeOp, "expected source to be defined by tiling interface op ");
   }
 
-  SmallVector<OpFoldResult> offsets = materializeOp.getMixedOffsets();
-  SmallVector<OpFoldResult> sizes = materializeOp.getMixedSizes();
+  auto tileOp = materializeOp.getSet().getDefiningOp<gml_st::TileOp>();
+  if (!tileOp) {
+    return rewriter.notifyMatchFailure(
+        materializeOp, "expected set to be defined by gml_st.tile");
+  }
+
+  SmallVector<OpFoldResult> offsets = tileOp.getMixedOffsets();
+  SmallVector<OpFoldResult> sizes = tileOp.getMixedSizes();
 
   // Tile the producer.
   OpBuilder::InsertionGuard guard(rewriter);

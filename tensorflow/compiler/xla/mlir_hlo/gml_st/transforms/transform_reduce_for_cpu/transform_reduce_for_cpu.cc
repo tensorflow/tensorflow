@@ -151,8 +151,10 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       Value inputSlice =
           tileAndReshapeInput(b, loc, ivs.front(), input, elementType);
 
-      MaterializeOp initSlice = create1DSlice(
-          b, loc, inits.front(), b.getIndexAttr(0), b.getIndexAttr(vectorSize));
+      Value initTile =
+          create1DTile(b, loc, b.getIndexAttr(0), b.getIndexAttr(vectorSize));
+      Value initSlice =
+          b.create<gml_st::MaterializeOp>(loc, inits.front(), initTile);
 
       // Create `linalg.reduce` to combine
       // `tensor<(TILE_SIZE/VECTOR_SIZE)xVECTOR_SIZExELEM_TYPE> input with the
@@ -166,12 +168,8 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       rewriter.cloneRegionBefore(reduceOp.getRegion(), region, region.end());
       setLabel(tiledReduceOp, kReduceTransformedLabel);
 
-      b.create<gml_st::SetYieldOp>(
-          loc, tiledReduceOp.getResults(), inits,
-          b.create<TileOp>(loc, initSlice.getMixedOffsets(),
-                           initSlice.getMixedSizes(),
-                           initSlice.getMixedStrides())
-              .getResult());
+      b.create<gml_st::SetYieldOp>(loc, tiledReduceOp.getResults(), inits,
+                                   initTile);
     };
 
     // Create a tiled loop
@@ -188,16 +186,16 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
 
     auto remainderLoopBodyBuilder = [&](OpBuilder &b, Location loc,
                                         ValueRange ivs, ValueRange inits) {
-      Value inputSlice =
-          create1DSlice(b, loc, input, ivs.front(), remainderSize);
-
-      Value initSlice = b.create<gml_st::MaterializeOp>(
-          loc, inits.front(), /*offsets=*/SmallVector<OpFoldResult>{});
-
-      auto newReduceOp = cloneReduceOp(b, reduceOp, inputSlice, initSlice);
+      Value inputTile = create1DTile(b, loc, ivs.front(), remainderSize);
+      Value inputSlice = b.create<gml_st::MaterializeOp>(loc, input, inputTile);
 
       Value initTile = b.create<gml_st::TileOp>(
           loc, /*offsets=*/SmallVector<OpFoldResult>{});
+      Value initSlice =
+          b.create<gml_st::MaterializeOp>(loc, inits.front(), initTile);
+
+      auto newReduceOp = cloneReduceOp(b, reduceOp, inputSlice, initSlice);
+
       b.create<gml_st::SetYieldOp>(loc, newReduceOp, inits, initTile);
     };
 
@@ -238,14 +236,13 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
                                    ValueRange{tileableBound, inputSize});
   }
 
-  MaterializeOp create1DSlice(OpBuilder &b, Location loc, Value source,
-                              OpFoldResult offset, OpFoldResult size) const {
+  Value create1DTile(OpBuilder &b, Location loc, OpFoldResult offset,
+                     OpFoldResult size) const {
     SmallVector<OpFoldResult> offsets{offset};
     SmallVector<OpFoldResult> sizes{size};
     SmallVector<OpFoldResult> strides{b.getIndexAttr(1)};
 
-    return b.create<gml_st::MaterializeOp>(loc, source, offsets, sizes,
-                                           strides);
+    return b.create<gml_st::TileOp>(loc, offsets, sizes, strides);
   }
 
   Value cloneReduceOp(OpBuilder &b, linalg::ReduceOp reduceOp,
@@ -261,8 +258,8 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
 
   Value tileAndReshapeInput(OpBuilder &b, Location loc, Value iv, Value input,
                             Type elementType) const {
-    Value inputSlice =
-        create1DSlice(b, loc, input, iv, b.getIndexAttr(tileSize));
+    Value inputTile = create1DTile(b, loc, iv, b.getIndexAttr(tileSize));
+    Value inputSlice = b.create<gml_st::MaterializeOp>(loc, input, inputTile);
 
     auto reshapeType =
         RankedTensorType::get({tileSize / vectorSize, vectorSize}, elementType);

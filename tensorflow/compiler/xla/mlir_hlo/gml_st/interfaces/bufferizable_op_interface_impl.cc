@@ -202,16 +202,23 @@ struct LoopOpInterface
 // bufferization.
 FailureOr<Value> materializeExtraction(OpBuilder &b, Value memref,
                                        MaterializeOp materializeOp) {
-  Location loc = materializeOp.getLoc();
-  if (!materializeOp.getType().isa<ShapedType>()) {
-    auto indices = getValueOrCreateConstantIndexOp(
-        b, loc, materializeOp.getMixedOffsets());
-    return b.create<memref::LoadOp>(loc, memref, indices).getResult();
+  Value set = materializeOp.getSet();
+
+  Operation *setDefiningOp = set.getDefiningOp();
+
+  Location loc = set.getLoc();
+  if (auto tile = dyn_cast<TileOp>(setDefiningOp)) {
+    if (!materializeOp.getType().isa<ShapedType>()) {
+      auto indices =
+          getValueOrCreateConstantIndexOp(b, loc, tile.getMixedOffsets());
+      return b.create<memref::LoadOp>(loc, memref, indices).getResult();
+    }
+    Value subview = b.create<memref::SubViewOp>(
+        loc, memref, tile.getMixedOffsets(), tile.getMixedSizes(),
+        tile.getMixedStrides());
+    return subview;
   }
-  Value subview = b.create<memref::SubViewOp>(
-      loc, memref, materializeOp.getMixedOffsets(),
-      materializeOp.getMixedSizes(), materializeOp.getMixedStrides());
-  return subview;
+  return failure();
 }
 
 LogicalResult materializeInsertion(OpBuilder &b, Value update, Value set,

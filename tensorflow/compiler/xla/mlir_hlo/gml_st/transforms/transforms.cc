@@ -215,10 +215,11 @@ void hoistReadWrite(TransferReadOp read, TransferWriteOp write,
 }
 }  // namespace
 
-bool isIdentitySlice(ValueRange offsets, ValueRange strides) {
+bool isIdentityTileOp(TileOp candidate) {
   // Offsets must be all 0s and strides must be all 1s.
-  return llvm::all_of(offsets, [](Value v) { return isZero(v); }) &&
-         llvm::all_of(strides, [](Value v) { return isOne(v); });
+  return llvm::all_of(candidate.getOffsets(),
+                      [](Value v) { return isZero(v); }) &&
+         llvm::all_of(candidate.getStrides(), [](Value v) { return isOne(v); });
 }
 
 bool haveSameStaticShape(Value lhs, Value rhs) {
@@ -245,8 +246,7 @@ void hoistRedundantVectorTransfersOnTensor(func::FuncOp func) {
         if (srcTensor != outputArg) continue;
 
         auto tileOp = set.getDefiningOp<TileOp>();
-        if (!tileOp ||
-            !isIdentitySlice(tileOp.getOffsets(), tileOp.getStrides()) ||
+        if (!tileOp || !isIdentityTileOp(tileOp) ||
             !haveSameStaticShape(src, dst))
           continue;
 

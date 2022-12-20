@@ -375,10 +375,10 @@ struct ScalarizeConcatenateOp : public OpRewritePattern<thlo::ConcatenateOp> {
         sizes.emplace_back(rewriter.create<tensor::DimOp>(loc, initTensor, i));
       }
     }
+    Value tile = rewriter.create<gml_st::TileOp>(loc, offsets, sizes, strides);
 
     auto materializeAndInsert = [&](OpBuilder &b, Location l, Value input) {
-      Value slice =
-          b.create<gml_st::MaterializeOp>(l, input, offsets, sizes, strides);
+      Value slice = b.create<gml_st::MaterializeOp>(l, input, tile);
       return b.create<tensor::InsertSliceOp>(l, slice, initTensor, offsets,
                                              sizes, strides);
     };
@@ -495,13 +495,13 @@ struct FoldTensorExtractIntoMaterialize : public OpRewritePattern<ExtractOp> {
         extractOp.getTensor().getDefiningOp<gml_st::MaterializeOp>();
     if (!materializeOp) return failure();
 
-    if (!hasSingleElement(materializeOp.getType().cast<ShapedType>()))
-      return failure();
+    auto tileType =
+        materializeOp.getSet().getType().dyn_cast<gml_st::TileType>();
+    if (!tileType || !hasSingleElement(tileType)) return failure();
 
     rewriter.replaceOpWithNewOp<gml_st::MaterializeOp>(
         extractOp, extractOp.getType(), materializeOp.getSource(),
-        materializeOp.getMixedOffsets(), materializeOp.getMixedSizes(),
-        materializeOp.getMixedStrides());
+        materializeOp.getSet());
     return success();
   }
 };
