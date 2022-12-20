@@ -914,8 +914,9 @@ static bool TensorOpMathAvailable(
   return cuda_compute_capability.IsAtLeast(7);
 }
 
-static bool IsTensorMathEnabled(Stream* stream, dnn::DataType input_type) {
-  if (!TensorOpMathAvailable(stream->GetCudaComputeCapability())) {
+static bool IsTensorMathEnabled(CudaComputeCapability cuda_compute_capability,
+                                dnn::DataType input_type) {
+  if (!TensorOpMathAvailable(cuda_compute_capability)) {
     return false;
   }
   if (input_type == dnn::DataType::kFloat) {
@@ -928,6 +929,10 @@ static bool IsTensorMathEnabled(Stream* stream, dnn::DataType input_type) {
 #endif
   }
   return true;
+}
+
+static bool IsTensorMathEnabled(Stream* stream, dnn::DataType input_type) {
+  return IsTensorMathEnabled(stream->GetCudaComputeCapability(), input_type);
 }
 
 // Turns a PoolingDescriptor structure into a cudnn pooling descriptor handle
@@ -4858,15 +4863,16 @@ port::Status CudnnSupport::GetConvolveRunners(
         return port::InternalError(absl::StrFormat(
             "Unknown ConvolutionKind for unfused conv: %d", kind));
       case dnn::ConvolutionKind::FORWARD:
-        got_algos = GetConvolveAlgorithms(cuda_compute_capability, &algorithms);
+        got_algos = GetConvolveAlgorithms(cuda_compute_capability, input_type,
+                                          &algorithms);
         break;
       case dnn::ConvolutionKind::BACKWARD_FILTER:
-        got_algos = GetConvolveBackwardFilterAlgorithms(cuda_compute_capability,
-                                                        &algorithms);
+        got_algos = GetConvolveBackwardFilterAlgorithms(
+            cuda_compute_capability, input_type, &algorithms);
         break;
       case dnn::ConvolutionKind::BACKWARD_DATA:
         got_algos = GetConvolveBackwardDataAlgorithms(cuda_compute_capability,
-                                                      &algorithms);
+                                                      input_type, &algorithms);
         break;
     }
     if (!got_algos) {
@@ -5320,7 +5326,8 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
     std::vector<dnn::AlgorithmDesc> algorithms;
 
     auto cuda_compute_capability = stream->GetCudaComputeCapability();
-    if (!GetConvolveAlgorithms(cuda_compute_capability, &algorithms)) {
+    if (!GetConvolveAlgorithms(cuda_compute_capability, input_type,
+                               &algorithms)) {
       return port::Status(port::error::UNKNOWN,
                           "Listing fused convolve algorithms failed.");
     }
@@ -5414,12 +5421,12 @@ port::Status CudnnSupport::GetFusedMatmulRunners(
 }
 
 bool CudnnSupport::GetConvolveAlgorithms(
-    CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   PreloadCudnnSubLibs(PreloadCudnnType::ConvFwd);
 
   bool tensor_op_math_available =
-      TensorOpMathAvailable(cuda_compute_capability);
+      IsTensorMathEnabled(cuda_compute_capability, input_type);
   out_algorithms->clear();
 
   std::vector<dnn::AlgorithmDesc::Index> algo_types;
@@ -5473,12 +5480,12 @@ bool CudnnSupport::GetRnnAlgorithms(
 }
 
 bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
-    CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   PreloadCudnnSubLibs(PreloadCudnnType::ConvBwdData);
 
   bool tensor_op_math_available =
-      TensorOpMathAvailable(cuda_compute_capability);
+      IsTensorMathEnabled(cuda_compute_capability, input_type);
   out_algorithms->clear();
 
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
@@ -5508,12 +5515,12 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
 }
 
 bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
-    CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   PreloadCudnnSubLibs(PreloadCudnnType::ConvBwdFilter);
 
   bool tensor_op_math_available =
-      TensorOpMathAvailable(cuda_compute_capability);
+      IsTensorMathEnabled(cuda_compute_capability, input_type);
   out_algorithms->clear();
 
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
