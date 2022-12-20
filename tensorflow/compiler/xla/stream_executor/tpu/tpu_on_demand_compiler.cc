@@ -40,7 +40,7 @@ namespace xla {
 
 namespace {
 
-using ::tensorflow::tpu::ExecutorApiFn;
+using ::stream_executor::tpu::ExecutorApiFn;
 
 class TpuCompiler : public Compiler {
  public:
