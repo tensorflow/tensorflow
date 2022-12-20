@@ -48,8 +48,7 @@ func.func @canonicalize_outer_product(%arg0: tensor<8x8xf32>, %arg1: tensor<8x8x
   %0 = tensor.empty() : tensor<8x8xf32>
   %2 = vector.transfer_read %arg0[%c0, %c0], %cst_0 {in_bounds = [true, true]} : tensor<8x8xf32>, vector<8x8xf32>
   %3 = vector.transfer_read %arg1[%c0, %c0], %cst_0 {in_bounds = [true, true]} : tensor<8x8xf32>, vector<8x8xf32>
-  %4 = gml_st.tile [0, 0] [8, 8] [1, 1] : !gml_st.tile<8x8>
-  %5 = gml_st.materialize %cst[%4] : vector<8x8xf32>[!gml_st.tile<8x8>] to vector<8x8xf32>
+  %5 = gml_st.materialize %cst[0, 0] [8, 8] [1, 1]  : vector<8x8xf32> to vector<8x8xf32>
   %6 = vector.contract {indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>, affine_map<(d0, d1, d2) -> (d2, d1)>, affine_map<(d0, d1, d2) -> (d0, d1)>], iterator_types = ["parallel", "parallel", "reduction"], kind = #vector.kind<add>} %2, %3, %5 : vector<8x8xf32>, vector<8x8xf32> into vector<8x8xf32>
   %7 = vector.transfer_write %6, %0[%c0, %c0] {in_bounds = [true, true]} : vector<8x8xf32>, tensor<8x8xf32>
   return %7 : tensor<8x8xf32>

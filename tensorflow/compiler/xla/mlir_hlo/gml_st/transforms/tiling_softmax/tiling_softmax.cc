@@ -218,13 +218,9 @@ struct FusePartialSoftmaxPattern : public OpRewritePattern<MaterializeOp> {
           // TODO(frgossen): Assert this assumption when we have moved to
           // unnested tiles.
 
-          // Extract tile offsets and sizes.
-          auto tile = op.getSet().getDefiningOp<TileOp>();
-          if (!tile) return failure();
-
           // Fuse.
-          SmallVector<OpFoldResult> offsets = tile.getMixedOffsets();
-          SmallVector<OpFoldResult> sizes = tile.getMixedSizes();
+          SmallVector<OpFoldResult> offsets = op.getMixedOffsets();
+          SmallVector<OpFoldResult> sizes = op.getMixedSizes();
           FailureOr<Value> result =
               iface.generateResultTileValue(rewriter, 0, offsets, sizes);
           if (failed(result)) {

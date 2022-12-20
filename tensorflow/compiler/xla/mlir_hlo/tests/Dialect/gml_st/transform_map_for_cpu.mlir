@@ -29,8 +29,6 @@ func.func @map_unary(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
 // CHECK-NEXT: %[[MAIN_PAR:.*]] = gml_st.parallel (%[[MAIN_I:.*]], %[[MAIN_J:.*]]) =
 // CHECK-SAME:     (%[[C0]], %[[C0]]) to (%[[DIM_0]], %[[MAP_DIM_1]])
 // CHECK-SAME:     step (%[[C1]], %[[C8]]) {
-// CHECK-NEXT:   %[[TILE:.*]] = gml_st.tile [%[[MAIN_I]], %[[MAIN_J]]]
-// CHECK-SAME:                          [1, %[[C8]]] [1, 1]
 // CHECK-NEXT:   %[[INPUT_SLICE:.*]] = gml_st.materialize %[[INPUT]]
 // CHECK-NEXT:   %[[INIT_SLICE:.*]] = gml_st.materialize %[[INIT]]
 // CHECK-NEXT:   %[[MAPPED:.*]] = linalg.map
@@ -40,6 +38,8 @@ func.func @map_unary(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
 // CHECK-NEXT:       %[[RES_ELEM:.*]] = math.absf %[[IN_ELEM]] : f32
 // CHECK-NEXT:       linalg.yield %[[RES_ELEM]] : f32
 // CHECK-NEXT:     }
+// CHECK-NEXT:   %[[TILE:.*]] = gml_st.tile [%[[MAIN_I]], %[[MAIN_J]]]
+// CHECK-SAME:                          [1, %[[C8]]] [1, 1]
 // CHECK-NEXT:   gml_st.set_yield %[[MAPPED]] into %[[INIT]][%[[TILE]]]
 // CHECK-NEXT: }
 
@@ -47,8 +47,6 @@ func.func @map_unary(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
 // CHECK-SAME:     (%[[C0]], %[[MAP_DIM_1]]) to (%[[DIM_0]], %[[DIM_1]])
 // CHECK-SAME:     step (%[[C1]], %[[C8]]) {
 // CHECK:        %[[MAP_DIM:.*]] = affine.apply #{{.*}}(%[[J]])[%[[DIM_1]]]
-// CHECK-NEXT:   %[[TILE:.*]] = gml_st.tile [%[[I]], %[[J]]]
-// CHECK-SAME:                          [1, %[[MAP_DIM]]] [1, 1]
 // CHECK-NEXT:   %[[INPUT_SLICE:.*]] = gml_st.materialize %[[INPUT]]
 // CHECK-NEXT:   %[[INIT_SLICE:.*]] = gml_st.materialize %[[MAIN_PAR]]
 // CHECK-NEXT:   %[[MAPPED:.*]] = linalg.map
@@ -58,6 +56,8 @@ func.func @map_unary(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
 // CHECK-NEXT:       %[[RES_ELEM:.*]] = math.absf %[[IN_ELEM]] : f32
 // CHECK-NEXT:       linalg.yield %[[RES_ELEM]] : f32
 // CHECK-NEXT:     }
+// CHECK-NEXT:   %[[TILE:.*]] = gml_st.tile [%[[I]], %[[J]]]
+// CHECK-SAME:                          [1, %[[MAP_DIM]]] [1, 1]
 // CHECK-NEXT:   gml_st.set_yield %[[MAPPED]] into %[[MAIN_PAR]][%[[TILE]]]
 // CHECK-NEXT: }
 // CHECK-NEXT: return %[[RESULT]]
@@ -112,16 +112,15 @@ func.func @map_broadcast_fuse(%arg0: tensor<?xf32>, %arg1: tensor<?x?x?xf32>,
 // CHECK-SAME:     (%[[C0]], %[[C0]], %[[C0]]) to
 // CHECK-SAME:     (%[[DIM_0]], %[[DIM_1]], %[[MAP_DIM_2]])
 // CHECK-SAME:     step (%[[C1]], %[[C1]], %[[C8]]) {
-// CHECK-DAG:    %[[ARG0_TILE:.*]] = gml_st.tile [%[[MAIN_I]]]
-// CHECK-DAG:    %[[INIT1_TILE:.*]] = gml_st.tile [%[[MAIN_I]], %[[MAIN_J]], %[[MAIN_K]]]
-// CHECK-DAG:    %[[ARG0_SLICE:.*]] = gml_st.materialize %[[ARG0]]
-// CHECK-DAG:    %[[INIT0_SLICE:.*]] = gml_st.materialize %[[INIT0]]
+// CHECK:        %[[ARG0_SLICE:.*]] = gml_st.materialize %[[ARG0]] [%[[MAIN_I]]]
+// CHECK:        %[[INIT0_SLICE:.*]] = gml_st.materialize %[[INIT0]] [%[[MAIN_I]]]
 
 // CHECK:        %[[ABS:.*]] = linalg.map
 // CHECK-SAME:     ins(%[[ARG0_SLICE]]
 // CHECK-SAME:     outs(%[[INIT0_SLICE]]
 
 // CHECK:        %[[INIT1_SLICE:.*]] = gml_st.materialize %[[INIT1]]
+// CHECK-SAME:     [%[[MAIN_I]], %[[MAIN_J]], %[[MAIN_K]]]
 // CHECK:        %[[BCAST:.*]] = linalg.broadcast
 // CHECK-SAME:     ins(%[[ABS]]
 // CHECK-SAME:     outs(%[[INIT1_SLICE]]
@@ -129,7 +128,8 @@ func.func @map_broadcast_fuse(%arg0: tensor<?xf32>, %arg1: tensor<?x?x?xf32>,
 // CHECK-NEXT:   %[[MAPPED:.*]] = linalg.map
 // CHECK-SAME:     ins(%[[BCAST]], %[[ARG1_SLICE]] : tensor<1x1x?xf32>
 // CHECK-SAME:     outs(%[[INIT1_SLICE]] : tensor<1x1x?xf32>)
-// CHECK:        gml_st.set_yield %[[MAPPED]] into %[[INIT1]][%[[INIT1_TILE]]]
+// CHECK:        %[[INIT1_TILE:.*]] = gml_st.tile [%[[MAIN_I]], %[[MAIN_J]], %[[MAIN_K]]]
+// CHECK-NEXT:   gml_st.set_yield %[[MAPPED]] into %[[INIT1]][%[[INIT1_TILE]]]
 // CHECK-NEXT: }
 
 // CHECK-NEXT: %[[RESULT:.*]] = gml_st.parallel
@@ -138,10 +138,8 @@ func.func @map_broadcast_fuse(%arg0: tensor<?xf32>, %arg1: tensor<?x?x?xf32>,
 // CHECK-SAME:     (%[[DIM_0]], %[[DIM_1]], %[[DIM_2]])
 // CHECK-SAME:     step (%[[C1]], %[[C1]], %[[C8]]) {
 // CHECK:        %[[MAP_DIM:.*]] = affine.apply #{{.*}}(%[[K]])[%[[DIM_2]]]
-// CHECK-DAG:    %[[ARG0_TILE:.*]] = gml_st.tile [%[[I]]]
-// CHECK-DAG:    %[[INIT1_TILE:.*]] = gml_st.tile [%[[I]], %[[J]], %[[K]]]
-// CHECK-DAG:    %[[ARG0_SLICE:.*]] = gml_st.materialize %[[ARG0]]
-// CHECK-DAG:    %[[INIT0_SLICE:.*]] = gml_st.materialize %[[INIT0]]
+// CHECK-DAG:    %[[ARG0_SLICE:.*]] = gml_st.materialize %[[ARG0]] [%[[I]]]
+// CHECK-DAG:    %[[INIT0_SLICE:.*]] = gml_st.materialize %[[INIT0]] [%[[I]]]
 
 // CHECK:        %[[ABS:.*]] = linalg.map
 // CHECK-SAME:     ins(%[[ARG0_SLICE]]
@@ -155,6 +153,7 @@ func.func @map_broadcast_fuse(%arg0: tensor<?xf32>, %arg1: tensor<?x?x?xf32>,
 // CHECK-NEXT:   %[[MAPPED:.*]] = linalg.map
 // CHECK-SAME:     ins(%[[BCAST]], %[[ARG1_SLICE]] : tensor<1x1x?xf32>
 // CHECK-SAME:     outs(%[[INIT1_SLICE]] : tensor<1x1x?xf32>)
+// CHECK-DAG:    %[[INIT1_TILE:.*]] = gml_st.tile [%[[I]], %[[J]], %[[K]]]
 // CHECK:        gml_st.set_yield %[[MAPPED]] into %[[MAIN_PAR]][%[[INIT1_TILE]]]
 // CHECK-NEXT: }
 // CHECK-NEXT: return %[[RESULT]]

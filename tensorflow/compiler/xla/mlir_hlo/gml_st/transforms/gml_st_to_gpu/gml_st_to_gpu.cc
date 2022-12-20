@@ -100,11 +100,9 @@ struct GmlStToGpuPass : public ::impl::GmlStToGpuPassBase<GmlStToGpuPass> {
       signalPassFailure();
   }
 };
-}  // namespace
 
-static Value createCombineOp(Location loc, Value lhs, Value rhs,
-                             CombiningKind kind, PatternRewriter& rewriter,
-                             Type elementType) {
+Value createCombineOp(Location loc, Value lhs, Value rhs, CombiningKind kind,
+                      PatternRewriter& rewriter, Type elementType) {
   auto helper = [&](auto dummy) {
     return rewriter.create<decltype(dummy)>(loc, lhs, rhs);
   };
@@ -137,6 +135,8 @@ static Value createCombineOp(Location loc, Value lhs, Value rhs,
   }
   llvm_unreachable("unhandled");
 }
+
+}  // namespace
 
 LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(
     MultiDimReductionOp reductionOp, PatternRewriter& rewriter) const {
@@ -228,15 +228,15 @@ LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(
   return success();
 }
 
-SubViewOp createSubView(Location loc, Value source, TileOp tile,
+SubViewOp createSubView(Location loc, Value source,
+                        ArrayRef<OpFoldResult> offsets,
+                        ArrayRef<OpFoldResult> sizes,
+                        ArrayRef<OpFoldResult> strides,
                         PatternRewriter& rewriter) {
   Type memRefType = SubViewOp::inferResultType(
-      source.getType().cast<MemRefType>(), tile.getStaticOffsets(),
-      tile.getStaticSizes(), tile.getStaticStrides());
-  return rewriter.create<SubViewOp>(
-      loc, memRefType, source, tile.getOffsets(), tile.getSizes(),
-      tile.getStrides(), tile.getStaticOffsets(), tile.getStaticSizes(),
-      tile.getStaticStrides());
+      source.getType().cast<MemRefType>(), offsets, sizes, strides);
+  return rewriter.create<SubViewOp>(loc, memRefType.cast<MemRefType>(), source,
+                                    offsets, sizes, strides);
 }
 
 LogicalResult EliminateMaterializeOfTransferReadPattern::matchAndRewrite(
@@ -257,12 +257,6 @@ LogicalResult EliminateMaterializeOfTransferReadPattern::matchAndRewrite(
   }
   if (failed(matchSimpleTransferOp(transferRead, rewriter))) return failure();
 
-  auto tile = materialize.getSet().getDefiningOp<TileOp>();
-  if (!tile) {
-    return rewriter.notifyMatchFailure(materialize,
-                                       "expected gml_st.tile as set");
-  }
-
   // Rewrite the pattern as:
   // vector.transfer_read
   //   (memref.subview $src [$offsets] [$sizes] [$strides])
@@ -271,7 +265,9 @@ LogicalResult EliminateMaterializeOfTransferReadPattern::matchAndRewrite(
   // to `source` in between `transferRead` and `materialize`. This won't happen
   // for elementwise fusion and softmax, but might become a problem down the
   // line.
-  auto subview = createSubView(materialize.getLoc(), source, tile, rewriter);
+  auto subview = createSubView(
+      materialize.getLoc(), source, materialize.getMixedOffsets(),
+      materialize.getMixedSizes(), materialize.getMixedStrides(), rewriter);
   Type resultType = materialize.getResult().getType();
   if (!resultType.isa<VectorType>()) {
     // We have a transfer to a single element: just use memref.load directly.
@@ -318,7 +314,8 @@ LogicalResult EliminateDistributeIntoTransferWritePattern::matchAndRewrite(
   //   (memref.subview $dst [$offsets] [$sizes] [$strides])
   //   [(arith.constant 0)...]
   auto subview =
-      createSubView(transferWrite.getLoc(), destination, tile, rewriter);
+      createSubView(transferWrite.getLoc(), destination, tile.getMixedOffsets(),
+                    tile.getMixedSizes(), tile.getMixedStrides(), rewriter);
   rewriter.replaceOpWithNewOp<TransferWriteOp>(
       transferWrite, /*resultType=*/std::nullopt, source, subview,
       transferWrite.getIndices(), transferWrite.getPermutationMap(),
