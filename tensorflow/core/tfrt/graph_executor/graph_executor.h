@@ -101,7 +101,6 @@ class GraphExecutor {
     // single graph.
     std::optional<tfrt::BefBuffer> bef;
     std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable = nullptr;
-    // mlrt::KernelRegistry mlrt_kernel_registry;
     mlrt::bc::Buffer bytecode_buffer;
     tfrt::RCReference<tfrt::BEFFile> bef_file;
     std::unique_ptr<tfrt::ResourceContext> resource_context;
