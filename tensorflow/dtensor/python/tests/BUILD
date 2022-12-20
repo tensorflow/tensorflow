@@ -35,6 +35,7 @@ pytype_library(
         "//tensorflow/python:spectral_ops_gen",
         "//tensorflow/python:stateless_random_ops_gen",
         "//tensorflow/python:stateless_random_ops_v2_gen",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
