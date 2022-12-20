@@ -1172,19 +1172,34 @@ struct DotGeneralToDot : public OpRewritePattern<DotGeneralOp> {
     auto lhsTy = lhs.getType().cast<ShapedType>();
     auto rhsTy = rhs.getType().cast<ShapedType>();
 
-    if (lhsTy.getRank() != 2) return failure();
-    if (rhsTy.getRank() != 2) return failure();
+    int64_t lhsRank = lhsTy.getRank();
+    int64_t rhsRank = rhsTy.getRank();
+    if ((lhsRank != 1 && lhsRank != 2) || (rhsRank != 1 && rhsRank != 2)) {
+      return rewriter.notifyMatchFailure(
+          dot, "input tensors must have rank of 1 or 2");
+    }
 
     auto nums = dot.getDotDimensionNumbers();
-    if (!nums.getLhsBatchingDimensions().empty()) return failure();
-    if (!nums.getRhsBatchingDimensions().empty()) return failure();
+    if ((!nums.getLhsBatchingDimensions().empty()) ||
+        (!nums.getRhsBatchingDimensions().empty())) {
+      return rewriter.notifyMatchFailure(dot, "cannot have batch dimensions");
+    }
 
     auto lhsContract = nums.getLhsContractingDimensions();
     auto rhsContract = nums.getRhsContractingDimensions();
-    if (lhsContract.size() != 1 || rhsContract.size() != 1) return failure();
 
-    if (lhsContract.front() != 1) return failure();
-    if (rhsContract.front() != 0) return failure();
+    if (lhsContract.size() != 1 || rhsContract.size() != 1) {
+      return rewriter.notifyMatchFailure(
+          dot, "input tensors must only have 1 contracting dimension");
+    }
+    if (rhsContract.front() != 0) {
+      return rewriter.notifyMatchFailure(
+          dot, "rhs must contract the first dimension");
+    }
+    if (lhsContract.front() != lhsRank - 1) {
+      return rewriter.notifyMatchFailure(
+          dot, "lhs must contract the last dimension");
+    }
 
     rewriter.replaceOpWithNewOp<mhlo::DotOp>(
         dot, dot.getType(), lhs, rhs,
