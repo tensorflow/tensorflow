@@ -290,11 +290,7 @@ cc_library(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    defines = if_cuda(["GOOGLE_CUDA=1"]) +
-              select({
-                  ":ifrt_enabled": ["JAX_ENABLE_IFRT=1"],
-                  "//conditions:default": [],
-              }),
+    defines = if_cuda(["GOOGLE_CUDA=1"]),
     features = ["-use_header_modules"],
     deps = [
         ":exceptions",
@@ -356,10 +352,6 @@ cc_library(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    defines = select({
-        ":ifrt_enabled": ["JAX_ENABLE_IFRT=1"],
-        "//conditions:default": [],
-    }),
     features = ["-use_header_modules"],
     deps = [
         ":py_client",
@@ -388,10 +380,6 @@ cc_library(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    defines = select({
-        ":ifrt_enabled": ["JAX_ENABLE_IFRT=1"],
-        "//conditions:default": [],
-    }),
     features = ["-use_header_modules"],
     visibility = [":friends"],  # For the functions to access C++ flags/thread-local variables
     deps = [
@@ -509,10 +497,6 @@ cc_library(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    defines = select({
-        ":ifrt_enabled": ["JAX_ENABLE_IFRT=1"],
-        "//conditions:default": [],
-    }),
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
@@ -542,10 +526,6 @@ cc_library(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    defines = select({
-        ":ifrt_enabled": ["JAX_ENABLE_IFRT=1"],
-        "//conditions:default": [],
-    }),
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
@@ -733,10 +713,6 @@ cc_library(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    defines = select({
-        ":ifrt_enabled": ["JAX_ENABLE_IFRT=1"],
-        "//conditions:default": [],
-    }),
     features = ["-use_header_modules"],
     deps = [
         "@com_google_absl//absl/strings:str_format",
@@ -911,9 +887,6 @@ tsl_pybind_extension(
         "//conditions:default": [],
     }) + select({
         ":plugin_device_enabled": ["XLA_PYTHON_ENABLE_PLUGIN_DEVICE=1"],
-        "//conditions:default": [],
-    }) + select({
-        ":ifrt_enabled": ["JAX_ENABLE_IFRT=1"],
         "//conditions:default": [],
     }),
     linkopts = select({

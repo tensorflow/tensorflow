@@ -422,7 +422,6 @@ StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
   auto client = (cpu_client && device->client() == cpu_pjrt_client)
                     ? std::move(cpu_client)
                     : std::move(gpu_client);
-#ifdef JAX_ENABLE_IFRT
   auto* ifrt_client =
       llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(client->ifrt_client());
   if (ifrt_client == nullptr) {
@@ -434,10 +433,6 @@ StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
       ifrt::PjRtArray::Create(ifrt_client, std::move(pjrt_buffer)));
   return PyBuffer::Make(std::move(client), std::move(ifrt_array),
                         Traceback::Get());
-#else
-  return PyBuffer::Make(std::move(client), std::move(pjrt_buffer),
-                        Traceback::Get());
-#endif
 }
 
 }  // namespace xla
