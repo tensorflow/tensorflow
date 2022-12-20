@@ -353,7 +353,7 @@ struct CacheEntry {
 
   // Bitvector of kept arguments from Jaxpr DCE pass. Used to drop some `args`
   // in CompiledFunction::Call before calling into compiled computation.
-  std::optional<std::vector<bool>> kept_var_bitvec;
+  std::vector<bool> kept_var_bitvec;
   std::optional<xla::ClientAndPtr<xla::PjRtDevice>> sticky_device;
 
   // Fallback to Python happens:
@@ -833,9 +833,9 @@ xla::Status ComputeSignature(bool jax_enable_x64,
 // Copy buffers to device, skipping pruned arguments.
 // Returns `OkStatus()` on success. Returning an error should lead to
 // calling the Python fallback.
-xla::Status CopyBuffersToDevice(
-    bool jax_enable_x64, const std::optional<std::vector<bool>>& kept_args,
-    ParsedArgumentsAsBuffers& arguments) {
+xla::Status CopyBuffersToDevice(bool jax_enable_x64,
+                                const std::vector<bool>& kept_args,
+                                ParsedArgumentsAsBuffers& arguments) {
 #ifdef JAX_ENABLE_IFRT
   std::vector<tsl::RCReference<xla::ifrt::Array>>& ifrt_arg_arrays =
       arguments.ifrt_arg_arrays;
@@ -853,9 +853,8 @@ xla::Status CopyBuffersToDevice(
 #else
   arg_buffers.reserve(num_flat_dynamic_args);
 #endif
-  bool input_pruning_enabled = kept_args.has_value();
   for (int i = 0; i < num_flat_dynamic_args; ++i) {
-    if (input_pruning_enabled && !kept_args.value()[i]) {
+    if (!kept_args[i]) {
       continue;
     }
 
@@ -950,16 +949,11 @@ void CompiledFunction::PopulateCacheEntry(
     cache_entry->committed.push_back(c.cast<bool>());
   }
 
-  auto kept_var_bitvec_attr =
-      py::getattr(executable_handlers_out_tree, "kept_var_bitvec", py::none());
-  if (!kept_var_bitvec_attr.is_none()) {
-    auto kept_var_bitvec = py::cast<py::list>(kept_var_bitvec_attr);
-    cache_entry->kept_var_bitvec =
-        std::make_optional<std::vector<bool>>(kept_var_bitvec.size(), false);
-    for (int i = 0; i < kept_var_bitvec.size(); ++i) {
-      cache_entry->kept_var_bitvec.value()[i] =
-          py::cast<bool>(kept_var_bitvec[i]);
-    }
+  auto kept_var_bitvec =
+      py::cast<py::list>(executable_handlers_out_tree.attr("kept_var_bitvec"));
+  cache_entry->kept_var_bitvec.reserve(kept_var_bitvec.size());
+  for (const auto& b : kept_var_bitvec) {
+    cache_entry->kept_var_bitvec.push_back(b.cast<bool>());
   }
 }
 
