@@ -14,6 +14,7 @@ package(
     licenses = ["notice"],
 )
 
+# The main test app.
 android_binary(
     name = "delegate_performance_benchmark",
     srcs = glob([
@@ -21,7 +22,8 @@ android_binary(
     ]),
     assets = [
         ":accuracy_models",
-        ":default_latency_criteria",
+        ":latency_criteria_files",
+        ":latency_models",
     ],
     assets_dir = "assets",
     custom_package = "org.tensorflow.lite.benchmark.delegate_performance",
@@ -42,36 +44,84 @@ android_binary(
 )
 
 validation_model(
-    name = "mobilenet_float_with_validation.tflite",
+    name = "mobilenet_v1_1.0_224_with_validation.tflite",
     jpegs = "//tensorflow/lite/experimental/acceleration/mini_benchmark:odt_classifier_testfiles",
     main_model = "//tensorflow/lite/experimental/acceleration/mini_benchmark/models:mobilenet_v1_1.0_224.tflite",
     metrics_model = "//tensorflow/lite/experimental/acceleration/mini_benchmark/metrics:mobilenet_metrics_tflite",
 )
 
 validation_model(
-    name = "mobilenet_quant_with_validation.tflite",
+    name = "mobilenet_v1_1.0_224_quant_with_validation.tflite",
     jpegs = "//tensorflow/lite/experimental/acceleration/mini_benchmark:odt_classifier_testfiles",
     main_model = "//tensorflow/lite/experimental/acceleration/mini_benchmark/models:mobilenet_v1_1.0_224_quant.tflite",
     metrics_model = "//tensorflow/lite/experimental/acceleration/mini_benchmark/metrics:mobilenet_metrics_tflite",
 )
 
 ACCURACY_MODELS = [
-    "mobilenet_float_with_validation.tflite",
-    "mobilenet_quant_with_validation.tflite",
+    "mobilenet_v1_1.0_224_with_validation.tflite",
+    "mobilenet_v1_1.0_224_quant_with_validation.tflite",
 ]
+
+LATENCY_MODELS = [
+    "mobilenet_v1_1.0_224.tflite",
+    "mobilenet_v1_1.0_224_quant.tflite",
+]
+
+COPY_CMD = """
+  srcs=($(SRCS))
+  outs=($(OUTS))
+  for ((i = 0; i < $${#srcs[@]}; ++i)); do
+    echo $${srcs[$$i]};
+    cp $${srcs[$$i]} $${outs[$$i]};
+  done
+"""
 
 genrule(
     name = "accuracy_models",
     srcs = [":%s" % model for model in ACCURACY_MODELS],
     outs = ["assets/accuracy/%s" % model for model in ACCURACY_MODELS],
-    cmd = """
-      srcs=($(SRCS))
-      outs=($(OUTS))
-      for ((i = 0; i < $${#srcs[@]}; ++i)); do
-        echo $${srcs[$$i]};
-        cp $${srcs[$$i]} $${outs[$$i]};
-      done
-    """,
+    cmd = COPY_CMD,
+)
+
+genrule(
+    name = "latency_models",
+    srcs = ["//tensorflow/lite/java/demo/app/src/main/assets:%s" % model for model in LATENCY_MODELS],
+    outs = ["assets/latency/%s" % model for model in LATENCY_MODELS],
+    cmd = COPY_CMD,
+)
+
+# Latency Criteria Textproto Data
+filegroup(
+    name = "latency_criteria_files",
+    srcs = [
+        ":default_latency_criteria",
+        ":mobilenet_v1_1_0_224_latency_criteria",
+        ":mobilenet_v1_1_0_224_quant_latency_criteria",
+    ],
+)
+
+proto_data(
+    name = "default_latency_criteria",
+    src = "proto/default_latency_criteria.textproto",
+    out = "assets/proto/default_latency_criteria.binarypb",
+    proto_deps = [":delegate_performance_proto"],
+    proto_name = "tflite.proto.benchmark.LatencyCriteria",
+)
+
+proto_data(
+    name = "mobilenet_v1_1_0_224_latency_criteria",
+    src = "models/mobilenet_v1_1.0_224.textproto",
+    out = "assets/proto/mobilenet_v1_1.0_224.binarypb",
+    proto_deps = [":delegate_performance_proto"],
+    proto_name = "tflite.proto.benchmark.LatencyCriteria",
+)
+
+proto_data(
+    name = "mobilenet_v1_1_0_224_quant_latency_criteria",
+    src = "models/mobilenet_v1_1.0_224_quant.textproto",
+    out = "assets/proto/mobilenet_v1_1.0_224_quant.binarypb",
+    proto_deps = [":delegate_performance_proto"],
+    proto_name = "tflite.proto.benchmark.LatencyCriteria",
 )
 
 tflite_jni_binary(
@@ -108,14 +158,6 @@ java_lite_proto_library(
     deps = [":delegate_performance_proto"],
 )
 
-proto_data(
-    name = "default_latency_criteria",
-    src = "proto/default_latency_criteria.textproto",
-    out = "assets/proto/default_latency_criteria.binarypb",
-    proto_deps = [":delegate_performance_proto"],
-    proto_name = "tflite.proto.benchmark.LatencyCriteria",
-)
-
 cc_library(
     name = "latency_benchmark",
     srcs = ["jni/latency_benchmark.cc"],
@@ -127,6 +169,7 @@ cc_library(
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/profiling:memory_info",
         "//tensorflow/lite/tools/benchmark:benchmark_tflite_model_lib",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
 )

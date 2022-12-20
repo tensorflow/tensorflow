@@ -30,14 +30,17 @@ namespace latency {
 // directly to TFLite Benchmark Tool. Converts the "tflite_settings" to
 // command-line options to configure TFLite Benchmark Tool. If the latency
 // benchmarking uses a stable delegate, the "tflite_settings_path" is passed to
-// enable the stable delegate provider.
+// enable the stable delegate provider. The contents of the tested model are
+// initialized using model_size bytes starting at model_offset position in the
+// file referenced by the file descriptor model_fd.
 //
 // Returns a LatencyResults proto message. If the benchmark tests finish
 // successfully from TFLite Benchmark Tool, the message contains the latency
 // metrics. Otherwise, the message contains the corresponding error.
 proto::benchmark::LatencyResults Benchmark(
-    const std::vector<std::string>& args, const TFLiteSettings& tflite_settings,
-    const std::string& tflite_settings_path);
+    const TFLiteSettings& tflite_settings,
+    const std::string& tflite_settings_path, int model_fd, size_t model_offset,
+    size_t model_size, const std::vector<std::string>& args);
 
 }  // namespace latency
 }  // namespace benchmark

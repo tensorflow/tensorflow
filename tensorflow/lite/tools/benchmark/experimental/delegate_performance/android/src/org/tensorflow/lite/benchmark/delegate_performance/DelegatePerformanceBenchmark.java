@@ -31,6 +31,7 @@ import tflite.TFLiteSettings;
 class DelegatePerformanceBenchmark {
   private static final String DELEGATE_PERFORMANCE_RESULT_FOLDER = "delegate_performance_result";
   private static final String TAG = "tflite_DelegatePerformanceBenchmark";
+  private static final String MODEL_EXT = ".tflite";
 
   static {
     System.loadLibrary("tensorflowlite_delegate_performance_benchmark");
@@ -47,18 +48,41 @@ class DelegatePerformanceBenchmark {
   }
 
   /**
+   * Extracts the model name from the model file name.
+   *
+   * <p>Strips out the ".tflite" extension from the input. Returns "model" if the input filename is
+   * "model.tflite".
+   */
+  public static String getModelName(String filename) {
+    checkNotNull(filename);
+    checkArgument(filename.endsWith(MODEL_EXT));
+    return filename.substring(0, filename.length() - MODEL_EXT.length());
+  }
+
+  /**
    * Returns a {@code LatencyResults} by parsing the outcome from a TFLite Benchmark Tool execution.
    * If it fails to parse the outcome, this method returns a {@code LatencyResults} with an error
    * event type.
    */
   public static LatencyResults runLatencyBenchmark(
-      String[] args, TfLiteSettingsListEntry tfliteSettingslistEntry) {
+      String[] args,
+      TfLiteSettingsListEntry tfliteSettingslistEntry,
+      int modelFd,
+      long modelOffset,
+      long modelSize) {
     byte[] tfliteSettingsByteArray =
         new byte[tfliteSettingslistEntry.tfliteSettings().getByteBuffer().remaining()];
     tfliteSettingslistEntry.tfliteSettings().getByteBuffer().get(tfliteSettingsByteArray);
+    tfliteSettingslistEntry.tfliteSettings().getByteBuffer().rewind();
+
     byte[] latencyResultsByteArray =
         latencyBenchmarkNativeRun(
-            args, tfliteSettingsByteArray, tfliteSettingslistEntry.filePath());
+            args,
+            tfliteSettingsByteArray,
+            tfliteSettingslistEntry.filePath(),
+            modelFd,
+            modelOffset,
+            modelSize);
     try {
       return LatencyResults.parseFrom(latencyResultsByteArray);
     } catch (IOException e) {
@@ -79,6 +103,7 @@ class DelegatePerformanceBenchmark {
     byte[] tfliteSettingsByteArray =
         new byte[tfliteSettingslistEntry.tfliteSettings().getByteBuffer().remaining()];
     tfliteSettingslistEntry.tfliteSettings().getByteBuffer().get(tfliteSettingsByteArray);
+    tfliteSettingslistEntry.tfliteSettings().getByteBuffer().rewind();
 
     byte[] accuracyResultsByteArray =
         accuracyBenchmarkNativeRun(
@@ -121,8 +146,54 @@ class DelegatePerformanceBenchmark {
     return tfliteSettingsList;
   }
 
+  /**
+   * Ensures that an object reference passed as a parameter to the calling method is not null.
+   *
+   * <p>TODO(b/250876587): Consider adding proper annotation support.
+   *
+   * @param reference an object reference
+   * @return the non-null reference that was validated
+   * @throws NullPointerException if {@code reference} is null
+   */
+  public static <T> T checkNotNull(/* @Nullable */ T reference) {
+    if (reference == null) {
+      throw new NullPointerException();
+    }
+    return reference;
+  }
+
+  /**
+   * Ensures the truth of an expression involving one or more parameters to the calling method.
+   *
+   * @param expression a boolean expression
+   * @throws IllegalArgumentException if {@code expression} is false
+   */
+  public static void checkArgument(boolean expression) {
+    if (!expression) {
+      throw new IllegalArgumentException();
+    }
+  }
+
+  /**
+   * Ensures the truth of an expression involving the state of the calling instance, but not
+   * involving any parameters to the calling method.
+   *
+   * @param expression a boolean expression
+   * @throws IllegalStateException if {@code expression} is false
+   */
+  public static void checkState(boolean expression) {
+    if (!expression) {
+      throw new IllegalStateException();
+    }
+  }
+
   private static native byte[] latencyBenchmarkNativeRun(
-      String[] args, byte[] tfliteSettings, String tfliteSettingsPath);
+      String[] args,
+      byte[] tfliteSettings,
+      String tfliteSettingsPath,
+      int modelFd,
+      long modelOffset,
+      long modelSize);
 
   private static native byte[] accuracyBenchmarkNativeRun(
       byte[] tfliteSettings, int modelFd, long modelOffset, long modelSize, String resultPath);

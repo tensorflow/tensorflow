@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/jni/latency_benchmark.h"
 
+#include <fcntl.h>
+
 #include <string>
 #include <vector>
 
@@ -29,24 +31,40 @@ namespace benchmark {
 namespace latency {
 namespace {
 
-static constexpr char kGraphArgument[] =
-    "--graph=third_party/tensorflow/lite/java/demo/app/src/main/assets/"
+static constexpr char kModelPath[] =
+    "third_party/tensorflow/lite/java/demo/app/src/main/assets/"
     "mobilenet_v1_1.0_224.tflite";
 static constexpr char kSettingsFilePath[] =
     "third_party/tensorflow/lite/tools/delegates/experimental/stable_delegate/"
     "test_sample_stable_delegate_settings.json";
 
-TEST(LatencyBenchmarkTest, FailedWithMissingModel) {
-  delegates::utils::TfLiteSettingsJsonParser parser;
-  std::vector<std::string> args = {"--other_arguments=other"};
+class LatencyBenchmarkTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    model_fp_ = fopen(kModelPath, "rb");
+    ASSERT_TRUE(model_fp_ != nullptr);
+    ASSERT_EQ(fseek(model_fp_, 0, SEEK_END), 0);
+    model_size_ = ftell(model_fp_);
+    ASSERT_NE(model_size_, -1);
+    ASSERT_EQ(fseek(model_fp_, 0, SEEK_SET), 0);
+    settings_ = parser_.Parse(kSettingsFilePath);
+  }
 
-  EXPECT_TRUE(
-      Benchmark(args, *parser.Parse(kSettingsFilePath), kSettingsFilePath)
-          .has_error());
+  delegates::utils::TfLiteSettingsJsonParser parser_;
+  const TFLiteSettings* settings_;
+  size_t model_size_;
+  FILE* model_fp_;
+  std::vector<std::string> args_;
+};
+
+TEST_F(LatencyBenchmarkTest, FailedWithNullFileDescriptor) {
+  EXPECT_TRUE(Benchmark(*settings_, kSettingsFilePath,
+                        /*model_fd=*/0, /*model_offset=*/0,
+                        /*model_size=*/0, args_)
+                  .has_error());
 }
 
-TEST(LatencyBenchmarkTest, FailedWithInvalidNumThreadsSettings) {
-  std::vector<std::string> args = {kGraphArgument};
+TEST_F(LatencyBenchmarkTest, FailedWithInvalidNumThreadsSettings) {
   flatbuffers::FlatBufferBuilder fbb;
   flatbuffers::Offset<tflite::XNNPackSettings> xnnpack_settings =
       CreateXNNPackSettings(fbb, /*num_threads=*/-3);
@@ -57,17 +75,36 @@ TEST(LatencyBenchmarkTest, FailedWithInvalidNumThreadsSettings) {
   const TFLiteSettings* settings =
       flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer());
 
-  EXPECT_TRUE(Benchmark(args, *settings,
-                        /*tflite_settings_path=*/"example_path")
+  EXPECT_TRUE(Benchmark(*settings,
+                        /*tflite_settings_path=*/"example_path",
+                        fileno(model_fp_),
+                        /*model_offset=*/0, model_size_, args_)
                   .has_error());
 }
 
-TEST(LatencyBenchmarkTest, SucceedWithSampleStableDelegate) {
-  std::vector<std::string> args = {kGraphArgument};
-  delegates::utils::TfLiteSettingsJsonParser parser;
+TEST_F(LatencyBenchmarkTest, SucceedWithNullTfLiteSettingsSettings) {
+  // TODO(b/253442685): verify that the default delegate was used.
+  EXPECT_EQ(Benchmark(*settings_, kSettingsFilePath, fileno(model_fp_),
+                      /*model_offset=*/0, model_size_, args_)
+                .event_type(),
+            proto::benchmark::BENCHMARK_EVENT_TYPE_END);
+}
 
-  // TODO(b/253442685): verify that stable delegate was used.
-  EXPECT_EQ(Benchmark(args, *parser.Parse(kSettingsFilePath), kSettingsFilePath)
+TEST_F(LatencyBenchmarkTest, SucceedWithSampleStableDelegate) {
+  // TODO(b/253442685): verify that the stable delegate was used.
+  EXPECT_EQ(Benchmark(*settings_, kSettingsFilePath, fileno(model_fp_),
+                      /*model_offset=*/0, model_size_, args_)
+                .event_type(),
+            proto::benchmark::BENCHMARK_EVENT_TYPE_END);
+}
+
+TEST_F(LatencyBenchmarkTest,
+       SucceedWithSampleStableDelegateAndBenchmarkToolArguments) {
+  std::vector<std::string> args = {"--warmup_runs=10"};
+
+  // TODO(b/253442685): verify that the stable delegate was used.
+  EXPECT_EQ(Benchmark(*settings_, kSettingsFilePath, fileno(model_fp_),
+                      /*model_offset=*/0, model_size_, args)
                 .event_type(),
             proto::benchmark::BENCHMARK_EVENT_TYPE_END);
 }

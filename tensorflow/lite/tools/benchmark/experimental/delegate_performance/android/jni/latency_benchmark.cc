@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/util/stats_calculator.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
@@ -195,19 +196,22 @@ std::vector<std::string> ParseArgumentsFromTfLiteSettings(
 }  // namespace
 
 proto::benchmark::LatencyResults Benchmark(
-    const std::vector<std::string>& args, const TFLiteSettings& tflite_settings,
-    const std::string& tflite_settings_path) {
+    const TFLiteSettings& tflite_settings,
+    const std::string& tflite_settings_path, int model_fd, size_t model_offset,
+    size_t model_size, const std::vector<std::string>& args) {
   // Constructs a fake argv command-line object for the benchmark.
   std::vector<char*> argv;
   argv.push_back(const_cast<char*>(kBenchmarkToolName));
-  // TODO(b/250877013): Remove the "args" argument here by using model file
-  // descriptors for latency benchmarking.
-  for (const std::string& arg : args) {
-    argv.push_back(const_cast<char*>(arg.data()));
-  }
+  std::string arg_graph =
+      absl::StrCat("--graph=fd:", model_fd, ":", model_offset, ":", model_size);
+  argv.push_back(const_cast<char*>(arg_graph.data()));
   std::vector<std::string> args_from_tflite_settings =
       ParseArgumentsFromTfLiteSettings(tflite_settings, tflite_settings_path);
   for (const std::string& arg : args_from_tflite_settings) {
+    argv.push_back(const_cast<char*>(arg.data()));
+  }
+  // Keep the args here for any additional TFLite Benchmark Tool configurations.
+  for (const std::string& arg : args) {
     argv.push_back(const_cast<char*>(arg.data()));
   }
 

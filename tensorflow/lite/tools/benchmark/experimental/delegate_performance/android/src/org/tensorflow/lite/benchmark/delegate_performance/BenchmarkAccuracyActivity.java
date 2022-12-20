@@ -41,10 +41,10 @@ import tflite.BenchmarkEvent;
  * metric thresholds in all models.
  *
  * <p>Generates a CSV file for each model to describe the benchmark results under
- * delegate_performance_result/accuracy/<MODEL_NAME> folder in the app files directory.
+ * delegate_performance_result/accuracy folder in the app files directory.
  *
  * <ul>
- *   <li>1. delegate_performance_result/accuracy/<MODEL_NAME>/report.csv: the performance of each
+ *   <li>1. delegate_performance_result/accuracy/<MODEL_NAME>.csv: the performance of each
  *       acceleration configuration and relative performance differences in percentage values.
  * </ul>
  */
@@ -55,6 +55,8 @@ public class BenchmarkAccuracyActivity extends Activity {
   private static final String TFLITE_SETTINGS_FILES_INTENT_KEY_0 = "--tflite_settings_files";
   // The test target entry is the second item in the TfLiteSettingsListEntry list.
   private static final int TEST_TARGET_ENTRY_INDEX = 1;
+
+  private String resultFolderPath;
 
   @Override
   public void onCreate(Bundle savedInstanceState) {
@@ -72,8 +74,9 @@ public class BenchmarkAccuracyActivity extends Activity {
 
     try {
       // Creates root result folder.
-      DelegatePerformanceBenchmark.createResultFolder(
-          getApplicationContext().getFilesDir(), ACCURACY_FOLDER_NAME);
+      resultFolderPath =
+          DelegatePerformanceBenchmark.createResultFolder(
+              getApplicationContext().getFilesDir(), ACCURACY_FOLDER_NAME);
     } catch (IOException e) {
       Log.e(TAG, "Failed to create result folder", e);
       finish();
@@ -111,13 +114,14 @@ public class BenchmarkAccuracyActivity extends Activity {
         Log.i(TAG, asset + " is not a model file. Skipping.");
         continue;
       }
-      String resultPath;
+      String modelResultPath;
+      String modelName = DelegatePerformanceBenchmark.getModelName(asset);
       try {
-        resultPath =
+        modelResultPath =
             DelegatePerformanceBenchmark.createResultFolder(
-                getApplicationContext().getFilesDir(), ACCURACY_FOLDER_NAME + "/" + asset);
+                getApplicationContext().getFilesDir(), ACCURACY_FOLDER_NAME + "/" + modelName);
       } catch (IOException e) {
-        Log.e(TAG, "Failed to create result folder for " + asset, e);
+        Log.e(TAG, "Failed to create result folder for " + modelName, e);
         passed = false;
         break;
       }
@@ -131,14 +135,15 @@ public class BenchmarkAccuracyActivity extends Activity {
                   modelFileDescriptor.getParcelFileDescriptor().getFd(),
                   modelFileDescriptor.getStartOffset(),
                   modelFileDescriptor.getLength(),
-                  resultPath);
+                  modelResultPath);
           Trace.endSection();
 
           tfliteSettingsListEntry.setAccuracyResults(benchmarkEvent);
         }
 
         passed &= targetEntry.metrics().containsKey("ok") && targetEntry.metrics().get("ok") > 0;
-        CsvWriter.writeReport(tfliteSettingsList, resultPath + "/report.csv");
+        CsvWriter.writeReport(
+            tfliteSettingsList, String.format("%s/%s.csv", resultFolderPath, modelName));
       } catch (IOException e) {
         Log.e(TAG, "Failed to open assets file " + asset, e);
         passed = false;

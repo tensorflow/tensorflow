@@ -65,7 +65,8 @@ extern "C" {
 JNIEXPORT jbyteArray JNICALL
 Java_org_tensorflow_lite_benchmark_delegateperformance_DelegatePerformanceBenchmark_latencyBenchmarkNativeRun(
     JNIEnv* env, jclass clazz, jobjectArray args_obj,
-    jbyteArray tflite_settings_byte_array, jstring tflite_settings_path_obj) {
+    jbyteArray tflite_settings_byte_array, jstring tflite_settings_path_obj,
+    jint model_fd, jlong model_offset, jlong model_size) {
   std::vector<std::string> args = toStringVector(env, args_obj);
   const char* tflite_settings_path_chars =
       env->GetStringUTFChars(tflite_settings_path_obj, nullptr);
@@ -76,8 +77,10 @@ Java_org_tensorflow_lite_benchmark_delegateperformance_DelegatePerformanceBenchm
           reinterpret_cast<const char*>(tflite_settings_bytes));
 
   tflite::proto::benchmark::LatencyResults results =
-      tflite::benchmark::latency::Benchmark(args, *tflite_settings,
-                                            tflite_settings_path_chars);
+      tflite::benchmark::latency::Benchmark(
+          *tflite_settings, tflite_settings_path_chars,
+          static_cast<int>(model_fd), static_cast<size_t>(model_offset),
+          static_cast<size_t>(model_size), args);
 
   env->ReleaseByteArrayElements(tflite_settings_byte_array,
                                 tflite_settings_bytes, JNI_ABORT);
