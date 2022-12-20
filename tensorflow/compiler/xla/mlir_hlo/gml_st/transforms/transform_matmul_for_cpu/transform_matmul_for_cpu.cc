@@ -286,8 +286,44 @@ struct MatmulToMmt4dPattern : public OpRewritePattern<linalg::MatmulOp> {
       return failure();
     }
 
-    const auto &tileParams =
-        Mmt4DTileParams({8, 1, 8}, "f32*f32->f32, generic");
+    ShapedType lhsType = lhs.getType().cast<ShapedType>();
+    ShapedType rhsType = rhs.getType().cast<ShapedType>();
+    int64_t shapeM = lhsType.getShape()[0];
+    int64_t shapeN = rhsType.getShape()[1];
+    auto chooseMatMulOrMatVec = [=](ArrayRef<int> m0k0n0,
+                                    ArrayRef<int> m0k0n0ForMatVec,
+                                    ArrayRef<int> m0k0n0ForWhenRhsHas2Columns,
+                                    std::string comment) {
+      assert(m0k0n0ForMatVec[2] == 1 && "not a matrix*vector shape");
+      assert(m0k0n0ForWhenRhsHas2Columns[2] == 2 &&
+             "N=2 is expected when RHS has 2 columns");
+
+      SmallVector<int> params;
+      if (shapeN == 1 || shapeM == 1) {
+        params.assign(m0k0n0ForMatVec.begin(), m0k0n0ForMatVec.end());
+      } else if (shapeN == 2 || shapeM == 2) {
+        params.assign(m0k0n0ForWhenRhsHas2Columns.begin(),
+                      m0k0n0ForWhenRhsHas2Columns.end());
+      } else {
+        return Mmt4DTileParams(m0k0n0, comment);
+      }
+
+      if (shapeN == 1 || shapeN == 2) {
+        comment += ", matrix * narrow matrix, where the narrow matrix has " +
+                   std::to_string(shapeN) + " column(s)";
+      } else {
+        // The vector*matrix case is intentionally derived from the
+        // matrix*vector case by swapping M and N dims so that in kernel
+        // codegen we can reuse matrix*vector kernels by swapping LHS and RHS.
+        std::swap(params[0], params[2]);
+        comment += ", narrow matrix * matrix, where the narrow matrix has " +
+                   std::to_string(shapeM) + " column(s)";
+      }
+      return Mmt4DTileParams(params, comment);
+    };
+
+    const auto &tileParams = chooseMatMulOrMatVec(
+        {8, 1, 8}, {8, 1, 1}, {8, 1, 2}, "f32*f32->f32, generic");
 
     Value paddedLhs = pad(loc, rewriter, lhs, tileParams.lhs());
     Value paddedRhs = pad(loc, rewriter, rhs, tileParams.rhs());
@@ -615,12 +651,7 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
 
     // Peel parallel loops.
     //
-    // We only want to eventually vectorize the main for loop inside the main
-    // parallel loop (our matmul kernel). Mark all other loops as vectorized.
-    //
-    // We only want to peel (1) the parallel loop then (2) our kernel, mark all
-    // for loops inside remainder parallel loops as peeled to prevent downstream
-    // peeling pass from peeling them.
+    // We only want to peel (1) the parallel loop then (2) our kernel.
     if (auto loop =
             dyn_cast_or_null<ParallelOp>(tilingParallelDimsResult->loop)) {
       auto peelingResult = peelAllLoops(loop, rewriter);
@@ -745,7 +776,6 @@ struct TransformMatmulForCpuPass
     }
   }
 };
-
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
