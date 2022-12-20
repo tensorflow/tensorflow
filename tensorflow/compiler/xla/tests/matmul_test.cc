@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 
 namespace xla {
 namespace {
@@ -36,6 +37,15 @@ class MatmulTestWithCublas : public HloTestBase,
 
  private:
   const bool use_cublas_lt_{GetParam()};
+  bool tf32_init_state_;
+ protected:
+  void SetUp() override {
+    tf32_init_state_ = tsl::tensor_float_32_execution_enabled();
+    tsl::enable_tensor_float_32_execution(false);
+  }
+  void TearDown() override {
+    tsl::enable_tensor_float_32_execution(tf32_init_state_);
+  }
 };
 
 // There was an issue where the compilation process of an Inverse operation was
