@@ -1,8 +1,5 @@
 # Description: GPU-specific XLA tests. For example, codegen tests that
 # verify the IR emitted.
-#
-# TODO(jlebar): None of these tests actually use the GPU, so they should not
-# need to run on machines with GPUs present.
 
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
@@ -886,4 +883,26 @@ xla_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/tsl/platform:test_main",
     ],
+)
+
+xla_cc_test(
+    name = "dynamic_shared_memory_test",
+    srcs = if_cuda_is_configured(["dynamic_shared_memory_test.cc"]),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "@com_google_absl//absl/strings",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/tsl/platform:test",
+    ] + if_cuda_is_configured([
+        "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler",
+        "//tensorflow/compiler/xla/service/gpu:gpu_asm_opts_util",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
+        "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
+        "//tensorflow/compiler/xla/stream_executor:device_memory",
+    ]),
 )

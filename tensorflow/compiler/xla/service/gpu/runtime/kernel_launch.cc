@@ -64,7 +64,7 @@ static absl::Status LaunchImpl(
 
   const int args_size_including_temp_buffer = args.size() + 1;
 
-  // If kernel does not exists create it from the ptx and cubin.
+  // If kernel does not exist create it from the ptx and cubin.
   absl::StatusOr<std::unique_ptr<se::KernelBase>*> kernel =
       device_kernel.GetOrCreate([&] {
         return ToAbsl(CreateKernel(absl::string_view(name.data(), name.size()),
