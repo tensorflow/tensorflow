@@ -127,6 +127,17 @@ void MaybeDropEventsForTraceViewer(Trace* trace, uint32 limit) {
                       trace_events->end());
 }
 
+uint64 GetViewerMaxEvents() {
+  constexpr uint64 kMaxEvents = 1000000;
+  // Testing only env variable, not recommended for use
+  char* max_events = getenv("PROFILER_VIEW_MAX_EVENTS");
+  if (max_events != nullptr) {
+    return std::stoull(max_events, nullptr, 10);
+  } else {
+    return kMaxEvents;
+  }
+}
+
 void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
   const XPlane* host_plane = FindPlaneWithName(xspace, kHostThreadsPlaneName);
   if (host_plane != nullptr) {
@@ -151,8 +162,8 @@ void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
 
   // Trace viewer (non-streaming) has scalability issues, we need to drop
   // events to avoid loading failure for trace viewer.
-  constexpr uint64 kMaxEvents = 1000000;
-  MaybeDropEventsForTraceViewer(trace, kMaxEvents);
+  uint64 viewer_max_events = GetViewerMaxEvents();
+  MaybeDropEventsForTraceViewer(trace, viewer_max_events);
 }
 
 void ConvertXSpaceToTraceEventsString(const XSpace& xspace,
