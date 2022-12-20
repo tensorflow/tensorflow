@@ -75,6 +75,7 @@ class KernelThunk : public Thunk {
     return launch_dimensions_;
   }
   absl::Span<const mlir::Value> values() const { return values_; }
+  uint32_t shared_mem_bytes() const { return 0; }
 
  private:
   // Buffers passed to the kernel as arguments.

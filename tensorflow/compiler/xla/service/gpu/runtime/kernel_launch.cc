@@ -50,9 +50,10 @@ StreamExecutorKernels* GpuExecutableKernels::operator()(
 static absl::Status LaunchImpl(
     const ServiceExecutableRunOptions* run_options, const std::string* ptx,
     const std::vector<uint8_t>* cubin, se::DeviceMemoryBase* temp_buffer,
-    State<std::unique_ptr<se::KernelBase>> device_kernel, int32_t grid_size_x,
-    int32_t grid_size_y, int32_t grid_size_z, int32_t block_size_x,
-    int32_t block_size_y, int32_t block_size_z, CustomCall::RemainingArgs args,
+    State<std::unique_ptr<se::KernelBase>> device_kernel,
+    int32_t shared_memory_bytes, int32_t grid_size_x, int32_t grid_size_y,
+    int32_t grid_size_z, int32_t block_size_x, int32_t block_size_y,
+    int32_t block_size_z, CustomCall::RemainingArgs args,
     std::string_view name) {
   se::Stream* stream = run_options->stream();
   se::StreamExecutor* executor = stream->parent();
@@ -112,6 +113,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .UserData<const std::vector<uint8_t>*>()
         .UserData<se::DeviceMemoryBase*>()
         .State<std::unique_ptr<se::KernelBase>>("uid")
+        .Arg<int32_t>()   // shared_memory_bytes
         .Arg<int32_t>()   // grid_size_x
         .Arg<int32_t>()   // grid_size_y
         .Arg<int32_t>()   // grid_size_z
