@@ -37,6 +37,9 @@ class NoopStats : public CompilationStats {
   void CompilationReport() override {}
 
   int GetPassesSize() override { return 0; }
+
+  void RecordPassError(absl::string_view pass_name,
+                       absl::string_view err) override{};
 };
 
 class Stats : public CompilationStats {
@@ -50,6 +53,9 @@ class Stats : public CompilationStats {
   void CompilationReport() override;
 
   int GetPassesSize() override;
+
+  void RecordPassError(absl::string_view pass_name,
+                       absl::string_view err) override{};
 
  private:
   struct PassInfo {
