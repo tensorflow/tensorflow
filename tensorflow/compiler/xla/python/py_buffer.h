@@ -106,18 +106,7 @@ class PyBuffer {
       throw XlaRuntimeError(
           "This operation is implemented for a PjRt-compatible backend only.");
     }
-    auto ifrt_array = xla::ifrt::PjRtArray::Create(client, std::move(buffer));
-    TF_CHECK_OK(ifrt_array.status());
-    ifrt_array_ = *std::move(ifrt_array);
-  }
-  void SetPjRtBuffer(std::unique_ptr<PjRtBuffer> buffer) {
-    auto* client = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(
-        client_->ifrt_client());
-    if (client == nullptr) {
-      throw XlaRuntimeError(
-          "This operation is implemented for a PjRt-compatible backend only.");
-    }
-    auto ifrt_array = xla::ifrt::PjRtArray::Create(client, std::move(buffer));
+    auto ifrt_array = client->CreatePjRtArray(std::move(buffer));
     TF_CHECK_OK(ifrt_array.status());
     ifrt_array_ = *std::move(ifrt_array);
   }

@@ -39,6 +39,20 @@ std::unique_ptr<ifrt::Client> PjRtClient::Create(
   return Create(std::shared_ptr<xla::PjRtClient>(pjrt_client.release()));
 }
 
+StatusOr<tsl::RCReference<PjRtCompatibleArray>> PjRtClient::CreatePjRtArray(
+    std::shared_ptr<PjRtBuffer> pjrt_buffer) {
+  TF_ASSIGN_OR_RETURN(auto array,
+                      PjRtArray::Create(this, std::move(pjrt_buffer)));
+  return tsl::RCReference<PjRtCompatibleArray>(std::move(array));
+}
+
+StatusOr<tsl::RCReference<PjRtCompatibleArray>> PjRtClient::CreatePjRtArray(
+    Shape shape, PjRtBuffers pjrt_buffers) {
+  TF_ASSIGN_OR_RETURN(auto array, PjRtArray::Create(this, std::move(shape),
+                                                    std::move(pjrt_buffers)));
+  return tsl::RCReference<PjRtCompatibleArray>(std::move(array));
+}
+
 StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
     const void* data, DType dtype, Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides,

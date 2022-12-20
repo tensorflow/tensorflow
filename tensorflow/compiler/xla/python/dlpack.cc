@@ -428,9 +428,8 @@ StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
     throw XlaRuntimeError(
         "This operation is implemented for a PjRt-compatible backend only.");
   }
-  TF_ASSIGN_OR_RETURN(
-      auto ifrt_array,
-      ifrt::PjRtArray::Create(ifrt_client, std::move(pjrt_buffer)));
+  TF_ASSIGN_OR_RETURN(auto ifrt_array,
+                      ifrt_client->CreatePjRtArray(std::move(pjrt_buffer)));
   return PyBuffer::Make(std::move(client), std::move(ifrt_array),
                         Traceback::Get());
 }

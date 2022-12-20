@@ -32,14 +32,24 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
+class PjRtCompatibleArray;
+
 // PjRt-compatible `Client` interface.
 class PjRtCompatibleClient
     : public llvm::RTTIExtends<PjRtCompatibleClient, Client> {
  public:
+  static constexpr int kPjRtBufferInlineSize = 1;
+  using PjRtBuffers =
+      absl::InlinedVector<std::shared_ptr<PjRtBuffer>, kPjRtBufferInlineSize>;
+
   // APIs that allow direct access to `xla::PjRtClient` for PjRt-only
   // operations.
   virtual xla::PjRtClient* pjrt_client() = 0;
   virtual std::shared_ptr<xla::PjRtClient> shared_ptr_pjrt_client() = 0;
+  virtual StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
+      std::shared_ptr<PjRtBuffer> pjrt_buffer) = 0;
+  virtual StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
+      Shape shape, PjRtBuffers pjrt_buffers) = 0;
 };
 
 // `Client` implementation that wraps `xla::PjRtClient`.
@@ -57,6 +67,10 @@ class PjRtClient final
   std::shared_ptr<xla::PjRtClient> shared_ptr_pjrt_client() override {
     return pjrt_client_;
   }
+  StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
+      std::shared_ptr<PjRtBuffer> pjrt_buffer) override;
+  StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
+      Shape shape, PjRtBuffers pjrt_buffers) override;
 
   // Client implementation.
 

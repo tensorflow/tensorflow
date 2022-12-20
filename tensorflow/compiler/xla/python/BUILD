@@ -363,7 +363,6 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@dlpack",

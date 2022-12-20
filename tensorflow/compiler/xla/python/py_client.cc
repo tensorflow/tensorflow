@@ -372,8 +372,8 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
       throw XlaRuntimeError(
           "This operation is implemented for a PjRt-compatible backend only.");
     }
-    TF_ASSIGN_OR_RETURN(auto ifrt_array, xla::ifrt::PjRtArray::Create(
-                                             client, std::move(buffers[i])));
+    TF_ASSIGN_OR_RETURN(auto ifrt_array,
+                        client->CreatePjRtArray(std::move(buffers[i])));
     auto py_buf =
         PyBuffer::Make(shared_from_this(), std::move(ifrt_array), traceback);
     result.push_back(std::make_pair(std::move(py_desc), std::move(py_buf)));
