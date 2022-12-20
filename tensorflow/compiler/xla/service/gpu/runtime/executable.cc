@@ -192,7 +192,7 @@ GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
 
   // Do not run expensive optimization passes because we do not expect any
   // non-trivial host code in XLA:GPU host executables.
-  opts.compiler.jit_code_opt_level = llvm::CodeGenOpt::Less;
+  opts.compiler.jit_code_opt_level = llvm::CodeGenOpt::None;
 
   // Instantiate new JitExecutable from the MLIR source.
   auto jit_executable =

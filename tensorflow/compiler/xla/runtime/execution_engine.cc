@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/TargetSelect.h"
@@ -142,10 +143,8 @@ static absl::Status SetUpExportedFunction(llvm::Module &module,
   for (auto &indexed_arg : llvm::enumerate(func->args())) {
     llvm::Type *art_ty = indexed_arg.value().getType();
 
-    llvm::Value *arg_idx = llvm::Constant::getIntegerValue(
-        builder.getInt64Ty(), llvm::APInt(64, indexed_arg.index()));
-    llvm::Value *arg_ptr_gep =
-        builder.CreateGEP(builder.getPtrTy(), packed_args, arg_idx);
+    llvm::Value *arg_ptr_gep = builder.CreateConstGEP1_64(
+        builder.getPtrTy(), packed_args, indexed_arg.index());
     llvm::LoadInst *arg_ptr_load =
         builder.CreateLoad(builder.getPtrTy(), arg_ptr_gep);
     llvm::LoadInst *arg_load = builder.CreateLoad(art_ty, arg_ptr_load);
@@ -175,8 +174,16 @@ static absl::Status SetUpExportedFunction(llvm::Module &module,
     if (is_coro) callee->setPresplitCoroutine();
   }
 
-  // Move loads used only once into the entry block where they are used.
+  // Clean up loads from the packed argument pointer.
   for (auto &[ptr_load, arg_load] : args) {
+    // Dead argument elimination after inlining.
+    if (arg_load->use_empty()) {
+      arg_load->eraseFromParent();
+      ptr_load->eraseFromParent();
+      continue;
+    }
+
+    // Move loads used only once into the entry block where they are used.
     if (!arg_load->hasOneUser()) continue;
 
     for (llvm::User *user : arg_load->users()) {
@@ -271,9 +278,14 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
           status.message());
   }
 
-  // Run an optimization pipeline over the LLVM module.
+  // Run an optimization pipeline over the LLVM module (alway run with default
+  // opt level independent of the options).
+  //
+  // TODO(ezhulenev): We should have out own optimizing transformer pipelines
+  // for different Xla backends, e.g. there is absolutely no need to run
+  // SLV vectorizer for Xla Gpi host side executable.
   auto transformer = options.make_optimizing_transformer(
-      options.opt_level, /*sizeLevel=*/0, options.target_machine);
+      llvm::CodeGenOpt::Default, /*sizeLevel=*/0, options.target_machine);
   if (auto err = transformer(module_ptr))
     return InternalError("failed to run optimization pipeline: %s",
                          ToString(err));
