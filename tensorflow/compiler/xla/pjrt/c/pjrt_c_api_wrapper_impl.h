@@ -203,6 +203,87 @@ std::string StructSizeErrorMsg(absl::string_view struct_name,
 // Returns a specific error message when the program format is unknown.
 // Does not check the program format itself.
 std::string ProgramFormatErrorMsg(absl::string_view program_format);
+
+// Creates a C PJRT client from a C++ PJRT client and creates C PJRT devices
+// from cpp_client's devices. The returned client is owned by the caller and
+// should be destroyed with PJRT_Client_Destroy.
+PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client);
+
+// Creates a PJRT_Api with create_fn from the input and other functions in
+// pjrt_c_api_wrapper_impl.
+constexpr PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn) {
+  return PJRT_Api{
+      .struct_size = PJRT_Api_STRUCT_SIZE,
+      .priv = nullptr,
+
+      .PJRT_Error_Destroy = pjrt::PJRT_Error_Destroy,
+      .PJRT_Error_Message = pjrt::PJRT_Error_Message,
+      .PJRT_Error_GetCode = pjrt::PJRT_Error_GetCode,
+
+      .PJRT_Event_Destroy = pjrt::PJRT_Event_Destroy,
+      .PJRT_Event_IsReady = pjrt::PJRT_Event_IsReady,
+      .PJRT_Event_Error = pjrt::PJRT_Event_Error,
+      .PJRT_Event_Await = pjrt::PJRT_Event_Await,
+      .PJRT_Event_OnReady = pjrt::PJRT_Event_OnReady,
+
+      .PJRT_Client_Create = create_fn,
+      .PJRT_Client_Destroy = pjrt::PJRT_Client_Destroy,
+      .PJRT_Client_PlatformName = pjrt::PJRT_Client_PlatformName,
+      .PJRT_Client_ProcessIndex = pjrt::PJRT_Client_ProcessIndex,
+      .PJRT_Client_PlatformVersion = pjrt::PJRT_Client_PlatformVersion,
+      .PJRT_Client_Devices = pjrt::PJRT_Client_Devices,
+      .PJRT_Client_AddressableDevices = pjrt::PJRT_Client_AddressableDevices,
+      .PJRT_Client_LookupDevice = pjrt::PJRT_Client_LookupDevice,
+      .PJRT_Client_Compile = pjrt::PJRT_Client_Compile,
+      .PJRT_Client_DefaultDeviceAssignment =
+          pjrt::PJRT_Client_DefaultDeviceAssignment,
+      .PJRT_Client_BufferFromHostBuffer =
+          pjrt::PJRT_Client_BufferFromHostBuffer,
+
+      .PJRT_Device_Id = pjrt::PJRT_Device_Id,
+      .PJRT_Device_ProcessIndex = pjrt::PJRT_Device_ProcessIndex,
+      .PJRT_Device_IsAddressable = pjrt::PJRT_Device_IsAddressable,
+      .PJRT_Device_Attributes = pjrt::PJRT_Device_Attributes,
+      .PJRT_Device_Kind = pjrt::PJRT_Device_Kind,
+      .PJRT_Device_LocalHardwareId = pjrt::PJRT_Device_LocalHardwareId,
+      .PJRT_Device_DebugString = pjrt::PJRT_Device_DebugString,
+      .PJRT_Device_ToString = pjrt::PJRT_Device_ToString,
+
+      .PJRT_Executable_Destroy = pjrt::PJRT_Executable_Destroy,
+      .PJRT_Executable_Name = pjrt::PJRT_Executable_Name,
+      .PJRT_Executable_AddressableDevices =
+          pjrt::PJRT_Executable_AddressableDevices,
+      .PJRT_Executable_NumOutputs = pjrt::PJRT_Executable_NumOutputs,
+      .PJRT_Executable_SizeOfGeneratedCodeInBytes =
+          pjrt::PJRT_Executable_SizeOfGeneratedCodeInBytes,
+      .PJRT_Executable_OptimizedProgram =
+          pjrt::PJRT_Executable_OptimizedProgram,
+      .PJRT_Executable_GetCostAnalysis = pjrt::PJRT_Executable_GetCostAnalysis,
+      .PJRT_Executable_Delete = pjrt::PJRT_Executable_Delete,
+      .PJRT_Executable_IsDeleted = pjrt::PJRT_Executable_IsDeleted,
+      .PJRT_Executable_Execute = pjrt::PJRT_Executable_Execute,
+      .PJRT_Executable_Serialize = pjrt::PJRT_Executable_Serialize,
+      .PJRT_Executable_Deserialize = pjrt::PJRT_Executable_Deserialize,
+
+      .PJRT_SerializedExecutable_Destroy =
+          pjrt::PJRT_SerializedExecutable_Destroy,
+      .PJRT_SerializedExecutable_Data = pjrt::PJRT_SerializedExecutable_Data,
+
+      .PJRT_Buffer_Destroy = pjrt::PJRT_Buffer_Destroy,
+      .PJRT_Buffer_OnDeviceTrimmedShape =
+          pjrt::PJRT_Buffer_OnDeviceTrimmedShape,
+      .PJRT_Buffer_OnDeviceSizeInBytes = pjrt::PJRT_Buffer_OnDeviceSizeInBytes,
+      .PJRT_Buffer_Device = pjrt::PJRT_Buffer_Device,
+      .PJRT_Buffer_Delete = pjrt::PJRT_Buffer_Delete,
+      .PJRT_Buffer_IsDeleted = pjrt::PJRT_Buffer_IsDeleted,
+      .PJRT_Buffer_CopyToDevice = pjrt::PJRT_Buffer_CopyToDevice,
+      .PJRT_Buffer_ToHostBuffer = pjrt::PJRT_Buffer_ToHostBuffer,
+      .PJRT_Buffer_IsOnCpu = pjrt::PJRT_Buffer_IsOnCpu,
+      .PJRT_Buffer_ReadyEvent = pjrt::PJRT_Buffer_ReadyEvent,
+      .PJRT_Buffer_UnsafePointer = pjrt::PJRT_Buffer_UnsafePointer,
+  };
+}
+
 }  // namespace pjrt
 
 #endif  // TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_WRAPPER_IMPL_H_
