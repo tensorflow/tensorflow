@@ -81,11 +81,12 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
   buffers.reserve(arrays.size());
   DType dtype = arrays[0]->dtype();
   for (int i = 0; i < arrays.size(); ++i) {
-    if (!llvm::isa<PjRtArray>(arrays[i].get())) {
-      return InvalidArgument("Only PjRtArray is supported: arrays[%d]=%s", i,
-                             arrays[i]->DebugString());
+    if (!llvm::isa<PjRtCompatibleArray>(arrays[i].get())) {
+      return InvalidArgument(
+          "Only PjRtCompatibleArray is supported: arrays[%d]=%s", i,
+          arrays[i]->DebugString());
     }
-    auto* array = static_cast<PjRtArray*>(arrays[i].get());
+    auto* array = static_cast<PjRtCompatibleArray*>(arrays[i].get());
     if (array->dtype() != dtype) {
       return InvalidArgument(
           "Every input must have the same dtype: %s (shard 0) vs. %s (shard "

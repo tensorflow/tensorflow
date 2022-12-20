@@ -275,10 +275,11 @@ StatusOr<PjRtLoadedExecutable::ExecuteResult> PjRtLoadedExecutable::Execute(
     argument_handles[i].reserve(args.size());
   }
   for (int i = 0; i < args.size(); ++i) {
-    auto* pjrt_array = llvm::dyn_cast_or_null<PjRtArray>(args[i].get());
+    auto* pjrt_array =
+        llvm::dyn_cast_or_null<PjRtCompatibleArray>(args[i].get());
     if (!pjrt_array) {
       return InvalidArgument(
-          "Only PjRtArray is supported, but argument %d is %s", i,
+          "Only PjRtCompatibleArray is supported, but argument %d is %s", i,
           pjrt_array->DebugString());
     }
     int j = 0;
