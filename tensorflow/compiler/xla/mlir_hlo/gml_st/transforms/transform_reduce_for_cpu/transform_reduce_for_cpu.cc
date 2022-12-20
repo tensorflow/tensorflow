@@ -41,7 +41,7 @@ namespace {
 #define GEN_PASS_DEF_TRANSFORMREDUCEFORCPUPASS
 #include "gml_st/transforms/passes.h.inc"
 
-static constexpr llvm::StringRef kReduceTransformedLabel =
+constexpr llvm::StringRef kReduceTransformedLabel =
     "__reduce_transformed_label__";
 
 FailureOr<TilingResult> tileReduce(PatternRewriter &rewriter,
@@ -293,75 +293,146 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     if (failed(validateOp(reduceOp, rewriter, /*expectedRank=*/2)))
       return failure();
 
+    auto cluster = getFusionCluster(reduceOp);
+    auto fusionCluster = cluster.operations;
+    auto *tilingRoot = cluster.root;
+    if (!isa<linalg::MapOp>(tilingRoot) && !isa<linalg::ReduceOp>(tilingRoot))
+      return rewriter.notifyMatchFailure(
+          tilingRoot,
+          "Expected MapOp or ReduceOp as a root of fusion cluster.");
+
     // First level tiling: parallel dimension.
     auto tilingParallelDimsResult =
-        tileReduce(rewriter, reduceOp,
-                   getParallelDimTileSizes(reduceOp.getDimensions()[0],
-                                           parallelDimTileSize),
-                   /*distribute=*/true);
+        tileParallelDimensions(tilingRoot, rewriter);
     if (failed(tilingParallelDimsResult)) return failure();
 
     // Update the results if tiling occurred.
-    if (tilingParallelDimsResult->loop != nullptr) {
-      rewriter.replaceOp(reduceOp,
-                         tilingParallelDimsResult->loop->getResults());
-      reduceOp =
-          cast<linalg::ReduceOp>(tilingParallelDimsResult->tiledOps.front());
-      // Fuse linalg.map ops into the loop.
-      fuseGreedily(rewriter, *reduceOp->getBlock(),
-                   [](Operation *op) { return isa<linalg::MapOp>(op); });
-    }
+    rewriter.replaceOp(tilingRoot,
+                       tilingParallelDimsResult->loop->getResults());
+    tilingRoot = (tilingParallelDimsResult->tiledOps.front());
 
-    // Fusion into the output.
-    OpOperand *reduceOutput = reduceOp.getDpsInitOperand(0);
-    auto materialize = reduceOutput->get().getDefiningOp<MaterializeOp>();
-    if (!materialize) {
-      return rewriter.notifyMatchFailure(
-          reduceOp,
-          "has failed to 'materialize' output during 'linalg.fill' fusion.");
-    }
-    if (materialize.getSource().getDefiningOp<linalg::FillOp>()) {
-      if (failed(fuse(rewriter, materialize))) return failure();
-    }
+    // Fuse greedily into root op.
+    fuseGreedily(rewriter, *tilingRoot->getBlock(),
+                 [&](Operation *op) { return fusionCluster.contains(op); });
 
-    // Second level tiling: reduction dimension.
-    auto tilingReductionDimsResult =
-        tileReduce(rewriter, reduceOp,
-                   getReductionDimTileSizes(reduceOp.getDimensions()[0],
-                                            reductionDimTileSize),
-                   /*distribute=*/false);
-    if (failed(tilingReductionDimsResult)) return failure();
+    // Process all reduces in a fusion cluster.
+    for (auto op :
+         llvm::to_vector(tilingRoot->getBlock()->getOps<linalg::ReduceOp>())) {
+      // Fuse Fill.
+      if (failed(fuseOutputFill(rewriter, op))) return failure();
 
-    // Update the results if tiling occurred.
-    if (tilingReductionDimsResult->loop != nullptr) {
-      rewriter.replaceOp(reduceOp,
-                         tilingReductionDimsResult->loop->getResults());
-      reduceOp =
-          cast<linalg::ReduceOp>(tilingReductionDimsResult->tiledOps.front());
-      // Fuse linalg.map ops into the loop.
-      fuseGreedily(rewriter, *reduceOp->getBlock(),
-                   [](Operation *op) { return isa<linalg::MapOp>(op); });
-    }
+      // Second level tiling: reduction dimension.
+      auto tilingReductionDimsResult = tileReductionDims(rewriter, op);
+      if (failed(tilingReductionDimsResult)) return failure();
 
-    setLabel(reduceOp, kReduceTransformedLabel);
+      // Update the results if tiling occurred.
+      if (tilingReductionDimsResult->loop != nullptr) {
+        rewriter.replaceOp(op, tilingReductionDimsResult->loop->getResults());
+        op =
+            cast<linalg::ReduceOp>(tilingReductionDimsResult->tiledOps.front());
+        fuseGreedily(rewriter, *op->getBlock(),
+                     [&](Operation *op) { return isa<linalg::MapOp>(op); });
+      }
+      setLabel(op, kReduceTransformedLabel);
 
-    // Peel parallel loops.
-    if (auto loop =
-            dyn_cast_or_null<ParallelOp>(tilingParallelDimsResult->loop)) {
-      auto peelingResult = peelAllLoops(loop, rewriter);
-    }
-
-    // Peel reduction loop inside the main parallel loop, label the main loop as
-    // "perfectly tiled" one, to enable vectorization after canonicalization.
-    if (auto loop = dyn_cast_or_null<ForOp>(tilingReductionDimsResult->loop)) {
-      auto peelingResult = peelAllLoops(loop, rewriter);
-      setLabel(loop, kPerfectlyTiledLoopLabel);
+      // Peel parallel loops.
+      peelReduction(rewriter, tilingParallelDimsResult.value(),
+                    tilingReductionDimsResult.value());
     }
 
     return success();
   }
 
  private:
+  // Find a cluster of operations that can be tiled and fused together around
+  // the root op.
+  FusionCluster getFusionCluster(linalg::ReduceOp reduceOp) const {
+    // Find a chain of MapOp users and use the last one as a root of cluster.
+    DenseSet<Operation *> resultOps;
+    Operation *rootOp = reduceOp.getOperation();
+
+    while (true) {
+      auto users = llvm::to_vector(rootOp->getUsers());
+
+      if (users.size() != 1) break;
+      if (!isa<linalg::MapOp>(users[0])) break;
+      resultOps.insert(rootOp);
+
+      rootOp = users[0];
+    }
+
+    // Run DFS to find all MapOps, TransposeOps, BroadcastOps that can be fused
+    // in the root op.
+    SmallVector<Operation *> remainingProducers;
+    remainingProducers.reserve(reduceOp.getDpsInputOperands().size());
+    resultOps.insert(reduceOp.getOperation());
+    for (auto *operand : reduceOp.getDpsInputOperands())
+      remainingProducers.push_back(operand->get().getDefiningOp());
+
+    while (!remainingProducers.empty()) {
+      Operation *curOp = remainingProducers.pop_back_val();
+      if (!curOp || resultOps.contains(curOp)) continue;
+      auto linalgOp = dyn_cast<linalg::LinalgOp>(curOp);
+      if (linalgOp &&
+          isa<linalg::BroadcastOp, linalg::TransposeOp, linalg::MapOp>(curOp)) {
+        resultOps.insert(curOp);
+        for (auto *operand : linalgOp.getDpsInputOperands())
+          remainingProducers.push_back(operand->get().getDefiningOp());
+      }
+    }
+    return {resultOps, rootOp};
+  }
+
+  FailureOr<TilingResult> tileParallelDimensions(
+      Operation *tilingRoot, PatternRewriter &rewriter) const {
+    FailureOr<TilingResult> tilingParallelDimsResult;
+    if (auto reduceOp = dyn_cast<linalg::ReduceOp>(tilingRoot)) {
+      tilingParallelDimsResult =
+          tileReduce(rewriter, reduceOp,
+                     getParallelDimTileSizes(reduceOp.getDimensions()[0],
+                                             parallelDimTileSize),
+                     /*distribute=*/true);
+    } else if (isa<linalg::MapOp>(tilingRoot)) {
+      TilingOptions opts;
+      opts.setTileSizeComputationFn({parallelDimTileSize});
+      opts.distribute = true;
+
+      tilingParallelDimsResult =
+          tile(opts, rewriter, cast<TilingInterface>(tilingRoot));
+    } else {
+      return failure();
+    }
+
+    return tilingParallelDimsResult;
+  }
+
+  FailureOr<TilingResult> tileReductionDims(PatternRewriter &rewriter,
+                                            linalg::ReduceOp reduceOp) const {
+    auto tilingReductionDimsResult =
+        tileReduce(rewriter, reduceOp,
+                   getReductionDimTileSizes(reduceOp.getDimensions()[0],
+                                            reductionDimTileSize),
+                   /*distribute=*/false);
+    return tilingReductionDimsResult;
+  }
+
+  void peelReduction(PatternRewriter &rewriter,
+                     const TilingResult &tilingParallelDimsResult,
+                     const TilingResult &tilingReductionDimsResult) const {
+    // Peel parallel loops.
+    if (auto loop =
+            dyn_cast_or_null<ParallelOp>(tilingParallelDimsResult.loop)) {
+      auto peelingResult = peelAllLoops(loop, rewriter);
+    }
+
+    // Peel reduction loop inside the main parallel loop, label the main loop as
+    // "perfectly tiled" one, to enable vectorization after canonicalization.
+    if (auto loop = dyn_cast_or_null<ForOp>(tilingReductionDimsResult.loop)) {
+      auto peelingResult = peelAllLoops(loop, rewriter);
+      setLabel(loop, kPerfectlyTiledLoopLabel);
+    }
+  }
+
   int64_t parallelDimTileSize;
   int64_t reductionDimTileSize;
 };

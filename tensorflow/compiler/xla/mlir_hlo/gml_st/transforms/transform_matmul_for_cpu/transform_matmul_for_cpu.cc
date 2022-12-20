@@ -571,14 +571,13 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
     if (hasLabel(matmulOp, kMatmulTransformedLabel))
       return rewriter.notifyMatchFailure(matmulOp,
                                          "has already been transformed.");
-
     if (isa<gml_st::ParallelOp, gml_st::ForOp>(matmulOp->getParentOp()))
       return rewriter.notifyMatchFailure(
           matmulOp, "has already been tiled by another pass.");
 
-    SmallVector<Operation *> fusionCluster = findMapFusionCluster(matmulOp);
-
-    Operation *tilingRoot = fusionCluster[0];
+    auto cluster = findMapFusionCluster(matmulOp);
+    auto fusionCluster = cluster.operations;
+    auto *tilingRoot = cluster.root;
 
     // Tiling of linalg.map requires two dimensions, linalg.matmul requires
     // three.
@@ -598,9 +597,8 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
       tilingRoot = tilingParallelDimsResult->tiledOps.front();
 
       // Fuse ops into the loop.
-      fuseGreedily(rewriter, *tilingRoot->getBlock(), [&](Operation *op) {
-        return llvm::is_contained(fusionCluster, op);
-      });
+      fuseGreedily(rewriter, *tilingRoot->getBlock(),
+                   [&](Operation *op) { return fusionCluster.contains(op); });
     }
 
     // Second level tiling: reduction dimension for matmuls.
