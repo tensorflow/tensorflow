@@ -22,7 +22,9 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_array.h"
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_tuple.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
 namespace xla {
 namespace ifrt {
@@ -129,6 +131,11 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
   }
   return PjRtArray::Create(this, dtype, std::move(shape), std::move(sharding),
                            std::move(buffers));
+}
+
+StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(
+    absl::Span<tsl::RCReference<Value>> values) {
+  return PjRtTuple::Create(this, values);
 }
 
 }  // namespace ifrt

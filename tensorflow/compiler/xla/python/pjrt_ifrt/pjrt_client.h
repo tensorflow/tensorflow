@@ -88,6 +88,9 @@ class PjRtClient final
       absl::Span<tsl::RCReference<Array>> arrays,
       ArrayCopySemantics semantics) override;
 
+  StatusOr<tsl::RCReference<Tuple>> MakeTuple(
+      absl::Span<tsl::RCReference<Value>> values) override;
+
   absl::string_view runtime_type() const override {
     DCHECK(this);
     return PjRtRuntimeTypeString(pjrt_client_->runtime_type());

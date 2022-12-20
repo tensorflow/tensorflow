@@ -36,12 +36,14 @@ cc_library(
         "pjrt_client.cc",
         "pjrt_compiler.cc",
         "pjrt_executable.cc",
+        "pjrt_tuple.cc",
     ],
     hdrs = [
         "pjrt_array.h",
         "pjrt_client.h",
         "pjrt_compiler.h",
         "pjrt_executable.h",
+        "pjrt_tuple.h",
     ],
     deps = [
         "//tensorflow/compiler/xla:literal",
@@ -55,6 +57,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:ref_count",
@@ -103,5 +106,16 @@ xla_cc_test(
         ":tfrt_cpu_client_test_lib",
         "//tensorflow/compiler/xla/python/ifrt:executable_impl_test_lib",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_cc_test(
+    name = "pjrt_tuple_impl_test_tfrt_cpu",
+    size = "small",
+    srcs = [],
+    deps = [
+        ":tfrt_cpu_client_test_lib",
+        "//tensorflow/compiler/xla/python/ifrt:tuple_impl_test_lib",
+        "@com_google_googletest//:gtest_main",
     ],
 )
