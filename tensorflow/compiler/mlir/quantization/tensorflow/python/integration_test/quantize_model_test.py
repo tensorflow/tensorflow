@@ -554,6 +554,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
        True),
       ('with_bias_and_relu6_to_xla_dynamic', nn_ops.relu6, True, False,
        quant_opts_pb2.XLA, True),
+      ('none_to_uq', None, False, False, quant_opts_pb2.UNIFORM_QUANTIZED,
+       False),
+      ('relu_to_uq', nn_ops.relu, False, False,
+       quant_opts_pb2.UNIFORM_QUANTIZED, False),
+      ('with_bias_to_uq', None, True, False, quant_opts_pb2.UNIFORM_QUANTIZED,
+       False),
+      ('with_bias_and_relu_to_uq', nn_ops.relu, True, False,
+       quant_opts_pb2.UNIFORM_QUANTIZED, False),
+      ('with_bias_and_relu6_to_uq', nn_ops.relu6, True, False,
+       quant_opts_pb2.UNIFORM_QUANTIZED, False),
   )
   @test_util.run_in_graph_and_eager_modes
   def test_conv_ptq_model(self, activation_fn: Optional[ops.Operation],
@@ -600,6 +610,11 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     if target_opset == quant_opts_pb2.XLA:
       self.assertTrue(self._contains_op(output_meta_graphdef, 'XlaConvV2'))
+    elif target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
+      # _contains_op for UQ ops also checks _contains_quantized_function_call.
+      self.assertTrue(
+          self._contains_op(output_meta_graphdef,
+                            'UniformQuantizedConvolution'))
     else:
       self.assertTrue(
           self._contains_quantized_function_call(output_meta_graphdef))
@@ -628,6 +643,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       ('with_bias_and_relu6_to_xla_dynamic', nn_ops.relu6, True, False,
        quant_opts_pb2.XLA, True),
   )
+  # TODO(b/240931497): Add more tests on uniform_quantization after
+  # prepare_quantize fix for static range uniform_quantization.
   @test_util.run_in_graph_and_eager_modes
   def test_depthwise_conv_ptq_model(self,
                                     activation_fn: Optional[ops.Operation],
@@ -674,9 +691,13 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     if target_opset == quant_opts_pb2.XLA:
-      # Quantization for DepthwiseConv is disabled for XLA opset.
       self.assertTrue(
           self._contains_op(output_meta_graphdef, 'DepthwiseConv2dNative'))
+    elif target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
+      # _contains_op for UQ ops also checks _contains_quantized_function_call.
+      self.assertTrue(
+          self._contains_op(output_meta_graphdef,
+                            'UniformQuantizedConvolution'))
     else:
       self.assertTrue(
           self._contains_quantized_function_call(output_meta_graphdef))
@@ -1910,10 +1931,9 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
 
     if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
+      # _contains_op for UQ ops also checks _contains_quantized_function_call.
       self.assertTrue(
           self._contains_op(output_meta_graphdef, 'UniformQuantizedDotHybrid'))
       self.assertFalse(self._contains_op(output_meta_graphdef, 'MatMul'))
@@ -1923,6 +1943,8 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             self._contains_op(output_meta_graphdef, 'UniformQuantizedDotHybrid',
                               'rhs_quantization_axis', quantized_axis_attr))
     else:
+      self.assertTrue(
+          self._contains_quantized_function_call(output_meta_graphdef))
       self.assertTrue(self._contains_op(output_meta_graphdef, 'MatMul'))
 
   @parameterized.named_parameters(
@@ -1967,8 +1989,6 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
 
     if enable_per_channel_quantization:
       quantized_axis = 3
@@ -1982,6 +2002,7 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           ]))
 
     if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
+      # _contains_op for UQ ops also checks _contains_quantized_function_call.
       self.assertTrue(
           self._contains_op(output_meta_graphdef,
                             'UniformQuantizedConvolutionHybrid'))
@@ -1995,6 +2016,8 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             self._contains_op(output_meta_graphdef, 'Const', '_output_shapes',
                               quantized_dim_size_attr))
     else:
+      self.assertTrue(
+          self._contains_quantized_function_call(output_meta_graphdef))
       self.assertTrue(self._contains_op(output_meta_graphdef, 'Conv2D'))
 
   @parameterized.named_parameters(
@@ -2040,8 +2063,6 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
 
     # Uniform Quantized op takes only the first and the second values for
     # strides.
@@ -2062,6 +2083,7 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           ]))
 
     if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
+      # _contains_op for UQ ops also checks _contains_quantized_function_call.
       self.assertTrue(
           self._contains_op(output_meta_graphdef,
                             'UniformQuantizedConvolutionHybrid',
@@ -2077,6 +2099,8 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             self._contains_op(output_meta_graphdef, 'Const', '_output_shapes',
                               quantized_dim_size_attr))
     else:
+      self.assertTrue(
+          self._contains_quantized_function_call(output_meta_graphdef))
       self.assertTrue(
           self._contains_op(output_meta_graphdef, 'DepthwiseConv2dNative',
                             'strides', strides_attr))
