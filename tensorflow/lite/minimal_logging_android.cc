@@ -45,19 +45,21 @@ LogSeverity MinimalLogger::minimum_log_severity_ = TFLITE_LOG_VERBOSE;
 
 void MinimalLogger::LogFormatted(LogSeverity severity, const char* format,
                                  va_list args) {
-  // First log to Android's explicit log(cat) API.
-  va_list args_copy;
-  va_copy(args_copy, args);
-  __android_log_vprint(GetPlatformSeverity(severity), "tflite", format,
-                       args_copy);
-  va_end(args_copy);
+  if (severity >= MinimalLogger::minimum_log_severity_) {
+    // First log to Android's explicit log(cat) API.
+    va_list args_copy;
+    va_copy(args_copy, args);
+    __android_log_vprint(GetPlatformSeverity(severity), "tflite", format,
+                         args_copy);
+    va_end(args_copy);
 
-  // Also print to stderr for standard console applications.
-  fprintf(stderr, "%s: ", GetSeverityName(severity));
-  va_copy(args_copy, args);
-  vfprintf(stderr, format, args_copy);
-  va_end(args_copy);
-  fputc('\n', stderr);
+    // Also print to stderr for standard console applications.
+    fprintf(stderr, "%s: ", GetSeverityName(severity));
+    va_copy(args_copy, args);
+    vfprintf(stderr, format, args_copy);
+    va_end(args_copy);
+    fputc('\n', stderr);
+  }
 }
 
 }  // namespace logging_internal
