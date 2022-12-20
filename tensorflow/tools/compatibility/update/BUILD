@@ -26,6 +26,7 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
+        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v1_estimator",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:lib",
         "//tensorflow/python:no_contrib",
