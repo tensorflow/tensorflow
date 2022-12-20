@@ -21,11 +21,28 @@ from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
 from absl import logging
 
 from tensorflow.core.function import trace_type
+from tensorflow.core.function.polymorphism import function_type_pb2
+from tensorflow.core.function.trace_type import serialization
 from tensorflow.python.types import trace
 
 # Represents a defined parameter default value that is saved alongside the
 # function's captures.
 CAPTURED_DEFAULT_VALUE = object()
+
+PROTO_TO_PY_ENUM = {
+    function_type_pb2.Parameter.Kind.POSITIONAL_ONLY:
+        inspect.Parameter.POSITIONAL_ONLY,
+    function_type_pb2.Parameter.Kind.POSITIONAL_OR_KEYWORD:
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    function_type_pb2.Parameter.Kind.VAR_POSITIONAL:
+        inspect.Parameter.VAR_POSITIONAL,
+    function_type_pb2.Parameter.Kind.KEYWORD_ONLY:
+        inspect.Parameter.KEYWORD_ONLY,
+    function_type_pb2.Parameter.Kind.VAR_KEYWORD:
+        inspect.Parameter.VAR_KEYWORD,
+}
+
+PY_TO_PROTO_ENUM = {v: k for k, v in PROTO_TO_PY_ENUM.items()}
 
 
 class Parameter(inspect.Parameter):
@@ -55,6 +72,22 @@ class Parameter(inspect.Parameter):
         default=CAPTURED_DEFAULT_VALUE if optional else self.empty,
         annotation=type_constraint
         if type_constraint is not None else self.empty)
+
+  @classmethod
+  def from_proto(cls, proto: Any) -> "Parameter":
+    deserialized_type_constraint = serialization.deserialize(
+        proto.type_constraint) if proto.HasField("type_constraint") else None
+    return Parameter(proto.name, PROTO_TO_PY_ENUM[proto.kind],
+                     proto.is_optional, deserialized_type_constraint)
+
+  def to_proto(self) -> function_type_pb2.Parameter:
+    serialized_type_constraint = serialization.serialize(
+        self.type_constraint) if self.type_constraint else None
+    return function_type_pb2.Parameter(
+        name=self.name,
+        kind=PY_TO_PROTO_ENUM[self.kind],
+        is_optional=self.optional,
+        type_constraint=serialized_type_constraint)
 
   @property
   def optional(self) -> bool:
@@ -167,6 +200,24 @@ class FunctionType(inspect.Signature):
         default_values[p.name] = p.default
     return default_values
 
+  @classmethod
+  def from_proto(cls, proto: Any) -> "FunctionType":
+    return FunctionType([Parameter.from_proto(p) for p in proto.parameters],
+                        collections.OrderedDict([
+                            (c.name,
+                             serialization.deserialize(c.type_constraint))
+                            for c in proto.captures
+                        ]))
+
+  def to_proto(self) -> Any:
+    return function_type_pb2.FunctionType(
+        parameters=[p.to_proto() for p in self.parameters.values()],
+        captures=[
+            function_type_pb2.Capture(
+                name=n, type_constraint=serialization.serialize(t))
+            for n, t in self.captures.items()
+        ])
+
   def bind_with_defaults(self, args, kwargs, default_values):
     """Returns BoundArguments with default values filled in."""
     bound_arguments = self.bind(*args, **kwargs)
@@ -264,6 +315,7 @@ class FunctionType(inspect.Signature):
   def __repr__(self):
     return (f"FunctionType(parameters={list(self.parameters.values())!r}, "
             f"captures={self.captures})")
+
 
 MAX_SANITIZATION_WARNINGS = 5
 sanitization_warnings_given = 0
@@ -396,8 +448,7 @@ def add_type_constraints(function_type: FunctionType, input_signature: Any,
 
     if param.name == "self":
       # Type constraints do not apply on them.
-      parameters.append(
-          Parameter("self", sanitized_kind, param.optional, None))
+      parameters.append(Parameter("self", sanitized_kind, param.optional, None))
 
     elif param.kind is param.VAR_KEYWORD:
       # Disabled when input_signature is specified.
@@ -426,7 +477,6 @@ def add_type_constraints(function_type: FunctionType, input_signature: Any,
 
   if constraints:
     raise TypeError(
-        f"input_signature contains {len(constraints)} extra type constraints."
-    )
+        f"input_signature contains {len(constraints)} extra type constraints.")
 
   return FunctionType(parameters)
