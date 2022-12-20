@@ -892,7 +892,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "api_version", mlir::mhlo::CustomCallApiVersionAttr::get(
                              builder_->getContext(), mlir_api_version)));
       attributes.push_back(builder_->getNamedAttr(
-          "output_operand_aliasing",
+          "output_operand_aliases",
           ConvertOutputOperandAliasing(instruction->output_operand_aliasing(),
                                        builder_)));
       return func_builder
