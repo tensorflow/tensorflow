@@ -108,6 +108,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "CheckNumerics",
           "CheckNumericsV2",
           "Cholesky",
+          "ClipByValue",
           "CombinedNonMaxSuppression",
           "Complex",
           "ComplexAbs",
