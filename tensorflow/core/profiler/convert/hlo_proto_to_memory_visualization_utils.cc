@@ -234,7 +234,7 @@ class HloProtoBufferWrapper {
 };
 
 double BytesToMiB(int64_t bytes) {
-  return static_cast<double>(bytes) / tensorflow::MathUtil::IPow(2, 20);
+  return static_cast<double>(bytes) / (1ULL << 20);
 }
 
 // Get buffer allocation property.
@@ -259,7 +259,7 @@ std::string GetInstructionNameWithShapeIndex(
   } else {
     return absl::StrCat(
         logical_buffer.defined_at().instruction_name(), "{",
-        absl::StrJoin(logical_buffer.defined_at().shape_index(), ""), "}");
+        absl::StrJoin(logical_buffer.defined_at().shape_index(), ","), "}");
   }
 }
 
@@ -307,7 +307,6 @@ HeapObject MakeHeapObject(const HloProtoBufferWrapper& wrapper,
   HeapObject result =
       MakeHeapObjectCommon(std::move(label), color, logical_buffer.id(),
                            logical_buffer.size(), unpadded_shape_bytes);
-  result.set_numbered(color);
   result.set_instruction_name(GetInstructionNameWithShapeIndex(logical_buffer));
   result.set_group_name(GetAllocationGroupName(buffer_allocation));
   result.set_tf_op_name(hlo_instruction.metadata().op_name());
