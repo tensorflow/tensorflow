@@ -104,12 +104,6 @@ class HloProtoBufferWrapper {
     return *name_to_hlo_.at(logical_buffer.defined_at().instruction_name());
   }
 
-  const std::vector<const ::xla::LogicalBufferProto*>&
-  GetLogicalBuffersFromBufferAllocation(
-      const xla::BufferAllocationProto& buffer_allocation) const {
-    return buffer_allocation_to_logical_buffers_.at(&buffer_allocation);
-  }
-
   const xla::Shape& GetLogicalBufferShape(
       const xla::LogicalBufferProto& logical_buffer) const {
     return logical_buffer_to_shape_.at(&logical_buffer);
@@ -139,8 +133,6 @@ class HloProtoBufferWrapper {
       for (const auto& assigned : buffer_allocation.assigned()) {
         const auto* logical_buffer =
             id_to_logical_buffer_.at(assigned.logical_buffer_id());
-        buffer_allocation_to_logical_buffers_[&buffer_allocation].push_back(
-            logical_buffer);
         logical_buffer_to_buffer_allocation_[logical_buffer] =
             &buffer_allocation;
       }
@@ -221,12 +213,6 @@ class HloProtoBufferWrapper {
   absl::flat_hash_map<const ::xla::LogicalBufferProto*,
                       const ::xla::BufferAllocationProto*>
       logical_buffer_to_buffer_allocation_;
-
-  // The reverse mapping from buffer allocation to all the logical buffers that
-  // exist inside it.
-  absl::flat_hash_map<const ::xla::BufferAllocationProto*,
-                      std::vector<const ::xla::LogicalBufferProto*>>
-      buffer_allocation_to_logical_buffers_;
 
   // A mapping from logical buffer to its shape.
   absl::flat_hash_map<const ::xla::LogicalBufferProto*, xla::Shape>
@@ -748,16 +734,7 @@ void ProcessIndefiniteLifetimeBuffers(const HloProtoBufferWrapper& wrapper,
     }
     if (seen_buffer_allocations.insert(&buffer_allocation).second) {
       buffer_stats->indefinite_memory_usage_bytes += buffer_allocation.size();
-      const auto& logical_buffers =
-          wrapper.GetLogicalBuffersFromBufferAllocation(buffer_allocation);
-      if (logical_buffers.size() == 1) {
-        buffer_stats->AddHeapObject(*logical_buffer, buffer_allocation);
-      } else {
-        VLOG(1) << "Indefinite lifetime, no heap object shown due to "
-                << "multiple logical buffers in buffer allocation: "
-                << logical_buffer->ShortDebugString()
-                << " :: " << BufferAllocationDescription(buffer_allocation);
-      }
+      buffer_stats->AddHeapObject(*logical_buffer, buffer_allocation);
       if (buffer_allocation.size() < buffer_stats->small_buffer_size) {
         VLOG(1) << "Indefinite memory usage now: "
                 << buffer_stats->indefinite_memory_usage_bytes << " bytes (+"
