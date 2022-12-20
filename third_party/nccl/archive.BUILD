@@ -80,10 +80,7 @@ cc_library(
         "src/transport/coll_net.cc",
         "src/transport/net.cc",
     ],
-    linkopts = select({
-        "@org_tensorflow//tensorflow/tsl:macos": [],
-        "//conditions:default": ["-lrt"],
-    }),
+    linkopts = ["-lrt"],
     deps = [
         ":include_hdrs",
         ":src_hdrs",
@@ -115,10 +112,7 @@ cc_library(
     ],
     hdrs = ["src/nccl.h"],
     include_prefix = "third_party/nccl",
-    linkopts = select({
-        "@org_tensorflow//tensorflow/tsl:macos": [],
-        "//conditions:default": ["-lrt"],
-    }),
+    linkopts = ["-lrt"],
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
@@ -141,10 +135,7 @@ cc_library(
         "cuda",
     ]),
     include_prefix = "third_party/nccl",
-    linkopts = select({
-        "@org_tensorflow//tensorflow:macos": [],
-        "//conditions:default": ["-lrt"],
-    }),
+    linkopts = ["-lrt"],
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
