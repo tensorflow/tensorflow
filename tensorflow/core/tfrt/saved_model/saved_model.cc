@@ -25,6 +25,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
+#include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -679,11 +681,17 @@ SavedModelImpl::LoadSavedModel(Options options,
   LOG(INFO) << "TFRT finished initializing savedmodel. Took "
             << absl::ToInt64Milliseconds(init_duration) << " ms.";
 
+  auto kernel_registry = std::make_unique<mlrt::KernelRegistry>();
+  // Register infra and standard math kernels
+  tensorflow::tf_mlrt::RegisterTfMlrtKernels(*kernel_registry);
+  tfrt::cpu::RegisterMlrtMathKernels(kernel_registry.get());
+
   ASSIGN_OR_RETURN_WITH_STAGE_INFO(
       "graph_executor creation", auto graph_executor,
       GraphExecutor::Create(options.graph_execution_options, *fallback_state,
                             tpu_model_resource.get(),
-                            std::move(*meta_graph_def.mutable_graph_def())));
+                            std::move(*meta_graph_def.mutable_graph_def()),
+                            std::move(kernel_registry)));
 
   // Finally, create the saved model.
   return {std::make_unique<SavedModelImpl>(
