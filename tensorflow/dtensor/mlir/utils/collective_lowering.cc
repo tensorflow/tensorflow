@@ -285,6 +285,113 @@ mlir::Operation* EmitTransposeOp(mlir::OpBuilder& builder,
                                                perm_op);
 }
 
+mlir::Operation* EmitCollectiveReduceScatter(
+    mlir::OpBuilder& builder, const mlir::Location& loc, mlir::Value input,
+    mlir::Type output_type, const std::string& reduce_op_str,
+    const mlir::DenseIntElementsAttr& group_assignment,
+    int32 scatter_dimension, int32 key_base,
+    mlir::Value device_id, int32 host_group_size,
+    const mlir::StringRef device_type) {
+  int32_t group_size;
+  mlir::TensorType input_type = input.getType().dyn_cast<mlir::TensorType>();
+
+  const bool need_int32_to_int64_upcast =
+      (device_type.endswith("GPU") && input_type &&
+       input_type.getElementType().isInteger(32));
+
+  const bool need_transpose = scatter_dimension != 0;
+
+  std::vector<int64> perm_for_transpose;
+  if (need_transpose) {
+    perm_for_transpose.reserve(input_type.getRank());
+    for (int i = 0; i < input_type.getRank(); i++) {
+      perm_for_transpose.push_back(i);
+    }
+    std::swap(perm_for_transpose[scatter_dimension], perm_for_transpose[0]);
+    auto pre_transpose_op =
+      EmitTransposeOp(builder, loc, input, perm_for_transpose);
+    input = pre_transpose_op->getResult(0);
+    input_type = input.getType().dyn_cast<mlir::TensorType>();
+    // Compute transposed output type for CollectiveReduceScatter
+    auto output_shape = output_type.dyn_cast<mlir::TensorType>().getShape();
+    std::vector<int64> transposed_shape(output_shape.begin(), output_shape.end());
+    for (int i = 0; i < output_shape.size(); i++) {
+      transposed_shape[i] = output_shape[perm_for_transpose[i]];
+    }
+    output_type = mlir::RankedTensorType::get(
+        transposed_shape, need_int32_to_int64_upcast ? builder.getIntegerType(64) : input_type.getElementType());
+  }
+
+  if (need_int32_to_int64_upcast) {
+    LOG(WARNING) << "On GPU, collective reduce of int32 is not supported. "
+                    "Casting to int64 as a workaround: "
+                 << mlir::debugString(loc);
+
+    mlir::TF::CastOp cast_to_int64 = builder.create<mlir::TF::CastOp>(
+        loc,
+        mlir::RankedTensorType::get(input_type.getShape(),
+                                    builder.getIntegerType(64)),
+        input);
+    input = cast_to_int64.getResult();
+  }
+  mlir::Value group_key_scalar;
+  llvm::SmallVector<int32, 4> device_id_to_group_key =
+      GetGroupKeyOffsets(group_assignment, &group_size);
+  //
+  // 21 bits + 11 bits allow roughly 2M all-reduces in one program and up to a
+  // full DF pod.
+  DCHECK_LT(key_base, 1L << 21) << "Reaching 2^21 all-reduces.";
+  for (int32_t& it : device_id_to_group_key) {
+    it += (key_base << 11);
+  }
+
+  // Create a scalar group key by slicing device_id_to_group_key with
+  // device_id.
+  auto group_key_loc = DT_LOC2(loc, "group_key");
+  auto group_key_slice = builder.create<mlir::TF::SliceOp>(
+      group_key_loc, EffectivelyScalarR1Type(builder.getIntegerType(32)),
+      /*input=*/IntConst(builder, loc, device_id_to_group_key),
+      /*begin=*/device_id,
+      /*size=*/IntConst(builder, loc, {1}));
+  auto group_key_reshape = builder.create<mlir::TF::ReshapeOp>(
+      group_key_loc, /*tensor=*/group_key_slice.getResult(),
+      /*shape=*/ops_util::GetR1Const({}, builder, loc));
+  group_key_scalar = group_key_reshape.getResult();
+
+  // Generate a unique instance key for this collective.
+  mlir::Value instance_key_scalar = ops_util::CreateScalarConst(
+      static_cast<int32>(tf_collective_instance_key_base++), builder,
+      DT_LOC2(loc, "instance_key"));
+
+  const bool is_mean_op = reduce_op_str == kReduceOpMean;
+  mlir::Value group_size_scalar = ops_util::CreateScalarConst(
+      host_group_size, builder, DT_LOC2(loc, "group_size"));
+  auto collective_reduce_scatter = builder.create<mlir::TF::CollectiveReduceScatterV2Op>(
+      loc, output_type, input,
+      group_size_scalar, group_key_scalar, instance_key_scalar,
+      /*ordering_token=*/mlir::ValueRange({}),
+      /*merge_op=*/builder.getStringAttr(is_mean_op ? "Add" : reduce_op_str),
+      /*final_op=*/builder.getStringAttr(is_mean_op ? "Div" : "Id"),
+      /*communication_hint=*/builder.getStringAttr("nccl"), // TODO(tmorris): this shouldn't be needed
+      /*timeout_seconds=*/builder.getF32FloatAttr(0.),
+      /*max_subdivs_per_device=*/builder.getI64IntegerAttr(16));
+  SetSingleLayoutOnOp(collective_reduce_scatter, Layout::Empty());
+  mlir::Operation* prev_op = collective_reduce_scatter;
+
+  if (need_int32_to_int64_upcast) {
+    prev_op = builder.create<mlir::TF::CastOp>(
+        loc,
+        mlir::RankedTensorType::get(output_type.dyn_cast<mlir::TensorType>().getShape(),
+                                    builder.getIntegerType(32)),
+        prev_op->getResult(0));
+  }
+  if (need_transpose) {
+    prev_op =
+        EmitTransposeOp(builder, loc, prev_op->getResult(0), perm_for_transpose);
+  }
+  return prev_op;
+}
+
 mlir::Operation* EmitCollectiveGather(
     mlir::OpBuilder& builder, const mlir::Location& loc, mlir::Value input,
     const mlir::DenseIntElementsAttr& group_assignment, int32 key_base,
@@ -491,6 +598,13 @@ mlir::LogicalResult LowerReduceScatterOp(
   if (group_assignment_attr.getType().getRank() != 2)
     return reduce_scatter.emitOpError(
         "group_assignment should have two dimensions.");
+  mlir::DenseIntElementsAttr scatter_attr;
+  if (!matchPattern(reduce_scatter.getScatterDimension(),
+                    m_Constant(&scatter_attr))) {
+    return reduce_scatter.emitOpError(
+        "Scatter dimension not constant integer array.");
+  }
+  int32 scatter_dim = (*scatter_attr.begin()).getSExtValue();
 
   mlir::OpBuilder builder(reduce_scatter);
   if (reduce_scatter.getDeviceType().endswith("TPU")) {
@@ -506,6 +620,34 @@ mlir::LogicalResult LowerReduceScatterOp(
             reduce_scatter.getReduceOpAttr());
     SetSingleLayoutOnOp(xla_reduce_scatter, *output_layout);
     reduce_scatter.replaceAllUsesWith(xla_reduce_scatter);
+  } else if (reduce_scatter.getDeviceType().endswith("GPU")) {
+    // Generate CPU/GPU collective. CPU/GPU collectives identify groups on
+    // the basis of a local group key. We must generate an appropriate group
+    // key based on our device ID. This is expressible as an algebraic
+    // function of the device id, but we instead encode the
+    // device_id->group_key as an explicit map value and lookup the result
+    // at runtime. Note that the order we map devices to partitions is not
+    // deterministic, and moreover if we have multiple distinct reductions
+    // groups in one program reducing over all hosts and reducing over pairs
+    // of hosts, we need unique ids for each case.
+    mlir::Value device_id = ops_util::ReshapeScalarToSizeType(
+        builder, DeviceId(reduce_scatter.getResult()).value(), loc);
+    // TODO(b/188076080): Clean up device id.
+    mlir::Value start_device_id = ops_util::GetR1Const(
+        {(*output_layout).mesh().min_global_device_id()}, builder, loc);
+    mlir::Value relative_device_id =
+        builder.create<mlir::TF::SubOp>(loc, device_id, start_device_id);
+    
+    int32 group_size = group_assignment_attr.getType().getShape()[1];
+    const int32_t key_base = GetCollectiveKeyBase((*output_layout).mesh(), group_assignment_attr);
+
+    mlir::Operation* collective_op = EmitCollectiveReduceScatter(
+        builder, loc, reduce_scatter.getInput(), reduce_scatter.getResult().getType(),
+        reduce_scatter.getReduceOp().str(),
+        group_assignment_attr, scatter_dim, key_base, relative_device_id,
+        /*host_group_size=*/group_size, reduce_scatter.getDeviceType().str());
+    SetSingleLayoutOnOp(collective_op, *output_layout);
+    reduce_scatter.replaceAllUsesWith(collective_op);
   } else {
     // For non TPUs device, decompose to DTensorAllReduce+DTensorAllScatter.
     StatusOr<Layout> input_layout =
@@ -513,16 +655,9 @@ mlir::LogicalResult LowerReduceScatterOp(
     if (!input_layout.ok()) {
       // If input layout is not defined, modify the output_layout based on the
       // scattered dimension.
-      mlir::DenseIntElementsAttr scatter_attr;
-      if (!matchPattern(reduce_scatter.getScatterDimension(),
-                        m_Constant(&scatter_attr))) {
-        return reduce_scatter.emitOpError(
-            "Scatter dimension not constant integer array.");
-      }
-      mlir::APInt scatter_dim = *scatter_attr.begin();
       std::vector<string> input_sharding_spec =
           output_layout->sharding_spec_strs();
-      input_sharding_spec[scatter_dim.getSExtValue()] = Layout::kUnshardedDim;
+      input_sharding_spec[scatter_dim] = Layout::kUnshardedDim;
       input_layout =
           Layout::GetLayout(input_sharding_spec, output_layout->mesh());
     }
