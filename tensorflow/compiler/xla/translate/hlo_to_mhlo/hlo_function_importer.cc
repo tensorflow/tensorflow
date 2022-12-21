@@ -1334,7 +1334,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto all_reduce_op = func_builder->create<mlir::mhlo::AllReduceOp>(
           loc, result_type, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*all_reduce->to_apply(),
-                                        &all_reduce_op.getComputation()));
+                                        &all_reduce_op.getComputation(),
+                                        /*flatten_region_arg_tuple=*/true));
       return all_reduce_op.getOperation();
     }
     case HloOpcode::kAllReduceStart: {
