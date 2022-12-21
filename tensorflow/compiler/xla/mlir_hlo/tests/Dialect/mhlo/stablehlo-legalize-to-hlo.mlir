@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt --stablehlo-legalize-to-hlo --mlir-print-op-generic --split-input-file %s | FileCheck %s
+// RUN: mlir-hlo-opt --stablehlo-legalize-to-hlo --mlir-print-op-generic --split-input-file --verify-diagnostics %s | FileCheck %s
 
 // ============ ATTRIBUTES ============
 
@@ -657,7 +657,7 @@ func.func @op_cstr_reshapable(%arg0: index, %arg1: tensor<1xindex>) -> !shape.wi
 // CHECK-LABEL: "op_cstr_reshapable"
 
 func.func @called_computation() { func.return }
-func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
+func.func @op_custom_call_api_version_original(%arg0: tensor<f32>) -> tensor<f32> {
   //      CHECK: "mhlo.custom_call"(%arg0) {
   // CHECK-SAME:   api_version = 1 : i32,
   // CHECK-SAME:   backend_config = "",
@@ -687,7 +687,21 @@ func.func @op_custom_call(%arg0: tensor<f32>) -> tensor<f32> {
   } : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
-// CHECK-LABEL: "op_custom_call"
+// CHECK-LABEL: "op_custom_call_api_version_original"
+
+func.func @op_custom_call_api_version_typed_ffi(%arg0: tensor<f32>) -> tensor<f32> {
+  //      CHECK: "mhlo.custom_call"(%arg0) {
+  // CHECK-SAME:   api_version = 4 : i32,
+  // CHECK-SAME:   backend_config = {foo = "bar"},
+  // CHECK-SAME:   call_target_name = "foo"
+  // CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
+  %0 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "mhlo.custom_call",
+    backend_config = "{api_version = 4 : i32, backend_config = {foo = \22bar\22}, call_target_name = \22foo\22}"
+  } : (tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+// CHECK-LABEL: "op_custom_call_api_version_typed_ffi"
 
 func.func @op_divide(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   // CHECK: "mhlo.divide"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
@@ -1809,3 +1823,19 @@ func.func @type_tuple(%arg0: tuple<tensor<f32>>) -> tuple<!stablehlo.token> {
   return %0 : tuple<!stablehlo.token>
 }
 // CHECK-LABEL: "type_tuple"
+
+// ============ NEGATIVE TESTS ============
+// Some ops, attributes and types used in StableHLO programs are not supported in MHLO.
+// For those cases, we have negative tests below.
+
+// -----
+
+func.func @op_custom_call_botched_extensibility_protocol(%arg0: tensor<f32>) -> tensor<f32> {
+  // expected-error@+1 {{failed to legalize operation 'stablehlo.custom_call' that was explicitly marked illegal}}
+  %0 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "mhlo.custom_call",
+    backend_config = "{api_version = 4 : i32, backend_config = {foo = \22bar\22}, call_target_name = \22foo\22}",
+    has_side_effect = false
+  } : (tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}

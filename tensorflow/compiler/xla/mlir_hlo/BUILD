@@ -1053,6 +1053,7 @@ cc_library(
         ":map_stablehlo_to_hlo_op",
         ":mlir_hlo",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
