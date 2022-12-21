@@ -1684,6 +1684,17 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
       return hlo_sharding_util::ReverseSharding(user.sharding(),
                                                 user.dimensions());
     }
+    case HloOpcode::kOutfeed: {
+      if (&instruction != user.operand(0)) {
+        return std::nullopt;
+      }
+      std::vector<Shape> operand_shapes(user.operand_count());
+      for (int i = 0; i < user.operand_count(); ++i) {
+        operand_shapes[i] = user.operand(i)->shape();
+      }
+      return user.sharding().GetSubSharding(
+          ShapeUtil::MakeTupleShape(operand_shapes), {0});
+    }
     case HloOpcode::kGather: {
       if (&instruction == user.operand(1)) {
         return hlo_sharding_util::
