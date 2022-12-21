@@ -90,7 +90,7 @@ cc_library(
     hdrs = ["op_kernel_runner_cache.h"],
     deps = [
         ":op_kernel_runner",
-        "//tensorflow/core/framework:node_def_util",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         "@tf_runtime//:hostcontext",
     ],
@@ -128,7 +128,9 @@ tf_cuda_cc_test(
     srcs = ["op_kernel_runner_test.cc"],
     tags = tf_cuda_tests_tags(),
     deps = [
+        ":fallback_state",
         ":op_kernel_runner",
+        ":op_kernel_runner_cache",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
