@@ -297,7 +297,7 @@ class FunctionType(inspect.Signature):
         raise ValueError("Can not generate placeholder value for "
                          "partially defined function type.")
       placeholder_context.update_naming_scope(parameter.name)
-      arguments[parameter.name] = parameter.type_constraint._placeholder_value(  # pylint: disable=protected-access
+      arguments[parameter.name] = parameter.type_constraint.placeholder_value(
           placeholder_context)
 
     return inspect.BoundArguments(self, arguments)

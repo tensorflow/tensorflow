@@ -2639,7 +2639,7 @@ class VariableSpec(tensor_spec.DenseSpec):
     return super().most_specific_common_supertype(others)
 
   # TraceType method
-  def _placeholder_value(self, placeholder_context):
+  def placeholder_value(self, placeholder_context):
     name = self.name or placeholder_context.naming_scope
     context_graph = placeholder_context.context_graph
     if placeholder_context.has_placeholder(self.alias_id):
@@ -2651,7 +2651,7 @@ class VariableSpec(tensor_spec.DenseSpec):
       spec_context = trace_type.InternalPlaceholderContext(
           context_graph.outer_graph)
       spec_context.update_naming_scope(name)
-      placeholder = spec._placeholder_value(spec_context)  # pylint: disable=protected-access
+      placeholder = spec.placeholder_value(spec_context)
       variable = self._from_components([placeholder])
       # (b/262771247) ShardedVariable break without this and VariableSpecs
       # without alias_id are not TraceTypes.

@@ -42,10 +42,10 @@ static constexpr llvm::StringRef kMapTransformedLabel =
 
 template <typename OpType>
 struct TileMapPattern : public OpRewritePattern<OpType> {
-  TileMapPattern(MLIRContext *context, TilingOptions options,
+  TileMapPattern(MLIRContext *context, int64_t innerDimTileSize,
                  PatternBenefit benefit = 1)
       : OpRewritePattern<OpType>(context, benefit),
-        options(std::move(options)) {}
+        innerDimTileSize(innerDimTileSize) {}
 
   LogicalResult matchAndRewrite(OpType op,
                                 PatternRewriter &rewriter) const override {
@@ -64,24 +64,18 @@ struct TileMapPattern : public OpRewritePattern<OpType> {
 
     if (hasLabel(op, kMapTransformedLabel)) return failure();
 
-    auto tilingResult =
-        tile(options, rewriter, cast<TilingInterface>(op.getOperation()));
-    if (failed(tilingResult)) return failure();
-
-    // If we did not tile (e.g. when all tile sizes are 0), do not replace
-    // original op and just mark it as transformed then return.
-    if (tilingResult->loop != nullptr) {
-      rewriter.replaceOp(op, tilingResult->loop->getResults());
-
-      // Fuse ops into the loop.
-      fuseGreedily(rewriter, *tilingResult->tiledOps.front()->getBlock(),
-                   fuseFilterFn);
-    }
-    setLabel(tilingResult->tiledOps.front(), kMapTransformedLabel);
+    auto tiledLoop =
+        tileAndFuseMap(rewriter, op, innerDimTileSize, fuseFilterFn);
+    if (failed(tiledLoop)) return failure();
 
     // Peel parallel loops.
-    if (auto loop = dyn_cast_or_null<ParallelOp>(tilingResult->loop)) {
-      peelAllLoops(loop, rewriter);
+    if (auto loop = dyn_cast_or_null<ParallelOp>(*tiledLoop)) {
+      auto peelingResult = peelAllLoops(loop, rewriter);
+
+      // Tile ops in the peeled loop again, to size 1, so they can be
+      // scalarized.
+      if (failed(tilePeeledOpsToScalars(rewriter, peelingResult, fuseFilterFn)))
+        return failure();
     }
 
     return success();
@@ -105,7 +99,59 @@ struct TileMapPattern : public OpRewritePattern<OpType> {
     return rootMap;
   }
 
-  TilingOptions options;
+  FailureOr<Operation *> tileAndFuseMap(
+      PatternRewriter &rewriter, Operation *op, int64_t tileSize,
+      llvm::function_ref<bool(Operation *)> fuseFilterFn) const {
+    mlir::gml_st::TilingOptions opts;
+    opts.tileSizeComputationFn = [&](OpBuilder &b, Operation *op) {
+      assert(isa<linalg::MapOp>(op) ||
+             isa<linalg::FillOp>(op) &&
+                 " only linalg.map or linalg.fill expected");
+      auto numLoops = isa<linalg::MapOp>(op)
+                          ? cast<linalg::MapOp>(op).getNumLoops()
+                          : cast<linalg::FillOp>(op).getNumLoops();
+      SmallVector<Value> tiles(
+          numLoops, b.create<arith::ConstantIndexOp>(op->getLoc(), 1));
+      if (!tiles.empty())
+        tiles.back() = b.create<arith::ConstantIndexOp>(op->getLoc(), tileSize);
+      return tiles;
+    };
+
+    auto tilingResult = tile(opts, rewriter, cast<TilingInterface>(op));
+    if (failed(tilingResult)) return failure();
+
+    // If we did not tile (e.g. when all tile sizes are 0), do not replace
+    // original op and just mark it as transformed then return.
+    if (tilingResult->loop != nullptr) {
+      rewriter.replaceOp(op, tilingResult->loop->getResults());
+
+      // Fuse ops into the loop.
+      fuseGreedily(rewriter, *tilingResult->tiledOps.front()->getBlock(),
+                   fuseFilterFn);
+    }
+    setLabel(tilingResult->tiledOps.front(), kMapTransformedLabel);
+    return tilingResult->loop;
+  }
+
+  LogicalResult tilePeeledOpsToScalars(
+      PatternRewriter &rewriter, const PeelingResult &peelingResult,
+      llvm::function_ref<bool(Operation *)> fuseFilterFn) const {
+    for (auto *loop : peelingResult) {
+      ParallelOp peeledLoop = dyn_cast<ParallelOp>(loop);
+      auto *terminatorOp = peeledLoop->getRegion(0).front().getTerminator();
+      if (!terminatorOp) return failure();
+
+      auto *definingOp = terminatorOp->getOperand(0).getDefiningOp();
+      if (!definingOp) return failure();
+
+      if (failed(tileAndFuseMap(rewriter, definingOp, /*tileSize=*/1,
+                                fuseFilterFn)))
+        return failure();
+    }
+    return success();
+  }
+
+  int64_t innerDimTileSize;
 };
 
 struct TransformMapForCpuPass
@@ -122,25 +168,9 @@ struct TransformMapForCpuPass
     func::FuncOp f = getOperation();
     MLIRContext *context = &getContext();
 
-    mlir::gml_st::TilingOptions opts;
-
-    opts.tileSizeComputationFn = [&](OpBuilder &b, Operation *op) {
-      assert(isa<linalg::MapOp>(op) ||
-             isa<linalg::FillOp>(op) &&
-                 " only linalg.map or linalg.fill expected");
-      auto numLoops = isa<linalg::MapOp>(op)
-                          ? cast<linalg::MapOp>(op).getNumLoops()
-                          : cast<linalg::FillOp>(op).getNumLoops();
-      SmallVector<Value> tiles(
-          numLoops, b.create<arith::ConstantIndexOp>(op->getLoc(), 1));
-      if (!tiles.empty())
-        tiles.back() = b.create<arith::ConstantIndexOp>(op->getLoc(), tileSize);
-      return tiles;
-    };
-
     RewritePatternSet patterns(context);
     patterns.add<TileMapPattern<linalg::MapOp>, TileMapPattern<linalg::FillOp>>(
-        context, opts);
+        context, tileSize);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();

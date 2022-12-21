@@ -90,9 +90,6 @@ bool hasPublicFeaturesNotInStablehlo(HloOpTy hloOp) {
     // StableHLO AllToAll doesn't support the tuple form yet.
     // Proposal: https://github.com/openxla/stablehlo/issues/574.
     if (hloOp.getNumOperands() != 1) return true;
-    // StableHLO AllToAll doesn't support ChannelHandle attribute yet.
-    // Proposal: https://github.com/openxla/stablehlo/issues/660
-    if (hloOp.getChannelHandle().has_value()) return true;
   }
   if constexpr (std::is_same<HloOpTy, mhlo::ConvolutionOp>::value) {
     // StableHLO ConvolutionOp doesn't support PACKED_NIBBLE yet.

@@ -787,6 +787,92 @@ struct CstrBroadcastableOpLowering
   }
 };
 
+// Returns a shape tensor if the shapes can be broadcasted to a known shape.
+// Will either return one of the shapes or a generated mix of the shapes.
+llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis &analysis,
+                                        ValueRange shapes, Location loc,
+                                        OpBuilder *builder) {
+  // First find the input shape with the largest rank.
+  SmallVector<ArrayRef<ShapeComponentAnalysis::SymbolicExpr>> shapesFound;
+  size_t maxRank = 0;
+  for (const auto &shape : llvm::enumerate(shapes)) {
+    auto foundShape = analysis.GetValueInfo(shape.value());
+    if (!foundShape) return {};
+    shapesFound.push_back(*foundShape);
+    maxRank = std::max(maxRank, foundShape->size());
+  }
+  if (maxRank == 0) {
+    return Value(builder->create<tensor::FromElementsOp>(
+        loc, shapes[0].getType(), SmallVector<Value>()));
+  }
+
+  SmallVector<const ShapeComponentAnalysis::SymbolicExpr *> joinedDimensions(
+      maxRank);
+  SmallVector<std::pair<Value, int64_t>> shapeAndRankForDim(maxRank);
+  for (const auto &shape : llvm::enumerate(shapesFound)) {
+    for (const auto &dim : llvm::enumerate(llvm::reverse(shape.value()))) {
+      // 1 dimensions don't contribute to the final result.
+      if (dim.value().isConstant(1)) continue;
+      // If it's not a 1 dimension it will be present in the result. Remember
+      // where it came from.
+      auto index = maxRank - dim.index() - 1;
+      if (!joinedDimensions[index]) {
+        joinedDimensions[index] = &dim.value();
+        shapeAndRankForDim[index] =
+            std::make_pair(shapes[shape.index()], shape.value().size());
+        continue;
+      }
+      // Bail if the dimensions are neither equal nor 1.
+      if (*joinedDimensions[index] != dim.value()) return {};
+    }
+  }
+  // If the output is the same as one of the inputs just return that.
+  if (llvm::all_equal(shapeAndRankForDim) && shapeAndRankForDim[0].first) {
+    return shapeAndRankForDim[0].first;
+  }
+  // Otherwise rematerialize the shape from the pieces we have.
+  SmallVector<Value> elements;
+  for (size_t i = 0; i != maxRank; ++i) {
+    // 1 dimensions are filtered above, recreate the constant.
+    if (!shapeAndRankForDim[i].first) {
+      auto one = builder->getIntegerAttr(
+          shapes[0].getType().cast<RankedTensorType>().getElementType(), 1);
+      elements.push_back(builder->create<arith::ConstantOp>(loc, one));
+      continue;
+    }
+    // Extract from one of the shapes, accounting for the reverse indexing
+    // performed by broadcast.
+    Value index = builder->create<arith::ConstantIndexOp>(
+        loc, i - maxRank + shapeAndRankForDim[i].second);
+    elements.push_back(builder->create<tensor::ExtractOp>(
+        loc, shapeAndRankForDim[i].first, index));
+  }
+  return Value(builder->create<tensor::FromElementsOp>(loc, elements));
+}
+
+// Replace shape.broadcast with a shape if it's statically known.
+struct BroadcastOpLowering final
+    : public mlir::OpRewritePattern<shape::BroadcastOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(
+      shape::BroadcastOp op, mlir::PatternRewriter &rewriter) const override {
+    ShapeComponentAnalysis shapeComponentAnalysis;
+    auto newBroadcast = simplifyBroadcast(
+        shapeComponentAnalysis, op.getShapes(), op.getLoc(), &rewriter);
+    if (!newBroadcast) return failure();
+
+    // Insert cast, if needed.
+    Type expectedTy = op.getType();
+    if (newBroadcast->getType() != expectedTy) {
+      newBroadcast = rewriter.create<tensor::CastOp>(op.getLoc(), expectedTy,
+                                                     *newBroadcast);
+    }
+
+    rewriter.replaceOp(op, {*newBroadcast});
+    return success();
+  }
+};
+
 class SymbolicShapeOptimizationPass final
     : public impl::SymbolicShapeOptimizationBase<
           SymbolicShapeOptimizationPass> {
@@ -801,13 +887,17 @@ class SymbolicShapeOptimizationPass final
     // clang-format off
     patterns.insert<
         AnnotateExpandingDimensionsInDynamicBroadcastInDim,
+        BroadcastOpLowering,
         CstrBroadcastableOpLowering,
         DynamicReshapeToExpandAndCollapseShape,
         RemoveComputeReshapeShape,
         RemoveRedundantCstrReshapable,
         SimplifyBroadcasts>(ctx);
     // clang-format on
+
+    // Collect some relevant canonicalization patterns.
     shape::AssumingOp::getCanonicalizationPatterns(patterns, ctx);
+    shape::ShapeOfOp::getCanonicalizationPatterns(patterns, ctx);
 
     if (failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
                                                   std::move(patterns)))) {

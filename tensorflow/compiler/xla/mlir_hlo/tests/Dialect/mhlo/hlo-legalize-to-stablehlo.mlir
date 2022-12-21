@@ -411,25 +411,11 @@ func.func @op_all_reduce(%arg0: tensor<f32>) -> tensor<f32> {
 
 func.func @op_all_to_all(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
   //               CHECK: "stablehlo.all_to_all"(%arg0) {
+  //          CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>,
   //          CHECK-SAME:   concat_dimension = 0 : i64,
   // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
   //          CHECK-SAME:   split_count = 4 : i64,
   //          CHECK-SAME:   split_dimension = 1 : i64
-  //          CHECK-SAME: } : (tensor<4x16xf32>) -> tensor<16x4xf32>
-  %0 = "mhlo.all_to_all"(%arg0) {
-    split_dimension = 1 : i64,
-    concat_dimension = 0 : i64,
-    split_count = 4 : i64,
-    replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
-  } : (tensor<4x16xf32>) -> tensor<16x4xf32>
-  func.return %0 : tensor<16x4xf32>
-}
-
-// CHECK-LABEL: "op_all_to_all"
-func.func @op_all_to_all_channel_handle(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
-  //               CHECK: "stablehlo.custom_call"(%arg0) {
-  // CHECK-SAME{LITERAL}:    backend_config = "{channel_handle = #mhlo.channel_handle<handle = 1, type = 0>, concat_dimension = 0 : i64, replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>, split_count = 4 : i64, split_dimension = 1 : i64}",
-  //          CHECK-SAME:    call_target_name = "mhlo.all_to_all"
   //          CHECK-SAME: } : (tensor<4x16xf32>) -> tensor<16x4xf32>
   %0 = "mhlo.all_to_all"(%arg0) {
     split_dimension = 1 : i64,

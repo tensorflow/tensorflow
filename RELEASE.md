@@ -13,6 +13,8 @@
         signature is malformed, e.g.
             *   Using functools.wraps on a function with different signature
             *   Using functools.partial with an invalid tf.function input
+    *   tf.types.experimental.TraceType now requires an additional 
+        `placeholder_value` method to be defined.
 
 *   `tf.config.experimental.enable_mlir_graph_optimization`:
 
@@ -71,6 +73,9 @@
     *   Add `tf.keras.layers.Identity`, a placeholder pass-through layer.
     *   Add `show_trainable` option to `tf.keras.utils.model_to_dot` to display
         layer trainable status in model plots.
+    *   Add ability to save a `tf.keras.utils.FeatureSpace` object, via
+        `feature_space.save("myfeaturespace.keras")`, and reload it via
+        `feature_space = tf.keras.models.load_model("myfeaturespace.keras")`.
 
 *   `tf.experimental.dtensor`:
 

@@ -477,7 +477,7 @@ class HloModuleConfig {
 
   // Each Hlo analysis is allowed at least a constant number of
   // abstract cost units, before it is considered for early termination.
-  absl::flat_hash_map<absl::string_view, int64_t> analysis_allowance_map_;
+  absl::flat_hash_map<std::string, int64_t> analysis_allowance_map_;
 
   PrecisionConfig::Precision matrix_unit_operand_precision_ =
       PrecisionConfig::DEFAULT;

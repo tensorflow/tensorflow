@@ -1534,7 +1534,7 @@ def _get_defun_inputs(args, names, placeholder_context, structured_args):
   for arg_value, name in zip(args, names):
     placeholder_context.update_naming_scope(name)
     if isinstance(arg_value, type_spec.TypeSpec):
-      function_inputs.append(arg_value._placeholder_value(placeholder_context))  # pylint: disable=protected-access
+      function_inputs.append(arg_value.placeholder_value(placeholder_context))
     else:
       for val in composite_tensor_utils.flatten_with_variables_or_variable_specs(
           arg_value):
@@ -1554,7 +1554,7 @@ def _get_defun_input(arg, placeholder_context):
     input_arg = arg
     if isinstance(arg, ops.Tensor):
       input_arg = tensor_spec.TensorSpec.from_tensor(arg, name=name)
-    placeholder = input_arg._placeholder_value(placeholder_context)  # pylint: disable=protected-access
+    placeholder = input_arg.placeholder_value(placeholder_context)
     if isinstance(arg, ops.Tensor):
       handle_data_util.copy_handle_data(arg, placeholder)
     return placeholder

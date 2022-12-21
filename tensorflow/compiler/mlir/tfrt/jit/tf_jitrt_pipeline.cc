@@ -137,12 +137,8 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   }
 
   // Remove redundant shape operations left after legalizing to HLO.
+  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-
-  // Resolve all shape constraints (e.g. broadcast constraints that can be
-  // proved statically and changed to const witness) early to allow more
-  // efficient broadcast operations moving.
-  pm.addNestedPass<FuncOp>(CreateSymbolicShapeOptimizationPass());
 
   // Analyze shapes and try to simplify the IR early.
   pm.addNestedPass<FuncOp>(mlir::createSymbolicShapeOptimizationPass());

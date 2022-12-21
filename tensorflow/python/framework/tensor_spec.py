@@ -212,7 +212,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     """
     return super(TensorSpec, self).is_compatible_with(spec_or_tensor)
 
-  def _placeholder_value(self, placeholder_context):
+  def placeholder_value(self, placeholder_context):
     """Generates a graph_placholder with the given TensorSpec information."""
     name = self.name or placeholder_context.naming_scope
     context_graph = placeholder_context.context_graph

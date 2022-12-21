@@ -87,7 +87,7 @@ bool isOne(Value v);
 void hoistRedundantVectorTransfersOnTensor(func::FuncOp func);
 
 /// Returns true if `candidate`'s offsets are all 0s and strides are all 1s.
-bool isIdentityTileOp(TileOp candidate);
+bool isIdentitySlice(ValueRange offsets, ValueRange strides);
 
 /// Returns true if `lhs` and `rhs` are of same static shape.
 bool haveSameStaticShape(Value lhs, Value rhs);
