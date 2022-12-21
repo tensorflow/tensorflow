@@ -3620,6 +3620,12 @@ LogicalResult ConvertTFLArgMaxOp::matchAndRewrite(
     return failure();
 
   int32_t dim = dim_elems.getValues<APInt>()[0].getSExtValue();
+
+  if (dim < 0) {
+    auto input_type = cast<RankedTensorType>(arg_max_op.getInput().getType());
+    dim += input_type.getRank();
+  }
+
   CreateReplaceOpAndInfer<tosa::ArgMaxOp>(
       rewriter, op, arg_max_op.getType(), arg_max_op.getInput(),
       rewriter.getIntegerAttr(rewriter.getI64Type(), dim));
