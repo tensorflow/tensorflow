@@ -124,8 +124,9 @@ struct LogicalBufferStruct {
   const LogicalBufferProto& proto;
   const BufferAllocationProto& buffer_allocation;
   const ::xla::HloInstructionProto& hlo_instruction;
-  uint64_t offset;            // within the buffer allocation;
-  absl::Span<uint64_t> span;  // within the specific simulator trace.
+  uint64_t offset;  // within the buffer allocation;
+  // Span within the specific simulator trace.
+  std::optional<std::pair<uint64_t, uint64_t>> span;
   xla::Shape shape;
   int64_t ref_count = 0;
   LogicalBufferStruct* cannonical_buffer = nullptr;
@@ -415,16 +416,16 @@ struct HeapSimulatorStats {
     heap_size_bytes_timeline.push_back(heap_size_bytes);
     unpadded_heap_size_bytes_timeline.push_back(unpadded_heap_size_bytes);
     const auto& logical_buffer = wrapper.GetLogicalBuffer(event.buffer_id());
-    seen_logical_buffers.insert(&logical_buffer.proto);
+    seen_logical_buffers.insert(&logical_buffer);
     seen_buffer_allocations.insert(&logical_buffer.buffer_allocation);
   }
 
   // Update stats when memory usage increase.
-  void IncreaseMemoryUsage(const LogicalBufferStruct& canonical_logical_buffer,
+  void IncreaseMemoryUsage(LogicalBufferStruct* canonical_logical_buffer,
                            bool init_buffer_span) {
-    logical_buffers.push_back(canonical_logical_buffer.proto.id());
-    heap_size_bytes += canonical_logical_buffer.size();
-    unpadded_heap_size_bytes += canonical_logical_buffer.unpadded_size();
+    logical_buffers.push_back(canonical_logical_buffer->proto.id());
+    heap_size_bytes += canonical_logical_buffer->size();
+    unpadded_heap_size_bytes += canonical_logical_buffer->unpadded_size();
 
     // Increase peak memory usage if needed.
     int64_t prior_peak_heap_size_bytes = peak_heap_size_bytes;
@@ -440,25 +441,26 @@ struct HeapSimulatorStats {
     if (init_buffer_span) {
       // Initialize the buffer span from the current event to the last event in
       // heap simulator trace.
-      logical_buffer_spans[canonical_logical_buffer.proto.id()] = {
-          heap_size_bytes_timeline.size() - 1, simulator_trace_event_size - 1};
+      canonical_logical_buffer->span.emplace(
+          heap_size_bytes_timeline.size() - 1, simulator_trace_event_size - 1);
     }
   }
 
   // Update stats when memory usage decrease.
-  Status DecreaseMemoryUsage(
-      const LogicalBufferStruct& canonical_logical_buffer) {
-    int64_t canonical_buffer_id = canonical_logical_buffer.proto.id();
+  Status DecreaseMemoryUsage(LogicalBufferStruct* canonical_logical_buffer) {
+    int64_t canonical_buffer_id = canonical_logical_buffer->proto.id();
     logical_buffers.remove(canonical_buffer_id);
-    heap_size_bytes -= canonical_logical_buffer.size();
+    heap_size_bytes -= canonical_logical_buffer->size();
     if (heap_size_bytes < 0) {
       return errors::InvalidArgument(absl::StrCat(
           "Heap size should be non-negative, but get: ", heap_size_bytes));
     }
-    unpadded_heap_size_bytes -= canonical_logical_buffer.unpadded_size();
+    unpadded_heap_size_bytes -= canonical_logical_buffer->unpadded_size();
     // Mark the end of this buffer.
-    logical_buffer_spans[canonical_buffer_id].second =
-        heap_size_bytes_timeline.size() - 1;
+    if (canonical_logical_buffer->span) {
+      canonical_logical_buffer->span->second =
+          heap_size_bytes_timeline.size() - 1;
+    }
     return OkStatus();
   }
 
@@ -494,15 +496,15 @@ struct HeapSimulatorStats {
     std::vector<const LogicalBufferStruct*> indefinite_logical_buffers;
     for (const auto& logical_buffer :
          wrapper.GetHloProto().buffer_assignment().logical_buffers()) {
-      if (!seen_logical_buffers.contains(&logical_buffer)) {
         const auto& logical_buffer_struct =
             wrapper.GetLogicalBuffer(logical_buffer.id());
+        if (!seen_logical_buffers.contains(&logical_buffer_struct)) {
         if (logical_buffer_struct.buffer_allocation.is_thread_local() ||
             logical_buffer_struct.color() != memory_color) {
           continue;
         }
         indefinite_logical_buffers.push_back(&logical_buffer_struct);
-      }
+        }
     }
     return indefinite_logical_buffers;
   }
@@ -530,12 +532,8 @@ struct HeapSimulatorStats {
   int64_t peak_heap_size_position = 0;
 
   // Logical buffers and buffer allocations that exists in heap simulator trace.
-  absl::flat_hash_set<const LogicalBufferProto*> seen_logical_buffers;
+  absl::flat_hash_set<const LogicalBufferStruct*> seen_logical_buffers;
   absl::flat_hash_set<const BufferAllocationProto*> seen_buffer_allocations;
-
-  // Lifetime span of logical buffer.
-  absl::flat_hash_map<int64_t, std::pair<int64_t, int64_t>>
-      logical_buffer_spans;
 
   // Constants while iterating through heap simulator trace.
   const HloProtoBufferWrapper& wrapper;
@@ -575,7 +573,7 @@ Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
       // ALLOC event increases memory usage and initializes the buffer lifetime
       // span.
       logical_buffer.inc();
-      stats->IncreaseMemoryUsage(logical_buffer,
+      stats->IncreaseMemoryUsage(&logical_buffer,
                                  /*init_buffer_span=*/true);
     } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
       auto ref_count = logical_buffer.dec();
@@ -587,8 +585,8 @@ Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
         // There is no more reference to the canonical buffer, the canonical
         // buffer is finally freed. Update memory usage and memory timespan
         // using the metadata of canonical buffer.
-        const auto& canonical_buffer = *logical_buffer.get_cannonical_buffer();
-        TF_RETURN_IF_ERROR(stats->DecreaseMemoryUsage(canonical_buffer));
+        auto& canonical_buffer = *logical_buffer.get_cannonical_buffer();
+        TF_RETURN_IF_ERROR(stats->DecreaseMemoryUsage(&canonical_buffer));
       }
     } else if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
       int64_t canonical_buffer_id = event.share_with_canonical_id();
@@ -599,7 +597,7 @@ Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
         // SHARE_WITH happens after the FREE of a canonical buffer.
         // SHARE_WITH event does not initialize buffer lifetime span, it was
         // initialized by ALLOC event using the canonical logical buffer.
-        stats->IncreaseMemoryUsage(canonical_buffer,
+        stats->IncreaseMemoryUsage(&canonical_buffer,
                                    /*init_buffer_span=*/false);
       }
     } else {
@@ -753,9 +751,11 @@ void GeneratePreprocessResult(const HloProtoBufferWrapper& wrapper,
   result->set_peak_heap_size_position(simulator_stats.peak_heap_size_position);
 
   // Build buffer lifespan.
-  for (const auto& item : simulator_stats.logical_buffer_spans) {
-    (*result->mutable_logical_buffer_spans())[item.first] =
-        MakeBufferSpan(item.second.first, item.second.second);
+  for (const auto* logical_buffer : simulator_stats.seen_logical_buffers) {
+    if (!logical_buffer->span) continue;
+    (*result->mutable_logical_buffer_spans())[logical_buffer->proto.id()] =
+        MakeBufferSpan(logical_buffer->span->first,
+                       logical_buffer->span->second);
   }
 
   NoteSpecialAllocations(wrapper, buffer_stats.small_buffer_size, result);
