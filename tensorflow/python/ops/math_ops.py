@@ -1067,8 +1067,7 @@ def saturate_cast(value, dtype, name=None):
     if in_dtype.min < out_real_dtype.min or in_dtype.max > out_real_dtype.max:
 
       # Forward-compatibility required for Brella if output is real:
-      if not dtype.is_complex and not tf_compat.forward_compatible(
-          2022, 12, 16):
+      if not dtype.is_complex and not tf_compat.forward_compatible(2023, 1, 16):
         # Old behavior using max/min.
         if in_dtype.min < dtype.min:
           value = gen_math_ops.maximum(

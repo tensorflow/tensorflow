@@ -36,6 +36,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs import doc_controls
 
 # Use LazyLoader to avoid circular dependencies.
 tensor_spec = LazyLoader(
@@ -220,11 +221,22 @@ class TypeSpec(
     """
     return nested_structure_coder.encode_structure(self).type_spec_value
 
-  # TODO(b/223659753): Return the actual Tensor-based value instead of spec.
-  def _placeholder_value(self, placeholder_context) -> "TypeSpec":
-    """Value used for tracing a function signature with this TraceType."""
+  @doc_controls.do_not_doc_inheritable
+  def placeholder_value(self, placeholder_context):
+    """Value used for tracing a function signature with this TraceType.
+
+    WARNING: Do not override.
+
+    Args:
+      placeholder_context: A class container for context information when
+        creating a placeholder value.
+
+    Returns:
+      A `CompositeTensor` placeholder whose components are recursively composed
+        of placeholders themselves.
+    """
     component_placeholders = nest.map_structure(
-        lambda x: x._placeholder_value(placeholder_context),  # pylint: disable=protected-access
+        lambda x: x.placeholder_value(placeholder_context),
         self._component_specs)
     return self._from_components(component_placeholders)
 

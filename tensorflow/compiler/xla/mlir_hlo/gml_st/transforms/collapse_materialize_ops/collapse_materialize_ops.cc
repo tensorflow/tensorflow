@@ -125,29 +125,21 @@ struct CollapseMaterializeOpPattern : public OpRewritePattern<MaterializeOp> {
 
   LogicalResult matchAndRewrite(MaterializeOp op,
                                 PatternRewriter& rewriter) const override {
-    auto tileOp = op.getSet().getDefiningOp<TileOp>();
-    if (!tileOp) return failure();
-
     auto producerMaterializeOp = op.getSource().getDefiningOp<MaterializeOp>();
     if (!producerMaterializeOp) return failure();
 
-    auto producerTileOp =
-        producerMaterializeOp.getSet().getDefiningOp<TileOp>();
-    if (!producerTileOp) return failure();
-
     // Compose tileOp and producerTileOp.
     auto loc = op.getLoc();
-    auto producerStrides = producerTileOp.getMixedStrides();
+    auto producerStrides = producerMaterializeOp.getMixedStrides();
     auto composedOffsets =
-        composeOffsets(producerTileOp.getMixedOffsets(), producerStrides,
-                       tileOp.getMixedOffsets(), loc, rewriter);
-    auto composedStrides = composeStrides(rewriter, loc, producerStrides,
-                                          tileOp.getMixedStrides());
-    auto composedTileOp = rewriter.create<TileOp>(
-        loc, composedOffsets, tileOp.getMixedSizes(), composedStrides);
+        composeOffsets(producerMaterializeOp.getMixedOffsets(), producerStrides,
+                       op.getMixedOffsets(), loc, rewriter);
+    auto composedStrides =
+        composeStrides(rewriter, loc, producerStrides, op.getMixedStrides());
 
     rewriter.replaceOpWithNewOp<MaterializeOp>(
-        op, producerMaterializeOp.getSource(), composedTileOp);
+        op, producerMaterializeOp.getSource(), composedOffsets,
+        op.getMixedSizes(), composedStrides);
     return success();
   }
 };

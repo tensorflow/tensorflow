@@ -68,25 +68,20 @@ func.func @softmax(%arg0: tensor<64x128xf32>) -> tensor<64x128xf32> {
 // CHECK-SAME:     outs(%[[EMPTY]] : tensor<64xf32>)
 
 // CHECK:      %[[PARALLEL:.*]] = gml_st.parallel (%[[ARG1:.*]]) = (%[[C0]]) to (%[[C64]]) step (%[[C8]])
-// CHECK-NEXT:   %[[TILE:.*]] = gml_st.tile [%[[ARG1]], 0] [8, 128] [1, 1]
-// CHECK-NEXT:   %[[MATERIALIZE:.*]] = gml_st.materialize %[[ARG0]][%[[TILE]]]
-// CHECK-NEXT:   %[[TILE_0:.*]] = gml_st.tile [%[[ARG1]]] [8] [1]
-// CHECK-NEXT:   %[[MATERIALIZE_0:.*]] = gml_st.materialize %[[FILL]][%[[TILE_0]]]
-// CHECK-NEXT:   %[[MATERIALIZE_1:.*]] = gml_st.materialize %[[EMPTY_0]][%[[TILE]]]
-// CHECK-NEXT:   %[[MATERIALIZE_3:.*]] = gml_st.materialize %[[FILL_0]][%[[TILE_0]]]
+// CHECK-NEXT:   %[[MATERIALIZE:.*]] = gml_st.materialize %[[ARG0]] [%[[ARG1]], 0] [8, 128] [1, 1]
+// CHECK-NEXT:   %[[MATERIALIZE_0:.*]] = gml_st.materialize %[[FILL]] [%[[ARG1]]] [8] [1]
+// CHECK-NEXT:   %[[MATERIALIZE_1:.*]] = gml_st.materialize %[[EMPTY_0]] [%[[ARG1]], 0] [8, 128] [1, 1]
+// CHECK-NEXT:   %[[MATERIALIZE_3:.*]] = gml_st.materialize %[[FILL_0]] [%[[ARG1]]] [8] [1]
 
 // CHECK:        %[[PARALLEL_0:.*]] = gml_st.parallel (%[[ARG2:.*]]) = (%[[C0]]) to (%[[C8]]) step (%[[C1]])
-// CHECK-NEXT:     %[[TILE_4:.*]] = gml_st.tile [%[[ARG2]], 0] [1, 128] [1, 1]
-// CHECK-NEXT:     %[[MATERIALIZE_4:.*]] = gml_st.materialize %[[MATERIALIZE]][%[[TILE_4]]]
-// CHECK-NEXT:     %[[TILE_5:.*]] = gml_st.tile [%[[ARG2]]] [1] [1]
-// CHECK-NEXT:     %[[MATERIALIZE_5:.*]] = gml_st.materialize %[[MATERIALIZE_0]][%[[TILE_5]]]
-
+// CHECK-NEXT:     %[[MATERIALIZE_4:.*]] = gml_st.materialize %[[MATERIALIZE]] [%[[ARG2]], 0] [1, 128] [1, 1]
+// CHECK-NEXT:     %[[MATERIALIZE_5:.*]] = gml_st.materialize %[[MATERIALIZE_0]] [%[[ARG2]]] [1] [1]
 // CHECK-NEXT:     %[[REDUCE:.*]] = linalg.reduce
 // CHECK-SAME:         ins(%[[MATERIALIZE_4]] : tensor<1x128xf32>)
 // CHECK-SAME:         outs(%[[MATERIALIZE_5]] : tensor<1xf32>)
 // CHECK-SAME:         dimensions = [1]
 
-// CHECK:          %[[MATERIALIZE_6:.*]] = gml_st.materialize %[[MATERIALIZE_1]][%[[TILE_4]]]
+// CHECK:          %[[MATERIALIZE_6:.*]] = gml_st.materialize %[[MATERIALIZE_1]] [%[[ARG2]], 0] [1, 128] [1, 1]
 // CHECK-NEXT:     %[[BROADCAST:.*]] = linalg.broadcast
 // CHECK-SAME:         ins(%[[REDUCE]] : tensor<1xf32>)
 // CHECK-SAME:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
@@ -100,7 +95,7 @@ func.func @softmax(%arg0: tensor<64x128xf32>) -> tensor<64x128xf32> {
 // CHECK-SAME:         ins(%[[MAP]] : tensor<1x128xf32>)
 // CHECK-SAME:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
 
-// CHECK:          %[[MATERIALIZE_8:.*]] = gml_st.materialize %[[MATERIALIZE_3]][%[[TILE_5]]]
+// CHECK:          %[[MATERIALIZE_8:.*]] = gml_st.materialize %[[MATERIALIZE_3]] [%[[ARG2]]] [1] [1]
 // CHECK-NEXT:          %[[REDUCE_0:.*]] = linalg.reduce
 // CHECK-SAME:         ins(%[[MAP_0]] : tensor<1x128xf32>)
 // CHECK-SAME:         outs(%[[MATERIALIZE_8]] : tensor<1xf32>)
@@ -112,6 +107,8 @@ func.func @softmax(%arg0: tensor<64x128xf32>) -> tensor<64x128xf32> {
 // CHECK:          %[[MAP_1:.*]] = linalg.map
 // CHECK-SAME:         ins(%[[MAP_0]], %[[BROADCAST_0]] : tensor<1x128xf32>, tensor<1x128xf32>)
 // CHECK-SAME:         outs(%[[MATERIALIZE_6]] : tensor<1x128xf32>)
+// CHECK:          %[[TILE_4:.*]] = gml_st.tile [%[[ARG2]], 0] [1, 128] [1, 1]
 // CHECK:          gml_st.set_yield %[[MAP_1]] into %[[MATERIALIZE_1]][%[[TILE_4]]]
+// CHECK:        %[[TILE:.*]] = gml_st.tile [%[[ARG1]], 0] [8, 128] [1, 1]
 // CHECK:        gml_st.set_yield %[[PARALLEL_0]] into %[[EMPTY_0]][%[[TILE]]]
 // CHECK:      return %[[PARALLEL]]

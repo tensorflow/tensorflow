@@ -32,6 +32,7 @@ from tensorflow.python.lib.core import _pywrap_float8
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.types import trace
 from tensorflow.core.function import trace_type
+from tensorflow.tools.docs import doc_controls
 
 _np_bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
 _np_float8_e4m3fn = _pywrap_float8.TF_float8_e4m3fn_type()
@@ -210,6 +211,11 @@ class DType(
       self, types: Sequence[trace.TraceType]) -> Optional["DType"]:
     """See tf.types.experimental.TraceType base class."""
     return self if all(self == other for other in types) else None
+
+  @doc_controls.do_not_doc_inheritable
+  def placeholder_value(self, placeholder_context=None):
+    """TensorShape does not support placeholder values."""
+    raise NotImplementedError
 
   @classmethod
   def experimental_type_proto(cls) -> Type[types_pb2.SerializedDType]:

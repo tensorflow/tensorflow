@@ -181,11 +181,8 @@ struct MaterializeUpdateTransferWriteTensorOperand
     auto src = op.getSource().getDefiningOp<MaterializeOp>();
     if (!src) return failure();
 
-    auto tileOp = src.getSet().getDefiningOp<TileOp>();
-    if (!tileOp) return failure();
-
     SmallVector<Value> indices = getValueOrCreateConstantIndexOp(
-        rewriter, op.getLoc(), tileOp.getMixedOffsets());
+        rewriter, op.getLoc(), src.getMixedOffsets());
     SmallVector<bool> inBounds(op.getTransferRank(), true);
     rewriter.setInsertionPointAfter(op);
     auto newOp = rewriter.create<vector::TransferWriteOp>(
@@ -193,9 +190,8 @@ struct MaterializeUpdateTransferWriteTensorOperand
         ArrayRef<bool>{inBounds});
     rewriter.replaceOpWithNewOp<tensor::ExtractSliceOp>(
         op, op.getResult().getType().cast<RankedTensorType>(),
-        newOp.getResult(), tileOp.getOffsets(), tileOp.getSizes(),
-        tileOp.getStrides(), tileOp.getStaticOffsets(), tileOp.getStaticSizes(),
-        tileOp.getStaticStrides());
+        newOp.getResult(), src.getOffsets(), src.getSizes(), src.getStrides(),
+        src.getStaticOffsets(), src.getStaticSizes(), src.getStaticStrides());
 
     return success();
   }
@@ -414,7 +410,7 @@ struct MaterializeOpVectorizationPattern
     // shapes.
     if (!sourceType.isa<RankedTensorType>() ||
         sourceType.getNumDynamicDims() > 0 ||
-        !op.getSet().getType().cast<TileType>().hasStaticShape())
+        ShapedType::isDynamicShape(op.getStaticSizes()))
       return rewriter.notifyMatchFailure(op, "input is not statically shaped");
 
     Location loc = op.getLoc();
@@ -426,7 +422,8 @@ struct MaterializeOpVectorizationPattern
                                   tensorResult.getElementType());
     }
     Value vectorMaterialize = rewriter.create<MaterializeOp>(
-        loc, newResult, bvm.lookupOrDefault(source), op.getSet());
+        loc, newResult, bvm.lookupOrDefault(source), op.getMixedOffsets(),
+        op.getMixedSizes(), op.getMixedStrides());
     bvm.map(op, vectorMaterialize);
     if (auto vectorType = newResult.dyn_cast<VectorType>()) {
       // The result is not a scalar, generate a TransferWrite back to tensor.
@@ -456,12 +453,12 @@ struct IdentityMaterializeOpFoldingPattern
   LogicalResult matchAndRewrite(MaterializeOp op,
                                 PatternRewriter &rewriter) const override {
     auto src = op.getSource();
-    auto set = op.getSet().getDefiningOp<TileOp>();
     // Only fold identity materialize of ForOp's block argument.
     // Set has to be an identity tile op and source and result are static and
     // have the same shapes.
-    if (!op->getParentOfType<ForOp>() || !src.isa<BlockArgument>() || !set ||
-        !isIdentityTileOp(set) || !haveSameStaticShape(src, op.getResult()))
+    if (!op->getParentOfType<ForOp>() || !src.isa<BlockArgument>() ||
+        !isIdentitySlice(op.getOffsets(), op.getStrides()) ||
+        !haveSameStaticShape(src, op.getResult()))
       return rewriter.notifyMatchFailure(op, "did not match filter");
 
     op.replaceAllUsesWith(src);

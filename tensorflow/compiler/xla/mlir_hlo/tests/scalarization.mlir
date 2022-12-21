@@ -246,18 +246,13 @@ func.func @scatter_f32(%indices: tensor<1x2xindex>,
 // CHECK-NEXT:        %[[J_PLUS_INDEX_1:.*]] = arith.addi %[[J]], %[[INDEX_1]]
 
 // Extracts elements of `updates` and `init` tensors and combine.
-// CHECK-NEXT:        %[[UPDATES_ELEM_TILE:.*]] = gml_st.tile
-// CHECK-SAME:          [%[[C0]], %[[I]], %[[J]]] [1, 1, 1] [1, 1, 1]
-// CHECK-SAME:          : !gml_st.tile<1x1x1>
 // CHECK-NEXT:        %[[UPDATES_ELEM:.*]] = gml_st.materialize %[[UPDATES]]
-// CHECK-SAME:          [%[[UPDATES_ELEM_TILE]]]
-// CHECK-SAME:          : tensor<1x?x?xf32>[!gml_st.tile<1x1x1>] to f32
+// CHECK-SAME:          [%[[C0]], %[[I]], %[[J]]] [1, 1, 1] [1, 1, 1]
+// CHECK-SAME:          : tensor<1x?x?xf32> to f32
 
-// CHECK-NEXT:        %[[INIT_ELEM_TILE:.*]] = gml_st.tile
-// CHECK-SAME:          [%[[I_PLUS_INDEX_0]], %[[J_PLUS_INDEX_1]]] [1, 1] [1, 1]
-// CHECK-SAME:          : !gml_st.tile<1x1>
 // CHECK-NEXT:        %[[INIT_ELEM:.*]] = gml_st.materialize %[[INIT_]]
-// CHECK-SAME:        [%[[INIT_ELEM_TILE]]] : tensor<?x?xf32>[!gml_st.tile<1x1>] to f32
+// CHECK-SAME:          [%[[I_PLUS_INDEX_0]], %[[J_PLUS_INDEX_1]]] [1, 1] [1, 1]
+// CHECK-SAME:          : tensor<?x?xf32> to f32
 
 // CHECK-NEXT:        %[[COMBINED_ELEMS:.*]] = arith.addf %[[UPDATES_ELEM]],
 // CHECK-SAME:          %[[INIT_ELEM]] : f32
@@ -298,24 +293,22 @@ func.func @scatter_i64(%indices: tensor<1x1xindex>,
 // CHECK-DAG:   %[[C3:.*]] = arith.constant 3 : index
 // CHECK-DAG:   %[[C4:.*]] = arith.constant 4 : index
 
-// CHECK-DAG:       %[[INIT_TILE:.*]] = gml_st.tile [0, 0, 0] [3, 3, 4]
 // CHECK-DAG:       %[[INDEX_0:.*]] = tensor.extract %[[INDICES]]
+// CHECK-NEXT:    %[[INIT_TILE:.*]] = gml_st.tile [0, 0, 0] [3, 3, 4]
 
 // CHECK:       gml_st.for (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
 // CHECK-SAME:       to (%[[C3]], %[[C4]]) step (%[[C1]], %[[C1]])
 // CHECK-SAME:       outs (%[[INIT_:.*]] = %[[INIT]]: tensor<3x3x4xi64>) {
 
-// CHECK:         %[[UPDATES_TILE:.*]] = gml_st.tile
+// CHECK:         %[[UPDATES_ELEM:.*]] = gml_st.materialize %[[UPDATES]]
 // CHECK-SAME:      [%[[C0]], %[[C0]], %[[I]], %[[J]]]
 // CHECK-SAME:      [1, 1, 1, 1] [1, 1, 1, 1]
-// CHECK-SAME:      : !gml_st.tile<1x1x1x1>
-// CHECK:         %[[UPDATES_ELEM:.*]] = gml_st.materialize %[[UPDATES]]
-// CHECK-SAME:    [%[[UPDATES_TILE]]] : tensor<1x1x3x4xi64>[{{.*}}] to i64
+// CHECK-SAME:      : tensor<1x1x3x4xi64> to i64
 
 // CHECK:         %[[UPDATED_INIT:.*]] = tensor.insert %[[UPDATES_ELEM]] into
 // CHECK-SAME:    %[[INIT_]][%[[INDEX_0]], %[[I]], %[[J]]] : tensor<3x3x4xi64>
 
-// CHECK:         gml_st.set_yield %[[INIT_AFTER_INSERTION:.*]] into %[[INIT_]]
+// CHECK-NEXT:    gml_st.set_yield %[[INIT_AFTER_INSERTION:.*]] into %[[INIT_]]
 // CHECK-SAME:       [%[[INIT_TILE]]] : tensor<3x3x4xi64>
 // CHECK-SAME:       into tensor<3x3x4xi64>[!gml_st.tile<3x3x4>]
 // CHECK:       } : tensor<3x3x4xi64>
@@ -349,8 +342,8 @@ func.func @gather(%indices: tensor<1x2xindex>,
 //       CHECK:    gml_st.for (%[[J:.*]]) = (%[[C0]]) to (%[[C3]])
 //   CHECK-DAG:      %[[OFFSET_J:.*]] = arith.addi %[[J]], %[[CLAMPED_INDEX0_]]
 //       CHECK:      %[[INIT_TILE:.*]] = gml_st.tile [%[[C0]], %[[J]]]
-//       CHECK:      %[[OPERAND_TILE:.*]] = gml_st.tile [%[[OFFSET_J]], %[[CLAMPED_INDEX1_]], 0]
-//       CHECK:      %[[VAL:.*]] = gml_st.materialize %[[OPERAND]][%[[OPERAND_TILE]]]
+//       CHECK:      %[[VAL:.*]] = gml_st.materialize %[[OPERAND]]
+//       CHECK-SAME:   [%[[OFFSET_J]], %[[CLAMPED_INDEX1_]], 0]
 //       CHECK:      gml_st.set_yield %[[VAL]] into {{.*}}[%[[INIT_TILE]]]
 
 // -----
@@ -363,15 +356,14 @@ func.func @fold_extract_from_elements_into_gml_st(%in: tensor<8x2xf32>,
   %c8 = arith.constant 8 : index
 
   %copy = gml_st.parallel (%i, %j) = (%c0, %c0) to (%c8, %c2) step (%c1, %c1) {
-    %tile = gml_st.tile [%i, %j] [1, 1] [1, 1] : !gml_st.tile<1x1>
-
-    %in_sub = gml_st.materialize %in[%tile]
-      : tensor<8x2xf32>[!gml_st.tile<1x1>] to tensor<1x1xf32>
+    %in_sub = gml_st.materialize %in[%i, %j] [1, 1] [1, 1]
+      : tensor<8x2xf32> to tensor<1x1xf32>
 
     %elem = tensor.extract %in_sub[%c0, %c0] : tensor<1x1xf32>
 
     %out_sub = tensor.from_elements %elem : tensor<1x1xf32>
 
+    %tile = gml_st.tile [%i, %j] [1, 1] [1, 1] : !gml_st.tile<1x1>
     gml_st.set_yield %out_sub into %out[%tile]
       : tensor<1x1xf32> into tensor<8x2xf32>[!gml_st.tile<1x1>]
   } : tensor<8x2xf32>
@@ -379,9 +371,9 @@ func.func @fold_extract_from_elements_into_gml_st(%in: tensor<8x2xf32>,
 }
 // CHECK-LABEL: func @fold_extract_from_elements_into_gml_st
 
-// CHECK:       = gml_st.tile
-// CHECK-NEXT:  %[[ELEM:.*]] = gml_st.materialize
-// CHECK-SAME:    : tensor<8x2xf32>[!gml_st.tile<1x1>] to f32
+// CHECK:       %[[ELEM:.*]] = gml_st.materialize
+// CHECK-SAME:    : tensor<8x2xf32> to f32
+// CHECK-NEXT:       = gml_st.tile
 
 // CHECK-NEXT:  gml_st.set_yield %[[ELEM]]
 // CHECK-SAME:    : f32 into tensor<8x2xf32>[!gml_st.tile<1x1>]
@@ -429,14 +421,13 @@ func.func @concatenate(
 // CHECK-DAG:   %[[DIM0:.*]] = tensor.dim %[[INIT]], %[[C0]]
 // CHECK-DAG:   %[[DIM2:.*]] = tensor.dim %[[INIT]], %[[C2]]
 
-// CHECK-NEXT:  %[[TILE:.*]] = gml_st.tile [0, 0, 0]
-// CHECK-SAME:                        [%[[DIM0]], 1, %[[DIM2]]] [1, 1, 1]
 
 // Extract elements from arg0 is it's not empty.
 // CHECK-NEXT:  %[[DIM_ARG_0:.*]] = tensor.dim %[[ARG_0]], %[[C1]]
 // CHECK-NEXT:  %[[CMP_0:.*]] = arith.cmpi ne, %[[DIM_ARG_0]], %[[C0]]
 // CHECK:       %[[RESULT:.*]] = scf.if %[[CMP_0]]
-// CHECK:         %[[MAT_0:.*]] = gml_st.materialize %[[ARG_0]][%[[TILE]]]
+// CHECK:         %[[MAT_0:.*]] = gml_st.materialize %[[ARG_0]]
+// CHECK-SAME:        [0, 0, 0] [%[[DIM0]], 1, %[[DIM2]]] [1, 1, 1]
 // CHECK:         %[[RES_0:.*]] = tensor.insert_slice %[[MAT_0]] into %[[INIT]]
 // CHECK-NEXT:    scf.yield %[[RES_0]]
 // CHECK-NEXT:  } else {
@@ -445,13 +436,15 @@ func.func @concatenate(
 // CHECK-NEXT:    %[[DIM_ARG_1:.*]] = tensor.dim %[[ARG_1]], %[[C1]]
 // CHECK-NEXT:    %[[CMP_1:.*]] = arith.cmpi ne, %[[DIM_ARG_1]], %[[C0]]
 // CHECK-NEXT:    %[[RESULT_1:.*]] = scf.if %[[CMP_1]]
-// CHECK-NEXT:      %[[MAT_1:.*]] = gml_st.materialize %[[ARG_1]][%[[TILE]]]
+// CHECK-NEXT:      %[[MAT_1:.*]] = gml_st.materialize %[[ARG_1]]
+// CHECK-SAME:        [0, 0, 0] [%[[DIM0]], 1, %[[DIM2]]] [1, 1, 1]
 // CHECK-NEXT:      %[[RES_1:.*]] = tensor.insert_slice %[[MAT_1]] into %[[INIT]]
 // CHECK-NEXT:      scf.yield %[[RES_1]]
 // CHECK-NEXT:    } else {
 
 // Otherwise extract elements from arg2, because arg0 and arg1 are empty.
-// CHECK-NEXT:      %[[MAT_2:.*]] = gml_st.materialize %[[ARG_2]][%[[TILE]]]
+// CHECK-NEXT:      %[[MAT_2:.*]] = gml_st.materialize %[[ARG_2]]
+// CHECK-SAME:        [0, 0, 0] [%[[DIM0]], 1, %[[DIM2]]] [1, 1, 1]
 // CHECK-NEXT:      %[[RES_2:.*]] = tensor.insert_slice %[[MAT_2]] into %[[INIT]]
 // CHECK-NEXT:      scf.yield %[[RES_2]]
 // CHECK-NEXT:    }

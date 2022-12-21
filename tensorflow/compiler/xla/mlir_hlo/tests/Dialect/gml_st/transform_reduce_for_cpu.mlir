@@ -198,11 +198,9 @@ func.func @reduce_1d_static(%arg0: tensor<100xf32>) -> tensor<f32> {
 
 //       CHECK: %[[TILE_RESULT:.*]] = gml_st.for (%[[I:.*]]) = (%[[C0]]) to
 //  CHECK-SAME:     (%[[C96]]) step (%[[C32]]) outs (%[[ACC:.*]] = %[[FILL1]]
-//       CHECK:   %[[INPUT_TILE:.*]] = gml_st.tile [%[[I]]] [32] [1]
-//       CHECK:   %[[INPUT_SLICE:.*]] = gml_st.materialize %[[ARG0]][%[[INPUT_TILE]]]
+//       CHECK:   %[[INPUT_SLICE:.*]] = gml_st.materialize %[[ARG0]] [%[[I]]] [32] [1]
 //       CHECK:   %[[SHAPED_SLICE:.*]] = tensor.expand_shape %[[INPUT_SLICE]]
-//       CHECK:   %[[INIT_TILE:.*]] = gml_st.tile [0] [8] [1]
-//       CHECK:   %[[INIT_SLICE:.*]] = gml_st.materialize %[[ACC]][%[[INIT_TILE]]]
+//       CHECK:   %[[INIT_SLICE:.*]] = gml_st.materialize %[[ACC]] [0] [8] [1]
 //       CHECK:   %[[TILED_REDUCE:.*]] = linalg.reduce
 //  CHECK-SAME:     ins(%[[SHAPED_SLICE]]
 //  CHECK-SAME:     outs(%[[INIT_SLICE]]
@@ -217,10 +215,8 @@ func.func @reduce_1d_static(%arg0: tensor<100xf32>) -> tensor<f32> {
 
 //       CHECK: %[[REMAINDER_RESULT:.*]] = gml_st.for (%[[J:.*]]) = (%[[C96]]) to
 //  CHECK-SAME:     (%[[C100]]) step (%[[C32]]) outs (%[[ACC1:.*]] = %[[HORIZONTAL_REDUCE]]
-//       CHECK:   %[[INPUT_TILE1:.*]] = gml_st.tile [%[[J]]] [%[[C4]]] [1]
-//       CHECK:   %[[INPUT_SLICE1:.*]] = gml_st.materialize %[[ARG0]][%[[INPUT_TILE1]]]
-//       CHECK:   %[[INIT_TILE1:.*]] = gml_st.tile [] [] []
-//       CHECK:   %[[INIT_SLICE1:.*]] = gml_st.materialize %[[ACC]][%[[INIT_TILE1]]]
+//       CHECK:   %[[INPUT_SLICE1:.*]] = gml_st.materialize %[[ARG0]] [%[[J]]] [%[[C4]]] [1]
+//       CHECK:   %[[INIT_SLICE1:.*]] = gml_st.materialize %[[ACC]] [] [] []
 //       CHECK:   %[[REMAINDER_REDUCE:.*]] = linalg.reduce
 //  CHECK-SAME:     ins(%[[INPUT_SLICE1]]
 //  CHECK-SAME:     outs(%[[INIT_SLICE1]]
@@ -267,8 +263,7 @@ func.func @reduce_1d_dynamic(%arg0: tensor<?xf32>) -> tensor<f32> {
 
 //      CHECK: %[[REMAINDER_RESULT:.*]] = gml_st.for (%[[J:.*]]) = (%[[TILABLE_BOUND]]) to
 // CHECK-SAME:     (%[[INPUT_SIZE]]) step (%[[C32]]) outs (%[[ACC1:.*]] = %[[HORIZONTAL_REDUCE]]
-//      CHECK:   %[[INPUT_TILE:.*]] = gml_st.tile [%[[J]]] [%[[REMAINDER_SIZE]]] [1]
-//      CHECK:   %[[INPUT_SLICE:.*]] = gml_st.materialize %[[ARG0]][%[[INPUT_TILE]]]
+//      CHECK:   %[[INPUT_SLICE:.*]] = gml_st.materialize %[[ARG0]] [%[[J]]] [%[[REMAINDER_SIZE]]] [1]
 
 //      CHECK: return %[[REMAINDER_RESULT]]
 

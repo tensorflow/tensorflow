@@ -83,10 +83,24 @@ class DelegatePerformanceBenchmark {
             modelFd,
             modelOffset,
             modelSize);
+    if (latencyResultsByteArray == null || latencyResultsByteArray.length == 0) {
+      Log.w(
+          TAG,
+          String.format(
+              "Received null response from native for %s. Treating this as error.",
+              tfliteSettingslistEntry.filePath()));
+      return LatencyResults.newBuilder()
+          .setEventType(BenchmarkEventType.BENCHMARK_EVENT_TYPE_ERROR)
+          .build();
+    }
     try {
       return LatencyResults.parseFrom(latencyResultsByteArray);
     } catch (IOException e) {
-      Log.i(TAG, "Failed to parse the results running " + tfliteSettingslistEntry.filePath());
+      Log.w(
+          TAG,
+          String.format(
+              "Failed to parse the results running %s with exception %s.",
+              tfliteSettingslistEntry.filePath(), e));
       return LatencyResults.newBuilder()
           .setEventType(BenchmarkEventType.BENCHMARK_EVENT_TYPE_ERROR)
           .build();

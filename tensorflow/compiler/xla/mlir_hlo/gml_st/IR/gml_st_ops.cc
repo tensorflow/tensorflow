@@ -89,6 +89,10 @@ ParseResult parseAssignmentListWithTypes(
   return parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseElt);
 }
 
+Type inferReturnType(ShapedType sourceType, ArrayRef<int64_t> tileShape) {
+  return sourceType.clone(tileShape, sourceType.getElementType());
+}
+
 }  // namespace
 }  // namespace mlir
 
@@ -138,54 +142,76 @@ Operation *GmlStDialect::materializeConstant(OpBuilder &builder, Attribute attr,
 // MaterializeOp
 //===----------------------------------------------------------------------===//
 
-static Type inferReturnType(ShapedType sourceType, Type setType) {
-  if (auto tileType = setType.dyn_cast<TileType>()) {
-    return sourceType.clone(tileType.getShape(), sourceType.getElementType());
-  }
-  assert(false && "could not infer result type");
-  return {};
+void MaterializeOp::build(OpBuilder &b, OperationState &result, Value source,
+                          ArrayRef<OpFoldResult> offsets,
+                          ArrayRef<OpFoldResult> sizes,
+                          ArrayRef<OpFoldResult> strides) {
+  SmallVector<int64_t> staticOffsets, staticSizes, staticStrides;
+  SmallVector<Value> dynamicOffsets, dynamicSizes, dynamicStrides;
+  dispatchIndexOpFoldResults(offsets, dynamicOffsets, staticOffsets);
+  dispatchIndexOpFoldResults(sizes, dynamicSizes, staticSizes);
+  dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides);
+  auto sourceType = source.getType().cast<ShapedType>();
+  Type resultType = inferReturnType(sourceType, staticSizes);
+  build(b, result, resultType, source, dynamicOffsets, dynamicSizes,
+        dynamicStrides, b.getDenseI64ArrayAttr(staticOffsets),
+        b.getDenseI64ArrayAttr(staticSizes),
+        b.getDenseI64ArrayAttr(staticStrides));
 }
 
-void MaterializeOp::build(OpBuilder &builder, OperationState &result,
-                          Value source, Value set) {
-  auto sourceType = source.getType().cast<ShapedType>();
-  auto resultType = inferReturnType(sourceType, set.getType());
-  build(builder, result, resultType, source, set);
+void MaterializeOp::build(OpBuilder &b, OperationState &result, Type resultType,
+                          Value source, ArrayRef<OpFoldResult> offsets,
+                          ArrayRef<OpFoldResult> sizes,
+                          ArrayRef<OpFoldResult> strides) {
+  SmallVector<int64_t> staticOffsets, staticSizes, staticStrides;
+  SmallVector<Value> dynamicOffsets, dynamicSizes, dynamicStrides;
+  dispatchIndexOpFoldResults(offsets, dynamicOffsets, staticOffsets);
+  dispatchIndexOpFoldResults(sizes, dynamicSizes, staticSizes);
+  dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides);
+  build(b, result, resultType, source, dynamicOffsets, dynamicSizes,
+        dynamicStrides, b.getDenseI64ArrayAttr(staticOffsets),
+        b.getDenseI64ArrayAttr(staticSizes),
+        b.getDenseI64ArrayAttr(staticStrides));
+}
+
+void MaterializeOp::build(OpBuilder &b, OperationState &result, Value source,
+                          ArrayRef<OpFoldResult> offsets) {
+  SmallVector<OpFoldResult> unitSizesAndStrides(offsets.size(),
+                                                b.getIndexAttr(1));
+  build(b, result, source, offsets, unitSizesAndStrides, unitSizesAndStrides);
 }
 
 LogicalResult verifyCompatibleExtractedSubset(Operation *op,
                                               ShapedType shapedType,
                                               Type extractedType,
-                                              Type setType) {
+                                              ArrayRef<int64_t> tileShape) {
   auto sourceRank = shapedType.getRank();
   auto elementType = shapedType.getElementType();
 
   // If the result is a scalar, check that the tile had a single element.
   if (!extractedType.isa<ShapedType>()) {
-    auto tileType = setType.cast<TileType>();
     if (extractedType != elementType) {
       return op->emitOpError("expected the result type ")
              << extractedType << " to match source element type "
              << elementType;
     }
-    if (tileType.hasStaticShape() && tileType.getNumElements() == 1)
+    if (!ShapedType::isDynamicShape(tileShape) &&
+        ShapedType::getNumElements(tileShape) == 1)
       return success();
 
     return op->emitOpError("expected tile type ")
-           << tileType << " to have a single element shape";
+           << tileShape << " to have a single element shape";
   }
 
   // If the result is a shaped type, compare with the inferred type.
   auto extractedShapedType = extractedType.cast<ShapedType>();
-  auto tileType = setType.cast<TileType>();
-  int64_t tileRank = tileType.getRank();
+  int64_t tileRank = tileShape.size();
   if (tileRank != sourceRank) {
     return op->emitOpError("expected source rank = ")
            << sourceRank << " to match tile rank = " << tileRank;
   }
 
-  auto inferredType =
-      shapedType.clone(tileType.getShape(), shapedType.getElementType());
+  auto inferredType = shapedType.clone(tileShape, shapedType.getElementType());
   if (extractedShapedType != inferredType) {
     return op->emitOpError("expected result type = ")
            << extractedShapedType
@@ -196,27 +222,62 @@ LogicalResult verifyCompatibleExtractedSubset(Operation *op,
 }
 
 LogicalResult MaterializeOp::verify() {
-  // TODO(pifon): Add verification that was removed from TileOp::verify.
   return verifyCompatibleExtractedSubset(getOperation(), getSource().getType(),
-                                         getType(), getSet().getType());
+                                         getType(), getStaticSizes());
+}
+
+LogicalResult MaterializeOp::reifyResultShapes(
+    OpBuilder &builder, ReifiedRankedShapedTypeDims &reifiedReturnShapes) {
+  reifiedReturnShapes.push_back(
+      getAsValues(builder, getLoc(), getMixedSizes()));
+  return success();
 }
 
 namespace {
-/// Cleans up UnrealizedConversionCast sets from materialize ops.
-struct FoldMaterializeUnrealizedConversionCast
-    : public OpRewritePattern<MaterializeOp> {
+
+/// Adapted from OpWithOffsetSizesAndStridesConstantArgumentFolder, which makes
+/// slightly incompatible assumptions about the op.
+struct FoldConstantsIntoMaterializeOp : public OpRewritePattern<MaterializeOp> {
   using OpRewritePattern<MaterializeOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(MaterializeOp op,
                                 PatternRewriter &rewriter) const override {
-    auto cast = op.getSet().getDefiningOp<UnrealizedConversionCastOp>();
-    if (!cast) return failure();
+    // No constant operand, just return;
+    if (llvm::none_of(op.getOperands(), [](Value operand) {
+          return matchPattern(operand, matchConstantIndex());
+        }))
+      return failure();
 
-    auto set = cast.getOperand(0);
-    auto newOp = rewriter.create<MaterializeOp>(
-        op.getLoc(), inferReturnType(op.getSource().getType(), set.getType()),
-        op.getSource(), set);
-    rewriter.replaceOpWithNewOp<tensor::CastOp>(op, op.getType(), newOp);
+    // At least one of offsets/sizes/strides is a new constant.
+    // Form the new list of operands and constant attributes from the existing.
+    SmallVector<OpFoldResult> mixedOffsets(op.getMixedOffsets());
+    SmallVector<OpFoldResult> mixedSizes(op.getMixedSizes());
+    SmallVector<OpFoldResult> mixedStrides(op.getMixedStrides());
+    canonicalizeSubViewPart(mixedOffsets, ShapedType::isDynamic);
+    canonicalizeSubViewPart(mixedSizes, ShapedType::isDynamic);
+    canonicalizeSubViewPart(mixedStrides, ShapedType::isDynamic);
+
+    SmallVector<int64_t> staticSizes;
+    SmallVector<Value> dynamicSizes;
+    dispatchIndexOpFoldResults(mixedSizes, dynamicSizes, staticSizes);
+
+    Type opResultType = op.getType();
+    Type newResultType =
+        opResultType.isa<ShapedType>()
+            ? inferReturnType(op.getSource().getType(), staticSizes)
+            : opResultType;
+    // Create the new tile in canonical form.
+    auto newMaterializeOp = rewriter.create<MaterializeOp>(
+        op.getLoc(), newResultType, op.getSource(), mixedOffsets, mixedSizes,
+        mixedStrides);
+
+    // Cast the result back to the original type.
+    if (opResultType != newResultType) {
+      rewriter.replaceOpWithNewOp<tensor::CastOp>(op, opResultType,
+                                                  newMaterializeOp.getResult());
+    } else {
+      rewriter.replaceOp(op, newMaterializeOp.getResult());
+    }
     return success();
   }
 };
@@ -231,9 +292,10 @@ struct FoldSrcCastIntoMaterialize : public OpRewritePattern<MaterializeOp> {
     if (!cast) return failure();
 
     auto src = cast.getSource();
-    auto set = op.getSet();
+    auto shape = op.getStaticSizes();
     rewriter.replaceOpWithNewOp<MaterializeOp>(
-        op, inferReturnType(src.getType(), set.getType()), src, set);
+        op, inferReturnType(src.getType(), shape), src, op.getMixedOffsets(),
+        op.getMixedSizes(), op.getMixedStrides());
     return success();
   }
 };
@@ -241,9 +303,8 @@ struct FoldSrcCastIntoMaterialize : public OpRewritePattern<MaterializeOp> {
 
 void MaterializeOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                 MLIRContext *context) {
-  results
-      .add<FoldMaterializeUnrealizedConversionCast, FoldSrcCastIntoMaterialize>(
-          context);
+  results.add<FoldConstantsIntoMaterializeOp, FoldSrcCastIntoMaterialize>(
+      context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1162,7 +1223,7 @@ void ForOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 namespace {
 
-static constexpr int64_t kNoMatch = -1;
+constexpr int64_t kNoMatch = -1;
 
 // Folds away LoopOp inputs if they have no uses within the body.
 //
@@ -1215,13 +1276,11 @@ struct LoopInputsFolder : public OpRewritePattern<LoopOp> {
   }
 };
 
-}  // namespace
-
 /// A simple, conservative analysis to determine if the loop is shape
 /// conserving. I.e., the type of the arg-th yielded value is the same as the
 /// type of the corresponding basic block argument of the loop.
 /// Note: This function handles only simple cases. Expand as needed.
-static bool isShapePreserving(LoopOp loopOp, int64_t arg) {
+bool isShapePreserving(LoopOp loopOp, int64_t arg) {
   auto yieldOp = cast<YieldOp>(loopOp.getLoopBody().front().getTerminator());
   if (yieldOp.getValues().empty())
     // Loop either has no outputs or is a "memref-based version". In either
@@ -1248,8 +1307,6 @@ static bool isShapePreserving(LoopOp loopOp, int64_t arg) {
   }
   return false;
 }
-
-namespace {
 
 /// Fold dim(x) where `x` is an input/output argument of a LoopOp block
 /// to dim(y) where `y` is the initial input/output value of the argument.
@@ -1888,9 +1945,9 @@ void SetYieldOp::build(
 LogicalResult SetYieldOp::verify() {
   for (const auto [dst, src, set] :
        llvm::zip(getDsts(), getSrcs(), getSets())) {
-    if (failed(verifyCompatibleExtractedSubset(getOperation(),
-                                               dst.getType().cast<ShapedType>(),
-                                               src.getType(), set.getType())))
+    if (failed(verifyCompatibleExtractedSubset(
+            getOperation(), dst.getType().cast<ShapedType>(), src.getType(),
+            set.getType().cast<TileType>().getShape())))
       return failure();
   }
   auto accumulatorCount = llvm::count_if(

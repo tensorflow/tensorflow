@@ -180,19 +180,6 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
       llvm::codegen::getExplicitCodeModel(), codegen_opt_level));
 }
 
-// Emits the given module to a bit code file.
-void EmitBitcodeToFile(const llvm::Module& module, absl::string_view filename) {
-  std::error_code error_code;
-  llvm::ToolOutputFile outfile(std::string(filename).c_str(), error_code,
-                               llvm::sys::fs::OF_None);
-  if (error_code) {
-    LOG(FATAL) << "opening bitcode file for writing: " << error_code.message();
-  }
-
-  llvm::WriteBitcodeToFile(module, outfile.os());
-  outfile.keep();
-}
-
 // Emits the given module to PTX. target_machine is an initialized TargetMachine
 // for the NVPTX target.
 std::string EmitModuleToPTX(llvm::Module* module,
