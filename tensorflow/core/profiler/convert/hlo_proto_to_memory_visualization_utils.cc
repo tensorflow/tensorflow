@@ -96,6 +96,20 @@ struct LogicalBufferStruct {
   size_t size() const { return proto.size(); }
   size_t unpadded_size() const { return ShapeUnpaddedSize(shape); }
 
+  // reference counting related
+  int64_t inc() { return ++ref_count; }
+  int64_t dec() {
+    if (cannonical_buffer) return cannonical_buffer->dec();
+    return --ref_count;
+  }
+  int64_t share_with(LogicalBufferStruct* buffer) {
+    cannonical_buffer = buffer;
+    return cannonical_buffer->inc();
+  }
+  LogicalBufferStruct* get_cannonical_buffer() {
+    return cannonical_buffer ? cannonical_buffer : this;
+  }
+
   // Get the instruction name with shape index for a logical buffer.
   std::string GetInstructionNameWithShapeIndex() const {
     if (proto.defined_at().shape_index().empty()) {
@@ -113,6 +127,8 @@ struct LogicalBufferStruct {
   uint64_t offset;            // within the buffer allocation;
   absl::Span<uint64_t> span;  // within the specific simulator trace.
   xla::Shape shape;
+  int64_t ref_count = 0;
+  LogicalBufferStruct* cannonical_buffer = nullptr;
 };
 
 // A wrapper of HLO BufferAssignment, with lookup maps for logical buffers and
@@ -278,8 +294,7 @@ HeapObject MakeHeapObjectCommon(std::string label, int32_t color,
   return result;
 }
 
-HeapObject MakeHeapObject(const HloProtoBufferWrapper& wrapper,
-                          const LogicalBufferStruct& logical_buffer,
+HeapObject MakeHeapObject(const LogicalBufferStruct& logical_buffer,
                           int32_t color) {
   const HloInstructionProto& hlo_instruction = logical_buffer.hlo_instruction;
   std::string shape_string = ShapeDescription(logical_buffer.shape);
@@ -527,60 +542,6 @@ struct HeapSimulatorStats {
   int64_t simulator_trace_event_size;
 };
 
-// Tracker for logical buffer sharing.
-class LogicalBufferShareTracker {
- public:
-  // Canonical logical buffer ID and its ref count.
-  struct BufferRefCount {
-    int64_t canonical_buffer_id;
-    int32_t ref_count;
-    BufferRefCount(int64_t id, int32_t count)
-        : canonical_buffer_id(id), ref_count(count) {}
-  };
-
-  // Process ALLOC event.
-  void ProcessAllocEvent(const HeapSimulatorTrace::Event& event) {
-    // The first time a canonical buffer is allocated.
-    canonical_buffer_ref_count_[event.buffer_id()] = 1;
-  }
-
-  // Process FREE event, return canonical buffer and its ref count.
-  StatusOr<BufferRefCount> ProcessFreeEvent(
-      const HeapSimulatorTrace::Event& event) {
-    // Get the canonical buffer ID of this free event.
-    int64_t canonical_buffer_id = event.buffer_id();
-    if (const int64_t* canonical_id =
-            gtl::FindOrNull(share_with_to_canonical_, event.buffer_id())) {
-      canonical_buffer_id = *canonical_id;
-    }
-    // Decrease the ref count of canonical buffer.
-    int32_t& ref_count = canonical_buffer_ref_count_[canonical_buffer_id];
-    --ref_count;
-    if (ref_count < 0) {
-      return errors::InvalidArgument(absl::StrCat(
-          "Buffer ", canonical_buffer_id, "is freed multiple times."));
-    }
-    return BufferRefCount(canonical_buffer_id, ref_count);
-  }
-
-  // Process SHARE_WITH event, return canonical buffer and its ref count.
-  BufferRefCount ProcessShareWithEvent(const HeapSimulatorTrace::Event& event) {
-    int64_t canonical_buffer_id = event.share_with_canonical_id();
-    share_with_to_canonical_[event.buffer_id()] = canonical_buffer_id;
-    // Increase the ref count of canonical buffer.
-    int32_t& ref_count = canonical_buffer_ref_count_[canonical_buffer_id];
-    ++ref_count;
-    return BufferRefCount(canonical_buffer_id, ref_count);
-  }
-
- private:
-  // Map from the logical buffer ID of the SHARE_WITH buffer to the logical
-  // buffer ID of the canonical buffer being shared.
-  absl::flat_hash_map<int64_t, int64_t> share_with_to_canonical_;
-  // Number of times a canonical buffer is referenced.
-  absl::flat_hash_map<int64_t, int32_t> canonical_buffer_ref_count_;
-};
-
 Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
                                  const int64_t memory_color,
                                  int64_t heap_simulator_trace_id,
@@ -606,34 +567,36 @@ Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
       wrapper.GetHloProto().buffer_assignment().heap_simulator_traces(
           heap_simulator_trace_id);
 
-  LogicalBufferShareTracker share_tracker;
   stats->SetSimulatorTraceEventSize(trace.events_size());
   for (const auto& event : trace.events()) {
     stats->UpdateOnSimulatorEvent(event);
+    auto& logical_buffer = wrapper.GetLogicalBuffer(event.buffer_id());
     if (event.kind() == HeapSimulatorTrace::Event::ALLOC) {
-      share_tracker.ProcessAllocEvent(event);
       // ALLOC event increases memory usage and initializes the buffer lifetime
       // span.
-      const auto& logical_buffer = wrapper.GetLogicalBuffer(event.buffer_id());
+      logical_buffer.inc();
       stats->IncreaseMemoryUsage(logical_buffer,
                                  /*init_buffer_span=*/true);
     } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
-      TF_ASSIGN_OR_RETURN(auto buffer_ref_count,
-                          share_tracker.ProcessFreeEvent(event));
-      if (buffer_ref_count.ref_count == 0) {
+      auto ref_count = logical_buffer.dec();
+      if (ref_count < 0) {
+        return errors::InvalidArgument(absl::StrCat(
+            "Buffer ", logical_buffer.proto.id(), "is freed multiple times."));
+      }
+      if (ref_count == 0) {
         // There is no more reference to the canonical buffer, the canonical
         // buffer is finally freed. Update memory usage and memory timespan
         // using the metadata of canonical buffer.
-        const auto& canonical_buffer =
-            wrapper.GetLogicalBuffer(buffer_ref_count.canonical_buffer_id);
+        const auto& canonical_buffer = *logical_buffer.get_cannonical_buffer();
         TF_RETURN_IF_ERROR(stats->DecreaseMemoryUsage(canonical_buffer));
       }
     } else if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
-      auto buffer_ref_count = share_tracker.ProcessShareWithEvent(event);
-      if (buffer_ref_count.ref_count == 1) {
+      int64_t canonical_buffer_id = event.share_with_canonical_id();
+      auto& canonical_buffer = wrapper.GetLogicalBuffer(canonical_buffer_id);
+      auto ref_count = logical_buffer.share_with(&canonical_buffer);
+
+      if (ref_count == 1) {
         // SHARE_WITH happens after the FREE of a canonical buffer.
-        const auto& canonical_buffer =
-            wrapper.GetLogicalBuffer(buffer_ref_count.canonical_buffer_id);
         // SHARE_WITH event does not initialize buffer lifetime span, it was
         // initialized by ALLOC event using the canonical logical buffer.
         stats->IncreaseMemoryUsage(canonical_buffer,
@@ -664,8 +627,7 @@ struct BufferStats {
       total_small_buffer_size_bytes += logical_buffer.size();
     } else {
       // Make a new HeapObject, assign a new color to visualize it.
-      max_heap_objects.push_back(
-          MakeHeapObject(wrapper, logical_buffer, colorno++));
+      max_heap_objects.push_back(MakeHeapObject(logical_buffer, colorno++));
     }
   }
 
