@@ -972,6 +972,7 @@ package_group(
         "//learning/brain/tfrt/...",
         "//learning/lib/ami/simple_ml/...",
         "//learning/pathways/...",
+        "//perftools/accelerators/xprof/integration_tests/...",
         "//smartass/brain/configure/...",
         "//tensorflow/...",
         "//tensorflow_decision_forests/...",
