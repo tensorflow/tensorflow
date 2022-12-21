@@ -47,6 +47,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -55,11 +56,13 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/python/ifrt",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:type_to_shape",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@tf_runtime//:ref_count",
     ],
 )

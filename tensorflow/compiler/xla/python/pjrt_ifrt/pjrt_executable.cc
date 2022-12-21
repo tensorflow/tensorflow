@@ -21,14 +21,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/python/ifrt/dtype.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_array.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -109,6 +111,93 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
   const xla::Shape& result_shape = hlo_module->result_shape();
   return CreateInternal(client, std::move(pjrt_loaded_executable), result_shape,
                         /*result_hlo_sharding=*/nullptr);
+}
+
+static StatusOr<std::vector<xla::Shape>> ResultShapesOfModule(
+    mlir::ModuleOp module) {
+  auto main = module.lookupSymbol<mlir::func::FuncOp>("main");
+  if (!main) {
+    return InvalidArgument("MLIR module has no main function");
+  }
+  auto type = main.getFunctionType();
+  std::vector<xla::Shape> result_shapes;
+  result_shapes.reserve(type.getNumResults());
+  for (unsigned i = 0; i < type.getNumResults(); ++i) {
+    auto result_type = type.getResult(i);
+    result_shapes.push_back(xla::TypeToShape(result_type));
+  }
+  return result_shapes;
+}
+
+StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
+    PjRtCompatibleClient* client, mlir::ModuleOp module,
+    CompileOptions options) {
+  VLOG(3) << "PjRtLoadedExecutable::Create";
+  if (VLOG_IS_ON(3)) {
+    module.dump();
+  }
+  VLOG(3) << options.ToProto()->DebugString();
+  const auto& build_options = options.executable_build_options;
+  const bool auto_spmd_partitioning =
+      build_options.use_spmd_partitioning() &&
+      build_options.num_partitions() > 1 &&
+      (build_options.use_auto_spmd_partitioning() ||
+       build_options.allow_spmd_sharding_propagation_to_output());
+  TF_ASSIGN_OR_RETURN(
+      auto pjrt_loaded_executable,
+      client->pjrt_client()->Compile(module, std::move(options)));
+
+  if (auto_spmd_partitioning) {
+    // TODO(hyeontaek): We should request output shapes and shardings instead of
+    // the entire HLO modules once PjRt supports it.
+    VLOG(3) << "Requesting GetHloModules";
+    TF_ASSIGN_OR_RETURN(auto hlo_modules,
+                        pjrt_loaded_executable->GetHloModules());
+    if (hlo_modules.empty()) {
+      return FailedPrecondition("No HLO module found");
+    }
+    const auto& hlo_module = hlo_modules.front();
+    // result_shape already contains per-device shapes. Do not use HLO sharding
+    // (e.g., from hlo_module->spmd_output_sharding()), which would accidentally
+    // apply sharding twice.
+    const xla::Shape& result_shape = hlo_module->result_shape();
+    return CreateInternal(client, std::move(pjrt_loaded_executable),
+                          result_shape,
+                          /*result_hlo_sharding=*/nullptr);
+  } else {
+    VLOG(3) << "Not requesting GetHloModules";
+    TF_ASSIGN_OR_RETURN(auto result_shapes, ResultShapesOfModule(module));
+    bool tuple_output = result_shapes.size() != 1;
+    xla::Shape result_shape;
+    if (tuple_output) {
+      result_shape = xla::ShapeUtil::MakeTupleShape(result_shapes);
+    } else {
+      result_shape = result_shapes.front();
+    }
+
+    std::optional<HloSharding> result_hlo_sharding_holder;
+    const xla::HloSharding* result_hlo_sharding = nullptr;
+    std::optional<std::vector<OpSharding>> output_shardings =
+        pjrt_loaded_executable->GetOutputShardings();
+    if (output_shardings) {
+      std::vector<HloSharding> hlo_shardings;
+      hlo_shardings.reserve(output_shardings->size());
+      for (const auto& sharding : *output_shardings) {
+        TF_ASSIGN_OR_RETURN(auto hlo_sharding,
+                            HloSharding::FromProto(sharding));
+        hlo_shardings.push_back(hlo_sharding);
+      }
+      if (tuple_output) {
+        result_hlo_sharding_holder =
+            HloSharding::Tuple(result_shape, hlo_shardings);
+      } else {
+        result_hlo_sharding_holder = hlo_shardings.front();
+      }
+      result_hlo_sharding = &*result_hlo_sharding_holder;
+    }
+    return CreateInternal(client, std::move(pjrt_loaded_executable),
+                          result_shape, result_hlo_sharding);
+  }
 }
 
 StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
