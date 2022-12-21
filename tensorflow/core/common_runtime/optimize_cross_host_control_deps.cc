@@ -158,7 +158,7 @@ Status OptimizeCrossHostControlInputEdges(Graph* graph,
       if (pair.second.size() < cross_host_edges_threshold) {
         continue;
       }
-      VLOG(0) << "Optmize cross host input control edge, dst node: "
+      VLOG(1) << "Optmize cross host input control edge, dst node: "
               << dst->name() << " dst device: " << dst_host_device
               << " src host device: " << pair.first
               << " edges size: " << pair.second.size();
