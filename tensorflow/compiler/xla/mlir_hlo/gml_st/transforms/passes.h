@@ -116,6 +116,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForTritonPass(
 /// Pass to fuse linalg on tensor operations.
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionOfTensorOpsPass();
 
+/// Pass to convert ops on tensors with 1 element to scalar ops.
+std::unique_ptr<OperationPass<func::FuncOp>> createScalarizationPass();
+
 /// Pass to transform a linalg.map op for CPU backend.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformMapForCpuPass(int64_t tileSize = 1);

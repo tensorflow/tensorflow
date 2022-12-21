@@ -18,7 +18,6 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
-#include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -27,14 +26,16 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "thlo/IR/thlo_ops.h"
 
 namespace mlir {
+namespace gml_st {
 namespace {
 
 #define GEN_PASS_DEF_SCALARIZATIONPASS
-#include "mlir-hlo/Transforms/passes.h.inc"
+#include "gml_st/transforms/passes.h.inc"
 
 using linalg::LinalgOp;
 using tensor::ExtractOp;
@@ -572,4 +573,5 @@ std::unique_ptr<OperationPass<func::FuncOp>> createScalarizationPass() {
   return std::make_unique<ScalarizationPass>();
 }
 
+}  // namespace gml_st
 }  // namespace mlir

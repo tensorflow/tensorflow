@@ -37,6 +37,7 @@ add_mlir_library(GmlStPasses
   greedy_tiling_and_fusion/greedy_tiling_and_fusion.cc
   lower_vector_contract/lower_vector_contract.cc
   peeling/peeling.cc
+  scalarization/scalarization.cc
   tiling/tiling.cc
   tiling_cwise/tiling_cwise.cc
   tiling_gpu_warp/tiling_gpu_warp.cc
