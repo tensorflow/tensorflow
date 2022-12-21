@@ -69,7 +69,7 @@ static absl::Status LaunchImpl(
       device_kernel.GetOrCreate([&] {
         return ToAbsl(CreateKernel(absl::string_view(name.data(), name.size()),
                                    args_size_including_temp_buffer, *ptx,
-                                   *cubin, executor));
+                                   *cubin, executor, shared_memory_bytes));
       });
   if (!kernel.ok()) return kernel.status();
   assert((**kernel)->name() == name && "unexpected loaded kernel");

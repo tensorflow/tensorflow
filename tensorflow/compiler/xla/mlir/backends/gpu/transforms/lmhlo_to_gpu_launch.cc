@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <iterator>
 #include <memory>
 #include <numeric>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -78,6 +80,13 @@ class ConvertLmhloToGpuLaunchPass
  private:
   ThunkSequence* thunk_sequence_;
 };
+
+// XLA some times (ab)uses custom calls to represent operations for which we do
+// not want to define a separate `HloOpcode`. These operations emitted as device
+// kernels (similar to fusions), and we detect such custom calls by name, and
+// handle them similar to how we handle fusions.
+static std::array<std::string_view, 3> kCustomCallIntrinsics = {
+    "SliceToDynamic", "PadToStatic", "__triton"};
 
 //===-----------------------------------------------------------------------===/
 
@@ -332,8 +341,9 @@ static bool HasGpuEmitter(OpTy) {
 
 // Select custom calls that have corresponding GPU emitters.
 static bool HasGpuEmitter(lmhlo::CustomCallOp custom_call) {
-  llvm::StringRef target = custom_call.getCallTargetName();
-  return target == "SliceToDynamic" || target == "PadToStatic";
+  return llvm::any_of(kCustomCallIntrinsics, [&](std::string_view name) {
+    return custom_call.getCallTargetName().equals(name);
+  });
 }
 
 LogicalResult KernelOpsPattern::matchAndRewrite(
