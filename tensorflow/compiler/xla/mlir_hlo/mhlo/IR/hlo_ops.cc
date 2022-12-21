@@ -5889,11 +5889,9 @@ LogicalResult ReplicaIdOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult PartitionIdOp::inferReturnTypes(
-    MLIRContext* context, Optional<Location>, ValueRange /*operands*/,
+    MLIRContext* context, Optional<Location> location, ValueRange /*operands*/,
     DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
-  inferredReturnTypes.push_back(RankedTensorType::get(
-      /*shape=*/{}, IntegerType::get(context, 32, IntegerType::Unsigned)));
-  return success();
+  return hlo::inferPartitionIdOp(context, location, inferredReturnTypes);
 }
 
 //===----------------------------------------------------------------------===//
