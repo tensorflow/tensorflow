@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/split_into_island_per_op_pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
@@ -285,21 +286,33 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
     island_op.getControl().replaceAllUsesWith(island_sink.getControl());
   }
 
-  // Replicas with no uses should be pinned to a graph fetch so they still
-  // execute.
-  llvm::SmallVector<Value, 8> unused_replica_controls;
-  for (auto& replica : replicas)
-    if (replica.use_empty())
-      unused_replica_controls.push_back(replica.getControl());
+  if (legacy_graph_export) {
+    // Replicas with no uses should be pinned to a graph fetch so they still
+    // execute.
+    llvm::SmallVector<Value, 8> unused_replica_controls;
+    for (auto& replica : replicas)
+      if (replica.use_empty())
+        unused_replica_controls.push_back(replica.getControl());
 
-  if (!unused_replica_controls.empty()) {
-    tf_executor::FetchOp fetch = graph_op.GetFetch();
-    auto fetches = llvm::to_vector<8>(fetch.getOperands());
-    fetches.append(unused_replica_controls.begin(),
-                   unused_replica_controls.end());
-    builder.setInsertionPoint(fetch);
-    builder.create<tf_executor::FetchOp>(fetch.getLoc(), fetches);
-    fetch.erase();
+    if (!unused_replica_controls.empty()) {
+      tf_executor::FetchOp fetch = graph_op.GetFetch();
+      auto fetches = llvm::to_vector<8>(fetch.getOperands());
+      fetches.append(unused_replica_controls.begin(),
+                     unused_replica_controls.end());
+      builder.setInsertionPoint(fetch);
+      builder.create<tf_executor::FetchOp>(fetch.getLoc(), fetches);
+      fetch.erase();
+    }
+  } else {
+    // Now, finally, we need to maintain the invariant expected to be maintained
+    // throughout the graph export pipeline that all islands always perfectly
+    // wrap a single op. So we'll split all replica islands.
+    auto control_type = tf_executor::ControlType::get(island_op.getContext());
+    for (auto& replica : replicas) {
+      if (replica.GetBody().getOperations().size() > 1) {
+        mlir::TF::SplitIsland(replica, control_type);
+      }
+    }
   }
 
   island_op.erase();
