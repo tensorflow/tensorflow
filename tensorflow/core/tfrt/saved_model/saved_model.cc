@@ -234,9 +234,9 @@ tensorflow::Status RunInitializers(
     const Runtime& runtime, tfrt::ResourceContext* resource_context,
     const FallbackState& fallback_state) {
   TF_ASSIGN_OR_RETURN(auto request_info,
-                      SetUpRequestContext(/*run_options=*/{}, model_metadata,
-                                          runtime, runtime.work_queue(),
-                                          resource_context, fallback_state));
+                      CreateRequestInfo(/*run_options=*/{}, model_metadata,
+                                        runtime, runtime.work_queue(),
+                                        resource_context, fallback_state));
 
   tfrt::ExecutionContext exec_ctx(request_info->tfrt_request_context);
 

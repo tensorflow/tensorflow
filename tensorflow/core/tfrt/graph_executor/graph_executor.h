@@ -61,7 +61,7 @@ struct RequestInfo {
 };
 
 // Creates a `RequestInfo` given relative data.
-StatusOr<std::unique_ptr<RequestInfo>> SetUpRequestContext(
+StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
     const GraphExecutionRunOptions& run_options,
     const SessionMetadata& model_metadata, const Runtime& runtime,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
