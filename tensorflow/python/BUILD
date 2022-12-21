@@ -25,6 +25,7 @@ visibility = [
     "//third_party/cloud_tpu/convergence_tools:__subpackages__",
     "//third_party/mlperf:__subpackages__",
     "//tensorflow:internal",
+    "//tensorflow/dtensor:dtensor-internal",
     "//tensorflow/lite/toco/python:__pkg__",
     "//tensorflow_models:__subpackages__",
     "//tensorflow_model_optimization:__subpackages__",
@@ -523,7 +524,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/dtensor/python/tests:__pkg__",
+        "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/array_ops:__pkg__",
         "//tensorflow/python/kernel_tests/control_flow:__pkg__",
@@ -543,7 +544,7 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/quantization:__pkg__",
-        "//tensorflow/dtensor/python/tests:__pkg__",
+        "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python/kernel_tests:__pkg__",
     ],
 )
@@ -666,6 +667,7 @@ tf_gen_op_wrapper_private_py(
     name = "io_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python/checkpoint:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/array_ops:__pkg__",
@@ -678,7 +680,10 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "linalg_ops_gen",
-    visibility = ["//learning/brain/python/ops:__pkg__"],
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/dtensor:dtensor-internal",
+    ],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -764,7 +769,7 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/google/python/ops:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/dtensor/python/tests:__pkg__",
+        "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/math_ops:__pkg__",
     ],
@@ -775,7 +780,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/dtensor/python/tests:__pkg__",
+        "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/nn_ops:__pkg__",
         "//tensorflow/python/kernel_tests/sparse_ops:__pkg__",
@@ -816,6 +821,7 @@ tf_gen_op_wrapper_private_py(
     name = "resource_variable_ops_gen",
     visibility = [
         "//tensorflow/compiler/tf2xla:internal",
+        "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python/distribute:__pkg__",
     ],
 )
@@ -823,14 +829,14 @@ tf_gen_op_wrapper_private_py(
 tf_gen_op_wrapper_private_py(
     name = "stateless_random_ops_gen",
     visibility = [
-        "//tensorflow/dtensor/python/tests:__pkg__",
+        "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python/data/experimental/ops:__pkg__",
     ],
 )
 
 tf_gen_op_wrapper_private_py(
     name = "stateless_random_ops_v2_gen",
-    visibility = visibility + ["//tensorflow/dtensor/python/tests:__pkg__"],
+    visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -839,6 +845,7 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "list_ops_gen",
+    visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -877,13 +884,14 @@ tf_gen_op_wrapper_private_py(
 tf_gen_op_wrapper_private_py(
     name = "spectral_ops_gen",
     visibility = [
-        "//tensorflow/dtensor/python/tests:__pkg__",
+        "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python/ops/signal:__pkg__",
     ],
 )
 
 tf_gen_op_wrapper_private_py(
     name = "string_ops_gen",
+    visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
 )
 
 tf_gen_op_wrapper_private_py(
