@@ -45,10 +45,15 @@ static int64_t SqrtOfRoundUpToSquare(int64_t input) {
 
 class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
  public:
+#if GOOGLE_CUDA
   explicit ReductionRewriterVisitor(
       se::CudaComputeCapability cuda_compute_capability)
       : cuda_compute_capability_(cuda_compute_capability) {}
-
+#elif TENSORFLOW_USE_ROCM
+  explicit ReductionRewriterVisitor(
+      se::RocmComputeCapability rocm_compute_capability)
+      : rocm_compute_capability_(rocm_compute_capability) {}
+#endif
   Status HandleReduce(HloInstruction *hlo) override {
     if (IsMinMaxReduction(hlo)) {
       // TODO(cheshire): Also enable for integers.
@@ -256,8 +261,11 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     VLOG(1) << "Generated: " << out->ToString();
     return ReplaceWithNewInstruction(hlo, std::move(out));
   }
-
-  se::CudaComputeCapability cuda_compute_capability_;
+#if GOOGLE_CUDA
+    se::CudaComputeCapability cuda_compute_capability_;
+#elif TENSORFLOW_USE_ROCM
+    se::RocmComputeCapability rocm_compute_capability_;
+#endif
 };
 
 StatusOr<bool> GpuTreeReductionRewriter::Run(
@@ -265,7 +273,11 @@ StatusOr<bool> GpuTreeReductionRewriter::Run(
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
   VLOG(5) << "Rewriter input: " << module->ToString();
   TF_ASSIGN_OR_RETURN(bool changed,
+#if GOOGLE_CUDA
                       ReductionRewriterVisitor(cuda_compute_capability_)
+#elif TENSORFLOW_USE_ROCM
+                      ReductionRewriterVisitor(rocm_compute_capability_)
+#endif  
                           .RunOnModule(module, execution_threads));
   VLOG(5) << "Rewriter output: " << module->ToString();
   return changed;

@@ -877,13 +877,14 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     });
     pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
 
+#if GOOGLE_CUDA
     // Rewrite GEMMs into custom calls.
     pipeline.AddPass<GemmRewriter>(
         std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version));
 
     // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
     pipeline.AddPass<GemmBroadcastFoldingRewriter>();
-
+#endif
     if (hlo_module->config().debug_options().xla_gpu_normalize_layouts()) {
       pipeline.AddPass<LayoutNormalization>(
           &NormalizeLayoutForCustomCallConvolution);
@@ -905,7 +906,12 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<ReductionDimensionGrouper>();
     pipeline.AddPass<HloPassFix<ReductionSplitter>>();
     pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(
-        std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version));
+#if GOOGLE_CUDA
+        std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version)
+#elif TENSORFLOW_USE_ROCM
+        std::get<se::RocmComputeCapability>(gpu_target_config.gpu_version)        
+#endif        
+    );
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
