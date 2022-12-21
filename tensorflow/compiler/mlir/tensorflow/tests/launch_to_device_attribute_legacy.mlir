@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-launch-to-device-attribute=legacy-graph-export=false | FileCheck %s
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-launch-to-device-attribute=legacy-graph-export=true | FileCheck %s
 
 
 // Tests single TensorFlow op is hoisted out and has the correct device assigned
@@ -20,13 +20,12 @@ func.func @single_op_launch() {
   func.return
 }
 
-// CHECK-NOT: tf_executor.island
-// CHECK:      %[[A:.*]], {{.*}} = tf_executor.island wraps "tf.opA"
-// CHECK:      %[[B:.*]]:2, {{.*}} = tf_executor.island wraps "tf.opB"(%[[A]])
+// CHECK:      %[[A:.*]] = "tf.opA"
+// CHECK:      %[[B:.*]]:2 = "tf.opB"(%[[A]])
 // CHECK-SAME: device = "CPU:0"
-// CHECK:      %[[C:.*]], {{.*}} = tf_executor.island wraps "tf.opC"
+// CHECK:      %[[C:.*]] = "tf.opC"
 // CHECK-NOT:  "tf_device.launch"
-// CHECK-NOT:      tf_executor.yield
+// CHECK:      tf_executor.yield %[[A]], %[[B]]#1, %[[B]]#0, %[[C]]
 
 
 // Tests multiple TensorFlow ops are hoisted out and all have the correct device
@@ -49,15 +48,14 @@ func.func @multi_op_launch() {
   func.return
 }
 
-// CHECK-NOT: tf_executor.island
-// CHECK:      %[[A:.*]], {{.*}} = tf_executor.island wraps "tf.opA"
-// CHECK:      %[[B:.*]], {{.*}} = tf_executor.island wraps "tf.opB"(%[[A]])
+// CHECK:      %[[A:.*]] = "tf.opA"
+// CHECK:      %[[B:.*]] = "tf.opB"(%[[A]])
 // CHECK-SAME: device = "CPU:0"
-// CHECK:      %[[C:.*]], {{.*}} = tf_executor.island wraps "tf.opC"(%[[B]])
+// CHECK:      %[[C:.*]] = "tf.opC"(%[[B]])
 // CHECK-SAME: device = "CPU:0"
-// CHECK:      %[[D:.*]], {{.*}} = tf_executor.island wraps "tf.opD"
+// CHECK:      %[[D:.*]] = "tf.opD"
 // CHECK-NOT:  "tf_device.launch"
-// CHECK-NOT:      tf_executor.yield %[[A]], %[[C]], %[[B]], %[[D]]
+// CHECK:      tf_executor.yield %[[A]], %[[C]], %[[B]], %[[D]]
 
 
 // Tests empty device string attributes are overwritten.
@@ -76,11 +74,10 @@ func.func @empty_device_op() {
   func.return
 }
 
-// CHECK-NOT: tf_executor.island
-// CHECK:      [[A:%.+]]:2, {{.*}} = tf_executor.island wraps "tf.opA"
+// CHECK:      [[A:%.+]]:2 = "tf.opA"
 // CHECK-SAME: device = "CPU:0"
 // CHECK-NOT:  tf_device.launch
-// CHECK-NOT:      tf_executor.yield [[A]]#1, [[A]]#0
+// CHECK:      tf_executor.yield [[A]]#1, [[A]]#0
 
 
 // -----
