@@ -186,6 +186,8 @@ Value CreateXlaConvOp(OpBuilder &builder, Location loc, Value input,
               builder.getStringAttr(dnums.SerializeAsString()),
               /*precision_config=*/builder.getStringAttr(precision_config_str))
           .getOutput();
+
+  // Dynamic-range quantization wil always fall into this case.
   if (input_zp_value == 0) return xla_conv_output;
 
   Value zp_offset = CalculateZeroPointOffset(builder, loc, /*weight=*/filter,
@@ -194,7 +196,8 @@ Value CreateXlaConvOp(OpBuilder &builder, Location loc, Value input,
   return builder.create<TF::SubOp>(loc, xla_conv_output, zp_offset).getZ();
 }
 
-// Creates a XlaConvV2Op from TF Conv2DOp and returns its output.
+// Creates a XlaConvV2Op from TF Conv2DOp and returns its output. The returned
+// value will be used as an input of the next op.
 Value CreateXlaConvOpFromTfConv2dOp(OpBuilder &builder, Location loc,
                                     Value input, Value filter, Value input_zp,
                                     Value conv_output, ArrayAttr strides,

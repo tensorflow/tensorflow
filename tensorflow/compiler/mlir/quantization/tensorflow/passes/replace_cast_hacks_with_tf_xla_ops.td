@@ -47,6 +47,27 @@ def ConvertTFConv2DToXLAConvOp : Pat<
     $dilations, $padding, $explicit_padding),
   [(IsInt8ElementType $input),
    (IsInt8ElementType $filter),
+   (IsConstTensor $input_zp),
+   (IsConstTensor $filter),
+   (IsInt32ElementType $conv),
+   (HasStaticShapeConstraint $filter),
+   (HasStaticShapeAtDimsConstraint<"3"> $input)],
+  (addBenefit 10)>;
+
+// Same as ConvertTFConv2DToXLAConvOp but handles the case where input zero
+// point is dynaically calculated so not a constant.
+def ConvertTFConv2DToXLAConvOpDynamicRange : Pat<
+  (TF_Conv2DOp:$conv
+    (TF_SubOp:$input (TF_CastOp $input_i8, $truncate0), $input_zp),
+    (TF_CastOp (TF_IdentityOp $filter), $truncate1),
+    $strides, $use_cudnn, $padding, $explicit_padding,
+    IsDataFormatNHWC:$data_format, $dilations),
+  (CreateXLAConvOpFromTFConv2DOp
+    $input, $filter, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    $conv, $strides,
+    $dilations, $padding, $explicit_padding),
+  [(IsInt32ElementType $input),
+   (IsInt8ElementType $filter),
    (IsConstTensor $filter),
    (IsInt32ElementType $conv),
    (HasStaticShapeConstraint $filter),
@@ -77,7 +98,7 @@ def ConvertTFConv2DWithNoZeroPointToXLAConvOp : Pat<
 def ConvertTFDepthwiseConv2DToXLAConvOp : Pat<
   (TF_CastOp:$conv
     (TF_DepthwiseConv2dNativeOp
-      (TF_CastOp:$casted_input
+      (TF_CastOp:$cast_input
         (TF_SubOp (TF_CastOp $input, $truncate1), $input_zp), $truncate2),
       (TF_CastOp
         (TF_CastOp (TF_IdentityOp $filter), $truncate3), $truncate4),
@@ -87,7 +108,31 @@ def ConvertTFDepthwiseConv2DToXLAConvOp : Pat<
     $input, $filter, $input_zp, $conv, $strides,
     $dilations, $padding, $explicit_padding),
   [(IsInt8ElementType $input),
-   (IsF32ElementType $casted_input),
+   (IsF32ElementType $cast_input),
+   (IsInt8ElementType $filter),
+   (IsConstTensor $input_zp),
+   (IsConstTensor $filter),
+   (IsInt32ElementType $conv),
+   (HasStaticShapeConstraint $filter),
+   (HasStaticShapeAtDimsConstraint<"3"> $input)],
+  (addBenefit 10)>;
+
+// Same as ConvertTFDepthwiseConv2DToXLAConvOp but handles the case where input
+// zero point is dynaically calculated so not a constant.
+def ConvertTFDepthwiseConv2DToXLAConvOpDynamicRange : Pat<
+  (TF_CastOp:$conv
+    (TF_DepthwiseConv2dNativeOp
+    (TF_CastOp
+      (TF_SubOp:$input (TF_CastOp $input_i8, $truncate0), $input_zp), $truncate1),
+    (TF_CastOp
+      (TF_CastOp (TF_IdentityOp $filter), $truncate2), $truncate3),
+      $strides, $padding, $explicit_padding,
+      IsDataFormatNHWC:$data_format, $dilations), $truncate4),
+  (CreateXLAConvOpFromTFDepthwiseConv2DOp
+    $input, $filter, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    $conv, $strides,
+    $dilations, $padding, $explicit_padding),
+  [(IsInt32ElementType $input),
    (IsInt8ElementType $filter),
    (IsConstTensor $filter),
    (IsInt32ElementType $conv),
@@ -100,7 +145,7 @@ def ConvertTFDepthwiseConv2DToXLAConvOp : Pat<
 def ConvertTFDepthwiseConv2DWithNoZeroPointToXLAConvOp : Pat<
   (TF_CastOp:$conv
     (TF_DepthwiseConv2dNativeOp
-      (TF_CastOp:$casted_input
+      (TF_CastOp:$cast_input
         (TF_CastOp $input, $truncate1), $truncate2),
       (TF_CastOp
         (TF_CastOp (TF_IdentityOp $filter), $truncate3), $truncate4),
@@ -110,7 +155,7 @@ def ConvertTFDepthwiseConv2DWithNoZeroPointToXLAConvOp : Pat<
     $input, $filter, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     $conv, $strides, $dilations, $padding, $explicit_padding),
   [(IsInt8ElementType $input),
-   (IsF32ElementType $casted_input),
+   (IsF32ElementType $cast_input),
    (IsInt8ElementType $filter),
    (IsConstTensor $filter),
    (IsInt32ElementType $conv),
@@ -129,6 +174,24 @@ def ConvertTFMatMulToXLADotV2Op : Pat<
   (CreateXlaDotV2OpFromTfMatMulOp
     $input, $weight, $input_zp, $matmul, $transpose_a, $transpose_b),
   [(IsInt8ElementType $input),
+   (IsInt8ElementType $weight),
+   (IsConstTensor $input_zp),
+   (IsConstTensor $weight),
+   (IsInt32ElementType $matmul),
+   (HasStaticShapeConstraint $weight)],
+  (addBenefit 10)>;
+
+// Same as ConvertTFMatMulToXLADotV2Op but handles the case where input zero
+// point is dynaically calculated so not a constant.
+def ConvertTFMatMulToXLADotV2OpDynamicRange : Pat<
+  (TF_MatMulOp:$matmul
+    (TF_SubOp:$input (TF_CastOp $input_i8, $truncate0), $input_zp),
+    (TF_CastOp (TF_IdentityOp $weight), $truncate1),
+    $transpose_a, $transpose_b),
+  (CreateXlaDotV2OpFromTfMatMulOp
+    $input, $weight, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    $matmul, $transpose_a, $transpose_b),
+  [(IsInt32ElementType $input),
    (IsInt8ElementType $weight),
    (IsConstTensor $weight),
    (IsInt32ElementType $matmul),
@@ -157,7 +220,7 @@ def ConvertTFMatMulWithNoZeroPointToXLADotV2Op : Pat<
 def ConvertTFConv3DToXLAConvOp : Pat<
   (TF_CastOp:$conv
     (TF_Conv3DOp
-      (TF_CastOp:$casted_input
+      (TF_CastOp:$cast_input
         (TF_SubOp (TF_CastOp $input, $truncate1), $input_zp), $truncate2),
       (TF_CastOp
         (TF_CastOp (TF_IdentityOp $filter), $truncate3), $truncate4),
@@ -166,7 +229,7 @@ def ConvertTFConv3DToXLAConvOp : Pat<
   (CreateXLAConvOpFromTFConv3DOp
     $input, $filter, $input_zp, $conv, $strides, $dilations, $padding),
   [(IsInt8ElementType $input),
-   (IsF32ElementType $casted_input),
+   (IsF32ElementType $cast_input),
    (IsInt8ElementType $filter),
    (IsConstTensor $filter),
    (IsInt32ElementType $conv),
@@ -179,7 +242,7 @@ def ConvertTFConv3DToXLAConvOp : Pat<
 def ConvertTFConv3DWithNoZeroPointToXLAConvOp : Pat<
   (TF_CastOp:$conv
     (TF_Conv3DOp
-      (TF_CastOp:$casted_input
+      (TF_CastOp:$cast_input
         (TF_CastOp $input, $truncate1), $truncate2),
       (TF_CastOp
         (TF_CastOp (TF_IdentityOp $filter), $truncate3), $truncate4),
@@ -189,7 +252,7 @@ def ConvertTFConv3DWithNoZeroPointToXLAConvOp : Pat<
     $input, $filter, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     $conv, $strides, $dilations, $padding),
   [(IsInt8ElementType $input),
-   (IsF32ElementType $casted_input),
+   (IsF32ElementType $cast_input),
    (IsInt8ElementType $filter),
    (IsConstTensor $filter),
    (IsInt32ElementType $conv),
@@ -231,3 +294,4 @@ def ConvertTFBatchMatMulWithNoZeroPointToXLADotV2Op : Pat<
    (IsInt32ElementType $batch_matmul),
    (HasStaticShapeConstraint $weight)],
   (addBenefit 10)>;
+

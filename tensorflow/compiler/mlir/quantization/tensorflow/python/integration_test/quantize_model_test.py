@@ -1897,6 +1897,7 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @parameterized.named_parameters(
       ('to_tf_per_tensor', quant_opts_pb2.TF, False),
+      ('to_xla_per_tensor', quant_opts_pb2.XLA, False),
       ('to_uniform_quantized_per_tensor', quant_opts_pb2.UNIFORM_QUANTIZED,
        False),
       ('to_uniform_quantized_per_channel', quant_opts_pb2.UNIFORM_QUANTIZED,
@@ -1942,6 +1943,9 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self.assertTrue(
             self._contains_op(output_meta_graphdef, 'UniformQuantizedDotHybrid',
                               'rhs_quantization_axis', quantized_axis_attr))
+    elif target_opset == quant_opts_pb2.XLA:
+      self.assertTrue(self._contains_op(output_meta_graphdef, 'XlaDotV2'))
+      self.assertFalse(self._contains_op(output_meta_graphdef, 'MatMul'))
     else:
       self.assertTrue(
           self._contains_quantized_function_call(output_meta_graphdef))
@@ -1949,6 +1953,7 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @parameterized.named_parameters(
       ('to_tf_per_tensor', quant_opts_pb2.TF, False),
+      ('to_xla_per_tensor', quant_opts_pb2.XLA, False),
       ('to_uniform_quantized_per_tensor', quant_opts_pb2.UNIFORM_QUANTIZED,
        False),
       ('to_uniform_quantized_per_channel', quant_opts_pb2.UNIFORM_QUANTIZED,
@@ -2015,6 +2020,9 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self.assertTrue(
             self._contains_op(output_meta_graphdef, 'Const', '_output_shapes',
                               quantized_dim_size_attr))
+    elif target_opset == quant_opts_pb2.XLA:
+      self.assertTrue(self._contains_op(output_meta_graphdef, 'XlaConvV2'))
+      self.assertFalse(self._contains_op(output_meta_graphdef, 'Conv2D'))
     else:
       self.assertTrue(
           self._contains_quantized_function_call(output_meta_graphdef))
@@ -2022,6 +2030,7 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @parameterized.named_parameters(
       ('to_tf_per_tensor', quant_opts_pb2.TF, False),
+      ('to_xla_per_tensor', quant_opts_pb2.XLA, False),
       ('to_uniform_quantized_per_tensor', quant_opts_pb2.UNIFORM_QUANTIZED,
        False),
       ('to_uniform_quantized_per_channel', quant_opts_pb2.UNIFORM_QUANTIZED,
@@ -2098,6 +2107,10 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self.assertTrue(
             self._contains_op(output_meta_graphdef, 'Const', '_output_shapes',
                               quantized_dim_size_attr))
+    elif target_opset == quant_opts_pb2.XLA:
+      self.assertTrue(self._contains_op(output_meta_graphdef, 'XlaConvV2'))
+      self.assertFalse(
+          self._contains_op(output_meta_graphdef, 'DepthwiseConv2dNative'))
     else:
       self.assertTrue(
           self._contains_quantized_function_call(output_meta_graphdef))
