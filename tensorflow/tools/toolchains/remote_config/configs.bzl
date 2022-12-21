@@ -246,7 +246,6 @@ def initialize_rbe_configs():
     sigbuild_tf_configs(
         name_container_map = {
             "sigbuild-r2.9": "docker://gcr.io/tensorflow-sigs/build@sha256:ce8e5b828a43ce2ea0a9d0a9d4f5d967a9bf79c0596b005a96c4ab91a8462347",
-            "sigbuild-r2.9-python3.7": "docker://gcr.io/tensorflow-sigs/build@sha256:1c78bb9c42a17b13dbdefe2074bf7f391f583a56d44d240d0feb921325f8727d",
             "sigbuild-r2.9-python3.8": "docker://gcr.io/tensorflow-sigs/build@sha256:d064667c4b904bb1c658a6be913fc41a1e5d822a5feb9cdac849973a050b9901",
             "sigbuild-r2.9-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:ce8e5b828a43ce2ea0a9d0a9d4f5d967a9bf79c0596b005a96c4ab91a8462347",
             "sigbuild-r2.9-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:5a3224e8d7f592b2f343e0c8fe9521605c7c02f51f0c5cc9f9652614d1961850",
@@ -286,7 +285,6 @@ def initialize_rbe_configs():
     sigbuild_tf_configs(
         name_container_map = {
             "sigbuild-r2.10": "docker://gcr.io/tensorflow-sigs/build@sha256:20d777f0200b7196349b9d25dec92ed4b34e966e8a8ab661d9b1b93c05d95c88",
-            "sigbuild-r2.10-python3.7": "docker://gcr.io/tensorflow-sigs/build@sha256:4ea896995b7feb85aa6c08f20a0ba4d0243294b0c856f5dbe97b9885c3b11d9c",
             "sigbuild-r2.10-python3.8": "docker://gcr.io/tensorflow-sigs/build@sha256:1091a4dc92c3227771ee748eb3f4eee1c32555f2e9805fcb341602b35e3da7a2",
             "sigbuild-r2.10-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:20d777f0200b7196349b9d25dec92ed4b34e966e8a8ab661d9b1b93c05d95c88",
             "sigbuild-r2.10-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:52c5bcfd3ce479c2f5148d7a9a119334148a33a3302b08e88e1045059dead62c",
@@ -326,7 +324,6 @@ def initialize_rbe_configs():
     sigbuild_tf_configs(
         name_container_map = {
             "sigbuild-57469": "docker://gcr.io/tensorflow-sigs/build@sha256:d8c3644104189a3f0046fc647476090719682d26dcf7385f4aea95d3133d9621",
-            "sigbuild-57469-python3.7": "docker://gcr.io/tensorflow-sigs/build@sha256:848cb30bffc158d77a474b016a89e0352837375840453140574b7e44ce051e8f",
             "sigbuild-57469-python3.8": "docker://gcr.io/tensorflow-sigs/build@sha256:cf549245e0ce013c1ebd3258dfa049dd78f5b5ab42901ef67ca20ef40ad6fe53",
             "sigbuild-57469-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:d8c3644104189a3f0046fc647476090719682d26dcf7385f4aea95d3133d9621",
             "sigbuild-57469-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:3d592c1cc7c90ecc39e2d7018ca19d30210b59c9aef0b5583c55d3cf45ad4145",
@@ -365,7 +362,6 @@ def initialize_rbe_configs():
     sigbuild_tf_configs(
         name_container_map = {
             "sigbuild-r2.11": "docker://gcr.io/tensorflow-sigs/build@sha256:f69fc3aeab047c705406c0310ed50c8ca926988a34c1a19353cd4fa3f4865af7",
-            "sigbuild-r2.11-python3.7": "docker://gcr.io/tensorflow-sigs/build@sha256:cc36072f817a6b511696f90c98198c06976eea6ab9cdb7bbe9299c4997aa16c6",
             "sigbuild-r2.11-python3.8": "docker://gcr.io/tensorflow-sigs/build@sha256:3b4836d210caa225ae0f6fe938259309c3553db50a0d11b84ef8ff8313b57d27",
             "sigbuild-r2.11-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:f69fc3aeab047c705406c0310ed50c8ca926988a34c1a19353cd4fa3f4865af7",
             "sigbuild-r2.11-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:71c9337f214850ce019696f10c4a5fbd1b408695d56addb86a7b3c0e5b76b76f",
@@ -405,10 +401,10 @@ def initialize_rbe_configs():
     sigbuild_tf_configs(
         name_container_map = {
             "sigbuild-r2.12": "docker://gcr.io/tensorflow-sigs/build@sha256:b600ae80e52b9a670923a6ab58bf32c4b7a115fc01e26cb9fc5d0ce8012ecc76",
-            "sigbuild-r2.12-python3.7": "docker://gcr.io/tensorflow-sigs/build@sha256:8511b4905356fbfd46b38a6793eb45a20503e96bc5e55c217b65c24f11a19f93",
             "sigbuild-r2.12-python3.8": "docker://gcr.io/tensorflow-sigs/build@sha256:d6951e069b45d8cea41b01f906f81fa92e11fe18d7e0f594c73ab8a028179471",
             "sigbuild-r2.12-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:b600ae80e52b9a670923a6ab58bf32c4b7a115fc01e26cb9fc5d0ce8012ecc76",
             "sigbuild-r2.12-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:716d172665210ab8f7228ba4b756302a40bf10800774bd9ea668b063cf0850dd",
+            "sigbuild-r2.12-python3.11": "docker://gcr.io/tensorflow-sigs/build@sha256:121853b6a08e175544a6cfebe34d547a62fbe27b52b1fd6f3dc026d339d89e0b",
         },
         # Unclear why LIBC is set to 2.19 here, and yet manylinux2010 is 2.12
         # and manylinux2014 is 2.17.
