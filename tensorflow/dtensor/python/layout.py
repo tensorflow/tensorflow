@@ -707,11 +707,3 @@ class Layout(object):
 
     mesh_str = 'mesh:' + self.mesh.to_string()
     return sharding_spec_str + ' ' + mesh_str
-
-  def unravel(self, unpacked_tensors: List[np.ndarray]) -> np.ndarray:
-    """Convert a flattened list of shards into a sharded array."""
-    unravelled = np.ndarray([self.num_shards(i) for i in range(self.rank)],
-                            dtype=object)
-    for offset, loc in enumerate(self.offset_to_shard()):
-      unravelled[loc] = unpacked_tensors[offset]
-    return unravelled
