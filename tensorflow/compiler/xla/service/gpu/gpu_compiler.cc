@@ -169,6 +169,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.pb.h"
+#include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
@@ -193,14 +194,13 @@ class GpuBfloat16Support : public BFloat16Support {
   explicit GpuBfloat16Support(bool supports_matrix_multiplication,
                               se::StreamExecutor* stream_exec)
       : supports_matrix_multiplication_(supports_matrix_multiplication),
-        is_conv_bf16_supported_(IsConvBf16Supported(stream_exec)) {}
+        gpu_info_(stream_exec) {}
 
   explicit GpuBfloat16Support(bool supports_matrix_multiplication,
                               se::dnn::VersionInfo cudnn_version,
                               se::CudaComputeCapability cuda_compute_capability)
       : supports_matrix_multiplication_(supports_matrix_multiplication),
-        is_conv_bf16_supported_(
-            IsConvBf16Supported(cudnn_version, cuda_compute_capability)) {}
+        gpu_info_(std::make_pair(cudnn_version, cuda_compute_capability)) {}
 
   bool SupportsBF16Operand(const HloInstruction& hlo,
                            int64_t operand_index) const override {
@@ -243,33 +243,37 @@ class GpuBfloat16Support : public BFloat16Support {
       case HloOpcode::kBitcast:
         return true;
       case HloOpcode::kConvolution:
-        return is_conv_bf16_supported_;
+        return IsConvBf16Supported();
       default:
         return supports_matrix_multiplication_ &&
                gpu::IsMatrixMultiplication(hlo);
     }
   }
 
-  static bool IsConvBf16Supported(se::StreamExecutor* stream_exec) {
-    if (se::dnn::DnnSupport* dnn = stream_exec->AsDnn()) {
-      se::port::StatusOr<se::dnn::VersionInfo> cudnn_version =
-          dnn->GetVersion();
-      if (cudnn_version.ok()) {
-        auto cuda_compute_capability =
-            stream_exec->GetDeviceDescription().cuda_compute_capability();
-        return (cudnn_version->major_version() > 8 ||
-                (cudnn_version->major_version() == 8 &&
-                 cudnn_version->minor_version() >= 2)) &&
-               cuda_compute_capability.IsAtLeast(
-                   se::CudaComputeCapability::AMPERE);
+  bool IsConvBf16Supported() const {
+    if (std::holds_alternative<se::StreamExecutor*>(gpu_info_)) {
+      auto stream_exec = std::get<se::StreamExecutor*>(gpu_info_);
+      if (se::dnn::DnnSupport* dnn = stream_exec->AsDnn()) {
+        se::port::StatusOr<se::dnn::VersionInfo> cudnn_version =
+            dnn->GetVersion();
+        if (cudnn_version.ok()) {
+          auto cuda_compute_capability =
+              stream_exec->GetDeviceDescription().cuda_compute_capability();
+          return (cudnn_version->major_version() > 8 ||
+                  (cudnn_version->major_version() == 8 &&
+                   cudnn_version->minor_version() >= 2)) &&
+                 cuda_compute_capability.IsAtLeast(
+                     se::CudaComputeCapability::AMPERE);
+        }
       }
+      return false;
     }
-    return false;
-  }
 
-  static bool IsConvBf16Supported(
-      se::dnn::VersionInfo cudnn_version,
-      se::CudaComputeCapability cuda_compute_capability) {
+    auto pair =
+        std::get<std::pair<se::dnn::VersionInfo, se::CudaComputeCapability>>(
+            gpu_info_);
+    se::dnn::VersionInfo cudnn_version = pair.first;
+    se::CudaComputeCapability cuda_compute_capability = pair.second;
     return (cudnn_version.major_version() > 8 ||
             (cudnn_version.major_version() == 8 &&
              cudnn_version.minor_version() >= 2)) &&
@@ -277,7 +281,13 @@ class GpuBfloat16Support : public BFloat16Support {
   }
 
   bool supports_matrix_multiplication_;
-  bool is_conv_bf16_supported_;
+
+  // During JIT compilation, store a pointer to the stream executor. During AOT
+  // compilation, store the dnn version info and the cuda compute capability
+  // from the target GPU.
+  std::variant<se::StreamExecutor*,
+               std::pair<se::dnn::VersionInfo, se::CudaComputeCapability>>
+      gpu_info_;
 };
 
 int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
@@ -514,10 +524,16 @@ Status GpuCompiler::OptimizeHloModule(
     // Expand the sort op to support stable sorting if required.
     pipeline.AddPass<StableSortExpander>();
 
-    GpuBfloat16Support bf16(
-        /*supports_matrix_multiplication=*/true,
-        gpu_target_config.dnn_version_info,
-        std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version));
+    GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/true,
+                            stream_exec);
+    if (!stream_exec) {
+      // Stream executor is not available during AOT compilation. We pass in
+      // relevant information from gpu_target_info.
+      bf16 = GpuBfloat16Support(
+          /*supports_matrix_multiplication=*/true,
+          gpu_target_config.dnn_version_info,
+          std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version));
+    }
     pipeline.AddPass<BFloat16Normalization>(&bf16);
 
     pipeline.AddPass<BatchNormExpander>(
@@ -880,10 +896,16 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   // Run conversion again, to catch those matrix multiplications which were not
   // rewritten into cuBLAS calls.
-  GpuBfloat16Support bf16(
-      /*supports_matrix_multiplication=*/false,
-      gpu_target_config.dnn_version_info,
-      std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version));
+  GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/false,
+                          stream_exec);
+  if (!stream_exec) {
+    // Stream executor is not available during AOT compilation. We pass in
+    // relevant information from gpu_target_info.
+    bf16 = GpuBfloat16Support(
+        /*supports_matrix_multiplication=*/false,
+        gpu_target_config.dnn_version_info,
+        std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version));
+  }
   pipeline.AddPass<BFloat16Normalization>(&bf16);
 
   // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
