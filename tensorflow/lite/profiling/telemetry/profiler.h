@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/profiling/telemetry/c/profiler.h"
 #include "tensorflow/lite/profiling/telemetry/c/telemetry_setting.h"
 #include "tensorflow/lite/profiling/telemetry/telemetry_status.h"
 
@@ -92,6 +93,11 @@ class TelemetryProfiler : public Profiler {
                       int64_t event_metadata1, int64_t event_metadata2) final;
   void EndEvent(uint32_t event_handle) final;
 };
+
+// Creates a concrete TelemetryProfiler that wraps the
+// `TfLiteTelemetryProfilerStruct` C API.
+TelemetryProfiler* MakeTfLiteTelemetryProfiler(
+    TfLiteTelemetryProfilerStruct* profiler);
 
 }  // namespace tflite::telemetry
 
