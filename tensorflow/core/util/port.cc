@@ -118,10 +118,10 @@ bool IsMklEnabled() {
 }
 
 bool IsZenDnnEnabled() {
-  static absl::once_flag once;
 #ifndef AMD_ZENDNN
   return false;
 #else
+  static absl::once_flag once;
   static bool ZenDNN_enabled = false;
   absl::call_once(once, [&] {
     auto status = ReadBoolFromEnvVar("TF_ENABLE_ZENDNN_OPTS", ZenDNN_enabled,
