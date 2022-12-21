@@ -48,8 +48,8 @@ static FailureOr<std::vector<int64_t>> GetTPUInfeedLayoutFromAPI(
   xla::Shape old_shape = xla::TypeToShape(t);
   XLA_Shape old_shape_c = {};
   XLA_Shape new_shape_c = {};
-  TfTpu_ExecutorApiFn *executor = tensorflow::tpu::ExecutorApiFn();
-  if (!tensorflow::tpu::IsInitialized(executor)) {
+  TfTpu_ExecutorApiFn *executor = stream_executor::tpu::ExecutorApiFn();
+  if (!stream_executor::tpu::IsInitialized(executor)) {
     return failure();
   }
   ApiConverter::ToC(old_shape, &old_shape_c);

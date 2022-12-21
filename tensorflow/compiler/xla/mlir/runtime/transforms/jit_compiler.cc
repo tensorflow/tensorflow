@@ -292,7 +292,8 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
   engine_options.opt_level = compiler->options().jit_code_opt_level;
   engine_options.target_machine = target_machine->get();
   engine_options.make_optimizing_transformer = makeOptimizingTransformer;
-  engine_options.section_memory_mapper = memory_mapper.get();
+  // TODO(ezhulenev): Re-enable memory mapper.
+  // engine_options.section_memory_mapper = memory_mapper.get();
   engine_options.symbols_binding = std::move(symbols);
 
   // Translate MLIR module to the LLVM module.

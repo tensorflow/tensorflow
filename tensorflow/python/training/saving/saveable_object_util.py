@@ -623,23 +623,29 @@ def saveable_objects_from_trackable(obj, tf1_saver=False):
 
       specs = []
       local_names = []
-      prefix = saveable_compat.get_saveable_name(obj) or ""
       for tensor_name, maybe_tensor in tensor_dict.items():
         local_names.append(tensor_name)
-        spec_name = name + trackable_utils.escape_local_name(tensor_name)
 
         if not isinstance(maybe_tensor, dict):
           maybe_tensor = {"": maybe_tensor}
 
+        spec_name = name + trackable_utils.escape_local_name(tensor_name)
         # Create separate specs for each slice spec.
         for slice_spec, tensor in maybe_tensor.items():
-          specs.append(saveable_object.SaveSpec(tensor, slice_spec, spec_name))
+          if isinstance(tensor, saveable_object.SaveSpec):
+            spec = tensor
+            spec.name = spec_name
+            spec.slice_spec = slice_spec
+          else:
+            spec = saveable_object.SaveSpec(tensor, slice_spec, spec_name)
+          specs.append(spec)
+
       return TrackableSaveable(
           obj=obj,
           specs=specs,
           name=name,
           local_names=local_names,
-          prefix=prefix,
+          prefix=saveable_compat.get_saveable_name(obj) or "",
           call_with_mapped_captures=call_with_mapped_captures)
 
     return {trackable_utils.SERIALIZE_TO_TENSORS_NAME: create_saveable}
@@ -667,10 +673,13 @@ class TrackableSaveable(saveable_object.SaveableObject):
     restore_fn = self._trackable._restore_from_tensors  # pylint: disable=protected-access
 
     # When restoring a RefVariable, call the restore function directly.
-    if (not ops.executing_eagerly_outside_functions()
-        and any([spec.tensor.op.type in _REF_VARIABLE_OPS
-                 for spec in self.specs])):
+    # pylint: disable=protected-access
+    if not ops.executing_eagerly_outside_functions() and any([
+        spec._tensor.op.type in _REF_VARIABLE_OPS
+        for spec in self.specs
+        if isinstance(spec._tensor, ops.Tensor)]):
       return restore_fn(restored_tensor_dict)
+    # pylint: enable=protected-access
 
     if (self._call_with_mapped_captures and
         isinstance(restore_fn, core.ConcreteFunction)):

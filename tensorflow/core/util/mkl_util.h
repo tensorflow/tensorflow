@@ -1978,7 +1978,6 @@ class MklPrimitiveFactory {
     static thread_local LRUCache<MklPrimitive> lru_cache_(kCapacity);
 #else
     static LRUCache<MklPrimitive> lru_cache_(kCapacity);
-    TF_GUARDED_BY(lru_mu_)
 #endif
     return lru_cache_;
   }

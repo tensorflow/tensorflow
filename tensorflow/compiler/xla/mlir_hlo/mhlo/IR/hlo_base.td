@@ -82,7 +82,7 @@ defvar MHLO_Tuple = HLO_Tuple;
 
 defvar MHLO_TensorOrToken = HLO_TensorOrToken;
 
-defvar MHLO_TensorOrTokenOrTuple = HLO_TensorOrTokenOrTuple;
+defvar MHLO_TensorOrTokenOrTuple = AnyTypeOf<[MHLO_Tensor, MHLO_Token, MHLO_Tuple]>;
 
 defvar MHLO_DimensionValue = HLO_DimensionValue;
 

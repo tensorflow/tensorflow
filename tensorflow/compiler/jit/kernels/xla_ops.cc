@@ -18,6 +18,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <tuple>
 #include <utility>
 #include <variant>
@@ -335,9 +336,12 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     // Creating a scope so that the locks on the variables are released when
     // variable_infos goes out of scope.
     std::vector<VariableInfo> variable_infos;
-    Status status =
-        GetVariableInfosFromInputs(ctx->resource_manager(), ctx->device(),
-                                   inputs, resources_, &variable_infos);
+    std::set<int> variables_updated;
+    // Here we only need to reader-lock the variables, so we pass an empty
+    // variables_updated set here.
+    Status status = GetVariableInfosFromInputs(
+        ctx->resource_manager(), ctx->device(), inputs, resources_,
+        &variables_updated, &variable_infos);
     OP_REQUIRES_OK_ASYNC(ctx, status, done);
     status = LockVariables(absl::MakeSpan(variable_infos));
     OP_REQUIRES_OK_ASYNC(ctx, status, done);
@@ -360,11 +364,17 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
                           inputs, resources = resources_]() {
     auto platform_info = XlaPlatformInfoFromDevice(ctx->device());
     std::vector<VariableInfo> variable_infos;
-    OP_REQUIRES_OK_ASYNC(
-        ctx,
-        GetVariableInfosFromInputs(ctx->resource_manager(), ctx->device(),
-                                   inputs, resources, &variable_infos),
-        done);
+    std::set<int> variables_updated;
+    for (const auto& resource_update : compilation_result->resource_updates) {
+      if (resource_update.modified) {
+        variables_updated.insert(resource_update.input_index);
+      }
+    }
+    OP_REQUIRES_OK_ASYNC(ctx,
+                         GetVariableInfosFromInputs(
+                             ctx->resource_manager(), ctx->device(), inputs,
+                             resources, &variables_updated, &variable_infos),
+                         done);
     OP_REQUIRES_OK_ASYNC(ctx, LockVariables(absl::MakeSpan(variable_infos)),
                          done);
     std::map<int, const Tensor*> resource_var_ptrs;

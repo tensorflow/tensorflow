@@ -49,7 +49,7 @@ class KernelThunk : public Thunk {
               absl::Span<const BufferAllocation* const> args,
               const std::string& kernel_name,
               const LaunchDimensions& launch_dimensions,
-              std::vector<mlir::Value> values);
+              std::vector<mlir::Value> values, uint32_t shared_mem_bytes);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
@@ -75,6 +75,7 @@ class KernelThunk : public Thunk {
     return launch_dimensions_;
   }
   absl::Span<const mlir::Value> values() const { return values_; }
+  uint32_t shared_mem_bytes() const { return shared_mem_bytes_; }
 
  private:
   // Buffers passed to the kernel as arguments.
@@ -88,6 +89,9 @@ class KernelThunk : public Thunk {
 
   // mlir::Value(s) corresponding to the buffer allocation arguments.
   std::vector<mlir::Value> values_;
+
+  // Dynamic shared memory size.
+  uint32_t shared_mem_bytes_;
 
   mutable absl::Mutex mutex_;
 

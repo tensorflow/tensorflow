@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
@@ -34,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/uid_generator.h"
@@ -473,6 +475,8 @@ using mlir::lmhlo::ReduceScatterOp;
 using mlir::lmhlo::ReplicaIdOp;
 using mlir::lmhlo_gpu::AllReduceDoneOp;
 using mlir::lmhlo_gpu::AllReduceStartOp;
+using mlir::lmhlo_gpu::CollectivePermuteDoneOp;
+using mlir::lmhlo_gpu::CollectivePermuteStartOp;
 
 // We assign unique id to all collective operations in the module, so that we
 // can efficiently access per-op state at run time. Exception to this rule are
@@ -494,7 +498,7 @@ class CollectiveUidGenerator {
   CollectiveUidGenerator() : cnt_(0) {}
 
   // Assings a unique event id to the pair of start and done operations.
-  int32_t AssignUid(AllReduceStartOp start, AllReduceDoneOp done) {
+  int32_t AssignUid(Operation* start, Operation* done) {
     int32_t id = next();
     uids_[start] = id;
     uids_[done] = id;
@@ -503,7 +507,8 @@ class CollectiveUidGenerator {
 
   FailureOr<int32_t> AssignedUid(Operation* op) {
     // Async operations must be assigned uid ahead of time.
-    if (isa<AllReduceStartOp, AllReduceDoneOp>(op)) {
+    if (isa<AllReduceStartOp, AllReduceDoneOp, CollectivePermuteStartOp,
+            CollectivePermuteDoneOp>(op)) {
       auto it = uids_.find(op);
       if (it == uids_.end()) return failure();
       return it->second;
@@ -527,6 +532,9 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
   static StringRef Target(ReduceScatterOp) { return "xla.gpu.reduce_scatter"; }
   static StringRef Target(CollectivePermuteOp) {
     return "xla.gpu.collective_permute";
+  }
+  static StringRef Target(CollectivePermuteStartOp) {
+    return "xla.gpu.collective_permute_start";
   }
   static StringRef Target(AllReduceStartOp) {
     return "xla.gpu.all_reduce_start";
@@ -555,6 +563,13 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
         .config;
   }
 
+  static NcclCollectiveConfig GetNcclCollectiveConfig(
+      CollectivePermuteStartOp op, int replica_count, int num_partitions) {
+    return NcclCollectivePermuteStartThunk::GetNcclCollectivePermuteConfig(
+               op, replica_count, num_partitions)
+        .config;
+  }
+
   template <typename NonCollectivePermuteOp>
   static LogicalResult TryDegenerateToMemCopy(
       NonCollectivePermuteOp op, const NcclCollectiveConfig& config,
@@ -572,11 +587,11 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     return success();
   }
 
-  static LogicalResult TryDegenerateToMemCopy(
-      CollectivePermuteOp op, const NcclCollectiveConfig& config,
-      int replica_count, int num_partitions, PatternRewriter& rewriter) {
-    if (!NcclCollectivePermuteThunk::IsDegenerate(op, replica_count,
-                                                  num_partitions)) {
+  template <typename ThunkT, typename OpT>
+  static LogicalResult TryDegenerateCollectivePermuteToMemCopy(
+      OpT op, const NcclCollectiveConfig& config, int replica_count,
+      int num_partitions, PatternRewriter& rewriter) {
+    if (!ThunkT::IsDegenerate(op, replica_count, num_partitions)) {
       return failure();
     }
 
@@ -585,6 +600,21 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
         ValueRange({op.getOutput(), op.getOperand()}));
 
     return success();
+  }
+
+  static LogicalResult TryDegenerateToMemCopy(
+      CollectivePermuteOp op, const NcclCollectiveConfig& config,
+      int replica_count, int num_partitions, PatternRewriter& rewriter) {
+    return TryDegenerateCollectivePermuteToMemCopy<NcclCollectivePermuteThunk>(
+        op, config, replica_count, num_partitions, rewriter);
+  }
+
+  static LogicalResult TryDegenerateToMemCopy(
+      CollectivePermuteStartOp op, const NcclCollectiveConfig& config,
+      int replica_count, int num_partitions, PatternRewriter& rewriter) {
+    return TryDegenerateCollectivePermuteToMemCopy<
+        NcclCollectivePermuteStartThunk>(op, config, replica_count,
+                                         num_partitions, rewriter);
   }
 
   static bool CanImplement(AllGatherOp op) {
@@ -609,6 +639,10 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
 
   static bool CanImplement(CollectivePermuteOp op) {
     return NcclCollectivePermuteThunk::CanImplement(op);
+  }
+
+  static bool CanImplement(CollectivePermuteStartOp op) {
+    return NcclCollectivePermuteStartThunk::CanImplement(op);
   }
 
   template <typename ReduceOp>
@@ -639,9 +673,9 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     return success();
   }
 
-  static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b,
-                                        CollectivePermuteOp op,
-                                        func::CallOp call) {
+  template <typename OpT>
+  static LogicalResult SetCollectivePermuteAttrs(ImplicitLocOpBuilder& b,
+                                                 OpT op, func::CallOp call) {
     auto source_target_pairs_or =
         ConvertNx2Attribute(op.getSourceTargetPairs());
     if (!source_target_pairs_or.ok()) {
@@ -666,6 +700,18 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     call->setAttr(b.getStringAttr("source_peers"), source_peers_attr);
     call->setAttr(b.getStringAttr("target_peers"), target_peers_attr);
     return success();
+  }
+
+  static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b,
+                                        CollectivePermuteOp op,
+                                        func::CallOp call) {
+    return SetCollectivePermuteAttrs(b, op, call);
+  }
+
+  static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b,
+                                        CollectivePermuteStartOp op,
+                                        func::CallOp call) {
+    return SetCollectivePermuteAttrs(b, op, call);
   }
 
  public:
@@ -802,27 +848,27 @@ DEFINE_COLLECTIVE_OP_LOWERING(AllReduceStartOp);
 DEFINE_COLLECTIVE_OP_LOWERING(ReduceScatterOp);
 DEFINE_COLLECTIVE_OP_LOWERING(AllToAllOp);
 DEFINE_COLLECTIVE_OP_LOWERING(CollectivePermuteOp);
+DEFINE_COLLECTIVE_OP_LOWERING(CollectivePermuteStartOp);
 
 #undef DEFINE_COLLECTIVE_OP_LOWERING
 
-class AllReduceDoneOpLowering : public OpRewritePattern<AllReduceDoneOp> {
-  static constexpr const char kCustomCallTarget[] = "xla.gpu.all_reduce_done";
-
+template <typename OpT>
+class AsyncDoneOpLowering : public OpRewritePattern<OpT> {
  public:
-  AllReduceDoneOpLowering(MLIRContext* ctx, CollectiveUidGenerator& uid,
-                          CustomCallDeclarations& custom_calls)
-      : OpRewritePattern(ctx), uid_(uid), custom_calls_(custom_calls) {}
+  AsyncDoneOpLowering(MLIRContext* ctx, const char* custom_call_target,
+                      CollectiveUidGenerator& uid,
+                      CustomCallDeclarations& custom_calls)
+      : OpRewritePattern<OpT>(ctx),
+        custom_call_target_(custom_call_target),
+        uid_(uid),
+        custom_calls_(custom_calls) {}
 
-  LogicalResult matchAndRewrite(AllReduceDoneOp op,
+  LogicalResult matchAndRewrite(OpT op,
                                 PatternRewriter& rewriter) const override {
-    // For done operation we drop the token argument and communicate async event
-    // dependency through the `uid` attribute.
-    llvm::SmallVector<Value> operands = op.getOperands().drop_front();
-
     // Get or create a custom call function declaration.
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    func::FuncOp callee = custom_calls_.GetOrCreate(
-        b, kCustomCallTarget, TypeRange(ValueRange(operands)), TypeRange());
+    func::FuncOp callee = custom_calls_.GetOrCreate(b, custom_call_target_,
+                                                    TypeRange(), TypeRange());
 
     // Get a unique collective operation id.
     FailureOr<int32_t> uid = uid_.AssignedUid(op);
@@ -833,16 +879,37 @@ class AllReduceDoneOpLowering : public OpRewritePattern<AllReduceDoneOp> {
         {b.getStringAttr("uid"), b.getI32IntegerAttr(*uid)}};
 
     // Convert AllReduceDone to a function call.
-    auto call = rewriter.replaceOpWithNewOp<func::CallOp>(
-        op, callee.getName(), TypeRange(), operands);
+    auto call = rewriter.replaceOpWithNewOp<func::CallOp>(op, callee.getName(),
+                                                          TypeRange());
     AppendCustomCallAttrs(call, custom_call_attributes);
 
     return success();
   }
 
  private:
+  const char* custom_call_target_;
   CollectiveUidGenerator& uid_;
   CustomCallDeclarations& custom_calls_;
+};
+
+class AllReduceDoneOpLowering : public AsyncDoneOpLowering<AllReduceDoneOp> {
+  static constexpr const char kCustomCallTarget[] = "xla.gpu.all_reduce_done";
+
+ public:
+  AllReduceDoneOpLowering(MLIRContext* ctx, CollectiveUidGenerator& uid,
+                          CustomCallDeclarations& custom_calls)
+      : AsyncDoneOpLowering(ctx, kCustomCallTarget, uid, custom_calls) {}
+};
+
+class CollectivePermuteDoneOpLowering
+    : public AsyncDoneOpLowering<CollectivePermuteDoneOp> {
+  static constexpr const char kCustomCallTarget[] =
+      "xla.gpu.collective_permute_done";
+
+ public:
+  CollectivePermuteDoneOpLowering(MLIRContext* ctx, CollectiveUidGenerator& uid,
+                                  CustomCallDeclarations& custom_calls)
+      : AsyncDoneOpLowering(ctx, kCustomCallTarget, uid, custom_calls) {}
 };
 
 template <typename CollectiveIdOp>
@@ -882,6 +949,24 @@ class PartitionIdOpLowering : public CollectiveIdOpLowering<PartitionIdOp> {
 
 //===----------------------------------------------------------------------===//
 
+template <typename StartOpT, typename DoneOpT>
+static absl::AnyInvocable<WalkResult(StartOpT)> GetAsyncUidGenerator(
+    CollectiveUidGenerator& collective_uid) {
+  return [&collective_uid](StartOpT start) -> WalkResult {
+    Value token = start.getToken();
+
+    // We expect the token to be consumed just once.
+    if (!token.hasOneUse()) return start.emitOpError("token has multiple uses");
+
+    // Token must be consumed by the corresponding done operation.
+    auto done = dyn_cast<DoneOpT>(*token.getUsers().begin());
+    if (!done) return start.emitOpError("illegal token user");
+
+    collective_uid.AssignUid(start, done);
+    return WalkResult::advance();
+  };
+}
+
 void ConvertLmhloToGpuRuntimePass::runOnOperation() {
   ModuleOp module = getOperation();
   MLIRContext* ctx = module.getContext();
@@ -902,19 +987,12 @@ void ConvertLmhloToGpuRuntimePass::runOnOperation() {
   // Assign shared unique id to each unique pair of async start-done operations,
   // all other collective operations will get assigned uid.
   CollectiveUidGenerator collective_uid;
-  auto walked = module.walk([&](AllReduceStartOp start) -> WalkResult {
-    Value token = start.getToken();
-
-    // We expect the token to be consumed just once.
-    if (!token.hasOneUse()) return start.emitOpError("token has multiple uses");
-
-    // Token must be consumed by the corresponding done operation.
-    auto done = dyn_cast<AllReduceDoneOp>(*token.getUsers().begin());
-    if (!done) return start.emitOpError("illegal token user");
-
-    collective_uid.AssignUid(start, done);
-    return WalkResult::advance();
-  });
+  auto walked = module.walk(
+      GetAsyncUidGenerator<AllReduceStartOp, AllReduceDoneOp>(collective_uid));
+  if (walked.wasInterrupted()) return signalPassFailure();
+  walked = module.walk(
+      GetAsyncUidGenerator<CollectivePermuteStartOp, CollectivePermuteDoneOp>(
+          collective_uid));
   if (walked.wasInterrupted()) return signalPassFailure();
 
   // Convert lmhlo collective operations to XLA gpu runtime custom calls.
@@ -922,8 +1000,8 @@ void ConvertLmhloToGpuRuntimePass::runOnOperation() {
                                                               custom_calls);
   patterns.insert<AllGatherOpLowering, AllReduceOpLowering,
                   AllReduceStartOpLowering, AllToAllOpLowering,
-                  CollectivePermuteOpLowering, ReduceScatterOpLowering>(
-      ctx, collective_uid, custom_calls);
+                  CollectivePermuteOpLowering, CollectivePermuteStartOpLowering,
+                  ReduceScatterOpLowering>(ctx, collective_uid, custom_calls);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();
@@ -935,7 +1013,8 @@ void ConvertLmhloToGpuRuntimePass::runOnOperation() {
   // This should be a part of lmhlo operation canonicalization.
   {
     RewritePatternSet patterns(ctx);
-    patterns.insert<AllReduceDoneOpLowering>(ctx, collective_uid, custom_calls);
+    patterns.insert<AllReduceDoneOpLowering, CollectivePermuteDoneOpLowering>(
+        ctx, collective_uid, custom_calls);
     if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
       return signalPassFailure();
   }

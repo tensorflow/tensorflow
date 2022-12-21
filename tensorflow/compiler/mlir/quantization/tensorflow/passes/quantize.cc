@@ -190,6 +190,11 @@ class QuantizeSameScaleOpsPattern
         continue;
       }
 
+      // Same scale op is not supported for Uniform Quantized ops.
+      if (target_opset_ == OpSet::UNIFORM_QUANTIZED) {
+        continue;
+      }
+
       // Collect all the quantized inputs and "clone" the matched op by these
       // inputs.
       SmallVector<Value, 4> inputs;

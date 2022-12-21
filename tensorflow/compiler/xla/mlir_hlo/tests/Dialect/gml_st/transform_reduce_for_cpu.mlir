@@ -271,3 +271,57 @@ func.func @reduce_1d_dynamic(%arg0: tensor<?xf32>) -> tensor<f32> {
 //      CHECK:   %[[INPUT_SLICE:.*]] = gml_st.materialize %[[ARG0]][%[[INPUT_TILE]]]
 
 //      CHECK: return %[[REMAINDER_RESULT]]
+
+// -----
+
+func.func @reduce_map_fuse_map(%arg0: tensor<10x100xf32>,
+    %arg1: tensor<10x100xf32>, %output: tensor<10xf32>) -> tensor<10xf32> {
+  %map_init = tensor.empty() : tensor<10x100xf32>
+  %reduce_init = tensor.empty() : tensor<10xf32>
+  %mapped = linalg.map
+    ins(%arg0, %arg1 : tensor<10x100xf32>, tensor<10x100xf32>)
+    outs(%map_init : tensor<10x100xf32>)
+    (%lhs_elem: f32, %rhs_elem: f32) {
+      %0 = arith.addf %lhs_elem, %rhs_elem : f32
+      linalg.yield %0 : f32
+    }
+
+  %reduce = linalg.reduce
+    ins(%mapped: tensor<10x100xf32>)
+    outs(%reduce_init: tensor<10xf32>)
+    dimensions = [1]
+    (%in: f32, %init: f32) {
+      %0 = arith.addf %in, %init : f32
+      linalg.yield %0 : f32
+    }
+
+  %res = linalg.map
+    ins(%reduce: tensor<10xf32>)
+    outs(%output : tensor<10xf32>)
+    (%elem: f32) {
+      %0 = math.absf %elem : f32
+      linalg.yield %0 : f32
+    }
+  return %res : tensor<10xf32>
+}
+
+// CHECK-LABEL:    func @reduce_map_fuse_map(
+// CHECK:      %[[C0:.*]] = arith.constant 0 : index
+
+// CHECK:      gml_st.parallel (%[[I:.*]]) = (%[[C0]])
+// CHECK:        gml_st.for
+// CHECK:          %[[MAP:.*]] = linalg.map
+// CHECK:          %[[REDUCE:.*]] = linalg.reduce
+// CHECK:          gml_st.set_yield %[[REDUCE]]
+
+// CHECK:        %[[MAP:.*]] = linalg.map
+// CHECK:        gml_st.set_yield %[[MAP]]
+
+// CHECK:      gml_st.parallel
+// CHECK:        gml_st.for
+// CHECK:          %[[MAP:.*]] = linalg.map
+// CHECK:          %[[REDUCE:.*]] = linalg.reduce
+// CHECK:          gml_st.set_yield %[[REDUCE]]
+
+// CHECK:        %[[MAP:.*]] = linalg.map
+// CHECK:        gml_st.set_yield %[[MAP]]

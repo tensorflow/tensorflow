@@ -278,6 +278,7 @@ py_library(
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
+        "//tensorflow/python/distribute/failure_handling:preemption_watcher",
     ],
 )
 
@@ -522,6 +523,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
+        "//tensorflow/dtensor/python/tests:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/array_ops:__pkg__",
         "//tensorflow/python/kernel_tests/control_flow:__pkg__",
@@ -541,6 +543,7 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/quantization:__pkg__",
+        "//tensorflow/dtensor/python/tests:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
     ],
 )
@@ -761,6 +764,7 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/google/python/ops:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
+        "//tensorflow/dtensor/python/tests:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/math_ops:__pkg__",
     ],
@@ -771,6 +775,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
+        "//tensorflow/dtensor/python/tests:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/nn_ops:__pkg__",
         "//tensorflow/python/kernel_tests/sparse_ops:__pkg__",
@@ -818,12 +823,14 @@ tf_gen_op_wrapper_private_py(
 tf_gen_op_wrapper_private_py(
     name = "stateless_random_ops_gen",
     visibility = [
+        "//tensorflow/dtensor/python/tests:__pkg__",
         "//tensorflow/python/data/experimental/ops:__pkg__",
     ],
 )
 
 tf_gen_op_wrapper_private_py(
     name = "stateless_random_ops_v2_gen",
+    visibility = visibility + ["//tensorflow/dtensor/python/tests:__pkg__"],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -869,7 +876,10 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "spectral_ops_gen",
-    visibility = ["//tensorflow/python/ops/signal:__pkg__"],
+    visibility = [
+        "//tensorflow/dtensor/python/tests:__pkg__",
+        "//tensorflow/python/ops/signal:__pkg__",
+    ],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -3335,6 +3345,7 @@ pywrap_tensorflow_macro(
         "@mkl_dnn_v1//:__subpackages__",
         "@nccl_archive//:__subpackages__",
         "@nsync//:__subpackages__",
+        "@nvtx_archive//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",
@@ -3467,6 +3478,7 @@ filegroup(
     name = "win_lib_files_for_exported_symbols",
     srcs = [
         "//tensorflow/tsl/python/lib/core:bfloat16_lib",  # bfloat16
+        "//tensorflow/tsl/python/lib/core:custom_casts_lib",
         "//tensorflow/tsl/python/lib/core:float8_lib",  # float8_e4m3fn, float8_e5m2
         "//tensorflow/python/grappler:cost_analyzer_lib",
         "//tensorflow/python/util:cpp_nest",

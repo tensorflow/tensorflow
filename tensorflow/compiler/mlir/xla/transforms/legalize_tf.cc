@@ -3316,9 +3316,9 @@ class ConvertSplitOp : public OpRewritePattern<TF::SplitOp> {
 
   LogicalResult matchAndRewrite(TF::SplitOp op,
                                 PatternRewriter &rewriter) const override {
-    // We can only split along static dimensions.
+    // We can only split inputs that have fully static shape.
     auto input_type = op.getValue().getType().dyn_cast<RankedTensorType>();
-    if (!input_type) return failure();
+    if (!input_type || !input_type.hasStaticShape()) return failure();
 
     // We can only match when the split dimension is a constant scalar.
     DenseIntElementsAttr split_dim_attr;
@@ -3332,9 +3332,6 @@ class ConvertSplitOp : public OpRewritePattern<TF::SplitOp> {
 
     // Calculate the dimension size for each slice along the split dimension.
     int64_t input_dim_size = input_type.getDimSize(dim_index);
-    // If we are splitting along the dynamic dimension then we cannot compute
-    // the static dimension length.
-    if (ShapedType::isDynamic(input_dim_size)) return failure();
 
     int64_t num_splits = op.getNumResults();
     int64_t slice_size = input_dim_size / num_splits;
@@ -3347,7 +3344,7 @@ class ConvertSplitOp : public OpRewritePattern<TF::SplitOp> {
 
     // Parameters for constructing each slice.
     SmallVector<int64_t, 4> begin_indices(input_rank, 0);
-    auto end_indices = tensorflow::ConvertMlirShapeToTF(input_type.getShape());
+    auto end_indices = llvm::to_vector<4>(input_type.getShape());
     SmallVector<int64_t, 4> strides(input_rank, 1);
 
     // All HLO slice results used to replace the original tf.Split op.
@@ -3383,6 +3380,13 @@ class ConvertSplitOpDynamic : public OpRewritePattern<TF::SplitOp> {
     Value input = op.getValue();
     auto input_type = input.getType().dyn_cast<RankedTensorType>();
     if (!input_type) return failure();
+
+    // TODO(disc): remove static shape check once folding/canonicalization func
+    // added and ConvertSplitOp deleted. Calculate the dimension size for each
+    // slice along the split dimension. We are splitting along the dynamic
+    // dimension, or using static pattern transform
+    if (input_type.hasStaticShape()) return failure();
+
     // We can only match when the split dimension is a constant scalar.
     DenseIntElementsAttr split_dim_attr;
     if (!matchPattern(op.getSplitDim(), m_Constant(&split_dim_attr)))
@@ -3392,13 +3396,6 @@ class ConvertSplitOpDynamic : public OpRewritePattern<TF::SplitOp> {
     int64_t input_rank = input_type.getRank();
     int64_t dim_index = (*split_dim_attr.begin()).getSExtValue();
     if (dim_index < 0) dim_index += input_rank;
-
-    // TODO(disc): remove static shape check once folding/canonicalization func
-    // added and ConvertSplitOp deleted. Calculate the dimension size for each
-    // slice along the split dimension. We are splitting along the dynamic
-    // dimension, or using static pattern transform
-    int64_t c_input_dim_size = input_type.getDimSize(dim_index);
-    if (!ShapedType::isDynamic(c_input_dim_size)) return failure();
 
     Value input_dim_size =
         rewriter.create<tensor::DimOp>(loc, input, dim_index);
@@ -3494,10 +3491,10 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
 
   LogicalResult matchAndRewrite(TF::SplitVOp op,
                                 PatternRewriter &rewriter) const override {
-    // We can only split along static dimensions.
+    // We can only split inputs that have fully static shape.
     // TODO(b/145731001): enhance to support dynamic-shaped inputs.
     auto input_type = op.getValue().getType().dyn_cast<RankedTensorType>();
-    if (!input_type) return failure();
+    if (!input_type || !input_type.hasStaticShape()) return failure();
 
     // We can only match when the split dimension is a constant scalar.
     DenseIntElementsAttr split_dim_attr;
@@ -3534,8 +3531,6 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
     if (dim_index < 0) dim_index += input_rank;
 
     int64_t input_dim_size = input_type.getDimSize(dim_index);
-    if (ShapedType::isDynamic(input_dim_size)) return failure();
-
     assert(((dynamic_dim_index && total_dim_size <= input_dim_size) ||
             (!dynamic_dim_index && total_dim_size == input_dim_size)) &&
            "invalid split sizes");
@@ -3546,7 +3541,7 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
 
     // Parameters for constructing each slice.
     SmallVector<int64_t, 4> begin_indices(input_rank, 0);
-    auto end_indices = tensorflow::ConvertMlirShapeToTF(input_type.getShape());
+    auto end_indices = llvm::to_vector<4>(input_type.getShape());
     SmallVector<int64_t, 4> strides(input_rank, 1);
 
     // All HLO slice results used to replace the original tf.Split op.

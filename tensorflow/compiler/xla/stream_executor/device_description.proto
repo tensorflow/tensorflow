@@ -42,6 +42,12 @@ message GpuDeviceInfoProto {
   float clock_rate_ghz = 13;
 }
 
+message DnnVersionInfoProto {
+  int32 major = 1;
+  int32 minor = 2;
+  int32 patch = 3;
+}
+
 message GpuTargetConfigProto {
   GpuDeviceInfoProto gpu_device_info = 1;
   oneof compute_capability {
@@ -49,4 +55,5 @@ message GpuTargetConfigProto {
     RocmComputeCapabilityProto rocm_compute_capability = 3;
   }
   string platform_name = 4;
+  DnnVersionInfoProto dnn_version_info = 5;
 }

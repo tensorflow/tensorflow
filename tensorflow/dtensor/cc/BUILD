@@ -341,3 +341,12 @@ cc_library(
         "//tensorflow/core/platform:status",
     ],
 )
+
+cc_library(
+    name = "mesh_type",
+    hdrs = ["mesh_type.h"],
+    deps = [
+        ":tensor_layout",
+        "//tensorflow/c:conversion_macros",
+    ],
+)

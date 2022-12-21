@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/stream_executor/data_type.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/array_slice.h"
@@ -1097,6 +1098,17 @@ class VersionInfo {
  public:
   VersionInfo(int major = 0, int minor = 0, int patch = 0)
       : major_(major), minor_(minor), patch_(patch) {}
+  explicit VersionInfo(DnnVersionInfoProto proto)
+      : major_(proto.major()), minor_(proto.minor()), patch_(proto.patch()) {}
+
+  DnnVersionInfoProto ToProto() const {
+    DnnVersionInfoProto proto;
+    proto.set_major(major_);
+    proto.set_minor(minor_);
+    proto.set_patch(patch_);
+    return proto;
+  }
+
   int major_version() const { return major_; }
   int minor_version() const { return minor_; }
   int patch() const { return patch_; }
@@ -1430,7 +1442,7 @@ class DnnSupport {
   // Return a list of algorithms supported by the forward convolution pass.
   // cc_major and cc_minor are the compute capabilities of the device.
   virtual bool GetConvolveAlgorithms(
-      CudaComputeCapability cuda_compute_capability,
+      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   virtual port::Status GetConvolveRunners(
@@ -1550,13 +1562,13 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // data.
   virtual bool GetConvolveBackwardDataAlgorithms(
-      CudaComputeCapability cuda_compute_capability,
+      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   // Return a list of algorithms supported by the backward convolution pass for
   // filters.
   virtual bool GetConvolveBackwardFilterAlgorithms(
-      CudaComputeCapability cuda_compute_capability,
+      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   // Fully connects the "nodes" (float values) in input_data with

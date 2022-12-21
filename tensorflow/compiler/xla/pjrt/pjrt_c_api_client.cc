@@ -279,6 +279,10 @@ StatusOr<std::string> PjRtCApiClient::SerializeExecutable(
 
   RETURN_STATUS_IF_ERROR(api->PJRT_Executable_Serialize(&ser_args), api);
   PJRT_SerializedExecutable* c_serialized_exec = ser_args.serialized_executable;
+  std::unique_ptr<PJRT_SerializedExecutable,
+                  ::pjrt::PJRT_SerializedExecutableDeleter>
+      serialized_executable(c_serialized_exec,
+                            ::pjrt::MakeSerializedExecutableDeleter(api));
 
   PJRT_SerializedExecutable_Data_Args data_args;
   data_args.struct_size = PJRT_SerializedExecutable_Data_Args_STRUCT_SIZE;
@@ -1146,7 +1150,10 @@ PjRtFuture<Status> PjRtCApiBuffer::GetReadyFuture() {
 StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     absl::string_view device_type) {
 #if !defined(PLATFORM_GOOGLE) || defined(LIBTPU_STATIC)
-  TF_RETURN_IF_ERROR(tensorflow::tpu::FindAndLoadTpuLibrary());
+  if (absl::AsciiStrToLower(device_type) == "tpu") {
+    // TODO(b/261484192): handle device specific initialization.
+    TF_RETURN_IF_ERROR(tensorflow::tpu::FindAndLoadTpuLibrary());
+  }
 #endif
   TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api,
                       stream_executor::tpu::PjrtApi(device_type));

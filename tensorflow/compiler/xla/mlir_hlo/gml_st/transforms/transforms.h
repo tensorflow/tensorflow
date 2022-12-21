@@ -25,7 +25,7 @@ limitations under the License.
 
 namespace mlir {
 
-struct OpPassManager;
+class OpPassManager;
 
 namespace linalg {
 
@@ -97,7 +97,7 @@ bool haveSameStaticShape(Value lhs, Value rhs);
 /// transformation returns early.
 ///
 /// Return a struct containing the tiled loops in the specified order
-/// and the cloned op if successful, llvm::None otherwise.
+/// and the cloned op if successful, std::nullopt otherwise.
 FailureOr<linalg::TiledLinalgOp> tileLinalgOp(
     RewriterBase &b, linalg::LinalgOp op,
     const linalg::LinalgTilingOptions &options);

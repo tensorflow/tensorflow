@@ -16,6 +16,7 @@ limitations under the License.
 #include "mlir-hlo/Analysis/shape_component_analysis.h"
 
 #include <algorithm>
+#include <optional>
 #include <vector>
 
 #include "llvm/ADT/STLExtras.h"
@@ -816,7 +817,7 @@ llvm::Optional<Symbol> SymbolicExpr::singleton() const {
     assert(symbols.size() == 1);
     return symbols[0];
   }
-  return llvm::None;
+  return std::nullopt;
 }
 
 void SymbolicExpr::dump(llvm::raw_ostream &os) const {

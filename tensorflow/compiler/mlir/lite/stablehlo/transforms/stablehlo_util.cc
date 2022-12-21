@@ -24,41 +24,9 @@ limitations under the License.
 namespace mlir {
 namespace odml {
 
-namespace {
-bool IsMhloOpAllowed(llvm::StringRef op_name) {
-  // As per go/compute-ir-ops-v01.
-  static llvm::DenseSet<llvm::StringRef>* denylist = new llvm::DenseSet<
-      llvm::StringRef>{
-      // (R2) Part 1: Internal ops.
-      "bitcast", "fusion",
-      // (R2) Part 2: Modularity ops.
-      // NOTE: These ops were proposed to be excluded from Compute IR
-      // because we didn't want to necessarily tie the specification to MLIR.
-      // In an MLIR-based implementation such as MHLO, these ops are fine.
-      // "get_tuple_element", "return", "tuple",
-      // (R3) Part 1: Distribution ops.
-      "after_all", "all_gather", "all_reduce", "all_to_all",
-      "collective_permute", "create_token", "cross-replica-sum", "infeed",
-      "outfeed", "print", "recv", "reduce_scatter", "replica_id", "send",
-      "trace",
-      // (R3) Part 2: Dynamism ops.
-      "compute_reshape_shape", "cstr_reshapable", "dynamic_broadcast_in_dim",
-      "dynamic_conv", "dynamic_gather", "dynamic_iota", "dynamic_pad",
-      "dynamic_reshape", "get_dimension_size", "real_dynamic_slice",
-      "set_dimension_size"
-      // NOTE: These ops were proposed to be excluded from Compute IR for now
-      // because we wanted to unify them with slice and real_dynamic_slice.
-      // In the meanwhile, they are very practically important to MHLO,
-      // so we should keep them on the allowlist.
-      // "dynamic-slice", "dynamic-update-slice"
-  };
-  return !denylist->contains(op_name);
-}
-}  // namespace
-
 std::vector<std::string> GetAcceptedDialects() {
   // It returns the default list of accepted dialects.
-  std::vector<std::string> accepted_dialects({"mhlo", "builtin", "func"});
+  std::vector<std::string> accepted_dialects({"stablehlo", "builtin", "func"});
   return accepted_dialects;
 }
 
@@ -70,8 +38,7 @@ bool IsAcceptedDialect(llvm::StringRef dialect_name,
 
 bool IsAcceptedOp(llvm::StringRef dialect_name, llvm::StringRef op_name,
                   const std::vector<std::string>& accepted_dialects) {
-  if (!IsAcceptedDialect(dialect_name, accepted_dialects)) return false;
-  return dialect_name != "mhlo" || IsMhloOpAllowed(op_name);
+  return IsAcceptedDialect(dialect_name, accepted_dialects);
 }
 
 }  // namespace odml

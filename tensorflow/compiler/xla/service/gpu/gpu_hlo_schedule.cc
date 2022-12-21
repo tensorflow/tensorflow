@@ -34,6 +34,7 @@ namespace {
 bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
     case HloOpcode::kAllReduceStart:
+    case HloOpcode::kCollectivePermuteStart:
       return true;
     case HloOpcode::kCustomCall:
       return static_cast<const HloCustomCallInstruction&>(instr)
@@ -54,6 +55,7 @@ bool ShouldScheduleSuccessor(const HloInstruction& sussessor,
 bool ShouldScheduleAsLateAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
     case HloOpcode::kAllReduceDone:
+    case HloOpcode::kCollectivePermuteDone:
       return true;
     case HloOpcode::kCustomCall:
       return static_cast<const HloCustomCallInstruction&>(instr)

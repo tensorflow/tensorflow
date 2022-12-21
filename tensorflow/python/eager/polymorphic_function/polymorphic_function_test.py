@@ -4834,26 +4834,6 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(NotImplementedError):
       f()
 
-  # TODO(panzf): remove this test after exposing manual API, as the integration
-  # testcase can be turned on at that time.
-  def test_inner_nested_tf_function_raise_error(self):
-
-    @polymorphic_function.function
-    def tf_f():
-
-      @polymorphic_function.function
-      def tf_g():
-        cx = ops.get_default_graph()._experimental_capture_side_input_by_ref(  # pylint: disable=protected-access
-            'lambda: x', lambda: x)
-        return cx
-
-      return tf_g()
-
-    x = constant_op.constant(0)  # pylint: disable=unused-variable
-    with self.assertRaisesRegex(NotImplementedError,
-                                'Manual side input usage for inner nested'):
-      tf_f()
-
   @parameterized.parameters(
       (1, int, 2, int, 2),
       (1, constant_op.constant, 2, constant_op.constant, 1))
@@ -4882,6 +4862,31 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
       return 2 * a
 
     self.assertAllEqual(f(1), array_ops.constant(2))
+
+  def testGraphRemoveFunction(self):
+    @polymorphic_function.function
+    def g(x):
+      return x + 1
+
+    @polymorphic_function.function
+    def f(x):
+      return g(x)
+
+    graph = f.get_concrete_function(constant_op.constant(1)).graph
+    graph_def = graph.as_graph_def()
+    func_name = graph_def.library.function[0].signature.name
+
+    self.assertLen(graph_def.library.function, 1)
+    self.assertTrue(graph._is_function(func_name))
+
+    graph._remove_function(func_name)
+    updated_graph_def = graph.as_graph_def()
+
+    self.assertEmpty(updated_graph_def.library.function)
+    self.assertFalse(graph._is_function(func_name))
+
+    with self.assertRaisesRegex(ValueError, 'not found'):
+      graph._remove_function(func_name)
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

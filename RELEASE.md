@@ -82,7 +82,7 @@
     *   Added support for alternative checkpointing protocol which makes it
         possible to checkpoint the state of the input pipeline without having
         to store the contents of internal buffers. The new functionality can
-        be enabled through the `experimental_symbolic_checkpointing` option of
+        be enabled through the `experimental_symbolic_checkpoint` option of
         `tf.data.Options()`.
     *   Added a new `rerandomize_each_iteration` argument for the
         `tf.data.Dataset.random()` operation, which controls whether the
@@ -114,6 +114,10 @@
 * `stream_executor`
   * Top level `stream_executor` directory has been deleted, users should use
     equivalent headers and targets under `compiler/xla/stream_executor`.
+* `tf.nn`
+  * Added `tf.nn.experimental.general_dropout`, which is similar to
+    `tf.random.experimental.stateless_dropout` but accepts a custom sampler
+    function.
 
 
 # Thanks to our Contributors

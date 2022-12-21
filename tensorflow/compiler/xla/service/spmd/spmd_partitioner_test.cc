@@ -12675,6 +12675,40 @@ ENTRY %main.21 {
               op::GetTupleElement(op::Reduce(_, _, _, _)));
 }
 
+TEST_F(SpmdPartitioningTest, CombiningScatterPartitiong) {
+  const char* const hlo_string = R"(
+HloModule pjit
+
+region_110.8267 {
+  Arg_0.8268 = bf16[] parameter(0)
+  Arg_1.8269 = bf16[] parameter(1)
+  ROOT add.8270 = bf16[] add(Arg_0.8268, Arg_1.8269)
+}
+
+ENTRY %main.21 {
+  broadcast.8659 = bf16[2,8,12288,192,64]{4,3,2,1,0} parameter(0), sharding={devices=[2,1,2,4,1]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  reshape.9796 = bf16[2,1,12288,192,64]{4,3,2,1,0} parameter(1), sharding={devices=[2,1,2,4,1]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  iota.50 = s32[2,1]{1,0} iota(), iota_dimension=0, sharding={devices=[2,1,8]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 last_tile_dim_replicate}
+  constant.1585 = s32[] constant(0), sharding={replicated}
+  broadcast.3764 = s32[2,1]{1,0} broadcast(constant.1585), dimensions={}, sharding={devices=[2,1,8]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 last_tile_dim_replicate}
+  reshape_idx = s32[2,1]{1,0} parameter(2), sharding={devices=[2,1,8]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 last_tile_dim_replicate}
+  concatenate.8907 = s32[2,5]{1,0} concatenate(iota.50, reshape_idx, broadcast.3764, broadcast.3764, broadcast.3764), dimensions={1}, sharding={devices=[2,1,8]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 last_tile_dim_replicate}
+  scatter.9797 = bf16[2,8,12288,192,64]{4,3,2,1,0} scatter(broadcast.8659, concatenate.8907, reshape.9796), update_window_dims={1,2,3,4}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0,1,2,3,4}, index_vector_dim=1, indices_are_sorted=true, unique_indices=true, to_apply=region_110.8267, sharding={devices=[2,1,2,4,1]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  ROOT c = bf16[2,8,12288,192,64]{4,3,2,1,0} copy(scatter.9797), sharding={devices=[2,1,2,4,1]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/16));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Copy(AllOf(op::Shape("bf16[1,8,6144,48,64]"), op::Scatter(_, _, _))));
+  // Check that there is no communication added.
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

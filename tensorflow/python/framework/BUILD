@@ -317,6 +317,7 @@ py_library(
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/lib/core:_pywrap_bfloat16",
+        "//tensorflow/python/lib/core:_pywrap_custom_casts",
         "//tensorflow/python/lib/core:_pywrap_float8",
         "//tensorflow/python/types:doc_typealias",
     ],
@@ -439,7 +440,7 @@ py_library(
         "convert_to_constants.py",
     ],
     srcs_version = "PY3",
-    visibility = visibility,
+    visibility = visibility + ["//platforms/darwinn:__subpackages__"],
     deps = [
         ":dtypes",
         ":ops",
@@ -2251,3 +2252,15 @@ tf_python_pybind_extension(
 #     deps = [":cpp_shape_inference_proto"],
 # )
 # copybara:uncomment_end
+
+py_library(
+    name = "summary_test_util",
+    testonly = True,
+    srcs = ["summary_test_util.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
+    ],
+)

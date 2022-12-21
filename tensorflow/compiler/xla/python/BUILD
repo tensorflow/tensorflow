@@ -290,11 +290,7 @@ cc_library(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    defines = if_cuda(["GOOGLE_CUDA=1"]) +
-              select({
-                  ":ifrt_enabled": ["JAX_ENABLE_IFRT=1"],
-                  "//conditions:default": [],
-              }),
+    defines = if_cuda(["GOOGLE_CUDA=1"]),
     features = ["-use_header_modules"],
     deps = [
         ":exceptions",
@@ -356,10 +352,6 @@ cc_library(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    defines = select({
-        ":ifrt_enabled": ["JAX_ENABLE_IFRT=1"],
-        "//conditions:default": [],
-    }),
     features = ["-use_header_modules"],
     deps = [
         ":py_client",
@@ -371,7 +363,6 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@dlpack",
@@ -388,10 +379,6 @@ cc_library(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    defines = select({
-        ":ifrt_enabled": ["JAX_ENABLE_IFRT=1"],
-        "//conditions:default": [],
-    }),
     features = ["-use_header_modules"],
     visibility = [":friends"],  # For the functions to access C++ flags/thread-local variables
     deps = [
@@ -509,10 +496,6 @@ cc_library(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    defines = select({
-        ":ifrt_enabled": ["JAX_ENABLE_IFRT=1"],
-        "//conditions:default": [],
-    }),
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
@@ -542,10 +525,6 @@ cc_library(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    defines = select({
-        ":ifrt_enabled": ["JAX_ENABLE_IFRT=1"],
-        "//conditions:default": [],
-    }),
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
@@ -733,10 +712,6 @@ cc_library(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    defines = select({
-        ":ifrt_enabled": ["JAX_ENABLE_IFRT=1"],
-        "//conditions:default": [],
-    }),
     features = ["-use_header_modules"],
     deps = [
         "@com_google_absl//absl/strings:str_format",
@@ -863,7 +838,7 @@ config_setting(
 
 bool_flag(
     name = "enable_ifrt",
-    build_setting_default = False,
+    build_setting_default = True,
 )
 
 config_setting(
@@ -911,9 +886,6 @@ tsl_pybind_extension(
         "//conditions:default": [],
     }) + select({
         ":plugin_device_enabled": ["XLA_PYTHON_ENABLE_PLUGIN_DEVICE=1"],
-        "//conditions:default": [],
-    }) + select({
-        ":ifrt_enabled": ["JAX_ENABLE_IFRT=1"],
         "//conditions:default": [],
     }),
     linkopts = select({

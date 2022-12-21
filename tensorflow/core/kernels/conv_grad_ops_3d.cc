@@ -1580,11 +1580,12 @@ struct LaunchConvBackpropInputOp<Eigen::bfloat16> {
     auto* stream = ctx->op_device_context()->stream();
     const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
         se::CudaComputeCapability::AMPERE);
-    Tensor casted_out_backprop = out_backprop;
-    Tensor casted_filter = filter;
-    Tensor casted_in_backprop = *in_backprop;
 
     if (cast_to_float) {
+      Tensor casted_out_backprop = out_backprop;
+      Tensor casted_filter = filter;
+      Tensor casted_in_backprop = *in_backprop;
+
       const GPUDevice& device = ctx->eigen_device<GPUDevice>();
       functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
       OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, out_backprop.shape(),
@@ -1612,8 +1613,8 @@ struct LaunchConvBackpropInputOp<Eigen::bfloat16> {
     }
 
     LaunchConvBackpropInputOpImpl<Eigen::bfloat16>(
-        ctx, cudnn_use_autotune, casted_out_backprop, casted_filter, dilation,
-        strides, padding, &casted_in_backprop, data_format);
+        ctx, cudnn_use_autotune, out_backprop, filter, dilation, strides,
+        padding, in_backprop, data_format);
   }
 };
 
@@ -2035,11 +2036,12 @@ struct LaunchConvBackpropFilterOp<Eigen::bfloat16> {
       auto* stream = ctx->op_device_context()->stream();
       const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
           se::CudaComputeCapability::AMPERE);
+
+      if (cast_to_float) {
       Tensor casted_input = input;
       Tensor casted_out_backprop = out_backprop;
       Tensor casted_filter_backprop = *filter_backprop;
 
-      if (cast_to_float) {
       const GPUDevice& device = ctx->eigen_device<GPUDevice>();
       functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
       OP_REQUIRES_OK(
@@ -2067,8 +2069,8 @@ struct LaunchConvBackpropFilterOp<Eigen::bfloat16> {
       }
 
       LaunchConvBackpropFilterOpImpl<Eigen::bfloat16>(
-          ctx, cudnn_use_autotune, casted_input, casted_out_backprop, dilation,
-          stride, padding, &casted_filter_backprop, data_format);
+          ctx, cudnn_use_autotune, input, out_backprop, dilation, stride,
+          padding, filter_backprop, data_format);
     }
 };
 

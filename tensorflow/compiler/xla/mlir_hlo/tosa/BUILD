@@ -57,6 +57,7 @@ cc_library(
     name = "MHLOTOSATransforms",
     srcs = [
         "lib/Transforms/legalize_mhlo.cc",
+        "lib/Transforms/prepare_mhlo.cc",
     ],
     hdrs = [
         "include/mhlo_tosa/Transforms/passes.h",
@@ -66,6 +67,7 @@ cc_library(
         ":MHLOTOSAPDLLPatternsIncGen",
         ":MHLOTOSATransformsPassIncGen",
         "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",

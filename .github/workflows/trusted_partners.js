@@ -65,17 +65,18 @@ const filter_action = async ({github, context, domain}) => {
   if (lowercased_title.includes('apple') &&
       lowercased_title.includes('silicon') && domain.includes('apple.com'))
     assignees = apple_silicon_assignees;
-  if (lowercased_title.includes('nvidia') && domain.includes('nvidia.com')) {
+  if (lowercased_title.includes('tf-trt') && domain.includes('nvidia.com')) {
+    assignees.push(
+        'DEKHTIARJonathan', 'meena-at-work', 'nluehr', 'pjannaty', 'poulsbo');
+  } else if (
+      lowercased_title.includes('nvidia') && domain.includes('nvidia.com')) {
     if (lowercased_title.includes('jax')) {
       assignees.push('hawkinsp', 'yashk2810', 'skye');
     }
     if (lowercased_title.includes('xla') || lowercased_title.includes('gpu')) {
       assignees.push('cheshire', 'gcforster', 'reedwm', 'chsigg', 'xla-rotation');
     }
-    if (lowercased_title.includes('tf-trt')) {
-      assignees.push(
-          'meena-at-work', 'nluehr', 'DEKHTIARJonathan', 'pjannaty', 'poulsbo');
-    } else if (lowercased_title.includes('tf')) {
+    if (lowercased_title.includes('tf')) {
       assignees.push('rohan100jain', 'bfontain');
     }
   }

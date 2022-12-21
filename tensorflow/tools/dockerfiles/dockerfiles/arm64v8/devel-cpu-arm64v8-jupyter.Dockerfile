@@ -86,6 +86,7 @@ RUN apt-get update && apt-get install -y \
 
 RUN python3 -m pip --no-cache-dir install \
     Pillow \
+    keras_preprocessing \
     tb-nightly \
     h5py \
     matplotlib \

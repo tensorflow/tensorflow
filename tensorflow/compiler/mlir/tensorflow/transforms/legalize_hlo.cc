@@ -399,6 +399,14 @@ class Convert2DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
       return failure();
     }
 
+    // tf Convolution doesn't support quantized type.
+    if (conv_op.getRhs()
+            .getType()
+            .getElementType()
+            .isa<quant::QuantizedType>()) {
+      return failure();
+    }
+
     // Constructs strides array.
     // For example, [2, 3] -> [1, 2, 3, 1].
     SmallVector<int64_t, 4> strides({1});

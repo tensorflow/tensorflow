@@ -173,6 +173,13 @@ def VectorizePerfectlyTiledLoopsPass :
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }
 
+def VectorizeCopyPass :
+    Pass<"vectorize-copy", "mlir::func::FuncOp"> {
+  let summary = "Pass to vectorize `memref.copy`.";
+  let constructor = "::mlir::gml_st::createVectorizeCopyPass()";
+  let dependentDialects = ["::mlir::vector::VectorDialect"];
+}
+
 def LowerVectorContractPass :
     Pass<"lower-vector-contract", "mlir::func::FuncOp"> {
   let summary = "Pass to lower vector.contract";

@@ -480,14 +480,16 @@ void EagerContext::ClearCachesAndThreadExecutors() {
 }
 
 void EagerContext::ClearCachesAndDefaultExecutor() {
-  // The executor stores pointers to kernels, so we need to make sure that no
-  // async eager ops are still executing. We lock the cache during this time
-  // as well.
-  mutex_lock ml(cache_mu_);
-  default_executor_.WaitForAllPendingNodes().IgnoreError();
-  kernel_cache_.clear();
-  for (auto& entry : registered_functions_) {
-    entry.second->cached_kernel_keys->clear();
+  {
+    // The executor stores pointers to kernels, so we need to make sure that no
+    // async eager ops are still pending to be executed. We lock the cache
+    // during this time as well.
+    mutex_lock ml(cache_mu_);
+    default_executor_.WaitForAllPendingNodes().IgnoreError();
+    kernel_cache_.clear();
+    for (auto& entry : registered_functions_) {
+      entry.second->cached_kernel_keys->clear();
+    }
   }
   {
     mutex_lock dl(device_cache_mu_);
@@ -495,8 +497,8 @@ void EagerContext::ClearCachesAndDefaultExecutor() {
   }
   {
     mutex_lock ml(metadata_mu_);
-    step_container_.reset(new ScopedStepContainer(
-        0, [this](const string& name) { ClearResourceContainer(name); }));
+    step_container_ = std::make_unique<ScopedStepContainer>(
+        0, [this](const string& name) { ClearResourceContainer(name); });
   }
 }
 

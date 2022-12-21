@@ -31,3 +31,8 @@ cuda_compute_capability {
   major: 6
 }
 platform_name: "CUDA"
+dnn_version_info {
+  major: 8
+  minor: 3
+  patch: 2
+}

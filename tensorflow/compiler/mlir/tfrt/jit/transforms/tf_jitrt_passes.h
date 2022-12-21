@@ -98,7 +98,7 @@ std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateFusionPass();
 
 // Pass to optimize broadcasts based on the symbolic shape constraints.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateSymbolicShapeOptimizationPass(bool constraints_only = false);
+CreateSymbolicShapeOptimizationPass();
 
 // Pass to replace 0-d tensor inputs to LinalgOp with extracted elements.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>

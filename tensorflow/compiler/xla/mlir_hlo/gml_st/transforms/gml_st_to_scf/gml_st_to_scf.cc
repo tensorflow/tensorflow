@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -87,7 +88,7 @@ struct LoopToSCFPattern : public OpRewritePattern<LoopOp> {
     };
 
     if (parIVs.empty()) {
-      generateForLoopNestAndCloneBody(rewriter, loc, llvm::None);
+      generateForLoopNestAndCloneBody(rewriter, loc, std::nullopt);
     } else {
       rewriter.create<scf::ParallelOp>(loc, parLBs, parUBs, parSteps,
                                        generateForLoopNestAndCloneBody);

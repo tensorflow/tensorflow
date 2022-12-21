@@ -72,7 +72,9 @@ class ArgOp : public OpKernel {
     TensorShape output_shape;
     const TensorShape& input_shape = input.shape();
     for (int d = 0; d < input_dims - 1; ++d) {
-      output_shape.AddDim(input_shape.dim_size((d < axis) ? d : d + 1));
+      OP_REQUIRES_OK(context,
+                     output_shape.AddDimWithStatus(
+                         input_shape.dim_size((d < axis) ? d : d + 1)));
     }
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));

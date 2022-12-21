@@ -204,7 +204,7 @@ StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
 }
 
 StatusOr<std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
-ConvertCustomCallOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr) {
+ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr) {
   std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>> aliasInfo;
   for (auto attr : aliasArrayAttr.getValue()) {
     auto alias = attr.cast<mlir::mhlo::OutputOperandAliasAttr>();

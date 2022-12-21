@@ -2653,9 +2653,10 @@ TEST_F(HloVerifierTest, InvalidF8Usage) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(
-      status.error_message(),
-      HasSubstr("FP8 is currently only supported in convert instructions"));
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("FP8 is currently only supported in convert, bitcast, "
+                        "tuple, get-tuple-element, transpose, dot and fusion "
+                        "instructions as well as Custom Calls"));
 }
 
 }  // namespace

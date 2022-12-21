@@ -1452,6 +1452,18 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
     conv2d_output = a1_conv2d_op.getResult();
   }
 
+  auto fused_activation_fn = tfl_conv_op.getFusedActivationFunctionAttr();
+
+  if (fused_activation_fn) {
+    llvm::Optional<Value> fused_activation_val = convertFusedActivation(
+        rewriter, op, conv2d_output, fused_activation_fn);
+
+    if (!fused_activation_val) return failure();
+
+    rewriter.replaceOp(op, {fused_activation_val.value()});
+    return success();
+  }
+
   rewriter.replaceOp(op, {conv2d_output});
 
   return success();

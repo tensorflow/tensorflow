@@ -277,7 +277,7 @@ bool StreamExecutor::SupportsDnn() const {
 }
 
 bool StreamExecutor::GetConvolveAlgorithms(
-    dnn::ConvolutionKind kind,
+    dnn::ConvolutionKind kind, dnn::DataType input_type,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
@@ -289,13 +289,16 @@ bool StreamExecutor::GetConvolveAlgorithms(
     case dnn::ConvolutionKind::FORWARD:
     case dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION:
       return dnn_support->GetConvolveAlgorithms(
-          GetDeviceDescription().cuda_compute_capability(), out_algorithms);
+          GetDeviceDescription().cuda_compute_capability(), input_type,
+          out_algorithms);
     case dnn::ConvolutionKind::BACKWARD_DATA:
       return dnn_support->GetConvolveBackwardDataAlgorithms(
-          GetDeviceDescription().cuda_compute_capability(), out_algorithms);
+          GetDeviceDescription().cuda_compute_capability(), input_type,
+          out_algorithms);
     case dnn::ConvolutionKind::BACKWARD_FILTER:
       return dnn_support->GetConvolveBackwardFilterAlgorithms(
-          GetDeviceDescription().cuda_compute_capability(), out_algorithms);
+          GetDeviceDescription().cuda_compute_capability(), input_type,
+          out_algorithms);
   }
 }
 

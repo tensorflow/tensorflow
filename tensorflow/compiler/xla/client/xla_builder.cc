@@ -110,13 +110,26 @@ XlaOp XlaBuilderFriend::BuildAddDependency(XlaBuilder* builder, XlaOp operand,
   });
 }
 
-XlaOp XlaBuilderFriend::BuildFusion(XlaBuilder* builder,
-                                    absl::Span<const XlaOp> operands,
-                                    absl::string_view fusion_kind,
-                                    const XlaComputation& fused_computation) {
+XlaOp XlaBuilderFriend::BuildFusion(
+    XlaBuilder* builder, absl::Span<const XlaOp> operands,
+    absl::string_view fusion_kind, const XlaComputation& fused_computation,
+    absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+        output_operand_aliasing) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     instr.set_fusion_kind(std::string(fusion_kind));
+    if (!output_operand_aliasing.empty()) {
+      for (const auto& pair : output_operand_aliasing) {
+        auto aliasing = instr.add_output_operand_aliasing();
+        aliasing->set_operand_index(pair.second.first);
+        for (int64_t index : pair.second.second) {
+          aliasing->add_operand_shape_index(index);
+        }
+        for (int64_t index : pair.first) {
+          aliasing->add_output_shape_index(index);
+        }
+      }
+    }
     std::vector<const Shape*> operand_shape_ptrs;
     TF_ASSIGN_OR_RETURN(auto program_shape,
                         fused_computation.GetProgramShape());

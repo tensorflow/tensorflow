@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -224,7 +225,7 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
     if (op.getPrecisionConfig()) precisionConfig = *op.getPrecisionConfig();
     SmallVector<Type, 1> results;
     LogicalResult res =
-        DotOp::inferReturnTypes(rewriter.getContext(), llvm::None, {lhs, rhs},
+        DotOp::inferReturnTypes(rewriter.getContext(), std::nullopt, {lhs, rhs},
                                 op->getAttrDictionary(), {}, results);
     (void)res;
     assert(succeeded(res) && "invalid input to dot");

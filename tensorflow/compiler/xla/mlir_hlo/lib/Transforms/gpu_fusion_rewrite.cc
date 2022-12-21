@@ -15,6 +15,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -292,7 +293,7 @@ LogicalResult GpuFusionRewritePass::rewriteFusionOp(
   auto argTypes = llvm::to_vector(llvm::map_range(captures, [&](Value value) {
     return converter.convertType(value.getType());
   }));
-  auto funcType = rewriter.getFunctionType(argTypes, llvm::None);
+  auto funcType = rewriter.getFunctionType(argTypes, std::nullopt);
   auto funcOp = rewriter.create<func::FuncOp>(loc, "fusion", funcType);
   rewriter.setInsertionPointToEnd(funcOp.addEntryBlock());
   BlockAndValueMapping mapping;

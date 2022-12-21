@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
 
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
 
-#include "llvm/ADT/None.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -118,7 +118,7 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   return internal::ConvertMLIRToTFLiteFlatBuffer(
       model_flags, toco_flags, std::move(module), pass_config,
       /*saved_model_tags=*/{}, result,
-      /*session=*/llvm::None);
+      /*session=*/std::nullopt);
 }
 
 }  // namespace tensorflow

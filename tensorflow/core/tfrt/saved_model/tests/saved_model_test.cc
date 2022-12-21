@@ -158,6 +158,46 @@ TEST(SavedModelTest, BasicV2) {
   EXPECT_EQ(output.flat<int32_t>()(0), 6);
 }
 
+TEST(SavedModelTest, BasicInlineExecution) {
+  // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
+  // using the following python code:
+  // self.w = tf.Variable(tf.ones((3)), name='w')
+  // r = tf.matmul(x, self.w)
+  std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/core/tfrt/saved_model/tests/toy_v2");
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+
+  runtime->SetCreateRequestQueueFn(
+      [](int64_t) -> StatusOr<std::unique_ptr<WorkQueueInterface>> {
+        return tensorflow::tfrt_stub::WrapDefaultWorkQueue(
+            tfrt::CreateSingleThreadedWorkQueue());
+      });
+
+  auto options = DefaultSavedModelOptions(runtime.get());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto saved_model, SavedModelImpl::LoadSavedModel(options, saved_model_dir,
+                                                       /*tags=*/{"serve"}));
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<tensorflow::Tensor> inputs;
+  inputs.emplace_back(tensorflow::DT_INT32,
+                      /*shape=*/tensorflow::TensorShape{1, 3});
+  auto flat = inputs.back().flat<int32_t>();
+  flat(0) = 1;
+  flat(1) = 1;
+  flat(2) = 1;
+
+  std::vector<tensorflow::Tensor> outputs;
+  TF_ASSERT_OK(saved_model->Run({}, "serving_default", inputs, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+  auto& output = outputs[0];
+
+  ASSERT_EQ(output.NumElements(), 1);
+  EXPECT_EQ(output.flat<int32_t>()(0), 6);
+}
+
 TEST(SavedModelTest, VariableOnTpu) {
   // A ReadVariableOp on 'TPU' would behave exactly the same as a ReadVariableOp
   // on 'CPU'. This is to be compatible with TF1 runtime.

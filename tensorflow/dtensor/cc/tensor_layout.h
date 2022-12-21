@@ -289,6 +289,11 @@ class Layout {
 
   const Mesh& mesh() const { return mesh_; }
   static Layout ReplicatedOnMesh(const Mesh& mesh, int rank);
+  static Layout BatchShardedOnMesh(const Mesh& mesh, int rank,
+                                   const string& mesh_dim, int axis = 0);
+  static Layout ReplicatedLike(const Layout& layout);
+  static Layout BatchShardedLike(const Layout& layout, const string& mesh_dim,
+                                 int axis = 0);
   static Layout AnyOnMesh(const Mesh& mesh, int rank);
   // Creates a mesh of unique shards.
   Mesh ReducedMesh() const;
@@ -339,7 +344,7 @@ class Layout {
 
   // Compute global shape using the layout and provided local_shape.
   std::vector<int64_t> GlobalShapeFromLocalShape(
-      const std::vector<int64_t>& local_shape) const;
+      absl::Span<const int64_t> local_shape) const;
 
   std::vector<int64_t> LocalShapeFromGlobalShape(
       absl::Span<const int64_t> global_shape) const;

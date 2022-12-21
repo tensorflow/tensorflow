@@ -31,7 +31,6 @@ py_library(
 py_library(
     name = "checkpoint",
     srcs = [
-        "__init__.py",
         "checkpoint.py",
     ],
     srcs_version = "PY3",
@@ -362,6 +361,28 @@ cuda_py_test(
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/trackable:trackable_utils",
+    ],
+)
+
+py_library(
+    name = "tensor_callable",
+    srcs = ["tensor_callable.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/training/saving:saveable_object",
+    ],
+)
+
+tf_py_test(
+    name = "tensor_callable_test",
+    srcs = ["tensor_callable_test.py"],
+    deps = [
+        ":checkpoint",
+        ":tensor_callable",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/trackable:base",
     ],
 )
 

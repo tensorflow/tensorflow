@@ -22,12 +22,13 @@ limitations under the License.
 
 #include <any>
 #include <functional>
-#include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -38,11 +39,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/metrics_hook_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/threadpool.h"
 
@@ -247,7 +246,7 @@ class Compiler {
         layout_canonicalization_callback = {};
   };
 
-  virtual ~Compiler() {}
+  virtual ~Compiler() = default;
 
   // Returns the ID of the platform that this compiler targets.
   virtual se::Platform::Id PlatformId() const = 0;
@@ -397,12 +396,12 @@ class Compiler {
   static absl::Mutex platform_compiler_mutex_;
 
   // Map from platform kind to compiler factory.
-  static std::map<se::Platform::Id, CompilerFactory>*
+  static absl::flat_hash_map<se::Platform::Id, CompilerFactory>*
   GetPlatformCompilerFactories();
 
   // Map from platform kind to compiler instance, if we made one already (based
   // on the factories above).
-  static std::map<se::Platform::Id, std::unique_ptr<Compiler>>*
+  static absl::flat_hash_map<se::Platform::Id, std::unique_ptr<Compiler>>*
   GetPlatformCompilers();
 };
 

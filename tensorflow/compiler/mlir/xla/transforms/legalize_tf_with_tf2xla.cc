@@ -117,6 +117,9 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
             TypeID::get<TF::BitwiseOrOp>(),
             TypeID::get<TF::BitwiseXorOp>(),
             TypeID::get<TF::BucketizeOp>(),
+            // CaseOp isn't actually supported but is enabled for testing to
+            // make sure ops with symbol ref attributes are filtered out.
+            TypeID::get<TF::CaseOp>(),
             TypeID::get<TF::CastOp>(),
             TypeID::get<TF::ClipByValueOp>(),
             TypeID::get<TF::CholeskyOp>(),
@@ -420,20 +423,6 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
   return ops->count(abstractOp->getTypeID());
 }
 // LINT.ThenChange()
-
-bool IsOpAllowedForTesting(Operation* op) {
-  // clang-format off
-  static auto* ops =
-      new llvm::SmallDenseSet<mlir::TypeID, 16>{
-    // Op used to verify handling of XlaExpression of kind constant.
-    TypeID::get<TF::ConstOp>(),
-    TypeID::get<TF::CaseOp>(),
-  };
-  // clang-format on
-  auto abstractOp = op->getRegisteredInfo();
-  if (!abstractOp) return false;
-  return ops->count(abstractOp->getTypeID());
-}
 
 // List of ops that require falling back to XlaOpKernel legalizations and also
 // require the ability to create functions.
@@ -759,12 +748,10 @@ class Tf2XlaRewritePattern : public RewritePattern {
  public:
   explicit Tf2XlaRewritePattern(MLIRContext* ctx,
                                 const std::string& device_type,
-                                bool prefer_tf2xla, bool legalize_test_only_ops,
-                                bool is_module_pass)
+                                bool prefer_tf2xla, bool is_module_pass)
       : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx),
         device_type_(device_type),
         prefer_tf2xla_(prefer_tf2xla),
-        legalize_test_only_ops_(legalize_test_only_ops),
         is_module_pass_(is_module_pass) {}
 
   LogicalResult matchAndRewrite(Operation* op,
@@ -777,8 +764,7 @@ class Tf2XlaRewritePattern : public RewritePattern {
         return failure();
       }
     } else if (!(IsOpAllowedTf2XlaFallback(op) ||
-                 (prefer_tf2xla_ && IsOpAllowedTf2XlaPreferred(op)) ||
-                 (legalize_test_only_ops_ && IsOpAllowedForTesting(op)))) {
+                 (prefer_tf2xla_ && IsOpAllowedTf2XlaPreferred(op)))) {
       return failure();
     }
     return Tf2XlaRewriter::RewriteOp(op, rewriter, device_type_,
@@ -788,36 +774,7 @@ class Tf2XlaRewritePattern : public RewritePattern {
  private:
   std::string device_type_;
   bool prefer_tf2xla_;
-  bool legalize_test_only_ops_;
   bool is_module_pass_;
-};
-
-// Include declaration for LegalizeTFWithTF2XLAOptions
-#define GEN_PASS_DECL_LEGALIZETFWITHTF2XLA
-#define GEN_PASS_DEF_LEGALIZETFWITHTF2XLA
-#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes.h.inc"
-
-class LegalizeTF : public impl::LegalizeTFWithTF2XLABase<LegalizeTF> {
- public:
-  LegalizeTF() = default;
-  explicit LegalizeTF(llvm::StringRef device_type, bool prefer_tf2xla) {
-    device_type_ = device_type.str();
-    prefer_tf2xla_ = prefer_tf2xla;
-  }
-
-  LegalizeTF(const LegalizeTF&) {}
-
-  void runOnOperation() override {
-    RewritePatternSet patterns(&getContext());
-    patterns.add<Tf2XlaRewritePattern>(&getContext(), device_type_,
-                                       prefer_tf2xla_, legalize_test_only_ops_,
-                                       /*is_module_pass=*/false);
-    if (failed(
-            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
-      signalPassFailure();
-  }
-
- private:
 };
 
 }  // end namespace
@@ -827,13 +784,7 @@ void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
                                           MLIRContext* ctx, bool prefer_tf2xla,
                                           bool is_module_pass) {
   patterns.add<Tf2XlaRewritePattern>(ctx, device_type.str(), prefer_tf2xla,
-                                     /*legalize_test_only_ops=*/false,
                                      is_module_pass);
-}
-
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTfWithTf2XlaPass(
-    llvm::StringRef device_type, bool prefer_tf2xla) {
-  return std::make_unique<LegalizeTF>(device_type, prefer_tf2xla);
 }
 
 }  // end namespace mhlo

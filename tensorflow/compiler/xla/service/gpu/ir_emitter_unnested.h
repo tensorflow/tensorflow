@@ -193,6 +193,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitGemmThunk(mlir::Operation* op);
 #if GOOGLE_CUDA
   Status EmitCublasLtMatmulThunk(mlir::Operation* op);
+  Status EmitCublasLtMatmulThunkF8(mlir::Operation* op);
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCholeskyThunk(mlir::Operation* op);
@@ -214,13 +215,15 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitTriangularSolveCustomCall(mlir::Operation* op);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-  template <typename NcclThunkType, typename OpTy>
+  template <typename NcclThunkType, typename OpT>
   Status EmitNcclThunk(mlir::Operation* op);
-  Status EmitAllReduceDone(mlir::Operation* op);
+  template <typename NcclThunkType, typename OpT>
+  Status EmitNcclAsyncDone(mlir::Operation* op);
 
   template <typename ThunkType, typename OpT>
   Status EmitReplicaOrPartitionId(mlir::Operation* op);
 
+  template <typename NcclThunkType, typename OpT>
   Status EmitCollectivePermute(mlir::Operation* op);
 
   Status EmitOp(mlir::Operation* op);
@@ -686,14 +689,15 @@ class IrEmitterUnnested : public IrEmitter {
   StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunkImpl(
       absl::string_view name, Thunk::ThunkInfo thunk_info,
       std::vector<KernelArgument> kernel_arguments,
-      const LaunchDimensions& launch_dimensions);
+      const LaunchDimensions& launch_dimensions, uint32_t shared_mem_bytes);
 
   StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunk(
       mlir::Operation* op, mlir::ValueRange operands,
-      const LaunchDimensions& launch_dimensions);
+      const LaunchDimensions& launch_dimensions, uint32_t shared_mem_bytes = 0);
 
   StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunk(
-      mlir::Operation* op, const LaunchDimensions& launch_dimensions);
+      mlir::Operation* op, const LaunchDimensions& launch_dimensions,
+      uint32_t shared_mem_bytes = 0);
 
   // Returns a thunk that, given a reduce or select-and-scatter op,
   // initializes its memory to the appropriate initial value.
@@ -772,9 +776,10 @@ class IrEmitterUnnested : public IrEmitter {
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;
 
-  // Maps all-reduce-start ops to their thunk so done can access the thunk.
-  absl::flat_hash_map<mlir::Operation*, NcclAllReduceStartThunk*>
-      all_reduce_start_thunks_;
+  // Maps async start ops to their executors so done can access the thunk.
+  // Executor may be null if the start op is degenerate (so not emitted).
+  absl::flat_hash_map<mlir::Operation*, NcclCollectiveThunk::AsyncExecutor*>
+      async_executors_;
 
   // Begin optional members for XLA HLO -> LMHLO:
   absl::flat_hash_map<const mlir::Region*, std::unique_ptr<HloModule>>

@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/tsl/platform/cuda_libdevice_path.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/path.h"
@@ -517,13 +518,62 @@ void NVPTXBackendInit(const HloModuleConfig& hlo_module_config) {
 
 namespace nvptx {
 
+std::string CantFindCudaMessage(absl::string_view msg,
+                                absl::string_view xla_gpu_cuda_data_dir) {
+  return absl::StrCat(
+      msg, "\nSearched for CUDA in the following directories:\n  ",
+      absl::StrJoin(tsl::CandidateCudaRoots(std::string{xla_gpu_cuda_data_dir}),
+                    "\n  "),
+      "\nYou can choose the search directory by setting xla_gpu_cuda_data_dir "
+      "in HloModule's DebugOptions.  For most apps, setting the environment "
+      "variable XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda will work.");
+}
+
+static std::string GetLibdeviceDir(absl::string_view xla_gpu_cuda_data_dir) {
+  for (const std::string& cuda_root :
+       tsl::CandidateCudaRoots(std::string{xla_gpu_cuda_data_dir})) {
+    std::string libdevice_dir =
+        tsl::io::JoinPath(cuda_root, "nvvm", "libdevice");
+    VLOG(2) << "Looking for libdevice at " << libdevice_dir;
+    if (tsl::Env::Default()->IsDirectory(libdevice_dir).ok()) {
+      VLOG(2) << "Found libdevice dir " << libdevice_dir;
+      return libdevice_dir;
+    }
+  }
+  LOG(WARNING) << CantFindCudaMessage(
+      "Can't find libdevice directory ${CUDA_DIR}/nvvm/libdevice. This may "
+      "result in compilation or runtime failures, if the program we try to run "
+      "uses routines from libdevice.",
+      xla_gpu_cuda_data_dir);
+
+  // GetCudaRootCandidates always includes ".", but if everything fails, we
+  // return it anyway.  Better than returning the empty string.
+  return ".";
+}
+
 StatusOr<std::string> CompileToPtx(
     llvm::Module* module, GpuVersion gpu_version,
     const HloModuleConfig& hlo_module_config,
-    const std::string& libdevice_dir_path,
     std::function<void(llvm::TargetMachine*)> configure_target) {
   static absl::once_flag backend_init_flag;
   absl::call_once(backend_init_flag, NVPTXBackendInit, hlo_module_config);
+
+  absl::string_view xla_gpu_cuda_data_dir =
+      hlo_module_config.debug_options().xla_gpu_cuda_data_dir();
+
+  static absl::Mutex libdevice_cache_mu(absl::kConstInit);
+  static auto& libdevice_dir_path_cache ABSL_GUARDED_BY(libdevice_cache_mu) =
+      *new absl::flat_hash_map<std::string, std::string>();
+  std::string libdevice_dir_path = [&] {
+    absl::MutexLock l(&libdevice_cache_mu);
+    auto it = libdevice_dir_path_cache.find(xla_gpu_cuda_data_dir);
+    if (it != libdevice_dir_path_cache.end()) {
+      return it->second;
+    }
+    auto [it2, inserted] = libdevice_dir_path_cache.emplace(
+        xla_gpu_cuda_data_dir, GetLibdeviceDir(xla_gpu_cuda_data_dir));
+    return it2->second;
+  }();
 
   std::string ptx;
   std::unique_ptr<llvm::TargetMachine> target_machine;

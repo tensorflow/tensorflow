@@ -19,6 +19,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
+#include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
+#include "learning/brain/experimental/tfrt/native_lowering/kernels/sync_fallback_kernels.h"
+#include "learning/infra/mira/mlrt/interpreter/context.h"
+#include "learning/infra/mira/mlrt/interpreter/value.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/cc/ops/array_ops.h"
@@ -50,6 +55,15 @@ tensorflow::Status GetSimpleGraphDef(GraphDef& graph_def) {
   return scope.ToGraphDef(&graph_def);
 }
 
+std::unique_ptr<mlrt::KernelRegistry> GetKernelRegistry() {
+  auto kernel_registry = std::make_unique<mlrt::KernelRegistry>();
+  tensorflow::tf_mlrt::RegisterTfMlrtKernels(*kernel_registry);
+  tfrt::cpu::RegisterMlrtMathKernels(kernel_registry.get());
+  tfrt::cpu::RegisterMlrtFallbackCompatKernels(kernel_registry.get());
+
+  return kernel_registry;
+}
+
 TEST_F(GraphExecutorTest, Vanilla) {
   GraphDef graph_def;
   TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
@@ -64,7 +78,8 @@ TEST_F(GraphExecutorTest, Vanilla) {
   auto tpu_model_resource = std::make_unique<tfrt::tpu::TpuModelResource>();
 
   auto status_or_graph_executor = GraphExecutor::Create(
-      std::move(options), *fallback_state, tpu_model_resource.get(), graph_def);
+      std::move(options), *fallback_state, tpu_model_resource.get(), graph_def,
+      GetKernelRegistry());
   ASSERT_TRUE(status_or_graph_executor.ok());
   GraphExecutor* graph_executor = status_or_graph_executor.value().get();
 
@@ -111,7 +126,8 @@ TEST_F(GraphExecutorTest, Extend) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_executor,
       GraphExecutor::Create(std::move(options), *fallback_state,
-                            tpu_model_resource.get(), graph_def));
+                            tpu_model_resource.get(), graph_def,
+                            GetKernelRegistry()));
 
   GraphDef extension;
   {
@@ -156,7 +172,8 @@ TEST_F(GraphExecutorTest, DisableCompilation) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_executor,
       GraphExecutor::Create(std::move(options), *fallback_state,
-                            &tpu_model_resource, graph_def));
+                            &tpu_model_resource, graph_def,
+                            GetKernelRegistry()));
 
   // Set input 'x' to [[1, 1, 1]]
   std::vector<std::pair<std::string, tensorflow::Tensor>> inputs;
@@ -201,29 +218,25 @@ TEST_F(GraphExecutorTest, SyncExecute) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_executor,
       GraphExecutor::Create(std::move(options), *fallback_state,
-                            tpu_model_resource.get(), graph_def));
+                            tpu_model_resource.get(), graph_def,
+                            GetKernelRegistry()));
 
-  std::vector<tfrt::Value> input;
-  std::vector<tfrt::Value*> input_ptrs;
+  std::vector<mlrt::Value> inputs;
   tfrt::DenseHostTensor dht =
       tfrt::CreateTensorFromValues<int32_t>({1, 3}, {1, 1, 1});
-  input.emplace_back(std::move(dht));
-  input_ptrs.push_back(&input[0]);
-  std::vector<tfrt::Value> results;
+  inputs.emplace_back(std::move(dht));
+  std::vector<mlrt::Value> results;
   results.resize(1);
-  std::vector<tfrt::Value*> result_ptrs;
-  result_ptrs.resize(1);
-  result_ptrs[0] = &results[0];
 
   TF_ASSERT_OK(graph_executor->RunWithSyncInterpreter(
-      "test_graph", absl::Span<tfrt::Value*>(input_ptrs),
+      "test_graph", absl::Span<mlrt::Value>(inputs),
       /*input_names=*/{"input"}, /*input_dtypes=*/{DT_INT32},
       /*output_tensor_names=*/{"rank"},
-      /*target_tensor_names=*/{}, absl::Span<tfrt::Value*>(result_ptrs)));
+      /*target_tensor_names=*/{}, absl::Span<mlrt::Value>(results)));
   tfrt::DenseHostTensor expected =
       tfrt::CreateTensorFromValues<int32_t>({}, {2});
 
-  EXPECT_EQ(expected, results[0].get<tfrt::DenseHostTensor>());
+  EXPECT_EQ(expected, results[0].Get<tfrt::DenseHostTensor>());
 }
 
 }  // namespace

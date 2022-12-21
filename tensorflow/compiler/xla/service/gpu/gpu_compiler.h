@@ -106,6 +106,7 @@ struct GpuTargetConfig {
   GpuDeviceInfo gpu_device_info;
   GpuVersion gpu_version;
   std::string platform_name;
+  se::dnn::VersionInfo dnn_version_info;
 };
 
 // The GPU compiler generates efficient GPU executables.
@@ -117,9 +118,18 @@ class GpuCompiler : public LLVMCompiler {
 
   using LLVMCompiler::Compile;
 
+  // An attached device is passed in via stream_exec. We get GPU configuration
+  // from the attached device. GemmAlgorithmPicker and GpuConvAlgorithmPicker
+  // can run on the attached device.
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
+
+  // Run HloPasses without an attached deivce. So GemmAlgorithmPicker and
+  // GpuConvAlgorithmPicker can not run.
+  StatusOr<std::unique_ptr<HloModule>> RunHloPassesWithoutDevice(
+      std::unique_ptr<HloModule> module, const CompileOptions& options,
+      const GpuTargetConfig& gpu_target_config);
 
   StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
       const HloModule* hlo_module) override;
@@ -130,6 +140,16 @@ class GpuCompiler : public LLVMCompiler {
     gpu_target_config.gpu_device_info = GetGpuDeviceInfo(stream_exec);
     gpu_target_config.gpu_version = GetGpuVersion(stream_exec);
     gpu_target_config.platform_name = stream_exec->platform()->Name();
+
+    // Get dnn::VersionInfo from stream_exec. If it is unavailable, default to
+    // version 0.0.0.
+    if (se::dnn::DnnSupport* dnn = stream_exec->AsDnn()) {
+      se::port::StatusOr<se::dnn::VersionInfo> dnn_version_info =
+          dnn->GetVersion();
+      if (dnn_version_info.ok()) {
+        gpu_target_config.dnn_version_info = *dnn_version_info;
+      }
+    }
     return gpu_target_config;
   }
 
@@ -164,15 +184,18 @@ class GpuCompiler : public LLVMCompiler {
  protected:
   virtual Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator);
+      se::DeviceMemoryAllocator* device_allocator,
+      const GpuTargetConfig& gpu_target_config);
 
  private:
+  // Stream_executor is null during AOT compilation.
   Status OptimizeHloModule(HloModule* hlo_module,
                            se::StreamExecutor* stream_exec,
-                           se::DeviceMemoryAllocator* device_allocator);
+                           se::DeviceMemoryAllocator* device_allocator,
+                           const GpuTargetConfig& gpu_target_config);
 
   virtual Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      HloModule* hlo_module, se::CudaComputeCapability cuda_compute_capability,
       se::DeviceMemoryAllocator* device_allocator) = 0;
 
   virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() {

@@ -233,7 +233,6 @@ tfrt_cc_library(
     name = "tf_jitrt_request_context",
     srcs = ["jit/tf_jitrt_request_context.cc"],
     hdrs = ["jit/tf_jitrt_request_context.h"],
-    # copybara:uncomment compatible_with = ["//buildenv/target:gce"],
     deps = [
         "//tensorflow/compiler/xla/runtime:async_values_cache",
         "//tensorflow/compiler/xla/runtime:jit_executable",
@@ -553,6 +552,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:function_body",
         "//tensorflow/core/common_runtime:function_def_utils",
+        "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/platform:status",
         "@tf_runtime//:bef",
         "@tf_runtime//:mlirtobef",

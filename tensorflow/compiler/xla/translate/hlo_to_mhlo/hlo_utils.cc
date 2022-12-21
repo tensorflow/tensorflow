@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/tsl/platform/bfloat16.h"
+#include "tensorflow/tsl/platform/float8.h"
 
 namespace xla {
 namespace {
@@ -111,6 +112,10 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
   switch (element_type) {
     case PrimitiveType::PRED:
       return CreateDenseAttrFromLiteral<bool>(type, literal);
+    case PrimitiveType::F8E5M2:
+      return CreateDenseAttrFromLiteral<tsl::float8_e5m2>(type, literal);
+    case PrimitiveType::F8E4M3FN:
+      return CreateDenseAttrFromLiteral<tsl::float8_e4m3fn>(type, literal);
     case PrimitiveType::F16:
       return CreateDenseAttrFromLiteral<half>(type, literal);
     case PrimitiveType::BF16:
@@ -167,6 +172,14 @@ Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
   }
   if (element_type.isInteger(64)) {
     CopyDenseElementsBy<uint64_t>(data, output);
+    return OkStatus();
+  }
+  if (element_type.isFloat8E5M2()) {
+    CopyDenseElementsBy<tsl::float8_e5m2>(data, output);
+    return OkStatus();
+  }
+  if (element_type.isFloat8E4M3FN()) {
+    CopyDenseElementsBy<tsl::float8_e4m3fn>(data, output);
     return OkStatus();
   }
   if (element_type.isBF16()) {

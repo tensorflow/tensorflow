@@ -7182,6 +7182,104 @@ func Conv2DBackpropFilter(scope *Scope, input tf.Output, filter_sizes tf.Output,
 	return op.Output(0)
 }
 
+// Conv2DBackpropFilterV2Attr is an optional argument to Conv2DBackpropFilterV2.
+type Conv2DBackpropFilterV2Attr func(optionalAttr)
+
+// Conv2DBackpropFilterV2UseCudnnOnGpu sets the optional use_cudnn_on_gpu attribute to value.
+// If not specified, defaults to true
+func Conv2DBackpropFilterV2UseCudnnOnGpu(value bool) Conv2DBackpropFilterV2Attr {
+	return func(m optionalAttr) {
+		m["use_cudnn_on_gpu"] = value
+	}
+}
+
+// Conv2DBackpropFilterV2ExplicitPaddings sets the optional explicit_paddings attribute to value.
+//
+// value: If `padding` is `"EXPLICIT"`, the list of explicit padding amounts. For the ith
+// dimension, the amount of padding inserted before and after the dimension is
+// `explicit_paddings[2 * i]` and `explicit_paddings[2 * i + 1]`, respectively. If
+// `padding` is not `"EXPLICIT"`, `explicit_paddings` must be empty.
+// If not specified, defaults to {}
+func Conv2DBackpropFilterV2ExplicitPaddings(value []int64) Conv2DBackpropFilterV2Attr {
+	return func(m optionalAttr) {
+		m["explicit_paddings"] = value
+	}
+}
+
+// Conv2DBackpropFilterV2DataFormat sets the optional data_format attribute to value.
+//
+// value: Specify the data format of the input and output data. With the
+// default format "NHWC", the data is stored in the order of:
+//
+//	[batch, in_height, in_width, in_channels].
+//
+// Alternatively, the format could be "NCHW", the data storage order of:
+//
+//	[batch, in_channels, in_height, in_width].
+//
+// If not specified, defaults to "NHWC"
+func Conv2DBackpropFilterV2DataFormat(value string) Conv2DBackpropFilterV2Attr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// Conv2DBackpropFilterV2Dilations sets the optional dilations attribute to value.
+//
+// value: 1-D tensor of length 4.  The dilation factor for each dimension of
+// `input`. If set to k > 1, there will be k-1 skipped cells between each filter
+// element on that dimension. The dimension order is determined by the value of
+// `data_format`, see above for details. Dilations in the batch and depth
+// dimensions must be 1.
+// If not specified, defaults to {i:1 i:1 i:1 i:1}
+func Conv2DBackpropFilterV2Dilations(value []int64) Conv2DBackpropFilterV2Attr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes the gradients of convolution with respect to the filter.
+//
+// Arguments:
+//
+//	input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
+//	filter: 4-D with shape `[filter_height, filter_width, in_channels, out_channels]`.
+//
+// Only shape of tensor is used.
+//
+//	out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
+//
+// Gradients w.r.t. the output of the convolution.
+//
+//	strides: The stride of the sliding window for each dimension of the input
+//
+// of the convolution. Must be in the same order as the dimension specified with
+// format.
+//
+//	padding: The type of padding algorithm to use.
+//
+// Returns 4-D with shape
+// `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
+// the `filter` input of the convolution.
+func Conv2DBackpropFilterV2(scope *Scope, input tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...Conv2DBackpropFilterV2Attr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Conv2DBackpropFilterV2",
+		Input: []tf.Input{
+			input, filter, out_backprop,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Conv2DBackpropInputAttr is an optional argument to Conv2DBackpropInput.
 type Conv2DBackpropInputAttr func(optionalAttr)
 
@@ -7275,6 +7373,106 @@ func Conv2DBackpropInput(scope *Scope, input_sizes tf.Output, filter tf.Output, 
 		Type: "Conv2DBackpropInput",
 		Input: []tf.Input{
 			input_sizes, filter, out_backprop,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Conv2DBackpropInputV2Attr is an optional argument to Conv2DBackpropInputV2.
+type Conv2DBackpropInputV2Attr func(optionalAttr)
+
+// Conv2DBackpropInputV2UseCudnnOnGpu sets the optional use_cudnn_on_gpu attribute to value.
+// If not specified, defaults to true
+func Conv2DBackpropInputV2UseCudnnOnGpu(value bool) Conv2DBackpropInputV2Attr {
+	return func(m optionalAttr) {
+		m["use_cudnn_on_gpu"] = value
+	}
+}
+
+// Conv2DBackpropInputV2ExplicitPaddings sets the optional explicit_paddings attribute to value.
+//
+// value: If `padding` is `"EXPLICIT"`, the list of explicit padding amounts. For the ith
+// dimension, the amount of padding inserted before and after the dimension is
+// `explicit_paddings[2 * i]` and `explicit_paddings[2 * i + 1]`, respectively. If
+// `padding` is not `"EXPLICIT"`, `explicit_paddings` must be empty.
+// If not specified, defaults to {}
+func Conv2DBackpropInputV2ExplicitPaddings(value []int64) Conv2DBackpropInputV2Attr {
+	return func(m optionalAttr) {
+		m["explicit_paddings"] = value
+	}
+}
+
+// Conv2DBackpropInputV2DataFormat sets the optional data_format attribute to value.
+//
+// value: Specify the data format of the input and output data. With the
+// default format "NHWC", the data is stored in the order of:
+//
+//	[batch, in_height, in_width, in_channels].
+//
+// Alternatively, the format could be "NCHW", the data storage order of:
+//
+//	[batch, in_channels, in_height, in_width].
+//
+// If not specified, defaults to "NHWC"
+func Conv2DBackpropInputV2DataFormat(value string) Conv2DBackpropInputV2Attr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// Conv2DBackpropInputV2Dilations sets the optional dilations attribute to value.
+//
+// value: 1-D tensor of length 4.  The dilation factor for each dimension of
+// `input`. If set to k > 1, there will be k-1 skipped cells between each filter
+// element on that dimension. The dimension order is determined by the value of
+// `data_format`, see above for details. Dilations in the batch and depth
+// dimensions must be 1.
+// If not specified, defaults to {i:1 i:1 i:1 i:1}
+func Conv2DBackpropInputV2Dilations(value []int64) Conv2DBackpropInputV2Attr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes the gradients of convolution with respect to the input.
+//
+// Arguments:
+//
+//	input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
+//
+// Only shape of tensor is used.
+//
+//	filter: 4-D with shape
+//
+// `[filter_height, filter_width, in_channels, out_channels]`.
+//
+//	out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
+//
+// Gradients w.r.t. the output of the convolution.
+//
+//	strides: The stride of the sliding window for each dimension of the input
+//
+// of the convolution. Must be in the same order as the dimension specified with
+// format.
+//
+//	padding: The type of padding algorithm to use.
+//
+// Returns 4-D with shape `[batch, in_height, in_width, in_channels]`.  Gradient
+// w.r.t. the input of the convolution.
+func Conv2DBackpropInputV2(scope *Scope, input tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...Conv2DBackpropInputV2Attr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Conv2DBackpropInputV2",
+		Input: []tf.Input{
+			input, filter, out_backprop,
 		},
 		Attrs: attrs,
 	}
