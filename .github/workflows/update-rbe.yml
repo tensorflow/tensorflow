@@ -49,25 +49,27 @@ jobs:
         # This is a mapping of name_container_map keys under sigbuild_tf_configs
         # to tag names on gcr.io/tensorflow-sigs/build.
         map sigbuild-r2.9 2.9-python3.9
-        map sigbuild-r2.9-python3.7 2.9-python3.7
         map sigbuild-r2.9-python3.8 2.9-python3.8
         map sigbuild-r2.9-python3.9 2.9-python3.9
         map sigbuild-r2.9-python3.10 2.9-python3.10
         map sigbuild-r2.10 2.10-python3.9
-        map sigbuild-r2.10-python3.7 2.10-python3.7
         map sigbuild-r2.10-python3.8 2.10-python3.8
         map sigbuild-r2.10-python3.9 2.10-python3.9
         map sigbuild-r2.10-python3.10 2.10-python3.10
         map sigbuild-57469 57469-python3.9
-        map sigbuild-57469-python3.7 57469-python3.7
         map sigbuild-57469-python3.8 57469-python3.8
         map sigbuild-57469-python3.9 57469-python3.9
         map sigbuild-57469-python3.10 57469-python3.10
         map sigbuild-r2.11 2.11-python3.9
-        map sigbuild-r2.11-python3.7 2.11-python3.7
         map sigbuild-r2.11-python3.8 2.11-python3.8
         map sigbuild-r2.11-python3.9 2.11-python3.9
         map sigbuild-r2.11-python3.11 2.11-python3.10
+        map sigbuild-r2.12 2.12-python3.9
+        map sigbuild-r2.12-python3.8 2.12-python3.8
+        map sigbuild-r2.12-python3.9 2.12-python3.9
+        map sigbuild-r2.12-python3.10 2.12-python3.10
+        map sigbuild-r2.12-python3.11 2.12-python3.11
+
     - name: Create Pull Request with changes
       uses: peter-evans/create-pull-request@v3
       with:
