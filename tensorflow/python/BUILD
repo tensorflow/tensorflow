@@ -3096,7 +3096,7 @@ cuda_py_test(
     srcs = ["ops/nn_test.py"],
     main = "ops/nn_test.py",
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = ["no_windows", "no_rocm"],
     xla_tags = [
         "no_cuda_asan",  # times out
     ],
