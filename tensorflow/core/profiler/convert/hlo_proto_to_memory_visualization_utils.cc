@@ -48,7 +48,6 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-using absl::StrFormat;
 using ::xla::BufferAllocationProto;
 using ::xla::HeapSimulatorTrace;
 using ::xla::HloInstructionProto;
@@ -475,14 +474,18 @@ struct HeapSimulatorStats {
   // appear in heap simulator trace, so the profiler does not know its exact
   // lifetime span). They will be handled separately by
   // ProcessIndefiniteLifetimeBuffers.
-  std::vector<const LogicalBufferStruct*> LogicalBuffersWithIndefiniteLifetime()
-      const {
+  std::vector<const LogicalBufferStruct*> LogicalBuffersWithIndefiniteLifetime(
+      int64_t memory_color) const {
     std::vector<const LogicalBufferStruct*> indefinite_logical_buffers;
     for (const auto& logical_buffer :
          wrapper.GetHloProto().buffer_assignment().logical_buffers()) {
       if (!seen_logical_buffers.contains(&logical_buffer)) {
         const auto& logical_buffer_struct =
             wrapper.GetLogicalBuffer(logical_buffer.id());
+        if (logical_buffer_struct.buffer_allocation.is_thread_local() ||
+            logical_buffer_struct.color() != memory_color) {
+          continue;
+        }
         indefinite_logical_buffers.push_back(&logical_buffer_struct);
       }
     }
@@ -703,13 +706,8 @@ void ProcessIndefiniteLifetimeBuffers(const HeapSimulatorStats& simulator_stats,
   absl::flat_hash_set<const BufferAllocationProto*> seen_buffer_allocations =
       simulator_stats.seen_buffer_allocations;
   for (const auto* logical_buffer :
-       simulator_stats.LogicalBuffersWithIndefiniteLifetime()) {
-    const BufferAllocationProto& buffer_allocation =
-        logical_buffer->buffer_allocation;
-    if (buffer_allocation.is_thread_local() ||
-        logical_buffer->color() != memory_color) {
-      continue;
-    }
+       simulator_stats.LogicalBuffersWithIndefiniteLifetime(memory_color)) {
+    const auto& buffer_allocation = logical_buffer->buffer_allocation;
     if (seen_buffer_allocations.insert(&buffer_allocation).second) {
       buffer_stats->indefinite_memory_usage_bytes += buffer_allocation.size();
       buffer_stats->AddHeapObject(*logical_buffer);
