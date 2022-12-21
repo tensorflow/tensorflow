@@ -2938,6 +2938,7 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service/gpu:gpu_types",        
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
     ],

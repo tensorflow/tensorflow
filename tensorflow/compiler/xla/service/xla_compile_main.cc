@@ -38,11 +38,16 @@ limitations under the License.
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/util/command_line_flags.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/executable.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
-#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
 #endif
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/service/gpu/amdgpu_compiler.h"
+#endif
+
 
 namespace xla {
 namespace xla_compile {

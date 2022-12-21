@@ -865,9 +865,9 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     });
     pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
 
+#if GOOGLE_CUDA
     const stream_executor::CudaComputeCapability& compute_capability =
         std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
-
     // Rewrite GEMMs into custom calls.
     if (debug_options.xla_gpu_enable_triton_gemm() &&
         compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
@@ -877,7 +877,10 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
     // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
     pipeline.AddPass<GemmBroadcastFoldingRewriter>();
-
+#elif TENSORFLOW_USE_ROCM
+    const stream_executor::RocmComputeCapability& compute_capability =
+        std::get<se::RocmComputeCapability>(gpu_target_config.gpu_version);
+#endif
     if (debug_options.xla_gpu_normalize_layouts()) {
       pipeline.AddPass<LayoutNormalization>(&NormalizeLayoutForGpuCustomCalls);
       pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);

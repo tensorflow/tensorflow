@@ -62,7 +62,11 @@ class GpuDummyCompiler : public GpuCompiler {
   }
 
   GpuVersion GetGpuVersion(se::StreamExecutor*) override {
+#if GOOGLE_CUDA
     return se::CudaComputeCapability{0, 0};
+#elif TENSORFLOW_USE_ROCM
+    return se::RocmComputeCapability{"gfx908"};    
+#endif      
   }
 
   StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
