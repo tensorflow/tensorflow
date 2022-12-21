@@ -21,6 +21,7 @@ pytype_library(
         "//tensorflow/dtensor/python:api",
         "//tensorflow/dtensor/python:config",
         "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:numpy_util",
         "//tensorflow/dtensor/python:tpu_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_gen",
@@ -58,5 +59,18 @@ dtensor_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:for_generated_wrappers",
+    ],
+)
+
+dtensor_test(
+    name = "numpy_util_test",
+    srcs = ["numpy_util_test.py"],
+    main = "numpy_util_test.py",
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:numpy_util",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
