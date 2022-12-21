@@ -48,12 +48,6 @@ from tensorflow.python.trackable import base
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver as saver_lib
 
-try:
-  import psutil  # pylint: disable=g-import-not-at-top
-  psutil_import_succeeded = True
-except ImportError:
-  psutil_import_succeeded = False
-
 
 class NonLayerTrackable(autotrackable.AutoTrackable):
 
@@ -1146,23 +1140,6 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     with ops.default_session(None):
       with self.assertRaisesRegex(RuntimeError, "create a session"):
         ckpt.write(prefix)
-
-  def test_ckpt_files_closed_after_restoration(self):
-    if not psutil_import_succeeded:
-      self.skipTest(
-          "psutil is required to check that we've closed our files.")
-    root = autotrackable.AutoTrackable()
-    root.v = variables_lib.Variable(1)
-    ckpt = trackable_utils.Checkpoint(root=root)
-    save_path = ckpt.save(os.path.join(self.get_temp_dir(), "ckpt"))
-
-    root2 = autotrackable.AutoTrackable()
-    ckpt2 = trackable_utils.Checkpoint(root=root2)
-    ckpt2.restore(save_path)
-
-    proc = psutil.Process()
-    for file in proc.open_files():
-      self.assertNotIn(save_path, file[0])
 
 
 class SerializeToTensorTest(test.TestCase):
