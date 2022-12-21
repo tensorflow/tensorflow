@@ -62,6 +62,7 @@ tf_cc_test(
         ":path_utils",
         ":snapshot_stream_writer",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/data:snapshot_utils",

@@ -44,10 +44,12 @@ constexpr int64_t kDefaultMaxChunkSizeBytes = 10 * (size_t{1} << 30);  // 10GB
 
 SnapshotStreamWriter::SnapshotStreamWriter(
     std::unique_ptr<TaskIterator> iterator, const std::string& snapshot_path,
-    int64_t stream_id, Env* env, std::optional<int64_t> max_chunk_size_bytes)
+    int64_t stream_id, const std::string& compression, Env* env,
+    std::optional<int64_t> max_chunk_size_bytes)
     : env_(env),
       snapshot_path_(snapshot_path),
       stream_id_(stream_id),
+      compression_(compression),
       max_chunk_size_bytes_(max_chunk_size_bytes.has_value()
                                 ? *max_chunk_size_bytes
                                 : kDefaultMaxChunkSizeBytes),
@@ -92,10 +94,8 @@ bool SnapshotStreamWriter::ShouldWriteChunk() const TF_LOCKS_EXCLUDED(mu_) {
 }
 
 Status SnapshotStreamWriter::WriteChunk() {
-  // TODO(b/258691666): Support compression.
   std::string chunk_file_path = GetChunkFilePath();
-  snapshot_util::TFRecordWriter writer(chunk_file_path,
-                                       tsl::io::compression::kNone);
+  snapshot_util::TFRecordWriter writer(chunk_file_path, compression_);
   TF_RETURN_IF_ERROR(writer.Initialize(env_));
   auto cleanup = gtl::MakeCleanup([&writer] { writer.Close().IgnoreError(); });
 

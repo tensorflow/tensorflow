@@ -59,9 +59,10 @@ class SnapshotStreamWriter {
   // Creates a SnapshotStreamWriter. Once created, it will start writing the
   // snapshot stream. Users can call `Wait` to wait for it to finish.
   // TODO(b/258691666): Create a new `TaskIterator` that persists splits.
+  // TODO(b/258691666): Create a structure for the input params.
   explicit SnapshotStreamWriter(
       std::unique_ptr<TaskIterator> iterator, const std::string& snapshot_path,
-      int64_t stream_id, Env* env,
+      int64_t stream_id, const std::string& compression, Env* env,
       std::optional<int64_t> max_chunk_size_bytes = std::nullopt);
 
   // Waits for the writer to finish writing the snapshot stream.
@@ -111,6 +112,7 @@ class SnapshotStreamWriter {
   Env* const env_;
   const std::string snapshot_path_;
   const int64_t stream_id_;
+  const std::string compression_;
   const int64_t max_chunk_size_bytes_;
 
   mutable mutex mu_;
