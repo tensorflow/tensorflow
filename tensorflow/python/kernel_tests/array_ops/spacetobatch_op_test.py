@@ -14,6 +14,7 @@
 # ==============================================================================
 """Functional tests for SpaceToBatch and BatchToSpace ops."""
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -92,7 +93,7 @@ class CppOpImpl(object):
     return gen_array_ops.batch_to_space(*args, **kwargs)
 
 
-class SpaceToBatchTest(test.TestCase, PythonOpImpl):
+class SpaceToBatchTest(test.TestCase, parameterized.TestCase, PythonOpImpl):
   """Tests input-output pairs for the SpaceToBatch and BatchToSpace ops.
 
   This uses the Python compatibility wrapper that forwards to space_to_batch_nd.
@@ -119,14 +120,14 @@ class SpaceToBatchTest(test.TestCase, PythonOpImpl):
     self._testPad(inputs, paddings, block_size, outputs, dtype)
 
   # [1, 2, 2, 1] <-> [4, 1, 1, 1]
+  @parameterized.parameters(dtypes.float32, dtypes.float16, dtypes.bfloat16,
+                            dtypes.uint8)
   @test_util.run_deprecated_v1
-  def testSmallInput2x2(self):
+  def testSmallInput2x2(self, dtype):
     x_np = [[[[1], [2]], [[3], [4]]]]
     block_size = 2
     x_out = [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
-    for dtype in [dtypes.float32, dtypes.float16, dtypes.bfloat16,
-                  dtypes.uint8]:
-      self._testOne(x_np, block_size, x_out, dtype=dtype)
+    self._testOne(x_np, block_size, x_out, dtype)
 
   # [1, 2, 2, 1] <-> [1, 3, 3, 1] (padding) <-> [9, 1, 1, 1]
   @test_util.run_deprecated_v1
