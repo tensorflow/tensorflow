@@ -1884,7 +1884,7 @@ REGISTER_OP("CumulativeLogsumexp")
     .Attr("exclusive: bool = false")
     .Attr("reverse: bool = false")
     .Output("out: T")
-    .Attr("T: {float16, float32, float64}")
+    .Attr("T: {bfloat16, float16, float32, float64}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::UnchangedShape);
 

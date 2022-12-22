@@ -26,7 +26,8 @@ from tensorflow.python.platform import test
 
 
 class CumulativeLogsumexpTest(test.TestCase):
-  valid_dtypes = [dtypes.float32, dtypes.float64]
+  valid_dtypes = [dtypes.float32, dtypes.float64, dtypes.float16,
+                  dtypes.bfloat16]
 
   def _computeLogSumExp(self, x, **kwargs):
     result_naive = math_ops.cumsum(math_ops.exp(x), **kwargs)

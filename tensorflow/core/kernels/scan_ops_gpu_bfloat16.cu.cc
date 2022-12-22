@@ -26,6 +26,8 @@ template struct functor::Scan<
     GpuDevice, Eigen::internal::SumReducer<Eigen::bfloat16>, Eigen::bfloat16>;
 template struct functor::Scan<
     GpuDevice, Eigen::internal::ProdReducer<Eigen::bfloat16>, Eigen::bfloat16>;
+template struct functor::Scan<
+    GpuDevice, functor::LogSumExpReducer<Eigen::bfloat16>, Eigen::bfloat16>;
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

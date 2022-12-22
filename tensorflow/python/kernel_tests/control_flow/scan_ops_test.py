@@ -204,7 +204,7 @@ class CumprodTest(test.TestCase):
 
   valid_dtypes = [
       np.int32, np.int64, np.float16, np.float32, np.float64, np.complex64,
-      np.complex128
+      np.complex128, dtypes.bfloat16.as_numpy_dtype
   ]
 
   def _compare(self, x, axis, exclusive, reverse):

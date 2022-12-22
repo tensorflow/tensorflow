@@ -3109,7 +3109,7 @@ opposite direction.
   }];
 
   let arguments = (ins
-    Arg<TensorOf<[TF_Float16, TF_Float32, TF_Float64]>, [{A `Tensor`. Must be one of the following types: `float16`, `float32`, `float64`.}]>:$x,
+    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64]>, [{A `Tensor`. Must be one of the following types: `float16`, `float32`, `float64`.}]>:$x,
     Arg<TF_I32OrI64Tensor, [{A `Tensor` of type `int32` (default: 0). Must be in the range
 `[-rank(x), rank(x))`.}]>:$axis,
 
@@ -3118,7 +3118,7 @@ opposite direction.
   );
 
   let results = (outs
-    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$out
+    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64]>:$out
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
