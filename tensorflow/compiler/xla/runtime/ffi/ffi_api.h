@@ -387,8 +387,11 @@ bool Ffi::Isa(const XLA_FFI_Api* api, XLA_FFI_TypeId type_id) {
   if constexpr (std::is_same_v<T, type>) \
     return api->XLA_FFI_Get_##name##_TypeId() == type_id;
 
+  ISA(std::string_view, String);
+
   ISA(float, Float);
   ISA(double, Double);
+  ISA(bool, Int1);
   ISA(int32_t, Int32);
   ISA(int64_t, Int64);
 
@@ -994,6 +997,7 @@ struct FfiArgDecoding<BufferArg> {
 
 XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(float);
 XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(double);
+XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(bool);
 XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(int32_t);
 XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(int64_t);
 
@@ -1017,10 +1021,26 @@ XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(int64_t);
 
 XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(float);
 XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(double);
+XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(bool);
 XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(int32_t);
 XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(int64_t);
 
 #undef XLA_FFI_REGISTER_ARRAY_ATTR_DECODING
+
+template <>
+struct FfiAttrDecoding<std::string_view> {
+  static std::optional<std::string_view> Decode(const XLA_FFI_Api* api,
+                                                std::string_view name,
+                                                XLA_FFI_TypeId type_id,
+                                                void* value) {
+    if (!Ffi::Isa<std::string_view>(api, type_id)) {
+      return std::nullopt;
+    }
+
+    auto* encoded = reinterpret_cast<internal::EncodedArray<char>*>(value);
+    return std::string_view(encoded->data, encoded->size);
+  }
+};
 
 //===----------------------------------------------------------------------===//
 // XLA FFI helper macro for registering FFI implementations.

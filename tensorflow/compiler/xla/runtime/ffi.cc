@@ -413,8 +413,10 @@ const XLA_FFI_Api ffi_api = {
     //===------------------------------------------------------------------===//
     // Type table.
     //===------------------------------------------------------------------===//
+    FfiTypeId<std::string_view>,
     FfiTypeId<float>,
     FfiTypeId<double>,
+    FfiTypeId<bool>,
     FfiTypeId<int32_t>,
     FfiTypeId<int64_t>,
     FfiTypeId<absl::Span<const float>>,

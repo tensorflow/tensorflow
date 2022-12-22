@@ -104,9 +104,13 @@ struct TestModuleState {
   // Test scalar arguments decoding.
   int32_t i32_arg = 0;
 
+  // Test string attribute decoding.
+  std::string str;
+
   // Test scalar attributes decoding.
   float f32_attr;
   double f64_attr;
+  bool i1_attr;
   int32_t i32_attr;
   int64_t i64_attr;
 
@@ -138,8 +142,10 @@ struct TestModule : public ffi::StatefulModule<TestModuleState> {
   XLA_FFI_DEFINE_FUNCTION(FFI_AttrsDecoding, AttrsDecoding,
                           ffi::Ffi::Bind("ffi.attrs")
                               .State<TestModuleState>()  // state
+                              .Attr<std::string_view>("str")
                               .Attr<float>("f32")
                               .Attr<double>("f64")
+                              .Attr<bool>("i1")
                               .Attr<int32_t>("i32")
                               .Attr<int64_t>("i64")
                               .Attr<ffi::Span<const float>>("f32_arr")
@@ -156,9 +162,9 @@ struct TestModule : public ffi::StatefulModule<TestModuleState> {
                               .Arg<ffi::BufferArg>()     // arg1
                               .Attr<float>("attr"));
 
-  static FfiStatus AttrsDecoding(TestModuleState* state, float f32, double f64,
-                                 int32_t i32, int64_t i64,
-                                 ffi::Span<const float> f32_arr,
+  static FfiStatus AttrsDecoding(TestModuleState* state, std::string_view str,
+                                 float f32, double f64, bool i1, int32_t i32,
+                                 int64_t i64, ffi::Span<const float> f32_arr,
                                  ffi::Span<const double> f64_arr,
                                  ffi::Span<const int32_t> i32_arr,
                                  ffi::Span<const int64_t> i64_arr);
@@ -167,14 +173,17 @@ struct TestModule : public ffi::StatefulModule<TestModuleState> {
                         ffi::BufferArg arg1, float attr0);
 };
 
-FfiStatus TestModule::AttrsDecoding(TestModuleState* state, float f32,
-                                    double f64, int32_t i32, int64_t i64,
+FfiStatus TestModule::AttrsDecoding(TestModuleState* state,
+                                    std::string_view str, float f32, double f64,
+                                    bool i1, int32_t i32, int64_t i64,
                                     ffi::Span<const float> f32_arr,
                                     ffi::Span<const double> f64_arr,
                                     ffi::Span<const int32_t> i32_arr,
                                     ffi::Span<const int64_t> i64_arr) {
+  state->str = std::string(str);
   state->f32_attr = f32;
   state->f64_attr = f64;
+  state->i1_attr = i1;
   state->i32_attr = i32;
   state->i64_attr = i64;
   state->f32_arr_attr.assign(f32_arr.begin(), f32_arr.end());
@@ -249,8 +258,10 @@ TEST_F(FfiTest, AttrsDecoding) {
 
     func.func @test() {
       call @attrs_decoding() {
+        str = "Foo",
         f32 = 42.0 : f32,
         f64 = 43.0 : f64,
+        i1 = true,
         i32 = 42 : i32,
         i64 = 43 : i64,
         f32_arr = array<f32: 1.0, 2.0, 3.0, 4.0>,
@@ -269,8 +280,10 @@ TEST_F(FfiTest, AttrsDecoding) {
   ASSERT_TRUE(CompileAndExecute(source, {}, registry(), user_data).ok());
   auto* attrs = reinterpret_cast<TestModuleState*>(state_vector.state[0]);
 
+  EXPECT_EQ(attrs->str, "Foo");
   EXPECT_EQ(attrs->f32_attr, 42.0);
   EXPECT_EQ(attrs->f64_attr, 43.0);
+  EXPECT_EQ(attrs->i1_attr, true);
   EXPECT_EQ(attrs->i32_attr, 42);
   EXPECT_EQ(attrs->i64_attr, 43);
   EXPECT_EQ(attrs->f32_arr_attr, std::vector<float>({1.0, 2.0, 3.0, 4.0}));
