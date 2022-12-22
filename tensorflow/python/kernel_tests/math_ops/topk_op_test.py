@@ -55,7 +55,8 @@ class TopKTest(test.TestCase):
         # Do some special casing of equality of indices: if indices
         # are not the same, but values are floating type, ensure that
         # the values are within epsilon of each other.
-        if not np.issubdtype(np_expected_values.dtype, np.floating):
+        if not np.issubdtype(np_expected_values.dtype, np.floating) and \
+            np_expected_values.dtype != dtypes.bfloat16.as_numpy_dtype:
           # Values are not floating point type; check indices exactly
           self.assertAllEqual(np_expected_indices, indices)
         else:
@@ -122,6 +123,7 @@ class TopKTest(test.TestCase):
   def testLargeSort(self):
     self._testLargeSort(np.float32)
     self._testLargeSort(np.float16)
+    self._testLargeSort(dtypes.bfloat16.as_numpy_dtype)
 
   def _testLargeTopK(self, dtype):
     b = 10
@@ -136,6 +138,7 @@ class TopKTest(test.TestCase):
   def testLargeTopK(self):
     self._testLargeTopK(np.float32)
     self._testLargeTopK(np.float16)
+    self._testLargeTopK(dtypes.bfloat16.as_numpy_dtype)
 
   def _testMediumTopK(self, dtype):
     b = 5
@@ -150,6 +153,7 @@ class TopKTest(test.TestCase):
   def testMediumTopK(self):
     self._testMediumTopK(np.float32)
     self._testMediumTopK(np.float16)
+    self._testMediumTopK(dtypes.bfloat16.as_numpy_dtype)
 
   def testStableSort(self):
     b = 5
