@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <iostream>
 #include <iterator>
 #include <memory>
@@ -89,6 +90,9 @@ class Span {
   T& operator[](size_t index) const { return data_[index]; }
 
   size_t size() const { return size_; }
+
+  T* begin() const { return data_; }
+  T* end() const { return data_ + size_; }
 
  private:
   T* data_;
@@ -379,18 +383,27 @@ struct BufferArg {
 
 template <typename T>
 bool Ffi::Isa(const XLA_FFI_Api* api, XLA_FFI_TypeId type_id) {
-  if constexpr (std::is_same_v<T, float>)
-    return api->XLA_FFI_Get_Float_TypeId() == type_id;
-  else if constexpr (std::is_same_v<T, int32_t>)
-    return api->XLA_FFI_Get_Int32_TypeId() == type_id;
-  else if constexpr (std::is_same_v<T, StridedBufferArg>)
-    return api->XLA_FFI_Get_StridedBufferArg_TypeId() == type_id;
-  else if constexpr (std::is_same_v<T, BufferArg>)
-    return api->XLA_FFI_Get_BufferArg_TypeId() == type_id;
-  else
-    // Static assert has to be type-dependent, and `!sizeof` is just one of the
-    // ways to always produce `false`.
-    static_assert(!sizeof(T), "Unsupported type");
+#define ISA(type, name)                  \
+  if constexpr (std::is_same_v<T, type>) \
+    return api->XLA_FFI_Get_##name##_TypeId() == type_id;
+
+  ISA(float, Float);
+  ISA(double, Double);
+  ISA(int32_t, Int32);
+  ISA(int64_t, Int64);
+
+  ISA(Span<const float>, FloatArray);
+  ISA(Span<const double>, DoubleArray);
+  ISA(Span<const int32_t>, Int32Array);
+  ISA(Span<const int64_t>, Int64Array);
+
+  ISA(StridedBufferArg, StridedBufferArg);
+  ISA(BufferArg, BufferArg);
+
+  assert(false && "Unsupported type");
+  return false;
+
+#undef ISA
 }
 
 //===----------------------------------------------------------------------===//
@@ -980,8 +993,34 @@ struct FfiArgDecoding<BufferArg> {
   }
 
 XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(float);
+XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(double);
+XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(int32_t);
+XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(int64_t);
 
 #undef XLA_FFI_REGISTER_SCALAR_ATTR_DECODING
+
+#define XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(T)                            \
+  template <>                                                              \
+  struct FfiAttrDecoding<Span<const T>> {                                  \
+    static std::optional<Span<const T>> Decode(const XLA_FFI_Api* api,     \
+                                               std::string_view name,      \
+                                               XLA_FFI_TypeId type_id,     \
+                                               void* value) {              \
+      if (!Ffi::Isa<Span<const T>>(api, type_id)) {                        \
+        return std::nullopt;                                               \
+      }                                                                    \
+                                                                           \
+      auto* encoded = reinterpret_cast<internal::EncodedArray<T>*>(value); \
+      return Span<const T>(encoded->data, encoded->size);                  \
+    }                                                                      \
+  }
+
+XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(float);
+XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(double);
+XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(int32_t);
+XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(int64_t);
+
+#undef XLA_FFI_REGISTER_ARRAY_ATTR_DECODING
 
 //===----------------------------------------------------------------------===//
 // XLA FFI helper macro for registering FFI implementations.
