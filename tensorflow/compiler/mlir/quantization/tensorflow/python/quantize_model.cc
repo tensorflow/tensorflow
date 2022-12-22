@@ -212,7 +212,7 @@ absl::StatusOr<std::string> GetLocalTempFilename() {
 // TODO(b/261652258): Make sure this works for when there are non-frozen
 // variables in the model.
 // TODO(b/262189534): Move this to a separate file for better testing.
-absl::Status UnfreezeConstantsAndSaveVariables(
+absl::StatusOr<std::vector<std::string>> UnfreezeConstantsAndSaveVariables(
     const absl::string_view checkpoint_dir, mlir::MLIRContext &ctx,
     mlir::ModuleOp module_op) {
   if (const absl::Status pass_run_status =
@@ -234,18 +234,24 @@ absl::Status UnfreezeConstantsAndSaveVariables(
     return tsl::ToAbslStatus(create_dir_status);
   }
 
-  if (const absl::Status variable_save_status =
-          SaveVariablesToCheckpoint(checkpoint_dir, module_op);
-      !variable_save_status.ok()) {
-    return variable_save_status;
+  const absl::StatusOr<std::vector<std::string>> variable_save_status =
+      SaveVariablesToCheckpoint(checkpoint_dir, module_op);
+  if (!variable_save_status.ok()) {
+    return variable_save_status.status();
   }
 
-  return RunPasses(/*name=*/kTfQuantCreateRestoreOpStepName,
-                   /*add_passes_func=*/
-                   [](mlir::PassManager &pm) {
-                     pm.addPass(mlir::quant::CreateInsertRestoreOpPass());
-                   },
-                   ctx, module_op);
+  if (const absl::Status pass_run_status =
+          RunPasses(/*name=*/kTfQuantCreateRestoreOpStepName,
+                    /*add_passes_func=*/
+                    [](mlir::PassManager &pm) {
+                      pm.addPass(mlir::quant::CreateInsertRestoreOpPass());
+                    },
+                    ctx, module_op);
+      !pass_run_status.ok()) {
+    return pass_run_status;
+  }
+
+  return *variable_save_status;
 }
 
 // Sets up and runs the passes for exporting `module_op`. The behavior of the
@@ -253,11 +259,11 @@ absl::Status UnfreezeConstantsAndSaveVariables(
 absl::Status RunExportPasses(const ExportOptions &export_opts,
                              mlir::MLIRContext &ctx, mlir::ModuleOp module_op) {
   if (export_opts.unfreeze_constants) {
-    if (const absl::Status unfreeze_constant_status =
-            UnfreezeConstantsAndSaveVariables(export_opts.checkpoint_dir, ctx,
-                                              module_op);
-        !unfreeze_constant_status.ok()) {
-      return unfreeze_constant_status;
+    const absl::StatusOr<std::vector<std::string>> variable_shared_names =
+        UnfreezeConstantsAndSaveVariables(export_opts.checkpoint_dir, ctx,
+                                          module_op);
+    if (!variable_shared_names.ok()) {
+      return variable_shared_names.status();
     }
     LOG(INFO) << "Unfrozen constants and saved variables to checkpoint file: "
               << export_opts.checkpoint_dir;
