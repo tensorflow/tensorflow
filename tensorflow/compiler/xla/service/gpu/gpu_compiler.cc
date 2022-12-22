@@ -1166,6 +1166,18 @@ static void ForAllThunks(const std::function<void(Thunk*)>& fn,
   }
 }
 
+static bool HasFp8(const HloModule& hlo_module) {
+  for (const HloComputation* computation : hlo_module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (ShapeUtil::HasPrimitiveType(instruction->shape(), F8E5M2) ||
+          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E4M3FN)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 // The order of `thunk_sequence` corresponds to
 // `hlo_schedule->ThunkLaunchOrder()`.
 static Status CompileModuleToLlvmIrImpl(
@@ -1227,14 +1239,6 @@ static Status CompileModuleToLlvmIrImpl(
   auto entry_function = mlir::cast<mlir::func::FuncOp>(
       mlir_module->lookupSymbol(hlo_module->entry_computation()->name()));
 
-  // TODO(ezhulenev): Remove this check once https://reviews.llvm.org/D140088
-  // will be submitted. Currently we can't emit LLVM IR with fp8 types.
-  bool has_fp8 =
-      llvm::any_of(entry_function.getArgumentTypes(), [](mlir::Type type) {
-        auto elt_type = getElementTypeOrSelf(type);
-        return elt_type.isFloat8E5M2() || elt_type.isFloat8E4M3FN();
-      });
-
   TF_RETURN_IF_ERROR(GetMlirAllocationInfo(
       entry_function, &results->allocations, &results->output_info,
       &results->output_shape, &results->entry_func_attrs));
@@ -1283,7 +1287,10 @@ static Status CompileModuleToLlvmIrImpl(
     RecordHloToLlvmDuration(end_usecs - start_usecs);
   }
 
-  if (IsXlaRuntimeExecutableEnabled(hlo_module->config()) && !has_fp8) {
+  // TODO(ezhulenev): Remove the FP8 check once https://reviews.llvm.org/D140088
+  // is submitted. Currently we can't emit LLVM IR with fp8 types.
+  if (IsXlaRuntimeExecutableEnabled(hlo_module->config()) &&
+      !HasFp8(*hlo_module)) {
     std::vector<int64_t> buffer_sizes;
     llvm::transform(
         results->allocations, std::back_inserter(buffer_sizes),
