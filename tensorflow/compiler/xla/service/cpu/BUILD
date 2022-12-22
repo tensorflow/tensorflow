@@ -9,7 +9,7 @@ load(
     "xla_cc_test",
 )
 load(
-    "//third_party/mkl:build_defs.bzl",
+    "//tensorflow/tsl/mkl:build_defs.bzl",
     "mkl_deps",
 )
 load("//tensorflow/tsl:tsl.bzl", "tf_openmp_copts", "tsl_copts")
