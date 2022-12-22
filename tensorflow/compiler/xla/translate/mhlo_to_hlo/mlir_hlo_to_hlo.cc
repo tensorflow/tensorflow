@@ -1740,14 +1740,12 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
   else
     data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
 
-  xla::XlaOp xla_result;
-  if (op.getIsHostTransfer()) {
-    xla_result = xla::RecvFromHost(
-        token, data_shape, Convert_channel_handle(op.getChannelHandle()));
-  } else {
-    xla_result = xla::RecvWithToken(
-        token, data_shape, Convert_channel_handle(op.getChannelHandle()));
-  }
+  token = xla::internal::XlaBuilderFriend::BuildRecv(
+      ctx.builder, token, data_shape,
+      Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+  xla::XlaOp xla_result = xla::internal::XlaBuilderFriend::BuildRecvDone(
+      ctx.builder, token, data_shape,
+      Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
 
   auto data_tuple_element = xla::GetTupleElement(xla_result, 0);
   if (subshapes.size() == 1) {
@@ -1996,14 +1994,12 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
   xla::XlaOp token;
   if (failed(GetXlaOp(op.getToken(), value_map, &token, op))) return failure();
 
-  if (op.getIsHostTransfer()) {
-    value_map[op] = xla::SendToHost(
-        operand, token, operand.builder()->GetShape(operand).value(),
-        Convert_channel_handle(op.getChannelHandle()));
-    return success();
-  }
-  value_map[op] = xla::SendWithToken(
-      operand, token, Convert_channel_handle(op.getChannelHandle()));
+  token = xla::internal::XlaBuilderFriend::BuildSend(
+      ctx.builder, operand, token,
+      Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+  value_map[op] = xla::internal::XlaBuilderFriend::BuildSendDone(
+      ctx.builder, token, Convert_channel_handle(op.getChannelHandle()),
+      op.getIsHostTransfer());
   return success();
 }
 

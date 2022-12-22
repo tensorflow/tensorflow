@@ -1160,9 +1160,14 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(builder_->getNamedAttr(
           "is_host_transfer",
           builder_->getBoolAttr(send_op->is_host_transfer())));
-      if (send_op->channel_id().has_value())
-        attributes.push_back(
-            ConvertChannelHandle(send_op->channel_id().value()));
+      if (send_op->channel_id().has_value()) {
+        xla::ChannelHandle channel_handle;
+        channel_handle.set_handle(send_op->channel_id().value());
+        channel_handle.set_type(send_op->is_host_transfer()
+                                    ? xla::ChannelHandle::DEVICE_TO_HOST
+                                    : xla::ChannelHandle::DEVICE_TO_DEVICE);
+        attributes.push_back(ConvertChannelHandle(channel_handle));
+      }
       return ImportOldStyleAsyncStart<mlir::mhlo::SendOp>(
           attributes, operands, loc, async_bundled_tuple, func_builder, "send_",
           [](auto) { return OkStatus(); });
@@ -1189,9 +1194,14 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(builder_->getNamedAttr(
           "is_host_transfer",
           builder_->getBoolAttr(recv_op->is_host_transfer())));
-      if (recv_op->channel_id().has_value())
-        attributes.push_back(
-            ConvertChannelHandle(recv_op->channel_id().value()));
+      if (recv_op->channel_id().has_value()) {
+        xla::ChannelHandle channel_handle;
+        channel_handle.set_handle(recv_op->channel_id().value());
+        channel_handle.set_type(recv_op->is_host_transfer()
+                                    ? xla::ChannelHandle::HOST_TO_DEVICE
+                                    : xla::ChannelHandle::DEVICE_TO_DEVICE);
+        attributes.push_back(ConvertChannelHandle(channel_handle));
+      }
       return ImportOldStyleAsyncStart<mlir::mhlo::RecvOp>(
           attributes, operands, loc, async_bundled_tuple, func_builder, "recv_",
           [](auto) { return OkStatus(); });
