@@ -14,6 +14,7 @@
 # ==============================================================================
 """Functional tests for morphological filtering operations."""
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import config
@@ -27,10 +28,10 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
-class DilationTest(test.TestCase):
+class DilationTest(test.TestCase, parameterized.TestCase):
 
   def _VerifyValues(self, image, kernel, strides, rates, padding, out, use_gpu,
-                    dtype=dtypes.float32):
+                    dtype):
     """Verifies the output values of the dilation function.
 
     Args:
@@ -53,9 +54,9 @@ class DilationTest(test.TestCase):
           rates=rates,
           padding=padding,
           name="dilation2d")
-      self.assertAllClose(out, self.evaluate(out_tensor))
+      self.assertAllCloseAccordingToType(out, self.evaluate(out_tensor))
 
-  def _testDilationValidPadding(self, use_gpu):
+  def _testDilationValidPadding(self, use_gpu, dtype):
     # [1, 2, 2, 1]
     image = [[[[.1], [.2]], [[.3], [.4]]]]
     # [2, 2, 1]
@@ -69,9 +70,10 @@ class DilationTest(test.TestCase):
         rates=[1, 1],
         padding="VALID",
         out=out,
-        use_gpu=use_gpu)
+        use_gpu=use_gpu,
+        dtype=dtype)
 
-  def _testDilationSamePadding(self, use_gpu):
+  def _testDilationSamePadding(self, use_gpu, dtype):
     # [1, 2, 2, 1]
     image = [[[[.1], [.2]], [[.3], [.4]]]]
     # [2, 2, 1]
@@ -85,9 +87,10 @@ class DilationTest(test.TestCase):
         rates=[1, 1],
         padding="SAME",
         out=out,
-        use_gpu=use_gpu)
+        use_gpu=use_gpu,
+        dtype=dtype)
 
-  def _testDilationSamePaddingDepth(self, use_gpu):
+  def _testDilationSamePaddingDepth(self, use_gpu, dtype):
     # [1, 2, 2, 3]
     image = [[[[.1, .2, .0], [.2, .3, .1]], [[.3, .4, .2], [.4, .5, .3]]]]
     # [2, 2, 3]
@@ -101,9 +104,10 @@ class DilationTest(test.TestCase):
         rates=[1, 1],
         padding="SAME",
         out=out,
-        use_gpu=use_gpu)
+        use_gpu=use_gpu,
+        dtype=dtype)
 
-  def _testDilationSamePaddingBatch(self, use_gpu):
+  def _testDilationSamePaddingBatch(self, use_gpu, dtype):
     # [2, 2, 2, 1]
     image = [[[[.1], [.2]], [[.3], [.4]]], [[[.2], [.3]], [[.4], [.5]]]]
     # [2, 2, 1]
@@ -117,9 +121,10 @@ class DilationTest(test.TestCase):
         rates=[1, 1],
         padding="SAME",
         out=out,
-        use_gpu=use_gpu)
+        use_gpu=use_gpu,
+        dtype=dtype)
 
-  def _testDilationValidPaddingNonSquareWindow(self, use_gpu):
+  def _testDilationValidPaddingNonSquareWindow(self, use_gpu, dtype):
     # [1, 2, 2, 1]
     image = [[[[.1], [.2]], [[.3], [.4]]]]
     # [1, 2, 1]
@@ -133,9 +138,10 @@ class DilationTest(test.TestCase):
         rates=[1, 1],
         padding="VALID",
         out=out,
-        use_gpu=use_gpu)
+        use_gpu=use_gpu,
+        dtype=dtype)
 
-  def _testDilationSamePaddingRate(self, use_gpu):
+  def _testDilationSamePaddingRate(self, use_gpu, dtype):
     # [1, 3, 3, 1]
     image = [[[[.1], [.2], [.3]], [[.4], [.5], [.6]], [[.7], [.8], [.9]]]]
     # [2, 2, 1]
@@ -153,9 +159,10 @@ class DilationTest(test.TestCase):
         rates=[2, 2],
         padding="SAME",
         out=out,
-        use_gpu=use_gpu)
+        use_gpu=use_gpu,
+        dtype=dtype)
 
-  def _testDilationValidPaddingUnevenStride(self, use_gpu):
+  def _testDilationValidPaddingUnevenStride(self, use_gpu, dtype):
     # [1, 3, 3, 1]
     image = [[[[.1], [.2], [.3], [.4]], [[.5], [.6], [.7], [.8]],
               [[.9], [1.0], [1.1], [1.2]]]]
@@ -170,29 +177,19 @@ class DilationTest(test.TestCase):
         rates=[1, 1],
         padding="VALID",
         out=out,
-        use_gpu=use_gpu)
+        use_gpu=use_gpu,
+        dtype=dtype)
 
-  def testDilation(self):
+  @parameterized.parameters(dtypes.float32, dtypes.bfloat16)
+  def testDilation(self, dtype):
     for use_gpu in True, False:
-      self._testDilationValidPadding(use_gpu)
-      self._testDilationSamePadding(use_gpu)
-      self._testDilationSamePaddingDepth(use_gpu)
-      self._testDilationSamePaddingBatch(use_gpu)
-      self._testDilationValidPaddingNonSquareWindow(use_gpu)
-      self._testDilationSamePaddingRate(use_gpu)
-      self._testDilationValidPaddingUnevenStride(use_gpu)
-
-  def testDilationBfloat16(self):
-    for use_gpu in True, False:
-      self._VerifyValues(
-          image=[[[[.1], [.2]], [[.3], [.4]]]],
-          kernel=[[[.4], [.3]], [[.1], [.0]]],
-          strides=[1, 1],
-          rates=[1, 1],
-          padding="VALID",
-          out=[[[[.5]]]],
-          use_gpu=use_gpu,
-          dtype=dtypes.bfloat16)
+      self._testDilationValidPadding(use_gpu, dtype)
+      self._testDilationSamePadding(use_gpu, dtype)
+      self._testDilationSamePaddingDepth(use_gpu, dtype)
+      self._testDilationSamePaddingBatch(use_gpu, dtype)
+      self._testDilationValidPaddingNonSquareWindow(use_gpu, dtype)
+      self._testDilationSamePaddingRate(use_gpu, dtype)
+      self._testDilationValidPaddingUnevenStride(use_gpu, dtype)
 
   def _ConstructAndTestGradient(self, image_shape, kernel_shape, strides, rates,
                                 padding, use_gpu, dtype=dtypes.float32):
@@ -242,20 +239,21 @@ class DilationTest(test.TestCase):
 
     print("Dilation gradient error = %f" % err)
     if dtype == dtypes.bfloat16:
-      self.assertLess(err, 1.5)
+      self.assertLess(err, 4.0)
     else:
       self.assertLess(err, 1e-4)
 
-  def _testDilationGradValidPadding_1x1x1(self, use_gpu):
+  def _testDilationGradValidPadding_1x1x1(self, use_gpu, dtype):
     self._ConstructAndTestGradient(
         image_shape=[1, 3, 3, 1],
         kernel_shape=[1, 1, 1],
         strides=[1, 1],
         rates=[1, 1],
         padding="VALID",
-        use_gpu=use_gpu)
+        use_gpu=use_gpu,
+        dtype=dtype)
 
-  def _testDilationGradDeterminismError(self, use_gpu):
+  def _testDilationGradDeterminismError(self, use_gpu, dtype):
     if use_gpu and test.is_gpu_available(cuda_only=True):
       try:
         config.enable_op_determinism()
@@ -268,7 +266,8 @@ class DilationTest(test.TestCase):
               strides=[1, 1],
               rates=[1, 1],
               padding="VALID",
-              use_gpu=use_gpu)
+              use_gpu=use_gpu,
+              dtype=dtype)
       finally:
         config.disable_op_determinism()
     else:
@@ -280,86 +279,82 @@ class DilationTest(test.TestCase):
             strides=[1, 1],
             rates=[1, 1],
             padding="VALID",
-            use_gpu=use_gpu)
+            use_gpu=use_gpu,
+            dtype=dtype)
       finally:
         config.disable_op_determinism()
 
-  def _testDilationGradSamePadding_1x1x1(self, use_gpu):
+  def _testDilationGradSamePadding_1x1x1(self, use_gpu, dtype):
     self._ConstructAndTestGradient(
         image_shape=[1, 3, 3, 1],
         kernel_shape=[1, 1, 1],
         strides=[1, 1],
         rates=[1, 1],
         padding="SAME",
-        use_gpu=use_gpu)
+        use_gpu=use_gpu,
+        dtype=dtype)
 
-  def _testDilationGradSamePadding_1x1x2(self, use_gpu):
+  def _testDilationGradSamePadding_1x1x2(self, use_gpu, dtype):
     self._ConstructAndTestGradient(
         image_shape=[1, 3, 3, 2],
         kernel_shape=[1, 1, 2],
         strides=[1, 1],
         rates=[1, 1],
         padding="SAME",
-        use_gpu=use_gpu)
+        use_gpu=use_gpu,
+        dtype=dtype)
 
-  def _testDilationGradValidPadding_2x2x1(self, use_gpu):
+  def _testDilationGradValidPadding_2x2x1(self, use_gpu, dtype):
     self._ConstructAndTestGradient(
         image_shape=[1, 3, 3, 1],
         kernel_shape=[2, 2, 1],
         strides=[1, 1],
         rates=[1, 1],
         padding="VALID",
-        use_gpu=use_gpu)
+        use_gpu=use_gpu,
+        dtype=dtype)
 
-  def _testDilationGradSamePadding_2x2x1(self, use_gpu):
+  def _testDilationGradSamePadding_2x2x1(self, use_gpu, dtype):
     self._ConstructAndTestGradient(
         image_shape=[1, 3, 3, 1],
         kernel_shape=[2, 2, 1],
         strides=[1, 1],
         rates=[1, 1],
         padding="SAME",
-        use_gpu=use_gpu)
+        use_gpu=use_gpu,
+        dtype=dtype)
 
-  def _testDilationGradSamePaddingBatch_2x2x1(self, use_gpu):
+  def _testDilationGradSamePaddingBatch_2x2x1(self, use_gpu, dtype):
     self._ConstructAndTestGradient(
         image_shape=[4, 3, 3, 1],
         kernel_shape=[2, 2, 1],
         strides=[1, 1],
         rates=[1, 1],
         padding="SAME",
-        use_gpu=use_gpu)
+        use_gpu=use_gpu,
+        dtype=dtype)
 
-  def _testDilationGradSamePadding_2x2x4(self, use_gpu):
+  def _testDilationGradSamePadding_2x2x4(self, use_gpu, dtype):
     self._ConstructAndTestGradient(
         image_shape=[1, 3, 3, 4],
         kernel_shape=[2, 2, 4],
         strides=[1, 1],
         rates=[1, 1],
         padding="SAME",
-        use_gpu=use_gpu)
+        use_gpu=use_gpu,
+        dtype=dtype)
 
-  def testDilationGrad(self):
+  @parameterized.parameters(dtypes.float32, dtypes.bfloat16)
+  def testDilationGrad(self, dtype):
     for use_gpu in True, False:
-      self._testDilationGradDeterminismError(use_gpu)
-      self._testDilationGradValidPadding_1x1x1(use_gpu)
-      self._testDilationGradSamePadding_1x1x1(use_gpu)
-      self._testDilationGradSamePadding_1x1x2(use_gpu)
-      self._testDilationGradValidPadding_2x2x1(use_gpu)
-      self._testDilationGradSamePadding_2x2x1(use_gpu)
-      self._testDilationGradSamePaddingBatch_2x2x1(use_gpu)
-      self._testDilationGradSamePadding_2x2x4(use_gpu)
-  
-  def testDilationGradBfloat16(self):
-    for use_gpu in True, False:
-      self._ConstructAndTestGradient(
-          image_shape=[1, 3, 3, 1],
-          kernel_shape=[1, 1, 1],
-          strides=[1, 1],
-          rates=[1, 1],
-          padding="VALID",
-          use_gpu=use_gpu,
-          dtype=dtypes.bfloat16)
-
+      self._testDilationGradDeterminismError(use_gpu, dtype)
+      self._testDilationGradValidPadding_1x1x1(use_gpu, dtype)
+      self._testDilationGradSamePadding_1x1x1(use_gpu, dtype)
+      self._testDilationGradSamePadding_1x1x2(use_gpu, dtype)
+      self._testDilationGradValidPadding_2x2x1(use_gpu, dtype)
+      self._testDilationGradSamePadding_2x2x1(use_gpu, dtype)
+      self._testDilationGradSamePaddingBatch_2x2x1(use_gpu, dtype)
+      self._testDilationGradSamePadding_2x2x4(use_gpu, dtype)
 
 
 class ErosionTest(test.TestCase):
