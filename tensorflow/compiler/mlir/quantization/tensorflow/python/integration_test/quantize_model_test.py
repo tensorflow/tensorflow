@@ -346,11 +346,13 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       parameter_combinations([{
           'activation_fn': [None, nn_ops.relu, nn_ops.relu6],
           'has_bias': [True, False],
+          'has_batch_norm': [True, False],
           'target_opset': [quant_opts_pb2.XLA],
       }]))
   @test_util.run_in_graph_and_eager_modes
   def test_qat_conv_model(self, activation_fn: Optional[ops.Operation],
-                          has_bias: bool, target_opset: quant_opts_pb2.OpSet):
+                          has_bias: bool, has_batch_norm: bool,
+                          target_opset: quant_opts_pb2.OpSet):
 
     class ConvModel(module.Module):
 
@@ -374,10 +376,22 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         q_input = array_ops.fake_quant_with_min_max_args(
             input_tensor, min=-0.1, max=0.2, num_bits=8, narrow_range=False)
         filter_tensor = ops.convert_to_tensor(self.filter_value)
+        filter_min = array_ops.identity(
+            array_ops.constant([-0.5, -0.5], dtype=dtypes.float32))
+        filter_max = array_ops.identity(
+            array_ops.constant([0.5, 0.5], dtype=dtypes.float32))
+        q_filter = array_ops.fake_quant_with_min_max_vars_per_channel(
+            filter_tensor,
+            filter_min,
+            filter_max,
+            num_bits=8,
+            narrow_range=True)
         bias = array_ops.constant([0.1, 0.2], dtype=dtypes.float32)
+        scale, offset = [1.0] * 2, [0.5] * 2
+        mean, variance = scale, offset
         out = nn_ops.conv2d(
             q_input,
-            filter_tensor,
+            q_filter,
             strides=[1, 1, 2, 1],
             dilations=[1, 1, 1, 1],
             padding='SAME',
@@ -385,9 +399,17 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         if has_bias:
           out = nn_ops.bias_add(out, bias, data_format='NHWC')
         if activation_fn is not None:
+          # The accuracy is not good when having FusedBatchNorm without
+          # activation in this test.
+          if has_batch_norm:
+            # Fusing is supported for non-training case.
+            out, _, _, _, _, _ = nn_ops.fused_batch_norm_v3(
+                out, scale, offset, mean, variance, is_training=False)
           out = activation_fn(out)
-        q_out = array_ops.fake_quant_with_min_max_args(
-            out, min=-0.3, max=0.4, num_bits=8, narrow_range=False)
+        out_min = array_ops.constant([-0.18, -0.32], dtype=dtypes.float32)
+        out_max = array_ops.constant([0.5, 0.5], dtype=dtypes.float32)
+        q_out = array_ops.fake_quant_with_min_max_vars_per_channel(
+            out, min=out_min, max=out_max, num_bits=8, narrow_range=True)
         return {'output': q_out}
 
     np.random.seed(1234)
@@ -418,8 +440,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     expected_outputs = model.conv(input_data)
     got_outputs = converted_model.signatures[signature_key](
         input=ops.convert_to_tensor(input_data))
-    # TODO(b/215633216): Check if the accuracy is acceptable.
-    self.assertAllClose(expected_outputs, got_outputs, atol=0.01)
+    self.assertAllClose(expected_outputs, got_outputs, atol=0.00323)
 
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
@@ -450,7 +471,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         input=ops.convert_to_tensor(input_data))
     # The difference between TF and XLA path is expected to be small (smaller
     # or equal to 1 in the quantized domain).
-    self.assertAllClose(new_outputs, got_outputs, atol=0.00275)
+    self.assertAllClose(new_outputs, got_outputs, atol=0.00154)
 
   # TODO(b/244276332): Allow table initialization in TF2 eager mode.
   @test_util.deprecated_graph_mode_only
