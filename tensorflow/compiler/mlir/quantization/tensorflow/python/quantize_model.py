@@ -481,8 +481,8 @@ def _run_graph_for_calibration(
 
 def _run_static_range_qat(
     saved_model_path: str, signature_def_keys: Sequence[str],
-    tags: Collection[str],
-    quant_opts: quant_opts_pb2.QuantizationOptions) -> graph_pb2.GraphDef:
+    tags: Collection[str], quant_opts: quant_opts_pb2.QuantizationOptions
+) -> Tuple[graph_pb2.GraphDef, str]:
   """Runs static-range quantization for a Quantization-Aware Trained model.
 
   Runs the quantization for a model trained using QAT.
@@ -495,7 +495,9 @@ def _run_static_range_qat(
     quant_opts: Quantization options.
 
   Returns:
-    The static-range quantized graph.
+    (graph, init_node_name), where graph is the static-range quantized graph and
+    init_node_name is the name of the initializer op, which is fetched once
+    during model load to initialize resources (e.g. hash tables).
   """
   logging.info('Running static-range quantization for QAT model.')
   exported_model_serialized = (
@@ -507,7 +509,7 @@ def _run_static_range_qat(
   exported_model = exported_model_pb2.ExportedModel.FromString(
       exported_model_serialized)
 
-  return exported_model.graph_def
+  return exported_model.graph_def, exported_model.init_node_name
 
 
 def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
@@ -682,9 +684,9 @@ def _static_range_quantize(
         'The flag is ignored.')
 
   if is_qat_saved_model:
-    init_node_name: Optional[str] = None
-    graph_def = _run_static_range_qat(saved_model_path, signature_keys, tags,
-                                      quantization_options)
+    graph_def, init_node_name = _run_static_range_qat(saved_model_path,
+                                                      signature_keys, tags,
+                                                      quantization_options)
   else:
     graph_def, signature_def_map, init_node_name = _run_static_range_ptq(
         saved_model_path, signature_keys, tags, quantization_options,
