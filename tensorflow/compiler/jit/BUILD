@@ -1356,6 +1356,16 @@ cc_library(
     deps = ["//tensorflow/compiler/tf2xla:xla_compiler"],
 )
 
+cc_library(
+    name = "pjrt_device_compiler_client",
+    srcs = ["pjrt_device_compiler_client.cc"],
+    hdrs = ["pjrt_device_compiler_client.h"],
+    deps = [
+        ":device_compiler_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+    ],
+)
+
 tf_cc_test(
     name = "device_compilation_cluster_signature_test",
     srcs = [
