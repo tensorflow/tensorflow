@@ -1788,13 +1788,14 @@ class TensorArrayTest(test.TestCase):
       self.assertAllEqual(v1, 100)
   
   @test_util.deprecated_graph_mode_only
-  def testTensorArrayScatterBfloat61GPU(self):
+  def testTensorArrayScatterBfloat16GPU(self):
     if not test.is_gpu_available():
       return
     with self.session(force_gpu=True) as sess:
       ta = tensor_array_ops.TensorArray(
-          dtype=dtypes.float32, tensor_array_name="foo", size=5)
-      ta = ta.scatter(indices=[3, 4], value=array_ops.ones([2]))
+          dtype=dtypes.bfloat16, tensor_array_name="foo", size=5)
+      ta = ta.scatter(
+          indices=[3, 4], value=array_ops.ones([2], dtype=dtypes.bfloat16))
       self.assertAllEqual(ta.stack(), [0., 0., 0., 1., 1.])
 
   def testInferShapeFalseValid(self):
