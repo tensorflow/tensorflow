@@ -1991,6 +1991,7 @@ py_library(
         ":resource_variable_ops_gen",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/checkpoint:tensor_callable",
         "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
