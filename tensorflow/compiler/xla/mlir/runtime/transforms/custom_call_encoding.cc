@@ -883,6 +883,35 @@ FailureOr<EncodedAttr> UnitAttrEncoding::Encode(mlir::SymbolTable &, Globals &g,
 }
 
 //===----------------------------------------------------------------------===//
+
+LogicalResult DictionaryAttrEncoding::Match(mlir::SymbolTable &,
+                                            std::string_view,
+                                            Attribute attr) const {
+  return success(attr.isa<DictionaryAttr>());
+}
+
+FailureOr<EncodedAttr> DictionaryAttrEncoding::Encode(
+    mlir::SymbolTable &sym_table, Globals &g, ImplicitLocOpBuilder &b,
+    std::string_view name, Attribute attr) const {
+  // TODO(ezhulenev): Add current set of available encodings to `Encode`
+  // arguments and remove it from `AggregateAttrEncoding` constructor.
+  CustomCallAttrEncodingSet encoding = DefaultAttrEncodings();
+
+  auto dict = cast<DictionaryAttr>(attr);
+  auto encoded_dict = EncodeAttributes(
+      sym_table, g, b, encoding, "__rt_dictionary",
+      // We rely on the fact that dictionary keeps attributes sorted by name.
+      llvm::SmallVector<NamedAttribute>(dict.begin(), dict.end()));
+  if (mlir::failed(encoded_dict)) return mlir::failure();
+
+  Encoded encoded;
+  encoded.name = EncodeString(g, b, name, kAttrName);
+  encoded.type_id = EncodeTypeId(g, b, TypeID::get<Tagged<Dictionary>>());
+  encoded.value = *encoded_dict;
+  return encoded;
+}
+
+//===----------------------------------------------------------------------===//
 // Encoding for collection of attributes.
 //===----------------------------------------------------------------------===//
 
@@ -1280,7 +1309,7 @@ CustomCallAttrEncodingSet DefaultAttrEncodings() {
   encodings
       .Add<StringAttrEncoding, ScalarAttrEncoding, DenseElementsAttrEncoding,
            ArrayAttrEncoding, DenseArrayAttrEncoding, EmptyArrayAttrEncoding,
-           SymbolRefAttrEncoding, UnitAttrEncoding>();
+           SymbolRefAttrEncoding, UnitAttrEncoding, DictionaryAttrEncoding>();
 
   encodings.Add<AggregateAttrEncoding<HloTraceAttr, HloTrace>>(
       encodings,

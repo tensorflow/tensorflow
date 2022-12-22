@@ -425,6 +425,7 @@ const XLA_FFI_Api ffi_api = {
     FfiTypeId<absl::Span<const int64_t>>,
     FfiTypeId<::xla::runtime::MemrefView>,
     FfiTypeId<::xla::runtime::StridedMemrefView>,
+    FfiTypeId<::xla::runtime::Dictionary>,
 };
 
 const XLA_FFI_Api* GetXlaFfiApi() { return &ffi_api; }

@@ -260,7 +260,7 @@ class CustomCallAttrEncodingSet {
 // comparison. All type id symbols at run time must be resolved to the type id
 // instances defined in the current process.
 mlir::LLVM::GlobalOp EncodeTypeId(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                                  mlir::TypeID type_id);
+                                  TypeID type_id);
 
 // Encodes string as a module global null-terminated string constant + size. We
 // reuse the encoding scheme for arrays to store sting with its size, to avoid
@@ -296,7 +296,7 @@ class Globals {
 
   // Creates a global external variable for the type id.
   mlir::LLVM::GlobalOp GetOrCreate(mlir::ImplicitLocOpBuilder &b,
-                                   mlir::TypeID type_id);
+                                   TypeID type_id);
 
   // Creates a global null-terminated string constant.
   mlir::LLVM::GlobalOp GetOrCreate(mlir::ImplicitLocOpBuilder &b,
@@ -493,6 +493,15 @@ struct UnitAttrEncoding : public CustomCallAttrEncoding {
                                   mlir::Attribute) const final;
 };
 
+struct DictionaryAttrEncoding : public CustomCallAttrEncoding {
+  mlir::LogicalResult Match(mlir::SymbolTable &, std::string_view,
+                            mlir::Attribute) const final;
+  mlir::FailureOr<Encoded> Encode(mlir::SymbolTable &, Globals &,
+                                  mlir::ImplicitLocOpBuilder &,
+                                  std::string_view,
+                                  mlir::Attribute) const final;
+};
+
 // Custom call attribute encoding that encodes enums using their underlying
 // scalar type. Type id is based on the enum type passed to the runtime.
 //
@@ -530,7 +539,7 @@ struct EnumAttrEncoding : public CustomCallAttrEncoding {
     using T = std::underlying_type_t<RuntimeEnumType>;
     T underlying_value = static_cast<T>(run_time_enum);
 
-    mlir::TypeID type_id = mlir::TypeID::get<Tagged<RuntimeEnumType>>();
+    TypeID type_id = TypeID::get<Tagged<RuntimeEnumType>>();
     mlir::Attribute underlying_attr = AsAttr(b, underlying_value);
 
     Encoded encoded;
@@ -616,7 +625,7 @@ struct AggregateAttrEncoding : public CustomCallAttrEncoding {
       attrs.emplace_back(bind(attr.cast<AttrType>(), b));
 
     // Encode extracted attributes as an aggregate.
-    auto type_id = mlir::TypeID::get<Tagged<RuntimeType>>();
+    auto type_id = TypeID::get<Tagged<RuntimeType>>();
     auto sym = "__rt_aggregate_" + AttrType::getMnemonic();
     auto aggregate =
         EncodeAttributes(sym_table, g, b, encoding, sym.str(), attrs);

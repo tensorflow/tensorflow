@@ -381,6 +381,10 @@ struct BufferArg {
   Span<const int64_t> sizes;
 };
 
+// A type tag to represent dictionary attributes that can be decoded into
+// structs using aggregate attribute decoding.
+struct Dictionary {};
+
 template <typename T>
 bool Ffi::Isa(const XLA_FFI_Api* api, XLA_FFI_TypeId type_id) {
 #define ISA(type, name)                  \
@@ -402,6 +406,7 @@ bool Ffi::Isa(const XLA_FFI_Api* api, XLA_FFI_TypeId type_id) {
 
   ISA(StridedBufferArg, StridedBufferArg);
   ISA(BufferArg, BufferArg);
+  ISA(Dictionary, Dictionary);
 
   assert(false && "Unsupported type");
   return false;
@@ -1041,6 +1046,94 @@ struct FfiAttrDecoding<std::string_view> {
     return std::string_view(encoded->data, encoded->size);
   }
 };
+
+//===----------------------------------------------------------------------===//
+// Register an XLA FFI attribute decoding from dictionaries to structs.
+//===----------------------------------------------------------------------===//
+
+template <typename T>
+struct AggregateMember {
+  using Type = T;
+
+  explicit AggregateMember(std::string_view name) : name(name) {}
+  std::string_view name;
+};
+
+// Example: register decoding for a user-defined struct
+//
+//   struct PairOfI64 { int64_t a; int64_t b; };
+//
+//   XLA_FFI_REGISTER_AGGREGATE_ATTR_DECODING(
+//     PairOfI64,
+//     AggregateMember<int64_t>("a"),
+//     AggregateMember<int64_t>("b"));
+//
+#define XLA_FFI_REGISTER_AGGREGATE_ATTR_DECODING(T, ...)                       \
+  template <>                                                                  \
+  struct FfiAttrDecoding<T> {                                                  \
+    static std::optional<T> Decode(const XLA_FFI_Api* api,                     \
+                                   std::string_view name,                      \
+                                   XLA_FFI_TypeId type_id, void* value) {      \
+      if (!Ffi::Isa<Dictionary>(api, type_id)) {                               \
+        return std::nullopt;                                                   \
+      }                                                                        \
+                                                                               \
+      auto decoder = internal::AggregateDecoder<T>(__VA_ARGS__);               \
+      return decltype(decoder)::Decode(api, reinterpret_cast<void**>(value),   \
+                                       internal::AggregateNames(__VA_ARGS__)); \
+    }                                                                          \
+  }
+
+namespace internal {
+// Decodes aggregate attribute into the object of type `T` that must be
+// constructible from the `Ts` types.
+template <typename T, typename... Ts>
+struct DecodeAggregateAttr {
+  static constexpr size_t kSize = sizeof...(Ts);
+
+  static std::optional<T> Decode(const XLA_FFI_Api* api, void** value,
+                                 std::array<std::string_view, kSize> names) {
+    internal::DecodedAttrs attrs(value);
+    return Decode(api, attrs, names, std::make_index_sequence<kSize>{});
+  }
+
+  template <size_t... Is>
+  static std::optional<T> Decode(const XLA_FFI_Api* api,
+                                 internal::DecodedAttrs attrs,
+                                 std::array<std::string_view, kSize> names,
+                                 std::index_sequence<Is...>) {
+    // Check that the number of encoded attributes matches the signature.
+    if (kSize != attrs.size()) return std::nullopt;
+
+    // Check that aggregate member names match the expected names.
+    for (unsigned i = 0; i < kSize; ++i)
+      if (attrs[i].name != names[i]) return std::nullopt;
+
+    // Decode all arguments into std::optional containers. It is guaranteed
+    // that initializer list will be evaluated left-to-right, and we can rely
+    // on correct offsets computation.
+    std::tuple<std::optional<Ts>...> members = {FfiAttrDecoding<Ts>::Decode(
+        api, attrs[Is].name, attrs[Is].type_id, attrs[Is].value)...};
+
+    bool all_decoded = (std::get<Is>(members).has_value() && ...);
+    if (!all_decoded) return std::nullopt;
+
+    // Forward unpacked members to the type constructor.
+    return T{std::move(*std::get<Is>(members))...};
+  }
+};
+
+template <typename... Members>
+auto AggregateNames(Members... m) {
+  return std::array<std::string_view, sizeof...(Members)>{m.name...};
+}
+
+template <typename T, typename... Members>
+auto AggregateDecoder(Members... m) {
+  return DecodeAggregateAttr<T, typename Members::Type...>();
+}
+
+}  // namespace internal
 
 //===----------------------------------------------------------------------===//
 // XLA FFI helper macro for registering FFI implementations.

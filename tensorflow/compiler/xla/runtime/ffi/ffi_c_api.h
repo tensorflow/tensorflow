@@ -241,6 +241,7 @@ typedef struct XLA_FFI_Api {
   XLA_FFI_API_TYPEID_FIELD(Int64Array);
   XLA_FFI_API_TYPEID_FIELD(BufferArg);
   XLA_FFI_API_TYPEID_FIELD(StridedBufferArg);
+  XLA_FFI_API_TYPEID_FIELD(Dictionary);
 } XLA_FFI_Api;
 
 #undef XLA_FFI_API_STRUCT_FIELD

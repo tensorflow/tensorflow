@@ -1497,6 +1497,9 @@ XLA_RUNTIME_REGISTER_SCALAR_ATTR_DECODING(double);
 // A type tag to represent empty arrays of unknown element type.
 struct EmptyArray {};
 
+// A type tag to represent dictionary attributes.
+struct Dictionary {};
+
 // Both EncodedArray and 1-D EncodedDenseElements can be decoded as an
 // absl::Span. Pointers to both EncodedArray and 1-D EncodedDenseElements
 // can be dereferenced as a pointer to EncodedArray.
@@ -1715,6 +1718,7 @@ XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(xla::runtime::StridedMemrefView);
 XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(xla::runtime::MemrefView);
 XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(xla::runtime::FlatMemrefView);
 XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(xla::runtime::EmptyArray);
+XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(xla::runtime::Dictionary);
 XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(int32_t);
 XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(int64_t);
 XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(float);
