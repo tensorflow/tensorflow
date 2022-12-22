@@ -659,7 +659,7 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
 
     // Peel reduction loop inside the main parallel loop, label the main loop as
     // "perfectly tiled" one, to enable vectorization after canonicalization.
-    for (auto res : tilingReductionDimsResults) {
+    for (auto &res : tilingReductionDimsResults) {
       if (auto loop = dyn_cast_or_null<ForOp>(res.loop)) {
         auto peelingResult = peelAllLoops(loop, rewriter);
         setLabel(loop, kPerfectlyTiledLoopLabel);

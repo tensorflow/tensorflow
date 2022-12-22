@@ -751,7 +751,8 @@ struct VectorizePerfectlyTiledLoopsPass
       return isPerfectlyTiledLoop(op->getParentOp());
     };
     auto isInsidePerfectlyTiledLoopOrSmall = [&](Operation *op) {
-      return isInsidePerfectlyTiledLoop(op) || hasSmallStaticOutputs(op);
+      return !hasSingleElementOperandsAndResults(op) &&
+             (isInsidePerfectlyTiledLoop(op) || hasSmallStaticOutputs(op));
     };
     {
       RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);

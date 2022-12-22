@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
+#include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -41,11 +42,6 @@ using linalg::LinalgOp;
 using tensor::ExtractOp;
 using tensor::FromElementsOp;
 using tensor::InsertOp;
-
-template <typename ShapedTy>
-bool hasSingleElement(ShapedTy type) {
-  return type.hasStaticShape() && type.getNumElements() == 1;
-}
 
 struct ScalarizeLinalgOp : public OpInterfaceRewritePattern<LinalgOp> {
   using OpInterfaceRewritePattern<LinalgOp>::OpInterfaceRewritePattern;
@@ -81,15 +77,8 @@ struct ScalarizeLinalgOp : public OpInterfaceRewritePattern<LinalgOp> {
   LogicalResult matchAndRewrite(LinalgOp linalgOp,
                                 PatternRewriter &rewriter) const override {
     // Fail if not every argument is a scalar or a single-element tensor.
-    auto isNonScalar = [](Type type) {
-      return type.isa<mlir::ShapedType>() &&
-             !(type.isa<TensorType>() &&
-               hasSingleElement(type.cast<TensorType>()));
-    };
+    if (!hasSingleElementOperandsAndResults(linalgOp)) return failure();
 
-    if (llvm::any_of(linalgOp->getOperandTypes(), isNonScalar) ||
-        llvm::any_of(linalgOp->getResultTypes(), isNonScalar))
-      return failure();
     // TODO(aliia): fix scalarization of FillOp.
     if (auto *fillOp = dyn_cast<linalg::FillOp>(&linalgOp)) return failure();
 

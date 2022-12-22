@@ -45,6 +45,12 @@ constexpr llvm::StringRef kPerfectlyTiledLoopLabel =
 bool isZero(Value v);
 bool isOne(Value v);
 
+template <typename ShapedTy>
+bool hasSingleElement(ShapedTy type) {
+  return type.hasStaticShape() && type.getNumElements() == 1;
+}
+bool hasSingleElementOperandsAndResults(Operation *op);
+
 /// Hoist vector.transfer_read/vector.transfer_write pairs out of immediately
 /// enclosing gml_st::ForOp iteratively, if the following conditions are true:
 ///   1. The two ops access the same tensor with the same indices.

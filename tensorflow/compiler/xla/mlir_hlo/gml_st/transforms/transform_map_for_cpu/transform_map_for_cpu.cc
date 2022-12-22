@@ -71,6 +71,7 @@ struct TileMapPattern : public OpRewritePattern<OpType> {
     // Peel parallel loops.
     if (auto loop = dyn_cast_or_null<ParallelOp>(*tiledLoop)) {
       auto peelingResult = peelAllLoops(loop, rewriter);
+      setLabel(loop, kPerfectlyTiledLoopLabel);
 
       // Tile ops in the peeled loop again, to size 1, so they can be
       // scalarized.

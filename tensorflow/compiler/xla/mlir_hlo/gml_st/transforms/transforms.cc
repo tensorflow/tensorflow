@@ -34,8 +34,19 @@ limitations under the License.
 
 namespace mlir {
 namespace gml_st {
+
 bool isZero(Value v) { return matchPattern(v, m_Zero()); }
 bool isOne(Value v) { return matchPattern(v, m_One()); }
+
+bool hasSingleElementOperandsAndResults(Operation *op) {
+  auto isScalar = [](Type type) {
+    return !type.isa<mlir::ShapedType>() ||
+           (type.isa<TensorType>() &&
+            hasSingleElement(type.cast<TensorType>()));
+  };
+  return llvm::all_of(op->getOperandTypes(), isScalar) &&
+         llvm::all_of(op->getResultTypes(), isScalar);
+}
 
 /// Hoisting after vectorization
 namespace {
