@@ -73,8 +73,8 @@ bool RequiresReplicaIDAttribute(Operation* op) {
 // Collects TPU device ordinal for outside compilation communication ops. This
 // currently assumes outside compilation only uses `TPU_REPLICATED_CORE_0`
 // aliased device for the device computation.
-llvm::Optional<int64_t> GetDeviceOrdinal(
-    const llvm::Optional<DictionaryAttr>& devices, Location loc,
+std::optional<int64_t> GetDeviceOrdinal(
+    const std::optional<DictionaryAttr>& devices, Location loc,
     unsigned replica_id) {
   int64_t device_ordinal = 0;
   if (devices.has_value()) {
@@ -84,7 +84,7 @@ llvm::Optional<int64_t> GetDeviceOrdinal(
                                        .getValue();
       if (succeeded(tensorflow::GetDeviceOrdinalFromDeviceString(
               loc, tpu_device, &device_ordinal))) {
-        return llvm::Optional<int64_t>(device_ordinal);
+        return std::optional<int64_t>(device_ordinal);
       }
     }
   }
@@ -99,8 +99,8 @@ llvm::Optional<int64_t> GetDeviceOrdinal(
 // represents replica id.
 LogicalResult UpdateRegionReplicateVariantOps(
     OpBuilder& builder, Location loc, Region& region, int replica_id,
-    const llvm::Optional<DictionaryAttr>& devices) {
-  llvm::Optional<int64_t> device_ordinal =
+    const std::optional<DictionaryAttr>& devices) {
+  std::optional<int64_t> device_ordinal =
       GetDeviceOrdinal(devices, loc, replica_id);
 
   auto result = region.walk([&](Operation* op) -> WalkResult {

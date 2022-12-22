@@ -184,7 +184,7 @@ struct AnnotateExpandingDimensionsInDynamicBroadcastInDim
 
     // Collect possibly already annotated info.
     auto insertAll = [](llvm::SmallSetVector<int64_t, 4> &dst,
-                        Optional<DenseIntElementsAttr> src) {
+                        std::optional<DenseIntElementsAttr> src) {
       if (!src) return;
       for (auto it : *src) dst.insert(it.getLimitedValue());
     };
@@ -641,7 +641,7 @@ SmallVector<int64_t> concretizeOperandShape(
   return result;
 }
 
-llvm::Optional<SmallVector<ReassociationIndices>> requiresReassociationOfKind(
+std::optional<SmallVector<ReassociationIndices>> requiresReassociationOfKind(
     DimensionGroupKind kind, const SmallVector<DimensionGroup> &dimGroups) {
   SmallVector<ReassociationIndices> reassociation;
   reassociation.reserve(dimGroups.size());

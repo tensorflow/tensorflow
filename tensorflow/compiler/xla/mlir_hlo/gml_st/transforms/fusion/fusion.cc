@@ -249,7 +249,7 @@ void reifyDimOp(PatternRewriter& rewriter, tensor::DimOp dimOp) {
       dyn_cast<ReifyRankedShapedTypeOpInterface>(dimValue.getOwner());
   if (!rankedShapeTypeOp) return;
 
-  Optional<int64_t> dimIndex = dimOp.getConstantIndex();
+  std::optional<int64_t> dimIndex = dimOp.getConstantIndex();
   if (!dimIndex) return;
 
   SmallVector<SmallVector<Value>> reifiedResultShapes;

@@ -582,7 +582,7 @@ class TFGraph_IfLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
 
     void $cppClass::getSuccessorRegions(
-        Optional<unsigned> index, ArrayRef<Attribute> operands,
+        std::optional<unsigned> index, ArrayRef<Attribute> operands,
         SmallVectorImpl<RegionSuccessor> &regions) {
       GetIfLikeRegionOpSuccessorRegions(*this, index, operands, regions);
     }
@@ -695,7 +695,7 @@ class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
 
     void $cppClass::getSuccessorRegions(
-        Optional<unsigned> index, ArrayRef<Attribute> operands,
+        std::optional<unsigned> index, ArrayRef<Attribute> operands,
         SmallVectorImpl<RegionSuccessor> &regions) {
       GetCaseLikeRegionOpSuccessorRegions(*this, index, operands, regions);
     }
@@ -849,11 +849,11 @@ class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
 
     OperandRange $cppClass::getSuccessorEntryOperands(
-        Optional<unsigned> index) {
+        std::optional<unsigned> index) {
       return getInit();
     }
     void $cppClass::getSuccessorRegions(
-        Optional<unsigned> index, ArrayRef<Attribute> operands,
+        std::optional<unsigned> index, ArrayRef<Attribute> operands,
         SmallVectorImpl<RegionSuccessor> &regions) {
       return GetWhileLikeRegionOpSuccessorRegions(*this, index, operands,
                                                   regions);

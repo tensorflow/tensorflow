@@ -496,7 +496,7 @@ void copyLoopBodyAndVectorizeTerminator(LoopLikeOpInterface op,
 // values into `bvm`.
 ParallelOp vectorizeLoopLikeOp(ParallelOp op, BlockAndValueMapping &bvm,
                                PatternRewriter &rewriter) {
-  Optional<StringAttr> distTypeAttr;
+  std::optional<StringAttr> distTypeAttr;
   if (auto distType = op.getDistributionType())
     distTypeAttr = rewriter.getStringAttr(*distType);
   return rewriter.create<ParallelOp>(

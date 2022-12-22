@@ -326,7 +326,7 @@ void LoopOp::build(OpBuilder &builder, OperationState &result,
                    ValueRange lowerBounds, ValueRange upperBounds,
                    ValueRange steps, ValueRange inputs, ValueRange outputs,
                    ArrayAttr iteratorTypes,
-                   Optional<ArrayAttr> distributionTypes,
+                   std::optional<ArrayAttr> distributionTypes,
                    function_ref<void(OpBuilder &, Location, ValueRange,
                                      ValueRange, ValueRange)>
                        bodyBuilderFn) {
@@ -843,7 +843,7 @@ LogicalResult ParallelOp::verify() { return success(); }
 void ParallelOp::build(
     OpBuilder &builder, OperationState &result, TypeRange resultTypes,
     ValueRange lowerBounds, ValueRange upperBounds, ValueRange steps,
-    Optional<StringAttr> distributionType,
+    std::optional<StringAttr> distributionType,
     function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuilderFn) {
   result.addOperands(lowerBounds);
   result.addOperands(upperBounds);
@@ -1824,7 +1824,7 @@ void TileOp::build(OpBuilder &b, OperationState &result,
 }
 
 LogicalResult TileOp::inferReturnTypes(
-    MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
+    MLIRContext *ctx, std::optional<Location> /*loc*/, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   // Derive result shape.

@@ -329,7 +329,7 @@ struct ParallelOpInterface
     auto loopOp = cast<ParallelOp>(op);
 
     // Create new TiledLoopOp.
-    Optional<StringAttr> distTypeAttr;
+    std::optional<StringAttr> distTypeAttr;
     if (auto distType = cast<ParallelOp>(op).getDistributionType())
       distTypeAttr = rewriter.getStringAttr(*distType);
     auto newLoopOp = rewriter.create<ParallelOp>(
