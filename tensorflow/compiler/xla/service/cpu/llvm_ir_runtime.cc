@@ -156,7 +156,7 @@ void RewriteCalls(
 
 llvm::Value* GenerateVF32Tanh(llvm::IRBuilder<>* b, llvm::Value* input,
                               int32_t /*vector_width*/) {
-  return llvm_ir::EmitFastTanh(b, input, llvm_ir::TanhType::Float);
+  return llvm_ir::EmitFastTanh(b, input);
 }
 
 llvm::Value* GenerateVF32Exp(llvm::IRBuilder<>* b, llvm::Value* input,
