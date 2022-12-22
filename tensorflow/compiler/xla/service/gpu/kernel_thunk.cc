@@ -39,14 +39,12 @@ KernelThunk::KernelThunk(ThunkInfo thunk_info,
                          absl::Span<const BufferAllocation* const> args,
                          const std::string& kernel_name,
                          const LaunchDimensions& launch_dimensions,
-                         std::vector<mlir::Value> values,
-                         uint32_t shared_mem_bytes)
+                         std::vector<mlir::Value> values)
     : Thunk(Kind::kKernel, thunk_info),
       args_(args.begin(), args.end()),
       kernel_name_(kernel_name),
       launch_dimensions_(launch_dimensions),
-      values_(std::move(values)),
-      shared_mem_bytes_(shared_mem_bytes) {}
+      values_(std::move(values)) {}
 
 std::string KernelThunk::ToStringExtra(int indent) const {
   return absl::StrFormat(", kernel = %s, launch dimensions = %s", kernel_name_,
@@ -67,7 +65,8 @@ Status KernelThunk::Initialize(const GpuExecutable& executable,
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<se::KernelBase> kernel,
         CreateKernel(kernel_name_, args_.size(), executable.text(),
-                     executable.binary(), executor, shared_mem_bytes_));
+                     executable.binary(), executor,
+                     launch_dimensions_.SharedMemBytes()));
 
     kernel_cache_.emplace(executor, std::move(kernel));
   }

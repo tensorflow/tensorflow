@@ -326,7 +326,8 @@ static void LowerThunkToGpuOp(Operation* op, PatternRewriter& rewriter,
   auto grid_size = make_kernel_dim3(launch_dims.block_counts());
   auto block_size = make_kernel_dim3(launch_dims.thread_counts_per_block());
   auto shmem_size = rewriter.create<arith::ConstantOp>(
-      loc, rewriter.getI32IntegerAttr(kernel_thunk->shared_mem_bytes()));
+      loc, rewriter.getI32IntegerAttr(
+               kernel_thunk->launch_dimensions().SharedMemBytes()));
 
   rewriter.create<LaunchFuncOp>(loc, kernel_func, grid_size, block_size,
                                 shmem_size, kernel_args);

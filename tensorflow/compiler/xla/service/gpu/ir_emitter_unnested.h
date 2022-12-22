@@ -689,15 +689,14 @@ class IrEmitterUnnested : public IrEmitter {
   StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunkImpl(
       absl::string_view name, Thunk::ThunkInfo thunk_info,
       std::vector<KernelArgument> kernel_arguments,
-      const LaunchDimensions& launch_dimensions, uint32_t shared_mem_bytes);
+      const LaunchDimensions& launch_dimensions);
 
   StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunk(
       mlir::Operation* op, mlir::ValueRange operands,
-      const LaunchDimensions& launch_dimensions, uint32_t shared_mem_bytes = 0);
+      const LaunchDimensions& launch_dimensions);
 
   StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunk(
-      mlir::Operation* op, const LaunchDimensions& launch_dimensions,
-      uint32_t shared_mem_bytes = 0);
+      mlir::Operation* op, const LaunchDimensions& launch_dimensions);
 
   // Returns a thunk that, given a reduce or select-and-scatter op,
   // initializes its memory to the appropriate initial value.

@@ -1610,8 +1610,7 @@ Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(
       std::vector<llvm_ir::IrArray> ir_arrays,
       BuildKernelThunkImpl(kernel_name, GetThunkInfo(op),
-                           std::move(kernel_arguments), launch_dimensions,
-                           /*shared_mem_bytes=*/0));
+                           std::move(kernel_arguments), launch_dimensions));
 
   // Move function body into kernel prototype.
   llvm::Function* prototype_func = b_.GetInsertBlock()->getParent();
@@ -2938,7 +2937,7 @@ Status IrEmitterUnnested::EmitOutfeed(mlir::Operation* op) {
 StatusOr<std::vector<llvm_ir::IrArray>> IrEmitterUnnested::BuildKernelThunkImpl(
     absl::string_view name, Thunk::ThunkInfo thunk_info,
     std::vector<KernelArgument> kernel_arguments,
-    const LaunchDimensions& launch_dimensions, uint32_t shared_mem_bytes) {
+    const LaunchDimensions& launch_dimensions) {
   std::vector<llvm_ir::IrArray> ir_arrays;
 
   // Temporarily reorder the values/slices to match the way we supply buffer
@@ -3111,7 +3110,7 @@ StatusOr<std::vector<llvm_ir::IrArray>> IrEmitterUnnested::BuildKernelThunkImpl(
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
       thunk_info, buffers_ordered, std::string(kernel->getName()),
-      launch_dimensions, std::move(values_needed), shared_mem_bytes));
+      launch_dimensions, std::move(values_needed)));
   return ir_arrays;
 }
 
@@ -3131,7 +3130,7 @@ IrEmitterUnnested::ValueToKernelArgument(mlir::Value operand, int order,
 
 StatusOr<std::vector<llvm_ir::IrArray>> IrEmitterUnnested::BuildKernelThunk(
     mlir::Operation* op, mlir::ValueRange operands,
-    const LaunchDimensions& launch_dimensions, uint32_t shared_mem_bytes) {
+    const LaunchDimensions& launch_dimensions) {
   TF_RET_CHECK(!mlir::isa<mlir::lmhlo::FusionOp>(op));
 
   std::vector<KernelArgument> kernel_arguments(operands.size());
@@ -3143,12 +3142,11 @@ StatusOr<std::vector<llvm_ir::IrArray>> IrEmitterUnnested::BuildKernelThunk(
   std::string name = GetIrNameFromLoc(op->getLoc());
   auto thunk_info = GetThunkInfo(op);
   return BuildKernelThunkImpl(name, thunk_info, std::move(kernel_arguments),
-                              launch_dimensions, shared_mem_bytes);
+                              launch_dimensions);
 }
 
 StatusOr<std::vector<llvm_ir::IrArray>> IrEmitterUnnested::BuildKernelThunk(
-    mlir::Operation* op, const LaunchDimensions& launch_dimensions,
-    uint32_t shared_mem_bytes) {
+    mlir::Operation* op, const LaunchDimensions& launch_dimensions) {
   if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
     llvm::SmallVector<mlir::Value> operands = GetHloOperands(op);
     llvm::SmallVector<mlir::Value> outputs = GetHloOutputs(op);
@@ -3165,10 +3163,9 @@ StatusOr<std::vector<llvm_ir::IrArray>> IrEmitterUnnested::BuildKernelThunk(
 
     std::string name = GetIrNameFromLoc(op->getLoc());
     return BuildKernelThunkImpl(name, GetThunkInfo(op), kernel_arguments,
-                                launch_dimensions, shared_mem_bytes);
+                                launch_dimensions);
   }
-  return BuildKernelThunk(op, op->getOperands(), launch_dimensions,
-                          shared_mem_bytes);
+  return BuildKernelThunk(op, op->getOperands(), launch_dimensions);
 }
 
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildConstantInitializerThunk(
