@@ -321,10 +321,10 @@ void PrintMismatch(int64_t* mismatches, const ErrorGenerator& err_generator) {
 }  // namespace
 
 template <PrimitiveType T, size_t N>
-void ExhaustiveOpTestBase<T, N>::ExpectNear(const InputLiterals& input_literals,
-                                            const Literal& result_literal,
-                                            EvaluateOp evaluate_op,
-                                            ErrorSpecGen error_spec_gen) {
+void ExhaustiveOpTestBase<T, N>::ExpectNear(
+    const InputLiterals& input_literals, const Literal& result_literal,
+    EvaluateOp evaluate_op, ErrorSpecGen error_spec_gen,
+    OutputRangeCheck check_valid_range) {
   // Cache for when all components are subnormal testing values.
   std::vector<NativeRefT> pure_subnormal_cache;
   // Since we take the cross product of all possible test values, and each
@@ -363,6 +363,16 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(const InputLiterals& input_literals,
     NativeT expected =
         static_cast<NativeT>(CallOperation(evaluate_op, inputs_ref_ty));
     ErrorSpec error_spec = CallErrorSpec(error_spec_gen, inputs);
+
+    if (check_valid_range != nullptr && !check_valid_range(actual)) {
+      PrintMismatch(&mismatches, [&] {
+        return absl::StrFormat(
+            "mismatch on input: %s. output: %s, output is not in valid range",
+            StringifyNum<NativeT, ComponentIntegralNativeT, N>(inputs),
+            StringifyNum<NativeT, ComponentIntegralNativeT>(actual));
+      });
+      continue;
+    }
 
     if (IsClose(static_cast<NativeRefT>(expected),
                 static_cast<NativeRefT>(actual), error_spec)) {

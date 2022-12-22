@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <cmath>
 #include <limits>
+#include <random>
+#include <tuple>
 
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/exhaustive/exhaustive_op_test_utils.h"
@@ -174,8 +176,23 @@ class Exhaustive32BitOrLessUnaryTest
     : public ExhaustiveUnaryTest<T>,
       public ::testing::WithParamInterface<std::pair<int64_t, int64_t>> {
  public:
+  static constexpr size_t kRandomInputSize = 2048;
+
+ public:
+  Exhaustive32BitOrLessUnaryTest()
+      : input_lower_bounder_(0),
+        input_upper_bounder_(0),
+        special_input_bounder_(false) {}
+
+ public:
   // Sets error parameters appropriately for testing tan.
   void SetParamsForTan();
+
+  void SetBounder(const float lower_bounder, const float upper_bounder) {
+    input_lower_bounder_ = lower_bounder;
+    input_upper_bounder_ = upper_bounder;
+    special_input_bounder_ = true;
+  }
 
  protected:
   using typename ExhaustiveUnaryTest<T>::NativeT;
@@ -183,7 +200,11 @@ class Exhaustive32BitOrLessUnaryTest
  private:
   int64_t GetInputSize() override {
     int64_t begin, end;
-    std::tie(begin, end) = GetParam();
+    if (special_input_bounder_) {
+      return kRandomInputSize;
+    } else {
+      std::tie(begin, end) = GetParam();
+    }
     VLOG(2) << "Checking range [" << begin << ", " << end << ")";
     return end - begin;
   }
@@ -195,11 +216,21 @@ class Exhaustive32BitOrLessUnaryTest
   // the same bit as the type being tested, if needed, and then bitcasted to the
   // type being tested.
   void FillInput(std::array<Literal, 1>* input_literal) override {
+    int64 begin, end;
+    if (special_input_bounder_) {
+      begin = input_lower_bounder_;
+      end = input_upper_bounder_;
+      FillRandomInput(input_literal, begin, end);
+    } else {
+      std::tie(begin, end) = GetParam();
+      FillNormalInput(input_literal, begin, end);
+    }
+  }
+  void FillNormalInput(std::array<Literal, 1>* input_literal, const int64 begin,
+                       const int64 end) {
     using IntegralT =
         typename ExhaustiveOpTestBase<T, 1>::ComponentIntegralNativeT;
     int64_t input_size = (*input_literal)[0].element_count();
-    int64_t begin, end;
-    std::tie(begin, end) = GetParam();
     VLOG(2) << "Checking range [" << begin << ", " << end << ")";
     CHECK_EQ(input_size, end - begin);
 
@@ -210,6 +241,24 @@ class Exhaustive32BitOrLessUnaryTest
           this->ConvertAndReplaceKnownIncorrectValueWith(input_val, 0);
     }
   }
+
+  void FillRandomInput(std::array<Literal, 1>* input_literal, const int64 begin,
+                       const int64 end) {
+    absl::Span<NativeT> input_arr = (*input_literal)[0].data<NativeT>();
+
+    uint32_t size = kRandomInputSize;
+    NativeT inputs[kRandomInputSize];
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<> dist(begin, end);
+    for (uint32_t i = 0; i < size; ++i) {
+      inputs[i] = NativeT(dist(gen));
+      input_arr[i] = inputs[i];
+    }
+  }
+  float input_lower_bounder_;
+  float input_upper_bounder_;
+  bool special_input_bounder_;
 };
 
 using ExhaustiveF32UnaryTest = Exhaustive32BitOrLessUnaryTest<F32>;
@@ -335,6 +384,7 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Expm1, {
 // pow(x, 0.5), but this is not true for x == -inf.
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(PowOneHalf, {
   EvaluateOp fn = +[](float x) { return std::pow(x, 0.5f); };
+
   Run([](XlaOp x) { return Pow(x, ScalarLike(x, 0.5)); }, fn);
 })
 
@@ -450,7 +500,21 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Sinh, {
   Run(Sinh, host_sinh);
 })
 
-UNARY_TEST_FLOAT_32_BITS_OR_LESS(Tanh, {
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(TanhBounderTest, {
+  SetBounder(8, 9);
+  ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
+  if (platform_ == "CUDA") {
+    error_spec_gen = +[](NativeT x) {
+      return x <= static_cast<NativeT>(-20.0) || x >= static_cast<NativeT>(20.0)
+                 ? ErrorSpec{0, 0}
+                 : GetDefaultSpecGenerator()(x);
+    };
+  }
+  Run(Tanh, std::tanh, error_spec_gen,
+      [](NativeT actual) { return actual >= -1 && actual <= 1; });
+})
+
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(TanhNormalTest, {
   ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
   if (platform_ == "CUDA") {
     error_spec_gen = +[](NativeT x) {
