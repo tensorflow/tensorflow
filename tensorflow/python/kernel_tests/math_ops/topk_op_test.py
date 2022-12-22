@@ -55,8 +55,8 @@ class TopKTest(test.TestCase):
         # Do some special casing of equality of indices: if indices
         # are not the same, but values are floating type, ensure that
         # the values are within epsilon of each other.
-        if not np.issubdtype(np_expected_values.dtype, np.floating) and \
-            np_expected_values.dtype != dtypes.bfloat16.as_numpy_dtype:
+        if (not np.issubdtype(np_expected_values.dtype, np.floating) and
+            np_expected_values.dtype != dtypes.bfloat16.as_numpy_dtype):
           # Values are not floating point type; check indices exactly
           self.assertAllEqual(np_expected_indices, indices)
         else:
