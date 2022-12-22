@@ -2313,6 +2313,13 @@ bool NNAPIDelegateKernel::Validate(
       } else {
         ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
       }
+      const int input0_rank =
+          context->tensors[node->inputs->data[0]].dims->size;
+      const int input1_rank =
+          context->tensors[node->inputs->data[1]].dims->size;
+      Expect(input0_rank <= 4 && input1_rank <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "Input rank must be <= 4", &val_ctx);
     } break;
     case kTfLiteBuiltinArgMax:
     case kTfLiteBuiltinArgMin: {
@@ -2372,6 +2379,13 @@ bool NNAPIDelegateKernel::Validate(
       } else {
         ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
       }
+      const int input0_rank =
+          context->tensors[node->inputs->data[0]].dims->size;
+      const int input1_rank =
+          context->tensors[node->inputs->data[1]].dims->size;
+      Expect(input0_rank <= 4 && input1_rank <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "Input rank must be <= 4", &val_ctx);
     } break;
     case kTfLiteBuiltinAveragePool2d: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
@@ -2804,6 +2818,13 @@ bool NNAPIDelegateKernel::Validate(
       Expect(context->tensors[node->inputs->data[0]].type == kTfLiteFloat32,
              NNAPIValidationFailureType::kUnsupportedInputType,
              "NNAPI only support float div.", &val_ctx);
+      const int input0_rank =
+          context->tensors[node->inputs->data[0]].dims->size;
+      const int input1_rank =
+          context->tensors[node->inputs->data[1]].dims->size;
+      Expect(input0_rank <= 4 && input1_rank <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "Input rank must be <= 4", &val_ctx);
     } break;
     case kTfLiteBuiltinPad:
     case kTfLiteBuiltinPadv2: {
