@@ -133,7 +133,7 @@ func.func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<3x4xf32> {
 // -----
 
 func.func @reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
-  // expected-error@+1 {{replica groups should be a rank 2 tensor of 64 bit integers}}
+  // expected-error@+1 {{replica groups should be a rank 2 tensor}}
   %0 = "mhlo.reduce_scatter"(%data) ({
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
@@ -340,7 +340,7 @@ func.func @allgather_incompatible_types(%arg0: tensor<128x32xf32>) -> tensor<128
 // -----
 
 func.func @allgather_gather_along_zero_dimension(%arg0: tensor<128x0x32xf32>) -> tensor<128x100xf32> {
-  // expected-error@+1 {{operand gather dimension cannot be zero}}
+  // expected-error@+1 {{dimension size of operand at 'all_gather_dim' cannot be zero}}
   %0 = "mhlo.all_gather"(%arg0) {
     all_gather_dim = 1 : i64,
     channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
@@ -360,6 +360,128 @@ func.func @allgather_dynamic_gather_dim(%arg0: tensor<128x32xf32>) -> tensor<128
     use_global_device_ids
   } : (tensor<128x32xf32>) -> tensor<128x?xf32>
   func.return %0 : tensor<128x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @allgather_dynamic_non_gather_dim
+func.func @allgather_dynamic_non_gather_dim(%arg0: tensor<128x32xf32>) -> tensor<?x64xf32> {
+  %0 = "mhlo.all_gather"(%arg0) {
+    all_gather_dim = 1 : i64,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
+    use_global_device_ids
+  } : (tensor<128x32xf32>) -> tensor<?x64xf32>
+  func.return %0 : tensor<?x64xf32>
+}
+
+// -----
+
+func.func @all_gather_invalid_dim(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
+  // expected-error@+1 {{all_gather_dim must be a valid index of operand}}
+  %0 = "mhlo.all_gather"(%arg0) {
+    all_gather_dim = 2 : i64,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  } : (tensor<8x2xf32>) -> tensor<8x8xf32>
+  func.return %0 : tensor<8x8xf32>
+}
+
+// -----
+
+func.func @all_gather_invalid_dim(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
+  // expected-error@+1 {{all_gather_dim cannot be negative}}
+  %0 = "mhlo.all_gather"(%arg0) {
+    all_gather_dim = -1 : i64,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  } : (tensor<8x2xf32>) -> tensor<8x8xf32>
+  func.return %0 : tensor<8x8xf32>
+}
+
+// -----
+
+func.func @all_gather_invalid_result_shape(%arg0: tensor<8x2x32xf32>) -> tensor<8x8xf32> {
+  // expected-error@+1 {{operand and return must have the same rank}}
+  %0 = "mhlo.all_gather"(%arg0) {
+    all_gather_dim = 1 : i64,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  } : (tensor<8x2x32xf32>) -> tensor<8x8xf32>
+  func.return %0 : tensor<8x8xf32>
+}
+
+// -----
+
+func.func @all_gather_invalid_result_shape(%arg0: tensor<8x2xf32>) -> tensor<4x8xf32> {
+  // expected-error@+1 {{operand and result should have the same shape except for the dimension size at 'all_gather_dim'}}
+  %0 = "mhlo.all_gather"(%arg0) {
+    all_gather_dim = 1 : i64,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  } : (tensor<8x2xf32>) -> tensor<4x8xf32>
+  func.return %0 : tensor<4x8xf32>
+}
+
+// -----
+
+func.func @all_gather_invalid_replica_group_shape(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
+  // expected-error@+1 {{replica groups should be a rank 2 tensor}}
+  %0 = "mhlo.all_gather"(%arg0) {
+    all_gather_dim = 1 : i64,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
+    replica_groups = dense<[[[0], [1], [2], [3]]]> : tensor<1x4x1xi64>
+  } : (tensor<8x2xf32>) -> tensor<8x8xf32>
+  func.return %0 : tensor<8x8xf32>
+}
+
+// -----
+
+func.func @all_gather_invalid_replica_group_shape(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
+  // expected-error@+1 {{replica groups cannot be empty}}
+  %0 = "mhlo.all_gather"(%arg0) {
+    all_gather_dim = 1 : i64,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
+    replica_groups = dense<0> : tensor<0x2xi64>,
+    use_global_device_ids
+  } : (tensor<8x2xf32>) -> tensor<8x8xf32>
+  func.return %0 : tensor<8x8xf32>
+}
+
+// -----
+
+func.func @all_gather_invalid_replica_group(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
+  // expected-error@+1 {{replica id #1 not seen in replica groups}}
+  %0 = "mhlo.all_gather"(%arg0) {
+    all_gather_dim = 1 : i64,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
+    replica_groups = dense<[[-5, -4, -3, 0]]> : tensor<1x4xi64>
+  } : (tensor<8x2xf32>) -> tensor<8x8xf32>
+  func.return %0 : tensor<8x8xf32>
+}
+
+// -----
+
+func.func @all_gather_invalid_replica_group(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
+  // expected-error@+1 {{replica id #2 seen more than once}}
+  %0 = "mhlo.all_gather"(%arg0) {
+    all_gather_dim = 1 : i64,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 2]]> : tensor<2x4xi64>
+  } : (tensor<8x2xf32>) -> tensor<8x8xf32>
+  func.return %0 : tensor<8x8xf32>
+}
+
+// -----
+
+func.func @all_gather_invalid_replica_group(%arg0: tensor<8x2xf32>) -> tensor<8x8xf32> {
+  // expected-error@+1 {{replica id #4 not seen in replica groups}}
+  %0 = "mhlo.all_gather"(%arg0) {
+    all_gather_dim = 1 : i64,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
+    replica_groups = dense<[[0, 2, 6, 8], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  } : (tensor<8x2xf32>) -> tensor<8x8xf32>
+  func.return %0 : tensor<8x8xf32>
 }
 
 // -----

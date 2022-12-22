@@ -373,7 +373,10 @@ void CollectivePermuteOp::build(OpBuilder& odsBuilder, OperationState& odsState,
 //===----------------------------------------------------------------------===//
 
 LogicalResult ReduceScatterOp::verify() {
-  if (failed(mlir::hlo::verifyReplicaGroups(*this, /*isUniformSized=*/true)))
+  if (failed(hlo::verifyReplicaGroups(getLoc(), getReplicaGroups(),
+                                      /*allGroupsMustHaveSameSize=*/true,
+                                      getUseGlobalDeviceIds(),
+                                      /*expectedGroupSize=*/std::nullopt)))
     return failure();
   auto operandType = getOperand().getType().cast<TensorType>();
   bool operandTypeRanked = operandType.isa<RankedTensorType>();
@@ -2945,25 +2948,55 @@ void AllToAllOp::build(OpBuilder& odsBuilder, OperationState& odsState,
 //===----------------------------------------------------------------------===//
 
 LogicalResult AllGatherOp::verify() {
-  // If operand and result are both ranked, then the size of the gather
-  // dimension in the result should be a multiple of the size of the gather
-  // dimension in the operand.
+  if (failed(hlo::verifyReplicaGroups(getLoc(), getReplicaGroups(),
+                                      /*allGroupsMustHaveSameSize=*/true,
+                                      getUseGlobalDeviceIds(),
+                                      /*expectedGroupSize=*/std::nullopt)))
+    return failure();
+
   auto operandType = getOperand().getType().dyn_cast<RankedTensorType>();
   auto resultType = getType().dyn_cast<RankedTensorType>();
-  uint64_t allGatherDimIndex = getAllGatherDim();
-  if (!operandType || !resultType ||
-      operandType.isDynamicDim(allGatherDimIndex) ||
-      resultType.isDynamicDim(allGatherDimIndex))
-    return success();
-  if (operandType.getDimSize(allGatherDimIndex) == 0)
-    return emitOpError() << "operand gather dimension cannot be zero.";
-  if ((resultType.getDimSize(allGatherDimIndex) %
-       operandType.getDimSize(allGatherDimIndex)) != 0)
-    return emitOpError()
-           << "result gather dimension has size "
-           << resultType.getDimSize(allGatherDimIndex)
-           << ", expected to be a multiple of operand gather dimension size "
-           << operandType.getDimSize(allGatherDimIndex);
+  int64_t allGatherDimIndex = getAllGatherDim();
+
+  if (allGatherDimIndex < 0)
+    return emitOpError() << "all_gather_dim cannot be negative";
+
+  if (operandType) {
+    if (allGatherDimIndex >= operandType.getRank())
+      return emitOpError() << "all_gather_dim must be a valid index of operand";
+
+    if (operandType.getDimSize(allGatherDimIndex) == 0)
+      return emitOpError()
+             << "dimension size of operand at 'all_gather_dim' cannot be zero";
+  }
+
+  if (operandType && resultType) {
+    if (resultType.getRank() != operandType.getRank())
+      return emitOpError() << "operand and return must have the same rank";
+
+    for (int64_t i = 0; i < operandType.getRank(); i++) {
+      if (i == allGatherDimIndex || operandType.isDynamicDim(i) ||
+          resultType.isDynamicDim(i))
+        continue;
+
+      if (resultType.getDimSize(i) != operandType.getDimSize(i))
+        return emitOpError() << "operand and result should have the same shape "
+                                "except for the "
+                                "dimension size at 'all_gather_dim'";
+    }
+
+    if (operandType.isDynamicDim(allGatherDimIndex) ||
+        resultType.isDynamicDim(allGatherDimIndex))
+      return success();
+
+    if ((resultType.getDimSize(allGatherDimIndex) %
+         operandType.getDimSize(allGatherDimIndex)) != 0)
+      return emitOpError()
+             << "result gather dimension has size "
+             << resultType.getDimSize(allGatherDimIndex)
+             << ", expected to be a multiple of operand gather dimension size "
+             << operandType.getDimSize(allGatherDimIndex);
+  }
 
   return success();
 }

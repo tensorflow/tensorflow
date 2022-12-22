@@ -21,6 +21,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <optional>
 #include <unordered_set>
 
 #include "lhlo/utils/lhlo_utils.h"
@@ -120,13 +121,19 @@ LogicalResult AbsOp::verify() {
 // TODO(jurahul): Add verification for output shape.
 LogicalResult AllGatherOp::verify() {
   AllGatherOp op = *this;
-  return mlir::hlo::verifyReplicaGroups(op, /*isUniformSized=*/true);
+  return mlir::hlo::verifyReplicaGroups(op.getLoc(), op.getReplicaGroups(),
+                                        /*allGroupsMustHaveSameSize=*/true,
+                                        op.getUseGlobalDeviceIds(),
+                                        /*expectedGroupSize=*/std::nullopt);
 }
 
 // TODO(jurahul): Add verification for output shape.
 LogicalResult AllToAllOp::verify() {
   AllToAllOp op = *this;
-  return mlir::hlo::verifyReplicaGroups(op, /*isUniformSized=*/true);
+  return mlir::hlo::verifyReplicaGroups(op.getLoc(), op.getReplicaGroups(),
+                                        /*allGroupsMustHaveSameSize=*/true,
+                                        /*useGlobalDeviceIds=*/false,
+                                        /*expectedGroupSize=*/std::nullopt);
 }
 
 //===----------------------------------------------------------------------===//
@@ -144,7 +151,10 @@ LogicalResult AllReduceOp::verify() {
 
 LogicalResult ReduceScatterOp::verify() {
   ReduceScatterOp op = *this;
-  if (failed(mlir::hlo::verifyReplicaGroups(op, /*isUniformSized=*/true)))
+  if (failed(hlo::verifyReplicaGroups(op.getLoc(), op.getReplicaGroups(),
+                                      /*allGroupsMustHaveSameSize=*/true,
+                                      op.getUseGlobalDeviceIds(),
+                                      /*expectedGroupSize=*/std::nullopt)))
     return failure();
   if (failed(mlir::hlo::verifyReduceScatter(
           op, /*operandTypes=*/op.getInputs().getTypes(),

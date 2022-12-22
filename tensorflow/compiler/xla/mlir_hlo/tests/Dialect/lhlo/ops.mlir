@@ -78,7 +78,7 @@ func.func @invalid_alltoall(%input0: memref<2xf32>, %output: memref<8xf32>) {
 // -----
 
 func.func @invalid_alltoall(%input0: memref<2xf32>, %output: memref<8xf32>) {
-  // expected-error@+1 {{replica groups should be a rank 2 tensor of 64 bit integers}}
+  // expected-error@+1 {{replica groups should be a rank 2 tensor}}
   "lmhlo.all_to_all"(%input0, %output)
     {channel_id = #mhlo.channel_handle<handle = 1, type = 0>, constrain_layout = false,
      replica_groups = dense<0> : tensor<1xi64>,
