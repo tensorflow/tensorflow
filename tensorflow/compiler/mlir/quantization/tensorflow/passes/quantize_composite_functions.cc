@@ -911,127 +911,153 @@ class QuantizeConstPattern
   OpSet target_opset_;
 };
 
-// Get the representative name attribute value of a composite function.
-FailureOr<StringRef> GetRepresentativeName(const SymbolTable& symbol_table,
-                                           StringRef func_name) {
-  std::string quantized_func_name = GetQuantizedFunctionName(func_name);
-
-  func::FuncOp quantized_func =
-      dyn_cast<func::FuncOp>(symbol_table.lookup(quantized_func_name));
-  if (!quantized_func->hasAttrOfType<ArrayAttr>(kQuantizedOpsAttribute)) {
-    quantized_func->emitError()
-        << "Missing " << kQuantizedOpsAttribute
-        << " attribute in the quantized composite function.";
-    return failure();
-  }
-
-  auto quantized_ops =
-      quantized_func->getAttrOfType<ArrayAttr>(kQuantizedOpsAttribute)
-          .getValue();
-  if (quantized_ops.empty()) {
-    quantized_func->emitError() << "At least one op is expected in the "
-                                << kQuantizedOpsAttribute << " attribute.";
-    return failure();
-  }
-
-  // Use the first op as the representative name.
-  return quantized_ops.front().cast<StringAttr>().getValue();
-}
-
 // Prints a summary about the quantization results.
-void PrintQuantizationSummary(ModuleOp module) {
-  llvm::StringMap<int32_t> quantized_func_count;
-  llvm::StringMap<int32_t> composite_func_count;
-  int32_t total_quantized_func_count = 0, float_output_func_count = 0,
-          quantize_func_count = 0, dequantize_func_count = 0;
+class QuantizationSummary {
+ public:
+  explicit QuantizationSummary(ModuleOp module)
+      : module_(module), symbol_table_(module) {}
 
-  SymbolTable symbol_table(module);
-  module.walk([&](Operation* op) {
-    if (auto call_op = llvm::dyn_cast_or_null<TF::PartitionedCallOp>(op)) {
-      const auto f_attr = call_op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
-      if (!f_attr) return;
-      StringRef func_name = f_attr.getValue();
+  void Print() {
+    llvm::StringMap<OpCountItem> func_count_map;
+    int32_t total_quantized_func_count = 0, float_output_func_count = 0,
+            quantize_func_count = 0, dequantize_func_count = 0;
 
-      if (func_name.startswith(kQuantizedFuncPrefix)) {
-        auto representative_name =
-            GetRepresentativeName(symbol_table, func_name);
-        if (failed(representative_name)) return;
+    module_.walk([&](Operation* op) {
+      if (auto call_op = llvm::dyn_cast_or_null<TF::PartitionedCallOp>(op)) {
+        const auto f_attr = call_op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
+        if (!f_attr) return;
+        StringRef func_name = f_attr.getValue();
 
-        quantized_func_count[representative_name.value()]++;
-        total_quantized_func_count++;
-        if (func_name.contains(kFloatOutputFuncPrefix)) {
-          float_output_func_count++;
+        if (func_name.startswith(kQuantizedFuncPrefix)) {
+          auto representative_name = GetRepresentativeName(func_name);
+          if (failed(representative_name)) return;
+
+          func_count_map[representative_name.value()].num_quant++;
+          total_quantized_func_count++;
+          if (func_name.contains(kFloatOutputFuncPrefix)) {
+            float_output_func_count++;
+          }
+        } else if (func_name.startswith(kCompositeFuncPrefix)) {
+          auto representative_name = GetRepresentativeName(func_name);
+          if (failed(representative_name)) return;
+
+          func_count_map[representative_name.value()].num_float++;
+        } else if (func_name.startswith("quantize_i")) {
+          quantize_func_count++;
+        } else if (func_name.startswith("dequantize_i")) {
+          dequantize_func_count++;
         }
-      } else if (func_name.startswith(kCompositeFuncPrefix)) {
-        auto representative_name =
-            GetRepresentativeName(symbol_table, func_name);
-        if (failed(representative_name)) return;
-
-        composite_func_count[representative_name.value()]++;
-      } else if (func_name.startswith("quantize_i")) {
-        quantize_func_count++;
-      } else if (func_name.startswith("dequantize_i")) {
-        dequantize_func_count++;
+      } else if (auto einsum = llvm::isa<TF::EinsumOp>(op)) {
+        if (IsInCompsiteFunction(op)) return;
+        // Leftover Einsum ops are always non-quantized.
+        auto op_name = op->getName().stripDialect();
+        func_count_map[op_name].num_float++;
       }
-    }
-  });
+    });
 
-  // Pad string to a certain size to format the table. Space is preferred to
-  // Tab since it is easier to check the format in the mlir tests.
-  auto pad_string = [](StringRef s, int32_t width) -> std::string {
-    return llvm::Twine(s).concat(std::string(width - s.size(), ' ')).str();
+    // Pad string to a certain size to format the table. Space is preferred to
+    // Tab since it is easier to check the format in the mlir tests.
+    auto pad_string = [](StringRef s, int32_t width) -> std::string {
+      return llvm::Twine(s).concat(std::string(width - s.size(), ' ')).str();
+    };
+
+    // Generate a quantization report.
+    size_t name_col_width = 5;
+    absl::c_for_each(func_count_map.keys(), [&name_col_width](const auto& key) {
+      name_col_width = std::max(name_col_width, key.size() + 1);
+    });
+
+    std::vector<std::string> lines;
+    lines.push_back("-------- Quantization Summary --------");
+    lines.push_back("Number of quantized layers in the model");
+    lines.push_back("--------------------------------");
+    lines.push_back(
+        absl::StrFormat("%s Count/Total", pad_string("Name", name_col_width)));
+    lines.push_back("================================");
+    for (StringRef op_name : func_count_map.keys()) {
+      const int32_t quantized_count = func_count_map[op_name].num_quant;
+      const int32_t total_count =
+          quantized_count + func_count_map[op_name].num_float;
+      lines.push_back(absl::StrFormat("%s %d/%d",
+                                      pad_string(op_name, name_col_width),
+                                      quantized_count, total_count));
+    }
+    lines.push_back("");
+    lines.push_back(absl::StrFormat(
+        "Number of quantized layers with quantized outputs: %d/%d",
+        total_quantized_func_count - float_output_func_count,
+        total_quantized_func_count));
+    lines.push_back(absl::StrFormat("Number of quantize layers added: %d",
+                                    quantize_func_count));
+    lines.push_back(absl::StrFormat("Number of dequantize layers added: %d",
+                                    dequantize_func_count));
+    lines.push_back("");
+
+    // Make the report visible by default.
+    const std::string log_message =
+        absl::StrJoin(lines.begin(), lines.end(), /*separator=*/"\n");
+    llvm::errs() << log_message;
+
+    // Create a FuncOp and attach the quantization summary to it. This is a
+    // a hack to check the summary in mlir tests. This function will be
+    // automatically removed since this pass is always followed by the Symbol
+    // DCE pass.
+    OpBuilder builder(module_);
+    builder.setInsertionPointToEnd(&module_.getBodyRegion().back());
+    const auto func_type =
+        builder.getFunctionType(/*inputs=*/{}, /*results=*/{});
+    auto summary_func = builder.create<func::FuncOp>(
+        builder.getUnknownLoc(), /*sym_name=*/"summary", func_type);
+    summary_func.setPrivate();
+    summary_func->setAttr("quantization_summary",
+                          builder.getStringAttr(log_message));
+  }
+
+ private:
+  // Structs used to count quantized and non-quantized ops.
+  struct OpCountItem {
+    int32_t num_quant = 0;
+    int32_t num_float = 0;
   };
 
-  // Generate a quantization report.
-  size_t name_col_width = 5;
-  absl::c_for_each(quantized_func_count.keys(),
-                   [&name_col_width](const auto& key) {
-                     name_col_width = std::max(name_col_width, key.size() + 1);
-                   });
+  // Get the representative name attribute value of a composite function.
+  FailureOr<StringRef> GetRepresentativeName(StringRef func_name) {
+    std::string quantized_func_name = GetQuantizedFunctionName(func_name);
 
-  std::vector<std::string> lines;
-  lines.push_back("-------- Quantization Summary --------");
-  lines.push_back("Number of quantized layers in the model");
-  lines.push_back("--------------------------------");
-  lines.push_back(
-      absl::StrFormat("%s Count/Total", pad_string("Name", name_col_width)));
-  lines.push_back("================================");
-  for (StringRef op_name : quantized_func_count.keys()) {
-    const int32_t quantized_count = quantized_func_count[op_name];
-    const int32_t total_count = quantized_count + composite_func_count[op_name];
-    lines.push_back(absl::StrFormat("%s %d/%d",
-                                    pad_string(op_name, name_col_width),
-                                    quantized_count, total_count));
+    func::FuncOp quantized_func =
+        dyn_cast<func::FuncOp>(symbol_table_.lookup(quantized_func_name));
+    if (!quantized_func->hasAttrOfType<ArrayAttr>(kQuantizedOpsAttribute)) {
+      quantized_func->emitError()
+          << "Missing " << kQuantizedOpsAttribute
+          << " attribute in the quantized composite function.";
+      return failure();
+    }
+
+    auto quantized_ops =
+        quantized_func->getAttrOfType<ArrayAttr>(kQuantizedOpsAttribute)
+            .getValue();
+    if (quantized_ops.empty()) {
+      quantized_func->emitError() << "At least one op is expected in the "
+                                  << kQuantizedOpsAttribute << " attribute.";
+      return failure();
+    }
+
+    // Use the first op as the representative name.
+    return quantized_ops.front().cast<StringAttr>().getValue();
   }
-  lines.push_back("");
-  lines.push_back(absl::StrFormat(
-      "Number of quantized layers with quantized outputs: %d/%d",
-      total_quantized_func_count - float_output_func_count,
-      total_quantized_func_count));
-  lines.push_back(absl::StrFormat("Number of quantize layers added: %d",
-                                  quantize_func_count));
-  lines.push_back(absl::StrFormat("Number of dequantize layers added: %d",
-                                  dequantize_func_count));
-  lines.push_back("");
 
-  // Make the report visible by default.
-  const std::string log_message =
-      absl::StrJoin(lines.begin(), lines.end(), /*separator=*/"\n");
-  llvm::errs() << log_message;
+  bool IsInCompsiteFunction(Operation* op) {
+    func::FuncOp parent = op->getParentOfType<func::FuncOp>();
+    if (!parent) return false;
 
-  // Create a FuncOp and attach the quantization summary to it. This is a
-  // a hack to check the summary in mlir tests. This function will be
-  // automatically removed since this pass is always followed by the Symbol
-  // DCE pass.
-  OpBuilder builder(module);
-  builder.setInsertionPointToEnd(&module.getBodyRegion().back());
-  const auto func_type = builder.getFunctionType(/*inputs=*/{}, /*results=*/{});
-  auto summary_func = builder.create<func::FuncOp>(
-      builder.getUnknownLoc(), /*sym_name=*/"summary", func_type);
-  summary_func.setPrivate();
-  summary_func->setAttr("quantization_summary",
-                        builder.getStringAttr(log_message));
-}
+    StringRef sym_name = parent.getSymName();
+    return sym_name.startswith(kQuantizedFuncPrefix) ||
+           sym_name.startswith(kCompositeFuncPrefix);
+  }
+
+  ModuleOp module_;
+  SymbolTable symbol_table_;
+};
 
 static PassRegistration<QuantizeCompositeFunctionsPass> pass;
 
@@ -1085,7 +1111,7 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
       failed(verify(module))) {
     signalPassFailure();
   }
-  PrintQuantizationSummary(module);
+  QuantizationSummary(module).Print();
 }
 
 }  // namespace
