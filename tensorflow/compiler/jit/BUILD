@@ -1365,7 +1365,7 @@ tf_cc_test(
     deps = [
         ":device_compilation_profiler",
         ":xla_activity_proto_cc",
-        "//tensorflow/compiler/jit/tests:xla_compilation_cache_test_helper",
+        "//tensorflow/compiler/jit/tests:device_compiler_test_helper",
         "//tensorflow/core:protos_all_cc",
         "@com_google_googletest//:gtest_main",
     ],
