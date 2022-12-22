@@ -97,7 +97,10 @@ struct LogicalBufferStruct {
   size_t unpadded_size() const { return ShapeUnpaddedSize(shape); }
 
   // reference counting related
-  int64_t inc() { return ++ref_count; }
+  int64_t inc() {
+    if (cannonical_buffer) return cannonical_buffer->inc();
+    return ++ref_count;
+  }
   int64_t dec() {
     if (cannonical_buffer) return cannonical_buffer->dec();
     return --ref_count;
@@ -107,7 +110,8 @@ struct LogicalBufferStruct {
     return cannonical_buffer->inc();
   }
   LogicalBufferStruct* get_cannonical_buffer() {
-    return cannonical_buffer ? cannonical_buffer : this;
+    return cannonical_buffer ? cannonical_buffer->get_cannonical_buffer()
+                             : this;
   }
 
   // Get the instruction name with shape index for a logical buffer.
