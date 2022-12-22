@@ -631,8 +631,11 @@ class TypeHierarchyTest(test.TestCase):
                                 False, trace_type.from_value(3, type_context)),
     ])
     context_graph = func_graph.FuncGraph("test")
-    self.assertEqual(foo.placeholder_arguments(context_graph).args, (1, 2))
-    self.assertEqual(foo.placeholder_arguments(context_graph).kwargs, {"z": 3})
+    placeholder_context = trace_type.InternalPlaceholderContext(context_graph)
+    self.assertEqual(
+        foo.placeholder_arguments(placeholder_context).args, (1, 2))
+    self.assertEqual(
+        foo.placeholder_arguments(placeholder_context).kwargs, {"z": 3})
 
 
 class CapturesTest(test.TestCase):

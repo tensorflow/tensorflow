@@ -284,9 +284,10 @@ class FunctionType(inspect.Signature):
 
     return FunctionType(subtyped_parameters, subtyped_captures)
 
-  def placeholder_arguments(self, context_graph) -> inspect.BoundArguments:
+  def placeholder_arguments(
+      self, placeholder_context: trace.PlaceholderContext
+  ) -> inspect.BoundArguments:
     """Returns BoundArguments of values that can be used for tracing."""
-    placeholder_context = trace_type.InternalPlaceholderContext(context_graph)
     arguments = collections.OrderedDict()
     for parameter in self.parameters.values():
       if parameter.kind in {Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD}:

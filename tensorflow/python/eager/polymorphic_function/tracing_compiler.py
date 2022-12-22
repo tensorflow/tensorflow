@@ -366,9 +366,12 @@ class TracingCompiler:
             self._create_placeholders = False
             general_func_type = self._function_cache.generalize(
                 current_func_context, lookup_func_type)
+            placeholder_mapping = lookup_func_context.get_placeholder_mapping()
+            placeholder_context = trace_type.InternalPlaceholderContext(
+                func_graph, placeholder_mapping)
             with func_graph.as_default():
               placeholder_bound_args = general_func_type.placeholder_arguments(
-                  func_graph)
+                  placeholder_context)
             if self.function_spec.is_method:
               # TODO(fmuham): canonicalize_function_inputs removes self arg.
               args = placeholder_bound_args.args[1:]
