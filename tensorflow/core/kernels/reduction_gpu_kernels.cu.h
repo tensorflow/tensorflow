@@ -74,6 +74,15 @@ struct Prod {
   }
 };
 
+#if TENSORFLOW_USE_ROCM
+template <typename T, unsigned int rank>
+struct Prod<HIP_vector_type<T,rank> > {
+  __host__ __device__ HIP_vector_type<T,rank> operator()(const HIP_vector_type<T,rank>& a, const HIP_vector_type<T,rank>& b) const {
+    return HIP_vector_type{a} *= b;
+  }
+};
+#endif
+
 template <typename T>
 struct Square {
   __host__ __device__ T operator()(const T& a) const {
