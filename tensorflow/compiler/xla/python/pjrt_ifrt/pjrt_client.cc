@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_array.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_tuple.h"
@@ -31,14 +32,9 @@ namespace ifrt {
 
 char PjRtClient::ID = 0;
 
-std::unique_ptr<ifrt::Client> PjRtClient::Create(
+std::unique_ptr<PjRtClient> PjRtClient::Create(
     std::shared_ptr<xla::PjRtClient> pjrt_client) {
-  return std::unique_ptr<ifrt::Client>(new PjRtClient(std::move(pjrt_client)));
-}
-
-std::unique_ptr<ifrt::Client> PjRtClient::Create(
-    std::unique_ptr<xla::PjRtClient> pjrt_client) {
-  return Create(std::shared_ptr<xla::PjRtClient>(pjrt_client.release()));
+  return absl::WrapUnique(new PjRtClient(std::move(pjrt_client)));
 }
 
 StatusOr<tsl::RCReference<PjRtCompatibleArray>> PjRtClient::CreatePjRtArray(

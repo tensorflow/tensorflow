@@ -56,10 +56,8 @@ class PjRtCompatibleClient
 class PjRtClient final
     : public llvm::RTTIExtends<PjRtClient, PjRtCompatibleClient> {
  public:
-  static std::unique_ptr<ifrt::Client> Create(
+  static std::unique_ptr<PjRtClient> Create(
       std::shared_ptr<xla::PjRtClient> pjrt_client);
-  static std::unique_ptr<ifrt::Client> Create(
-      std::unique_ptr<xla::PjRtClient> pjrt_client);
 
   // PjRtCompatibleClient implementation.
 
