@@ -307,9 +307,10 @@ Status PopulateQuantizationSpecs(
   if (toco_flags.has_default_ranges_max()) {
     quant_specs->default_ranges.second = toco_flags.default_ranges_max();
   }
-  if (toco_flags.enable_mlir_dynamic_range_quantizer()) {
-    quant_specs->enable_mlir_dynamic_range_quantizer = true;
-  }
+  quant_specs->enable_mlir_dynamic_range_quantizer =
+      toco_flags.enable_mlir_dynamic_range_quantizer();
+  quant_specs->enable_mlir_variable_quantization =
+      toco_flags.enable_mlir_variable_quantization();
   return OkStatus();
 }
 

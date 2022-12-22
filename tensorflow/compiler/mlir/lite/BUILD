@@ -707,6 +707,7 @@ cc_library(
         "transforms/prepare_quantize.cc",
         "transforms/prepare_quantize_dynamic_range.cc",
         "transforms/quantize.cc",
+        "transforms/quantize_variables.cc",
         "utils/generated_op_quant_spec_getters.inc",
     ],
     hdrs = [
@@ -722,6 +723,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/quantization/lite:tfl_to_std",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
