@@ -47,6 +47,9 @@ Status HloModuleImporter::Import(const xla::HloModule& hlo_module) {
   module->setAttr("mhlo.cross_program_prefetches",
                   ConvertCrossProgramPrefetches(
                       hlo_module.CrossProgramPrefetches(), &builder_));
+  module->setAttr("mhlo.dynamic_parameter_bindings",
+                  ConvertDynamicParameterBindings(
+                      hlo_module.dynamic_parameter_binding(), &builder_));
 
   if (!import_all_computation_)
     // Only import the entry computation, any reachable one will be imported

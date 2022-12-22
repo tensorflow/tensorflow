@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/hlo/ir/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/mlir/utils/error_util.h"
@@ -195,6 +196,20 @@ static std::vector<xla::CrossProgramPrefetch> Convert_cross_program_prefetches(
     cross_program_prefetches.push_back(xla_cpp);
   }
   return cross_program_prefetches;
+}
+
+static xla::DynamicParameterBinding Convert_dynamic_parameter_bindings(
+    mlir::ArrayAttr dpbs) {
+  xla::DynamicParameterBinding xla_dpb;
+  for (auto dpb : dpbs) {
+    auto binding = dpb.cast<mlir::mhlo::DynamicParameterBindingAttr>();
+    auto _ = xla_dpb.Bind({binding.getDynamicParamNum(),
+                           xla::ShapeIndex(binding.getDynamicParamIndices())},
+                          {binding.getTargetParamNum(),
+                           xla::ShapeIndex(binding.getTargetParamIndices()),
+                           binding.getTargetParamDimNum()});
+  }
+  return xla_dpb;
 }
 
 // Converts StringRef to xla FftType enum
@@ -3046,6 +3061,13 @@ xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
          Convert_cross_program_prefetches(cross_program_prefetches)) {
       *hlo_module.add_cross_program_prefetches() = std::move(prefetch);
     }
+  }
+  if (auto dynamic_parameter_bindings = module->getAttrOfType<mlir::ArrayAttr>(
+          "mhlo.dynamic_parameter_bindings")) {
+    auto bindings =
+        Convert_dynamic_parameter_bindings(dynamic_parameter_bindings)
+            .ToProto();
+    *hlo_module.mutable_dynamic_parameter_binding() = bindings;
   }
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
   return ::tsl::OkStatus();
