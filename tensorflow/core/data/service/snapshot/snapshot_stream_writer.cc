@@ -36,23 +36,12 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
-namespace {
 
-constexpr int64_t kDefaultMaxChunkSizeBytes = 10 * (size_t{1} << 30);  // 10GB
-
-}  // namespace
+constexpr int64_t SnapshotWriterParams::kDefaultMaxChunkSizeBytes;
 
 SnapshotStreamWriter::SnapshotStreamWriter(
-    std::unique_ptr<TaskIterator> iterator, const std::string& snapshot_path,
-    int64_t stream_id, const std::string& compression, Env* env,
-    std::optional<int64_t> max_chunk_size_bytes)
-    : env_(env),
-      snapshot_path_(snapshot_path),
-      stream_id_(stream_id),
-      compression_(compression),
-      max_chunk_size_bytes_(max_chunk_size_bytes.has_value()
-                                ? *max_chunk_size_bytes
-                                : kDefaultMaxChunkSizeBytes),
+    const SnapshotWriterParams& params, std::unique_ptr<TaskIterator> iterator)
+    : params_(params),
       iterator_(std::move(iterator)),
       snapshot_thread_(RunSnapshotThread()) {}
 
@@ -70,7 +59,7 @@ std::unique_ptr<Thread> SnapshotStreamWriter::RunSnapshotThread() {
       status_ = std::move(status);
     }
   };
-  return absl::WrapUnique(env_->StartThread(
+  return absl::WrapUnique(params_.env->StartThread(
       /*thread_options=*/{}, /*name=*/"tf_data_service_snapshot_thread",
       std::move(snapshot_fn)));
 }
@@ -84,8 +73,8 @@ Status SnapshotStreamWriter::WriteSnapshotFn() {
 }
 
 Status SnapshotStreamWriter::CreateChunksDirectory() {
-  return env_->RecursivelyCreateDir(
-      UncommittedChunksDirectory(snapshot_path_, stream_id_));
+  return params_.env->RecursivelyCreateDir(
+      UncommittedChunksDirectory(params_.snapshot_path, params_.stream_id));
 }
 
 bool SnapshotStreamWriter::ShouldWriteChunk() const TF_LOCKS_EXCLUDED(mu_) {
@@ -95,8 +84,8 @@ bool SnapshotStreamWriter::ShouldWriteChunk() const TF_LOCKS_EXCLUDED(mu_) {
 
 Status SnapshotStreamWriter::WriteChunk() {
   std::string chunk_file_path = GetChunkFilePath();
-  snapshot_util::TFRecordWriter writer(chunk_file_path, compression_);
-  TF_RETURN_IF_ERROR(writer.Initialize(env_));
+  snapshot_util::TFRecordWriter writer(chunk_file_path, params_.compression);
+  TF_RETURN_IF_ERROR(writer.Initialize(params_.env));
   auto cleanup = gtl::MakeCleanup([&writer] { writer.Close().IgnoreError(); });
 
   while (ShouldWriteRecord()) {
@@ -109,7 +98,7 @@ std::string SnapshotStreamWriter::GetChunkFilePath() const
     TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   return tsl::io::JoinPath(
-      UncommittedChunksDirectory(snapshot_path_, stream_id_),
+      UncommittedChunksDirectory(params_.snapshot_path, params_.stream_id),
       absl::StrCat("chunk_", chunk_index_));
 }
 
@@ -118,9 +107,9 @@ Status SnapshotStreamWriter::CommitChunk(const std::string& chunk_file_path)
   // TODO(b/258691666): Write checkpoints.
   std::string chunk_basename(tsl::io::Basename(chunk_file_path));
   std::string committed_chunk_filename = tsl::io::JoinPath(
-      CommittedChunksDirectory(snapshot_path_), chunk_basename);
+      CommittedChunksDirectory(params_.snapshot_path), chunk_basename);
   TF_RETURN_IF_ERROR(
-      env_->RenameFile(chunk_file_path, committed_chunk_filename));
+      params_.env->RenameFile(chunk_file_path, committed_chunk_filename));
   mutex_lock l(mu_);
   ++chunk_index_;
   chunk_size_bytes_ = 0;
@@ -129,8 +118,8 @@ Status SnapshotStreamWriter::CommitChunk(const std::string& chunk_file_path)
 
 bool SnapshotStreamWriter::ShouldWriteRecord() const TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
-  return chunk_size_bytes_ < max_chunk_size_bytes_ && !end_of_sequence_ &&
-         status_.ok();
+  return chunk_size_bytes_ < params_.max_chunk_size_bytes &&
+         !end_of_sequence_ && status_.ok();
 }
 
 Status SnapshotStreamWriter::WriteRecord(snapshot_util::TFRecordWriter& writer)

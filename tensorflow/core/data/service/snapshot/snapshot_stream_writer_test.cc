@@ -111,10 +111,10 @@ TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshot) {
   int64_t range = 10;
   std::string compression = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
-
-  SnapshotStreamWriter snapshot_writer(std::make_unique<RangeIterator>(range),
-                                       snapshot_path, /*stream_id=*/0,
-                                       compression, Env::Default());
+  SnapshotWriterParams writer_params{snapshot_path, /*stream_id=*/0,
+                                     compression, Env::Default()};
+  SnapshotStreamWriter snapshot_writer(writer_params,
+                                       std::make_unique<RangeIterator>(range));
   TF_ASSERT_OK(snapshot_writer.Wait());
 
   // The data is written to the committed chunks directory. The uncommitted
@@ -137,11 +137,11 @@ TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshotChunks) {
   int64_t range = 10;
   std::string compression = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
-
-  SnapshotStreamWriter snapshot_writer(
-      std::make_unique<RangeIterator>(range), snapshot_path,
-      /*stream_id=*/0, compression, Env::Default(),
-      /*max_chunk_size_bytes=*/1);
+  SnapshotWriterParams writer_params{snapshot_path, /*stream_id=*/0,
+                                     compression, Env::Default(),
+                                     /*max_chunk_size_bytes=*/1};
+  SnapshotStreamWriter snapshot_writer(writer_params,
+                                       std::make_unique<RangeIterator>(range));
   TF_ASSERT_OK(snapshot_writer.Wait());
 
   for (int i = 0; i < 10; ++i) {
@@ -163,9 +163,11 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST(SnapshotStreamWriterTest, EmptyDataset) {
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
-  SnapshotStreamWriter snapshot_writer(
-      std::make_unique<RangeIterator>(0), snapshot_path, /*stream_id=*/0,
-      tsl::io::compression::kSnappy, Env::Default());
+  SnapshotWriterParams writer_params{snapshot_path, /*stream_id=*/0,
+                                     tsl::io::compression::kSnappy,
+                                     Env::Default()};
+  SnapshotStreamWriter snapshot_writer(writer_params,
+                                       std::make_unique<RangeIterator>(0));
   TF_ASSERT_OK(snapshot_writer.Wait());
 
   EXPECT_THAT(
@@ -178,10 +180,11 @@ TEST(SnapshotStreamWriterTest, EmptyDataset) {
 TEST(SnapshotStreamWriterTest, Cancel) {
   const int64_t range = 10000;
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
-
-  SnapshotStreamWriter snapshot_writer(
-      std::make_unique<RangeIterator>(range), snapshot_path, /*stream_id=*/0,
-      tsl::io::compression::kSnappy, Env::Default());
+  SnapshotWriterParams writer_params{snapshot_path, /*stream_id=*/0,
+                                     tsl::io::compression::kSnappy,
+                                     Env::Default()};
+  SnapshotStreamWriter snapshot_writer(writer_params,
+                                       std::make_unique<RangeIterator>(range));
   snapshot_writer.Cancel();
   EXPECT_THAT(snapshot_writer.Wait(), StatusIs(error::CANCELLED));
 }

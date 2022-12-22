@@ -33,6 +33,29 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+struct SnapshotWriterParams {
+  // The directory path of the snapshot. See the comment on SnapshotStreamWriter
+  // for how the directory is structured.
+  std::string snapshot_path;
+
+  // The ID of the stream. A stream is one shard of the snapshot processed by a
+  // worker.
+  int64_t stream_id = 0;
+
+  // Compression method as defined in tsl/lib/io/compression.h.
+  std::string compression;
+
+  // The Tensorflow environment.
+  Env* env = nullptr;
+
+  // The maximum number of bytes in each chunk.
+  int64_t max_chunk_size_bytes = kDefaultMaxChunkSizeBytes;
+
+ private:
+  static constexpr int64_t kDefaultMaxChunkSizeBytes =
+      10 * (size_t{1} << 30);  // 10GB
+};
+
 // Responsible for writing one snapshot stream, which is organized as following:
 //
 // - snapshot
@@ -59,11 +82,8 @@ class SnapshotStreamWriter {
   // Creates a SnapshotStreamWriter. Once created, it will start writing the
   // snapshot stream. Users can call `Wait` to wait for it to finish.
   // TODO(b/258691666): Create a new `TaskIterator` that persists splits.
-  // TODO(b/258691666): Create a structure for the input params.
-  explicit SnapshotStreamWriter(
-      std::unique_ptr<TaskIterator> iterator, const std::string& snapshot_path,
-      int64_t stream_id, const std::string& compression, Env* env,
-      std::optional<int64_t> max_chunk_size_bytes = std::nullopt);
+  explicit SnapshotStreamWriter(const SnapshotWriterParams& params,
+                                std::unique_ptr<TaskIterator> iterator);
 
   // Waits for the writer to finish writing the snapshot stream.
   Status Wait();
@@ -109,11 +129,7 @@ class SnapshotStreamWriter {
   // - If the writer is cancelled, returns a Cancelled status.
   Status status() const;
 
-  Env* const env_;
-  const std::string snapshot_path_;
-  const int64_t stream_id_;
-  const std::string compression_;
-  const int64_t max_chunk_size_bytes_;
+  const SnapshotWriterParams params_;
 
   mutable mutex mu_;
   std::unique_ptr<TaskIterator> iterator_ TF_GUARDED_BY(mu_);
