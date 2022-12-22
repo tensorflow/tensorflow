@@ -207,8 +207,6 @@ def MHLO_CrossProgramPrefetch : AttrDef<MHLO_Dialect, "CrossProgramPrefetch"> {
   let assemblyFormat = "`<` struct(params) `>`";
 }
 
-// Note: This is an experimental attribute and shouldn't be relied upon for
-// production.
 def MHLO_TypeExtensions : AttrDef<MHLO_Dialect, "TypeExtensions", [
     DeclareAttrInterfaceMethods<VerifiableTensorEncoding>,
     DeclareAttrInterfaceMethods<HLO_BoundedAttrInterface>]> {
