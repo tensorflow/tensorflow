@@ -106,6 +106,12 @@ xla::PjRtClient::HostBufferSemantics ConvertFromPjRtHostBufferSemantics(
 xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
                                                       const PJRT_Api* c_api);
 
+// Helper function for checking C API argument struct sizes. Returns a non-OK
+// status if the expected and actual sizes aren't equal (i.e. no ABI
+// compatibility guarantees).
+xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
+                                     size_t expected_size, size_t actual_size);
+
 }  // namespace pjrt
 
 #endif  // TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_HELPERS_H_

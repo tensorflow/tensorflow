@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -81,7 +82,11 @@ xla::Status LoadPjrtPlugin(absl::string_view device_type,
   }
   LOG(INFO) << "GetPjrtApi was found for " << device_type << " at "
             << library_path;
-  TF_RETURN_IF_ERROR(stream_executor::tpu::SetPjrtApi(device_type, fptr()));
+
+  const PJRT_Api* pjrt_api = fptr();
+  TF_RETURN_IF_ERROR(pjrt::CheckMatchingStructSizes(
+      "PJRT_Api", PJRT_Api_STRUCT_SIZE, pjrt_api->struct_size));
+  TF_RETURN_IF_ERROR(stream_executor::tpu::SetPjrtApi(device_type, pjrt_api));
   return tsl::OkStatus();
 }
 

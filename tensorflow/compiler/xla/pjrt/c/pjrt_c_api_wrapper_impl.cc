@@ -47,22 +47,6 @@ limitations under the License.
 
 namespace pjrt {
 
-xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
-                                     size_t expected_size, size_t actual_size) {
-  if (expected_size != actual_size) {
-    return tsl::errors::InvalidArgument(
-        StructSizeErrorMsg(struct_name, expected_size, actual_size));
-  }
-  return tsl::OkStatus();
-}
-
-std::string StructSizeErrorMsg(absl::string_view struct_name,
-                               size_t expected_size, size_t actual_size) {
-  return absl::StrCat("Unexpected ", struct_name, " size: expected ",
-                      expected_size, ", got ", actual_size,
-                      ". Check installed software versions.");
-}
-
 std::string ProgramFormatErrorMsg(absl::string_view program_format) {
   return absl::StrCat("Unknown program format '", program_format, "'.");
 }

@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
 

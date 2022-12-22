@@ -190,16 +190,6 @@ PJRT_Error* PJRT_Buffer_UnsafePointer(PJRT_Buffer_UnsafePointer_Args* args);
 #define _PJRT_CONCAT(x, y) _PJRT_CONCAT_IMPL(x, y)
 #define _PJRT_CONCAT_IMPL(x, y) x##y
 
-// Helper function for checking C API argument struct sizes. Returns a non-OK
-// status if the expected and actual sizes aren't equal (i.e. no ABI
-// compatibility guarantees).
-xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
-                                     size_t expected_size, size_t actual_size);
-
-// Helper function
-std::string StructSizeErrorMsg(absl::string_view struct_name,
-                               size_t expected_size, size_t actual_size);
-
 // Returns a specific error message when the program format is unknown.
 // Does not check the program format itself.
 std::string ProgramFormatErrorMsg(absl::string_view program_format);
