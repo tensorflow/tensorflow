@@ -1283,10 +1283,8 @@ CustomCallAttrEncodingSet DefaultAttrEncodings() {
            SymbolRefAttrEncoding, UnitAttrEncoding>();
 
   encodings.Add<AggregateAttrEncoding<HloTraceAttr, HloTrace>>(
-      encodings, AggregateAttrDef<HloTraceAttr>()
-                     .Add("hlo_op", &HloTraceAttr::getHloOp)
-                     .Add("module", &HloTraceAttr::getModule)
-                     .Add("program_id", &HloTraceAttr::getProgramId));
+      encodings,
+      AggregateAttrDef<HloTraceAttr>().Add("hlo_op", &HloTraceAttr::getHloOp));
 
   return encodings;
 }
