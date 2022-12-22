@@ -26,10 +26,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/device_compilation_profiler.h"
+#include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
-#include "tensorflow/compiler/jit/xla_compilation_cache.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
@@ -69,6 +69,8 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+using XlaDeviceCompiler =
+    DeviceCompiler<xla::LocalExecutable, xla::LocalClient>;
 
 auto* xla_launch_counter = monitoring::Counter<1>::New(
     "/tensorflow/core/xla_launch_counter",
@@ -257,12 +259,12 @@ static Status CompileToLocalExecutable(
     return errors::Internal("No resource manager.");
   }
 
-  XlaCompilationCache* cache;
-  TF_RETURN_IF_ERROR(rm->LookupOrCreate<XlaCompilationCache>(
-      rm->default_container(), "xla_cache", &cache,
-      [&](XlaCompilationCache** cache) {
-        return BuildXlaCompilationCache(ctx->device(), ctx->function_library(),
-                                        platform_info, cache);
+  XlaDeviceCompiler* xla_device_compiler;
+  TF_RETURN_IF_ERROR(rm->LookupOrCreate<XlaDeviceCompiler>(
+      rm->default_container(), "xla_device_compiler", &xla_device_compiler,
+      [&](XlaDeviceCompiler** xla_device_compiler) {
+        return BuildXlaDeviceCompiler(ctx->device(), ctx->function_library(),
+                                      platform_info, xla_device_compiler);
       }));
   DeviceCompilationProfiler* profiler;
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<DeviceCompilationProfiler>(
@@ -271,17 +273,17 @@ static Status CompileToLocalExecutable(
         *profiler = new DeviceCompilationProfiler();
         return OkStatus();
       }));
-  // Hold the reference to the JIT cache and profiler during evaluation. (We
-  // could probably free them sooner because the ResourceMgr will retain
-  // references, but this is more obviously correct.)
-  core::ScopedUnref cache_ref(cache);
+  // Hold the reference to the XLA device compiler and profiler during
+  // evaluation. (We could probably free them sooner because the ResourceMgr
+  // will retain references, but this is more obviously correct.)
+  core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
   core::ScopedUnref profiler_ref(profiler);
 
-  *client = static_cast<xla::LocalClient*>(cache->client());
+  *client = static_cast<xla::LocalClient*>(xla_device_compiler->client());
 
-  XlaCompiler::Options options =
-      GenerateCompilerOptions(*cache, *ctx->function_library(), ctx->device(),
-                              GetStream(ctx), platform_info, has_ref_vars);
+  XlaCompiler::Options options = GenerateCompilerOptions(
+      *xla_device_compiler, *ctx->function_library(), ctx->device(),
+      GetStream(ctx), platform_info, has_ref_vars);
 
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = true;
@@ -291,9 +293,9 @@ static Status CompileToLocalExecutable(
   compile_options.alias_resource_update =
       !has_ref_vars && may_alias_resource_update;
 
-  return cache->CompileIfNeeded(options, function, args, compile_options,
-                                compile_mode, profiler, compilation_result,
-                                executable);
+  return xla_device_compiler->CompileIfNeeded(
+      options, function, args, compile_options, compile_mode, profiler,
+      compilation_result, executable);
 }
 
 // Get-or-create thread pool for a given collective.

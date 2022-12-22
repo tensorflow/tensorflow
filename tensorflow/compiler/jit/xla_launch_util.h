@@ -21,7 +21,6 @@ limitations under the License.
 #include <map>
 #include <set>
 
-#include "tensorflow/compiler/jit/xla_compilation_cache.h"
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
