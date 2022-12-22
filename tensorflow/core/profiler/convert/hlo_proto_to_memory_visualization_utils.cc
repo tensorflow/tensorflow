@@ -614,10 +614,10 @@ Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
 }
 
 // The stats when processing buffer allocations and logical buffers.
-struct BufferStats {
-  BufferStats(const HloProtoBufferWrapper& wrapper,
-              const HeapSimulatorStats& simulator_stats,
-              int64_t small_buffer_size)
+struct PeakUsageSnapshot {
+  PeakUsageSnapshot(const HloProtoBufferWrapper& wrapper,
+                    const HeapSimulatorStats& simulator_stats,
+                    int64_t small_buffer_size)
       : wrapper(wrapper),
         simulator_stats(simulator_stats),
         small_buffer_size(small_buffer_size) {}
@@ -664,31 +664,33 @@ struct BufferStats {
   const int64_t small_buffer_size;
 };
 
-void ProcessIndefiniteLifetimeBuffers(const HeapSimulatorStats& simulator_stats,
-                                      int64_t memory_color,
-                                      BufferStats* buffer_stats) {
+void CreatePeakUsageSnapshot(const HeapSimulatorStats& simulator_stats,
+                             int64_t memory_color,
+                             PeakUsageSnapshot* peak_snapshot) {
+  // Add indefinite (global) buffers to peak usage snapshot.
   absl::flat_hash_set<const BufferAllocationProto*> seen_buffer_allocations =
       simulator_stats.seen_buffer_allocations;
   for (const auto* logical_buffer :
        simulator_stats.LogicalBuffersWithIndefiniteLifetime(memory_color)) {
     const auto& buffer_allocation = logical_buffer->buffer_allocation;
     if (seen_buffer_allocations.insert(&buffer_allocation).second) {
-      buffer_stats->indefinite_memory_usage_bytes += buffer_allocation.size();
-      buffer_stats->AddHeapObject(*logical_buffer);
-      if (buffer_allocation.size() < buffer_stats->small_buffer_size) {
+      peak_snapshot->indefinite_memory_usage_bytes += buffer_allocation.size();
+      peak_snapshot->AddHeapObject(*logical_buffer);
+      if (buffer_allocation.size() < peak_snapshot->small_buffer_size) {
         VLOG(1) << "Indefinite memory usage now: "
-                << buffer_stats->indefinite_memory_usage_bytes << " bytes (+"
+                << peak_snapshot->indefinite_memory_usage_bytes << " bytes (+"
                 << buffer_allocation.size() << " bytes)";
       }
     }
   }
 
-  buffer_stats->FinalizeBufferUsage();
+  // Add temporary buffers (traced by heap simulator) to peak usage snapshot.
+  peak_snapshot->FinalizeBufferUsage();
 }
 
 void GeneratePreprocessResult(const HloProtoBufferWrapper& wrapper,
                               const HeapSimulatorStats& simulator_stats,
-                              const BufferStats& buffer_stats,
+                              const PeakUsageSnapshot& peak_snapshot,
                               PreprocessResult* result) {
   // Module info.
   result->set_module_name(wrapper.GetHloProto().hlo_module().name());
@@ -697,8 +699,8 @@ void GeneratePreprocessResult(const HloProtoBufferWrapper& wrapper,
 
   // Build HeapObjects and index.
   std::vector<const HeapObject*> max_heap_by_size;
-  max_heap_by_size.reserve(buffer_stats.max_heap_objects.size());
-  for (const auto& object : buffer_stats.max_heap_objects) {
+  max_heap_by_size.reserve(peak_snapshot.max_heap_objects.size());
+  for (const auto& object : peak_snapshot.max_heap_objects) {
     max_heap_by_size.push_back(&object);
   }
   std::sort(max_heap_by_size.begin(), max_heap_by_size.end(),
@@ -709,7 +711,7 @@ void GeneratePreprocessResult(const HloProtoBufferWrapper& wrapper,
 
   std::vector<int> max_heap_to_by_size;
   max_heap_to_by_size.reserve(max_heap_by_size.size());
-  for (const auto& object : buffer_stats.max_heap_objects) {
+  for (const auto& object : peak_snapshot.max_heap_objects) {
     auto it =
         std::find(max_heap_by_size.begin(), max_heap_by_size.end(), &object);
     int index = std::distance(max_heap_by_size.begin(), it);
@@ -718,12 +720,12 @@ void GeneratePreprocessResult(const HloProtoBufferWrapper& wrapper,
 
   std::vector<int> by_size_to_max_heap;
   for (const auto* object : max_heap_by_size) {
-    int index = object - &buffer_stats.max_heap_objects[0];
+    int index = object - &peak_snapshot.max_heap_objects[0];
     by_size_to_max_heap.push_back(index);
   }
 
-  *result->mutable_max_heap() = {buffer_stats.max_heap_objects.begin(),
-                                 buffer_stats.max_heap_objects.end()};
+  *result->mutable_max_heap() = {peak_snapshot.max_heap_objects.begin(),
+                                 peak_snapshot.max_heap_objects.end()};
   result->mutable_max_heap_by_size()->Reserve(max_heap_by_size.size());
   for (const HeapObject* o : max_heap_by_size) {
     *result->add_max_heap_by_size() = *o;
@@ -737,7 +739,7 @@ void GeneratePreprocessResult(const HloProtoBufferWrapper& wrapper,
   // reflected by the heap simulation) add it to the peak values and the vectors
   // of heap sizes.
   size_t timeline_size = simulator_stats.heap_size_bytes_timeline.size();
-  double add_mib = BytesToMiB(buffer_stats.indefinite_memory_usage_bytes);
+  double add_mib = BytesToMiB(peak_snapshot.indefinite_memory_usage_bytes);
   result->mutable_heap_sizes()->Reserve(timeline_size);
   result->mutable_unpadded_heap_sizes()->Reserve(timeline_size);
   for (size_t i = 0; i < timeline_size; i++) {
@@ -762,7 +764,7 @@ void GeneratePreprocessResult(const HloProtoBufferWrapper& wrapper,
                        logical_buffer->span->second);
   }
 
-  NoteSpecialAllocations(wrapper, buffer_stats.small_buffer_size, result);
+  NoteSpecialAllocations(wrapper, peak_snapshot.small_buffer_size, result);
 }
 
 }  // namespace
@@ -782,12 +784,11 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
   }
 
   // Process buffers with indefinite lifetime.
-  BufferStats buffer_stats(wrapper, simulator_stats, small_buffer_size);
-  ProcessIndefiniteLifetimeBuffers(simulator_stats, memory_color,
-                                   &buffer_stats);
+  PeakUsageSnapshot peak_snapshot(wrapper, simulator_stats, small_buffer_size);
+  CreatePeakUsageSnapshot(simulator_stats, memory_color, &peak_snapshot);
 
   PreprocessResult result;
-  GeneratePreprocessResult(wrapper, simulator_stats, buffer_stats, &result);
+  GeneratePreprocessResult(wrapper, simulator_stats, peak_snapshot, &result);
   return result;
 }
 
