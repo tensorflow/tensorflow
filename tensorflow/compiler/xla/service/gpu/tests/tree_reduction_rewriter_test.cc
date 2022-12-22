@@ -41,6 +41,10 @@ class TreeReductionRewriterTest : public HloTestBase {
     RunAndFilecheckHloRewrite(
         hlo, gpu::GpuTreeReductionRewriter{se::CudaComputeCapability{8, 1}},
         expected);
+#elif TENSORFLOW_USE_ROCM
+    RunAndFilecheckHloRewrite(
+        hlo, gpu::GpuTreeReductionRewriter{se::RocmComputeCapability{"908"}},
+        expected);   
 #endif        
   }
 };

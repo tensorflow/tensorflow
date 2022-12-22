@@ -124,6 +124,7 @@ class RocmComputeCapability {
   explicit RocmComputeCapability(const RocmComputeCapabilityProto &proto)
       : gcn_arch_name_(proto.gcn_arch_name()) {}
 
+  RocmComputeCapability() {}
   ~RocmComputeCapability() {}
 
   std::string gcn_arch_name() { return gcn_arch_name_; }

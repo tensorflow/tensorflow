@@ -75,15 +75,14 @@ namespace gpu {
 //
 class GpuTreeReductionRewriter : public HloModulePass {
  public:
-#if GOOGLE_CUDA 
   explicit GpuTreeReductionRewriter(
       se::CudaComputeCapability cuda_compute_capability)
       : cuda_compute_capability_(cuda_compute_capability) {}
-#elif TENSORFLOW_USE_ROCM
+
   explicit GpuTreeReductionRewriter(
       se::RocmComputeCapability rocm_compute_capability)
       : rocm_compute_capability_(rocm_compute_capability) {}
-#endif
+
   ~GpuTreeReductionRewriter() override = default;
   absl::string_view name() const override {
     return "gpu-tree-reduction-rewriter";
@@ -95,11 +94,8 @@ class GpuTreeReductionRewriter : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-#if GOOGLE_CUDA 
   se::CudaComputeCapability cuda_compute_capability_;
-#elif TENSORFLOW_USE_ROCM
   se::RocmComputeCapability rocm_compute_capability_;
-#endif
 };
 
 }  // end namespace gpu
