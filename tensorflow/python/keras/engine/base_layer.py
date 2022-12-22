@@ -1049,6 +1049,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           self._set_mask_metadata(inputs, outputs, input_masks, not eager)
         if self._saved_model_inputs_spec is None:
           self._set_save_spec(inputs)
+        outputs = self._set_connectivity_metadata((inputs,) + args, kwargs,
+                                                  outputs)
 
         return outputs
 
