@@ -166,7 +166,9 @@ def from_value(value: Any,
       return default_types.Tuple(*(from_value(c, context) for c in value))
 
   if isinstance(value, collections.abc.Mapping):
-    return default_types.Dict({k: from_value(value[k], context) for k in value})
+    mapping_type = type(value)
+    return default_types.Dict(
+        {k: from_value(value[k], context) for k in value}, mapping_type)
 
   if util.is_attrs(value):
     return default_types.Attrs.from_type_and_attributes(
