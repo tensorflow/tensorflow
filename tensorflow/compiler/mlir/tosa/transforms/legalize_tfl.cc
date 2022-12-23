@@ -1452,6 +1452,18 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
     conv2d_output = a1_conv2d_op.getResult();
   }
 
+  auto fused_activation_fn = tfl_conv_op.getFusedActivationFunctionAttr();
+
+  if (fused_activation_fn) {
+    llvm::Optional<Value> fused_activation_val = convertFusedActivation(
+        rewriter, op, conv2d_output, fused_activation_fn);
+
+    if (!fused_activation_val) return failure();
+
+    rewriter.replaceOp(op, {fused_activation_val.value()});
+    return success();
+  }
+
   rewriter.replaceOp(op, {conv2d_output});
 
   return success();
@@ -3608,6 +3620,12 @@ LogicalResult ConvertTFLArgMaxOp::matchAndRewrite(
     return failure();
 
   int32_t dim = dim_elems.getValues<APInt>()[0].getSExtValue();
+
+  if (dim < 0) {
+    auto input_type = cast<RankedTensorType>(arg_max_op.getInput().getType());
+    dim += input_type.getRank();
+  }
+
   CreateReplaceOpAndInfer<tosa::ArgMaxOp>(
       rewriter, op, arg_max_op.getType(), arg_max_op.getInput(),
       rewriter.getIntegerAttr(rewriter.getI64Type(), dim));

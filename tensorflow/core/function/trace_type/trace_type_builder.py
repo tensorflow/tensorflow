@@ -15,7 +15,7 @@
 """Utitiles for Cache Key generation based on Function Trace Type."""
 
 import collections.abc
-from typing import Any, Callable, Hashable
+from typing import Any, Callable, Hashable, Optional, Dict
 import weakref
 
 from tensorflow.core.function.trace_type import default_types
@@ -61,6 +61,7 @@ class InternalTracingContext(trace.TracingContext):
   def __init__(self, is_legacy_signature: bool = False):
     self._deletion_observer = WeakrefDeletionObserver()
     self._global_to_local_id = {}
+    self._alias_id_to_placeholder = {}
     self._is_legacy_signature = is_legacy_signature
 
   def alias_global_id(self, global_id: Hashable) -> Hashable:
@@ -68,6 +69,12 @@ class InternalTracingContext(trace.TracingContext):
       self._global_to_local_id[global_id] = len(self._global_to_local_id)
 
     return self._global_to_local_id[global_id]
+
+  def add_placeholder(self, alias_id: Hashable, variable) -> None:
+    self._alias_id_to_placeholder[alias_id] = variable
+
+  def get_placeholder_mapping(self) -> Dict[Hashable, Any]:
+    return self._alias_id_to_placeholder
 
   @property
   def deletion_observer(self) -> WeakrefDeletionObserver:
@@ -82,6 +89,41 @@ class InternalTracingContext(trace.TracingContext):
     ConcreteFunction.structured_input_signature.
     """
     return self._is_legacy_signature
+
+
+class InternalPlaceholderContext(trace.PlaceholderContext):
+  """Container with mappings shared across TraceTypes for placeholder values."""
+
+  def __init__(self, context_graph=None, placeholder_mapping=None):
+    self._alias_id_to_placeholder = placeholder_mapping or {}
+    self._naming_scope = None
+    self._context_graph = context_graph
+
+  def has_placeholder(self, alias_id: Hashable) -> bool:
+    return alias_id in self._alias_id_to_placeholder
+
+  def get_placeholder(self, alias_id: Hashable) -> Hashable:
+    if not self.has_placeholder(alias_id):
+      raise KeyError(f"alias_id: {alias_id} not found in this instance of "
+                     "placeholder context.")
+    return self._alias_id_to_placeholder[alias_id]
+
+  def add_placeholder(self, alias_id: Hashable, placeholder: Hashable) -> None:
+    if alias_id in self._alias_id_to_placeholder:
+      raise KeyError(f"alias id: {alias_id} is already stored in this "
+                     "instance of placeholder context.")
+    self._alias_id_to_placeholder[alias_id] = placeholder
+
+  def update_naming_scope(self, naming_scope: Optional[str]) -> None:
+    self._naming_scope = naming_scope
+
+  @property
+  def naming_scope(self) -> Optional[str]:
+    return self._naming_scope
+
+  @property
+  def context_graph(self):
+    return self._context_graph
 
 
 def from_value(value: Any,

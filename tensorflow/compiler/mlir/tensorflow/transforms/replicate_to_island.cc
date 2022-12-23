@@ -39,6 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/split_into_island_per_op_pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
@@ -55,6 +57,9 @@ constexpr char kTPUCore0[] = "TPU_REPLICATED_CORE_0";
 
 struct ReplicateToIslandPass
     : public impl::ReplicateToIslandPassBase<ReplicateToIslandPass> {
+  explicit ReplicateToIslandPass(bool legacy_graph_export) {
+    legacy_graph_export_ = legacy_graph_export;
+  }
   void runOnOperation() override;
 };
 
@@ -68,8 +73,8 @@ bool RequiresReplicaIDAttribute(Operation* op) {
 // Collects TPU device ordinal for outside compilation communication ops. This
 // currently assumes outside compilation only uses `TPU_REPLICATED_CORE_0`
 // aliased device for the device computation.
-llvm::Optional<int64_t> GetDeviceOrdinal(
-    const llvm::Optional<DictionaryAttr>& devices, Location loc,
+std::optional<int64_t> GetDeviceOrdinal(
+    const std::optional<DictionaryAttr>& devices, Location loc,
     unsigned replica_id) {
   int64_t device_ordinal = 0;
   if (devices.has_value()) {
@@ -79,7 +84,7 @@ llvm::Optional<int64_t> GetDeviceOrdinal(
                                        .getValue();
       if (succeeded(tensorflow::GetDeviceOrdinalFromDeviceString(
               loc, tpu_device, &device_ordinal))) {
-        return llvm::Optional<int64_t>(device_ordinal);
+        return std::optional<int64_t>(device_ordinal);
       }
     }
   }
@@ -94,8 +99,8 @@ llvm::Optional<int64_t> GetDeviceOrdinal(
 // represents replica id.
 LogicalResult UpdateRegionReplicateVariantOps(
     OpBuilder& builder, Location loc, Region& region, int replica_id,
-    const llvm::Optional<DictionaryAttr>& devices) {
-  llvm::Optional<int64_t> device_ordinal =
+    const std::optional<DictionaryAttr>& devices) {
+  std::optional<int64_t> device_ordinal =
       GetDeviceOrdinal(devices, loc, replica_id);
 
   auto result = region.walk([&](Operation* op) -> WalkResult {
@@ -238,7 +243,8 @@ LogicalResult ExpandReplicateIntoReplicas(
 LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
                                          tf_executor::GraphOp graph_op,
                                          tf_executor::IslandOp island_op,
-                                         tf_device::ReplicateOp replicate_op) {
+                                         tf_device::ReplicateOp replicate_op,
+                                         bool legacy_graph_export) {
   OpBuilder builder(island_op);
   const int num_replicas = replicate_op.getN();
 
@@ -280,21 +286,33 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
     island_op.getControl().replaceAllUsesWith(island_sink.getControl());
   }
 
-  // Replicas with no uses should be pinned to a graph fetch so they still
-  // execute.
-  llvm::SmallVector<Value, 8> unused_replica_controls;
-  for (auto& replica : replicas)
-    if (replica.use_empty())
-      unused_replica_controls.push_back(replica.getControl());
+  if (legacy_graph_export) {
+    // Replicas with no uses should be pinned to a graph fetch so they still
+    // execute.
+    llvm::SmallVector<Value, 8> unused_replica_controls;
+    for (auto& replica : replicas)
+      if (replica.use_empty())
+        unused_replica_controls.push_back(replica.getControl());
 
-  if (!unused_replica_controls.empty()) {
-    tf_executor::FetchOp fetch = graph_op.GetFetch();
-    auto fetches = llvm::to_vector<8>(fetch.getOperands());
-    fetches.append(unused_replica_controls.begin(),
-                   unused_replica_controls.end());
-    builder.setInsertionPoint(fetch);
-    builder.create<tf_executor::FetchOp>(fetch.getLoc(), fetches);
-    fetch.erase();
+    if (!unused_replica_controls.empty()) {
+      tf_executor::FetchOp fetch = graph_op.GetFetch();
+      auto fetches = llvm::to_vector<8>(fetch.getOperands());
+      fetches.append(unused_replica_controls.begin(),
+                     unused_replica_controls.end());
+      builder.setInsertionPoint(fetch);
+      builder.create<tf_executor::FetchOp>(fetch.getLoc(), fetches);
+      fetch.erase();
+    }
+  } else {
+    // Now, finally, we need to maintain the invariant expected to be maintained
+    // throughout the graph export pipeline that all islands always perfectly
+    // wrap a single op. So we'll split all replica islands.
+    auto control_type = tf_executor::ControlType::get(island_op.getContext());
+    for (auto& replica : replicas) {
+      if (replica.GetBody().getOperations().size() > 1) {
+        mlir::TF::SplitIsland(replica, control_type);
+      }
+    }
   }
 
   island_op.erase();
@@ -325,14 +343,15 @@ void ReplicateToIslandPass::runOnOperation() {
     auto replicate_op =
         cast<tf_device::ReplicateOp>(island_op.GetBody().front());
     if (failed(CreateIslandsFromReplicate(tf_dialect, graph_op, island_op,
-                                          replicate_op)))
+                                          replicate_op, legacy_graph_export_)))
       return signalPassFailure();
   }
 }
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateReplicateToIslandPass() {
-  return std::make_unique<ReplicateToIslandPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateReplicateToIslandPass(
+    bool legacy_graph_export) {
+  return std::make_unique<ReplicateToIslandPass>(legacy_graph_export);
 }
 
 }  // namespace TFDevice

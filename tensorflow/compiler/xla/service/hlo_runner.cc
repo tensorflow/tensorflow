@@ -21,9 +21,9 @@ limitations under the License.
 #include <utility>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module_group.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"

@@ -576,7 +576,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     self._name = name
     self._key_for_call_stats = self._get_key_for_call_stats()
     self._omit_frequent_tracing_warning = False
-    ops._tf_function_api_guage.get_cell().set(True)  # pylint: disable=protected-access
+    ops._tf_function_api_gauge.get_cell().set(True)  # pylint: disable=protected-access
 
   @property
   def name(self):

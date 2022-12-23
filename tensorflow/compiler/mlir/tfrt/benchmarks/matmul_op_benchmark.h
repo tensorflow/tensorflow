@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
 #include "tensorflow/compiler/mlir/tfrt/utils/host_context.h"
 
@@ -54,7 +55,9 @@ using ::xla::runtime::MemrefDesc;
 
 template <typename T>
 void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
-                            llvm::StringRef mlir_input,
+                            // output_name is actually used on debug mode.
+                            // NOLINTNEXTLINE
+                            std::string output_name, llvm::StringRef mlir_input,
                             llvm::StringRef function_name) {
   // MatMul: [m, k] x [k, n]
   ssize_t m = state.range(0);
@@ -64,9 +67,13 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
   std::unique_ptr<HostContext> host = CreateSingleThreadedHostContext();
 
   TfJitRtPipelineOptions tf_jitrt_opts;
-  tf_jitrt_opts.vectorize = true;
+  tf_jitrt_opts.vectorize = tensorflow::GetJitRtFlags().vectorize;
+  tf_jitrt_opts.lower_to_mmt4d = tensorflow::GetJitRtFlags().pack_matmul;
+  tf_jitrt_opts.enable_xla_cpu_transformations =
+      tensorflow::GetJitRtFlags().enable_xla_cpu_transformations;
   tf_jitrt_opts.matmul_tile_sizes = {state.range(3), state.range(4),
                                      state.range(5)};
+
   JitExecutable& jit_executable =
       CreateJitExecutable(*host, mlir_input, function_name,
                           /*lower_from_tensorflow=*/true, tf_jitrt_opts);
@@ -109,6 +116,19 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
   absl::StatusOr<AsyncValuePtr<Executable>> executable =
       jit_executable.GetExecutable(operands);
   if (!executable.ok()) LOG(FATAL) << "Failed to specialize executable";
+
+#if defined(DEBUG_XLA_RUNTIME_COMPILER)
+  std::string dump_path = "/tmp/";
+  std::unique_ptr<llvm::MemoryBuffer> obj = (*executable)->obj_file();
+  CHECK(obj) << "Failed to get executable obj file";
+  std::string object_filename = output_name;
+  if (tf_jitrt_opts.lower_to_mmt4d) object_filename += "_packed";
+  object_filename += ".o";
+  std::error_code ec;
+  llvm::raw_fd_ostream dump_stream(dump_path + object_filename, ec);
+  CHECK(!ec) << "Failed to dump object file: " << ec.message();
+  dump_stream.write(obj->getBufferStart(), obj->getBufferSize());
+#endif
 
   // Wait for the compilation completion.
   host->Await({executable->CopyRef()});
@@ -186,7 +206,7 @@ void RunMatMulEigenBenchmark(::testing::benchmark::State& state) {
                   OUT_SHAPE, OUT_DYN_DIMS, FN, TYPE)                          \
   static void BM_mlir_##NAME##_##TYPE(::testing::benchmark::State& state) {   \
     RunMatMulMlirBenchmark<TYPE>(                                             \
-        state,                                                                \
+        state, #NAME,                                                         \
         GetMatmulIR({LHS_SHAPE}, {LHS_DYN_DIMS}, {RHS_SHAPE}, {RHS_DYN_DIMS}, \
                     {OUT_SHAPE}, {OUT_DYN_DIMS}, #TYPE),                      \
         FN);                                                                  \

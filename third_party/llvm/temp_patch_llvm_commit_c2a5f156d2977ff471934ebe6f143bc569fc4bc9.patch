@@ -1,0 +1,151 @@
+diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+index 23a8e42a2eb4..890e3d4bac84 100644
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -380,6 +380,7 @@ cc_library(
+     ]),
+     deps = [
+         ":Support",
++        ":TargetParser",
+     ],
+ )
+ 
+@@ -1062,6 +1063,34 @@ cc_library(
+     ],
+ )
+ 
++cc_library(
++    name = "TargetParser",
++    srcs = glob([
++        "lib/TargetParser/*.cpp",
++        "lib/TargetParser/*.h",
++    ]) + select({
++        "@bazel_tools//src/conditions:windows": glob([
++            "lib/TargetParser/Windows/*.h",
++            "lib/TargetParser/Windows/*.inc",
++        ]),
++        "//conditions:default": glob([
++            "lib/TargetParser/Unix/*.h",
++            "lib/TargetParser/Unix/*.inc",
++        ]),
++    }),
++    hdrs = glob([
++        "include/llvm/TargetParser/*.h",
++    ]),
++    textual_hdrs = glob([
++        "include/llvm/TargetParser/*.def",
++    ]),
++    includes = ["include"],
++    copts = llvm_copts,
++    deps = [
++        ":Support",
++    ],
++)
++
+ cc_library(
+     name = "DWP",
+     srcs = glob([
+@@ -2602,6 +2631,7 @@ cc_library(
+     deps = [
+         ":Option",
+         ":Support",
++        ":TargetParser",
+     ],
+ )
+ 
+@@ -3051,6 +3081,7 @@ cc_binary(
+         ":Demangle",
+         ":Option",
+         ":Support",
++        ":TargetParser",
+     ],
+ )
+ 
+diff --git a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+index d5148f26ce0a..ecd2400d0b35 100644
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -3494,7 +3494,10 @@ cc_library(
+     ]),
+     hdrs = glob(["include/mlir/Support/*.h"]),
+     includes = ["include"],
+-    deps = ["//llvm:Support"],
++    deps = [
++        "//llvm:Support",
++        "//llvm:TargetParser",
++    ],
+ )
+ 
+ cc_library(
+@@ -3512,6 +3515,7 @@ cc_library(
+     deps = [
+         ":Support",
+         "//llvm:Support",
++        "//llvm:TargetParser",
+     ],
+ )
+ 
+@@ -3587,6 +3591,7 @@ cc_library(
+         ":IR",
+         ":Support",
+         "//llvm:Support",
++        "//llvm:TargetParser",
+     ],
+ )
+ 
+@@ -7263,6 +7268,7 @@ cc_library(
+         ":Support",
+         "//llvm:Support",
+         "//llvm:TableGen",
++        "//llvm:TargetParser",
+     ],
+ )
+ 
+@@ -7275,6 +7281,7 @@ cc_library(
+         ":TableGen",
+         "//llvm:Support",
+         "//llvm:TableGen",
++        "//llvm:TargetParser",
+         "//llvm:config",
+     ],
+ )
+@@ -7291,6 +7298,7 @@ cc_binary(
+         ":TableGen",
+         "//llvm:Support",
+         "//llvm:TableGen",
++        "//llvm:TargetParser",
+         "//llvm:config",
+     ],
+ )
+@@ -9738,6 +9746,7 @@ cc_library(
+         ":ShapedOpInterfaces",
+         ":ViewLikeInterface",
+         "//llvm:Support",
++        "//llvm:TargetParser",
+     ],
+ )
+ 
+@@ -10371,6 +10380,7 @@ cc_library(
+     deps = [
+         ":Support",
+         "//llvm:Support",
++        "//llvm:TargetParser",
+     ],
+ )
+ 
+@@ -10387,6 +10397,7 @@ cc_library(
+     deps = [
+         ":Support",
+         "//llvm:Support",
++        "//llvm:TargetParser",
+     ],
+ )
+ 
+@@ -10427,6 +10438,7 @@ cc_library(
+         ":Support",
+         ":TableGen",
+         "//llvm:Support",
++        "//llvm:TargetParser",
+         "//llvm:TableGen",
+     ],
+ )

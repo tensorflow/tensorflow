@@ -1049,10 +1049,10 @@ def saturate_cast(value, dtype, name=None):
           value = gen_math_ops._clip_by_value(
               value,
               ops.convert_to_tensor(
-                  np.complex(real_out_dtype.min, real_out_dtype.min),
+                  builtins.complex(real_out_dtype.min, real_out_dtype.min),
                   dtype=in_dtype),
               ops.convert_to_tensor(
-                  np.complex(real_out_dtype.max, real_out_dtype.max),
+                  builtins.complex(real_out_dtype.max, real_out_dtype.max),
                   dtype=in_dtype),
               name="clamp")
         return cast(value, dtype, name=name)
@@ -1067,8 +1067,7 @@ def saturate_cast(value, dtype, name=None):
     if in_dtype.min < out_real_dtype.min or in_dtype.max > out_real_dtype.max:
 
       # Forward-compatibility required for Brella if output is real:
-      if not dtype.is_complex and not tf_compat.forward_compatible(
-          2022, 12, 16):
+      if not dtype.is_complex and not tf_compat.forward_compatible(2023, 1, 16):
         # Old behavior using max/min.
         if in_dtype.min < dtype.min:
           value = gen_math_ops.maximum(
@@ -4072,10 +4071,10 @@ def add_n(inputs, name=None):
 
   See Also:
 
-  * `tf.reduce_sum(inputs, axis=0)` - This performe the same mathematical
+  * `tf.reduce_sum(inputs, axis=0)` - This performs the same mathematical
     operation, but `tf.add_n` may be more efficient because it sums the
     tensors directly. `reduce_sum` on the other hand calls
-    `tf.convert_to_tensor` on the list of tensors, unncessairly stacking them
+    `tf.convert_to_tensor` on the list of tensors, unnecessarily stacking them
     into a single tensor before summing.
 
   Args:

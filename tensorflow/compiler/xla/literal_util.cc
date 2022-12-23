@@ -107,6 +107,11 @@ Literal CreateScalar(PrimitiveType primitive_type, Args... args) {
       return CreateScalarImpl<S32>(F<S32>{}, std::forward<Args>(args)...);
     case S64:
       return CreateScalarImpl<S64>(F<S64>{}, std::forward<Args>(args)...);
+    case F8E5M2:
+      return CreateScalarImpl<F8E5M2>(F<F8E5M2>{}, std::forward<Args>(args)...);
+    case F8E4M3FN:
+      return CreateScalarImpl<F8E4M3FN>(F<F8E4M3FN>{},
+                                        std::forward<Args>(args)...);
     case F16:
       return CreateScalarImpl<F16>(F<F16>{}, std::forward<Args>(args)...);
     case BF16:

@@ -134,8 +134,16 @@ bool AreSplatValuesEqual(Value x, Value y) {
   return splat_x == splat_y;
 }
 
-// TODO(b/241488936): Remove this function after adding a new constant folding
+// Clones an operation with new operands while keeping attributes.
+llvm::SmallVector<Value> CloneOpWithReplacedOperands(
+    OpBuilder &builder, Operation *op,
+    const llvm::SmallVector<Value> &new_operands);
+
+// TODO(b/241488936): Remove these functions after adding a new constant folding
 // pass to TensorFlow.
+// Checks if an Operation is foldable.
+LogicalResult IsOperationFoldable(Operation *op);
+
 // Applies constant folding to the operation if possible and return the folded
 // results.
 llvm::SmallVector<Value> ConstantFoldOpIfPossible(Operation *op);

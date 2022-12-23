@@ -183,6 +183,7 @@ def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/hip")
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/rocprim")
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/rocsolver")
+        inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/rocblas")
     else:
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/hip/include")
 
@@ -571,12 +572,6 @@ def _create_local_rocm_repository(repository_ctx):
             src_dir = rocm_toolkit_path + "/include",
             out_dir = "rocm/include",
             exceptions = ["gtest", "gmock"],
-        ),
-        make_copy_dir_rule(
-            repository_ctx,
-            name = "rocblas-hsaco",
-            src_dir = rocm_toolkit_path + "/rocblas/lib/library",
-            out_dir = "rocm/lib/rocblas/lib/library",
         ),
     ]
 

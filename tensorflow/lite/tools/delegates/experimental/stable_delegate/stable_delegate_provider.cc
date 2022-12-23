@@ -23,11 +23,10 @@ limitations under the License.
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 
 #if !defined(_WIN32)
-#include "flatbuffers/idl.h"  // from @flatbuffers
 #include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h"
 #include "tensorflow/lite/delegates/utils/experimental/stable_delegate/delegate_loader.h"
+#include "tensorflow/lite/delegates/utils/experimental/stable_delegate/tflite_settings_json_parser.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/c/stable_delegate.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_fbs_contents-inl.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #endif  // !defined(_WIN32)
 
@@ -41,29 +40,10 @@ namespace {
 TfLiteDelegatePtr CreateStableDelegate(const std::string& settings_file_path) {
   TfLiteDelegatePtr null_delegate = CreateNullDelegate();
   if (settings_file_path.empty()) {
-    TFLITE_LOG(ERROR) << "Invalid delegate settings path.";
     return null_delegate;
   }
-  std::string json_file;
-  if (!flatbuffers::LoadFile(settings_file_path.c_str(), false, &json_file)) {
-    TFLITE_LOG(ERROR) << "Failed to load the delegate settings file ("
-                      << settings_file_path << ").";
-    return null_delegate;
-  }
-  flatbuffers::Parser parser;
-  if (!parser.Parse(configuration_fbs_contents) ||
-      !parser.SetRootType("TFLiteSettings")) {
-    TFLITE_LOG(ERROR) << "Failed to parse the configuration schema file.";
-    return null_delegate;
-  }
-  if (!parser.Parse(json_file.c_str())) {
-    TFLITE_LOG(ERROR) << "Failed to parse the delegate settings file ("
-                      << settings_file_path << ").";
-    return null_delegate;
-  }
-
-  const TFLiteSettings* tflite_settings =
-      flatbuffers::GetRoot<TFLiteSettings>(parser.builder_.GetBufferPointer());
+  delegates::utils::TfLiteSettingsJsonParser parser;
+  const TFLiteSettings* tflite_settings = parser.Parse(settings_file_path);
   if (!tflite_settings || !tflite_settings->stable_delegate_loader_settings() ||
       !tflite_settings->stable_delegate_loader_settings()->delegate_path()) {
     TFLITE_LOG(ERROR) << "Invalid TFLiteSettings for the stable delegate.";

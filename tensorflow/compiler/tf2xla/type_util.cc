@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -55,6 +57,12 @@ Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type) {
     case tensorflow::DT_UINT64:
       *type = xla::U64;
       return OkStatus();
+    case tensorflow::DT_FLOAT8_E5M2:
+      *type = xla::F8E5M2;
+      return OkStatus();
+    case tensorflow::DT_FLOAT8_E4M3FN:
+      *type = xla::F8E4M3FN;
+      return OkStatus();
     case tensorflow::DT_BFLOAT16:
       *type = xla::BF16;
       return OkStatus();
@@ -84,6 +92,8 @@ StatusOr<DataType> EncodePrimitiveTypeAsDataType(xla::PrimitiveType type) {
   static const absl::flat_hash_map<xla::PrimitiveType, DataType>&
       data_type_map = *new absl::flat_hash_map<xla::PrimitiveType, DataType>({
           {xla::PRED, DT_BOOL},
+          {xla::F8E5M2, DT_FLOAT8_E5M2},
+          {xla::F8E4M3FN, DT_FLOAT8_E4M3FN},
           {xla::BF16, DT_BFLOAT16},
           {xla::F16, DT_HALF},
           {xla::F32, DT_FLOAT},

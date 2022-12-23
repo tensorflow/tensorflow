@@ -742,7 +742,7 @@ TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
 
     // Execute the TensorFlow Ops sequentially.
     for (auto& node_data : op_data_->nodes) {
-      TFLITE_SCOPED_DELEGATE_OPERATOR_PROFILE(
+      TFLITE_SCOPED_DELEGATE_PROFILED_OPERATOR_PROFILE(
           reinterpret_cast<Profiler*>(context->profiler),
           node_data->name().c_str(), node_data->index());
 

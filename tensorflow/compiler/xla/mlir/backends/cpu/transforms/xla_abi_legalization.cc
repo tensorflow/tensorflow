@@ -232,7 +232,7 @@ struct RewriteCustomCalls : OpRewritePattern<mhlo::CustomCallOp> {
           op.setOperand(index, normalized);
         }
       }
-      op.removeOperand_layoutsAttr();
+      op.removeOperandLayoutsAttr();
     }
 
     // Rewrite i1 inputs to ui8.
@@ -256,7 +256,7 @@ struct RewriteCustomCalls : OpRewritePattern<mhlo::CustomCallOp> {
         NormalizeInputInPlace(b, result, layout);
       }
 
-      op.removeResult_layoutsAttr();
+      op.removeResultLayoutsAttr();
     }
 
     return success();

@@ -84,16 +84,13 @@ extern "C" {
 // NOLINTBEGIN(modernize-redundant-void-arg)
 
 // --------------------------------------------------------------------------
-// Opaque types used by the C API.
+// Opaque types used by the C API.  (See also c_api_types.h.)
 
 // TfLiteModel wraps a loaded TensorFlow Lite model.
 typedef struct TfLiteModel TfLiteModel;
 
 // TfLiteInterpreterOptions allows customized interpreter configuration.
 typedef struct TfLiteInterpreterOptions TfLiteInterpreterOptions;
-
-// Allows delegation of nodes to alternative backends.
-typedef struct TfLiteDelegate TfLiteDelegate;
 
 // TfLiteInterpreter provides inference from a provided model.
 typedef struct TfLiteInterpreter TfLiteInterpreter;
@@ -187,19 +184,18 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetNumThreads(
 //
 // NOTE: The caller retains ownership of the delegate and should ensure that it
 // remains valid for the duration of any created interpreter's lifetime.
+//
+// If you are NOT using "TensorFlow Lite in Play Services", and NOT building
+// with `TFLITE_WITH_STABLE_ABI` or `TFLITE_USE_OPAQUE_DELEGATE` macros enabled,
+// it is possible to pass a `TfLiteDelegate*` rather than a
+// `TfLiteOpaqueDelegate*` to this function, since in those cases,
+// `TfLiteOpaqueDelegate` is just a typedef alias for `TfLiteDelegate`.
+// This is for compatibility with existing source code
+// and existing delegates.  For new delegates, it is recommended to
+// use `TfLiteOpaqueDelegate` rather than `TfLiteDelegate`.  (See
+// `TfLiteOpaqueDelegate` in tensorflow/lite/core/c/c_api_types.h.)
 TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsAddDelegate(
-    TfLiteInterpreterOptions* options, TfLiteDelegate* delegate);
-
-// Adds an opaque delegate to be applied during `TfLiteInterpreter` creation.
-//
-// If delegate application fails, interpreter creation will also fail with an
-// associated error logged.
-//
-// NOTE: The caller retains ownership of the delegate and should ensure that it
-// remains valid for the duration of any created interpreter's lifetime.
-TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsAddOpaqueDelegate(
-    TfLiteInterpreterOptions* options,
-    TfLiteOpaqueDelegateStruct* opaque_delegate);
+    TfLiteInterpreterOptions* options, TfLiteOpaqueDelegate* delegate);
 
 // Sets a custom error reporter for interpreter execution.
 //

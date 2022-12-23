@@ -1,9 +1,10 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_binary",
-    "tf_cc_test",
+    "//tensorflow/compiler/xla:xla.bzl",
+    "xla_cc_binary",
+    "xla_cc_test",
+    "xla_py_grpc_library",
 )
 load(
     "//tensorflow/tsl:tsl.bzl",
@@ -13,14 +14,10 @@ load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
-load(
-    "//tensorflow/compiler/xla:xla.bzl",
-    "xla_py_grpc_library",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )
 
@@ -68,7 +65,7 @@ cc_library(
     ),
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "grpc_service_main_cpu",
     deps = [
         ":grpc_service_main_library",
@@ -76,7 +73,7 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "grpc_client_test",
     srcs = ["grpc_client_test.cc"],
     data = [

@@ -331,10 +331,18 @@ cc_library(
     copts = tflite_copts_warnings(),
     deps = [
         ":macros",
+        "//base:addressmap",
+        "//base:examine_stack",
+        "//base:low_level_alloc",
+        "//base:malloc_hook",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/debugging:stacktrace",
+        "@com_google_absl//absl/debugging:symbolize",
+        "@com_google_absl//absl/synchronization",
     ],
     alwayslink = 1,
 )
@@ -807,6 +815,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     defines = select({
         ":tflite_kernel_use_xnnpack_false": [],
+        ":tflite_with_xnnpack_explicit_false": [],
         "//conditions:default": [
             "TFLITE_KERNEL_USE_XNNPACK",
         ],

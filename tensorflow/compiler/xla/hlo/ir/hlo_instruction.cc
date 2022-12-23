@@ -4952,8 +4952,8 @@ const CholeskyOptions& HloInstruction::cholesky_options() const {
 }
 
 const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
-HloInstruction::custom_call_output_operand_aliasing() const {
-  return Cast<HloCustomCallInstruction>(this)->output_to_operand_aliasing();
+HloInstruction::output_operand_aliasing() const {
+  return Cast<HloCallableInstruction>(this)->output_to_operand_aliasing();
 }
 
 }  // namespace xla

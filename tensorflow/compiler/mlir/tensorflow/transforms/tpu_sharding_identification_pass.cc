@@ -70,7 +70,7 @@ std::string CreateMissingAttributeMsg(llvm::StringRef attribute) {
 // `tf_device.cluster_func` operand value. If value is a resource type then
 // TPUPartitionedInput op will be connected to a ReadVariable op that feeds into
 // a `tf_device.cluster_func`.
-llvm::Optional<llvm::StringRef> GetXlaShardingFromOperand(Value value) {
+std::optional<llvm::StringRef> GetXlaShardingFromOperand(Value value) {
   Value value_to_visit = value;
   if (auto read_var = value_to_visit.getDefiningOp<TF::ReadVariableOp>())
     value_to_visit = read_var.getResource();
@@ -142,7 +142,7 @@ LogicalResult VerifyShardings(
 // Assign the logical device if an op has an attribute `TPU_REPLICATED_CORE:n`,
 // the corresponding input sharding arg will be associated with
 // logical device `n`.
-llvm::Optional<llvm::StringRef> AssignLogicalDeviceFromTPUReplicatedCoreAttr(
+std::optional<llvm::StringRef> AssignLogicalDeviceFromTPUReplicatedCoreAttr(
     Operation* op, const llvm::SmallVector<std::string>& logical_device_vec) {
   if (auto device = op->getAttrOfType<StringAttr>("device")) {
     if (!device.getValue().empty() && !device.getValue().str().empty()) {
@@ -168,7 +168,7 @@ llvm::Optional<llvm::StringRef> AssignLogicalDeviceFromTPUReplicatedCoreAttr(
 // Case, While) ops and Caller return values.
 // TODO(hongjunchoi): Consider explicitly checking op patterns to detect sharded
 // inputs.
-llvm::Optional<llvm::StringRef> GetXlaShardingFromArg(
+std::optional<llvm::StringRef> GetXlaShardingFromArg(
     Value value, const llvm::SmallVector<std::string>& logical_device_vec) {
   llvm::SmallPtrSet<Value, 4> visited_values;
   llvm::SmallVector<Value, 4> values_to_visit{value};
@@ -241,7 +241,7 @@ void IdentifyXlaShardingForComputationInputs(
   // Sharding configurations are added to the tf_device.ClusterFunc as an
   // attribute and the function as an argument attribute.
   for (auto operand_and_arg :
-       llvm::zip(cluster_func.operands(), function_block.getArguments())) {
+       llvm::zip(cluster_func.getOperands(), function_block.getArguments())) {
     Value operand = std::get<0>(operand_and_arg);
     BlockArgument arg = std::get<1>(operand_and_arg);
 
@@ -275,7 +275,7 @@ void IdentifyXlaShardingForComputationInputs(
 // Returns XLA sharding from TPUPartitionedOutput or TPUPartitionedInput (via
 // AssignVariableOp/resource write) op connected to a `tf_device.cluster_func`
 // result value.
-llvm::Optional<llvm::StringRef> GetXlaShardingFromResult(Value value) {
+std::optional<llvm::StringRef> GetXlaShardingFromResult(Value value) {
   if (!value.hasOneUse()) return llvm::None;
 
   Operation* user = *value.getUsers().begin();
@@ -305,7 +305,7 @@ void ExtractAliases(func::FuncOp func, llvm::SmallVectorImpl<int>& aliases) {
 }
 
 // Returns XLA sharding from argument connected via tf.aliasing_output.
-llvm::Optional<StringRef> GetXlaShardingFromAlias(
+std::optional<StringRef> GetXlaShardingFromAlias(
     Value value, llvm::SmallVectorImpl<int>& aliases,
     const llvm::SmallVectorImpl<llvm::StringRef>& sharding_for_args) {
   int retval_index = value.cast<OpResult>().getResultNumber();
@@ -327,7 +327,7 @@ llvm::Optional<StringRef> GetXlaShardingFromAlias(
 // Case, While) ops and Caller argument values.
 // TODO(hongjunchoi): Consider explicitly checking op patterns to detect sharded
 // inputs.
-llvm::Optional<StringRef> GetXlaShardingFromRetval(
+std::optional<StringRef> GetXlaShardingFromRetval(
     Value value, const llvm::SmallVector<std::string>& logical_device_vec) {
   llvm::SmallPtrSet<Value, 4> visited_values;
   llvm::SmallVector<Value, 4> values_to_visit;

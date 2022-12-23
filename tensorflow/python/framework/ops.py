@@ -104,7 +104,7 @@ _control_flow_api_gauge = monitoring.BoolGauge(
     "/tensorflow/api/enable_control_flow_v2",
     "Whether enable_control_flow_v2() is called.")
 
-_tf_function_api_guage = monitoring.BoolGauge(
+_tf_function_api_gauge = monitoring.BoolGauge(
     "/tensorflow/api/tf_function",
     "Whether tf.function() is used.")
 
@@ -1551,7 +1551,7 @@ def pack_eager_tensors(tensors, ctx=None):
   if ctx is None:
     ctx = context.context()
 
-  # Propogate handle data for resource variables
+  # Propagate handle data for resource variables
   packed_tensor = ctx.pack_eager_tensors(tensors)
   if handle_data is not None:
     packed_tensor._handle_data = handle_data  # pylint: disable=protected-access
@@ -3671,6 +3671,15 @@ class Graph(object):
     # Need a new-enough consumer to support the functions we add to the graph.
     if self._graph_def_versions.min_consumer < 12:
       self._graph_def_versions.min_consumer = 12
+
+  def _remove_function(self, name):
+    self._check_not_finalized()
+    if not self._is_function(name):
+      raise ValueError(f"Function {name!r} is not found in {self!r}.")
+
+    with self._c_graph.get() as c_graph:
+      pywrap_tf_session.TF_GraphRemoveFunction(c_graph, compat.as_bytes(name))
+      del self._functions[compat.as_str(name)]
 
   @property
   def building_function(self):
@@ -6550,7 +6559,7 @@ class GraphKeys(object):
   # Key to collect local variables that are local to the machine and are not
   # saved/restored.
   LOCAL_VARIABLES = "local_variables"
-  # Key to collect local variables which are used to accumulate interal state
+  # Key to collect local variables which are used to accumulate internal state
   # to be used in tf.metrics.*.
   METRIC_VARIABLES = "metric_variables"
   # Key to collect model variables defined by layers.

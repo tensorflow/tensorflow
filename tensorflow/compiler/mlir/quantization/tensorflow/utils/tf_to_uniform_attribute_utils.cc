@@ -201,8 +201,13 @@ LogicalResult FillAttributesForUniformQuantizedConvolutionOp(
         "opset.");
   }
 
-  if (op->getParentOfType<func::FuncOp>().getName().contains("depthwise_"))
-    feature_group_cnt = input_shape.getDimSize(3);
+  if (op->getParentOfType<func::FuncOp>().getName().contains("depthwise_")) {
+    // TODO(b/240931497): Remove below after prepare_quantize fix for
+    // static range uniform_quantization.
+    if (quantization_method == QuantizationMethod::kDynamicRangeQuantization) {
+      feature_group_cnt = input_shape.getDimSize(3);
+    }
+  }
 
   attrs.push_back(rewriter.getNamedAttr(
       feature_group_cnt_attr, rewriter.getI64IntegerAttr(feature_group_cnt)));

@@ -1,4 +1,4 @@
-// RUN: tf-quant-opt %s -split-input-file -quant-insert-quantized-functions -quant-quantize-composite-functions='target-opset=XLA' -symbol-dce | FileCheck %s
+// RUN: tf-quant-opt %s -split-input-file -quant-insert-quantized-functions -quant-quantize-composite-functions='target-opset=XLA' | FileCheck %s
 
 module {
   func.func @conv_with_single_layer(%arg0: tensor<1x2x2x3xf32>) -> (tensor<*xf32>) {
@@ -33,6 +33,17 @@ module {
 // CHECK-SAME: (%arg0: tensor<1x2x2x3xi8>, %arg1: tensor<2x2x3x2xi8>, %arg2: tensor<2xi32>, %arg3: tensor<f32>, %arg4: tensor<i32>, %arg5: tensor<2xf32>, %arg6: tensor<2xi32>, %arg7: tensor<2xf32>, %arg8: tensor<2xi32>, %arg9: tensor<f32>, %arg10: tensor<i32>) -> tensor<*xf32>
 // CHECK:      %[[CONV2D_0:.*]] = "tf.Conv2D"
 // CHECK-SAME: {dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true}
+
+// CHECK: -------- Quantization Summary --------
+// CHECK: Number of quantized layers in the model
+// CHECK: --------------------------------
+// CHECK: Name    Count/Total
+// CHECK: ================================
+// CHECK: Conv2D  1/1
+
+// CHECK: Number of quantized layers with quantized outputs: 0/1
+// CHECK: Number of quantize layers added: 1
+// CHECK: Number of dequantize layers added: 0
 }
 
 // -----
@@ -70,6 +81,17 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK: %[[conv_quant2:.*]] = "tf.PartitionedCall"(%[[conv_quant]]
 // CHECK-SAME: f = @quantized_conv2d_float_output_fn_0
 // CHECK: return %[[conv_quant2]]
+
+// CHECK: -------- Quantization Summary --------
+// CHECK: Number of quantized layers in the model
+// CHECK: --------------------------------
+// CHECK: Name    Count/Total
+// CHECK: ================================
+// CHECK: Conv2D  2/2
+
+// CHECK: Number of quantized layers with quantized outputs: 1/2
+// CHECK: Number of quantize layers added: 1
+// CHECK: Number of dequantize layers added: 0
 }
 
 // -----
@@ -105,4 +127,15 @@ module {
 // CHECK: %[[dequantize:.*]] = "tf.PartitionedCall"(%[[maxpool]]
 // CHECK-SAME: f = @dequantize_i8
 // CHECK: return %[[dequantize]]
+
+// CHECK: -------- Quantization Summary --------
+// CHECK: Number of quantized layers in the model
+// CHECK: --------------------------------
+// CHECK: Name    Count/Total
+// CHECK: ================================
+// CHECK: Conv2D  1/1
+
+// CHECK: Number of quantized layers with quantized outputs: 1/1
+// CHECK: Number of quantize layers added: 1
+// CHECK: Number of dequantize layers added: 1
 }

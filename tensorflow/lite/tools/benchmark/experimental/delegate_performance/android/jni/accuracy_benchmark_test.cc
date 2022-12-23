@@ -22,8 +22,13 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/lite/delegates/utils/experimental/stable_delegate/tflite_settings_json_parser.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_validation_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
+#include "tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/jni/status_codes.h"
 
 namespace tflite {
 namespace benchmark {
@@ -43,10 +48,10 @@ class AccuracyBenchmarkTest : public ::testing::Test {
         "mobilenet_quant_with_validation.tflite",
         g_tflite_acceleration_embedded_mobilenet_validation_model,
         g_tflite_acceleration_embedded_mobilenet_validation_model_len);
-    ASSERT_TRUE(!embedded_model_path.empty());
+    ASSERT_FALSE(embedded_model_path.empty());
 
     model_fp_ = fopen(embedded_model_path.c_str(), "rb");
-    ASSERT_TRUE(model_fp_ != nullptr);
+    ASSERT_NE(model_fp_, nullptr);
     ASSERT_EQ(fseek(model_fp_, 0, SEEK_END), 0);
     model_size_ = ftell(model_fp_);
     ASSERT_NE(model_size_, -1);
@@ -68,86 +73,75 @@ TEST_F(AccuracyBenchmarkTest, FailedWithInvalidModelFileDescriptor) {
     std::cerr << "Skipping test";
     return;
   }
+  delegates::utils::TfLiteSettingsJsonParser parser;
+  flatbuffers::FlatBufferBuilder builder;
   std::vector<std::string> args;
+  const TFLiteSettings* tflite_settings = parser.Parse(
+      "third_party/tensorflow/lite/tools/delegates/experimental/"
+      "stable_delegate/test_sample_stable_delegate_settings.json");
 
-  AccuracyBenchmarkStatus status =
-      Benchmark(args, 0, 0, 0, result_path_.c_str());
+  flatbuffers::Offset<BenchmarkEvent> offset =
+      Benchmark(builder, *tflite_settings, /*model_fd=*/0,
+                /*model_offset=*/0, /*model_size=*/0, result_path_.c_str());
+  builder.Finish(offset);
+  const BenchmarkEvent* event =
+      flatbuffers::GetRoot<BenchmarkEvent>(builder.GetBufferPointer());
 
-  EXPECT_EQ(status, kAccuracyBenchmarkRunnerInitializationFailed);
+  ASSERT_NE(event, nullptr);
+  EXPECT_EQ(event->event_type(), BenchmarkEventType_ERROR);
+  ASSERT_NE(event->error(), nullptr);
+  EXPECT_EQ(event->error()->stage(), BenchmarkStage_INITIALIZATION);
+  EXPECT_EQ(
+      event->error()->exit_code(),
+      DelegatePerformanceBenchmarkStatus::kBenchmarkRunnerInitializationFailed);
 }
 
-TEST_F(AccuracyBenchmarkTest, FailedWithInvalidDelegateArguments) {
+TEST_F(AccuracyBenchmarkTest, SucceedWithSampleStableDelegate) {
   if (!should_perform_test_) {
     std::cerr << "Skipping test";
     return;
   }
-  std::vector<std::string> args = {"--use_xnnpack=wrong_value"};
+  delegates::utils::TfLiteSettingsJsonParser parser;
+  flatbuffers::FlatBufferBuilder builder;
+  const TFLiteSettings* tflite_settings = parser.Parse(
+      "third_party/tensorflow/lite/tools/delegates/experimental/"
+      "stable_delegate/test_sample_stable_delegate_settings.json");
 
-  AccuracyBenchmarkStatus status =
-      Benchmark(args, fileno(model_fp_), 0, model_size_, result_path_.c_str());
+  flatbuffers::Offset<BenchmarkEvent> offset = Benchmark(
+      builder, *tflite_settings, /*model_fd=*/fileno(model_fp_),
+      /*model_offset=*/0, /*model_size=*/model_size_, result_path_.c_str());
+  builder.Finish(offset);
+  const BenchmarkEvent* event =
+      flatbuffers::GetRoot<BenchmarkEvent>(builder.GetBufferPointer());
 
-  EXPECT_EQ(status, kAccuracyBenchmarkArgumentParsingFailed);
+  // TODO(b/253442685): verify that the stable delegate was used.
+  ASSERT_NE(event, nullptr);
+  EXPECT_EQ(event->event_type(), BenchmarkEventType_END);
+  EXPECT_EQ(event->error(), nullptr);
 }
 
-TEST_F(AccuracyBenchmarkTest, WithMoreThanOneDelegateArguments) {
+TEST_F(AccuracyBenchmarkTest, SucceedWithEmbeddedValidationAndXNNPack) {
   if (!should_perform_test_) {
     std::cerr << "Skipping test";
     return;
   }
-  std::vector<std::string> args = {"--use_xnnpack=true", "--use_nnapi=true"};
-  AccuracyBenchmarkStatus status =
-      Benchmark(args, fileno(model_fp_), 0, model_size_, result_path_.c_str());
-  EXPECT_EQ(status, kAccuracyBenchmarkPass);
+  delegates::utils::TfLiteSettingsJsonParser parser;
+  flatbuffers::FlatBufferBuilder builder;
+  const TFLiteSettings* tflite_settings = parser.Parse(
+      "third_party/tensorflow/lite/delegates/utils/experimental/"
+      "stable_delegate/test_xnnpack_settings.json");
 
-  args = {"--use_gpu=true", "--use_nnapi=true"};
-  status =
-      Benchmark(args, fileno(model_fp_), 0, model_size_, result_path_.c_str());
-  EXPECT_EQ(status, kAccuracyBenchmarkMoreThanOneDelegateProvided);
-}
+  flatbuffers::Offset<BenchmarkEvent> offset = Benchmark(
+      builder, *tflite_settings, /*model_fd=*/fileno(model_fp_),
+      /*model_offset=*/0, /*model_size=*/model_size_, result_path_.c_str());
+  builder.Finish(offset);
+  const BenchmarkEvent* event =
+      flatbuffers::GetRoot<BenchmarkEvent>(builder.GetBufferPointer());
 
-TEST_F(AccuracyBenchmarkTest, SucceedWithEmbeddedValidationWithoutXnnpack) {
-  if (!should_perform_test_) {
-    std::cerr << "Skipping test";
-    return;
-  }
-  std::vector<std::string> args;
-
-  AccuracyBenchmarkStatus status =
-      Benchmark(args, fileno(model_fp_), 0, model_size_, result_path_.c_str());
-
-  // TODO(b/253442685): verify that XNNPack was not used.
-  EXPECT_EQ(status, kAccuracyBenchmarkPass);
-}
-
-#ifdef __ANDROID__
-TEST_F(AccuracyBenchmarkTest, SucceedWithEmbeddedValidationOnGpu) {
-#else   // __ANDROID__
-TEST_F(AccuracyBenchmarkTest, DISABLED_SucceedWithEmbeddedValidationOnGpu) {
-#endif  // __ANDROID__
-  if (!should_perform_test_) {
-    std::cerr << "Skipping test";
-    return;
-  }
-  std::vector<std::string> args = {"--use_gpu=true"};
-
-  AccuracyBenchmarkStatus status =
-      Benchmark(args, fileno(model_fp_), 0, model_size_, result_path_.c_str());
-
-  EXPECT_EQ(status, kAccuracyBenchmarkPass);
-}
-
-TEST_F(AccuracyBenchmarkTest, SucceedWithEmbeddedValidationWithXNNPack) {
-  if (!should_perform_test_) {
-    std::cerr << "Skipping test";
-    return;
-  }
-  std::vector<std::string> args = {"--use_xnnpack=true"};
-
-  AccuracyBenchmarkStatus status =
-      Benchmark(args, fileno(model_fp_), 0, model_size_, result_path_.c_str());
-
-  // TODO(b/253442685): verify that XNNPack was used.
-  EXPECT_EQ(status, kAccuracyBenchmarkPass);
+  // TODO(b/253442685): verify that the XNNPack delegate was used.
+  ASSERT_NE(event, nullptr);
+  EXPECT_EQ(event->event_type(), BenchmarkEventType_END);
+  EXPECT_EQ(event->error(), nullptr);
 }
 
 }  // namespace

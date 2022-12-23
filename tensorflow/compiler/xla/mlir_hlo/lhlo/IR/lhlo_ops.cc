@@ -158,7 +158,7 @@ LogicalResult ReduceScatterOp::verify() {
 // CaseOp
 //===----------------------------------------------------------------------===//
 
-void CaseOp::getSuccessorRegions(Optional<unsigned> index,
+void CaseOp::getSuccessorRegions(std::optional<unsigned> index,
                                  ArrayRef<Attribute> /*operands*/,
                                  SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the CaseOp, branch to all other branches.
@@ -396,7 +396,7 @@ LogicalResult ReduceWindowOp::verify() {
 // WhileOp
 //===----------------------------------------------------------------------===//
 
-void WhileOp::getSuccessorRegions(Optional<unsigned> index,
+void WhileOp::getSuccessorRegions(std::optional<unsigned> index,
                                   ArrayRef<Attribute> /*operands*/,
                                   SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the WhileOp or the body region, branch into the
@@ -436,7 +436,7 @@ void FusionOp::build(OpBuilder& builder, OperationState& result,
   FusionOp::ensureTerminator(*bodyRegion, builder, result.location);
 }
 
-void FusionOp::getSuccessorRegions(Optional<unsigned> index,
+void FusionOp::getSuccessorRegions(std::optional<unsigned> index,
                                    ArrayRef<Attribute> /*operands*/,
                                    SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the fusion region, jump back to the parent op.

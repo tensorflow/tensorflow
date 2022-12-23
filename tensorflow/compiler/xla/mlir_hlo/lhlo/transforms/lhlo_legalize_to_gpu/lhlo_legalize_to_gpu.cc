@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements logic for lowering LHLO dialect to GPU dialect.
 
 #include <cstdint>
+#include <optional>
 
 #include "lhlo/IR/lhlo_ops.h"
 #include "lhlo/transforms/map_lmhlo_to_scalar_op.h"
@@ -125,8 +126,8 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       // inline the body.
       auto output = *reduceOp.getOut().begin();
       auto resType = MemRefType::get(
-          llvm::None, getElementTypeOrSelf(output.getType()),
-          makeStridedLinearLayoutMap(llvm::None, ShapedType::kDynamic,
+          std::nullopt, getElementTypeOrSelf(output.getType()),
+          makeStridedLinearLayoutMap(std::nullopt, ShapedType::kDynamic,
                                      rewriter.getContext()));
       OpFoldResult offset = launchOp.getThreadIds().x;
       auto oneAttr = rewriter.getI64IntegerAttr(1);

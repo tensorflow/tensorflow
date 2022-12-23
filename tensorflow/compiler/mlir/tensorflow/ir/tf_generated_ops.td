@@ -356,7 +356,7 @@ For example:
 
 ```
 # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-tf.angle(input) ==> [2.0132, 1.056]
+tf.math.angle(input) ==> [2.0132, 1.056]
 ```
 
 @compatibility(numpy)
@@ -2224,6 +2224,30 @@ Mutually accumulates multiple tensors of identical type and shape.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_CollectiveGatherV2Op : TF_Op<"CollectiveGatherV2", [TF_CollectiveReduceOrderingEffect]> {
+  let summary = [{
+Mutually accumulates multiple tensors of identical type and shape.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$input,
+    TF_Int32Tensor:$group_size,
+    TF_Int32Tensor:$group_key,
+    TF_Int32Tensor:$instance_key,
+    Variadic<TF_ResourceTensor>:$ordering_token,
+
+    DefaultValuedOptionalAttr<StrAttr, "\"auto\"">:$communication_hint,
+    DefaultValuedOptionalAttr<F32Attr, "0.0f">:$timeout_seconds
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$data
+  );
+
+  TF_DerivedOperandSizeAttr Nordering_token = TF_DerivedOperandSizeAttr<4>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_CollectivePermuteOp : TF_Op<"CollectivePermute", []> {
   let summary = "An Op to permute tensors across replicated TPU instances.";
 
@@ -2280,7 +2304,7 @@ Mutually reduces multiple tensors of identical type and shape.
   }];
 }
 
-def TF_CollectiveReduceV2Op : TF_Op<"CollectiveReduceV2", [TF_CollectiveReduceOrderingEffect]> {
+def TF_CollectiveReduceV2Op : TF_Op<"CollectiveReduceV2", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_CollectiveReduceOrderingEffect]> {
   let summary = [{
 Mutually reduces multiple tensors of identical type and shape.
   }];
@@ -2695,6 +2719,35 @@ the `filter` input of the convolution.}]>:$output
   }];
 }
 
+def TF_Conv2DBackpropFilterV2Op : TF_Op<"Conv2DBackpropFilterV2", [Pure]> {
+  let summary = [{
+Computes the gradients of convolution with respect to the filter.
+  }];
+
+  let arguments = (ins
+    Arg<TF_FloatTensor, [{4-D with shape `[batch, in_height, in_width, in_channels]`.}]>:$input,
+    Arg<TF_FloatTensor, [{4-D with shape `[filter_height, filter_width, in_channels, out_channels]`.
+Only shape of tensor is used.}]>:$filter,
+    Arg<TF_FloatTensor, [{4-D with shape `[batch, out_height, out_width, out_channels]`.
+Gradients w.r.t. the output of the convolution.}]>:$out_backprop,
+
+    I64ArrayAttr:$strides,
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
+    TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$explicit_paddings,
+    DefaultValuedOptionalAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations
+  );
+
+  let results = (outs
+    Res<TF_FloatTensor, [{4-D with shape
+`[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
+the `filter` input of the convolution.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_Conv2DBackpropInputOp : TF_Op<"Conv2DBackpropInput", [Pure, TF_LayoutSensitiveInterface]> {
   let summary = [{
 Computes the gradients of convolution with respect to the input.
@@ -2732,6 +2785,35 @@ w.r.t. the input of the convolution.}]>:$output
     StringRef GetOptimalLayout(const RuntimeDevices& devices);
     LogicalResult UpdateDataFormat(StringRef data_format);
   }];
+}
+
+def TF_Conv2DBackpropInputV2Op : TF_Op<"Conv2DBackpropInputV2", [Pure]> {
+  let summary = [{
+Computes the gradients of convolution with respect to the input.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int32]>, [{4-D with shape `[batch, in_height, in_width, in_channels]`.
+Only shape of tensor is used.}]>:$input,
+    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int32]>, [{4-D with shape
+`[filter_height, filter_width, in_channels, out_channels]`.}]>:$filter,
+    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int32]>, [{4-D with shape `[batch, out_height, out_width, out_channels]`.
+Gradients w.r.t. the output of the convolution.}]>:$out_backprop,
+
+    I64ArrayAttr:$strides,
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
+    TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$explicit_paddings,
+    DefaultValuedOptionalAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">:$data_format,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int32]>, [{4-D with shape `[batch, in_height, in_width, in_channels]`.  Gradient
+w.r.t. the input of the convolution.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_Conv3DOp : TF_Op<"Conv3D", [InferTensorType, Pure]> {
@@ -2775,6 +2857,30 @@ out_channels]`. `in_channels` must match between `input` and `filter`.}]>:$filte
 
 }
 
+def TF_Conv3DBackpropFilterOp : TF_Op<"Conv3DBackpropFilter", [Pure]> {
+  let summary = [{
+Computes the gradients of 3-D convolution with respect to the filter.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Float16, TF_Float32, TF_Float64]>, [{Shape `[batch, depth, rows, cols, in_channels]`.}]>:$input,
+    Arg<TensorOf<[TF_Float16, TF_Float32, TF_Float64]>, [{Shape `[depth, rows, cols, in_channels, out_channels]`.
+`in_channels` must match between `input` and `filter`.}]>:$filter,
+    Arg<TensorOf<[TF_Float16, TF_Float32, TF_Float64]>, [{Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
+out_channels]`.}]>:$out_backprop,
+
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{1, 1, 1, 1, 1}">:$dilations
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_Conv3DBackpropFilterV2Op : TF_Op<"Conv3DBackpropFilterV2", [Pure]> {
   let summary = [{
 Computes the gradients of 3-D convolution with respect to the filter.
@@ -2797,6 +2903,30 @@ out_channels]`.}]>:$out_backprop,
 
   let results = (outs
     TF_FloatTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_Conv3DBackpropInputOp : TF_Op<"Conv3DBackpropInput", [Pure]> {
+  let summary = [{
+Computes the gradients of 3-D convolution with respect to the input.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Float16, TF_Float32, TF_Float64]>, [{Shape `[batch, depth, rows, cols, in_channels]`.}]>:$input,
+    Arg<TensorOf<[TF_Float16, TF_Float32, TF_Float64]>, [{Shape `[depth, rows, cols, in_channels, out_channels]`.
+`in_channels` must match between `input` and `filter`.}]>:$filter,
+    Arg<TensorOf<[TF_Float16, TF_Float32, TF_Float64]>, [{Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
+out_channels]`.}]>:$out_backprop,
+
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{1, 1, 1, 1, 1}">:$dilations
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -10037,6 +10167,47 @@ the insert operations. It does not support the initialization operation.
   let results = (outs
     Res<TF_ResourceTensor, [{Handle to a table.}], [TF_LookupTableAlloc]>:$table_handle
   );
+}
+
+def TF_NcclAllReduceOp : TF_Op<"NcclAllReduce", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_NcclAllReduceOrderingEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+  let summary = [{
+Outputs a tensor containing the reduction across all input tensors.
+  }];
+
+  let description = [{
+Outputs a tensor containing the reduction across all input tensors passed to ops
+within the same `shared_name.
+
+The graph should be constructed so if one op runs with shared_name value `c`,
+then `num_devices` ops will run with shared_name value `c`.  Failure to do so
+will cause the graph execution to fail to complete.
+
+input: the input to the reduction
+data: the value of the reduction across all `num_devices` devices.
+reduction: the reduction operation to perform.
+num_devices: The number of devices participating in this reduction.
+shared_name: Identifier that shared between ops of the same reduction.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$input,
+
+    TF_AnyStrAttrOf<["min", "max", "prod", "sum"]>:$reduction,
+    I64Attr:$num_devices,
+    StrAttr:$shared_name
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$data
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 
 def TF_NdtriOp : TF_Op<"Ndtri", [Pure]> {
@@ -19919,6 +20090,8 @@ The output data is the non-quantized output data.}]>:$output
   TF_DerivedOperandTypeAttr Tlhs = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Trhs = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniformQuantizedDotOp : TF_Op<"UniformQuantizedDot", [Pure]> {
@@ -20006,6 +20179,8 @@ The output data is the original output data itself (Not quantized).}]>:$output
   TF_DerivedOperandTypeAttr Tlhs = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Trhs = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniformRequantizeOp : TF_Op<"UniformRequantize", [Pure]> {
@@ -20584,12 +20759,12 @@ def TF_XdivyOp : TF_Op<"Xdivy", [Pure, ResultsBroadcastableShape, TF_SameOperand
   let summary = "Returns 0 if x == 0, and x / y otherwise, elementwise.";
 
   let arguments = (ins
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$x,
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$y
+    TF_FpOrComplexTensor:$x,
+    TF_FpOrComplexTensor:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$z
+    TF_FpOrComplexTensor:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -20679,7 +20854,8 @@ E.g., the specification "2.1" denotes the value args[2].shape[1].
 
   let arguments = (ins
     Arg<Variadic<TF_Tensor>, [{A list of `Tensor` with possibly different types to be passed as arguments
-to the HLO module.}]>:$args,
+to the HLO module. These are all non-dimension arguments. The dimension
+arguments are computed at JIT time.}]>:$args,
 
     I64Attr:$version,
     StrAttr:$module,
@@ -21464,6 +21640,25 @@ key: A unique identifier for this region used to match up host transfers.
   TF_DerivedOperandTypeAttr Tinput = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_XlaSetBoundOp : TF_Op<"XlaSetBound", [Pure]> {
+  let summary = [{
+Set a bound for the given input value as a hint to Xla compiler,
+  }];
+
+  let description = [{
+returns the same value.
+  }];
+
+  let arguments = (ins
+    TF_Int32Tensor:$input,
+    TF_Int32Tensor:$bound
+  );
+
+  let results = (outs
+    TF_Int32Tensor:$output
+  );
+}
+
 def TF_XlaSetDynamicDimensionSizeOp : TF_Op<"XlaSetDynamicDimensionSize", [InferTensorType, Pure, TF_NoConstantFold]> {
   let summary = "Make a static dimension into a xla bounded dynamic dimension.";
 
@@ -21635,12 +21830,12 @@ def TF_Xlog1pyOp : TF_Op<"Xlog1py", [Pure, TF_SameOperandsAndResultElementTypeRe
   let summary = "Returns 0 if x == 0, and x * log1p(y) otherwise, elementwise.";
 
   let arguments = (ins
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$x,
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$y
+    TF_FpOrComplexTensor:$x,
+    TF_FpOrComplexTensor:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$z
+    TF_FpOrComplexTensor:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -21651,12 +21846,12 @@ def TF_XlogyOp : TF_Op<"Xlogy", [Pure, ResultsBroadcastableShape, TF_SameOperand
   let summary = "Returns 0 if x == 0, and x * log(y) otherwise, elementwise.";
 
   let arguments = (ins
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$x,
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$y
+    TF_FpOrComplexTensor:$x,
+    TF_FpOrComplexTensor:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$z
+    TF_FpOrComplexTensor:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;

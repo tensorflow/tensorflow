@@ -201,6 +201,17 @@ ENTRY %IsFiniteR1F32s.v2 () -> pred[6] {
 
 )"
 },
+// NaN constants for F8E4M3FN
+{
+"ConstantNonFiniteE4M3",
+R"(HloModule ConstantR1F8E4M3FNs_module, entry_computation_layout={()->f8e4m3fn[3]{0}}
+
+ENTRY %IsFiniteR1F32s.v2 () -> f8e4m3fn[3] {
+  ROOT %constant = f8e4m3fn[3]{0} constant({nan, 7, -nan})
+}
+
+)"
+},
 // constant f16
 {
 "ConstantF16",
@@ -2811,6 +2822,34 @@ ENTRY %NanPayload () -> bf16[2] {
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_EQ(OkStatus(), result.status());
   EXPECT_EQ(result.value()->ToString(HloPrintOptions()), original);
+}
+
+TEST_F(HloParserTest, InvalidNanPayloadBf16) {
+  const std::string original =
+      R"(HloModule InvalidNanPayloadBf16_module, entry_computation_layout={()->bf16[1]{0}}
+
+ENTRY %NanPayload () -> bf16[1] {
+  ROOT %constant = bf16[1]{0} constant({nan(0x3ff)})
+}
+
+)";
+  ExpectHasSubstr(
+      ParseAndReturnUnverifiedModule(original).status().error_message(),
+      "tries to set NaN payload 0x3ff");
+}
+
+TEST_F(HloParserTest, InvalidNanPayloadF8e4m3fn) {
+  const std::string original =
+      R"(HloModule InvalidNanPayloadF8e4m3fn_module, entry_computation_layout={()->f8e4m3fn[1]{0}}
+
+ENTRY %NanPayload () -> f8e4m3fn[1] {
+  ROOT %constant = f8e4m3fn[1]{0} constant({nan(0x1)})
+}
+
+)";
+  ExpectHasSubstr(
+      ParseAndReturnUnverifiedModule(original).status().error_message(),
+      "tries to set NaN payload 0x1");
 }
 
 TEST_F(HloParserTest, AttributesAnyOrder) {

@@ -1639,7 +1639,7 @@ func.func @invalidSelect(%arg0: tensor<1x8xi1>, %arg1: tensor<1x8x8xi32>, %arg2:
 //===--------------------------------------------------------------------===//
 
 // Test valid tf.SelectV2
-// CHfaECK-LABEL: func @selectV2BroadcastThen
+// CHECK-LABEL: func @selectV2BroadcastThen
 func.func @selectV2BroadcastThen(%arg0: tensor<i1>, %arg1: tensor<8x1xi32>, %arg2: tensor<2x8x8xi32>) -> tensor<2x8x8xi32> {
   %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<8x1xi32>, tensor<2x8x8xi32>) -> tensor<2x8x8xi32>
   func.return %0: tensor<2x8x8xi32>
@@ -4678,6 +4678,146 @@ func.func @testSetStaticDimensionBounds(%arg0: tensor<?x?xi32>, %arg1: tensor<4x
   // expected-error @below {{'tf.SetStaticDimensionBounds' op static shape must have num_elements == rank of input tensor}}
   %dyn_arg0 = "tf.SetStaticDimensionBounds" (%arg0, %arg1) :(tensor<?x?xi32>, tensor<4xi32>) -> tensor<?x?xi32>
   func.return %dyn_arg0 : tensor<?x?xi32>
+}
+
+// -----
+
+func.func @testUniformQuantizedDotHybrid(%lhs: tensor<*xf32>, %rhs: tensor<2x2x!tf_type.qint8>, %rhs_scales: tensor<2xf32>, %rhs_zps: tensor<i32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformQuantizedDotHybrid' op quantization_axis is -1, scales must have 0 rank.}}
+  %0 = "tf.UniformQuantizedDotHybrid"(%lhs, %rhs, %rhs_scales, %rhs_zps) {
+    rhs_quantization_axis = -1 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64
+    } : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<2xf32>, tensor<i32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantizedDotHybrid(%lhs: tensor<*xf32>, %rhs: tensor<2x2x!tf_type.qint8>, %rhs_scales: tensor<f32>, %rhs_zps: tensor<2xi32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformQuantizedDotHybrid' op quantization_axis is -1, zero_points must have 0 rank.}}
+  %0 = "tf.UniformQuantizedDotHybrid"(%lhs, %rhs, %rhs_scales, %rhs_zps) {
+    rhs_quantization_axis = -1 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64
+    } : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<f32>, tensor<2xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantizedDotHybrid(%lhs: tensor<*xf32>, %rhs: tensor<2x2x!tf_type.qint8>, %rhs_scales: tensor<2x2xf32>, %rhs_zps: tensor<2xi32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformQuantizedDotHybrid' op quantization_axis is not -1, scales must have 1 rank.}}
+  %0 = "tf.UniformQuantizedDotHybrid"(%lhs, %rhs, %rhs_scales, %rhs_zps) {
+    rhs_quantization_axis = 0 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64
+    } : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<2x2xf32>, tensor<2xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantizedDotHybrid(%lhs: tensor<*xf32>, %rhs: tensor<2x2x!tf_type.qint8>, %rhs_scales: tensor<2xf32>, %rhs_zps: tensor<2x2xi32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformQuantizedDotHybrid' op quantization_axis is not -1, zero_points must have 1 rank.}}
+  %0 = "tf.UniformQuantizedDotHybrid"(%lhs, %rhs, %rhs_scales, %rhs_zps) {
+    rhs_quantization_axis = 0 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64
+    } : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<2xf32>, tensor<2x2xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantizedDotHybrid(%lhs: tensor<*xf32>, %rhs: tensor<2x2x!tf_type.qint8>, %rhs_scales: tensor<2xf32>, %rhs_zps: tensor<3xi32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformQuantizedDotHybrid' op scales and zero points must have same number of elements.}}
+  %0 = "tf.UniformQuantizedDotHybrid"(%lhs, %rhs, %rhs_scales, %rhs_zps) {
+    rhs_quantization_axis = 0 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64
+    } : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<2xf32>, tensor<3xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantizedConvolutionHybrid(%lhs: tensor<*xf32>, %rhs: tensor<2x2x!tf_type.qint8>, %rhs_scales: tensor<2xf32>, %rhs_zps: tensor<i32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformQuantizedConvolutionHybrid' op quantization_axis is -1, scales must have 0 rank.}}
+  %0 = "tf.UniformQuantizedConvolutionHybrid"(%lhs, %rhs, %rhs_scales, %rhs_zps) {
+    window_strides = [1, 2],
+    padding = "VALID",
+    explicit_padding = [],
+    lhs_dilation = [1, 1],
+    rhs_dilation = [2, 2],
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64,
+    dimension_numbers = "\10\03\1A\02\01\02 \02(\032\02\00\01@\03J\02\01\02",
+    rhs_quantization_axis = -1 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64
+    } : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<2xf32>, tensor<i32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantizedConvolutionHybrid(%lhs: tensor<*xf32>, %rhs: tensor<2x2x!tf_type.qint8>, %rhs_scales: tensor<f32>, %rhs_zps: tensor<2xi32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformQuantizedConvolutionHybrid' op quantization_axis is -1, zero_points must have 0 rank.}}
+  %0 = "tf.UniformQuantizedConvolutionHybrid"(%lhs, %rhs, %rhs_scales, %rhs_zps) {
+    window_strides = [1, 2],
+    padding = "VALID",
+    explicit_padding = [],
+    lhs_dilation = [1, 1],
+    rhs_dilation = [2, 2],
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64,
+    dimension_numbers = "\10\03\1A\02\01\02 \02(\032\02\00\01@\03J\02\01\02",
+    rhs_quantization_axis = -1 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64
+    } : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<f32>, tensor<2xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantizedConvolutionHybrid(%lhs: tensor<*xf32>, %rhs: tensor<2x2x!tf_type.qint8>, %rhs_scales: tensor<2x2xf32>, %rhs_zps: tensor<2xi32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformQuantizedConvolutionHybrid' op quantization_axis is not -1, scales must have 1 rank.}}
+  %0 = "tf.UniformQuantizedConvolutionHybrid"(%lhs, %rhs, %rhs_scales, %rhs_zps) {
+    window_strides = [1, 2],
+    padding = "VALID",
+    explicit_padding = [],
+    lhs_dilation = [1, 1],
+    rhs_dilation = [2, 2],
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64,
+    dimension_numbers = "\10\03\1A\02\01\02 \02(\032\02\00\01@\03J\02\01\02",
+    rhs_quantization_axis = 0 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64
+    } : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<2x2xf32>, tensor<2xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantizedConvolutionHybrid(%lhs: tensor<*xf32>, %rhs: tensor<2x2x!tf_type.qint8>, %rhs_scales: tensor<2xf32>, %rhs_zps: tensor<2x2xi32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformQuantizedConvolutionHybrid' op quantization_axis is not -1, zero_points must have 1 rank.}}
+  %0 = "tf.UniformQuantizedConvolutionHybrid"(%lhs, %rhs, %rhs_scales, %rhs_zps) {
+    window_strides = [1, 2],
+    padding = "VALID",
+    explicit_padding = [],
+    lhs_dilation = [1, 1],
+    rhs_dilation = [2, 2],
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64,
+    dimension_numbers = "\10\03\1A\02\01\02 \02(\032\02\00\01@\03J\02\01\02",
+    rhs_quantization_axis = 0 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64
+    } : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<2xf32>, tensor<2x2xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantizedConvolutionHybrid(%lhs: tensor<*xf32>, %rhs: tensor<2x2x!tf_type.qint8>, %rhs_scales: tensor<2xf32>, %rhs_zps: tensor<3xi32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformQuantizedConvolutionHybrid' op scales and zero points must have same number of elements.}}
+  %0 = "tf.UniformQuantizedConvolutionHybrid"(%lhs, %rhs, %rhs_scales, %rhs_zps) {
+    window_strides = [1, 2],
+    padding = "VALID",
+    explicit_padding = [],
+    lhs_dilation = [1, 1],
+    rhs_dilation = [2, 2],
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64,
+    dimension_numbers = "\10\03\1A\02\01\02 \02(\032\02\00\01@\03J\02\01\02",
+    rhs_quantization_axis = 0 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64
+    } : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<2xf32>, tensor<3xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // Following tests are for LegacyCall symbol use verifier.

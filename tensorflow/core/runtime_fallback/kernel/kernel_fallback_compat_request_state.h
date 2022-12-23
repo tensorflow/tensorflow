@@ -20,16 +20,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device.h"
-#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/support/pointer_util.h"  // from @tf_runtime
 

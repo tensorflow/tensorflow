@@ -2549,7 +2549,7 @@ def TestFactory(xla_backend,
             memoryview(buf)
 
     # 1D reshape of full size, half size, and size of 0.
-    @unittest.skipIf(cloud_tpu or tfrt_tpu or external_tpu, "not implemented")
+    @unittest.skip("not implemented")
     @parameterized.parameters((5), (3), (0))
     def testReshape1D(self, reshape_size):
       full_size = 5
@@ -2791,6 +2791,7 @@ def TestFactory(xla_backend,
 
   class ExecutePortableTest(ComputationTest):
 
+    @unittest.skip("Test does not work under IFRT")
     def testExecutePortable(self):
       devices_by_kind = collections.defaultdict(list)
       for device in self.backend.devices():

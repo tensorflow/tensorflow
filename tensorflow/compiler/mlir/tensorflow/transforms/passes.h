@@ -30,13 +30,6 @@ namespace mlir {
 // islands, each with a single op.
 std::unique_ptr<OperationPass<ModuleOp>> CreateBreakUpIslandsPass();
 
-// Creates a pass that breaks up an island with multiple ops into multiple
-// islands, each with a single op. This pass intentionally does not propagate
-// control dependencies across newly created islands, a following pass will
-// handle this.
-// TODO(b/244596254) Implement followup pass for creating control deps.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateSplitIntoIslandPerOpPass();
-
 // Creates a pass that converts mlir functions consisting of mlir ops into a
 // tf_executor dialect as a single island.
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -307,6 +300,13 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateStripTfAttributesPass();
 // Converts AnonymousIteratorOps to (named) IteratorOps.
 std::unique_ptr<OperationPass<ModuleOp>> CreateNameAnonymousIteratorsPass();
 
+// Creates a pass that breaks up an island with multiple ops into multiple
+// islands, each with a single op. This pass intentionally does not propagate
+// control dependencies across newly created islands, a following pass will
+// handle this.
+// TODO(b/244596254) Implement followup pass for creating control deps.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateSplitIntoIslandPerOpPass();
+
 // Populates the supplied passmanager with the passes required to run the
 // CPU/GPU bridge.
 void CreateTFXLABridgePipeline(OpPassManager& pm);
@@ -412,7 +412,8 @@ CreateReplicateInvariantOpHoistingPass();
 
 // Creates a pass that forms replica `tf_executor.island` from a single
 // `tf_device.replicate` island.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateReplicateToIslandPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateReplicateToIslandPass(
+    bool legacy_graph_export = true);
 
 // Creates a pass that sets the device ordinal attribute of the required op
 // using the replica id attribute.
@@ -421,8 +422,8 @@ CreateReplicaIDToDeviceOrdinalPass();
 
 // Creates a pass that creates `tf_executor.island` from a single
 // `tf_device.parallel_execute` island.
-std::unique_ptr<OperationPass<func::FuncOp>>
-CreateParallelExecuteToIslandsPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateParallelExecuteToIslandsPass(
+    bool legacy_graph_export = true);
 
 // Creates a pass that annotates whether a LaunchFuncOp's parameters have the
 // same data across replicas.
@@ -445,8 +446,8 @@ CreateDeviceAttributeToLaunchPass();
 // Creates a pass that hoists a `tf_device.launch` body and assigns a `device`
 // attribute to each TensorFlow dialect op in the body based on the `device`
 // attribute on the `tf_device.launch`.
-std::unique_ptr<OperationPass<func::FuncOp>>
-CreateLaunchToDeviceAttributePass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLaunchToDeviceAttributePass(
+    bool legacy_graph_export = true);
 
 // Creates a pass that extracts ops in tf_device.launch op with host device
 // assignment and adds an `_xla_outside_compilation` attribute value.

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <memory>
 #include <utility>
 
 #include "absl/strings/string_view.h"
@@ -26,12 +27,10 @@ limitations under the License.
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/numbers.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
 #include "tensorflow/tsl/platform/str_util.h"
 #include "tensorflow/tsl/platform/strcat.h"
 #include "tensorflow/tsl/platform/types.h"
-#ifdef TENSORFLOW_MEM_DEBUG
-#include "tensorflow/tsl/stacktrace.h"
-#endif
 #include "tensorflow/tsl/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 #include "tensorflow/tsl/protobuf/bfc_memory_map.pb.h"
@@ -57,6 +56,11 @@ BFCAllocator::BFCAllocator(std::unique_ptr<SubAllocator> sub_allocator,
   } else {
     curr_region_allocation_bytes_ = RoundedBytes(total_memory);
   }
+
+  // Initially, we have not allocated any memory from the sub-allocator; our
+  // pool of memory is empty.
+  stats_.pool_bytes = 0;
+  stats_.peak_pool_bytes = 0;
 
   // Allocate the requested amount of memory.
   memory_limit_ = total_memory;
@@ -108,7 +112,7 @@ const BFCAllocator::Chunk* BFCAllocator::ChunkFromHandle(ChunkHandle h) const {
 }
 
 bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
-  size_t available_bytes = memory_limit_ - total_region_allocated_bytes_;
+  size_t available_bytes = memory_limit_ - *stats_.pool_bytes;
   // Rounds available_bytes down to the nearest multiple of kMinAllocationSize.
   available_bytes = (available_bytes / kMinAllocationSize) * kMinAllocationSize;
 
@@ -158,9 +162,11 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
           << strings::HumanReadableNumBytes(bytes_received) << " bytes for "
           << Name() << ".";
 
-  total_region_allocated_bytes_ += bytes_received;
+  *stats_.pool_bytes += bytes_received;
+  *stats_.peak_pool_bytes =
+      std::max(*stats_.pool_bytes, *stats_.peak_pool_bytes);
   VLOG(1) << "Total allocated bytes: "
-          << strings::HumanReadableNumBytes(total_region_allocated_bytes_);
+          << strings::HumanReadableNumBytes(*stats_.pool_bytes);
 
   VLOG(1) << "Allocated memory at " << mem_addr << " to "
           << static_cast<void*>(static_cast<char*>(mem_addr) + bytes_received);
@@ -352,7 +358,7 @@ bool BFCAllocator::DeallocateFreeRegions(size_t rounded_bytes)
 
   // Rough estimation to check whether deallocation can help.
   size_t available_bytes =
-      memory_limit_ - total_region_allocated_bytes_ + total_free_bytes;
+      memory_limit_ - *stats_.pool_bytes + total_free_bytes;
   if (rounded_bytes > available_bytes) {
     return false;
   }
@@ -403,7 +409,7 @@ void BFCAllocator::DeallocateRegions(
 
     // Deallocate the memory.
     sub_allocator_->Free(it->ptr(), it->memory_size());
-    total_region_allocated_bytes_ -= it->memory_size();
+    *stats_.pool_bytes -= it->memory_size();
     it = region_manager_.RemoveAllocationRegion(it);
   }
 }
@@ -503,7 +509,7 @@ int64_t BFCAllocator::LargestFreeChunk() {
 }
 
 double BFCAllocator::GetFragmentation() {
-  int64_t bytes_available = total_region_allocated_bytes_ - stats_.bytes_in_use;
+  int64_t bytes_available = *stats_.pool_bytes - stats_.bytes_in_use;
   DCHECK_GT(bytes_available, 0);
   return static_cast<double>(bytes_available - LargestFreeChunk()) /
          bytes_available;
@@ -1100,10 +1106,9 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
   }
   LOG(INFO) << "Sum Total of in-use chunks: "
             << strings::HumanReadableNumBytes(total_bytes);
-  LOG(INFO) << "total_region_allocated_bytes_: "
-            << total_region_allocated_bytes_
-            << " memory_limit_: " << memory_limit_ << " available bytes: "
-            << (memory_limit_ - total_region_allocated_bytes_)
+  LOG(INFO) << "Total bytes in pool: " << *stats_.pool_bytes
+            << " memory_limit_: " << memory_limit_
+            << " available bytes: " << (memory_limit_ - *stats_.pool_bytes)
             << " curr_region_allocation_bytes_: "
             << curr_region_allocation_bytes_;
   LOG(INFO) << "Stats: \n" << stats_.DebugString();
@@ -1188,9 +1193,9 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
 #ifdef TENSORFLOW_MEM_DEBUG
   // Record the recent size history
   int history_len = static_cast<int>(std::min(
-      action_counter_, static_cast<long long>(MEM_DEBUG_SIZE_HISTORY_SIZE)));
+      action_counter_, static_cast<int64>(MEM_DEBUG_SIZE_HISTORY_SIZE)));
   for (int i = action_counter_ - history_len; i < action_counter_; ++i) {
-    SnapShot* ss = md.add_snap_shot();
+    tensorflow::SnapShot* ss = md.add_snap_shot();
     ss->set_action_count(i);
     int slot = i % MEM_DEBUG_SIZE_HISTORY_SIZE;
     ss->set_size(size_history_[slot]);

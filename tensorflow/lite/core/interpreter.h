@@ -568,7 +568,6 @@ class Interpreter {
   /// 5. kTfLiteError: Unexpected/runtime failure. \n
   /// \warning This is an experimental API and subject to change. \n
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
-  TfLiteStatus ModifyGraphWithDelegate(TfLiteOpaqueDelegateStruct* delegate);
 
   // Owning handle to a TfLiteDelegate instance.
   using TfLiteDelegatePtr =
@@ -619,9 +618,6 @@ class Interpreter {
   TfLiteStatus SetBufferHandle(int tensor_index,
                                TfLiteBufferHandle buffer_handle,
                                TfLiteDelegate* delegate);
-  TfLiteStatus SetBufferHandle(int tensor_index,
-                               TfLiteBufferHandle buffer_handle,
-                               TfLiteOpaqueDelegateStruct* opaque_delegate);
 
   /// \warning This is an experimental API and subject to change. \n
   /// \brief Get the delegate buffer handle, and the delegate which can process
@@ -629,9 +625,6 @@ class Interpreter {
   TfLiteStatus GetBufferHandle(int tensor_index,
                                TfLiteBufferHandle* buffer_handle,
                                TfLiteDelegate** delegate);
-  TfLiteStatus GetBufferHandle(int tensor_index,
-                               TfLiteBufferHandle* buffer_handle,
-                               TfLiteOpaqueDelegateStruct** opaque_delegate);
 
   /// \warning This is an experimental API and subject to change. \n
   /// \brief Sets the profiler to tracing execution. The caller retains
@@ -654,6 +647,12 @@ class Interpreter {
   /// ownership of the profiler and must ensure its validity.
   /// nullptr `profiler` will be ignored.
   void AddProfiler(Profiler* profiler);
+
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Adds the profiler to tracing execution. Transfers
+  /// ownership of the profiler to the interpreter.
+  /// nullptr `profiler` will be ignored.
+  void AddProfiler(std::unique_ptr<Profiler> profiler);
 
   /// \warning This is an experimental API and subject to change. \n
   /// \brief Gets the profiler used for op tracing.

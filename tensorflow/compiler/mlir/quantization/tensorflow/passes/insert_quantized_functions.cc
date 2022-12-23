@@ -102,9 +102,10 @@ llvm::StringRef InsertQuantizedFunctionsPass::GetFunctionLibrary(
   absl::flat_hash_map<OpSet, llvm::StringRef> function_library_map;
   if (quantization_method == QuantizationMethod::kDynamicRangeQuantization) {
     function_library_map = {
+        {OpSet::TF, kQuantizedFunctionLibraryInMLIR_TF_DRQ},
         {OpSet::UNIFORM_QUANTIZED,
          kQuantizedFunctionLibraryInMLIR_UNIFORM_QUANTIZED_DRQ},
-        {OpSet::TF, kQuantizedFunctionLibraryInMLIR_TF_DRQ}};
+        {OpSet::XLA, kQuantizedFunctionLibraryInMLIR_TF_DRQ}};
   } else {
     function_library_map = {{OpSet::TF, kQuantizedFunctionLibraryInMLIR},
                             {OpSet::UNIFORM_QUANTIZED,
@@ -170,6 +171,15 @@ void InsertQuantizedFunctionsPass::runOnOperation() {
     func::FuncOp new_func = func.clone();
     new_func.setPrivate();
     symbol_table.insert(new_func);
+
+    // For consistency, we require all quantized composite function to have
+    // the "tf_quant.quantized_ops" attribute.
+    if (!new_func.getSymName().starts_with("quantized_")) continue;
+    if (!new_func->hasAttrOfType<ArrayAttr>("tf_quant.quantized_ops")) {
+      new_func->emitError() << "Missing \"tf_quant.quantized_ops\" "
+                               "attribute in the quantized composite function.";
+      signalPassFailure();
+    }
   }
 }
 

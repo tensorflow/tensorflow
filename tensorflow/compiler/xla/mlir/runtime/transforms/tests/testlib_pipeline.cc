@@ -49,6 +49,7 @@ void RegisterXlaRuntimeTestlibDialects(DialectRegistry& dialects) {
 
 void CreateXlaRuntimeTestlibPipeline(PassManager& passes) {
   passes->addPass(mlir::createConvertSCFToCFPass());
+  passes->addPass(mlir::createAsyncFuncToAsyncRuntimePass());
 
   // Export functions to the XLA runtime.
   passes->addPass(CreateExportRuntimeFunctionsPass());

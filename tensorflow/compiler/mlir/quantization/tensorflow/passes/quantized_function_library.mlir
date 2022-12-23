@@ -82,8 +82,12 @@ module {
     %i8_min = "tf.Const"() {value = dense<-128.0> : tensor<f32>} : () -> tensor<f32>
     %i8_max = "tf.Const"() {value = dense<127.0> : tensor<f32>} : () -> tensor<f32>
     %float_out_zp = "tf.Cast"(%out_zp) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
-    %clip_min = "tf.Maximum"(%i8_min, %float_out_zp) : (tensor<f32>, tensor<*xf32>) -> tensor<f32>
-    %0 = "tf.ClipByValue"(%rescale, %clip_min, %i8_max) : (tensor<*xf32>, tensor<f32>, tensor<f32>) -> tensor<*xf32>
+    // The clip_value_min and clip_value_max must be either of the same shape as input, or a scalar.
+    %rescale_shape = "tf.Shape"(%rescale) : (tensor<*xf32>) -> tensor<*xi32>
+    %clip_min = "tf.Maximum"(%i8_min, %float_out_zp) : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
+    %clip_value_min = "tf.BroadcastTo"(%clip_min, %rescale_shape) : (tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
+    %clip_value_max = "tf.BroadcastTo"(%i8_max, %rescale_shape) : (tensor<f32>, tensor<*xi32>) -> tensor<*xf32>
+    %0 = "tf.ClipByValue"(%rescale, %clip_value_min, %clip_value_max) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     %1 = "tf.Cast"(%0) {Truncate = false} : (tensor<*xf32>) -> tensor<*xi8>
     func.return %1 : tensor<*xi8>
   }
@@ -103,12 +107,16 @@ module {
     %act_max =  "tf.Const"() {value = dense<6.0> : tensor<f32>} : () -> tensor<f32>
     %i8_act_max_0 = "tf.PartitionedCall"(%act_max, %out_scale, %out_zp) {
         config = "", config_proto = "", executor_type = "", f=@quantize_i8
-      } : (tensor<f32>, tensor<*xf32>, tensor<*xi32>) -> tensor<i8>
-    %i8_act_max_1 = "tf.Cast"(%i8_act_max_0) {Truncate = false} : (tensor<i8>) -> tensor<f32>
+      } : (tensor<f32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xi8>
+    %i8_act_max_1 = "tf.Cast"(%i8_act_max_0) {Truncate = false} : (tensor<*xi8>) -> tensor<*xf32>
     %float_out_zp = "tf.Cast"(%out_zp) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
-    %clip_min = "tf.Maximum"(%i8_min, %float_out_zp) : (tensor<f32>, tensor<*xf32>) -> tensor<f32>
-    %clip_max = "tf.Minimum"(%i8_max, %i8_act_max_1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-    %0 = "tf.ClipByValue"(%rescale, %clip_min, %clip_max) : (tensor<*xf32>, tensor<f32>, tensor<f32>) -> tensor<*xf32>
+    // The clip_value_min and clip_value_max must be either of the same shape as input, or a scalar.
+    %rescale_shape = "tf.Shape"(%rescale) : (tensor<*xf32>) -> tensor<*xi32>
+    %clip_min = "tf.Maximum"(%i8_min, %float_out_zp) : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
+    %clip_max = "tf.Minimum"(%i8_max, %i8_act_max_1) : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
+    %clip_value_min = "tf.BroadcastTo"(%clip_min, %rescale_shape) : (tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
+    %clip_value_max = "tf.BroadcastTo"(%clip_max, %rescale_shape) : (tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
+    %0 = "tf.ClipByValue"(%rescale, %clip_value_min, %clip_value_max) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     %1 = "tf.Cast"(%0) {Truncate = false} : (tensor<*xf32>) -> tensor<*xi8>
     func.return %1 : tensor<*xi8>
   }
@@ -256,24 +264,25 @@ module {
     func.return %5 : tensor<*xi32>
   }
 
-  for main_op in ["conv2d", "depthwise_conv2d", "matmul", "conv3d", "batch_matmul"] {
+  for main_op in ["Conv2D", "DepthwiseConv2D", "MatMul", "Conv3D", "BatchMatMul"] {
     parameters[
-      {"suffix": "with_bias_fn", "act_func": "internal_requantize_no_activation_fn", "output_type": "i8"},
-      {"suffix": "with_bias_and_relu_fn", "act_func": "internal_requantize_and_relu_fn", "output_type": "i8"},
-      {"suffix": "with_bias_and_relu6_fn", "act_func": "internal_requantize_and_relu6_fn", "output_type": "i8"},
-      {"suffix": "with_bias_float_output_fn", "act_func": "internal_dequantize_no_activation_fn", "output_type": "f32"},
-      {"suffix": "with_bias_and_relu_float_output_fn", "act_func": "internal_dequantize_and_relu_fn", "output_type": "f32"},
-      {"suffix": "with_bias_and_relu6_float_output_fn", "act_func": "internal_dequantize_and_relu6_fn", "output_type": "f32"},
+      {"quantized_ops": ["${main_op}", "BiasAdd"], "act_func": "internal_requantize_no_activation_fn", "output_type": "i8"},
+      {"quantized_ops": ["${main_op}", "BiasAdd", "Relu"], "act_func": "internal_requantize_and_relu_fn", "output_type": "i8"},
+      {"quantized_ops": ["${main_op}", "BiasAdd", "Relu6"], "act_func": "internal_requantize_and_relu6_fn", "output_type": "i8"},
+      {"quantized_ops": ["${main_op}", "BiasAdd"], "act_func": "internal_dequantize_no_activation_fn", "output_type": "f32"},
+      {"quantized_ops": ["${main_op}", "BiasAdd", "Relu"], "act_func": "internal_dequantize_and_relu_fn", "output_type": "f32"},
+      {"quantized_ops": ["${main_op}", "BiasAdd", "Relu6"], "act_func": "internal_dequantize_and_relu6_fn", "output_type": "f32"},
     ]
-    func.func @quantized_${main_op}_${suffix}(%input : tensor<*xi8>,
+    func.func @GenerateQuantizedFunctionName(${quantized_ops}, "${output_type}")(%input : tensor<*xi8>,
                            %filter : tensor<*xi8>, %bias : tensor<*xi32>,
                            %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
                            %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>,
                            %bias_scale : tensor<*xf32>, %bias_zp : tensor<*xi32>,
-                           %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*x${output_type}> {
+                           %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*x${output_type}>
+        attributes {tf_quant.quantized_ops = ${quantized_ops}} {
       %0 = "tf.PartitionedCall"(%input, %filter, %input_scale, %input_zp,
                                   %filter_scale, %filter_zp) {
-          config = "", config_proto = "", executor_type = "", f=@internal_${main_op}_fn
+          config = "", config_proto = "", executor_type = "", f=@GenerateImplFunctionName(${main_op})
         } : (tensor<*xi8>, tensor<*xi8>, tensor<*xf32>, tensor<*xi32>,
                tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
       %1 = "tf.AddV2"(%0, %bias) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
@@ -286,21 +295,22 @@ module {
     }
 
     parameters[
-      {"suffix": "fn", "act_func": "internal_requantize_no_activation_fn", "output_type": "i8"},
-      {"suffix": "with_relu_fn", "act_func": "internal_requantize_and_relu_fn", "output_type": "i8"},
-      {"suffix": "with_relu6_fn", "act_func": "internal_requantize_and_relu6_fn", "output_type": "i8"},
-      {"suffix": "float_output_fn", "act_func": "internal_dequantize_no_activation_fn", "output_type": "f32"},
-      {"suffix": "with_relu_float_output_fn", "act_func": "internal_dequantize_and_relu_fn", "output_type": "f32"},
-      {"suffix": "with_relu6_float_output_fn", "act_func": "internal_dequantize_and_relu6_fn", "output_type": "f32"},
+      {"quantized_ops": ["${main_op}"], "act_func": "internal_requantize_no_activation_fn", "output_type": "i8"},
+      {"quantized_ops": ["${main_op}", "Relu"], "act_func": "internal_requantize_and_relu_fn", "output_type": "i8"},
+      {"quantized_ops": ["${main_op}", "Relu6"], "act_func": "internal_requantize_and_relu6_fn", "output_type": "i8"},
+      {"quantized_ops": ["${main_op}"], "act_func": "internal_dequantize_no_activation_fn", "output_type": "f32"},
+      {"quantized_ops": ["${main_op}", "Relu"], "act_func": "internal_dequantize_and_relu_fn", "output_type": "f32"},
+      {"quantized_ops": ["${main_op}", "Relu6"], "act_func": "internal_dequantize_and_relu6_fn", "output_type": "f32"},
     ]
-    func.func @quantized_${main_op}_${suffix}(
+    func.func @GenerateQuantizedFunctionName(${quantized_ops}, "${output_type}")(
                            %input : tensor<*xi8>, %filter : tensor<*xi8>,
                            %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
                            %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>,
-                           %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*x${output_type}> {
+                           %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*x${output_type}>
+        attributes {tf_quant.quantized_ops = ${quantized_ops}} {
       %0 = "tf.PartitionedCall"(%input, %filter, %input_scale, %input_zp,
                                   %filter_scale, %filter_zp) {
-          config = "", config_proto = "", executor_type = "", f=@internal_${main_op}_fn
+          config = "", config_proto = "", executor_type = "", f=@GenerateImplFunctionName(${main_op})
         } : (tensor<*xi8>, tensor<*xi8>, tensor<*xf32>, tensor<*xi32>,
                tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
       %1 = "tf.PartitionedCall"(%0, %input_scale, %input_zp, %filter_scale, %filter_zp,
@@ -325,7 +335,11 @@ module {
 
     %i8_min = "tf.Const"() {value = dense<-128.0> : tensor<f32>} : () -> tensor<f32>
     %i8_max = "tf.Const"() {value = dense<127.0> : tensor<f32>} : () -> tensor<f32>
-    %clip = "tf.ClipByValue"(%round, %i8_min, %i8_max) : (tensor<*xf32>, tensor<f32>, tensor<f32>) -> tensor<*xf32>
+    // The clip_value_min and clip_value_max must be either of the same shape as input, or a scalar.
+    %round_shape = "tf.Shape"(%round) : (tensor<*xf32>) -> tensor<*xi32>
+    %clip_value_min = "tf.BroadcastTo"(%i8_min, %round_shape) : (tensor<f32>, tensor<*xi32>) -> tensor<*xf32>
+    %clip_value_max = "tf.BroadcastTo"(%i8_max, %round_shape) : (tensor<f32>, tensor<*xi32>) -> tensor<*xf32>
+    %clip = "tf.ClipByValue"(%round, %clip_value_min, %clip_value_max) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     %i8 = "tf.Cast"(%clip) : (tensor<*xf32>) -> tensor<*xi8>
     func.return %i8 : tensor<*xi8>
   }

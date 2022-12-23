@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "gml_st/transforms/vectorization/vectorization.h"
-
 #include <limits>
 #include <memory>
 #include <utility>
@@ -35,15 +33,21 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
+using mlir::linalg::BroadcastOp;
 using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
+using mlir::linalg::LinalgOp;
+using mlir::linalg::MapOp;
 using mlir::linalg::MatmulOp;
 using mlir::linalg::Mmt4DOp;
+using mlir::linalg::ReduceOp;
 using mlir::tensor::ExpandShapeOp;
 using mlir::vector::TransferReadOp;
 using mlir::vector::TransferWriteOp;
 
 #define GEN_PASS_DEF_VECTORIZEGMLSTLOOPSPASS
+#define GEN_PASS_DEF_VECTORIZEPERFECTLYTILEDLOOPSPASS
+#define GEN_PASS_DEF_VECTORIZECOPYPASS
 #include "gml_st/transforms/passes.h.inc"
 
 // The upper limit for vectorization of untiled `linalg.fill`. If a tensor has a
@@ -177,11 +181,8 @@ struct MaterializeUpdateTransferWriteTensorOperand
     auto src = op.getSource().getDefiningOp<MaterializeOp>();
     if (!src) return failure();
 
-    auto tileOp = src.getSet().getDefiningOp<TileOp>();
-    if (!tileOp) return failure();
-
     SmallVector<Value> indices = getValueOrCreateConstantIndexOp(
-        rewriter, op.getLoc(), tileOp.getMixedOffsets());
+        rewriter, op.getLoc(), src.getMixedOffsets());
     SmallVector<bool> inBounds(op.getTransferRank(), true);
     rewriter.setInsertionPointAfter(op);
     auto newOp = rewriter.create<vector::TransferWriteOp>(
@@ -189,9 +190,8 @@ struct MaterializeUpdateTransferWriteTensorOperand
         ArrayRef<bool>{inBounds});
     rewriter.replaceOpWithNewOp<tensor::ExtractSliceOp>(
         op, op.getResult().getType().cast<RankedTensorType>(),
-        newOp.getResult(), tileOp.getOffsets(), tileOp.getSizes(),
-        tileOp.getStrides(), tileOp.getStaticOffsets(), tileOp.getStaticSizes(),
-        tileOp.getStaticStrides());
+        newOp.getResult(), src.getOffsets(), src.getSizes(), src.getStrides(),
+        src.getStaticOffsets(), src.getStaticSizes(), src.getStaticStrides());
 
     return success();
   }
@@ -410,7 +410,7 @@ struct MaterializeOpVectorizationPattern
     // shapes.
     if (!sourceType.isa<RankedTensorType>() ||
         sourceType.getNumDynamicDims() > 0 ||
-        !op.getSet().getType().cast<TileType>().hasStaticShape())
+        ShapedType::isDynamicShape(op.getStaticSizes()))
       return rewriter.notifyMatchFailure(op, "input is not statically shaped");
 
     Location loc = op.getLoc();
@@ -422,7 +422,8 @@ struct MaterializeOpVectorizationPattern
                                   tensorResult.getElementType());
     }
     Value vectorMaterialize = rewriter.create<MaterializeOp>(
-        loc, newResult, bvm.lookupOrDefault(source), op.getSet());
+        loc, newResult, bvm.lookupOrDefault(source), op.getMixedOffsets(),
+        op.getMixedSizes(), op.getMixedStrides());
     bvm.map(op, vectorMaterialize);
     if (auto vectorType = newResult.dyn_cast<VectorType>()) {
       // The result is not a scalar, generate a TransferWrite back to tensor.
@@ -441,6 +442,28 @@ struct MaterializeOpVectorizationPattern
 
  private:
   llvm::function_ref<bool(MaterializeOp)> filterFn;
+};
+
+struct IdentityMaterializeOpFoldingPattern
+    : public OpRewritePattern<MaterializeOp> {
+  explicit IdentityMaterializeOpFoldingPattern(MLIRContext *context,
+                                               PatternBenefit benefit = 1)
+      : OpRewritePattern(context, benefit) {}
+
+  LogicalResult matchAndRewrite(MaterializeOp op,
+                                PatternRewriter &rewriter) const override {
+    auto src = op.getSource();
+    // Only fold identity materialize of ForOp's block argument.
+    // Set has to be an identity tile op and source and result are static and
+    // have the same shapes.
+    if (!op->getParentOfType<ForOp>() || !src.isa<BlockArgument>() ||
+        !isIdentitySlice(op.getOffsets(), op.getStrides()) ||
+        !haveSameStaticShape(src, op.getResult()))
+      return rewriter.notifyMatchFailure(op, "did not match filter");
+
+    op.replaceAllUsesWith(src);
+    return success();
+  }
 };
 
 // Converts static tensors among `types` to their equivalent vectors.
@@ -473,7 +496,7 @@ void copyLoopBodyAndVectorizeTerminator(LoopLikeOpInterface op,
 // values into `bvm`.
 ParallelOp vectorizeLoopLikeOp(ParallelOp op, BlockAndValueMapping &bvm,
                                PatternRewriter &rewriter) {
-  Optional<StringAttr> distTypeAttr;
+  std::optional<StringAttr> distTypeAttr;
   if (auto distType = op.getDistributionType())
     distTypeAttr = rewriter.getStringAttr(*distType);
   return rewriter.create<ParallelOp>(
@@ -586,9 +609,16 @@ bool isFillTiledOrSmall(FillOp fill) {
   if (isInsideGmlStLoop(fill)) return true;
 
   // Allow vectorization for static shapes with low number of elements.
-  auto outputType = fill.output().getType().cast<mlir::RankedTensorType>();
-  return outputType.hasStaticShape() &&
+  auto outputType = fill.output().getType().dyn_cast<mlir::RankedTensorType>();
+  return outputType && outputType.hasStaticShape() &&
          outputType.getNumElements() < kNumElementsThreshold;
+}
+
+bool isLinalgOpTiledOrOneDimReduction(LinalgOp op) {
+  if (isInsideGmlStLoop(op)) return true;
+
+  // Allow vectorization of 1D reductions.
+  return op.getNumLoops() == 1 && op.getNumReductionLoops() == 1;
 }
 
 bool isGenericOpTiledOrOneDimReduction(GenericOp generic) {
@@ -626,19 +656,16 @@ struct VectorizeGmlStLoopsPass
     // These lambdas have to be assigned to local variables, so that they
     // survive beyond patterns.add() and applyPatternsAndFoldGreedily() calls.
     auto fillOpFilter = [&](FillOp op) {
-      return isValidDistribution(op) && isFillTiledOrSmall(op);
+      bool filter = isValidDistribution(op) && isFillTiledOrSmall(op);
+      return filter;
+    };
+    auto linalgOpFilter = [&](LinalgOp op) {
+      return isValidDistribution(op) && isLinalgOpTiledOrOneDimReduction(op);
     };
     auto genericOpFilter = [&](GenericOp op) {
       return isValidDistribution(op) && isGenericOpTiledOrOneDimReduction(op);
     };
     auto matmulOpFilter = [&](MatmulOp op) {
-      if (isInsideGmlStLoop(op)) return true;
-      // Allow vectorization for static shapes.
-      auto outputType =
-          op.getResult(0).getType().cast<mlir::RankedTensorType>();
-      return outputType.hasStaticShape();
-    };
-    auto mmt4dOpFilter = [&](Mmt4DOp op) {
       if (isInsideGmlStLoop(op)) return true;
       // Allow vectorization for static shapes.
       auto outputType =
@@ -660,11 +687,6 @@ struct VectorizeGmlStLoopsPass
       return sourceOp != nullptr && opInsideLoop &&
              isValidDistribution(sourceOp);
     };
-    auto loopOpFilter = [&](Operation *op) {
-      return isValidDistribution(op) &&
-             !hasLabel(op, kVectorizationAppliedLabel);
-    };
-
     {
       RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
       patterns.add<TransferReadOfOneDimExpandShape,
@@ -672,8 +694,10 @@ struct VectorizeGmlStLoopsPass
                    SetYieldOfScalarToVectorPattern>(ctx);
       patterns.add<VectorizationPattern<FillOp>>(ctx, fillOpFilter);
       patterns.add<VectorizationPattern<GenericOp>>(ctx, genericOpFilter);
+      patterns.add<VectorizationPattern<BroadcastOp>,
+                   VectorizationPattern<MapOp>, VectorizationPattern<ReduceOp>>(
+          ctx, linalgOpFilter);
       patterns.add<VectorizationPattern<MatmulOp>>(ctx, matmulOpFilter);
-      patterns.add<VectorizationPattern<Mmt4DOp>>(ctx, mmt4dOpFilter);
       patterns.add<TensorToElementVectorizationPattern,
                    TensorEmptyToVectorBroadcastPattern>(ctx,
                                                         isValidDistribution);
@@ -681,7 +705,8 @@ struct VectorizeGmlStLoopsPass
         patterns.add<MaterializeOpVectorizationPattern>(ctx,
                                                         materializeOpFilter);
         patterns.add<LoopLikeOpVectorizationPattern<ParallelOp>,
-                     LoopLikeOpVectorizationPattern<ForOp>>(ctx, loopOpFilter);
+                     LoopLikeOpVectorizationPattern<ForOp>>(
+            ctx, isValidDistribution);
       }
       (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
@@ -692,14 +717,163 @@ struct VectorizeGmlStLoopsPass
                    SetYieldUpdateTransferWriteTensorOperand>(ctx);
       (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
+
+    // Hoisting transfer_read/transfer_write.
+    {
+      RewritePatternSet patterns(ctx);
+      patterns.add<IdentityMaterializeOpFoldingPattern>(ctx);
+      (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+
+      hoistRedundantVectorTransfersOnTensor(func);
+    }
+  }
+};
+
+struct VectorizePerfectlyTiledLoopsPass
+    : public impl::VectorizePerfectlyTiledLoopsPassBase<
+          VectorizePerfectlyTiledLoopsPass> {
+  void runOnOperation() override {
+    auto func = getOperation();
+    auto *ctx = func.getContext();
+
+    auto hasSmallStaticOutputs = [&](Operation *op) {
+      return llvm::all_of(op->getResultTypes(), [](Type type) {
+        auto outputType = type.dyn_cast<mlir::RankedTensorType>();
+        return outputType && outputType.hasStaticShape() &&
+               outputType.getNumElements() < kNumElementsThreshold;
+      });
+    };
+    auto isPerfectlyTiledLoop = [&](Operation *op) {
+      return (isa<ForOp>(op) || isa<ParallelOp>(op)) &&
+             hasLabel(op, kPerfectlyTiledLoopLabel);
+    };
+    auto isInsidePerfectlyTiledLoop = [&](Operation *op) {
+      return isPerfectlyTiledLoop(op->getParentOp());
+    };
+    auto isInsidePerfectlyTiledLoopOrSmall = [&](Operation *op) {
+      return !hasSingleElementOperandsAndResults(op) &&
+             (isInsidePerfectlyTiledLoop(op) || hasSmallStaticOutputs(op));
+    };
+    {
+      RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
+      // clang-format off
+      patterns.add<
+        VectorizationPattern<BroadcastOp>,
+        VectorizationPattern<GenericOp>,
+        VectorizationPattern<MapOp>,
+        VectorizationPattern<MatmulOp>,
+        VectorizationPattern<Mmt4DOp>,
+        VectorizationPattern<ReduceOp>
+      >(ctx, isInsidePerfectlyTiledLoopOrSmall);
+      // clang-format on
+      patterns.add<VectorizationPattern<FillOp>>(ctx, isFillTiledOrSmall);
+      patterns.add<TransferReadOfOneDimExpandShape>(ctx);
+      patterns.add<TensorToElementVectorizationPattern>(
+          ctx, isInsidePerfectlyTiledLoop);
+      (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+    }
+
+    {
+      RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
+      patterns.add<MaterializeUpdateTransferWriteTensorOperand,
+                   SetYieldUpdateTransferWriteTensorOperand>(ctx);
+      (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+    }
+
+    // Hoisting transfer_read/transfer_write.
+    {
+      RewritePatternSet patterns(ctx);
+      patterns.add<IdentityMaterializeOpFoldingPattern>(ctx);
+      (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+
+      hoistRedundantVectorTransfersOnTensor(func);
+    }
+  }
+};
+
+/// Custom vectorization pattern for small and non-contiguous memref::CopyOp.
+struct CopyVectorizationPattern : public OpRewritePattern<memref::CopyOp> {
+  using OpRewritePattern<memref::CopyOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(memref::CopyOp op,
+                                PatternRewriter &rewriter) const override {
+    auto srcType = op.getSource().getType().cast<BaseMemRefType>();
+    auto targetType = op.getTarget().getType().cast<BaseMemRefType>();
+
+    auto isStaticShapeAndContiguousRowMajor = [](MemRefType type) {
+      if (!type.hasStaticShape()) return false;
+
+      SmallVector<int64_t> strides;
+      int64_t offset;
+      if (failed(getStridesAndOffset(type, strides, offset))) return false;
+
+      int64_t runningStride = 1;
+      for (unsigned i = strides.size(); i > 0; --i) {
+        if (strides[i - 1] != runningStride) return false;
+        runningStride *= type.getDimSize(i - 1);
+      }
+      return true;
+    };
+
+    auto isContiguousMemrefType = [&](BaseMemRefType type) {
+      auto memrefType = type.dyn_cast<mlir::MemRefType>();
+      return memrefType && (memrefType.getLayout().isIdentity() ||
+                            isStaticShapeAndContiguousRowMajor(memrefType));
+    };
+
+    auto isSmallMemrefType = [&](BaseMemRefType type) {
+      auto memrefType = type.dyn_cast<mlir::MemRefType>();
+      return memrefType && memrefType.hasStaticShape() &&
+             memrefType.getNumElements() > 0 &&
+             memrefType.getNumElements() < kNumElementsThreshold;
+    };
+
+    // If memref has an identity layout or is contiguous with an arbitrary
+    // offset, it will be turned into llvm.memcpy intrinsic later, do not
+    // vectorize it.
+    if (isContiguousMemrefType(srcType) && isContiguousMemrefType(targetType)) {
+      return failure();
+    }
+
+    // If memref is too big, vectorizing it actually explodes the compilation
+    // time. Also, ignore empty memrefs, which will be handled by memrefCopy
+    // function.
+    if (!isSmallMemrefType(srcType) || !isSmallMemrefType(targetType)) {
+      return failure();
+    }
+    return linalg::vectorizeCopy(rewriter, op);
+  }
+};
+
+struct VectorizeCopyPass
+    : public impl::VectorizeCopyPassBase<VectorizeCopyPass> {
+  void runOnOperation() override {
+    auto func = getOperation();
+    auto *ctx = func.getContext();
+
+    RewritePatternSet patterns(ctx);
+    patterns.add<CopyVectorizationPattern>(ctx);
+    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+      return signalPassFailure();
+    }
   }
 };
 }  // namespace
-   //
+
 std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeGmlStLoopsPass(
     bool vectorizeGmlStOps, ArrayRef<StringRef> distributionLabels) {
   return std::make_unique<VectorizeGmlStLoopsPass>(vectorizeGmlStOps,
                                                    distributionLabels);
 }
+
+std::unique_ptr<OperationPass<func::FuncOp>>
+createVectorizePerfectlyTiledLoopsPass() {
+  return std::make_unique<VectorizePerfectlyTiledLoopsPass>();
+}
+
+std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass() {
+  return std::make_unique<VectorizeCopyPass>();
+}
+
 }  // namespace gml_st
 }  // namespace mlir

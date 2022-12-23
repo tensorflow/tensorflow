@@ -25,7 +25,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
+#include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
 #include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
@@ -77,8 +80,6 @@ namespace tfrt_stub {
 namespace {
 
 constexpr absl::string_view kSignatureJoiningDelimiter = "+";
-constexpr absl::string_view kTensorNameJoiningDelimiter = "-";
-constexpr absl::string_view kArgumentTypeJoiningDelimiter = "^";
 
 using SignatureMap = absl::flat_hash_map<std::string, internal::Signature>;
 using ::tensorflow::SessionMetadata;
@@ -233,9 +234,9 @@ tensorflow::Status RunInitializers(
     const Runtime& runtime, tfrt::ResourceContext* resource_context,
     const FallbackState& fallback_state) {
   TF_ASSIGN_OR_RETURN(auto request_info,
-                      SetUpRequestContext(/*run_options=*/{}, model_metadata,
-                                          runtime, runtime.work_queue(),
-                                          resource_context, fallback_state));
+                      CreateRequestInfo(/*run_options=*/{}, model_metadata,
+                                        runtime, runtime.work_queue(),
+                                        resource_context, fallback_state));
 
   tfrt::ExecutionContext exec_ctx(request_info->tfrt_request_context);
 
@@ -311,7 +312,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
     const FallbackState& fallback_state, std::string saved_model_dir,
     bool import_user_signatures, bool run_placer_grappler_on_functions,
-    bool enable_tfrt_gpu) {
+    bool enable_tfrt_gpu, bool use_bridge_for_gpu) {
   std::vector<std::string> signature_names;
   if (import_user_signatures) {
     signature_names = FindNamesForValidSignatures(meta_graph_def);
@@ -329,7 +330,8 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
   TF_ASSIGN_OR_RETURN(auto import_input,
                       TfrtSavedModelMLIRImportInput::Create(
                           fallback_state, &meta_graph_def, /*debug_info=*/{},
-                          run_placer_grappler_on_functions, enable_tfrt_gpu));
+                          run_placer_grappler_on_functions, enable_tfrt_gpu,
+                          use_bridge_for_gpu));
 
   TF_ASSIGN_OR_RETURN(
       auto module,
@@ -364,6 +366,116 @@ tensorflow::Status InitSavedModel(
                       options.graph_execution_options.model_metadata, bef_file,
                       *options.graph_execution_options.runtime,
                       resource_context, fallback_state));
+
+  return OkStatus();
+}
+
+tensorflow::Status IsInputSpecsCorrect(
+    absl::string_view name, const internal::Signature& signature,
+    absl::Span<const tensorflow::Tensor> inputs) {
+  TF_RET_CHECK(signature.input_specs.size() == inputs.size())
+      << "signature " << name
+      << " input size is wrong, expected: " << signature.input_specs.size()
+      << ", actual: " << inputs.size();
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    const auto& expected_input_spec = signature.input_specs[i];
+    TF_RET_CHECK(expected_input_spec.dtype == inputs[i].dtype())
+        << "signature " << name
+        << " input dtype is wrong, expected: " << expected_input_spec.dtype
+        << ", actual: " << inputs[i].dtype();
+    TF_RET_CHECK(expected_input_spec.shape.IsCompatibleWith(inputs[i].shape()))
+        << "signature " << name
+        << " input shape is wrong, expected : " << expected_input_spec.shape
+        << ", actual: " << inputs[i].shape();
+  }
+  return OkStatus();
+}
+
+tensorflow::Status CheckInputSpecs(
+    const tensorflow::SessionMetadata& model_metadata,
+    const SavedModel::RunOptions& run_options, absl::string_view signature_name,
+    const internal::Signature& signature,
+    absl::Span<const tensorflow::Tensor> input_tensors) {
+  if (!run_options.validate_input_specs &&
+      !run_options.validate_input_specs_dry_run) {
+    return OkStatus();
+  }
+
+  auto status = IsInputSpecsCorrect(signature_name, signature, input_tensors);
+  if (!status.ok()) {
+    const auto error_string =
+        absl::StrCat("model: ", model_metadata.name(),
+                     ", version: ", model_metadata.version(),
+                     ", error: ", status.error_message());
+    if (!run_options.validate_input_specs_dry_run) {
+      return tensorflow::errors::InvalidArgument(error_string);
+    }
+    LOG_EVERY_N_SEC(ERROR, 5)
+        << "TFRT input specs validation failed, " << error_string;
+  }
+
+  return OkStatus();
+}
+
+tensorflow::Status PreprocessSignature(
+    const tensorflow::SessionMetadata& model_metadata,
+    const SavedModel::RunOptions& run_options, absl::string_view signature_name,
+    const tensorflow::SignatureDef& signature_def,
+    const internal::Signature& signature,
+    absl::Span<const tensorflow::Tensor> input_tensors,
+    absl::flat_hash_set<std::string>* visited_feed_tensor_names,
+    std::vector<std::pair<std::string, tensorflow::Tensor>>& inputs,
+    std::vector<std::string>& output_tensor_names) {
+  const auto& input_names = signature.input_names;
+
+  TF_RETURN_IF_ERROR(CheckInputSpecs(model_metadata, run_options,
+                                     signature_name, signature, input_tensors));
+
+  TF_RET_CHECK(input_tensors.size() == signature_def.inputs().size())
+      << "Incorrect input size for signature: " << signature_name
+      << ": expected " << signature_def.inputs().size() << ", but got "
+      << input_tensors.size();
+  DCHECK_EQ(input_names.size(), signature_def.inputs().size());
+
+  // Then we find out the corresponding tensor names (ie.
+  // node_name:output_idx) for the inputs using the SignatureDef proto.
+  //
+  // TODO(tfrt-devs): Consider including tensor names in `signatures_` as
+  // well, so that only `signatures_` is used here.
+  for (int i = 0; i < input_tensors.size(); ++i) {
+    const auto& tensor_info = signature_def.inputs().at(input_names[i]);
+
+    // TODO(b/184675681): Support other encoding cases.
+    //
+    // TODO(b/184679394): Add unit test for this check.
+    TF_RET_CHECK(tensor_info.encoding_case() == tensorflow::TensorInfo::kName)
+        << "Only dense tensor is supported, but got encoding case "
+        << tensor_info.encoding_case();
+
+    const auto& tensor_name = tensor_info.name();
+
+    // Skip if we have visited the feed tensor. Otherwise, marked it as
+    // visited and put it in the `flat_inputs`. Note that the following code
+    // deduplicate inputs with the feed tensor names, and generates the flat
+    // inputs in the same order.
+    if (visited_feed_tensor_names &&
+        !visited_feed_tensor_names->insert(tensor_name).second)
+      continue;
+    inputs.push_back(std::make_pair(tensor_name, input_tensors[i]));
+  }
+
+  for (const auto& output_key : signature.output_names) {
+    const auto& tensor_info = signature_def.outputs().at(output_key);
+
+    VLOG(1) << "Importing Signature Output: output_key = " << output_key
+            << ", tensor_info = " << tensor_info.DebugString();
+
+    TF_RET_CHECK(tensor_info.encoding_case() == tensorflow::TensorInfo::kName)
+        << "Only dense tensor is supported, but got encoding case "
+        << tensor_info.encoding_case();
+
+    output_tensor_names.push_back(tensor_info.name());
+  }
 
   return OkStatus();
 }
@@ -517,7 +629,8 @@ SavedModelImpl::LoadSavedModel(Options options,
           std::string(saved_model_dir),
           /*import_user_signatures=*/!options.enable_lazy_loading,
           options.graph_execution_options.run_placer_grappler_on_functions,
-          options.graph_execution_options.enable_tfrt_gpu));
+          options.graph_execution_options.enable_tfrt_gpu,
+          options.graph_execution_options.compile_options.use_bridge_for_gpu));
 
   const auto import_duration = absl::Now() - import_start_time;
   saved_model_import_time_seconds->GetCell(std::string(saved_model_dir))
@@ -539,8 +652,8 @@ SavedModelImpl::LoadSavedModel(Options options,
   }
   tfrt::BefBuffer bef;
   RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
-      options.graph_execution_options.compile_options, mlir_module.get(),
-      &bef));
+      options.graph_execution_options.compile_options, mlir_module.get(), &bef,
+      fallback_state.get()));
 
   const auto compile_duration = absl::Now() - compile_start_time;
   saved_model_compile_time_seconds->GetCell(std::string(saved_model_dir))
@@ -568,11 +681,17 @@ SavedModelImpl::LoadSavedModel(Options options,
   LOG(INFO) << "TFRT finished initializing savedmodel. Took "
             << absl::ToInt64Milliseconds(init_duration) << " ms.";
 
+  auto kernel_registry = std::make_unique<mlrt::KernelRegistry>();
+  // Register infra and standard math kernels
+  tensorflow::tf_mlrt::RegisterTfMlrtKernels(*kernel_registry);
+  tfrt::cpu::RegisterMlrtMathKernels(kernel_registry.get());
+
   ASSIGN_OR_RETURN_WITH_STAGE_INFO(
       "graph_executor creation", auto graph_executor,
       GraphExecutor::Create(options.graph_execution_options, *fallback_state,
                             tpu_model_resource.get(),
-                            std::move(*meta_graph_def.mutable_graph_def())));
+                            std::move(*meta_graph_def.mutable_graph_def()),
+                            std::move(kernel_registry)));
 
   // Finally, create the saved model.
   return {std::make_unique<SavedModelImpl>(
@@ -622,29 +741,6 @@ std::optional<FunctionMetadata> SavedModelImpl::GetFunctionMetadata(
   return FunctionMetadata(&iter->second);
 }
 
-namespace {
-tensorflow::Status IsInputSpecsCorrect(
-    absl::string_view name, const internal::Signature& signature,
-    absl::Span<const tensorflow::Tensor> inputs) {
-  TF_RET_CHECK(signature.input_specs.size() == inputs.size())
-      << "signature " << name
-      << " input size is wrong, expected: " << signature.input_specs.size()
-      << ", actual: " << inputs.size();
-  for (size_t i = 0; i < inputs.size(); ++i) {
-    const auto& expected_input_spec = signature.input_specs[i];
-    TF_RET_CHECK(expected_input_spec.dtype == inputs[i].dtype())
-        << "signature " << name
-        << " input dtype is wrong, expected: " << expected_input_spec.dtype
-        << ", actual: " << inputs[i].dtype();
-    TF_RET_CHECK(expected_input_spec.shape.IsCompatibleWith(inputs[i].shape()))
-        << "signature " << name
-        << " input shape is wrong, expected : " << expected_input_spec.shape
-        << ", actual: " << inputs[i].shape();
-  }
-  return OkStatus();
-}
-}  // namespace
-
 tensorflow::Status SavedModelImpl::Run(
     const RunOptions& run_options, absl::string_view name,
     absl::Span<const tensorflow::Tensor> inputs,
@@ -655,20 +751,37 @@ tensorflow::Status SavedModelImpl::Run(
   auto sig_iter = signatures_.find(name);
   TF_RET_CHECK(sig_iter != signatures_.end())
       << "failed to find signature " << name << " in the graph";
-  if (run_options.validate_input_specs) {
-    TF_RETURN_IF_ERROR(IsInputSpecsCorrect(name, sig_iter->second, inputs));
+  const auto& signature = sig_iter->second;
+  const auto& signature_def = meta_graph_def_.signature_def().at(name);
+
+  if (options_.enable_lazy_loading &&
+      options_.lazy_loading_use_graph_executor) {
+    std::vector<std::pair<std::string, tensorflow::Tensor>> input_tensors;
+    input_tensors.reserve(inputs.size());
+
+    std::vector<std::string> output_tensor_names;
+    output_tensor_names.reserve(signature.output_names.size());
+
+    TF_RETURN_IF_ERROR(
+        PreprocessSignature(options_.graph_execution_options.model_metadata,
+                            run_options, name, signature_def, signature, inputs,
+                            /*visited_feed_tensor_names=*/nullptr,
+                            input_tensors, output_tensor_names));
+
+    return graph_executor_->Run(run_options, input_tensors, output_tensor_names,
+                                /*target_tensor_names=*/{}, outputs);
   }
-  if (run_options.validate_input_specs_dry_run) {
-    const auto status = IsInputSpecsCorrect(name, sig_iter->second, inputs);
-    if (!status.ok()) {
-      LOG_EVERY_N_SEC(ERROR, 5)
-          << "TFRT input specs validation failed: " << status.error_message();
-    }
-  }
+
+  TF_RETURN_IF_ERROR(
+      CheckInputSpecs(options_.graph_execution_options.model_metadata,
+                      run_options, name, signature, inputs));
 
   const tfrt::Function* func;
   tfrt::ResourceContext* resource_context;
   if (options_.enable_lazy_loading) {
+    // TODO(b/216379787): Remove this lazy loading path once b/239749833 is
+    // unblocked.
+
     // If lazy loading is enabled, no signature is loaded into `bef_file_`, so
     // we need to find the BEF from the cache or create one.
     TF_ASSIGN_OR_RETURN(
@@ -711,17 +824,13 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
   TF_RET_CHECK(multi_outputs) << "outputs must be provided";
   multi_outputs->clear();
 
-  // Due to possible overlapping of feed nodes among user-specified inputs,
-  // `JoinSignatures()` will deduplicate against fetch tensor names and produce
-  // the desired inputs in a new order. The same dedup logic is used here to
-  // generate the flattened input values in the same order.
+  // Due to possible overlapping of feed nodes among user-specified inputs, We
+  // deduplicate against fetch tensor names and produce the desired inputs in a
+  // new order. The same dedup logic is used here to generate the flattened
+  // input values in the same order.
   //
   // Note that we don't need to do any deduplicating nor reordering for the
   // fetch nodes.
-  //
-  // TODO(tfrt-devs): Consider refactoring JoinSignatures so that we don't have
-  // the implicit requirement that the same dedup logic must be used here and in
-  // JoinSignatures().
   std::vector<std::pair<std::string /*tensor_name*/, tensorflow::Tensor>>
       flat_inputs;
   std::vector<std::string> flat_output_names;
@@ -741,64 +850,11 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
     // `signatures_` keeps the user-specified input names that is in the same
     // order as `input_tensors`.
     const auto& signature = signatures_.at(signature_name);
-    const auto& input_names = signature.input_names;
-    if (run_options.validate_input_specs) {
-      TF_RETURN_IF_ERROR(
-          IsInputSpecsCorrect(signature_name, signature, input_tensors));
-    }
-    if (run_options.validate_input_specs_dry_run) {
-      const auto status =
-          IsInputSpecsCorrect(signature_name, signature, input_tensors);
-      if (!status.ok()) {
-        LOG(ERROR) << "TFRT input specs validation failed: "
-                   << status.error_message();
-      }
-    }
 
-    TF_RET_CHECK(input_tensors.size() == signature_def.inputs().size())
-        << "Incorrect input size for signature: " << signature_name
-        << ": expected " << signature_def.inputs().size() << ", but got "
-        << input_tensors.size();
-    DCHECK_EQ(input_names.size(), signature_def.inputs().size());
-
-    // Then we find out the corresponding tensor names (ie.
-    // node_name:output_idx) for the inputs using the SignatureDef proto.
-    //
-    // TODO(tfrt-devs): Consider including tensor names in `signatures_` as
-    // well, so that only `signatures_` is used here.
-    for (int j = 0; j < input_tensors.size(); ++j) {
-      const auto& tensor_info = signature_def.inputs().at(input_names[j]);
-
-      // TODO(b/184675681): Support other encoding cases.
-      //
-      // TODO(b/184679394): Add unit test for this check.
-      TF_RET_CHECK(tensor_info.encoding_case() == tensorflow::TensorInfo::kName)
-          << "Only dense tensor is supported, but got encoding case "
-          << tensor_info.encoding_case();
-
-      const auto& tensor_name = tensor_info.name();
-
-      // Skip if we have visited the feed tensor. Otherwise, marked it as
-      // visited and put it in the `flat_inputs`. Note that the following code
-      // uses the same logic as in JoinSignatures() to deduplicate inputs with
-      // the feed tensor names, and generates the flat inputs in the same order.
-      if (visited_feed_tensor_names.contains(tensor_name)) continue;
-      visited_feed_tensor_names.insert(tensor_name);
-      flat_inputs.push_back(std::make_pair(tensor_name, input_tensors[j]));
-    }
-
-    for (const auto& output_key : signature.output_names) {
-      const auto& tensor_info = signature_def.outputs().at(output_key);
-
-      VLOG(1) << "Importing Signature Output: output_key = " << output_key
-              << ", tensor_info = " << tensor_info.DebugString();
-
-      TF_RET_CHECK(tensor_info.encoding_case() == tensorflow::TensorInfo::kName)
-          << "Only dense tensor is supported, but got encoding case "
-          << tensor_info.encoding_case();
-
-      flat_output_names.push_back(tensor_info.name());
-    }
+    TF_RETURN_IF_ERROR(PreprocessSignature(
+        options_.graph_execution_options.model_metadata, run_options,
+        signature_name, signature_def, signature, input_tensors,
+        &visited_feed_tensor_names, flat_inputs, flat_output_names));
   }
 
   std::vector<tensorflow::Tensor> flat_outputs;
@@ -961,7 +1017,7 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
 
   RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
       options_.graph_execution_options.compile_options, module.get(),
-      &loading_result->bef));
+      &loading_result->bef, fallback_state_.get()));
 
   // Step 3: Initialize runtime states using special BEF functions.
   ASSIGN_OR_RETURN_IN_INIT(

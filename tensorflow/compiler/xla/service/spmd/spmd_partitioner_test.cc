@@ -2147,6 +2147,29 @@ ENTRY entry {
                           op::Shape("f32[128,17,129]")));
 }
 
+TEST_F(SpmdPartitioningTest, PadAlongNonPartitionedDimensionReshard) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[128,14,257] parameter(0), sharding={replicated}
+  %const = f32[] constant(0)
+  ROOT %pad = f32[128,17,257] pad(%param0, %const), padding=0_0x1_2x0_0,
+    sharding={devices=[1,1,2]0,1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto param0 = AllOf(op::Parameter(), op::Shape("f32[128,14,257]"));
+  auto operand = op::DynamicSlice(op::Pad(param0, _), op::Constant(),
+                                  op::Constant(), op::Multiply());
+  EXPECT_THAT(root, AllOf(op::Pad(operand, op::Constant()),
+                          op::Shape("f32[128,17,129]")));
+}
+
 TEST_F(SpmdPartitioningTest, PadAlongPartitionedDimension) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -12619,6 +12642,71 @@ ENTRY entry {
   EXPECT_THAT(root, op::DynamicSlice(
                         AllOf(op::CustomCall(_), op::Shape("f32[51,128,128]")),
                         _, _, _));
+}
+
+TEST_F(SpmdPartitioningTest, ManualGetTupleElement) {
+  const char* const hlo_string = R"(
+HloModule pjit
+
+orclone {
+  lhs.1 = u32[] parameter(0)
+  rhs.1 = u32[] parameter(2)
+  or.2 = u32[] or(lhs.1, rhs.1)
+  lhs.0 = u32[] parameter(1)
+  rhs.0 = u32[] parameter(3)
+  or.3 = u32[] or(lhs.0, rhs.0)
+  ROOT tuple.4 = (u32[], u32[]) tuple(or.2, or.3)
+}
+
+ENTRY %main.21 {
+  select.104 = u32[2,2]{1,0} parameter(0), sharding={manual}
+  shift-left.5 = u32[2,2]{1,0} parameter(1), sharding={manual}
+  constant.4183 = u32[] constant(0), sharding={manual}
+  reduce.1 = (u32[2]{0}, u32[2]{0}) reduce(shift-left.5, select.104, constant.4183, constant.4183), dimensions={1}, sharding={{manual},{manual}}, to_apply=orclone
+  ROOT get-tuple-element.13 = u32[2]{0} get-tuple-element(reduce.1), index=0, sharding={manual}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::GetTupleElement(op::Reduce(_, _, _, _)));
+}
+
+TEST_F(SpmdPartitioningTest, CombiningScatterPartitiong) {
+  const char* const hlo_string = R"(
+HloModule pjit
+
+region_110.8267 {
+  Arg_0.8268 = bf16[] parameter(0)
+  Arg_1.8269 = bf16[] parameter(1)
+  ROOT add.8270 = bf16[] add(Arg_0.8268, Arg_1.8269)
+}
+
+ENTRY %main.21 {
+  broadcast.8659 = bf16[2,8,12288,192,64]{4,3,2,1,0} parameter(0), sharding={devices=[2,1,2,4,1]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  reshape.9796 = bf16[2,1,12288,192,64]{4,3,2,1,0} parameter(1), sharding={devices=[2,1,2,4,1]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  iota.50 = s32[2,1]{1,0} iota(), iota_dimension=0, sharding={devices=[2,1,8]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 last_tile_dim_replicate}
+  constant.1585 = s32[] constant(0), sharding={replicated}
+  broadcast.3764 = s32[2,1]{1,0} broadcast(constant.1585), dimensions={}, sharding={devices=[2,1,8]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 last_tile_dim_replicate}
+  reshape_idx = s32[2,1]{1,0} parameter(2), sharding={devices=[2,1,8]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 last_tile_dim_replicate}
+  concatenate.8907 = s32[2,5]{1,0} concatenate(iota.50, reshape_idx, broadcast.3764, broadcast.3764, broadcast.3764), dimensions={1}, sharding={devices=[2,1,8]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 last_tile_dim_replicate}
+  scatter.9797 = bf16[2,8,12288,192,64]{4,3,2,1,0} scatter(broadcast.8659, concatenate.8907, reshape.9796), update_window_dims={1,2,3,4}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0,1,2,3,4}, index_vector_dim=1, indices_are_sorted=true, unique_indices=true, to_apply=region_110.8267, sharding={devices=[2,1,2,4,1]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  ROOT c = bf16[2,8,12288,192,64]{4,3,2,1,0} copy(scatter.9797), sharding={devices=[2,1,2,4,1]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/16));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Copy(AllOf(op::Shape("bf16[1,8,6144,48,64]"), op::Scatter(_, _, _))));
+  // Check that there is no communication added.
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
 }
 
 }  // namespace

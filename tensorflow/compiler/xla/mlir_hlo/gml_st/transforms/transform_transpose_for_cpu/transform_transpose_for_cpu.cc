@@ -19,6 +19,7 @@ limitations under the License.
 #include "gml_st/IR/gml_st_ops.h"
 #include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/passes.h"
+#include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -49,6 +50,10 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
                                 PatternRewriter &rewriter) const override {
     if (hasLabel(op, kTransposeTransformedLabel)) return failure();
 
+    if (isa<gml_st::ParallelOp, gml_st::ForOp>(op->getParentOp()))
+      return rewriter.notifyMatchFailure(
+          op, "has already been tiled by another pass.");
+
     auto tilingResult =
         tile(options, rewriter, cast<TilingInterface>(op.getOperation()));
     if (failed(tilingResult)) return failure();
@@ -58,7 +63,15 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
     if (tilingResult->loop != nullptr) {
       rewriter.replaceOp(op, tilingResult->loop->getResults());
     }
-    setLabel(tilingResult->tiledOp, kTransposeTransformedLabel);
+    setLabel(tilingResult->tiledOps.front(), kTransposeTransformedLabel);
+
+    // Peel parallel loops, label the main loop as "perfectly tiled" one, to
+    // enable vectorization after canonicalization.
+    if (auto loop = dyn_cast_or_null<ParallelOp>(tilingResult->loop)) {
+      auto peelingResult = peelAllLoops(loop, rewriter);
+      setLabel(loop, kPerfectlyTiledLoopLabel);
+    }
+
     return success();
   }
 

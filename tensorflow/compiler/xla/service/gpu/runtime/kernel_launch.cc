@@ -34,7 +34,6 @@ namespace xla {
 namespace gpu {
 
 using xla::runtime::CustomCall;
-using xla::runtime::Executable;
 using xla::runtime::State;
 using xla::runtime::StridedMemrefView;
 
@@ -48,27 +47,14 @@ StreamExecutorKernels* GpuExecutableKernels::operator()(
 // Define the kernel launch custom call.
 //===----------------------------------------------------------------------===//
 
-namespace {
-struct KernelLaunch {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
-  absl::Status operator()(
-      const ServiceExecutableRunOptions* run_options, const std::string* ptx,
-      const std::vector<uint8_t>* cubin, se::DeviceMemoryBase* temp_buffer,
-      State<std::unique_ptr<se::KernelBase>> device_kernel, int32_t grid_size_x,
-      int32_t grid_size_y, int32_t grid_size_z, int32_t block_size_x,
-      int32_t block_size_y, int32_t block_size_z,
-      CustomCall::RemainingArgs args, std::string_view name) const;
-  static KernelLaunch Handler() { return KernelLaunch(); }
-};
-}  // namespace
-
-absl::Status KernelLaunch::operator()(
+static absl::Status LaunchImpl(
     const ServiceExecutableRunOptions* run_options, const std::string* ptx,
     const std::vector<uint8_t>* cubin, se::DeviceMemoryBase* temp_buffer,
-    State<std::unique_ptr<se::KernelBase>> device_kernel, int32_t grid_size_x,
-    int32_t grid_size_y, int32_t grid_size_z, int32_t block_size_x,
-    int32_t block_size_y, int32_t block_size_z, CustomCall::RemainingArgs args,
-    std::string_view name) const {
+    State<std::unique_ptr<se::KernelBase>> device_kernel,
+    int32_t shared_memory_bytes, int32_t grid_size_x, int32_t grid_size_y,
+    int32_t grid_size_z, int32_t block_size_x, int32_t block_size_y,
+    int32_t block_size_z, CustomCall::RemainingArgs args,
+    std::string_view name) {
   se::Stream* stream = run_options->stream();
   se::StreamExecutor* executor = stream->parent();
 
@@ -78,12 +64,12 @@ absl::Status KernelLaunch::operator()(
 
   const int args_size_including_temp_buffer = args.size() + 1;
 
-  // If kernel does not exists create it from the ptx and cubin.
+  // If kernel does not exist create it from the ptx and cubin.
   absl::StatusOr<std::unique_ptr<se::KernelBase>*> kernel =
       device_kernel.GetOrCreate([&] {
         return ToAbsl(CreateKernel(absl::string_view(name.data(), name.size()),
                                    args_size_including_temp_buffer, *ptx,
-                                   *cubin, executor));
+                                   *cubin, executor, shared_memory_bytes));
       });
   if (!kernel.ok()) return kernel.status();
   assert((**kernel)->name() == name && "unexpected loaded kernel");
@@ -119,27 +105,23 @@ absl::Status KernelLaunch::operator()(
 
 //===----------------------------------------------------------------------===//
 
-static bool Launch(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                   void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.func.launch")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const std::string*>()
-                             .UserData<const std::vector<uint8_t>*>()
-                             .UserData<se::DeviceMemoryBase*>()
-                             .State<std::unique_ptr<se::KernelBase>>("uid")
-                             .Arg<int32_t>()   // grid_size_x
-                             .Arg<int32_t>()   // grid_size_y
-                             .Arg<int32_t>()   // grid_size_z
-                             .Arg<int32_t>()   // block_size_x
-                             .Arg<int32_t>()   // block_size_y
-                             .Arg<int32_t>()   // block_size_x
-                             .RemainingArgs()  // args
-                             .Attr<std::string_view>("kernel")
-                             .To<checks>(KernelLaunch::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    Launch, FunctionWrapper<LaunchImpl>(), checks,
+    CustomCall::Bind("xla.gpu.func.launch")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .UserData<const std::string*>()
+        .UserData<const std::vector<uint8_t>*>()
+        .UserData<se::DeviceMemoryBase*>()
+        .State<std::unique_ptr<se::KernelBase>>("uid")
+        .Arg<int32_t>()   // shared_memory_bytes
+        .Arg<int32_t>()   // grid_size_x
+        .Arg<int32_t>()   // grid_size_y
+        .Arg<int32_t>()   // grid_size_z
+        .Arg<int32_t>()   // block_size_x
+        .Arg<int32_t>()   // block_size_y
+        .Arg<int32_t>()   // block_size_x
+        .RemainingArgs()  // args
+        .Attr<std::string_view>("kernel"));
 
 void RegisterKernelLaunchCustomCalls(
     runtime::DirectCustomCallRegistry& registry) {

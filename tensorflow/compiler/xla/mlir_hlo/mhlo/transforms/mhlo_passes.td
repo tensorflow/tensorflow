@@ -302,6 +302,12 @@ def RankSpecializationToSCFPass
   ];
 }
 
+def MhloExpandOpsSimplifierPass
+    : Pass<"mhlo-expand-ops-simplifier", "func::FuncOp"> {
+  let summary = "Expand feature rich mhlo ops into a set of simpler mhlo ops.";
+  let constructor = "createMhloExpandOpsSimplifierPass()";
+}
+
 def CollapseElementwiseMapPass
     : Pass<"mhlo-collapse-elementwise-map", "func::FuncOp"> {
   let summary = "Collapse the mhlo.map if the map only has elementwise ops.";

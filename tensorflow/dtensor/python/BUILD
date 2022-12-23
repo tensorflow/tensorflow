@@ -43,12 +43,9 @@ pytype_strict_library(
     srcs = ["api.py"],
     srcs_version = "PY3",
     deps = [
-        ":config",
         ":dtensor_device",
         ":gen_dtensor_ops",
         ":layout",
-        "//tensorflow/python:config",
-        "//tensorflow/python:device",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:tf_export",
@@ -137,6 +134,20 @@ pytype_strict_library(
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/util:tf_export",
+    ],
+)
+
+pytype_strict_library(
+    name = "numpy_util",
+    srcs = ["numpy_util.py"],
+    deps = [
+        ":api",
+        ":layout",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/types",
+        "//third_party/py/numpy",
     ],
 )
 

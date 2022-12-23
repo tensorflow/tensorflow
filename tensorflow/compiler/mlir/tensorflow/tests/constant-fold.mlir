@@ -608,7 +608,7 @@ func.func @testBroadcastGradientArgsHigherRank() -> (tensor<2xi32>, tensor<2xi32
   // CHECK-DAG: %[[R0:.*]] = "tf.Const"() {value = dense<[0, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
   // CHECK-DAG: %[[R1:.*]] = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
   // CHECK-NOT: tf.BroadcastGradientArgs
-  // CEHCK: return [[R0]], [[R1]]
+  // CHECK: return %[[R0]], %[[R1]]
 
   func.return %r0, %r1 : tensor<2xi32>, tensor<2xi32>
 }
@@ -621,7 +621,7 @@ func.func @testBroadcastGradientArgsScalar() -> (tensor<2xi32>, tensor<0xi32>) {
   // CHECK-DAG: %[[R0:.*]] = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
   // CHECK-DAG: %[[R1:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   // CHECK-NOT: tf.BroadcastGradientArgs
-  // CEHCK: return [[R0]], [[R1]]
+  // CHECK: return %[[R0]], %[[R1]]
 
   func.return %r0, %r1 : tensor<2xi32>, tensor<0xi32>
 }
@@ -634,7 +634,7 @@ func.func @testBroadcastGradientArgI64() -> (tensor<2xi64>, tensor<0xi64>) {
   // CHECK-DAG: %[[R0:.*]] = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>} : () -> tensor<2xi64>
   // CHECK-DAG: %[[R1:.*]] = "tf.Const"() {value = dense<> : tensor<0xi64>} : () -> tensor<0xi64>
   // CHECK-NOT: tf.BroadcastGradientArgs
-  // CEHCK: return [[R0]], [[R1]]
+  // CHECK: return %[[R0]], %[[R1]]
 
   func.return %r0, %r1 : tensor<2xi64>, tensor<0xi64>
 }

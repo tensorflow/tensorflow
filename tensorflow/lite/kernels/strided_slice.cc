@@ -21,8 +21,8 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"

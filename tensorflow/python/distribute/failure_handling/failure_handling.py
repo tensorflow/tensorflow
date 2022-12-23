@@ -54,7 +54,6 @@ _ACKNOWLEDGE_KEY = 'RECEIVED_SIGNAL'
 _ITERATION_VARIABLE = 'checkpointed_runs'
 _STOP_WATCHING_CLUSTER_VALUE = 'STOP_WATCHER'
 PREEMPTION_KEY = 'TF_DEFAULT_PREEMPTION_NOTICE_KEY'
-ENABLE_TESTING_FOR_TPU = False
 
 
 # TODO(wxinyi): add type annotations.
@@ -214,7 +213,7 @@ class BorgTerminationConfig(TerminationConfig):
       grace_period=None,
       save_fn=None):
     self.termination_watcher_fn = termination_watcher_fn
-    default_exit_fn = lambda: sys.exit(42)
+    default_exit_fn = lambda: sys.exit(0)
     self.exit_fn = exit_fn or default_exit_fn
     self.grace_period = grace_period or 0
     self.save_fn = save_fn
@@ -230,10 +229,7 @@ class BorgTPUTerminationConfig(TerminationConfig):
       grace_period=None,
       save_fn=None):
     self.termination_watcher_fn = termination_watcher_fn
-    if exit_fn:
-      self.exit_fn = lambda unused_time: exit_fn()
-    else:
-      self.exit_fn = failure_handling_util.default_tpu_exit_fn
+    self.exit_fn = exit_fn or failure_handling_util.default_tpu_exit_fn
     self.grace_period = grace_period or 0
     self.save_fn = save_fn
 
@@ -494,12 +490,7 @@ class PreemptionCheckpointHandler(object):
                                 'usage with TPU or CPU device on GCP.')
 
     elif self._platform_device == failure_handling_util.PlatformDevice.INTERNAL_TPU:
-      if ENABLE_TESTING_FOR_TPU:
-        self._initialize_for_tpu_strategy()
-
-      else:
-        raise NotImplementedError('PreemptionCheckpointHandler does not support'
-                                  ' usage with TPU yet.')
+      self._initialize_for_tpu_strategy()
 
     else:
       self._initialize_for_multi_worker_mirrored()
@@ -749,6 +740,10 @@ class PreemptionCheckpointHandler(object):
     value to infer the starting epoch and step after training restores, as shown
     in the example above.
     """
+    if (self._platform_device ==
+        failure_handling_util.PlatformDevice.INTERNAL_TPU):
+      raise NotImplementedError('Please create variables saved in checkpoint '
+                                'to keep track of steps and epochs.')
     return self._run_counter
 
   def run(self,
@@ -912,7 +907,9 @@ class PreemptionCheckpointHandler(object):
           context.async_clear_error()
           self._save_checkpoint(*args, **kwargs)
 
-          self._exit_fn(self._checkpoint_time)
+          # For TPU training, the default behavior is that it will block until
+          # workers are down and returns with error.
+          self._exit_fn()
 
         else:
           raise
@@ -938,7 +935,7 @@ class PreemptionCheckpointHandler(object):
         context.async_clear_error()
         self._save_checkpoint()
 
-        self._exit_fn(self._checkpoint_time)
+        self._exit_fn()
 
       else:
         raise

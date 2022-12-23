@@ -16,7 +16,7 @@ limitations under the License.
 #include <cstdlib>
 #include <string>
 
-#include "testing/fuzzing/fuzztest.h"
+#include "fuzztest/fuzztest.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 

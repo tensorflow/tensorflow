@@ -1397,6 +1397,49 @@ def tf_cc_test(
         **kwargs
     )
 
+def tf_cc_shared_test(
+        name,
+        srcs,
+        deps,
+        data = [],
+        extra_copts = [],
+        suffix = "",
+        linkopts = lrt_if_needed(),
+        kernels = [],
+        **kwargs):
+    cc_test(
+        name = "%s%s" % (name, suffix),
+        srcs = srcs,
+        copts = tf_copts() + extra_copts,
+        linkopts = select({
+            clean_dep("//tensorflow:android"): [
+                "-pie",
+            ],
+            clean_dep("//tensorflow:windows"): [],
+            clean_dep("//tensorflow:macos"): [
+                "-lm",
+            ],
+            "//conditions:default": [
+                "-lpthread",
+                "-lm",
+            ],
+            clean_dep("//third_party/compute_library:build_with_acl"): ["-fopenmp"],
+        }) + linkopts + _rpath_linkopts(name),
+        deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
+            [
+                clean_dep("//third_party/mkl:intel_binary_blob"),
+            ],
+        ),
+        dynamic_deps = if_static(
+            extra_deps = [],
+            macos = ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+            otherwise = ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+        ),
+        data = data + tf_binary_dynamic_kernel_dsos(),
+        exec_properties = tf_exec_properties(kwargs),
+        **kwargs
+    )
+
 register_extension_info(
     extension = tf_cc_test,
     label_regex_for_dep = "{extension_name}",
@@ -2225,6 +2268,13 @@ def pywrap_tensorflow_macro_opensource(
     })
     additional_linker_inputs = if_windows([], otherwise = ["%s.lds" % vscriptname])
 
+    # This is needed so that libtensorflow_cc is included in the pip package.
+    srcs += select({
+        clean_dep("//tensorflow:macos"): [clean_dep("//tensorflow:libtensorflow_cc.%s.dylib" % VERSION_MAJOR)],
+        clean_dep("//tensorflow:windows"): [],
+        "//conditions:default": [clean_dep("//tensorflow:libtensorflow_cc.so.%s" % VERSION_MAJOR)],
+    })
+
     tf_cc_shared_library_opensource(
         name = cc_shared_library_name,
         srcs = srcs,
@@ -2883,7 +2933,6 @@ def pybind_extension_opensource(
                 ],
             }),
             visibility = visibility,
-            win_def_file = if_windows(win_def_file, otherwise = None),
         )
 
         # cc_shared_library can generate more than one file.
@@ -2962,7 +3011,7 @@ def pybind_extension_opensource(
     native.py_library(
         name = name,
         data = select({
-            "@org_tensorflow//tensorflow:windows": [pyd_file],
+            clean_dep("//tensorflow:windows"): [pyd_file],
             "//conditions:default": [so_file],
         }) + pytype_srcs,
         deps = pytype_deps,

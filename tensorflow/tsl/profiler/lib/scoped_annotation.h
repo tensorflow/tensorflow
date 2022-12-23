@@ -18,15 +18,18 @@ limitations under the License.
 #include <stddef.h>
 
 #include <atomic>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/types.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/tsl/profiler/backends/cpu/annotation_stack.h"
+#include "tensorflow/tsl/profiler/lib/nvtx_utils.h"
 #endif
 
 namespace tsl {
@@ -45,7 +48,17 @@ class ScopedAnnotation {
  public:
   explicit ScopedAnnotation(absl::string_view name) {
 #if !defined(IS_MOBILE_PLATFORM)
-    if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
+#if GOOGLE_CUDA
+    std::optional<nvtxDomainHandle_t> domain =
+        tsl::profiler::nvtx::GetNVTXDomain();
+    if (TF_PREDICT_FALSE(domain.has_value())) {
+      nvtxEventAttributes_t attrs;
+      std::string name_str(name);
+      tsl::profiler::nvtx::MakeAttributes(name_str.c_str(), &attrs);
+      ::nvtxDomainRangePushEx(domain.value(), &attrs);
+    } else  // NOLINT
+#endif
+        if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
       old_length_ = AnnotationStack::PushAnnotation(name);
     }
 #endif
@@ -56,7 +69,16 @@ class ScopedAnnotation {
 
   explicit ScopedAnnotation(const string& name) {
 #if !defined(IS_MOBILE_PLATFORM)
-    if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
+#if GOOGLE_CUDA
+    std::optional<nvtxDomainHandle_t> domain =
+        tsl::profiler::nvtx::GetNVTXDomain();
+    if (TF_PREDICT_FALSE(domain.has_value())) {
+      nvtxEventAttributes_t attrs;
+      tsl::profiler::nvtx::MakeAttributes(name.c_str(), &attrs);
+      ::nvtxDomainRangePushEx(domain.value(), &attrs);
+    } else  // NOLINT
+#endif
+        if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
       old_length_ = AnnotationStack::PushAnnotation(name);
     }
 #endif
@@ -64,7 +86,16 @@ class ScopedAnnotation {
 
   explicit ScopedAnnotation(string&& name) {
 #if !defined(IS_MOBILE_PLATFORM)
-    if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
+#if GOOGLE_CUDA
+    std::optional<nvtxDomainHandle_t> domain =
+        tsl::profiler::nvtx::GetNVTXDomain();
+    if (TF_PREDICT_FALSE(domain.has_value())) {
+      nvtxEventAttributes_t attrs;
+      tsl::profiler::nvtx::MakeAttributes(name.c_str(), &attrs);
+      ::nvtxDomainRangePushEx(domain.value(), &attrs);
+    } else  // NOLINT
+#endif
+        if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
       old_length_ = AnnotationStack::PushAnnotation(std::move(name));
     }
 #endif
@@ -73,8 +104,19 @@ class ScopedAnnotation {
   template <typename NameGeneratorT>
   explicit ScopedAnnotation(NameGeneratorT name_generator) {
 #if !defined(IS_MOBILE_PLATFORM)
-    if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
-      old_length_ = AnnotationStack::PushAnnotation(name_generator());
+#if GOOGLE_CUDA
+    std::optional<nvtxDomainHandle_t> domain =
+        tsl::profiler::nvtx::GetNVTXDomain();
+    if (TF_PREDICT_FALSE(domain.has_value())) {
+      auto name = name_generator();
+      nvtxEventAttributes_t attrs;
+      tsl::profiler::nvtx::MakeAttributes(name.c_str(), &attrs);
+      ::nvtxDomainRangePushEx(domain.value(), &attrs);
+    } else  // NOLINT
+#endif
+        if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
+      auto name = name_generator();
+      old_length_ = AnnotationStack::PushAnnotation(name);
     }
 #endif
   }
@@ -85,7 +127,14 @@ class ScopedAnnotation {
     // fail probably due to compiler in that presubmit config.
     std::atomic_thread_fence(std::memory_order_acquire);
 #if !defined(IS_MOBILE_PLATFORM)
-    if (TF_PREDICT_FALSE(old_length_ != kInvalidLength)) {
+#if GOOGLE_CUDA
+    std::optional<nvtxDomainHandle_t> domain =
+        tsl::profiler::nvtx::GetNVTXDomain();
+    if (TF_PREDICT_FALSE(domain.has_value())) {
+      ::nvtxDomainRangePop(domain.value());
+    } else  // NOLINT
+#endif
+        if (TF_PREDICT_FALSE(old_length_ != kInvalidLength)) {
       AnnotationStack::PopAnnotation(old_length_);
     }
 #endif

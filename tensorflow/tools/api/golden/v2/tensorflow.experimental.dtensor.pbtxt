@@ -30,7 +30,7 @@ tf_module {
   }
   member_method {
     name: "barrier"
-    argspec: "args=[\'mesh\', \'barrier_name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'mesh\', \'barrier_name\', \'timeout_in_ms\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "call_with_layout"

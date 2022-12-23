@@ -654,7 +654,8 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
     TFL_TensorOfOrNone<[F32, QI32, I64]>:$bias,
     TFL_PaddingAttr:$padding,
     ConfinedAttr<I32Attr, [IntPositive]>:$stride_h,
-    ConfinedAttr<I32Attr, [IntPositive]>:$stride_w
+    ConfinedAttr<I32Attr, [IntPositive]>:$stride_w,
+    TFL_AFAttr:$fused_activation_function
   );
 
   let results = (outs TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$output);
@@ -5059,7 +5060,7 @@ def TFL_YieldOp : Op<TFL_Dialect, "yield",
     The operation takes a variable number of operands and produces no results.
     The operand number and types must match the signature of the region that contains the operation.
   }];
-  let arguments = (ins Variadic<AnyType>:$operands);
+  let arguments = (ins Variadic<AnyType>);
 
   // Default builder needed for ensureTerminator
   let builders = [

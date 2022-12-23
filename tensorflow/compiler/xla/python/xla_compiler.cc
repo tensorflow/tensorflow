@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module_group.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
@@ -814,6 +814,10 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                     &xla::OpSharding::replicate_on_last_tile_dim,
                     &xla::OpSharding::set_replicate_on_last_tile_dim)
       .def("__repr__", &xla::OpSharding::DebugString)
+      .def("ParseFromString",
+           [](OpSharding& sharding, const std::string& s) {
+             sharding.ParseFromString(s);
+           })
       .def("SerializeToString",
            [](const OpSharding& sharding) {
              return py::bytes(sharding.SerializeAsString());

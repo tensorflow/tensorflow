@@ -1,13 +1,11 @@
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
 load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
-load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test", "xla_py_proto_library")
 load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -15,13 +13,13 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )
 
 package_group(
     name = "friends",
-    includes = ["//tensorflow:internal"],
+    includes = ["//tensorflow/compiler/xla:internal"],
     packages = [
         # copybara:uncomment "//learning/infra/mira/...",
         "//third_party/australis/...",
@@ -38,6 +36,7 @@ package_group(
 
 package_group(
     name = "internal",
+    includes = ["//tensorflow:internal"],
     packages = [
         "//tensorflow/compiler/xla/...",
     ],
@@ -50,6 +49,8 @@ package_group(
         "//tensorflow/compiler/xla/service/gpu/runtime/...",
     ],
 )
+
+exports_files(["run_lit.sh"])
 
 # Filegroup used to collect source files for dependency checking.
 filegroup(
@@ -113,7 +114,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "bit_cast_test",
     srcs = ["bit_cast_test.cc"],
     deps = [
@@ -141,13 +142,14 @@ cc_library(
         ":types",
         ":util",
         ":xla_data_proto_cc",
+        "//tensorflow/tsl/platform:float8",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "comparison_util_test",
     srcs = ["comparison_util_test.cc"],
     deps = [
@@ -223,7 +225,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "status_macros_test",
     size = "small",
     srcs = ["status_macros_test.cc"],
@@ -299,13 +301,14 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "util_test",
     srcs = ["util_test.cc"],
     deps = [
         ":test",
         ":types",
         ":util",
+        "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test_main",
     ],
@@ -323,7 +326,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "permutation_util_test",
     srcs = ["permutation_util_test.cc"],
     deps = [
@@ -353,7 +356,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "iterator_util_test",
     srcs = ["iterator_util_test.cc"],
     deps = [
@@ -391,6 +394,7 @@ cc_library(
         ":util",
         ":xla_data_proto_cc",
         "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/algorithm:container",
@@ -417,7 +421,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "shape_test",
     srcs = ["shape_test.cc"],
     deps = [
@@ -435,7 +439,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "shape_util_test",
     srcs = ["shape_util_test.cc"],
     deps = [
@@ -454,7 +458,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "primitive_util_test",
     srcs = ["primitive_util_test.cc"],
     deps = [
@@ -470,7 +474,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "layout_util_test",
     srcs = ["layout_util_test.cc"],
     deps = [
@@ -481,7 +485,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "layout_test",
     srcs = ["layout_test.cc"],
     deps = [
@@ -493,7 +497,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "index_util_test",
     srcs = ["index_util_test.cc"],
     deps = [
@@ -521,6 +525,7 @@ cc_library(
         ":xla_data_proto_cc",
         "//tensorflow/tsl/lib/core:bitmap",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/platform:protobuf",
@@ -535,7 +540,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "literal_test",
     srcs = ["literal_test.cc"],
     deps = [
@@ -548,6 +553,7 @@ tf_cc_test(
         ":test",
         ":types",
         "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/base",
@@ -598,6 +604,7 @@ cc_library(
         ":literal_util",
         ":util",
         "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
@@ -645,7 +652,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "array_test",
     srcs = ["array_test.cc"],
     deps = [
@@ -668,7 +675,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "array2d_test",
     srcs = ["array2d_test.cc"],
     deps = [
@@ -689,7 +696,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "array3d_test",
     srcs = ["array3d_test.cc"],
     deps = [
@@ -714,7 +721,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "array4d_test",
     srcs = ["array4d_test.cc"],
     deps = [
@@ -790,7 +797,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "text_literal_reader_test",
     srcs = ["text_literal_reader_test.cc"],
     deps = [
@@ -823,7 +830,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "text_literal_writer_test",
     srcs = ["text_literal_writer_test.cc"],
     deps = [
@@ -859,7 +866,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "shape_tree_test",
     srcs = ["shape_tree_test.cc"],
     deps = [
@@ -905,7 +912,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "window_util_test",
     srcs = ["window_util_test.cc"],
     deps = [
@@ -941,7 +948,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "reference_util_test",
     srcs = ["reference_util_test.cc"],
     deps = [
@@ -976,14 +983,13 @@ cc_library(
         ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "parse_flags_from_env_test",
     srcs = ["parse_flags_from_env_test.cc"],
     deps =
         [
             ":parse_flags_from_env",
             "//tensorflow/tsl/platform:env",
-            "//tensorflow/tsl/platform:env_impl",
             "//tensorflow/tsl/platform:logging",
             "//tensorflow/tsl/platform:subprocess",
             "//tensorflow/tsl/platform:test",
@@ -1026,7 +1032,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "debug_options_parsers_test",
     size = "small",
     srcs = [
@@ -1057,7 +1063,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "refcounting_hash_map_test",
     srcs = ["refcounting_hash_map_test.cc"],
     deps = [
@@ -1076,6 +1082,12 @@ cc_library(
     name = "side_effect_util",
     srcs = ["side_effect_util.cc"],
     hdrs = ["side_effect_util.h"],
+)
+
+cc_library(
+    name = "lazy",
+    hdrs = ["lazy.h"],
+    deps = ["@com_google_absl//absl/functional:any_invocable"],
 )
 
 tf_proto_library(
@@ -1114,6 +1126,15 @@ cc_library(
     ]),
 )
 
+filegroup(
+    name = "litfiles",
+    srcs = [
+        "runlit.cfg.py",
+        "runlit.site.cfg.py",
+    ],
+    visibility = ["//tensorflow/compiler/xla:__subpackages__"],
+)
+
 # -----------------------------------------------------------------------------
 
 # copybara:uncomment_begin(google-only)
@@ -1133,17 +1154,3 @@ cc_library(
 #     deps = [":xla_proto"],
 # )
 # copybara:uncomment_end
-
-# This is a headers target that extra XLA devices can use to prevent circular dependencies.  Devices that are compiled as separate shared objects can also use it to prevent linking of library code.
-cc_header_only_library(
-    name = "xla_headers_lib",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":xla_data_proto_cc",
-        ":xla_proto_cc",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:stream_executor_headers_lib",
-    ],
-)

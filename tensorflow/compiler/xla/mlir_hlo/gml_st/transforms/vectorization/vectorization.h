@@ -21,9 +21,6 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 
-constexpr llvm::StringRef kVectorizationAppliedLabel =
-    "__vectorization_applied_label__";
-
 }  // namespace gml_st
 }  // namespace mlir
 

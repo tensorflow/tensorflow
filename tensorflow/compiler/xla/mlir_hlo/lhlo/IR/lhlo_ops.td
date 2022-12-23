@@ -640,6 +640,7 @@ def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]> {
     OptionalAttr<CustomCallTargetArgMappingAttr>:$target_arg_mapping
   );
   let hasVerifier = 1;
+  let regions = (region AnyRegion:$called_computation);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1426,7 +1427,7 @@ def TerminatorOp :
   }];
   let builders = [
     OpBuilder<(ins "ValueRange":$operands),
-    [{ build($_builder, $_state, llvm::None, operands, llvm::None); }]>];
+    [{ build($_builder, $_state, std::nullopt, operands, std::nullopt); }]>];
 }
 
 def LHLO_RealDynamicSliceOp: LHLO_Op<

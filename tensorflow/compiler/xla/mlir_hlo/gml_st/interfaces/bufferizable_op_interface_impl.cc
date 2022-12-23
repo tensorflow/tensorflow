@@ -16,6 +16,7 @@ limitations under the License.
 #include "gml_st/interfaces/bufferizable_op_interface_impl.h"
 
 #include <iterator>
+#include <optional>
 #include <tuple>
 
 #include "gml_st/IR/gml_st_ops.h"
@@ -201,23 +202,16 @@ struct LoopOpInterface
 // bufferization.
 FailureOr<Value> materializeExtraction(OpBuilder &b, Value memref,
                                        MaterializeOp materializeOp) {
-  Value set = materializeOp.getSet();
-
-  Operation *setDefiningOp = set.getDefiningOp();
-
-  Location loc = set.getLoc();
-  if (auto tile = dyn_cast<TileOp>(setDefiningOp)) {
-    if (!materializeOp.getType().isa<ShapedType>()) {
-      auto indices =
-          getValueOrCreateConstantIndexOp(b, loc, tile.getMixedOffsets());
-      return b.create<memref::LoadOp>(loc, memref, indices).getResult();
-    }
-    Value subview = b.create<memref::SubViewOp>(
-        loc, memref, tile.getMixedOffsets(), tile.getMixedSizes(),
-        tile.getMixedStrides());
-    return subview;
+  Location loc = materializeOp.getLoc();
+  if (!materializeOp.getType().isa<ShapedType>()) {
+    auto indices = getValueOrCreateConstantIndexOp(
+        b, loc, materializeOp.getMixedOffsets());
+    return b.create<memref::LoadOp>(loc, memref, indices).getResult();
   }
-  return failure();
+  Value subview = b.create<memref::SubViewOp>(
+      loc, memref, materializeOp.getMixedOffsets(),
+      materializeOp.getMixedSizes(), materializeOp.getMixedStrides());
+  return subview;
 }
 
 LogicalResult materializeInsertion(OpBuilder &b, Value update, Value set,
@@ -335,11 +329,11 @@ struct ParallelOpInterface
     auto loopOp = cast<ParallelOp>(op);
 
     // Create new TiledLoopOp.
-    Optional<StringAttr> distTypeAttr;
+    std::optional<StringAttr> distTypeAttr;
     if (auto distType = cast<ParallelOp>(op).getDistributionType())
       distTypeAttr = rewriter.getStringAttr(*distType);
     auto newLoopOp = rewriter.create<ParallelOp>(
-        loopOp.getLoc(), TypeRange{llvm::None}, loopOp.getLowerBound(),
+        loopOp.getLoc(), TypeRange{std::nullopt}, loopOp.getLowerBound(),
         loopOp.getUpperBound(), loopOp.getStep(), distTypeAttr);
 
     // Move the old body into the new loop.

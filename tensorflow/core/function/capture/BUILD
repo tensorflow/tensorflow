@@ -35,3 +35,18 @@ py_strict_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+py_strict_test(
+    name = "by_ref_capture_test",
+    srcs = ["by_ref_capture_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)

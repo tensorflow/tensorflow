@@ -87,7 +87,7 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
   }
   return EmitTargetElementLoop(
       *hlo, GpuElementalIrEmitter(hlo_module_config_, module_, &b_,
-                                  GetNestedComputer())
+                                  GetNestedComputer(), ir_emitter_context_)
                 .MakeElementGenerator(hlo, operand_to_generator));
 }
 
@@ -560,7 +560,8 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   // IrEmitterUnnested::HandleFusion.
   CHECK_EQ(HloInstruction::FusionKind::kLoop, fusion->fusion_kind());
   GpuElementalIrEmitter elemental_emitter(hlo_module_config_, module_, &b_,
-                                          GetNestedComputer());
+                                          GetNestedComputer(),
+                                          ir_emitter_context_);
   FusedIrEmitter fused_emitter(elemental_emitter);
   BindFusionArguments(fusion, &fused_emitter);
   TF_ASSIGN_OR_RETURN(auto generator, fused_emitter.GetGenerator(

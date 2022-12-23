@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_COST_ANALYSIS_H_
 
 #include <functional>
+#include <memory>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
@@ -39,7 +40,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // Each HLO is associated to a vector of properties with the indices given
   // below. Sub-classes can add further properties.
   // MSVC 14.0 limitation requires the consts.
-  typedef std::map<std::string, float, std::less<>> Properties;
+  using Properties = absl::flat_hash_map<std::string, float>;
   // shape_size is a function which returns the size in bytes of the top-level
   // buffer of a shape.
   using ShapeSizeFunction = std::function<int64_t(const Shape&)>;

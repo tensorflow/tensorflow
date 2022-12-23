@@ -23,12 +23,12 @@ limitations under the License.
 #include <iterator>
 #include <map>
 #include <numeric>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
@@ -1543,16 +1543,16 @@ struct OptimizeTopK : public OpRewritePattern<TFL::TopKV2Op> {
     auto slice_op =
         llvm::dyn_cast_or_null<TFL::SliceOp>(value.getUses().begin().getUser());
     // We only match for the case where value is used by SliceOp.
-    if (!slice_op) return llvm::None;
+    if (!slice_op) return std::nullopt;
     DenseElementsAttr begin;
     DenseElementsAttr size;
     if (!matchPattern(slice_op->getOperand(1), m_Constant(&begin)) ||
         !matchPattern(slice_op->getOperand(2), m_Constant(&size)))
-      return llvm::None;
+      return std::nullopt;
 
     // Check if "begin" is a zero tensor.
     for (auto begin_idx : begin.getValues<APInt>())
-      if (begin_idx != 0) return llvm::None;
+      if (begin_idx != 0) return std::nullopt;
 
     // Check if "size" is equal to slice_op.input.shape except
     // for last dimension.
@@ -1560,19 +1560,19 @@ struct OptimizeTopK : public OpRewritePattern<TFL::TopKV2Op> {
     // i.e., num_input/input_last_dim = num_result/k
     auto input_ty = value.getType().dyn_cast_or_null<ShapedType>();
     auto result_ty = slice_op.getType().dyn_cast<ShapedType>();
-    if (!input_ty || !result_ty) return llvm::None;
+    if (!input_ty || !result_ty) return std::nullopt;
     if (!input_ty.hasStaticShape() || !result_ty.hasStaticShape())
-      return llvm::None;
-    if (!input_ty.getRank() || !result_ty.getRank()) return llvm::None;
+      return std::nullopt;
+    if (!input_ty.getRank() || !result_ty.getRank()) return std::nullopt;
     int num_input = input_ty.getNumElements();
     int input_last_dim = input_ty.getShape().back();
-    if (input_last_dim < 1) return llvm::None;
+    if (input_last_dim < 1) return std::nullopt;
     int num_result = result_ty.getNumElements();
     auto size_last = *(--size.value_end<APInt>());
     int32_t k = size_last.getSExtValue();
-    if (num_input / input_last_dim * k != num_result) return llvm::None;
+    if (num_input / input_last_dim * k != num_result) return std::nullopt;
     // We don't match sliceOp with last dim size = 0.
-    if (!k) return llvm::None;
+    if (!k) return std::nullopt;
     return k;
   }
 

@@ -72,6 +72,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
@@ -110,6 +111,9 @@ namespace errors = tensorflow::errors;
 namespace tfl = mlir::TFL;
 
 namespace {
+
+using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
+using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 
 bool IsQuantized(const TensorT& tensor) {
   return (tensor.quantization != nullptr) &&
@@ -1124,8 +1128,6 @@ void SetSignature(
     FuncOp func, const tflite::SignatureDefT* signature,
     const std::vector<std::unique_ptr<tflite::TensorT>>& tensors) {
   auto* context = func->getContext();
-  static const char kSignatureDefIndexPath[] = "tf_saved_model.index_path";
-  static const char kExportedNameAttr[] = "tf_saved_model.exported_names";
   static const char kEntryFunctionAttributes[] = "tf.entry_function";
 
   auto dict_attr =
@@ -1146,7 +1148,7 @@ void SetSignature(
       return;
     }
     func.setArgAttr(
-        arg_index, kSignatureDefIndexPath,
+        arg_index, kTfSavedModelIndexPathAttr,
         mlir::ArrayAttr::get(context, {mlir::StringAttr::get(
                                           context, input_pair.value()->name)}));
   }
@@ -1161,14 +1163,14 @@ void SetSignature(
       func->emitWarning("Invalid signature tensors specified.");
       return;
     }
-    func.setResultAttr(arg_index, kSignatureDefIndexPath,
+    func.setResultAttr(arg_index, kTfSavedModelIndexPathAttr,
                        mlir::ArrayAttr::get(
                            context, {mlir::StringAttr::get(
                                         context, output_pair.value()->name)}));
     seen_indices.insert(arg_index);
   }
   func->setAttr(
-      kExportedNameAttr,
+      kTfSavedModelExportedNamesAttr,
       mlir::ArrayAttr::get(
           context, {mlir::StringAttr::get(context, signature->signature_key)}));
 }

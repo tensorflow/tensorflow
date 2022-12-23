@@ -153,7 +153,11 @@ Status ConvBackpropComputeDimensionsV2XlaShapes(
 
 }  // anonymous namespace
 
-std::vector<DataType> GetXlaConvTypes() {
+std::vector<DataType> GetXlaConvTypesForNonGpu() {
+  return {DT_FLOAT, DT_BFLOAT16, DT_HALF, DT_DOUBLE, DT_INT32};
+}
+
+std::vector<DataType> GetXlaConvTypesForGpu() {
   return {DT_FLOAT, DT_BFLOAT16, DT_HALF, DT_DOUBLE};
 }
 

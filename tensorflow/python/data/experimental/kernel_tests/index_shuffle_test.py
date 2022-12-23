@@ -27,10 +27,13 @@ from tensorflow.python.platform import test
 
 class IndexShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  def _build_dataset(self, seed=None, reshuffle_each_iteration=None):
+  def _build_dataset(self,
+                     seed=None,
+                     reshuffle_each_iteration=None,
+                     num_elements=10):
     file_infos = []
     for _ in range(5):
-      file_infos.append({"path": "unused", "num_elements": 10})
+      file_infos.append({"path": "unused", "num_elements": num_elements})
 
     def reader_factory(_):
       return dataset_ops.Dataset.range(10)
@@ -64,6 +67,12 @@ class IndexShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     shuffled_elements_2 = self.getDatasetOutput(
         self._build_dataset(seed=42), requires_initialization=True)
     self.assertEqual(shuffled_elements_1, shuffled_elements_2)
+
+  def testLargeDataSet(self):
+    self.skipTest(
+        "Will be enabled once we fix the issue with b/262326107."
+    )
+    self._build_dataset(seed=42, num_elements=27*1024*1024)
 
   @combinations.generate(test_base.default_test_combinations())
   def testDifferentSeed(self):

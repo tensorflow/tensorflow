@@ -42,7 +42,7 @@ tf_module {
   }
   member_method {
     name: "saveable_objects_from_trackable"
-    argspec: "args=[\'obj\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'obj\', \'tf1_saver\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "sticky_attribute_assignment"

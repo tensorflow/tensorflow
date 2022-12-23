@@ -97,6 +97,9 @@ class Mesh {
   // we use this string representation of an empty mesh instead to avoid
   // confusion.
   static constexpr const char* kEmptyMeshString = "empty_mesh";
+  static constexpr const char* kUseXLASPMDString = "use_xla_spmd";
+  static constexpr bool kUseXLASPMD = false;
+
   static Mesh Empty();
   bool IsEmpty() const;
   Mesh() = default;
@@ -105,14 +108,14 @@ class Mesh {
   //
   // When `use_xla_spmd` is true, all ops running on this mesh will use XLA SPMD
   // instead of DTensor SPMD.
-  static Mesh CreateMesh(
-      const std::string& mesh_name, const std::vector<std::string>& dim_names,
-      const std::vector<std::int64_t>& global_device_ids_shape,
-      const std::vector<std::int64_t>& global_device_ids_flatten,
-      const std::vector<std::string>& global_devices_str,
-      const std::vector<std::int64_t>& local_device_ids,
-      const std::vector<std::string>& local_devices_str,
-      bool use_xla_spmd = false);
+  static Mesh CreateMesh(const std::string& mesh_name,
+                         const std::vector<std::string>& dim_names,
+                         const std::vector<std::int64_t>& mesh_shape,
+                         const std::vector<std::int64_t>& global_device_ids,
+                         const std::vector<std::string>& global_devices_str,
+                         const std::vector<std::int64_t>& local_device_ids,
+                         const std::vector<std::string>& local_devices_str,
+                         bool use_xla_spmd = Mesh::kUseXLASPMD);
 
   // Parses from MeshProto.
   static StatusOr<Mesh> ParseFromProto(const MeshProto& proto);
@@ -137,7 +140,8 @@ class Mesh {
       const std::vector<std::int64_t>& global_device_ids,
       const std::vector<std::int64_t>& local_device_ids,
       const std::vector<std::string>& local_devices,
-      const std::vector<std::string>& global_devices);
+      const std::vector<std::string>& global_devices,
+      bool use_xla_spmd = Mesh::kUseXLASPMD);
 
   bool is_cpu_mesh() const { return device_type() == "CPU"; }
   bool is_epu_mesh() const { return device_type() == "EPU"; }
@@ -239,7 +243,7 @@ class Mesh {
   std::vector<int64_t> local_device_ids_;
   std::vector<int64_t> global_device_ids_;
   std::vector<std::string> global_devices_;
-  bool use_xla_spmd_ = false;
+  bool use_xla_spmd_ = Mesh::kUseXLASPMD;
 };
 
 // Obtain all possible forms of indexing a mesh.
@@ -285,6 +289,11 @@ class Layout {
 
   const Mesh& mesh() const { return mesh_; }
   static Layout ReplicatedOnMesh(const Mesh& mesh, int rank);
+  static Layout BatchShardedOnMesh(const Mesh& mesh, int rank,
+                                   const string& mesh_dim, int axis = 0);
+  static Layout ReplicatedLike(const Layout& layout);
+  static Layout BatchShardedLike(const Layout& layout, const string& mesh_dim,
+                                 int axis = 0);
   static Layout AnyOnMesh(const Mesh& mesh, int rank);
   // Creates a mesh of unique shards.
   Mesh ReducedMesh() const;
@@ -335,7 +344,7 @@ class Layout {
 
   // Compute global shape using the layout and provided local_shape.
   std::vector<int64_t> GlobalShapeFromLocalShape(
-      const std::vector<int64_t>& local_shape) const;
+      absl::Span<const int64_t> local_shape) const;
 
   std::vector<int64_t> LocalShapeFromGlobalShape(
       absl::Span<const int64_t> global_shape) const;

@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_interface.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::FindAndLoadTpuLibrary
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_stream.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -102,16 +102,18 @@ PjRtTpuClient::PjRtTpuClient(
       }()) {
   // We always initialize the tpu client even if libtpu isn't linked in or
   // initialized.
-  if (tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_InitFn !=
-      nullptr) {
-    tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_InitFn();
+  if (stream_executor::tpu::ExecutorApiFn()
+          ->TpuAsyncCollectiveOffloadHelper_InitFn != nullptr) {
+    stream_executor::tpu::ExecutorApiFn()
+        ->TpuAsyncCollectiveOffloadHelper_InitFn();
   }
 }
 
 PjRtTpuClient::~PjRtTpuClient() {
-  if (tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_ShutdownFn !=
-      nullptr) {
-    tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_ShutdownFn();
+  if (stream_executor::tpu::ExecutorApiFn()
+          ->TpuAsyncCollectiveOffloadHelper_ShutdownFn != nullptr) {
+    stream_executor::tpu::ExecutorApiFn()
+        ->TpuAsyncCollectiveOffloadHelper_ShutdownFn();
   }
 }
 

@@ -47,6 +47,9 @@ class FallbackState {
   StatusOr<std::unique_ptr<GraphExecutionState>> CreateGraphExecutionState(
       GraphDef graph_def) const;
 
+  // Adds `func_def` to the function library.
+  Status AddFunctionDef(const FunctionDef &func_def);
+
   const SessionOptions &session_options() const { return session_options_; }
 
   const DeviceMgr &device_manager() const { return device_manager_; }

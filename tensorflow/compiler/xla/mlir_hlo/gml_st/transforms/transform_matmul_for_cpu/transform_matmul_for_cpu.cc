@@ -27,10 +27,10 @@ limitations under the License.
 #include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
-#include "gml_st/transforms/vectorization/vectorization.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
@@ -135,7 +135,7 @@ Value transpose(mlir::Location loc, PatternRewriter &rewriter, Value input,
       });
 
   return transposedOp.getResult(0);
-};
+}
 
 // Collapses a 4d tensor input to 2d given its target shape.
 // Example: (M1, m0, N1, n0) -> (M, N)
@@ -156,7 +156,7 @@ Value collapseTo2D(mlir::Location loc, PatternRewriter &rewriter, Value input,
 // in the dynamic shape case.
 bool needsPadding(ArrayRef<int64_t> inputShape, ArrayRef<int64_t> tileShape) {
   assert(inputShape.size() == tileShape.size());
-  for (int i = 0; i < inputShape.size(); i++) {
+  for (size_t i = 0; i < inputShape.size(); i++) {
     if (inputShape[i] == ShapedType::kDynamic) {
       return true;
     }
@@ -286,8 +286,44 @@ struct MatmulToMmt4dPattern : public OpRewritePattern<linalg::MatmulOp> {
       return failure();
     }
 
-    const auto &tileParams =
-        Mmt4DTileParams({8, 1, 8}, "f32*f32->f32, generic");
+    ShapedType lhsType = lhs.getType().cast<ShapedType>();
+    ShapedType rhsType = rhs.getType().cast<ShapedType>();
+    int64_t shapeM = lhsType.getShape()[0];
+    int64_t shapeN = rhsType.getShape()[1];
+    auto chooseMatMulOrMatVec = [=](ArrayRef<int> m0k0n0,
+                                    ArrayRef<int> m0k0n0ForMatVec,
+                                    ArrayRef<int> m0k0n0ForWhenRhsHas2Columns,
+                                    std::string comment) {
+      assert(m0k0n0ForMatVec[2] == 1 && "not a matrix*vector shape");
+      assert(m0k0n0ForWhenRhsHas2Columns[2] == 2 &&
+             "N=2 is expected when RHS has 2 columns");
+
+      SmallVector<int> params;
+      if (shapeN == 1 || shapeM == 1) {
+        params.assign(m0k0n0ForMatVec.begin(), m0k0n0ForMatVec.end());
+      } else if (shapeN == 2 || shapeM == 2) {
+        params.assign(m0k0n0ForWhenRhsHas2Columns.begin(),
+                      m0k0n0ForWhenRhsHas2Columns.end());
+      } else {
+        return Mmt4DTileParams(m0k0n0, comment);
+      }
+
+      if (shapeN == 1 || shapeN == 2) {
+        comment += ", matrix * narrow matrix, where the narrow matrix has " +
+                   std::to_string(shapeN) + " column(s)";
+      } else {
+        // The vector*matrix case is intentionally derived from the
+        // matrix*vector case by swapping M and N dims so that in kernel
+        // codegen we can reuse matrix*vector kernels by swapping LHS and RHS.
+        std::swap(params[0], params[2]);
+        comment += ", narrow matrix * matrix, where the narrow matrix has " +
+                   std::to_string(shapeM) + " column(s)";
+      }
+      return Mmt4DTileParams(params, comment);
+    };
+
+    const auto &tileParams = chooseMatMulOrMatVec(
+        {8, 1, 8}, {8, 1, 1}, {8, 1, 2}, "f32*f32->f32, generic");
 
     Value paddedLhs = pad(loc, rewriter, lhs, tileParams.lhs());
     Value paddedRhs = pad(loc, rewriter, rhs, tileParams.rhs());
@@ -363,6 +399,54 @@ struct FoldFillGenericOpPattern : public OpRewritePattern<linalg::GenericOp> {
         loc, outputType.getShape(), outputType.getElementType());
     rewriter.replaceOpWithNewOp<linalg::FillOp>(genericOp, fillOp.value(),
                                                 newInitTensor);
+    return success();
+  }
+};
+
+/// Rewrite a tensor::PadOp into a sequence of EmptyOp, FillOp and
+/// MapOp, which would be eligible for tiling/peeling and vectorization.
+struct MapCopyPadOpPattern : public linalg::GeneralizePadOpPattern {
+  explicit MapCopyPadOpPattern(MLIRContext *context, PatternBenefit benefit = 1)
+      : linalg::GeneralizePadOpPattern(context, emitMapCopy, benefit) {}
+
+  static LogicalResult emitMapCopy(PatternRewriter &rewriter,
+                                   tensor::PadOp padOp, Value dest) {
+    auto sourceType = padOp.getSourceType();
+    auto destType = dest.getType().dyn_cast<ShapedType>();
+
+    // TODO(vuson): add support for dynamic shape, which should also be
+    // tiled/peeled/vectorized.
+    if (!sourceType.hasStaticShape() || !destType) return failure();
+
+    ArrayRef<int64_t> shape = sourceType.getShape();
+    int64_t rank = sourceType.getRank();
+    linalg::SliceParameters sliceParams;
+    sliceParams.sizes.reserve(rank);
+    sliceParams.strides =
+        SmallVector<OpFoldResult>(rank, rewriter.getIndexAttr(1));
+    for (unsigned r = 0; r < rank; ++r) {
+      sliceParams.sizes.push_back(rewriter.getIndexAttr(shape[r]));
+    }
+
+    // Extract a slice of source's shape, which is the destination of the copy,
+    // from the tensor to be padded.
+    auto extractOp = rewriter.create<tensor::ExtractSliceOp>(
+        padOp.getLoc(), dest, padOp.getMixedLowPad(), sliceParams.sizes,
+        sliceParams.strides);
+
+    // Perform copy from the source to the extracted slice.
+    auto copy = rewriter.create<linalg::MapOp>(
+        padOp.getLoc(), padOp.getSource(), extractOp.getResult(),
+        [](OpBuilder &b, Location loc, ValueRange args) {
+          b.create<linalg::YieldOp>(loc, args.front());
+        });
+
+    // Insert the extracted slice (with the source's data copied) back into the
+    // tensor to be padded.
+    rewriter.replaceOpWithNewOp<tensor::InsertSliceOp>(
+        padOp, copy.getResult().front(), dest, padOp.getMixedLowPad(),
+        sliceParams.sizes, sliceParams.strides);
+
     return success();
   }
 };
@@ -454,7 +538,8 @@ struct Mmt4DTransformPattern : public OpRewritePattern<linalg::Mmt4DOp> {
     // Update the results if tiling occurred.
     if (tilingParallelDimsResult->loop != nullptr) {
       rewriter.replaceOp(mmt4dOp, tilingParallelDimsResult->loop->getResults());
-      mmt4dOp = cast<linalg::Mmt4DOp>(tilingParallelDimsResult->tiledOp);
+      mmt4dOp =
+          cast<linalg::Mmt4DOp>(tilingParallelDimsResult->tiledOps.front());
     }
 
     // Tile the inner parallel loop.
@@ -464,7 +549,8 @@ struct Mmt4DTransformPattern : public OpRewritePattern<linalg::Mmt4DOp> {
     // Update the results if tiling occurred.
     if (tilingParallelDimsResult->loop != nullptr) {
       rewriter.replaceOp(mmt4dOp, tilingParallelDimsResult->loop->getResults());
-      mmt4dOp = cast<linalg::Mmt4DOp>(tilingParallelDimsResult->tiledOp);
+      mmt4dOp =
+          cast<linalg::Mmt4DOp>(tilingParallelDimsResult->tiledOps.front());
     }
 
     std::copy(reductionTileSizes.begin(),
@@ -480,7 +566,8 @@ struct Mmt4DTransformPattern : public OpRewritePattern<linalg::Mmt4DOp> {
     if (tilingReductionDimsResult->loop != nullptr) {
       rewriter.replaceOp(mmt4dOp,
                          tilingReductionDimsResult->loop->getResults());
-      mmt4dOp = cast<linalg::Mmt4DOp>(tilingReductionDimsResult->tiledOp);
+      mmt4dOp =
+          cast<linalg::Mmt4DOp>(tilingReductionDimsResult->tiledOps.front());
     }
 
     // Tile the inner reduction loop.
@@ -491,7 +578,8 @@ struct Mmt4DTransformPattern : public OpRewritePattern<linalg::Mmt4DOp> {
     if (tilingReductionDimsResult->loop != nullptr) {
       rewriter.replaceOp(mmt4dOp,
                          tilingReductionDimsResult->loop->getResults());
-      mmt4dOp = cast<linalg::Mmt4DOp>(tilingReductionDimsResult->tiledOp);
+      mmt4dOp =
+          cast<linalg::Mmt4DOp>(tilingReductionDimsResult->tiledOps.front());
     }
 
     setLabel(mmt4dOp, kMatmulTransformedLabel);
@@ -519,34 +607,71 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
     if (hasLabel(matmulOp, kMatmulTransformedLabel))
       return rewriter.notifyMatchFailure(matmulOp,
                                          "has already been transformed.");
+    if (isa<gml_st::ParallelOp, gml_st::ForOp>(matmulOp->getParentOp()))
+      return rewriter.notifyMatchFailure(
+          matmulOp, "has already been tiled by another pass.");
+
+    auto cluster = findMapFusionCluster(matmulOp);
+    auto fusionCluster = cluster.operations;
+    auto *tilingRoot = cluster.root;
+
+    // Tiling of linalg.map requires two dimensions, linalg.matmul requires
+    // three.
+    SmallVector<int64_t> parallelDimsTileSizes{lhsParallelDimTileSize,
+                                               rhsParallelDimTileSize};
+    if (isa<linalg::MatmulOp>(tilingRoot)) parallelDimsTileSizes.push_back(0);
 
     // First level tiling: parallel dimensions.
-    SmallVector<int64_t> parallelDimsTileSizes{lhsParallelDimTileSize,
-                                               rhsParallelDimTileSize, 0};
     auto tilingParallelDimsResult = tileMatmul(
-        rewriter, matmulOp, parallelDimsTileSizes, /*distribute=*/true);
+        rewriter, tilingRoot, parallelDimsTileSizes, /*distribute=*/true);
     if (failed(tilingParallelDimsResult)) return failure();
 
     // Update the results if tiling occurred.
     if (tilingParallelDimsResult->loop != nullptr) {
-      rewriter.replaceOp(matmulOp,
+      rewriter.replaceOp(tilingRoot,
                          tilingParallelDimsResult->loop->getResults());
-      matmulOp = cast<linalg::MatmulOp>(tilingParallelDimsResult->tiledOp);
+      tilingRoot = tilingParallelDimsResult->tiledOps.front();
+
+      // Fuse ops into the loop.
+      fuseGreedily(rewriter, *tilingRoot->getBlock(),
+                   [&](Operation *op) { return fusionCluster.contains(op); });
     }
 
-    // Fusion into the output.
-    OpOperand *matmulOutput = matmulOp.getDpsInitOperand(0);
-    auto materialize = matmulOutput->get().getDefiningOp<MaterializeOp>();
-    if (!materialize) {
-      return rewriter.notifyMatchFailure(
-          matmulOp,
-          "has failed to 'materialize' output during 'linalg.fill' fusion.");
-    }
-    if (materialize.getSource().getDefiningOp<linalg::FillOp>()) {
-      if (failed(fuse(rewriter, materialize))) return failure();
+    // Second level tiling: reduction dimension for matmuls.
+    SmallVector<TilingResult> tilingReductionDimsResults;
+    for (auto op :
+         llvm::to_vector(tilingRoot->getBlock()->getOps<linalg::MatmulOp>())) {
+      // Fusion into the output.
+      if (failed(fuseOutputFill(rewriter, op))) return failure();
+
+      auto result = tileMatmulReductionDims(rewriter, op);
+      if (failed(result)) return failure();
+      tilingReductionDimsResults.push_back(result.value());
     }
 
-    // Second level tiling: reduction dimension.
+    // Peel parallel loops.
+    //
+    // We only want to peel (1) the parallel loop then (2) our kernel.
+    if (auto loop =
+            dyn_cast_or_null<ParallelOp>(tilingParallelDimsResult->loop)) {
+      auto peelingResult = peelAllLoops(loop, rewriter);
+    }
+
+    // Peel reduction loop inside the main parallel loop, label the main loop as
+    // "perfectly tiled" one, to enable vectorization after canonicalization.
+    for (auto &res : tilingReductionDimsResults) {
+      if (auto loop = dyn_cast_or_null<ForOp>(res.loop)) {
+        auto peelingResult = peelAllLoops(loop, rewriter);
+        setLabel(loop, kPerfectlyTiledLoopLabel);
+      }
+    }
+
+    return success();
+  }
+
+ private:
+  FailureOr<TilingResult> tileMatmulReductionDims(
+      PatternRewriter &rewriter, linalg::MatmulOp matmulOp) const {
     SmallVector<int64_t> reductionDimsTileSizes{0, 0, reductionDimTileSize};
     auto tilingReductionDimsResult = tileMatmul(
         rewriter, matmulOp, reductionDimsTileSizes, /*distribute=*/false);
@@ -556,46 +681,14 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
     if (tilingReductionDimsResult->loop != nullptr) {
       rewriter.replaceOp(matmulOp,
                          tilingReductionDimsResult->loop->getResults());
-      matmulOp = cast<linalg::MatmulOp>(tilingReductionDimsResult->tiledOp);
+      matmulOp =
+          cast<linalg::MatmulOp>(tilingReductionDimsResult->tiledOps.front());
     }
 
     setLabel(matmulOp, kMatmulTransformedLabel);
-
-    // Peel parallel loops.
-    //
-    // We only want to eventually vectorize the main for loop inside the main
-    // parallel loop (our matmul kernel). Mark all other loops as vectorized.
-    //
-    // We only want to peel (1) the parallel loop then (2) our kernel, mark all
-    // for loops inside remainder parallel loops as peeled to prevent downstream
-    // peeling pass from peeling them.
-    if (auto loop =
-            dyn_cast_or_null<ParallelOp>(tilingParallelDimsResult->loop)) {
-      auto peelingResult = peelAllLoops(loop, rewriter);
-      setLabel(loop, kVectorizationAppliedLabel);
-      for (auto *remParLoop : peelingResult) {
-        setLabel(remParLoop, kVectorizationAppliedLabel);
-        remParLoop->walk([&](Operation *childOp) {
-          if (isa<ForOp>(childOp)) {
-            setLabel(childOp, kPeelingAppliedLabel);
-            setLabel(childOp, kVectorizationAppliedLabel);
-          }
-        });
-      }
-    }
-
-    // Peel reduction loop inside the main parallel loop.
-    if (auto loop = dyn_cast_or_null<ForOp>(tilingReductionDimsResult->loop)) {
-      auto peelingResult = peelAllLoops(loop, rewriter);
-      for (auto *remParLoop : peelingResult) {
-        setLabel(remParLoop, kVectorizationAppliedLabel);
-      }
-    }
-
-    return success();
+    return tilingReductionDimsResult;
   }
 
- private:
   int64_t lhsParallelDimTileSize;
   int64_t rhsParallelDimTileSize;
   int64_t reductionDimTileSize;
@@ -624,7 +717,7 @@ struct TransformMatmulForCpuPass
     // Just do tiling and fusion on linalg.matmul.
     if (!lowerToMmt4D) {
       if (tileSizes.empty()) {
-        tileSizes = {2, 4, 8};
+        tileSizes = {4, 4, 4};
       }
       assert(tileSizes.size() == 3 &&
              "Tiling sizes for MatMul should have 3 elements");
@@ -651,7 +744,10 @@ struct TransformMatmulForCpuPass
       tensor::ExpandShapeOp::getCanonicalizationPatterns(patterns, ctx);
       tensor::EmptyOp::getCanonicalizationPatterns(patterns, ctx);
       linalg::FillOp::getCanonicalizationPatterns(patterns, ctx);
-      patterns.insert<FoldFillGenericOpPattern>(ctx);
+      patterns.add<FoldFillGenericOpPattern>(ctx);
+
+      // Lower tensor.pad to linalg.map.
+      patterns.add<MapCopyPadOpPattern>(ctx);
 
       if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
         return signalPassFailure();
@@ -680,7 +776,6 @@ struct TransformMatmulForCpuPass
     }
   }
 };
-
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>

@@ -4213,6 +4213,7 @@ tf_kernel_library(
     gpu_srcs = [
         "topk_op.h",
         "topk_op_gpu.h",
+        "topk_op_gpu_bfloat16.cu.cc",
         "topk_op_gpu_double.cu.cc",
         "topk_op_gpu_float.cu.cc",
         "topk_op_gpu_half.cu.cc",
@@ -4379,6 +4380,7 @@ tf_kernel_library(
         "pooling_ops_3d_gpu.cu.cc",
     ],
     deps = [
+        ":cast_op",
         ":conv_2d",
         ":conv_3d",
         ":conv_ops",
@@ -6121,6 +6123,7 @@ filegroup(
         "cast_op_impl_complex64.cc",
         "cast_op_impl_double.cc",
         "cast_op_impl_float.cc",
+        "cast_op_impl_float8.cc",
         "cast_op_impl_half.cc",
         "cast_op_impl_int16.cc",
         "cast_op_impl_int32.cc",
@@ -6398,6 +6401,8 @@ filegroup(
         "cwise_op_bitwise_or.cc",
         "cwise_op_bitwise_xor.cc",
         "cwise_op_ceil.cc",
+        "cwise_op_clip.h",
+        "cwise_op_clip.cc",
         "cwise_op_complex.cc",
         "cwise_op_conj.cc",
         "cwise_op_cos.cc",

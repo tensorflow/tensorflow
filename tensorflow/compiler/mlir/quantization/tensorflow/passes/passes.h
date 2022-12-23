@@ -124,10 +124,16 @@ CreateMergeInitializerFunctionOpsToMainPass();
 // AssignVariableOps.
 std::unique_ptr<OperationPass<ModuleOp>> CreateUnfreezeConstantsPass();
 
-// Creates a plass that duplicates constants that affect the shape of a tensor
+// Creates a pass that duplicates constants that affect the shape of a tensor
 // after some computation.
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateDuplicateShapeDeterminingConstantsPass();
+
+// Creates a pass that creates a RestoreV2 op in the initializer function with
+// type "restore_op" that initializes variables from checkpoint. It finds
+// tf.AssignVariableOp(tf.VarHandleOp, tf.Const) patterns in the initializer
+// function and replaces tf.Consts with the results of RestoreV2.
+std::unique_ptr<OperationPass<ModuleOp>> CreateInsertRestoreOpPass();
 
 }  // namespace quant
 }  // namespace mlir

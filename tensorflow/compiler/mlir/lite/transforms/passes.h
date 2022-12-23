@@ -115,6 +115,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass();
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass(
     bool emit_quant_adaptor_ops, const quant::CustomOpMap& custom_op_map = {});
 
+// Creates an instance of the TensorFlow Lite dialect QuantizeVariables pass.
+std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareQuantizeVariablesPass();
+
 // Creates an instance of the TensorFlow Lite pass that decomposes hybrid
 // quantization patterns to the same dense operation with tfl dequantization
 // and quantization patterns.

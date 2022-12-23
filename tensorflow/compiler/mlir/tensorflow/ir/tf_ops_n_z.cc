@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -68,6 +69,7 @@ limitations under the License.
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_arith_ops_folder.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_canonicalization_helper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_device_helper.h"
@@ -98,6 +100,7 @@ Value LookThroughIdentity(Value result) {
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
 }  // namespace
 
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NcclAllReduceOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NegOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(OnesLikeOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(PreventGradientOp);
@@ -135,6 +138,21 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(TanhOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(TanhGradOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ZerosLikeOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(_UnaryOpsCompositionOp);
+
+//===----------------------------------------------------------------------===//
+// NcclAllReduceOp
+//===----------------------------------------------------------------------===//
+
+// For `NcclAllReduceOp` ops the `device` attribute corresponds to the resource
+// instance.
+std::optional<std::string> NcclAllReduceOp::GetResourceInstanceStr() {
+  auto device_attr = (*this)->getAttrOfType<StringAttr>("device");
+  // Treat missing device attribute like unspecified (= empty string) attribute.
+  // Note that different op instances with the same string (including empty
+  // string) are seen as dependent (same resource instance).
+  if (!device_attr) return "";
+  return device_attr.str();
+}
 
 //===----------------------------------------------------------------------===//
 // NotEqualOp
@@ -311,15 +329,17 @@ OpFoldResult PackOp::fold(ArrayRef<Attribute> operands) {
 
   // Returns a value if the `value` is defined by a ConstOp with a single
   // integer element in it and has an expected rank.
-  auto get_const_int = [](Value value, int expected_rank) -> Optional<int64_t> {
+  auto get_const_int = [](Value value,
+                          int expected_rank) -> std::optional<int64_t> {
     auto const_op = dyn_cast_or_null<ConstOp>(value.getDefiningOp());
-    if (!const_op) return None;
+    if (!const_op) return llvm::None;
 
     auto value_attr = const_op.getValue().dyn_cast<DenseIntElementsAttr>();
-    if (!value_attr || value_attr.getNumElements() != 1) return None;
+    if (!value_attr || value_attr.getNumElements() != 1) return llvm::None;
 
     auto value_ty = value_attr.getType();
-    if (!value_ty.hasRank() || value_ty.getRank() != expected_rank) return None;
+    if (!value_ty.hasRank() || value_ty.getRank() != expected_rank)
+      return llvm::None;
 
     auto splat = value_attr.getSplatValue<IntegerAttr>();
     return splat.getValue().getSExtValue();
@@ -1558,7 +1578,8 @@ LogicalResult SparseSoftmaxCrossEntropyWithLogitsOp::verify() {
 // Writes the split dimension's index (adjusted with input rank) via `dim_index`
 // if it's a constant.
 template <class Op>
-LogicalResult VerifySplitInputAndSplitDim(Op op, Optional<int64_t> *dim_index) {
+LogicalResult VerifySplitInputAndSplitDim(Op op,
+                                          std::optional<int64_t> *dim_index) {
   *dim_index = llvm::None;
 
   Value split_dim = op.getSplitDim();
@@ -1596,7 +1617,7 @@ LogicalResult VerifySplitInputAndSplitDim(Op op, Optional<int64_t> *dim_index) {
 
 LogicalResult SplitOp::verify() {
   SplitOp op = *this;
-  Optional<int64_t> dim_index;
+  std::optional<int64_t> dim_index;
   if (failed(VerifySplitInputAndSplitDim(op, &dim_index))) return failure();
   if (!dim_index) return success();
 
@@ -1629,7 +1650,7 @@ LogicalResult SplitVOp::verify() {
     return op.emitOpError("split sizes should be a 1D tensor of ")
            << op.getNumResults() << " elements";
 
-  Optional<int64_t> dim_index = 0;
+  std::optional<int64_t> dim_index = 0;
   if (failed(VerifySplitInputAndSplitDim(op, &dim_index))) return failure();
   if (!dim_index) return success();
 
@@ -1644,7 +1665,7 @@ LogicalResult SplitVOp::verify() {
     return success();
 
   int64_t total_dim_size = 0;  // Total dimension size assigned to splits
-  llvm::Optional<int64_t> dynamic_dim_index;
+  std::optional<int64_t> dynamic_dim_index;
 
   SmallVector<int64_t, 4> split_sizes;
   split_sizes.reserve(
@@ -2634,7 +2655,7 @@ void ToBoolOp::getCanonicalizationPatterns(RewritePatternSet &results,
 }
 
 LogicalResult ToBoolOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   inferredReturnTypes.push_back(
@@ -3383,8 +3404,8 @@ void XdivyOp::getCanonicalizationPatterns(RewritePatternSet &results,
 //===----------------------------------------------------------------------===//
 
 LogicalResult XlaBroadcastHelperOp::inferReturnTypeComponents(
-    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
-    DictionaryAttr attributes, RegionRange regions,
+    MLIRContext *context, std::optional<Location> location,
+    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   XlaBroadcastHelperOpAdaptor op(operands.getValues(), attributes);
   Value lhs = op.getLhs();
@@ -3521,8 +3542,8 @@ LogicalResult XlaConvV2Op::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypeComponents(
-    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
-    DictionaryAttr attributes, RegionRange regions,
+    MLIRContext *context, std::optional<Location> location,
+    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   XlaSetDynamicDimensionSizeOpAdaptor op(operands.getValues(), attributes);
 
@@ -3883,6 +3904,67 @@ LogicalResult SetStaticDimensionBoundsOp::verify() {
   }
 
   return success();
+}
+
+namespace {
+
+template <typename UniformQuantizedHybridOp>
+LogicalResult VerifyScalesAndZeroPoints(UniformQuantizedHybridOp op,
+                                        Value scales, Value zero_points,
+                                        int32_t quantization_axis) {
+  ShapedType scales_type = scales.getType().cast<ShapedType>();
+  ShapedType zero_points_type = zero_points.getType().cast<ShapedType>();
+
+  if (quantization_axis == -1) {
+    if (scales_type.hasRank() && scales_type.getRank() != 0) {
+      return op.emitOpError(
+          "quantization_axis is -1, scales must have 0 rank.");
+    }
+    if (zero_points_type.hasRank() && zero_points_type.getRank() != 0) {
+      return op.emitOpError(
+          "quantization_axis is -1, zero_points must have 0 rank.");
+    }
+  } else {
+    if (scales_type.hasRank() && scales_type.getRank() != 1) {
+      return op.emitOpError(
+          "quantization_axis is not -1, scales must have 1 rank.");
+    }
+    if (zero_points_type.hasRank() && zero_points_type.getRank() != 1) {
+      return op.emitOpError(
+          "quantization_axis is not -1, zero_points must have 1 rank.");
+    }
+    if (scales_type.hasStaticShape() && zero_points_type.hasStaticShape() &&
+        scales_type.getNumElements() != zero_points_type.getNumElements()) {
+      return op.emitOpError(
+          "scales and zero points must have same number of elements.");
+    }
+  }
+
+  return success();
+}
+
+}  // namespace
+
+//===----------------------------------------------------------------------===//
+// UniformQuantizedDotHybridOp
+//===----------------------------------------------------------------------===//
+//
+
+LogicalResult UniformQuantizedDotHybridOp::verify() {
+  UniformQuantizedDotHybridOp op = *this;
+  return VerifyScalesAndZeroPoints(op, op.getRhsScales(), op.getRhsZeroPoints(),
+                                   op.getRhsQuantizationAxis());
+}
+
+//===----------------------------------------------------------------------===//
+// UniformQuantizedConvolutionHybridOp
+//===----------------------------------------------------------------------===//
+//
+
+LogicalResult UniformQuantizedConvolutionHybridOp::verify() {
+  UniformQuantizedConvolutionHybridOp op = *this;
+  return VerifyScalesAndZeroPoints(op, op.getRhsScales(), op.getRhsZeroPoints(),
+                                   op.getRhsQuantizationAxis());
 }
 
 }  // namespace TF

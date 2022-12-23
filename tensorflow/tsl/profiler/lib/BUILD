@@ -253,13 +253,29 @@ cc_library(
 )
 
 cc_library(
+    name = "nvtx_utils",
+    hdrs = ["nvtx_utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:types",
+    ] + if_not_android([
+        "//tensorflow/tsl/profiler/backends/cpu:annotation_stack",
+    ]),
+)
+
+cc_library(
     name = "scoped_annotation",
     hdrs = ["scoped_annotation.h"],
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/strings",
+        "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:types",
     ] + if_not_android([
+        ":nvtx_utils",
         "//tensorflow/tsl/profiler/backends/cpu:annotation_stack",
     ]),
 )

@@ -91,8 +91,14 @@ def _restore_output_tensor_names(
         expected_node_name = op.name
         if op.get_attr('tf_saved_model.index_path') is not None:
           index_path_name = op.get_attr('tf_saved_model.index_path')[0]
-          index_path_name = index_path_name.decode('utf-8')
-          expected_node_name = index_path_name.split(':')[0]
+          index_path_name = index_path_name.decode('utf-8').split(':')[0]
+          try:
+            # Only use the index_path name if it points to a Retval node.
+            index_path_node = graph.get_operation_by_name(index_path_name)
+            if index_path_node.type == '_Retval':
+              expected_node_name = index_path_name
+          except KeyError:
+            pass
         retval_input_node_name = op.inputs[0].op.name
         output_renaming_map[retval_input_node_name] = expected_node_name
 
