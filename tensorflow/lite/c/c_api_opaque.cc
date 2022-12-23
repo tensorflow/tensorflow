@@ -265,7 +265,7 @@ TfLiteStatus TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
     struct TfLiteOpaqueContext* opaque_context,
     TfLiteRegistrationExternal* registration_external,
     const TfLiteIntArray* nodes_to_replace,
-    struct TfLiteOpaqueDelegateStruct* opaque_delegate) {
+    TfLiteOpaqueDelegate* opaque_delegate) {
   // The following casts are safe only because this code is part of the
   // TF Lite runtime implementation.  Apps using TF Lite should not rely on
   // TfLiteOpaqueContext and TfLiteContext being equivalent, or on

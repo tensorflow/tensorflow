@@ -18,6 +18,7 @@ limitations under the License.
 #include <initializer_list>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -319,7 +320,7 @@ LogicalResult EliminateDistributeIntoTransferWritePattern::matchAndRewrite(
   auto subview =
       createSubView(transferWrite.getLoc(), destination, tile, rewriter);
   rewriter.replaceOpWithNewOp<TransferWriteOp>(
-      transferWrite, /*resultType=*/llvm::None, source, subview,
+      transferWrite, /*resultType=*/std::nullopt, source, subview,
       transferWrite.getIndices(), transferWrite.getPermutationMap(),
       /*mask=*/nullptr, transferWrite.getInBounds().value_or(nullptr));
   return success();

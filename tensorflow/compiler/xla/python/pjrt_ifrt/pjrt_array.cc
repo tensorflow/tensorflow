@@ -88,7 +88,7 @@ StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
   }
 }
 
-StatusOr<std::unique_ptr<Array>> PjRtArray::Create(
+StatusOr<tsl::RCReference<Array>> PjRtArray::Create(
     PjRtCompatibleClient* client, DType dtype, Shape shape,
     std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers) {
   if (pjrt_buffers.empty()) {
@@ -98,31 +98,30 @@ StatusOr<std::unique_ptr<Array>> PjRtArray::Create(
     return InvalidArgument("device and buffer counts mismatch: %d vs. %d",
                            sharding->devices().size(), pjrt_buffers.size());
   }
-  return std::unique_ptr<Array>(new PjRtArray(
+  return tsl::RCReference<Array>(tsl::MakeRef<PjRtArray>(
       static_cast<PjRtCompatibleClient*>(client), dtype, std::move(shape),
       std::move(sharding), std::move(pjrt_buffers)));
 }
 
-StatusOr<std::unique_ptr<Array>> PjRtArray::Create(
+StatusOr<tsl::RCReference<Array>> PjRtArray::Create(
     PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer) {
   TF_ASSIGN_OR_RETURN(auto dtype,
                       ToDType(pjrt_buffer->on_device_shape().element_type()));
   Shape shape(pjrt_buffer->on_device_shape().dimensions());
   auto sharding = SingleDeviceSharding::Create(pjrt_buffer->device());
-  return std::unique_ptr<Array>(new PjRtArray(
+  return tsl::RCReference<Array>(tsl::MakeRef<PjRtArray>(
       static_cast<PjRtCompatibleClient*>(client), dtype, std::move(shape),
       std::move(sharding), PjRtBuffers({std::move(pjrt_buffer)})));
 }
 
-StatusOr<std::unique_ptr<Array>> PjRtArray::Create(
+StatusOr<tsl::RCReference<Array>> PjRtArray::Create(
     PjRtCompatibleClient* client, std::unique_ptr<PjRtBuffer> pjrt_buffer) {
   return PjRtArray::Create(client,
                            std::shared_ptr<PjRtBuffer>(pjrt_buffer.release()));
 }
 
-StatusOr<std::unique_ptr<Array>> PjRtArray::Create(PjRtCompatibleClient* client,
-                                                   Shape shape,
-                                                   PjRtBuffers pjrt_buffers) {
+StatusOr<tsl::RCReference<Array>> PjRtArray::Create(
+    PjRtCompatibleClient* client, Shape shape, PjRtBuffers pjrt_buffers) {
   TF_ASSIGN_OR_RETURN(
       auto dtype, xla::ifrt::ToDType(
                       pjrt_buffers.front()->on_device_shape().element_type()));
@@ -153,10 +152,10 @@ PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
       sharding_(std::move(sharding)),
       pjrt_buffers_(std::move(pjrt_buffers)) {}
 
-StatusOr<std::vector<std::unique_ptr<Array>>>
+StatusOr<std::vector<tsl::RCReference<Array>>>
 PjRtArray::DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
   DCHECK(this);
-  std::vector<std::unique_ptr<Array>> result;
+  std::vector<tsl::RCReference<Array>> result;
   result.reserve(sharding_->devices().size());
   TF_ASSIGN_OR_RETURN(auto shape_and_shardings, sharding_->Disassemble(shape_));
   for (int i = 0; i < sharding_->devices().size(); ++i) {
@@ -227,7 +226,7 @@ Future<Status> PjRtArray::CopyToHostBuffer(
   return future;
 }
 
-StatusOr<std::unique_ptr<Array>> PjRtArray::Reshard(
+StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
     std::shared_ptr<const Sharding> new_sharding,
     ArrayCopySemantics semantics) {
   DCHECK(this);

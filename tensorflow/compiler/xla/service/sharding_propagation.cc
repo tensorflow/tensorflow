@@ -94,23 +94,8 @@ bool MaybeImproveInstructionSharding(HloSharding sharding,
     if (!allow_aggressive_resharding && instruction->shape().IsArray() &&
         !instruction->sharding().IsTileMaximal() &&
         sharding.NumTiles() == sharding_tiles) {
-      std::vector<int64_t> diff_dims;
-      for (int64_t i = 0; i < instruction->shape().rank(); ++i) {
-        if (instruction->sharding().tile_assignment().dim(i) ==
-            sharding.tile_assignment().dim(i)) {
-          continue;
-        }
-        if (instruction->sharding().tile_assignment().dim(i) != 1) {
-          VLOG(10) << "Not merging because of dim i = " << i
-                   << " sharded differently";
-          VLOG(10) << "Instr sharding: " << instruction->sharding().ToString();
-          VLOG(10) << "New sharding " << sharding.ToString();
-          return false;
-        }
-        diff_dims.push_back(i);
-      }
-      if (hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-              sharding, diff_dims) != instruction->sharding()) {
+      if (!hlo_sharding_util::IsSubTilingOrEqualSharding(
+              instruction->shape(), sharding, instruction->sharding())) {
         VLOG(10) << "Not merging because of different device distribution";
         VLOG(10) << "Instr sharding: " << instruction->sharding().ToString();
         VLOG(10) << "New sharding " << sharding.ToString();

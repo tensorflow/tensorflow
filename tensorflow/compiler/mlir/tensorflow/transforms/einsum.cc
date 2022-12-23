@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -489,7 +490,7 @@ inline int64_t ProdShapeWithIndexInTuple(
   int64_t prod_shape = 1;
   for (auto index_tuple : index_tuples) {
     const int64_t shape_i = shape[std::get<I>(index_tuple)];
-    if (shape_i == -1) return -1;
+    if (ShapedType::isDynamic(shape_i)) return ShapedType::kDynamic;
     prod_shape *= shape_i;
   }
   return prod_shape;

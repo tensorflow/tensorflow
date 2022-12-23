@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -86,7 +87,7 @@ LogicalResult tilePartialSoftmax(
     if (commonSource && commonSource != operand)
       return rewriter.notifyMatchFailure(op, "common source != operand");
     commonSource = operand;
-    simpleBcastReductions.push_back(llvm::None);
+    simpleBcastReductions.push_back(std::nullopt);
   }
 
   if (!commonReductionDim || !commonSource)
@@ -180,8 +181,8 @@ struct TilePartialSoftmaxPattern
           if (failed(tilingResult)) return failure();
 
           rewriter.replaceOp(op, tilingResult->loop->getResults());
-          setLabel(tilingResult->tiledOp, kTileSoftmaxAppliedLabel);
-          return tilingResult->tiledOp;
+          setLabel(tilingResult->tiledOps.front(), kTileSoftmaxAppliedLabel);
+          return tilingResult->tiledOps.front();
         });
   }
 

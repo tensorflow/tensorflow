@@ -19,7 +19,6 @@ package(
         "//tensorflow/core/common_runtime/next_pluggable_device:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/dtensor:__subpackages__",
-        "//tensorflow/stream_executor:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -57,7 +56,6 @@ cc_library(
     deps = [
         ":c_api_decl",
         ":libtftpu_header",
-        "//tensorflow/c:tf_status",
     ],
 )
 

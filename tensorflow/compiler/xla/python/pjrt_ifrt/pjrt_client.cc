@@ -39,7 +39,7 @@ std::unique_ptr<ifrt::Client> PjRtClient::Create(
   return Create(std::shared_ptr<xla::PjRtClient>(pjrt_client.release()));
 }
 
-StatusOr<std::unique_ptr<Array>> PjRtClient::MakeArrayFromHostBuffer(
+StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
     const void* data, DType dtype, Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides,
     std::shared_ptr<const Sharding> sharding,
@@ -62,10 +62,10 @@ StatusOr<std::unique_ptr<Array>> PjRtClient::MakeArrayFromHostBuffer(
       PjRtArray::PjRtBuffers({std::shared_ptr<PjRtBuffer>(buffer.release())}));
 }
 
-StatusOr<std::unique_ptr<Array>>
+StatusOr<tsl::RCReference<Array>>
 PjRtClient::AssembleArrayFromSingleDeviceArrays(
     Shape shape, std::shared_ptr<const Sharding> sharding,
-    absl::Span<Array* const> arrays, ArrayCopySemantics semantics) {
+    absl::Span<tsl::RCReference<Array>> arrays, ArrayCopySemantics semantics) {
   DCHECK(this);
   if (!llvm::isa<const OpaqueSharding>(sharding.get())) {
     return InvalidArgument("Only OpaqueSharding is supported: sharding=%s",
@@ -81,11 +81,11 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
   buffers.reserve(arrays.size());
   DType dtype = arrays[0]->dtype();
   for (int i = 0; i < arrays.size(); ++i) {
-    if (!llvm::isa<PjRtArray>(arrays[i])) {
+    if (!llvm::isa<PjRtArray>(arrays[i].get())) {
       return InvalidArgument("Only PjRtArray is supported: arrays[%d]=%s", i,
                              arrays[i]->DebugString());
     }
-    auto* array = static_cast<PjRtArray*>(arrays[i]);
+    auto* array = static_cast<PjRtArray*>(arrays[i].get());
     if (array->dtype() != dtype) {
       return InvalidArgument(
           "Every input must have the same dtype: %s (shard 0) vs. %s (shard "

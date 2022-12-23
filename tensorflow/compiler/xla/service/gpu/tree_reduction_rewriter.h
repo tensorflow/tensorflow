@@ -79,6 +79,10 @@ class GpuTreeReductionRewriter : public HloModulePass {
       se::CudaComputeCapability cuda_compute_capability)
       : cuda_compute_capability_(cuda_compute_capability) {}
 
+  explicit GpuTreeReductionRewriter(
+      se::RocmComputeCapability rocm_compute_capability)
+      : rocm_compute_capability_(rocm_compute_capability) {}
+
   ~GpuTreeReductionRewriter() override = default;
   absl::string_view name() const override {
     return "gpu-tree-reduction-rewriter";
@@ -91,6 +95,7 @@ class GpuTreeReductionRewriter : public HloModulePass {
 
  private:
   se::CudaComputeCapability cuda_compute_capability_;
+  se::RocmComputeCapability rocm_compute_capability_;
 };
 
 }  // end namespace gpu

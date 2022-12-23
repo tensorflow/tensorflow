@@ -212,6 +212,8 @@ StatusOr<Mesh> Mesh::ParseFromProto(const MeshProto& proto) {
     mesh.mesh_dims_[i].size = dim.size();
   }
 
+  mesh.use_xla_spmd_ = proto.use_xla_spmd();
+
   // Check invariants.
   int64 mesh_size = mesh.size();
   int num_devices = proto.global_device_ids_size();
@@ -429,6 +431,7 @@ Mesh Mesh::Empty() { return Mesh(); }
 MeshProto Mesh::ToProto() const {
   MeshProto mesh_proto;
   mesh_proto.set_name(name());
+  mesh_proto.set_use_xla_spmd(use_xla_spmd());
 
   for (const auto& d : local_devices_) {
     mesh_proto.add_local_devices(d);
@@ -1032,9 +1035,9 @@ bool Layout::operator==(const Layout& b) const {
 }
 
 std::vector<int64_t> Layout::GlobalShapeFromLocalShape(
-    const std::vector<int64_t>& local_shape) const {
+    absl::Span<const int64_t> local_shape) const {
   if (IsFullyReplicated()) {
-    return local_shape;
+    return std::vector<int64_t>(local_shape.begin(), local_shape.end());
   }
   std::vector<int64_t> global_shape;
   global_shape.reserve(sharding_specs().size());
@@ -1096,6 +1099,25 @@ StatusOr<Layout> Layout::FromProto(const LayoutProto& proto) {
 Layout Layout::ReplicatedOnMesh(const Mesh& mesh, int rank) {
   std::vector<std::string> specs(rank, kUnshardedDim);
   return Layout::GetLayout(specs, mesh).value();
+}
+
+Layout Layout::ReplicatedLike(const Layout& layout) {
+  std::vector<std::string> specs(layout.rank(), kUnshardedDim);
+  return Layout::GetLayout(specs, layout.mesh()).value();
+}
+
+Layout Layout::BatchShardedOnMesh(const Mesh& mesh, int rank,
+                                  const string& mesh_dim, int axis) {
+  std::vector<std::string> specs(rank, kUnshardedDim);
+  specs[axis] = mesh_dim;
+  return Layout::GetLayout(specs, mesh).value();
+}
+
+Layout Layout::BatchShardedLike(const Layout& layout, const string& mesh_dim,
+                                int axis) {
+  std::vector<std::string> specs(layout.rank(), kUnshardedDim);
+  specs[axis] = mesh_dim;
+  return Layout::GetLayout(specs, layout.mesh()).value();
 }
 
 Layout Layout::AnyOnMesh(const Mesh& mesh, int rank) {

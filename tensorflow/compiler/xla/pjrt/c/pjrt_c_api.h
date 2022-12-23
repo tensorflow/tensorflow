@@ -184,6 +184,33 @@ const size_t PJRT_Event_OnReady_Args_STRUCT_SIZE =
 // error status and a pointer to an object of the caller's choice as arguments.
 typedef PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args);
 
+// ------------------------ Other Common Data Types ----------------------------
+
+// Named value for key-value pairs.
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  const char* name;
+  size_t name_size;
+  enum {
+    PJRT_NamedValue_kString = 0,
+    PJRT_NamedValue_kInt64,
+    PJRT_NamedValue_kInt64List,
+    PJRT_NamedValue_kFloat
+  } type;
+  union {
+    const char* string_value;
+    int64_t int64_value;
+    const int64_t* int64_array_value;
+    float float_value;
+  };
+  // `value_size` is the number of elements for array/string and 1 for scalar
+  // values.
+  size_t value_size;
+} PJRT_NamedValue;
+const size_t PJRT_NamedValue_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_NamedValue, value_size);
+
 // ---------------------------------- Client -----------------------------------
 
 typedef struct PJRT_Client PJRT_Client;
@@ -530,31 +557,9 @@ typedef PJRT_Error* PJRT_Device_IsAddressable(
 typedef struct {
   size_t struct_size;
   void* priv;
-  const char* name;
-  size_t name_size;
-  enum {
-    PJRT_Device_Attribute_kString = 0,
-    PJRT_Device_Attribute_kInt64,
-    PJRT_Device_Attribute_kInt64List
-  } type;
-  union {
-    int64_t int64_value;
-    const int64_t* int64_array_value;
-    const char* string_value;
-  };
-  // `value_size` is the number of elements for array/string and 1 for scalar
-  // values.
-  size_t value_size;
-} PJRT_Device_Attribute;
-const size_t PJRT_Device_Attribute_STRUCT_SIZE =
-    PJRT_STRUCT_SIZE(PJRT_Device_Attribute, value_size);
-
-typedef struct {
-  size_t struct_size;
-  void* priv;
   PJRT_Device* device;
-  size_t num_attributes;              // out
-  PJRT_Device_Attribute* attributes;  // out
+  size_t num_attributes;        // out
+  PJRT_NamedValue* attributes;  // out
 } PJRT_Device_Attributes_Args;
 const size_t PJRT_Device_Attributes_Args_STRUCT_SIZE =
     PJRT_STRUCT_SIZE(PJRT_Device_Attributes_Args, attributes);
@@ -792,6 +797,26 @@ const size_t PJRT_Executable_SizeOfGeneratedCodeInBytes_Args_STRUCT_SIZE =
 
 typedef PJRT_Error* PJRT_Executable_SizeOfGeneratedCodeInBytes(
     PJRT_Executable_SizeOfGeneratedCodeInBytes_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Executable* executable;
+  size_t num_properties;  // out
+  // `properties` and any embedded data are owned by and have the same lifetime
+  // as `executable`.
+  PJRT_NamedValue* properties;  // out
+} PJRT_Executable_GetCostAnalysis_Args;
+
+const size_t PJRT_Executable_GetCostAnalysis_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Executable_GetCostAnalysis_Args, properties);
+
+// Get the cost properties for the executable. Different platforms may return
+// different properties; for example, some platforms may return the number of
+// operations, or memory size of the input/output of the executable, based on
+// program analysis.
+typedef PJRT_Error* PJRT_Executable_GetCostAnalysis(
+    PJRT_Executable_GetCostAnalysis_Args* args);
 
 typedef struct PJRT_SerializedExecutable PJRT_SerializedExecutable;
 
@@ -1077,6 +1102,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_NumOutputs);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_SizeOfGeneratedCodeInBytes);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_OptimizedProgram);
+  _PJRT_API_STRUCT_FIELD(PJRT_Executable_GetCostAnalysis);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Delete);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_IsDeleted);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Execute);

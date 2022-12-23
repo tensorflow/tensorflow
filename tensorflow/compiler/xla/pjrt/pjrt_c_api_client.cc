@@ -265,22 +265,56 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
 
 StatusOr<std::string> PjRtCApiClient::SerializeExecutable(
     const PjRtLoadedExecutable& executable) const {
-  if (kPjRtCApiBypass) {
-    VLOG(1) << "PJRT C API BYPASS: SerializeExecutable";
-    return wrapped_->SerializeExecutable(
-        *PjRtCApiExecutable::GetWrapped(&executable));
-  }
-  return Unimplemented("PJRT C API does not support SerializeExecutable");
+  auto c_api_exec =
+      tensorflow::down_cast<const PjRtCApiExecutable*>(&executable);
+  const PJRT_Executable* c_exec = c_api_exec->c_executable();
+
+  PJRT_Executable_Serialize_Args ser_args;
+  ser_args.struct_size = PJRT_Executable_Serialize_Args_STRUCT_SIZE;
+  ser_args.priv = nullptr;
+  ser_args.executable = c_exec;
+  ser_args.serialized_executable = nullptr;
+
+  const PJRT_Api* api = pjrt_c_api();
+
+  RETURN_STATUS_IF_ERROR(api->PJRT_Executable_Serialize(&ser_args), api);
+  PJRT_SerializedExecutable* c_serialized_exec = ser_args.serialized_executable;
+  std::unique_ptr<PJRT_SerializedExecutable,
+                  ::pjrt::PJRT_SerializedExecutableDeleter>
+      serialized_executable(c_serialized_exec,
+                            ::pjrt::MakeSerializedExecutableDeleter(api));
+
+  PJRT_SerializedExecutable_Data_Args data_args;
+  data_args.struct_size = PJRT_SerializedExecutable_Data_Args_STRUCT_SIZE;
+  data_args.priv = nullptr;
+  data_args.serialized_executable = c_serialized_exec;
+  data_args.data = nullptr;
+  data_args.data_size = 0;
+
+  RETURN_STATUS_IF_ERROR(api->PJRT_SerializedExecutable_Data(&data_args), api);
+
+  return std::string(data_args.data, data_args.data_size);
 }
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtCApiClient::DeserializeExecutable(absl::string_view serialized,
                                       std::optional<CompileOptions> options) {
-  if (kPjRtCApiBypass) {
-    VLOG(1) << "PJRT C API BYPASS: DeserializeExecutable";
-    return WrapExecutable(wrapped_->DeserializeExecutable(serialized, options));
-  }
-  return Unimplemented("PJRT C API does not support DeserializeExecutable");
+  PJRT_Executable_Deserialize_Args des_args;
+
+  des_args.struct_size = PJRT_Executable_Deserialize_Args_STRUCT_SIZE;
+  des_args.priv = nullptr;
+  des_args.client = c_client_.get();
+  des_args.serialized_executable = serialized.data();
+  des_args.serialized_executable_size = serialized.length();
+
+  const PJRT_Api* api = pjrt_c_api();
+
+  RETURN_STATUS_IF_ERROR(api->PJRT_Executable_Deserialize(&des_args), api);
+  PJRT_Executable* c_exec = des_args.deserialized_executable;
+  CHECK(c_exec != nullptr);
+  std::unique_ptr<PjRtLoadedExecutable> deserialized_executable =
+      std::make_unique<PjRtCApiExecutable>(this, c_exec);
+  return deserialized_executable;
 }
 
 StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
@@ -450,21 +484,33 @@ void PjRtCApiDevice::InitAttributes() {
     const auto& attribute = args.attributes[i];
     std::string attribute_name(attribute.name, attribute.name_size);
     switch (attribute.type) {
-      case PJRT_Device_Attribute::PJRT_Device_Attribute_kString: {
+      case PJRT_NamedValue::PJRT_NamedValue_kString: {
         std::string string_value(attribute.string_value, attribute.value_size);
         attributes_[attribute_name] = PjRtDeviceAttribute(string_value);
         break;
       }
-      case PJRT_Device_Attribute::PJRT_Device_Attribute_kInt64: {
+      case PJRT_NamedValue::PJRT_NamedValue_kInt64: {
         attributes_[attribute_name] =
             PjRtDeviceAttribute(attribute.int64_value);
         break;
       }
-      case PJRT_Device_Attribute::PJRT_Device_Attribute_kInt64List: {
+      case PJRT_NamedValue::PJRT_NamedValue_kInt64List: {
         const int64_t* array_ptr(attribute.int64_array_value);
         std::vector<int64_t> int64_array(array_ptr,
                                          array_ptr + attribute.value_size);
         attributes_[attribute_name] = PjRtDeviceAttribute(int64_array);
+        break;
+      }
+      // Do not allow other types (such as
+      // PJRT_NamedValue::PJRT_NamedValue_kFloat) since device attributes
+      // currently should not return other types. Also C API client currently
+      // does not support forward compatibility (such as if the underlying
+      // PJRT library is a newer version that returns types not supported by
+      // this client). Failing here to prevent undefined behavior.
+      default: {
+        LOG(FATAL) << "PJRT_Device_Attributes() returned attribute '"
+                   << attribute_name << "' with unsupported type "
+                   << attribute.type << " to PjRtCApiDevice::InitAttributes()";
         break;
       }
     }
@@ -823,6 +869,57 @@ int64_t PjRtCApiExecutable::SizeOfGeneratedCodeInBytes() const {
   return args.size_in_bytes;
 }
 
+StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+PjRtCApiExecutable::GetCostAnalysis() const {
+  // Initialize function call args
+  PJRT_Executable_GetCostAnalysis_Args args;
+  args.struct_size = PJRT_Executable_GetCostAnalysis_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = executable_.get();
+
+  // Make PJRT C API call
+  const PJRT_Api* c_api = pjrt_c_api();
+  RETURN_STATUS_IF_ERROR(c_api->PJRT_Executable_GetCostAnalysis(&args), c_api);
+
+  // Copy returned properties to output map
+  absl::flat_hash_map<std::string, PjRtValueType> output_map;
+  for (auto i = 0; i < args.num_properties; ++i) {
+    switch (args.properties[i].type) {
+      case PJRT_NamedValue::PJRT_NamedValue_kFloat:
+        output_map[args.properties[i].name] = args.properties[i].float_value;
+        break;
+      case PJRT_NamedValue::PJRT_NamedValue_kInt64:
+        output_map[args.properties[i].name] = args.properties[i].int64_value;
+        break;
+      case PJRT_NamedValue::PJRT_NamedValue_kInt64List: {
+        PjRtValueType& output_value = output_map[args.properties[i].name];
+        std::vector<int64_t>& output_int64_list =
+            std::get<std::vector<int64_t>>(output_value);
+        output_int64_list.reserve(args.properties[i].value_size);
+        for (auto j = 0; j < args.properties[i].value_size; ++j) {
+          output_int64_list.push_back(args.properties[i].int64_array_value[j]);
+        }
+        break;
+      }
+      case PJRT_NamedValue::PJRT_NamedValue_kString:
+        output_map[args.properties[i].name] = args.properties[i].string_value;
+        break;
+      // C API client currently does not support forward compatibility (such as
+      // if the underlying PJRT library is a newer version that returns types
+      // not supported by this client). Failing here to prevent undefined
+      // behavior.
+      default:
+        LOG(FATAL) << "PJRT_Executable_GetCostAnalysis() returned attribute '"
+                   << args.properties[i].name << "' with unsupported type '"
+                   << args.properties[i].type
+                   << "' to PjRtCApiExecutable::GetCostAnalysis()";
+        break;
+    }
+  }
+
+  return output_map;
+}
+
 // ---------------------------------- Buffers ----------------------------------
 
 PjRtCApiBuffer::PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer)
@@ -1053,7 +1150,10 @@ PjRtFuture<Status> PjRtCApiBuffer::GetReadyFuture() {
 StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     absl::string_view device_type) {
 #if !defined(PLATFORM_GOOGLE) || defined(LIBTPU_STATIC)
-  TF_RETURN_IF_ERROR(tensorflow::tpu::FindAndLoadTpuLibrary());
+  if (absl::AsciiStrToLower(device_type) == "tpu") {
+    // TODO(b/261484192): handle device specific initialization.
+    TF_RETURN_IF_ERROR(tensorflow::tpu::FindAndLoadTpuLibrary());
+  }
 #endif
   TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api,
                       stream_executor::tpu::PjrtApi(device_type));

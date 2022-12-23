@@ -16,6 +16,7 @@ limitations under the License.
 // This file replaces some complicated HLOs such as SelectAndScatter with a
 // sequence of simpler HLOs.
 
+#include <cstddef>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -72,7 +73,7 @@ struct SelectAndScatterExpanderPattern
     // to determine the indices to be scattered to.
     llvm::SmallVector<Value> iotas;
     iotas.reserve(operandShape.size());
-    for (int i = 0; i < operandShape.size(); ++i) {
+    for (size_t i = 0; i < operandShape.size(); ++i) {
       iotas.push_back(builder.create<mhlo::IotaOp>(iotaShape, i));
     }
 
@@ -146,7 +147,7 @@ struct SelectAndScatterExpanderPattern
     auto broadcastedIotaShape = RankedTensorType::get(
         broadcastedIotaDims, iotaShapeReduced.getElementType());
 
-    for (int i = 1; i < numReduceValues; ++i) {
+    for (size_t i = 1; i < numReduceValues; ++i) {
       Value element = reduceWindow.getResult(i);
       iotaIndices.push_back(
           builder.create<mhlo::ReshapeOp>(broadcastedIotaShape, element)

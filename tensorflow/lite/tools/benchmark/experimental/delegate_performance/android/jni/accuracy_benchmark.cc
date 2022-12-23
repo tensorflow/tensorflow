@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/lite/delegates/utils/experimental/stable_delegate/tflite_settings_json_parser.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/blocking_validator_runner.h"
@@ -132,7 +133,7 @@ AccuracyBenchmarkStatus Benchmark(const std::vector<std::string>& args,
     return kAccuracyBenchmarkTfLiteSettingsParsingFailed;
   }
   std::vector<const TFLiteSettings*> settings = {tflite_settings};
-  std::vector<const BenchmarkEvent*> results =
+  std::vector<flatbuffers::FlatBufferBuilder> results =
       runner.TriggerValidation(settings);
   if (results.size() != settings.size()) {
     TFLITE_LOG_PROD(
@@ -143,7 +144,9 @@ AccuracyBenchmarkStatus Benchmark(const std::vector<std::string>& args,
   }
   // The settings contains one test only. Therefore, the benchmark checks for
   // the first result only.
-  if (!results[0]->result()->ok()) {
+  const BenchmarkEvent* result_event =
+      flatbuffers::GetRoot<BenchmarkEvent>(results[0].GetBufferPointer());
+  if (!result_event->result() || !result_event->result()->ok()) {
     return kAccuracyBenchmarkFail;
   }
   return kAccuracyBenchmarkPass;

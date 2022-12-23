@@ -1118,7 +1118,12 @@ func.func @op_pad(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> tensor<16xf32> {
 }
 // CHECK-LABEL: "op_pad"
 
-// PartitionIdOp aka mhlo.partition_id is unsupported at the moment (see negative test below).
+func.func @op_partition_id() -> tensor<ui32> {
+  // CHECK: "stablehlo.partition_id"() : () -> tensor<ui32>
+  %0 = "mhlo.partition_id"() : () -> tensor<ui32>
+  func.return %0 : tensor<ui32>
+}
+// CHECK-LABEL: "op_partition_id"
 
 func.func @op_popcnt(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK: "stablehlo.popcnt"(%arg0) : (tensor<i32>) -> tensor<i32>
@@ -1790,6 +1795,25 @@ func.func @type_token_caller(%arg0: !mhlo.token) -> !mhlo.token {
 //       CHECK: function_type = (!stablehlo.token) -> !stablehlo.token
 // CHECK-LABEL: "type_token_caller"
 
+func.func @type_token_region(%arg0: tensor<i1>, %arg1: !mhlo.token) {
+  //      CHECK: "stablehlo.while"(%arg1) ({
+  // CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG2:arg.*]]: !stablehlo.token):
+  // CHECK-NEXT:     "stablehlo.return"(%arg0) : (tensor<i1>) -> ()
+  // CHECK-NEXT:   }, {
+  // CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG2:arg.*]]: !stablehlo.token):
+  // CHECK-NEXT:     "stablehlo.return"(%[[ARG2]]) : (!stablehlo.token) -> ()
+  // CHECK-NEXT: }) : (!stablehlo.token) -> !stablehlo.token
+  %0 = "mhlo.while"(%arg1) ({
+    ^bb0(%arg2: !mhlo.token):
+      mhlo.return %arg0 : tensor<i1>
+    }, {
+    ^bb0(%arg2: !mhlo.token):
+      mhlo.return %arg2 : !mhlo.token
+  }) : (!mhlo.token) -> !mhlo.token
+  return
+}
+// CHECK-LABEL: "type_token_region"
+
 func.func @type_tuple(%arg0: tuple<tensor<f32>>) -> tuple<!mhlo.token> {
   %0 = "mhlo.custom_call"(%arg0) {
     call_target_name = "foo"
@@ -1805,12 +1829,25 @@ func.func @type_tuple(%arg0: tuple<tensor<f32>>) -> tuple<!mhlo.token> {
 
 // -----
 
-func.func @attr_custom_call_schedule(%arg0: tensor<f32>) -> tensor<f32> {
+func.func @attr_custom_call_schedule_fail(%arg0: tensor<f32>) -> tensor<f32> {
   // expected-error@+1 {{failed to legalize operation 'mhlo.custom_call' that was explicitly marked illegal}}
   %0 = "mhlo.custom_call"(%arg0) {
     call_target_name = "foo",
     api_version = 0 : i32,
     custom_call_schedule = #mhlo<custom_call_schedule EARLIEST>
+  } : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// -----
+
+func.func @op_custom_call_custom_call_schedule_success(%arg0: tensor<f32>) -> tensor<f32> {
+  //      CHECK: "stablehlo.custom_call"(%arg0) {
+  // CHECK-SAME:   call_target_name = "foo"
+  // CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
+  %0 = "mhlo.custom_call"(%arg0) {
+    call_target_name = "foo",
+    custom_call_schedule = #mhlo<custom_call_schedule NONE>
   } : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
@@ -1983,17 +2020,14 @@ func.func @op_fusion(%arg0: tensor<f32>) -> tensor<f32> {
     ^bb0(%arg1: tensor<f32>):
       "mhlo.return"(%arg1) : (tensor<f32>) -> ()
   }) {
-    fusion_kind = #mhlo<fusion_kind kCustom>
+    fusion_kind = #mhlo<fusion_kind kCustom>,
+    output_operand_aliases = [
+      #mhlo.output_operand_alias<output_tuple_indices = [],
+                                 operand_index = 0,
+                                 operand_tuple_indices = []>
+    ]
   } : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
-}
-
-// -----
-
-func.func @op_partition_id() -> tensor<ui32> {
-  // expected-error@+1 {{failed to legalize operation 'mhlo.partition_id' that was explicitly marked illegal}}
-  %0 = "mhlo.partition_id"() : () -> tensor<ui32>
-  func.return %0 : tensor<ui32>
 }
 
 // -----

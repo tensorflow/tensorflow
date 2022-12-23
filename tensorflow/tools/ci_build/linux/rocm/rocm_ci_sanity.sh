@@ -296,7 +296,7 @@ do_bazel_deps_query() {
 
   # We've set the flag noimplicit_deps as a workaround for
   # https://github.com/bazelbuild/bazel/issues/10544
-  bazel query ${BAZEL_FLAGS} --noimplicit_deps -- "deps($BUILD_TARGET except tensorflow/compiler/mlir/tfrt/...:*  except tensorflow/stream_executor/cuda/...:* except //tensorflow/stream_executor/...:*  except tensorflow/lite/...:* except tensorflow/core/tfrt/...:* except tensorflow/core/runtime_fallback/...:* )" > /dev/null
+  bazel query ${BAZEL_FLAGS} --noimplicit_deps -- "deps($BUILD_TARGET except tensorflow/compiler/mlir/tfrt/...:*  except tensorflow/compiler/xla/stream_executor/cuda/...:* except //tensorflow/compiler/xla/stream_executor/...:*  except tensorflow/lite/...:* except tensorflow/core/tfrt/...:* except tensorflow/core/runtime_fallback/...:* )" > /dev/null
 
   cmd_status \
     "This is due to invalid BUILD files."

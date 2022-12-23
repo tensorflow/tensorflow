@@ -553,6 +553,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:function_body",
         "//tensorflow/core/common_runtime:function_def_utils",
+        "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/platform:status",
         "@tf_runtime//:bef",
         "@tf_runtime//:mlirtobef",

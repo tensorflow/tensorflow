@@ -57,7 +57,7 @@ class PyBuffer {
 
 #ifdef JAX_ENABLE_IFRT
   static object Make(std::shared_ptr<PyClient> client,
-                     std::unique_ptr<ifrt::Array> ifrt_array,
+                     tsl::RCReference<ifrt::Array> ifrt_array,
                      std::shared_ptr<Traceback> traceback);
 #else
   static object Make(std::shared_ptr<PyClient> client,
@@ -109,14 +109,24 @@ class PyBuffer {
   }
 
   void SetPjRtBuffer(std::shared_ptr<PjRtBuffer> buffer) {
-    auto ifrt_array =
-        xla::ifrt::PjRtArray::Create(client_->ifrt_client(), std::move(buffer));
+    auto* client = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(
+        client_->ifrt_client());
+    if (client == nullptr) {
+      throw XlaRuntimeError(
+          "This operation is implemented for a PjRt-compatible backend only.");
+    }
+    auto ifrt_array = xla::ifrt::PjRtArray::Create(client, std::move(buffer));
     TF_CHECK_OK(ifrt_array.status());
     ifrt_array_ = *std::move(ifrt_array);
   }
   void SetPjRtBuffer(std::unique_ptr<PjRtBuffer> buffer) {
-    auto ifrt_array =
-        xla::ifrt::PjRtArray::Create(client_->ifrt_client(), std::move(buffer));
+    auto* client = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(
+        client_->ifrt_client());
+    if (client == nullptr) {
+      throw XlaRuntimeError(
+          "This operation is implemented for a PjRt-compatible backend only.");
+    }
+    auto ifrt_array = xla::ifrt::PjRtArray::Create(client, std::move(buffer));
     TF_CHECK_OK(ifrt_array.status());
     ifrt_array_ = *std::move(ifrt_array);
   }
@@ -262,7 +272,8 @@ class PyBuffer {
   // PyBuffer objects must not be allocated directly since they must always live
   // on the Python heap. Use Make() instead.
 #ifdef JAX_ENABLE_IFRT
-  PyBuffer(std::shared_ptr<PyClient> client, std::unique_ptr<ifrt::Array> array,
+  PyBuffer(std::shared_ptr<PyClient> client,
+           tsl::RCReference<ifrt::Array> array,
            std::shared_ptr<Traceback> traceback);
 #else
   PyBuffer(std::shared_ptr<PyClient> client, std::shared_ptr<PjRtBuffer> buffer,
@@ -281,7 +292,7 @@ class PyBuffer {
   };
   std::shared_ptr<PyClient> client_;
 #ifdef JAX_ENABLE_IFRT
-  std::unique_ptr<ifrt::Array> ifrt_array_;
+  tsl::RCReference<ifrt::Array> ifrt_array_;
 #else
   std::shared_ptr<PjRtBuffer> buffer_;
 #endif
@@ -319,7 +330,7 @@ class PyShardedBuffer {
 
 #ifdef JAX_ENABLE_IFRT
   PyShardedBuffer(std::shared_ptr<PyClient> client,
-                  std::unique_ptr<ifrt::Array> ifrt_array,
+                  tsl::RCReference<ifrt::Array> ifrt_array,
                   std::shared_ptr<Traceback> traceback, bool sticky = false)
       : client_(std::move(client)),
         ifrt_array_(std::move(ifrt_array)),
@@ -414,10 +425,15 @@ class PyShardedBuffer {
       throw XlaRuntimeError(
           "This operation is implemented for a PjRt-compatible backend only.");
     }
+    auto* ifrt_client = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(
+        client_->ifrt_client());
+    if (ifrt_client == nullptr) {
+      throw XlaRuntimeError(
+          "This operation is implemented for a PjRt-compatible backend only.");
+    }
     auto& pjrt_buffer = arr->pjrt_buffers().at(device_id);
     auto py_buffer = PyBuffer::Make(
-        client_,
-        ifrt::PjRtArray::Create(client_->ifrt_client(), pjrt_buffer).value(),
+        client_, ifrt::PjRtArray::Create(ifrt_client, pjrt_buffer).value(),
         traceback_);
     if (sticky_) {
       TF_CHECK_OK(py_buffer.buf()->set_sticky_device(pjrt_buffer->device()));
@@ -515,7 +531,7 @@ class PyShardedBuffer {
 
   std::shared_ptr<PyClient> client_;
 #ifdef JAX_ENABLE_IFRT
-  std::unique_ptr<ifrt::Array> ifrt_array_;
+  tsl::RCReference<ifrt::Array> ifrt_array_;
 #else
   std::vector<std::shared_ptr<PjRtBuffer> > buffers_;
 #endif

@@ -31,8 +31,10 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
+#include "tensorflow/dtensor/mlir/expansions/replicated_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
@@ -53,7 +55,21 @@ SPMDExpanderBase* SPMDExpanderRegistry::GetPropagateFnForOp(
     mlir::Operation* op) {
   auto key = OpName(op);
   auto fn = op_to_propagate_fn_map_.find(key);
-  if (fn == op_to_propagate_fn_map_.end()) return nullptr;
+  if (fn == op_to_propagate_fn_map_.end()) {
+    if (EnableReplicatedSpmdAsDefault(key)) {
+      LOG(WARNING)
+          << key << " is defaulting to ReplicatedOpSPMDExpander. This "
+          << " has performance implications as all inputs and outputs "
+          << " will be replicated if they are not already. Please file a "
+          << " feature request to TF DTensor to implement an efficient "
+          << " SPMD for this operation.";
+      RegisterPropagateFn(key, std::make_unique<ReplicatedOpSPMDExpander>(
+                                   /*relayout_when_sharded=*/true));
+      return op_to_propagate_fn_map_.find(key)->second.get();
+    } else {
+      return nullptr;
+    }
+  }
   return fn->second.get();
 }
 

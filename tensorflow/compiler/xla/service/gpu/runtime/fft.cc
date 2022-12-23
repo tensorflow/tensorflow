@@ -76,7 +76,7 @@ void PopulateFftAttrEncoding(runtime::CustomCallAttrEncodingSet& encoding) {
 static absl::Status FftImpl(const ServiceExecutableRunOptions* run_options,
                             State<std::unique_ptr<FftPlanCache>> state,
                             StridedMemrefView input, StridedMemrefView output,
-                            llvm::ArrayRef<int64_t> fft_length,
+                            absl::Span<const int64_t> fft_length,
                             se::fft::Type fft_type) {
   se::Stream* stream = run_options->stream();
   se::StreamExecutor* executor = stream->parent();
@@ -123,7 +123,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .State<std::unique_ptr<FftPlanCache>>("uid")
         .Arg<StridedMemrefView>()  // input
         .Arg<StridedMemrefView>()  // output
-        .Attr<llvm::ArrayRef<int64_t>>("fft_length")
+        .Attr<absl::Span<const int64_t>>("fft_length")
         .Attr<se::fft::Type>("fft_type"));
 
 //===----------------------------------------------------------------------===//

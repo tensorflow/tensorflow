@@ -104,7 +104,7 @@ TEST(LoadedExecutableImplTest, CompileAndExecute) {
   ExecuteOptions execute_options;
   TF_ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
-      loaded_executable->Execute({array.get()}, execute_options,
+      loaded_executable->Execute(absl::MakeSpan(&array, 1), execute_options,
                                  /*devices=*/std::nullopt));
   TF_ASSERT_OK(result.status.Await());
   EXPECT_THAT(result.outputs, SizeIs(1));

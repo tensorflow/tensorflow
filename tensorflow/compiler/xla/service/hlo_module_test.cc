@@ -751,9 +751,8 @@ ENTRY ReduceR3ToR2.v3 {
   EXPECT_TRUE(diff.Compare(proto, reconstructed_module_proto));
 }
 
-static HloModuleConfigProto::ShardableValueUpdatePairProto MakeShardPair(
-    int offset) {
-  HloModuleConfigProto::ShardableValueUpdatePairProto pear;
+static ShardableValueUpdatePairProto MakeShardPair(int offset) {
+  ShardableValueUpdatePairProto pear;
   pear.set_input_parameter_number(offset + 1);
   for (int64_t i = 0; i < 5; ++i) {
     pear.add_parameter_shape_index(offset + i);

@@ -41,7 +41,12 @@ struct CudaComputeCapability {
   int minor = 0;
 
   // MSVC does not like "PASCAL" symbol.
-  enum CudaComputeCapabilities { PASCAL_ = 6, VOLTA = 7, AMPERE = 8 };
+  enum CudaComputeCapabilities {
+    PASCAL_ = 6,
+    VOLTA = 7,
+    AMPERE = 8,
+    HOPPER = 9
+  };
 
   CudaComputeCapability() {}
   CudaComputeCapability(int major, int minor) {
@@ -119,6 +124,7 @@ class RocmComputeCapability {
   explicit RocmComputeCapability(const RocmComputeCapabilityProto &proto)
       : gcn_arch_name_(proto.gcn_arch_name()) {}
 
+  RocmComputeCapability() {}
   ~RocmComputeCapability() {}
 
   std::string gcn_arch_name() { return gcn_arch_name_; }

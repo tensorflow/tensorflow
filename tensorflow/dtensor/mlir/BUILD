@@ -476,7 +476,6 @@ cc_library(
         ":tf_dtensor_dialect",
         ":value_utils",
         "//tensorflow/compiler/mlir:array_container_utils",
-        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
@@ -512,6 +511,7 @@ cc_library(
     deps = [
         ":op_utils",
         ":tf_dtensor_dialect",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/core:lib",
         "//tensorflow/dtensor/cc:dstatus",

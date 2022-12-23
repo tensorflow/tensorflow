@@ -56,6 +56,21 @@ using PJRT_ExecutableDeleter = std::function<void(PJRT_Executable*)>;
 // The lifetime of the Api pointed to must be longer than the executable.
 PJRT_ExecutableDeleter MakeExecutableDeleter(const PJRT_Api* api);
 
+using PJRT_EventDeleter = std::function<void(PJRT_Event*)>;
+
+// Pass in an API pointer; receive a custom deleter for smart pointers.
+// The lifetime of the Api pointed to must be longer than the event.
+PJRT_EventDeleter MakeEventDeleter(const PJRT_Api* api);
+
+using PJRT_SerializedExecutableDeleter =
+    std::function<void(PJRT_SerializedExecutable*)>;
+
+// Pass in an API pointer; receive a custom deleter for smart pointers.
+// The lifetime of the Api pointed to must be longer than the serialized
+// executable.
+PJRT_SerializedExecutableDeleter MakeSerializedExecutableDeleter(
+    const PJRT_Api* api);
+
 // Fatal error logging if status is not success. This terminates the process
 // and frees the PJRT_Error passed in.
 void LogFatalIfPjrtError(PJRT_Error* error, const PJRT_Api* api);
@@ -69,12 +84,6 @@ tsl::error::Code PjrtErrorToStatusCode(const PJRT_Error* error,
                                        const PJRT_Api* api);
 
 PJRT_Error_Code StatusCodeToPjrtErrorCode(tsl::error::Code code);
-
-using PJRT_EventDeleter = std::function<void(PJRT_Event*)>;
-
-// Pass in an API pointer; receive a custom deleter for smart pointers.
-// The lifetime of the Api pointed to must be longer than the event.
-PJRT_EventDeleter MakeEventDeleter(const PJRT_Api* api);
 
 // Conversion helper from xla::PrimitiveType to PJRT_Buffer_Type.
 PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type);

@@ -25,6 +25,11 @@ namespace delegates {
 namespace utils {
 
 // This class parses a JSON file to tflite::TFLiteSettings*.
+// Note: This class is "thread-compatible", i.e. not thread-safe but also not
+// thread-hostile
+// <https://web.archive.org/web/20210125044505/https://www.ibm.com/developerworks/java/library/j-jtp09263/index.html>.
+// That is, each instance is not thread-safe, but multiple separate instances
+// are safely independent.
 class TfLiteSettingsJsonParser {
  public:
   TfLiteSettingsJsonParser();
@@ -37,12 +42,25 @@ class TfLiteSettingsJsonParser {
   // encountered.
   const TFLiteSettings* Parse(const std::string& json_file_path);
 
+  // Returns the buffer pointer to the loaded TFLiteSettings object or nullptr
+  // if an error was encountered during loading or the TFLiteSettings object is
+  // not loaded. The lifetime of the buffer is tied to the lifetime of the
+  // TfLiteSettingsJsonParser instance.
+  const uint8_t* GetBufferPointer();
+
+  // Returns the buffer size of the loaded TFLiteSettings object or 0 if an
+  // error was encountered during loading or the TFLiteSettings object is not
+  // loaded.
+  flatbuffers::uoffset_t GetBufferSize();
+
  private:
   // Parses content inside `json_file_path` into flatbuffer. Returns true if the
   // parsing was successful, otherwise the method returns false.
   bool LoadFromJsonFile(const std::string& json_file_path);
 
   flatbuffers::Parser parser_;
+  uint8_t* buffer_pointer_;
+  flatbuffers::uoffset_t buffer_size_;
 };
 
 }  // namespace utils

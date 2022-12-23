@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/client.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
+#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
 namespace xla {
 namespace ifrt {
@@ -55,22 +56,22 @@ class PjRtArray final
       absl::InlinedVector<std::shared_ptr<PjRtBuffer>, kPjRtBufferInlineSize>;
 
   // General array construction.
-  static StatusOr<std::unique_ptr<Array>> Create(
+  static StatusOr<tsl::RCReference<Array>> Create(
       PjRtCompatibleClient* client, DType dtype, Shape shape,
       std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers);
 
   // Shorthand for a single-shard array construction.
-  static StatusOr<std::unique_ptr<Array>> Create(
+  static StatusOr<tsl::RCReference<Array>> Create(
       PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer);
-  static StatusOr<std::unique_ptr<Array>> Create(
+  static StatusOr<tsl::RCReference<Array>> Create(
       PjRtCompatibleClient* client, std::unique_ptr<PjRtBuffer> pjrt_buffer);
 
   // Shorthand for a multi-shard array construction using OpaqueSharding.
   // TODO(hyeontaek): Remove this once IFRT Sharding and JAX Sharding is unified
   // so that OpaqueSharding can be replaced with a real Sharding.
-  static StatusOr<std::unique_ptr<Array>> Create(PjRtCompatibleClient* client,
-                                                 Shape shape,
-                                                 PjRtBuffers pjrt_buffers);
+  static StatusOr<tsl::RCReference<Array>> Create(PjRtCompatibleClient* client,
+                                                  Shape shape,
+                                                  PjRtBuffers pjrt_buffers);
 
   // PjRtCompatibleArray implementation.
 
@@ -110,7 +111,7 @@ class PjRtArray final
     return sharding_;
   }
 
-  StatusOr<std::vector<std::unique_ptr<Array>>>
+  StatusOr<std::vector<tsl::RCReference<Array>>>
   DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) override;
 
   ABSL_MUST_USE_RESULT
@@ -118,7 +119,7 @@ class PjRtArray final
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics) override;
 
-  StatusOr<std::unique_ptr<Array>> Reshard(
+  StatusOr<tsl::RCReference<Array>> Reshard(
       std::shared_ptr<const Sharding> new_sharding,
       ArrayCopySemantics semantics) override;
 
@@ -134,6 +135,9 @@ class PjRtArray final
  private:
   PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
             std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers);
+
+  template <typename T, typename... Args>
+  friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
 
   PjRtCompatibleClient* client_;
   DType dtype_;

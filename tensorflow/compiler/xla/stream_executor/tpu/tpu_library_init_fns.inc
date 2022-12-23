@@ -1,8 +1,4 @@
-#if defined(PLATFORM_GOOGLE)
-#include "third_party/tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_init_fns.inc"
-#else
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_init_fns.inc"
-#endif
 
 namespace {
 

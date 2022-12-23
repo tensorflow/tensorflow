@@ -618,8 +618,8 @@ class ReadySetLt {
     }
     if (sched_state_.config.aggressive_scheduling_policies) {
       // If an instruction releasing a resource is not resource constrained and
-      // has an async depth of 0 delay it as much as possible to avoid potential
-      // cost model inefficiencies.
+      // has an async depth of 0, delay it as much as possible to avoid
+      // potential cost model inefficiencies.
       if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
               /*first_cond=*/!(a.node->DoesReleaseAnyResource() &&
                                a.node->GetAsyncDepth() == 0 &&
@@ -774,7 +774,7 @@ class ReadySetLt {
         gn.GetInstr().opcode() != HloOpcode::kSendDone) {
       return true;
     }
-    // Try to delay the send-done for a host based operations like outside
+    // Try to delay the send-done for host based operations like outside
     // compilation to avoid allocating memory unnecessarily.
     const HloGraphNode& start =
         sched_state_.sched_graph.GetNode(gn.GetInstr().operand(0));
@@ -791,8 +791,9 @@ class ReadySetLt {
     if (cand.pressure_change) {
       return *cand.pressure_change;
     }
-    return sched_state_.memory_pressure_tracker->MemoryPressureDifference(
-        &cand.node->GetInstr());
+    cand.pressure_change =
+        sched_state_.memory_pressure_tracker->MemoryPressureDifference(
+            &cand.node->GetInstr());
     return *cand.pressure_change;
   }
 };
@@ -866,7 +867,7 @@ HloGraphNode* DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
                     ? ready_chosen.node->GetInstr().name()
                     : ready_candidate.node->GetInstr().name())
             << ") Reason: " << cand_result.reason;
-    if (cand_result.result.node == *ready_node_it) {
+    if (new_candidate_selected) {
       ready_chosen = cand_result.result;
       chosen_it = ready_node_it;
     }
@@ -874,7 +875,7 @@ HloGraphNode* DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
   if (ready_chosen.node == nullptr) {
     return nullptr;
   }
-  CHECK_NE(ready_chosen.node, nullptr);
+  CHECK(chosen_it != sched_state.ready_set.end());
   std::swap(*chosen_it, sched_state.ready_set.back());
   sched_state.ready_set.pop_back();
   return ready_chosen.node;
@@ -931,12 +932,11 @@ StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
     break;
   }
 
-  // After scheduling the node we decided to schedule release the nodes that
-  // don't have any more successors unscheduled. If a node is not ready for
-  // scheduling yet even if it doesn't have any more dependencies unscheduled
-  // (because for example the node latency would make us stall while we could
-  // schedule something else in between) we put it into the pending set.
-  // We schedule from the pending set if there's nothing in the ready set.
+  // After scheduling the node we decided to schedule, release the nodes that
+  // don't have any more successors unscheduled by putting them in the
+  // ready_set. If a released node ready time is higher than the current time we
+  // put it also in the next_ready_stack, which is used in the ReadySetLt class
+  // for nodes cost comparison.
   for (HloEdge& edge : n->GetPredecessors()) {
     const int64_t current_outdegree = edge.Target().GetOutdegree();
     // Node is not ready yet. Decrease the outdegree and continue.
@@ -946,8 +946,7 @@ StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
     }
     // This node is now ready to schedule. Set the outdegree to 0 and compute
     // the time at which it is gonna be ready to be scheduled. If the time is
-    // not what the current time is we put it into the pending set , otherwise
-    // the node is good for the ready set.
+    // not what the current time is we put it also in next_ready_stack.
     edge.Target().SetOutdegree(0);
     LatencyEstimator::TimeCost ready_time = current_time;
     for (const HloEdge& pred : edge.Target().GetSuccessors()) {
@@ -957,8 +956,6 @@ StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
         ready_time = edge_time;
       }
     }
-    auto resources = sched_state->async_tracker->GetResourcesFromInstruction(
-        edge.Target().GetInstr());
     for (auto& resource :
          sched_state->async_tracker->GetResourcesFromInstruction(
              edge.Target().GetInstr())) {
@@ -1494,15 +1491,13 @@ StatusOr<bool> LatencyHidingScheduler::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(5) << "Original module:";
-  bool is_module_changed = false;
   XLA_VLOG_LINES(5, module->ToString());
   // Currently we expect that a schedule that minimizes memory pressure is
   // provided as a base. It's not necessary for the algorithm itself but it
-  // allows us to not having to think for now to memory pressure.
+  // allows us to not having to think for now about memory pressure.
   std::vector<HloComputation*> computations_to_schedule;
   computations_to_schedule.reserve(module->computation_count());
   // Collect which computations have latency hiding opportunities.
-  // Convert collective permutes to start/done pairs.
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (auto* instr : computation->instructions()) {
@@ -1515,9 +1510,8 @@ StatusOr<bool> LatencyHidingScheduler::Run(
   }
 
   if (computations_to_schedule.empty()) {
-    return is_module_changed;
+    return false;
   }
-  is_module_changed = true;
 
   TF_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
   for (HloComputation* computation : computations_to_schedule) {
@@ -1525,12 +1519,12 @@ StatusOr<bool> LatencyHidingScheduler::Run(
     LogScheduleStatistics(computation);
     TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
                         scheduler_core_->ScheduleComputation(computation));
-    computation->parent()->schedule().set_sequence(
-        computation, absl::MakeConstSpan(new_schedule));
+    module->schedule().set_sequence(computation,
+                                    absl::MakeConstSpan(new_schedule));
     VLOG(1) << "Statistics after scheduling:";
     LogScheduleStatistics(computation);
   }
-  return is_module_changed;
+  return true;
 }
 
 }  // namespace xla

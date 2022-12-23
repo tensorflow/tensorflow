@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/casts.h"
 #include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace stream_executor {
 namespace tpu {
 
 class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
@@ -105,7 +105,8 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   std::optional<stream_executor::AllocatorStats> GetAllocatorStats() override;
 
-  tpu::TpuCoreLocationExternal GetCoreLocationExternal() const override;
+  tensorflow::tpu::TpuCoreLocationExternal GetCoreLocationExternal()
+      const override;
 
   Status GetStatus(Stream* stream) override;
 
@@ -228,11 +229,11 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   SE_StreamExecutor* se_executor() { return executor_; }
 
  private:
-  TpuPlatform& tpu_platform() {
-    return *(tensorflow::down_cast<TpuPlatform*>(platform_));
+  tensorflow::tpu::TpuPlatform& tpu_platform() {
+    return *(tensorflow::down_cast<tensorflow::tpu::TpuPlatform*>(platform_));
   }
 
-  TpuPlatform::StreamMap& stream_map() {
+  tensorflow::tpu::TpuPlatform::StreamMap& stream_map() {
     return *(tpu_platform().stream_map());
   }
 
@@ -247,6 +248,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 };
 
 }  // namespace tpu
-}  // namespace tensorflow
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_EXECUTOR_H_

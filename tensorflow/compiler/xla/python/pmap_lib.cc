@@ -95,14 +95,9 @@ struct ResultSpec {
 // The result of `ShardArg`.
 struct ShardArgResult {
 #ifdef JAX_ENABLE_IFRT
-  // Points to the on-device array. Not owned.
+  // Points to the on-device array.
   // ifrt_array->sharding().num_shards() == `num_devices`.
-  xla::ifrt::Array* ifrt_array;
-
-  // The Python argument will be always be copied to `owning_sda`.
-  // If we need to create an IFRT array, it will be stored in
-  // `owned_ifrt_array`.
-  std::unique_ptr<xla::ifrt::Array> owned_ifrt_array;
+  tsl::RCReference<xla::ifrt::Array> ifrt_array;
 #else
   // Points to the on-device buffers. Not owned.
   // Size `num_devices`.
@@ -151,7 +146,7 @@ xla::StatusOr<ShardArgResult> ShardArg(
           ShardArgResult result;
           result.owning_sda = py::reinterpret_borrow<py::object>(arg);
 #ifdef JAX_ENABLE_IFRT
-          result.ifrt_array = py_array.ifrt_array();
+          result.ifrt_array = tsl::FormRef(py_array.ifrt_array());
           if (result.ifrt_array == nullptr) {
             return xla::InvalidArgument("Array has been deleted.");
           }
@@ -167,8 +162,7 @@ xla::StatusOr<ShardArgResult> ShardArg(
                 result.ifrt_array->Reshard(
                     std::move(sharding),
                     xla::ifrt::ArrayCopySemantics::kReuseInput));
-            result.ifrt_array = copied_ifrt_array.get();
-            result.owned_ifrt_array = std::move(copied_ifrt_array);
+            result.ifrt_array = std::move(copied_ifrt_array);
           }
 #else
           auto& per_device_buffers = result.per_device_buffers;
@@ -202,7 +196,8 @@ xla::StatusOr<ShardArgResult> ShardArg(
       ShardArgResult result;
       result.owning_sda = py::reinterpret_borrow<py::object>(arg);
 #ifdef JAX_ENABLE_IFRT
-      TF_ASSIGN_OR_RETURN(result.ifrt_array, sda->ifrt_array());
+      TF_ASSIGN_OR_RETURN(auto ifrt_array, sda->ifrt_array());
+      result.ifrt_array = tsl::FormRef(ifrt_array);
       if (result.ifrt_array == nullptr) {
         return xla::InvalidArgument("Array has been deleted.");
       }
@@ -216,8 +211,7 @@ xla::StatusOr<ShardArgResult> ShardArg(
                             result.ifrt_array->Reshard(
                                 std::move(sharding),
                                 xla::ifrt::ArrayCopySemantics::kReuseInput));
-        result.ifrt_array = copied_ifrt_array.get();
-        result.owned_ifrt_array = std::move(copied_ifrt_array);
+        result.ifrt_array = std::move(copied_ifrt_array);
       }
 #else
       const int num_devices = devices.size();
@@ -257,7 +251,7 @@ xla::StatusOr<ShardArgResult> ShardArg(
 #endif
   if (!per_device_pybuffers.empty()) {
 #ifdef JAX_ENABLE_IFRT
-    std::vector<xla::ifrt::Array*> per_device_arrays;
+    std::vector<tsl::RCReference<xla::ifrt::Array>> per_device_arrays;
     per_device_arrays.reserve(per_device_pybuffers.size());
     xla::ifrt::DeviceList::Devices devices;
     devices.reserve(per_device_pybuffers.size());
@@ -275,13 +269,13 @@ xla::StatusOr<ShardArgResult> ShardArg(
     TF_RET_CHECK(xla::PyBuffer::IsPyBuffer(per_device_pybuffers[0]));
 #ifdef JAX_ENABLE_IFRT
     for (py::handle per_device_pybuffer : per_device_pybuffers) {
-      per_device_arrays.push_back(
-          xla::PyBuffer::AsPyBuffer(per_device_pybuffer).value()->ifrt_array());
+      auto b = xla::PyBuffer::AsPyBuffer(per_device_pybuffer).value();
+      per_device_arrays.push_back(tsl::FormRef(b->ifrt_array()));
       devices.push_back(per_device_arrays.back()->sharding().devices().front());
       shapes.push_back(per_device_arrays.back()->shape());
     }
     TF_ASSIGN_OR_RETURN(
-        result.owned_ifrt_array,
+        result.ifrt_array,
         per_device_arrays.front()
             ->client()
             ->AssembleArrayFromSingleDeviceArrays(
@@ -293,8 +287,8 @@ xla::StatusOr<ShardArgResult> ShardArg(
                     xla::ifrt::DeviceList(std::move(devices)),
                     xla::ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
                         std::move(shapes))),
-                per_device_arrays, xla::ifrt::ArrayCopySemantics::kReuseInput));
-    result.ifrt_array = result.owned_ifrt_array.get();
+                absl::MakeSpan(per_device_arrays),
+                xla::ifrt::ArrayCopySemantics::kReuseInput));
 #else
     for (py::handle per_device_pybuffer : per_device_pybuffers) {
       xla::PjRtBuffer* buf =
@@ -692,18 +686,14 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
 
 #ifdef JAX_ENABLE_IFRT
   // We need [num_args] for the `Execute` call below.
-  std::vector<xla::ifrt::Array*> num_args_arrays(num_args);
+  std::vector<tsl::RCReference<xla::ifrt::Array>> num_args_arrays(num_args);
   for (int i = 0; i < num_args; ++i) {
     TF_ASSIGN_OR_RETURN(
         ShardArgResult sharded_arg,
         ShardArg(arguments.flat_dynamic_args[i], input_devices, input_specs[i],
                  cache_entry.py_devices, python_shard_arg_fallback_));
 
-    num_args_arrays[i] = sharded_arg.ifrt_array;
-    if (sharded_arg.owned_ifrt_array) {
-      arguments.ifrt_keep_alive.push_back(
-          std::move(sharded_arg.owned_ifrt_array));
-    }
+    num_args_arrays[i] = std::move(sharded_arg.ifrt_array);
     if (sharded_arg.owning_sda) {
       arguments.keep_alive_objects.push_back(std::move(sharded_arg.owning_sda));
     }
@@ -738,12 +728,12 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
 
 #ifdef JAX_ENABLE_IFRT
   // A vector of [num_outputs].
-  std::vector<std::unique_ptr<xla::ifrt::Array>> output_arrays;
+  std::vector<tsl::RCReference<xla::ifrt::Array>> output_arrays;
   {
     py::gil_scoped_release gil_release;
     auto ifrt_executable = cache_entry.executable->ifrt_executable();
     TF_ASSIGN_OR_RETURN(
-        auto result, ifrt_executable->Execute(num_args_arrays,
+        auto result, ifrt_executable->Execute(absl::MakeSpan(num_args_arrays),
                                               cache_entry.executable->options(),
                                               /*devices=*/std::nullopt));
     output_arrays = std::move(result.outputs);

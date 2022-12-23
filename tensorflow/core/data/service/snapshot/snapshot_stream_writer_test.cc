@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -36,6 +37,7 @@ namespace data {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::IsEmpty;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
@@ -96,8 +98,43 @@ TEST(SnapshotStreamWriterTest, WriteSnapshot) {
                                        snapshot_path, Env::Default());
   TF_ASSERT_OK(snapshot_writer.Wait());
 
-  EXPECT_THAT(ReadSnapshot<int64_t>(snapshot_path, range),
-              IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+  EXPECT_THAT(
+      ReadSnapshot<int64_t>(
+          absl::StrCat(snapshot_path, "/uncommitted_chunks/chunk_0"), range),
+      IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+}
+
+TEST(SnapshotStreamWriterTest, WriteSnapshotChunks) {
+  const int64_t range = 10;
+  std::string snapshot_path;
+  EXPECT_TRUE(Env::Default()->LocalTempFilename(&snapshot_path));
+
+  SnapshotStreamWriter snapshot_writer(std::make_unique<RangeIterator>(range),
+                                       snapshot_path, Env::Default(),
+                                       /*max_chunk_size_bytes=*/1);
+  TF_ASSERT_OK(snapshot_writer.Wait());
+
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_THAT(
+        ReadSnapshot<int64_t>(
+            absl::StrCat(snapshot_path, "/uncommitted_chunks/chunk_", i),
+            /*num_elements=*/1),
+        IsOkAndHolds(ElementsAre(i)));
+  }
+}
+
+TEST(SnapshotStreamWriterTest, EmptyDataset) {
+  std::string snapshot_path;
+  EXPECT_TRUE(Env::Default()->LocalTempFilename(&snapshot_path));
+
+  SnapshotStreamWriter snapshot_writer(std::make_unique<RangeIterator>(0),
+                                       snapshot_path, Env::Default());
+  TF_ASSERT_OK(snapshot_writer.Wait());
+
+  EXPECT_THAT(
+      ReadSnapshot<int64_t>(
+          absl::StrCat(snapshot_path, "/uncommitted_chunks/chunk_0"), 0),
+      IsOkAndHolds(IsEmpty()));
 }
 
 TEST(SnapshotStreamWriterTest, Cancel) {

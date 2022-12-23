@@ -410,9 +410,9 @@ StatusOr<py::object> PyClient::BufferFromPyval(
 #endif
 
 #ifdef JAX_ENABLE_IFRT
-  if (put.owned_ifrt_array) {
+  if (put.ifrt_array) {
     auto traceback = Traceback::Get();
-    return PyBuffer::Make(shared_from_this(), std::move(put.owned_ifrt_array),
+    return PyBuffer::Make(shared_from_this(), std::move(put.ifrt_array),
                           std::move(traceback));
   } else {
     return py::reinterpret_borrow<py::object>(put.owning_pybuffer);
@@ -469,9 +469,14 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
     pybind11::bytes py_desc = pybind11::bytes(desc);
     auto traceback = Traceback::Get();
 #ifdef JAX_ENABLE_IFRT
-    TF_ASSIGN_OR_RETURN(
-        auto ifrt_array,
-        xla::ifrt::PjRtArray::Create(ifrt_client(), std::move(buffers[i])));
+    auto* client =
+        llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(ifrt_client());
+    if (client == nullptr) {
+      throw XlaRuntimeError(
+          "This operation is implemented for a PjRt-compatible backend only.");
+    }
+    TF_ASSIGN_OR_RETURN(auto ifrt_array, xla::ifrt::PjRtArray::Create(
+                                             client, std::move(buffers[i])));
     auto py_buf =
         PyBuffer::Make(shared_from_this(), std::move(ifrt_array), traceback);
 #else

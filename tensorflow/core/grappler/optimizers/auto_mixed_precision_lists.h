@@ -135,8 +135,10 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "LSTMBlockCellGrad",
         "MatMul",
         "Mha",
+        "MhaV2",
         "Tmlp",
         "TmlpV2",
+        "TmlpV3",
     };
 #if TENSORFLOW_USE_ROCM
     if (true) {
@@ -448,7 +450,9 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "Softsign",
                                      "SoftsignGrad",
                                      "Sqrt",
+                                     "Square",
                                      "SquaredDifference",
+                                     "Sum"
                                      "Tanh",
                                      "TanhGrad"};
     UpdateList("INFERLIST", &list);
@@ -467,7 +471,6 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
         "SaveV2",
         "SoftmaxCrossEntropyWithLogits",
         "SparseSoftmaxCrossEntropyWithLogits",
-        "Sum",
     };
     UpdateList("DENYLIST", &list);
     // For backwards compatibility, keeping the original env variable here.
@@ -546,6 +549,7 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
         "ReverseSequence",
         "ReverseV2",
         "Round",
+        "ScatterNd",
         "Select",
         "SelectV2",
         "Shape",

@@ -230,6 +230,9 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
+  if (options.vectorize)
+    pm.addNestedPass<FuncOp>(mlir::gml_st::createVectorizeCopyPass());
+
   // Deallocate all temporary buffers.
   pm.addNestedPass<FuncOp>(mlir::bufferization::createBufferDeallocationPass());
 

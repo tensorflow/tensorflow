@@ -49,6 +49,10 @@ struct TileSortPattern : public OpRewritePattern<SortOp> {
                                 PatternRewriter &rewriter) const override {
     if (hasLabel(op, kSortTransformedLabel)) return failure();
 
+    if (isa<gml_st::ParallelOp, gml_st::ForOp>(op->getParentOp()))
+      return rewriter.notifyMatchFailure(
+          op, "has already been tiled by another pass.");
+
     auto tilingResult =
         tile(options, rewriter, cast<TilingInterface>(op.getOperation()));
     if (failed(tilingResult)) return failure();
@@ -58,7 +62,7 @@ struct TileSortPattern : public OpRewritePattern<SortOp> {
     if (tilingResult->loop != nullptr) {
       rewriter.replaceOp(op, tilingResult->loop->getResults());
     }
-    setLabel(tilingResult->tiledOp, kSortTransformedLabel);
+    setLabel(tilingResult->tiledOps.front(), kSortTransformedLabel);
     return success();
   }
 

@@ -288,7 +288,7 @@ add {
   // CHECK:  }) {
   // CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
-  // CHECK:  "lmhlo_gpu.all_reduce_done"([[TOKEN]], [[OUTPUT]])
+  // CHECK:  "lmhlo_gpu.all_reduce_done"([[TOKEN]])
   start = f32[8] all-reduce-start(param0),
       channel_id=1, replica_groups={{0,1,2,3}, {4,5,6,7}}, to_apply=add
   ROOT done = f32[8] all-reduce-done(start)
@@ -322,7 +322,7 @@ add {
   // CHECK:  }) {
   // CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 1, type = 0>
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
-  // CHECK:  "lmhlo_gpu.all_reduce_done"([[TOKEN]], [[OUTPUT0]], [[OUTPUT1]])
+  // CHECK:  "lmhlo_gpu.all_reduce_done"([[TOKEN]])
   start = (f32[8], f32[9]) all-reduce-start(param0, param1),
       channel_id=1, replica_groups={{0,1,2,3}, {4,5,6,7}}, to_apply=add
   ROOT done = (f32[8], f32[9]) all-reduce-done(start)

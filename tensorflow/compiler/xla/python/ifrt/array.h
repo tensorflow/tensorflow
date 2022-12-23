@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/ifrt/shape.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
 #include "tensorflow/compiler/xla/status.h"
+#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
 namespace xla {
 namespace ifrt {
@@ -53,7 +54,8 @@ enum class ArrayCopySemantics : int {
 
 // Represents a single logical array from one or more sharded buffers.
 // Implementations must be thread-safe.
-class Array : public llvm::RTTIExtends<Array, llvm::RTTIRoot> {
+class Array : public tsl::ReferenceCounted<Array>,
+              public llvm::RTTIExtends<Array, llvm::RTTIRoot> {
  public:
   Array() = default;
 
@@ -72,7 +74,7 @@ class Array : public llvm::RTTIExtends<Array, llvm::RTTIRoot> {
 
   // Breaks an array up into per-device arrays. This is the elimination
   // counterpart of `Client::AssembleArrayFromSingleDeviceArrays()`.
-  virtual StatusOr<std::vector<std::unique_ptr<Array>>>
+  virtual StatusOr<std::vector<tsl::RCReference<Array>>>
   DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) = 0;
 
   // Fetches the array to host and stores it as unreplicated, unsharded data.
@@ -123,7 +125,7 @@ class Array : public llvm::RTTIExtends<Array, llvm::RTTIRoot> {
   //
   // It may fail if the buffer data would be sent from/to an unaddressable
   // device.
-  virtual StatusOr<std::unique_ptr<Array>> Reshard(
+  virtual StatusOr<tsl::RCReference<Array>> Reshard(
       std::shared_ptr<const Sharding> new_sharding,
       ArrayCopySemantics semantics) = 0;
 
@@ -146,9 +148,9 @@ class Array : public llvm::RTTIExtends<Array, llvm::RTTIRoot> {
 };
 
 // Convenience function to create a list of pointer Arrays from a list of
-// unique_ptr Arrays.
+// RCReference<Array>s.
 std::vector<Array*> MakeArrayPointerList(
-    absl::Span<const std::unique_ptr<Array>> arrays);
+    absl::Span<const tsl::RCReference<Array>> arrays);
 
 }  // namespace ifrt
 }  // namespace xla

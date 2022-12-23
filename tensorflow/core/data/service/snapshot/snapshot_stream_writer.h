@@ -16,11 +16,13 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_SNAPSHOT_STREAM_WRITER_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/service/worker.pb.h"
+#include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/mutex.h"
@@ -30,21 +32,41 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+// Responsible for writing one snapshot stream, which is organized as following:
+//
+// - snapshot
+//   - LEASE
+//   - DONE
+//   - snapshot.metadata
+//   - dataset_def.proto
+//   - committed chunks
+//     - chunk_<stream_index>_<chunk_index>
+//   - streams
+//     - stream_0
+//       - LEASE
+//       - DONE
+//       - splits
+//         - split_<local_split_index>_<global_split_index>
+//       - uncommitted chunks
+//         - chunk_<chunk_index>
+//       - checkpoints
+//         - checkpoint_<local_split_index>_<chunk_index>
+//
 // TODO(b/258691666): Support chunking, checkpointing, and fault tolerance.
 class SnapshotStreamWriter {
  public:
   // Creates a SnapshotStreamWriter. Once created, it will start writing the
   // snapshot stream. Users can call `Wait` to wait for it to finish.
   // TODO(b/258691666): Create a new `TaskIterator` that persists splits.
-  explicit SnapshotStreamWriter(std::unique_ptr<TaskIterator> iterator,
-                                const std::string& snapshot_stream_path,
-                                Env* env);
+  explicit SnapshotStreamWriter(
+      std::unique_ptr<TaskIterator> iterator,
+      const std::string& snapshot_stream_path, Env* env,
+      std::optional<int64_t> max_chunk_size_bytes = std::nullopt);
 
-  // Waits for the task runner to finish writing the snapshot shard.
+  // Waits for the writer to finish writing the snapshot stream.
   Status Wait();
 
-  // Cancels the task runner. If cancelled, `Wait` will return a Cancelled
-  // error.
+  // Cancels the writer. If cancelled, `Wait` will return a Cancelled error.
   void Cancel();
 
  private:
@@ -55,19 +77,53 @@ class SnapshotStreamWriter {
   // task has been cancelled.
   Status WriteSnapshotFn();
 
-  // Gets the next element from the input iterator.
-  StatusOr<GetElementResult> GetNext();
+  // Creates a directory to store uncommitted chunks.
+  Status CreateChunksDirectory();
 
-  // Returns true if the task runner has been cancelled.
-  bool IsCancelled() const;
+  // Returns true until the snapshot stream writer is finished, which may be due
+  // to reaching the end of its iterator, encountering an error, or being
+  // cancelled.
+  bool ShouldWriteChunk() const;
 
-  const std::string snapshot_stream_path_;
+  // Writes the next chunk.
+  Status WriteChunk();
+
+  // Initializes the next chunk.
+  void InitializeNextChunk();
+
+  // Returns true if the writer should write the next record to the current
+  // chunk.
+  bool ShouldWriteRecord() const;
+
+  // Writes the next record to the current chunk.
+  Status WriteRecord(snapshot_util::TFRecordWriter& writer);
+
+  // Returns the path of the current chunk.
+  std::string GetChunkPath() const;
+
+  // Returns the status of the writer:
+  // - If the snapshotting is successful, returns an OK status.
+  // - If any error happens during the snapshot write, returns the error status.
+  // - If the writer is cancelled, returns a Cancelled status.
+  Status status() const;
+
   Env* const env_;
+  const std::string snapshot_stream_path_;
+  const int64_t max_chunk_size_bytes_;
 
   mutable mutex mu_;
   std::unique_ptr<TaskIterator> iterator_ TF_GUARDED_BY(mu_);
+
+  // Index of the current chunk.
+  int64_t chunk_index_ TF_GUARDED_BY(mu_) = 0;
+  // Size of the current chunk.
+  int64_t chunk_size_bytes_ TF_GUARDED_BY(mu_) = 0;
+
+  // True if the dataset is exhausted.
+  bool end_of_sequence_ TF_GUARDED_BY(mu_) = false;
+  // Status of the writer. See the comment of `status()` for a detailed
+  // description.
   Status status_ TF_GUARDED_BY(mu_);
-  bool cancelled_ TF_GUARDED_BY(mu_) = false;
 
   std::unique_ptr<Thread> snapshot_thread_;
 };

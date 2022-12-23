@@ -22,6 +22,7 @@ from absl.testing import parameterized
 
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_type
+from tensorflow.python.framework import func_graph
 from tensorflow.python.platform import test
 from tensorflow.python.types import trace
 
@@ -621,9 +622,9 @@ class TypeHierarchyTest(test.TestCase):
         function_type.Parameter("z", function_type.Parameter.KEYWORD_ONLY,
                                 False, trace_type.from_value(3, type_context)),
     ])
-
-    self.assertEqual(foo.placeholder_arguments().args, (1, 2))
-    self.assertEqual(foo.placeholder_arguments().kwargs, {"z": 3})
+    context_graph = func_graph.FuncGraph("test")
+    self.assertEqual(foo.placeholder_arguments(context_graph).args, (1, 2))
+    self.assertEqual(foo.placeholder_arguments(context_graph).kwargs, {"z": 3})
 
 
 class CapturesTest(test.TestCase):
@@ -682,6 +683,37 @@ class CapturesTest(test.TestCase):
     supertype_5 = self.type_a1_b1_c1.most_specific_common_subtype(
         [self.type_d1])
     self.assertEmpty(supertype_5.captures)
+
+
+class SanitizationTest(test.TestCase):
+
+  def testRename(self):
+    self.assertEqual("arg_42",
+                     function_type.sanitize_arg_name("42"))
+    self.assertEqual("a42",
+                     function_type.sanitize_arg_name("a42"))
+    self.assertEqual("arg__42",
+                     function_type.sanitize_arg_name("_42"))
+    self.assertEqual("a___",
+                     function_type.sanitize_arg_name("a%$#"))
+    self.assertEqual("arg____",
+                     function_type.sanitize_arg_name("%$#"))
+    self.assertEqual("foo",
+                     function_type.sanitize_arg_name("foo"))
+    self.assertEqual("arg_96ab_cd___53",
+                     function_type.sanitize_arg_name("96ab.cd//?53"))
+
+  def testLogWarning(self):
+
+    with self.assertLogs(level="WARNING") as logs:
+      result = function_type.sanitize_arg_name("96ab.cd//?53")
+
+    self.assertEqual(result, "arg_96ab_cd___53")
+
+    expected_message = (
+        "WARNING:absl:`96ab.cd//?53` is not a valid tf.function parameter name."
+        " Sanitizing to `arg_96ab_cd___53`.")
+    self.assertIn(expected_message, logs.output)
 
 
 if __name__ == "__main__":

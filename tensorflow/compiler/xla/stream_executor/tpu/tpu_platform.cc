@@ -102,7 +102,8 @@ TpuPlatform::GetUncachedExecutor(
     return status.status();
   }
   return std::make_unique<stream_executor::StreamExecutor>(
-      this, std::make_unique<TpuExecutor>(this, executor), config.ordinal);
+      this, std::make_unique<stream_executor::tpu::TpuExecutor>(this, executor),
+      config.ordinal);
 }
 
 ::stream_executor::Platform::Id TpuPlatform::id() const {

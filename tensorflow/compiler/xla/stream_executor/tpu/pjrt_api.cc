@@ -60,10 +60,8 @@ xla::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api) {
   std::string canonicalize_device_type = CanonicalizeDeviceType(device_type);
   if (auto iter = pjrt_apis->find(canonicalize_device_type);
       iter != pjrt_apis->end()) {
-    // TODO(jieying): make this an error again
-    VLOG(1) << "PJRT_Api already exists for device type "
-            << canonicalize_device_type;
-    return tsl::OkStatus();
+    return tsl::errors::AlreadyExists(
+        "PJRT_Api already exists for device type ", canonicalize_device_type);
   }
   (*pjrt_apis)[canonicalize_device_type] = api;
   LOG(INFO) << "PJRT_Api is set for device type " << canonicalize_device_type;

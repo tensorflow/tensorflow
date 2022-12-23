@@ -275,6 +275,7 @@ class Mesh(_pywrap_dtensor_device.Mesh):
       for d in self._global_devices:
         mesh_proto.global_devices.append(d.to_string())
 
+    mesh_proto.use_xla_spmd = self.use_xla_spmd()
     return mesh_proto
 
   def coords(self, device_idx: int) -> ops.Tensor:
@@ -317,7 +318,7 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     name = proto.name
     dims = [dim.name for dim in proto.mesh_dimensions]
     return Mesh(dims, global_device_ids, local_device_ids, local_devices, name,
-                global_devices)
+                global_devices, proto.use_xla_spmd)
 
   # TODO(panzf): Remove this in the last step of C++/Python unification
   # Removing this method depends on C++ Mesh implements all Python methods
@@ -326,18 +327,23 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     """Construct a mesh instance from input `proto`."""
     # Separate elements of mesh.
     mesh_parts = mesh_str.split('|')
-    global_dev_str = None
+    global_dev_str_or_use_xla_spmd = None
+    use_xla_spmd = False
     if len(mesh_parts) == 5:
       name, mesh_dim_strs, global_id_str, local_id_str, dev_str = mesh_parts
     elif len(mesh_parts) == 6:
       (name, mesh_dim_strs, global_id_str, local_id_str, dev_str,
-       global_dev_str) = mesh_parts
+       global_dev_str_or_use_xla_spmd) = mesh_parts
+    elif len(mesh_parts) == 7:
+      (name, mesh_dim_strs, global_id_str, local_id_str, dev_str,
+       global_dev_str_or_use_xla_spmd, use_xla_spmd) = mesh_parts
     else:
       raise ValueError('Invalid mesh string : %s' % mesh_str)
 
     # Load mesh proto.
     mesh_proto = layout_pb2.MeshProto()
     mesh_proto.name = name
+    mesh_proto.use_xla_spmd = (use_xla_spmd == 'use_xla_spmd')
 
     for mesh_dim_str in mesh_dim_strs.split(','):
       name, size_str = mesh_dim_str.split('=')
@@ -356,9 +362,14 @@ class Mesh(_pywrap_dtensor_device.Mesh):
       for dev in dev_str.split(','):
         mesh_proto.local_devices.append(dev)
 
-    if global_dev_str:
-      for dev in global_dev_str.split(','):
-        mesh_proto.global_devices.append(dev)
+    # Global device ids and use_xla_spmd are both optional strings appended to
+    # the end. When there are 6 arguments, we need to check which argument.
+    if global_dev_str_or_use_xla_spmd:
+      if global_dev_str_or_use_xla_spmd == 'use_xla_spmd':
+        mesh_proto.use_xla_spmd = True
+      else:
+        for dev in global_dev_str_or_use_xla_spmd.split(','):
+          mesh_proto.global_devices.append(dev)
 
     return Mesh.from_proto(mesh_proto)
 
@@ -521,7 +532,6 @@ class Layout(object):
    TPU:4     [[4, 5]]
    TPU:5     [[4, 5]]
   ```
-
   """
 
   def __init__(self, sharding_specs: List[str], mesh: Mesh):
@@ -697,7 +707,7 @@ class Layout(object):
   def unravel(self, unpacked_tensors: List[np.ndarray]) -> np.ndarray:
     """Convert a flattened list of shards into a sharded array."""
     unravelled = np.ndarray([self.num_shards(i) for i in range(self.rank)],
-                            dtype=np.object)
+                            dtype=object)
     for offset, loc in enumerate(self.offset_to_shard()):
       unravelled[loc] = unpacked_tensors[offset]
     return unravelled

@@ -311,7 +311,7 @@ const char* TfLiteTypeGetName(TfLiteType type) {
 
 TfLiteDelegate TfLiteDelegateCreate() { return TfLiteDelegate{}; }
 
-struct TfLiteOpaqueDelegateStruct* TfLiteOpaqueDelegateCreate(
+TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
     const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder) {
   if (!opaque_delegate_builder) return nullptr;
 
@@ -319,11 +319,10 @@ struct TfLiteOpaqueDelegateStruct* TfLiteOpaqueDelegateCreate(
   result->opaque_delegate_builder = new TfLiteOpaqueDelegateBuilder{};
   *(result->opaque_delegate_builder) = *opaque_delegate_builder;
 
-  return reinterpret_cast<struct TfLiteOpaqueDelegateStruct*>(result);
+  return reinterpret_cast<TfLiteOpaqueDelegate*>(result);
 }
 
-void TfLiteOpaqueDelegateDelete(
-    struct TfLiteOpaqueDelegateStruct* opaque_delegate) {
+void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* opaque_delegate) {
   if (!opaque_delegate) return;
 
   const TfLiteDelegate* tflite_delegate =

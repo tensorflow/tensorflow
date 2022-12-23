@@ -186,7 +186,7 @@ Status ClearShardingAttributes(
     for (HloInstruction* hlo : computation->instructions()) {
       // Keep sharding annotation on Infeed and entry parameters since they're
       // used by HloReplicationAnalysis later (for ArCrsCombiner).
-      if (hlo->HasSideEffect()) {
+      if (hlo->HasSideEffect() && hlo->opcode() != HloOpcode::kRng) {
         continue;
       }
       if (hlo->opcode() == HloOpcode::kParameter &&

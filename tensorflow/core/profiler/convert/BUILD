@@ -946,6 +946,26 @@ cc_library(
         ":repository",
         ":xplane_to_hlo",
         "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "xplane_to_tool_names_test",
+    size = "small",
+    srcs = ["xplane_to_tool_names_test.cc"],
+    deps = [
+        ":repository",
+        ":xplane_to_tool_names",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )

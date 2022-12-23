@@ -1130,6 +1130,10 @@ void LaunchConv2DOp<GPUDevice, Eigen::bfloat16>::operator()(
   Tensor casted_out = *output;
 
   if (cast_to_float) {
+    Tensor casted_input = input_param;
+    Tensor casted_filter = filter;
+    Tensor casted_out = *output;
+
     const GPUDevice& device = ctx->eigen_device<GPUDevice>();
     functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
     OP_REQUIRES_OK(
@@ -1158,9 +1162,9 @@ void LaunchConv2DOp<GPUDevice, Eigen::bfloat16>::operator()(
   }
 
   LaunchConv2DOpImpl<Eigen::bfloat16>(
-      ctx, use_cudnn, cudnn_use_autotune, casted_input, casted_filter,
-      row_dilation, col_dilation, row_stride, col_stride, padding,
-      explicit_paddings, &casted_out, data_format);
+      ctx, use_cudnn, cudnn_use_autotune, input_param, filter, row_dilation,
+      col_dilation, row_stride, col_stride, padding, explicit_paddings, output,
+      data_format);
 }
 
 // Forward declarations of the functor specializations for GPU.

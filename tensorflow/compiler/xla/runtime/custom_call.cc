@@ -26,14 +26,13 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
-using llvm::ArrayRef;
 using llvm::raw_ostream;
 
 template <typename T>
 using TensorRef = CustomCall::TensorRef<T>;
 
 static void PrintArr(raw_ostream& os, std::string_view name,
-                     llvm::ArrayRef<int64_t> arr) {
+                     absl::Span<const int64_t> arr) {
   os << " " << name << ": [";
   auto i64_to_string = [](int64_t v) { return std::to_string(v); };
   os << llvm::join(llvm::map_range(arr, i64_to_string), ", ");
@@ -84,14 +83,14 @@ void PopulateCustomCallTypeIdNames(TypeIDNameRegistry& r) {
 
   r.Register<Tagged<MemrefView>>("__type_id_memref_view");
   r.Register<Tagged<StridedMemrefView>>("__type_id_strided_memref_view");
-  r.Register<Tagged<EmptyArrayRef>>("__type_id_empty_array");
+  r.Register<Tagged<EmptyArray>>("__type_id_empty_array");
 
-  r.Register<Tagged<ArrayRef<int8_t>>>("__type_id_array_int8");
-  r.Register<Tagged<ArrayRef<int16_t>>>("__type_id_array_int16");
-  r.Register<Tagged<ArrayRef<int32_t>>>("__type_id_array_int32");
-  r.Register<Tagged<ArrayRef<int64_t>>>("__type_id_array_int64");
-  r.Register<Tagged<ArrayRef<float>>>("__type_id_array_float");
-  r.Register<Tagged<ArrayRef<double>>>("__type_id_array_double");
+  r.Register<Tagged<absl::Span<const int8_t>>>("__type_id_array_int8");
+  r.Register<Tagged<absl::Span<const int16_t>>>("__type_id_array_int16");
+  r.Register<Tagged<absl::Span<const int32_t>>>("__type_id_array_int32");
+  r.Register<Tagged<absl::Span<const int64_t>>>("__type_id_array_int64");
+  r.Register<Tagged<absl::Span<const float>>>("__type_id_array_float");
+  r.Register<Tagged<absl::Span<const double>>>("__type_id_array_double");
 
   r.Register<Tagged<TensorRef<int32_t>>>("__type_id__tensor_int32_t");
   r.Register<Tagged<TensorRef<int64_t>>>("__type_id_tensor_int64_t");
@@ -106,12 +105,12 @@ XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(std::string_view);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(xla::runtime::StridedMemrefView);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(xla::runtime::MemrefView);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(xla::runtime::FlatMemrefView);
-XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(xla::runtime::EmptyArrayRef);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(xla::runtime::EmptyArray);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(int32_t);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(int64_t);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(float);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(double);
-XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(ArrayRef<int32_t>);
-XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(ArrayRef<int64_t>);
-XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(ArrayRef<float>);
-XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(ArrayRef<double>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(absl::Span<const int32_t>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(absl::Span<const int64_t>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(absl::Span<const float>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(absl::Span<const double>);

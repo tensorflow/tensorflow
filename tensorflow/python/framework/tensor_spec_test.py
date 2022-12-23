@@ -254,7 +254,8 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(named, trace_type.deserialize(trace_type.serialize(named)))
 
   def testPlaceholderWithName(self):
-    placeholder_context = trace_type.InternalPlaceholderContext(False)
+    placeholder_context = trace_type.InternalPlaceholderContext(
+        ops.get_default_graph())
     spec = tensor_spec.TensorSpec([1], np.float32, name="test")
     placeholder = spec._placeholder_value(placeholder_context)
     self.assertEqual(placeholder.name, f"{spec.name}:0")
@@ -262,7 +263,8 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(placeholder.shape, spec.shape)
 
   def testMultiplePlaceholdersWithNames(self):
-    placeholder_context = trace_type.InternalPlaceholderContext(False)
+    placeholder_context = trace_type.InternalPlaceholderContext(
+        ops.get_default_graph())
     spec1 = tensor_spec.TensorSpec([1, 2], np.float32, name="test1")
     spec2 = tensor_spec.TensorSpec([3], np.int32, name="test2")
     spec3 = tensor_spec.TensorSpec(None, np.float32, name="test3")
@@ -280,7 +282,8 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(placeholder3.shape, spec3.shape)
 
   def testPlaceholderWithoutName(self):
-    placeholder_context = trace_type.InternalPlaceholderContext(False)
+    placeholder_context = trace_type.InternalPlaceholderContext(
+        ops.get_default_graph())
     spec = tensor_spec.TensorSpec([1], np.float32)
     placeholder = spec._placeholder_value(placeholder_context)
     self.assertEqual(placeholder.name, "Placeholder:0")
@@ -288,7 +291,8 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(placeholder.shape, spec.shape)
 
   def testMultiplePlaceholdersWithoutNames(self):
-    placeholder_context = trace_type.InternalPlaceholderContext(False)
+    placeholder_context = trace_type.InternalPlaceholderContext(
+        ops.get_default_graph())
     spec1 = tensor_spec.TensorSpec([1, 2], np.float32)
     spec2 = tensor_spec.TensorSpec([3], np.int32)
     spec3 = tensor_spec.TensorSpec(None, np.float32)
@@ -304,6 +308,20 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(placeholder1.shape, spec1.shape)
     self.assertEqual(placeholder2.shape, spec2.shape)
     self.assertEqual(placeholder3.shape, spec3.shape)
+
+  def testGraphPlaceholderWithValidName(self):
+    spec = tensor_spec.TensorSpec((2, 3), dtypes.float32, name="test")
+    placeholder = spec._graph_placeholder(ops.get_default_graph(), spec.name)
+    self.assertEqual(placeholder.name, f"{spec.name}:0")
+    self.assertEqual(placeholder.dtype, spec.dtype)
+    self.assertEqual(placeholder.shape, spec.shape)
+
+  def testGraphPlaceholderWithInvalidName(self):
+    spec = tensor_spec.TensorSpec((1, 2), dtypes.int32, name="a%!")
+    placeholder = spec._graph_placeholder(ops.get_default_graph(), spec.name)
+    self.assertEqual(placeholder.name, "Placeholder:0")
+    self.assertEqual(placeholder.dtype, spec.dtype)
+    self.assertEqual(placeholder.shape, spec.shape)
 
 
 class BoundedTensorSpecTest(test_util.TensorFlowTestCase):

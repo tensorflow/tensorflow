@@ -17,6 +17,7 @@ limitations under the License.
 #define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_FUSION_H
 
 #include "gml_st/IR/gml_st_ops.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/IR/PatternMatch.h"
 
 namespace mlir {
@@ -42,6 +43,67 @@ void fuseGreedily(PatternRewriter &rewriter, Block &block,
 void populateFusionPatterns(MLIRContext *ctx,
                             function_ref<LogicalResult(MaterializeOp)> filterFn,
                             RewritePatternSet *patterns);
+
+// Find a cluster of operations that can be tiled and fused together around
+// the root op. We want to fuse output of the fusion op with elementwise ops. In
+// general case a cluster is a tree that can have multiple leaf-node ops,
+// e.g. map(op, map(op)).
+// First element of the cluster is always the root for tiling.
+template <class FusionOpTy>
+SmallVector<Operation *> findMapFusionCluster(FusionOpTy op) {
+  // Find the root operation in the chain of elementwise ops. Current approach
+  // doesn't work well if maps don't form a chain.
+  Operation *rootOp = op;
+  while (true) {
+    auto users = llvm::to_vector(rootOp->getUsers());
+
+    if (users.size() != 1) break;
+    if (!isa<linalg::MapOp>(users[0])) break;
+
+    rootOp = users[0];
+  }
+
+  // Run a graph search to find all linalg.map and that can be fused in
+  // the root op.
+  SmallVector<Operation *> resultOps;
+  SmallVector<Operation *> remainingProducers{rootOp};
+
+  while (!remainingProducers.empty()) {
+    Operation *curOp = remainingProducers.pop_back_val();
+    if (!curOp) continue;
+
+    if (auto fusionOp = dyn_cast<FusionOpTy>(curOp)) {
+      for (auto *u : fusionOp->getUsers())
+        // Do not fuse fusionOp that is used by another fusionOp.
+        if (isa<FusionOpTy>(u)) continue;
+      resultOps.push_back(curOp);
+    } else if (auto mapOp = dyn_cast<linalg::MapOp>(curOp)) {
+      resultOps.push_back(curOp);
+      for (auto *operand : mapOp.getDpsInputOperands())
+        remainingProducers.push_back(operand->get().getDefiningOp());
+    }
+  }
+  return resultOps;
+}
+
+template <class FusionOpTy>
+LogicalResult fuseOutputFill(PatternRewriter &rewriter, FusionOpTy op) {
+  // Fusion into the output.
+  Operation *definingOp = op.getDpsInitOperand(0)->get().getDefiningOp();
+
+  // linalg.fill has already been fused for another matmul.
+  if (isa<linalg::FillOp>(definingOp)) return success();
+
+  auto materialize = dyn_cast<MaterializeOp>(definingOp);
+  if (!materialize) {
+    return rewriter.notifyMatchFailure(
+        op, "has failed to 'materialize' output during 'linalg.fill' fusion.");
+  }
+  if (materialize.getSource().getDefiningOp<linalg::FillOp>()) {
+    if (failed(fuse(rewriter, materialize))) return failure();
+  }
+  return success();
+}
 
 }  // namespace gml_st
 }  // namespace mlir

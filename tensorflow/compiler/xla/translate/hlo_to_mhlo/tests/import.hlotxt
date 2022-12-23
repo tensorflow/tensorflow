@@ -309,6 +309,12 @@ add {
 
   // CHECK: %[[VAL_6:.*]] = mhlo.constant dense<[1.000000e+00, -4.000000e+00, -6.550400e+04, 1.562500e-02]> : tensor<4xf16>
   ROOT %constant.6 = f16[4] constant({1, -4, -65504, 0.015625})
+
+  // CHECK: %[[VAL_7:.*]] = mhlo.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E5M2>
+  %constant.7 = f8e5m2[4] constant({1, 2, 3, 4})
+
+  // CHECK: %[[VAL_8:.*]] = mhlo.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E4M3FN>
+  %constant.8 = f8e4m3fn[4] constant({1, 2, 3, 4})
 }
 
 // TODO(b/129422361) Potentially update when copy, reshape, and conv have actual
@@ -528,7 +534,7 @@ add {
   %arg1 = (f32[1,1], f32[2,3]) parameter(0)
   %arg2 = f32[5,5] parameter(1)
   // CHECK:  mhlo.custom_call @foo([[ARG_0]], [[ARG_1]]) {
-  // CHECK-SAME{LITERAL}: custom_call_output_operand_aliasing = [#mhlo.output_operand_alias<output_tuple_indices = [0], operand_index = 0, operand_tuple_indices = [1]>]
+  // CHECK-SAME{LITERAL}: output_operand_aliasing = [#mhlo.output_operand_alias<output_tuple_indices = [0], operand_index = 0, operand_tuple_indices = [1]>]
   // CHECK-SAME: (tuple<tensor<1x1xf32>, tensor<2x3xf32>>, tensor<5x5xf32>) -> tuple<tensor<2x3xf32>>
   ROOT %custom-call = (f32[2,3]) custom-call((f32[1,1], f32[2,3]) %arg1, f32[5,5] %arg2), custom_call_target="foo", output_to_operand_aliasing={{0}: (0, {1})}
 }

@@ -344,14 +344,19 @@ void ConvertFloatElementsAttr(const DenseElementsAttr attr,
 // specified repeated field.
 void ConvertHalfElementsAttr(const DenseElementsAttr attr,
                              RepeatedField<int>* output) {
+  // Half values are stored as bit representations in int, requiring a bit_cast.
   if (attr.isSplat()) {
-    auto value = attr.getSplatValue<Eigen::half>().x;
-    if (value != Eigen::half(0) || std::signbit(static_cast<float>(value)))
-      output->Add(value);
+    uint16_t bits =
+        Eigen::numext::bit_cast<uint16_t>(attr.getSplatValue<Eigen::half>());
+    // Only +0 has a 0 bit representation.
+    if (bits != 0) {
+      output->Add(bits);
+    }
   } else {
     output->Reserve(attr.getNumElements());
-    for (const Eigen::half value : attr.getValues<Eigen::half>())
-      output->AddAlreadyReserved(value.x);
+    for (const Eigen::half value : attr.getValues<Eigen::half>()) {
+      output->AddAlreadyReserved(Eigen::numext::bit_cast<uint16_t>(value));
+    }
   }
 }
 
@@ -383,13 +388,20 @@ void ConvertUIntElementsAttr(const DenseElementsAttr attr,
 
 void ConvertBfloat16ElementsAttr(const DenseElementsAttr attr,
                                  RepeatedField<int>* output) {
+  // Bfloat16 values are stored as bit representations in int, requiring a
+  // bit_cast.
   if (attr.isSplat()) {
-    if (attr.getSplatValue<bfloat16>().value != bfloat16(0))
-      output->Add(attr.getSplatValue<bfloat16>().value);
+    uint16_t bits =
+        Eigen::numext::bit_cast<uint16_t>(attr.getSplatValue<bfloat16>());
+    // Only +0 has a 0 bit representation.
+    if (bits != 0) {
+      output->Add(bits);
+    }
   } else {
     output->Reserve(attr.getNumElements());
-    for (const bfloat16 value : attr.getValues<bfloat16>())
-      output->AddAlreadyReserved(value.value);
+    for (const bfloat16 value : attr.getValues<bfloat16>()) {
+      output->AddAlreadyReserved(Eigen::numext::bit_cast<uint16_t>(value));
+    }
   }
 }
 

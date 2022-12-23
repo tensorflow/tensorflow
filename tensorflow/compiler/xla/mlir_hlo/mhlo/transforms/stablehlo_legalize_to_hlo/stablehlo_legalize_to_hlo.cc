@@ -185,6 +185,10 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
     for (auto [stablehloRegion, hloRegion] :
          llvm::zip(stablehloOp->getRegions(), hloOp->getRegions())) {
       rewriter.inlineRegionBefore(stablehloRegion, hloRegion, hloRegion.end());
+      if (failed(rewriter.convertRegionTypes(&hloRegion,
+                                             *this->getTypeConverter(),
+                                             /*entryConversion=*/nullptr)))
+        return failure();
     }
     return success();
   }

@@ -649,11 +649,13 @@ namespace functor {
   DECLARE_GPU_SPEC(T, 5);    \
   DECLARE_GPU_SPEC(T, 6);
 
-DECLARE_GPU_SPECS(Eigen::half);
-DECLARE_GPU_SPECS(double);
-DECLARE_GPU_SPECS(float);
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
+DECLARE_GPU_SPECS(Eigen::bfloat16);
+// TODO(rocm): Enable once complex types are supported.
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 DECLARE_GPU_SPECS(complex64);
 DECLARE_GPU_SPECS(complex128);
+#endif
 #undef DECLARE_GPU_SPEC
 #undef DECLARE_GPU_SPECS
 }  // namespace functor

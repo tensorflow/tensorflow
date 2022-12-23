@@ -275,7 +275,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   GetEmitPythonCallbackDescriptor(pybind11::function callable,
                                   absl::Span<Shape const> operand_shapes,
                                   absl::Span<Shape const> result_shapes);
-  // Deprecated; please switch to emitting an MHLO `CustomCallOp` directly.
+  // Deprecated; please switch to emitting a `CustomCallOp` directly.
   StatusOr<XlaOp> EmitPythonCallbackFromDescriptor(
       XlaBuilder& builder, uint64_t descriptor,
       absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,

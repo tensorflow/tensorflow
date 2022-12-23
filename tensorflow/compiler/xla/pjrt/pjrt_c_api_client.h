@@ -175,6 +175,7 @@ class PjRtCApiClient : public PjRtClient {
   StatusOr<std::string> SerializeExecutable(
       const PjRtLoadedExecutable& executable) const override;
 
+  // `PjRtCApiClient::DeserializeExecutable()` ignores `CompileOptions` arg
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
       absl::string_view serialized,
       std::optional<CompileOptions> options) override;
@@ -436,6 +437,9 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
 
+  StatusOr<absl::flat_hash_map<std::string, PjRtValueType>> GetCostAnalysis()
+      const override;
+
   const DeviceAssignment& device_assignment() const override {
     if (kPjRtCApiBypass) {
       VLOG(1) << "PJRT C API BYPASS: device_assignment";
@@ -499,6 +503,7 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
   }
 
   const PJRT_Api* pjrt_c_api() const { return client_->pjrt_c_api(); }
+  const PJRT_Executable* c_executable() const { return executable_.get(); }
 
  private:
   PjRtCApiClient* client_;

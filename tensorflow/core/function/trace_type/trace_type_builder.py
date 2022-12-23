@@ -87,10 +87,10 @@ class InternalTracingContext(trace.TracingContext):
 class InternalPlaceholderContext(trace.PlaceholderContext):
   """Container with mappings shared across TraceTypes for placeholder values."""
 
-  def __init__(self, use_default_placeholder: bool = True):
-    self._use_default_placeholder = use_default_placeholder
+  def __init__(self, context_graph=None):
     self._alias_id_to_placeholder = {}
     self._naming_scope = None
+    self._context_graph = context_graph
 
   def has_placeholder(self, alias_id: Hashable) -> bool:
     return alias_id in self._alias_id_to_placeholder
@@ -115,8 +115,8 @@ class InternalPlaceholderContext(trace.PlaceholderContext):
     return self._naming_scope
 
   @property
-  def use_default_placeholder(self) -> bool:
-    return self._use_default_placeholder
+  def context_graph(self):
+    return self._context_graph
 
 
 def from_value(value: Any,

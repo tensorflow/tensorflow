@@ -124,7 +124,7 @@ PyLoadedExecutable::ExecuteInternal(
     absl::Span<PyBuffer::object const> args, PjRtDevice* device,
     std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
 #ifdef JAX_ENABLE_IFRT
-  std::vector<std::unique_ptr<ifrt::Array>> output_arrays;
+  std::vector<tsl::RCReference<ifrt::Array>> output_arrays;
   std::unique_ptr<ifrt::Future<Status>> returned_future;
 #else
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
@@ -161,10 +161,11 @@ PyLoadedExecutable::ExecuteInternal(
 
     py::gil_scoped_release gil_release;
 #ifdef JAX_ENABLE_IFRT
-    std::vector<ifrt::Array*> arg_arrays(args.size());
-    absl::c_transform(
-        args, arg_arrays.begin(),
-        [](const PyBuffer::object& buf) { return buf.buf()->ifrt_array(); });
+    std::vector<tsl::RCReference<ifrt::Array>> arg_arrays(args.size());
+    absl::c_transform(args, arg_arrays.begin(),
+                      [](const PyBuffer::object& buf) {
+                        return tsl::FormRef(buf.buf()->ifrt_array());
+                      });
 #else
     std::vector<PjRtBuffer*> arg_buffers(args.size());
     absl::c_transform(
@@ -177,7 +178,7 @@ PyLoadedExecutable::ExecuteInternal(
       TF_ASSIGN_OR_RETURN(
           auto result,
           ifrt_loaded_executable()->Execute(
-              arg_arrays, options,
+              absl::MakeSpan(arg_arrays), options,
               /*devices=*/
               ifrt::DeviceList(ifrt::DeviceList::Devices({device}))));
       if (returned_futures.has_value()) {
@@ -186,7 +187,7 @@ PyLoadedExecutable::ExecuteInternal(
       output_arrays = std::move(result.outputs);
     } else {
       TF_ASSIGN_OR_RETURN(auto result, ifrt_loaded_executable()->Execute(
-                                           arg_arrays, options,
+                                           absl::MakeSpan(arg_arrays), options,
                                            /*devices=*/std::nullopt));
       if (returned_futures.has_value()) {
         returned_futures->push_back(std::move(result.status));
@@ -286,12 +287,11 @@ struct ShardedBufferAdapter<PyShardedBuffer*> {
     return arg->num_devices();
   }
 #ifdef JAX_ENABLE_IFRT
-  static ifrt::Array* GetIfRtArray(
-      const PyShardedBuffer* arg,
-      std::vector<std::unique_ptr<ifrt::Array>>& owned_ifrt_arrays) {
+  static tsl::RCReference<ifrt::Array> GetIfRtArray(
+      const PyShardedBuffer* arg) {
     DCHECK(arg);
     DCHECK(arg->ifrt_array());
-    return arg->ifrt_array();
+    return tsl::FormRef(arg->ifrt_array());
   }
 #else
   static PjRtBuffer* GetPjRtBuffer(const PyShardedBuffer* arg, int device_id) {
@@ -307,22 +307,21 @@ struct ShardedBufferAdapter<std::vector<PyBuffer::object>> {
     return arg.size();
   }
 #ifdef JAX_ENABLE_IFRT
-  static ifrt::Array* GetIfRtArray(
-      const std::vector<PyBuffer::object>& arg,
-      std::vector<std::unique_ptr<ifrt::Array>>& owned_ifrt_arrays) {
+  static tsl::RCReference<ifrt::Array> GetIfRtArray(
+      const std::vector<PyBuffer::object>& arg) {
     // TODO(hyeontaek): This on-demand Array creation is not efficient and has
     // insufficient information about the shape (a dummy shape is used). This
     // should be removed if possible and only be used in the context where the
     // shape information is unused.
     DCHECK(&arg);
-    std::vector<ifrt::Array*> ifrt_arrays;
+    std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
     ifrt_arrays.reserve(arg.size());
     ifrt::DeviceList::Devices devices;
     devices.reserve(arg.size());
     for (auto& buf : arg) {
       DCHECK(buf.buf());
       DCHECK(buf.buf()->ifrt_array());
-      ifrt_arrays.push_back(buf.buf()->ifrt_array());
+      ifrt_arrays.push_back(tsl::FormRef(buf.buf()->ifrt_array()));
       devices.push_back(buf.buf()->ifrt_array()->sharding().devices().front());
       // Do not need to collect per-device shapes because the created array is
       // not supposed to explode.
@@ -334,10 +333,9 @@ struct ShardedBufferAdapter<std::vector<PyBuffer::object>> {
         ifrt_arrays.front()->client()->AssembleArrayFromSingleDeviceArrays(
             ifrt_arrays.front()->shape(),
             ifrt::OpaqueSharding::Create(ifrt::DeviceList(std::move(devices))),
-            ifrt_arrays, ifrt::ArrayCopySemantics::kReuseInput);
+            absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput);
     TF_CHECK_OK(ifrt_array.status());
-    owned_ifrt_arrays.push_back(*std::move(ifrt_array));
-    return owned_ifrt_arrays.back().get();
+    return *ifrt_array;
   }
 #else
   static PjRtBuffer* GetPjRtBuffer(const std::vector<PyBuffer::object>& arg,
@@ -350,7 +348,8 @@ struct ShardedBufferAdapter<std::vector<PyBuffer::object>> {
 void PopulateExecuteShardedResults(
     const std::shared_ptr<PyClient>& client,
 #ifdef JAX_ENABLE_IFRT
-    std::vector<std::unique_ptr<ifrt::Array>> ifrt_arrays, int num_computations,
+    std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays,
+    int num_computations,
 #else
     std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> pjrt_buffers,
 #endif
@@ -383,7 +382,8 @@ void PopulateExecuteShardedResults(
 void PopulateExecuteShardedResults(
     const std::shared_ptr<PyClient>& client,
 #ifdef JAX_ENABLE_IFRT
-    std::vector<std::unique_ptr<ifrt::Array>> ifrt_arrays, int num_computations,
+    std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays,
+    int num_computations,
 #else
     std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> pjrt_buffers,
 #endif
@@ -432,7 +432,7 @@ ExecuteShardedOnLocalDevicesInternal(
     absl::Span<const py::capsule> host_callbacks, absl::Span<const ArgT> args,
     std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
 #ifdef JAX_ENABLE_IFRT
-  std::vector<std::unique_ptr<ifrt::Array>> output_arrays;
+  std::vector<tsl::RCReference<ifrt::Array>> output_arrays;
   std::unique_ptr<ifrt::Future<Status>> returned_future;
   int num_computations = ifrt_loaded_executable->addressable_devices().size();
 #else
@@ -483,11 +483,9 @@ ExecuteShardedOnLocalDevicesInternal(
       }
     }
 #ifdef JAX_ENABLE_IFRT
-    std::vector<ifrt::Array*> arg_arrays(args.size());
-    std::vector<std::unique_ptr<ifrt::Array>> owned_ifrt_arrays;
-    owned_ifrt_arrays.reserve(args.size());
+    std::vector<tsl::RCReference<ifrt::Array>> arg_arrays(args.size());
     absl::c_transform(args, arg_arrays.begin(), [&](const ArgT& arg) mutable {
-      return ArgAdapter::GetIfRtArray(arg, owned_ifrt_arrays);
+      return ArgAdapter::GetIfRtArray(arg);
     });
 #else
     std::vector<std::vector<PjRtBuffer*>> arg_buffers(num_computations);
@@ -501,9 +499,9 @@ ExecuteShardedOnLocalDevicesInternal(
     }
 #endif
 #ifdef JAX_ENABLE_IFRT
-    TF_ASSIGN_OR_RETURN(
-        auto result, ifrt_loaded_executable->Execute(arg_arrays, opts,
-                                                     /*devices=*/std::nullopt));
+    TF_ASSIGN_OR_RETURN(auto result, ifrt_loaded_executable->Execute(
+                                         absl::MakeSpan(arg_arrays), opts,
+                                         /*devices=*/std::nullopt));
     output_arrays = std::move(result.outputs);
     if (returned_futures.has_value()) {
       returned_futures->resize(num_computations, std::move(result.status));

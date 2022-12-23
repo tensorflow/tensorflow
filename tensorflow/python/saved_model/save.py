@@ -602,7 +602,13 @@ def _generate_signatures(signature_functions, object_map):
     mapped_inputs, exterior_argument_placeholders = (
         _map_function_arguments_to_created_inputs(argument_inputs,
                                                   signature_key, function.name))
-    outputs = object_map[function](*mapped_inputs)
+    kwarg_names = list(
+        sorted(
+            object_map[function].function.structured_input_signature[1].keys()))
+    outputs = object_map[function](**{
+        kwarg_name: mapped_input
+        for kwarg_name, mapped_input in zip(kwarg_names, mapped_inputs)
+    })
     signatures[signature_key] = signature_def_utils.build_signature_def(
         _tensor_dict_to_tensorinfo(exterior_argument_placeholders),
         _tensor_dict_to_tensorinfo(outputs),

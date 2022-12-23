@@ -37,8 +37,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/mhlo_tfl_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_tfl_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -246,10 +246,9 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
     return statusHandler.ConsumeStatus();
   }
 
-  // Convert MHLO MLIR to TFLite Custom Op MLIR
-  // TODO(b/260112687): will be switching to StableHLO dialect in the future
+  // Convert StableHLO MLIR to TFLite Custom Op MLIR
   pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::TFL::mhlo::CreateMhloToTflPass());
+      mlir::odml::CreateStablehloToTflPass());
   if (failed(pass_manager.run(module))) {
     return statusHandler.ConsumeStatus();
   }

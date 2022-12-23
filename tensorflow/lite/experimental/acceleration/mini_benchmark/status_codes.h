@@ -107,15 +107,18 @@ enum MinibenchmarkStatus {
 
   // Validator runner status codes.
   //
-  // Next available code: 1504
+  // Next available code: 1505
   kMinibenchmarkChildProcessAlreadyRunning = 1501,
   kMinibenchmarkValidationEntrypointSymbolNotFound = 1502,
   kMinibenchmarkNoValidationRequestFound = 1503,
+  kMinibenchmarkCompletionEventMissing = 1504,
 
   // Validator runner recoverable errors
   //
   // Next available code: 1602
   kMinibenchmarkUnableToSetCpuAffinity = 1601,
+
+  kMinibenchmarkAbiMethodNotAvailable = 1701,
 };
 }  // namespace acceleration
 }  // namespace tflite

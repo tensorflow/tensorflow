@@ -568,7 +568,12 @@ struct LaunchConvOp<GPUDevice, Eigen::bfloat16> {
     Tensor casted_filter = filter;
     Tensor casted_out = *output;
 
+
     if (cast_to_float) {
+      Tensor casted_input = input_param;
+      Tensor casted_filter = filter;
+      Tensor casted_out = *output;
+
       const GPUDevice& device = ctx->eigen_device<GPUDevice>();
       functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
       OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, input_param.shape(),
@@ -595,9 +600,9 @@ struct LaunchConvOp<GPUDevice, Eigen::bfloat16> {
       return;
     }
 
-    LaunchConvOpImpl<Eigen::bfloat16>(ctx, cudnn_use_autotune, casted_input,
-                                      casted_filter, dilations, strides,
-                                      padding, data_format, &casted_out);
+    LaunchConvOpImpl<Eigen::bfloat16>(ctx, cudnn_use_autotune, input_param,
+                                      filter, dilations, strides, padding,
+                                      data_format, output);
   }
 };
 
