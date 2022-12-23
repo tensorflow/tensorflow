@@ -536,7 +536,6 @@ cc_library(
         "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:ViewLikeInterface",
-        "@stablehlo//:stablehlo_type_inference",
     ],
 )
 
