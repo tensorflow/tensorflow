@@ -176,6 +176,20 @@ template <typename F>
 
 namespace {
 
+bool ShouldKeepSharding(const HloInstruction* hlo) {
+  // Keep sharding annotation on Infeed/SendRecv instructions.
+  if (hlo->opcode() == HloOpcode::kInfeed ||
+      hlo->opcode() == HloOpcode::kOutfeed ||
+      DynCast<HloSendRecvInstruction>(hlo) != nullptr) {
+    return true;
+  }
+  if (hlo->opcode() == HloOpcode::kParameter &&
+      hlo->parent() == hlo->GetModule()->entry_computation()) {
+    return true;
+  }
+  return false;
+}
+
 // Clears all sharding attributes from instructions in the module. This must be
 // called only after all SPMD transformation is complete.
 Status ClearShardingAttributes(
@@ -183,13 +197,7 @@ Status ClearShardingAttributes(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* hlo : computation->instructions()) {
-      // Keep sharding annotation on Infeed and entry parameters since they're
-      // used by HloReplicationAnalysis later (for ArCrsCombiner).
-      if (hlo->HasSideEffect() && hlo->opcode() != HloOpcode::kRng) {
-        continue;
-      }
-      if (hlo->opcode() == HloOpcode::kParameter &&
-          computation == module->entry_computation()) {
+      if (ShouldKeepSharding(hlo)) {
         continue;
       }
       hlo->clear_sharding();
