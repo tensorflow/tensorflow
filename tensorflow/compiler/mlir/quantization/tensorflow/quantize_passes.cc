@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -57,12 +58,12 @@ void AddQuantizeQatPasses(mlir::PassManager &pm,
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass(
       quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
-      mlir::quant::QuantizationMethod::kQuantizationAwareTraining,
+      quantization_options.quantization_method().experimental_method(),
       quantization_options.op_set()));
   // TODO(b/260677670): Pass quantization options as pass's inputs where
   // applicable
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
-      mlir::quant::QuantizationMethod::kQuantizationAwareTraining,
+      quantization_options.quantization_method().experimental_method(),
       quantization_options.op_set(),
       quantization_options.enable_per_channel_quantization()));
   pm.addPass(mlir::createSymbolDCEPass());
@@ -92,10 +93,10 @@ void AddQuantizePtqDynamicRangePasses(
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsDRQPass(
       quantization_options.min_num_elements_for_weights()));
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
-      mlir::quant::QuantizationMethod::kDynamicRangeQuantization,
+      quantization_options.quantization_method().experimental_method(),
       quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
-      mlir::quant::QuantizationMethod::kDynamicRangeQuantization,
+      quantization_options.quantization_method().experimental_method(),
       quantization_options.op_set(),
       quantization_options.enable_per_channel_quantization()));
   pm.addPass(mlir::createSymbolDCEPass());
@@ -103,7 +104,11 @@ void AddQuantizePtqDynamicRangePasses(
 
   // For XLA opset, the graph is inlined to take benefit of constant folding
   // and the TF Conv/Matmul ops with cast-hack are converted to XLA ops.
-  if (quantization_options.op_set() == OpSet::XLA) {
+  // Weight only quantizaiton with XLA opset should avoid this pass to not
+  // constant folded.
+  if (quantization_options.op_set() == OpSet::XLA &&
+      quantization_options.quantization_method().experimental_method() !=
+          tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY) {
     pm.addPass(mlir::createInlinerPass());
     pm.addPass(mlir::TF::CreateTFShapeInferencePass());
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
@@ -138,10 +143,10 @@ void AddQuantizePtqPostCalibrationPasses(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
-      mlir::quant::QuantizationMethod::kPostTrainingQuantization,
+      quantization_options.quantization_method().experimental_method(),
       quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
-      mlir::quant::QuantizationMethod::kPostTrainingQuantization,
+      quantization_options.quantization_method().experimental_method(),
       quantization_options.op_set(),
       quantization_options.enable_per_channel_quantization()));
   pm.addPass(mlir::createSymbolDCEPass());

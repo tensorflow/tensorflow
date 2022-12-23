@@ -62,6 +62,9 @@ namespace mlir {
 namespace quant {
 namespace {
 
+using QuantMethod =
+    tensorflow::quantization::QuantizationMethod::ExperimentalMethod;
+
 constexpr StringRef kQuantizeFuncName = "quantize_i8";
 constexpr StringRef kDequantizeFuncName = "dequantize_i8";
 constexpr StringRef kAttrMapAttribute = "attr_map";
@@ -79,7 +82,7 @@ class QuantizeCompositeFunctionsPass
   explicit QuantizeCompositeFunctionsPass() = default;
 
   explicit QuantizeCompositeFunctionsPass(
-      QuantizationMethod quantization_method, OpSet target_opset,
+      QuantMethod quantization_method, OpSet target_opset,
       bool enable_per_channel_quantization) {
     quantization_method_ = quantization_method;
     target_opset_ = target_opset;
@@ -112,15 +115,20 @@ class QuantizeCompositeFunctionsPass
   void runOnOperation() override;
 
   // These flags are only used for testing purpose.
-  Option<QuantizationMethod> quantization_method_{
+  Option<QuantMethod> quantization_method_{
       *this, "quantization-method",
-      llvm::cl::init(QuantizationMethod::kPostTrainingQuantization),
+      llvm::cl::init(
+          tensorflow::quantization::QuantizationMethod::STATIC_RANGE),
       llvm::cl::desc("Choose quantization method."),
       llvm::cl::values(
-          clEnumValN(QuantizationMethod::kPostTrainingQuantization, "ptq",
-                     "Post-training static-range quantization"),
-          clEnumValN(QuantizationMethod::kDynamicRangeQuantization, "drq",
-                     "Post-training dynamic-range quantizaiton"))};
+          clEnumValN(tensorflow::quantization::QuantizationMethod::STATIC_RANGE,
+                     "ptq", "Post-training static-range quantization"),
+          clEnumValN(
+              tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE,
+              "drq", "Post-training dynamic-range quantizaiton"),
+          clEnumValN(tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY,
+                     "weight_only", "Post-training weight-only quantizaiton"))};
+
   Option<OpSet> target_opset_{
       *this, "target-opset", llvm::cl::init(OpSet::TF),
       llvm::cl::desc("Choose target opset."),
@@ -405,7 +413,7 @@ bool IsQuantizedCallforStaticRange(TF::PartitionedCallOp call_op) {
 // the attribute identifier in the float function.
 LogicalResult TransferTFAttributesToTFUniformAttributes(
     PatternRewriter& rewriter, func::FuncOp float_func,
-    func::FuncOp quantized_func, QuantizationMethod quantization_method,
+    func::FuncOp quantized_func, QuantMethod quantization_method,
     bool enable_per_channel_quantization) {
   // A map to find an attribute from its identifier.
   llvm::StringMap<Attribute> identifier_to_attr;
@@ -535,7 +543,7 @@ class QuantizeFunctionPattern
     : public mlir::OpRewritePattern<TF::PartitionedCallOp> {
  public:
   explicit QuantizeFunctionPattern(MLIRContext* context,
-                                   QuantizationMethod quantization_method,
+                                   QuantMethod quantization_method,
                                    OpSet target_opset,
                                    bool enable_per_channel_quantization)
       : OpRewritePattern<TF::PartitionedCallOp>(context),
@@ -544,8 +552,8 @@ class QuantizeFunctionPattern
         enable_per_channel_quantization_(enable_per_channel_quantization) {}
 
  private:
-  QuantizationMethod quantization_method_ =
-      QuantizationMethod::kPostTrainingQuantization;
+  QuantMethod quantization_method_ =
+      tensorflow::quantization::QuantizationMethod::STATIC_RANGE;
   OpSet target_opset_ = OpSet::TF;
   bool enable_per_channel_quantization_;
 
@@ -559,7 +567,8 @@ class QuantizeFunctionPattern
 
     // Determines if all required float input/outputs are now quantized.
     bool has_quantized_types = false;
-    if (quantization_method_ == QuantizationMethod::kDynamicRangeQuantization) {
+    if (quantization_method_ ==
+        tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE) {
       has_quantized_types = IsQuantizedCallforDynamicRange(call_op);
       if (f_attr.getValue().startswith(kCompositeFuncPrefix) &&
           !has_quantized_types) {
@@ -1074,7 +1083,10 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   pm.enableVerifier(false);
 
   QuantizationSpecs quant_specs;
-  if (quantization_method_ == QuantizationMethod::kDynamicRangeQuantization) {
+  if (quantization_method_ ==
+          tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE ||
+      quantization_method_ ==
+          tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY) {
     quant_specs.weight_quantization = true;
     quant_specs.inference_type = tensorflow::DT_QINT8;
     quant_specs.disable_per_channel = !enable_per_channel_quantization_;
@@ -1082,6 +1094,10 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   } else {
     pm.addNestedPass<func::FuncOp>(
         CreatePrepareQuantizePass(quantization_method_));
+  }
+  if (quantization_method_ ==
+      tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY) {
+    quant_specs.weight_only_quantization = true;
   }
   pm.addNestedPass<func::FuncOp>(
       CreateQuantizePass(quant_specs, target_opset_));
@@ -1117,7 +1133,7 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
-    QuantizationMethod quantization_method, OpSet target_opset,
+    QuantMethod quantization_method, OpSet target_opset,
     bool enable_per_channel_quantization) {
   return std::make_unique<QuantizeCompositeFunctionsPass>(
       quantization_method, target_opset, enable_per_channel_quantization);

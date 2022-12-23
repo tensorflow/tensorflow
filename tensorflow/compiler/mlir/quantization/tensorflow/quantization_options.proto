@@ -45,6 +45,9 @@ message QuantizationMethod {
     // determined in the graph executions. The weights are quantized during
     // conversion.
     DYNAMIC_RANGE = 2;
+
+    // Weight-only quantization. Only weights are quantized during conversion.
+    WEIGHT_ONLY = 3;
   }
 
   // Quantization method is either exprimental or non-experimental method.

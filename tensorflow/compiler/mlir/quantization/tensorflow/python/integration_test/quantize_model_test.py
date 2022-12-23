@@ -67,6 +67,17 @@ def parameter_combinations(test_parameters):
   return real_parameters
 
 
+def get_dir_size(path='.'):
+  """Get the total size of files and sub-directories under the path."""
+  total = 0
+  for root, dirs, files in os.walk(path):
+    for filename in files:
+      total += os.path.getsize(os.path.join(root, filename))
+    for dirname in dirs:
+      total += get_dir_size(os.path.join(root, dirname))
+  return total
+
+
 class MultipleSignatureModel(module.Module):
   """A model with 2 signatures.
 
@@ -2459,6 +2470,145 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           })
 
       self.assertAllClose(lookup_val, [1., 2., 0.])
+
+
+class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
+  """Test cases for weight-only quantization.
+
+  Run all tests cases in both the graph mode (default in TF1) and the eager mode
+  (default in TF2) to ensure support for when TF2 is disabled.
+  """
+
+  @parameterized.named_parameters(
+      ('to_tf_per_tensor', quant_opts_pb2.TF, False),
+      ('to_xla_per_tensor', quant_opts_pb2.XLA, False))
+  @test_util.run_in_graph_and_eager_modes
+  def test_matmul_model(self, target_opset: quant_opts_pb2.OpSet,
+                        enable_per_channel_quantization: bool):
+
+    input_shape = (1, 512)
+    input_saved_model_path = self.create_tempdir('input').full_path
+
+    self._create_matmul_model(
+        input_shape=input_shape,
+        weight_shape=(512, 2),
+        saved_model_path=input_saved_model_path)
+
+    tags = {tag_constants.SERVING}
+    output_directory = self.create_tempdir().full_path
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.WEIGHT_ONLY),
+        op_set=target_opset,
+        enable_per_channel_quantization=enable_per_channel_quantization)
+
+    converted_model = quantize_model.quantize(input_saved_model_path,
+                                              ['serving_default'], tags,
+                                              output_directory,
+                                              quantization_options)
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+
+    self.assertTrue(self._contains_op(output_meta_graphdef, 'MatMul'))
+    # Due to other meta data, the compression is not exactly 1/4.
+    self.assertLessEqual(
+        get_dir_size(output_directory) / get_dir_size(input_saved_model_path),
+        1 / 3)
+
+  @parameterized.named_parameters(
+      ('to_tf_per_tensor', quant_opts_pb2.TF, False),
+      ('to_xla_per_tensor', quant_opts_pb2.XLA, False))
+  @test_util.run_in_graph_and_eager_modes
+  def test_conv_model(self, target_opset: quant_opts_pb2.OpSet,
+                      enable_per_channel_quantization: bool):
+
+    input_saved_model_path = self.create_tempdir('input').full_path
+
+    model = self._create_conv2d_model(
+        input_shape=(1, 3, 4, 512),
+        filter_shape=(2, 3, 512, 2),
+        has_bias=False,
+        has_batch_norm=False,
+        activation_fn=nn_ops.relu6)
+    saved_model_save.save(model, input_saved_model_path)
+
+    tags = {tag_constants.SERVING}
+    output_directory = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.WEIGHT_ONLY),
+        op_set=target_opset,
+        enable_per_channel_quantization=enable_per_channel_quantization)
+
+    converted_model = quantize_model.quantize(input_saved_model_path,
+                                              ['serving_default'], tags,
+                                              output_directory,
+                                              quantization_options)
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+
+    self.assertTrue(self._contains_op(output_meta_graphdef, 'Conv2D'))
+    # Due to other meta data, the compression is not exactly 1/4.
+    self.assertLessEqual(
+        get_dir_size(output_directory) / get_dir_size(input_saved_model_path),
+        1 / 3)
+
+  @parameterized.named_parameters(
+      ('to_tf_per_tensor', quant_opts_pb2.TF, False),
+      ('to_xla_per_tensor', quant_opts_pb2.XLA, False))
+  @test_util.run_in_graph_and_eager_modes
+  def test_depthwise_conv_model(
+      self,
+      target_opset: quant_opts_pb2.OpSet,
+      enable_per_channel_quantization: bool,
+  ):
+
+    filter_shape = (2, 3, 512, 2)
+    strides = (1, 2, 2, 1)
+
+    model = self._create_depthwise_conv2d_model(
+        input_shape=(1, 3, 4, 512), filter_shape=filter_shape, strides=strides)
+
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    tags = {tag_constants.SERVING}
+    output_directory = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.WEIGHT_ONLY),
+        op_set=target_opset,
+        enable_per_channel_quantization=enable_per_channel_quantization)
+
+    converted_model = quantize_model.quantize(input_saved_model_path,
+                                              ['serving_default'], tags,
+                                              output_directory,
+                                              quantization_options)
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+
+    self.assertTrue(
+        self._contains_op(output_meta_graphdef, 'DepthwiseConv2dNative'))
+    # Due to other meta data, the compression is not exactly 1/4.
+    self.assertLessEqual(
+        get_dir_size(output_directory) / get_dir_size(input_saved_model_path),
+        1 / 3)
 
 
 if __name__ == '__main__':
