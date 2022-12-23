@@ -68,10 +68,9 @@ struct AsyncValue : public AsyncRuntimeObject {
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(GetStorage(), size);
   }
 
-  void* GetStorage() {
+  std::byte* GetStorage() {
     assert(!GetAsyncValue()->IsError() && "unexpected error state");
-    if (data_storage.is_inline)
-      return reinterpret_cast<void*>(&data_storage.inline_buffer[0]);
+    if (data_storage.is_inline) return &data_storage.inline_buffer[0];
     return data_storage.allocated_buffer;
   }
 
@@ -85,7 +84,9 @@ struct AsyncValue : public AsyncRuntimeObject {
 
     Storage(size_t size, size_t alignment)
         : is_inline(CanStoreInline(size, alignment)) {
-      if (!is_inline) allocated_buffer = AlignedMalloc(size, alignment);
+      if (!is_inline)
+        allocated_buffer =
+            reinterpret_cast<std::byte*>(AlignedMalloc(size, alignment));
     }
 
     ~Storage() {
@@ -100,7 +101,7 @@ struct AsyncValue : public AsyncRuntimeObject {
     bool is_inline;
     union {
       alignas(kAlign) std::array<std::byte, kSize> inline_buffer;
-      void* allocated_buffer;
+      std::byte* allocated_buffer;
     };
   };
 
@@ -203,7 +204,7 @@ static_assert(sizeof(AsyncRuntime) == 1 * sizeof(void*),
   return async_runtime;
 }
 
-/*static*/ void* AsyncRuntime::GetStorage(Value* value) {
+/*static*/ std::byte* AsyncRuntime::GetStorage(Value* value) {
   return value->GetStorage();
 }
 
