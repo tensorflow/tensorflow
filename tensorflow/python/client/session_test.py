@@ -1012,7 +1012,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       v_val = self.evaluate(v)
       self.assertAllEqual([[4.0, 4.0, 4.0]], v_val)
       s.run(assign_e_to_v)
-      v_val = vself.evaluate(v)
+      v_val = self.evaluate(v)
       self.assertAllEqual([[6.0, 6.0, 6.0]], v_val)
 
   def testExtendWithGroupBy(self):

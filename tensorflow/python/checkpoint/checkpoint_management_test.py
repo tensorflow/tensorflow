@@ -97,6 +97,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
           self.assertIsNotNone(
               checkpoint_management.latest_checkpoint(traindir))
 
+  @test_util.run_deprecated_v1
   def testRelativePath(self):
     # Make sure we have a clean directory to work in.
     with self.tempDir() as tempdir:
