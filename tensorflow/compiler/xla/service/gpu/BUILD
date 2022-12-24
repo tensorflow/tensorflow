@@ -146,7 +146,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/runtime:module",
-        "//tensorflow/compiler/xla/runtime/ffi:ffi_api_hdrs",
+        "//tensorflow/compiler/xla/runtime/ffi:ffi_api",
         "//tensorflow/compiler/xla/runtime:module_registry",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/tsl/lib/core:status_test_util",

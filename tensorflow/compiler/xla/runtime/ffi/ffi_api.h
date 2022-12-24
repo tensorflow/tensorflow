@@ -31,6 +31,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/runtime/ffi/ffi_abi.h"
 #include "tensorflow/compiler/xla/runtime/ffi/ffi_c_api.h"
 
 namespace xla {
@@ -537,34 +538,13 @@ inline FfiBinding<> Ffi::Bind(std::string name) {
 }
 
 //===----------------------------------------------------------------------===//
-// C structures that XLA FFI uses internally to encode arguments and attributes.
-//===----------------------------------------------------------------------===//
-
-// TODO(ezhulenev): Structures used for encoding must be shared between FFI and
-// custom calls because it's our ABI boundary.
-
-namespace internal {
-
-struct EncodedMemref {
-  uint8_t dtype;
-  uint8_t rank;
-  void* data;
-  int64_t dims[];
-};
-
-template <typename T>
-struct EncodedArray {
-  int64_t size;
-  const T* data;
-};
-
-}  // namespace internal
-
-//===----------------------------------------------------------------------===//
 // Helpers for decoding opaque arguments and attributes' memory.
 //===----------------------------------------------------------------------===//
 
 namespace internal {
+
+using runtime::internal::EncodedArray;
+using runtime::internal::EncodedMemref;
 
 // Decoded pair of argument type and opaque value.
 struct DecodedArg {
