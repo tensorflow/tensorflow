@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <limits>
+#include <optional>
 
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
@@ -256,7 +257,7 @@ PartialTensorShape ConvertTypeToTensorShape(const mlir::Type& type) {
 
 mlir::TF::ShapeAttr ConvertTypeToTensorShapeAttr(const mlir::Type& type) {
   if (type.isa<mlir::UnrankedTensorType>()) {
-    return mlir::TF::ShapeAttr::get(type.getContext(), llvm::None);
+    return mlir::TF::ShapeAttr::get(type.getContext(), std::nullopt);
   }
 
   if (auto tensor_type = type.dyn_cast<mlir::RankedTensorType>()) {
@@ -272,7 +273,7 @@ mlir::TF::ShapeAttr ConvertTypeToTensorShapeAttr(const mlir::Type& type) {
 StatusOr<mlir::Attribute> ConvertTensorShapeProto(const TensorShapeProto& shape,
                                                   mlir::MLIRContext* context) {
   if (shape.unknown_rank())
-    return mlir::TF::ShapeAttr::get(context, llvm::None);
+    return mlir::TF::ShapeAttr::get(context, std::nullopt);
 
   llvm::SmallVector<int64_t, 4> dims;
   dims.reserve(shape.dim().size());

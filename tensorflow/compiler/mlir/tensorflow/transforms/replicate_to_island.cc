@@ -17,10 +17,10 @@ limitations under the License.
 // `tf_device.replicate` island.
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
@@ -88,7 +88,7 @@ std::optional<int64_t> GetDeviceOrdinal(
       }
     }
   }
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Updates replica variant ops in a region based on replica `replica_id`.

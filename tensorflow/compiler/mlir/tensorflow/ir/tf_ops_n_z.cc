@@ -30,7 +30,6 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
@@ -332,14 +331,14 @@ OpFoldResult PackOp::fold(ArrayRef<Attribute> operands) {
   auto get_const_int = [](Value value,
                           int expected_rank) -> std::optional<int64_t> {
     auto const_op = dyn_cast_or_null<ConstOp>(value.getDefiningOp());
-    if (!const_op) return llvm::None;
+    if (!const_op) return std::nullopt;
 
     auto value_attr = const_op.getValue().dyn_cast<DenseIntElementsAttr>();
-    if (!value_attr || value_attr.getNumElements() != 1) return llvm::None;
+    if (!value_attr || value_attr.getNumElements() != 1) return std::nullopt;
 
     auto value_ty = value_attr.getType();
     if (!value_ty.hasRank() || value_ty.getRank() != expected_rank)
-      return llvm::None;
+      return std::nullopt;
 
     auto splat = value_attr.getSplatValue<IntegerAttr>();
     return splat.getValue().getSExtValue();
@@ -1580,7 +1579,7 @@ LogicalResult SparseSoftmaxCrossEntropyWithLogitsOp::verify() {
 template <class Op>
 LogicalResult VerifySplitInputAndSplitDim(Op op,
                                           std::optional<int64_t> *dim_index) {
-  *dim_index = llvm::None;
+  *dim_index = std::nullopt;
 
   Value split_dim = op.getSplitDim();
   if (auto split_dim_type = split_dim.getType().dyn_cast<RankedTensorType>())

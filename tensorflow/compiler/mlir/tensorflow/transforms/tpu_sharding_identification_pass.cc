@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -79,7 +79,7 @@ std::optional<llvm::StringRef> GetXlaShardingFromOperand(Value value) {
           value_to_visit.getDefiningOp<TF::TPUPartitionedInputOp>())
     return partitioned_input.get_XlaSharding();
 
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Given a `tf_device.cluster_func` operand value return true iff it a device
@@ -155,7 +155,7 @@ std::optional<llvm::StringRef> AssignLogicalDeviceFromTPUReplicatedCoreAttr(
       }
     }
   }
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Returns XLA sharding from a XlaSharding op connected to an argument value. If
@@ -205,7 +205,7 @@ std::optional<llvm::StringRef> GetXlaShardingFromArg(
     values_to_visit.swap(next_values_to_visit);
   }
 
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Extracts sharding configurations for all inputs by parsing XlaSharding/
@@ -276,7 +276,7 @@ void IdentifyXlaShardingForComputationInputs(
 // AssignVariableOp/resource write) op connected to a `tf_device.cluster_func`
 // result value.
 std::optional<llvm::StringRef> GetXlaShardingFromResult(Value value) {
-  if (!value.hasOneUse()) return llvm::None;
+  if (!value.hasOneUse()) return std::nullopt;
 
   Operation* user = *value.getUsers().begin();
   if (auto partitioned_output =
@@ -288,7 +288,7 @@ std::optional<llvm::StringRef> GetXlaShardingFromResult(Value value) {
             assign_var.getResource().getDefiningOp<TF::TPUPartitionedInputOp>())
       return partitioned_input.get_XlaSharding();
 
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Looks up arg->retval aliases for every argument, and builds a reverse map.
@@ -315,7 +315,7 @@ std::optional<StringRef> GetXlaShardingFromAlias(
       return sharding_for_args[arg_index];
     }
   }
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Returns XLA sharding from XlaSharding op connected to a result value.
@@ -385,7 +385,7 @@ std::optional<StringRef> GetXlaShardingFromRetval(
     }
   }
 
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Extracts sharding configurations for all outputs by parsing XlaSharding/

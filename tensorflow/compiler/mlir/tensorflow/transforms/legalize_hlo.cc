@@ -21,6 +21,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,7 +29,6 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLForwardCompat.h"
 #include "llvm/ADT/Sequence.h"
@@ -1414,7 +1414,7 @@ class StridedArrayViewBase {
       if (index[dim] < shape[dim]) return std::move(index);
       index[dim] = 0;
     }
-    return llvm::None;
+    return std::nullopt;
   }
 
  protected:
