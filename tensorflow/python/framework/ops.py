@@ -1597,10 +1597,10 @@ def convert_to_tensor(value,
   if isinstance(value, Tensor):
     if dtype is not None:
       #checking for integer overflow
-      if (abs(value) > (1 << 31) - 1):
+      if (dtype == dtypes.int32) and (abs(value) > (1 << 31) - 1):
         raise RuntimeError(
                 _add_error_prefix(
-                    "integer overflow for dtype int32",
+                    f"input value exceeds int32 dtype limit",
                     name=name))
       if not dtype.is_compatible_with(value.dtype):
         raise ValueError(
