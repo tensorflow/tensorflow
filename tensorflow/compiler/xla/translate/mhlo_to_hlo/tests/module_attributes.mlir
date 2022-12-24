@@ -52,6 +52,7 @@ module attributes { mhlo.cross_program_prefetches = [ #mhlo.cross_program_prefet
 // -----
 
 module attributes {
+  mhlo.use_auto_spmd_partitioning = true,
   mhlo.is_dynamic = true,
   mhlo.dynamic_parameter_bindings = [
     #mhlo.dynamic_parameter_binding<
@@ -71,6 +72,7 @@ module attributes {
 // CHECK-NEXT:    target_param_num: 1
 // CHECK-NEXT:  }
 // CHECK: is_dynamic: true
+// CHECK: use_auto_spmd_partitioning: true
 
 // -----
 

@@ -3073,6 +3073,11 @@ xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
           module->getAttrOfType<mlir::BoolAttr>("mhlo.is_dynamic")) {
     hlo_module.set_is_dynamic(is_dynamic.getValue());
   }
+  if (auto use_auto_spmd_partitioning = module->getAttrOfType<mlir::BoolAttr>(
+          "mhlo.use_auto_spmd_partitioning")) {
+    hlo_module.set_use_auto_spmd_partitioning(
+        use_auto_spmd_partitioning.getValue());
+  }
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
   return ::tsl::OkStatus();
 }

@@ -209,4 +209,6 @@ hlo_module       {
   }
 # CHECK-SAME: mhlo.is_dynamic = true
   is_dynamic: true
+# CHECK-SAME: mhlo.use_auto_spmd_partitioning = true
+  use_auto_spmd_partitioning: true
 }
