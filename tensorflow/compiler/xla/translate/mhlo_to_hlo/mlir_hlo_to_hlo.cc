@@ -3069,6 +3069,10 @@ xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
             .ToProto();
     *hlo_module.mutable_dynamic_parameter_binding() = bindings;
   }
+  if (auto is_dynamic =
+          module->getAttrOfType<mlir::BoolAttr>("mhlo.is_dynamic")) {
+    hlo_module.set_is_dynamic(is_dynamic.getValue());
+  }
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
   return ::tsl::OkStatus();
 }

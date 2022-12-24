@@ -50,6 +50,9 @@ Status HloModuleImporter::Import(const xla::HloModule& hlo_module) {
   module->setAttr("mhlo.dynamic_parameter_bindings",
                   ConvertDynamicParameterBindings(
                       hlo_module.dynamic_parameter_binding(), &builder_));
+  module->setAttr(
+      "mhlo.is_dynamic",
+      mlir::BoolAttr::get(builder_.getContext(), hlo_module.is_dynamic()));
 
   if (!import_all_computation_)
     // Only import the entry computation, any reachable one will be imported
