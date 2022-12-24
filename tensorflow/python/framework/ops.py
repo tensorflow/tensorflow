@@ -1566,6 +1566,7 @@ def pack_eager_tensors(tensors, ctx=None):
   return packed_tensor
 
 
+
 @profiler_trace.trace_wrapper("convert_to_tensor")
 def convert_to_tensor(value,
                       dtype=None,
@@ -1594,13 +1595,20 @@ def convert_to_tensor(value,
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
   if isinstance(value, Tensor):
-    if dtype is not None and not dtype.is_compatible_with(value.dtype):
-      raise ValueError(
-          _add_error_prefix(
-              f"Tensor conversion requested dtype {dtype.name} "
-              f"for Tensor with dtype {value.dtype.name}: {value!r}",
-              name=name))
-    return value
+    if dtype is not None:
+      #checking for integer overflow
+      if (abs(value) > (1 << 31) - 1):
+        raise RuntimeError(
+                _add_error_prefix(
+                    "integer overflow for dtype int32",
+                    name=name))
+      if not dtype.is_compatible_with(value.dtype):
+        raise ValueError(
+            _add_error_prefix(
+                f"Tensor conversion requested dtype {dtype.name} "
+                f"for Tensor with dtype {value.dtype.name}: {value!r}",
+                name=name))
+      return value
 
   if preferred_dtype is not None:
     preferred_dtype = dtypes.as_dtype(preferred_dtype)
@@ -1652,12 +1660,16 @@ def convert_to_tensor(value,
               f"returned incompatible dtype: requested = {dtype.name}, "
               f"actual = {ret.dtype.name}",
               name=name))
+      
+      
     return ret
+
   raise TypeError(
       _add_error_prefix(
           f"Cannot convert {value!r} with type {type(value)} to Tensor: "
           f"no conversion function registered.",
           name=name))
+
 
 
 internal_convert_to_tensor = convert_to_tensor
