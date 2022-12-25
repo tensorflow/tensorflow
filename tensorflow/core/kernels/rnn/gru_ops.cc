@@ -121,6 +121,11 @@ class GRUCellBlockOp : public OpKernel {
         ctx, ctx->allocate_output("c", TensorShape({batch_size, cell_size}),
                                   &c_tensor));
 
+    Tensor* g_tensor = nullptr;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_output("g", TensorShape({batch_size, cell_size}),
+                                  &g_tensor));
+
     Tensor* h_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
                             {"h_prev"}, "h",
