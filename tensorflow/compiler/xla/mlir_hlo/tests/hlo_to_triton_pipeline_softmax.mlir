@@ -53,4 +53,12 @@ func.func @perfectly_tiled_softmax(%argbuffer : memref<2048x4096xf32>,
 // CHECK:      %[[SUM:.*]] = vector.multi_reduction <add>, %[[EXP]]
 // CHECK:      %[[BSUM:.*]] = vector.broadcast %[[SUM]]
 // CHECK:      %[[DIV:.*]] = arith.divf %[[EXP]], %[[BSUM]]
-// CHECK:      vector.transfer_write %[[DIV]], %[[OUT]][%[[BID]], %[[C0]]]
+// The bufferization adds an extra alloc and a copy inside the loop, because it
+// finds a conflict between vector.transfer_write, tensor.extract_slice and
+// gml_st.set_yield that is produced by 'vectorize-gml-st-loops'.
+// hlo-one-shot-bufferize works as intended here.
+// CHECK:      %[[EXTRA_ALLOC:.*]] = memref.alloc
+// CHECK:      vector.transfer_write %[[DIV]], %[[EXTRA_ALLOC]][%[[BID]], %[[C0]]]
+// CHECK:      %[[EXTRA_ALLOC_SUBVIEW:.*]] = memref.subview %[[EXTRA_ALLOC]]
+// CHECK:      %[[OUT_SUBVIEW:.*]] = memref.subview %[[OUT]]
+// CHECK:      memref.copy %[[EXTRA_ALLOC_SUBVIEW]], %[[OUT_SUBVIEW]]

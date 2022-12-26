@@ -514,10 +514,129 @@ struct SetYieldOpInterface
     return success();
   }
 
-  bool isNotConflicting(Operation * /*op*/, OpOperand * /*uRead*/,
-                        OpOperand * /*uConflictingWrite*/,
-                        const AnalysisState & /*state*/) const {
+  LogicalResult resolveConflicts(Operation *op, RewriterBase &rewriter,
+                                 const AnalysisState &state) const {
+    OpBuilder::InsertionGuard g(rewriter);
+    SmallVector<OpOperand *> outOfPlaceOpOperands;
+    DenseSet<OpOperand *> copiedOpOperands;
+    DenseSet<OpOperand *> escapingOpOperandCopies;
+
+    // Find all out-of-place OpOperands.
+    for (OpOperand &opOperand : op->getOpOperands()) {
+      Type operandType = opOperand.get().getType();
+      if (!operandType.isa<TensorType>()) continue;
+      if (state.isInPlace(opOperand)) continue;
+      if (operandType.isa<UnrankedTensorType>())
+        return op->emitError("copies of unranked tensors are not supported");
+
+      SmallVector<OpResult> aliasingOpResults =
+          state.getAliasingOpResult(opOperand);
+      // Is the result yielded from a block? Or are deallocations turned off
+      // entirely? In either case, mark the allocation as "escaping", so that it
+      // will not be deallocated.
+      bool escape = !state.getOptions().createDeallocs ||
+                    llvm::any_of(aliasingOpResults, [&](Value v) {
+                      return state.isTensorYielded(v);
+                    });
+
+      // In all other cases, make a copy of the OpOperand.
+      outOfPlaceOpOperands.push_back(&opOperand);
+      if (!state.canOmitTensorCopy(opOperand))
+        copiedOpOperands.insert(&opOperand);
+      if (escape) escapingOpOperandCopies.insert(&opOperand);
+    }
+
+    // Insert copies of OpOperands before the loop.
+    rewriter.setInsertionPoint(op->getParentOp());
+    for (OpOperand *opOperand : outOfPlaceOpOperands) {
+      FailureOr<Value> copy = allocateTensorForShapedValue(
+          rewriter, op->getLoc(), opOperand->get(),
+          escapingOpOperandCopies.contains(opOperand), state.getOptions(),
+          copiedOpOperands.contains(opOperand));
+      if (failed(copy)) return failure();
+      rewriter.updateRootInPlace(op, [&]() { opOperand->set(*copy); });
+    }
+
+    return success();
+  }
+
+  bool areEquivalentSlices(const AnalysisState &state,
+                           MaterializeOp materializeOp, SetYieldOp setYieldOp,
+                           int64_t updateIdx) const {
+    if (!materializeOp || !setYieldOp) return false;
+    if (materializeOp != setYieldOp &&
+        !state.areEquivalentBufferizedValues(materializeOp.getSource(),
+                                             setYieldOp.getDsts()[updateIdx])) {
+      return false;
+    }
+    if (!sameOffsetsSizesAndStrides(
+            materializeOp,
+            setYieldOp.getSets()[updateIdx].getDefiningOp<TileOp>(),
+            isEqualConstantIntOrValue))
+      return false;
     return true;
+  }
+
+  /// Return true if `value` is originating from an MaterializeOp that matches
+  /// the given SetYieldOp.
+  bool matchesInsertDestination(const AnalysisState &state, Value value,
+                                SetYieldOp setYieldOp,
+                                int64_t updateIdx) const {
+    // Look for matching slices.
+    auto matchesSlice = [&](Value val) {
+      if (auto materializeOp = val.getDefiningOp<MaterializeOp>())
+        if (areEquivalentSlices(state, materializeOp, setYieldOp, updateIdx))
+          return true;
+      return false;
+    };
+    return llvm::all_of(
+        state.findValueInReverseUseDefChain(value, matchesSlice), matchesSlice);
+  }
+
+  // Copied and modified for gml_st.materialize/gml_st.set_yield pairs from
+  // mlir/lib/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.cpp
+  // Takes into account that gml_st.set_yield can have multiple src/dst pairs.
+  bool isNotConflicting(Operation * /*op*/, OpOperand *uRead,
+                        OpOperand *uConflictingWrite,
+                        const AnalysisState &state) const {
+    Operation *readingOp = uRead->getOwner();
+    Operation *conflictingWritingOp = uConflictingWrite->getOwner();
+
+    // Special rules for matching SetYieldOp/MaterializeOp pairs. If
+    // uRead is an SetYieldOp...
+    if (auto setYieldOp = dyn_cast<SetYieldOp>(readingOp)) {
+      for (int64_t updateIdx :
+           llvm::seq<int64_t>(0, setYieldOp.getNumUpdates())) {
+        OpOperand &srcOpOperand = setYieldOp->getOpOperand(updateIdx);
+        OpOperand *dstOpOperand = setYieldOp.getDstOperand(updateIdx);
+
+        if (uRead == dstOpOperand /*dest*/ &&
+            matchesInsertDestination(state, uConflictingWrite->get(),
+                                     setYieldOp, updateIdx))
+          return true;
+
+        if (uRead == &srcOpOperand /*source*/ &&
+            uConflictingWrite == dstOpOperand /*dest*/ &&
+            matchesInsertDestination(state, uRead->get(), setYieldOp,
+                                     updateIdx))
+          return true;
+      }
+    }
+
+    // If uConflictingWrite is an SetYieldOp...
+    if (auto setYieldOp = dyn_cast<SetYieldOp>(conflictingWritingOp)) {
+      for (int64_t updateIdx :
+           llvm::seq<int64_t>(0, setYieldOp.getNumUpdates())) {
+        if (uConflictingWrite == setYieldOp.getDstOperand(updateIdx) &&
+            state.areEquivalentBufferizedValues(
+                uRead->get(), setYieldOp.getSrcs()[updateIdx]) &&
+            matchesInsertDestination(state, setYieldOp.getSrcs()[updateIdx],
+                                     setYieldOp, updateIdx))
+          return true;
+      }
+    }
+
+    return false;
   }
 };
 
