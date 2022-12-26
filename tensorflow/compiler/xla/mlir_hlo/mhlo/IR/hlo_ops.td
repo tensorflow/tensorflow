@@ -2547,7 +2547,6 @@ def MHLO_SelectOp: MHLO_Op<"select", [Pure, HLO_BroadcastingElementwise,
   let results = (outs MHLO_Tensor:$result);
 
   let hasFolder = 1;
-  let hasVerifier = 1;
   let hasCanonicalizer = 1;
 
   let assemblyFormat = [{

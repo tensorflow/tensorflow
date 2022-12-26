@@ -5340,28 +5340,6 @@ LogicalResult XlaRngGetAndUpdateStateOp::inferReturnTypes(
 // SelectOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult SelectOp::verify() {
-  // The operands 'on_true' and 'on_false' should have compatible types, i.e.,
-  //   (a) have the same element type, and
-  //   (b) have compatible shapes (i.e. the same shape and/or at least one
-  //       dynamic shape)
-  if (!hlo::compatibleShapeAndElementType(getOnTrue().getType(),
-                                          getOnFalse().getType()))
-    return emitOpError()
-           << "requires compatible types for non-predicate operands";
-
-  // The predicate, if not-scalar, should have the same shape as the remaining
-  // operands.
-  auto predTy = getPred().getType().dyn_cast<RankedTensorType>();
-  bool predMayBeScalar = !predTy || predTy.getRank() == 0;
-  if (predMayBeScalar) return success();
-
-  if (failed(verifyCompatibleShape(getPred().getType(), getOnTrue().getType())))
-    return emitOpError() << "requires the same shape for all operands";
-
-  return success();
-}
-
 OpFoldResult SelectOp::fold(ArrayRef<Attribute> operands) {
   if (getOnTrue() == getOnFalse()) {
     return getOnTrue();
@@ -5397,28 +5375,8 @@ LogicalResult SelectOp::inferReturnTypeComponents(
     DictionaryAttr attributes, RegionRange,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   SelectOp::Adaptor op(operands, attributes);
-  auto trueType = op.getOnTrue().getType().cast<TensorType>();
-  auto falseType = op.getOnFalse().getType().cast<TensorType>();
-
-  // The output shape should be the most general of the operand shapes at each
-  // dimension.
-  ShapedTypeComponents& outputType = inferredReturnShapes.emplace_back();
-  if (trueType == falseType || !trueType.hasRank()) {
-    outputType = ShapedTypeComponents(trueType.cast<ShapedType>());
-  } else if (!falseType.hasRank()) {
-    outputType = ShapedTypeComponents(falseType.cast<ShapedType>());
-  } else {
-    assert(trueType.getRank() == falseType.getRank());
-    llvm::SmallVector<int64_t, 4> dims;
-    dims.reserve(trueType.getRank());
-    for (auto dim : llvm::zip(trueType.getShape(), falseType.getShape())) {
-      dims.push_back(std::get<0>(dim) == std::get<1>(dim)
-                         ? std::get<0>(dim)
-                         : ShapedType::kDynamic);
-    }
-    outputType = ShapedTypeComponents(dims, trueType.getElementType());
-  }
-  return success();
+  return hlo::inferSelectOp(location, op.getPred(), op.getOnTrue(),
+                            op.getOnFalse(), inferredReturnShapes);
 }
 
 LogicalResult SelectOp::reifyReturnTypeShapes(
