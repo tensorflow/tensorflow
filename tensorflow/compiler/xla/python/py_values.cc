@@ -29,10 +29,10 @@ limitations under the License.
 
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/shape.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/float8.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 
@@ -159,6 +160,14 @@ StatusOr<DevicePutResult> HandleNumpyScalar(py::handle h,
     // For extension types, ScalarAsCtype returns a pointer to the data.
     PyArray_ScalarAsCtype(h.ptr(), &ptr);
     type = BF16;
+  } else if (std::is_same<T, tsl::float8_e4m3fn>()) {
+    // For extension types, ScalarAsCtype returns a pointer to the data.
+    PyArray_ScalarAsCtype(h.ptr(), &ptr);
+    type = F8E4M3FN;
+  } else if (std::is_same<T, tsl::float8_e5m2>()) {
+    // For extension types, ScalarAsCtype returns a pointer to the data.
+    PyArray_ScalarAsCtype(h.ptr(), &ptr);
+    type = F8E5M2;
   } else if (std::is_same<T, SquashedT>() || !options.squash_64bit_types) {
     PyArray_ScalarAsCtype(h.ptr(), &data);
     ptr = &data;
@@ -375,6 +384,9 @@ StatusOr<DevicePutResult> DevicePut(py::handle arg,
         (*p)[dtypes.np_uint16.ptr()] = HandleNumpyScalar<uint16_t>;
         (*p)[dtypes.np_uint32.ptr()] = HandleNumpyScalar<uint32_t>;
         (*p)[dtypes.np_uint64.ptr()] = HandleNumpyScalar<uint64_t, uint32_t>;
+        (*p)[dtypes.np_float8_e4m3fn.ptr()] =
+            HandleNumpyScalar<tsl::float8_e4m3fn>;
+        (*p)[dtypes.np_float8_e5m2.ptr()] = HandleNumpyScalar<tsl::float8_e5m2>;
         (*p)[dtypes.np_bfloat16.ptr()] = HandleNumpyScalar<bfloat16>;
         (*p)[dtypes.np_float16.ptr()] = HandleNumpyScalar<half>;
         (*p)[dtypes.np_float32.ptr()] = HandleNumpyScalar<float>;
@@ -590,6 +602,8 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
         (*p)[dtypes.np_uint16.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_uint32.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_uint64.ptr()] = np_uint64_handler;
+        (*p)[dtypes.np_float8_e4m3fn.ptr()] = numpy_array_handler;
+        (*p)[dtypes.np_float8_e5m2.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_float16.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_bfloat16.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_float32.ptr()] = numpy_array_handler;

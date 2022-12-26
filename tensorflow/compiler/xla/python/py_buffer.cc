@@ -27,9 +27,9 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/python/util.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -346,6 +347,14 @@ StatusOr<py::dict> PyBuffer::CudaArrayInterface() {
     return InvalidArgument(
         "__cuda_array_interface__ is not supported for bfloat16 buffers.");
   }
+  if (pjrt_buffer()->on_device_shape().element_type() == F8E4M3FN) {
+    return InvalidArgument(
+        "__cuda_array_interface__ is not supported for F8E4M3FN buffers.");
+  }
+  if (pjrt_buffer()->on_device_shape().element_type() == F8E5M2) {
+    return InvalidArgument(
+        "__cuda_array_interface__ is not supported for F8E5M2 buffers.");
+  }
   TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(
       pjrt_buffer()->on_device_shape().layout()));
 
@@ -463,6 +472,16 @@ int PyBuffer_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
         ((flags & PyBUF_FORMAT) == PyBUF_FORMAT)) {
       return InvalidArgument(
           "bfloat16 buffer format not supported by Python buffer protocol.");
+    }
+    if (buffer.on_device_shape().element_type() == F8E4M3FN &&
+        ((flags & PyBUF_FORMAT) == PyBUF_FORMAT)) {
+      return InvalidArgument(
+          "F8E4M3FN buffer format not supported by Python buffer protocol.");
+    }
+    if (buffer.on_device_shape().element_type() == F8E5M2 &&
+        ((flags & PyBUF_FORMAT) == PyBUF_FORMAT)) {
+      return InvalidArgument(
+          "F8E5M2 buffer format not supported by Python buffer protocol.");
     }
     if ((flags & PyBUF_WRITEABLE) == PyBUF_WRITEABLE) {
       return InvalidArgument("XLA buffers are read-only.");

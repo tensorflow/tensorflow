@@ -173,6 +173,7 @@ cc_library(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/python/lib/core:bfloat16_lib",
+        "//tensorflow/tsl/python/lib/core:float8_hdr",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@pybind11",
@@ -294,6 +295,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":exceptions",
+        "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/python/lib/core:numpy",
         ":pprof_profile_builder",
         ":python_ref_manager",
@@ -917,6 +919,7 @@ tsl_pybind_extension(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/distributed_runtime/preemption:preemption_sync_manager",
         "//tensorflow/tsl/python/lib/core:bfloat16_lib",
+        "//tensorflow/tsl/python/lib/core:float8_lib",
     ] + select({
         ":gpu_enabled": [
             "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",

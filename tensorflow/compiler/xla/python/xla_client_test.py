@@ -36,6 +36,8 @@ except ImportError:
   custom_call_for_test = None
 
 bfloat16 = xla_client.bfloat16
+float8_e4m3fn = xla_client.float8_e4m3fn
+float8_e5m2 = xla_client.float8_e5m2
 ops = xla_client.ops
 
 FLAGS = flags.FLAGS
@@ -62,6 +64,10 @@ def TestFactory(xla_backend,
     float_dtypes = [np.float32]
     complex_dtypes = [np.complex64]
     standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
+  # TODO(zhangqiaorjc): test fp8 types when XLA support is complete.
+  # standard_dtypes is only used for BufferProtocolTest so we only test fp8
+  # round trip tests.
+  standard_dtypes += [float8_e4m3fn, float8_e5m2]
   dlpack_dtypes = int_dtypes + float_dtypes + [np.bool_] + complex_dtypes
 
   class ComputationTest(parameterized.TestCase):
@@ -725,6 +731,10 @@ def TestFactory(xla_backend,
     def testStandardTypes(self):
       for dtype in standard_dtypes:
         if dtype == bfloat16 or dtype == np.complex128:
+          continue
+        # NV FP8 not supported on TPU.
+        if (dtype in [float8_e4m3fn, float8_e5m2] and
+            self.backend.platform == "tpu"):
           continue
         arr = self.backend.buffer_from_pyval(np.array([0, 1], dtype))
         arr = np.asarray(arr)

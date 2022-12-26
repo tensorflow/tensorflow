@@ -1238,7 +1238,7 @@ cc_library(
 
 cc_library(
     name = "gpu_plugin_impl",
-    compatible_with = [],
+    compatible_with = get_compatible_with_portable(),
     deps = if_gpu_is_configured([
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",

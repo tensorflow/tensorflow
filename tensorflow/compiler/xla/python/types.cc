@@ -18,7 +18,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/python/lib/core/bfloat16.h"
+#include "tensorflow/tsl/python/lib/core/float8.h"
 
 namespace xla {
 
@@ -36,6 +38,8 @@ xla::StatusOr<PrimitiveType> DtypeToPrimitiveType(const py::dtype& np_type) {
           {{'u', 2}, U16},
           {{'u', 4}, U32},
           {{'u', 8}, U64},
+          {{'V', 1}, F8E4M3FN},
+          {{'f', 1}, F8E5M2},
           {{'V', 2}, BF16},  // array protocol code for raw data (void*)
           {{'f', 2}, F16},
           {{'f', 4}, F32},
@@ -71,6 +75,15 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
       return py::dtype::of<uint32_t>();
     case U64:
       return py::dtype::of<uint64_t>();
+    case F8E4M3FN: {
+      py::handle f8_e4m3fn(tsl::Float8e4m3fnDtype());
+      return py::dtype::from_args(
+          py::reinterpret_borrow<py::object>(f8_e4m3fn));
+    }
+    case F8E5M2: {
+      py::handle f8_e5m2(tsl::Float8e5m2Dtype());
+      return py::dtype::from_args(py::reinterpret_borrow<py::object>(f8_e5m2));
+    }
     case BF16: {
       py::handle bfloat16(tsl::Bfloat16Dtype());
       return py::dtype::from_args(py::reinterpret_borrow<py::object>(bfloat16));
@@ -106,6 +119,10 @@ const NumpyScalarTypes& GetNumpyScalarTypes() {
     dtypes->np_uint64 = py::object(numpy.attr("uint64"));
     dtypes->np_bfloat16 =
         py::reinterpret_borrow<py::object>(tsl::Bfloat16Dtype());
+    dtypes->np_float8_e4m3fn =
+        py::reinterpret_borrow<py::object>(tsl::Float8e4m3fnDtype());
+    dtypes->np_float8_e5m2 =
+        py::reinterpret_borrow<py::object>(tsl::Float8e5m2Dtype());
     dtypes->np_float16 = py::object(numpy.attr("float16"));
     dtypes->np_float32 = py::object(numpy.attr("float32"));
     dtypes->np_float64 = py::object(numpy.attr("float64"));
