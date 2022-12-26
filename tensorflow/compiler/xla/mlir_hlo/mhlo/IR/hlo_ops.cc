@@ -5250,6 +5250,17 @@ LogicalResult OptimizationBarrierOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// ReturnOp
+//===----------------------------------------------------------------------===//
+LogicalResult ReturnOp::inferReturnTypes(
+    MLIRContext*, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  ReturnOp::Adaptor adaptor(operands, attributes);
+  return hlo::inferReturnOp(location, inferredReturnTypes);
+}
+
+//===----------------------------------------------------------------------===//
 // RngBitGeneratorOp
 //===----------------------------------------------------------------------===//
 

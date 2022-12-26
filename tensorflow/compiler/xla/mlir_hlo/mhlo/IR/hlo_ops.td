@@ -2873,7 +2873,9 @@ def MHLO_ReduceWindowOp: MHLO_Op<"reduce_window", [
   }];
 }
 
-def MHLO_ReturnOp : MHLO_Op<"return", [Pure, Terminator]> {
+def MHLO_ReturnOp : MHLO_Op<"return",
+      [Pure, Terminator,
+      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     The `hlo.return` operation terminates a region and returns values.
 
