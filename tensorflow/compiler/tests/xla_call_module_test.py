@@ -307,6 +307,145 @@ module @jit_fun.1 {
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
+  @unittest.skip('TODO(burmako): Shape inference leaves dynamic_reshape')
+  def test_dynamic_reshape(self):
+    x = np.ones((4, 3), dtype=np.float32)
+    res = x.reshape((-1,))
+
+    def f(x):  # x: f32[b, 3]
+      module = """
+module @jit_fun_flat_jax {
+  func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?x3xf32>) -> tensor<?xf32> {
+    %0 = stablehlo.constant dense<3> : tensor<i32>
+    %1 = stablehlo.multiply %arg0, %0 : tensor<i32>
+    %2 = stablehlo.reshape %1 : (tensor<i32>) -> tensor<1xi32>
+    %3 = stablehlo.dynamic_reshape %arg1, %2 : (tensor<?x3xf32>, tensor<1xi32>) -> tensor<?xf32>
+    return %3 : tensor<?xf32>
+  }
+}
+"""
+      return xla.call_module([x],
+                             module=module,
+                             Tout=[res.dtype],
+                             Sout=[(None,)],
+                             dim_args_spec=['0.0'])
+
+    self._assertOpOutputMatchesExpected(f, (x,), (res,))
+
+  @unittest.skip('TODO(burmako): Shape inference adds tf.Cast')
+  def test_dynamic_reshape_cast(self):
+    x = np.ones((4, 2, 3), dtype=np.float32)
+    res = np.sin(x).reshape((4, -1))
+
+    def f(x):  # x: f32[b, 2, 3]
+      module = """
+module @jit_fun_flat_jax {
+  func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?x2x3xf32>) -> tensor<?x6xf32> {
+    %0 = stablehlo.sine %arg1 : tensor<?x2x3xf32>
+    %1 = stablehlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
+    %2 = stablehlo.constant dense<6> : tensor<1xi32>
+    %3 = stablehlo.concatenate %1, %2, dim = 0 : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
+    %4 = stablehlo.dynamic_reshape %0, %3 : (tensor<?x2x3xf32>, tensor<2xi32>) -> tensor<?x6xf32>
+    return %4 : tensor<?x6xf32>
+  }
+}
+"""
+      return xla.call_module([x],
+                             module=module,
+                             Tout=[res.dtype],
+                             Sout=[(None, 6)],
+                             dim_args_spec=['0.0'])
+
+    self._assertOpOutputMatchesExpected(f, (x,), (res,))
+
+  @unittest.skip('TODO(burmako): Crash in simplifyDynamicGatherToGather()')
+  def test_dynamic_gather(self):
+    x = np.ones((3, 4), dtype=np.float32)
+    idx = np.array([2, 2], np.int32)
+    res = x[idx]
+
+    def f(x):  # x: f32[b, 4]
+      module = """
+module @jit_fun_flat_jax {
+  func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?x4xf32>) -> tensor<?x2xf32> {
+    %0 = stablehlo.constant dense<0> : tensor<i64>
+    %1 = stablehlo.constant dense<0> : tensor<1xi64>
+    %2 = stablehlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
+    %3 = stablehlo.constant dense<2> : tensor<1xi32>
+    %4 = stablehlo.concatenate %2, %3, dim = 0 : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
+    %5 = "stablehlo.dynamic_gather"(%arg1, %1, %4) {dimension_numbers = #stablehlo.gather<offset_dims = [0, 1], start_index_map = [1]>, indices_are_sorted = true} : (tensor<?x4xf32>, tensor<1xi64>, tensor<2xi32>) -> tensor<?x2xf32>
+    return %5 : tensor<?x2xf32>
+  }
+}
+"""
+      return xla.call_module([x],
+                             module=module,
+                             Tout=[res.dtype],
+                             Sout=[(None, 2)],
+                             dim_args_spec=['0.0'])
+
+    self._assertOpOutputMatchesExpected(f, (x,), (res,))
+
+  @unittest.skip('TODO(burmako): Shape inference leaves real_dynamic_slice')
+  def test_real_dynamic_slice(self):
+    x = np.ones((3, 4), dtype=np.float32)
+    res = x[-1, :]  # TODO(necula): adjust this, if not the right result
+
+    def f(x):  # x: f32[b, 4]
+      module = """
+module @jit_fun_flat_jax {
+  func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?x4xf32>) -> tensor<4xf32> {
+    %0 = stablehlo.constant dense<-1> : tensor<i32>
+    %1 = stablehlo.add %arg0, %0 : tensor<i32>
+    %2 = stablehlo.reshape %1 : (tensor<i32>) -> tensor<1xi32>
+    %3 = stablehlo.constant dense<0> : tensor<1xi32>
+    %4 = stablehlo.concatenate %2, %3, dim = 0 : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
+    %5 = stablehlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
+    %6 = stablehlo.constant dense<4> : tensor<1xi32>
+    %7 = stablehlo.concatenate %5, %6, dim = 0 : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
+    %10 = stablehlo.constant dense<1> : tensor<2xi32>
+    %11 = stablehlo.real_dynamic_slice %arg1, %4, %7, %10 : (tensor<?x4xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x4xf32>
+    %12 = stablehlo.reshape %11 : (tensor<1x4xf32>) -> tensor<4xf32>
+    return %12 : tensor<4xf32>
+  }
+}
+"""
+      return xla.call_module([x],
+                             module=module,
+                             Tout=[x.dtype],
+                             Sout=[(4,)],
+                             dim_args_spec=['0.0'])
+
+    self._assertOpOutputMatchesExpected(f, (x,), (res,))
+
+  @unittest.skip('TODO(burmako): Module verification with dynamic_update_slice')
+  def test_dynamic_update_slice(self):
+    x = np.ones((3, 4), dtype=np.float32)
+    idx = np.int32(-2)
+    res = x   # The update should be a nop
+
+    def f(x, idx):  # x: f32[b, 4]  idx: i32
+      module = """
+module @jit_fun_flat_jax {
+  func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?x4xf32>, %arg2: tensor<i32>) -> tensor<?x4xf32> {
+    %0 = stablehlo.constant dense<0> : tensor<i32>
+    %1 = stablehlo.compare  LT, %arg2, %0,  SIGNED : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %2 = stablehlo.add %arg2, %arg0 : tensor<i32>
+    %3 = stablehlo.select %1, %2, %arg2 : tensor<i1>, tensor<i32>
+    %4 = stablehlo.constant dense<0> : tensor<i32>
+    %5 = stablehlo.dynamic_update_slice %arg1, %arg1, %3, %4 : (tensor<?x4xf32>, tensor<?x4xf32>, tensor<i32>, tensor<i32>) -> tensor<?x4xf32>
+    return %5 : tensor<?x4xf32>
+  }
+} 
+"""
+      return xla.call_module([x, idx],
+                             module=module,
+                             Tout=[res.dtype],
+                             Sout=[(None, 4)],
+                             dim_args_spec=['0.0'])
+
+    self._assertOpOutputMatchesExpected(f, (x, idx), (res,))
+
   def test_dynamic_broadcast_in_dim(self):
     x = np.ones((3, 4), dtype=np.float32)
     y = np.ones((2, 3, 4), dtype=np.float32)
@@ -363,6 +502,37 @@ module @jit_fun{
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
+  @unittest.skip('TODO(burmako): tf.Cast added after reduce')
+  def test_reduce_broadcast(self):
+    x = np.broadcast_to(np.arange(3, dtype=np.float32).reshape(3, 1), (3, 5))
+    res = np.any(x, axis=1)   # TODO(necula): not sure this should be the result
+
+    def f(x):  # x: f32[b, 5]
+      module = """
+module @jit_fun_flat_jax {
+  func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?x5xf32>) -> tensor<?x1xf32> {
+    %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+    %1 = stablehlo.reduce(%arg1 init: %0) across dimensions = [1] : (tensor<?x5xf32>, tensor<f32>) -> tensor<?xf32>
+     reducer(%arg2: tensor<f32>, %arg3: tensor<f32>)  {
+      %6 = stablehlo.add %arg2, %arg3 : tensor<f32>
+      stablehlo.return %6 : tensor<f32>
+    }
+    %2 = stablehlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
+    %3 = stablehlo.constant dense<1> : tensor<1xi32>
+    %4 = stablehlo.concatenate %2, %3, dim = 0 : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
+    %5 = stablehlo.dynamic_broadcast_in_dim %1, %4, dims = [0] : (tensor<?xf32>, tensor<2xi32>) -> tensor<?x1xf32>
+    return %5 : tensor<?x1xf32>
+  }
+}
+"""
+      return xla.call_module([x,],
+                             module=module,
+                             Tout=[res.dtype],
+                             Sout=[(None, 1)],
+                             dim_args_spec=['0.0'])
+
+    self._assertOpOutputMatchesExpected(f, (x,), (res,))
+
   def test_call(self):
     """A chain of calls."""
     x = np.ones((5,), dtype=np.float32)
@@ -402,9 +572,7 @@ module @jit_fun_3 {
   }
 }
 """
-      return xla.call_module([
-          x,
-      ],
+      return xla.call_module([x],
                              version=2,
                              module=module,
                              Tout=[res.dtype],
@@ -412,6 +580,46 @@ module @jit_fun_3 {
                              dim_args_spec=['0.0'])
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
+
+  @unittest.skip('TODO(burmako): Shape inference failure for while')
+  def test_while(self):
+    """A while loop with carryied dynamic shapes."""
+    x = np.ones((5,), dtype=np.float32)
+    # Compute the result in Pyton first
+    res0 = x
+    for i in range(5):
+      res0 += np.arange(x.shape[0], dtype=np.float32)
+    res1 = np.int64(i)
+
+    def f(x):  # x: f32[b]
+      module = """
+module @jit_fun_flat_jax {
+  func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> (tensor<?xf32>, tensor<i64>) {
+    %0 = stablehlo.constant dense<0> : tensor<i64>
+    %1:2 = stablehlo.while(%iterArg = %arg1, %iterArg_0 = %0) : tensor<?xf32>, tensor<i64>
+     cond {
+      %2 = stablehlo.constant dense<5> : tensor<i64>
+      %3 = stablehlo.compare  LT, %iterArg_0, %2,  SIGNED : (tensor<i64>, tensor<i64>) -> tensor<i1>
+      stablehlo.return %3 : tensor<i1>
+    } do {
+      %2 = stablehlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
+      %3 = stablehlo.dynamic_iota %2, dim = 0 : (tensor<1xi32>) -> tensor<?xf32>
+      %4 = stablehlo.add %iterArg, %3 : tensor<?xf32>
+      %5 = stablehlo.constant dense<1> : tensor<i64>
+      %6 = stablehlo.add %iterArg_0, %5 : tensor<i64>
+      stablehlo.return %4, %6 : tensor<?xf32>, tensor<i64>
+    }
+    return %1#0, %1#1 : tensor<?xf32>, tensor<i64>
+  }
+}
+"""
+      return xla.call_module([x,], version=2,
+                             module=module,
+                             Tout=[res0.dtype, res1.dtype],
+                             Sout=[(None,), res1.shape],
+                             dim_args_spec=['0.0'])
+
+    self._assertOpOutputMatchesExpected(f, (x,), (res0, res1))
 
 
 if __name__ == '__main__':

@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.core.function import trace_type
+from tensorflow.python.checkpoint import tensor_callable
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import context
@@ -463,6 +464,9 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
 
   def __tf_tracing_type__(self, signature_context):
     alias_id = signature_context.alias_global_id(self._handle._id)  # pylint:disable=protected-access
+    # TODO(xjun): Create variable placeholders directly from VariableSpec
+    # without using original values.
+    signature_context.add_placeholder(alias_id, self)
     return VariableSpec(shape=self.shape,
                         dtype=self.dtype,
                         trainable=self.trainable,
@@ -677,6 +681,44 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     object_map[self] = new_variable
     tensor_map[self.handle] = new_variable.handle
     return [self.handle]
+
+  def _serialize_to_tensors(self):
+    """Implements Trackable._serialize_to_tensors."""
+
+    def _read_variable_closure():
+      v = self
+      with ops.device(v.device):
+        if context.executing_eagerly() and not v.is_initialized():
+          # A SaveSpec tensor value of `None` indicates that the variable is
+          # uninitialized.
+          return None
+        # Read the variable without making a copy to limit memory usage.
+        x = v.read_value_no_copy()
+        # To allow variables placed on non-CPU devices to be checkpointed,
+        # we copy them to CPU on the same machine first.
+        with ops.device("/device:CPU:0"):
+          return array_ops.identity(x)
+
+    return {
+        trackable.VARIABLE_VALUE_KEY:
+            tensor_callable.Callable(
+                _read_variable_closure, dtype=self.dtype, device=self.device)
+    }
+
+  def _restore_from_tensors(self, restored_tensors):
+    """Implements Trackable._restore_from_tensors."""
+    with ops.device(self.device):
+      restored_tensor = array_ops.identity(
+          restored_tensors[trackable.VARIABLE_VALUE_KEY])
+      try:
+        assigned_variable = shape_safe_assign_variable_handle(
+            self.handle, self.shape, restored_tensor)
+      except ValueError as e:
+        raise ValueError(
+            f"Received incompatible tensor with shape {restored_tensor.shape} "
+            f"when attempting to restore variable with shape {self.shape} "
+            f"and name {self.name}.") from e
+      return assigned_variable
 
   def _read_variable_op(self, no_copy=False):
     """Reads the value of the variable.
@@ -2639,7 +2681,7 @@ class VariableSpec(tensor_spec.DenseSpec):
     return super().most_specific_common_supertype(others)
 
   # TraceType method
-  def _placeholder_value(self, placeholder_context):
+  def placeholder_value(self, placeholder_context):
     name = self.name or placeholder_context.naming_scope
     context_graph = placeholder_context.context_graph
     if placeholder_context.has_placeholder(self.alias_id):
@@ -2651,7 +2693,7 @@ class VariableSpec(tensor_spec.DenseSpec):
       spec_context = trace_type.InternalPlaceholderContext(
           context_graph.outer_graph)
       spec_context.update_naming_scope(name)
-      placeholder = spec._placeholder_value(spec_context)  # pylint: disable=protected-access
+      placeholder = spec.placeholder_value(spec_context)
       variable = self._from_components([placeholder])
       # (b/262771247) ShardedVariable break without this and VariableSpecs
       # without alias_id are not TraceTypes.

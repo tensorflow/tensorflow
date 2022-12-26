@@ -449,6 +449,7 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
 }
 
 static Status ExecuteXlaRuntime(const std::string& module_name,
+                                ModuleIdentifier module_id,
                                 GpuRuntimeExecutable& gpu_runtime_executable,
                                 const ServiceExecutableRunOptions* run_options,
                                 const std::string& asm_text,
@@ -462,7 +463,14 @@ static Status ExecuteXlaRuntime(const std::string& module_name,
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tsl::profiler::TraceMeLevel::kInfo);
 
-  ScopedAnnotation annotation([] { return std::string("ExecuteXlaRuntime"); });
+  ScopedAnnotation annotation([&] {
+    std::string module_id_str;
+    if (module_id >= 0) {
+      module_id_str = absl::StrFormat(",program_id=%d", module_id);
+    }
+    return absl::StrFormat("XlaModule:#hlo_module=%s%s#", module_name,
+                           module_id_str);
+  });
 
   auto executed = gpu_runtime_executable.Execute(
       run_options, asm_text, binary, buffer_allocations, temp_buffer);
@@ -639,16 +647,16 @@ Status GpuExecutable::ExecuteThunksOrXlaRuntime(
   TF_RETURN_IF_ERROR(
       CheckCompatibilityWithServiceExecutableRunOptions(run_options));
 
+  // There isn't always an HLO module.
+  ModuleIdentifier unique_id = -1;
+  if (has_module()) {
+    unique_id = module().unique_id();
+  }
+
   if (thunks_) {
     se::StreamExecutor* executor = run_options->stream()->parent();
     for (const std::unique_ptr<Thunk>& thunk : *thunks_) {
       TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
-    }
-
-    // There isn't always an HLO module.
-    ModuleIdentifier unique_id = -1;
-    if (has_module()) {
-      unique_id = module().unique_id();
     }
 
     return ExecuteThunks(module_name_, unique_id, *thunks_, run_options,
@@ -665,7 +673,7 @@ Status GpuExecutable::ExecuteThunksOrXlaRuntime(
         if (temp_buffer == nullptr) temp_buffer = &alloc;
       }
     }
-    return ExecuteXlaRuntime(module_name_, *gpu_runtime_executable_,
+    return ExecuteXlaRuntime(module_name_, unique_id, *gpu_runtime_executable_,
                              run_options, text_, binary_, buffer_allocations,
                              temp_buffer, block_host_until_done);
   }

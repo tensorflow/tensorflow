@@ -724,6 +724,7 @@ StatusOr<se::cuda::BlasLt::MatrixLayout> AsBlasLtMatrixLayout(
 template <cudaDataType_t CudaT>
 struct CudaToNativeT;
 
+#if CUDA_VERSION >= 11080
 template <>
 struct CudaToNativeT<CUDA_R_8F_E4M3> {
   using type = tsl::float8_e4m3fn;
@@ -732,6 +733,8 @@ template <>
 struct CudaToNativeT<CUDA_R_8F_E5M2> {
   using type = tsl::float8_e5m2;
 };
+#endif
+
 template <>
 struct CudaToNativeT<CUDA_R_16BF> {
   using type = Eigen::bfloat16;
@@ -900,6 +903,7 @@ Status MatmulPlan::ExecuteOnStream(
         profile_result);                                                    \
   }
 
+#if CUDA_VERSION >= 11080
   // FP8 compatible type combinations (see cuBLASLt documentation):
   TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_16BF)
   TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16BF,
@@ -932,6 +936,7 @@ Status MatmulPlan::ExecuteOnStream(
                CUDA_R_8F_E5M2)
   TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_16F)
   TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_32F, CUDA_R_32F)
+#endif
 
   // Other data types:
   TYPED_MATMUL(float, CUDA_R_16F, CUDA_R_16F, CUDA_R_16F, CUDA_R_16F)

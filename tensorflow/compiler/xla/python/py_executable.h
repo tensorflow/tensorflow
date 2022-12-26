@@ -23,9 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#ifdef JAX_ENABLE_IFRT
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_executable.h"
-#endif
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
@@ -77,65 +75,39 @@ class PyLoadedExecutable
  public:
   PyLoadedExecutable(
       std::shared_ptr<PyClient> client,
-#ifdef JAX_ENABLE_IFRT
       std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable,
-#else
-      std::unique_ptr<PjRtLoadedExecutable> executable,
-#endif
       std::shared_ptr<Traceback> traceback,
       std::optional<std::string> fingerprint,
       std::vector<pybind11::capsule> host_callbacks);
   ~PyLoadedExecutable();
 
   std::shared_ptr<PyClient> client() const { return client_; }
-#ifdef JAX_ENABLE_IFRT
   ifrt::LoadedExecutable* ifrt_loaded_executable() const {
     return ifrt_loaded_executable_.get();
   }
-#endif
 
   absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds>
   addressable_device_logical_ids() const {
-#ifdef JAX_ENABLE_IFRT
     return ifrt_loaded_executable_->addressable_device_logical_ids();
-#else
-    return executable_->addressable_device_logical_ids();
-#endif
   }
 
   std::vector<ClientAndPtr<PjRtDevice>> AddressableDevices() const;
 
   int64_t SizeOfGeneratedCodeInBytes() const {
-#ifdef JAX_ENABLE_IFRT
     return ifrt_loaded_executable_->SizeOfGeneratedCodeInBytes();
-#else
-    return executable_->SizeOfGeneratedCodeInBytes();
-#endif
   }
 
   StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
-#ifdef JAX_ENABLE_IFRT
     return ifrt_loaded_executable_->GetCompiledMemoryStats();
-#else
-    return executable_->GetCompiledMemoryStats();
-#endif
   }
 
   void Delete() {
-#ifdef JAX_ENABLE_IFRT
     // TODO(hyeontaek): Return Status.
     TF_CHECK_OK(ifrt_loaded_executable_->Delete().Await());
-#else
-    return executable_->Delete();
-#endif
   }
 
   bool is_deleted() {
-#ifdef JAX_ENABLE_IFRT
     return ifrt_loaded_executable_->IsDeleted();
-#else
-    return executable_->IsDeleted();
-#endif
   }
 
   StatusOr<std::vector<PyBuffer::object>> Execute(
@@ -172,7 +144,6 @@ class PyLoadedExecutable
 
   Traceback* traceback() { return traceback_.get(); }
 
-#ifdef JAX_ENABLE_IFRT
   ifrt::LoadedExecutable* ifrt_executable() const {
     return ifrt_loaded_executable_.get();
   }
@@ -197,12 +168,6 @@ class PyLoadedExecutable
     }
     return exec->shared_ptr_pjrt_loaded_executable();
   }
-#else
-  PjRtLoadedExecutable* pjrt_executable() const { return executable_.get(); }
-  std::shared_ptr<PjRtLoadedExecutable> shared_ptr_pjrt_executable() {
-    return executable_;
-  }
-#endif
 
   const ExecuteOptions& options() const { return options_; }
   const std::optional<std::string>& fingerprint() const { return fingerprint_; }
@@ -218,11 +183,7 @@ class PyLoadedExecutable
   friend class PyClient;
 
   std::shared_ptr<PyClient> client_;
-#ifdef JAX_ENABLE_IFRT
   std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable_;
-#else
-  std::shared_ptr<PjRtLoadedExecutable> executable_;
-#endif
   std::shared_ptr<Traceback> traceback_;
 
   // Identical executables (i.e. representing the same program) will have the

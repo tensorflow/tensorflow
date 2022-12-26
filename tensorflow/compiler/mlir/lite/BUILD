@@ -312,6 +312,7 @@ cc_library(
     ],
     deps = [
         ":cost_estimators",
+        ":size_utils",
         ":tensorflow_lite_op_enums_inc_gen",
         ":tensorflow_lite_op_interfaces_inc_gen",
         ":tensorflow_lite_ops_inc_gen",
@@ -360,6 +361,31 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
+    ],
+)
+
+cc_library(
+    name = "size_utils",
+    srcs = [
+        "utils/size_utils.cc",
+    ],
+    hdrs = [
+        "utils/size_utils.h",
+    ],
+    deps = [
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+tf_cc_test(
+    name = "size_utils_test",
+    size = "small",
+    srcs = ["utils/size_utils_test.cc"],
+    deps = [
+        ":size_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -615,6 +641,7 @@ cc_library(
         ":lstm_utils",
         ":nms_utils",
         ":perception_ops_utils",
+        ":size_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
         ":tensorflow_lite_passes_inc_gen",
@@ -707,6 +734,7 @@ cc_library(
         "transforms/prepare_quantize.cc",
         "transforms/prepare_quantize_dynamic_range.cc",
         "transforms/quantize.cc",
+        "transforms/quantize_variables.cc",
         "utils/generated_op_quant_spec_getters.inc",
     ],
     hdrs = [
@@ -722,6 +750,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/quantization/lite:tfl_to_std",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -983,6 +1012,7 @@ cc_library(
         ":convert_type",
         ":flatbuffer_tflite_operator_lib",
         ":low_bit_utils",
+        ":size_utils",
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",

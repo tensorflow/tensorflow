@@ -640,6 +640,7 @@ def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]> {
     OptionalAttr<CustomCallTargetArgMappingAttr>:$target_arg_mapping
   );
   let hasVerifier = 1;
+  let regions = (region AnyRegion:$called_computation);
 }
 
 //===----------------------------------------------------------------------===//

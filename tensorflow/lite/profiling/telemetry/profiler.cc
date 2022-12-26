@@ -86,4 +86,75 @@ void TelemetryProfiler::EndEvent(uint32_t event_handle) {
   ReportEndOpInvokeEvent(event_handle);
 }
 
+// This TfLiteTelemetryProfiler class wraps the `TfLiteTelemetryProfilerStruct`
+// C API into the TelemetryProfiler interface. Users that uses the C API
+// will provide `TfLiteTelemetryProfilerStruct` to TfLiteInterpreter and then
+// TFLite runtime will build `TfLiteTelemetryProfiler` with it and register to
+// the interpreter.
+class TfLiteTelemetryProfiler : public TelemetryProfiler {
+ public:
+  explicit TfLiteTelemetryProfiler(TfLiteTelemetryProfilerStruct* profiler)
+      : profiler_(profiler) {}
+
+  ~TfLiteTelemetryProfiler() override { delete profiler_; }
+
+  void ReportTelemetryEvent(const char* event_name,
+                            TelemetryStatusCode status) override;
+  void ReportTelemetryOpEvent(const char* event_name, int64_t op_idx,
+                              int64_t subgraph_idx,
+                              TelemetryStatusCode status) override;
+  void ReportSettings(const char* setting_name,
+                      const TfLiteTelemetrySettings* settings) override;
+  uint32_t ReportBeginOpInvokeEvent(const char* op_name, int64_t op_idx,
+                                    int64_t subgraph_idx) override;
+  void ReportEndOpInvokeEvent(uint32_t event_handle) override;
+  void ReportOpInvokeEvent(const char* op_name, uint64_t elapsed_time,
+                           int64_t op_idx, int64_t subgraph_idx) override;
+
+ private:
+  // Owned by TfLiteTelemetryProfiler.
+  // Note, profiler_->data is owned by the caller.
+  TfLiteTelemetryProfilerStruct* profiler_ = nullptr;
+};
+
+void TfLiteTelemetryProfiler::ReportTelemetryEvent(const char* event_name,
+                                                   TelemetryStatusCode status) {
+  profiler_->ReportTelemetryEvent(profiler_, event_name, status.code());
+}
+
+void TfLiteTelemetryProfiler::ReportTelemetryOpEvent(
+    const char* event_name, int64_t op_idx, int64_t subgraph_idx,
+    TelemetryStatusCode status) {
+  profiler_->ReportTelemetryOpEvent(profiler_, event_name, op_idx, subgraph_idx,
+                                    status.code());
+}
+
+void TfLiteTelemetryProfiler::ReportSettings(
+    const char* setting_name, const TfLiteTelemetrySettings* settings) {
+  profiler_->ReportSettings(profiler_, setting_name, settings);
+}
+
+uint32_t TfLiteTelemetryProfiler::ReportBeginOpInvokeEvent(
+    const char* op_name, int64_t op_idx, int64_t subgraph_idx) {
+  return profiler_->ReportBeginOpInvokeEvent(profiler_, op_name, op_idx,
+                                             subgraph_idx);
+}
+
+void TfLiteTelemetryProfiler::ReportEndOpInvokeEvent(uint32_t event_handle) {
+  profiler_->ReportEndOpInvokeEvent(profiler_, event_handle);
+}
+
+void TfLiteTelemetryProfiler::ReportOpInvokeEvent(const char* op_name,
+                                                  uint64_t elapsed_time,
+                                                  int64_t op_idx,
+                                                  int64_t subgraph_idx) {
+  profiler_->ReportOpInvokeEvent(profiler_, op_name, elapsed_time, op_idx,
+                                 subgraph_idx);
+}
+
+TelemetryProfiler* MakeTfLiteTelemetryProfiler(
+    TfLiteTelemetryProfilerStruct* profiler) {
+  return new TfLiteTelemetryProfiler(profiler);
+}
+
 }  // namespace tflite::telemetry

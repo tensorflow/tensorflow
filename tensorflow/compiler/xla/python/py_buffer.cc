@@ -27,10 +27,8 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
-#ifdef JAX_ENABLE_IFRT
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
-#endif
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
@@ -87,7 +85,6 @@ void PyBuffer_tp_dealloc(PyObject* self) {
 
 }  // namespace
 
-#ifdef JAX_ENABLE_IFRT
 /*static*/ PyBuffer::object PyBuffer::Make(
     std::shared_ptr<PyClient> client, tsl::RCReference<ifrt::Array> ifrt_array,
     std::shared_ptr<Traceback> traceback) {
@@ -98,18 +95,6 @@ void PyBuffer_tp_dealloc(PyObject* self) {
       PyBuffer(std::move(client), std::move(ifrt_array), std::move(traceback));
   return py::reinterpret_borrow<PyBuffer::object>(obj);
 }
-#else
-/*static*/ PyBuffer::object PyBuffer::Make(
-    std::shared_ptr<PyClient> client, std::shared_ptr<PjRtBuffer> buffer,
-    std::shared_ptr<Traceback> traceback) {
-  py::object obj = py::reinterpret_steal<py::object>(PyBuffer_tp_new(
-      reinterpret_cast<PyTypeObject*>(type_), nullptr, nullptr));
-  PyBufferPyObject* buf = reinterpret_cast<PyBufferPyObject*>(obj.ptr());
-  new (&buf->buffer)
-      PyBuffer(std::move(client), std::move(buffer), std::move(traceback));
-  return py::reinterpret_borrow<PyBuffer::object>(obj);
-}
-#endif
 
 bool PyBuffer::IsPyBuffer(py::handle handle) {
   return handle.get_type() == PyBuffer::type();
@@ -132,7 +117,6 @@ py::handle PyBuffer::AsHandle() {
                                      offsetof(PyBufferPyObject, buffer));
 }
 
-#ifdef JAX_ENABLE_IFRT
 PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
                    tsl::RCReference<ifrt::Array> ifrt_array,
                    std::shared_ptr<Traceback> traceback)
@@ -147,22 +131,6 @@ PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
     next_->prev_ = this;
   }
 }
-#else
-PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
-                   std::shared_ptr<PjRtBuffer> buffer,
-                   std::shared_ptr<Traceback> traceback)
-    : client_(std::move(client)),
-      buffer_(std::move(buffer)),
-      traceback_(std::move(traceback)) {
-  CHECK(PyGILState_Check());
-  next_ = client_->buffers_[buffer_->device()->id()];
-  client_->buffers_[buffer_->device()->id()] = this;
-  prev_ = nullptr;
-  if (next_) {
-    next_->prev_ = this;
-  }
-}
-#endif
 
 PyBuffer::~PyBuffer() {
   CHECK(PyGILState_Check());
@@ -215,24 +183,16 @@ pybind11::dtype PyBuffer::python_dtype() const {
 }
 
 ClientAndPtr<PjRtDevice> PyBuffer::device() const {
-#ifdef JAX_ENABLE_IFRT
   return WrapWithClient(client_, ifrt_array_->sharding().devices().front());
-#else
-  return WrapWithClient(client_, buffer_->device());
-#endif
 }
 
 PyBuffer::object PyBuffer::Clone() const {
-#ifdef JAX_ENABLE_IFRT
   auto buffer = Make(client_,
                      ifrt_array_
                          ->Reshard(ifrt_array_->shared_ptr_sharding(),
                                    ifrt::ArrayCopySemantics::kReuseInput)
                          .value(),
                      traceback_);
-#else
-  auto buffer = Make(client_, buffer_, traceback_);
-#endif
   buffer.buf()->sticky_device_ = sticky_device_;
   buffer.buf()->aval_ = aval_;
   return buffer;
@@ -252,7 +212,6 @@ StatusOr<py::object> PyBuffer::CopyToDevice(
       jax::ApplyTransferGuardToDeviceToDevice(transfer_guard_formatter));
 
   GlobalPyRefManager()->CollectGarbage();
-#ifdef JAX_ENABLE_IFRT
   tsl::RCReference<ifrt::Array> out;
   {
     py::gil_scoped_release gil_release;
@@ -261,13 +220,6 @@ StatusOr<py::object> PyBuffer::CopyToDevice(
                  ifrt::SingleDeviceSharding::Create(dst_device.get()),
                  ifrt::ArrayCopySemantics::kReuseInput));
   }
-#else
-  std::unique_ptr<PjRtBuffer> out;
-  {
-    py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(out, buffer_->CopyToDevice(dst_device.get()));
-  }
-#endif
   auto traceback = Traceback::Get();
   return Make(dst_device.client, std::move(out), std::move(traceback));
 }
@@ -298,11 +250,7 @@ std::pair<Status, bool> PyBuffer::CopyToRemoteDevice(
 Status PyBuffer::BlockHostUntilReady() {
   GlobalPyRefManager()->CollectGarbage();
   py::gil_scoped_release gil_release;
-#ifdef JAX_ENABLE_IFRT
   return AwaitBuffersReady(ifrt_array_.get());
-#else
-  return buffer_->BlockHostUntilReady();
-#endif
 }
 
 Status PyBuffer::CopyToHostAsync() {
@@ -338,15 +286,9 @@ Status PyBuffer::CopyToHostAsync() {
 }
 
 StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
-#ifdef JAX_ENABLE_IFRT
   if (ifrt_array_->IsDeleted()) {
     return InvalidArgument("DeviceArray has been deleted.");
   }
-#else
-  if (buffer_->IsDeleted()) {
-    return InvalidArgument("DeviceArray has been deleted.");
-  }
-#endif
   TF_RET_CHECK(pjrt_buffer()->on_device_shape().IsArray());
   // On CPU, we can return the value in a zero-copy way.
   if (pjrt_buffer()->IsOnCpu()) {
@@ -370,11 +312,7 @@ StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
     array.attr("flags").attr("writeable") = Py_False;
     {
       py::gil_scoped_release gil;
-#ifdef JAX_ENABLE_IFRT
       TF_RETURN_IF_ERROR(ifrt_array_->GetReadyFuture().Await());
-#else
-      TF_RETURN_IF_ERROR(buffer_->GetReadyFuture().Await());
-#endif
     }
     return array;
   }
@@ -446,7 +384,6 @@ PyShardedBuffer PyShardedBuffer::CreateFromPyBuffers(
     return buf.buf()->sticky_device() == nullptr;
   };
 
-#ifdef JAX_ENABLE_IFRT
   std::vector<tsl::RCReference<ifrt::Array>> arrays;
   arrays.reserve(py_buffers.size());
   ifrt::DeviceList::Devices devices;
@@ -473,28 +410,12 @@ PyShardedBuffer PyShardedBuffer::CreateFromPyBuffers(
   }
   return PyShardedBuffer(std::move(client), *std::move(array),
                          std::move(traceback), sticky);
-#else
-  std::vector<std::shared_ptr<PjRtBuffer>> results;
-  results.reserve(py_buffers.size());
-  for (const auto& py_buffer : py_buffers) {
-    // Either all device buffers are sticky or none of them are sticky.
-    DCHECK(check_sticky(py_buffer));
-    results.push_back(py_buffer.buf()->shared_ptr_pjrt_buffer());
-  }
-
-  return PyShardedBuffer(std::move(client), std::move(results),
-                         std::move(traceback), sticky);
-#endif
 }
 
 Status PyShardedBuffer::BlockHostUntilReady() {
   GlobalPyRefManager()->CollectGarbage();
   py::gil_scoped_release gil_release;
-#ifdef JAX_ENABLE_IFRT
   return AwaitBuffersReady(ifrt_array());
-#else
-  return AwaitBuffersReady(buffers_);
-#endif
 }
 
 // PEP 3118 buffer protocol implementation.
@@ -740,25 +661,14 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       property_readonly([](py::object self) { return self; });
   type.attr("shape") =
       property_readonly([](PyBuffer::object self) -> py::tuple {
-#ifdef JAX_ENABLE_IFRT
         return SpanToTuple(self.buf()->ifrt_array()->shape().dims());
-#else
-        return SpanToTuple(
-            self.buf()->pjrt_buffer()->on_device_shape().dimensions());
-#endif
       });
   type.attr("dtype") =
       property_readonly([](PyBuffer::object self) -> StatusOr<py::dtype> {
-#ifdef JAX_ENABLE_IFRT
         TF_ASSIGN_OR_RETURN(
             auto primitive_type,
             ifrt::ToPrimitiveType(self.buf()->ifrt_array()->dtype()));
         return PrimitiveTypeToDtype(primitive_type);
-#else
-        PrimitiveType primitive =
-            self.buf()->pjrt_buffer()->on_device_shape().element_type();
-        return PrimitiveTypeToDtype(primitive).value();
-#endif
       });
   type.attr("size") =
       property_readonly([](PyBuffer::object self) -> StatusOr<int64_t> {
@@ -855,7 +765,6 @@ Status PyBuffer::RegisterTypes(py::module& m) {
   return OkStatus();
 }
 
-#ifdef JAX_ENABLE_IFRT
 StatusOr<ifrt::DType> ToIfRtDType(py::dtype dtype) {
   TF_ASSIGN_OR_RETURN(auto primitive_type, DtypeToPrimitiveType(dtype));
   return ifrt::ToDType(primitive_type);
@@ -865,6 +774,5 @@ StatusOr<py::dtype> ToPybind11DType(ifrt::DType dtype) {
   TF_ASSIGN_OR_RETURN(auto primitive_type, ifrt::ToPrimitiveType(dtype));
   return PrimitiveTypeToDtype(primitive_type);
 }
-#endif
 
 }  // namespace xla

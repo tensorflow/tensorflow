@@ -84,6 +84,7 @@ void PopulateCustomCallTypeIdNames(TypeIDNameRegistry& r) {
   r.Register<Tagged<MemrefView>>("__type_id_memref_view");
   r.Register<Tagged<StridedMemrefView>>("__type_id_strided_memref_view");
   r.Register<Tagged<EmptyArray>>("__type_id_empty_array");
+  r.Register<Tagged<Dictionary>>("__type_id_dictionary");
 
   r.Register<Tagged<absl::Span<const int8_t>>>("__type_id_array_int8");
   r.Register<Tagged<absl::Span<const int16_t>>>("__type_id_array_int16");
@@ -106,6 +107,7 @@ XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(xla::runtime::StridedMemrefView);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(xla::runtime::MemrefView);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(xla::runtime::FlatMemrefView);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(xla::runtime::EmptyArray);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(xla::runtime::Dictionary);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(int32_t);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(int64_t);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(float);

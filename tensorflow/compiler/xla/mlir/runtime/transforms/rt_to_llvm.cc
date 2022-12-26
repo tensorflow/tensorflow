@@ -106,10 +106,12 @@ struct RuntimeAPI {
 };
 
 // Adds function declaration if it doesn't already exist.
-static void AddDeclaration(ModuleOp module, std::string_view name,
-                           FunctionType type) {
+static void AddDeclaration(SymbolTable &sym_table, ModuleOp module,
+                           std::string_view name, FunctionType type) {
+  assert(sym_table.getOp() == module && "incorrect symbol table");
+  if (sym_table.lookup(name)) return;
+
   auto b = ImplicitLocOpBuilder::atBlockEnd(module.getLoc(), module.getBody());
-  if (module.lookupSymbol(name)) return;
 
   MLIRContext *ctx = module.getContext();
   func::FuncOp func = b.create<func::FuncOp>(name, type);
@@ -118,12 +120,14 @@ static void AddDeclaration(ModuleOp module, std::string_view name,
   // TODO(ezhulenev): Add per-argument nocapture attributes?
   func->setAttr("passthrough",
                 ArrayAttr::get(ctx, {StringAttr::get(ctx, "nounwind")}));
+
+  sym_table.insert(func);
 }
 
 // Adds Runtime C API declarations to the module.
-static void AddRuntimeApiDeclarations(ModuleOp module) {
+static void AddRuntimeApiDeclarations(SymbolTable &sym_table, ModuleOp module) {
   auto add = [&](std::string_view name, FunctionType type) {
-    AddDeclaration(module, name, type);
+    AddDeclaration(sym_table, module, name, type);
   };
 
   MLIRContext *ctx = module.getContext();
@@ -517,7 +521,8 @@ class CallOpLowering : public OpConversionPattern<CallOp> {
     // Creates a direct custom call resolved at link time.
     auto call_direct = [&]() -> func::CallOp {
       auto type = RuntimeAPI::DirectCustomCallFunctionType(op.getContext());
-      AddDeclaration(op->getParentOfType<ModuleOp>(), op.getCallee(), type);
+      AddDeclaration(sym_table_, op->getParentOfType<ModuleOp>(),
+                     op.getCallee(), type);
 
       return b.create<func::CallOp>(
           op.getCallee(), TypeRange(rewriter.getI1Type()),
@@ -674,8 +679,11 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   ModuleOp module = getOperation();
   MLIRContext *ctx = module.getContext();
 
+  // A symbol table for resolving symbol references attributes.
+  SymbolTable sym_table(module);
+
   // Add declarations for the runtime API functions.
-  AddRuntimeApiDeclarations(module);
+  AddRuntimeApiDeclarations(sym_table, module);
 
   RuntimeTypeConverter converter;
   RewritePatternSet patterns(ctx);
@@ -722,9 +730,6 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   PopulateCustomCallTypeIdNames(type_id_names);
   PopulateTraceTypeIdNames(type_id_names);
   if (opts_.populate_type_id_names) opts_.populate_type_id_names(type_id_names);
-
-  // A symbol table for resolving symbol references attributes.
-  SymbolTable sym_table(module);
 
   // A helper class to create unique global constants.
   Globals globals(module, type_id_names);

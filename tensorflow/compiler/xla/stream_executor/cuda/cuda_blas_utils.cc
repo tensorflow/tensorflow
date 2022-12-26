@@ -41,10 +41,12 @@ port::Status ToStatus(cublasStatus_t status, const char* prefix) {
 
 cudaDataType_t AsCudaDataType(blas::DataType type) {
   switch (type) {
+#if CUDA_VERSION >= 11080
     case blas::DataType::kF8E5M2:
       return CUDA_R_8F_E5M2;
     case blas::DataType::kF8E4M3FN:
       return CUDA_R_8F_E4M3;
+#endif
     case blas::DataType::kHalf:
       return CUDA_R_16F;
     case blas::DataType::kBF16:

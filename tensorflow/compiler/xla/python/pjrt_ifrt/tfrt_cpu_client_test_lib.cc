@@ -30,7 +30,8 @@ const bool kUnused =
            TF_ASSIGN_OR_RETURN(auto pjrt_client,
                                xla::GetTfrtCpuClient(/*asynchronous=*/true,
                                                      /*cpu_device_count=*/2));
-           return PjRtClient::Create(std::move(pjrt_client));
+           return StatusOr<std::unique_ptr<PjRtClient>>(
+               PjRtClient::Create(std::move(pjrt_client)));
          }),
      true);
 

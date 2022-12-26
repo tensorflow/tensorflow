@@ -47,6 +47,15 @@ Status HloModuleImporter::Import(const xla::HloModule& hlo_module) {
   module->setAttr("mhlo.cross_program_prefetches",
                   ConvertCrossProgramPrefetches(
                       hlo_module.CrossProgramPrefetches(), &builder_));
+  module->setAttr("mhlo.dynamic_parameter_bindings",
+                  ConvertDynamicParameterBindings(
+                      hlo_module.dynamic_parameter_binding(), &builder_));
+  module->setAttr(
+      "mhlo.is_dynamic",
+      mlir::BoolAttr::get(builder_.getContext(), hlo_module.is_dynamic()));
+  module->setAttr("mhlo.use_auto_spmd_partitioning",
+                  mlir::BoolAttr::get(builder_.getContext(),
+                                      hlo_module.use_auto_spmd_partitioning()));
 
   if (!import_all_computation_)
     // Only import the entry computation, any reachable one will be imported

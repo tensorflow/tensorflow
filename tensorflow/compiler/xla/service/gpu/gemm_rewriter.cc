@@ -522,6 +522,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return false;
     }
 
+#if CUDA_VERSION < 11080
+    // FP8 GEMM kernels are only available with CUDA 11.8 and above
+    return false;
+#endif
+
     // cuBLASLt FP8 GEMM kernels require one of the two operands to be in
     // F8E4M3FN format.
     if (!((a->shape().element_type() == F8E4M3FN &&

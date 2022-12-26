@@ -1627,13 +1627,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with ops.colocate_with(y):
       self.assertIn(compat.as_bytes('GPU:0'), self.evaluate(foo()))
 
-  def testVariablesAreTracked(self):
+  @parameterized.parameters([(True), (False)])
+  def testVariablesAreTracked(self, reduce_retracing):
     v = resource_variable_ops.ResourceVariable(1.0)
 
     def foo(x):
       return v * x
 
-    defined = polymorphic_function.function(foo)
+    defined = polymorphic_function.function(
+        foo, reduce_retracing=reduce_retracing)
 
     x = constant_op.constant([1.0])
     self.assertEqual(1., self.evaluate(defined(x)))
@@ -1879,9 +1881,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertLen(internal_captures, 1)
       self.assertEqual(internal_captures[0].op.type, op_type)
 
-  def testVariableAliasIdInStructuredInputSignature(self):
+  @parameterized.parameters([(True), (False)])
+  def testVariableAliasIdInStructuredInputSignature(self, reduce_retracing):
 
-    @polymorphic_function.function
+    @polymorphic_function.function(reduce_retracing=reduce_retracing)
     def foo(v1, v2):
       return v1 + v2
 
@@ -1920,9 +1923,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def _total_function_cache_def_func(self, defined):
     return defined._list_all_concrete_functions()  # pylint: disable=protected-access
 
-  def testVariableRetracingOnDtypeChanges(self):
+  @parameterized.parameters([(True), (False)])
+  def testVariableRetracingOnDtypeChanges(self, reduce_retracing):
 
-    @polymorphic_function.function
+    @polymorphic_function.function(reduce_retracing=reduce_retracing)
     def defined(a, b):
       return a + b
 

@@ -9,7 +9,7 @@ load(
     "xla_cc_test",
 )
 load(
-    "//third_party/mkl:build_defs.bzl",
+    "//tensorflow/tsl/mkl:build_defs.bzl",
     "mkl_deps",
 )
 load("//tensorflow/tsl:tsl.bzl", "tf_openmp_copts", "tsl_copts")
@@ -511,6 +511,7 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compiler",
         "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/runtime:ffi",
         "//tensorflow/compiler/xla/runtime:jit_executable",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:computation_layout",

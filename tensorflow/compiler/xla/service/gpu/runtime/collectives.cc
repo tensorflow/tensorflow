@@ -78,8 +78,8 @@ StatusOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
       return InvalidArgument("Unsupported device buffer pair type");
     }
 
-    int element_count = 1;
-    for (int size : source->sizes) element_count *= size;
+    int64_t element_count = 1;
+    for (int64_t size : source->sizes) element_count *= size;
     device_buffers.emplace_back(DeviceBufferPair{
         source->dtype, element_count, GetDeviceAddress(*source),
         GetDeviceAddress(*destination)});

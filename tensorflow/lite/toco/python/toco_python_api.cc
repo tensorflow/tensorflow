@@ -293,7 +293,8 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
                             int input_data_type, int output_data_type,
                             bool enable_numeric_verify,
                             bool enable_whole_model_verify,
-                            PyObject* op_denylist, PyObject* node_denylist) {
+                            PyObject* op_denylist, PyObject* node_denylist,
+                            bool enable_variable_quantization) {
   using tflite::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
   Py_ssize_t length;
@@ -337,7 +338,8 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
       *tflite_model, input_type, output_type, inference_tensor_type, {},
       disable_per_channel, fully_quantize, &builder, error_reporter.get(),
       enable_numeric_verify, enable_whole_model_verify,
-      /*legacy_float_scale=*/true, denylisted_ops, denylisted_nodes);
+      /*legacy_float_scale=*/true, denylisted_ops, denylisted_nodes,
+      enable_variable_quantization);
 
   if (status != kTfLiteOk) {
     error_reporter->exception();

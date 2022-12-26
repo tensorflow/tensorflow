@@ -134,6 +134,8 @@ class AsyncSignatureRunner {
 
   // Blocks and wait for execution tied to `task` to finish.
   // `task` should not be nullptr.
+  // Can be called from multiple threads. All calls will block until the
+  // task finishes execution.
   //
   // NOTE: `Wait` and `InvokeAsync` should be called in pairs with the same
   // `task`, unless `Finish(task)` is called and task is freed. The application
@@ -141,14 +143,18 @@ class AsyncSignatureRunner {
   // tensors are associated with synchronizations.
   //
   // Returns kTfLiteError if any backends failed to finish the execution.
+  // If the task is currently idle, it will return its latest status code.
   TfLiteStatus Wait(TfLiteExecutionTask* task);
 
   // Finishes the task and release all intermediate resources tied to
-  // this task.
+  // this task. Must be and only be called once for the same `task` object.
   // If there's ongoing execution, will block wait for the execution
   // to finish.
   // `task` should not be nullptr and will be deleted.
-  // Returns kTfLiteError if failes to release the task.
+  // NOTE: Caller needs to ensure `Finish` is not called concurrently with
+  // `InvokeAsync` or `Wait`.
+  // Returns kTfLiteError if failes to release the task. The task will be
+  // destroyed regardless of error or not.
   TfLiteStatus Finish(TfLiteExecutionTask* task);
 
  private:

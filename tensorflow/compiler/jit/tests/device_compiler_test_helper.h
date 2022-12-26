@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_JIT_TESTS_XLA_COMPILATION_CACHE_TEST_HELPER_H_
-#define TENSORFLOW_COMPILER_JIT_TESTS_XLA_COMPILATION_CACHE_TEST_HELPER_H_
+#ifndef TENSORFLOW_COMPILER_JIT_TESTS_DEVICE_COMPILER_TEST_HELPER_H_
+#define TENSORFLOW_COMPILER_JIT_TESTS_DEVICE_COMPILER_TEST_HELPER_H_
 
 #include <memory>
 #include <utility>
@@ -68,9 +68,9 @@ class JitCompilationListener : public XlaActivityListener {
 };
 
 // Fixture for testing XLA compilation cache serialization.
-class XlaCompilationCacheSerializeTest : public ::testing::Test {
+class DeviceCompilerSerializeTest : public ::testing::Test {
  protected:
-  XlaCompilationCacheSerializeTest() {
+  DeviceCompilerSerializeTest() {
     auto listener = std::make_unique<JitCompilationListener>();
     listener_ = listener.get();
     RegisterXlaActivityListener(std::move(listener));
@@ -99,4 +99,4 @@ class XlaCompilationCacheSerializeTest : public ::testing::Test {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_JIT_TESTS_XLA_COMPILATION_CACHE_TEST_HELPER_H_
+#endif  // TENSORFLOW_COMPILER_JIT_TESTS_DEVICE_COMPILER_TEST_HELPER_H_

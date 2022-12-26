@@ -1442,7 +1442,7 @@ class DnnSupport {
   // Return a list of algorithms supported by the forward convolution pass.
   // cc_major and cc_minor are the compute capabilities of the device.
   virtual bool GetConvolveAlgorithms(
-      CudaComputeCapability cuda_compute_capability,
+      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   virtual port::Status GetConvolveRunners(
@@ -1562,13 +1562,13 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // data.
   virtual bool GetConvolveBackwardDataAlgorithms(
-      CudaComputeCapability cuda_compute_capability,
+      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   // Return a list of algorithms supported by the backward convolution pass for
   // filters.
   virtual bool GetConvolveBackwardFilterAlgorithms(
-      CudaComputeCapability cuda_compute_capability,
+      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   // Fully connects the "nodes" (float values) in input_data with

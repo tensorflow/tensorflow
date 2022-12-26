@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
@@ -378,6 +379,23 @@ PJRT_SerializedExecutableDeleter MakeSerializedExecutableDeleter(
     pjrt::LogFatalIfPjrtError(
         api->PJRT_SerializedExecutable_Destroy(&destroy_args), api);
   };
+}
+
+static std::string StructSizeErrorMsg(absl::string_view struct_name,
+                                      size_t expected_size,
+                                      size_t actual_size) {
+  return absl::StrCat("Unexpected ", struct_name, " size: expected ",
+                      expected_size, ", got ", actual_size,
+                      ". Check installed software versions.");
+}
+
+xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
+                                     size_t expected_size, size_t actual_size) {
+  if (expected_size != actual_size) {
+    return tsl::errors::InvalidArgument(
+        StructSizeErrorMsg(struct_name, expected_size, actual_size));
+  }
+  return tsl::OkStatus();
 }
 
 }  // namespace pjrt

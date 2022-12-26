@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/jit/tests/xla_compilation_cache_test_helper.h"
+#include "tensorflow/compiler/jit/tests/device_compiler_test_helper.h"
 
 #include <string>
 
@@ -52,7 +52,7 @@ NodeDef MakeNode(
 
 }  // namespace
 
-GraphDef XlaCompilationCacheSerializeTest::GetTestGraph(
+GraphDef DeviceCompilerSerializeTest::GetTestGraph(
     const PartialTensorShape& input_shape) {
   FunctionDef make_test_fn = FunctionDefHelper::Define(
       "TestFn", {"a:float", "b:float", "c:float"}, {"m:float"}, {},
@@ -80,8 +80,8 @@ GraphDef XlaCompilationCacheSerializeTest::GetTestGraph(
   return graph;
 }
 
-Status XlaCompilationCacheSerializeTest::ExecuteWithBatch(const GraphDef& graph,
-                                                          int batch) {
+Status DeviceCompilerSerializeTest::ExecuteWithBatch(const GraphDef& graph,
+                                                     int batch) {
   const TensorShape shape({batch, 4});
 
   // Compute the golden output tensor
@@ -134,8 +134,7 @@ Status XlaCompilationCacheSerializeTest::ExecuteWithBatch(const GraphDef& graph,
   return OkStatus();
 }
 
-Status
-XlaCompilationCacheSerializeTest::AlterPersistentCacheEntryHloModuleNames(
+Status DeviceCompilerSerializeTest::AlterPersistentCacheEntryHloModuleNames(
     absl::string_view persistent_cache_dir_path,
     absl::string_view file_prefix) {
   Env* env = Env::Default();

@@ -668,6 +668,7 @@ build:asan --copt -g
 build:asan --copt -O3
 build:asan --copt -fno-omit-frame-pointer
 build:asan --linkopt -fsanitize=address
+build:asan --@libjpeg_turbo//:noasm=yes
 
 # Memory sanitizer
 # CC=clang bazel build --config msan

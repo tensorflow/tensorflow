@@ -1,8 +1,5 @@
 # Description: GPU-specific XLA tests. For example, codegen tests that
 # verify the IR emitted.
-#
-# TODO(jlebar): None of these tests actually use the GPU, so they should not
-# need to run on machines with GPUs present.
 
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
@@ -293,10 +290,12 @@ xla_cc_test(
     srcs = [
         "reduction_layout_normalizer_test.cc",
     ],
+    tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:reduction_layout_normalizer",
@@ -832,7 +831,6 @@ xla_cc_binary(
         "//tensorflow/tsl/util:determinism",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
-        "//tensorflow/compiler/xla/service/gpu:nvptx_helper",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler_impl",
@@ -885,4 +883,26 @@ xla_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/tsl/platform:test_main",
     ],
+)
+
+xla_cc_test(
+    name = "dynamic_shared_memory_test",
+    srcs = if_cuda_is_configured(["dynamic_shared_memory_test.cc"]),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "@com_google_absl//absl/strings",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/tsl/platform:test",
+    ] + if_cuda_is_configured([
+        "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler",
+        "//tensorflow/compiler/xla/service/gpu:gpu_asm_opts_util",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
+        "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
+        "//tensorflow/compiler/xla/stream_executor:device_memory",
+    ]),
 )

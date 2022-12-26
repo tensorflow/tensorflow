@@ -387,8 +387,8 @@ StatusOr<XlaOp> MlirHloBuilder::SortInternal(const Shape& shape,
   auto op = builder_.create<mlir::mhlo::SortOp>(
       loc_, sort_types, GetValues(operands),
       builder_.getI64IntegerAttr(dimension), builder_.getBoolAttr(is_stable));
-  TF_RETURN_IF_ERROR(
-      ImportComputation(comparator.proto(), &op.getComparator()));
+  TF_RETURN_IF_ERROR(ImportComputation(comparator.proto(), &op.getComparator(),
+                                       /*flatten_region_arg_tuple*/ true));
 
   if (ty.isa<mlir::TupleType>()) {
     // Add frontend attributes to the SortOp as no MakeXlaOp is called.
@@ -483,7 +483,8 @@ StatusOr<XlaOp> MlirHloBuilder::ScatterInternal(
       builder_.getBoolAttr(unique_indices));
 
   TF_RETURN_IF_ERROR(ImportComputation(update_computation.proto(),
-                                       &op.getUpdateComputation()));
+                                       &op.getUpdateComputation(),
+                                       /*flatten_region_arg_tuple*/ true));
   return MakeXlaOp(op.getResult(0));
 }
 

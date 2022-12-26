@@ -128,6 +128,7 @@ class AsyncSubgraph {
   // Blocks and wait for execution tied to `task` to finish.
   // `task` should not be nullptr.
   // Returns kTfLiteError if any backends failed to finish the execution.
+  // If the task is currently idle, it will return its latest status code.
   TfLiteStatus Wait(TfLiteExecutionTask* task);
 
   // Finishes the task and release all intermediate resources tied to

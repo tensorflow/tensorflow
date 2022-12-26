@@ -2344,10 +2344,14 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "batchnorm_expander_test",
     size = "small",
     srcs = ["batchnorm_expander_test.cc"],
+    backends = [
+        "cpu",
+        "gpu",
+    ],
     deps = [
         ":batchnorm_expander",
         ":hlo_matchers",
@@ -5017,6 +5021,7 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
@@ -6204,6 +6209,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/tsl/platform:env",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -7067,6 +7073,12 @@ xla_aot_compile_gpu(
     module = "xla_aot_compile_test_gemm.mlir",
 )
 
+xla_aot_compile_gpu(
+    name = "xla_aot_compile_test_gpu_executable_convolution",
+    gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
+    module = "xla_aot_compile_test_convolution.mlir",
+)
+
 xla_cc_test(
     name = "xla_aot_compile_cpu_test",
     srcs = ["xla_aot_compile_cpu_test.cc"],
@@ -7119,6 +7131,7 @@ xla_cc_test(
         ":xla_aot_compile_test_gpu_executable",
         ":xla_aot_compile_test_gpu_executable_constant",
         ":xla_aot_compile_test_gpu_executable_gemm",
+        ":xla_aot_compile_test_gpu_executable_convolution",
     ]),
     env = {
         "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",

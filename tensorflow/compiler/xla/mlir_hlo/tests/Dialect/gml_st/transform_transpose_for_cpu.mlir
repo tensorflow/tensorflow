@@ -15,10 +15,10 @@ func.func @transpose_permutation(%input: tensor<16x32x64xf32>,
 
 // CHECK:             gml_st.parallel
 // CHECK:               %[[INPUT_SUB:.*]] = gml_st.materialize %[[INPUT]]
-// CHECK:      : tensor<16x32x64xf32>[!gml_st.tile<8x1x8>] to tensor<8x1x8xf32>
+// CHECK:      : tensor<16x32x64xf32> to tensor<8x1x8xf32>
 
 // CHECK:              %[[INIT_SUB:.*]] =  gml_st.materialize %[[INIT]]
-// CHECK:      : tensor<32x64x16xf32>[!gml_st.tile<1x8x8>] to tensor<1x8x8xf32>
+// CHECK:      : tensor<32x64x16xf32> to tensor<1x8x8xf32>
 
 // CHECK:       linalg.transpose
 // CHECK-SAME:    ins(%[[INPUT_SUB]] : tensor<8x1x8xf32>)

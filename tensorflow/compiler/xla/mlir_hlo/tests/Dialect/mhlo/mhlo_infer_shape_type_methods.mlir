@@ -378,6 +378,25 @@ func.func @slice(%arg0: tensor<3x4xi32>) -> tensor<1x2xindex> {
 
 // -----
 
+// CHECK-LABEL: func @slice_with_bounds
+func.func @slice_with_bounds(%arg0: tensor<3x?x?xi32, #mhlo.type_extensions<bounds = [?, 4, ?]>>) -> tensor<*xindex> {
+  %0 = "mhlo.slice"(%arg0) {start_indices = dense<[1, 0, 0]> : tensor<3xi64>, limit_indices = dense<[2, 4, 4]> : tensor<3xi64>, strides = dense<[1, 2, 2]> : tensor<3xi64>} : (tensor<3x?x?xi32, #mhlo.type_extensions<bounds = [?, 4, ?]>>) -> tensor<*xi32>
+  // CHECK: %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<*xi32>) -> tensor<*xindex>
+  %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<*xi32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
+func.func @slice_with_index_larger_than_bound_dim(%arg0: tensor<3x?x?xi32, #mhlo.type_extensions<bounds = [?, 4, ?]>>) -> tensor<*xindex> {
+  // expected-error@+1 {{limit index 5 is larger than dimension bound 4 in dimension 1}}
+  %0 = "mhlo.slice"(%arg0) {start_indices = dense<[1, 0, 0]> : tensor<3xi64>, limit_indices = dense<[2, 5, 4]> : tensor<3xi64>, strides = dense<[1, 2, 2]> : tensor<3xi64>} : (tensor<3x?x?xi32, #mhlo.type_extensions<bounds = [?, 4, ?]>>) -> tensor<*xi32>
+  %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<*xi32>) -> tensor<*xindex>
+  func.return %1 : tensor<*xindex>
+}
+
+// -----
+
 // CHECK-LABEL: func @clamp
 func.func @clamp(%arg0: tensor<1xi32>) -> tensor<1xindex> {
   %0 = "mhlo.clamp"(%arg0, %arg0, %arg0) : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>

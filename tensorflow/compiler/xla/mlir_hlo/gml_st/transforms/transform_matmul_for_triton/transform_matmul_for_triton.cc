@@ -80,9 +80,9 @@ struct MatmulTransformPattern : public OpRewritePattern<linalg::MatmulOp> {
       return rewriter.notifyMatchFailure(
           matmulOp, "has already been tiled by another pass.");
 
-    SmallVector<Operation *> fusionCluster = findMapFusionCluster(matmulOp);
-    Operation *tilingRoot = fusionCluster[0];
-
+    auto cluster = findMapFusionCluster(matmulOp);
+    auto fusionCluster = cluster.operations;
+    Operation *tilingRoot = cluster.root;
     // Tiling of linalg.map requires two dimensions, linalg.matmul requires
     // three.
     SmallVector<int64_t> parallelDimsTileSizes{lhsParallelDimTileSize,

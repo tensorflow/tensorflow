@@ -56,22 +56,19 @@ class PjRtArray final
       absl::InlinedVector<std::shared_ptr<PjRtBuffer>, kPjRtBufferInlineSize>;
 
   // General array construction.
-  static StatusOr<tsl::RCReference<Array>> Create(
+  static StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, DType dtype, Shape shape,
       std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers);
 
   // Shorthand for a single-shard array construction.
-  static StatusOr<tsl::RCReference<Array>> Create(
+  static StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer);
-  static StatusOr<tsl::RCReference<Array>> Create(
-      PjRtCompatibleClient* client, std::unique_ptr<PjRtBuffer> pjrt_buffer);
 
   // Shorthand for a multi-shard array construction using OpaqueSharding.
   // TODO(hyeontaek): Remove this once IFRT Sharding and JAX Sharding is unified
   // so that OpaqueSharding can be replaced with a real Sharding.
-  static StatusOr<tsl::RCReference<Array>> Create(PjRtCompatibleClient* client,
-                                                  Shape shape,
-                                                  PjRtBuffers pjrt_buffers);
+  static StatusOr<tsl::RCReference<PjRtArray>> Create(
+      PjRtCompatibleClient* client, Shape shape, PjRtBuffers pjrt_buffers);
 
   // PjRtCompatibleArray implementation.
 

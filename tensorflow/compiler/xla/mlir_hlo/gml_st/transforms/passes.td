@@ -188,6 +188,17 @@ def LowerVectorContractPass :
                            "::mlir::gml_st::GmlStDialect"];
 }
 
+def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
+  let summary = "Converts ops on tensors with 1 element to scalar ops.";
+  let dependentDialects = [
+    "arith::ArithDialect",
+    "gml_st::GmlStDialect",
+    "scf::SCFDialect",
+    "tensor::TensorDialect"
+  ];
+  let constructor = "createScalarizationPass()";
+}
+
 def TransformScatterForCpuPass :
     Pass<"xla-cpu-transform-scatter", "mlir::func::FuncOp"> {
   let summary = "Transform scatter ops for running on CPU";

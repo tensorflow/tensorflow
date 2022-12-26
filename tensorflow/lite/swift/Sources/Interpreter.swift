@@ -81,8 +81,39 @@ public final class Interpreter {
   ///   - delegate: `Array` of `Delegate`s for the `Interpreter` to use to peform graph operations.
   ///       The default is `nil`.
   /// - Throws: An error if the model could not be loaded or the interpreter could not be created.
-  public init(modelPath: String, options: Options? = nil, delegates: [Delegate]? = nil) throws {
+  public convenience init(modelPath: String, options: Options? = nil, delegates: [Delegate]? = nil)
+    throws
+  {
     guard let model = Model(filePath: modelPath) else { throw InterpreterError.failedToLoadModel }
+    try self.init(model: model, options: options, delegates: delegates)
+  }
+
+  /// Creates a new instance with the given values.
+  ///
+  /// - Parameters:
+  ///   - modelData: Binary data representing a TensorFlow Lite model.
+  ///   - options: Configurations for the `Interpreter`. The default is `nil` indicating that the
+  ///       `Interpreter` will determine the configuration options.
+  ///   - delegate: `Array` of `Delegate`s for the `Interpreter` to use to peform graph operations.
+  ///       The default is `nil`.
+  /// - Throws: An error if the model could not be loaded or the interpreter could not be created.
+  public convenience init(modelData: Data, options: Options? = nil, delegates: [Delegate]? = nil)
+    throws
+  {
+    guard let model = Model(modelData: modelData) else { throw InterpreterError.failedToLoadModel }
+    try self.init(model: model, options: options, delegates: delegates)
+  }
+
+  /// Create a new instance with the given values.
+  ///
+  /// - Parameters:
+  ///   - model: An instantiated TensorFlow Lite model.
+  ///   - options: Configurations for the `Interpreter`. The default is `nil` indicating that the
+  ///       `Interpreter` will determine the configuration options.
+  ///   - delegate: `Array` of `Delegate`s for the `Interpreter` to use to peform graph operations.
+  ///       The default is `nil`.
+  /// - Throws: An error if the model could not be loaded or the interpreter could not be created.
+  private init(model: Model, options: Options? = nil, delegates: [Delegate]? = nil) throws {
     guard let cInterpreterOptions = TfLiteInterpreterOptionsCreate() else {
       throw InterpreterError.failedToCreateInterpreter
     }

@@ -2192,7 +2192,7 @@ def SplitIntoIslandPerOpPass : Pass<"tf-executor-split-into-island-per-op", "mli
         }
     ```
   }];
-  let constructor = "mlir::CreateSplitIntoIslandPerOpPass()";
+  let constructor = "mlir::TF::CreateSplitIntoIslandPerOpPass()";
   let dependentDialects = ["mlir::tf_executor::TensorFlowExecutorDialect"];
 }
 

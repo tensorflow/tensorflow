@@ -1,4 +1,4 @@
-// RUN: xla-opt "-xla-legalize-tf-with-tf2xla=device-type=XLA_CPU_JIT legalize-test-only-ops" %s -verify-diagnostics | FileCheck %s
+// RUN: xla-opt "-xla-legalize-tf=device-type=XLA_CPU_JIT allow-partial-conversion=true prefer-tf2xla=true use-tf2xla-fallback=true" %s -verify-diagnostics | FileCheck %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
 
@@ -102,13 +102,13 @@ func.func @convert(%arg0: tensor<2xi32>) -> tensor<2xf32> {
 }
 
 // CHECK-LABEL: func @constant
-func.func @constant(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<2xf32>
-  // CHECK: %[[RESULT:.*]] = mhlo.divide %[[ONE]], %arg0 : tensor<2xf32>
+func.func @constant(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK: %[[RESULT:.*]] = mhlo.divide %[[ONE]], %arg0 : tensor<f32>
   // CHECK: return %[[RESULT]]
 
-  %0 = "tf.Inv"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  func.return %0 : tensor<2xf32>
+  %0 = "tf.Inv"(%arg0) : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // CHECK-LABEL: func @greater

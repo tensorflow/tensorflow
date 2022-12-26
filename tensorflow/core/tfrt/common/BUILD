@@ -1,4 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -33,10 +34,6 @@ cc_library(
     hdrs = [
         "global_state.h",
     ],
-    compatible_with = if_google([
-        "//buildenv/target:libtpu",
-        "//buildenv/target:gce",
-    ]),
     visibility = [":friends"],
     deps = [
         "//tensorflow/core:framework",
@@ -54,10 +51,6 @@ cc_library(
     hdrs = [
         "async_value_tensor.h",
     ],
-    compatible_with = if_google([
-        "//buildenv/target:libtpu",
-        "//buildenv/target:gce",
-    ]),
     visibility = [":friends"],
     deps = [
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
@@ -75,10 +68,6 @@ cc_library(
     hdrs = [
         "pjrt_state.h",
     ],
-    compatible_with = if_google([
-        "//buildenv/target:libtpu",
-        "//buildenv/target:gce",
-    ]),
     visibility = [":friends"],
     deps = [
         ":global_state",
@@ -97,10 +86,6 @@ cc_library(
     hdrs = [
         "pjrt_util.h",
     ],
-    compatible_with = if_google([
-        "//buildenv/target:libtpu",
-        "//buildenv/target:gce",
-    ]),
     visibility = [":friends"],
     deps = [
         ":global_state",

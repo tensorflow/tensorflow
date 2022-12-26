@@ -82,8 +82,12 @@ module {
     %i8_min = "tf.Const"() {value = dense<-128.0> : tensor<f32>} : () -> tensor<f32>
     %i8_max = "tf.Const"() {value = dense<127.0> : tensor<f32>} : () -> tensor<f32>
     %float_out_zp = "tf.Cast"(%out_zp) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
-    %clip_min = "tf.Maximum"(%i8_min, %float_out_zp) : (tensor<f32>, tensor<*xf32>) -> tensor<f32>
-    %0 = "tf.ClipByValue"(%rescale, %clip_min, %i8_max) : (tensor<*xf32>, tensor<f32>, tensor<f32>) -> tensor<*xf32>
+    // The clip_value_min and clip_value_max must be either of the same shape as input, or a scalar.
+    %rescale_shape = "tf.Shape"(%rescale) : (tensor<*xf32>) -> tensor<*xi32>
+    %clip_min = "tf.Maximum"(%i8_min, %float_out_zp) : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
+    %clip_value_min = "tf.BroadcastTo"(%clip_min, %rescale_shape) : (tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
+    %clip_value_max = "tf.BroadcastTo"(%i8_max, %rescale_shape) : (tensor<f32>, tensor<*xi32>) -> tensor<*xf32>
+    %0 = "tf.ClipByValue"(%rescale, %clip_value_min, %clip_value_max) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     %1 = "tf.Cast"(%0) {Truncate = false} : (tensor<*xf32>) -> tensor<*xi8>
     func.return %1 : tensor<*xi8>
   }
@@ -103,12 +107,16 @@ module {
     %act_max =  "tf.Const"() {value = dense<6.0> : tensor<f32>} : () -> tensor<f32>
     %i8_act_max_0 = "tf.PartitionedCall"(%act_max, %out_scale, %out_zp) {
         config = "", config_proto = "", executor_type = "", f=@quantize_i8
-      } : (tensor<f32>, tensor<*xf32>, tensor<*xi32>) -> tensor<i8>
-    %i8_act_max_1 = "tf.Cast"(%i8_act_max_0) {Truncate = false} : (tensor<i8>) -> tensor<f32>
+      } : (tensor<f32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xi8>
+    %i8_act_max_1 = "tf.Cast"(%i8_act_max_0) {Truncate = false} : (tensor<*xi8>) -> tensor<*xf32>
     %float_out_zp = "tf.Cast"(%out_zp) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
-    %clip_min = "tf.Maximum"(%i8_min, %float_out_zp) : (tensor<f32>, tensor<*xf32>) -> tensor<f32>
-    %clip_max = "tf.Minimum"(%i8_max, %i8_act_max_1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-    %0 = "tf.ClipByValue"(%rescale, %clip_min, %clip_max) : (tensor<*xf32>, tensor<f32>, tensor<f32>) -> tensor<*xf32>
+    // The clip_value_min and clip_value_max must be either of the same shape as input, or a scalar.
+    %rescale_shape = "tf.Shape"(%rescale) : (tensor<*xf32>) -> tensor<*xi32>
+    %clip_min = "tf.Maximum"(%i8_min, %float_out_zp) : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
+    %clip_max = "tf.Minimum"(%i8_max, %i8_act_max_1) : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
+    %clip_value_min = "tf.BroadcastTo"(%clip_min, %rescale_shape) : (tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
+    %clip_value_max = "tf.BroadcastTo"(%clip_max, %rescale_shape) : (tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
+    %0 = "tf.ClipByValue"(%rescale, %clip_value_min, %clip_value_max) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     %1 = "tf.Cast"(%0) {Truncate = false} : (tensor<*xf32>) -> tensor<*xi8>
     func.return %1 : tensor<*xi8>
   }
@@ -327,7 +335,11 @@ module {
 
     %i8_min = "tf.Const"() {value = dense<-128.0> : tensor<f32>} : () -> tensor<f32>
     %i8_max = "tf.Const"() {value = dense<127.0> : tensor<f32>} : () -> tensor<f32>
-    %clip = "tf.ClipByValue"(%round, %i8_min, %i8_max) : (tensor<*xf32>, tensor<f32>, tensor<f32>) -> tensor<*xf32>
+    // The clip_value_min and clip_value_max must be either of the same shape as input, or a scalar.
+    %round_shape = "tf.Shape"(%round) : (tensor<*xf32>) -> tensor<*xi32>
+    %clip_value_min = "tf.BroadcastTo"(%i8_min, %round_shape) : (tensor<f32>, tensor<*xi32>) -> tensor<*xf32>
+    %clip_value_max = "tf.BroadcastTo"(%i8_max, %round_shape) : (tensor<f32>, tensor<*xi32>) -> tensor<*xf32>
+    %clip = "tf.ClipByValue"(%round, %clip_value_min, %clip_value_max) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     %i8 = "tf.Cast"(%clip) : (tensor<*xf32>) -> tensor<*xi8>
     func.return %i8 : tensor<*xi8>
   }

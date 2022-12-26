@@ -807,6 +807,14 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
   custom_call->setAttr(lmhlo::CustomCallOp::getOperandSegmentSizeAttr(),
                        builder_.getDenseI32ArrayAttr(segments));
   if (target_mapping) custom_call.setTargetArgMappingAttr(target_mapping);
+
+  for (int i = 0; i < custom_call_instr->called_computations().size(); ++i) {
+    auto& region = custom_call->getRegion(i);
+    TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
+        *custom_call_instr->called_computation(), symbol_table_, &region,
+        &builder_));
+  }
+
   return custom_call.getOperation();
 }
 

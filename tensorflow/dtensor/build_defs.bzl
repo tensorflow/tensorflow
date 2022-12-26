@@ -65,7 +65,8 @@ def dtensor_test(
         main = None,
         shard_count = None,
         size = None,
-        get_configurations = _get_configurations):
+        get_configurations = _get_configurations,
+        test_rule = py_strict_test):
     """Defines a set of per-platform DTensor test targets.
 
     Generates test targets named:
@@ -118,7 +119,6 @@ def dtensor_test(
 
         all_tests.append(config_name)
 
-        test_rule = py_strict_test
         python_version = "PY3"
         test_env = {}
         test_env.update(config["env"])

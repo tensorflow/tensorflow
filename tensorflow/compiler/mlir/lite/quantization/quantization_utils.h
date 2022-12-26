@@ -636,7 +636,7 @@ class QuantizationPattern : public RewritePattern {
                 *quantized_op->getResult(i).getUsers().begin())) {
           result = quantize_op->getResult(0);
         } else {
-          quantize_op->emitError()
+          quantized_op->emitError()
               << "Output[" << i
               << "] is expected to have only one user [QUANTIZE]";
           return;
