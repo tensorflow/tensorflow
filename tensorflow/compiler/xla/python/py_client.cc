@@ -25,9 +25,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/numbers.h"
-#ifdef JAX_ENABLE_IFRT
 #include "tensorflow/compiler/xla/python/ifrt/client.h"
-#endif
 #include "tensorflow/compiler/xla/pjrt/host_callback.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -54,7 +52,6 @@ namespace xla {
 
 namespace py = pybind11;
 
-#ifdef JAX_ENABLE_IFRT
 PyClient::PyClient(std::shared_ptr<ifrt::Client> ifrt_client)
     : ifrt_client_(std::move(ifrt_client)) {
   CHECK(ifrt_client_);
@@ -65,35 +62,15 @@ PyClient::PyClient(std::shared_ptr<ifrt::Client> ifrt_client)
     }
   }
 }
-#else
-PyClient::PyClient(std::shared_ptr<PjRtClient> pjrt_client)
-    : pjrt_client_(std::move(pjrt_client)) {
-  CHECK(pjrt_client_ != nullptr);
-  buffers_.resize(pjrt_client_->device_count());
-  for (PjRtDevice* device : pjrt_client_->addressable_devices()) {
-    if (device->id() >= buffers_.size()) {
-      buffers_.resize(device->id() + 1);
-    }
-  }
-}
-#endif
 
 PyClient::~PyClient() {
   py::gil_scoped_release gil;
-#ifdef JAX_ENABLE_IFRT
   ifrt_client_ = nullptr;
-#else
-  pjrt_client_ = nullptr;
-#endif
 }
 
 std::vector<ClientAndPtr<PjRtDevice>> PyClient::Devices() {
   std::vector<ClientAndPtr<PjRtDevice>> devices;
-#ifdef JAX_ENABLE_IFRT
   auto span = ifrt_client_->devices();
-#else
-  auto span = pjrt_client_->devices();
-#endif
   devices.reserve(span.size());
   for (PjRtDevice* device : span) {
     devices.push_back(WrapWithClient(shared_from_this(), device));
@@ -103,17 +80,10 @@ std::vector<ClientAndPtr<PjRtDevice>> PyClient::Devices() {
 
 std::vector<ClientAndPtr<PjRtDevice>> PyClient::LocalDevices() {
   std::vector<ClientAndPtr<PjRtDevice>> devices;
-#ifdef JAX_ENABLE_IFRT
   devices.reserve(ifrt_client_->addressable_devices().size());
   for (ifrt::Device* device : ifrt_client_->addressable_devices()) {
     devices.push_back(WrapWithClient(shared_from_this(), device));
   }
-#else
-  devices.reserve(pjrt_client_->addressable_devices().size());
-  for (PjRtDevice* device : pjrt_client_->addressable_devices()) {
-    devices.push_back(WrapWithClient(shared_from_this(), device));
-  }
-#endif
   return devices;
 }
 
@@ -160,11 +130,7 @@ std::vector<std::shared_ptr<PyLoadedExecutable>> PyClient::LiveExecutables() {
 
 Status PyClient::Defragment() {
   CHECK(PyGILState_Check());
-#ifdef JAX_ENABLE_IFRT
   auto runtime_type = ifrt_client_->runtime_type();
-#else
-  auto runtime_type = PjRtRuntimeTypeString(pjrt_client_->runtime_type());
-#endif
   if (runtime_type == PjRtRuntimeTypeString(PjRtRuntimeType::kTfrt)) {
     return pjrt_client()->Defragment();
   } else if (runtime_type ==
@@ -199,7 +165,6 @@ Status PyClient::Defragment() {
     }
 
     for (PyArray_Storage* array = arrays_; array; array = array->next) {
-#ifdef JAX_ENABLE_IFRT
       // TODO(hyeontaek): Support non-PjRt Arrays.
       // TODO(hyeontaek): Re-construct ifrt::Array with new PjRtBuffer so that
       // std::shared_ptr<PjRtBuffer> does not need to be updated in-place.
@@ -215,10 +180,6 @@ Status PyClient::Defragment() {
       }
       TF_ASSIGN_OR_RETURN(absl::Span<std::shared_ptr<PjRtBuffer>> pjrt_buffers,
                           arr->mutable_pjrt_buffers());
-#else
-      absl::Span<std::shared_ptr<PjRtBuffer>> pjrt_buffers =
-          absl::MakeSpan(array->pjrt_buffers);
-#endif
       for (int i = 0; i < pjrt_buffers.size(); ++i) {
         std::shared_ptr<PjRtBuffer>& pjrt_buf_ptr = pjrt_buffers[i];
         if (pjrt_buf_ptr->IsDeleted()) {
@@ -260,11 +221,7 @@ Status PyClient::Defragment() {
 
       std::shared_ptr<PjRtBuffer> new_pjrt_buf_ptr(new_copy.release());
       for (PyBuffer* py_buffer : tmp_buffer.py_buffers) {
-#ifdef JAX_ENABLE_IFRT
         py_buffer->SetPjRtBuffer(new_pjrt_buf_ptr);
-#else
-        py_buffer->buffer_ = new_pjrt_buf_ptr;
-#endif
       }
       for (std::shared_ptr<PjRtBuffer>* pjrt_buffer_ptr :
            tmp_buffer.pjrt_buffer_ptrs) {
@@ -279,28 +236,17 @@ Status PyClient::Defragment() {
 
 StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>
 PyClient::GetDefaultDeviceAssignment(int num_replicas, int num_partitions) {
-#ifdef JAX_ENABLE_IFRT
   TF_ASSIGN_OR_RETURN(
       DeviceAssignment device_assignment,
       ifrt_client_->GetDefaultDeviceAssignment(num_replicas, num_partitions));
-#else
-  TF_ASSIGN_OR_RETURN(
-      DeviceAssignment device_assignment,
-      pjrt_client_->GetDefaultDeviceAssignment(num_replicas, num_partitions));
-#endif
   std::vector<std::vector<ClientAndPtr<PjRtDevice>>> result;
   result.resize(num_replicas);
   for (int r = 0; r < num_replicas; ++r) {
     result[r].resize(num_partitions);
     for (int p = 0; p < num_partitions; ++p) {
       int device_id = device_assignment(r, p);
-#ifdef JAX_ENABLE_IFRT
       TF_ASSIGN_OR_RETURN(PjRtDevice * device,
                           ifrt_client_->LookupDevice(device_id));
-#else
-      TF_ASSIGN_OR_RETURN(PjRtDevice * device,
-                          pjrt_client_->LookupDevice(device_id));
-#endif
       result[r][p] = WrapWithClient(shared_from_this(), device);
     }
   }
@@ -309,25 +255,14 @@ PyClient::GetDefaultDeviceAssignment(int num_replicas, int num_partitions) {
 
 StatusOr<std::vector<ClientAndPtr<PjRtDevice>>>
 PyClient::GetDefaultDeviceAssignment1D(int num_replicas) {
-#ifdef JAX_ENABLE_IFRT
   TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
                       ifrt_client_->GetDefaultDeviceAssignment(
                           num_replicas, /*num_partitions=*/1));
-#else
-  TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
-                      pjrt_client_->GetDefaultDeviceAssignment(
-                          num_replicas, /*num_partitions=*/1));
-#endif
   std::vector<ClientAndPtr<PjRtDevice>> result;
   for (int i = 0; i < num_replicas; ++i) {
     int device_id = device_assignment(i, 0);
-#ifdef JAX_ENABLE_IFRT
     TF_ASSIGN_OR_RETURN(PjRtDevice * device,
                         ifrt_client_->LookupDevice(device_id));
-#else
-    TF_ASSIGN_OR_RETURN(PjRtDevice * device,
-                        pjrt_client_->LookupDevice(device_id));
-#endif
     result.push_back(WrapWithClient(shared_from_this(), device));
   }
   return result;
@@ -335,20 +270,11 @@ PyClient::GetDefaultDeviceAssignment1D(int num_replicas) {
 
 StatusOr<py::object> PyClient::BufferFromPyval(
     pybind11::handle argument, PjRtDevice* device, bool force_copy,
-#ifdef JAX_ENABLE_IFRT
     ifrt::Client::HostBufferSemantics host_buffer_semantics
-#else
-    PjRtClient::HostBufferSemantics host_buffer_semantics
-#endif
 ) {
   if (device == nullptr) {
-#ifdef JAX_ENABLE_IFRT
     TF_RET_CHECK(!ifrt_client_->addressable_devices().empty());
     device = ifrt_client_->addressable_devices().front();
-#else
-    TF_RET_CHECK(!pjrt_client_->addressable_devices().empty());
-    device = pjrt_client_->addressable_devices().front();
-#endif
   }
   CHECK(device != nullptr);
 
@@ -374,7 +300,6 @@ StatusOr<py::object> PyClient::BufferFromPyval(
   TF_RETURN_IF_ERROR(
       jax::ApplyTransferGuardToHostToDevice(transfer_guard_formatter));
 
-#ifdef JAX_ENABLE_IFRT
   TF_ASSIGN_OR_RETURN(PjRtDevice * found_device,
                       ifrt_client_->LookupDevice(device->id()));
   if (found_device != device) {
@@ -382,34 +307,16 @@ StatusOr<py::object> PyClient::BufferFromPyval(
                            device->DebugString(),
                            ifrt_client_->platform_name());
   }
-#else
-  TF_ASSIGN_OR_RETURN(PjRtDevice * found_device,
-                      pjrt_client_->LookupDevice(device->id()));
-  if (found_device != device) {
-    return InvalidArgument("Cannot copy value to device '%s' with '%s' backend",
-                           device->DebugString(),
-                           pjrt_client_->platform_name());
-  }
-#endif
   GlobalPyRefManager()->CollectGarbage();
 
   DevicePutOptions options;
   options.squash_64bit_types = false;
-#ifdef JAX_ENABLE_IFRT
   options.allow_zero_copy =
       (!force_copy &&
        (host_buffer_semantics == ifrt::Client::HostBufferSemantics::kZeroCopy));
   TF_ASSIGN_OR_RETURN(DevicePutResult put,
                       DevicePut(argument, ifrt_client_.get(), device, options));
-#else
-  options.allow_zero_copy =
-      (!force_copy &&
-       (host_buffer_semantics == PjRtClient::HostBufferSemantics::kZeroCopy));
-  TF_ASSIGN_OR_RETURN(DevicePutResult put,
-                      DevicePut(argument, device, options));
-#endif
 
-#ifdef JAX_ENABLE_IFRT
   if (put.ifrt_array) {
     auto traceback = Traceback::Get();
     return PyBuffer::Make(shared_from_this(), std::move(put.ifrt_array),
@@ -417,15 +324,6 @@ StatusOr<py::object> PyClient::BufferFromPyval(
   } else {
     return py::reinterpret_borrow<py::object>(put.owning_pybuffer);
   }
-#else
-  if (put.owned_buffer) {
-    auto traceback = Traceback::Get();
-    return PyBuffer::Make(shared_from_this(), std::move(put.owned_buffer),
-                          std::move(traceback));
-  } else {
-    return py::reinterpret_borrow<py::object>(put.owning_pybuffer);
-  }
-#endif
 }
 
 StatusOr<std::vector<std::pair<pybind11::bytes, pybind11::object>>>
@@ -468,21 +366,16 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
     const std::string& desc = descriptors.serialized_descriptors[0];
     pybind11::bytes py_desc = pybind11::bytes(desc);
     auto traceback = Traceback::Get();
-#ifdef JAX_ENABLE_IFRT
     auto* client =
         llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(ifrt_client());
     if (client == nullptr) {
       throw XlaRuntimeError(
           "This operation is implemented for a PjRt-compatible backend only.");
     }
-    TF_ASSIGN_OR_RETURN(auto ifrt_array, xla::ifrt::PjRtArray::Create(
-                                             client, std::move(buffers[i])));
+    TF_ASSIGN_OR_RETURN(auto ifrt_array,
+                        client->CreatePjRtArray(std::move(buffers[i])));
     auto py_buf =
         PyBuffer::Make(shared_from_this(), std::move(ifrt_array), traceback);
-#else
-    auto py_buf =
-        PyBuffer::Make(shared_from_this(), std::move(buffers[i]), traceback);
-#endif
     result.push_back(std::make_pair(std::move(py_desc), std::move(py_buf)));
   }
   return result;
@@ -491,7 +384,6 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
 StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::Compile(
     const XlaComputation& computation, CompileOptions options,
     std::vector<pybind11::capsule> host_callbacks) {
-#ifdef JAX_ENABLE_IFRT
   std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable;
   std::optional<std::string> fingerprint;
   auto* ifrt_xla_client = llvm::dyn_cast_or_null<ifrt::XlaCompatibleCompiler>(
@@ -510,27 +402,11 @@ StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::Compile(
   return std::make_shared<PyLoadedExecutable>(
       shared_from_this(), std::move(ifrt_loaded_executable),
       std::move(traceback), std::move(fingerprint), std::move(host_callbacks));
-#else
-  std::unique_ptr<PjRtLoadedExecutable> executable;
-  std::optional<std::string> fingerprint;
-  {
-    py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(executable,
-                        pjrt_client_->Compile(computation, std::move(options)));
-    TF_ASSIGN_OR_RETURN(fingerprint,
-                        pjrt_client_->ExecutableFingerprint(*executable));
-  }
-  auto traceback = Traceback::Get();
-  return std::make_shared<PyLoadedExecutable>(
-      shared_from_this(), std::move(executable), std::move(traceback),
-      std::move(fingerprint), std::move(host_callbacks));
-#endif
 }
 
 StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::CompileMlir(
     std::string mlir_module, CompileOptions options,
     std::vector<pybind11::capsule> host_callbacks) {
-#ifdef JAX_ENABLE_IFRT
   std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable;
   std::optional<std::string> fingerprint;
   {
@@ -547,39 +423,16 @@ StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::CompileMlir(
   return std::make_shared<PyLoadedExecutable>(
       shared_from_this(), std::move(ifrt_loaded_executable),
       std::move(traceback), std::move(fingerprint), std::move(host_callbacks));
-#else
-  std::unique_ptr<PjRtLoadedExecutable> executable;
-  std::optional<std::string> fingerprint;
-  {
-    py::gil_scoped_release gil_release;
-    mlir::MLIRContext context;
-    TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                        ParseMlirModuleString(mlir_module, context));
-    TF_ASSIGN_OR_RETURN(
-        executable, pjrt_client_->Compile(module.get(), std::move(options)));
-    TF_ASSIGN_OR_RETURN(fingerprint,
-                        pjrt_client_->ExecutableFingerprint(*executable));
-  }
-  auto traceback = Traceback::Get();
-  return std::make_shared<PyLoadedExecutable>(
-      shared_from_this(), std::move(executable), std::move(traceback),
-      std::move(fingerprint), std::move(host_callbacks));
-#endif
 }
 
 StatusOr<py::bytes> PyClient::SerializeExecutable(
     const PyLoadedExecutable& executable) const {
-#ifdef JAX_ENABLE_IFRT
   return executable.ifrt_loaded_executable()->Serialize();
-#else
-  return pjrt_client_->SerializeExecutable(*executable.pjrt_executable());
-#endif
 }
 
 StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::DeserializeExecutable(
     const std::string& serialized, CompileOptions options,
     std::vector<pybind11::capsule> host_callbacks) {
-#ifdef JAX_ENABLE_IFRT
   std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable;
   std::optional<std::string> fingerprint;
   {
@@ -595,21 +448,6 @@ StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::DeserializeExecutable(
   return std::make_shared<PyLoadedExecutable>(
       shared_from_this(), std::move(ifrt_loaded_executable),
       std::move(traceback), std::move(fingerprint), std::move(host_callbacks));
-#else
-  std::unique_ptr<PjRtLoadedExecutable> executable;
-  std::optional<std::string> fingerprint;
-  {
-    py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(executable, pjrt_client_->DeserializeExecutable(
-                                        serialized, std::move(options)));
-    TF_ASSIGN_OR_RETURN(fingerprint,
-                        pjrt_client_->ExecutableFingerprint(*executable));
-  }
-  auto traceback = Traceback::Get();
-  return std::make_shared<PyLoadedExecutable>(
-      shared_from_this(), std::move(executable), std::move(traceback),
-      std::move(fingerprint), std::move(host_callbacks));
-#endif
 }
 
 namespace {
@@ -670,7 +508,6 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
   }
 
   for (PyArray_Storage* array = arrays_; array; array = array->next) {
-#ifdef JAX_ENABLE_IFRT
     if (array->ifrt_array == nullptr) {
       continue;
     }
@@ -686,12 +523,6 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
       TF_RETURN_IF_ERROR(
           add_buffer_to_profile(buffer.get(), array->traceback.get()));
     }
-#else
-    for (const auto& buffer : array->pjrt_buffers) {
-      TF_RETURN_IF_ERROR(
-          add_buffer_to_profile(buffer.get(), array->traceback.get()));
-    }
-#endif
   }
 
   for (auto* sharded_buffer = sharded_buffers_; sharded_buffer;
@@ -864,11 +695,7 @@ StatusOr<std::pair<uint64_t, pybind11::object>>
 PyClient::GetEmitPythonCallbackDescriptor(
     pybind11::function callable, absl::Span<Shape const> operand_shapes,
     absl::Span<Shape const> result_shapes) {
-#ifdef JAX_ENABLE_IFRT
   ifrt::PlatformId platform_id = ifrt_client_->platform_id();
-#else
-  PjRtPlatformId platform_id = pjrt_client_->platform_id();
-#endif
   if (platform_id != GpuId() && platform_id != CpuId()) {
     return Unimplemented(
         "EmitPythonCallback is only implemented on CPU and GPU");
@@ -949,15 +776,9 @@ StatusOr<XlaOp> PyClient::EmitPythonCallbackFromDescriptor(
   Shape result_shape = ShapeUtil::MakeTupleShape(result_shapes_with_layout);
   std::string callback_str = std::to_string(descriptor);
   std::string callback_name = "xla_python_cpu_callback";
-#ifdef JAX_ENABLE_IFRT
   if (ifrt_client_->platform_id() == GpuId()) {
     callback_name = "xla_python_gpu_callback";
   }
-#else
-  if (pjrt_client_->platform_id() == GpuId()) {
-    callback_name = "xla_python_gpu_callback";
-  }
-#endif
   XlaOp result =
       CustomCallWithLayout(&builder, callback_name, custom_call_args,
                            result_shape, custom_call_arg_layouts,

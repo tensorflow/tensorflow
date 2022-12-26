@@ -49,6 +49,24 @@ bool IsConvCustomCall(const HloInstruction* instr) {
               kCudnnConvBiasActivationForwardCallTarget);
 }
 
+bool IsConvDepthwise(const HloInstruction* instr) {
+  int64_t feature_group_count = instr->feature_group_count();
+  if (feature_group_count == 1) {
+    return false;
+  }
+
+  const HloInstruction* input = instr->operand(0);
+  int64_t input_feature_dimension =
+      instr->convolution_dimension_numbers().input_feature_dimension();
+  int64_t input_feature_count =
+      input->shape().dimensions(input_feature_dimension);
+  return input_feature_count == feature_group_count;
+}
+
+bool IsNonDepthwiseConvCustomCall(const HloInstruction* instr) {
+  return IsConvCustomCall(instr) && !IsConvDepthwise(instr);
+}
+
 bool IsExponentialMinusOne(const HloInstruction* instr) {
   return instr->opcode() == HloOpcode::kExpm1;
 }
@@ -234,9 +252,12 @@ StatusOr<bool> FuseConvAlpha(HloComputation* comp) {
     HloInstruction* conv = nullptr;
     HloInstruction* gte = nullptr;
     HloInstruction* alpha = nullptr;
+
+    // We don't want to upgrade depthwise convolutions to ConvBiasActivation,
+    // because the fused CUDNN functions are slower for some of those.
     auto pattern = m::MultiplyAnyOrder(
-        m::GetTupleElement(&gte, m::Op(&conv).WithPredicate(IsConvCustomCall),
-                           0)
+        m::GetTupleElement(
+            &gte, m::Op(&conv).WithPredicate(IsNonDepthwiseConvCustomCall), 0)
             .WithOneUse(),
         m::Broadcast(m::ConstantEffectiveScalar(&alpha)));
     if (!Match(instr, pattern)) {
@@ -282,9 +303,15 @@ StatusOr<bool> FuseBiasOrSideInput(HloComputation* comp) {
     HloInstruction* conv = nullptr;
     HloInstruction* gte = nullptr;
     HloInstruction* addend = nullptr;
+
+    // We don't want to upgrade depthwise convolutions to ConvBiasActivation,
+    // because the fused CUDNN functions are slower for some of those.
     auto pattern = m::AddAnyOrder(
-        m::GetTupleElement(
-            &gte, m::Op(&conv).WithPredicate(IsConvCustomCall).WithOneUse(), 0)
+        m::GetTupleElement(&gte,
+                           m::Op(&conv)
+                               .WithPredicate(IsNonDepthwiseConvCustomCall)
+                               .WithOneUse(),
+                           0)
             .WithOneUse(),
         m::Op(&addend));
     if (!Match(instr, pattern)) {
@@ -504,9 +531,13 @@ StatusOr<bool> FuseElu(HloComputation* comp, se::CudaComputeCapability cc) {
 
     // In Elu computation, the GetTupleElement node will have three users:
     // Compare, ExponentialMinusOnem, and Select.
+    // We don't want to upgrade depthwise convolutions to ConvBiasActivation,
+    // because the fused CUDNN functions are slower for some of those.
     auto gte_pattern =
-        m::GetTupleElement(
-            &gte, m::Op(&conv).WithPredicate(IsConvCustomCall).WithOneUse())
+        m::GetTupleElement(&gte,
+                           m::Op(&conv)
+                               .WithPredicate(IsNonDepthwiseConvCustomCall)
+                               .WithOneUse())
             .WithElementType(F16)
             .WithPredicate(HasThreeUsers);
     if (!Match(instr,
@@ -570,14 +601,16 @@ StatusOr<bool> FuseRelu(HloComputation* comp) {
   for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
     HloInstruction* gte;
     HloInstruction* conv;
-    if (!Match(
-            instr,
-            m::MaximumAnyOrder(
-                m::Broadcast(m::ConstantEffectiveScalar(0)),
-                m::GetTupleElement(
-                    &gte,
-                    m::Op(&conv).WithPredicate(IsConvCustomCall).WithOneUse())
-                    .WithOneUse()))) {
+    // We don't want to upgrade depthwise convolutions to ConvBiasActivation,
+    // because the fused CUDNN functions are slower for some of those.
+    if (!Match(instr,
+               m::MaximumAnyOrder(
+                   m::Broadcast(m::ConstantEffectiveScalar(0)),
+                   m::GetTupleElement(
+                       &gte, m::Op(&conv)
+                                 .WithPredicate(IsNonDepthwiseConvCustomCall)
+                                 .WithOneUse())
+                       .WithOneUse()))) {
       continue;
     }
     TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig config,

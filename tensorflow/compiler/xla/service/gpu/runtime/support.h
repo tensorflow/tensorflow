@@ -39,10 +39,10 @@ struct DotDimensionNumbers {
   absl::Span<const int64_t> rhs_contract;
 };
 
-// Disable all CustomCall checks in optimized build.
+// Disable expensive CustomCall checks in optimized build.
 inline constexpr runtime::CustomCall::RuntimeChecks checks =  // NOLINT
 #if defined(NDEBUG)
-    runtime::CustomCall::RuntimeChecks::kNone;
+    runtime::CustomCall::RuntimeChecks::kLess;
 #else
     runtime::CustomCall::RuntimeChecks::kDefault;
 #endif

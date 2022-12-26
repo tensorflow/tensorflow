@@ -17,10 +17,10 @@ limitations under the License.
 // `tf_device.replicate` island.
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/split_into_island_per_op_pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
@@ -72,8 +73,8 @@ bool RequiresReplicaIDAttribute(Operation* op) {
 // Collects TPU device ordinal for outside compilation communication ops. This
 // currently assumes outside compilation only uses `TPU_REPLICATED_CORE_0`
 // aliased device for the device computation.
-llvm::Optional<int64_t> GetDeviceOrdinal(
-    const llvm::Optional<DictionaryAttr>& devices, Location loc,
+std::optional<int64_t> GetDeviceOrdinal(
+    const std::optional<DictionaryAttr>& devices, Location loc,
     unsigned replica_id) {
   int64_t device_ordinal = 0;
   if (devices.has_value()) {
@@ -83,11 +84,11 @@ llvm::Optional<int64_t> GetDeviceOrdinal(
                                        .getValue();
       if (succeeded(tensorflow::GetDeviceOrdinalFromDeviceString(
               loc, tpu_device, &device_ordinal))) {
-        return llvm::Optional<int64_t>(device_ordinal);
+        return std::optional<int64_t>(device_ordinal);
       }
     }
   }
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Updates replica variant ops in a region based on replica `replica_id`.
@@ -98,8 +99,8 @@ llvm::Optional<int64_t> GetDeviceOrdinal(
 // represents replica id.
 LogicalResult UpdateRegionReplicateVariantOps(
     OpBuilder& builder, Location loc, Region& region, int replica_id,
-    const llvm::Optional<DictionaryAttr>& devices) {
-  llvm::Optional<int64_t> device_ordinal =
+    const std::optional<DictionaryAttr>& devices) {
+  std::optional<int64_t> device_ordinal =
       GetDeviceOrdinal(devices, loc, replica_id);
 
   auto result = region.walk([&](Operation* op) -> WalkResult {
@@ -285,21 +286,33 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
     island_op.getControl().replaceAllUsesWith(island_sink.getControl());
   }
 
-  // Replicas with no uses should be pinned to a graph fetch so they still
-  // execute.
-  llvm::SmallVector<Value, 8> unused_replica_controls;
-  for (auto& replica : replicas)
-    if (replica.use_empty())
-      unused_replica_controls.push_back(replica.getControl());
+  if (legacy_graph_export) {
+    // Replicas with no uses should be pinned to a graph fetch so they still
+    // execute.
+    llvm::SmallVector<Value, 8> unused_replica_controls;
+    for (auto& replica : replicas)
+      if (replica.use_empty())
+        unused_replica_controls.push_back(replica.getControl());
 
-  if (!unused_replica_controls.empty()) {
-    tf_executor::FetchOp fetch = graph_op.GetFetch();
-    auto fetches = llvm::to_vector<8>(fetch.getOperands());
-    fetches.append(unused_replica_controls.begin(),
-                   unused_replica_controls.end());
-    builder.setInsertionPoint(fetch);
-    builder.create<tf_executor::FetchOp>(fetch.getLoc(), fetches);
-    fetch.erase();
+    if (!unused_replica_controls.empty()) {
+      tf_executor::FetchOp fetch = graph_op.GetFetch();
+      auto fetches = llvm::to_vector<8>(fetch.getOperands());
+      fetches.append(unused_replica_controls.begin(),
+                     unused_replica_controls.end());
+      builder.setInsertionPoint(fetch);
+      builder.create<tf_executor::FetchOp>(fetch.getLoc(), fetches);
+      fetch.erase();
+    }
+  } else {
+    // Now, finally, we need to maintain the invariant expected to be maintained
+    // throughout the graph export pipeline that all islands always perfectly
+    // wrap a single op. So we'll split all replica islands.
+    auto control_type = tf_executor::ControlType::get(island_op.getContext());
+    for (auto& replica : replicas) {
+      if (replica.GetBody().getOperations().size() > 1) {
+        mlir::TF::SplitIsland(replica, control_type);
+      }
+    }
   }
 
   island_op.erase();

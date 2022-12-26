@@ -66,8 +66,8 @@ static constexpr llvm::StringRef kTileAppliedLabel = "__tile_applied_label__";
 OpFoldResult computeTileSizeInDim(OpBuilder &builder, Location loc,
                                   OpFoldResult tileSize, OpFoldResult dimSize,
                                   OpFoldResult offset) {
-  Optional<int64_t> tileCst = getConstantIntValue(tileSize);
-  Optional<int64_t> dimCst = getConstantIntValue(dimSize);
+  std::optional<int64_t> tileCst = getConstantIntValue(tileSize);
+  std::optional<int64_t> dimCst = getConstantIntValue(dimSize);
 
   bool hasTileSizeOne = tileCst && *tileCst == 1;
   bool dividesEvenly = tileCst && dimCst && ((*dimCst % *tileCst) == 0);
@@ -127,7 +127,7 @@ Operation *generateTileLoopNest(OpBuilder &builder, Location loc,
           nestedBuilder, bodyLoc, steps[index], ubs[index], iv);
     }
   };
-  Optional<StringAttr> distributionLabelAttr;
+  std::optional<StringAttr> distributionLabelAttr;
   if (!distributionLabel.empty()) {
     distributionLabelAttr =
         StringAttr::get(builder.getContext(), distributionLabel);
@@ -171,17 +171,14 @@ struct DimOfMaterializedTilePattern : public OpRewritePattern<tensor::DimOp> {
     auto materializeOp = llvm::dyn_cast<MaterializeOp>(def);
     if (!materializeOp) return failure();
 
-    auto tileOp = materializeOp.getSet().getDefiningOp<gml_st::TileOp>();
-    if (!tileOp) return failure();
-
-    Optional<int64_t> indexOr = op.getConstantIndex();
+    std::optional<int64_t> indexOr = op.getConstantIndex();
     if (!indexOr.has_value()) return failure();
 
     Value tileSizeValue =
-        tileOp.isDynamicSize(*indexOr)
-            ? tileOp.getDynamicSize(*indexOr)
+        materializeOp.isDynamicSize(*indexOr)
+            ? materializeOp.getDynamicSize(*indexOr)
             : rewriter.create<arith::ConstantIndexOp>(
-                  op.getLoc(), tileOp.getStaticSize(*indexOr));
+                  op.getLoc(), materializeOp.getStaticSize(*indexOr));
     rewriter.replaceOp(op, tileSizeValue);
     return success();
   }

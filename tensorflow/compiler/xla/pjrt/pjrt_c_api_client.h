@@ -483,14 +483,6 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
       std::optional<PjRtFuture<Status>>& returned_future,
       bool fill_future) override;
 
-  xla::StatusOr<PJRT_Executable_Execute_Args> GetCommonExecuteArgs(
-      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
-      const ExecuteOptions& options, PJRT_ExecuteOptions& c_options,
-      std::vector<std::vector<PJRT_Buffer*>>& c_argument_lists_storage,
-      std::vector<PJRT_Buffer**>& c_arguments,
-      std::vector<std::vector<PJRT_Buffer*>>& c_output_lists_storage,
-      std::vector<PJRT_Buffer**>& c_output_lists);
-
   void Delete() override;
   bool IsDeleted() override;
 
@@ -506,6 +498,18 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
   const PJRT_Executable* c_executable() const { return executable_.get(); }
 
  private:
+  xla::StatusOr<PJRT_Executable_Execute_Args> GetCommonExecuteArgs(
+      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
+      const ExecuteOptions& options, PJRT_ExecuteOptions& c_options,
+      std::vector<std::vector<PJRT_Buffer*>>& c_argument_lists_storage,
+      std::vector<PJRT_Buffer**>& c_arguments,
+      std::vector<std::vector<PJRT_Buffer*>>& c_output_lists_storage,
+      std::vector<PJRT_Buffer**>& c_output_lists);
+
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteWithDevice(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options);
+
   PjRtCApiClient* client_;
   std::unique_ptr<PJRT_Executable, pjrt::PJRT_ExecutableDeleter> executable_;
   std::vector<PjRtDevice*> addressable_devices_;

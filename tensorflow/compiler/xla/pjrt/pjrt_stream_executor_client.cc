@@ -102,6 +102,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/utils.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/generic_transfer_manager.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -1333,10 +1334,24 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::ToLiteral(
   if (!event_or.ok()) {
     return PjRtFuture<Status>(event_or.status());
   }
+
+  GenericTransferManager::LiteralFromDeviceMetadata transfer_metadata;
+  // We never call device functions from the `done` callback.
+  transfer_metadata.callback_is_host_callback_safe = true;
+
+  TransferManager* transfer_manager =
+      client_->client()->backend().transfer_manager();
+
+  TransferManager::TransferMetadata* transfer_metadata_ptr =
+      (dynamic_cast<GenericTransferManager*>(transfer_manager) != nullptr)
+          ? &transfer_metadata
+          : nullptr;
+
   auto promise = PjRtFuture<Status>::CreatePromise();
-  client_->client()->backend().transfer_manager()->TransferLiteralFromDevice(
+  transfer_manager->TransferLiteralFromDevice(
       stream, shaped_buffer, literal,
-      [promise](Status status) mutable { promise.Set(status); });
+      [promise](Status status) mutable { promise.Set(status); },
+      transfer_metadata_ptr);
 
   auto usage_event = std::make_shared<BufferSequencingEvent>();
   local_device->event_pool().ThenRecordEvent(stream, event_or.value());

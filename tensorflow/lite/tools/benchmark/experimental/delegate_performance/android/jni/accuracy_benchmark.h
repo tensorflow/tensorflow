@@ -20,42 +20,27 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+
 namespace tflite {
 namespace benchmark {
 namespace accuracy {
 
-enum AccuracyBenchmarkStatus {
-  kAccuracyBenchmarkUnknownStatus = 0,
-
-  // General status codes.
-  kAccuracyBenchmarkPass = 10,
-  kAccuracyBenchmarkFail = 11,
-  kAccuracyBenchmarkSuccess = 12,
-
-  // Set of error codes that are used as the return codes to communicate between
-  // AccuracyBenchmark and the caller app.
-  kAccuracyBenchmarkRunnerInitializationFailed = 100,
-  kAccuracyBenchmarkResultCountMismatch = 101,
-  kAccuracyBenchmarkArgumentParsingFailed = 102,
-  kAccuracyBenchmarkMoreThanOneDelegateProvided = 103,
-  kAccuracyBenchmarkTfLiteSettingsParsingFailed = 104,
-};
-
-// Triggers MiniBenchmark testings. Parses the arguments passed from the
-// testing app to configure MiniBenchmark ValidatorRunner. The tests will
-// access and execute the pre-embedded models in the app via the model file
-// descriptor. The contents of a model are initialized using model_size
-// bytes starting at model_offset position in the file described by
-// model_fd. Any intermediate data and results will be dumped to the result
-// path given.
+// Triggers MiniBenchmark testings. Uses the arguments passed from the testing
+// app to configure MiniBenchmark ValidatorRunner. The tests will access and
+// execute the pre-embedded models in the app via the model file descriptor. The
+// contents of a model are initialized using model_size bytes starting at
+// model_offset position in the file described by model_fd. Any intermediate
+// data and results will be dumped to the result path given.
 //
-// Returns kAccuracyBenchmarkPass if the benchmark tests finish successfully
-// with a pass from MiniBenchmark. Otherwise, returns kAccuracyBenchmarkFail
-// or corresponding error codes.
-AccuracyBenchmarkStatus Benchmark(const std::vector<std::string>& args,
-                                  int model_fd, size_t model_offset,
-                                  size_t model_size,
-                                  const char* result_path_chars);
+// Returns a BenchmarkEvent flatbuffer offset. If the benchmark tests finish
+// successfully with a pass from MiniBenchmark, the returned offset contains the
+// concrete accuracy metrics and the overall result from MiniBenchmark.
+// Otherwise, the returned value contains an error code.
+flatbuffers::Offset<BenchmarkEvent> Benchmark(
+    flatbuffers::FlatBufferBuilder& fbb, const TFLiteSettings& tflite_settings,
+    int model_fd, size_t model_offset, size_t model_size,
+    const char* result_path_chars);
 
 }  // namespace accuracy
 }  // namespace benchmark

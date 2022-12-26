@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
-#include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/triangular_solve_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
@@ -319,19 +318,6 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                    llvm::Module* llvm_module,
                                    GpuVersion gpu_version, bool relocatable,
                                    const HloModule* debug_module) {
-  std::string libdevice_dir;
-  {
-    absl::MutexLock lock(&mutex_);
-
-    // Find the directory containing libdevice.  To avoid searching for it every
-    // time, we have a one-element cache, keyed on the module's config's
-    // cuda_data_dir.
-    if (cached_libdevice_dir_.empty()) {
-      cached_libdevice_dir_ = GetLibdeviceDir(module_config);
-    }
-    libdevice_dir = cached_libdevice_dir_;
-  }
-  VLOG(2) << "Libdevice dir = " << libdevice_dir << "\n";
   std::unique_ptr<llvm::Module> loaded_module =
       MaybeLoadLLVMFromFile(debug_module, llvm_module);
   llvm::Module* selected_module = nullptr;
@@ -348,8 +334,8 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
         "NVPTXCompiler::CompileTargetBinary - CompileToPtx for ",
         (debug_module != nullptr ? debug_module->name() : "(unknown")));
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
-    TF_ASSIGN_OR_RETURN(ptx, nvptx::CompileToPtx(selected_module, gpu_version,
-                                                 module_config, libdevice_dir));
+    TF_ASSIGN_OR_RETURN(
+        ptx, nvptx::CompileToPtx(selected_module, gpu_version, module_config));
 
     uint64_t end_usecs = tsl::Env::Default()->NowMicros();
     // This won't record values for calls that error out (because if they error
@@ -422,10 +408,10 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
           if (maybe_cubin.status().code() == tsl::error::Code::NOT_FOUND) {
             if (!hlo_module_config.debug_options()
                      .xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found()) {
-              LOG(WARNING) << CantFindCudaMessage(
+              LOG(WARNING) << nvptx::CantFindCudaMessage(
                   "Can't find ptxas binary in ${CUDA_DIR}/bin.  Custom ptxas "
                   "location can be specified using $PATH.",
-                  hlo_module_config);
+                  hlo_module_config.debug_options().xla_gpu_cuda_data_dir());
               LOG(FATAL)
                   << "Can't find ptxas binary.  You can pass the flag "
                      "--xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found "
@@ -437,13 +423,13 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
             // binaries are not available. We don't want to spam logs with
             // identical warnings in this case.
 
-            LOG_FIRST_N(WARNING, 1) << CantFindCudaMessage(
+            LOG_FIRST_N(WARNING, 1) << nvptx::CantFindCudaMessage(
                 "Can't find ptxas binary in ${CUDA_DIR}/bin.  Will back to "
                 "the GPU driver for PTX -> sass compilation.  This is OK so "
                 "long as you don't see a warning below about an out-of-date "
                 "driver version. Custom ptxas location can be specified "
                 "using $PATH.",
-                hlo_module_config);
+                hlo_module_config.debug_options().xla_gpu_cuda_data_dir());
           } else if (maybe_cubin.status().code() !=
                      tsl::error::Code::UNIMPLEMENTED) {
             // If unimplemented is returned, we fallback to the driver.
@@ -530,7 +516,7 @@ StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     const DebugOptions& debug_options) {
   std::vector<stream_executor::CubinOrPTXImage> images;
   images.reserve(modules.size());
-  for (auto& module : modules) {
+  for (std::vector<uint8_t>& module : modules) {
     images.push_back({"", std::move(module)});
   }
   auto context = static_cast<se::gpu::GpuContext*>(

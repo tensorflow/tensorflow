@@ -524,7 +524,7 @@ RewritePatternSet PatternsIncludeOps(
   RewritePatternSet to(from.getContext());
   // Filter NativePatterns.
   for (auto &pattern : from.getNativePatterns()) {
-    Optional<OperationName> pat_op_name = pattern->getRootKind();
+    std::optional<OperationName> pat_op_name = pattern->getRootKind();
     // If the pattern does not have a specific operation, always include it,
     // If the pattern is in include_ops then include it.
     bool include =

@@ -55,7 +55,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace spmd {
@@ -177,6 +176,20 @@ template <typename F>
 
 namespace {
 
+bool ShouldKeepSharding(const HloInstruction* hlo) {
+  // Keep sharding annotation on Infeed/SendRecv instructions.
+  if (hlo->opcode() == HloOpcode::kInfeed ||
+      hlo->opcode() == HloOpcode::kOutfeed ||
+      DynCast<HloSendRecvInstruction>(hlo) != nullptr) {
+    return true;
+  }
+  if (hlo->opcode() == HloOpcode::kParameter &&
+      hlo->parent() == hlo->GetModule()->entry_computation()) {
+    return true;
+  }
+  return false;
+}
+
 // Clears all sharding attributes from instructions in the module. This must be
 // called only after all SPMD transformation is complete.
 Status ClearShardingAttributes(
@@ -184,13 +197,7 @@ Status ClearShardingAttributes(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* hlo : computation->instructions()) {
-      // Keep sharding annotation on Infeed and entry parameters since they're
-      // used by HloReplicationAnalysis later (for ArCrsCombiner).
-      if (hlo->HasSideEffect() && hlo->opcode() != HloOpcode::kRng) {
-        continue;
-      }
-      if (hlo->opcode() == HloOpcode::kParameter &&
-          computation == module->entry_computation()) {
+      if (ShouldKeepSharding(hlo)) {
         continue;
       }
       hlo->clear_sharding();
@@ -4683,18 +4690,6 @@ Status SpmdPartitioner::PreprocessSharding(
           hlo->set_sharding(
               HloSharding::Single(hlo->shape(), HloSharding::Replicate()));
         }
-      } else if (!hlo->sharding().IsTileMaximal() &&
-                 !hlo->sharding().IsManual()) {
-        std::vector<int64_t> available(num_partitions_);
-        std::iota(available.begin(), available.end(), 0);
-        TF_RET_CHECK(num_partitions_ == hlo_sharding_util::DevicesForSharding(
-                                            hlo->sharding(), available)
-                                            .size())
-            << "num_partitions:" << num_partitions_ << "\n"
-            << "SPMD partitioner only supports tile sharding that includes all "
-               "partitions. If you didn't add this sharding annotation in the "
-               "model, please file a bug to XLA team.\n"
-            << hlo->ToString();
       }
     }
   }

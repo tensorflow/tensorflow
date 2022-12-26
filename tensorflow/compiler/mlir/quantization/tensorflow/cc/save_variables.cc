@@ -14,7 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/save_variables.h"
 
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
@@ -24,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/ir/importexport/convert_tensor.h"
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 #include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
@@ -64,9 +70,11 @@ FuncOp GetInitializerFunction(
 }
 
 // Adds the tensor that initializes the variable through the provided
-// `assign_var_op` to the `bundle_writer` for saving to checkpoint.
-absl::Status AddTensorToBundleWriter(mlir::TF::AssignVariableOp assign_var_op,
-                                     BundleWriter& bundle_writer) {
+// `assign_var_op` to the `bundle_writer` for saving to checkpoint. Returns the
+// shared name of the variable if a variable is saved successfully. If the
+// variable is not saved, returns an empty string.
+absl::StatusOr<std::string> AddTensorToBundleWriter(
+    mlir::TF::AssignVariableOp assign_var_op, BundleWriter& bundle_writer) {
   auto resource_operand = assign_var_op.getOperand(0);
   auto var_handle_op =
       llvm::dyn_cast<mlir::TF::VarHandleOp>(resource_operand.getDefiningOp());
@@ -74,7 +82,7 @@ absl::Status AddTensorToBundleWriter(mlir::TF::AssignVariableOp assign_var_op,
     assign_var_op->emitRemark(
         "Operand idx 0 is not a tf.VarHandleOp. The initializing tensor is not "
         "saved to checkpoint.");
-    return absl::OkStatus();
+    return "";
   }
 
   auto assigned_value_operand = assign_var_op.getOperand(1);
@@ -84,29 +92,33 @@ absl::Status AddTensorToBundleWriter(mlir::TF::AssignVariableOp assign_var_op,
     assign_var_op->emitRemark(
         "Operand idx 1 is not a tf.ConstOp. The initializing tensor is not "
         "saved to checkpoint.");
-    return absl::OkStatus();
+    return "";
   }
 
   Tensor const_tensor{};
-  if (tsl::Status status = mlir::tfg::ConvertToTensor(
+  if (const tsl::Status status = mlir::tfg::ConvertToTensor(
           /*attr=*/const_op.getValue(), /*output_tensor=*/&const_tensor);
       !status.ok()) {
     return tsl::ToAbslStatus(status);
   }
 
-  return tsl::ToAbslStatus(bundle_writer.Add(
-      /*key=*/var_handle_op.getSharedName(), const_tensor));
+  if (!bundle_writer.Add(/*key=*/var_handle_op.getSharedName(), const_tensor)
+           .ok()) {
+    return tsl::ToAbslStatus(bundle_writer.status());
+  }
+
+  return var_handle_op.getSharedName().str();
 }
 
 }  // namespace
 
-absl::Status SaveVariablesToCheckpoint(const absl::string_view prefix,
-                                       mlir::ModuleOp module_op) {
+absl::StatusOr<std::vector<std::string>> SaveVariablesToCheckpoint(
+    const absl::string_view prefix, mlir::ModuleOp module_op) {
   SessionInitializerOp session_init_op = GetSessionInitializerOp(module_op);
   if (!session_init_op) {
     LOG(INFO) << "SessionInitializerOp does not exist. No variables are saved "
                  "to checkpoint.";
-    return absl::OkStatus();
+    return std::vector<std::string>{};
   }
 
   // Only the "tf.AssignVariableOp" patterns inside this initializer function
@@ -116,7 +128,7 @@ absl::Status SaveVariablesToCheckpoint(const absl::string_view prefix,
   if (!session_init_func_type_restore_op) {
     LOG(INFO) << "No session initializer function with type 'restore_op'. No "
                  "variables are saved to checkpoint.";
-    return absl::OkStatus();
+    return std::vector<std::string>{};
   }
 
   BundleWriter bundle_writer(Env::Default(), prefix);
@@ -124,16 +136,32 @@ absl::Status SaveVariablesToCheckpoint(const absl::string_view prefix,
     return tsl::ToAbslStatus(bundle_writer.status());
   }
 
+  std::vector<std::string> saved_variable_shared_names;
   for (auto assign_variable_op :
        session_init_func_type_restore_op.getOps<mlir::TF::AssignVariableOp>()) {
-    if (const absl::Status save_variable_status =
+    if (const absl::StatusOr<std::string> variable_shared_name =
             AddTensorToBundleWriter(assign_variable_op, bundle_writer);
-        !save_variable_status.ok()) {
-      return save_variable_status;
+        !variable_shared_name.ok()) {
+      return variable_shared_name.status();
+    } else if (!variable_shared_name->empty()) {
+      // Empty string means the variable isn't applicable for saving.
+      saved_variable_shared_names.emplace_back(
+          std::move(*variable_shared_name));
+      VLOG(1) << "Saved a variable with shared_name: " << *variable_shared_name;
     }
   }
 
-  return tsl::ToAbslStatus(bundle_writer.Finish());
+  // Exit early if no variables are added.
+  if (saved_variable_shared_names.empty()) {
+    LOG(INFO) << "No variables are saved to checkpoint";
+    return saved_variable_shared_names;
+  }
+
+  if (!bundle_writer.Finish().ok()) {
+    return tsl::ToAbslStatus(bundle_writer.status());
+  }
+
+  return saved_variable_shared_names;
 }
 
 }  // namespace quantization

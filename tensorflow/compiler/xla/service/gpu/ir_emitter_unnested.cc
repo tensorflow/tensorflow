@@ -1616,8 +1616,7 @@ Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
   llvm::Function* prototype_func = b_.GetInsertBlock()->getParent();
   llvm::Function* implementation_func =
       module_->getFunction(kernel_func.getName());
-  prototype_func->getBasicBlockList().splice(
-      prototype_func->end(), implementation_func->getBasicBlockList());
+  prototype_func->splice(prototype_func->end(), implementation_func);
   for (const auto& [arg, ir_array] :
        llvm::zip_first(implementation_func->args(), ir_arrays)) {
     arg.replaceAllUsesWith(ir_array.GetBasePointer());

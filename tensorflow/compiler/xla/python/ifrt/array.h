@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/ifrt/future.h"
 #include "tensorflow/compiler/xla/python/ifrt/shape.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
+#include "tensorflow/compiler/xla/python/ifrt/value.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
@@ -54,8 +55,7 @@ enum class ArrayCopySemantics : int {
 
 // Represents a single logical array from one or more sharded buffers.
 // Implementations must be thread-safe.
-class Array : public tsl::ReferenceCounted<Array>,
-              public llvm::RTTIExtends<Array, llvm::RTTIRoot> {
+class Array : public llvm::RTTIExtends<Array, Value> {
  public:
   Array() = default;
 
@@ -64,8 +64,6 @@ class Array : public tsl::ReferenceCounted<Array>,
   Array(Array&&) = delete;
   Array& operator=(const Array&) = delete;
   Array& operator=(Array&&) = delete;
-
-  virtual Client* client() const = 0;
 
   virtual DType dtype() const = 0;
   virtual const Shape& shape() const = 0;
@@ -128,21 +126,6 @@ class Array : public tsl::ReferenceCounted<Array>,
   virtual StatusOr<tsl::RCReference<Array>> Reshard(
       std::shared_ptr<const Sharding> new_sharding,
       ArrayCopySemantics semantics) = 0;
-
-  // Returns a future that becomes ready when the buffer is computed or has an
-  // error.
-  virtual Future<Status> GetReadyFuture() const = 0;
-
-  // Deletes the array from the devices. The operation may be asynchronous. The
-  // returned future will have the result of the deletion on the devices.
-  // Implementations that do not track the completion of the deletion operation
-  // may make the future immediately ready with an OK status.
-  virtual Future<Status> Delete() = 0;
-
-  // Returns whether the array has been enqueued for deletion from the devices.
-  virtual bool IsDeleted() const = 0;
-
-  virtual std::string DebugString() const = 0;
 
   static char ID;  // NOLINT
 };

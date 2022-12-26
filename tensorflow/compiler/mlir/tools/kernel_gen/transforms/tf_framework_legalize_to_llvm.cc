@@ -59,7 +59,7 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
 
   std::pair<Value, Value> ConvertArrayAttrToStackAllocatedArray(
       Location loc, Type size_ty, Type element_ty,
-      llvm::Optional<ArrayAttr> attr, ConversionPatternRewriter *rewriter,
+      std::optional<ArrayAttr> attr, ConversionPatternRewriter *rewriter,
       std::function<Value(Attribute)> create_element) const {
     Type element_ptr_ty = LLVM::LLVMPointerType::get(element_ty);
 
@@ -91,7 +91,7 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
 
   std::pair<Value, Value> ConvertIntegerArrayAttrToStackAllocatedArray(
       Location loc, Type size_ty, Type element_ty,
-      llvm::Optional<ArrayAttr> attr,
+      std::optional<ArrayAttr> attr,
       ConversionPatternRewriter *rewriter) const {
     assert(size_ty.isa<IntegerType>() && "expect integer size type");
     assert(element_ty.isa<IntegerType>() && "expect integer element type");

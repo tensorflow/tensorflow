@@ -1283,6 +1283,7 @@ cc_library(
         "transforms/collection_ops_util.h",
         "transforms/einsum.h",
         "transforms/passes.h",
+        "translate/split_into_island_per_op_pass.h",
     ],
     includes = ["include"],
     textual_hdrs = [
@@ -1892,6 +1893,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tsl/platform:float8",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
@@ -1916,6 +1918,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/tsl/platform:float8",
         "@llvm-project//mlir:IR",
     ],
 )

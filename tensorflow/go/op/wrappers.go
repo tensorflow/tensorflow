@@ -699,7 +699,7 @@ func AngleTout(value tf.DataType) AngleAttr {
 //
 // ```
 // # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-// tf.angle(input) ==> [2.0132, 1.056]
+// tf.math.angle(input) ==> [2.0132, 1.056]
 // ```
 //
 // @compatibility(numpy)

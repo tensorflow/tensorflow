@@ -15,7 +15,7 @@
 """Utitiles for Cache Key generation based on Function Trace Type."""
 
 import collections.abc
-from typing import Any, Callable, Hashable, Optional
+from typing import Any, Callable, Hashable, Optional, Dict
 import weakref
 
 from tensorflow.core.function.trace_type import default_types
@@ -61,6 +61,7 @@ class InternalTracingContext(trace.TracingContext):
   def __init__(self, is_legacy_signature: bool = False):
     self._deletion_observer = WeakrefDeletionObserver()
     self._global_to_local_id = {}
+    self._alias_id_to_placeholder = {}
     self._is_legacy_signature = is_legacy_signature
 
   def alias_global_id(self, global_id: Hashable) -> Hashable:
@@ -68,6 +69,12 @@ class InternalTracingContext(trace.TracingContext):
       self._global_to_local_id[global_id] = len(self._global_to_local_id)
 
     return self._global_to_local_id[global_id]
+
+  def add_placeholder(self, alias_id: Hashable, variable) -> None:
+    self._alias_id_to_placeholder[alias_id] = variable
+
+  def get_placeholder_mapping(self) -> Dict[Hashable, Any]:
+    return self._alias_id_to_placeholder
 
   @property
   def deletion_observer(self) -> WeakrefDeletionObserver:
@@ -87,8 +94,8 @@ class InternalTracingContext(trace.TracingContext):
 class InternalPlaceholderContext(trace.PlaceholderContext):
   """Container with mappings shared across TraceTypes for placeholder values."""
 
-  def __init__(self, context_graph=None):
-    self._alias_id_to_placeholder = {}
+  def __init__(self, context_graph=None, placeholder_mapping=None):
+    self._alias_id_to_placeholder = placeholder_mapping or {}
     self._naming_scope = None
     self._context_graph = context_graph
 
@@ -159,7 +166,9 @@ def from_value(value: Any,
       return default_types.Tuple(*(from_value(c, context) for c in value))
 
   if isinstance(value, collections.abc.Mapping):
-    return default_types.Dict({k: from_value(value[k], context) for k in value})
+    mapping_type = type(value)
+    return default_types.Dict(
+        {k: from_value(value[k], context) for k in value}, mapping_type)
 
   if util.is_attrs(value):
     return default_types.Attrs.from_type_and_attributes(

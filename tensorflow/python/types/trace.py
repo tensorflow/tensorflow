@@ -26,7 +26,7 @@ traced (a process known as retracing).
 """
 
 import abc
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Any
 from typing_extensions import Protocol
 from typing_extensions import runtime_checkable
 from tensorflow.python.util.tf_export import tf_export
@@ -73,8 +73,9 @@ class TraceType(metaclass=abc.ABCMeta):
 
   ```python
   class FruitTraceType(tf.types.experimental.TraceType):
-    def __init__(self, fruit_type):
-      self.fruit_type = fruit_type
+    def __init__(self, fruit):
+      self.fruit_type = type(fruit)
+      self.fruit_value = fruit
 
     def is_subtype_of(self, other):
        return (type(other) is FruitTraceType and
@@ -83,10 +84,13 @@ class TraceType(metaclass=abc.ABCMeta):
     def most_specific_common_supertype(self, others):
        return self if all(self == other for other in others) else None
 
+    def placeholder_value(self, placeholder_context=None):
+      return self.fruit_value
+
   class Fruit:
 
    def __tf_tracing_type__(self, context):
-     return FruitTraceType(type(self))
+     return FruitTraceType(self)
   ```
 
   Now if we try calling it again:
@@ -153,9 +157,8 @@ class TraceType(metaclass=abc.ABCMeta):
     ```
     """
 
-  # TODO(b/221309709): Polish into a stable placeholder_value.
-  @doc_controls.do_not_doc_inheritable
-  def _placeholder_value(self, placeholder_context):
+  @abc.abstractmethod
+  def placeholder_value(self, placeholder_context=None) -> Any:
     """Creates a placeholder for tracing.
 
     Often it is more useful to trace with a placeholder value than an actual
@@ -164,14 +167,14 @@ class TraceType(metaclass=abc.ABCMeta):
     value is more general and reusable which saves expensive retracing.
 
     Args:
-      placeholder_context: A PlaceholderContext container for context
+      placeholder_context: A `PlaceholderContext` container for context
                            information when creating a placeholder value.
 
     For the `Fruit` example shared above, implementing:
 
     ```python
     class FruitTraceType:
-      def _placeholder_value():
+      def placeholder_value(self, placeholder_context=None):
         return Fruit()
     ```
     instructs tf.function to trace with the `Fruit()` objects
@@ -191,7 +194,6 @@ class TraceType(metaclass=abc.ABCMeta):
     foo(x) # Here `x` is the actual value
     ```
     """
-    raise NotImplementedError
 
   @abc.abstractmethod
   def __hash__(self) -> int:

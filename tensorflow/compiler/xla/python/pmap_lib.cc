@@ -36,11 +36,9 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
-#ifdef JAX_ENABLE_IFRT
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/dtype.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
-#endif
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/py_array.h"
@@ -94,19 +92,9 @@ struct ResultSpec {
 
 // The result of `ShardArg`.
 struct ShardArgResult {
-#ifdef JAX_ENABLE_IFRT
   // Points to the on-device array.
   // ifrt_array->sharding().num_shards() == `num_devices`.
   tsl::RCReference<xla::ifrt::Array> ifrt_array;
-#else
-  // Points to the on-device buffers. Not owned.
-  // Size `num_devices`.
-  std::vector<xla::PjRtBuffer*> per_device_buffers;
-
-  // If we need to copy data to a device, the newly created buffers will be
-  // added to `owned_buffers`.
-  std::vector<std::unique_ptr<xla::PjRtBuffer>> owned_buffers;
-#endif
   // The Python argument will be always be copied to `owning_sda`.
   py::object owning_sda;
 };
@@ -145,7 +133,6 @@ xla::StatusOr<ShardArgResult> ShardArg(
             cached_pmap_sharding->sharding_spec()) {
           ShardArgResult result;
           result.owning_sda = py::reinterpret_borrow<py::object>(arg);
-#ifdef JAX_ENABLE_IFRT
           result.ifrt_array = tsl::FormRef(py_array.ifrt_array());
           if (result.ifrt_array == nullptr) {
             return xla::InvalidArgument("Array has been deleted.");
@@ -164,24 +151,6 @@ xla::StatusOr<ShardArgResult> ShardArg(
                     xla::ifrt::ArrayCopySemantics::kReuseInput));
             result.ifrt_array = std::move(copied_ifrt_array);
           }
-#else
-          auto& per_device_buffers = result.per_device_buffers;
-          per_device_buffers.reserve(devices.size());
-
-          DCHECK_EQ(py_array.num_shards(), devices.size());
-
-          for (int i = 0; i < devices.size(); ++i) {
-            auto* pjrt_buffer = py_array.pjrt_buffer(i);
-            if (devices[i] == pjrt_buffer->device()) {
-              per_device_buffers.push_back(pjrt_buffer);
-            } else {
-              TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtBuffer> out,
-                                  pjrt_buffer->CopyToDevice(devices[i]));
-              per_device_buffers.push_back(out.get());
-              result.owned_buffers.push_back(std::move(out));
-            }
-          }
-#endif
           return result;
         }
       }
@@ -195,7 +164,6 @@ xla::StatusOr<ShardArgResult> ShardArg(
     if (sharding_spec == sda->GetShardingSpec()) {
       ShardArgResult result;
       result.owning_sda = py::reinterpret_borrow<py::object>(arg);
-#ifdef JAX_ENABLE_IFRT
       TF_ASSIGN_OR_RETURN(auto ifrt_array, sda->ifrt_array());
       result.ifrt_array = tsl::FormRef(ifrt_array);
       if (result.ifrt_array == nullptr) {
@@ -213,28 +181,6 @@ xla::StatusOr<ShardArgResult> ShardArg(
                                 xla::ifrt::ArrayCopySemantics::kReuseInput));
         result.ifrt_array = std::move(copied_ifrt_array);
       }
-#else
-      const int num_devices = devices.size();
-      TF_ASSIGN_OR_RETURN(absl::Span<xla::PjRtBuffer* const> sda_buffers,
-                          sda->pjrt_buffers());
-      CHECK_EQ(sda_buffers.size(), num_devices);
-
-      std::vector<xla::PjRtBuffer*>& per_device_buffers =
-          result.per_device_buffers;
-      per_device_buffers.reserve(num_devices);
-
-      for (int i = 0; i < num_devices; ++i) {
-        xla::PjRtBuffer* current_buffer = sda_buffers[i];
-        if (devices[i] == current_buffer->device()) {  // Pointer equality.
-          per_device_buffers.push_back(current_buffer);
-        } else {
-          TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtBuffer> out,
-                              current_buffer->CopyToDevice(devices[i]));
-          per_device_buffers.push_back(out.get());
-          result.owned_buffers.push_back(std::move(out));
-        }
-      }
-#endif
       return result;
     }
   }
@@ -246,11 +192,7 @@ xla::StatusOr<ShardArgResult> ShardArg(
       py::cast<py::list>(python_fallback(arg, py_devices, input_spec.indices));
   ShardArgResult result;
   result.owning_sda = py::reinterpret_borrow<py::object>(per_device_pybuffers);
-#ifndef JAX_ENABLE_IFRT
-  std::vector<xla::PjRtBuffer*>& per_device_buffers = result.per_device_buffers;
-#endif
   if (!per_device_pybuffers.empty()) {
-#ifdef JAX_ENABLE_IFRT
     std::vector<tsl::RCReference<xla::ifrt::Array>> per_device_arrays;
     per_device_arrays.reserve(per_device_pybuffers.size());
     xla::ifrt::DeviceList::Devices devices;
@@ -259,15 +201,11 @@ xla::StatusOr<ShardArgResult> ShardArg(
     // omit collecting shapes and make the OpaqueSharding non-disassemblable?
     std::vector<xla::ifrt::Shape> shapes;
     shapes.reserve(per_device_pybuffers.size());
-#else
-    per_device_buffers.reserve(per_device_pybuffers.size());
-#endif
 
     // The JAX Python shard_arg function is expected to return JAX PyBuffer
     // objects. If executing a JAX extension, it should have fallbacked to
     // Python well before this point.
     TF_RET_CHECK(xla::PyBuffer::IsPyBuffer(per_device_pybuffers[0]));
-#ifdef JAX_ENABLE_IFRT
     for (py::handle per_device_pybuffer : per_device_pybuffers) {
       auto b = xla::PyBuffer::AsPyBuffer(per_device_pybuffer).value();
       per_device_arrays.push_back(tsl::FormRef(b->ifrt_array()));
@@ -289,13 +227,6 @@ xla::StatusOr<ShardArgResult> ShardArg(
                         std::move(shapes))),
                 absl::MakeSpan(per_device_arrays),
                 xla::ifrt::ArrayCopySemantics::kReuseInput));
-#else
-    for (py::handle per_device_pybuffer : per_device_pybuffers) {
-      xla::PjRtBuffer* buf =
-          xla::PyBuffer::AsPyBuffer(per_device_pybuffer).value()->pjrt_buffer();
-      per_device_buffers.push_back(buf);
-    }
-#endif
   }
   return result;
 }
@@ -636,7 +567,10 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
       it;
   bool inserted;
   std::tie(it, inserted) = executables_.try_emplace(
-      arguments.signature, std::make_unique<PmapCacheEntry>());
+      arguments.signature, std::unique_ptr<PmapCacheEntry>());
+  if (inserted) {
+    it->second = std::make_unique<PmapCacheEntry>();
+  }
   PmapCacheEntry& cache_entry = *(it->second);
 
   if (!cache_entry.compilation_complete.HasBeenNotified()) {
@@ -684,7 +618,6 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
   std::vector<InputSpec>& input_specs = cache_entry.input_specs;
   const int num_args = arguments.flat_dynamic_args.size();
 
-#ifdef JAX_ENABLE_IFRT
   // We need [num_args] for the `Execute` call below.
   std::vector<tsl::RCReference<xla::ifrt::Array>> num_args_arrays(num_args);
   for (int i = 0; i < num_args; ++i) {
@@ -698,35 +631,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
       arguments.keep_alive_objects.push_back(std::move(sharded_arg.owning_sda));
     }
   }
-#else
-  // We need [num_computation, num_args] for the `Execute` call bellow,
-  std::vector<std::vector<xla::PjRtBuffer*>> num_computation_num_args_buffers(
-      num_computations);
-  for (int computation = 0; computation < num_computations; ++computation) {
-    num_computation_num_args_buffers[computation].resize(num_args);
-  }
-  for (int i = 0; i < num_args; ++i) {
-    TF_ASSIGN_OR_RETURN(
-        ShardArgResult sharded_arg,
-        ShardArg(arguments.flat_dynamic_args[i], input_devices, input_specs[i],
-                 cache_entry.py_devices, python_shard_arg_fallback_));
 
-    std::vector<xla::PjRtBuffer*>& per_device_buffers =
-        sharded_arg.per_device_buffers;
-    for (int computation = 0; computation < num_computations; ++computation) {
-      num_computation_num_args_buffers[computation][i] =
-          per_device_buffers[computation];
-    }
-    for (auto& owned_buffer : sharded_arg.owned_buffers) {
-      arguments.keep_alive.push_back(std::move(owned_buffer));
-    }
-    if (sharded_arg.owning_sda) {
-      arguments.keep_alive_objects.push_back(std::move(sharded_arg.owning_sda));
-    }
-  }
-#endif
-
-#ifdef JAX_ENABLE_IFRT
   // A vector of [num_outputs].
   std::vector<tsl::RCReference<xla::ifrt::Array>> output_arrays;
   {
@@ -738,17 +643,6 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
                                               /*devices=*/std::nullopt));
     output_arrays = std::move(result.outputs);
   }
-#else
-  // A vector of [num_devices, num_outputs].
-  std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> output_buffers;
-  {
-    py::gil_scoped_release gil_release;
-    auto pjrt_executable = cache_entry.executable->pjrt_executable();
-    TF_ASSIGN_OR_RETURN(output_buffers, pjrt_executable->Execute(
-                                            num_computation_num_args_buffers,
-                                            cache_entry.executable->options()));
-  }
-#endif
 
   // TODO(jblespiau): We don't need to create the PyBuffer objects.
   // Having a C++ `ShardedDeviceArray`, keeping internally the PjRtBuffer
@@ -760,18 +654,13 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
 
   // Convert the PjRtBuffer objects to PyBuffer, and invert the order from
   // [num_devices, num_args] to [num_args, num_devices].
-#ifdef JAX_ENABLE_IFRT
   const int num_outputs = output_arrays.size();
-#else
-  const int num_outputs = output_buffers[0].size();
-#endif
   std::vector<py::object> flat_sharded_device_arrays;
   flat_sharded_device_arrays.reserve(num_outputs);
 
   const auto& output_specs = cache_entry.out_result_specs;
 
   if (!cache_entry.out_array_shardings.empty()) {
-#ifdef JAX_ENABLE_IFRT
     for (int i = 0; i < num_outputs; ++i) {
       const ResultSpec& result_spec = output_specs[i];
       xla::PyArray py_array(
@@ -782,27 +671,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
 
       flat_sharded_device_arrays.push_back(std::move(py_array));
     }
-#else
-    for (int i = 0; i < num_outputs; ++i) {
-      std::vector<std::shared_ptr<xla::PjRtBuffer>> outputs;
-      outputs.reserve(num_computations);
-      for (int j = 0; j < num_computations; ++j) {
-        outputs.push_back(std::move(output_buffers[j][i]));
-      }
-
-      const ResultSpec& result_spec = output_specs[i];
-
-      xla::PyArray py_array(
-          result_spec.out_aval, result_spec.weak_type,
-          cache_entry.out_dtypes[i], cache_entry.out_shapes[i],
-          cache_entry.out_array_shardings[i], client, traceback,
-          std::move(outputs), cache_entry.out_committed[i]);
-
-      flat_sharded_device_arrays.push_back(std::move(py_array));
-    }
-#endif
   } else {
-#ifdef JAX_ENABLE_IFRT
     std::vector<std::vector<xla::PyBuffer::object>> outputs;
     outputs.resize(num_outputs);
     for (int output_id = 0; output_id < num_outputs; ++output_id) {
@@ -816,18 +685,6 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
             client, std::move(single_device_array), traceback));
       }
     }
-#else
-    std::vector<std::vector<xla::PyBuffer::object>> outputs;
-    outputs.resize(num_outputs);
-    for (int output_id = 0; output_id < num_outputs; ++output_id) {
-      outputs[output_id].reserve(num_computations);
-      for (int computation = 0; computation < num_computations; ++computation) {
-        outputs[output_id].push_back(xla::PyBuffer::Make(
-            client, std::move(output_buffers[computation][output_id]),
-            traceback));
-      }
-    }
-#endif
 
     for (int i = 0; i < num_outputs; ++i) {
       const ResultSpec& result_spec = output_specs[i];

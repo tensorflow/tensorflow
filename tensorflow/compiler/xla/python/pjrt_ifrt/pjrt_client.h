@@ -32,24 +32,32 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
+class PjRtCompatibleArray;
+
 // PjRt-compatible `Client` interface.
 class PjRtCompatibleClient
     : public llvm::RTTIExtends<PjRtCompatibleClient, Client> {
  public:
+  static constexpr int kPjRtBufferInlineSize = 1;
+  using PjRtBuffers =
+      absl::InlinedVector<std::shared_ptr<PjRtBuffer>, kPjRtBufferInlineSize>;
+
   // APIs that allow direct access to `xla::PjRtClient` for PjRt-only
   // operations.
   virtual xla::PjRtClient* pjrt_client() = 0;
   virtual std::shared_ptr<xla::PjRtClient> shared_ptr_pjrt_client() = 0;
+  virtual StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
+      std::shared_ptr<PjRtBuffer> pjrt_buffer) = 0;
+  virtual StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
+      Shape shape, PjRtBuffers pjrt_buffers) = 0;
 };
 
 // `Client` implementation that wraps `xla::PjRtClient`.
 class PjRtClient final
     : public llvm::RTTIExtends<PjRtClient, PjRtCompatibleClient> {
  public:
-  static std::unique_ptr<ifrt::Client> Create(
+  static std::unique_ptr<PjRtClient> Create(
       std::shared_ptr<xla::PjRtClient> pjrt_client);
-  static std::unique_ptr<ifrt::Client> Create(
-      std::unique_ptr<xla::PjRtClient> pjrt_client);
 
   // PjRtCompatibleClient implementation.
 
@@ -57,6 +65,10 @@ class PjRtClient final
   std::shared_ptr<xla::PjRtClient> shared_ptr_pjrt_client() override {
     return pjrt_client_;
   }
+  StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
+      std::shared_ptr<PjRtBuffer> pjrt_buffer) override;
+  StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
+      Shape shape, PjRtBuffers pjrt_buffers) override;
 
   // Client implementation.
 
@@ -73,6 +85,9 @@ class PjRtClient final
       Shape shape, std::shared_ptr<const Sharding> sharding,
       absl::Span<tsl::RCReference<Array>> arrays,
       ArrayCopySemantics semantics) override;
+
+  StatusOr<tsl::RCReference<Tuple>> MakeTuple(
+      absl::Span<tsl::RCReference<Value>> values) override;
 
   absl::string_view runtime_type() const override {
     DCHECK(this);

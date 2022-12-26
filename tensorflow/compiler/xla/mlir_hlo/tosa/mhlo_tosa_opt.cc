@@ -25,6 +25,7 @@ limitations under the License.
 int main(int argc, char **argv) {
   mlir::registerAllPasses();
   mlir::tosa::registerTosaLegalizeMhloPassPass();
+  mlir::tosa::registerTosaPrepareMhloPassPass();
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);

@@ -961,6 +961,19 @@ class PjRtBuffer {
       std::vector<RemoteSendCallback> callbacks,
       const ScatterDetails& scatter_details) = 0;
 
+  // Donates 'this' and returns a new buffer that is ready only when both 'this'
+  // and 'dependency' are ready.
+  //
+  // Once ready, the new buffer's contents will be exactly the contents of
+  // 'this'.
+  //
+  // If either 'this' or 'dependency' transitions to error, then the returned
+  // buffer will transition to error.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
+      PjRtFuture<Status> dependency) {
+    return Unimplemented("DonateWithControlDependency is not supported.");
+  }
+
   // Helper to allow a caller to indicate that it is going to do some "sends"
   // of the buffer a later date, where a send is a transfer out of a device
   // buffer, either copying to host, or to a remote device.

@@ -2683,16 +2683,6 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     return OkStatus();
   }
 
-  static bool HasFp8Operand(HloInstruction* instruction) {
-    for (HloInstruction* operand : instruction->operands()) {
-      if (ShapeUtil::HasPrimitiveType(operand->shape(), F8E5M2) ||
-          ShapeUtil::HasPrimitiveType(operand->shape(), F8E4M3FN)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   static Status VerifyF8Usage(HloInstruction* instruction) {
     bool has_fp8_operand =
         absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
@@ -2710,11 +2700,14 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         instruction->opcode() != HloOpcode::kTranspose &&
         instruction->opcode() != HloOpcode::kDot &&
         instruction->opcode() != HloOpcode::kFusion &&
+        instruction->opcode() != HloOpcode::kReshape &&
+        instruction->opcode() != HloOpcode::kCopy &&
         instruction->opcode() != HloOpcode::kCustomCall) {
       return InvalidArgument(
           "FP8 is currently only supported in convert, bitcast, tuple, "
-          "get-tuple-element, transpose, dot and fusion instructions as well "
-          "as Custom Calls, but got instruction with FP8 input: %s",
+          "get-tuple-element, transpose, dot, fusion, reshape and copy "
+          "instructions as well as Custom Calls, but got instruction with FP8 "
+          "input: %s",
           instruction->ToString());
     }
     return OkStatus();

@@ -150,6 +150,9 @@ HloToStablehloTypeConverter::HloToStablehloTypeConverter()
   addConversion([](mhlo::TokenType type) -> Type {
     return stablehlo::TokenType::get(type.getContext());
   });
+  // Consider implementing stablehlo::CustomType to provide an escape hatch
+  // for modelling MHLO types that aren't yet in StableHLO.
+  // Proposal: https://github.com/openxla/stablehlo/issues/743.
 }
 
 bool HloToStablehloTypeConverter::isSourceDialect(Dialect& dialect) {

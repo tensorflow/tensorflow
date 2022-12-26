@@ -41,6 +41,7 @@ typedef struct TfLiteTelemetrySettings {
 // Note: This struct does not comply with ABI stability.
 typedef struct TfLiteTelemetryInterpreterSettings {
   // TODO(b/261369329): Deserialize and export conversion metadata here.
+  const void* placeholder;
 } TfLiteTelemetryInterpreterSettings;
 
 #ifdef __cplusplus

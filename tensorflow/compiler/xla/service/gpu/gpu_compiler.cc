@@ -40,6 +40,7 @@ limitations under the License.
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
@@ -168,6 +169,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.pb.h"
+#include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
@@ -196,7 +198,7 @@ class GpuBfloat16Support : public BFloat16Support {
   explicit GpuBfloat16Support(bool supports_matrix_multiplication,
                               se::StreamExecutor* stream_exec)
       : supports_matrix_multiplication_(supports_matrix_multiplication),
-        is_conv_bf16_supported_(IsConvBf16Supported(stream_exec)) {}
+        gpu_info_(stream_exec) {}
 
 #if GOOGLE_CUDA
   explicit GpuBfloat16Support(bool supports_matrix_multiplication,
@@ -204,6 +206,7 @@ class GpuBfloat16Support : public BFloat16Support {
                               se::CudaComputeCapability cuda_compute_capability
                             )
       : supports_matrix_multiplication_(supports_matrix_multiplication),
+<<<<<<< HEAD
         is_conv_bf16_supported_(
             IsConvBf16Supported(dnn_version_info, cuda_compute_capability)) {}
 #elif TENSORFLOW_USE_ROCM
@@ -215,6 +218,10 @@ class GpuBfloat16Support : public BFloat16Support {
         is_conv_bf16_supported_(
             IsConvBf16Supported(dnn_version_info, rocm_compute_capability)) {}
 #endif
+=======
+        gpu_info_(std::make_pair(cudnn_version, cuda_compute_capability)) {}
+
+>>>>>>> google_upstream/master
   bool SupportsBF16Operand(const HloInstruction& hlo,
                            int64_t operand_index) const override {
     return BFloat16Support::SupportsBF16Operand(hlo, operand_index) ||
@@ -256,13 +263,14 @@ class GpuBfloat16Support : public BFloat16Support {
       case HloOpcode::kBitcast:
         return true;
       case HloOpcode::kConvolution:
-        return is_conv_bf16_supported_;
+        return IsConvBf16Supported();
       default:
         return supports_matrix_multiplication_ &&
                gpu::IsMatrixMultiplication(hlo);
     }
   }
 
+<<<<<<< HEAD
   static bool IsConvBf16Supported(se::StreamExecutor* stream_exec) {
 #if GOOGLE_CUDA
     if (se::dnn::DnnSupport* dnn = stream_exec->AsDnn()) {
@@ -276,8 +284,27 @@ class GpuBfloat16Support : public BFloat16Support {
                  cudnn_version->minor_version() >= 2)) &&
                cuda_compute_capability.IsAtLeast(
                    se::CudaComputeCapability::AMPERE);
+=======
+  bool IsConvBf16Supported() const {
+    if (std::holds_alternative<se::StreamExecutor*>(gpu_info_)) {
+      auto stream_exec = std::get<se::StreamExecutor*>(gpu_info_);
+      if (se::dnn::DnnSupport* dnn = stream_exec->AsDnn()) {
+        se::port::StatusOr<se::dnn::VersionInfo> cudnn_version =
+            dnn->GetVersion();
+        if (cudnn_version.ok()) {
+          auto cuda_compute_capability =
+              stream_exec->GetDeviceDescription().cuda_compute_capability();
+          return (cudnn_version->major_version() > 8 ||
+                  (cudnn_version->major_version() == 8 &&
+                   cudnn_version->minor_version() >= 2)) &&
+                 cuda_compute_capability.IsAtLeast(
+                     se::CudaComputeCapability::AMPERE);
+        }
+>>>>>>> google_upstream/master
       }
+      return false;
     }
+<<<<<<< HEAD
 #elif TENSORFLOW_USE_ROCM && TF_ROCM_VERSION>=50000
     auto rocm_compute_capability =
         stream_exec->GetDeviceDescription().rocm_compute_capability();
@@ -290,6 +317,14 @@ class GpuBfloat16Support : public BFloat16Support {
   static bool IsConvBf16Supported(
       se::dnn::VersionInfo cudnn_version,
       se::CudaComputeCapability cuda_compute_capability) {
+=======
+
+    auto pair =
+        std::get<std::pair<se::dnn::VersionInfo, se::CudaComputeCapability>>(
+            gpu_info_);
+    se::dnn::VersionInfo cudnn_version = pair.first;
+    se::CudaComputeCapability cuda_compute_capability = pair.second;
+>>>>>>> google_upstream/master
     return (cudnn_version.major_version() > 8 ||
             (cudnn_version.major_version() == 8 &&
              cudnn_version.minor_version() >= 2)) &&
@@ -304,7 +339,13 @@ class GpuBfloat16Support : public BFloat16Support {
 #endif
 
   bool supports_matrix_multiplication_;
-  bool is_conv_bf16_supported_;
+
+  // During JIT compilation, store a pointer to the stream executor. During AOT
+  // compilation, store the dnn version info and the cuda compute capability
+  // from the target GPU.
+  std::variant<se::StreamExecutor*,
+               std::pair<se::dnn::VersionInfo, se::CudaComputeCapability>>
+      gpu_info_;
 };
 
 int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
@@ -546,6 +587,7 @@ Status GpuCompiler::OptimizeHloModule(
     // Expand the sort op to support stable sorting if required.
     pipeline.AddPass<StableSortExpander>();
 
+<<<<<<< HEAD
     GpuBfloat16Support bf16(
         /*supports_matrix_multiplication=*/true,
         gpu_target_config.dnn_version_info,
@@ -555,6 +597,18 @@ Status GpuCompiler::OptimizeHloModule(
         std::get<se::RocmComputeCapability>(gpu_target_config.gpu_version)
 #endif        
     );
+=======
+    GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/true,
+                            stream_exec);
+    if (!stream_exec) {
+      // Stream executor is not available during AOT compilation. We pass in
+      // relevant information from gpu_target_info.
+      bf16 = GpuBfloat16Support(
+          /*supports_matrix_multiplication=*/true,
+          gpu_target_config.dnn_version_info,
+          std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version));
+    }
+>>>>>>> google_upstream/master
     pipeline.AddPass<BFloat16Normalization>(&bf16);
 
     pipeline.AddPass<BatchNormExpander>(
@@ -927,6 +981,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   // Run conversion again, to catch those matrix multiplications which were not
   // rewritten into cuBLAS calls.
+<<<<<<< HEAD
   GpuBfloat16Support bf16(
       /*supports_matrix_multiplication=*/false,
       gpu_target_config.dnn_version_info,
@@ -936,6 +991,18 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       std::get<se::RocmComputeCapability>(gpu_target_config.gpu_version)
 #endif      
   );
+=======
+  GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/false,
+                          stream_exec);
+  if (!stream_exec) {
+    // Stream executor is not available during AOT compilation. We pass in
+    // relevant information from gpu_target_info.
+    bf16 = GpuBfloat16Support(
+        /*supports_matrix_multiplication=*/false,
+        gpu_target_config.dnn_version_info,
+        std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version));
+  }
+>>>>>>> google_upstream/master
   pipeline.AddPass<BFloat16Normalization>(&bf16);
 
   // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
@@ -1196,6 +1263,18 @@ static void ForAllThunks(const std::function<void(Thunk*)>& fn,
   }
 }
 
+static bool HasFp8(const HloModule& hlo_module) {
+  for (const HloComputation* computation : hlo_module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (ShapeUtil::HasPrimitiveType(instruction->shape(), F8E5M2) ||
+          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E4M3FN)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 // The order of `thunk_sequence` corresponds to
 // `hlo_schedule->ThunkLaunchOrder()`.
 static Status CompileModuleToLlvmIrImpl(
@@ -1305,7 +1384,10 @@ static Status CompileModuleToLlvmIrImpl(
     RecordHloToLlvmDuration(end_usecs - start_usecs);
   }
 
-  if (IsXlaRuntimeExecutableEnabled(hlo_module->config())) {
+  // TODO(ezhulenev): Remove the FP8 check once https://reviews.llvm.org/D140088
+  // is submitted. Currently we can't emit LLVM IR with fp8 types.
+  if (IsXlaRuntimeExecutableEnabled(hlo_module->config()) &&
+      !HasFp8(*hlo_module)) {
     std::vector<int64_t> buffer_sizes;
     llvm::transform(
         results->allocations, std::back_inserter(buffer_sizes),

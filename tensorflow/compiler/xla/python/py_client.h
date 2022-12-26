@@ -24,11 +24,9 @@ limitations under the License.
 
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#ifdef JAX_ENABLE_IFRT
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/python/ifrt/client.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
-#endif
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -98,14 +96,9 @@ ClientAndPtr<T> WrapWithClient(std::shared_ptr<PyClient> client, T* contents) {
 // We use a wrapper class to add Python-specific functionality.
 class PyClient : public std::enable_shared_from_this<PyClient> {
  public:
-#ifdef JAX_ENABLE_IFRT
   explicit PyClient(std::shared_ptr<ifrt::Client> ifrt_client);
-#else
-  explicit PyClient(std::shared_ptr<PjRtClient> pjrt_client);
-#endif
   virtual ~PyClient();
 
-#ifdef JAX_ENABLE_IFRT
   ifrt::Client* ifrt_client() const { return ifrt_client_.get(); }
 
   // Short-term escape hatch to get PjRtClient from PyClient.
@@ -128,10 +121,6 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
     }
     return pjrt_client->shared_ptr_pjrt_client();
   }
-#else
-  xla::PjRtClient* pjrt_client() const { return pjrt_client_.get(); }
-  std::shared_ptr<PjRtClient> shared_ptr_pjrt_client() { return pjrt_client_; }
-#endif
 
   // Legacy alises.
   std::shared_ptr<PjRtClient> shared_pjrt_client() {
@@ -139,46 +128,22 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   }
 
   absl::string_view platform_name() const {
-#ifdef JAX_ENABLE_IFRT
     return ifrt_client_->platform_name();
-#else
-    return pjrt_client_->platform_name();
-#endif
   }
   absl::string_view platform_version() const {
-#ifdef JAX_ENABLE_IFRT
     return ifrt_client_->platform_version();
-#else
-    return pjrt_client_->platform_version();
-#endif
   }
   absl::string_view runtime_type() const {
-#ifdef JAX_ENABLE_IFRT
     return ifrt_client_->runtime_type();
-#else
-    return PjRtRuntimeTypeString(pjrt_client_->runtime_type());
-#endif
   }
   int addressable_device_count() const {
-#ifdef JAX_ENABLE_IFRT
     return ifrt_client_->addressable_device_count();
-#else
-    return pjrt_client_->addressable_device_count();
-#endif
   }
   int device_count() const {
-#ifdef JAX_ENABLE_IFRT
     return ifrt_client_->device_count();
-#else
-    return pjrt_client_->device_count();
-#endif
   }
   int process_index() const {
-#ifdef JAX_ENABLE_IFRT
     return ifrt_client_->process_index();
-#else
-    return pjrt_client_->process_index();
-#endif
   }
 
   std::vector<ClientAndPtr<PjRtDevice>> Devices();
@@ -207,18 +172,10 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
   StatusOr<ChannelHandle> CreateChannelHandle() { return ChannelHandle(); }
   StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() {
-#ifdef JAX_ENABLE_IFRT
     return ifrt_client_->CreateDeviceToHostChannelHandle();
-#else
-    return pjrt_client_->CreateDeviceToHostChannelHandle();
-#endif
   }
   StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() {
-#ifdef JAX_ENABLE_IFRT
     return ifrt_client_->CreateHostToDeviceChannelHandle();
-#else
-    return pjrt_client_->CreateHostToDeviceChannelHandle();
-#endif
   }
 
   StatusOr<std::vector<std::pair<pybind11::bytes, pybind11::object>>>
@@ -227,11 +184,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
   StatusOr<pybind11::object> BufferFromPyval(
       pybind11::handle argument, PjRtDevice* device, bool force_copy,
-#ifdef JAX_ENABLE_IFRT
       ifrt::Client::HostBufferSemantics host_buffer_semantics
-#else
-      PjRtClient::HostBufferSemantics host_buffer_semantics
-#endif
   );
 
   StatusOr<std::shared_ptr<PyLoadedExecutable>> Compile(
@@ -311,11 +264,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   friend class PyArray;
   friend struct PyArray_Storage;
 
-#ifdef JAX_ENABLE_IFRT
   std::shared_ptr<ifrt::Client> ifrt_client_;
-#else
-  std::shared_ptr<PjRtClient> pjrt_client_;
-#endif
 
   // Pointers to intrusive doubly-linked lists of buffers and executables, used
   // to iterate over all known objects when heap profiling. The list structure

@@ -609,6 +609,80 @@ TEST_F(AlgebraicSimplifierTest, SelectWithNotPred) {
   EXPECT_EQ(operands[2], param1);
 }
 
+// Test that select(pred, xs, dynamic_update_slice(xs, x, i)) is simplified
+// to dynamic_update_slice(xs, select(pred, dynamic_slice(xs, i), x), i)
+TEST_F(AlgebraicSimplifierTest, SelectDUSWithShapedPred) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p = pred[8] parameter(0)
+      xs = f32[8] parameter(1)
+      x = f32[2] parameter(2)
+      i = u32[] parameter(3)
+      dus = f32[8] dynamic-update-slice(xs, x, i)
+      ROOT out = f32[8] select(p, dus, xs)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::DynamicUpdateSlice(
+                  m::Parameter(1),
+                  m::Select(m::DynamicSlice(m::Parameter(0), m::Parameter(3)),
+                            m::Parameter(2),
+                            m::DynamicSlice(m::Parameter(1), m::Parameter(3))),
+                  m::Parameter(3))));
+}
+
+TEST_F(AlgebraicSimplifierTest, ReverseSelectDUSWithShapedPred) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p = pred[8] parameter(0)
+      xs = f32[8] parameter(1)
+      x = f32[2] parameter(2)
+      i = u32[] parameter(3)
+      dus = f32[8] dynamic-update-slice(xs, x, i)
+      ROOT out = f32[8] select(p, xs, dus)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::DynamicUpdateSlice(
+                  m::Parameter(1),
+                  m::Select(m::DynamicSlice(m::Parameter(0), m::Parameter(3)),
+                            m::DynamicSlice(m::Parameter(1), m::Parameter(3)),
+                            m::Parameter(2)),
+                  m::Parameter(3))));
+}
+
+TEST_F(AlgebraicSimplifierTest, SelectDUSNotTriggering) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p = pred[8] parameter(0)
+      xs = f32[8] parameter(1)
+      x = f32[2] parameter(2)
+      i = u32[] parameter(3)
+      ys = f32[8] parameter(4)
+      dus = f32[8] dynamic-update-slice(xs, x, i)
+      ROOT out = f32[8] select(p, dus, ys)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_FALSE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Select(
+                  m::Parameter(0),
+                  m::DynamicUpdateSlice(m::Parameter(1), m::Parameter(2),
+                                        m::Parameter(3)),
+                  m::Parameter(4))));
+}
+
 // Test that Reduce(Reduce(A)) -> Reduce(A)
 TEST_F(AlgebraicSimplifierTest, TwoReducesToOne) {
   auto m = CreateNewVerifiedModule();

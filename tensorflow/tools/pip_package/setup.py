@@ -123,7 +123,12 @@ REQUIRED_PACKAGES = [
     # no longer relies on TF.
     'jax >= 0.3.15',
     'libclang >= 13.0.0',
+<<<<<<< HEAD
     'numpy >= 1.20, < 1.23',  # 1.23 is causing some unit test fails
+=======
+    # TODO(b/263178356): numpy 1.24 breaks TF's tests
+    'numpy >= 1.20, <1.24',
+>>>>>>> google_upstream/master
     'opt_einsum >= 2.3.2',
     'packaging',
     # TODO(b/182876485): Protobuf 3.20 results in linker errors on Windows
@@ -139,8 +144,8 @@ REQUIRED_PACKAGES = [
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
     'wrapt >= 1.11.0',
-    'tensorflow-io-gcs-filesystem >= 0.23.1; python_version<"3.11.0" and ' +
-    '(platform_machine!="arm64" or platform_system!="Darwin")',
+    'tensorflow-io-gcs-filesystem >= 0.23.1;platform_machine!="arm64" or ' +
+    'platform_system!="Darwin"',
     # grpcio does not build correctly on big-endian machines due to lack of
     # BoringSSL support.
     # See https://github.com/tensorflow/tensorflow/issues/17882.
@@ -350,6 +355,7 @@ headers = (
     list(find_files('*.h', 'google/com_google_protobuf/src')) +
     list(find_files('*.inc', 'google/com_google_protobuf/src')) +
     list(find_files('*', 'third_party/eigen3')) +
+    list(find_files('*', 'third_party/gpus')) +
     list(find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
     list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +
     list(find_files('*', 'tensorflow/include/external/eigen_archive')))

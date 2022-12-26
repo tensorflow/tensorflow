@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/jit/xla_compilation_cache.h"
+#ifndef TENSORFLOW_COMPILER_JIT_DEVICE_COMPILER_H_
+#define TENSORFLOW_COMPILER_JIT_DEVICE_COMPILER_H_
 
 #include <memory>
 #include <numeric>
@@ -24,9 +25,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
-#include "absl/status/status.h"
-#include "absl/strings/str_join.h"
-#include "absl/types/variant.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/jit/device_compilation_cache.h"
 #include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
 #include "tensorflow/compiler/jit/device_compilation_profiler.h"
@@ -34,48 +35,146 @@ limitations under the License.
 #include "tensorflow/compiler/jit/device_executable_persistor.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/tf_graph_to_hlo_compiler.h"
-#include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/tf2xla/xla_context.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/protobuf_util.h"
-#include "tensorflow/compiler/xla/service/compiler.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tensorflow/core/common_runtime/graph_optimizer.h"
-#include "tensorflow/core/framework/attr_value_util.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/protobuf/debug_event.pb.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
-#include "tensorflow/core/public/version.h"
-#include "tensorflow/core/tpu/tpu_defs.h"
-#include "tensorflow/core/util/dump_graph.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace tensorflow {
-namespace {
+
+// Compiles/lowers a given Tensorflow graph/function/cluster into a compiled XLA
+// compilation (HLO) using the XlaCompiler and compiles the resulting
+// XlaCompilationResult into an `ExecutableType` (eg. xla::LocalExecutable) by
+// calling `ClientType` (eg. xla::LocalClient).
+//
+// Caches the compiled XlaCompilationResult and Executable using a
+// DeviceCompilationCache. Compilation is done only when there's a cache miss.
+//
+// Uses the DeviceExecutablePersistor class for persistence and tries to load a
+// serialized executable from disk upon a request for compilation. If the
+// appropriate executable isn't found on disk, compiles the given Tensorflow
+// function/graph/cluster into an XlaCompilationResult (HLO) and
+// `ExecutableType` and tries saving/persisting the compiled HLO and executable
+// to disk.
+//
+// Since XLA computations must have static shapes, DeviceCompiler generates a
+// new XLA computation for each new set of input shapes.
+// TODO(b/255826209): De-templatize once we've moved to Device API completely.
+template <typename ExecutableType, typename ClientType>
+class DeviceCompiler : public ResourceBase {
+ public:
+  DeviceCompiler(
+      std::unique_ptr<DeviceExecutablePersistor<ExecutableType, ClientType>>
+          persistor,
+      std::unique_ptr<DeviceCompilerClient<ExecutableType, ClientType>>
+          compiler_client);
+  ~DeviceCompiler() override;
+
+  enum class CompileScope {
+    kOp,
+    kFunction,
+  };
+
+  // Compiles a function into a XlaCompiler::CompilationResult that can be used
+  // to execute an XLA Computation. Compilation results are cached. Compilation
+  // is skipped if there is a cache hit. `function` is the name of a Tensorflow
+  // function to compile. `args` is a description of the arguments to the
+  // computation.
+  //
+  // `compile_mode` controls the behavior of the compilation cache on a cache
+  // miss.  If `compile_mode` is `kLazy` then, based on some profitability
+  // heuristics, the compilation cache may decide not to compile the cluster at
+  // this time.  In this case it returns null into both `out_compilation_result`
+  // and `out_executable`.  If `compile_mode` is `kStrict` then the compilation
+  // cache always attempts the compilation on a cache miss. If compilation mode
+  // is 'kAsync' compilation of the cluster happens in the background while the
+  // fallback path executes.
+  //
+  // The result of compilation is written to `*out_compilation_result`, which
+  // must be non-null. If `out_executable` is non-null, also builds an
+  // `ExecutableType` and sets `out_executable` to point to it. The
+  // resulting executable pointer may be null if the computation has no
+  // non-constant outputs.
+  Status CompileIfNeeded(
+      const XlaCompiler::Options& options, const NameAttrList& function,
+      const std::vector<XlaCompiler::Argument>& args,
+      const XlaCompiler::CompileOptions& compile_options,
+      DeviceCompileMode compile_mode, DeviceCompilationProfiler* profiler,
+      const XlaCompiler::CompilationResult** out_compilation_result,
+      ExecutableType** out_executable);
+
+  // As above, but for a single op.
+  Status CompileSingleOpIfNeeded(
+      const XlaCompiler::Options& options,
+      const std::vector<XlaCompiler::Argument>& args,
+      const XlaCompiler::CompileOptions& compile_options, OpKernelContext* ctx,
+      DeviceCompilationProfiler* profiler,
+      const XlaCompiler::CompilationResult** out_compilation_result,
+      ExecutableType** out_executable);
+
+  ClientType* client() const { return compiler_client_->client(); }
+  const DeviceType& device_type() const { return persistor_->device_type(); }
+  DeviceCompilationCache<ExecutableType>* cache() { return cache_.get(); }
+
+  string DebugString() const override;
+
+ private:
+  // Common implementation of Compile and CompileSingleOp. The `OpKernelContext`
+  // parameter is always null for the former.
+  Status CompileImpl(
+      const XlaCompiler::CompileOptions& compile_options,
+      const XlaCompiler::Options& options, const NameAttrList& function,
+      const std::vector<XlaCompiler::Argument>& args, CompileScope scope,
+      DeviceCompileMode compile_mode, OpKernelContext* ctx,
+      DeviceCompilationProfiler* profiler,
+      const XlaCompiler::CompilationResult** out_compilation_result,
+      ExecutableType** out_executable);
+
+  StatusOr<typename DeviceCompilationCache<ExecutableType>::Value>
+  CompileStrict(
+      const DeviceCompilationClusterSignature& sig,
+      const XlaCompiler::CompileOptions& compile_options,
+      const XlaCompiler::Options& options,
+      const std::vector<XlaCompiler::Argument>& args,
+      const NameAttrList& function,
+      typename DeviceCompilationCache<ExecutableType>::Value cache_value,
+      CompileScope scope, OpKernelContext* ctx,
+      DeviceCompilationProfiler* profiler, mutex* mu)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(*mu);
+
+  Status CompileAsynchronous(const DeviceCompilationClusterSignature& sig,
+                             const XlaCompiler::CompileOptions& compile_options,
+                             const XlaCompiler::Options& options,
+                             const std::vector<XlaCompiler::Argument>& args,
+                             const NameAttrList& function, CompileScope scope,
+                             OpKernelContext* ctx,
+                             DeviceCompilationProfiler* profiler);
+
+  std::unique_ptr<DeviceExecutablePersistor<ExecutableType, ClientType>>
+      persistor_;
+  std::unique_ptr<DeviceCompilerClient<ExecutableType, ClientType>>
+      compiler_client_;
+  std::unique_ptr<DeviceCompilationCache<ExecutableType>> cache_;
+
+  // Pool of threads for asynchronous compilations.
+  std::unique_ptr<thread::ThreadPool> async_compiler_threads_;
+
+  mutex cluster_mutexes_mu_;
+  absl::flat_hash_map<DeviceCompilationClusterSignature, std::unique_ptr<mutex>,
+                      DeviceCompilationClusterSignature::Hash>
+      cluster_mutexes_ TF_GUARDED_BY(cluster_mutexes_mu_);
+
+  TF_DISALLOW_COPY_AND_ASSIGN(DeviceCompiler);
+};
+
+namespace device_compiler_internal {
 // Print something that users can search for to definitively ascertain that XLA
 // was used for their TF model.
-//
 // Prints only once to avoid spamming LOG(INFO).
-void LogOnceXlaCompiledFirstCluster() {
+inline void LogOnceXlaCompiledFirstCluster() {
   static absl::once_flag log_once;
   absl::call_once(log_once, [] {
     LOG(INFO) << "Compiled cluster using XLA!  This line is logged at most "
@@ -83,8 +182,8 @@ void LogOnceXlaCompiledFirstCluster() {
   });
 }
 
-Status EligibleToPersist(DeviceCompileState compile_state,
-                         const xla::LocalExecutable* executable) {
+inline Status EligibleToPersist(DeviceCompileState compile_state,
+                                const xla::LocalExecutable* executable) {
   if (compile_state != DeviceCompileState::kCompiled) {
     return errors::FailedPrecondition(
         "Cache entry to serialize is not compiled.");
@@ -95,24 +194,24 @@ Status EligibleToPersist(DeviceCompileState compile_state,
   }
   return OkStatus();
 }
-}  // namespace
+}  // namespace device_compiler_internal
 
-XlaCompilationCache::XlaCompilationCache(
-    std::unique_ptr<
-        DeviceExecutablePersistor<xla::LocalExecutable, xla::LocalClient>>
+template <typename ExecutableType, typename ClientType>
+DeviceCompiler<ExecutableType, ClientType>::DeviceCompiler(
+    std::unique_ptr<DeviceExecutablePersistor<ExecutableType, ClientType>>
         persistor,
-    std::unique_ptr<
-        DeviceCompilerClient<xla::LocalExecutable, xla::LocalClient>>
+    std::unique_ptr<DeviceCompilerClient<ExecutableType, ClientType>>
         compiler_client)
     : persistor_(std::move(persistor)),
       compiler_client_(std::move(compiler_client)) {
-  cache_ = std::make_unique<DeviceCompilationCache<xla::LocalExecutable>>();
+  cache_ = std::make_unique<DeviceCompilationCache<ExecutableType>>();
   async_compiler_threads_ = std::make_unique<tensorflow::thread::ThreadPool>(
       tensorflow::Env::Default(), "async_compiler_threads",
       kNumAsyncDeviceCompilerThreads);
 }
 
-XlaCompilationCache::~XlaCompilationCache() {
+template <typename ExecutableType, typename ClientType>
+DeviceCompiler<ExecutableType, ClientType>::~DeviceCompiler() {
   // Since programs are owned by the cache, ensure any use of our programs have
   // completed by waiting for all stream executors to complete.
   compiler_client_->WaitForProgramsToFinish();
@@ -120,7 +219,7 @@ XlaCompilationCache::~XlaCompilationCache() {
   // Resetting the pointer explicitly in the top level destructor.
   // Without this, the pointer would be reset when the AsyncCompilationState
   // is destructed, which is dependent on the order of the members in the
-  // XlaCompilationCache class, which is error prone if the order changes.
+  // DeviceCompiler class, which is error prone if the order changes.
   async_compiler_threads_.reset();
   // TODO(b/110813685): Think about the program ownership model. Programs are
   // currently owned by the compilation cache which means we must wait for
@@ -130,29 +229,32 @@ XlaCompilationCache::~XlaCompilationCache() {
   // about?
 }
 
-string XlaCompilationCache::DebugString() const {
-  return "XLA JIT compilation cache";
+template <typename ExecutableType, typename ClientType>
+string DeviceCompiler<ExecutableType, ClientType>::DebugString() const {
+  return "DeviceCompiler";
 }
 
-Status XlaCompilationCache::CompileIfNeeded(
+template <typename ExecutableType, typename ClientType>
+Status DeviceCompiler<ExecutableType, ClientType>::CompileIfNeeded(
     const XlaCompiler::Options& options, const NameAttrList& function,
     const std::vector<XlaCompiler::Argument>& args,
     const XlaCompiler::CompileOptions& compile_options,
     DeviceCompileMode compile_mode, DeviceCompilationProfiler* profiler,
     const XlaCompiler::CompilationResult** out_compilation_result,
-    xla::LocalExecutable** out_executable) {
+    ExecutableType** out_executable) {
   return CompileImpl(compile_options, options, function, args,
                      CompileScope::kFunction, compile_mode, /*ctx=*/nullptr,
                      profiler, out_compilation_result, out_executable);
 }
 
-Status XlaCompilationCache::CompileSingleOpIfNeeded(
+template <typename ExecutableType, typename ClientType>
+Status DeviceCompiler<ExecutableType, ClientType>::CompileSingleOpIfNeeded(
     const XlaCompiler::Options& options,
     const std::vector<XlaCompiler::Argument>& args,
     const XlaCompiler::CompileOptions& compile_options, OpKernelContext* ctx,
     DeviceCompilationProfiler* profiler,
     const XlaCompiler::CompilationResult** out_compilation_result,
-    xla::LocalExecutable** out_executable) {
+    ExecutableType** out_executable) {
   const NodeDef& def = ctx->op_kernel().def();
   NameAttrList name;
   name.set_name(def.op());
@@ -166,14 +268,15 @@ Status XlaCompilationCache::CompileSingleOpIfNeeded(
                      out_compilation_result, out_executable);
 }
 
-StatusOr<DeviceCompilationCache<xla::LocalExecutable>::Value>
-XlaCompilationCache::CompileStrict(
+template <typename ExecutableType, typename ClientType>
+StatusOr<typename DeviceCompilationCache<ExecutableType>::Value>
+DeviceCompiler<ExecutableType, ClientType>::CompileStrict(
     const DeviceCompilationClusterSignature& sig,
     const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::Options& options,
     const std::vector<XlaCompiler::Argument>& args,
     const NameAttrList& function,
-    DeviceCompilationCache<xla::LocalExecutable>::Value cache_value,
+    typename DeviceCompilationCache<ExecutableType>::Value cache_value,
     CompileScope scope, OpKernelContext* ctx,
     DeviceCompilationProfiler* profiler, mutex* mu) {
   tensorflow::Env* env = tensorflow::Env::Default();
@@ -182,7 +285,7 @@ XlaCompilationCache::CompileStrict(
   TfGraphToHloCompiler compiler(options);
   cache_value.compile_state = DeviceCompileState::kCompiled;
 
-  std::unique_ptr<xla::LocalExecutable> out_executable;
+  std::unique_ptr<ExecutableType> out_executable;
   auto out_compilation_result =
       std::make_unique<XlaCompiler::CompilationResult>();
 
@@ -215,8 +318,8 @@ XlaCompilationCache::CompileStrict(
       out_executable = *std::move(built_executable);
     }
 
-    TF_RETURN_IF_ERROR(
-        EligibleToPersist(cache_value.compile_state, out_executable.get()));
+    TF_RETURN_IF_ERROR(device_compiler_internal::EligibleToPersist(
+        cache_value.compile_state, out_executable.get()));
     TF_RETURN_IF_ERROR(persistor_->TryToPersistExecutable(
         DeviceCompilationClusterSignature::Hash()(sig), sig.HumanString(),
         options, *out_compilation_result, *out_executable,
@@ -231,13 +334,14 @@ XlaCompilationCache::CompileStrict(
   const uint64 compile_end_us = env->NowMicros();
   const uint64 compile_time_us = compile_end_us - compile_start_us;
 
-  LogOnceXlaCompiledFirstCluster();
+  device_compiler_internal::LogOnceXlaCompiledFirstCluster();
   TF_RETURN_IF_ERROR(profiler->RegisterCompilation(
       function, compile_time_us, loaded_executable.has_value()));
   return cache_value;
 }
 
-Status XlaCompilationCache::CompileAsynchronous(
+template <typename ExecutableType, typename ClientType>
+Status DeviceCompiler<ExecutableType, ClientType>::CompileAsynchronous(
     const DeviceCompilationClusterSignature& signature,
     const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::Options& options,
@@ -266,10 +370,9 @@ Status XlaCompilationCache::CompileAsynchronous(
     // analysis.
     mutex mu;
     mutex_lock lock(mu);
-    auto s =
-        CompileStrict(signature, compile_options, options, args, function,
-                      DeviceCompilationCache<xla::LocalExecutable>::Value(),
-                      scope, ctx, profiler, &mu);
+    auto cache_value = typename DeviceCompilationCache<ExecutableType>::Value();
+    auto s = CompileStrict(signature, compile_options, options, args, function,
+                           cache_value, scope, ctx, profiler, &mu);
     VLOG(2) << "Finished asynchronous compililation of cluster "
             << function_name << '.';
     profiler->DecrementOngoingAsyncCompilations();
@@ -282,16 +385,17 @@ Status XlaCompilationCache::CompileAsynchronous(
   return OkStatus();
 }
 
-Status XlaCompilationCache::CompileImpl(
+template <typename ExecutableType, typename ClientType>
+Status DeviceCompiler<ExecutableType, ClientType>::CompileImpl(
     const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::Options& options, const NameAttrList& function,
     const std::vector<XlaCompiler::Argument>& args, CompileScope scope,
     DeviceCompileMode compile_mode, OpKernelContext* ctx,
     DeviceCompilationProfiler* profiler,
     const XlaCompiler::CompilationResult** out_compilation_result,
-    xla::LocalExecutable** out_executable) {
+    ExecutableType** out_executable) {
   DCHECK_NE(out_executable, nullptr);
-  VLOG(2) << "XlaCompilationCache::Compile " << DebugString();
+  VLOG(2) << "DeviceCompiler::Compile " << DebugString();
 
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "num_inputs=" << args.size();
@@ -316,7 +420,7 @@ Status XlaCompilationCache::CompileImpl(
   string human_signature;
   if (VLOG_IS_ON(2)) {
     human_signature = VLOG_IS_ON(3) ? signature.HumanString() : function.name();
-    VLOG(2) << "Signature: " << human_signature;
+    VLOG(2) << "DeviceCompilationClusterSignature: " << human_signature;
   }
 
   // Acquire the cache entry lock and compile, if necessary.
@@ -386,3 +490,5 @@ Status XlaCompilationCache::CompileImpl(
 }
 
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_COMPILER_JIT_DEVICE_COMPILER_H_

@@ -1306,12 +1306,14 @@ void DefaultSchedulerCore::DumpLatencyHidingSchedule(
     const std::vector<HloInstruction*>& instructions,
     const DebugOptions& debug_options) {
   ScheduleProto proto;
+  proto.set_computation_id(computation->unique_id());
 
   const HloGraphNode& first_node = schedule_graph.GetNode(instructions.front());
   const double total_time = first_node.GetReadyTime() + first_node.GetCost();
   for (const HloInstruction* instr : instructions) {
     const HloGraphNode& instr_node = schedule_graph.GetNode(instr);
-    const double start_time = total_time - instr_node.GetReadyTime();
+    const double start_time =
+        total_time - (instr_node.GetReadyTime() + instr_node.GetCost());
     const double end_time = start_time + instr_node.GetCost();
 
     ScheduleProto::Instruction* instr_msg = proto.add_instructions();
@@ -1320,7 +1322,7 @@ void DefaultSchedulerCore::DumpLatencyHidingSchedule(
     instr_msg->set_end_timestamp_cycles(end_time);
   }
 
-  const std::string fn = absl::StrFormat("%s.schedule.pb", computation->name());
+  const std::string fn = absl::StrFormat("%s.schedule", computation->name());
   DumpProtobufToFile(proto, debug_options, fn);
 }
 

@@ -146,7 +146,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/runtime:module",
-        "//tensorflow/compiler/xla/runtime/ffi:ffi_api_hdrs",
+        "//tensorflow/compiler/xla/runtime/ffi:ffi_api",
         "//tensorflow/compiler/xla/runtime:module_registry",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/tsl/lib/core:status_test_util",
@@ -369,7 +369,7 @@ cc_library(
         "//tensorflow/tsl/platform:human_readable_json",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/profiler/lib:nvtx_utils",
-        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
+        "//tensorflow/tsl/protobuf:dnn_proto_cc",
     ] + if_gpu_is_configured([
         ":triangular_solve_thunk",
         ":cholesky_thunk",
@@ -1123,9 +1123,7 @@ cc_library(
 
 xla_cc_test(
     name = "move_copy_to_users_test",
-    srcs = [
-        "move_copy_to_users_test.cc",
-    ],
+    srcs = ["move_copy_to_users_test.cc"],
     deps = [
         ":move_copy_to_users",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -1144,7 +1142,6 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_conv_rewriter_test",
     srcs = ["gpu_conv_rewriter_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":cublas_cudnn",
         ":gpu_conv_rewriter",
@@ -1346,7 +1343,6 @@ cc_library(
 xla_cc_test(
     name = "gpu_sanitize_constant_names_test",
     srcs = ["gpu_sanitize_constant_names_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_sanitize_constant_names",
         ":ir_emission_utils",
@@ -1433,7 +1429,6 @@ cc_library(
 xla_cc_test(
     name = "gpu_conv_padding_legalization_test",
     srcs = ["gpu_conv_padding_legalization_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":cublas_cudnn",
         ":gpu_conv_padding_legalization",
@@ -1466,7 +1461,6 @@ cc_library(
 xla_cc_test(
     name = "cudnn_support_utils_test",
     srcs = ["cudnn_support_utils_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":cudnn_support_utils",
         "//tensorflow/compiler/xla:status_macros",
@@ -1511,7 +1505,6 @@ cc_library(
 xla_cc_test(
     name = "cudnn_pad_for_convolutions_test",
     srcs = ["cudnn_pad_for_convolutions_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":cublas_cudnn",
         ":cudnn_pad_for_convolutions",
@@ -1545,7 +1538,6 @@ cc_library(
 xla_cc_test(
     name = "cudnn_vectorize_convolutions_test",
     srcs = ["cudnn_vectorize_convolutions_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":cublas_cudnn",
         ":cudnn_vectorize_convolutions",
@@ -1578,7 +1570,6 @@ cc_library(
 xla_cc_test(
     name = "cudnn_simplify_padding_test",
     srcs = ["cudnn_simplify_padding_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":cublas_cudnn",
         ":cudnn_pad_for_convolutions",
@@ -1879,19 +1870,6 @@ cc_library(
 )
 
 cc_library(
-    name = "nvptx_helper",
-    srcs = ["nvptx_helper.cc"],
-    hdrs = ["nvptx_helper.h"],
-    deps = [
-        "//tensorflow/compiler/xla/service:hlo_module_config",
-        "//tensorflow/tsl/platform:cuda_libdevice_path",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:path",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "nvptx_compiler_impl",
     srcs = if_cuda_is_configured([
         "nvptx_compiler.cc",
@@ -1916,7 +1894,6 @@ cc_library(
         ":gpu_layout_assignment",
         ":ir_emission_utils",
         ":metrics",
-        ":nvptx_helper",
         ":target_constants",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings:str_format",
@@ -2159,7 +2136,6 @@ cc_library(
 xla_cc_test(
     name = "gpu_layout_assignment_test",
     srcs = ["gpu_layout_assignment_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":cublas_cudnn",
         ":gemm_rewriter",
@@ -2612,6 +2588,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service:hlo_dce",
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/service:hlo_parser",

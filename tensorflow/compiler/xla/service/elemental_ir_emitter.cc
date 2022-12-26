@@ -479,6 +479,18 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
           return EmitF32ToBF16(EmitIntegralToFloating(operand_value, from_type,
                                                       F32, module_, b_));
         }
+        if (to_type == F8E5M2) {
+          return EmitF16ToF8e5m2(
+              EmitIntegralToFloating(operand_value, from_type, F16, module_,
+                                     b_),
+              b_);
+        }
+        if (to_type == F8E4M3FN) {
+          return EmitF16ToF8e4m3fn(
+              EmitIntegralToFloating(operand_value, from_type, F16, module_,
+                                     b_),
+              b_);
+        }
         return EmitIntegralToFloating(operand_value, from_type, to_type,
                                       module_, b_);
       }

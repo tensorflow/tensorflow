@@ -649,6 +649,12 @@ class Interpreter {
   void AddProfiler(Profiler* profiler);
 
   /// \warning This is an experimental API and subject to change. \n
+  /// \brief Adds the profiler to tracing execution. Transfers
+  /// ownership of the profiler to the interpreter.
+  /// nullptr `profiler` will be ignored.
+  void AddProfiler(std::unique_ptr<Profiler> profiler);
+
+  /// \warning This is an experimental API and subject to change. \n
   /// \brief Gets the profiler used for op tracing.
   Profiler* GetProfiler();
 

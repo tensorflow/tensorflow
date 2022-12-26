@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/trace_listener.h"
+#include "tensorflow/tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor {
 
@@ -380,6 +381,7 @@ class StreamExecutor {
   // Returns the list of supported algorithms for the specified convolution
   // operation.
   bool GetConvolveAlgorithms(dnn::ConvolutionKind kind,
+                             dnn::DataType input_type,
                              std::vector<dnn::AlgorithmDesc>* out_algorithms);
 
   // Returns the supported algorithms / execution plans for a convolution.

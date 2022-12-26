@@ -24,6 +24,23 @@ for wheel in /tf/pkg/*.whl; do
   # Change linux to manylinux
   NEW_TF_WHEEL=${wheel/linux/"manylinux2014"}
 
+<<<<<<< HEAD:tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/rename_and_verify_ROCM_wheels.sh
   mv $wheel $NEW_TF_WHEEL
   auditwheel show $NEW_TF_WHEEL
 done
+=======
+on:
+  workflow_dispatch:  # Allow manual triggers
+  schedule:
+    - cron: 0 4 * * *  # 4am UTC is 9pm PDT and 8pm PST
+name: Set nightly branch to master HEAD
+jobs:
+  master-to-nightly:
+    if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
+    runs-on: ubuntu-latest
+    steps:
+    - uses: zofrex/mirror-branch@a8809f0b42f9dfe9b2c5c2162a46327c23d15266 # v1.0.3
+      name: Set nightly branch to master HEAD
+      with:
+        target-branch: 'nightly'
+>>>>>>> google_upstream/master:.github/workflows/update-nightly.yml

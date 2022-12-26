@@ -15,22 +15,21 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/jit/device_compilation_profiler.h"
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/compiler/jit/xla_compilation_cache.h"
+#include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/xla_device_compiler_client.h"
-#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace {
 
-// This test is kept separate because it disables XLA compilation globaly.
-TEST(XlaCompilationCacheTest, TestDisabledXlaCompilation) {
+// This test is kept separate because it disables XLA compilation globally.
+TEST(DeviceCompilerTest, TestDisabledXlaCompilation) {
   NameAttrList fn;
   fn.set_name("afunction");
 
@@ -56,15 +55,16 @@ TEST(XlaCompilationCacheTest, TestDisabledXlaCompilation) {
   auto persistor = std::make_unique<XlaDeviceExecutablePersistor>(
       XlaDeviceExecutablePersistor::Config(), device_type);
   auto compiler_client = std::make_unique<XlaDeviceCompilerClient>(client);
-  auto cache =
-      new XlaCompilationCache(std::move(persistor), std::move(compiler_client));
-  core::ScopedUnref cache_ref(cache);
+  auto xla_device_compiler =
+      new DeviceCompiler<xla::LocalExecutable, xla::LocalClient>(
+          std::move(persistor), std::move(compiler_client));
+  core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
 
   auto profiler = new DeviceCompilationProfiler();
   core::ScopedUnref profiler_ref(profiler);
 
   // Check that strict compilation is disallowed.
-  Status status = cache->CompileIfNeeded(
+  Status status = xla_device_compiler->CompileIfNeeded(
       XlaCompiler::Options{}, fn, args, XlaCompiler::CompileOptions{},
       DeviceCompileMode::kStrict, profiler, &compilation_result, &executable);
   EXPECT_FALSE(status.ok());
@@ -72,7 +72,7 @@ TEST(XlaCompilationCacheTest, TestDisabledXlaCompilation) {
       absl::StrContains(status.error_message(), "XLA compilation disabled"));
 
   // Check that async compilation is disallowed.
-  status = cache->CompileIfNeeded(
+  status = xla_device_compiler->CompileIfNeeded(
       XlaCompiler::Options{}, fn, args, XlaCompiler::CompileOptions{},
       DeviceCompileMode::kAsync, profiler, &compilation_result, &executable);
   EXPECT_FALSE(status.ok());
@@ -80,7 +80,7 @@ TEST(XlaCompilationCacheTest, TestDisabledXlaCompilation) {
       absl::StrContains(status.error_message(), "XLA compilation disabled"));
 
   // Check that lazy compilation is disallowed.
-  status = cache->CompileIfNeeded(
+  status = xla_device_compiler->CompileIfNeeded(
       XlaCompiler::Options{}, fn, args, XlaCompiler::CompileOptions{},
       DeviceCompileMode::kLazy, profiler, &compilation_result, &executable);
   EXPECT_FALSE(status.ok());

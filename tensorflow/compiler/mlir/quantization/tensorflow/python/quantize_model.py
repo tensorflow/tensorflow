@@ -481,8 +481,8 @@ def _run_graph_for_calibration(
 
 def _run_static_range_qat(
     saved_model_path: str, signature_def_keys: Sequence[str],
-    tags: Collection[str],
-    quant_opts: quant_opts_pb2.QuantizationOptions) -> graph_pb2.GraphDef:
+    tags: Collection[str], quant_opts: quant_opts_pb2.QuantizationOptions
+) -> Tuple[graph_pb2.GraphDef, str]:
   """Runs static-range quantization for a Quantization-Aware Trained model.
 
   Runs the quantization for a model trained using QAT.
@@ -495,7 +495,9 @@ def _run_static_range_qat(
     quant_opts: Quantization options.
 
   Returns:
-    The static-range quantized graph.
+    (graph, init_node_name), where graph is the static-range quantized graph and
+    init_node_name is the name of the initializer op, which is fetched once
+    during model load to initialize resources (e.g. hash tables).
   """
   logging.info('Running static-range quantization for QAT model.')
   exported_model_serialized = (
@@ -507,7 +509,7 @@ def _run_static_range_qat(
   exported_model = exported_model_pb2.ExportedModel.FromString(
       exported_model_serialized)
 
-  return exported_model.graph_def
+  return exported_model.graph_def, exported_model.init_node_name
 
 
 def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
@@ -682,9 +684,9 @@ def _static_range_quantize(
         'The flag is ignored.')
 
   if is_qat_saved_model:
-    init_node_name: Optional[str] = None
-    graph_def = _run_static_range_qat(saved_model_path, signature_keys, tags,
-                                      quantization_options)
+    graph_def, init_node_name = _run_static_range_qat(saved_model_path,
+                                                      signature_keys, tags,
+                                                      quantization_options)
   else:
     graph_def, signature_def_map, init_node_name = _run_static_range_ptq(
         saved_model_path, signature_keys, tags, quantization_options,
@@ -709,6 +711,8 @@ def _dynamic_range_quantize(
 ) -> autotrackable.AutoTrackable:
   """Quantizes the given SavedModel via post-training dynamic range quantization.
 
+  Weight-only quantization also uses this path.
+
   Args:
     saved_model_path: Path to the saved model.
     signature_keys: Sequence of keys identifying SignatureDef containing inputs
@@ -726,12 +730,17 @@ def _dynamic_range_quantize(
   Raises:
     ValueError: when the model is QAT model.
   """
+  if (quantization_options.quantization_method.experimental_method ==
+      _ExperimentalMethod.WEIGHT_ONLY):
+    mode_str = 'weight-only quantization'
+  else:
+    mode_str = 'dynamic-range quantization'
   if _is_qat_saved_model(saved_model_path):
     raise ValueError(
         'The models trained with quantization-aware training (QAT) is not '
-        'supported for dynamic range quantization.')
+        'supported for %s.' % mode_str)
 
-  logging.info('Running post-training dynamic-range quantization on model: %s',
+  logging.info('Running post-training %s on model: %s', mode_str,
                saved_model_path)
   logging.info('Using SignatureDef keys: %s', signature_keys)
   logging.info('Using tags: %s', tags)
@@ -823,6 +832,11 @@ def _populate_quantization_options_default_values(
         'Currently, per-channel quantization is supported for Uniform '
         'Quantized opset only.')
 
+  if (quantization_options.quantization_method.experimental_method
+      == _ExperimentalMethod.WEIGHT_ONLY and
+      quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED):
+    raise ValueError('Uniform quantized opset does not support weight-only.')
+
 
 def quantize(
     saved_model_path: str,
@@ -892,7 +906,8 @@ def quantize(
       return _static_range_quantize(saved_model_path, signature_keys, tags,
                                     output_directory, quantization_options,
                                     representative_dataset)
-    elif method.experimental_method == _ExperimentalMethod.DYNAMIC_RANGE:
+    elif (method.experimental_method == _ExperimentalMethod.DYNAMIC_RANGE or
+          method.experimental_method == _ExperimentalMethod.WEIGHT_ONLY):
       return _dynamic_range_quantize(saved_model_path, signature_keys, tags,
                                      output_directory, quantization_options)
     else:

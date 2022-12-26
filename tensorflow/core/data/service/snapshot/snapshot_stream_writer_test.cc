@@ -21,12 +21,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/io/compression.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
 #include "tensorflow/tsl/platform/test.h"
@@ -61,23 +64,35 @@ class RangeIterator : public TaskIterator {
   int64_t next_ = 0;
 };
 
+StatusOr<std::string> CreateSnapshotDirectory() {
+  std::string snapshot_path;
+  if (!Env::Default()->LocalTempFilename(&snapshot_path)) {
+    return errors::FailedPrecondition(
+        "Failed to create local temp file for snapshot.");
+  }
+  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(
+      CommittedChunksDirectory(snapshot_path)));
+  return snapshot_path;
+}
+
 StatusOr<std::unique_ptr<snapshot_util::Reader>> CreateSnapshotReader(
-    const std::string& snapshot_path, int64_t num_elements, Env* env) {
+    const std::string& snapshot_path, int64_t num_elements,
+    const std::string& compression, Env* env) {
   static constexpr int kTFRecordReader = 2;
   DataTypeVector dtypes(num_elements, DT_INT64);
   std::unique_ptr<snapshot_util::Reader> reader;
   TF_RETURN_IF_ERROR(snapshot_util::Reader::Create(
-      env, snapshot_path, tsl::io::compression::kNone, kTFRecordReader, dtypes,
-      &reader));
+      env, snapshot_path, compression, kTFRecordReader, dtypes, &reader));
   return reader;
 }
 
 template <class T>
 StatusOr<std::vector<T>> ReadSnapshot(const std::string& snapshot_path,
+                                      const std::string& compression,
                                       int64_t num_elements) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<snapshot_util::Reader> reader,
-      CreateSnapshotReader(snapshot_path, num_elements, Env::Default()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<snapshot_util::Reader> reader,
+                      CreateSnapshotReader(snapshot_path, num_elements,
+                                           compression, Env::Default()));
 
   std::vector<Tensor> tensors;
   TF_RETURN_IF_ERROR(reader->ReadTensors(&tensors));
@@ -89,61 +104,87 @@ StatusOr<std::vector<T>> ReadSnapshot(const std::string& snapshot_path,
   return result;
 }
 
-TEST(SnapshotStreamWriterTest, WriteSnapshot) {
-  const int64_t range = 10;
-  std::string snapshot_path;
-  EXPECT_TRUE(Env::Default()->LocalTempFilename(&snapshot_path));
+using SnapshotStreamWriterParameterizedTest =
+    ::testing::TestWithParam<std::string>;
 
-  SnapshotStreamWriter snapshot_writer(std::make_unique<RangeIterator>(range),
-                                       snapshot_path, Env::Default());
+TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshot) {
+  int64_t range = 10;
+  std::string compression = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
+  SnapshotWriterParams writer_params{snapshot_path, /*stream_id=*/0,
+                                     compression, Env::Default()};
+  SnapshotStreamWriter snapshot_writer(writer_params,
+                                       std::make_unique<RangeIterator>(range));
   TF_ASSERT_OK(snapshot_writer.Wait());
 
+  // The data is written to the committed chunks directory. The uncommitted
+  // files are deleted.
   EXPECT_THAT(
       ReadSnapshot<int64_t>(
-          absl::StrCat(snapshot_path, "/uncommitted_chunks/chunk_0"), range),
+          tsl::io::JoinPath(CommittedChunksDirectory(snapshot_path), "chunk_0"),
+          compression, range),
       IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+
+  EXPECT_THAT(ReadSnapshot<int64_t>(
+                  tsl::io::JoinPath(UncommittedChunksDirectory(snapshot_path,
+                                                               /*stream_id=*/0),
+                                    "chunk_0"),
+                  compression, range),
+              StatusIs(error::NOT_FOUND));
 }
 
-TEST(SnapshotStreamWriterTest, WriteSnapshotChunks) {
-  const int64_t range = 10;
-  std::string snapshot_path;
-  EXPECT_TRUE(Env::Default()->LocalTempFilename(&snapshot_path));
-
-  SnapshotStreamWriter snapshot_writer(std::make_unique<RangeIterator>(range),
-                                       snapshot_path, Env::Default(),
-                                       /*max_chunk_size_bytes=*/1);
+TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshotChunks) {
+  int64_t range = 10;
+  std::string compression = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
+  SnapshotWriterParams writer_params{snapshot_path, /*stream_id=*/0,
+                                     compression, Env::Default(),
+                                     /*max_chunk_size_bytes=*/1};
+  SnapshotStreamWriter snapshot_writer(writer_params,
+                                       std::make_unique<RangeIterator>(range));
   TF_ASSERT_OK(snapshot_writer.Wait());
 
   for (int i = 0; i < 10; ++i) {
-    EXPECT_THAT(
-        ReadSnapshot<int64_t>(
-            absl::StrCat(snapshot_path, "/uncommitted_chunks/chunk_", i),
-            /*num_elements=*/1),
-        IsOkAndHolds(ElementsAre(i)));
+    EXPECT_THAT(ReadSnapshot<int64_t>(
+                    tsl::io::JoinPath(CommittedChunksDirectory(snapshot_path),
+                                      absl::StrCat("chunk_", i)),
+                    compression,
+                    /*num_elements=*/1),
+                IsOkAndHolds(ElementsAre(i)));
   }
 }
 
-TEST(SnapshotStreamWriterTest, EmptyDataset) {
-  std::string snapshot_path;
-  EXPECT_TRUE(Env::Default()->LocalTempFilename(&snapshot_path));
+INSTANTIATE_TEST_SUITE_P(
+    Compression, SnapshotStreamWriterParameterizedTest,
+    testing::ValuesIn<std::string>({tsl::io::compression::kNone,
+                                    tsl::io::compression::kGzip,
+                                    tsl::io::compression::kSnappy,
+                                    tsl::io::compression::kZlib}));
 
-  SnapshotStreamWriter snapshot_writer(std::make_unique<RangeIterator>(0),
-                                       snapshot_path, Env::Default());
+TEST(SnapshotStreamWriterTest, EmptyDataset) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
+  SnapshotWriterParams writer_params{snapshot_path, /*stream_id=*/0,
+                                     tsl::io::compression::kSnappy,
+                                     Env::Default()};
+  SnapshotStreamWriter snapshot_writer(writer_params,
+                                       std::make_unique<RangeIterator>(0));
   TF_ASSERT_OK(snapshot_writer.Wait());
 
   EXPECT_THAT(
       ReadSnapshot<int64_t>(
-          absl::StrCat(snapshot_path, "/uncommitted_chunks/chunk_0"), 0),
+          tsl::io::JoinPath(CommittedChunksDirectory(snapshot_path), "chunk_0"),
+          tsl::io::compression::kSnappy, /*num_elements=*/0),
       IsOkAndHolds(IsEmpty()));
 }
 
 TEST(SnapshotStreamWriterTest, Cancel) {
   const int64_t range = 10000;
-  std::string snapshot_path;
-  EXPECT_TRUE(Env::Default()->LocalTempFilename(&snapshot_path));
-
-  SnapshotStreamWriter snapshot_writer(std::make_unique<RangeIterator>(range),
-                                       snapshot_path, Env::Default());
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
+  SnapshotWriterParams writer_params{snapshot_path, /*stream_id=*/0,
+                                     tsl::io::compression::kSnappy,
+                                     Env::Default()};
+  SnapshotStreamWriter snapshot_writer(writer_params,
+                                       std::make_unique<RangeIterator>(range));
   snapshot_writer.Cancel();
   EXPECT_THAT(snapshot_writer.Wait(), StatusIs(error::CANCELLED));
 }
