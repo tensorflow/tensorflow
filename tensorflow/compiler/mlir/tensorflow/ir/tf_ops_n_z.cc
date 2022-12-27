@@ -3907,9 +3907,9 @@ LogicalResult SetStaticDimensionBoundsOp::verify() {
 
 namespace {
 
-template <typename UniformQuantizedHybridOp>
-LogicalResult VerifyScalesAndZeroPoints(UniformQuantizedHybridOp op,
-                                        Value scales, Value zero_points,
+template <typename UniformQuantizedOp>
+LogicalResult VerifyScalesAndZeroPoints(UniformQuantizedOp op, Value scales,
+                                        Value zero_points,
                                         int32_t quantization_axis) {
   ShapedType scales_type = scales.getType().cast<ShapedType>();
   ShapedType zero_points_type = zero_points.getType().cast<ShapedType>();
@@ -3964,6 +3964,46 @@ LogicalResult UniformQuantizedConvolutionHybridOp::verify() {
   UniformQuantizedConvolutionHybridOp op = *this;
   return VerifyScalesAndZeroPoints(op, op.getRhsScales(), op.getRhsZeroPoints(),
                                    op.getRhsQuantizationAxis());
+}
+
+//===----------------------------------------------------------------------===//
+// UniformQuantizeOp
+//===----------------------------------------------------------------------===//
+//
+
+LogicalResult UniformQuantizeOp::verify() {
+  UniformQuantizeOp op = *this;
+  return VerifyScalesAndZeroPoints(op, op.getScales(), op.getZeroPoints(),
+                                   op.getQuantizationAxis());
+}
+
+//===----------------------------------------------------------------------===//
+// UniformRequantizeOp
+//===----------------------------------------------------------------------===//
+//
+
+LogicalResult UniformRequantizeOp::verify() {
+  UniformRequantizeOp op = *this;
+  auto verify_input_params = VerifyScalesAndZeroPoints(
+      op, op.getInputScales(), op.getInputZeroPoints(),
+      op.getInputQuantizationAxis());
+  if (failed(verify_input_params)) {
+    return verify_input_params;
+  }
+  return VerifyScalesAndZeroPoints(op, op.getOutputScales(),
+                                   op.getOutputZeroPoints(),
+                                   op.getOutputQuantizationAxis());
+}
+
+//===----------------------------------------------------------------------===//
+// UniformDequantizeOp
+//===----------------------------------------------------------------------===//
+//
+
+LogicalResult UniformDequantizeOp::verify() {
+  UniformDequantizeOp op = *this;
+  return VerifyScalesAndZeroPoints(op, op.getScales(), op.getZeroPoints(),
+                                   op.getQuantizationAxis());
 }
 
 }  // namespace TF

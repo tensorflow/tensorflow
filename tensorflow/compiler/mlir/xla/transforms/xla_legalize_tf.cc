@@ -49,6 +49,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
@@ -278,6 +279,20 @@ FailureOr<ElementsAttr> ConvertPaddingAttr(
   return padding_attr;
 }
 
+FailureOr<IntegerType> GetOutputStorageType(Operation *op,
+                                            PatternRewriter &rewriter) {
+  Type original_output_element_type =
+      op->getOpResult(0).getType().cast<TensorType>().getElementType();
+  if (original_output_element_type.isa<TF::Qint8Type>()) {
+    return rewriter.getIntegerType(8);
+  } else if (original_output_element_type.isa<TF::Qint32Type>()) {
+    return rewriter.getIntegerType(32);
+  } else {
+    return rewriter.notifyMatchFailure(op,
+                                       "output type must be qint8 or qint32.");
+  }
+}
+
 // TODO(hinsu): Move this pattern to legalize_tf after resolving the dependency
 // on the tensor proto.
 class ConvertUniformQuantizedDotHybridOp
@@ -302,11 +317,11 @@ class ConvertUniformQuantizedDotHybridOp
         /*expressed_type=*/rewriter.getF32Type(), op.getRhsQuantizationMinVal(),
         op.getRhsQuantizationMaxVal(), rhs_quantized_dimension, rewriter);
     if (failed(rhs_type)) {
-      return rhs_type;
+      return failure();
     }
     auto rhs = CreateConstantOpForQint8Rhs(op, *rhs_type, rewriter);
     if (failed(rhs)) {
-      return rhs;
+      return failure();
     }
     rewriter.replaceOpWithNewOp<mhlo::DotOp>(op, op.getLhs(), *rhs,
                                              /*precision_config=*/nullptr);
@@ -330,11 +345,11 @@ class ConvertUniformQuantizedConvolutionHybridOp
         /*expressed_type=*/rewriter.getF32Type(), op.getRhsQuantizationMinVal(),
         op.getRhsQuantizationMaxVal(), op.getRhsQuantizationAxis(), rewriter);
     if (failed(rhs_type)) {
-      return rhs_type;
+      return failure();
     }
     auto rhs = CreateConstantOpForQint8Rhs(op, *rhs_type, rewriter);
     if (failed(rhs)) {
-      return rhs;
+      return failure();
     }
 
     // TODO(b/261005147): Update the lowering logic after migration to mhlo
@@ -357,7 +372,7 @@ class ConvertUniformQuantizedConvolutionHybridOp
       } else if (attr.getName() == op.getPaddingAttrName()) {
         auto value_or = ConvertPaddingAttr(op, dnums, rewriter);
         if (failed(value_or)) {
-          return value_or;
+          return failure();
         }
         attr.setValue(*value_or);
         converted_attrs.push_back(attr);
@@ -373,6 +388,81 @@ class ConvertUniformQuantizedConvolutionHybridOp
     SmallVector<Value, 2> operands{op.getLhs(), *rhs};
     rewriter.replaceOpWithNewOp<mhlo::ConvolutionOp>(op, op.getType(), operands,
                                                      converted_attrs);
+    return success();
+  }
+};
+
+class ConvertUniformQuantizeOp
+    : public OpRewritePattern<TF::UniformQuantizeOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::UniformQuantizeOp op,
+                                PatternRewriter &rewriter) const override {
+    auto output_storage_type_or = GetOutputStorageType(op, rewriter);
+    if (failed(output_storage_type_or)) {
+      return failure();
+    }
+
+    auto output_type = GetUniformQuantizedType(
+        op, op.getInput().getType().cast<TensorType>(), op.getScales(),
+        op.getZeroPoints(), *output_storage_type_or,
+        /*expressed_type=*/rewriter.getF32Type(), op.getQuantizationMinVal(),
+        op.getQuantizationMaxVal(), op.getQuantizationAxis(), rewriter);
+    if (failed(output_type)) {
+      return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<mhlo::UniformQuantizeOp>(op, *output_type,
+                                                         op.getInput());
+    return success();
+  }
+};
+
+// UniformDequantizeOp takes TF quantized types as input which would have been
+// converted to the mhlo quantized types. Use OpConversionPattern in order to
+// retrieve the operand type *after* conversion, using adaptor.getOperands.
+class ConvertUniformDequantizeOp
+    : public OpConversionPattern<TF::UniformDequantizeOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      TF::UniformDequantizeOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    Value input = adaptor.getOperands()[0];
+    rewriter.replaceOpWithNewOp<mhlo::UniformDequantizeOp>(
+        op, op.getOutput().getType(), input);
+    return success();
+  }
+};
+
+class ConvertUniformRequantizeOp
+    : public OpConversionPattern<TF::UniformRequantizeOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      TF::UniformRequantizeOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    auto output_storage_type_or = GetOutputStorageType(op, rewriter);
+    if (failed(output_storage_type_or)) {
+      return failure();
+    }
+
+    Value input = adaptor.getOperands()[0];
+    auto output_type = GetUniformQuantizedType(
+        op, op.getInput().getType().cast<TensorType>(), op.getOutputScales(),
+        op.getOutputZeroPoints(), *output_storage_type_or,
+        /*expressed_type=*/rewriter.getF32Type(),
+        op.getOutputQuantizationMinVal(), op.getOutputQuantizationMaxVal(),
+        op.getOutputQuantizationAxis(), rewriter);
+    if (failed(output_type)) {
+      return failure();
+    }
+    rewriter.replaceOpWithNewOp<mhlo::UniformQuantizeOp>(op, *output_type,
+                                                         input);
+
     return success();
   }
 };
@@ -677,7 +767,9 @@ void LegalizeTFModulePass::runOnOperation() {
 void PopulateLegalizeTfQuantizationPatterns(MLIRContext *context,
                                             RewritePatternSet *patterns) {
   patterns->add<ConvertUniformQuantizedDotHybridOp,
-                ConvertUniformQuantizedConvolutionHybridOp>(context);
+                ConvertUniformQuantizedConvolutionHybridOp,
+                ConvertUniformQuantizeOp, ConvertUniformRequantizeOp,
+                ConvertUniformDequantizeOp>(context);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFPass(

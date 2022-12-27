@@ -19843,6 +19843,8 @@ Same shape condition as scales.}]>:$zero_points,
 
   TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniformQuantizeOp : TF_Op<"UniformQuantize", [Pure]> {
@@ -19871,6 +19873,8 @@ Same shape condition as scales.}]>:$zero_points,
 
   TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniformQuantizedAddOp : TF_Op<"UniformQuantizedAdd", [Pure]> {
@@ -20229,6 +20233,8 @@ Same shape condition as scales.}]>:$output_zero_points,
 
   TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniqueOp : TF_Op<"Unique", [Pure]> {
