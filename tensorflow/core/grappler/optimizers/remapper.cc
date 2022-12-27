@@ -2876,7 +2876,6 @@ Status FuseConv2DSwish(RemapperContext* ctx,
                        const std::set<int>& remove_node_indices,
                        std::vector<bool>* invalidated_nodes,
                        std::vector<bool>* nodes_to_delete) {
-  const GraphDef* graph = ctx->graph_view.graph();
   const NodeDef* mul =
       ctx->graph_view.GetNode(matched_nodes_map.at("mulToswish"))->node();
   const NodeDef* conv2d =
