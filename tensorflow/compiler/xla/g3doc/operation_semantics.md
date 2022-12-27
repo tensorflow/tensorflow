@@ -585,14 +585,7 @@ then v012 == f32[24] {10, 11, 12, 15, 16, 17,
 
 // Collapse the two lower dimensions, leaving two dimensions.
 let v01 = Collapse(v, {0,1});
-then v01 == f32[4x6] {{10, 11, 12, 15, 16, 17},
-{20, 21, 22, 25, 26, 27},
-{30, 31, 32, 35, 36, 37},
-{40, 41, 42, 45, 46, 47}};
-
-// Collapse the two higher dimensions, leaving two dimensions.
-let v12 = Collapse(v, {1,2});
-then v12 == f32[8x3] {{10, 11, 12},
+then v01 == f32[8x3] {{10, 11, 12},
 {15, 16, 17},
 {20, 21, 22},
 {25, 26, 27},
@@ -601,6 +594,12 @@ then v12 == f32[8x3] {{10, 11, 12},
 {40, 41, 42},
 {45, 46, 47}};
 
+// Collapse the two higher dimensions, leaving two dimensions.
+let v12 = Collapse(v, {1,2});
+then v12 == f32[4x6] {{10, 11, 12, 15, 16, 17},
+{20, 21, 22, 25, 26, 27},
+{30, 31, 32, 35, 36, 37},
+{40, 41, 42, 45, 46, 47}};
 ```
 
 ## CollectivePermute
