@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for const op compilation."""
+"""Tests for giant const op compilation."""
 
 import os
 import numpy as np
@@ -54,10 +54,10 @@ def get_tpu_strategy():
 # with XLA in the on demand compilation mode. Also, here we want to feed the
 # full program to XLA to verify handling of programs with giant constant
 # tensors.
-class ConstOp(test.TestCase):
+class GiantConstOp(test.TestCase):
 
   def setUp(self):
-    super(ConstOp, self).setUp()
+    super(GiantConstOp, self).setUp()
     # Make sure TF_XLA_FLAGS is not already set to avoid dropping the existing
     # value silently.
     assert "TF_XLA_FLAGS" not in os.environ

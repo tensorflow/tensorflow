@@ -272,6 +272,8 @@ int DataTypeSize(DataType dt) {
     // bitcast.
     TF_CALL_qint16(CASE);
     TF_CALL_quint16(CASE);
+    CASE(tsl::float8_e5m2);
+    CASE(tsl::float8_e4m3fn);
 
     default:
       return 0;
