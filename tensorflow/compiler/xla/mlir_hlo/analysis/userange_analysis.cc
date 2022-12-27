@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Analysis/userange_analysis.h"
+#include "analysis/userange_analysis.h"
 
 #include <algorithm>
 #include <utility>

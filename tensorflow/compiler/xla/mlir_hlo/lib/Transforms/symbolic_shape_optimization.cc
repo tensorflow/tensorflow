@@ -25,7 +25,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Analysis/shape_component_analysis.h"
+#include "mhlo/analysis/shape_component_analysis.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"

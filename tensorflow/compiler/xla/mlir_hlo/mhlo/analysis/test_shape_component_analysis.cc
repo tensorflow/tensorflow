@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Analysis/shape_component_analysis.h"
+#include "mhlo/analysis/shape_component_analysis.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 

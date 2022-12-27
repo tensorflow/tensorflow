@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Analysis/shape_component_analysis.h"
+#include "mhlo/analysis/shape_component_analysis.h"
 
 #include <algorithm>
 #include <optional>
