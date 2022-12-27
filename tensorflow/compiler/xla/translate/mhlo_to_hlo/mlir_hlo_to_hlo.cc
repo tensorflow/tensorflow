@@ -52,6 +52,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/lib/quantize.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
@@ -3045,6 +3046,28 @@ xla::Status ConvertRegionToComputation(mlir::Region* region,
 xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
                                 bool use_tuple_args, bool return_tuple,
                                 MlirToHloConversionOptions options) {
+  // To support the ongoing migration of XLA's compiler interface from MHLO
+  // to StableHLO, we've inserted this fallback to provide support for backends
+  // which are converting incoming ModuleOps directly to HLO.
+  // xla::MlirToXlaComputation is a better API for this purpose because it
+  // supports not just MHLO, but also CHLO and StableHLO, but we will
+  // temporarily support StableHLO to MHLO lowering here as well to ensure
+  // a smooth migration.
+  // TODO(b/263811577): Remove this functionality once we have reasonable
+  // confidence that everyone has migrated from calling ConvertMlirHloToHlo
+  // directly.
+  bool hasStablehloOps = false;
+  module.walk([&](Operation* op) {
+    hasStablehloOps |= isa<stablehlo::StablehloDialect>(op->getDialect());
+    return hasStablehloOps ? WalkResult::interrupt() : WalkResult::advance();
+  });
+  if (hasStablehloOps) {
+    mlir::PassManager pm(module->getContext());
+    pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+    if (failed(pm.run(module)))
+      return tsl::errors::Internal("Unable to convert StableHLO to MHLO");
+  }
+
   TF_RETURN_IF_ERROR(PrepareForExport(module));
   mlir::BaseScopedDiagnosticHandler diag_handler(module.getContext());
   xla::XlaBuilder module_builder("main");
