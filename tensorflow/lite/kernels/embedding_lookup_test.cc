@@ -124,7 +124,7 @@ TEST(HybridEmbeddingLookupHybridOpTest, Simple2DTestUint8) {
   m.SetInput({1, 0, 2});
   m.SetWeight({
       0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
-      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+      1.00, 1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
       2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
   });
 
@@ -133,7 +133,7 @@ TEST(HybridEmbeddingLookupHybridOpTest, Simple2DTestUint8) {
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear(
                   {
-                      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+                      1.00, 1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
                       0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
                       2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
                   },
@@ -145,7 +145,7 @@ TEST(HybridEmbeddingLookupHybridOpTest, Simple3DTestUint8) {
   m.SetInput({1, 0, 2});
   m.SetWeight({
       0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
-      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+      1.00, 1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
       2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
   });
 
@@ -154,7 +154,7 @@ TEST(HybridEmbeddingLookupHybridOpTest, Simple3DTestUint8) {
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear(
                   {
-                      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+                      1.00, 1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
                       0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
                       2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
                   },
@@ -166,7 +166,7 @@ TEST(HybridEmbeddingLookupHybridOpTest, Simple4DTestUint8) {
   m.SetInput({1, 0, 2});
   m.SetWeight({
       0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
-      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+      1.00, 1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
       2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
   });
 
@@ -175,7 +175,7 @@ TEST(HybridEmbeddingLookupHybridOpTest, Simple4DTestUint8) {
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear(
                   {
-                      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+                      1.00, 1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
                       0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
                       2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
                   },
