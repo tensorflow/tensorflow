@@ -62,11 +62,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_inspect
 
-
-np_arrays = lazy_loader.LazyLoader(
-    "np_arrays", globals(),
-    "tensorflow.python.ops.numpy_ops.np_arrays")
-
 saved_model_utils = lazy_loader.LazyLoader(
     "saved_model_utils", globals(),
     "tensorflow.python.eager.polymorphic_function.saved_model_utils"
