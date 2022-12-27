@@ -8987,6 +8987,24 @@ LogicalResult MhloDialect::verifyOperationAttribute(Operation* op,
       if (failed(res)) return res;
     }
   }
+  if (attr.getName() == "mhlo.spmd_parameters_sharding") {
+    auto arrayAttr = attr.getValue().dyn_cast<ArrayAttr>();
+    if (!arrayAttr)
+      return op->emitOpError() << "spmd_parameters_sharding: must be an array";
+    auto module = dyn_cast<ModuleOp>(op);
+    if (!module)
+      return op->emitOpError()
+             << "has spmd_paramters_sharding but is not a module";
+    // Check that the "main" function exists:
+    auto main = module.lookupSymbol<mlir::func::FuncOp>("main");
+    if (!main)
+      return module.emitOpError() << "spmd_parameters_sharding: main not found";
+    if (main.getNumArguments() != arrayAttr.size())
+      return module.emitOpError()
+             << "spmd_parameters_sharding: main has " << main.getNumArguments()
+             << " arguments, but spmd_parameters_sharding expects "
+             << arrayAttr.size();
+  }
   return success();
 }
 

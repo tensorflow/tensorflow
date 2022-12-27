@@ -3078,6 +3078,19 @@ xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
     hlo_module.set_use_auto_spmd_partitioning(
         use_auto_spmd_partitioning.getValue());
   }
+  if (auto spmd_output_sharding = module->getAttrOfType<mlir::StringAttr>(
+          "mhlo.spmd_output_sharding")) {
+    *hlo_module.mutable_spmd_output_sharding() =
+        *CreateOpShardingFromStringRef(spmd_output_sharding.getValue());
+  }
+  if (auto spmd_parameters_sharding = module->getAttrOfType<mlir::ArrayAttr>(
+          "mhlo.spmd_parameters_shardings")) {
+    for (const auto& sharding : spmd_parameters_sharding.getValue()) {
+      *hlo_module.add_spmd_parameters_shardings() =
+          *CreateOpShardingFromStringRef(
+              sharding.cast<mlir::StringAttr>().getValue());
+    }
+  }
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
   return ::tsl::OkStatus();
 }
