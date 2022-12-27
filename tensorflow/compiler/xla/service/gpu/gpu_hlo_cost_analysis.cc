@@ -62,30 +62,25 @@ Status GpuHloCostAnalysis::FusionCalculateUtilizations(
       fusion->fused_instructions_computation()->MakeInstructionPostOrder();
   absl::c_reverse(instructions);
 
-  // To estimate where within the computation an instruction output can be
-  // reused and where it has to be recomputed again we group accesses to the
-  // instruction by their origin from "element-wise use roots". All access
-  // paths from such a root to the instruction are element-wise.
   // Whenever we account a non-element-wise operation we forget about
   // element-wise roots encountered so far and provisionally set its operands
   // as new element-wise roots.
-  absl::flat_hash_map<const HloInstruction*, ConstHloInstructionSet>
-      elementwise_use_roots;
 
-  absl::flat_hash_map<const HloInstruction*, float> root_utilizations;
   absl::flat_hash_map<const HloInstruction*, int64_t> root_ir_sizes;
 
   for (const HloInstruction* instr : instructions) {
     hlo_properties_[instr][kUtilizationKey] = 0;
     hlo_properties_[instr][kIRSizeKey] = 0;
+    elementwise_use_roots_[instr].clear();
+    root_utilizations_[instr] = 0;
   }
 
   // For the purpose of operand utilization analysis, no matter how the fusion
   // outputs are used, we assume that fusion is always executed completely
   // producing 100% of its outputs.
-  root_utilizations[root] = 1.0;
+  root_utilizations_[root] = 1.0;
   root_ir_sizes[root] = 1;
-  elementwise_use_roots[root].insert(root);
+  elementwise_use_roots_[root].insert(root);
 
   current_properties_[kFlopsKey] = 0;
   current_properties_[kBasicBlockSplitCountKey] = 0;
@@ -94,9 +89,9 @@ Status GpuHloCostAnalysis::FusionCalculateUtilizations(
   for (const HloInstruction* instr : instructions) {
     VLOG(8) << instr->name() << ":";
     VLOG(9) << "Elementwise use roots:";
-    for (const HloInstruction* r : elementwise_use_roots[instr]) {
-      VLOG(9) << "\t" << r->name() << ": " << root_utilizations[r];
-      hlo_properties_[instr][kUtilizationKey] += root_utilizations[r];
+    for (const HloInstruction* r : elementwise_use_roots_[instr]) {
+      VLOG(9) << "\t" << r->name() << ": " << root_utilizations_[r];
+      hlo_properties_[instr][kUtilizationKey] += root_utilizations_[r];
       hlo_properties_[instr][kIRSizeKey] += root_ir_sizes[r];
     }
 
@@ -116,12 +111,12 @@ Status GpuHloCostAnalysis::FusionCalculateUtilizations(
       const HloInstruction* operand = instr->operand(operand_idx);
       if ((instr->IsElementwise()) || instr->opcode() == HloOpcode::kTuple ||
           instr->opcode() == HloOpcode::kGetTupleElement) {
-        auto instr_roots = elementwise_use_roots[instr];
+        auto instr_roots = elementwise_use_roots_[instr];
         for (const HloInstruction* r : instr_roots) {
-          elementwise_use_roots[operand].insert(r);
+          elementwise_use_roots_[operand].insert(r);
         }
       } else {
-        elementwise_use_roots[operand].insert(operand);
+        elementwise_use_roots_[operand].insert(operand);
         float cur_operand_utilization =
             cur_instr_utilization * operand_utilization(*instr, operand_idx);
         // The utilization is always a best-effort estimate, but in some cases
@@ -134,13 +129,24 @@ Status GpuHloCostAnalysis::FusionCalculateUtilizations(
             ShapeUtil::ElementsInRecursive(operand->shape());
         cur_operand_utilization =
             ceil(cur_operand_utilization * operand_elements) / operand_elements;
-        root_utilizations[operand] += cur_operand_utilization;
+        root_utilizations_[operand] += cur_operand_utilization;
         root_ir_sizes[operand] += cur_instr_times_emitted;
       }
     }
   }
 
   return OkStatus();
+}
+
+float GpuHloCostAnalysis::CommonElementwiseUtilization(
+    const HloInstruction* a, const HloInstruction* b) const {
+  float ret = 0;
+  for (auto r : elementwise_use_roots_.at(a)) {
+    if (elementwise_use_roots_.at(b).count(r)) {
+      ret += root_utilizations_.at(r);
+    }
+  }
+  return ret;
 }
 
 bool GpuHloCostAnalysis::ProducerConsumerMergedTooLarge(

@@ -2282,6 +2282,7 @@ cc_library(
     deps = [
         ":gpu_device_info",
         ":gpu_hlo_cost_analysis",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "@com_google_absl//absl/time",
     ],
 )
