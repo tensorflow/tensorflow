@@ -64,18 +64,30 @@ namespace fuzzing {
 // Used by GFT to map a known domain (vector<T>) to an unknown
 // domain (Tensor of datatype). T and datatype should match/be compatible.
 template <typename T = uint8_t>
-inline auto AnyTensor() {
+inline auto AnyTensor(const int rank = -1) {
+  T min_size{1};
+  T max_size{TensorShape::MaxDimensions()};
+  if (rank != -1) {
+    min_size = max_size = rank;
+  }
   return fuzztest::Map(
-      [](auto v) {
-        Tensor tensor(DataTypeToEnum<T>::v(),
-                      TensorShape({static_cast<int64_t>(v.size())}));
+      [](auto t) {
+        std::vector<int64_t> shape;
+        shape.reserve(t.size());
+        std::transform(t.cbegin(), t.cend(), std::back_inserter(shape),
+            [](auto& dim) { return static_cast<int64_t>(dim.size()); });
+
+        Tensor tensor(DataTypeToEnum<T>::v(), TensorShape(shape));
+
+        absl::BitGen gen;
         auto flat_tensor = tensor.flat<T>();
-        for (int i = 0; i < v.size(); ++i) {
-          flat_tensor(i) = v[i];
+        for (size_t i{}; i < tensor.NumElements(); ++i) {
+          flat_tensor(i) = absl::Uniform<T>(gen);
         }
         return tensor;
       },
-      fuzztest::Arbitrary<std::vector<T>>());
+      fuzztest::VectorOf(fuzztest::Arbitrary<std::vector<T>>().WithMinSize(1))
+        .WithMinSize(min_size).WithMaxSize(max_size));
 }
 
 // Create a TensorFlow session using a specific GraphDef created

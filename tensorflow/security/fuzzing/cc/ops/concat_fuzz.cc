@@ -51,7 +51,7 @@ class FuzzConcat : public FuzzSession<Tensor, Tensor, Tensor> {
 
 // Setup up fuzzing test.
 FUZZ_TEST_F(FuzzConcat, Fuzz)
-    .WithDomains(AnyTensor(), AnyTensor(), AnyTensor<uint32_t>());
+    .WithDomains(AnyTensor(2), AnyTensor(2), AnyTensor<uint32_t>(1));
 
 }  // end namespace fuzzing
 }  // end namespace tensorflow

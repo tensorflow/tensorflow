@@ -26,7 +26,7 @@ tf_cc_shared_test(
     ],
 )
 
-tf_cc_test(
+tf_cc_shared_test(
     name = "concat_fuzz",
     srcs = ["concat_fuzz.cc"],
     tags = ["no_oss"],
@@ -40,7 +40,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cc_shared_test(
     name = "add_fuzz",
     srcs = ["add_fuzz.cc"],
     tags = ["no_oss"],
@@ -54,7 +54,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cc_shared_test(
     name = "matmul_fuzz",
     srcs = ["matmul_fuzz.cc"],
     tags = ["no_oss"],
