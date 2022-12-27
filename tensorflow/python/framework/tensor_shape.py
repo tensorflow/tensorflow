@@ -1072,6 +1072,29 @@ class TensorShape(trace.TraceType, trace_type.Serializable):
       return unknown_shape()
     else:
       return TensorShape(self.dims + other.dims)
+  
+  def rConcatenate(self, other):
+    """Returns the concatenation of the dimension in `self` and `other`.
+
+    *N.B.* If either `self` or `other` is completely unknown,
+    concatenation will discard information about the other shape. In
+    future, we might support concatenation that preserves this
+    information for use with slicing.
+
+    Args:
+      other: Another `TensorShape`.
+
+    Returns:
+      A `TensorShape` whose dimensions are the concatenation of the
+      dimensions in `self` and `other`.
+    """
+    # TODO(mrry): Handle the case where we concatenate a known shape with a
+    # completely unknown shape, so that we can use the partial information.
+    other = as_shape(other)
+    if self.dims is None or other.dims is None:
+      return unknown_shape()
+    else:
+      return TensorShape(other.dims + self.dims )
 
   def assert_same_rank(self, other):
     """Raises an exception if `self` and `other` do not have compatible ranks.
