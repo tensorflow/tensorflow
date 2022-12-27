@@ -174,6 +174,29 @@ module @jit_f.0 {
 
     self._assertOpOutputMatchesExpected(f, (x,), (np.sin(x), x.shape[1]))
 
+  def test_dim_var_basic_dim_arg_i64(self):
+    x = np.arange(6, dtype=np.float32).reshape((2, 3))
+
+    def f(x):  # x: f32[2, b]
+      # Module takes another argument which is the value of b
+      # (sin(x), x.shape[1])
+      module = """
+module @jit_f.0 {
+  func.func public @main(%arg0: tensor<i64>, %arg1: tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i64>) {
+    %0 = stablehlo.sine %arg1 : tensor<2x?xf32>
+    return %0, %arg0 : tensor<2x?xf32>, tensor<i64>
+  }
+}
+"""
+      return xla.call_module([x],
+                             version=2,
+                             module=module,
+                             Tout=[x.dtype, np.int64],
+                             Sout=[(None, 3), ()],
+                             dim_args_spec=['0.1'])
+
+    self._assertOpOutputMatchesExpected(f, (x,), (np.sin(x), x.shape[1]))
+
   def test_dim_var_basic_wrapped(self):
     """Like dim_arg_var_basic, but with the wrapper already added."""
     x = np.arange(6, dtype=np.float32).reshape((2, 3))
@@ -241,8 +264,8 @@ module @jit_f.0 {
     dim_args_spec = ['0.0', '0.0', '0.0']  # dim_args_spec refers to non-scalar
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        'Module argument at index 2 should be a scalar dimension argument '
-        'but has type'):
+        'Module argument at index 2 should be a 0-dimensional integer-tensor '
+        'dimension argument but has type'):
       self._assertOpOutputMatchesExpected(f, (x, y),
                                           (np.sin(x + y), x.shape[1]))
 
