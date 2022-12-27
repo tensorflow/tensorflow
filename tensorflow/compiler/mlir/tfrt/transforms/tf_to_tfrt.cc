@@ -128,13 +128,19 @@ llvm::SmallVector<mlir::Value, 4> AddGpuVariableAndInputTensorTransferOps(
 llvm::SmallVector<mlir::Value, 4> AddGpuTransferFromDeviceOps(
     mlir::Operation *op, llvm::SmallVector<mlir::Value, 4> results,
     mlir::ConversionPatternRewriter &rewriter) {
+  assert(results.size() == op->getNumResults());
   llvm::SmallVector<mlir::Value, 4> new_results;
-  for (auto result : results) {
-    auto transfer_from_device_op =
-        rewriter.create<tfrt::gpu::TransferFromDeviceOp>(
-            op->getLoc(), rewriter.getType<tfrt::fallback::TFTensorType>(),
-            result);
-    new_results.push_back(transfer_from_device_op);
+  for (int idx = 0; idx < results.size(); ++idx) {
+    if (op->getResult(idx).use_empty()) {
+      // If the result is not used, it is not transferred.
+      new_results.push_back(results[idx]);
+    } else {
+      auto transfer_from_device_op =
+          rewriter.create<tfrt::gpu::TransferFromDeviceOp>(
+              op->getLoc(), rewriter.getType<tfrt::fallback::TFTensorType>(),
+              results[idx]);
+      new_results.push_back(transfer_from_device_op);
+    }
   }
   return new_results;
 }
