@@ -318,9 +318,14 @@ class HloComputation {
 
   // Compute and return a post-order of the instructions in the computation. In
   // this order, definitions of values always appear before their uses.
-  std::vector<HloInstruction*> MakeInstructionPostOrder() const;
+  std::vector<HloInstruction*> MakeInstructionPostOrder() const {
+    return MakeInstructionPostOrderImpl(/*channel_dependencies=*/nullptr);
+  }
   std::vector<HloInstruction*> MakeInstructionPostOrder(
-      const ChannelDependencies& channel_dependencies) const;
+      const ChannelDependencies& channel_dependencies) const {
+    return MakeInstructionPostOrderImpl(
+        /*channel_dependencies=*/&channel_dependencies);
+  }
 
   int64_t instruction_count() const { return instruction_iterators_.size(); }
 
@@ -715,10 +720,12 @@ class HloComputation {
   // Internal helper to collect unreachable roots.
   std::vector<HloInstruction*> CollectUnreachableRoots() const;
 
-  enum VisitState { kVisiting, kVisited };
+  enum VisitState { kNotVisited, kVisiting, kVisited };
+  std::vector<HloInstruction*> MakeInstructionPostOrderImpl(
+      const ChannelDependencies* channel_dependencies /*null ok*/) const;
   void ComputeInstructionPostOrder(
-      HloInstruction* root, const ChannelDependencies& channel_dependencies,
-      absl::flat_hash_map<HloInstruction*, VisitState>& visited,
+      HloInstruction* root,
+      const HloComputation::ChannelDependencies& channel_dependencies,
       std::vector<HloInstruction*>& post_order) const;
 
   Status RemoveUnusedParametersImpl(bool allow_non_fusion);

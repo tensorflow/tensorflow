@@ -427,24 +427,31 @@ void ComputeComputationPostOrder(HloComputation* computation,
 }  // namespace
 
 void HloComputation::ComputeInstructionPostOrder(
-    HloInstruction* root, const ChannelDependencies& channel_dependencies,
-    absl::flat_hash_map<HloInstruction*, VisitState>& visited,
+    HloInstruction* root,
+    const HloComputation::ChannelDependencies& channel_dependencies,
     std::vector<HloInstruction*>& post_order) const {
   std::vector<HloInstruction*> dfs_stack = {root};
+  dfs_stack.reserve(instruction_count());
+
+  const bool has_channel_dependencies = !channel_dependencies.empty();
   while (!dfs_stack.empty()) {
     HloInstruction& current = *dfs_stack.back();
 
-    auto [it, was_inserted] = visited.insert({&current, kVisiting});
-    if (!was_inserted) {  // We've already seen this instruction.
-      dfs_stack.pop_back();
-      if (it->second != kVisited) {
+    switch (static_cast<VisitState>(current.visit_state_)) {
+      case kNotVisited:
+        current.visit_state_ = kVisiting;
+        break;
+      case kVisiting:
         DCHECK_EQ(current.parent(), this)
             << "Instruction " << current.name()
             << " is not in the current computation (" << name() << ").";
         post_order.push_back(&current);
-        it->second = kVisited;
-      }
-      continue;
+        current.visit_state_ = kVisited;
+        dfs_stack.pop_back();
+        continue;
+      case kVisited:
+        dfs_stack.pop_back();
+        continue;
     }
 
     // Add channel dependencies.
@@ -452,7 +459,7 @@ void HloComputation::ComputeInstructionPostOrder(
     // Collectives with the same channel ID must be performed together, as these
     // represent MPMD-partitioned that will later be split into separate modules
     // and the order must be preserved.
-    if (&current != root) {
+    if (has_channel_dependencies && &current != root) {
       auto it = channel_dependencies.find(&current);
       if (it != channel_dependencies.end()) {
         dfs_stack.insert(dfs_stack.end(), it->second.begin(), it->second.end());
@@ -527,24 +534,55 @@ HloComputation::ChannelDependencies HloComputation::ComputeChannelDependencies()
   return dependencies;
 }
 
-std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
-  return MakeInstructionPostOrder(ComputeChannelDependencies());
-}
+std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrderImpl(
+    const ChannelDependencies* channel_dependencies /*null ok*/) const {
+  // Clear visited state.  Since we have to iterate over all the instructions
+  // anyway, we also take the opportunity to:
+  //   - find all root instructions, i.e. instructions with no users, and
+  //   - check if any instructions have channel IDs, necessitating a call to
+  //     ComputeChannelDependencies().
+  absl::InlinedVector<HloInstruction*, 8> roots;
+  bool has_communication_op = false;
+  for (auto& instr : instructions_) {
+    instr->visit_state_ = kNotVisited;
+    if (instr->user_count() == 0) {
+      roots.push_back(instr.get());
+    }
+    if (channel_dependencies == nullptr) {
+      switch (instr->opcode()) {
+        case HloOpcode::kSend:
+        case HloOpcode::kRecvDone:
+        case HloOpcode::kAllReduce:
+        case HloOpcode::kAllGather:
+        case HloOpcode::kAllToAll:
+        case HloOpcode::kCollectivePermute:
+        case HloOpcode::kReduceScatter:
+          has_communication_op = true;
+          break;
+        default:
+          break;
+      }
+    }
+  }
 
-std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder(
-    const ChannelDependencies& channel_dependencies) const {
+  // Compute channel dependencies if it wasn't passed in and we found any
+  // relevant instructions in the computation.
+  ChannelDependencies owned_channel_dependencies;
+  if (channel_dependencies == nullptr) {
+    channel_dependencies = &owned_channel_dependencies;
+    if (has_communication_op) {
+      owned_channel_dependencies = ComputeChannelDependencies();
+    }
+  }
+
   std::vector<HloInstruction*> post_order;
   post_order.reserve(instruction_count());
-  absl::flat_hash_map<HloInstruction*, VisitState> visited;
-  visited.reserve(instruction_count());
-  for (auto& instruction : instructions_) {
-    if (instruction->users().empty()) {
-      ComputeInstructionPostOrder(instruction.get(), channel_dependencies,
-                                  visited, post_order);
-    }
+  for (HloInstruction* root : roots) {
+    ComputeInstructionPostOrder(root, *channel_dependencies, post_order);
   }
   CHECK_EQ(instructions_.size(), post_order.size())
       << "number of instructions does not match post order size";
+
   return post_order;
 }
 
