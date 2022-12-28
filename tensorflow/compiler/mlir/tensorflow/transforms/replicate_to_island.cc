@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/split_into_island_per_op_pass.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
@@ -147,7 +149,8 @@ LogicalResult UpdateRegionReplicateVariantOps(
 LogicalResult ExpandReplicateIntoReplicas(
     const Dialect* tf_dialect, OpBuilder& builder,
     tf_executor::IslandOp island_op, tf_device::ReplicateOp replicate_op,
-    int num_replicas, llvm::SmallVectorImpl<tf_executor::IslandOp>& replicas) {
+    int num_replicas, llvm::SmallVectorImpl<tf_executor::IslandOp>& replicas,
+    bool legacy_graph_export, int replica_group_idx) {
   replicas.reserve(num_replicas);
   auto devices = replicate_op.getDevices();
 
@@ -184,6 +187,28 @@ LogicalResult ExpandReplicateIntoReplicas(
                                                /*replica_id=*/i, devices)))
       return failure();
 
+    // In new graph export pipeline, we will update control dependencies in the
+    // end of the pipeline. Mostly, it will rely on side effect analysis by
+    // considering accessing resource only. However, for branches under parallel
+    // group, there should not be any control deps between them even side effect
+    // analysis indicate some control deps. Therefore, we will mark parallel
+    // group and branch information here so that `UpdateControlDependenciesPass`
+    // can fetch the related information later.
+    if (!legacy_graph_export) {
+      std::string group_annotation = absl::StrCat(
+          "r", std::to_string(replica_group_idx), ":", std::to_string(i));
+      if (auto parallel_group_attr = replicate_op->getAttrOfType<StringAttr>(
+              TF::kParallelExecAnnotation)) {
+        // Extend the existing attribute so that nested parallel execution
+        // structure is supported.
+        group_annotation = absl::StrCat(parallel_group_attr.getValue().str(),
+                                        ",", group_annotation);
+      }
+      for (auto& op : replica.GetBody()) {
+        op.setAttr(TF::kParallelExecAnnotation,
+                   builder.getStringAttr(group_annotation));
+      }
+    }
     replicas.push_back(replica);
   }
 
@@ -244,14 +269,16 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
                                          tf_executor::GraphOp graph_op,
                                          tf_executor::IslandOp island_op,
                                          tf_device::ReplicateOp replicate_op,
-                                         bool legacy_graph_export) {
+                                         bool legacy_graph_export,
+                                         int replica_group_idx) {
   OpBuilder builder(island_op);
   const int num_replicas = replicate_op.getN();
 
   // Create islands per replica.
   llvm::SmallVector<tf_executor::IslandOp, 8> replicas;
-  if (failed(ExpandReplicateIntoReplicas(tf_dialect, builder, island_op,
-                                         replicate_op, num_replicas, replicas)))
+  if (failed(ExpandReplicateIntoReplicas(
+          tf_dialect, builder, island_op, replicate_op, num_replicas, replicas,
+          legacy_graph_export, replica_group_idx)))
     return failure();
 
   // Collect all replica results.
@@ -338,13 +365,24 @@ void ReplicateToIslandPass::runOnOperation() {
     }
   });
 
+  // This number is unique within each function which is sufficient for
+  // `UpdateControlDependenciesPass` which consumes the related attributes.
+  // However, this assumes that we don't inline functions between this pass
+  // and `UpdateControlDependenciesPass`.
+  // If we need globally unique replica group IDs in the future,
+  // we can either make this pass a module pass (using a global counter)
+  // or use an atomic counter.
+  int replica_group_idx = 0;
   for (tf_executor::IslandOp island_op : replicate_op_islands) {
     auto graph_op = island_op->getParentOfType<tf_executor::GraphOp>();
     auto replicate_op =
         cast<tf_device::ReplicateOp>(island_op.GetBody().front());
     if (failed(CreateIslandsFromReplicate(tf_dialect, graph_op, island_op,
-                                          replicate_op, legacy_graph_export_)))
+                                          replicate_op, legacy_graph_export_,
+                                          replica_group_idx))) {
+      replica_group_idx++;
       return signalPassFailure();
+    }
   }
 }
 }  // anonymous namespace

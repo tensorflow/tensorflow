@@ -46,6 +46,60 @@ inline constexpr llvm::StringRef kTpuDevice = "TPU";
 inline constexpr llvm::StringRef kSkipIslandOutlining =
     "_skip_island_outlining";
 
+// This string attribute encodes parallel execution groups and their associated
+// branches. It has the following format:
+// `_parallel_execution_ids= group1:branch1,group2:branch2,...`
+// For example, if we have IR as follows:
+//
+// tf_executor.island wraps "tf.OpA"
+// tf_executor.island {
+//  "tf_device.replicate" {n = 2} {
+//    "tf.OpB"
+//    "tf_device.parallel_execute"() ({
+//      "tf.OpC"
+//    }, {
+//      "tf.OpD"
+//    })
+//  }
+//
+// The above IR will be flattened after `ReplicateToIslandPass` and
+// `ParallelExecuteToIslandsPass` as follows:
+//
+// tf_executor.island wraps "tf.OpA"
+// tf_executor.island {_parallel_execution_ids=r0:0} wraps "tf.OpB"
+// tf_executor.island {_parallel_execution_ids=r0:0,p0:0} wraps "tf.OpC"
+// tf_executor.island {_parallel_execution_ids=r0:0,p0:1} wraps "tf.OpD"
+// tf_executor.island {_parallel_execution_ids=r0:1} wraps "tf.OpB"
+// tf_executor.island {_parallel_execution_ids=r0:1,p0:0} wraps "tf.OpC"
+// tf_executor.island {_parallel_execution_ids=r0:1,p0:1} wraps "tf.OpD"
+//
+// "tf.OpA" will not have `_parallel_execution_ids` attr,
+//          means it does not belong to any parallel execution groups.
+// First instance of "tf.OpB" after flattening will have
+//          `_parallel_execution_ids = "r0:0"`,
+//          which represents the first branch of replicate group 0.
+// Second instance of "tf.OpB" after flattening will have
+//          `_parallel_execution_ids = "r0:1"`
+//          which represents the second branch of replicate group 0.
+// First instance of "tf.OpC" after flattening will have
+//          `_parallel_execution_ids = "r0:0,p0:0"`
+//          which represents the first branch of replicate group 0 and
+//          the first branch of parallel group 0.
+// Second instance of "tf.OpC" after flattening will have
+//          `_parallel_execution_ids = "r0:1,p0:0"`
+//          which represents the second branch of replicate group 0 and
+//          the first branch of parallel group 0.
+// First instance of "tf.OpD" after flattening will have
+//          `_parallel_execution_ids = "r0:0,p0:1"`
+//          which represents the first branch of replicate group 0 and
+//          the second branch of parallel group 0.
+// Second instance of "tf.OpD" after flattening will have
+//          `_parallel_execution_ids = "r0:1,p0:1"`
+//          which represents the second branch of replicate group 0 and
+//          the second branch of parallel group 0.
+inline constexpr llvm::StringRef kParallelExecAnnotation =
+    "_parallel_execution_ids";
+
 // Copies attributes that satisfy the given predicate from `from` to `to`.
 template <typename Predicate>
 void CopyAttributes(Operation *from, Operation *to, Predicate P) {
