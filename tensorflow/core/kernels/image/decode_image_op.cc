@@ -457,7 +457,7 @@ class DecodeImageV2Op : public OpKernel {
     uint8* buffer = gif::Decode(
         input.data(), input.size(),
         [&](int num_frames, int width, int height, int channels) -> uint8* {
-          buffer_size = ptrdiff_t(num_frames) * height * width * channels;
+          buffer_size = static_cast<int64_t>(num_frames) * height * width * channels;
 
           Status status;
           // By the existing API, we support decoding GIF with `decode_jpeg` or
