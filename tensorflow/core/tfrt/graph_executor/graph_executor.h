@@ -170,10 +170,6 @@ class GraphExecutor {
     return *graph_execution_state_;
   }
 
-  // Compiles and returns a graph that is specified by `client_graph`.
-  StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
-  ImportAndCompileClientGraph(const GraphExecutor::ClientGraph& client_graph);
-
   // Returns the underlying runtime.
   const tensorflow::tfrt_stub::Runtime& runtime() const {
     DCHECK(options_.runtime);
@@ -185,6 +181,8 @@ class GraphExecutor {
   StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>> LoadClientGraph(
       const GraphExecutor::ClientGraph& client_graph,
       tensorflow::tfrt_stub::WorkQueueInterface* work_queue);
+  StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
+  ImportAndCompileClientGraph(const GraphExecutor::ClientGraph& client_graph);
   tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
   ImportClientGraphToMlirModule(const GraphExecutor::ClientGraph& client_graph,
                                 mlir::MLIRContext* context) const;
