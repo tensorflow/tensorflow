@@ -269,6 +269,7 @@ py_library(
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/python/tools/api/generator:__pkg__",
+        "//tensorflow/tools/compatibility/update:__pkg__",
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
