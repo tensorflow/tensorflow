@@ -91,6 +91,7 @@ class BufferDonationTest : public HloTestBase {
 
     std::vector<ExecutionInput> args;
     std::vector<ShapeTree<se::DeviceMemoryBase>> inputs_buffers;
+    std::vector<MaybeOwningDeviceMemory> ownership_buffers;
 
     CHECK_EQ(argument_literals.size(), donate_arguments.size());
 
@@ -113,12 +114,27 @@ class BufferDonationTest : public HloTestBase {
           argument_literal.shape());
       owned_buffers.ForEachMutableElement(
           [&](const ShapeIndex& index, MaybeOwningDeviceMemory* device_memory) {
-            if (donate_argument) {
+            const bool aliased = alias_config.OutputHasAlias(index);
+
+            // Ownership is transferred only for aliased buffers
+            if (donate_argument && aliased) {
               *device_memory = se::OwningDeviceMemory(
                   input_buffers.element(index), executor_->device_ordinal(),
                   &memory_allocator);
             } else {
               *device_memory = input_buffers.element(index);
+            }
+
+            // We need to keep ownership of buffers for them to be
+            // properly deallocated in the end in two cases:
+            // 1. Aliasing is specified but the buffer is not donated
+            // 2. Failure is expected, so ExecutionOutput won't be committed
+            const bool keepOwnership =
+                (aliased && !donate_argument) || !expected_failure.empty();
+            if (keepOwnership) {
+                ownership_buffers.emplace_back(se::OwningDeviceMemory(
+                    input_buffers.element(index), executor_->device_ordinal(),
+                    &memory_allocator));
             }
           });
 
@@ -164,6 +180,7 @@ class BufferDonationTest : public HloTestBase {
         backend_->transfer_manager()->TransferLiteralFromDevice(
             &stream, output.Result()));
     EXPECT_TRUE(LiteralTestUtil::Equal(expected, result_literal));
+    output.Commit();
 
     // Memories are automatically deallocated.
   }
