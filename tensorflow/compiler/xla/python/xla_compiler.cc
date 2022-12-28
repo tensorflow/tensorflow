@@ -531,12 +531,17 @@ void BuildXlaCompilerSubmodule(py::module& m) {
         });
   m.def(
       "hlo_module_cost_analysis",
-      [](PyClient* client,
-         const HloModule& module) -> StatusOr<HloCostAnalysis::Properties> {
+      [](PyClient* client, const HloModule& module)
+          -> StatusOr<absl::flat_hash_map<std::string, float>> {
         TF_ASSIGN_OR_RETURN(auto analysis,
                             client->pjrt_client()->GetHloCostAnalysis());
         TF_RETURN_IF_ERROR(module.entry_computation()->Accept(analysis.get()));
-        return analysis->properties();
+
+        // Convert from HloCostAnalysis::Properties to a standard map.
+        absl::flat_hash_map<std::string, float> ret;
+        analysis->properties().ForEach(
+            [&](absl::string_view key, float val) { ret[key] = val; });
+        return ret;
       });
   m.def("hlo_module_from_text",
         [](const std::string& hlo_module_text)

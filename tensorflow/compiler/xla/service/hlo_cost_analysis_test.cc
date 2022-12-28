@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -134,8 +136,6 @@ class HloCostAnalysisTest : public ::testing::Test {
   XlaComputation max_;
   XlaComputation gt_;
 };
-
-using HloCostAnalysisHloTest = HloTestBase;
 
 TEST_F(HloCostAnalysisTest, MatrixMultiply) {
   XlaBuilder builder("matrix_multiply");
@@ -1436,6 +1436,125 @@ TEST_F(FusionCostAnalysis, RevisitModifiedFusion) {
   EXPECT_EQ(analysis.bytes_accessed(), bytes_accessed);
   EXPECT_EQ(analysis.operand_bytes_accessed(*fusion, 0), sizeof(float) * 2 * 2);
   EXPECT_EQ(analysis.output_bytes_accessed(*fusion), sizeof(float) * 2 * 2);
+}
+
+using Properties = HloCostAnalysis::Properties;
+constexpr auto kFlopsKey = HloCostAnalysis::kFlopsKey;
+constexpr auto kTranscendentalsKey = HloCostAnalysis::kTranscendentalsKey;
+constexpr auto kBytesAccessedKey = HloCostAnalysis::kBytesAccessedKey;
+constexpr auto kOptimalSecondsKey = HloCostAnalysis::kOptimalSecondsKey;
+constexpr auto kUtilizationKey = HloCostAnalysis::kUtilizationKey;
+constexpr auto kReserved0Key = HloCostAnalysis::kReserved0Key;
+constexpr auto kReserved1Key = HloCostAnalysis::kReserved1Key;
+
+TEST(HloCostAnalysisProperties, ZeroWhenInitialized) {
+  Properties p;
+  EXPECT_EQ(0, p[kFlopsKey]);
+  EXPECT_EQ(0, p[kTranscendentalsKey]);
+  EXPECT_EQ(0, p[kBytesAccessedKey]);
+  EXPECT_EQ(0, p[kOptimalSecondsKey]);
+  EXPECT_EQ(0, p[kUtilizationKey]);
+  EXPECT_EQ(0, p[kReserved0Key]);
+  EXPECT_EQ(0, p[kReserved1Key]);
+
+  EXPECT_EQ(0, p.operand_utilization(0, {}));
+  EXPECT_EQ(0, p.operand_utilization(1, {}));
+  EXPECT_EQ(0, p.operand_utilization(2, {}));
+  EXPECT_EQ(0, p.operand_utilization(0, {0}));
+  EXPECT_EQ(0, p.operand_utilization(2, {0}));
+  EXPECT_EQ(0, p[HloCostAnalysis::GetOperandUtilizationKey(0, {})]);
+  EXPECT_EQ(0, p[HloCostAnalysis::GetOperandUtilizationKey(1, {})]);
+  EXPECT_EQ(0, p[HloCostAnalysis::GetOperandUtilizationKey(2, {})]);
+  EXPECT_EQ(0, p[HloCostAnalysis::GetOperandUtilizationKey(0, {0})]);
+  EXPECT_EQ(0, p[HloCostAnalysis::GetOperandUtilizationKey(2, {0})]);
+
+  EXPECT_EQ(0, p.operand_bytes_accessed(0, {}));
+  EXPECT_EQ(0, p.operand_bytes_accessed(1, {}));
+  EXPECT_EQ(0, p.operand_bytes_accessed(2, {}));
+  EXPECT_EQ(0, p.operand_bytes_accessed(0, {0}));
+  EXPECT_EQ(0, p.operand_bytes_accessed(2, {0}));
+  EXPECT_EQ(0, p[HloCostAnalysis::GetOperandBytesAccessedKey(0, {})]);
+  EXPECT_EQ(0, p[HloCostAnalysis::GetOperandBytesAccessedKey(1, {})]);
+  EXPECT_EQ(0, p[HloCostAnalysis::GetOperandBytesAccessedKey(2, {})]);
+  EXPECT_EQ(0, p[HloCostAnalysis::GetOperandBytesAccessedKey(0, {0})]);
+  EXPECT_EQ(0, p[HloCostAnalysis::GetOperandBytesAccessedKey(2, {0})]);
+
+  EXPECT_EQ(0, p.output_bytes_accessed({}));
+  EXPECT_EQ(0, p.output_bytes_accessed({0}));
+  EXPECT_EQ(0, p[HloCostAnalysis::GetOutputBytesAccessedKey({})]);
+  EXPECT_EQ(0, p[HloCostAnalysis::GetOutputBytesAccessedKey({0})]);
+
+  EXPECT_EQ(0, p["foobar"]);
+
+  std::vector<std::pair<std::string, float>> vals;
+  Properties().ForEach([&](absl::string_view key, float val) {
+    vals.push_back({std::string(key), val});
+  });
+  EXPECT_THAT(vals, ::testing::IsEmpty());
+}
+
+TEST(HloCostAnalysisProperties, SetValues) {
+  Properties p;
+
+  p[kFlopsKey] = 1;
+  p[kTranscendentalsKey] = 2;
+  p[kBytesAccessedKey] = 3;
+  p[kOptimalSecondsKey] = 4;
+  p[kUtilizationKey] = 5;
+  p[kReserved0Key] = 6;
+  p[kReserved1Key] = 7;
+  EXPECT_EQ(1, p[kFlopsKey]);
+  EXPECT_EQ(2, p[kTranscendentalsKey]);
+  EXPECT_EQ(3, p[kBytesAccessedKey]);
+  EXPECT_EQ(4, p[kOptimalSecondsKey]);
+  EXPECT_EQ(5, p[kUtilizationKey]);
+  EXPECT_EQ(6, p[kReserved0Key]);
+  EXPECT_EQ(7, p[kReserved1Key]);
+
+  p.set_operand_utilization(0, {}, 10);
+  p.set_operand_utilization(1, {}, 11);
+  p.set_operand_utilization(2, {}, 12);
+  p.set_operand_utilization(0, {0}, 13);
+  p.set_operand_utilization(2, {0}, 14);
+  EXPECT_EQ(10, p.operand_utilization(0, {}));
+  EXPECT_EQ(11, p.operand_utilization(1, {}));
+  EXPECT_EQ(12, p.operand_utilization(2, {}));
+  EXPECT_EQ(13, p.operand_utilization(0, {0}));
+  EXPECT_EQ(14, p.operand_utilization(2, {0}));
+  EXPECT_EQ(10, p[HloCostAnalysis::GetOperandUtilizationKey(0, {})]);
+  EXPECT_EQ(11, p[HloCostAnalysis::GetOperandUtilizationKey(1, {})]);
+  EXPECT_EQ(12, p[HloCostAnalysis::GetOperandUtilizationKey(2, {})]);
+  EXPECT_EQ(13, p[HloCostAnalysis::GetOperandUtilizationKey(0, {0})]);
+  EXPECT_EQ(14, p[HloCostAnalysis::GetOperandUtilizationKey(2, {0})]);
+
+  p.set_operand_bytes_accessed(0, {}, 20);
+  p.set_operand_bytes_accessed(1, {}, 21);
+  p.set_operand_bytes_accessed(2, {}, 22);
+  p.set_operand_bytes_accessed(0, {0}, 23);
+  p.set_operand_bytes_accessed(2, {0}, 24);
+  EXPECT_EQ(20, p.operand_bytes_accessed(0, {}));
+  EXPECT_EQ(21, p.operand_bytes_accessed(1, {}));
+  EXPECT_EQ(22, p.operand_bytes_accessed(2, {}));
+  EXPECT_EQ(23, p.operand_bytes_accessed(0, {0}));
+  EXPECT_EQ(24, p.operand_bytes_accessed(2, {0}));
+  EXPECT_EQ(20, p[HloCostAnalysis::GetOperandBytesAccessedKey(0, {})]);
+  EXPECT_EQ(21, p[HloCostAnalysis::GetOperandBytesAccessedKey(1, {})]);
+  EXPECT_EQ(22, p[HloCostAnalysis::GetOperandBytesAccessedKey(2, {})]);
+  EXPECT_EQ(23, p[HloCostAnalysis::GetOperandBytesAccessedKey(0, {0})]);
+  EXPECT_EQ(24, p[HloCostAnalysis::GetOperandBytesAccessedKey(2, {0})]);
+
+  p.set_output_bytes_accessed({}, 30);
+  p.set_output_bytes_accessed({0}, 31);
+  EXPECT_EQ(30, p.output_bytes_accessed({}));
+  EXPECT_EQ(31, p.output_bytes_accessed({0}));
+  EXPECT_EQ(30, p[HloCostAnalysis::GetOutputBytesAccessedKey({})]);
+  EXPECT_EQ(31, p[HloCostAnalysis::GetOutputBytesAccessedKey({0})]);
+
+  p["foo"] = 100;
+  EXPECT_EQ(100, p["foo"]);
+
+  p["bar"] += 101;
+  EXPECT_EQ(101, p["bar"]);
 }
 
 }  // namespace

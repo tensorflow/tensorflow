@@ -82,7 +82,8 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   // reused and where it has to be recomputed again we group accesses to the
   // instruction by their origin from "element-wise use roots". All access
   // paths from such a root to the instruction are element-wise.
-  absl::flat_hash_map<const HloInstruction*, ConstHloInstructionSet>
+  absl::flat_hash_map<const HloInstruction*,
+                      absl::flat_hash_set<const HloInstruction*>>
       elementwise_use_roots_;
 
   // Elementwise utilization of instruction's input subtree if it is a root.
