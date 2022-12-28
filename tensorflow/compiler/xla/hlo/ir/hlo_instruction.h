@@ -2387,10 +2387,6 @@ class HloInstruction {
   // Intrusive flag used by HloComputation, whether this instruction has
   // been marked as dead.
   bool marked_as_dead_;
-
-  // Intrusive flag used by HloComputation::MakeInstructionPostOrder to store
-  // state during DFS.
-  int visit_state_ = 0;
 };
 
 // Explicit instantiations in hlo_instruction.cc.
