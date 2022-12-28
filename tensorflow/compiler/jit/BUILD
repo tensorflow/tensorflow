@@ -447,6 +447,7 @@ cc_library(
         "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
     ],
     deps = [
+        ":flags_headers",
         "//tensorflow/compiler/tf2xla:xla_argument",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core/util:determinism",
