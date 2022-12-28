@@ -64,7 +64,7 @@ jobs:
           echo "TF_VERSION=${major_version}.${minor_version}" >> "$GITHUB_OUTPUT"
           # Also get the current date to do cache busting. Assumes one day
           # is an ok range for rebuilds
-          echo "DATE=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+          echo "DATE=$(date +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
         id: tf-version
       -
         name: Build and push
