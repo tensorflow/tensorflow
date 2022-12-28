@@ -233,6 +233,7 @@ tflite_quant_model = converter.convert()
 
 Examples of the use cases where accuracy improvements provided by this
 quantization scheme include: 
+
 *   super-resolution, 
 *   audio signal processing such as noise cancelling and beamforming, 
 *   image de-noising, 
