@@ -1123,7 +1123,6 @@ class MomentsTest(test_lib.TestCase):
     is_finite = math_ops.reduce_all(math_ops.is_finite(results))
     self.assertTrue(is_finite)
 
-
   def doOutputTest(self,
                    input_shape,
                    moments_axes,
