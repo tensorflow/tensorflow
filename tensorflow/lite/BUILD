@@ -1024,7 +1024,6 @@ cc_test(
         "testdata/multi_add.bin",
     ],
     tags = [
-        "no_windows",
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
         "tflite_smoke_test",
