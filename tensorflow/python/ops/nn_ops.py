@@ -4796,7 +4796,6 @@ def max_pool_v2(input, ksize, strides, padding, data_format=None, name=None):
   Returns:
     A `Tensor` of format specified by `data_format`.
     The max pooled output tensor.
-  
   Raises:
     ValueError: If
       - explicit padding is used with an input tensor of rank 5.
