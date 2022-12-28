@@ -548,7 +548,7 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
   bool is_cost_measurement_enabled =
       exec_ctx.request_ctx()->IsCostMeasurementEnabled();
   auto run_start_time =
-      is_cost_measurement_enabled ? Env::Default()->NowMicros() : 0;
+      is_cost_measurement_enabled ? Env::Default()->NowNanos() : 0;
   if (is_async) {
     KernelFallbackExecuteCompatAsyncInternal<
         tensorflow::tfrt_stub::FallbackTensor>(
@@ -562,12 +562,12 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
   if (is_cost_measurement_enabled) {
     op_chain->AndThen([run_start_time, exec_ctx, frame] {
       // Adds 1 to make sure it's a positive integer.
-      auto execution_time = Env::Default()->NowMicros() - run_start_time + 1;
+      auto execution_time = Env::Default()->NowNanos() - run_start_time + 1;
       // Adds op_key as a suffix to distinguish the same operation with
       // different shape.
       exec_ctx.host()
           ->GetOrCreateSharedContext<tensorflow::tfrt_stub::CostRecorder>()
-          .RecordCost(frame.op_key().GetValue(), execution_time);
+          .RecordCostNanosecond(frame.op_key().GetValue(), execution_time);
     });
   }
 }
