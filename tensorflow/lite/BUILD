@@ -1088,7 +1088,6 @@ cc_test(
     srcs = ["optional_debug_tools_test.cc"],
     data = ["testdata/add.bin"],
     tags = [
-        "nomsan",
     ],
     deps = [
         ":framework",
