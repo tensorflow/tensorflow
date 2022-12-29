@@ -786,6 +786,7 @@ cc_library(
     copts = tflite_copts_warnings(),
     deps = [
         ":string",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -884,13 +885,12 @@ cc_test(
     name = "string_util_test",
     size = "small",
     srcs = ["string_util_test.cc"],
-    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     deps = [
         ":framework",
         ":string",
         ":string_util",
         "//tensorflow/lite/core:headers",
-        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
