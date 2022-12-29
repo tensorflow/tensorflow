@@ -105,6 +105,5 @@ jobs:
       image: ${{ needs.docker.outputs.tag }}
       digest: ${{ needs.docker.outputs.digest }}
       registry-username: _json_key
-      compile-generator: true  # TODO(mihaimaruseac): Remove after stable release
     secrets:
       registry-password: ${{ secrets.GCP_CREDS }}

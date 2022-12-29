@@ -100,7 +100,6 @@ jobs:
       image: ${{ needs.build.outputs.tag }}
       digest: ${{ needs.build.outputs.digest }}
       registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
-      compile-generator: true  # TODO(mihaimaruseac): Remove after stable release
     secrets:
       registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
 
@@ -116,6 +115,5 @@ jobs:
       image: ${{ needs.build.outputs.tag }}
       digest: ${{ needs.build.outputs.digest }}
       registry-username: _json_key
-      compile-generator: true  # TODO(mihaimaruseac): Remove after stable release
     secrets:
       registry-password: ${{ secrets.GCP_CREDS }}
