@@ -99,8 +99,8 @@ jobs:
     with:
       image: ${{ needs.docker.outputs.tag }}
       digest: ${{ needs.docker.outputs.digest }}
-      registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
     secrets:
+      registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
       registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
 
   provenance-gcr:
