@@ -88,8 +88,7 @@ b'Hello, TensorFlow!'
 For more examples, see the
 [TensorFlow tutorials](https://www.tensorflow.org/tutorials/).
 
-## Contribution guidelines
-
+#new project
 **If you want to contribute to TensorFlow, be sure to review the
 [contribution guidelines](CONTRIBUTING.md). This project adheres to TensorFlow's
 [code of conduct](CODE_OF_CONDUCT.md). By participating, you are expected to
@@ -104,7 +103,7 @@ for general questions and discussion, and please direct specific questions to
 The TensorFlow project strives to abide by generally accepted best practices in
 open-source software development.
 
-## Continuous build status
+## new project build status
 
 You can find more community-supported platforms and configurations in the
 [TensorFlow SIG Build community builds table](https://github.com/tensorflow/build#community-supported-tensorflow-builds).
