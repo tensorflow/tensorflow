@@ -31,8 +31,8 @@ jobs:
       - name: Contribution issues
         uses: actions/stale@v5
         with:
-          days-before-issue-stale: -1
-          days-before-issue-close: -1
+          days-before-issue-stale: 180
+          days-before-issue-close: 365
           stale-issue-label: "stale"
           any-of-labels: 
            - stat:contribution welcome
