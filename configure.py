@@ -619,7 +619,7 @@ def prompt_loop_or_load_from_env(environ_cp,
                          'Assuming to be a scripting mistake.' %
                          (var_name, n_ask_attempts))
 
-  if resolve_symlinks and os.path.islink(val):
+  if resolve_symlinks:
     val = os.path.realpath(val)
   environ_cp[var_name] = val
   return val
