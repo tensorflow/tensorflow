@@ -15,9 +15,10 @@ limitations under the License.
 #include "tensorflow/lite/profiling/memory_info.h"
 
 #ifdef __linux__
-#include <malloc.h>
 #include <sys/resource.h>
 #include <sys/time.h>
+
+#include <cstdio>
 #endif
 
 namespace tflite {
