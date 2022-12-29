@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_ATTRIBUTE_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_ATTRIBUTE_UTILS_H_
 
+#include <string>
+#include <utility>
+
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
@@ -148,6 +152,14 @@ LogicalResult HasValidCompilationAndReplicationAttributes(Operation &op);
 
 // Checks if the device attribute is valid.
 LogicalResult IsValidDeviceTypeOrEmpty(StringAttr attr);
+
+using ParallelExecutionIdPairs =
+    llvm::SmallVector<std::pair<std::string, std::string>, 8>;
+// Parses the parallel execution attribute for `op` and fills `id_pairs` with
+// the corresponding (group ID,branch ID) pairs.
+// Returns `failure` if the attribute is malformed.
+LogicalResult ParseParallelExecutionIds(Operation *op,
+                                        ParallelExecutionIdPairs &id_pairs);
 
 }  // namespace TF
 }  // namespace mlir

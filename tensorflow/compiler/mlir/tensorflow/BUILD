@@ -2559,6 +2559,8 @@ cc_library(
     hdrs = ["utils/attribute_utils.h"],
     deps = [
         "//tensorflow/compiler/tf2xla:tf2xla_defs",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
 )
