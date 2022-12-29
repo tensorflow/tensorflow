@@ -1087,7 +1087,6 @@ cc_test(
     size = "small",
     srcs = ["optional_debug_tools_test.cc"],
     data = ["testdata/add.bin"],
-    ],
     deps = [
         ":framework",
         ":optional_debug_tools",
