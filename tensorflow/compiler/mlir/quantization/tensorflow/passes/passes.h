@@ -84,15 +84,20 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass();
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
     QuantizationSpecs quant_specs, OpSet target_opset);
 
-// Creates an instance of the PrepareQuantize pass, which will perfrom similar
+// Creates an instance of the PrepareQuantize pass, which will perform similar
 // transformations as TFL::PrepareQuantizePass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
     tensorflow::quantization::QuantizationMethod::ExperimentalMethod
         quantization_method);
 
 // Creates an instance of the PrepareQuantizeDRQ pass, which will
-// perfrom similar transformations as TFL::PrepareQuantizeDynamicRangePass.
+// perform similar transformations as TFL::PrepareQuantizeDynamicRangePass.
 std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareQuantizeDRQPass(
+    const QuantizationSpecs& quant_specs, OpSet op_set);
+
+// Creates an instance of the PreprocessOp pass, which will perform op
+// preprocessing to allow multi-axis quantization, prior to quantization.
+std::unique_ptr<OperationPass<ModuleOp>> CreatePreprocessOpPass(
     const QuantizationSpecs& quant_specs, OpSet op_set);
 
 // Creates an instance of the PostQuantize pass, which will remove unnecessary
@@ -134,7 +139,7 @@ std::unique_ptr<OperationPass<func::FuncOp>>
 CreateDuplicateShapeDeterminingConstantsPass();
 
 // Creates a pass that creates a RestoreV2 op in the initializer function with
-// type "restore_op" that initializes variables from checkpoint. It finds
+// type "restore_op" that initializes variables from the checkpoint. It finds
 // tf.AssignVariableOp(tf.VarHandleOp, tf.Const) patterns in the initializer
 // function and replaces tf.Consts with the results of RestoreV2.
 std::unique_ptr<OperationPass<ModuleOp>> CreateInsertRestoreOpPass();

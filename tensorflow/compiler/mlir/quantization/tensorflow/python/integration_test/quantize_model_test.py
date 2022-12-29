@@ -629,43 +629,49 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertTrue(
         self._contains_quantized_function_call(output_meta_graphdef))
 
+  # TODO(b/263830952): Use dictionaries instead of tuples for parameters.
   @parameterized.named_parameters(
-      ('none', None, False, False, quant_opts_pb2.TF, False),
-      ('relu', nn_ops.relu, False, False, quant_opts_pb2.TF, False),
-      ('relu6', nn_ops.relu6, False, False, quant_opts_pb2.TF, False),
-      ('bn', None, False, True, quant_opts_pb2.TF, False),
-      ('bn_and_relu', nn_ops.relu, False, True, quant_opts_pb2.TF, False),
-      ('with_bias', None, True, False, quant_opts_pb2.TF, False),
-      ('with_bias_and_bn', None, True, True, quant_opts_pb2.TF, False),
-      ('with_bias_and_bn_and_relu', nn_ops.relu, True, True, quant_opts_pb2.TF,
+      ('none', None, False, False, quant_opts_pb2.TF, False, False),
+      ('relu', nn_ops.relu, False, False, quant_opts_pb2.TF, False, False),
+      ('relu6', nn_ops.relu6, False, False, quant_opts_pb2.TF, False, False),
+      ('bn', None, False, True, quant_opts_pb2.TF, False, False),
+      ('bn_and_relu', nn_ops.relu, False, True, quant_opts_pb2.TF, False,
        False),
-      ('with_bias_and_relu', nn_ops.relu, True, False, quant_opts_pb2.TF,
+      ('with_bias', None, True, False, quant_opts_pb2.TF, False, False),
+      ('with_bias_and_bn', None, True, True, quant_opts_pb2.TF, False, False),
+      ('with_bias_and_bn_and_relu', nn_ops.relu, True, True, quant_opts_pb2.TF,
+       False, False),
+      ('with_bias_and_relu', nn_ops.relu, True, False, quant_opts_pb2.TF, False,
        False),
       ('with_bias_and_relu6', nn_ops.relu6, True, False, quant_opts_pb2.TF,
+       False, False),
+      ('with_bias_and_bn_to_xla', None, True, True, quant_opts_pb2.XLA, False,
        False),
-      ('with_bias_and_bn_to_xla', None, True, True, quant_opts_pb2.XLA, False),
       ('with_bias_and_relu6_to_xla', nn_ops.relu6, True, False,
-       quant_opts_pb2.XLA, False),
+       quant_opts_pb2.XLA, False, False),
       ('with_bias_and_bn_to_xla_dynamic', None, True, True, quant_opts_pb2.XLA,
-       True),
+       True, False),
       ('with_bias_and_relu6_to_xla_dynamic', nn_ops.relu6, True, False,
-       quant_opts_pb2.XLA, True),
+       quant_opts_pb2.XLA, True, False),
       ('none_to_uq', None, False, False, quant_opts_pb2.UNIFORM_QUANTIZED,
-       False),
+       False, False),
+      ('none_to_uq_per_channel', None, False, False,
+       quant_opts_pb2.UNIFORM_QUANTIZED, False, True),
       ('relu_to_uq', nn_ops.relu, False, False,
-       quant_opts_pb2.UNIFORM_QUANTIZED, False),
+       quant_opts_pb2.UNIFORM_QUANTIZED, False, False),
       ('with_bias_to_uq', None, True, False, quant_opts_pb2.UNIFORM_QUANTIZED,
-       False),
+       False, False),
       ('with_bias_and_relu_to_uq', nn_ops.relu, True, False,
-       quant_opts_pb2.UNIFORM_QUANTIZED, False),
+       quant_opts_pb2.UNIFORM_QUANTIZED, False, False),
       ('with_bias_and_relu6_to_uq', nn_ops.relu6, True, False,
-       quant_opts_pb2.UNIFORM_QUANTIZED, False),
+       quant_opts_pb2.UNIFORM_QUANTIZED, False, False),
   )
   @test_util.run_in_graph_and_eager_modes
   def test_conv_ptq_model(self, activation_fn: Optional[ops.Operation],
                           has_bias: bool, has_batch_norm: bool,
                           target_opset: quant_opts_pb2.OpSet,
-                          input_shape_dynamic: bool):
+                          input_shape_dynamic: bool,
+                          enable_per_channel_quantization: bool):
     input_shape = [None, None, None, 3] if input_shape_dynamic else [1, 3, 4, 3]
     filter_shape = [2, 3, 3, 2]
 
@@ -690,7 +696,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE),
-        op_set=target_opset)
+        op_set=target_opset,
+        enable_per_channel_quantization=enable_per_channel_quantization)
 
     converted_model = quantize_model.quantize(
         input_saved_model_path, ['serving_default'],
@@ -711,42 +718,62 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       self.assertTrue(
           self._contains_op(output_meta_graphdef,
                             'UniformQuantizedConvolution'))
+      if enable_per_channel_quantization:
+        quantized_axis_attr = attr_value_pb2.AttrValue(i=3)
+        self.assertTrue(
+            self._contains_op(output_meta_graphdef,
+                              'UniformQuantizedConvolution',
+                              'rhs_quantization_axis', quantized_axis_attr))
     else:
       self.assertTrue(
           self._contains_quantized_function_call(output_meta_graphdef))
     self.assertFalse(
         self._contains_op(output_meta_graphdef, 'FusedBatchNormV3'))
 
+  # TODO(b/263830952): Use dictionaries instead of tuples for parameters.
   @parameterized.named_parameters(
-      ('none', None, False, False, quant_opts_pb2.TF, False),
-      ('relu', nn_ops.relu, False, False, quant_opts_pb2.TF, False),
-      ('relu6', nn_ops.relu6, False, False, quant_opts_pb2.TF, False),
-      ('bn', None, False, True, quant_opts_pb2.TF, False),
-      ('bn_and_relu', nn_ops.relu, False, True, quant_opts_pb2.TF, False),
-      ('with_bias', None, True, False, quant_opts_pb2.TF, False),
-      ('with_bias_and_bn', None, True, True, quant_opts_pb2.TF, False),
-      ('with_bias_and_bn_and_relu', nn_ops.relu, True, True, quant_opts_pb2.TF,
+      ('none', None, False, False, quant_opts_pb2.TF, False, False),
+      ('relu', nn_ops.relu, False, False, quant_opts_pb2.TF, False, False),
+      ('relu6', nn_ops.relu6, False, False, quant_opts_pb2.TF, False, False),
+      ('bn', None, False, True, quant_opts_pb2.TF, False, False),
+      ('bn_and_relu', nn_ops.relu, False, True, quant_opts_pb2.TF, False,
        False),
-      ('with_bias_and_relu', nn_ops.relu, True, False, quant_opts_pb2.TF,
+      ('with_bias', None, True, False, quant_opts_pb2.TF, False, False),
+      ('with_bias_and_bn', None, True, True, quant_opts_pb2.TF, False, False),
+      ('with_bias_and_bn_and_relu', nn_ops.relu, True, True, quant_opts_pb2.TF,
+       False, False),
+      ('with_bias_and_relu', nn_ops.relu, True, False, quant_opts_pb2.TF, False,
        False),
       ('with_bias_and_relu6', nn_ops.relu6, True, False, quant_opts_pb2.TF,
+       False, False),
+      ('with_bias_and_bn_to_xla', None, True, True, quant_opts_pb2.XLA, False,
        False),
-      ('with_bias_and_bn_to_xla', None, True, True, quant_opts_pb2.XLA, False),
       ('with_bias_and_relu6_to_xla', nn_ops.relu6, True, False,
-       quant_opts_pb2.XLA, False),
+       quant_opts_pb2.XLA, False, False),
       ('with_bias_and_bn_to_xla_dynamic', None, True, True, quant_opts_pb2.XLA,
-       True),
+       True, False),
       ('with_bias_and_relu6_to_xla_dynamic', nn_ops.relu6, True, False,
-       quant_opts_pb2.XLA, True),
+       quant_opts_pb2.XLA, True, False),
+      ('none_to_uq', None, False, False, quant_opts_pb2.UNIFORM_QUANTIZED,
+       False, False),
+      ('none_to_uq_per_channel', None, False, False,
+       quant_opts_pb2.UNIFORM_QUANTIZED, False, True),
+      ('relu_to_uq', nn_ops.relu, False, False,
+       quant_opts_pb2.UNIFORM_QUANTIZED, False, False),
+      ('with_bias_to_uq', None, True, False, quant_opts_pb2.UNIFORM_QUANTIZED,
+       False, False),
+      ('with_bias_and_relu_to_uq', nn_ops.relu, True, False,
+       quant_opts_pb2.UNIFORM_QUANTIZED, False, False),
+      ('with_bias_and_relu6_to_uq', nn_ops.relu6, True, False,
+       quant_opts_pb2.UNIFORM_QUANTIZED, False, False),
   )
-  # TODO(b/240931497): Add more tests on uniform_quantization after
-  # prepare_quantize fix for static range uniform_quantization.
   @test_util.run_in_graph_and_eager_modes
   def test_depthwise_conv_ptq_model(self,
                                     activation_fn: Optional[ops.Operation],
                                     has_bias: bool, has_batch_norm: bool,
                                     target_opset: quant_opts_pb2.OpSet,
-                                    input_shape_dynamic: bool):
+                                    input_shape_dynamic: bool,
+                                    enable_per_channel_quantization: bool):
     input_shape = ([None, None, None, 3]
                    if input_shape_dynamic else [1, 3, 4, 3])
     filter_shape = [2, 3, 3, 1]
@@ -772,7 +799,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE),
-        op_set=target_opset)
+        op_set=target_opset,
+        enable_per_channel_quantization=enable_per_channel_quantization)
 
     converted_model = quantize_model.quantize(
         input_saved_model_path, ['serving_default'],
@@ -794,6 +822,12 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       self.assertTrue(
           self._contains_op(output_meta_graphdef,
                             'UniformQuantizedConvolution'))
+      if enable_per_channel_quantization:
+        quantized_axis_attr = attr_value_pb2.AttrValue(i=3)
+        self.assertTrue(
+            self._contains_op(output_meta_graphdef,
+                              'UniformQuantizedConvolution',
+                              'rhs_quantization_axis', quantized_axis_attr))
     else:
       self.assertTrue(
           self._contains_quantized_function_call(output_meta_graphdef))
