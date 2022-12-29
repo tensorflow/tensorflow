@@ -495,7 +495,7 @@ def TFGraph_YieldOp : TFG_IntrinsicOp<"yield",
   let description = [{
     The `yield` operation is the terminator for control-flow regions. The
     operation takes data operands and control results. All data operands are
-    inputs for successor regions. Typically, this means the number of
+    inputs for successor regions. Typically, this means that the number of
     data operands matches the number of results of the parent operation.
 
     The semantics of function calls in TensorFlow mean that the region "returns"
