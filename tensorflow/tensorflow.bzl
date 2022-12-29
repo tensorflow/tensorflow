@@ -301,6 +301,12 @@ def if_override_eigen_strong_inline(a):
 
 if_nccl = _if_nccl
 
+def if_zendnn(if_true, if_false = []):
+    return select({
+        "//tensorflow:linux_x86_64": if_true,
+        "//conditions:default": if_false,
+    })
+
 def if_libtpu(if_true, if_false = []):
     """Shorthand for select()ing whether to build backend support for TPUs when building libtpu.so"""
     return select({
@@ -429,6 +435,7 @@ def tf_copts(
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
         if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
+        if_zendnn(["-DAMD_ZENDNN"]) +
         if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +
         if_android_arm(["-mfpu=neon"]) +
         if_linux_x86_64(["-msse3"]) +
