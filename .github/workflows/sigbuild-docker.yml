@@ -97,8 +97,8 @@ jobs:
       packages: write # for uploading attestations.
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v1.4.0
     with:
-      image: ${{ needs.build.outputs.tag }}
-      digest: ${{ needs.build.outputs.digest }}
+      image: ${{ needs.docker.outputs.tag }}
+      digest: ${{ needs.docker.outputs.digest }}
       registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
     secrets:
       registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -112,8 +112,8 @@ jobs:
       packages: write # for uploading attestations.
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v1.4.0
     with:
-      image: ${{ needs.build.outputs.tag }}
-      digest: ${{ needs.build.outputs.digest }}
+      image: ${{ needs.docker.outputs.tag }}
+      digest: ${{ needs.docker.outputs.digest }}
       registry-username: _json_key
     secrets:
       registry-password: ${{ secrets.GCP_CREDS }}
