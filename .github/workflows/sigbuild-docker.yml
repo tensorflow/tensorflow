@@ -95,7 +95,7 @@ jobs:
       actions: read # for detecting the Github Actions environment.
       id-token: write # for creating OIDC tokens for signing.
       packages: write # for uploading attestations.
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@main  # TODO(mihaimaruseac): Pin and use signed releases when they exist
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@1.4.0
     with:
       image: ${{ needs.build.outputs.tag }}
       digest: ${{ needs.build.outputs.digest }}
@@ -111,7 +111,7 @@ jobs:
       actions: read # for detecting the Github Actions environment.
       id-token: write # for creating OIDC tokens for signing.
       packages: write # for uploading attestations.
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@main  # TODO(mihaimaruseac): Pin and use signed releases when they exist
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@1.4.0
     with:
       image: ${{ needs.build.outputs.tag }}
       digest: ${{ needs.build.outputs.digest }}
