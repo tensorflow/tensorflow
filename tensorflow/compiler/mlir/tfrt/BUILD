@@ -822,3 +822,13 @@ cc_library(
         "@tf_runtime//:support",
     ],
 )
+
+cc_library(
+    name = "transforms/update_op_cost_in_tfrt_mlir",
+    srcs = ["transforms/update_op_cost_in_tfrt_mlir.cc"],
+    hdrs = ["transforms/update_op_cost_in_tfrt_mlir.h"],
+    deps = [
+        "//tensorflow/core/tfrt/fallback:cost_recorder",
+        "@llvm-project//mlir:IR",
+    ],
+)
