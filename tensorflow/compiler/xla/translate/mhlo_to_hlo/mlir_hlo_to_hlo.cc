@@ -59,7 +59,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/hlo/ir/dynamic_parameter_binding.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/mlir/utils/error_util.h"
@@ -92,7 +91,6 @@ constexpr char kPaddingArgIndicesAttr[] = "padding_arg_indices";
 constexpr char kShardingAttr[] = "mhlo.sharding";
 constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
 constexpr char kReplicationAttr[] = "mhlo.is_same_data_across_replicas";
-constexpr char kParameterReplicationAttr[] = "mhlo.parameter_replication";
 
 // Array attribute. Same shape as infeed result, but contains a
 // minor_to_major array for every tensor.
@@ -2799,16 +2797,6 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
     computation.mutable_proto()->mutable_computations(0)->set_execution_thread(
         execution_thread.str());
   }
-  for (int i = 0; i < f.getNumArguments(); ++i)
-    if (auto pr =
-            f.getArgAttrOfType<mlir::ArrayAttr>(i, kParameterReplicationAttr))
-      for (auto b : pr.getValue())
-        computation.mutable_proto()
-            ->mutable_computations(0)
-            ->mutable_instructions(i)
-            ->mutable_parameter_replication()
-            ->add_replicated_at_leaf_buffers(
-                b.cast<mlir::BoolAttr>().getValue());
   lowered_computation_[f] = std::move(computation);
   return success();
 }
