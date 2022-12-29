@@ -81,7 +81,7 @@ jobs:
 
   provenance-dockerhub:
     needs: [docker]
-    if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
+    #if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
     permissions:
       actions: read # for detecting the Github Actions environment.
       id-token: write # for creating OIDC tokens for signing.
@@ -97,7 +97,7 @@ jobs:
 
   provenance-gcr:
     needs: [docker]
-    if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
+    #if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
     permissions:
       actions: read # for detecting the Github Actions environment.
       id-token: write # for creating OIDC tokens for signing.
