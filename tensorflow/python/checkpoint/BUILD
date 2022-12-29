@@ -8,6 +8,7 @@ load(
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -30,7 +31,6 @@ py_library(
 py_library(
     name = "checkpoint",
     srcs = [
-        "__init__.py",
         "checkpoint.py",
     ],
     srcs_version = "PY3",
@@ -306,6 +306,7 @@ tf_py_test(
     srcs = ["restore_test.py"],
     deps = [
         ":restore",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python/eager:test",
     ],
 )
@@ -360,6 +361,28 @@ cuda_py_test(
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/trackable:trackable_utils",
+    ],
+)
+
+py_library(
+    name = "tensor_callable",
+    srcs = ["tensor_callable.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/training/saving:saveable_object",
+    ],
+)
+
+tf_py_test(
+    name = "tensor_callable_test",
+    srcs = ["tensor_callable_test.py"],
+    deps = [
+        ":checkpoint",
+        ":tensor_callable",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/trackable:base",
     ],
 )
 
@@ -423,6 +446,7 @@ tf_py_test(
         ":checkpoint",
         ":saveable_compat",
         ":testdata/generate_checkpoint",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/trackable:base",

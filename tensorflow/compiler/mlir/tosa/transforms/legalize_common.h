@@ -72,7 +72,7 @@ llvm::Optional<Value> convertRoundOp(PatternRewriter& rewriter, Operation* op,
 
 // Lowers ConcatV2 to TOSA.
 llvm::Optional<Value> convertConcatV2Op(PatternRewriter& rewriter,
-                                        Operation* op, Value result_value,
+                                        Operation* op, ShapedType result_type,
                                         SmallVectorImpl<Value>& values,
                                         int32_t axis);
 

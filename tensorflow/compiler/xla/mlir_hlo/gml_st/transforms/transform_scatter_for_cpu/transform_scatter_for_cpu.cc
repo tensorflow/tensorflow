@@ -71,6 +71,8 @@ struct TransformScatterForCpuPass
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();
     }
+
+    removeTilingLabels(f);
   }
 };
 

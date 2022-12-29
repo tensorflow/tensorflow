@@ -63,9 +63,12 @@ void BuildOpProfileNodeTree(const OpStats& op_stats, bool group_by_program,
   double max_gigaflops_per_second_per_core =
       TeraToGiga(perf_env.peak_tera_flops_per_second());
   double max_gibibytes_per_second_per_core =
+      GigaToGibi(perf_env.peak_bw_giga_bytes_per_second());
+  double max_hbm_gibibytes_per_second_per_core =
       GigaToGibi(perf_env.peak_hbm_bw_giga_bytes_per_second());
   builder.Finalize(max_gigaflops_per_second_per_core,
                    max_gibibytes_per_second_per_core,
+                   max_hbm_gibibytes_per_second_per_core,
                    TotalTimePs(metrics_db, exclude_idle_ops));
 }
 

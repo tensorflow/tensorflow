@@ -328,7 +328,7 @@ void transitivelyEraseUnusedSideEffectFreeOps(Operation *root,
     if (opsToEraseSet.count(op)) continue;
 
     // Erase only operations that are unused and free of side effects.
-    if (!MemoryEffectOpInterface::hasNoEffect(op) ||
+    if (!isMemoryEffectFree(op) ||
         !llvm::all_of(op->getUsers(), [opsToEraseSet](Operation *user) {
           return opsToEraseSet.count(user);
         })) {

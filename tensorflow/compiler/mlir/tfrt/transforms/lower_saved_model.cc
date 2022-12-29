@@ -37,6 +37,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
+using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
+
 constexpr char kCpuDeviceName[] =
     "/job:localhost/replica:0/task:0/device:CPU:0";
 
@@ -177,7 +180,7 @@ bool CanHoist(const llvm::DenseSet<mlir::TF::ResourceHandle> &read_only_vars,
   if (op->mightHaveTrait<mlir::OpTrait::IsTerminator>()) return false;
 
   // Non-side-effecting ops can be hoisted.
-  if (mlir::MemoryEffectOpInterface::hasNoEffect(op)) return true;
+  if (mlir::isMemoryEffectFree(op)) return true;
 
   // ResourceHandle ops can be hoisted.
   if (llvm::isa<mlir::TF::VarHandleOp, mlir::TF::HashTableV2Op>(op))
@@ -458,7 +461,7 @@ class LowerTFSavedModelPass
     mlir::OpBuilder builder(&getContext());
     auto resource_id = builder.getStringAttr("tf.resource_name");
     auto bound_id = builder.getStringAttr("tf_saved_model.bound_input");
-    auto path_id = builder.getStringAttr("tf_saved_model.index_path");
+    auto path_id = builder.getStringAttr(kTfSavedModelIndexPathAttr);
 
     module.walk([resource_id, bound_id, path_id,
                  &builder](mlir::Operation *op) mutable {
@@ -478,7 +481,7 @@ class LowerTFSavedModelPass
           func_op.removeResultAttr(i, path_id);
         }
         if (auto exported_names = func_op->getAttrOfType<mlir::ArrayAttr>(
-                "tf_saved_model.exported_names")) {
+                kTfSavedModelExportedNamesAttr)) {
           bool is_session_initializer = IsSessionInitializer(func_op);
 
           // Create a function for each exported name.
@@ -486,7 +489,7 @@ class LowerTFSavedModelPass
           // TODO(b/148477882): TFRT dialect should have similar concepts of
           // exported names so that a function can be referenced by multiple
           // exported names.
-          func_op->removeAttr("tf_saved_model.exported_names");
+          func_op->removeAttr(kTfSavedModelExportedNamesAttr);
           for (auto exported_name : exported_names) {
             auto exported_func_op = func_op.clone();
             exported_func_op.setName(exported_name.cast<mlir::StringAttr>());
@@ -585,7 +588,7 @@ mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
         assign_ops.push_back(assign);
         continue;
       }
-    } else if (mlir::MemoryEffectOpInterface::hasNoEffect(user)) {
+    } else if (mlir::isMemoryEffectFree(user)) {
       side_effect_free_ops.push_back({user, use.getOperandNumber()});
       continue;
     }

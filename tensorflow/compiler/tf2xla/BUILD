@@ -20,6 +20,7 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//tensorflow/compiler/xla/service/cpu:build_defs.bzl", "runtime_copts")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":internal"],
     licenses = ["notice"],
 )
@@ -1077,6 +1078,7 @@ cc_library(
     name = "mlir_bridge_pass",
     srcs = ["mlir_bridge_pass.cc"],
     hdrs = ["mlir_bridge_pass.h"],
+    visibility = [":internal"],
     deps = [
         ":tf2xla_defs",
         "//tensorflow/compiler/jit:flags",

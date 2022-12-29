@@ -3,10 +3,10 @@
 FROM ubuntu:focal
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 
-ARG ROCM_DEB_REPO=https://repo.radeon.com/rocm/apt/5.1/
+ARG ROCM_DEB_REPO=https://repo.radeon.com/rocm/apt/5.3/
 ARG ROCM_BUILD_NAME=ubuntu
 ARG ROCM_BUILD_NUM=main
-ARG ROCM_PATH=/opt/rocm-5.1.0
+ARG ROCM_PATH=/opt/rocm-5.3.0
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV TF_NEED_ROCM 1
@@ -54,7 +54,7 @@ RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteracti
   libnuma-dev \
   pciutils \
   virtualenv \
-  python-pip \
+  python3-pip \
   libxml2 \
   libxml2-dev \
   wget && \
@@ -78,6 +78,7 @@ ENV OPENCL_ROOT=$ROCM_PATH/opencl
 ENV PATH="$HCC_HOME/bin:$HIP_PATH/bin:${PATH}"
 ENV PATH="$ROCM_PATH/bin:${PATH}"
 ENV PATH="$OPENCL_ROOT/bin:${PATH}"
+ENV PATH="/usr/local/bin:${PATH}"
 
 # Add target file to help determine which device(s) to build for
 RUN bash -c 'echo -e "gfx900\ngfx906\ngfx908" >> ${ROCM_PATH}/bin/target.lst'

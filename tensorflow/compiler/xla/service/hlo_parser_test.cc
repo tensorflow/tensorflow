@@ -201,6 +201,17 @@ ENTRY %IsFiniteR1F32s.v2 () -> pred[6] {
 
 )"
 },
+// NaN constants for F8E4M3FN
+{
+"ConstantNonFiniteE4M3",
+R"(HloModule ConstantR1F8E4M3FNs_module, entry_computation_layout={()->f8e4m3fn[3]{0}}
+
+ENTRY %IsFiniteR1F32s.v2 () -> f8e4m3fn[3] {
+  ROOT %constant = f8e4m3fn[3]{0} constant({nan, 7, -nan})
+}
+
+)"
+},
 // constant f16
 {
 "ConstantF16",
@@ -961,6 +972,28 @@ ENTRY %fusion.v3 () -> f32[3,2,1,1] {
   %constant = f32[3,2,1,1]{3,2,1,0} constant({ { /*i0=0*/ { /*i1=0*/ {-1} }, { /*i1=1*/ {4.1} } }, { /*i0=1*/ { /*i1=0*/ {2} }, { /*i1=1*/ {4.1} } }, { /*i0=2*/ { /*i1=0*/ {5} }, { /*i1=1*/ {4.4} } } })
   %constant.1 = f32[2]{0} constant({3.14, 4.25})
   ROOT %fusion = f32[3,2,1,1]{3,2,1,0} fusion(f32[3,2,1,1]{3,2,1,0} %constant, f32[2]{0} %constant.1), kind=kLoop, calls=%fused_computation
+}
+
+)"
+},
+// FusionWithAliasing
+{
+"FusionWithAliasing",
+R"(HloModule FusionWithAliasing, entry_computation_layout={((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}),f32[123,4]{0,1})->(f32[123,4]{0,1}, f32[2,2]{0,1}, f32[1,2,3]{0,1,2})}
+
+%FusedComp (p0: (f32[2,2], f32[42,2,3]), p1: f32[123,4]) -> (f32[123,4], f32[2,2], f32[1,2,3]) {
+  %p1 = f32[123,4]{0,1} parameter(1)
+  %p0 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
+  %elem1 = f32[2,2]{0,1} get-tuple-element((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) %p0), index=0
+  %constant0 = f32[] constant(1)
+  %broadcast0 = f32[1,2,3]{0,1,2} broadcast(f32[] %constant0), dimensions={}
+  ROOT %tuple = (f32[123,4]{0,1}, f32[2,2]{0,1}, f32[1,2,3]{0,1,2}) tuple(f32[123,4]{0,1} %p1, f32[2,2]{0,1} %elem1, f32[1,2,3]{0,1,2} %broadcast0)
+}
+
+ENTRY %FusionWithAliasing (p0.1: (f32[2,2], f32[42,2,3]), p1.1: f32[123,4]) -> (f32[123,4], f32[2,2], f32[1,2,3]) {
+  %p0.1 = (f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) parameter(0)
+  %p1.1 = f32[123,4]{0,1} parameter(1)
+  ROOT %fusion = (f32[123,4]{0,1}, f32[2,2]{0,1}, f32[1,2,3]{0,1,2}) fusion((f32[2,2]{0,1}, f32[42,2,3]{0,1,2}) %p0.1, f32[123,4]{0,1} %p1.1), kind=kLoop, output_to_operand_aliasing={{0}: (1, {}), {1}: (0, {0})}, calls=%FusedComp
 }
 
 )"
@@ -2789,6 +2822,34 @@ ENTRY %NanPayload () -> bf16[2] {
   auto result = ParseAndReturnUnverifiedModule(original);
   EXPECT_EQ(OkStatus(), result.status());
   EXPECT_EQ(result.value()->ToString(HloPrintOptions()), original);
+}
+
+TEST_F(HloParserTest, InvalidNanPayloadBf16) {
+  const std::string original =
+      R"(HloModule InvalidNanPayloadBf16_module, entry_computation_layout={()->bf16[1]{0}}
+
+ENTRY %NanPayload () -> bf16[1] {
+  ROOT %constant = bf16[1]{0} constant({nan(0x3ff)})
+}
+
+)";
+  ExpectHasSubstr(
+      ParseAndReturnUnverifiedModule(original).status().error_message(),
+      "tries to set NaN payload 0x3ff");
+}
+
+TEST_F(HloParserTest, InvalidNanPayloadF8e4m3fn) {
+  const std::string original =
+      R"(HloModule InvalidNanPayloadF8e4m3fn_module, entry_computation_layout={()->f8e4m3fn[1]{0}}
+
+ENTRY %NanPayload () -> f8e4m3fn[1] {
+  ROOT %constant = f8e4m3fn[1]{0} constant({nan(0x1)})
+}
+
+)";
+  ExpectHasSubstr(
+      ParseAndReturnUnverifiedModule(original).status().error_message(),
+      "tries to set NaN payload 0x1");
 }
 
 TEST_F(HloParserTest, AttributesAnyOrder) {

@@ -155,7 +155,7 @@ class ConcatBaseOp : public OpKernel {
     TensorShape output_shape(input_shape);
     // TODO(rmlarsen): Remove rank 0 case once !allow_legacy_scalars()?
     if (output_shape.dims() == 0) {
-      output_shape.AddDim(output_concat_dim);
+      OP_REQUIRES_OK(c, output_shape.AddDimWithStatus(output_concat_dim));
     } else {
       output_shape.set_dim(axis, output_concat_dim);
     }

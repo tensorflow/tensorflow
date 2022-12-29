@@ -42,6 +42,9 @@ class MockGenericType(trace.TraceType):
   def most_specific_common_supertype(self, others):
     return None
 
+  def placeholder_value(self, placeholder_context=None):
+    raise NotImplementedError
+
   def __eq__(self, other):
     if not isinstance(other, trace.TraceType):
       return NotImplemented
@@ -107,6 +110,9 @@ class MockShape(trace.TraceType):
 
   def __eq__(self, other: "MockShape") -> bool:
     return self.shape == other.shape
+
+  def placeholder_value(self, placeholder_context):
+    raise NotImplementedError
 
 
 def make_single_param_type(type_constraint):

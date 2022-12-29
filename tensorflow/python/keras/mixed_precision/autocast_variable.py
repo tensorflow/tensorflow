@@ -349,12 +349,14 @@ class AutoCastVariable(variables.Variable, core.Tensor):
     # models with normal variables, and vice versa.
     return self._variable._gather_saveables_for_checkpoint()  # pylint:disable=protected-access
 
-  def _map_resources(self, save_options):
+  def _export_to_saved_model_graph(self, object_map, tensor_map, options,
+                                   **kwargs):
     # By delegating this method to the wrapped variable, SavedModel with
     # AutoCastVariables are identical to SavedModel with normal variables.
-    obj_map, resource_map = self._variable._map_resources(save_options)  # pylint:disable=protected-access
-    obj_map[self] = obj_map[self._variable]
-    return obj_map, resource_map
+    resource_list = self._variable._export_to_saved_model_graph(  # pylint:disable=protected-access
+        object_map, tensor_map, options, **kwargs)
+    object_map[self] = object_map[self._variable]
+    return resource_list
 
   # TODO(reedwm): Maybe encode the fact the variable is an AutoCastVariable in
   # to_proto().

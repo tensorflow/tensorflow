@@ -1,6 +1,11 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],
+)
 
 td_library(
     name = "td_files",
@@ -11,6 +16,8 @@ td_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        "//tensorflow/compiler/xla/mlir_hlo:hlo_ops_td_files",
+        "@llvm-project//mlir:BufferizableOpInterfaceTdFiles",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
     ],
@@ -84,18 +91,16 @@ cc_library(
     name = "xla_cpu",
     srcs = [
         "xla_cpu.cc",
-        "xla_cpu.cc.inc",
-        "xla_cpu.h.inc",
     ],
     hdrs = ["xla_cpu.h"],
     deps = [
         ":xla_cpu_dialect_inc_gen",
         ":xla_cpu_enums_inc_gen",
         ":xla_cpu_inc_gen",
+        "//tensorflow/compiler/xla/mlir_hlo",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:DialectUtils",
+        "@llvm-project//mlir:BufferizationDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:InferTypeOpInterface",
     ],
 )

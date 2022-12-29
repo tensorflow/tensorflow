@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/InitAllDialects.h"  // from @llvm-project
-#include "mlir/InitAllPasses.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow//compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
@@ -42,7 +44,7 @@ limitations under the License.
 int main(int argc, char **argv) {
   tensorflow::InitMlir y(&argc, &argv);
 
-  mlir::registerAllPasses();
+  mlir::registerTransformsPasses();
   mlir::registerTensorFlowPasses();
   mlir::TFDevice::registerTensorFlowDevicePasses();
   mlir::tf_saved_model::registerTensorFlowSavedModelPasses();
@@ -65,15 +67,16 @@ int main(int argc, char **argv) {
   tensorflow::RegisterMlProgramPasses();
 
   mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
   mlir::RegisterAllTensorFlowDialects(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
   mlir::stablehlo::registerAllDialects(registry);
-  registry.insert<mlir::shape::ShapeDialect>();
-  registry.insert<mlir::TFL::TensorFlowLiteDialect>();
+  registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();
   registry.insert<mlir::quant::QuantizationDialect>();
   registry.insert<mlir::quantfork::QuantizationForkDialect>();
-  registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();
+  registry.insert<mlir::shape::ShapeDialect>();
+  registry.insert<mlir::TFL::TensorFlowLiteDialect>();
+  registry.insert<mlir::tensor::TensorDialect>();
+  registry.insert<mlir::tosa::TosaDialect>();
   return failed(
       mlir::MlirOptMain(argc, argv, "TensorFlow pass driver\n", registry));
 }

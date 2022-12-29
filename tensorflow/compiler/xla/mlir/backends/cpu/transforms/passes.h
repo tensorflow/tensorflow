@@ -35,6 +35,9 @@ createConvertLmhloToCpuRuntimePass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createXlaAbiLegalizationPass();
 
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createLegalizeCollectiveOpsPass();
+
 //===-----------------------------------------------------------------------===/
 
 #define GEN_PASS_REGISTRATION

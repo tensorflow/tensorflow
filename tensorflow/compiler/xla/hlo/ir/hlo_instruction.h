@@ -1574,14 +1574,14 @@ class HloInstruction {
   // Returns the sharding unique device, if any.
   std::optional<int64_t> sharding_unique_device() const {
     if (sharding_ == nullptr) {
-      return std::optional<int64_t>();
+      return std::nullopt;
     }
     return sharding_->UniqueDevice();
   }
   // Sets the sharding of this operator. Should only be called by HloModule or
   // HloComputation methods.
   void set_sharding(const HloSharding& sharding) {
-    sharding_ = std::make_shared<const HloSharding>(sharding);
+    set_sharding(std::make_shared<const HloSharding>(sharding));
   }
   void set_sharding(std::shared_ptr<const HloSharding> sharding) {
     sharding_ = std::move(sharding);
@@ -2163,9 +2163,9 @@ class HloInstruction {
   // Delegates to HloCholeskyInstruction::cholesky_options().
   const CholeskyOptions& cholesky_options() const;
 
-  // Delegates to HloCustomCallInstruction::output_to_operand_aliasing().
+  // Delegates to HloCallableInstruction::output_to_operand_aliasing().
   const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
-  custom_call_output_operand_aliasing() const;
+  output_operand_aliasing() const;
 
   // Appends operand to the list of operands and adds this instruction as a user
   // of the operand.

@@ -33,7 +33,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/delegates/serialization.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
@@ -53,9 +53,9 @@ limitations under the License.
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/delegates/nnapi/quant_lstm_sup.h"
 #include "tensorflow/lite/delegates/utils.h"

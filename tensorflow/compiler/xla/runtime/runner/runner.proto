@@ -15,7 +15,9 @@ limitations under the License.
 
 syntax = "proto3";
 
-package xla.runtime;
+package xla;
+
+import "tensorflow/compiler/xla/xla_data.proto";
 
 message ScalarProto {
   oneof value {
@@ -24,15 +26,27 @@ message ScalarProto {
   }
 }
 
+message TensorProto {
+  PrimitiveType dtype = 1;
+  int64 offset = 2;
+  repeated int64 sizes = 3;
+  repeated int64 strides = 4;
+  bool inout = 5;
+
+  bytes contents = 6;
+}
+
 message ArgumentProto {
   oneof argument {
     ScalarProto scalar = 1;
+    TensorProto tensor = 2;
   }
 }
 
 message ResultProto {
   oneof result {
     ScalarProto scalar = 1;
+    TensorProto tensor = 2;
   }
 }
 

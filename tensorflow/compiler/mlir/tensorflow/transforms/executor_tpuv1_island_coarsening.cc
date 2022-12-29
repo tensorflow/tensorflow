@@ -18,11 +18,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <iterator>
+#include <optional>
 #include <queue>
 #include <tuple>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
@@ -71,7 +71,7 @@ struct TpuV1BridgeExecutorIslandCoarsening
 };
 
 // Returns name of TPU cluster, if op belongs to a TPU cluster. Otherwise,
-// returns `llvm::None`.
+// returns `std::nullopt`.
 llvm::Optional<llvm::StringRef> GetTpuClusterName(Operation* op) {
   if (auto tpu_status = op->getAttrOfType<StringAttr>(kTpuStatusAttr)) {
     // Borrow cluster name from TPU status (for `TPUCompilationResult` op).
@@ -80,7 +80,7 @@ llvm::Optional<llvm::StringRef> GetTpuClusterName(Operation* op) {
   auto device_type = op->getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr);
   if (!device_type || device_type.getValue() != TF::kTpuDevice) {
     // Op does not belong to a TPU cluster.
-    return llvm::None;
+    return std::nullopt;
   }
   // Op belongs to a TPU cluster.
   if (auto replication_info =
@@ -196,7 +196,7 @@ void CollectCandidateIslands(
         GetTpuClusterName(&candidate_wrapped_op);
     llvm::StringRef candidate_cluster_name;
     if (result.has_value()) {
-      candidate_cluster_name = result.getValue();
+      candidate_cluster_name = result.value();
     } else if (is_op_calling_func_for_cluster(cluster_name,
                                               &candidate_wrapped_op)) {
       candidate_cluster_name = cluster_name;
@@ -298,7 +298,7 @@ LogicalResult MergeIsland(
 
   llvm::Optional<llvm::StringRef> result = GetTpuClusterName(&wrapped_op);
   if (!result.has_value()) return success();
-  llvm::StringRef cluster_name = result.getValue();
+  llvm::StringRef cluster_name = result.value();
 
   // We found a _replication_info, let's build an island for the full cluster!
   LLVM_DEBUG(llvm::dbgs() << "Processing candidate island: "
@@ -396,7 +396,7 @@ bool is_valid_special_tpu_op(
 
     bool op_has_inconsistent_cluster_name =
         wrapped_op_cluster_name.has_value() &&
-        !wrapped_op_cluster_name.getValue().equals(cluster_name);
+        !wrapped_op_cluster_name.value().equals(cluster_name);
 
     if (op_has_inconsistent_cluster_name) {
       return false;
@@ -511,7 +511,7 @@ LogicalResult CollectSpecialTpuOps(
 
   llvm::Optional<llvm::StringRef> result = GetTpuClusterName(&wrapped_op);
   if (!result.has_value()) return success();
-  llvm::StringRef cluster_name = result.getValue();
+  llvm::StringRef cluster_name = result.value();
 
   visited_wrapped_ops.insert(&wrapped_op);
 
@@ -547,12 +547,12 @@ bool ExcludeIdentityOp(llvm::SmallDenseSet<Operation*>& tpu_ops,
       for (IslandOp wrapper : ops) {
         Operation* wrapped_op = &wrapper.GetBody().front();
         auto cluster_name = GetTpuClusterName(wrapped_op);
-        if (cluster_name.hasValue() &&
-            cluster_name.getValue() != target_cluster_name) {
+        if (cluster_name.has_value() &&
+            cluster_name.value() != target_cluster_name) {
           tpu_ops.erase(iter);
           return true;
         }
-        if (!cluster_name.hasValue() &&
+        if (!cluster_name.has_value() &&
             !tpu_ops.count(wrapper.getOperation())) {
           tpu_ops.erase(iter);
           return true;
@@ -590,7 +590,7 @@ void EraseIdentityWithNoReplicationInfo(Block& graph_body) {
     if (!island || island.WrapsSingleOp()) continue;
     for (Operation& op : llvm::make_early_inc_range(island.GetBody())) {
       llvm::Optional<llvm::StringRef> cluster_name = GetTpuClusterName(&op);
-      if (cluster_name.hasValue()) continue;
+      if (cluster_name.has_value()) continue;
       if (auto identity_op = llvm::dyn_cast_or_null<TF::IdentityOp>(op)) {
         auto identity_input = identity_op.getInput();
         auto output = identity_op.getOutput();
@@ -611,7 +611,7 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
     func_op.walk([&](Operation* op) {
       llvm::Optional<llvm::StringRef> cluster_name_opt = GetTpuClusterName(op);
       if (cluster_name_opt.has_value()) {
-        tpu_funcs[cluster_name_opt.getValue()].insert(func_op);
+        tpu_funcs[cluster_name_opt.value()].insert(func_op);
       }
     });
   }

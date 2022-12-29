@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -67,6 +68,9 @@ void ConvertXPlaneToTraceEvents(uint32 device_id, const XPlaneVisitor& xplane,
   // Convert events.
   xplane.ForEachLine([device_id, trace](const XLineVisitor& xline) {
     uint32 resource_id = xline.DisplayId();
+    if (xline.DisplayName() == tsl::profiler::kXlaAsyncOpLineName) {
+      return;
+    }
     xline.ForEachEvent(
         [device_id, resource_id, trace](const XEventVisitor& xevent) {
           int64_t event_type =
@@ -123,6 +127,17 @@ void MaybeDropEventsForTraceViewer(Trace* trace, uint32 limit) {
                       trace_events->end());
 }
 
+uint64 GetTraceViewerMaxEvents() {
+  constexpr uint64 kMaxEvents = 1000000;
+  // Testing only env variable, not recommended for use
+  char* max_events = getenv("TF_PROFILER_TRACE_VIEWER_MAX_EVENTS");
+  if (max_events != nullptr) {
+    return std::stoull(max_events, nullptr, 10);
+  } else {
+    return kMaxEvents;
+  }
+}
+
 void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
   const XPlane* host_plane = FindPlaneWithName(xspace, kHostThreadsPlaneName);
   if (host_plane != nullptr) {
@@ -147,8 +162,8 @@ void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
 
   // Trace viewer (non-streaming) has scalability issues, we need to drop
   // events to avoid loading failure for trace viewer.
-  constexpr uint64 kMaxEvents = 1000000;
-  MaybeDropEventsForTraceViewer(trace, kMaxEvents);
+  uint64 viewer_max_events = GetTraceViewerMaxEvents();
+  MaybeDropEventsForTraceViewer(trace, viewer_max_events);
 }
 
 void ConvertXSpaceToTraceEventsString(const XSpace& xspace,

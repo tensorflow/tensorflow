@@ -1312,7 +1312,7 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
         int64_t pad_low_int64;
         int64_t pad_high_int64;
         int64_t input_size = input_ty.getDimSize(dim);
-        if (input_size == ShapedType::kDynamicSize) return failure();
+        if (input_size == ShapedType::kDynamic) return failure();
         tsl::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
             input_size, filter_ty.getDimSize(i), dilation, stride, padding,
             &output_size, &pad_low_int64, &pad_high_int64);
@@ -1335,7 +1335,7 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
 
     const int64_t input_channels =
         GetDimSize(input_ty, GetTensorFeatureDimIndex(num_dims, data_format));
-    if (input_channels == ShapedType::kDynamicSize) return failure();
+    if (input_channels == ShapedType::kDynamic) return failure();
     // Filters data_format is always HWIO so input channels dimension is after
     // all spatial dimensions.
     const int64_t filter_channels = GetDimSize(filter_ty, num_spatial_dims);
@@ -1474,7 +1474,7 @@ class ConvertGatherNdOpDynamic : public OpRewritePattern<TF::GatherNdOp> {
     int64_t num_index_dims = indices_ty.getDimSize(indices_rank - 1);
     if (!params_ty || !indices_ty) return failure();
     // the last dim of indices of GatherNdOp must be fixed shaped
-    if (num_index_dims == ShapedType::kDynamicSize) return failure();
+    if (num_index_dims == ShapedType::kDynamic) return failure();
 
     SmallVector<int64_t, 4> slice_sizes;
     slice_sizes.reserve(params_rank);
@@ -1495,7 +1495,7 @@ class ConvertGatherNdOpDynamic : public OpRewritePattern<TF::GatherNdOp> {
             loc, rewriter.getIntegerAttr(indices_ty.getElementType(), 1)));
       } else {
         int64_t dim_size = params_ty.getDimSize(i);
-        if (dim_size != ShapedType::kDynamicSize) {
+        if (dim_size != ShapedType::kDynamic) {
           slice_sizes_vals.push_back(rewriter.create<arith::ConstantOp>(
               loc,
               rewriter.getIntegerAttr(indices_ty.getElementType(), dim_size)));
@@ -2176,7 +2176,7 @@ class ConvertFFTOp : public OpRewritePattern<OpTy> {
     rewriter.replaceOpWithNewOp<FftOp>(
         op, op.getType(), reshaped,
         FftTypeAttr::get(rewriter.getContext(),
-                         symbolizeFftType(fft_string).getValue()),
+                         symbolizeFftType(fft_string).value()),
         rewriter.getI64TensorAttr(fft_length));
     return success();
   }
@@ -3316,9 +3316,9 @@ class ConvertSplitOp : public OpRewritePattern<TF::SplitOp> {
 
   LogicalResult matchAndRewrite(TF::SplitOp op,
                                 PatternRewriter &rewriter) const override {
-    // We can only split along static dimensions.
+    // We can only split inputs that have fully static shape.
     auto input_type = op.getValue().getType().dyn_cast<RankedTensorType>();
-    if (!input_type) return failure();
+    if (!input_type || !input_type.hasStaticShape()) return failure();
 
     // We can only match when the split dimension is a constant scalar.
     DenseIntElementsAttr split_dim_attr;
@@ -3332,9 +3332,6 @@ class ConvertSplitOp : public OpRewritePattern<TF::SplitOp> {
 
     // Calculate the dimension size for each slice along the split dimension.
     int64_t input_dim_size = input_type.getDimSize(dim_index);
-    // If we are splitting along the dynamic dimension then we cannot compute
-    // the static dimension length.
-    if (ShapedType::isDynamic(input_dim_size)) return failure();
 
     int64_t num_splits = op.getNumResults();
     int64_t slice_size = input_dim_size / num_splits;
@@ -3347,7 +3344,7 @@ class ConvertSplitOp : public OpRewritePattern<TF::SplitOp> {
 
     // Parameters for constructing each slice.
     SmallVector<int64_t, 4> begin_indices(input_rank, 0);
-    auto end_indices = tensorflow::ConvertMlirShapeToTF(input_type.getShape());
+    auto end_indices = llvm::to_vector<4>(input_type.getShape());
     SmallVector<int64_t, 4> strides(input_rank, 1);
 
     // All HLO slice results used to replace the original tf.Split op.
@@ -3383,6 +3380,13 @@ class ConvertSplitOpDynamic : public OpRewritePattern<TF::SplitOp> {
     Value input = op.getValue();
     auto input_type = input.getType().dyn_cast<RankedTensorType>();
     if (!input_type) return failure();
+
+    // TODO(disc): remove static shape check once folding/canonicalization func
+    // added and ConvertSplitOp deleted. Calculate the dimension size for each
+    // slice along the split dimension. We are splitting along the dynamic
+    // dimension, or using static pattern transform
+    if (input_type.hasStaticShape()) return failure();
+
     // We can only match when the split dimension is a constant scalar.
     DenseIntElementsAttr split_dim_attr;
     if (!matchPattern(op.getSplitDim(), m_Constant(&split_dim_attr)))
@@ -3392,13 +3396,6 @@ class ConvertSplitOpDynamic : public OpRewritePattern<TF::SplitOp> {
     int64_t input_rank = input_type.getRank();
     int64_t dim_index = (*split_dim_attr.begin()).getSExtValue();
     if (dim_index < 0) dim_index += input_rank;
-
-    // TODO(disc): remove static shape check once folding/canonicalization func
-    // added and ConvertSplitOp deleted. Calculate the dimension size for each
-    // slice along the split dimension. We are splitting along the dynamic
-    // dimension, or using static pattern transform
-    int64_t c_input_dim_size = input_type.getDimSize(dim_index);
-    if (!ShapedType::isDynamic(c_input_dim_size)) return failure();
 
     Value input_dim_size =
         rewriter.create<tensor::DimOp>(loc, input, dim_index);
@@ -3494,10 +3491,10 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
 
   LogicalResult matchAndRewrite(TF::SplitVOp op,
                                 PatternRewriter &rewriter) const override {
-    // We can only split along static dimensions.
+    // We can only split inputs that have fully static shape.
     // TODO(b/145731001): enhance to support dynamic-shaped inputs.
     auto input_type = op.getValue().getType().dyn_cast<RankedTensorType>();
-    if (!input_type) return failure();
+    if (!input_type || !input_type.hasStaticShape()) return failure();
 
     // We can only match when the split dimension is a constant scalar.
     DenseIntElementsAttr split_dim_attr;
@@ -3534,8 +3531,6 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
     if (dim_index < 0) dim_index += input_rank;
 
     int64_t input_dim_size = input_type.getDimSize(dim_index);
-    if (ShapedType::isDynamic(input_dim_size)) return failure();
-
     assert(((dynamic_dim_index && total_dim_size <= input_dim_size) ||
             (!dynamic_dim_index && total_dim_size == input_dim_size)) &&
            "invalid split sizes");
@@ -3546,7 +3541,7 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
 
     // Parameters for constructing each slice.
     SmallVector<int64_t, 4> begin_indices(input_rank, 0);
-    auto end_indices = tensorflow::ConvertMlirShapeToTF(input_type.getShape());
+    auto end_indices = llvm::to_vector<4>(input_type.getShape());
     SmallVector<int64_t, 4> strides(input_rank, 1);
 
     // All HLO slice results used to replace the original tf.Split op.
@@ -4361,7 +4356,7 @@ class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
         GetIntegerHLOAxisFromTFAxis(op.getDimension(), input_type.getRank());
     if (!optional_axis.has_value())
       return rewriter.notifyMatchFailure(op, "required axis");
-    int64_t axis = optional_axis.getValue();
+    int64_t axis = optional_axis.value();
 
     IntegerAttr iota_dimension =
         IntegerAttr::get(rewriter.getIntegerType(64), axis);
@@ -4727,7 +4722,7 @@ class ConvertTileOpDynamic : public OpRewritePattern<TF::TileOp> {
     SmallVector<Value, 4> input_shape_values;
     for (int64_t i = 0; i < input_rank; ++i) {
       auto dim_size = input_ty.getDimSize(i);
-      if (dim_size == ShapedType::kDynamicSize) {
+      if (dim_size == ShapedType::kDynamic) {
         input_shape_values.push_back(
             rewriter.create<tensor::DimOp>(loc, input, i));
       } else {
@@ -4773,7 +4768,7 @@ class ConvertTileOpDynamic : public OpRewritePattern<TF::TileOp> {
             {static_cast<int64_t>(out_dim_size.size())}, index_ty),
         out_dim_size);
     SmallVector<int64_t, 4> broadcast_shape(input_rank * 2,
-                                            ShapedType::kDynamicSize);
+                                            ShapedType::kDynamic);
     RankedTensorType broadcast_type =
         tensorflow::GetTypeFromTFTensorShape(broadcast_shape, element_type);
     Value broadcast = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
@@ -4907,7 +4902,7 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
         if (i == batch_dim) {
           // We don't use the batch dimension below, so we don't care about
           // its size. Might as well populate it with -1.
-          input_shape.push_back(ShapedType::kDynamicSize);
+          input_shape.push_back(ShapedType::kDynamic);
         } else {
           DenseIntElementsAttr input_dims_attr;
           if (matchPattern(pack.getValues()[i], m_Constant(&input_dims_attr)) &&
@@ -4958,9 +4953,9 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
       // Prepare metadata indexed by spatial_dim for computing pad_before
       // and pad_after.
       int64_t input_size = input_shape[spatial_dim];
-      if (input_size == ShapedType::kDynamicSize) return failure();
+      if (input_size == ShapedType::kDynamic) return failure();
       int64_t output_size = out_backprop_ty.getDimSize(spatial_dim);
-      if (output_size == ShapedType::kDynamicSize) return failure();
+      if (output_size == ShapedType::kDynamic) return failure();
       int64_t filter_size = filter_ty.getDimSize(i);
       int64_t stride = strides[spatial_dim];
       int64_t dilation = dilations[spatial_dim];
@@ -5002,7 +4997,7 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
     const int feature_dim =
         tensorflow::GetTensorFeatureDimIndex(num_dims, data_format);
     const int64_t in_depth = *(input_shape.begin() + feature_dim);
-    if (in_depth == ShapedType::kDynamicSize) return failure();
+    if (in_depth == ShapedType::kDynamic) return failure();
     const int64_t filter_in_depth = filter_shape[num_spatial_dims];
     const int64_t feature_group_count = in_depth / filter_in_depth;
 
@@ -5409,8 +5404,7 @@ class ConvertInfeedDequeueTupleOp
       // _XlaSharding attribute in TF is a serialized string of the OpSharding
       // proto, so convert to a text form here.
       ::xla::OpSharding sharding_proto;
-      if (!sharding_proto.ParseFromString(
-              op.get_XlaSharding().getValue().str()))
+      if (!sharding_proto.ParseFromString(op.get_XlaSharding().value().str()))
         return failure();
 
       // Token is a control signal and not a real data, so arbitrarily assign
@@ -5493,7 +5487,7 @@ class ConvertTopKV2Op : public OpRewritePattern<TF::TopKV2Op> {
     int64_t input_rank = input_type.getRank();
     int64_t last_dim_index = input_rank - 1;
     int64_t last_dim_size = input_type.getDimSize(last_dim_index);
-    if (last_dim_size == ShapedType::kDynamicSize) return failure();
+    if (last_dim_size == ShapedType::kDynamic) return failure();
 
     rewriter.replaceOpWithNewOp<chlo::TopKOp>(op, op.getInput(), k);
     return success();
@@ -5579,10 +5573,10 @@ class ConvertUnpackOpDynamic : public OpRewritePattern<TF::UnpackOp> {
     SmallVector<Value, 4> shape_values;
     shape_values.reserve(value_rank - 1);
     // slice shape before reshape, should be like{?, 1, ?, ?} if axis = 1
-    SmallVector<int64_t, 4> slice_shape(value_rank, ShapedType::kDynamicSize);
+    SmallVector<int64_t, 4> slice_shape(value_rank, ShapedType::kDynamic);
     for (int64_t dim_idx = 0; dim_idx < value_rank; ++dim_idx) {
       int64_t dim_size = value_type.getDimSize(dim_idx);
-      if (dim_size == ShapedType::kDynamicSize) {
+      if (dim_size == ShapedType::kDynamic) {
         Value dim_i = rewriter.create<arith::IndexCastOp>(
             loc, shape_scalar_type,
             rewriter.create<tensor::DimOp>(loc, op.getOperand(), dim_idx));
@@ -7194,7 +7188,7 @@ class ConvertXlaRngBitGeneratorOp
 
     auto algorithm_attr = mlir::mhlo::RngAlgorithmAttr::get(
         rewriter.getContext(),
-        *mlir::mhlo::symbolizeRngAlgorithm(xla_alg.getValue()));
+        *mlir::mhlo::symbolizeRngAlgorithm(xla_alg.value()));
     auto rng_bit_generator_op = rewriter.create<mhlo::RngBitGeneratorOp>(
         loc, op.getResultTypes(), algorithm_attr, op.getInitialState());
 

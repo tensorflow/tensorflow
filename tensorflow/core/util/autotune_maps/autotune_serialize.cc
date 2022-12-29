@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/util/activation_mode.h"
 #include "tensorflow/core/util/autotune_maps/autotune_map.pb.h"
@@ -98,9 +98,9 @@ Status PopulateConvMap(
   }
 
   // Get the list of all GPU StreamExecutors.
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      se::MultiPlatformManager::PlatformWithName(
-                          tensorflow::GpuPlatformName()));
+  TF_ASSIGN_OR_RETURN(
+      se::Platform * platform,
+      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName()));
   std::vector<se::StreamExecutor *> stream_executors;
   for (int i = 0; i < platform->VisibleDeviceCount(); i++) {
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * stream_exec,

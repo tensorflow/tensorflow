@@ -4,6 +4,7 @@ load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -146,6 +147,30 @@ py_library(
         "//tensorflow/python/training:saver",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "choose_from_datasets_test",
+    size = "small",
+    srcs = ["choose_from_datasets_test.py"],
+    shard_count = 12,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:random_seed",
+        "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -325,6 +350,7 @@ tf_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:from_generator_op",
         "//third_party/py/numpy",
     ],
 )
@@ -545,6 +571,7 @@ cuda_py_test(
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/compat",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:from_generator_op",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:structure",
@@ -661,6 +688,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:from_generator_op",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/eager:cancellation",
@@ -762,6 +790,7 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/data/ops:prefetch_op",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -803,6 +832,7 @@ tf_py_test(
     size = "small",
     srcs = ["random_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_test_lib",
@@ -887,6 +917,30 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "sample_from_datasets_test",
+    size = "medium",
+    srcs = ["sample_from_datasets_test.py"],
+    shard_count = 24,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:random_seed",
+        "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 cuda_py_test(
     name = "scan_test",
     size = "medium",
@@ -906,7 +960,7 @@ cuda_py_test(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:test_ops",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:context",
+        "//tensorflow/python/data/ops:options",
         "//third_party/py/numpy",
     ],
 )

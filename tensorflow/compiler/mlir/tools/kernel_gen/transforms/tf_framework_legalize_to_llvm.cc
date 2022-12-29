@@ -59,13 +59,13 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
 
   std::pair<Value, Value> ConvertArrayAttrToStackAllocatedArray(
       Location loc, Type size_ty, Type element_ty,
-      llvm::Optional<ArrayAttr> attr, ConversionPatternRewriter *rewriter,
+      std::optional<ArrayAttr> attr, ConversionPatternRewriter *rewriter,
       std::function<Value(Attribute)> create_element) const {
     Type element_ptr_ty = LLVM::LLVMPointerType::get(element_ty);
 
     // If the attribute is missing or empty, set the element count to 0 and
     // return NULL.
-    if (!attr.has_value() || attr.getValue().empty()) {
+    if (!attr.has_value() || attr.value().empty()) {
       Value zero = rewriter->create<LLVM::ConstantOp>(
           loc, size_ty, rewriter->getIntegerAttr(size_ty, 0));
       Value null_ptr = rewriter->create<LLVM::NullOp>(loc, element_ptr_ty);
@@ -73,7 +73,7 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
     }
 
     // Allocate array to store the elements.
-    auto &array_attr = attr.getValue();
+    auto &array_attr = attr.value();
     Value array_size = rewriter->create<LLVM::ConstantOp>(
         loc, size_ty, rewriter->getIntegerAttr(size_ty, array_attr.size()));
     Value array_ptr = rewriter->create<LLVM::AllocaOp>(
@@ -91,7 +91,7 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
 
   std::pair<Value, Value> ConvertIntegerArrayAttrToStackAllocatedArray(
       Location loc, Type size_ty, Type element_ty,
-      llvm::Optional<ArrayAttr> attr,
+      std::optional<ArrayAttr> attr,
       ConversionPatternRewriter *rewriter) const {
     assert(size_ty.isa<IntegerType>() && "expect integer size type");
     assert(element_ty.isa<IntegerType>() && "expect integer element type");
@@ -134,7 +134,7 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
     Value output_index = rewriter.create<LLVM::ConstantOp>(
         loc, llvmInt32Type,
         rewriter.getI32IntegerAttr(tf_alloc_op.getOutputIndex().has_value()
-                                       ? tf_alloc_op.getOutputIndex().getValue()
+                                       ? tf_alloc_op.getOutputIndex().value()
                                        : -1));
 
     // Convert `candidate_input_indices`.

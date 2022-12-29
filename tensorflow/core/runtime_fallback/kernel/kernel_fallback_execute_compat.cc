@@ -154,14 +154,20 @@ Status SetUpKernelFallbackCompatRequestContext(
 
   auto step_id = builder->id();
 
+  Rendezvous::Factory creator = eager_context->RendezvousFactory();
+  Rendezvous* rendezvous;
+  TF_RETURN_IF_ERROR(
+      creator(step_id, eager_context->local_device_mgr(), &rendezvous));
+
+  // TODO(hhb): Clean up rendezvous from factory after run.
+
   auto& fallback_request_state =
       builder->context_data().emplace<KernelFallbackCompatRequestState>(
           GetDefaultRunner(), eager_context->local_device_mgr(), step_id,
           tfrt::OwnedOrUnownedPtr<ScopedStepContainer>{
               eager_context->StepContainer()},
           eager_context->GetCollectiveExecutorHandle(),
-          tensorflow::core::RefCountPtr<tensorflow::Rendezvous>(
-              eager_context->RendezvousCreator()(step_id)),
+          tensorflow::core::RefCountPtr<tensorflow::Rendezvous>(rendezvous),
           runner_table, resource_array, user_intra_op_threadpool,
           model_metadata, eager_context->pflr());
 
@@ -405,7 +411,7 @@ std::string GetTracingMetadata(llvm::ArrayRef<tfrt::AsyncValue*> args,
   auto request_id = exec_ctx.request_ctx()->id();
   // Get Long Name
   auto debug_info = exec_ctx.location().GetDebugInfo();
-  auto long_name = debug_info.has_value() ? debug_info.getValue().info : "";
+  auto long_name = debug_info.has_value() ? debug_info.value().info : "";
 
   if (!profiler::TfOpDetailsEnabled()) {
     return profiler::TraceMeEncode(
@@ -542,7 +548,7 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
   bool is_cost_measurement_enabled =
       exec_ctx.request_ctx()->IsCostMeasurementEnabled();
   auto run_start_time =
-      is_cost_measurement_enabled ? Env::Default()->NowMicros() : 0;
+      is_cost_measurement_enabled ? Env::Default()->NowNanos() : 0;
   if (is_async) {
     KernelFallbackExecuteCompatAsyncInternal<
         tensorflow::tfrt_stub::FallbackTensor>(
@@ -556,12 +562,12 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
   if (is_cost_measurement_enabled) {
     op_chain->AndThen([run_start_time, exec_ctx, frame] {
       // Adds 1 to make sure it's a positive integer.
-      auto execution_time = Env::Default()->NowMicros() - run_start_time + 1;
+      auto execution_time = Env::Default()->NowNanos() - run_start_time + 1;
       // Adds op_key as a suffix to distinguish the same operation with
       // different shape.
       exec_ctx.host()
           ->GetOrCreateSharedContext<tensorflow::tfrt_stub::CostRecorder>()
-          .RecordCost(frame.op_key().GetValue(), execution_time);
+          .RecordCostNanosecond(frame.op_key().GetValue(), execution_time);
     });
   }
 }

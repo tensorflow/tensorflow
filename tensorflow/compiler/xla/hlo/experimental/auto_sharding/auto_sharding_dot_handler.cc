@@ -20,8 +20,11 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_solver_option.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/cluster_environment.h"
 #include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
@@ -94,7 +97,7 @@ class DotHandler {
                 device_mesh_.dim(mesh_dim1)) {
           continue;
         }
-        if (solver_option_.only_allow_divisible &&
+        if (solver_option_.only_allow_divisible_intermediate &&
             (!IsDivisible(lhs_->shape().dimensions().at(lhs_space_dims_.at(i)),
                           device_mesh_.dim(mesh_dim0)) ||
              !IsDivisible(rhs_->shape().dimensions().at(rhs_space_dims_.at(j)),
@@ -129,7 +132,7 @@ class DotHandler {
                 device_mesh_.dim(mesh_dim1)) {
           continue;
         }
-        if (solver_option_.only_allow_divisible &&
+        if (solver_option_.only_allow_divisible_intermediate &&
             (!IsDivisible(lhs_->shape().dimensions().at(lhs_space_dims_.at(i)),
                           device_mesh_.dim(mesh_dim0)) ||
              !IsDivisible(lhs_->shape().dimensions().at(lhs_space_dims_.at(j)),
@@ -161,7 +164,7 @@ class DotHandler {
                 device_mesh_.dim(mesh_dim1)) {
           continue;
         }
-        if (solver_option_.only_allow_divisible &&
+        if (solver_option_.only_allow_divisible_intermediate &&
             (!IsDivisible(rhs_->shape().dimensions().at(rhs_space_dims_.at(i)),
                           device_mesh_.dim(mesh_dim0)) ||
              !IsDivisible(rhs_->shape().dimensions().at(rhs_space_dims_.at(j)),
@@ -200,7 +203,7 @@ class DotHandler {
                   device_mesh_.dim(mesh_dim1)) {
             continue;
           }
-          if (solver_option_.only_allow_divisible &&
+          if (solver_option_.only_allow_divisible_intermediate &&
               (!IsDivisible(
                    lhs_->shape().dimensions().at(lhs_space_dims_.at(i)),
                    device_mesh_.dim(mesh_dim0)) ||
@@ -241,7 +244,7 @@ class DotHandler {
                   device_mesh_.dim(mesh_dim0)) {
             continue;
           }
-          if (solver_option_.only_allow_divisible &&
+          if (solver_option_.only_allow_divisible_intermediate &&
               (!IsDivisible(
                    rhs_->shape().dimensions().at(rhs_space_dims_.at(i)),
                    device_mesh_.dim(mesh_dim1)) ||
@@ -280,7 +283,7 @@ class DotHandler {
               device_mesh_.dim(j)) {
             continue;
           }
-          if (solver_option_.only_allow_divisible &&
+          if (solver_option_.only_allow_divisible_intermediate &&
               !IsDivisible(lhs_->shape().dimensions().at(lhs_batch_dims_.at(i)),
                            device_mesh_.dim(j))) {
             continue;
@@ -308,7 +311,7 @@ class DotHandler {
               device_mesh_.dim(mesh_dim1)) {
         return;
       }
-      if (solver_option_.only_allow_divisible &&
+      if (solver_option_.only_allow_divisible_intermediate &&
           (!IsDivisible(lhs_->shape().dimensions().at(lhs_batch_dims_.at(0)),
                         device_mesh_.dim(mesh_dim0)) ||
            !IsDivisible(lhs_->shape().dimensions().at(lhs_batch_dims_.at(1)),
@@ -343,7 +346,7 @@ class DotHandler {
                   device_mesh_.dim(mesh_dim1)) {
             continue;
           }
-          if (solver_option_.only_allow_divisible &&
+          if (solver_option_.only_allow_divisible_intermediate &&
               (!IsDivisible(
                    lhs_->shape().dimensions().at(lhs_space_dims_.at(i)),
                    device_mesh_.dim(mesh_dim0)) ||
@@ -381,7 +384,7 @@ class DotHandler {
                   device_mesh_.dim(mesh_dim0)) {
             continue;
           }
-          if (solver_option_.only_allow_divisible &&
+          if (solver_option_.only_allow_divisible_intermediate &&
               (!IsDivisible(
                    rhs_->shape().dimensions().at(rhs_space_dims_.at(i)),
                    device_mesh_.dim(mesh_dim1)) ||
@@ -422,7 +425,7 @@ class DotHandler {
                   device_mesh_.dim(mesh_dim0)) {
             continue;
           }
-          if (solver_option_.only_allow_divisible &&
+          if (solver_option_.only_allow_divisible_intermediate &&
               (!IsDivisible(lhs_->shape().dimensions().at(lhs_con_dims_.at(i)),
                             device_mesh_.dim(mesh_dim1)) ||
                !IsDivisible(
@@ -469,7 +472,7 @@ class DotHandler {
                   device_mesh_.dim(mesh_dim1)) {
             continue;
           }
-          if (solver_option_.only_allow_divisible &&
+          if (solver_option_.only_allow_divisible_intermediate &&
               (!IsDivisible(lhs_->shape().dimensions().at(lhs_con_dims_.at(i)),
                             device_mesh_.dim(mesh_dim0)) ||
                !IsDivisible(lhs_->shape().dimensions().at(lhs_con_dims_.at(j)),
@@ -507,7 +510,7 @@ class DotHandler {
             device_mesh_.dim(mesh_dim0)) {
           continue;
         }
-        if (solver_option_.only_allow_divisible &&
+        if (solver_option_.only_allow_divisible_intermediate &&
             !IsDivisible(lhs_->shape().dimensions().at(lhs_con_dims_.at(i)),
                          device_mesh_.dim(mesh_dim0))) {
           continue;
@@ -542,7 +545,7 @@ class DotHandler {
         if (lhs_->shape().dimensions(lhs_space_dims_[i]) < num_devices) {
           continue;
         }
-        if (solver_option_.only_allow_divisible &&
+        if (solver_option_.only_allow_divisible_intermediate &&
             !IsDivisible(lhs_->shape().dimensions(lhs_space_dims_[i]),
                          num_devices)) {
           continue;
@@ -562,7 +565,7 @@ class DotHandler {
           if (lhs_->shape().dimensions(lhs_con_dims_[i]) < num_devices) {
           continue;
           }
-          if (solver_option_.only_allow_divisible &&
+          if (solver_option_.only_allow_divisible_intermediate &&
               !IsDivisible(lhs_->shape().dimensions(lhs_con_dims_[i]),
                            num_devices)) {
           continue;
@@ -595,7 +598,7 @@ class DotHandler {
               device_mesh_.dim(mesh_dim)) {
           continue;
           }
-          if (solver_option_.only_allow_divisible &&
+          if (solver_option_.only_allow_divisible_intermediate &&
               !IsDivisible(rhs_->shape().dimensions().at(lhs_batch_dims_.at(i)),
                            device_mesh_.dim(mesh_dim))) {
           continue;

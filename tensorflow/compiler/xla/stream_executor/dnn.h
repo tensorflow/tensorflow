@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/stream_executor/data_type.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/array_slice.h"
@@ -1097,6 +1098,17 @@ class VersionInfo {
  public:
   VersionInfo(int major = 0, int minor = 0, int patch = 0)
       : major_(major), minor_(minor), patch_(patch) {}
+  explicit VersionInfo(DnnVersionInfoProto proto)
+      : major_(proto.major()), minor_(proto.minor()), patch_(proto.patch()) {}
+
+  DnnVersionInfoProto ToProto() const {
+    DnnVersionInfoProto proto;
+    proto.set_major(major_);
+    proto.set_minor(minor_);
+    proto.set_patch(patch_);
+    return proto;
+  }
+
   int major_version() const { return major_; }
   int minor_version() const { return minor_; }
   int patch() const { return patch_; }
@@ -1203,6 +1215,26 @@ class DnnSupport {
     return false;
   }
 
+  // Performs a bfloat16 forward batch normalization operation onto the
+  // stream. See DoBatchNormalizationForward above for argument details.
+  virtual bool DoBatchNormalizationForward(
+      Stream* stream, const DeviceMemory<Eigen::bfloat16>& x,
+      const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
+      const DeviceMemory<float>& estimated_mean,
+      const DeviceMemory<float>& estimated_variance,
+      const DeviceMemory<Eigen::bfloat16>& side_input,
+      const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      const double exponential_average_factor,
+      dnn::ActivationMode activation_mode, DeviceMemory<Eigen::bfloat16>* y,
+      DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
+      DeviceMemory<float>* reserve_space_1,
+      DeviceMemory<float>* reserve_space_2, bool is_training,
+      ScratchAllocator* reserve_space_allocator,
+      ScratchAllocator* workspace_allocator) {
+    return false;
+  }
+
   // Performs a single-precision backward batch normalization gradient
   // computation operation onto the stream.
   //
@@ -1249,6 +1281,26 @@ class DnnSupport {
       DeviceMemory<Eigen::half>* x_backprop,
       DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
       DeviceMemory<Eigen::half>* side_input_backprop,
+      DeviceMemory<uint8_t>* reserve_space_data,
+      ScratchAllocator* workspace_allocator) {
+    return false;
+  }
+
+  // Performs a bfloat16 backward batch normalization gradient computation
+  // operation onto the stream. See DoBatchNormalizationBackward above for
+  // argument details.
+  virtual bool DoBatchNormalizationBackward(
+      Stream* stream, const DeviceMemory<Eigen::bfloat16>& y_backprop,
+      const DeviceMemory<Eigen::bfloat16>& x, const DeviceMemory<float>& scale,
+      const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
+      const DeviceMemory<float>& inv_var,
+      const DeviceMemory<Eigen::bfloat16>& y,
+      const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      dnn::ActivationMode activation_mode,
+      DeviceMemory<Eigen::bfloat16>* x_backprop,
+      DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+      DeviceMemory<Eigen::bfloat16>* side_input_backprop,
       DeviceMemory<uint8_t>* reserve_space_data,
       ScratchAllocator* workspace_allocator) {
     return false;
@@ -1390,7 +1442,7 @@ class DnnSupport {
   // Return a list of algorithms supported by the forward convolution pass.
   // cc_major and cc_minor are the compute capabilities of the device.
   virtual bool GetConvolveAlgorithms(
-      CudaComputeCapability cuda_compute_capability,
+      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   virtual port::Status GetConvolveRunners(
@@ -1510,13 +1562,13 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // data.
   virtual bool GetConvolveBackwardDataAlgorithms(
-      CudaComputeCapability cuda_compute_capability,
+      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   // Return a list of algorithms supported by the backward convolution pass for
   // filters.
   virtual bool GetConvolveBackwardFilterAlgorithms(
-      CudaComputeCapability cuda_compute_capability,
+      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   // Fully connects the "nodes" (float values) in input_data with

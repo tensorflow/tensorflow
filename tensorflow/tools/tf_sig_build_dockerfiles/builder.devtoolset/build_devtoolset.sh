@@ -178,14 +178,21 @@ cp "./x86_64-pc-linux-gnu/libstdc++-v3/src/.libs/libstdc++_nonshared44.a" \
 ;;
 esac
 
-
 # Link in architecture specific includes from the system; note that we cannot
 # link in the whole x86_64-linux-gnu folder, as otherwise we're overlaying
 # system gcc paths that we do not want to find.
 # TODO(klimek): Automate linking in all non-gcc / non-kernel include
 # directories.
 mkdir -p "/${TARGET}/usr/include/x86_64-linux-gnu"
-PYTHON_VERSIONS=("python3.7m" "python3.8" "python3.9" "python3.10")
+PYTHON_VERSIONS=("python3.8" "python3.9" "python3.10" "python3.11")
 for v in "${PYTHON_VERSIONS[@]}"; do
   ln -s "/usr/local/include/${v}" "/${TARGET}/usr/include/x86_64-linux-gnu/${v}"
 done
+
+# Patch glibc to be compatable with modern clang
+case "${VERSION}" in
+devtoolset-9)
+  cd /
+  patch -p0 < /glibc2.17-inline.patch
+;;
+esac

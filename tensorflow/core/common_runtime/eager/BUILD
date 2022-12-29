@@ -14,6 +14,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
@@ -76,6 +77,21 @@ tf_cuda_library(
     }),
 )
 
+tf_cc_test(
+    name = "eager_executor_test",
+    srcs = ["eager_executor_test.cc"],
+    deps = [
+        ":core",
+        ":eager_executor",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+    ],
+)
+
 tf_cuda_library(
     name = "context",
     srcs = [
@@ -111,6 +127,7 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:session_options",
+            "//tensorflow/core/distributed_runtime:cluster_function_library_runtime",
             "//tensorflow/core/distributed_runtime:collective_param_resolver_distributed",
             "//tensorflow/core/distributed_runtime:session_mgr",
             "//tensorflow/core/distributed_runtime:device_resolver_distributed",
@@ -197,11 +214,12 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:session_options",
-            "//tensorflow/core/distributed_runtime:worker_cache",
-            "//tensorflow/core/distributed_runtime:worker_interface",
+            "//tensorflow/core/distributed_runtime:cluster_function_library_runtime",
             "//tensorflow/core/distributed_runtime:remote_device",
             "//tensorflow/core/distributed_runtime:server_lib",
             "//tensorflow/core/distributed_runtime:session_mgr",
+            "//tensorflow/core/distributed_runtime:worker_cache",
+            "//tensorflow/core/distributed_runtime:worker_interface",
             "//tensorflow/core/distributed_runtime:worker_session",
             "//tensorflow/core/distributed_runtime/eager:eager_client",
             "//tensorflow/core/distributed_runtime/eager:cluster_function_library_runtime",
@@ -327,6 +345,18 @@ tf_cuda_library(
     }),
 )
 
+tf_cc_test(
+    name = "tensor_handle_data_test",
+    srcs = ["tensor_handle_data_test.cc"],
+    deps = [
+        ":core",
+        ":tensor_handle_data",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
+    ],
+)
+
 tf_cuda_library(
     name = "tensor_handle",
     srcs = [
@@ -367,15 +397,13 @@ tf_cc_test(
     srcs = ["tensor_handle_test.cc"],
     deps = [
         ":core",
-        ":eager_operation",
-        ":execute",
         ":tensor_handle",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@com_google_absl//absl/memory",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 
@@ -495,7 +523,7 @@ cc_library(
     hdrs = [
         "execute.h",
         "execute_node.h",
-    ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util_header"]),
+    ],
     copts = if_mkl(["-DINTEL_MKL"]),
     deps = [
         ":context",
@@ -533,7 +561,10 @@ cc_library(
             "//tensorflow/core/distributed_runtime/eager:remote_execute_node",
             "//tensorflow/core/distributed_runtime/eager:remote_copy_node",
         ],
-    }) + if_mkl([":mkl_eager_op_rewrite"]),
+    }) + if_mkl([
+        ":mkl_eager_op_rewrite",
+        "//tensorflow/core/graph:mkl_graph_util",
+    ]),
 )
 
 tf_cc_test(
@@ -706,6 +737,27 @@ tf_cuda_library(
             "//tensorflow/core:protos_all_cc",
         ],
     }),
+)
+
+tf_cc_test(
+    name = "placement_utils_test",
+    srcs = ["placement_utils_test.cc"],
+    deps = [
+        ":core",
+        ":eager_operation",
+        ":execute",
+        ":placement_utils",
+        ":tensor_handle",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:device_mgr",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:array",
+        "@com_google_googletest//:gtest",
+    ],
 )
 
 tf_cuda_library(

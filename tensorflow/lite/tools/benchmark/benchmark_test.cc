@@ -12,6 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef _WIN32
+#include <fcntl.h>
+#endif  // !defined(_WIN32)
+
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -24,8 +28,8 @@ limitations under the License.
 #include "absl/algorithm/algorithm.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
@@ -46,34 +50,72 @@ namespace benchmark {
 namespace {
 
 enum class ModelGraphType { FP32, INT8, STRING };
+enum class ModelReadOption { FROM_PATH, FROM_FD };
 
-BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs,
-                             ModelGraphType graph_type = ModelGraphType::FP32) {
-  BenchmarkParams params = BenchmarkTfLiteModel::DefaultParams();
+void InitializeParams(
+    BenchmarkParams& params, int32_t num_runs, float min_secs, float max_secs,
+    ModelReadOption model_read_option = ModelReadOption::FROM_PATH,
+    ModelGraphType graph_type = ModelGraphType::FP32) {
   params.Set<int32_t>("num_runs", num_runs);
   params.Set<float>("min_secs", min_secs);
   params.Set<float>("max_secs", max_secs);
 
+  // by default, simply use the fp32 one.
+  std::string graph_path = *g_fp32_model_path;
   if (graph_type == ModelGraphType::INT8) {
-    params.Set<std::string>("graph", *g_int8_model_path);
+    graph_path = *g_int8_model_path;
   } else if (graph_type == ModelGraphType::STRING) {
-    params.Set<std::string>("graph", *g_string_model_path);
-  } else {
-    // by default, simply use the fp32 one.
-    params.Set<std::string>("graph", *g_fp32_model_path);
+    graph_path = *g_string_model_path;
   }
-  return params;
+  std::string fd_or_graph_path = graph_path;
+#ifndef _WIN32
+  if (model_read_option == ModelReadOption::FROM_FD) {
+    int fd = open(graph_path.c_str(), O_RDONLY);
+    ASSERT_GE(fd, 0);
+    struct stat stat_buf = {0};
+    ASSERT_EQ(fstat(fd, &stat_buf), 0);
+    size_t model_size = stat_buf.st_size;
+    size_t model_offset = 0;
+    fd_or_graph_path =
+        absl::StrFormat("fd:%d:%zu:%zu", fd, model_offset, model_size);
+  }
+#endif  // !defined(_WIN32)
+  params.Set<std::string>("graph", fd_or_graph_path);
 }
 
-BenchmarkParams CreateParams() { return CreateParams(2, 1.0f, 150.0f); }
+BenchmarkParams InitializeParams() {
+  BenchmarkParams params = BenchmarkTfLiteModel::DefaultParams();
+  InitializeParams(params, /*num_runs=*/2, /*min_secs=*/1.0f,
+                   /*max_secs=*/150.0f);
+  return params;
+}
 BenchmarkParams CreateFp32Params() {
-  return CreateParams(2, 1.0f, 150.0f, ModelGraphType::FP32);
+  BenchmarkParams params = BenchmarkTfLiteModel::DefaultParams();
+  InitializeParams(
+      params, /*num_runs=*/2, /*min_secs=*/1.0f, /*max_secs=*/150.0f,
+      /*model_read_option=*/ModelReadOption::FROM_PATH, ModelGraphType::FP32);
+  return params;
 }
 BenchmarkParams CreateInt8Params() {
-  return CreateParams(2, 1.0f, 150.0f, ModelGraphType::INT8);
+  BenchmarkParams params = BenchmarkTfLiteModel::DefaultParams();
+  InitializeParams(
+      params, /*num_runs=*/2, /*min_secs=*/1.0f, /*max_secs=*/150.0f,
+      /*model_read_option=*/ModelReadOption::FROM_PATH, ModelGraphType::INT8);
+  return params;
 }
 BenchmarkParams CreateStringParams() {
-  return CreateParams(2, 1.0f, 150.0f, ModelGraphType::STRING);
+  BenchmarkParams params = BenchmarkTfLiteModel::DefaultParams();
+  InitializeParams(
+      params, /*num_runs=*/2, /*min_secs=*/1.0f, /*max_secs=*/150.0f,
+      /*model_read_option=*/ModelReadOption::FROM_PATH, ModelGraphType::STRING);
+  return params;
+}
+BenchmarkParams CreateStringFdParams() {
+  BenchmarkParams params = BenchmarkTfLiteModel::DefaultParams();
+  InitializeParams(
+      params, /*num_runs=*/2, /*min_secs=*/1.0f, /*max_secs=*/150.0f,
+      /*model_read_option=*/ModelReadOption::FROM_FD, ModelGraphType::STRING);
+  return params;
 }
 
 std::string CreateFilePath(const std::string& file_name) {
@@ -159,6 +201,15 @@ TEST(BenchmarkTest, DoesntCrashStringModel) {
   TestBenchmark benchmark(CreateStringParams());
   benchmark.Run();
 }
+
+#ifndef _WIN32
+TEST(BenchmarkTest, DoesntCrashStringModelWithFd) {
+  ASSERT_THAT(g_int8_model_path, testing::NotNull());
+
+  TestBenchmark benchmark(CreateStringFdParams());
+  benchmark.Run();
+}
+#endif  // !defined(_WIN32)
 
 TEST(BenchmarkTest, SplitInputLayerNameAndValueFile) {
   std::vector<std::string> input_layer_value_files = {
@@ -413,9 +464,10 @@ class MaxDurationWorksTestListener : public BenchmarkListener {
 
 TEST(BenchmarkTest, MaxDurationWorks) {
   ASSERT_THAT(g_fp32_model_path, testing::NotNull());
-  TestBenchmark benchmark(CreateParams(100000000 /* num_runs */,
-                                       1000000.0f /* min_secs */,
-                                       0.001f /* max_secs */));
+  BenchmarkParams params = BenchmarkTfLiteModel::DefaultParams();
+  InitializeParams(params, 100000000 /* num_runs */, 1000000.0f /* min_secs */,
+                   0.001f /* max_secs */);
+  TestBenchmark benchmark(std::move(params));
   MaxDurationWorksTestListener listener;
   benchmark.AddListener(&listener);
   benchmark.Run();
@@ -424,7 +476,7 @@ TEST(BenchmarkTest, MaxDurationWorks) {
 TEST(BenchmarkTest, ParametersArePopulatedWhenInputShapeIsNotSpecified) {
   ASSERT_THAT(g_fp32_model_path, testing::NotNull());
 
-  TestBenchmark benchmark(CreateParams());
+  TestBenchmark benchmark(InitializeParams());
   benchmark.Init();
   benchmark.Prepare();
 
@@ -444,6 +496,24 @@ TEST(BenchmarkTest, ParametersArePopulatedWhenInputShapeIsNotSpecified) {
   EXPECT_FALSE(absl::equal(input_bytes.begin(), input_bytes.end(),
                            input_tensor->data.raw,
                            input_tensor->data.raw + input_tensor->bytes));
+}
+
+TEST(BenchmarkTest, InitializationFailedWhenInvalidGraphPathIsProvided) {
+  BenchmarkParams params = BenchmarkTfLiteModel::DefaultParams();
+  params.Set<std::string>("graph", "invalid/path");
+
+  TestBenchmark benchmark(std::move(params));
+
+  EXPECT_EQ(benchmark.Init(), kTfLiteError);
+}
+
+TEST(BenchmarkTest, InitializationFailedWhenInvalidGraphFdIsProvided) {
+  BenchmarkParams params = BenchmarkTfLiteModel::DefaultParams();
+  params.Set<std::string>("graph", "fd:file:descriptor");
+
+  TestBenchmark benchmark(std::move(params));
+
+  EXPECT_EQ(benchmark.Init(), kTfLiteError);
 }
 
 }  // namespace

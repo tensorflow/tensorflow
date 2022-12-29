@@ -26,7 +26,7 @@ namespace mlir {
 namespace gml_st {
 
 struct TilingResult {
-  Operation *tiledOp = nullptr;
+  SmallVector<Operation *> tiledOps;
   Operation *loop = nullptr;
 };
 
@@ -59,8 +59,11 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
 /// Populate tiling patterns.
 void populateTilingPatterns(
     MLIRContext *context,
-    llvm::function_ref<LogicalResult(Operation *)> filterFn,
+    llvm::function_ref<LogicalResult(TilingInterface)> filterFn,
     const TilingOptions &opts, RewritePatternSet *patterns);
+
+/// Cleans up attributes from applying above tiling patterns.
+void removeTilingLabels(Operation *op);
 
 }  // namespace gml_st
 }  // namespace mlir

@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/autotune_maps/conv_autotune_maps.h"
@@ -39,8 +39,7 @@ using ::testing::HasSubstr;
 // Gets a GPU StreamExecutor instance.  Any one will do.
 se::StreamExecutor* GetStreamExec() {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName())
-          .value();
+      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName()).value();
   CHECK_GT(platform->VisibleDeviceCount(), 0);
   return platform->ExecutorForDevice(0).value();
 }

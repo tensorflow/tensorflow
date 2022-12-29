@@ -18,11 +18,12 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/tsl/profiler/protobuf/profiler_service.grpc.pb.h"
+#include "tensorflow/tsl/profiler/rpc/profiler_service_impl.h"
 
 namespace tensorflow {
 namespace profiler {
 
-std::unique_ptr<grpc::ProfilerService::Service> CreateProfilerService();
+using tsl::profiler::CreateProfilerService;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

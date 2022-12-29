@@ -265,7 +265,7 @@ class MatrixDiagOp : public OpKernel {
     TensorShape output_shape = diagonal_shape;
     if (num_diags == 1) {  // Output has rank `rank+1`.
       output_shape.set_dim(diag_rank - 1, num_rows);
-      output_shape.AddDim(num_cols);
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(num_cols));
     } else {  // Output has rank `rank`.
       output_shape.set_dim(diag_rank - 2, num_rows);
       output_shape.set_dim(diag_rank - 1, num_cols);

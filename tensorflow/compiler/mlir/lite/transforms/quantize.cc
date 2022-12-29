@@ -50,7 +50,7 @@ namespace TFL {
 
 //===----------------------------------------------------------------------===//
 // The actual Quantize Pass.
-//
+//===----------------------------------------------------------------------===//
 namespace {
 #define GEN_PASS_DEF_QUANTIZEPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
@@ -58,16 +58,16 @@ namespace {
 enum QuantizationTrait { kFullQuantization, kDynamicRangeQuantization };
 
 // Base struct for quantization.
-template <QuantizationTrait quantization_trait, typename ConcretTy,
-          typename RootOp = DequantizeOp>
+template <QuantizationTrait quantization_trait, typename ConcreteT,
+          typename RootOpT = DequantizeOp>
 struct TFLQuantizationBase
-    : public quant::QuantizationPattern<ConcretTy, QuantizeOp, DequantizeOp,
-                                        NumericVerifyOp, RootOp> {
+    : public quant::QuantizationPattern<ConcreteT, QuantizeOp, DequantizeOp,
+                                        NumericVerifyOp, RootOpT> {
   explicit TFLQuantizationBase(MLIRContext* ctx,
                                const quant::QuantPassSpec& quant_params)
-      : quant::QuantizationPattern<ConcretTy, QuantizeOp, DequantizeOp,
-                                   NumericVerifyOp, RootOp>(ctx, quant_params) {
-  }
+      : quant::QuantizationPattern<ConcreteT, QuantizeOp, DequantizeOp,
+                                   NumericVerifyOp, RootOpT>(ctx,
+                                                             quant_params) {}
 
   static bool IsQuantizableCustomOp(Operation* op,
                                     const quant::CustomOpMap& custom_op_map) {
@@ -77,7 +77,7 @@ struct TFLQuantizationBase
     // behaviors. In that case, these ops can be marked in the custom map and
     // treated separately in this pass.
 
-    auto custom_op = llvm::dyn_cast_or_null<TFL::CustomOp>(op);
+    auto custom_op = llvm::dyn_cast_or_null<CustomOp>(op);
     if (!custom_op) return false;
 
     // Custom op which is marked in the custom op map is quantizable.
@@ -89,7 +89,6 @@ struct TFLQuantizationBase
       Operation* quantized_op, const quant::CustomOpMap& custom_op_map) {
     // Collect the input if dynamic range quantization is on and the op supports
     // it.
-
     return quantization_trait == kDynamicRangeQuantization &&
            (dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(quantized_op) ||
             IsQuantizableCustomOp(quantized_op, custom_op_map));
@@ -99,7 +98,6 @@ struct TFLQuantizationBase
       Operation* quantized_op, const quant::CustomOpMap& custom_op_map) {
     // Collect the output if dynamic range quantization is on and the op
     // supports it.
-
     return quantization_trait == kDynamicRangeQuantization &&
            (dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(quantized_op) ||
             IsQuantizableCustomOp(quantized_op, custom_op_map));
@@ -254,7 +252,7 @@ void QuantizePass::runOnOperation() {
        quant_specs.whole_model_verify, enable_log_if_failed_},
       quant_specs};
 
-  TFL::populateWithGenerated(patterns);
+  populateWithGenerated(patterns);
 
   if (quant_specs.weight_quantization || quant_specs.use_fake_quant_num_bits) {
     patterns.add<TFLDynamicRangeQuantization>(ctx, quant_params);

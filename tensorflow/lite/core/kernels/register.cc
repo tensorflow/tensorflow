@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/core/kernels/register.h"
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tflite_with_xnnpack_optional.h"
@@ -215,7 +215,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_COS, Register_COS());
   AddBuiltin(BuiltinOperator_TRANSPOSE_CONV, Register_TRANSPOSE_CONV(),
              /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_TILE, Register_TILE(),
              /* min_version = */ 1,
              /* max_version = */ 3);

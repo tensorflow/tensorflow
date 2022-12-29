@@ -51,7 +51,7 @@ static bool DebugJitCompiler() {
 #if defined(DEBUG_XLA_RUNTIME_COMPILER)
   return true;
 #endif
-  return false;
+  return VLOG_IS_ON(5);
 }
 
 static bool EnablePassTiming() {
@@ -173,7 +173,7 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
 
   // Add `rt.export` operations for all explicitly exported functions.
   for (auto& indexed : llvm::enumerate(exported)) {
-    if (auto func = sym_table.lookup<func::FuncOp>(indexed.value())) {
+    if (auto func = sym_table.lookup<FunctionOpInterface>(indexed.value())) {
       OpBuilder(func).create<ExportOp>(func.getLoc(), func, indexed.index());
       continue;
     }
@@ -218,15 +218,17 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
   std::vector<std::string_view> exported;  // names of exported functions
 
   for (auto& indexed : llvm::enumerate(compiler->exported())) {
-    func::FuncOp func = indexed.value();
+    auto func = indexed.value();
     std::string_view name = exported.emplace_back(func.getName());
 
     // Get the signature of the exported function.
-    auto signature = opts.type_converter.Convert(func.getFunctionType());
+    auto signature = opts.type_converter.Convert(
+        llvm::cast<mlir::FunctionType>(func.getFunctionType()));
     if (!signature.ok()) return signature.status();
 
     // Calling convention conversion can fail if some types are not supported.
-    auto runtime_type = opts.calling_convention(func.getFunctionType());
+    auto runtime_type = opts.calling_convention(
+        llvm::cast<mlir::FunctionType>(func.getFunctionType()));
     if (!runtime_type)
       return compiler->Error(StrFormat(
           "calling convention failed to convert function type for %s", name));
@@ -332,7 +334,7 @@ absl::Status JitCompiler::Specialize(unsigned ordinal, ArgumentsRef arguments,
   assert(!specialized_ && "can specialize executable only once");
   specialized_ = true;
 
-  func::FuncOp func = exported(ordinal);
+  auto func = exported(ordinal);
 
   // Update function signature and sink constant arguments into the body.
   if (auto specialized = SpecializeFunction(func, arguments, symbolic_shapes,

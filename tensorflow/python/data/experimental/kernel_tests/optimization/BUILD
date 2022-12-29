@@ -1,7 +1,10 @@
 # Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
-package(licenses = ["notice"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
 
 tf_py_test(
     name = "filter_fusion_test",

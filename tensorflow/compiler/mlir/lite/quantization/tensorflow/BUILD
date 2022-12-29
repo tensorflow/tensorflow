@@ -3,6 +3,7 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":friends",
     ],
@@ -13,7 +14,6 @@ package_group(
     name = "friends",
     packages = [
         "//learning/brain/mobile/model_optimization/...",
-        "//platforms/darwinn/compiler/tools/tac/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/mlir/lite/...",
     ],

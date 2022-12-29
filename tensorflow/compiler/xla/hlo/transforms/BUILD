@@ -2,9 +2,10 @@
 #   Implementation of XLA’s HLO transformations.
 
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -23,7 +24,7 @@ cc_library(
     deps = ["//tensorflow/compiler/xla/service:hlo_pass"],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "hlo_constant_splitter_test",
     srcs = ["hlo_constant_splitter_test.cc"],
     deps = [

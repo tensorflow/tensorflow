@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tfrt/runtime_fallback/runtime_fallback_executor.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/utils/host_context.h"
@@ -90,6 +91,9 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
                       : CreateSingleThreadedHostContext();
 
   TfJitRtPipelineOptions tf_jitrt_opts;
+  tf_jitrt_opts.enable_xla_cpu_transformations =
+      tensorflow::GetJitRtFlags().enable_xla_cpu_transformations;
+  tf_jitrt_opts.lower_to_mmt4d = tensorflow::GetJitRtFlags().pack_matmul;
   tf_jitrt_opts.vectorize = vectorize;
   tf_jitrt_opts.codegen_transpose = codegen_transpose;
   JitExecutable& jit_executable =

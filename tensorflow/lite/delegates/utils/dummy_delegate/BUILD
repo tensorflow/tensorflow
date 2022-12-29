@@ -2,6 +2,7 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite/tools/evaluation/tasks:build_def.bzl", "task_linkopts")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -18,6 +19,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/utils:simple_delegate",
     ],
 )
@@ -33,6 +35,8 @@ cc_binary(
     deps = [
         ":dummy_delegate",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/delegates/external:external_delegate_interface",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
     ],

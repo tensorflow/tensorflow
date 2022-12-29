@@ -925,6 +925,20 @@ class AggregationMethod:
     the "AddN" op. This method of summing gradients may reduce
     performance, but it can improve memory utilization because the
     gradients can be released earlier.
+  * `EXPERIMENTAL_ACCUMULATE_N`: Same as `EXPERIMENTAL_TREE`.
+
+  Example usage when computing gradient:
+
+  >>> @tf.function
+  ... def example():
+  ...   x = tf.constant(1.0)
+  ...   y = x * 2.0
+  ...   z = y + y + y + y
+  ...   return tf.gradients(z, [x, y],
+  ...     aggregation_method=tf.AggregationMethod.EXPERIMENTAL_ACCUMULATE_N)
+  >>> example()
+  [<tf.Tensor: shape=(), dtype=float32, numpy=8.0>,
+   <tf.Tensor: shape=(), dtype=float32, numpy=4.0>]
 
   """
   ADD_N = 0

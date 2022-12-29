@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -50,8 +51,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/check_accepted_ops_pass.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/mhlo_tfl_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_tfl_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
@@ -133,7 +134,7 @@ opt<bool> skip_resize(
 // NOLINTNEXTLINE
 opt<bool> smuggle_disallowed_ops(
     "smuggle-disallowed-ops",
-    llvm::cl::desc("Smuggle disallowed ops via mhlo.custom_calls."),
+    llvm::cl::desc("Smuggle disallowed ops via stablehlo.custom_calls."),
     llvm::cl::Optional, llvm::cl::init(false));
 
 // NOLINTNEXTLINE
@@ -180,9 +181,9 @@ tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelOrMLIR(
 tensorflow::Status ConvertStableHLOToFlatbuffer(mlir::ModuleOp module,
                                                 std::string* flatbuffer_str) {
   // Convert StableHLO MLIR to TFLite Custom Op MLIR
-  mlir::PassManager mhlo_tfl_pm(module->getContext());
-  mhlo_tfl_pm.addNestedPass<func::FuncOp>(TFL::mhlo::CreateMhloToTflPass());
-  if (failed(mhlo_tfl_pm.run(module))) {
+  mlir::PassManager pm(module->getContext());
+  pm.addNestedPass<func::FuncOp>(CreateStablehloToTflPass());
+  if (failed(pm.run(module))) {
     return tensorflow::errors::Aborted("HLO to TFL passes failed.");
   }
 
@@ -314,7 +315,7 @@ tensorflow::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
                                     elide_large_elements_attrs));
   }
 
-  llvm::Optional<tensorflow::Session*> session = llvm::None;
+  llvm::Optional<tensorflow::Session*> session = std::nullopt;
   if (bundle) session = bundle->GetSession();  // NOMUTANTS--it should pass.
 
   if (freeze_tf_graph) {
@@ -334,7 +335,7 @@ tensorflow::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
   auto conversion_status = ConvertTFToStableHLO(*module, pass_pipeline);
   auto export_path = conversion_status.ok()
                          ? output_path
-                         : absl::StrCat(verbose_dir, "/debug_mhlo.mlir");
+                         : absl::StrCat(verbose_dir, "/debug_stablehlo.mlir");
   return ExportModule(*module, export_path, elide_large_elements_attrs);
 }
 

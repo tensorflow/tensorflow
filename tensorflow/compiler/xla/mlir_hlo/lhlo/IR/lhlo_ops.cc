@@ -21,6 +21,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <optional>
 #include <unordered_set>
 
 #include "lhlo/utils/lhlo_utils.h"
@@ -120,13 +121,19 @@ LogicalResult AbsOp::verify() {
 // TODO(jurahul): Add verification for output shape.
 LogicalResult AllGatherOp::verify() {
   AllGatherOp op = *this;
-  return mlir::hlo::verifyReplicaGroups(op, /*isUniformSized=*/true);
+  return mlir::hlo::verifyReplicaGroups(op.getLoc(), op.getReplicaGroups(),
+                                        /*allGroupsMustHaveSameSize=*/true,
+                                        op.getUseGlobalDeviceIds(),
+                                        /*expectedGroupSize=*/std::nullopt);
 }
 
 // TODO(jurahul): Add verification for output shape.
 LogicalResult AllToAllOp::verify() {
   AllToAllOp op = *this;
-  return mlir::hlo::verifyReplicaGroups(op, /*isUniformSized=*/true);
+  return mlir::hlo::verifyReplicaGroups(op.getLoc(), op.getReplicaGroups(),
+                                        /*allGroupsMustHaveSameSize=*/true,
+                                        /*useGlobalDeviceIds=*/false,
+                                        /*expectedGroupSize=*/std::nullopt);
 }
 
 //===----------------------------------------------------------------------===//
@@ -144,7 +151,10 @@ LogicalResult AllReduceOp::verify() {
 
 LogicalResult ReduceScatterOp::verify() {
   ReduceScatterOp op = *this;
-  if (failed(mlir::hlo::verifyReplicaGroups(op, /*isUniformSized=*/true)))
+  if (failed(hlo::verifyReplicaGroups(op.getLoc(), op.getReplicaGroups(),
+                                      /*allGroupsMustHaveSameSize=*/true,
+                                      op.getUseGlobalDeviceIds(),
+                                      /*expectedGroupSize=*/std::nullopt)))
     return failure();
   if (failed(mlir::hlo::verifyReduceScatter(
           op, /*operandTypes=*/op.getInputs().getTypes(),
@@ -158,7 +168,7 @@ LogicalResult ReduceScatterOp::verify() {
 // CaseOp
 //===----------------------------------------------------------------------===//
 
-void CaseOp::getSuccessorRegions(Optional<unsigned> index,
+void CaseOp::getSuccessorRegions(std::optional<unsigned> index,
                                  ArrayRef<Attribute> /*operands*/,
                                  SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the CaseOp, branch to all other branches.
@@ -396,7 +406,7 @@ LogicalResult ReduceWindowOp::verify() {
 // WhileOp
 //===----------------------------------------------------------------------===//
 
-void WhileOp::getSuccessorRegions(Optional<unsigned> index,
+void WhileOp::getSuccessorRegions(std::optional<unsigned> index,
                                   ArrayRef<Attribute> /*operands*/,
                                   SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the WhileOp or the body region, branch into the
@@ -436,7 +446,7 @@ void FusionOp::build(OpBuilder& builder, OperationState& result,
   FusionOp::ensureTerminator(*bodyRegion, builder, result.location);
 }
 
-void FusionOp::getSuccessorRegions(Optional<unsigned> index,
+void FusionOp::getSuccessorRegions(std::optional<unsigned> index,
                                    ArrayRef<Attribute> /*operands*/,
                                    SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the fusion region, jump back to the parent op.

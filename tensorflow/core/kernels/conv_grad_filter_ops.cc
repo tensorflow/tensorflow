@@ -33,19 +33,18 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/kernels/fill_functor.h"
-#include "tensorflow/core/profiler/lib/scoped_annotation.h"
-
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -724,12 +723,14 @@ void LaunchConv2DBackpropFilterOpImpl(
     const int64_t input_pad_bottom = padding_bottom - common_padding_rows;
     const int64_t input_pad_left = padding_left - common_padding_cols;
     const int64_t input_pad_right = padding_right - common_padding_cols;
+    TensorShape compatible_input_shape;
     OP_REQUIRES_OK(
-        ctx, ctx->allocate_temp(
-                 DataTypeToEnum<T>::value,
-                 ShapeFromFormat(data_format, dims.batch_size, new_in_rows,
-                                 new_in_cols, dims.in_depth),
-                 &compatible_input));
+        ctx, ShapeFromFormatWithStatus(data_format, dims.batch_size,
+                                       new_in_rows, new_in_cols, dims.in_depth,
+                                       &compatible_input_shape));
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                compatible_input_shape, &compatible_input));
 
     functor::PadInput<GPUDevice, T, int, 4>()(
         ctx->template eigen_device<GPUDevice>(), To32Bit(input.tensor<T, 4>()),
@@ -819,9 +820,12 @@ void LaunchConv2DBackpropFilterOpImpl(
   Tensor transformed_out_backprop;
   if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
     VLOG(4) << "Convert the `out_backprop` tensor from NHWC to NCHW.";
-    TensorShape compute_shape = ShapeFromFormat(
-        compute_data_format, dims.batch_size, dims.spatial_dims[0].output_size,
-        dims.spatial_dims[1].output_size, dims.out_depth);
+    TensorShape compute_shape;
+    OP_REQUIRES_OK(
+        ctx, ShapeFromFormatWithStatus(compute_data_format, dims.batch_size,
+                                       dims.spatial_dims[0].output_size,
+                                       dims.spatial_dims[1].output_size,
+                                       dims.out_depth, &compute_shape));
     if (dims.out_depth > 1) {
       OP_REQUIRES_OK(ctx,
                      ctx->allocate_temp(DataTypeToEnum<T>::value, compute_shape,
@@ -840,11 +844,14 @@ void LaunchConv2DBackpropFilterOpImpl(
   Tensor transformed_input;
   if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
     VLOG(4) << "Convert the `input` tensor from NHWC to NCHW.";
-    TensorShape compute_shape = ShapeFromFormat(
-        compute_data_format, GetTensorDim(compatible_input, data_format, 'N'),
-        GetTensorDim(compatible_input, data_format, 'H'),
-        GetTensorDim(compatible_input, data_format, 'W'),
-        GetTensorDim(compatible_input, data_format, 'C'));
+    TensorShape compute_shape;
+    OP_REQUIRES_OK(ctx, ShapeFromFormatWithStatus(
+                            compute_data_format,
+                            GetTensorDim(compatible_input, data_format, 'N'),
+                            GetTensorDim(compatible_input, data_format, 'H'),
+                            GetTensorDim(compatible_input, data_format, 'W'),
+                            GetTensorDim(compatible_input, data_format, 'C'),
+                            &compute_shape));
     if (compute_shape.dim_size(1) > 1) {
       OP_REQUIRES_OK(ctx,
                      ctx->allocate_temp(DataTypeToEnum<T>::value, compute_shape,
@@ -948,11 +955,12 @@ operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
   auto* stream = ctx->op_device_context()->stream();
   const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
       se::CudaComputeCapability::AMPERE);
-  Tensor casted_input = input;
-  Tensor casted_out_backprop = out_backprop;
-  Tensor casted_filter_backprop = *filter_backprop;
 
   if (cast_to_float) {
+    Tensor casted_input = input;
+    Tensor casted_out_backprop = out_backprop;
+    Tensor casted_filter_backprop = *filter_backprop;
+
     const GPUDevice& device = ctx->eigen_device<GPUDevice>();
     functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
     OP_REQUIRES_OK(ctx,
@@ -981,9 +989,9 @@ operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
   }
 
   LaunchConv2DBackpropFilterOpImpl<Eigen::bfloat16>(
-      ctx, use_cudnn, cudnn_use_autotune, casted_out_backprop, casted_input,
-      row_dilation, col_dilation, row_stride, col_stride, padding,
-      explicit_paddings, &casted_filter_backprop, data_format);
+      ctx, use_cudnn, cudnn_use_autotune, out_backprop, input, row_dilation,
+      col_dilation, row_stride, col_stride, padding, explicit_paddings,
+      filter_backprop, data_format);
 }
 
 // Forward declarations of the functor specializations for GPU.

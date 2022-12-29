@@ -1,4 +1,5 @@
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -281,6 +282,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:random_op",
         "//tensorflow/python/data/util:structure",
     ],
 )
@@ -308,6 +310,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:map_op",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",
@@ -340,8 +343,18 @@ py_library(
         "shuffle_ops.py",
     ],
     srcs_version = "PY3",
+    visibility = [
+        # TODO(jsimsa): Remove non-default visibility exception when `index_shuffle` is made public.
+        "//third_party/py/tensorflow_datasets:__subpackages__",
+        "//tensorflow:internal",
+    ],
     deps = [
+        ":random_access",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -435,6 +448,7 @@ py_library(
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:debug_mode",
         "//tensorflow/python/data/util:nest",
     ],
 )

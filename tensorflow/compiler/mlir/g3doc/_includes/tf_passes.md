@@ -931,6 +931,11 @@ Would become the following ops (unimportant attribute, type are omitted):
   }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
 ```
 ### `-tf-parallel-execute-to-islands`: Lowers device parallel_execute to executor islands
+
+#### Options
+```
+-legacy-graph-export : Determines whether or not this pass should execute logic that is reserved for the legacy graph export pipeline to maintain expected invariants. In the case of this pass, that means manually propagating controls to lifted parallel execute regions to the graph fetch to ensure the ops execute.
+```
 ### `-tf-promote-resources-to-args`: Promote resources reads/writes to function inputs/outputs.
 This pass promotes resource accesses in function(s) (by default, the main)
 to input arguments and outputs of the function(s).
@@ -1112,6 +1117,11 @@ tf_device.replicate([%0, %1] as %ri: tensor<*x!tf_type.resource>) {n = 2 : i32} 
 }
 ```
 ### `-tf-replicate-to-island`: Lowers device replicate to executor islands
+
+#### Options
+```
+-legacy-graph-export : Determines whether or not this pass should execute logic that is reserved for the legacy graph export pipeline to maintain expected invariants. In the case of this pass, that means manually propagating controls to lifted parallel execute regions to the graph fetch to ensure the ops execute, as well as determining whether or not the islands created by this pass should be split after the replicated ops have been lifted.
+```
 ### `-tf-resource-device-inference`: Propagates the device attribute on resources from callers to callees.
 A pass that propagates device assignment of resources on a module. It
 performs in-function propagation, as well as cross-function propagation from

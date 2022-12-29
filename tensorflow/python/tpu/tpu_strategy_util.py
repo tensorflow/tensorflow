@@ -21,6 +21,7 @@ from tensorflow.python.client import session as session_lib
 from tensorflow.python.distribute.cluster_resolver.tpu_cluster_resolver import TPUClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import device
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -33,6 +34,11 @@ from tensorflow.python.util.tf_export import tf_export
 
 _INITIALIZED_TPU_SYSTEMS = {}
 _LOCAL_MASTERS = ("", "local")
+
+
+_tpu_worker_address = monitoring.StringGauge(
+    "/tensorflow/tpu/worker_address",
+    "The worker address that the coordinator/client connects to.", "address")
 
 
 @tf_export("tpu.experimental.initialize_tpu_system")
@@ -143,6 +149,12 @@ def initialize_tpu_system(cluster_resolver=None):
   tpu_topology = topology.Topology(serialized=serialized_topology)
   cluster_resolver.set_tpu_topology(serialized_topology)
   _INITIALIZED_TPU_SYSTEMS[tpu_name] = tpu_topology
+
+  # Record the address of the TPU worker-0 that the coordinator connects to.
+  # This can be used to associate the TPU worker with the right coordinator when
+  # aggregating the metrics for the application. An example of the address:
+  # /bns/mb/borg/mb/bns/chienchunh/chienchunh_group_49640234.1.tfm_train_tpu_worker/0
+  _tpu_worker_address.get_cell("address").set(cluster_resolver.get_master())
 
   return tpu_topology
 

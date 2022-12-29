@@ -99,7 +99,7 @@ tool_names = [
     'tf-quant-opt',
     'mhlo-tosa-opt',
     'xla-runtime-opt',
-    'tf-mhlo-tfl-opt',
+    'odml-to-stablehlo-opt',
     'odml_to_stablehlo',
     'xla-translate',
     'xla-translate-opt',

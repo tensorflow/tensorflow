@@ -3,6 +3,7 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/python/profiler:__subpackages__"],
     licenses = ["notice"],
 )

@@ -31,19 +31,13 @@ from tensorflow.compiler.xla.python import xla_client
 
 # pylint: disable=g-import-not-at-top
 try:
-  # This import is only used for GPU; the dependency is incompatible with TPU
-  # so it results in an import error.
-  from tensorflow.python.framework import test_util
-except ImportError:
-  test_util = None
-
-# pylint: disable=g-import-not-at-top
-try:
   from tensorflow.compiler.xla.python import custom_call_for_test
 except ImportError:
   custom_call_for_test = None
 
 bfloat16 = xla_client.bfloat16
+float8_e4m3fn = xla_client.float8_e4m3fn
+float8_e5m2 = xla_client.float8_e5m2
 ops = xla_client.ops
 
 FLAGS = flags.FLAGS
@@ -70,6 +64,10 @@ def TestFactory(xla_backend,
     float_dtypes = [np.float32]
     complex_dtypes = [np.complex64]
     standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
+  # TODO(zhangqiaorjc): test fp8 types when XLA support is complete.
+  # standard_dtypes is only used for BufferProtocolTest so we only test fp8
+  # round trip tests.
+  standard_dtypes += [float8_e4m3fn, float8_e5m2]
   dlpack_dtypes = int_dtypes + float_dtypes + [np.bool_] + complex_dtypes
 
   class ComputationTest(parameterized.TestCase):
@@ -733,6 +731,10 @@ def TestFactory(xla_backend,
     def testStandardTypes(self):
       for dtype in standard_dtypes:
         if dtype == bfloat16 or dtype == np.complex128:
+          continue
+        # NV FP8 not supported on TPU.
+        if (dtype in [float8_e4m3fn, float8_e5m2] and
+            self.backend.platform == "tpu"):
           continue
         arr = self.backend.buffer_from_pyval(np.array([0, 1], dtype))
         arr = np.asarray(arr)
@@ -2493,12 +2495,10 @@ def TestFactory(xla_backend,
         self.assertEqual(version, "<unknown>")
       elif self.backend.platform == "gpu":
         # Following is false if not built with --config=cuda
-        if test_util.is_gpu_available(cuda_only=True):
+        if version != "<unknown>":
           self.assertTrue(
               re.match(r"^cuda \d{4,}$", version),
               msg=f"Expected CUDA version string; got {repr(version)}")
-        else:
-          self.assertEqual(version, "<unknown>")
       elif self.backend.platform == "tpu" and not cloud_tpu:
         self.assertIn("tpu", version.lower())
         self.assertIn("cl/", version)
@@ -2559,7 +2559,7 @@ def TestFactory(xla_backend,
             memoryview(buf)
 
     # 1D reshape of full size, half size, and size of 0.
-    @unittest.skipIf(cloud_tpu or tfrt_tpu or external_tpu, "not implemented")
+    @unittest.skip("not implemented")
     @parameterized.parameters((5), (3), (0))
     def testReshape1D(self, reshape_size):
       full_size = 5
@@ -2801,6 +2801,7 @@ def TestFactory(xla_backend,
 
   class ExecutePortableTest(ComputationTest):
 
+    @unittest.skip("Test does not work under IFRT")
     def testExecutePortable(self):
       devices_by_kind = collections.defaultdict(list)
       for device in self.backend.devices():

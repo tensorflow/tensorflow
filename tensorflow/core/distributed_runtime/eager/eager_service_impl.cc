@@ -217,7 +217,7 @@ Status ResetAgentAndConnectToCoordinationService(
     }
   }
   // In the scenario of PS strategy, the setup is single client and the error
-  // cannot not be propagated. As a result, Coordination Service agent can still
+  // cannot be propagated. As a result, Coordination Service agent can still
   // have the status of being connected. We should not let it connect again.
   if (!coord_agent->IsConnected()) {
     const Status s = coord_agent->Connect();

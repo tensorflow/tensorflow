@@ -837,7 +837,7 @@ func.func @dynamic_iota_is_static(%arg0 : tensor<1xindex>) -> tensor<4xi32> {
 
 // CHECK-LABEL: @dynamic_iota_is_static_constant_arg
 func.func @dynamic_iota_is_static_constant_arg(%arg0: tensor<5xi32>) -> tensor<?xi32> {
-  // CHECK-NOTE: mhlo.dynamic_iota
+  // CHECK-NOT: mhlo.dynamic_iota
   // CHECK: [[RESULT:%.*]] = "mhlo.iota"
   // CHECK: [[CAST:%.*]] = tensor.cast [[RESULT]]
   // CHECK: return [[CAST]]
@@ -1900,6 +1900,24 @@ func.func @fold_logistic() -> tensor<4xf32> {
   %1 = "mhlo.logistic"(%0) : (tensor<4xf32>) -> tensor<4xf32>
   //     CHECK: mhlo.constant dense<0.880797088> : tensor<4xf32>
   // CHECK-NOT: mhlo.logistic
+  func.return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @fold_log
+func.func @fold_log() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<2.0> : tensor<4xf32>
+  %1 = "mhlo.log"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  //     CHECK: mhlo.constant dense<0.693147182> : tensor<4xf32>
+  // CHECK-NOT: mhlo.log
+  func.return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @not_fold_log_neg_constants
+func.func @not_fold_log_neg_constants() -> tensor<4xf32> {
+  %0 = mhlo.constant dense<-1.0> : tensor<4xf32>
+  %1 = "mhlo.log"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  // CHECK: mhlo.constant dense<-1.000000e+00> : tensor<4xf32>
+  // CHECK: mhlo.log
   func.return %1 : tensor<4xf32>
 }
 

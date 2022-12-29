@@ -20,6 +20,7 @@ from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import restore
 from tensorflow.python.eager import test
 from tensorflow.python.module import module
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.trackable import base
@@ -97,7 +98,7 @@ class ExtractSaveablenameTest(test.TestCase):
         self.a = variables.Variable(5.0)
 
       def _restore_from_tensors(self, restored_tensors):
-        self.a.assign(restored_tensors["a"])
+        return self.a.assign(restored_tensors["a"])
 
       def _serialize_to_tensors(self):
         return {"a": self.a}
@@ -137,7 +138,7 @@ class ExtractSaveablenameTest(test.TestCase):
         self.a = variables.Variable(5.0)
 
       def _restore_from_tensors(self, restored_tensors):
-        self.a.assign(restored_tensors["a"])
+        return self.a.assign(restored_tensors["a"])
 
       def _serialize_to_tensors(self):
         return {"a": self.a}
@@ -149,8 +150,10 @@ class ExtractSaveablenameTest(test.TestCase):
         self.b = variables.Variable(6.0)
 
       def _restore_from_tensors(self, restored_tensors):
-        self.a.assign(restored_tensors["a"])
-        self.b.assign(restored_tensors["b"])
+        return control_flow_ops.group(
+            self.a.assign(restored_tensors["a"]),
+            self.b.assign(restored_tensors["b"])
+        )
 
       def _serialize_to_tensors(self):
         return {"a": self.a, "b": self.b}

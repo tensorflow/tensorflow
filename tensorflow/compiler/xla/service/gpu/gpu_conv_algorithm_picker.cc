@@ -319,8 +319,8 @@ struct ConvCacheStats {
   int64_t cache_misses = 0;
 
   void LogStats() {
-    VLOG(2) << "Cache hits: " << cache_hits;
-    VLOG(2) << "Cache misses: " << cache_misses;
+    VLOG(3) << "Cache hits: " << cache_hits;
+    VLOG(3) << "Cache misses: " << cache_misses;
   }
 };
 
@@ -397,7 +397,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
   // models).
   ConvCacheKey key = AutotuneCacheKeyfromInstruction(instr, stream_exec_);
   {
-    absl::MutexLock lock(&autotune_cache_mu);
+    absl::MutexLock autotune_lock(&autotune_cache_mu);
     auto it = autotune_cache.find(key);
     if (it != autotune_cache.end()) {
       autotune_cache_stats.cache_hits++;
@@ -439,11 +439,16 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
 #endif
   }
 
-  if (result_or.ok()) {
-    absl::MutexLock lock(&autotune_cache_mu);
-    CHECK(autotune_cache.insert({key, result_or.value()}).second);
+  if (!result_or.ok()) {
+    return result_or;
   }
-  return result_or;
+
+  // Insert our result into the cache.  After we released the lock on
+  // autotune_cache_mu, another autotuning job may have run for this same key on
+  // another GPU on the machine.  If so, use its result.
+  absl::MutexLock autotune_lock(&autotune_cache_mu);
+  auto [it, inserted] = autotune_cache.insert({key, result_or.value()});
+  return it->second;
 }
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
@@ -536,7 +541,7 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
       PtxOptsFromDebugOptions(hlo_module_config.debug_options()),
       /*memory_limit=*/rz_space_limit);
   se::dnn::ProfileResult profile_result;
-  VLOG(3) << "Trying algorithm " << alg.ToString() << " for "
+  VLOG(4) << "Trying algorithm " << alg.ToString() << " for "
           << instr->ToString();
 
   std::optional<size_t> workspace_size =
@@ -585,14 +590,14 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
     }
   }
   if (!launch_status.ok()) {
-    VLOG(4) << "Launch failed: " << launch_status;
+    VLOG(5) << "Launch failed: " << launch_status;
     return make_failure(
         AutotuneResult::DISQUALIFIED,
         absl::StrCat("Profiling failure on cuDNN engine ", alg.ToString(), ": ",
                      launch_status.ToString()));
   }
   if (!profile_result.is_valid()) {
-    VLOG(4) << "Launch succeeded but profile result is invalid.";
+    VLOG(5) << "Launch succeeded but profile result is invalid.";
     // Not DISQUALIFIED: this means something went wrong internally.
     return make_failure(
         AutotuneResult::UNKNOWN,
@@ -600,7 +605,7 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
                      "with cuDNN engine ",
                      alg.ToString(), ": ", launch_status.ToString()));
   }
-  VLOG(3) << "Best time: " << min_time << " ms. Worst time: " << max_time
+  VLOG(4) << "Best time: " << min_time << " ms. Worst time: " << max_time
           << " ms. Total iterations: " << num_iters;
   int64_t scratch_bytes_used =
       scratch_allocator.TotalAllocatedBytesExcludingRedzones();
@@ -683,7 +688,7 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
           << (*reference_result)->algorithm.ToString() << " vs "
           << alg.ToString();
       PrintPlatformInfo(stream);
-      VLOG(1) << "Full module on failure: \n" << instr->GetModule()->ToString();
+      VLOG(2) << "Full module on failure: \n" << instr->GetModule()->ToString();
       auto* fail = result.mutable_failure();
       fail->set_kind(AutotuneResult::WRONG_RESULT);
       fail->set_buffer_address(
@@ -832,7 +837,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     log.set_device_pci_bus_id(
         stream_exec_->GetDeviceDescription().pci_bus_id());
     log.set_blas_version(blas_version);
-    VLOG(1) << "Autotuning result: " << log.ShortDebugString();
+    VLOG(2) << "Autotuning result: " << log.ShortDebugString();
     // If we crash on checking failure, we are in a testing/benchmark mode, thus
     // omitting logging through the logger.
     if (!crash_on_checking_failure) {
@@ -924,7 +929,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
           2);
 
       se::dnn::ProfileResult profile_result;
-      VLOG(3) << "Trying algorithm " << alg.ToString() << " for "
+      VLOG(4) << "Trying algorithm " << alg.ToString() << " for "
               << instr->ToString();
 
       TF_ASSIGN_OR_RETURN(
@@ -1000,7 +1005,7 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
   }
 
   auto best_algo = std::move(best_algo_or).value();
-  VLOG(2) << "Setting cudnn conv to use algorithm "
+  VLOG(3) << "Setting cudnn conv to use algorithm "
           << best_algo.conv().algorithm() << " and "
           << NumBytesToString(best_algo.scratch_bytes())
           << " of scratch memory: " << instr->ToString()
@@ -1027,7 +1032,7 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
   // is transformed through all our passes.
   new_call->SetAndSanitizeName(instr->name());
 
-  VLOG(2) << "Replacing convolution " << instr->ToString() << " with "
+  VLOG(3) << "Replacing convolution " << instr->ToString() << " with "
           << new_call->ToString();
 
   TF_RETURN_IF_ERROR(new_call->set_backend_config(backend_config));
@@ -1069,7 +1074,7 @@ StatusOr<bool> GpuConvAlgorithmPicker::Run(
       absl::StrCat("GpuConvAlgorithmPicker for ", module->name()));
 
   if (module->config().debug_options().xla_gpu_autotune_level() == 0) {
-    VLOG(2) << "Convolution auto-tuning disabled, GpuConvAlgorithmPicker "
+    VLOG(3) << "Convolution auto-tuning disabled, GpuConvAlgorithmPicker "
                "returning early.";
     return false;
   }

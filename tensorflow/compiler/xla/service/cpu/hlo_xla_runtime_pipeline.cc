@@ -68,7 +68,8 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions() {
   options.bufferizeFunctionBoundaries = true;
   options.allowReturnAllocs = true;
   options.functionBoundaryTypeConversion = LayoutMapOption::IdentityLayoutMap;
-  options.unknownTypeConverterFn = [](mlir::Value value, unsigned memorySpace,
+  options.unknownTypeConverterFn = [](mlir::Value value,
+                                      mlir::Attribute memorySpace,
                                       const BufferizationOptions& options) {
     return mlir::bufferization::getMemRefTypeWithStaticIdentityLayout(
         value.getType().cast<mlir::TensorType>(), memorySpace);
@@ -80,12 +81,14 @@ void AddSparsificationPasses(mlir::OpPassManager& pm) {
   pm.addNestedPass<FuncOp>(mlir::createLinalgGeneralizationPass());
   pm.addNestedPass<FuncOp>(
       mlir::bufferization::createEmptyTensorToAllocTensorPass());
-  pm.addPass(mlir::bufferization::createTensorCopyInsertionPass(
-      GetBufferizationOptions()));
-  pm.addPass(mlir::createSparseTensorRewritePass());
-  pm.addPass(mlir::createSparsificationPass());
-  pm.addPass(mlir::createSparseTensorConversionPass());
-  pm.addPass(mlir::createDenseBufferizationPass(GetBufferizationOptions()));
+  pm.addPass(mlir::createPreSparsificationRewritePass());
+  pm.addPass(mlir::createSparsificationAndBufferizationPass(
+      GetBufferizationOptions(), mlir::SparsificationOptions(),
+      mlir::SparseTensorConversionOptions(), /*enableRuntimeLibrary=*/false,
+      /*enableBufferInitialization=*/false,
+      /*vectorLength=*/0,
+      /*enableVLAVectorization=*/false,
+      /*enableSIMDIndex32*/false));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createFinalizingBufferizePass());
 }
@@ -119,6 +122,12 @@ static Status CreateHloXlaPipeline(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeControlFlowPass());
   pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      xla::cpu::createLegalizeCollectiveOpsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createMhloExpandOpsSimplifierPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createHloCanonicalizeScatterPass());
   // TODO(kramerb): Give THLO lowerings priority over linalg when it's ready for
   // concat, reduce and friends.
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -162,7 +171,7 @@ static Status CreateHloXlaPipeline(
     return tsl::errors::Internal("Failed to set up detensorize pass.");
   }
   pm.addNestedPass<mlir::func::FuncOp>(std::move(detensorize));
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createScalarizationPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::gml_st::createScalarizationPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createEmptyTensorToAllocTensorPass());
 

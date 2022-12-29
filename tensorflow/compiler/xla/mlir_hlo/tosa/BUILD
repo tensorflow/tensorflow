@@ -1,8 +1,9 @@
 # MHLO -> TOSA bridge.
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":internal",
         "//tensorflow/compiler/xla/mlir_hlo/tosa:__subpackages__",
@@ -56,6 +57,7 @@ cc_library(
     name = "MHLOTOSATransforms",
     srcs = [
         "lib/Transforms/legalize_mhlo.cc",
+        "lib/Transforms/prepare_mhlo.cc",
     ],
     hdrs = [
         "include/mhlo_tosa/Transforms/passes.h",
@@ -65,6 +67,7 @@ cc_library(
         ":MHLOTOSAPDLLPatternsIncGen",
         ":MHLOTOSATransformsPassIncGen",
         "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",

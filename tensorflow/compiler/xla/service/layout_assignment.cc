@@ -2447,8 +2447,7 @@ StatusOr<bool> LayoutAssignment::Run(
       if (IsLayoutConstrainedCustomCall(instruction)) {
         absl::flat_hash_set<int64_t> processed;
         for (const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>&
-                 output_operand_pair :
-             instruction->custom_call_output_operand_aliasing()) {
+                 output_operand_pair : instruction->output_operand_aliasing()) {
           int operand_no = output_operand_pair.second.first;
           if (!processed.contains(operand_no)) {
             TF_RETURN_IF_ERROR(AddCopyForOperand(instruction, operand_no));

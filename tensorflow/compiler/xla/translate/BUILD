@@ -1,11 +1,12 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
 
-tf_cc_binary(
+xla_cc_binary(
     name = "xla-translate",
     testonly = True,
     srcs = ["xla_translate_main.cc"],

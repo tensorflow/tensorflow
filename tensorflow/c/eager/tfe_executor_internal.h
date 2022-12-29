@@ -20,9 +20,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 
 struct TFE_Executor {
-  explicit TFE_Executor(bool async, bool enable_streaming_enqueue)
-      : owned_executor(
-            new tensorflow::EagerExecutor(async, enable_streaming_enqueue)) {}
+  explicit TFE_Executor(bool async, bool enable_streaming_enqueue,
+                        int in_flight_nodes_limit)
+      : owned_executor(new tensorflow::EagerExecutor(
+            async, enable_streaming_enqueue, in_flight_nodes_limit)) {}
 
   explicit TFE_Executor(tensorflow::EagerExecutor* executor)
       : owned_executor(nullptr), unowned_executor(executor) {}

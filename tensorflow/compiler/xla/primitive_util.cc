@@ -38,6 +38,10 @@ int SignificandWidth(PrimitiveType type) {
       return std::numeric_limits<bfloat16>::digits;
     case F16:
       return std::numeric_limits<half>::digits;
+    case F8E5M2:
+      return std::numeric_limits<tsl::float8_e5m2>::digits;
+    case F8E4M3FN:
+      return std::numeric_limits<tsl::float8_e4m3fn>::digits;
     default:
       LOG(FATAL) << "Not a floating data type " << type;
   }
@@ -71,13 +75,18 @@ int OverflowExponent(PrimitiveType type) {
       return std::numeric_limits<bfloat16>::max_exponent;
     case F16:
       return std::numeric_limits<half>::max_exponent;
+    case F8E5M2:
+      return std::numeric_limits<tsl::float8_e5m2>::max_exponent;
+    case F8E4M3FN:
+      return std::numeric_limits<tsl::float8_e4m3fn>::max_exponent;
     default:
       LOG(FATAL) << "Not a floating data type " << type;
   }
 }
 
 bool IsFloatingPointType(PrimitiveType type) {
-  return type == F16 || type == F32 || type == F64 || type == BF16;
+  return type == F16 || type == F32 || type == F64 || type == BF16 ||
+         type == F8E5M2 || type == F8E4M3FN;
 }
 
 bool IsComplexType(PrimitiveType type) { return type == C64 || type == C128; }

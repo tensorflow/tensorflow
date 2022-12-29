@@ -14,14 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "pybind11/pybind11.h"
-#include "tensorflow/python/lib/core/bfloat16.h"
+#include "tensorflow/tsl/python/lib/core/bfloat16.h"
 
 PYBIND11_MODULE(_pywrap_bfloat16, m) {
-  tensorflow::RegisterNumpyBfloat16();
+  tsl::RegisterNumpyBfloat16();
 
   m.def("TF_bfloat16_type",
-        [] { return pybind11::handle(tensorflow::Bfloat16Dtype()); });
+        [] { return pybind11::handle(tsl::Bfloat16Dtype()); });
 
   m.def("TF_float8_e4m3b11_type",
-        [] { return pybind11::handle(tensorflow::Float8_E4M3B11Dtype()); });
+        [] { return pybind11::handle(tsl::Float8_E4M3B11Dtype()); });
 }
