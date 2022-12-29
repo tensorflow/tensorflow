@@ -41,5 +41,5 @@ jobs:
             This issue is stale because it has been open for 180 days with no activity.
             It will be closed if no further activity occurs. Thank you.
           close-issue-message: >
-            This issue was closed because it has been inactive for 360 days since being marked as stale.
+            This issue was closed because it has been inactive for 1 year.
           repo-token: ${{ secrets.GITHUB_TOKEN }}
