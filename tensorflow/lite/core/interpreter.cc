@@ -49,6 +49,8 @@ limitations under the License.
 #endif
 #endif  // defined(__APPLE__)
 
+// TODO(b/132087118): move static_assert to c_api_internal when compiled with
+// C++.
 static_assert(sizeof(TfLiteFloat16) == sizeof(uint16_t),
               "Float 16 type must be 16 bits.");
 
