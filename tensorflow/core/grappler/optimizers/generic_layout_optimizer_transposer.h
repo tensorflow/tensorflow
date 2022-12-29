@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/frame.h"
 #include "tensorflow/core/grappler/utils/graph_view.h"
@@ -75,6 +76,7 @@ struct TransposeContext {
   absl::flat_hash_set<string> nodes_to_preserve;
   std::unique_ptr<GraphProperties> graph_properties;
   std::unique_ptr<utils::MutableGraphView> graph_view;
+  std::unique_ptr<const VirtualPlacer> virtual_placer;
 
   string target_device;
   string src_format;
@@ -611,7 +613,7 @@ Status PermuteDouble(absl::string_view location,
   return OkStatus();
 }
 
-string GetDeviceName(const NodeDef& node);
+string GetDeviceName(const VirtualPlacer* virtual_placer, const NodeDef& node);
 
 bool IsDefaultLayoutSensitiveOp(const NodeDef& node);
 

@@ -1215,6 +1215,7 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/costs:virtual_placer",
         "//tensorflow/core/grappler/utils:frame",
         "//tensorflow/core/grappler/utils:graph_view",
         "@com_google_absl//absl/container:flat_hash_map",

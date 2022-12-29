@@ -86,7 +86,8 @@ inline bool NumConvOnDeviceWithDataTypeOverThreshold(
     if (!IsConv2D(*node_def) && !IsConv3D(*node_def)) {
       continue;
     }
-    const string& device_name = GetDeviceName(*node_def);
+    const string& device_name =
+        GetDeviceName(context.virtual_placer.get(), *node_def);
     string device_type;
     string task;
     if (!DeviceNameUtils::SplitDeviceName(device_name, &task, &device_type) ||
@@ -122,7 +123,8 @@ inline bool ConvBackpropExists(const TransposeContext& context,
       continue;
     }
 
-    const string& device_name = GetDeviceName(*node_def);
+    const string& device_name =
+        GetDeviceName(context.virtual_placer.get(), *node_def);
     string device_type;
     string task;
     if (!DeviceNameUtils::SplitDeviceName(device_name, &task, &device_type) ||
