@@ -35,7 +35,13 @@ tensorflow/examples/custom_ops_doc/sleep/BUILD:
 tensorflow/examples/custom_ops_doc/sleep/sleep_op.py:
 tensorflow/go/BUILD:
 tensorflow/go/README.md:
+tensorflow/go/core/framework/BUILD:
+tensorflow/go/core/protobuf/BUILD:
+tensorflow/go/genop/BUILD:
+tensorflow/go/genop/internal/BUILD:
+tensorflow/go/op/BUILD:
 tensorflow/go/op/wrappers.go:
+tensorflow/go/stream_executor/BUILD:
 tensorflow/java/README.md:
 tensorflow/java/src/main/native/BUILD:
 tensorflow/lite/core/c/special_rules.bzl:
