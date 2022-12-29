@@ -17,6 +17,7 @@ limitations under the License.
 // assigned to save devices. Clusters are represented as regions.
 // Note that side-effecting ops are not correctly handled yet.
 
+#include <memory>
 #include <vector>
 
 #include "llvm/ADT/MapVector.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -61,19 +63,39 @@ StringRef GetDevice(Operation* op) {
   return device_attr ? device_attr.getValue() : "";
 }
 
-// An op can be merged into cluster if all of its operands are one of the
-// following:
-//  1) A block argument
-//  2) A value produced by other islands
-//  1) Defined before the cluster
-//  2) Defined by an operation in the cluster
+// An op can be merged into cluster if it satisfies both of the following
+// conditions:
+//
+//  * All of its operands are one of the following:
+//    1) A block argument
+//    2) A value produced by other islands
+//    3) Defined before the cluster
+//    4) Defined by an operation in the cluster
+//  * Merging the op into the cluster does not reorder control dependencies.
+//
 // TODO(ycao): This is not optimal as it doesn't consider the situation of
 // defining_op's operands all meet the requirements above. In that case, the
 // defining_op can be moved and to_merge op would be legal to absorb.
-// TODO(ycao): Take op side-effects into consideration since they can not be
-// re-ordered but forming clusters of non-continuous ops is effectively
-// re-ordering them..
-bool CanMergeIntoCluster(const Cluster& c, Operation* to_merge) {
+bool CanMergeIntoCluster(
+    const Cluster& c, Operation* to_merge,
+    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+  // If any of the op's control predecessors appears after the last op in the
+  // cluster, merging the op may cause control dependencies to be reordered.
+  // Hence, the op cannot be merged to the cluster in such a case.
+  const bool has_control_predecessors_after_cluster =
+      !side_effect_analysis
+           .DirectControlPredecessors(
+               to_merge,
+               [&c](Operation* pred) {
+                 Operation* const last_c_op = c.ops.back();
+                 return last_c_op->getBlock() == pred->getBlock() &&
+                        last_c_op->isBeforeInBlock(pred);
+               })
+           .empty();
+  if (has_control_predecessors_after_cluster) {
+    return false;
+  }
+
   return llvm::all_of(to_merge->getOperands(), [&](Value operand) {
     // Block arguments.
     if (operand.isa<BlockArgument>()) return true;
@@ -234,7 +256,8 @@ void BuildLaunchForCluster(const Cluster& c, OpBuilder* builder) {
   ReorderOpResultUses(launch_op);
 }
 
-void BuildClusters(Block* block, OpBuilder builder) {
+void BuildClusters(Block* block, OpBuilder builder,
+                   const TF::SideEffectAnalysis::Info& side_effect_analysis) {
   // Iteratively find clusters of different devices within an island.
   // Whenever we see an operation that is assigned to an accelerator device
   // (ie. device != ""), we try to merge it into the last cluster of same
@@ -256,7 +279,7 @@ void BuildClusters(Block* block, OpBuilder builder) {
     // Check if it is legal to merge op into nearest cluster of same device.
     // If positive, update cluster and move on to next operation.
     Cluster& nearest_cluster = it->second;
-    if (CanMergeIntoCluster(nearest_cluster, &op)) {
+    if (CanMergeIntoCluster(nearest_cluster, &op, side_effect_analysis)) {
       nearest_cluster.ops.emplace_back(&op);
       continue;
     }
@@ -277,21 +300,28 @@ void BuildClusters(Block* block, OpBuilder builder) {
 }
 
 void ClusterFormationPass::runOnOperation() {
-  auto func = getOperation();
-  if (func.isExternal()) return;
-  OpBuilder builder(func.getContext());
+  auto module = getOperation();
+  auto& side_effect_analysis = getAnalysis<TF::SideEffectAnalysis>();
 
-  // Operates on individual blocks independently of if they are directly in the
-  // function body or if they are nested in individual `tf_executor.island`.
-  for (Block& block : func.getBody()) BuildClusters(&block, builder);
-  func.walk([&](tf_executor::IslandOp island) {
-    BuildClusters(&island.GetBody(), builder);
-  });
+  for (auto func : module.getOps<func::FuncOp>()) {
+    if (func.isExternal()) continue;
+    OpBuilder builder(func.getContext());
+    const TF::SideEffectAnalysis::Info& info =
+        side_effect_analysis.GetAnalysisForFunc(func);
+
+    // Operates on individual blocks independently of if they are directly in
+    // the function body or if they are nested in individual
+    // `tf_executor.island`.
+    for (Block& block : func.getBody()) BuildClusters(&block, builder, info);
+    func.walk([&](tf_executor::IslandOp island) {
+      BuildClusters(&island.GetBody(), builder, info);
+    });
+  }
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateClusterFormationPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateClusterFormationPass() {
   return std::make_unique<ClusterFormationPass>();
 }
 
