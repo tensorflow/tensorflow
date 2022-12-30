@@ -40,7 +40,7 @@ class FuzzIdentity : public FuzzSession<Tensor> {
 };
 
 // Setup up fuzzing test.
-FUZZ_TEST_F(FuzzIdentity, Fuzz).WithDomains(AnyTensor(2));
+FUZZ_TEST_F(FuzzIdentity, Fuzz).WithDomains(GenerateTensor(2));
 
 }  // end namespace fuzzing
 }  // end namespace tensorflow

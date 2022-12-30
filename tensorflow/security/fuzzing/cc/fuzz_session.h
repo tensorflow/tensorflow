@@ -61,33 +61,68 @@ limitations under the License.
 namespace tensorflow {
 namespace fuzzing {
 
+
+inline auto AnyRank(const int rank = -1) {
+  int min_size{1};
+  int max_size{TensorShape::MaxDimensions()};
+  if (rank > -1) {
+    min_size = max_size = std::min(rank, TensorShape::MaxDimensions());
+  }
+  // Unfortunately we can't use InRange here sice it doesn't allow to have
+  // range with equal limits thus we can't generate just specific number
+  // as workaround we can use vector that can have specific size
+  return fuzztest::VectorOf(fuzztest::Arbitrary<int>())
+                            .WithMinSize(min_size).WithMaxSize(max_size);
+}
+
+inline auto AnyShape(const std::vector<int>& rank) {
+  // max dimension size is std::numeric_limits<int64_t>::max()
+  // it's a pretty big number so let's use some reasonable number
+  // to avoid resources wasting
+  static constexpr size_t max_dim_default{1024};
+  size_t max_dim = std::pow(std::numeric_limits<int64_t>::max(), 1.0 / rank.size());
+
+  size_t min_size{1};
+  size_t max_size{std::min(max_dim, max_dim_default)};
+
+  // Unfortunately we can't use InRange here sice it doesn't allow to have
+  // range with equal limits thus we can't generate just specific number
+  // as workaround we can use vector that can have specific size
+  return fuzztest::VectorOf(fuzztest::Arbitrary<std::vector<int>>()
+                            .WithMinSize(min_size).WithMaxSize(max_size))
+                            .WithSize(rank.size());
+}
+
 // Used by GFT to map a known domain (vector<T>) to an unknown
 // domain (Tensor of datatype). T and datatype should match/be compatible.
-template <typename T = uint8_t>
-inline auto AnyTensor(const int rank = -1) {
-  T min_size{1};
-  T max_size{TensorShape::MaxDimensions()};
-  if (rank != -1) {
-    min_size = max_size = rank;
-  }
+template <typename T>
+inline auto AnyTensor(const std::vector<std::vector<int>>& ts) {
+  std::vector<int64_t> shape;
+  shape.reserve(ts.size());
+  std::transform(ts.cbegin(), ts.cend(), std::back_inserter(shape),
+      [](auto& dim) { return static_cast<int64_t>(dim.size()); });
+
+  const int64_t num_elements = std::accumulate(shape.cbegin(), shape.cend(),
+                                               1, std::multiplies<int64_t>());
   return fuzztest::Map(
-      [](auto t) {
-        std::vector<int64_t> shape;
-        shape.reserve(t.size());
-        std::transform(t.cbegin(), t.cend(), std::back_inserter(shape),
-            [](auto& dim) { return static_cast<int64_t>(dim.size()); });
-
+      [shape](auto t) {
         Tensor tensor(DataTypeToEnum<T>::v(), TensorShape(shape));
-
-        absl::BitGen gen;
         auto flat_tensor = tensor.flat<T>();
-        for (size_t i{}; i < tensor.NumElements(); ++i) {
-          flat_tensor(i) = absl::Uniform<T>(gen);
+        for (size_t i{}; i < t.size(); ++i) {
+          flat_tensor(i) = t[i];
         }
         return tensor;
       },
-      fuzztest::VectorOf(fuzztest::Arbitrary<std::vector<T>>().WithMinSize(1))
-        .WithMinSize(min_size).WithMaxSize(max_size));
+      fuzztest::VectorOf(fuzztest::Arbitrary<T>()).WithSize(num_elements));
+}
+
+auto GenerateShape(const int rank) {
+  return fuzztest::FlatMap(AnyShape, AnyRank(rank));
+}
+
+template <typename T = uint8_t>
+auto GenerateTensor(const int rank = -1) {
+  return fuzztest::FlatMap(AnyTensor<T>, GenerateShape(rank));
 }
 
 // Create a TensorFlow session using a specific GraphDef created

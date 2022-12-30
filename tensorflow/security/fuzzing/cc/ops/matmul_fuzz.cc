@@ -27,7 +27,7 @@ namespace fuzzing {
 // Creates FuzzIdentity class that wraps a single operation node session.
 BINARY_INPUT_OP_FUZZER(DT_INT32, MatMul);
 // Setup up fuzzing test.
-FUZZ_TEST_F(FuzzMatMul, Fuzz).WithDomains(AnyTensor(2), AnyTensor(2));
+FUZZ_TEST_F(FuzzMatMul, Fuzz).WithDomains(GenerateTensor(2), GenerateTensor(2));
 
 }  // end namespace fuzzing
 }  // end namespace tensorflow
