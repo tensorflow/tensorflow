@@ -5,14 +5,13 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_cc_shared_test",
     "tf_cc_test",
 )
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 # A trivial fuzzer with no pre-specified corpus.
-tf_cc_shared_test(
+tf_cc_test(
     name = "identity_fuzz",
     srcs = ["identity_fuzz.cc"],
     tags = ["no_oss"],
@@ -26,7 +25,7 @@ tf_cc_shared_test(
     ],
 )
 
-tf_cc_shared_test(
+tf_cc_test(
     name = "concat_fuzz",
     srcs = ["concat_fuzz.cc"],
     tags = ["no_oss"],
@@ -40,7 +39,7 @@ tf_cc_shared_test(
     ],
 )
 
-tf_cc_shared_test(
+tf_cc_test(
     name = "add_fuzz",
     srcs = ["add_fuzz.cc"],
     tags = ["no_oss"],
@@ -54,7 +53,7 @@ tf_cc_shared_test(
     ],
 )
 
-tf_cc_shared_test(
+tf_cc_test(
     name = "matmul_fuzz",
     srcs = ["matmul_fuzz.cc"],
     tags = ["no_oss"],
