@@ -17,6 +17,7 @@ limitations under the License.
 #include <array>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -27,11 +28,17 @@ limitations under the License.
 #include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
+#include "llvm/ADT/TypeSwitch.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
+#include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/IR/TensorTilingInterfaceImpl.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -53,6 +60,7 @@ class Mmt4DTileParams {
   std::array<int64_t, 2> lhs() const { return {m0, k0}; }
   std::array<int64_t, 2> rhs() const { return {k0, n0}; }
   std::array<int64_t, 2> acc() const { return {m0, n0}; }
+  std::array<int64_t, 2> rhsTranspose() const { return {n0, k0}; }
   const std::string &getComment() const { return comment; }
 
  private:
@@ -62,92 +70,83 @@ class Mmt4DTileParams {
   const std::string comment;
 };
 
-// Expands a 2D tensor input to a 4D tensor representing the same underlying
-// data but now in a tiled layout, given a static 2D tile shape.
-// Does not transpose.
-// Example: (M, N) --> (M1, m0, N1, n0)
-Value expandTo4D(mlir::Location loc, PatternRewriter &rewriter, Value input,
-                 ArrayRef<int64_t> tileShape) {
-  auto inputType = input.getType().cast<RankedTensorType>();
-  ArrayRef<int64_t> inputShape = inputType.getShape();
-  std::array<int64_t, 4> targetShape;
-  // Generate a 4D shape of the form (M1, m0, N1, n0),
-  // where m0, n0 are always static and M1, N1 are static if and only if M, N
-  // are.
-  for (int i : {0, 1}) {
-    if (inputShape[i] == ShapedType::kDynamic) {
-      targetShape[2 * i] = ShapedType::kDynamic;
-    } else {
-      targetShape[2 * i] = inputShape[i] / tileShape[i];
-    }
-    targetShape[2 * i + 1] = tileShape[i];
+Value getDimValue(OpBuilder &builder, Location loc, Value v, int64_t dim) {
+  ShapedType type = v.getType().cast<ShapedType>();
+  if (!type.isDynamicDim(dim)) {
+    return builder.create<arith::ConstantIndexOp>(loc, type.getDimSize(dim));
   }
-  RankedTensorType targetType =
-      RankedTensorType::get(targetShape, inputType.getElementType());
-  std::array<ReassociationIndices, 2> expandIndices = {
-      ReassociationIndices{0, 1}, ReassociationIndices{2, 3}};
-  Value reshapedOperand = rewriter.create<tensor::ExpandShapeOp>(
-      loc, targetType, input, expandIndices);
-  return reshapedOperand;
-}
-
-// Creates a linalg.generic that transposes input using permutation indices.
-// Example: (M1, m0, N1, n0) -> (M1, N1, m0, n0) if indices = {0, 2, 1, 3}.
-Value transpose(mlir::Location loc, PatternRewriter &rewriter, Value input,
-                ArrayRef<int64_t> indices) {
-  auto inputType = input.getType().cast<RankedTensorType>();
-  auto nloops = indices.size();
-
-  SmallVector<AffineExpr, 4> exprs = llvm::to_vector<4>(
-      llvm::map_range(indices, [&](int64_t index) -> AffineExpr {
-        return rewriter.getAffineDimExpr(index);
-      }));
-
-  ArrayRef<int64_t> inputShape = inputType.getShape();
-  SmallVector<OpFoldResult, 4> targetShape;
-  for (int i = 0; i < 4; i++) {
-    if (inputShape[indices[i]] == ShapedType::kDynamic) {
-      targetShape.emplace_back(
-          rewriter.create<tensor::DimOp>(loc, input, indices[i]));
-    } else {
-      targetShape.push_back(rewriter.getIndexAttr(inputShape[indices[i]]));
-    }
-  }
-
-  Value outputTensor = rewriter.create<tensor::EmptyOp>(
-      loc, targetShape, inputType.getElementType());
-
-  SmallVector<utils::IteratorType, 4> loopAttributeTypes(
-      nloops, utils::IteratorType::parallel);
-
-  SmallVector<AffineMap, 2> indexingMaps = {
-      inversePermutation(
-          AffineMap::get(nloops, 0, exprs, rewriter.getContext())),
-      AffineMap::getMultiDimIdentityMap(nloops, rewriter.getContext())};
-
-  auto transposedOp = rewriter.create<linalg::GenericOp>(
-      loc, outputTensor.getType(),
-      /*inputs=*/input, /*outputs=*/outputTensor, indexingMaps,
-      loopAttributeTypes,
-      [&](OpBuilder &nestedBuilder, Location nestedLoc, ValueRange args) {
-        nestedBuilder.create<linalg::YieldOp>(nestedLoc, args[0]);
+  return TypeSwitch<Type, Value>(v.getType())
+      .Case<RankedTensorType>([&](RankedTensorType /*t*/) -> Value {
+        return builder.create<tensor::DimOp>(loc, v, dim);
+      })
+      .Case<MemRefType>([&](MemRefType /*t*/) -> Value {
+        return builder.create<memref::DimOp>(loc, v, dim);
       });
-
-  return transposedOp.getResult(0);
 }
 
-// Collapses a 4d tensor input to 2d given its target shape.
-// Example: (M1, m0, N1, n0) -> (M, N)
-Value collapseTo2D(mlir::Location loc, PatternRewriter &rewriter, Value input,
-                   ArrayRef<int64_t> targetShape) {
-  auto inputType = input.getType().cast<RankedTensorType>();
-  auto targetType =
-      RankedTensorType::get(targetShape, inputType.getElementType());
-  std::array<ReassociationIndices, 2> collapseIndices = {
-      ReassociationIndices{0, 1}, ReassociationIndices{2, 3}};
-  Value reshapedOperand = rewriter.create<tensor::CollapseShapeOp>(
-      loc, targetType, input, collapseIndices);
-  return reshapedOperand;
+OpFoldResult getDim(OpBuilder &builder, Location loc, Value v, int64_t dim) {
+  auto t = v.getType().cast<ShapedType>();
+  if (t.isDynamicDim(dim)) {
+    return getDimValue(builder, loc, v, dim);
+  }
+  return builder.getI64IntegerAttr(t.getDimSize(dim));
+}
+
+// Returns dimensions of |shapedTypeValue|, handling both static and dynamic
+// shapes.
+SmallVector<OpFoldResult> getDims(OpBuilder &builder, Location loc,
+                                  Value shapedTypeValue) {
+  return llvm::to_vector(llvm::map_range(
+      llvm::seq<int64_t>(
+          0, shapedTypeValue.getType().cast<ShapedType>().getRank()),
+      [&](int64_t dim) { return getDim(builder, loc, shapedTypeValue, dim); }));
+}
+
+Optional<Value> getPaddingValue(Value &source) {
+  auto padOp = source.getDefiningOp<tensor::PadOp>();
+  if (!padOp || padOp.getNofold() || !padOp.hasZeroLowPad())
+    return std::nullopt;
+
+  Value constantPaddingValue = padOp.getConstantPaddingValue();
+  if (!constantPaddingValue) return std::nullopt;
+
+  source = padOp.getSource();
+  return constantPaddingValue;
+}
+
+// Returns a tiled and packed value of |source|, the data layout is described by
+// |innerDimsPos|, |innerTileSizes| and |outerDimsPerm|.
+Value pack(Location loc, PatternRewriter &rewriter, Value source,
+           ArrayRef<int64_t> innerDimsPos, ArrayRef<int64_t> innerTileSizes,
+           ArrayRef<int64_t> outerDimsPerm) {
+  SmallVector<OpFoldResult> innerTileSizesOfr =
+      getAsOpFoldResult(rewriter.getI64ArrayAttr(innerTileSizes));
+  auto empty = tensor::PackOp::createDestinationTensor(
+      rewriter, loc, source, innerTileSizesOfr, innerDimsPos, outerDimsPerm);
+  Optional<Value> paddingValue = getPaddingValue(source);
+  return rewriter.create<tensor::PackOp>(loc, source, empty, innerDimsPos,
+                                         innerTileSizesOfr, paddingValue,
+                                         outerDimsPerm);
+}
+
+// Returns an unpacked value of |source|, the data layout is described by
+// |innerDimsPos|, |innerTileSizes| and |outerDimsPerm|. |resultShapeValue| is
+// used to create the destination tensor for the resulting unpacked value.
+Value unpack(Location loc, PatternRewriter &rewriter, Value source,
+             Value resultShapeValue, ArrayRef<int64_t> innerDimsPos,
+             ArrayRef<int64_t> innerTileSizes,
+             ArrayRef<int64_t> outerDimsPerm) {
+  SmallVector<OpFoldResult> resultDims =
+      getDims(rewriter, loc, resultShapeValue);
+  auto empty = rewriter.create<tensor::EmptyOp>(
+      loc, resultDims,
+      source.getType().cast<RankedTensorType>().getElementType());
+
+  SmallVector<OpFoldResult> innerTileSizesOfr =
+      getAsOpFoldResult(rewriter.getI64ArrayAttr(innerTileSizes));
+
+  return rewriter.create<tensor::UnPackOp>(loc, source, empty, innerDimsPos,
+                                           innerTileSizesOfr, outerDimsPerm);
 }
 
 // Returns true if an input of the given |inputShape| needs padding to
@@ -328,27 +327,23 @@ struct MatmulToMmt4dPattern : public OpRewritePattern<linalg::MatmulOp> {
     Value paddedRhs = pad(loc, rewriter, rhs, tileParams.rhs());
     Value paddedAcc = pad(loc, rewriter, acc, tileParams.acc());
 
-    Value lhs4D = expandTo4D(loc, rewriter, paddedLhs, tileParams.lhs());
-    Value rhs4D = expandTo4D(loc, rewriter, paddedRhs, tileParams.rhs());
-    Value acc4D = expandTo4D(loc, rewriter, paddedAcc, tileParams.acc());
-
-    Value lhs4DT = transpose(loc, rewriter, lhs4D, {0, 2, 1, 3});
-    Value rhs4DT = transpose(loc, rewriter, rhs4D, {2, 0, 3, 1});
-    Value acc4DT = transpose(loc, rewriter, acc4D, {0, 2, 1, 3});
+    Value packed4DLhs =
+        pack(loc, rewriter, paddedLhs, {0, 1}, tileParams.lhs(), {});
+    Value packed4DRhs = pack(loc, rewriter, paddedRhs, {1, 0},
+                             tileParams.rhsTranspose(), {1, 0});
+    Value packed4DAcc =
+        pack(loc, rewriter, paddedAcc, {0, 1}, tileParams.acc(), {});
 
     auto mmt4d = rewriter.create<linalg::Mmt4DOp>(
-        loc, acc4DT.getType(), ValueRange{lhs4DT, rhs4DT}, ValueRange{acc4DT});
+        loc, packed4DAcc.getType(), ValueRange{packed4DLhs, packed4DRhs},
+        ValueRange{packed4DAcc});
     mmt4d->setAttr(StringAttr::get(getContext(), "comment"),
                    StringAttr::get(getContext(), tileParams.getComment()));
 
-    Value mmt4dResultTransposed =
-        transpose(loc, rewriter, mmt4d.getResult(0), {0, 2, 1, 3});
+    Value paddedResult = unpack(loc, rewriter, mmt4d.getResult(0), paddedAcc,
+                                {0, 1}, tileParams.acc(), {});
 
-    Value paddedResult =
-        collapseTo2D(loc, rewriter, mmt4dResultTransposed,
-                     paddedAcc.getType().cast<ShapedType>().getShape());
     Value result = extractSliceLike(loc, rewriter, paddedResult, acc);
-
     rewriter.replaceOp(matmulOp, ArrayRef<Value>{result});
 
     return success();
@@ -427,6 +422,14 @@ void splitParallelAndReductionTiles(linalg::LinalgOp op,
   }
 }
 
+LogicalResult tilePackUnpack(PatternRewriter &rewriter, Operation *op,
+                             const scf::SCFTilingOptions &tilingOptions) {
+  auto tilingResult = scf::tileUsingSCFForOp(rewriter, op, tilingOptions);
+  if (failed(tilingResult) || tilingResult->loops.empty()) return failure();
+  rewriter.replaceOp(op, tilingResult->loops.front()->getResults());
+  return success();
+}
+
 /// Pattern to tile `linalg.mmt4d`.
 struct Mmt4DTransformPattern : public OpRewritePattern<linalg::Mmt4DOp> {
   using OpRewritePattern<linalg::Mmt4DOp>::OpRewritePattern;
@@ -441,6 +444,54 @@ struct Mmt4DTransformPattern : public OpRewritePattern<linalg::Mmt4DOp> {
       return rewriter.notifyMatchFailure(mmt4dOp,
                                          "has already been transformed.");
     }
+
+    // Tile tensor.pack ops.
+    auto packTilingOptions =
+        scf::SCFTilingOptions().setTileSizeComputationFunction(
+            [&](OpBuilder b, Operation *op) {
+              auto numLoops =
+                  cast<mlir::TilingInterface>(op).getLoopIteratorTypes().size();
+              SmallVector<Value> tiles(
+                  numLoops, b.create<arith::ConstantIndexOp>(op->getLoc(), 1));
+              return tiles;
+            });
+
+    auto *lhsOp = mmt4dOp.getInputs()[0].getDefiningOp();
+    if (failed(tilePackUnpack(rewriter, lhsOp, packTilingOptions)))
+      return failure();
+
+    auto *rhsOp = mmt4dOp.getInputs()[1].getDefiningOp();
+    if (failed(tilePackUnpack(rewriter, rhsOp, packTilingOptions)))
+      return failure();
+
+    auto *accOp = mmt4dOp.getOutputs()[0].getDefiningOp();
+    if (failed(tilePackUnpack(rewriter, accOp, packTilingOptions)))
+      return failure();
+
+    // Tile tensor.unpack op.
+    auto unpackTilingOptions =
+        scf::SCFTilingOptions().setTileSizeComputationFunction(
+            [](OpBuilder &builder, Operation *op) {
+              Location loc = op->getLoc();
+              auto unpackOp = cast<tensor::UnPackOp>(op);
+              auto numLoops = unpackOp.getDestRank();
+              auto dimAndTileMapping = unpackOp.getDimAndTileMapping();
+              SmallVector<Value> tileSizes;
+              for (int i = 0; i < numLoops; ++i) {
+                if (dimAndTileMapping.count(i)) {
+                  tileSizes.push_back(getValueOrCreateConstantIndexOp(
+                      builder, loc, dimAndTileMapping[i]));
+                } else {
+                  tileSizes.push_back(
+                      getDimValue(builder, loc, unpackOp.getDest(), i));
+                }
+              }
+              return tileSizes;
+            });
+
+    auto *unpackOp = *mmt4dOp->user_begin();
+    if (failed(tilePackUnpack(rewriter, unpackOp, unpackTilingOptions)))
+      return failure();
 
     // Compute the tile sizes. Note that at this stage we only do layout tiling.
     // Later we might also want to do traversal tiling (only on M and N dims).
@@ -657,8 +708,10 @@ struct TransformMatmulForCpuPass
 
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<mlir::gml_st::GmlStDialect, arith::ArithDialect,
-                    linalg::LinalgDialect, tensor::TensorDialect>();
+                    linalg::LinalgDialect, scf::SCFDialect,
+                    tensor::TensorDialect>();
     mlir::gml_st::registerGmlStTilingInterfaceExternalModels(registry);
+    tensor::registerTilingInterfaceExternalModels(registry);
   }
 
   void runOnOperation() override {
@@ -706,7 +759,7 @@ struct TransformMatmulForCpuPass
           removeLabel(op, kMatmulTransformedLabel);
       });
     }
-    // Tiling.
+    // Tiling pack, unpack and mmt4d ops.
     {
       RewritePatternSet patterns(ctx);
       // We tile towards SIMD codegen, so the tile sizes depend on the target
@@ -721,6 +774,18 @@ struct TransformMatmulForCpuPass
       // Ensure we drop the marker in the end.
       f.walk(
           [](linalg::Mmt4DOp op) { removeLabel(op, kMatmulTransformedLabel); });
+    }
+    // Expanding pack and unpack ops to other primitive tensor/linalg ops and
+    // canonicalize tiled ops.
+    {
+      RewritePatternSet patterns(ctx);
+      linalg::populateLinalgTilingCanonicalizationPatterns(patterns);
+      patterns.add<linalg::GeneralizeOuterUnitDimsPackOpPattern>(ctx);
+      patterns.add<linalg::GeneralizeOuterUnitDimsUnPackOpPattern>(ctx);
+      if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                              std::move(patterns)))) {
+        return signalPassFailure();
+      }
     }
   }
 };
