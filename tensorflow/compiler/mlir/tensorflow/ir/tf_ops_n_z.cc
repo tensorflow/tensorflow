@@ -3988,7 +3988,7 @@ LogicalResult UniformRequantizeOp::verify() {
       op, op.getInputScales(), op.getInputZeroPoints(),
       op.getInputQuantizationAxis());
   if (failed(verify_input_params)) {
-    return verify_input_params;
+    return failure();
   }
   return VerifyScalesAndZeroPoints(op, op.getOutputScales(),
                                    op.getOutputZeroPoints(),
@@ -4004,6 +4004,33 @@ LogicalResult UniformDequantizeOp::verify() {
   UniformDequantizeOp op = *this;
   return VerifyScalesAndZeroPoints(op, op.getScales(), op.getZeroPoints(),
                                    op.getQuantizationAxis());
+}
+
+//===----------------------------------------------------------------------===//
+// UniformQuantizedDotOp
+//===----------------------------------------------------------------------===//
+//
+
+LogicalResult UniformQuantizedDotOp::verify() {
+  UniformQuantizedDotOp op = *this;
+
+  auto verify_lhs_params =
+      VerifyScalesAndZeroPoints(op, op.getLhsScales(), op.getLhsZeroPoints(),
+                                op.getLhsQuantizationAxis());
+  if (failed(verify_lhs_params)) {
+    return failure();
+  }
+
+  auto verify_rhs_params =
+      VerifyScalesAndZeroPoints(op, op.getRhsScales(), op.getRhsZeroPoints(),
+                                op.getRhsQuantizationAxis());
+  if (failed(verify_rhs_params)) {
+    return failure();
+  }
+
+  return VerifyScalesAndZeroPoints(op, op.getOutputScales(),
+                                   op.getOutputZeroPoints(),
+                                   op.getOutputQuantizationAxis());
 }
 
 }  // namespace TF
