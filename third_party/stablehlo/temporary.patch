@@ -33,6 +33,25 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
    if (failed(verifyCompatibleShape(type1, type2))) return false;
    return tensorsHaveSameElType(type1.cast<ShapedType>(),
                                 type2.cast<ShapedType>(), ignoreFpPrecision);
+@@ -2920,7 +2904,8 @@
+ }
+ 
+ LogicalResult verifyDotOp(Optional<Location> location, Value lhs, Value rhs,
+-                          Optional<ArrayAttr> precisionConfig, Value result) {
++                          Optional<ArrayAttr> /*precisionConfig*/,
++                          Value result) {
+   auto lhsType = lhs.getType().dyn_cast<RankedTensorType>();
+   auto rhsType = rhs.getType().dyn_cast<RankedTensorType>();
+   auto resultType = result.getType().dyn_cast<RankedTensorType>();
+@@ -2937,7 +2922,7 @@
+         location, "inferred shape '", dimSizesToString(inferredShape), "' ",
+         "is incompatible with return type of operation ", resultType, "");
+ 
+-  return verifyPrecisionConfig(location, precisionConfig);
++  return success();
+ }
+ 
+ LogicalResult verifyDotGeneralOp(Optional<Location> location, Value lhs,
 diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/dialect/TypeInference.h
 --- stablehlo/stablehlo/dialect/TypeInference.h
 +++ stablehlo/stablehlo/dialect/TypeInference.h
@@ -110,4 +129,22 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/d
  
  //===----------------------------------------------------------------------===//
  // Shape functions for ops.
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
+@@ -1485,14 +1485,6 @@
+ // CHECK-LABEL: func @dot_precision_config
+ func.func @dot_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -> tensor<2x2xi32> {
+   %0 = "stablehlo.dot"(%arg0, %arg1) {precision_config = [#stablehlo<precision HIGH>, #stablehlo<precision HIGHEST>]} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+-  func.return %0: tensor<2x2xi32>
+-}
+-
+-// -----
+-
+-func.func @dot_precision_invalid_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -> tensor<2x2xi32> {
+-  // expected-error@+1 {{expects precision config to be null or of size 2.}}
+-  %0 = "stablehlo.dot"(%arg0, %arg1) {precision_config = [#stablehlo<precision HIGH>]} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+   func.return %0: tensor<2x2xi32>
+ }
+ 
 

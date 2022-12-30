@@ -7953,6 +7953,8 @@ struct MhloHloDialectInterface : public hlo::HloDialectInterface {
     return TokenType::get(getDialect()->getContext());
   }
 
+  bool isTokenType(Type type) const override { return type.isa<TokenType>(); }
+
   Attribute createTypeExtensions(ArrayRef<int64_t> bounds) const override {
     return TypeExtensionsAttr::get(getDialect()->getContext(), bounds);
   }
