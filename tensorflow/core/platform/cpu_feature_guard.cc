@@ -126,16 +126,6 @@ absl::once_flag g_cpu_feature_guard_warn_once_flag;
 void InfoAboutUnusedCPUFeatures() {
   absl::call_once(g_cpu_feature_guard_warn_once_flag, [] {
     std::string missing_instructions;
-#if defined(_MSC_VER) && !defined(__clang__)
-
-#ifndef __AVX__
-    CheckIfFeatureUnused(CPUFeature::AVX, "AVX", missing_instructions);
-#endif  // __AVX__
-#ifndef __AVX2__
-    CheckIfFeatureUnused(CPUFeature::AVX2, "AVX2", missing_instructions);
-#endif  // __AVX2__
-
-#else  // if defined(_MSC_VER) && !defined(__clang__)
 
 #ifndef __SSE__
     CheckIfFeatureUnused(CPUFeature::SSE, "SSE", missing_instructions);
@@ -188,7 +178,6 @@ void InfoAboutUnusedCPUFeatures() {
 #ifndef __FMA__
     CheckIfFeatureUnused(CPUFeature::FMA, "FMA", missing_instructions);
 #endif  // __FMA__
-#endif  // else of if defined(_MSC_VER) && !defined(__clang__)
     if (!missing_instructions.empty()) {
       LOG(INFO) << "This TensorFlow binary is optimized with "
                 << "oneAPI Deep Neural Network Library (oneDNN) "
