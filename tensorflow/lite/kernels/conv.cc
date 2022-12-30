@@ -397,7 +397,7 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
 
     // Check we have quantized_bias_type is either kTfLiteInt64 or kTfLiteInt32.
-    if (params->quantized_bias_type) {
+    if (params->quantized_bias_type != kTfLiteFloat32) {
       TF_LITE_ENSURE(context, params->quantized_bias_type == kTfLiteInt32 ||
                                   params->quantized_bias_type == kTfLiteInt64);
       TF_LITE_ENSURE(context,
