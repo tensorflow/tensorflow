@@ -499,7 +499,7 @@ def TFGraph_YieldOp : TFG_IntrinsicOp<"yield",
     data operands matches the number of results of the parent operation.
 
     The semantics of function calls in TensorFlow mean that the region "returns"
-    data operands as they become avaiable so that users can start executing
+    data operands as they become available so that users can start executing
     immediately. All functional control-flow operations behave as multi-device
     function calls, which means that the control result of the parent operation
     depends on the control operands of the `yield`.
