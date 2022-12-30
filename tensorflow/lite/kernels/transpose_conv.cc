@@ -370,8 +370,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
     scratch_buffer->type =
         input->type == kTfLiteInt16 ? kTfLiteInt64 : kTfLiteInt32;
-    if (params->quantized_bias_type) {
-      scratch_buffer->type = params->quantized_bias_type;
+    if (data->quantized_bias_type != kTfLiteNoType) {
+      scratch_buffer->type = data->quantized_bias_type;
     }
 
     scratch_buffer->allocation_type = kTfLiteDynamic;
