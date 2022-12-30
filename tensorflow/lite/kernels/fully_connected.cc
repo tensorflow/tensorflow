@@ -1064,7 +1064,9 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
           bool has_non_zero_point = input->params.zero_point ||
                                     filter->params.zero_point ||
                                     output->params.zero_point;
-          if (kernel_type == kGenericOptimized && !has_non_zero_point) {
+          if (kernel_type == kGenericOptimized &&
+              data->quantized_bias_type == kTfLiteInt32 &&
+              !has_non_zero_point) {
             is_per_channel
                 ? optimized_integer_ops::FullyConnectedPerChannel(
                       op_params, data->per_channel_output_multiplier.data(),
