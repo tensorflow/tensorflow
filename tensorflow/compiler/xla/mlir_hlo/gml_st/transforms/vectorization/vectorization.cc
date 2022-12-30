@@ -775,6 +775,7 @@ struct VectorizePerfectlyTiledLoopsPass
 
     {
       RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
+      linalg::populatePadOpVectorizationPatterns(patterns);
       patterns.add<MaterializeUpdateTransferWriteTensorOperand,
                    SetYieldUpdateTransferWriteTensorOperand>(ctx);
       (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
