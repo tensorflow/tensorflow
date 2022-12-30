@@ -603,6 +603,20 @@ cc_library(
 )
 
 cc_library(
+    name = "function_fuzz",
+    testonly = 1,
+    hdrs = ["function.h"],
+    visibility = [
+        "//tensorflow/security/fuzzing/domains:__subpackages__",
+        "//tensorflow/security/fuzzing/core/framework:__subpackages__",
+        ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "bfloat16",
     srcs = ["bfloat16.cc"],
     hdrs = ["bfloat16.h"],
