@@ -253,9 +253,9 @@ LogicalResult materializeInsertion(OpBuilder &b, Value update, Value set,
 struct MaterializeOpInterface
     : public BufferizableOpInterface::ExternalModel<MaterializeOpInterface,
                                                     MaterializeOp> {
-  bool bufferizesToMemoryRead(Operation * /*op*/, OpOperand & /*opOperand*/,
+  bool bufferizesToMemoryRead(Operation * /*op*/, OpOperand &opOperand,
                               const AnalysisState & /*state*/) const {
-    return false;
+    return opOperand.getOperandNumber() == 0;
   }
 
   bool bufferizesToMemoryWrite(Operation * /*op*/, OpOperand & /*opOperand*/,
