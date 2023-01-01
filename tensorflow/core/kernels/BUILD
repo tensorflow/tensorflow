@@ -32,6 +32,12 @@ load(
     "mkl_deps",
 )
 load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+    "rocm_hipblaslt",
+    "if_rocm_hipblaslt",
+)
+load(
     "//third_party/mkl_dnn:build_defs.bzl",
     "if_onednn_v3",
 )
@@ -3469,12 +3475,9 @@ tf_kernel_library(
         ":loose_headers",
         "//tensorflow/tsl/framework/contraction:eigen_contraction_kernel",
     ] + mkl_deps() + if_cuda([
-        ":matmul_util",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_asm_opts",
-        "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
-        "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
-        "//tensorflow/core/profiler/lib:scoped_annotation",
+    ]) + if_rocm_hipblaslt([
+        "//tensorflow/compiler/xla/stream_executor/rocm:hipblas_lt_header",
     ]) + if_cuda_or_rocm([
         ":conv_ops_gpu_hdrs",
         ":gpu_utils",
@@ -3488,9 +3491,9 @@ tf_kernel_library(
 
 cc_library(
     name = "matmul_util",
-    srcs = if_cuda(["matmul_util.cc"]),
-    hdrs = if_cuda(["matmul_util.h"]),
-    deps = if_cuda([
+    srcs = ["matmul_util.cc"],
+    hdrs = ["matmul_util.h"],
+    deps = if_cuda_or_rocm([
         "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
@@ -3498,7 +3501,12 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:tensor_float_32_hdr_lib",
         "//tensorflow/core/util:env_var",
+    ]) + if_cuda([
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lt_header",
+    ]) + if_rocm([
+        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "//tensorflow/compiler/xla/stream_executor/rocm:hipblas_lt_header",
     ]) + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
 )
 

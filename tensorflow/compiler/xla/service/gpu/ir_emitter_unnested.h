@@ -197,8 +197,10 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitConditional(mlir::Operation* op);
   Status EmitConvolutionThunk(mlir::Operation* op);
   Status EmitGemmThunk(mlir::Operation* op);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
   Status EmitCublasLtMatmulThunk(mlir::Operation* op);
+#endif
+#if GOOGLE_CUDA
   Status EmitCublasLtMatmulThunkF8(mlir::Operation* op);
   Status EmitConvolutionReorderThunk(mlir::Operation* op);
   Status EmitTritonFusion(

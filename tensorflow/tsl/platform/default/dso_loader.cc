@@ -166,6 +166,10 @@ StatusOr<void*> GetHipsparseDsoHandle() {
   return GetDsoHandle("hipsparse", "");
 }
 
+StatusOr<void*> GetHipblasltDsoHandle() {
+  return GetDsoHandle("hipblaslt", "");
+}
+
 StatusOr<void*> GetHipDsoHandle() { return GetDsoHandle("amdhip64", ""); }
 
 }  // namespace DsoLoader
@@ -260,6 +264,11 @@ StatusOr<void*> GetHipsolverDsoHandle() {
 
 StatusOr<void*> GetHipsparseDsoHandle() {
   static auto result = new auto(DsoLoader::GetHipsparseDsoHandle());
+  return *result;
+}
+
+StatusOr<void*> GetHipblasltDsoHandle() {
+  static auto result = new auto(DsoLoader::GetHipblasltDsoHandle());
   return *result;
 }
 

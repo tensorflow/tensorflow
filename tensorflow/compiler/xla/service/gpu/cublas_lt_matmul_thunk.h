@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUBLAS_LT_MATMUL_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUBLAS_LT_MATMUL_THUNK_H_
 
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
+
+#if GOOGLE_CUDA || TF_HIPBLASLT
 #include <optional>
 #include <utility>
 
@@ -23,7 +28,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/status.h"
+#if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
+#else
+#include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
+#endif
 
 namespace xla {
 namespace gpu {
@@ -59,10 +68,11 @@ class CublasLtMatmulThunk : public Thunk {
   BufferAllocation::Slice c_scale_buffer_;
   BufferAllocation::Slice d_scale_buffer_;
   BufferAllocation::Slice d_amax_buffer_;
-  std::optional<se::cuda::BlasLt::MatmulAlgorithm> algorithm_;
+  std::optional<se::gpu::BlasLt::MatmulAlgorithm> algorithm_;
 };
 
 }  // namespace gpu
 }  // namespace xla
 
+#endif // GOOGLE_CUDA || TF_HIPBLASLT
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUBLAS_LT_MATMUL_THUNK_H_

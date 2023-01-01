@@ -145,7 +145,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/protobuf/dnn.pb.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
 #include "tensorflow/compiler/xla/service/gpu/cublas_lt_matmul_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_triton.h"
 #endif  // GOOGLE_CUDA
@@ -1155,7 +1155,7 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
   return OkStatus();
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
 
 Status IrEmitterUnnested::EmitCublasLtMatmulThunk(mlir::Operation* op) {
   auto matmul = mlir::dyn_cast<mlir::lmhlo_gpu::CublasLtMatmulOp>(op);
@@ -1185,7 +1185,9 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunk(mlir::Operation* op) {
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
 }
+#endif
 
+#if GOOGLE_CUDA
 Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
   auto matmul = mlir::dyn_cast<mlir::lmhlo_gpu::CublasLtMatmulF8Op>(op);
   TF_RET_CHECK(matmul != nullptr);
@@ -5975,10 +5977,12 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
     return EmitGemmThunk(op);
   }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
   if (mlir::isa<mlir::lmhlo_gpu::CublasLtMatmulOp>(op)) {
     return EmitCublasLtMatmulThunk(op);
   }
+#endif
+#if GOOGLE_CUDA  
   if (mlir::isa<mlir::lmhlo_gpu::CublasLtMatmulF8Op>(op)) {
     return EmitCublasLtMatmulThunkF8(op);
   }

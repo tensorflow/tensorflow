@@ -118,8 +118,8 @@ void RegisterXlaGpuTypeIdNames(TypeIDNameRegistry& registry) {
   RegisterConvTypeIdNames(registry);
   RegisterSendRecvTypeIdNames(registry);
 
-#if GOOGLE_CUDA
-  registry.Register<Tagged<se::cuda::BlasLt::Epilogue>>(
+#if GOOGLE_CUDA || TF_HIPBLASLT
+  registry.Register<Tagged<se::gpu::BlasLt::Epilogue>>(
       "__type_id_se_cublas_lt_epilogue");
 #endif  // GOOGLE_CUDA
 }
@@ -130,7 +130,7 @@ void RegisterXlaGpuAttrEncoding(CustomCallAttrEncodingSet& encoding) {
   PopulateDotDimsAttrEncoding(encoding);
   PopulateSendRecvAttrEncoding(encoding);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
   PopulateCublasLtMatmulAttrEncoding(encoding);
 #endif  // GOOGLE_CUDA
 }

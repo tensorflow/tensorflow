@@ -14,13 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/cublas_lt_matmul_thunk.h"
-
+#if GOOGLE_CUDA || TF_HIPBLASLT
 #include <utility>
 
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/status.h"
+#if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
+#else
+#include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
+#endif
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/tsl/platform/logging.h"
 
@@ -53,7 +57,7 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
 Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (!algorithm_) {
     TF_ASSIGN_OR_RETURN(
-        std::vector<se::cuda::BlasLt::MatmulAlgorithm> algorithms,
+        std::vector<se::gpu::BlasLt::MatmulAlgorithm> algorithms,
         plan_.GetAlgorithms(params.stream));
     TF_RET_CHECK(algorithm_idx_ >= 0 && algorithm_idx_ < algorithms.size());
     algorithm_ = algorithms[algorithm_idx_];
@@ -98,3 +102,5 @@ Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 }  // namespace gpu
 }  // namespace xla
+
+#endif

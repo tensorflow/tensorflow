@@ -1548,7 +1548,7 @@ class RemapperFuseMatMulWithBiasTest : public RemapperTest {
 
 TEST_F(RemapperFuseMatMulWithBiasTest, F16) {
   bool skip_test = false;
-#if !defined(GOOGLE_CUDA)
+#if !defined(GOOGLE_CUDA) || !TF_HIPBLASLT
   skip_test = true;
 #endif
   if (skip_test || GetNumAvailableGPUs() == 0) {
@@ -1756,7 +1756,7 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
 
 TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, F16) {
   bool skip_test = false;
-#if !defined(GOOGLE_CUDA)
+#if !defined(GOOGLE_CUDA) || !TF_HIPBLASLT
   skip_test = true;
 #endif
   if (skip_test || GetNumAvailableGPUs() == 0) {

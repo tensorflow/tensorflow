@@ -23,12 +23,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cublasLt.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
+#endif
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
+#if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_utils.h"
+#else
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_blas.h"
+#endif
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_helpers.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
@@ -48,7 +54,11 @@ limitations under the License.
   }()
 
 namespace stream_executor {
+#if GOOGLE_CUDA
 namespace cuda {
+#else
+namespace rocm {
+#endif
 namespace {
 
 template <typename T>
@@ -101,7 +111,12 @@ tsl::StatusOr<cublasLtEpilogue_t> AsCublasLtEpilogue(
       return CUBLASLT_EPILOGUE_BIAS;
     case BlasLt::Epilogue::kBiasThenReLU:
       return CUBLASLT_EPILOGUE_RELU_BIAS;
-#if CUDA_VERSION >= 11040
+#if TENSORFLOW_USE_ROCM
+    case BlasLt::Epilogue::kGELU:
+      return CUBLASLT_EPILOGUE_GELU;
+    default:
+      return tsl::errors::Internal("Unsupported epilogue");
+#elif CUDA_VERSION >= 11040
     case BlasLt::Epilogue::kGELU:
       return CUBLASLT_EPILOGUE_GELU;
     case BlasLt::Epilogue::kGELUWithAux:
@@ -145,10 +160,15 @@ tsl::Status BlasLt::Init() {
                                  num_cols, *leading_dim_stride));
   // Wrap cublas handle immediately, so it is cleaned up if an error occurs.
   BlasLt::MatrixLayout layout(cu_layout);
+#if GOOGLE_CUDA
   TF_RETURN_IF_ERROR(
       SetAttr(cu_layout, CUBLASLT_MATRIX_LAYOUT_ORDER,
               int32_t{(order == Order::kRowMajor) ? CUBLASLT_ORDER_ROW
                                                   : CUBLASLT_ORDER_COL}));
+#else
+  if(order != Order::kColumnMajor)
+    return tsl::errors::Internal("HipblasLT does not support row-major matrices");
+#endif
   TF_RETURN_IF_ERROR(SetAttr(cu_layout, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT,
                              static_cast<int32_t>(batch_size)));
 
@@ -162,8 +182,12 @@ tsl::Status BlasLt::Init() {
 }
 
 cudaDataType_t BlasLt::MatrixLayout::type() const {
+#if GOOGLE_CUDA
   return static_cast<cudaDataType_t>(
       GetAttr<uint32_t>(handle_.get(), CUBLASLT_MATRIX_LAYOUT_TYPE).value());
+#else
+  return HIPBLAS_R_32F;
+#endif
 }
 
 /*static*/ tsl::StatusOr<BlasLt::MatmulDesc> BlasLt::MatmulDesc::Create(
@@ -171,12 +195,20 @@ cudaDataType_t BlasLt::MatrixLayout::type() const {
     blas::Transpose trans_a, blas::Transpose trans_b, BlasLt::Epilogue epilogue,
     BlasLt::PointerMode pointer_mode) {
   cublasLtMatmulDesc_t cu_desc;
+  VLOG(2) << "BlasLt::MatmulDesc::Create compute_type" << int(compute_type) 
+      << " scale_type " << int(scale_type) << " epilogue " << int(epilogue)
+      << " pointer_mode " << int(pointer_mode);
   SE_CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescCreate(
       &cu_desc, AsCublasComputeType(compute_type), AsCudaDataType(scale_type)));
   // Wrap cublas handle immediately, so it is cleaned up if an error occurs.
   BlasLt::MatmulDesc desc(cu_desc);
+#if GOOGLE_CUDA
   TF_RETURN_IF_ERROR(SetAttr(cu_desc, CUBLASLT_MATMUL_DESC_POINTER_MODE,
                              AsCublasLtPointerMode(pointer_mode)));
+#else
+  if(pointer_mode != BlasLt::PointerMode::kHost)
+    return tsl::errors::Internal("hipblaslt does not support device pointers");
+#endif
   TF_RETURN_IF_ERROR(SetAttr(cu_desc, CUBLASLT_MATMUL_DESC_TRANSA,
                              AsCublasOperation(trans_a)));
   TF_RETURN_IF_ERROR(SetAttr(cu_desc, CUBLASLT_MATMUL_DESC_TRANSB,
@@ -187,20 +219,32 @@ cudaDataType_t BlasLt::MatrixLayout::type() const {
 }
 
 cublasComputeType_t BlasLt::MatmulDesc::compute_type() const {
+#if GOOGLE_CUDA
   return static_cast<cublasComputeType_t>(
       GetAttr<int32_t>(handle_.get(), CUBLASLT_MATMUL_DESC_COMPUTE_TYPE)
           .value());
+#else
+  return HIPBLASLT_COMPUTE_F32;
+#endif
 }
 
 cudaDataType_t BlasLt::MatmulDesc::scale_type() const {
+#if GOOGLE_CUDA
   return static_cast<cudaDataType_t>(
       GetAttr<int32_t>(handle_.get(), CUBLASLT_MATMUL_DESC_SCALE_TYPE).value());
+#else
+  return HIPBLAS_R_32F;
+#endif
 }
 
 cublasLtPointerMode_t BlasLt::MatmulDesc::pointer_mode() const {
+#if GOOGLE_CUDA
   return static_cast<cublasLtPointerMode_t>(
       GetAttr<int32_t>(handle_.get(), CUBLASLT_MATMUL_DESC_POINTER_MODE)
           .value());
+#else
+  return HIPBLAS_POINTER_MODE_HOST;
+#endif
 }
 
 /*static*/ tsl::StatusOr<BlasLt::MatmulPreference>
@@ -227,11 +271,23 @@ tsl::StatusOr<std::vector<BlasLt::MatmulAlgorithm>> BlasLt::GetMatmulAlgorithms(
     gpu::ScopedActivateExecutorContext sac{parent_};
 
     int found_algorithm_count = 0;
+/*
     SE_CUBLAS_RETURN_IF_ERROR(cublasLtMatmulAlgoGetHeuristic(
         blas_lt_.get(), plan.op_desc.get(), plan.a_desc.get(),
         plan.b_desc.get(), plan.c_desc.get(), plan.d_desc.get(),
         preference.get(), max_algorithm_count, results.data(),
         &found_algorithm_count));
+*/
+    auto error = cublasLtMatmulAlgoGetHeuristic(
+        blas_lt_.get(), plan.op_desc.get(), plan.a_desc.get(),
+        plan.b_desc.get(), plan.c_desc.get(), plan.d_desc.get(),
+        preference.get(), max_algorithm_count, results.data(),
+        &found_algorithm_count);
+    if(error != 0) {
+        printf("cublasLtMatmulAlgoGetHeuristic return %d\n", int(error));
+        fflush(stdout);
+        SE_CUBLAS_RETURN_IF_ERROR(error);
+    }
     results.resize(found_algorithm_count);
   }
 
@@ -281,6 +337,7 @@ tsl::Status BlasLt::DoMatmul(Stream* stream, const BlasLt::MatmulPlan& plan,
                                  CUBLASLT_MATMUL_DESC_BIAS_POINTER,
                                  bias.opaque()));
     }
+#if GOOGLE_CUDA
 #if CUDA_VERSION >= 11080
     if (a_scale != nullptr) {
       TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
@@ -344,7 +401,18 @@ tsl::Status BlasLt::DoMatmul(Stream* stream, const BlasLt::MatmulPlan& plan,
           "Auxiliary inputs / outputs require cublasLt >= 11.4");
 #endif
     }
+#else
+    if ((a_scale != nullptr) || (b_scale != nullptr) 
+      || (c_scale != nullptr) || (d_scale != nullptr))
+      return tsl::errors::Internal("hipblaslt does not support scale");
 
+    if (d_amax != nullptr)
+      return tsl::errors::Internal("hipblaslt does not support amax");
+
+    if (aux != nullptr)
+      return tsl::errors::Internal(
+          "hipblaslt does not support auxiliary inputs / outputs");
+#endif
     gpu::ScopedActivateExecutorContext sac{parent_};
 
     SE_CUBLAS_RETURN_IF_ERROR(cublasLtMatmul(
@@ -363,7 +431,12 @@ tsl::Status BlasLt::DoMatmul(Stream* stream, const BlasLt::MatmulPlan& plan,
 }
 
 BlasLt* GetBlasLt(Stream* stream) {
-  CUDABlas* blas = dynamic_cast<CUDABlas*>(stream->parent()->AsBlas());
+#if GOOGLE_CUDA
+  using blastype = CUDABlas;
+#else
+  using blastype = gpu::ROCMBlas;
+#endif
+  blastype* blas = dynamic_cast<blastype*>(stream->parent()->AsBlas());
   return (blas != nullptr) ? &blas->blas_lt() : nullptr;
 }
 

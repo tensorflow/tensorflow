@@ -204,6 +204,11 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+#if GOOGLE_CUDA
+using ComputeCap = se::CudaComputeCapability;
+#else
+using ComputeCap = se::RocmComputeCapability;
+#endif
 namespace {
 
 bool ConvIsLowerable(HloInstruction* conv) {
@@ -434,10 +439,14 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     pipeline.AddPass<TopkDecomposer>();
 
     HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
+#if GOOGLE_CUDA      
       return !stream_exec->GetDeviceDescription()
                   .cuda_compute_capability()
                   .IsAtLeast(se::CudaComputeCapability::VOLTA) ||
              !gpu::IsMatrixMultiplication(*instr);
+#else  // TENSORFLOW_USE_ROCM
+      return !gpu::IsMatrixMultiplication(*instr);
+#endif
     };
 
     pipeline.AddPass<OperandUpcaster>(upcaster_filter);
@@ -873,6 +882,10 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     });
     pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
 
+    auto compute_capability = 
+      std::get<ComputeCap>(gpu_target_config.gpu_version);
+
+#if GOOGLE_CUDA
     // Rewrite GEMMs into custom calls.
     if (debug_options.xla_gpu_enable_triton_gemm() &&
         std::holds_alternative<se::CudaComputeCapability>(
@@ -883,8 +896,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
         pipeline.AddPass<GemmRewriterTriton>(gpu_target_config.gpu_version);
       }
     }
+#endif    
     pipeline.AddPass<GemmRewriter>(gpu_target_config.gpu_version);
-
     // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
     pipeline.AddPass<GemmBroadcastFoldingRewriter>();
 
