@@ -33,13 +33,18 @@ limitations under the License.1
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "rocm/rocm_config.h"
 
+#if GOOGLE_CUDA || TF_HIPBLASLT
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
+#else
+#include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
+#endif
 #endif  // GOOGLE_CUDA
 
 namespace xla {
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
 
 using xla::runtime::CustomCall;
 using xla::runtime::CustomCallAttrEncodingSet;
@@ -54,7 +59,7 @@ namespace lmhlo_gpu = ::mlir::lmhlo_gpu;
 //===----------------------------------------------------------------------===//
 
 namespace runtime {
-XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(se::cuda::BlasLt::Epilogue);
+XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(se::gpu::BlasLt::Epilogue);
 }  // namespace runtime
 
 //===----------------------------------------------------------------------===//
@@ -66,9 +71,9 @@ namespace gpu {
 void PopulateCublasLtMatmulAttrEncoding(CustomCallAttrEncodingSet& encoding) {
   encoding.Add<EnumAttrEncoding<lmhlo_gpu::CublasLtMatmulEpilogueAttr,
                                 lmhlo_gpu::CublasLtMatmulEpilogue,
-                                se::cuda::BlasLt::Epilogue>>(
+                                se::gpu::BlasLt::Epilogue>>(
       [](lmhlo_gpu::CublasLtMatmulEpilogue value)
-          -> se::cuda::BlasLt::Epilogue {
+          -> se::gpu::BlasLt::Epilogue {
         return cublas_lt::AsBlasLtEpilogue(value).value();
       });
 }
@@ -89,7 +94,7 @@ static absl::Status CublasLtMatmulImpl(
     std::optional<StridedMemrefView> d_scale,
     std::optional<StridedMemrefView> d_amax, int64_t algorithm,
     double alpha_real, double alpha_imag, double beta,
-    DotDimensionNumbers dot_dims, se::cuda::BlasLt::Epilogue epilogue,
+    DotDimensionNumbers dot_dims, se::gpu::BlasLt::Epilogue epilogue,
     absl::Span<const int32_t> precision) {
   VLOG(3) << "Running CublasLtMatmul";
   se::Stream* stream = run_options->stream();
@@ -156,7 +161,7 @@ auto BindMatmulAttributes(runtime::CustomCallBinding<Ts...> binding) {
       .template Attr<double>("alpha_imag")
       .template Attr<double>("beta")
       .template Attr<DotDimensionNumbers>("dot_dims")
-      .template Attr<se::cuda::BlasLt::Epilogue>("epilogue")
+      .template Attr<se::gpu::BlasLt::Epilogue>("epilogue")
       .template Attr<absl::Span<const int32_t>>("precision");
 }
 

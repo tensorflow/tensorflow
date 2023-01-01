@@ -26,6 +26,10 @@ limitations under the License.
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/public/session.h"
 
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
+
 namespace tensorflow {
 namespace {
 
@@ -181,23 +185,24 @@ class FusedMatMulOpTest : public OpsTestBase {
                      .Attr("transpose_b", transpose_b)
                      .Finalize(&fused_matmul));
 
-#if TENSORFLOW_USE_ROCM
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+    printf("Disallowing the FusedMatMul GPU test (neither CUDA nor ROCM observed)\n");
     allow_gpu_device = false;
 #endif
     RunAndFetch(root, fused_matmul.name(), output, allow_gpu_device,
                 &fused_matmul);
   }
 
-  void VerifyBiasAddTensorsNear(int m, int k, int n,
+  void VerifyBiasAddTensorsNear(int m, int k, int n, bool ta, bool tb,
                                 const BiasAddGraphRunner& run_default,
                                 const BiasAddGraphRunner& run_fused) {
     DataType dtype = DataTypeToEnum<T>::v();
 
-    Tensor lhs(dtype, {m, k});
+    Tensor lhs(dtype, {ta ? k : m, ta ? m : k});
     lhs.flat<T>() = lhs.flat<T>().setRandom();
 
     // Add some negative values to filter to properly test Relu.
-    Tensor rhs(dtype, {k, n});
+    Tensor rhs(dtype, {tb ? n : k, tb ? k : n});
     rhs.flat<T>() = rhs.flat<T>().setRandom();
     rhs.flat<T>() -= rhs.flat<T>().constant(static_cast<T>(0.5f));
 
@@ -223,6 +228,7 @@ class FusedMatMulOpTest : public OpsTestBase {
   // FusedMatMul.
   void VerifyMatMulWithBias(int m, int k, int n, bool transpose_a,
                             bool transpose_b) {
+    printf("=== VerifyMatMulWithBias ( %d, %d, %d, %d, %d ) ===\n", m, k, n, (int)transpose_a, (int)transpose_b);
     const BiasAddGraphRunner run_default =
         [&](const Tensor& input_data, const Tensor& filter_data,
             const Tensor& bias_data, Tensor* out) {
@@ -238,7 +244,7 @@ class FusedMatMulOpTest : public OpsTestBase {
                            /*allow_gpu_device=*/true);
         };
 
-    VerifyBiasAddTensorsNear(m, k, n, run_default, run_fused);
+    VerifyBiasAddTensorsNear(m, k, n, transpose_a, transpose_b, run_default, run_fused);
   }
 
   // Verifies that computing MatMul+BiasAdd+{Activation} in a graph is identical
@@ -264,7 +270,7 @@ class FusedMatMulOpTest : public OpsTestBase {
                        /*allow_gpu_device=*/activation == "Relu");
     };
 
-    VerifyBiasAddTensorsNear(m, k, n, run_default, run_fused);
+    VerifyBiasAddTensorsNear(m, k, n, transpose_a, transpose_b, run_default, run_fused);
   }
 };
 
@@ -281,18 +287,20 @@ TYPED_TEST_SUITE_P(FusedMatMulWithBiasOpTest);
 // -------------------------------------------------------------------------- //
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x256) {
-  this->VerifyMatMulWithBias(256, 256, 256, false, false);
-  this->VerifyMatMulWithBias(256, 256, 256, true, false);
-  this->VerifyMatMulWithBias(256, 256, 256, false, true);
-  this->VerifyMatMulWithBias(256, 256, 256, true, true);
+  this->VerifyMatMulWithBias(256, 128, 64, false, false);
+  this->VerifyMatMulWithBias(256, 128, 64, true, false);
+  this->VerifyMatMulWithBias(256, 128, 64, false, true);
+  this->VerifyMatMulWithBias(256, 128, 64, true, true);
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x256) {
   this->VerifyMatMulWithBias(1, 256, 256, false, false);
+  this->VerifyMatMulWithBias(4, 128, 256, false, false);
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x1) {
   this->VerifyMatMulWithBias(256, 256, 1, false, false);
+  this->VerifyMatMulWithBias(256, 128, 4, false, false);
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x1) {
@@ -301,13 +309,13 @@ TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x1) {
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x256WithActivation) {
   for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
-    this->VerifyConv2DWithBiasAndActivation(256, 256, 256, false, false,
+    this->VerifyConv2DWithBiasAndActivation(256, 128, 64, false, false,
                                             activation);
-    this->VerifyConv2DWithBiasAndActivation(256, 256, 256, true, false,
+    this->VerifyConv2DWithBiasAndActivation(256, 128, 64, true, false,
                                             activation);
-    this->VerifyConv2DWithBiasAndActivation(256, 256, 256, false, true,
+    this->VerifyConv2DWithBiasAndActivation(256, 128, 64, false, true,
                                             activation);
-    this->VerifyConv2DWithBiasAndActivation(256, 256, 256, true, true,
+    this->VerifyConv2DWithBiasAndActivation(256, 128, 64, true, true,
                                             activation);
   }
 }

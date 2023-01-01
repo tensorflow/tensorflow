@@ -205,6 +205,11 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+#if GOOGLE_CUDA
+using ComputeCap = se::CudaComputeCapability;
+#else
+using ComputeCap = se::RocmComputeCapability;
+#endif
 namespace {
 
 bool ConvIsLowerable(HloInstruction* conv) {
@@ -438,9 +443,9 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
 #if GOOGLE_CUDA
       return !stream_exec->GetDeviceDescription()
                   .cuda_compute_capability()
-                  .IsAtLeast(se::CudaComputeCapability::VOLTA) ||        
+                  .IsAtLeast(se::CudaComputeCapability::VOLTA) ||
              !gpu::IsMatrixMultiplication(*instr);
-#elif TENSORFLOW_USE_ROCM      
+#elif TENSORFLOW_USE_ROCM
       return !gpu::IsMatrixMultiplication(*instr);
 #endif
     };
@@ -863,13 +868,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     });
     pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
 
-#if GOOGLE_CUDA
-    const stream_executor::CudaComputeCapability& compute_capability =
-        std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
-#elif TENSORFLOW_USE_ROCM
-    const stream_executor::RocmComputeCapability& compute_capability =
-        std::get<se::RocmComputeCapability>(gpu_target_config.gpu_version);
-#endif
+    auto compute_capability = 
+      std::get<ComputeCap>(gpu_target_config.gpu_version);
 
 #if GOOGLE_CUDA
     // Rewrite GEMMs into custom calls.
@@ -884,11 +884,10 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
         pipeline.AddPass<GemmRewriterTriton>(gpu_target_config.gpu_version);
       }
     }
+#endif    
     pipeline.AddPass<GemmRewriter>(gpu_target_config.gpu_version);
-
     // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
     pipeline.AddPass<GemmBroadcastFoldingRewriter>();
-#endif
     if (debug_options.xla_gpu_normalize_layouts()) {
       pipeline.AddPass<LayoutNormalization>(&NormalizeLayoutForGpuCustomCalls);
       pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);

@@ -21,6 +21,9 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -184,14 +187,13 @@ class MatOpsDotAddTest
     bool row_major = std::get<0>(GetParam());
     bool add_lhs = std::get<1>(GetParam());
     bool transpose = std::get<2>(GetParam());
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
     bool use_cublaslt = std::get<3>(GetParam());
-#ifndef GOOGLE_CUDA
-    use_cublaslt = false;
+#else
+    bool use_cublaslt = false;
 #endif
     execution_options_.mutable_debug_options()->set_xla_gpu_enable_cublaslt(
         use_cublaslt);
-#endif
     Array2D<T> lhs({{1.0f, 2.0f}, {3.0f, 4.0f}});
     Array2D<T> rhs({{10.0f, 11.0f}, {12.0f, 13.0f}});
 
@@ -285,14 +287,13 @@ class MatOpsDotAddTest
   void TestImplBiasAddEpilogueFusion() {
     bool row_major = std::get<0>(GetParam());
     bool transpose = std::get<2>(GetParam());
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
     bool use_cublaslt = std::get<3>(GetParam());
-#ifndef GOOGLE_CUDA
-    use_cublaslt = false;
+#else
+    bool use_cublaslt = false;
 #endif
     execution_options_.mutable_debug_options()->set_xla_gpu_enable_cublaslt(
         use_cublaslt);
-#endif
     Array2D<T> lhs({{1.0f, 2.0f}, {3.0f, 4.0f}});
     Array2D<T> rhs({{10.0f, 11.0f}, {12.0f, 13.0f}});
     auto minor_to_major = [](bool row_major) -> std::vector<int64_t> {
@@ -336,15 +337,13 @@ class MatOpsDotAddTest
   void TestImplReluActivationEpilogueFusion() {
     bool row_major = std::get<0>(GetParam());
     bool transpose = std::get<2>(GetParam());
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
     bool use_cublaslt = std::get<3>(GetParam());
-#if GOOGLE_CUDA
 #else
-    use_cublaslt = false;
+    bool use_cublaslt = false;
 #endif
     execution_options_.mutable_debug_options()->set_xla_gpu_enable_cublaslt(
         use_cublaslt);
-#endif
     Array2D<T> lhs({{-1.0f, 2.0f}, {3.0f, 4.0f}});
     Array2D<T> rhs({{10.0f, 11.0f}, {-12.0f, 13.0f}});
     auto minor_to_major = [](bool row_major) -> std::vector<int64_t> {
@@ -383,14 +382,13 @@ class MatOpsDotAddTest
   void TestImplBiasAddReluActivationEpilogueFusion() {
     bool row_major = std::get<0>(GetParam());
     bool transpose = std::get<2>(GetParam());
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
     bool use_cublaslt = std::get<3>(GetParam());
-#ifndef GOOGLE_CUDA
-    use_cublaslt = false;
+#else
+    bool use_cublaslt = false;
 #endif
     execution_options_.mutable_debug_options()->set_xla_gpu_enable_cublaslt(
         use_cublaslt);
-#endif
     Array2D<T> lhs({{-1.0f, 2.0f}, {3.0f, 4.0f}});
     Array2D<T> rhs({{10.0f, 11.0f}, {-12.0f, 13.0f}});
     auto minor_to_major = [](bool row_major) -> std::vector<int64_t> {

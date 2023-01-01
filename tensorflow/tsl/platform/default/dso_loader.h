@@ -86,6 +86,7 @@ StatusOr<void*> GetRocsolverDsoHandle();
 StatusOr<void*> GetHipsolverDsoHandle();
 StatusOr<void*> GetRoctracerDsoHandle();
 StatusOr<void*> GetHipsparseDsoHandle();
+StatusOr<void*> GetHipblasltDsoHandle();
 StatusOr<void*> GetHipDsoHandle();
 }  // namespace CachedDsoLoader
 
