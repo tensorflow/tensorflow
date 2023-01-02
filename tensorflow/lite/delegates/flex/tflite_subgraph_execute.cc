@@ -125,15 +125,11 @@ class TfLiteSubgraphExecute : public OpKernel {
     // Copy input tensors to subgraph.
     SetSubgraphInput(ctx, subgraph_selected, resource->GetFlexDelegate());
 
-    // Cache the invocation result in case it fails so that the shared output
-    // tensors can be passed over to TF for deallocation.
-    TfLiteStatus invoke_result = subgraph_selected.Invoke();
+    OP_REQUIRES(ctx, subgraph_selected.Invoke() == kTfLiteOk,
+                errors::Internal("Failed to invoke tflite subgraph"));
 
     // Copy tflite results.
     CopyTFLiteSubgraphResult(ctx, subgraph_selected);
-
-    OP_REQUIRES(ctx, invoke_result == kTfLiteOk,
-                errors::Internal("Failed to invoke tflite subgraph"));
   }
 
  private:
