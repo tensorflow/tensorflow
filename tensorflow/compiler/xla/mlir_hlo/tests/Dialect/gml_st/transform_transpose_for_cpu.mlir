@@ -46,3 +46,30 @@ func.func @peel_transpose(%input: tensor<16x32x65xf32>,
 // CHECK-DAG: %[[C65:.*]] = arith.constant 65 :
 // CHECK: gml_st.parallel {{.*}} (%[[C0]], %[[C0]], %[[C0]]) to (%[[C16]], %[[C32]], %[[C64]])
 // CHECK: gml_st.parallel {{.*}} (%[[C0]], %[[C0]], %[[C64]]) to (%[[C16]], %[[C32]], %[[C65]])
+
+// -----
+
+func.func @do_not_tile_inside_scf_for(%input: tensor<16x16xf32>,
+    %init: tensor<16x16xf32>) -> tensor<16x16xf32> {
+  %c0 = arith.constant 0 : index
+  %c16 = arith.constant 16 : index
+  %c8 = arith.constant 8 : index
+  %10 = scf.for %arg2 = %c0 to %c16 step %c8 iter_args(%arg3 = %init) -> (tensor<16x16xf32>) {
+    %11 = scf.for %arg4 = %c0 to %c16 step %c8 iter_args(%arg5 = %arg3) -> (tensor<16x16xf32>) {
+      %extracted_slice_1 = tensor.extract_slice %input[%arg2, %arg4] [8, 8] [1, 1] : tensor<16x16xf32> to tensor<8x8xf32>
+      %14 = tensor.empty() : tensor<8x8xf32>
+      %transposed = linalg.transpose ins(%extracted_slice_1 : tensor<8x8xf32>) outs(%14 : tensor<8x8xf32>) permutation = [0, 1]
+      %inserted_slice = tensor.insert_slice %transposed into %arg5[%arg2, %arg4] [8, 8] [1, 1] : tensor<8x8xf32> into tensor<16x16xf32>
+      scf.yield %inserted_slice : tensor<16x16xf32>
+    }
+    scf.yield %11 : tensor<16x16xf32>
+  }
+  return %10 : tensor<16x16xf32>
+}
+
+// CHECK-LABEL: @do_not_tile_inside_scf_for(
+
+// CHECK:     scf.for
+// CHECK:       scf.for
+// CHECK-NOT: gml_st.parallel
+// CHECK:       linalg.transpose
