@@ -124,7 +124,21 @@ module {
     %accumulation_scale = "tf.Mul"(%input_scale, %filter_scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     %cast = "tf.Cast"(%accumulation) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
     %dequantize = "tf.Mul"(%cast, %accumulation_scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    func.return %dequantize : tensor<*xf32>
+
+    %i8_min = "tf.Const"() {value = dense<-128> : tensor<i8>} : () -> tensor<i8>
+    %i8_max = "tf.Const"() {value = dense<127> : tensor<i8>} : () -> tensor<i8>
+
+    %clip_min = "tf.PartitionedCall"(%i8_min, %out_scale, %out_zp) {
+        config = "", config_proto = "", executor_type = "", f=@dequantize_i8
+      } : (tensor<i8>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
+    %clip_max = "tf.PartitionedCall"(%i8_max, %out_scale, %out_zp) {
+        config = "", config_proto = "", executor_type = "", f=@dequantize_i8
+      } : (tensor<i8>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
+
+    %clamp_max = "tf.Maximum"(%dequantize, %clip_min) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %clamp_min = "tf.Minimum"(%clamp_max, %clip_max) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+
+    func.return %clamp_min : tensor<*xf32>
   }
 
   // Dequantizes and applies quantized Relu by clipping.
@@ -136,8 +150,22 @@ module {
     %cast = "tf.Cast"(%accumulation) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
     %dequantize = "tf.Mul"(%cast, %accumulation_scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
 
-    %relu = "tf.Relu"(%dequantize) : (tensor<*xf32>) -> tensor<*xf32>
-    func.return %relu : tensor<*xf32>
+    %i8_min = "tf.Const"() {value = dense<-128> : tensor<i8>} : () -> tensor<i8>
+    %i8_max = "tf.Const"() {value = dense<127> : tensor<i8>} : () -> tensor<i8>
+
+    %clip_min_0 = "tf.PartitionedCall"(%i8_min, %out_scale, %out_zp) {
+        config = "", config_proto = "", executor_type = "", f=@dequantize_i8
+      } : (tensor<i8>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
+    %clip_max = "tf.PartitionedCall"(%i8_max, %out_scale, %out_zp) {
+        config = "", config_proto = "", executor_type = "", f=@dequantize_i8
+      } : (tensor<i8>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
+
+    %clip_min = "tf.Relu"(%clip_min_0) : (tensor<*xf32>) -> tensor<*xf32>
+
+    %clamp_max = "tf.Maximum"(%dequantize, %clip_min) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %clamp_min = "tf.Minimum"(%clamp_max, %clip_max) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+
+    func.return %clamp_min : tensor<*xf32>
   }
 
   // Dequantizes and applies quantized Relu6 by clipping.
@@ -149,8 +177,24 @@ module {
     %cast = "tf.Cast"(%accumulation) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
     %dequantize = "tf.Mul"(%cast, %accumulation_scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
 
-    %relu6 = "tf.Relu6"(%dequantize) : (tensor<*xf32>) -> tensor<*xf32>
-    func.return %relu6 : tensor<*xf32>
+    %i8_min = "tf.Const"() {value = dense<-128> : tensor<i8>} : () -> tensor<i8>
+    %i8_max = "tf.Const"() {value = dense<127> : tensor<i8>} : () -> tensor<i8>
+    %relu6_upper = "tf.Const"() {value = dense<6.0>: tensor<f32>} : () -> tensor<f32>
+
+    %clip_min_0 = "tf.PartitionedCall"(%i8_min, %out_scale, %out_zp) {
+        config = "", config_proto = "", executor_type = "", f=@dequantize_i8
+      } : (tensor<i8>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
+    %clip_max_0 = "tf.PartitionedCall"(%i8_max, %out_scale, %out_zp) {
+        config = "", config_proto = "", executor_type = "", f=@dequantize_i8
+      } : (tensor<i8>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
+
+    %clip_min = "tf.Relu"(%clip_min_0) : (tensor<*xf32>) -> tensor<*xf32>
+    %clip_max = "tf.Minimum"(%clip_max_0, %relu6_upper) : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
+
+    %clamp_max = "tf.Maximum"(%dequantize, %clip_min) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %clamp_min = "tf.Minimum"(%clamp_max, %clip_max) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+
+    func.return %clamp_min : tensor<*xf32>
   }
 
   // Conv2D with int32 accumulation.

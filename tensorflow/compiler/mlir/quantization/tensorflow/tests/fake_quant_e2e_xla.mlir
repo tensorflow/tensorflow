@@ -28,6 +28,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK: %[[cast:.*]] = "tf.Cast"(%[[sub]]) {Truncate = false} : (tensor<1x3x2x2xi32>) -> tensor<1x3x2x2xf32>
 // CHECK: %[[dequant1:.*]] = "tf.Mul"(%[[cast]]
 // CHECK: %[[relu:.*]] = "tf.Relu"(%[[dequant1]]
+// CHECK: %[[clamped:.*]] = "tf.Minimum"(%[[relu]]
 
 // CHECK: %[[rescale1:.*]] = "tf.Mul"(%[[cast]]
 // CHECK: %[[add2:.*]] = "tf.AddV2"(%[[rescale1]]
@@ -41,9 +42,11 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK: %[[sub2:.*]] = "tf.Sub"(%[[xlaconv2]]
 // CHECK: %[[cast2:.*]] = "tf.Cast"(%[[sub2]]) {Truncate = false} : (tensor<1x3x2x2xi32>) -> tensor<1x3x2x2xf32>
 // CHECK: %[[rescale2:.*]] = "tf.Mul"(%[[cast2]]
+// CHECK: %[[rescale2_maxclamped:.*]] = "tf.Maximum"(%[[rescale2]]
+// CHECK: %[[rescale2_minclamped:.*]] = "tf.Minimum"(%[[rescale2_maxclamped]]
 
-// CHECK: %[[sum:.*]] = "tf.Sum"(%[[relu]]
-// CHECK: return %[[rescale2]], %[[sum]]
+// CHECK: %[[sum:.*]] = "tf.Sum"(%[[clamped]]
+// CHECK: return %[[rescale2_minclamped]], %[[sum]]
 }
 
 // -----
