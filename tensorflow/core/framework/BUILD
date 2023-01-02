@@ -25,6 +25,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/core:__subpackages__",
+        "//tensorflow/go:__subpackages__",
         "//tensorflow/security/fuzzing:__subpackages__",
         # TODO(pedaveeraiah): to be removed when summary.proto.h deps moves to TSL
         "//tensorflow/tsl/lib:__subpackages__",
@@ -1611,6 +1612,7 @@ tf_proto_library(
     ],
     visibility = [
         "//tensorflow/core:__subpackages__",
+        "//tensorflow/go:__subpackages__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/security/fuzzing:__subpackages__",
     ],
@@ -1629,6 +1631,7 @@ tf_proto_library(
     ],
     visibility = [
         "//tensorflow/core:__subpackages__",
+        "//tensorflow/go:__subpackages__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/security/fuzzing:__subpackages__",
     ],

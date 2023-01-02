@@ -94,6 +94,7 @@ tf_proto_library(
     make_default_target_header_only = True,
     visibility = [
         "//tensorflow/core:__subpackages__",
+        "//tensorflow/go:__subpackages__",
         "//tensorflow/tsl/util:__pkg__",
     ],
 )

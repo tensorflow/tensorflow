@@ -5,7 +5,7 @@ package tensorflow;
 option cc_enable_arenas = true;
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/google/tsl/tsl/go/core/protobuf/summary_go_proto";
+option go_package = "github.com/google/tsl/tsl/go/core/protobuf/for_core_protos_go_proto";
 
 // Serialization format for histogram module in
 // tsl/lib/histogram/histogram.h
