@@ -27,12 +27,15 @@ from tensorflow.compiler.mlir.quantization.tensorflow.python import representati
 from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
 from tensorflow.compiler.mlir.quantization.tensorflow.python.integration_test import quantize_model_test_base
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
@@ -50,11 +53,50 @@ from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils_impl
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.types import core
 
 # Type aliases for quantization method protobuf enums.
 _Method = quant_opts_pb2.QuantizationMethod.Method
 _ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
+
+
+def _is_variable(node_def: node_def_pb2.NodeDef) -> bool:
+  """Determines whether `node_def` is a variable node.
+
+  Args:
+    node_def: `NodeDef` to test whether it is a variable or not.
+
+  Returns:
+    Returns True if it is a variable.
+  """
+  return node_def.op == 'VarHandleOp'
+
+
+def _find_variables(
+    graph_def: graph_pb2.GraphDef) -> Mapping[str, node_def_pb2.NodeDef]:
+  """Finds all variables within `graph_def`.
+
+  This function makes sense for TF 1 graphs only, as it depends on
+  `shared_name`.
+
+  Args:
+    graph_def: `GraphDef` to find variables from.
+
+  Returns:
+    A mapping of `shared_name` -> `NodeDef` corresponding to a variable op.
+  """
+  variable_nodes = {}
+
+  for var_node in filter(_is_variable, graph_def.node):
+    shared_name = str(var_node.attr['shared_name'].s, encoding='utf-8')
+    variable_nodes[shared_name] = var_node
+
+  for func in graph_def.library.function:
+    for var_node in filter(_is_variable, func.node_def):
+      variable_nodes[shared_name] = var_node
+
+  return variable_nodes
 
 
 def parameter_combinations(test_parameters):
@@ -1013,17 +1055,19 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertAllClose(new_outputs, got_outputs, atol=0.0666)
     self.assertAllClose(new_outputs, expected_outputs, atol=0.057)
 
-  # Raises error because the constant unfreezing is not yet fully implemented.
   @test_util.deprecated_graph_mode_only
-  def test_matmul_ptq_model_with_unfreeze_constants_raises_error(self):
+  def test_matmul_ptq_model_with_unfreeze_constants(self):
     input_saved_model_path = self.create_tempdir('input').full_path
+
+    # Uses large weight to exceed the constant size threshold of 64KiB
+    # (specified by `kDefaultConstantSizeThresholdInBytes`) for unfreezing.
     self._create_matmul_model(
-        input_shape=(1, 4096),
-        weight_shape=(4096, 5),
+        input_shape=(1, 20),
+        weight_shape=(20, 4096),
         saved_model_path=input_saved_model_path)
 
     repr_ds = self._create_data_generator(
-        input_key='input_tensor', shape=(1, 4096), num_examples=2)
+        input_key='input_tensor', shape=(1, 20), num_examples=2)
 
     tags = {tag_constants.SERVING}
     output_directory = self.create_tempdir().full_path
@@ -1034,17 +1078,40 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         freeze_all_variables=quant_opts_pb2.FreezeAllVariables(enabled=False),
     )
 
-    # This should happen because the variable is not initialized after the
-    # pre-calibration step.
-    with self.assertRaisesRegex(
-        ValueError,
-        'Failed to run graph for post-training quantization calibration'):
-      quantize_model.quantize(
-          input_saved_model_path, ['serving_default'],
-          tags,
-          output_directory,
-          quantization_options,
-          representative_dataset=repr_ds)
+    converted_model = quantize_model.quantize(
+        input_saved_model_path, ['serving_default'],
+        tags,
+        output_directory,
+        quantization_options,
+        representative_dataset=repr_ds)
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
+
+    # Confirms that quantization is applied to the model.
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(
+        self._contains_quantized_function_call(output_meta_graphdef))
+
+    # Tests that there are variables in the model.
+    variable_node_defs = _find_variables(output_meta_graphdef.graph_def)
+    self.assertLen(variable_node_defs, 1)
+
+    # Reads the variables from the checkpoint file and matches with the
+    # variables found in the graph.
+    checkpoint_path = os.path.join(output_directory, 'variables', 'variables')
+    var_name_and_shapes = checkpoint_utils.list_variables(checkpoint_path)
+
+    # Checks that each variable's name and shape match.
+    self.assertEqual(len(variable_node_defs), len(var_name_and_shapes))
+    for var_name, shape in var_name_and_shapes:
+      self.assertIn(var_name, variable_node_defs)
+      self.assertEqual(
+          shape,
+          tensor_shape.TensorShape(
+              variable_node_defs[var_name].attr['shape'].shape))
 
   @parameterized.named_parameters(
       ('use_constant', False),
@@ -1624,10 +1691,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertFalse(
         self._contains_quantized_function_call(output_meta_graphdef))
 
-  # Raises error because the constant unfreezing is not yet fully implemented.
   @test_util.deprecated_graph_mode_only
-  def test_ptq_model_with_variable_tf1_saved_model_unfreeze_constants_raises_error(
-      self):
+  def test_ptq_model_with_variable_tf1_saved_model_unfreeze_constants(self):
     input_saved_model_path = self.create_tempdir('input').full_path
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     tags = {tag_constants.SERVING}
@@ -1639,8 +1704,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         input_key='x',
         output_key='output',
         input_shape=(1, 16, 16, 8),
-        # Use large filter so that it is target for unfreezing.
-        filter_shape=(256, 8, 8, 4),
+        # Uses large filter to exceed the constant size threshold of 64KiB
+        # (specified by `kDefaultConstantSizeThresholdInBytes`) for unfreezing.
+        filter_shape=(256, 8, 8, 16),
         use_variable=True)
 
     signature_keys = [signature_key]
@@ -1655,18 +1721,40 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     repr_ds = self._create_data_generator(
         input_key='x', shape=input_placeholder.shape, num_examples=2)
 
-    # This should happen because the variable is not initialized after the
-    # pre-calibration step.
-    with self.assertRaisesRegex(
-        ValueError,
-        'Failed to run graph for post-training quantization calibration'):
-      quantize_model.quantize(
-          input_saved_model_path,
-          signature_keys,
-          tags,
-          output_directory,
-          quantization_options,
-          representative_dataset=repr_ds)
+    converted_model = quantize_model.quantize(
+        input_saved_model_path,
+        signature_keys,
+        tags,
+        output_directory,
+        quantization_options,
+        representative_dataset=repr_ds)
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
+
+    # Checks that quantization is applied.
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(
+        self._contains_quantized_function_call(output_meta_graphdef))
+
+    # Tests that there are variables in the model.
+    variable_node_defs = _find_variables(output_meta_graphdef.graph_def)
+    self.assertLen(variable_node_defs, 1)
+
+    # Reads the variables from the checkpoint file and matches with the
+    # variables found in the graph.
+    checkpoint_path = os.path.join(output_directory, 'variables', 'variables')
+    var_name_and_shapes = checkpoint_utils.list_variables(checkpoint_path)
+
+    # Checks that each variable's name and shape match.
+    self.assertEqual(len(variable_node_defs), len(var_name_and_shapes))
+    for var_name, shape in var_name_and_shapes:
+      self.assertIn(var_name, variable_node_defs)
+      self.assertEqual(
+          shape,
+          tensor_shape.TensorShape(
+              variable_node_defs[var_name].attr['shape'].shape))
 
   @test_util.run_in_graph_and_eager_modes
   def test_ptq_model_with_tf1_saved_model(self):

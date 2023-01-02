@@ -482,7 +482,7 @@ def _run_graph_for_calibration(
 def _run_static_range_qat(
     saved_model_path: str, signature_def_keys: Sequence[str],
     tags: Collection[str], quant_opts: quant_opts_pb2.QuantizationOptions
-) -> Tuple[graph_pb2.GraphDef, str]:
+) -> exported_model_pb2.ExportedModel:
   """Runs static-range quantization for a Quantization-Aware Trained model.
 
   Runs the quantization for a model trained using QAT.
@@ -495,9 +495,8 @@ def _run_static_range_qat(
     quant_opts: Quantization options.
 
   Returns:
-    (graph, init_node_name), where graph is the static-range quantized graph and
-    init_node_name is the name of the initializer op, which is fetched once
-    during model load to initialize resources (e.g. hash tables).
+    exported_model: Contains the GraphDef and extra metadata required for saving
+      the quantized graph to SavedModel.
   """
   logging.info('Running static-range quantization for QAT model.')
   exported_model_serialized = (
@@ -509,7 +508,7 @@ def _run_static_range_qat(
   exported_model = exported_model_pb2.ExportedModel.FromString(
       exported_model_serialized)
 
-  return exported_model.graph_def, exported_model.init_node_name
+  return exported_model
 
 
 def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
@@ -548,7 +547,7 @@ def _run_static_range_ptq(
     quant_opts: quant_opts_pb2.QuantizationOptions,
     representative_dataset: repr_dataset.RepresentativeDatasetOrMapping,
     signature_def_map: _SignatureDefMap,
-) -> Tuple[graph_pb2.GraphDef, _SignatureDefMap, str]:
+) -> Tuple[exported_model_pb2.ExportedModel, _SignatureDefMap]:
   """Runs static-range Post-Training Quantization.
 
   Runs static-range PTQ for the model. Runs the calibration step with
@@ -571,12 +570,10 @@ def _run_static_range_ptq(
     ValueError if the graph doesn't contain a valid signature.
 
   Returns:
-    (graph_def, signature_def_map, init_op_name) where graph_def is the
-    quantized graph and
-    the signature_def_map contains the SignatureDefs, possibly modified
-    according to the quantized graph to match the original signature defs.
-    init_op_name is the name of the initializer op, which is fetched once to
-    initialize resources (e.g. hash tables) when a SavedModel is loaded.
+    exported_model: Contains the GraphDef and extra metadata required for saving
+      the quantized graph to SavedModel.
+    signature_def_map: Contains the SignatureDefs, possibly modified
+      according to the quantized graph to match the original signature defs.
   """
   logging.info('Running post-training quantization pre-calibration step.')
   exported_model_serialized = (
@@ -595,7 +592,10 @@ def _run_static_range_ptq(
 
   float_model_dir = tempfile.mkdtemp()
   save_model.save_model_v1(graph_def, float_model_dir, signature_def_map, tags,
-                           exported_model.init_node_name)
+                           exported_model.init_node_name,
+                           exported_model.restore_node_name,
+                           exported_model.checkpoint_dir,
+                           exported_model.variable_shared_names)
 
   # Uses the representative dataset to collect statistics for calibration.
   # Handles the graph mode execution separately in case TF2 is disabled or
@@ -607,7 +607,10 @@ def _run_static_range_ptq(
 
   calibrated_model_dir = tempfile.mkdtemp()
   save_model.save_model_v1(graph_def, calibrated_model_dir, signature_def_map,
-                           tags, exported_model.init_node_name)
+                           tags, exported_model.init_node_name,
+                           exported_model.restore_node_name,
+                           exported_model.checkpoint_dir,
+                           exported_model.variable_shared_names)
 
   logging.info('Running post-training quantization post-calibration step.')
   exported_model_serialized = (
@@ -618,8 +621,7 @@ def _run_static_range_ptq(
   exported_model = exported_model_pb2.ExportedModel.FromString(
       exported_model_serialized)
 
-  return (exported_model.graph_def, signature_def_map,
-          exported_model.init_node_name)
+  return exported_model, signature_def_map,
 
 
 def _static_range_quantize(
@@ -684,20 +686,22 @@ def _static_range_quantize(
         'The flag is ignored.')
 
   if is_qat_saved_model:
-    graph_def, init_node_name = _run_static_range_qat(saved_model_path,
-                                                      signature_keys, tags,
-                                                      quantization_options)
+    exported_model = _run_static_range_qat(saved_model_path, signature_keys,
+                                           tags, quantization_options)
   else:
-    graph_def, signature_def_map, init_node_name = _run_static_range_ptq(
+    exported_model, signature_def_map = _run_static_range_ptq(
         saved_model_path, signature_keys, tags, quantization_options,
         representative_dataset, signature_def_map)
 
   save_model.save_model_v1(
-      graph_def,
+      exported_model.graph_def,
       output_directory,
       signature_def_map,
       tags,
-      init_op_name=init_node_name)
+      init_op_name=exported_model.init_node_name,
+      restore_op_name=exported_model.restore_node_name,
+      checkpoint_dir=exported_model.checkpoint_dir,
+      variable_shared_names=exported_model.variable_shared_names)
 
   return saved_model_load(output_directory)
 

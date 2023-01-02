@@ -19,15 +19,19 @@ from typing import Collection, Dict, Mapping, Optional, Sequence
 from absl import logging
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import constants as saved_model_constants
 from tensorflow.python.saved_model import loader_impl as saved_model_loader
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.types import core
 
 # Mapping of signature def key -> SignatureDef.
 _SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
@@ -217,11 +221,85 @@ def _find_op(graph: ops.Graph,
   return init_op
 
 
-def save_model_v1(graph_def: graph_pb2.GraphDef,
-                  output_dir: str,
-                  signature_def_map: _SignatureDefMap,
-                  tags: Collection[str],
-                  init_op_name: Optional[str] = None) -> None:
+# TODO(b/263453914): Pass the name of "file_prefix" tensor from the c++ layer.
+def _find_file_prefix_tensor(graph: ops.Graph) -> Optional[core.Tensor]:
+  """Finds the "file_prefix" tensor used for identifying the checkpoint path.
+
+  This function relies on the fact that the initializer_type (== "restore_op")
+  is used as a prefix for the file_prefix tensor when creating a `RestoreV2Op`
+  from `MergeInitializerFunctionOpsToMainPass`.
+
+  Args:
+    graph: The graph to find the file_prefix tensor from.
+
+  Returns:
+    None if not found. True if a "file_prefix" tensor is found.
+  """
+  for op in graph.get_operations():
+    if op.type == '_Arg':
+      candidate_tensor = op.outputs[0]
+      if candidate_tensor.name.startswith('restore_op'):
+        return candidate_tensor
+
+  return None
+
+
+def _create_empty_variable(
+    node_def: node_def_pb2.NodeDef) -> variables.Variable:
+  """Creates an empty `Variable`.
+
+  Variables with unknown shape and empty value is created.
+
+  Args:
+    node_def: Instance of `NodeDef` of the `VarHandleOp`.
+
+  Returns:
+    Empty `Variable` with only `shared_name` and `dtype` populated according to
+    `node_def`.
+  """
+  shared_name = str(node_def.attr['shared_name'].s, encoding='utf-8')
+  dtype: dtypes.DType = dtypes.as_dtype(node_def.attr['dtype'].type)
+
+  return variables.Variable([],
+                            trainable=False,
+                            name=shared_name,
+                            dtype=dtype,
+                            shape=None)
+
+
+def _find_variables(
+    graph_def: graph_pb2.GraphDef) -> Mapping[str, node_def_pb2.NodeDef]:
+  """Finds existing `VarHandleOp`s in the graph.
+
+  Args:
+    graph_def: `GraphDef` to find variables from.
+
+  Returns:
+    A shared_name -> `NodeDef` mapping that maps each `NodeDef` corresponding to
+    `VarHandleOp` to its `shared_name`.
+  """
+  var_mapping = {}
+  for node in graph_def.node:
+    if node.op == 'VarHandleOp':
+      var_mapping[str(node.attr['shared_name'].s, encoding='utf-8')] = node
+
+  for func in graph_def.library.function:
+    for node in func.node_def:
+      if node.op == 'VarHandleOp':
+        var_mapping[str(node.attr['shared_name'].s, encoding='utf-8')] = node
+
+  return var_mapping
+
+
+def save_model_v1(
+    graph_def: graph_pb2.GraphDef,
+    output_dir: str,
+    signature_def_map: _SignatureDefMap,
+    tags: Collection[str],
+    init_op_name: Optional[str] = None,
+    restore_op_name: Optional[str] = None,
+    checkpoint_dir: Optional[str] = None,
+    variable_shared_names: Optional[Sequence[str]] = None) -> None:
   """Saves the model.
 
   Saves the provided graph def as SavedModel.
@@ -233,6 +311,9 @@ def save_model_v1(graph_def: graph_pb2.GraphDef,
     signature_def_map: Mapping of signature def key -> SignatureDef.
     tags: Tags for the meta graph def.
     init_op_name: Name of the node for initialization.
+    restore_op_name: Name of the node for restoration.
+    checkpoint_dir: Path to checkpoint file where variable values are saved.
+    variable_shared_names: Shared name of the variables in the model.
 
   Raises:
     ValueError iff the graph does not contain a valid signature.
@@ -246,6 +327,31 @@ def save_model_v1(graph_def: graph_pb2.GraphDef,
 
     signature_def_map = _validate_signatures(signature_def_map,
                                              ops.get_default_graph())
+
+    # `restore_op_name` is non-empty & non-None when variables should be
+    # restored before saving.
+    if restore_op_name:
+      var_mapping = _find_variables(graph_def)
+      logging.debug('Shared names of the variables to be saved: %s',
+                    str(list(var_mapping.keys())))
+
+      for shared_name in variable_shared_names:
+        var_node_def = var_mapping[shared_name]
+
+        # Variables with unknown shape and empty value is created. This is
+        # just there to register a variable with `shared_name` to the resource
+        # manager and collections, so that the values in checkpoint is
+        # properly restored via `RestoreV2` op. Once restored, the value,
+        # dtype and shape will be properly populated.
+        _create_empty_variable(var_node_def)
+
+      # Restores the variables by running the `RestoreV2` op.
+      # `v1_builder.save()` saves the restored variables to the variables/
+      # directory in `output_dir`.
+      sess.run(
+          _find_op(sess.graph, op_name=restore_op_name),
+          feed_dict={_find_file_prefix_tensor(sess.graph): checkpoint_dir})
+
     v1_builder.add_meta_graph_and_variables(
         sess,
         tags,
