@@ -9,12 +9,18 @@ py_library(
     srcs = ["structured_function.py"],
     srcs_version = "PY3",
     deps = [
+        ":debug_mode",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:function",
         "//tensorflow/python:util",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:structure",
     ],
+)
+
+py_library(
+    name = "debug_mode",
+    srcs = ["debug_mode.py"],
 )
 
 py_library(
@@ -73,6 +79,7 @@ py_library(
         ":cache_op",
         ":concatenate_op",
         ":counter_op",
+        ":debug_mode",
         ":filter_op",
         ":flat_map_op",
         ":from_generator_op",
@@ -89,6 +96,7 @@ py_library(
         ":padded_batch_op",
         ":prefetch_op",
         ":ragged_batch_op",
+        ":random_op",
         ":range_op",
         ":rebatch_op",
         ":repeat_op",
@@ -180,6 +188,11 @@ py_library(
 py_library(
     name = "group_by_window_op",
     srcs = ["group_by_window_op.py"],
+)
+
+py_library(
+    name = "random_op",
+    srcs = ["random_op.py"],
 )
 
 py_library(

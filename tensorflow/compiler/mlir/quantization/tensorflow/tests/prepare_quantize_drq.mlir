@@ -1,4 +1,4 @@
-// RUN: tf-quant-opt %s -split-input-file -quant-prepare-quantize-drq | FileCheck %s
+// RUN: tf-quant-opt %s -split-input-file -quant-preprocess-op -quant-prepare-quantize-drq | FileCheck %s
 
 module {
   func.func @matmul(%arg0: tensor<1x2x2x3xf32>) -> (tensor<*xf32>) {

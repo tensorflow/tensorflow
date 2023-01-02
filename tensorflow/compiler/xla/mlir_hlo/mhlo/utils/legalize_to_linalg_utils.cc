@@ -63,7 +63,8 @@ Value getEmptySparseTensor(OpBuilder& b, Location loc, ShapedType type,
 Value getEmptyTensor(OpBuilder& b, Location loc, ShapedType type,
                      ArrayRef<Value> dynSizes) {
   return b.create<tensor::EmptyOp>(loc, type.getShape(), type.getElementType(),
-                                   dynSizes);
+                                   dynSizes,
+                                   type.cast<RankedTensorType>().getEncoding());
 }
 
 Value getEmptyTensorFor(OpBuilder& b, Location loc, ShapedType resultType,
@@ -122,6 +123,19 @@ Value postSparsify(Operation* op, Value semiring, Value result, OpBuilder* b) {
     return semiring;
   }
   return result;
+}
+
+bool allOperandsAreScalarTensors(Operation* op) {
+  return llvm::all_of(op->getOperands(), [](Value operand) {
+    auto operandTy = operand.getType().dyn_cast<ShapedType>();
+    return operandTy && operandTy.getRank() == 0;
+  });
+}
+
+bool isInBodyOfLinalgOps(Operation* op) {
+  auto* parentOp = op->getParentRegion()->getParentOp();
+  return parentOp->getDialect() ==
+         parentOp->getContext()->getLoadedDialect<linalg::LinalgDialect>();
 }
 
 }  // namespace mhlo

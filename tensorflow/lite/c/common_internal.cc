@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common_internal.h"
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 
 TfLiteStatus TfLiteDelegatePrepareInternal(TfLiteContext* context,
                                            TfLiteDelegate* delegate) {
@@ -24,12 +24,12 @@ TfLiteStatus TfLiteDelegatePrepareInternal(TfLiteContext* context,
   // The following casts are safe only because this code is part of the
   // TF Lite runtime implementation.  Apps using TF Lite should not rely on
   // TfLiteOpaqueContext and TfLiteContext being equivalent, or on
-  // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
+  // TfLiteOpaqueDelegate and TfLiteDelegate being equivalent.
   if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate) &&
       delegate->opaque_delegate_builder->Prepare) {
     status = delegate->opaque_delegate_builder->Prepare(
         reinterpret_cast<TfLiteOpaqueContext*>(context),
-        reinterpret_cast<struct TfLiteOpaqueDelegateStruct*>(delegate),
+        reinterpret_cast<TfLiteOpaqueDelegate*>(delegate),
         delegate->opaque_delegate_builder->data);
   } else {
     status = delegate->Prepare(context, delegate);
@@ -43,12 +43,12 @@ TfLiteStatus TfLiteDelegateCopyFromBufferHandleInternal(
   // The following casts are safe only because this code is part of the
   // TF Lite runtime implementation.  Apps using TF Lite should not rely on
   // TfLiteOpaqueContext and TfLiteContext being equivalent, or on
-  // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
+  // TfLiteOpaqueDelegate and TfLiteDelegate being equivalent.
   if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate) &&
       tensor->delegate->opaque_delegate_builder->CopyFromBufferHandle) {
     return delegate->opaque_delegate_builder->CopyFromBufferHandle(
         reinterpret_cast<TfLiteOpaqueContext*>(context),
-        reinterpret_cast<TfLiteOpaqueDelegateStruct*>(delegate),
+        reinterpret_cast<TfLiteOpaqueDelegate*>(delegate),
         delegate->opaque_delegate_builder->data, tensor->buffer_handle,
         reinterpret_cast<TfLiteOpaqueTensor*>(tensor));
   } else {
@@ -64,12 +64,12 @@ TfLiteStatus TfLiteDelegateFreeBufferHandleInternal(
   // The following casts are safe only because this code is part of the
   // TF Lite runtime implementation.  Apps using TF Lite should not rely on
   // TfLiteOpaqueContext and TfLiteContext being equivalent, or on
-  // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
+  // TfLiteOpaqueDelegate and TfLiteDelegate being equivalent.
   if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate) &&
       delegate->opaque_delegate_builder->FreeBufferHandle) {
     delegate->opaque_delegate_builder->FreeBufferHandle(
         reinterpret_cast<TfLiteOpaqueContext*>(context),
-        reinterpret_cast<struct TfLiteOpaqueDelegateStruct*>(delegate),
+        reinterpret_cast<TfLiteOpaqueDelegate*>(delegate),
         delegate->opaque_delegate_builder->data, buffer_handle);
     return kTfLiteOk;
   } else if (delegate->FreeBufferHandle != nullptr) {

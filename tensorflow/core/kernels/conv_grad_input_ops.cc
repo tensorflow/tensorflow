@@ -202,8 +202,10 @@ void LaunchConv2DBackpropInputOpGpuImpl(
         dims.spatial_dims[0].input_size + padding_rows_diff;
     const int64_t new_in_cols =
         dims.spatial_dims[1].input_size + padding_cols_diff;
-    compatible_input_shape = ShapeFromFormat(
-        data_format, dims.batch_size, new_in_rows, new_in_cols, dims.in_depth);
+    OP_REQUIRES_OK(
+        ctx, ShapeFromFormatWithStatus(data_format, dims.batch_size,
+                                       new_in_rows, new_in_cols, dims.in_depth,
+                                       &compatible_input_shape));
   } else {
     compatible_input_shape = input_shape;
   }
@@ -306,9 +308,12 @@ void LaunchConv2DBackpropInputOpGpuImpl(
   Tensor transformed_out_backprop;
   if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
     VLOG(4) << "Convert the `out_backprop` tensor from NHWC to NCHW.";
-    TensorShape compute_shape = ShapeFromFormat(
-        compute_data_format, dims.batch_size, dims.spatial_dims[0].output_size,
-        dims.spatial_dims[1].output_size, dims.out_depth);
+    TensorShape compute_shape;
+    OP_REQUIRES_OK(
+        ctx, ShapeFromFormatWithStatus(compute_data_format, dims.batch_size,
+                                       dims.spatial_dims[0].output_size,
+                                       dims.spatial_dims[1].output_size,
+                                       dims.out_depth, &compute_shape));
     if (dims.out_depth > 1) {
       OP_REQUIRES_OK(ctx,
                      ctx->allocate_temp(DataTypeToEnum<T>::value, compute_shape,
@@ -325,16 +330,18 @@ void LaunchConv2DBackpropInputOpGpuImpl(
   }
 
   Tensor pre_transformed_in_backprop;
-  OP_REQUIRES_OK(
-      ctx, ctx->allocate_temp(
-               DataTypeToEnum<T>::value,
-               ShapeFromFormat(
-                   compute_data_format,
-                   GetTensorDim(compatible_input_shape, data_format, 'N'),
-                   GetTensorDim(compatible_input_shape, data_format, 'H'),
-                   GetTensorDim(compatible_input_shape, data_format, 'W'),
-                   GetTensorDim(compatible_input_shape, data_format, 'C')),
-               &pre_transformed_in_backprop));
+  TensorShape pre_transformed_in_backprop_shape;
+  OP_REQUIRES_OK(ctx,
+                 ShapeFromFormatWithStatus(
+                     compute_data_format,
+                     GetTensorDim(compatible_input_shape, data_format, 'N'),
+                     GetTensorDim(compatible_input_shape, data_format, 'H'),
+                     GetTensorDim(compatible_input_shape, data_format, 'W'),
+                     GetTensorDim(compatible_input_shape, data_format, 'C'),
+                     &pre_transformed_in_backprop_shape));
+  OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                         pre_transformed_in_backprop_shape,
+                                         &pre_transformed_in_backprop));
 
   auto out_backprop_ptr =
       AsDeviceMemory(transformed_out_backprop.template flat<T>().data(),
@@ -391,15 +398,17 @@ void LaunchConv2DBackpropInputOpGpuImpl(
 
   if (padding_top != padding_bottom || padding_left != padding_right) {
     Tensor in_backprop_remove_padding;
-    OP_REQUIRES_OK(
-        ctx, ctx->allocate_temp(
-                 DataTypeToEnum<T>::value,
-                 ShapeFromFormat(compute_data_format,
-                                 GetTensorDim(input_shape, data_format, 'N'),
-                                 GetTensorDim(input_shape, data_format, 'H'),
-                                 GetTensorDim(input_shape, data_format, 'W'),
-                                 GetTensorDim(input_shape, data_format, 'C')),
-                 &in_backprop_remove_padding));
+    TensorShape in_backprop_remove_padding_shape;
+    OP_REQUIRES_OK(ctx, ShapeFromFormatWithStatus(
+                            compute_data_format,
+                            GetTensorDim(input_shape, data_format, 'N'),
+                            GetTensorDim(input_shape, data_format, 'H'),
+                            GetTensorDim(input_shape, data_format, 'W'),
+                            GetTensorDim(input_shape, data_format, 'C'),
+                            &in_backprop_remove_padding_shape));
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                           in_backprop_remove_padding_shape,
+                                           &in_backprop_remove_padding));
 
     // Remove the padding that was added to the input shape above.
     const int64_t input_pad_top = padding_top - common_padding_rows;
@@ -456,11 +465,12 @@ void LaunchConv2DBackpropInputOp<GPUDevice, Eigen::bfloat16>::operator()(
   auto* stream = ctx->op_device_context()->stream();
   const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
       se::CudaComputeCapability::AMPERE);
-  Tensor casted_out_backprop = out_backprop;
-  Tensor casted_filter = filter;
-  Tensor casted_in_backprop = *in_backprop;
 
   if (cast_to_float) {
+    Tensor casted_out_backprop = out_backprop;
+    Tensor casted_filter = filter;
+    Tensor casted_in_backprop = *in_backprop;
+
     const GPUDevice& device = ctx->eigen_device<GPUDevice>();
     functor::CastFunctor<GPUDevice, float, Eigen::bfloat16> cast;
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, out_backprop.shape(),
@@ -489,9 +499,9 @@ void LaunchConv2DBackpropInputOp<GPUDevice, Eigen::bfloat16>::operator()(
   }
 
   LaunchConv2DBackpropInputOpGpuImpl<Eigen::bfloat16>(
-      ctx, use_cudnn, cudnn_use_autotune, casted_out_backprop, casted_filter,
-      row_dilation, col_dilation, row_stride, col_stride, padding,
-      explicit_paddings, &casted_in_backprop, data_format);
+      ctx, use_cudnn, cudnn_use_autotune, out_backprop, filter, row_dilation,
+      col_dilation, row_stride, col_stride, padding, explicit_paddings,
+      in_backprop, data_format);
 }
 
 // Forward declarations of the functor specializations for GPU.

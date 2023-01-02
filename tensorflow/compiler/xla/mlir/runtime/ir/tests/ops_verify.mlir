@@ -1,7 +1,7 @@
 // RUN: xla-runtime-opt -verify-diagnostics -split-input-file %s
 
 // -----
-// expected-error @+1 {{func.func op named 'foo' not found for export}}
+// expected-error @+1 {{func op named 'foo' not found for export}}
 rt.export @foo
 
 // -----

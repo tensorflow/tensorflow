@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
+
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -117,20 +118,20 @@ llvm::Optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
   bool has_failure = false;
   auto elem_type = cutil::GetElementTypeFromAccess(
       ta.getHandle(), module, [&](Operation* user) -> llvm::Optional<Type> {
-        if (has_failure) return llvm::None;
+        if (has_failure) return std::nullopt;
         if (auto write = llvm::dyn_cast<TF::TensorArrayWriteV3Op>(user)) {
           return write.getValue().getType();
         } else if (auto split =
                        llvm::dyn_cast<TF::TensorArraySplitV3Op>(user)) {
           if (!split.getLengths().getDefiningOp() ||
               !llvm::isa<TF::ConstOp>(split.getLengths().getDefiningOp())) {
-            return llvm::None;
+            return std::nullopt;
           }
           RankedTensorType t;
           int64_t count;
           if (failed(GetSplitElementTypeAndCount(split, &t, &count))) {
             has_failure = true;
-            return llvm::None;
+            return std::nullopt;
           }
           return t;
         } else if (auto scatter =
@@ -139,7 +140,7 @@ llvm::Optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
           // deduce the shape of TensorArray by dropping the 0th dim of
           // TensorArrayScatter `value`.
           auto t = scatter.getValue().getType().dyn_cast<RankedTensorType>();
-          if (!t || t.getShape().empty()) return llvm::None;
+          if (!t || t.getShape().empty()) return std::nullopt;
           return RankedTensorType::get(t.getShape().drop_front(),
                                        t.getElementType());
         } else if (auto gather =
@@ -157,9 +158,9 @@ llvm::Optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
                                          gather.getDtype());
           }
         }
-        return llvm::None;
+        return std::nullopt;
       });
-  if (!elem_type) return llvm::None;
+  if (!elem_type) return std::nullopt;
   return llvm::to_vector<8>(elem_type->getShape());
 }
 

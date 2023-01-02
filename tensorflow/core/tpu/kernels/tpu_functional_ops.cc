@@ -1801,6 +1801,13 @@ Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
 Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
     Graph* graph, OpKernelContext* ctx, int device_ordinal,
     ResourceHandle& handle, Node* variable, const TPUMetadata& tpu_metadata) {
+  if (device_ordinal >= tpu_metadata.topology.num_tpu_devices_per_task()) {
+    return errors::InvalidArgument(
+        "There are ", tpu_metadata.topology.num_tpu_devices_per_task(),
+        " TPU devices, however selected device_ordinal: ", device_ordinal,
+        " exceeds the range");
+  }
+
   TF_ASSIGN_OR_RETURN(
       auto sharding,
       GetShardingFromNodeDef(variable->def(), /*add_metadata=*/false));
@@ -2392,6 +2399,15 @@ Status TPUPartitionedCallOp::GetGraphFromFunction(
               tpu_metadata->device_assignment.begin(), coordinates_start,
               coordinates_end);
           node->AddAttr("device_assignment", tpu_metadata->device_assignment);
+        }
+
+        if (tpu_metadata->topology.num_tpu_devices_per_task() <
+            tpu_metadata->num_cores_per_replica) {
+          return errors::InvalidArgument(
+              "num_cores_per_replica: ", tpu_metadata->num_cores_per_replica,
+              " in the graph is larger than the number of available TPU "
+              "devices: ",
+              tpu_metadata->topology.num_tpu_devices_per_task());
         }
       }
     }

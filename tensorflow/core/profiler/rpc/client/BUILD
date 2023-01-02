@@ -71,7 +71,10 @@ cc_library(
         "profiler_client.h",
     ],
     copts = tf_profiler_copts(),
-    visibility = ["//tensorflow/python:__pkg__"],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

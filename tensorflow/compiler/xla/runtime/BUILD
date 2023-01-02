@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
 load("//tensorflow/tsl/platform:build_config.bzl", "tf_platform_deps")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
@@ -6,7 +6,7 @@ load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//tensorflow:internal",
+        "//tensorflow/compiler/xla:internal",
         "@tf_runtime//:friends",
     ],
     licenses = ["notice"],
@@ -31,7 +31,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "arguments_test",
     srcs = ["arguments_test.cc"],
     deps = [
@@ -97,15 +97,17 @@ cc_library(
         ":state",
         ":type_id",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/runtime/ffi:ffi_abi",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "custom_call_test",
     srcs = ["custom_call_test.cc"],
     deps = [
@@ -116,6 +118,7 @@ tf_cc_test(
         ":diagnostics",
         ":executable",
         ":jit_executable",
+        ":module",
         ":state",
         "//tensorflow/compiler/xla/mlir/runtime/ir/tests:testlib",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
@@ -150,7 +153,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "diagnostics_test",
     srcs = ["diagnostics_test.cc"],
     deps = [
@@ -201,22 +204,24 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "executable_test",
     srcs = ["executable_test.cc"],
     tags = ["nomsan"],  # TODO(ezhulenev): Find msan error in LLVM coroutine passes
     deps = [
         ":arguments",
         ":async_runtime",
-        ":diagnostics",
-        ":executable",
         ":jit_executable",
+        ":logical_result",
         ":results",
+        ":types",
         "//tensorflow/compiler/xla/mlir/runtime/transforms/tests:testlib_pipeline",
+        "//tensorflow/compiler/xla/mlir/runtime/utils:async_runtime_api",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/base:dynamic_annotations",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -238,6 +243,7 @@ cc_library(
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TransformUtils",
         "@llvm-project//llvm:X86AsmParser",
         "@llvm-project//llvm:X86CodeGen",
     ],
@@ -249,13 +255,14 @@ cc_library(
     hdrs = ["ffi.h"],
     deps = [
         ":custom_call",
-        ":custom_call_registry",
+        ":module",
         "//tensorflow/compiler/xla/runtime/ffi:ffi_c_api_hdrs",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "ffi_test",
     srcs = ["ffi_test.cc"],
     deps = [
@@ -269,7 +276,7 @@ tf_cc_test(
         ":jit_executable",
         ":results",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
-        "//tensorflow/compiler/xla/runtime/ffi:ffi_api_hdrs",
+        "//tensorflow/compiler/xla/runtime/ffi:ffi_api",
         "//tensorflow/compiler/xla/runtime/ffi:ffi_c_api_hdrs",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
@@ -317,7 +324,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "map_by_type_test",
     srcs = ["map_by_type_test.cc"],
     deps = [
@@ -344,6 +351,39 @@ cc_library(
 )
 
 cc_library(
+    name = "module",
+    hdrs = ["module.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        ":custom_call",
+        ":custom_call_registry",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "module_registry",
+    srcs = ["module_registry.cc"],
+    hdrs = ["module_registry.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        ":module",
+    ],
+)
+
+xla_cc_test(
+    name = "module_test",
+    srcs = ["module_test.cc"],
+    deps = [
+        ":custom_call",
+        ":module",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "results",
     hdrs = ["results.h"],
     compatible_with = get_compatible_with_cloud(),
@@ -353,7 +393,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "results_test",
     srcs = ["results_test.cc"],
     deps = [
@@ -382,7 +422,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "state_test",
     srcs = ["state_test.cc"],
     deps = [
@@ -409,7 +449,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "symbolic_shape_test",
     srcs = ["symbolic_shape_test.cc"],
     deps = [
@@ -469,7 +509,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "type_id_test",
     srcs = ["type_id_test.cc"],
     deps = [

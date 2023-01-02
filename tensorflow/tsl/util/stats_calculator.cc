@@ -23,6 +23,8 @@ limitations under the License.
 
 namespace tsl {
 
+constexpr int kNodeTypeWidth = 40;
+
 StatsCalculator::StatsCalculator(const StatSummarizerOptions& options)
     : options_(options) {}
 
@@ -55,7 +57,7 @@ std::string StatsCalculator::HeaderString(const std::string& title) const {
     stream << "node type, first, avg_ms, %, cdf%, mem KB, times called, "
               "name";
   } else {
-    InitField(stream, 24) << "[node type]";
+    InitField(stream, kNodeTypeWidth) << "[node type]";
     InitField(stream, 9) << "[first]";
     InitField(stream, 9) << "[avg ms]";
     InitField(stream, 8) << "[%]";
@@ -86,7 +88,7 @@ std::string StatsCalculator::ColumnString(const Detail& detail,
            << detail.mem_used.newest() / 1000.0 << ", " << times_called << ", "
            << name;
   } else {
-    InitField(stream, 24) << detail.type;
+    InitField(stream, kNodeTypeWidth) << detail.type;
     InitField(stream, 9) << first_time_ms;
     InitField(stream, 9) << avg_time_ms;
     InitField(stream, 7) << percentage << "%";
@@ -199,7 +201,7 @@ std::string StatsCalculator::GetStatsByNodeType() const {
   if (options_.format_as_csv) {
     stream << "node type, count, avg_ms, avg %, cdf %, mem KB, times called\n";
   } else {
-    InitField(stream, 24) << "[Node type]";
+    InitField(stream, kNodeTypeWidth) << "[Node type]";
     InitField(stream, 9) << "[count]";
     InitField(stream, 10) << "[avg ms]";
     InitField(stream, 11) << "[avg %]";
@@ -230,7 +232,7 @@ std::string StatsCalculator::GetStatsByNodeType() const {
              << memory << ", " << node_type_map_times_called[node_type]
              << std::endl;
     } else {
-      InitField(stream, 24) << node_type;
+      InitField(stream, kNodeTypeWidth) << node_type;
       InitField(stream, 9) << node_type_map_count[node_type];
       InitField(stream, 10) << time_per_run_ms;
       InitField(stream, 10) << percentage << "%";

@@ -134,16 +134,19 @@ static void BatchToSpaceOpCompute(OpKernelContext* context,
   // The actual output shape exposed to callers.
   TensorShape external_output_shape;
 
-  external_output_shape.AddDim(orig_input_batch_size / block_shape_product);
+  OP_REQUIRES_OK(context, external_output_shape.AddDimWithStatus(
+                              orig_input_batch_size / block_shape_product));
 
   int64_t input_batch_size = orig_input_batch_size;
   for (int block_dim = 0; block_dim < removed_prefix_block_dims; ++block_dim) {
     const int64_t size = orig_input_tensor.dim_size(block_dim + 1);
     input_batch_size *= size;
-    external_output_shape.AddDim(size);
+    OP_REQUIRES_OK(context, external_output_shape.AddDimWithStatus(size));
   }
-  internal_input_shape.AddDim(input_batch_size);
-  internal_output_shape.AddDim(input_batch_size / block_shape_product);
+  OP_REQUIRES_OK(context,
+                 internal_input_shape.AddDimWithStatus(input_batch_size));
+  OP_REQUIRES_OK(context, internal_output_shape.AddDimWithStatus(
+                              input_batch_size / block_shape_product));
 
   for (int block_dim = removed_prefix_block_dims;
        block_dim < block_dims - removed_suffix_block_dims; ++block_dim) {
@@ -158,20 +161,22 @@ static void BatchToSpaceOpCompute(OpKernelContext* context,
     OP_REQUIRES(context, cropped_size >= 0,
                 errors::InvalidArgument("cropped_shape[", block_dim, "]=",
                                         cropped_size, " must be non-negative"));
-    internal_input_shape.AddDim(input_size);
-    internal_output_shape.AddDim(cropped_size);
-    external_output_shape.AddDim(cropped_size);
+    OP_REQUIRES_OK(context, internal_input_shape.AddDimWithStatus(input_size));
+    OP_REQUIRES_OK(context,
+                   internal_output_shape.AddDimWithStatus(cropped_size));
+    OP_REQUIRES_OK(context,
+                   external_output_shape.AddDimWithStatus(cropped_size));
   }
 
   int64_t depth = 1;
   for (int dim = block_dims - removed_suffix_block_dims + 1; dim < input_dims;
        ++dim) {
     const int64_t size = orig_input_tensor.dim_size(dim);
-    external_output_shape.AddDim(size);
+    OP_REQUIRES_OK(context, external_output_shape.AddDimWithStatus(size));
     depth *= size;
   }
-  internal_input_shape.AddDim(depth);
-  internal_output_shape.AddDim(depth);
+  OP_REQUIRES_OK(context, internal_input_shape.AddDimWithStatus(depth));
+  OP_REQUIRES_OK(context, internal_output_shape.AddDimWithStatus(depth));
 
   // Allocate output tensor.
   Tensor* output_tensor = nullptr;
@@ -279,6 +284,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER);
                           BatchToSpaceOp<GPUDevice, T>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER);
+TF_CALL_bfloat16(REGISTER);
 #undef REGISTER
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

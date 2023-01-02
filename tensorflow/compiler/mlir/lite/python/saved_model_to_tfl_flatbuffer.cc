@@ -198,6 +198,7 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   pass_config.preserve_assert_op = toco_flags.preserve_assert_op();
   pass_config.guarantee_all_funcs_one_use =
       toco_flags.guarantee_all_funcs_one_use();
+  pass_config.enable_stablehlo_conversion = toco_flags.convert_to_stablehlo();
 
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(

@@ -101,6 +101,8 @@ class TFRecordWriter : public Writer {
   TFRecordWriter(const std::string& filename,
                  const std::string& compression_type);
 
+  Status Initialize(tensorflow::Env* env) override;
+
   Status WriteTensors(const std::vector<Tensor>& tensors) override;
 
   Status Sync() override;
@@ -108,9 +110,6 @@ class TFRecordWriter : public Writer {
   Status Close() override;
 
   ~TFRecordWriter() override;
-
- protected:
-  Status Initialize(tensorflow::Env* env) override;
 
  private:
   const std::string filename_;

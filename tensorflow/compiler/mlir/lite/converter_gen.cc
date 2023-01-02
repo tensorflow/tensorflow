@@ -249,7 +249,7 @@ static void EmitGetBuiltinOpCode(const std::vector<Record *> &defs,
        << "    return tflite::BuiltinOperator_" << operator_name << ";\n";
   }
 
-  os << "  return llvm::None;\n"
+  os << "  return std::nullopt;\n"
         "}\n";
 }
 
@@ -335,7 +335,7 @@ static void EmitBuildOperator(const std::vector<Record *> &defs,
        << "fbb);\n";
   }
 
-  os << "  return llvm::None;\n"
+  os << "  return std::nullopt;\n"
         "}\n";
 }
 

@@ -463,7 +463,7 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
 
   result.grappler_duration = absl::Now() - grappler_start_time;
 
-  if (options_.enable_tfrt_gpu) {
+  if (options_.enable_tfrt_gpu && !options_.use_bridge_for_gpu) {
     TF_ASSIGN_OR_RETURN(
         result.graph,
         BuildXlaOpsAndMaybeInsertTransferOps(

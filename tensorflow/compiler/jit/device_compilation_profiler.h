@@ -29,6 +29,7 @@ namespace tensorflow {
 class DeviceCompilationProfiler : public ResourceBase {
  public:
   DeviceCompilationProfiler() = default;
+  ~DeviceCompilationProfiler() final;
 
   struct ClusterCompileStats {
     // Number of times the cluster has been (re-)compiled.
@@ -83,19 +84,13 @@ class DeviceCompilationProfiler : public ResourceBase {
   std::string DebugString() const override;
 
  private:
-  mutable mutex cluster_compile_stats_mu_;
+  mutable mutex mu_;
 
   // Maps cluster names to compilation statistics for said cluster.
   absl::flat_hash_map<std::string, ClusterCompileStats> cluster_compile_stats_
-      TF_GUARDED_BY(cluster_compile_stats_mu_);
+      TF_GUARDED_BY(mu_);
 
-  struct AsyncCompilationState {
-    mutable mutex async_compilation_state_mu;
-
-    // Number of ongoing compilations.
-    int64_t num_ongoing_compilations TF_GUARDED_BY(async_compilation_state_mu) =
-        0;
-  } async_compilation_state_;
+  int64_t num_ongoing_compilations_ TF_GUARDED_BY(mu_) = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DeviceCompilationProfiler);
 };

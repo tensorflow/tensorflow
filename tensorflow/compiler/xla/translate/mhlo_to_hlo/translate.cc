@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 
+constexpr char kParameterReplicationAttr[] = "mhlo.parameter_replication";
+
 namespace xla {
 
 mlir::LogicalResult MlirHloToHloTranslateFunction(mlir::ModuleOp module,
@@ -87,6 +89,16 @@ Status ConvertMlirHloToHloViaBuilder(mlir::ModuleOp module,
     computation.mutable_proto()->mutable_computations(0)->set_execution_thread(
         execution_thread.str());
   }
+  for (int i = 0; i < main.getNumArguments(); ++i)
+    if (auto pr = main.getArgAttrOfType<mlir::ArrayAttr>(
+            i, kParameterReplicationAttr))
+      for (auto b : pr.getValue())
+        computation.mutable_proto()
+            ->mutable_computations(0)
+            ->mutable_instructions(i)
+            ->mutable_parameter_replication()
+            ->add_replicated_at_leaf_buffers(
+                b.cast<mlir::BoolAttr>().getValue());
 
   auto hlo_module = computation.proto();
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);

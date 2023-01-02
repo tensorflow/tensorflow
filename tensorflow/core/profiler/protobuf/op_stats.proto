@@ -14,6 +14,8 @@ message PerfEnv {
   // Peak performance of a TPU core or a GPU in TFLOP/s.
   double peak_tera_flops_per_second = 1;
   // Peak memory bandwidth of a TPU core or a GPU in GiBs/s.
+  double peak_bw_giga_bytes_per_second = 4;
+  // Peak off-chip memory bandwidth of a TPU core or a GPU in GiBs/s.
   double peak_hbm_bw_giga_bytes_per_second = 2;
   // The ridge point of roofline model in FLOP/Byte. (i.e., minimum operational
   // intensity required to achieve maximum performance).

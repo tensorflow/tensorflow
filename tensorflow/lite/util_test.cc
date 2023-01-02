@@ -22,8 +22,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -136,6 +136,32 @@ TEST(MultiplyAndCheckOverflow, Validate) {
   EXPECT_TRUE(MultiplyAndCheckOverflow(1, 2, &res) == kTfLiteOk);
   EXPECT_FALSE(MultiplyAndCheckOverflow(static_cast<size_t>(123456789023),
                                         1223423425, &res) == kTfLiteOk);
+}
+
+TEST(FourBitTest, BytesRequiredEven) {
+  TfLiteContext context;
+
+  int dims[] = {2, 3, 1, 5};
+  const int* dims_ptr = &dims[0];
+  size_t dims_size = 4;
+  size_t required_bytes_four_bit;
+  tflite::BytesRequired(kTfLiteInt4, dims_ptr, dims_size,
+                        &required_bytes_four_bit, context);
+
+  ASSERT_EQ(required_bytes_four_bit, 15);
+}
+
+TEST(FourBitTest, BytesRequiredOdd) {
+  TfLiteContext context;
+
+  int dims[] = {5, 1, 1, 1};
+  const int* dims_ptr = &dims[0];
+  size_t dims_size = 2;
+  size_t required_bytes_four_bit;
+  tflite::BytesRequired(kTfLiteInt4, dims_ptr, dims_size,
+                        &required_bytes_four_bit, context);
+
+  ASSERT_EQ(required_bytes_four_bit, 3);
 }
 
 }  // namespace

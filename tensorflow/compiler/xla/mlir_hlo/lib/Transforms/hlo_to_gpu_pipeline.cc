@@ -58,10 +58,11 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
   // HLO -> Linalg
   pm.addNestedPass<FuncOp>(mhlo::createChloLegalizeToHloPass());
   pm.addPass(createCanonicalizerPass());  // Clean up shape.assuming ops.
-  pm.addNestedPass<FuncOp>(mhlo::createLegalizeHloToLinalgPass());
-
   // Tiling either for softmax or for elementwise
   if (experimentalSoftmax) {
+    pm.addNestedPass<FuncOp>(
+        mhlo::createLegalizeHloToLinalgPass(/*enablePrimitiveOps=*/true));
+
     // Simplify unit dimension.
     pm.addPass(mlir::createLinalgFoldUnitExtentDimsPass());
 
@@ -74,19 +75,26 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
 
     // Tile parallel dimensions of the softmax-like patterns and distribute them
     // across warps. Warps remain independant of each other.
-    pm.addNestedPass<FuncOp>(gml_st::createTilingSoftmaxPass(
+    pm.addNestedPass<FuncOp>(gml_st::createGreedyTilingAndFusionPass(
         /*distribute=*/true, blockTileDim, kBlockDistributionLabel));
-    pm.addNestedPass<FuncOp>(gml_st::createTilingSoftmaxPass(
+    pm.addPass(createCanonicalizerPass());
+    pm.addPass(createCSEPass());
+    pm.addNestedPass<FuncOp>(gml_st::createGreedyTilingAndFusionPass(
         /*distribute=*/true, warpTileDim, kWarpDistributionLabel));
+    pm.addPass(createCanonicalizerPass());
+    pm.addPass(createCSEPass());
 
     // GPU-specific tiling for ops on the warp level.
     pm.addNestedPass<FuncOp>(gml_st::createTilingGpuWarpPass());
-    pm.addNestedPass<FuncOp>(createScalarizationPass());
+    pm.addNestedPass<FuncOp>(gml_st::createScalarizationPass());
 
     pm.addNestedPass<FuncOp>(gml_st::createVectorizeGmlStLoopsPass(
         /*vectorizeGmlStOps=*/true, /*distributionLabels=*/{
             kWarpDistributionLabel, kThreadDistributionLabel}));
   } else {
+    pm.addNestedPass<FuncOp>(
+        mhlo::createLegalizeHloToLinalgPass(/*enablePrimitiveOps=*/false));
+
     pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
         /*distribute=*/true, blockTileDim, kBlockDistributionLabel));
     pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
@@ -96,7 +104,7 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
     // Convert the inner dimension into a sequential loop over all elements.
     pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
         /*distribute=*/false, /*tileSizes=*/1));
-    pm.addNestedPass<FuncOp>(createScalarizationPass());
+    pm.addNestedPass<FuncOp>(gml_st::createScalarizationPass());
   }
 
   pm.addPass(createCanonicalizerPass());

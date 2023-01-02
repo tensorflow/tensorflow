@@ -252,7 +252,7 @@ TEST(UtilTest, CreateTfTensorFromTfLiteTensorString) {
   std::string data_arr[] = {std::string("a_str\0ing", 9), "b_string"};
   tflite::DynamicBuffer buf;
   for (const auto& value : data_arr) {
-    buf.AddString(value.data(), value.length());
+    ASSERT_EQ(buf.AddString(value.data(), value.length()), kTfLiteOk);
   }
   buf.WriteToTensor(&tflite_tensor, nullptr);
 

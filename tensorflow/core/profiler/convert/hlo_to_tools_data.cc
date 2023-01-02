@@ -68,7 +68,7 @@ StatusOr<std::string> ConvertHloProtoToMemoryViewer(
 }
 
 StatusOr<std::string> ConvertHloProtoToGraphViewer(
-    const xla::HloProto& hlo_proto, const HloToolOptions& options) {
+    const xla::HloProto& hlo_proto, const ToolOptions& options) {
   TF_ASSIGN_OR_RETURN(GraphViewerParams params,
                       ParseGraphViewerParams(options));
   if (params.type == "graph") {
@@ -85,9 +85,10 @@ StatusOr<std::string> ConvertHloProtoToGraphViewer(
 
 StatusOr<std::string> ConvertHloProtoToToolData(
     const SessionSnapshot& session_snapshot, const absl::string_view tool_name,
-    const HloToolOptions& options) {
+    const ToolOptions& options) {
   // <options> must provide a hlo module_name field to identify the HLO module.
-  std::optional<std::string> hlo_module_name = options.module_name;
+  std::optional<std::string> hlo_module_name =
+      GetParam<std::string>(options, "module_name");
   if (!hlo_module_name.has_value() || hlo_module_name->empty()) {
     return errors::InvalidArgument(
         "Can not find HLO module name from options.");

@@ -36,7 +36,7 @@ _DEFAULT_TENSORRT_VERSION = '6'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 
 _SUPPORTED_ANDROID_NDK_VERSIONS = [
-    10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21
+    19, 20, 21
 ]
 
 _DEFAULT_PROMPT_ASK_ATTEMPTS = 10
@@ -619,7 +619,7 @@ def prompt_loop_or_load_from_env(environ_cp,
                          'Assuming to be a scripting mistake.' %
                          (var_name, n_ask_attempts))
 
-  if resolve_symlinks and os.path.islink(val):
+  if resolve_symlinks:
     val = os.path.realpath(val)
   environ_cp[var_name] = val
   return val
@@ -1188,6 +1188,9 @@ def main():
     # Enable MMA Dynamic Dispatch support if 'gcc' and if linker >= 2.35
     gcc_env = get_gcc_compiler(environ_cp)
     if gcc_env is not None:
+
+      # Use gold linker if 'gcc' and if 'ppc64le'
+      write_to_bazelrc('build --linkopt="-fuse-ld=gold"')
 
       # Get the linker version
       ld_version = run_shell([gcc_env, '-Wl,-version']).split()

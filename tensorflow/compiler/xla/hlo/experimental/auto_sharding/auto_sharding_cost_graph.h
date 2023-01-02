@@ -23,8 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
-#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
-
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/matrix.h"
 namespace xla {
 namespace spmd {
 
@@ -343,15 +342,6 @@ inline const ShardingStrategy& GetShardingStrategy(
   int stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
   return strategies->leaf_vector[stra_idx];
 }
-
-void GenerateReduceScatter(const HloInstructionSequence& sequence,
-                           const AliasMap& alias_map,
-                           const InstructionDepthMap& depth_map,
-                           const StrategyMap& strategy_map,
-                           const CostGraph& cost_graph,
-                           absl::Span<const int64_t> s_val,
-                           const ClusterEnvironment& cluster_env,
-                           const AutoShardingSolverOption& solver_option);
 
 }  // namespace spmd
 }  // namespace xla

@@ -16,7 +16,6 @@
 import enum
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -688,14 +687,10 @@ def stateless_random_gamma(shape,
     broadcast_shape = array_ops.broadcast_dynamic_shape(
         array_ops.shape(alpha), array_ops.shape(beta))
     alpha_broadcast = array_ops.broadcast_to(alpha, broadcast_shape)
-    if compat.forward_compatible(2022, 11, 29):
-      alg = "auto_select"
-      key, counter, alg = _get_key_counter_alg(seed, alg)
-      rnd = gen_stateless_random_ops_v2.stateless_random_gamma_v3(
-          shape, key=key, counter=counter, alg=alg, alpha=alpha_broadcast)
-    else:
-      rnd = gen_stateless_random_ops.stateless_random_gamma_v2(
-          shape, seed=seed, alpha=alpha_broadcast)
+    alg = "auto_select"
+    key, counter, alg = _get_key_counter_alg(seed, alg)
+    rnd = gen_stateless_random_ops_v2.stateless_random_gamma_v3(
+        shape, key=key, counter=counter, alg=alg, alpha=alpha_broadcast)
     result = math_ops.maximum(
         np.finfo(alpha.dtype.as_numpy_dtype).tiny, rnd / beta)
     tensor_util.maybe_set_static_shape(result, shape)

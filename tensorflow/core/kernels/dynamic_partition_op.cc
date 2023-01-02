@@ -69,9 +69,9 @@ class DynamicPartitionOp_Shared : public OpKernel {
     OP_REQUIRES_OK(c, c->output_list("outputs", Tout));
     for (int p = 0; p < num_partitions_; p++) {
       TensorShape shape;
-      shape.AddDim(partition_count[p]);
+      OP_REQUIRES_OK(c, shape.AddDimWithStatus(partition_count[p]));
       for (int i = (*partitions)->dims(); i < (*data)->dims(); i++) {
-        shape.AddDim((*data)->dim_size(i));
+        OP_REQUIRES_OK(c, shape.AddDimWithStatus((*data)->dim_size(i)));
       }
       Tensor* out;
       OP_REQUIRES_OK(c, Tout->allocate(p, shape, &out));

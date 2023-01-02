@@ -16,25 +16,32 @@ limitations under the License.
 #include "tensorflow/lite/string_util.h"
 
 #include <stddef.h>
-#include <stdint.h>
 
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/core/platform/ctstring_internal.h"
 
 namespace tflite {
 
-void DynamicBuffer::AddString(const char* str, size_t len) {
+TfLiteStatus DynamicBuffer::AddString(const char* str, size_t len) {
+  // If `data_.size() + len` is greater than `SIZE_MAX` then the left hand side
+  // will overflow to something less than max_length_. After checking `len <=
+  // max_length_` we can use this subtraction to check for overflow.
+  if (len > max_length_ || data_.size() >= max_length_ - len)
+    return kTfLiteError;
   data_.resize(data_.size() + len);
   memcpy(data_.data() + offset_.back(), str, len);
   offset_.push_back(offset_.back() + len);
+  return kTfLiteOk;
 }
 
-void DynamicBuffer::AddString(const StringRef& string) {
-  AddString(string.str, string.len);
+TfLiteStatus DynamicBuffer::AddString(const StringRef& string) {
+  return AddString(string.str, string.len);
 }
 
 void DynamicBuffer::AddJoinedString(const std::vector<StringRef>& strings,
@@ -84,12 +91,20 @@ int DynamicBuffer::WriteToBuffer(char** buffer) {
   *buffer = reinterpret_cast<char*>(malloc(bytes));
 
   // Set num of string
+  //
+  // NOTE: The string buffer is accessed here as if it's native endian (instead
+  // of small endian, as documented in the header). This will protentially break
+  // when TFLite is ported to big endian platforms.
+  // TODO(b/165919229): This code will need changing if/when we port to a
+  // big-endian platform.
   int32_t num_strings_le = TF_le32toh(num_strings);  // store num_strings in litte-endian
   memcpy(*buffer, &num_strings_le, sizeof(int32_t));
 
   // Set offset of strings.
   int32_t start = sizeof(int32_t) * (num_strings + 2);
   for (size_t i = 0; i < offset_.size(); i++) {
+    // TODO(b/165919229): This code will need changing if/when we port to a
+    // big-endian platform.
     int32_t offset = start + offset_[i];
     int32_t offset_le = TF_le32toh(offset);  // store offset in little-endian
     memcpy(*buffer + sizeof(int32_t) * (i + 1), &offset_le, sizeof(int32_t));
@@ -125,6 +140,12 @@ void DynamicBuffer::WriteToTensor(TfLiteTensor* tensor,
 
 int GetStringCount(const void* raw_buffer) {
   // The first integers in the raw buffer is the number of strings.
+  //
+  // NOTE: The string buffer is accessed here as if it's native endian (instead
+  // of small endian, as documented in the header). This will protentially break
+  // when TFLite is ported to big endian platforms.
+  // TODO(b/165919229): This code will need changing if/when we port to a
+  // big-endian platform.
   const int32_t* offset =
       static_cast<const int32_t*>(raw_buffer);
   return TF_le32toh(*offset); // return count as little-endian
@@ -136,8 +157,14 @@ int GetStringCount(const TfLiteTensor* tensor) {
 }
 
 StringRef GetString(const void* raw_buffer, int string_index) {
+  // NOTE: The string buffer is accessed here as if it's native endian (instead
+  // of small endian, as documented in the header). This will protentially break
+  // when TFLite is ported to big endian platforms.
+  // TODO(b/165919229): This code will need changing if/when we port to a
+  // big-endian platform.
   const int32_t* offset =
       static_cast<const int32_t*>(raw_buffer) + (string_index + 1);
+  const size_t string_len = (*(offset + 1)) - (*offset);
   return StringRef{
       static_cast<const char*>(raw_buffer) + TF_le32toh(*offset),
       TF_le32toh(*(offset + 1)) - TF_le32toh(*offset), // offsets are stored as little-endian

@@ -18,11 +18,14 @@ limitations under the License.
 #include <stdint.h>
 
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/profiling/telemetry/profiler.h"
 #include "tensorflow/lite/signature_runner.h"
 
 extern "C" {
@@ -199,6 +202,14 @@ TfLiteStatus TfLiteSignatureRunnerCancel(
 
 void TfLiteSignatureRunnerDelete(TfLiteSignatureRunner* signature_runner) {
   delete signature_runner;
+}
+
+void TfLiteInterpreterSetTelemetryProfiler(
+    const TfLiteInterpreter* interpreter,
+    TfLiteTelemetryProfilerStruct* profiler) {
+  std::unique_ptr<tflite::telemetry::TelemetryProfiler> p;
+  p.reset(tflite::telemetry::MakeTfLiteTelemetryProfiler(profiler));
+  interpreter->impl->AddProfiler(std::move(p));
 }
 
 }  // extern "C"

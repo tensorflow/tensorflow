@@ -23,29 +23,29 @@ func.func @cwise_expr(%a: tensor<?x1024x1024xf32>, %b: tensor<?x1024x1024xf32>,
   // CHECK-SAME:      (%[[I:.*]], %[[J:.*]], %[[K:.*]]) = (%[[C0]], %[[C0]], %[[C0]])
   // CHECK-SAME:      to (%[[A_D0]], %[[C1024]], %[[C1024]])
   // CHECK-SAME:      step (%[[C1]], %[[C512]], %[[C1024]])
-  // CHECK-DAG:     %[[A_SUB:.*]] = gml_st.materialize %[[A]][%{{.*}}]
-  // CHECK-DAG:     %[[B_SUB:.*]] = gml_st.materialize %[[B]][%{{.*}}]
-  // CHECK-DAG:     %[[C_SUB:.*]] = gml_st.materialize %[[C]][%{{.*}}]
-  // CHECK-DAG:     %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%{{.*}}]
+  // CHECK-DAG:     %[[A_SUB:.*]] = gml_st.materialize %[[A]]
+  // CHECK-DAG:     %[[B_SUB:.*]] = gml_st.materialize %[[B]]
+  // CHECK-DAG:     %[[C_SUB:.*]] = gml_st.materialize %[[C]]
+  // CHECK-DAG:     %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]]
   // CHECK:         %[[PLOOP_:.*]] = gml_st.parallel
   // CHECK-SAME:        (%[[I_:.*]], %[[J_:.*]], %[[K_:.*]]) = (%[[C0]], %[[C0]], %[[C0]])
   // CHECK-SAME:        to (%[[C1]], %[[C512]], %[[C1024]])
   // CHECK-SAME:        step (%[[C1]], %[[C64]], %[[C128]])
-  // CHECK-DAG:       %[[A_SUB_SUB:.*]] = gml_st.materialize %[[A_SUB]][%{{.*}}]
-  // CHECK-DAG:       %[[B_SUB_SUB:.*]] = gml_st.materialize %[[B_SUB]][%{{.*}}]
-  // CHECK-DAG:       %[[C_SUB_SUB:.*]] = gml_st.materialize %[[C_SUB]][%{{.*}}]
-  // CHECK-DAG:       %[[INIT_SUB_SUB:.*]] = gml_st.materialize %[[INIT_SUB]][%{{.*}}]
+  // CHECK-DAG:       %[[A_SUB_SUB:.*]] = gml_st.materialize %[[A_SUB]]
+  // CHECK-DAG:       %[[B_SUB_SUB:.*]] = gml_st.materialize %[[B_SUB]]
+  // CHECK-DAG:       %[[C_SUB_SUB:.*]] = gml_st.materialize %[[C_SUB]]
+  // CHECK-DAG:       %[[INIT_SUB_SUB:.*]] = gml_st.materialize %[[INIT_SUB]]
   // CHECK:           %[[PLOOP__:.*]] = gml_st.parallel
   // CHECK-SAME:          (%[[I__:.*]], %[[J__:.*]], %[[K__:.*]]) = (%[[C0]], %[[C0]], %[[C0]])
   // CHECK-SAME:          to (%[[C1]], %[[C64]], %[[C128]])
   // CHECK-SAME:          step (%[[C1]], %[[C1]], %[[C32]])
-  // CHECK-DAG:         %[[A_SUB_SUB_SUB:.*]] = gml_st.materialize %[[A_SUB_SUB]][%{{.*}}]
-  // CHECK-DAG:         %[[B_SUB_SUB_SUB:.*]] = gml_st.materialize %[[B_SUB_SUB]][%{{.*}}]
-  // CHECK-DAG:         %[[INIT_SUB_SUB_SUB:.*]] = gml_st.materialize %[[INIT_SUB_SUB]][%{{.*}}]
+  // CHECK-DAG:         %[[A_SUB_SUB_SUB:.*]] = gml_st.materialize %[[A_SUB_SUB]]
+  // CHECK-DAG:         %[[B_SUB_SUB_SUB:.*]] = gml_st.materialize %[[B_SUB_SUB]]
+  // CHECK-DAG:         %[[INIT_SUB_SUB_SUB:.*]] = gml_st.materialize %[[INIT_SUB_SUB]]
   // CHECK:             %[[AB_SUB_SUB_SUB:.*]] = linalg.generic
   // CHECK-SAME:            ins(%[[A_SUB_SUB_SUB]], %[[B_SUB_SUB_SUB]] : tensor<1x1x32xf32>, tensor<1x1x32xf32>)
   // CHECK-SAME:            outs(%[[INIT_SUB_SUB_SUB]] : tensor<1x1x32xf32>)
-  // CHECK-DAG:         %[[C_SUB_SUB_SUB:.*]] = gml_st.materialize %[[C_SUB_SUB]][%{{.*}}]
+  // CHECK-DAG:         %[[C_SUB_SUB_SUB:.*]] = gml_st.materialize %[[C_SUB_SUB]]
   // CHECK:             %[[ABC_SUB_SUB_SUB:.*]] = linalg.generic
   // CHECK-SAME:            ins(%[[AB_SUB_SUB_SUB]], %[[C_SUB_SUB_SUB]] : tensor<1x1x32xf32>, tensor<1x1x32xf32>)
   // CHECK-SAME:            outs(%[[INIT_SUB_SUB_SUB]] : tensor<1x1x32xf32>)

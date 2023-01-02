@@ -1,5 +1,5 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -7,10 +7,19 @@ package(
 )
 
 cc_library(
-    name = "ffi_api_hdrs",
+    name = "ffi_abi",
+    hdrs = ["ffi_abi.h"],
+    compatible_with = get_compatible_with_cloud(),
+)
+
+cc_library(
+    name = "ffi_api",
     hdrs = ["ffi_api.h"],
     compatible_with = get_compatible_with_cloud(),
-    deps = [":ffi_c_api_hdrs"],
+    deps = [
+        ":ffi_abi",
+        ":ffi_c_api_hdrs",
+    ],
 )
 
 cc_library(

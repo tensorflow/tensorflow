@@ -2655,7 +2655,9 @@ TEST_F(HloVerifierTest, InvalidF8Usage) {
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
       status.error_message(),
-      HasSubstr("FP8 is currently only supported in convert instructions"));
+      HasSubstr("FP8 is currently only supported in convert, bitcast, tuple, "
+                "get-tuple-element, transpose, dot, fusion, reshape and copy "
+                "instructions as well as Custom Calls"));
 }
 
 }  // namespace

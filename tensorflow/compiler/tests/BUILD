@@ -729,7 +729,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "slice_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["slice_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
@@ -2209,6 +2209,37 @@ tf_xla_py_test(
     size = "small",
     srcs = ["where_op_test.py"],
     enable_mlir_bridge = False,
+    enabled_backends = [
+        "cpu",
+        "gpu",
+    ],
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python/compiler/xla:compiler_py",
+    ],
+)
+
+tf_xla_py_test(
+    name = "where_op_tpu_test",
+    size = "small",
+    srcs = ["where_op_test.py"],
+    args = ["--tpu_use_tfrt=true"],
+    disabled_backends = [
+        "cpu",
+        "cpu_ondemand",
+        "gpu",
+    ],
+    enable_mlir_bridge = False,
+    main = "where_op_test.py",
     tags = [
         "no_pip",
         "optonly",
@@ -2261,10 +2292,24 @@ tf_xla_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "const_test",
+    size = "small",
+    srcs = ["const_test.py"],
+    python_version = "PY3",
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework",
+    ],
+)
+
 tpu_py_test(
-    name = "const_op_test",
+    name = "giant_const_op_test",
     srcs = [
-        "const_op_test.py",
+        "giant_const_op_test.py",
     ],
     disable_experimental = True,
     # TODO(b/188995810): Add an optimization in MLIR importer to not

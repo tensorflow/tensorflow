@@ -1,12 +1,12 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "if_nccl")
+load("//tensorflow/tsl:tsl.bzl", "if_nccl")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )
 
@@ -61,8 +61,8 @@ cc_library(
     ] + if_cuda([
         ":nccl_id_store_cuda",
         "@local_config_cuda//cuda:cuda_headers",
-        "//tensorflow/core/common_runtime/gpu:gpu_cudamallocasync_allocator",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
     ]) + if_rocm([
         ":nccl_id_store_rocm",
         "@local_config_rocm//rocm:rocm_headers",
@@ -107,7 +107,7 @@ cc_library(
     ] + if_nccl(["@local_config_nccl//:nccl"]),
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "pjrt_client_test_se_gpu",
     srcs = ["pjrt_client_test_se_gpu.cc"],
     tags = [

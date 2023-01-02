@@ -218,7 +218,7 @@ tf_cuda_library(
     ],
     copts = tf_copts(),
     visibility = [
-        "//tensorflow/c:__subpackages__",
+        "//tensorflow:__subpackages__",
         "//tensorflow/python:__subpackages__",
     ],
     deps = [
@@ -800,7 +800,6 @@ tf_cuda_cc_test(
     ],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
-    # linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":c_api",
         ":c_api_internal",
@@ -857,7 +856,6 @@ tf_cc_test(
     ],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
-    # linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":c_api",
         ":c_api_experimental",
@@ -930,7 +928,6 @@ tf_cuda_cc_test(
     tags = ["noasan"],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
-    # linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":c_api",
         ":env",
@@ -951,7 +948,6 @@ tf_cuda_cc_test(
     tags = ["no_cuda_on_cpu_tap"],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
-    # linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":c_api",
         ":kernels",
@@ -978,7 +974,6 @@ tf_cc_test(
     tags = ["noasan"],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
-    # linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":c_api",
         ":ops",

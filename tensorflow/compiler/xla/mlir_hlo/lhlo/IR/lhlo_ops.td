@@ -631,7 +631,7 @@ def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]> {
     Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$output,
     StrAttr:$call_target_name,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$has_side_effect,
-    DefaultValuedStrAttr<StrAttr, "">:$backend_config,
+    OptionalAttr<AnyAttrOf<[StrAttr, DictionaryAttr]>>:$backend_config,
     // TODO(b/189822916): Remove this field when all clients are migrated to
     // the status-returning API.
     DefaultValuedOptionalAttr<MHLO_CustomCallApiVersionAttr,
@@ -640,6 +640,7 @@ def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]> {
     OptionalAttr<CustomCallTargetArgMappingAttr>:$target_arg_mapping
   );
   let hasVerifier = 1;
+  let regions = (region AnyRegion:$called_computation);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1426,7 +1427,7 @@ def TerminatorOp :
   }];
   let builders = [
     OpBuilder<(ins "ValueRange":$operands),
-    [{ build($_builder, $_state, llvm::None, operands, llvm::None); }]>];
+    [{ build($_builder, $_state, std::nullopt, operands, std::nullopt); }]>];
 }
 
 def LHLO_RealDynamicSliceOp: LHLO_Op<

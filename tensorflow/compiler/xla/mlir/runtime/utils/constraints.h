@@ -17,17 +17,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_UTILS_CONSTRAINTS_H_
 
 #include "absl/status/statusor.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/runtime/constraints.h"
 
 namespace xla {
 namespace runtime {
-
 // Returns arguments constraints inferred from the function signature.
 absl::StatusOr<llvm::SmallVector<ArgumentConstraint>> GetArgumentsConstraints(
-    mlir::func::FuncOp func);
+    mlir::FunctionOpInterface func);
 
 // Resolves argument constraint based on the argument type, if constraint is
 // fully satisfied by the type, returns `kResolved`.

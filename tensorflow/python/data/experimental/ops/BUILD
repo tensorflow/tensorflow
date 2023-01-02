@@ -282,6 +282,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:random_op",
         "//tensorflow/python/data/util:structure",
     ],
 )
@@ -342,6 +343,11 @@ py_library(
         "shuffle_ops.py",
     ],
     srcs_version = "PY3",
+    visibility = [
+        # TODO(jsimsa): Remove non-default visibility exception when `index_shuffle` is made public.
+        "//third_party/py/tensorflow_datasets:__subpackages__",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":random_access",
         "//tensorflow/python:array_ops",
@@ -442,6 +448,7 @@ py_library(
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:debug_mode",
         "//tensorflow/python/data/util:nest",
     ],
 )

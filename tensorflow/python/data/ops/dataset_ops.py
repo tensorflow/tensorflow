@@ -25,7 +25,7 @@ from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat as tf_compat
+from tensorflow.python.data.ops import debug_mode
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import structured_function
@@ -53,6 +53,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import gen_io_ops
+from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
@@ -85,13 +86,7 @@ wrap_function = lazy_loader.LazyLoader(
 def_function = lazy_loader.LazyLoader(
     "def_function", globals(),
     "tensorflow.python.eager.def_function")
-# Loaded lazily due to a circular dependency
-# dataset_ops->parsing_ops->dataset_ops
-# TODO(varshaan): Use a regular import.
-parsing_ops = lazy_loader.LazyLoader(
-    "parsing_ops", globals(),
-    "tensorflow.python.ops.parsing_ops")
-# TODO(b/254291122): Remove.
+# TODO(b/240947712): Clean up the circular dependencies.
 # Loaded lazily due to a circular dependency (dataset_ops ->
 # prefetch_op -> dataset_ops).
 prefetch_op = lazy_loader.LazyLoader(
@@ -330,7 +325,7 @@ class DatasetV2(
       if node.name in asset_tracker:
         tensor_proto = node.attr["value"].tensor
         with context.eager_mode(), ops.device("CPU"):
-          node_value = parsing_ops.parse_tensor(
+          node_value = gen_parsing_ops.parse_tensor(
               tensor_proto.SerializeToString(), dtypes.string).numpy()
         asset_tracker[node.name] = ([
             self._track_trackable(asset.Asset(n),
@@ -473,7 +468,7 @@ class DatasetV2(
     return self._options_attr
 
   def _apply_debug_options(self):
-    if DEBUG_MODE:
+    if debug_mode.DEBUG_MODE:
       # Disable autotuning and static optimizations that could introduce
       # parallelism or asynchrony.
       options = options_lib.Options()
@@ -3210,15 +3205,21 @@ name=None))
       rerandomize_each_iteration: (Optional) If set to False, the dataset
       generates the same sequence of random numbers for each epoch. If set to
       True, it generates a different deterministic sequence of random numbers
-      for each epoch. It is defaulted to True if left unspecified.
+      for each epoch. It is defaulted to False if left unspecified.
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
       Dataset: A `Dataset`.
     """
-    return RandomDataset(seed=seed,
-                         rerandomize_each_iteration=rerandomize_each_iteration,
-                         name=name)
+    # Loaded lazily due to a circular dependency (
+    # dataset_ops -> random_op -> dataset_ops).
+    # pylint: disable=g-import-not-at-top,protected-access
+    from tensorflow.python.data.ops import random_op
+    return random_op._random(
+        seed=seed,
+        rerandomize_each_iteration=rerandomize_each_iteration,
+        name=name)
+    # pylint: enable=g-import-not-at-top,protected-access
 
   def snapshot(self,
                path,
@@ -3497,7 +3498,8 @@ name=None))
   def sample_from_datasets(datasets,
                            weights=None,
                            seed=None,
-                           stop_on_empty_dataset=False):
+                           stop_on_empty_dataset=False,
+                           rerandomize_each_iteration=None):
     """Samples elements at random from the datasets in `datasets`.
 
     Creates a dataset by interleaving elements of `datasets` with `weight[i]`
@@ -3539,6 +3541,11 @@ name=None))
         samples starts off as the user intends, but may change as input datasets
         become empty. This can be difficult to detect since the dataset starts
         off looking correct. Default to `False` for backward compatibility.
+      rerandomize_each_iteration: An optional `bool`. The boolean argument
+      controls whether the sequence of random numbers used to determine which
+      dataset to sample from will be rerandomized each epoch. That is, it
+      determinies whether datasets will be sampled in the same order across
+      different epochs (the default behavior) or not.
 
     Returns:
       A dataset that interleaves elements from `datasets` at random, according
@@ -3611,7 +3618,9 @@ name=None))
             axis=[0, 1])
 
       selector_input = map_op._MapDataset(  # pylint: disable=protected-access
-          RandomDataset(seed).batch(2),
+          Dataset.random(
+              seed=seed,
+              rerandomize_each_iteration=rerandomize_each_iteration).batch(2),
           select_dataset_constant_logits,
           use_inter_op_parallelism=False)
 
@@ -3629,7 +3638,11 @@ name=None))
                 logits, 1, seed=seed),
             axis=[0, 1])
 
-      logits_and_seeds = Dataset.zip((logits_ds, RandomDataset(seed).batch(2)))
+      logits_and_seeds = Dataset.zip(
+          (logits_ds,
+           Dataset.random(
+               seed=seed,
+               rerandomize_each_iteration=rerandomize_each_iteration).batch(2)))
       selector_input = map_op._MapDataset(  # pylint: disable=protected-access
           logits_and_seeds,
           select_dataset_varying_logits,
@@ -4901,37 +4914,6 @@ class _RestructuredDataset(UnaryDataset):
     return self._element_spec
 
 
-class RandomDataset(DatasetSource):
-  """A `Dataset` of pseudorandom values."""
-
-  def __init__(self, seed=None, rerandomize_each_iteration=None, name=None):
-    """A `Dataset` of pseudorandom values."""
-    self._seed, self._seed2 = random_seed.get_seed(seed)
-    self._rerandomize = rerandomize_each_iteration
-    self._name = name
-    if (rerandomize_each_iteration is not None or
-        tf_compat.forward_compatible(2022, 12, 17)):
-      if not tf2.enabled() and rerandomize_each_iteration:
-        warnings.warn("In TF 1, the `rerandomize_each_iteration=True` option "
-                      "is only supported for repeat-based epochs.")
-      variant_tensor = ged_ops.random_dataset_v2(
-          seed=self._seed,
-          seed2=self._seed2,
-          seed_generator=gen_dataset_ops.dummy_seed_generator(),
-          rerandomize_each_iteration=self._rerandomize,
-          **self._common_args)
-    else:
-      variant_tensor = ged_ops.random_dataset(
-          seed=self._seed,
-          seed2=self._seed2,
-          **self._common_args)
-    super(RandomDataset, self).__init__(variant_tensor)
-
-  @property
-  def element_spec(self):
-    return tensor_spec.TensorSpec([], dtypes.int64)
-
-
 def _get_prob_original_static(initial_dist_t, target_dist_t):
   """Returns the static probability of sampling from the original.
 
@@ -5279,62 +5261,3 @@ def _resource_resolver(op, resource_reads, resource_writes):
           resource_writes.add(inp)
 
   return updated
-
-
-DEBUG_MODE = False
-
-
-@tf_export("data.experimental.enable_debug_mode")
-def enable_debug_mode():
-  """Enables debug mode for tf.data.
-
-  Example usage with pdb module:
-  ```
-  import tensorflow as tf
-  import pdb
-
-  tf.data.experimental.enable_debug_mode()
-
-  def func(x):
-    # Python 3.7 and older requires `pdb.Pdb(nosigint=True).set_trace()`
-    pdb.set_trace()
-    x = x + 1
-    return x
-
-  dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
-  dataset = dataset.map(func)
-
-  for item in dataset:
-    print(item)
-  ```
-
-  The effect of debug mode is two-fold:
-
-  1) Any transformations that would introduce asynchrony, parallelism, or
-  non-determinism to the input pipeline execution will be forced to execute
-  synchronously, sequentially, and deterministically.
-
-  2) Any user-defined functions passed into tf.data transformations such as
-  `map` will be wrapped in `tf.py_function` so that their body is executed
-  "eagerly" as a Python function as opposed to a traced TensorFlow graph, which
-  is the default behavior. Note that even when debug mode is enabled, the
-  user-defined function is still traced  to infer the shape and type of its
-  outputs; as a consequence, any `print` statements or breakpoints will be
-  triggered once during the tracing before the actual execution of the input
-  pipeline.
-
-  NOTE: As the debug mode setting affects the construction of the tf.data input
-  pipeline, it should be enabled before any tf.data definitions.
-
-  Raises:
-    ValueError: When invoked from graph mode.
-  """
-  if context.executing_eagerly():
-    toggle_debug_mode(True)
-  else:
-    raise ValueError("`enable_debug_mode() is only supported in eager mode.")
-
-
-def toggle_debug_mode(debug_mode):
-  global DEBUG_MODE
-  DEBUG_MODE = debug_mode

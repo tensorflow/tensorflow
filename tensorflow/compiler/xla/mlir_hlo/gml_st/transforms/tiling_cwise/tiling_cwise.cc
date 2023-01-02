@@ -105,7 +105,7 @@ struct TilingCwisePass : public impl::TilingCwisePassBase<TilingCwisePass> {
     }
 
     // Clean up by removing temporary attributes.
-    f.walk([](Operation *op) { removeTransformationAttr(op); });
+    removeTilingLabels(f);
   }
 };
 

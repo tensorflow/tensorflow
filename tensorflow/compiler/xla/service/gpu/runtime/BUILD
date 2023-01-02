@@ -1,3 +1,5 @@
+load("//tensorflow/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
@@ -41,11 +43,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
-        "//tensorflow/compiler/xla/service/gpu:nccl_utils",
-        "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:executor_cache",
-        "@llvm-project//llvm:Support",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -71,22 +72,54 @@ cc_library(
 )
 
 cc_library(
+    name = "custom_call",
+    srcs = ["custom_call.cc"],
+    hdrs = ["custom_call.h"],
+    deps = [
+        ":support",
+        ":triangular_solve",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:custom_call_status_internal",
+        "//tensorflow/compiler/xla/service:custom_call_status_public_headers",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service/gpu:cublas_cudnn",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream_header",
+    ],
+)
+
+cc_library(
     name = "executable",
     srcs = ["executable.cc"],
     hdrs = ["executable.h"],
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = [
+        ":cholesky",
         ":collectives",
         ":conv",
         ":cublas_lt_matmul",
+        ":custom_call",
+        ":fft",
         ":gemm",
+        ":graph_launch",
+        ":io_feed",
         ":kernel_launch",
+        ":memcpy",
+        ":memset",
+        ":support",
+        ":tracing",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
         "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/runtime:ffi",
         "//tensorflow/compiler/xla/runtime:jit_executable",
+        "//tensorflow/compiler/xla/runtime:module_registry",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service/gpu:buffer_allocations",
-        "//tensorflow/compiler/xla/service/gpu:jitrt_custom_calls",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
+        "//tensorflow/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -101,6 +134,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/runtime:custom_call_registry",
         "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/runtime:state",
         "//tensorflow/compiler/xla/service/gpu:fft_thunk",
         "//tensorflow/compiler/xla/stream_executor:fft",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:attribute_exporter",
@@ -199,8 +233,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lt_header",
         "//tensorflow/tsl/platform:status",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@llvm-project//llvm:Support",
     ],
 )
 

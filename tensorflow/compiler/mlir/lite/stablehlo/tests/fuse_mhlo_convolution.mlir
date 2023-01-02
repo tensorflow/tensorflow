@@ -1,4 +1,4 @@
-// RUN: tf-mhlo-tfl-opt %s -fuse-mhlo-convolution-pass -cse | FileCheck %s
+// RUN: odml-to-stablehlo-opt %s -fuse-mhlo-convolution-pass -cse | FileCheck %s
 
 // CHECK-LABEL: @fuseMulAndConv2D
 // CHECK-SAME: %[[INPUT:[^:[:space:]]+]]

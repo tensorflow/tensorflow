@@ -12,7 +12,8 @@ RUN /setup.packages.sh /builder.packages.txt
 COPY builder.devtoolset/fixlinks.sh /fixlinks.sh
 COPY builder.devtoolset/rpm-patch.sh /rpm-patch.sh
 COPY builder.devtoolset/build_devtoolset.sh /build_devtoolset.sh
-RUN /build_devtoolset.sh devtoolset-9 /dt9 
+COPY builder.devtoolset/glibc2.17-inline.patch /glibc2.17-inline.patch
+RUN /build_devtoolset.sh devtoolset-9 /dt9
 
 ################################################################################
 FROM nvidia/cuda:11.8.0-base-ubuntu20.04 as devel

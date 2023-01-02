@@ -66,9 +66,8 @@ class CpuGpuFusionTest : public HloTestBase {
     // Create a variable for comparisons since they require the direction.
     bool is_compare = std::is_same<T, bool>::value;
     Array2D<float> operand_data[Arity];
-    for (int i = 0; i < Arity; ++i) {
-      new (&operand_data[i]) Array2D<float>(test_width, test_height);
-    }
+    std::fill(std::begin(operand_data), std::end(operand_data),
+              Array2D<float>(test_width, test_height));
     Array2D<T> answer_data(test_width, test_height);
     for (int i = 0; i < test_width; ++i) {
       for (int j = 0; j < test_height; ++j) {

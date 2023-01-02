@@ -50,7 +50,7 @@ cc_library(
     ]) + [":mkldnn_version_h"],
     hdrs = glob(["include/*"]),
     copts = select({
-        "@org_tensorflow//tensorflow:windows": [],
+        "@org_tensorflow//tensorflow/tsl:windows": [],
         "//conditions:default": ["-fexceptions"],
     }) + [
         "-DMKLDNN_THR=MKLDNN_THR_SEQ",  # Disables threading.

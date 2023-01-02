@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_MLIR_HLO_TOSA_INCLUDE_MHLO_TOSA_TRANSFORMS_PASSES_H_
 #define TENSORFLOW_COMPILER_XLA_MLIR_HLO_TOSA_INCLUDE_MHLO_TOSA_TRANSFORMS_PASSES_H_
 
+#include <memory>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 
@@ -23,6 +25,7 @@ namespace mlir {
 namespace tosa {
 
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMhloPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createPrepareMhloPass();
 
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_TOSALEGALIZEMHLOPASS

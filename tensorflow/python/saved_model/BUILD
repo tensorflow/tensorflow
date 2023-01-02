@@ -3,6 +3,7 @@
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.bzl", "VERSION", "tf_python_pybind_static_deps")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -287,6 +288,7 @@ py_strict_library(
         ":function_serialization",
         ":revived_types",
         ":signature_constants",
+        "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/python:composite_tensor",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
@@ -296,6 +298,7 @@ py_strict_library(
         "//tensorflow/python/eager:function",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_decorator",
         "@absl_py//absl/logging",
     ],
 )
@@ -360,6 +363,7 @@ py_strict_library(
         "//tensorflow/python/checkpoint:graph_view",
         "//tensorflow/python/checkpoint:save_util_v1",
         "//tensorflow/python/checkpoint:saveable_compat",
+        "//tensorflow/python/checkpoint:tensor_callable",
         "//tensorflow/python/checkpoint:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
@@ -456,10 +460,8 @@ py_strict_library(
         ":loader",
         ":pywrap_saved_model",
         ":signature_serialization",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:composite_tensor",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:func_graph",
         "//tensorflow/python:platform",
@@ -720,7 +722,13 @@ tf_python_pybind_extension(
         "pywrap_saved_model_fingerprinting.h",
         "pywrap_saved_model_metrics.h",
     ],
+    dynamic_deps = ["//tensorflow/python:_pywrap_tensorflow_internal.so"] + select({
+        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+        "//tensorflow:windows": [],
+    }),
     features = ["-layering_check"],
+    static_deps = tf_python_pybind_static_deps(),
     visibility = ["//tensorflow/python/training:__subpackages__"],
     deps = [
         ":pywrap_saved_model_headers",
@@ -777,6 +785,7 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         ":save",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",

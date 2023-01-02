@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "get_compatible_with_cloud", "tf_py_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_protos_grappler")
-load("//tensorflow:tensorflow.bzl", "if_not_windows")
+load("//tensorflow:tensorflow.bzl", "VERSION", "if_not_windows", "tf_python_pybind_static_deps")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -249,6 +249,12 @@ tf_python_pybind_extension(
         "//tensorflow/core/grappler/optimizers:pywrap_required_hdrs",
         "//tensorflow/core/grappler/verifiers:pywrap_required_hdrs",
     ],
+    dynamic_deps = ["//tensorflow/python:_pywrap_tensorflow_internal.so"] + select({
+        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+        "//tensorflow:windows": [],
+    }),
+    static_deps = tf_python_pybind_static_deps(),
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",

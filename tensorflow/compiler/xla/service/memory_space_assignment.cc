@@ -507,7 +507,8 @@ float MemorySpaceAssignmentCostAnalysis::GetAsyncCopyElapsed(
     const Shape& shape) const {
   int64_t size_in_bytes = cost_analysis_.GetShapeSize(shape);
   return static_cast<float>(size_in_bytes) /
-         options().async_copy_bandwidth_bytes_per_second;
+         (options().async_copy_bandwidth_bytes_per_second *
+          options().async_copy_bandwidth_scaling_factor);
 }
 
 int64_t MemorySpaceAssignmentCostAnalysis::GetScheduleEndTime() const {

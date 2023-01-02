@@ -8527,6 +8527,7 @@ struct TransposeConvOptionsT : public flatbuffers::NativeTable {
   tflite::Padding padding = tflite::Padding_SAME;
   int32_t stride_w = 0;
   int32_t stride_h = 0;
+  tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE;
 };
 
 struct TransposeConvOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -8535,7 +8536,8 @@ struct TransposeConvOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_PADDING = 4,
     VT_STRIDE_W = 6,
-    VT_STRIDE_H = 8
+    VT_STRIDE_H = 8,
+    VT_FUSED_ACTIVATION_FUNCTION = 10
   };
   tflite::Padding padding() const {
     return static_cast<tflite::Padding>(GetField<int8_t>(VT_PADDING, 0));
@@ -8546,11 +8548,15 @@ struct TransposeConvOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table
   int32_t stride_h() const {
     return GetField<int32_t>(VT_STRIDE_H, 0);
   }
+  tflite::ActivationFunctionType fused_activation_function() const {
+    return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_PADDING, 1) &&
            VerifyField<int32_t>(verifier, VT_STRIDE_W, 4) &&
            VerifyField<int32_t>(verifier, VT_STRIDE_H, 4) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION, 1) &&
            verifier.EndTable();
   }
   TransposeConvOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -8571,6 +8577,9 @@ struct TransposeConvOptionsBuilder {
   void add_stride_h(int32_t stride_h) {
     fbb_.AddElement<int32_t>(TransposeConvOptions::VT_STRIDE_H, stride_h, 0);
   }
+  void add_fused_activation_function(tflite::ActivationFunctionType fused_activation_function) {
+    fbb_.AddElement<int8_t>(TransposeConvOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
+  }
   explicit TransposeConvOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -8586,10 +8595,12 @@ inline flatbuffers::Offset<TransposeConvOptions> CreateTransposeConvOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
     tflite::Padding padding = tflite::Padding_SAME,
     int32_t stride_w = 0,
-    int32_t stride_h = 0) {
+    int32_t stride_h = 0,
+    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE) {
   TransposeConvOptionsBuilder builder_(_fbb);
   builder_.add_stride_h(stride_h);
   builder_.add_stride_w(stride_w);
+  builder_.add_fused_activation_function(fused_activation_function);
   builder_.add_padding(padding);
   return builder_.Finish();
 }
@@ -15313,6 +15324,7 @@ inline void TransposeConvOptions::UnPackTo(TransposeConvOptionsT *_o, const flat
   { auto _e = padding(); _o->padding = _e; }
   { auto _e = stride_w(); _o->stride_w = _e; }
   { auto _e = stride_h(); _o->stride_h = _e; }
+  { auto _e = fused_activation_function(); _o->fused_activation_function = _e; }
 }
 
 inline flatbuffers::Offset<TransposeConvOptions> TransposeConvOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const TransposeConvOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -15326,11 +15338,13 @@ inline flatbuffers::Offset<TransposeConvOptions> CreateTransposeConvOptions(flat
   auto _padding = _o->padding;
   auto _stride_w = _o->stride_w;
   auto _stride_h = _o->stride_h;
+  auto _fused_activation_function = _o->fused_activation_function;
   return tflite::CreateTransposeConvOptions(
       _fbb,
       _padding,
       _stride_w,
-      _stride_h);
+      _stride_h,
+      _fused_activation_function);
 }
 
 inline ExpandDimsOptionsT *ExpandDimsOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {

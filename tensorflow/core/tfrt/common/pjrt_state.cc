@@ -20,8 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/platform/errors.h"
 
-ABSL_FLAG(bool, tf_use_pjrt, false, "Use PjRtClient in Tensorflow.");
-
 namespace tensorflow {
 
 PjRtState* PjRtState::Create() { return new PjRtState(); }

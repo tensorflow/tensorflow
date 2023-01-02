@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "tensorflow/lite/core/c/c_api_types.h"
 
-namespace tflite {
+namespace tflite::telemetry {
 
 // The source of a telemetry event.
 enum class TelemetrySource : uint32_t {
@@ -63,6 +63,6 @@ struct TelemetryStatusCode {
   }
 };
 
-}  // namespace tflite
+}  // namespace tflite::telemetry
 
 #endif  // TENSORFLOW_LITE_PROFILING_TELEMETRY_TELEMETRY_STATUS_H_

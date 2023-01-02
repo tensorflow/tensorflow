@@ -737,13 +737,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     x = constant_op.constant(1.0)
     with self.assertRaisesRegex(
-        TypeError, 'got keyword argument `training` '
-        'that was not included in input_signature'):
-      foo(x, training=True)
-
-    with self.assertRaisesRegex(
-        TypeError, 'got keyword argument `training` '
-        'that was not included in input_signature'):
+        TypeError, 'Parameter .* was expected to be of type .* but is .*'):
       foo(x, training=False)
 
     self.assertAllEqual(x.numpy(), foo(x).numpy())

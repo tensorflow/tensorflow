@@ -92,6 +92,12 @@ struct QuantizationSpecs {
   // quantization.
   bool disable_infer_tensor_range = false;
 
+  // Whether use the unfrozen variable quantization in MLIR. Typically,
+  // variables are frozen for passing passes, but some variables aren't frozen.
+  // If it is true, QuantizeVariables pass will be added after the
+  // PrepareQuantizePass.
+  bool enable_mlir_variable_quantization = false;
+
   // The node type when the model is exported. Currently this is limited to
   // DT_FLOAT, DT_HALF, DT_QINT8, and DT_QUINT8. When DT_HALF is used, the
   // `weight_quantization` flag needs to set to true. When DT_QUINT8 is used,

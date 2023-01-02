@@ -42,7 +42,8 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
-class ExecutionContext;
+struct ExecutionContext;
+
 class FunctionRef;
 class JitCompiler;
 

@@ -44,9 +44,6 @@ struct TfrtCompileOptions {
   // Enable compiler optimization in TFRT dialect.
   bool enable_optimizer = true;
 
-  // This is deprecated and has no effect.
-  bool enable_native_ops = false;
-
   // If true, run grappler passes before compiling.
   bool enable_grappler = true;
 
@@ -128,6 +125,10 @@ struct TfrtCompileOptions {
 
   // Whether to compile to sync TFRT dialect.
   bool compile_to_sync_tfrt_dialect = false;
+
+  // Whether to use bridge for GPU.
+  // TODO(b/260915352): Remove the flag and default to using bridge.
+  bool use_bridge_for_gpu = false;
 };
 
 std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options);

@@ -232,10 +232,9 @@ void AppendFunctionResults(func::FuncOp func, int num_resources,
   graph_op.erase();
   func::ReturnOp return_op = cast<func::ReturnOp>(block.getTerminator());
   int num_old_arguments = return_op.getNumOperands();
-  for (int i = 0; i < num_resources; ++i) {
-    return_op.operandsMutable().append(
-        new_graph_op.getResult(num_old_arguments + i));
-  }
+  return_op->insertOperands(
+      num_old_arguments,
+      new_graph_op.getResults().slice(num_old_arguments, num_resources));
 }
 
 // Creates a wrapper island enclosing the `sub_op` dependent on

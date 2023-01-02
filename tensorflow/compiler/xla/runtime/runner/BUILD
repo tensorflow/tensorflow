@@ -3,7 +3,7 @@ load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )
 
@@ -16,6 +16,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:arguments",
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/runtime:jit_executable",
+        "//tensorflow/compiler/xla/runtime:logical_result",
         "//tensorflow/compiler/xla/runtime:results",
         "//tensorflow/compiler/xla/runtime:types",
         "//tensorflow/tsl/platform:env",
@@ -32,6 +33,7 @@ tf_proto_library(
     name = "runner_proto",
     srcs = ["runner.proto"],
     cc_api_version = 2,
+    protodeps = ["//tensorflow/compiler/xla:xla_data_proto"],
 )
 
 xla_py_proto_library(
@@ -40,11 +42,20 @@ xla_py_proto_library(
     deps = [":runner_proto"],
 )
 
+xla_py_proto_library(
+    name = "xla_data_pb2",
+    api_version = 2,
+    deps = ["//tensorflow/compiler/xla:xla_data_proto"],
+)
+
 py_library(
     name = "runner",
     testonly = True,
     srcs = ["runner.py"],
-    deps = [":runner_proto_py"],
+    deps = [
+        ":runner_proto_py",
+        "//tensorflow/compiler/xla/python:xla_client",
+    ],
 )
 
 # copybara:uncomment_begin(b/254857628)
@@ -57,6 +68,7 @@ py_library(
 #     srcs_version = "PY3",
 #     deps = [
 #         ":runner",
+#         "//third_party/py/numpy",
 #         "@absl_py//absl/testing:absltest",
 #     ],
 # )

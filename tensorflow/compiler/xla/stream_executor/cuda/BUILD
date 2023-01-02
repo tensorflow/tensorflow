@@ -1,7 +1,7 @@
 # Description:
 #   CUDA-platform specific StreamExecutor support code.
 
-load("//tensorflow/tsl:tsl.bzl", "check_deps", "if_google", "tsl_copts")
+load("//tensorflow/tsl:tsl.bzl", "if_google", "tsl_copts")
 load("//tensorflow/tsl:tsl.default.bzl", "tsl_gpu_cc_test")
 load(
     "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
@@ -646,30 +646,6 @@ cc_library(
     ),
 )
 
-# To avoid duplication, check that the C++ or python library does not depend on
-# the stream executor cuda plugins. Targets that want to use cuda APIs should
-# instead depend on the dummy plugins in //tensorflow/tsl/platform/default/build_config
-# and use header only targets.
-check_deps(
-    name = "cuda_plugins_check_deps",
-    disallowed_deps = if_static(
-        [],
-        otherwise = [
-            ":all_runtime",
-            ":cuda_driver",
-            ":cuda_platform",
-            ":cudnn_plugin",
-            ":cufft_plugin",
-            ":curand_plugin",
-            "//tensorflow/compiler/xla/stream_executor:cuda_platform",
-        ],
-    ),
-    deps = [
-        "//tensorflow:tensorflow_cc",
-        "//tensorflow/python:pywrap_tensorflow_internal",
-    ],
-)
-
 tsl_gpu_cc_test(
     name = "redzone_allocator_test",
     srcs = ["redzone_allocator_test.cc"],
@@ -687,6 +663,7 @@ tsl_gpu_cc_test(
         "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
+        "//tensorflow/tsl/framework:allocator",
         "//tensorflow/tsl/framework:allocator_registry_impl",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:env_impl",

@@ -154,9 +154,11 @@ class JitCompiler {
 
   size_t num_exported() const { return exported_.size(); }
 
-  absl::Span<const mlir::func::FuncOp> exported() const { return exported_; }
+  absl::Span<const mlir::FunctionOpInterface> exported() const {
+    return exported_;
+  }
 
-  mlir::func::FuncOp exported(unsigned ordinal) const {
+  mlir::FunctionOpInterface exported(unsigned ordinal) const {
     assert(exported_[ordinal] && "failed to resolve exported function");
     return exported_[ordinal];
   }
@@ -178,8 +180,8 @@ class JitCompiler {
   llvm::SourceMgr source_mgr_;
   mlir::SourceMgrDiagnosticHandler handler_;
 
-  mlir::OwningOpRef<mlir::ModuleOp> module_;  // can be null if failed to parse
-  std::vector<mlir::func::FuncOp> exported_;  // can be empty if failed to parse
+  mlir::OwningOpRef<mlir::ModuleOp> module_;         // null if failed to parse
+  std::vector<mlir::FunctionOpInterface> exported_;  // empty if failed to parse
 
   bool specialized_;
 };

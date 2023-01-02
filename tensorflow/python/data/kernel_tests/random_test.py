@@ -18,7 +18,6 @@ import warnings
 from absl.testing import parameterized
 
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -63,7 +62,7 @@ class RandomTest(test_base.DatasetTestBase, parameterized.TestCase):
           name="random").take(10)
     first_epoch = self.getDatasetOutput(dataset, requires_initialization=True)
     second_epoch = self.getDatasetOutput(dataset, requires_initialization=True)
-    if (rerandomize is not None or tf_compat.forward_compatible(2022, 12, 17)):
+    if rerandomize:
       if not tf2.enabled() and rerandomize:
         found_warning = False
         for warning in w:
@@ -84,7 +83,7 @@ class RandomTest(test_base.DatasetTestBase, parameterized.TestCase):
     first_epoch = self.getDatasetOutput(dataset)
     second_epoch = self.getDatasetOutput(dataset)
 
-    if (rerandomize is not None or tf_compat.forward_compatible(2022, 12, 17)):
+    if rerandomize:
       self.assertEqual(first_epoch == second_epoch,
                        not rerandomize or rerandomize is None)
     else:
@@ -105,7 +104,7 @@ class RandomTest(test_base.DatasetTestBase, parameterized.TestCase):
     for _ in range(10):
       second_epoch.append(self.evaluate(next_element()))
 
-    if (rerandomize is not None or tf_compat.forward_compatible(2022, 12, 17)):
+    if rerandomize:
       self.assertEqual(first_epoch == second_epoch,
                        not rerandomize or rerandomize is None)
     else:
@@ -128,7 +127,7 @@ class RandomTest(test_base.DatasetTestBase, parameterized.TestCase):
     first_epoch = self.getDatasetOutput(dataset)
     second_epoch = self.getDatasetOutput(dataset)
 
-    if (rerandomize is not None or tf_compat.forward_compatible(2022, 12, 17)):
+    if rerandomize:
       self.assertEqual(first_epoch == second_epoch,
                        not rerandomize or rerandomize is None)
     else:

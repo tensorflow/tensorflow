@@ -42,6 +42,16 @@ TFLite delegate.
     Unique tokens ensure that the delegate doesn't read inapplicable/invalid
     data. Note that delegate_serialize_dir is also required to enable this
     feature.
+*   `first_delegate_node_index`: `int` (default=0) \
+    The index of the first node that could be delegated. Debug only. Add
+    '--define=tflite_debug_delegate=true' in your build command line to use it.
+    \
+    Currently only supported by CoreML delegate.
+*   `last_delegate_node_index`: `int` (default=INT_MAX) \
+    The index of the last node that could be delegated. Debug only. Add
+    '--define=tflite_debug_delegate=true' in your build command line to use it.
+    \
+    Currently only supported by CoreML delegate.
 
 ### GPU delegate provider
 
@@ -159,36 +169,36 @@ delegate library is built with "-DCL_DELEGATE_NO_GL" macro.
     A list of options to be passed to the external delegate library. Options
     should be in the format of `option1:value1;option2:value2;optionN:valueN`
 
-### Stable ABI delegate provider [Experimental API]
+### Stable delegate provider [Experimental API]
 
-The stable ABI delegate provider provides a `TfLiteOpaqueDelegate` object
-pointer and its corresponding deleter by loading a dynamic library that
-encapsulates the actual TFLite delegate implementation in a
+The stable delegate provider provides a `TfLiteOpaqueDelegate` object pointer
+and its corresponding deleter by loading a dynamic library that encapsulates the
+actual TFLite delegate implementation in a
 [`TfLiteStableDelegate`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/core/experimental/acceleration/configuration/c/stable_delegate.h)
 struct instance.
 
-While the structure of the stable ABI delegate provider is similar to the
-external delegate provider, which provides the
+While the structure of the stable delegate provider is similar to the external
+delegate provider, which provides the
 [external delegates](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/external),
-the design objectives of the stable ABI delegates and the external delegates are
+the design objectives of the stable delegates and the external delegates are
 different.
 
--   Stable ABI delegates are designed to work with shared object files that
-    support ABI backward compatibility; that is, the delegate and the TF Lite
-    runtime won't need to be built using the exact same version of TF Lite as
-    the app. However, this is work in progress and the ABI stability is not yet
+-   Stable delegates are designed to work with shared object files that support
+    ABI backward compatibility; that is, the delegate and the TF Lite runtime
+    won't need to be built using the exact same version of TF Lite as the app.
+    However, this is work in progress and the ABI stability is not yet
     guaranteed.
 -   External delegates were developed mainly for delegate evaluation
     (https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/external).
 
-The stable ABI delegates and the external delegates use different APIs for
+The stable delegates and the external delegates use different APIs for
 diagnosing errors, creating and destroying the delegates. For more details of
 the concrete API differences, please check
 [stable_delegate.h](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/core/experimental/acceleration/configuration/c/stable_delegate.h)
 and
 [external_delegate.h](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/external/external_delegate.h).
 
-The stable ABI delegate provider is not supported on Windows platform.
+The stable delegate provider is not supported on Windows platform.
 
-*   `stable_delegate_path`: `string` (default="") \
-    Path to the stable ABI delegate binary to use.
+*   `stable_abi_delegate_settings_file`: `string` (default="") \
+    Path to the delegate settings JSON file.

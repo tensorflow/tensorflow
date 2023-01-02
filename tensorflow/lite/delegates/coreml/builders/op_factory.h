@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_COREML_BUILDERS_OP_FACTORY_H_
 #define TENSORFLOW_LITE_DELEGATES_COREML_BUILDERS_OP_FACTORY_H_
 
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 
 namespace tflite {
 namespace delegates {
