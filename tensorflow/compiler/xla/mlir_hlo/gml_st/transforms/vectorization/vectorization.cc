@@ -41,6 +41,7 @@ using mlir::linalg::MapOp;
 using mlir::linalg::MatmulOp;
 using mlir::linalg::Mmt4DOp;
 using mlir::linalg::ReduceOp;
+using mlir::linalg::TransposeOp;
 using mlir::tensor::ExpandShapeOp;
 using mlir::vector::TransferReadOp;
 using mlir::vector::TransferWriteOp;
@@ -763,7 +764,8 @@ struct VectorizePerfectlyTiledLoopsPass
         VectorizationPattern<MapOp>,
         VectorizationPattern<MatmulOp>,
         VectorizationPattern<Mmt4DOp>,
-        VectorizationPattern<ReduceOp>
+        VectorizationPattern<ReduceOp>,
+        VectorizationPattern<TransposeOp>
       >(ctx, isInsidePerfectlyTiledLoopOrSmall);
       // clang-format on
       patterns.add<VectorizationPattern<FillOp>>(ctx, isFillTiledOrSmall);
