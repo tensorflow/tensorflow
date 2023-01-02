@@ -109,7 +109,8 @@ struct LowerVectorContractPass
 
     vector::populateVectorToVectorCanonicalizationPatterns(patterns);
     // Currently we always lower vector.contract into vector.outerproduct.
-    patterns.add<vector::ContractionOpToOuterProductOpLowering>(
+    patterns.add<vector::ContractionOpToOuterProductOpLowering,
+                 vector::ContractionOpLowering>(
         vector::VectorTransformsOptions().setVectorTransformsOptions(
             vector::VectorContractLowering::OuterProduct),
         ctx, 2);

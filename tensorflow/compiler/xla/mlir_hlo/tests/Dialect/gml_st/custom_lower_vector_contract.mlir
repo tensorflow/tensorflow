@@ -116,3 +116,51 @@ func.func @lower_vector_contract_4d(%arg0: tensor<1x1x8x1xf32>,
 // CHECK:         %[[PRODUCT:.*]] = vector.outerproduct %[[EXTRACT_LHS]], %[[EXTRACT_RHS]], %[[OUT_READ]]
 // CHECK:         %[[RET:.*]] = vector.transfer_write %[[PRODUCT]], %[[INIT]]{{.*}} vector<8x8xf32>, tensor<1x1x8x8xf32>
 // CHECK:         return %[[RET]]
+
+// -----
+
+func.func @lower_vector_contract_4d_matvec(%arg0: tensor<1x1x1x1xf32>,
+                                           %arg1: tensor<1x1x8x1xf32>)
+                  -> tensor<1x1x1x8xf32> {
+  %c0 = arith.constant 0 : index
+  %4 = tensor.empty() : tensor<1x1x1x8xf32>
+  %cst = arith.constant 0.000000e+00 : f32
+  %20 = vector.transfer_read %arg0[%c0, %c0, %c0, %c0], %cst
+    {in_bounds = [true, true, true, true]} : tensor<1x1x1x1xf32>,
+                                             vector<1x1x1x1xf32>
+  %21 = vector.transfer_read %arg1[%c0, %c0, %c0, %c0], %cst
+    {in_bounds = [true, true, true, true]} : tensor<1x1x8x1xf32>,
+                                             vector<1x1x8x1xf32>
+  %22 = vector.transfer_read %4[%c0, %c0, %c0, %c0], %cst
+    {in_bounds = [true, true, true, true]} : tensor<1x1x1x8xf32>,
+                                             vector<1x1x1x8xf32>
+  %23 = vector.contract {indexing_maps =
+    [affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d2, d3, d5)>,
+     affine_map<(d0, d1, d2, d3, d4, d5) -> (d1, d2, d4, d5)>,
+     affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d1, d3, d4)>],
+    iterator_types = ["parallel", "parallel", "reduction",
+                      "parallel", "parallel", "reduction"],
+    kind = #vector.kind<add>}
+    %20, %21, %22 : vector<1x1x1x1xf32>, vector<1x1x8x1xf32>
+               into vector<1x1x1x8xf32>
+  %14 = vector.transfer_write %23, %4[%c0, %c0, %c0, %c0]
+    {in_bounds = [true, true, true, true]} : vector<1x1x1x8xf32>,
+                                             tensor<1x1x1x8xf32>
+  return %14 : tensor<1x1x1x8xf32>
+}
+
+// CHECK-LABEL: func @lower_vector_contract_4d_matvec(
+// CHECK-SAME:      %[[LHS:.*]]: tensor<1x1x1x1xf32>, %[[RHS:.*]]: tensor<1x1x8x1xf32>)
+
+// CHECK-DAG:     %[[C0:.*]] = arith.constant 0 : index
+// CHECK:         %[[INIT:.*]] = tensor.empty
+
+// CHECK:         %[[LHS_READ:.*]] = vector.transfer_read %[[LHS]]{{.*}} tensor<1x1x1x1xf32>, vector<1xf32>
+// CHECK:         %[[RHS_READ:.*]] = vector.transfer_read %[[RHS]]{{.*}} tensor<1x1x8x1xf32>, vector<8x1xf32>
+// CHECK:         %[[OUT_READ:.*]] = vector.transfer_read %[[INIT]]{{.*}} vector<8xf32>
+// CHECK:         %[[RHS_TRANSPOSE:.*]] = vector.transpose %[[RHS_READ]]{{.*}} : vector<8x1xf32> to vector<1x8xf32>
+// CHECK:         %[[EXTRACT_RHS:.*]] = vector.extract %[[RHS_TRANSPOSE]][0]
+// CHECK:         %[[EXTRACT_LHS:.*]] = vector.extract %[[LHS_READ]][0]
+// CHECK:         %[[PRODUCT:.*]] = vector.outerproduct %[[EXTRACT_RHS]], %[[EXTRACT_LHS]], %[[OUT_READ]]
+// CHECK:         %[[RET:.*]] = vector.transfer_write %[[PRODUCT]], %[[INIT]]{{.*}} vector<8xf32>, tensor<1x1x1x8xf32>
+// CHECK:         return %[[RET]]
