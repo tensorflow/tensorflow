@@ -205,6 +205,9 @@ class ParameterizedGemmRewriteTest
     GemmRewriteTest::MatchOptimizedHlo(
         hlo, absl::StrReplaceAll(pattern, replacements_), print_operand_shape);
   }
+  absl::string_view CustomCallTarget() {
+    return replacements_[kCustomCallTargetPlaceholder];
+  }
 
  private:
   static constexpr const char* kCustomCallTargetPlaceholder{
@@ -1110,10 +1113,8 @@ ENTRY test {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
-  // This is a type combination which is not supported by cublasLt, expect
-  // GemmRewriter to choose legacy cublas.
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::CustomCall({"__cublas$gemm"})));
+              GmockMatch(m::CustomCall({CustomCallTarget()})));
 }
 
 TEST_P(ParameterizedGemmRewriteTest, UpcastingF16ToF64) {
