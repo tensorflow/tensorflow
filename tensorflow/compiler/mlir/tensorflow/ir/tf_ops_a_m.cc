@@ -22,7 +22,6 @@ limitations under the License.
 #include <limits>
 #include <numeric>
 #include <optional>
-#include <set>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -2384,105 +2383,6 @@ LogicalResult DynamicStitchOp::verify() {
 //===----------------------------------------------------------------------===//
 // EinsumOp
 //===----------------------------------------------------------------------===//
-
-namespace {
-
-std::string RemoveEllipses(std::string str) {
-  // Take a reference to modify in place.
-  std::string kEllipses = "...";
-  std::string::size_type idx = str.find(kEllipses);
-  while (idx != std::string::npos) {
-    str.erase(idx, kEllipses.length());
-    idx = str.find(kEllipses, idx);
-  }
-  return str;
-}
-
-// Canonicalizes the Einsum notation for batch matrix multiply.
-// Batch matrix multiplication can be expressed as 'bij,bjk->bik'.
-// The canonicalization pattern ensures this swap occurs so the
-// operand with the first non-contracted, non-batch, index variable
-// appears in the same order of the output index variables.
-// This enables downstream rewrites, which could introduce additional
-// axis permutations, to expect a canonical form for batch matmul einsums
-// and avoid the need to insert excessive transposes.
-// i.e. 'bjk,bij->bik' will be canonicalized to 'bij,bjk->bik'.
-// or   'abfde,abcde->abdcf' will be canonicalized to 'abcde,abfde->abdcf'.
-static LogicalResult BatchMatmulCanonicalizer(EinsumOp op,
-                                              PatternRewriter& rewriter) {
-  llvm::StringRef equation = op.getEquation();
-
-  llvm::StringRef lhs_rhs;
-  llvm::StringRef original_out;
-  std::tie(lhs_rhs, original_out) = equation.split("->");
-  if (lhs_rhs.empty() || original_out.empty()) return failure();
-
-  llvm::StringRef original_lhs;
-  llvm::StringRef original_rhs;
-  std::tie(original_lhs, original_rhs) = lhs_rhs.split(',');
-  if (original_lhs.empty() || original_rhs.empty()) return failure();
-
-  // Remove ellipses but preserve the original lhs, rhs, out strings.
-  // Ellipses indicate an equation that is agnostic to the number of indices.
-  std::string lhs = RemoveEllipses(original_lhs.str());
-  std::string rhs = RemoveEllipses(original_rhs.str());
-  std::string out = RemoveEllipses(original_out.str());
-
-  std::set<char> lhs_vars(lhs.begin(), lhs.end());
-  std::set<char> rhs_vars(rhs.begin(), rhs.end());
-  std::set<char> out_vars(out.begin(), out.end());
-
-  // The next two checks combined avoids handling cases with more than one
-  // contraction dimension. It also avoids having multiple non-batch,
-  // non-contracting dimensions which can be interleaved in the output
-  // making it infeasible to canonicalize.
-  if (lhs.size() != rhs.size() || rhs.size() != out.size()) {
-    return failure();
-  }
-
-  if (lhs_vars.size() != lhs.size() || rhs_vars.size() != rhs.size() ||
-      out_vars.size() != out.size()) {
-    return failure();
-  }
-
-  // Previous check guarantees two or zero elements in the symmetric_difference.
-  std::string lhs_non_batch_or_contract_dim;
-  for (const char& dimv : lhs_vars) {
-    if (rhs_vars.count(dimv) == 0) {
-      if (!lhs_non_batch_or_contract_dim.empty()) return failure();
-      lhs_non_batch_or_contract_dim = dimv;
-    }
-  }
-
-  std::string rhs_non_batch_or_contract_dim;
-  for (const char& dimv : rhs_vars) {
-    if (lhs_vars.count(dimv) == 0) rhs_non_batch_or_contract_dim = dimv;
-  }
-
-  // If there exist no non-batch,non-contracting dimensions then fail.
-  if (lhs_non_batch_or_contract_dim.empty() ||
-      rhs_non_batch_or_contract_dim.empty()) {
-    return failure();
-  }
-
-  if (out.find(lhs_non_batch_or_contract_dim) <
-      out.find(rhs_non_batch_or_contract_dim)) {
-    return failure();
-  }
-
-  ValueRange inputs = op.getInputs();
-  rewriter.replaceOpWithNewOp<EinsumOp>(
-      op, op.getType(), ValueRange({inputs[1], inputs[0]}),
-      absl::StrCat(original_rhs.str(), ",", original_lhs.str(), "->",
-                   original_out.str()));
-  return success();
-}
-}  // namespace
-
-void EinsumOp::getCanonicalizationPatterns(RewritePatternSet& results,
-                                           MLIRContext* context) {
-  results.add(BatchMatmulCanonicalizer);
-}
 
 // Verifies that,
 // * Arity of the op is at most two.
