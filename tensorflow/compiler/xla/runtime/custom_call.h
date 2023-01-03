@@ -1470,9 +1470,6 @@ XLA_RUNTIME_REGISTER_SCALAR_ATTR_DECODING(double);
 // A type tag to represent empty arrays of unknown element type.
 struct EmptyArray {};
 
-// A type tag to represent dictionary attributes.
-struct Dictionary {};
-
 // Both EncodedArray and 1-D EncodedDenseElements can be decoded as an
 // absl::Span. Pointers to both EncodedArray and 1-D EncodedDenseElements
 // can be dereferenced as a pointer to EncodedArray.
@@ -1642,6 +1639,45 @@ auto AggregateDecoder(Members... m) {
 }
 
 }  // namespace internal
+
+//===----------------------------------------------------------------------===//
+// Register an XLA custom call attribute decoding for dictionary attributes.
+//===----------------------------------------------------------------------===//
+
+// Dictionary attributes are encoded using the same scheme as aggregate
+// attributes and as custom call attributes: <type_id, name, data> x length.
+class Dictionary {
+  using RuntimeChecks = CustomCall::RuntimeChecks;
+
+ public:
+  explicit Dictionary(internal::DecodedAttrs attrs) : attrs_(attrs) {}
+
+  int64_t size() { return attrs_.size(); }
+
+  template <typename T, RuntimeChecks checks = RuntimeChecks::kDefault>
+  ABSL_ATTRIBUTE_ALWAYS_INLINE FailureOr<T> get(std::string_view name) const {
+    // TODO(ezhulenev): Use `std::binary_search` because it's guaranteed that
+    // encoded attributes are sorted by name.
+    for (int64_t i = 0; i < attrs_.size(); ++i) {
+      if (auto attr = attrs_[i]; attr.name == name)
+        return CustomCallAttrDecoding<T, checks>::Decode(
+            attr.name, attr.type_id, attr.value);
+    }
+    return failure();
+  }
+
+ private:
+  internal::DecodedAttrs attrs_;
+};
+
+template <CustomCall::RuntimeChecks checks>
+struct CustomCallAttrDecoding<Dictionary, checks> {
+  ABSL_ATTRIBUTE_ALWAYS_INLINE static FailureOr<Dictionary> Decode(
+      std::string_view name, TypeID type_id, void* value) {
+    if (!CustomCall::Isa<Dictionary>(checks, type_id)) return failure();
+    return Dictionary(internal::DecodedAttrs(reinterpret_cast<void**>(value)));
+  }
+};
 
 //===----------------------------------------------------------------------===//
 // XLA Custom Call helper macro for registering custom call handlers.

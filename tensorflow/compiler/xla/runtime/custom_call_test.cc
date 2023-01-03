@@ -1066,6 +1066,46 @@ TEST(CustomCallTest, StateArg) {
   ASSERT_EQ(*state_i64[0], 42);
 }
 
+TEST(CustomCallTest, DictionaryAttr) {
+  absl::string_view source = R"(
+    func.func private @custom_call()
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
+
+    func.func @test() {
+      call @custom_call() {
+        dict = { foo = "Uh oh", bar = 42 : i32, baz = array<i32: 1, 2> }
+      }: () -> ()
+      return
+    }
+  )";
+
+  std::string foo;
+  int32_t bar = 0;
+  std::vector<int32_t> baz;
+
+  auto handler = [&](Dictionary dict) -> LogicalResult {
+    if (dict.size() != 3) return failure();
+
+    foo = *dict.get<std::string_view>("foo");
+    bar = *dict.get<int32_t>("bar");
+    auto span = dict.get<absl::Span<const int32_t>>("baz");
+    baz = std::vector<int32_t>(span->begin(), span->end());
+
+    return success();
+  };
+
+  CustomCallRegistry registry = {[&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call")
+                          .Attr<Dictionary>("dict")
+                          .To(handler));
+  }};
+
+  ASSERT_TRUE(CompileAndExecute(source, /*args=*/{}, registry).ok());
+  EXPECT_EQ(foo, "Uh oh");
+  EXPECT_EQ(bar, 42);
+  EXPECT_EQ(baz, std::vector<int32_t>({1, 2}));
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks are below.
 //===----------------------------------------------------------------------===//
