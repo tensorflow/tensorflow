@@ -730,6 +730,26 @@ struct VectorizeGmlStLoopsPass
   }
 };
 
+struct IdentityTransposeOpFoldingPattern
+    : public OpRewritePattern<TransposeOp> {
+  explicit IdentityTransposeOpFoldingPattern(MLIRContext *context,
+                                             PatternBenefit benefit = 1)
+      : OpRewritePattern(context, benefit) {}
+
+  LogicalResult matchAndRewrite(TransposeOp op,
+                                PatternRewriter & /*rewriter*/) const override {
+    auto perm = op.getPermutation();
+    for (int64_t i = 0; static_cast<uint64_t>(i) < perm.size(); ++i) {
+      if (perm[i] != i) return failure();
+    }
+
+    if (!hasSingleElementOperandsAndResults(op)) return failure();
+
+    op.replaceAllUsesWith(SmallVector<Value>(1, op.getInput()));
+    return success();
+  }
+};
+
 struct VectorizePerfectlyTiledLoopsPass
     : public impl::VectorizePerfectlyTiledLoopsPassBase<
           VectorizePerfectlyTiledLoopsPass> {
@@ -779,7 +799,8 @@ struct VectorizePerfectlyTiledLoopsPass
       RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
       linalg::populatePadOpVectorizationPatterns(patterns);
       patterns.add<MaterializeUpdateTransferWriteTensorOperand,
-                   SetYieldUpdateTransferWriteTensorOperand>(ctx);
+                   SetYieldUpdateTransferWriteTensorOperand,
+                   IdentityTransposeOpFoldingPattern>(ctx);
       (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
 

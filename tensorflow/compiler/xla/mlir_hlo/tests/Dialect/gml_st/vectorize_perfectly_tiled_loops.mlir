@@ -156,3 +156,35 @@ func.func @transpose(%input: tensor<4x5x6xf32>,
 // CHECK:         %[[TRANSPOSE:.*]] = vector.transpose %[[READ]], [1, 2, 0]
 // CHECK:         %[[WRITE:.*]] = vector.transfer_write %[[TRANSPOSE]], %[[INIT]]
 // CHECK:         return %[[WRITE]]
+
+// -----
+
+func.func @simplify_identity_transpose(%input: tensor<1x1xf32>,
+    %init: tensor<1x1xf32>) -> tensor<1x1xf32> {
+  %transpose = linalg.transpose
+    ins(%input:tensor<1x1xf32>)
+    outs(%init:tensor<1x1xf32>)
+    permutation = [0, 1]
+  func.return %transpose : tensor<1x1xf32>
+}
+
+// CHECK-LABEL: func @simplify_identity_transpose(
+
+// CHECK-NOT:     linalg.transpose
+// CHECK:         return
+
+// -----
+
+func.func @do_not_simplify_transpose(%input: tensor<1x1xf32>,
+    %init: tensor<1x1xf32>) -> tensor<1x1xf32> {
+  %transpose = linalg.transpose
+    ins(%input:tensor<1x1xf32>)
+    outs(%init:tensor<1x1xf32>)
+    permutation = [1, 0]
+  func.return %transpose : tensor<1x1xf32>
+}
+
+// CHECK-LABEL: func @do_not_simplify_transpose(
+
+// CHECK:         %[[TRANSPOSE:.*]] = linalg.transpose
+// CHECK:         return %[[TRANSPOSE]]
