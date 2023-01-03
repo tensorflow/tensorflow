@@ -204,6 +204,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
             TypeID::get<TF::PolygammaOp>(),
             TypeID::get<TF::PopulationCountOp>(),
             TypeID::get<TF::PowOp>(),
+            TypeID::get<TF::QrOp>(),
             // TODO(hinsu): Canonicalize QuantizeAndDequantize and
             // QuantizeAndDequantizeV2 to QuantizeAndDequantizeV3 by converting
             // attributes to operands.
