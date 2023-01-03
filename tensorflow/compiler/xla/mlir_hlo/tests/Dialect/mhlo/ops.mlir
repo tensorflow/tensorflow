@@ -1416,6 +1416,14 @@ func.func @dot_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) 
 
 // -----
 
+func.func @dot_precision_invalid_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // expected-error@+1 {{'precision_config' failed to satisfy constraint}}
+  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = [#stablehlo<precision HIGH>]} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  func.return %0: tensor<2x2xi32>
+}
+
+// -----
+
 func.func @dot_bad_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -> tensor<2x2xi32> {
   // expected-error@+1 {{'precision_config' failed to satisfy constraint}}
   %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = ["FOO", #mhlo<precision HIGHEST>]} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
