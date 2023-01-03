@@ -1434,6 +1434,7 @@ def MHLO_AllReduceOp : MHLO_Op<"all_reduce",
       "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>];
 
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 def MHLO_ReduceScatterOp : MHLO_Op<"reduce_scatter",
