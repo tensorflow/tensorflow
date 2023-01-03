@@ -590,10 +590,19 @@ class AssignUpdateVariableOp : public OpKernel {
                                            &variable));
 
     const Tensor& value = context->input(1);
+    const DataType& dtype_ = value.dtype();
     // TODO(apassos): We could possibly avoid the copy done by
     // PrepareToUpdateVariable() for commutative operations like Op ==
     // ADD if value's refcount was 1.
     mutex_lock ml(*variable->mu());
+    OP_REQUIRES(context,
+                (variable->tensor()->dtype() == DT_INVALID &&
+                 !variable->is_initialized) ||
+                    variable->tensor()->dtype() == dtype_,
+                errors::InvalidArgument(
+                    "Trying to assign variable with wrong dtype. Expected ",
+                    DataTypeString(variable->tensor()->dtype()), " got ",
+                    DataTypeString(dtype_)));
     Tensor* var_tensor = variable->tensor();
     OP_REQUIRES_OK(context, ValidateAssignUpdateVariableOpShapes(
                                 var_tensor->shape(), value.shape()));
