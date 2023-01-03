@@ -2189,3 +2189,38 @@ func.func @testInvolution(%arg0: tensor<4xi32>) -> (tensor<4xi32>) {
   %1 = "tf.Invert"(%0) : (tensor<4xi32>) -> tensor<4xi32>
   func.return %1 : tensor<4xi32>
 }
+
+// CHECK-LABEL: testEinsum
+func.func @testEinsum(%arg0: tensor<1x64x418x4x64xf32>, %arg1: tensor<1x64x48x4x64xf32>) -> tensor<1x64x4x48x418xf32> {
+  // CHECK: "tf.Einsum"(%arg1, %arg0) {equation = "abcde,abfde->abdcf"} : (tensor<1x64x48x4x64xf32>, tensor<1x64x418x4x64xf32>) -> tensor<1x64x4x48x418xf32>
+  %0 = "tf.Einsum"(%arg0, %arg1) {equation = "abfde,abcde->abdcf"} : (tensor<1x64x418x4x64xf32>, tensor<1x64x48x4x64xf32>) -> tensor<1x64x4x48x418xf32>
+  return %0 : tensor<1x64x4x48x418xf32>
+}
+
+// CHECK-LABEL: testEinsumEllipses
+func.func @testEinsumEllipses(%arg0: tensor<1x64x418x4x64xf32>, %arg1: tensor<1x64x48x4x64xf32>) -> tensor<1x64x4x48x418xf32> {
+  // CHECK: "tf.Einsum"(%arg1, %arg0) {equation = "...cde,...fde->...dcf"} : (tensor<1x64x48x4x64xf32>, tensor<1x64x418x4x64xf32>) -> tensor<1x64x4x48x418xf32>
+  %0 = "tf.Einsum"(%arg0, %arg1) {equation = "...fde,...cde->...dcf"} : (tensor<1x64x418x4x64xf32>, tensor<1x64x48x4x64xf32>) -> tensor<1x64x4x48x418xf32>
+  return %0 : tensor<1x64x4x48x418xf32>
+}
+
+// CHECK-LABEL: testEinsumNoSwap
+func.func @testEinsumNoSwap(%arg0: tensor<64x4x64x64xf32>, %arg1: tensor<64x64x4x64xf32>) -> tensor<64x64x4x64xf32> {
+  // CHECK: "tf.Einsum"(%arg0, %arg1) {equation = "acbe,aecd->abcd"} : (tensor<64x4x64x64xf32>, tensor<64x64x4x64xf32>) -> tensor<64x64x4x64xf32>
+  %0 = "tf.Einsum"(%arg0, %arg1) {equation = "acbe,aecd->abcd"} : (tensor<64x4x64x64xf32>, tensor<64x64x4x64xf32>) -> tensor<64x64x4x64xf32>
+  return %0 : tensor<64x64x4x64xf32>
+}
+
+// CHECK-LABEL: testEinsumBcAbSwap
+func.func @testEinsumBcAbSwap(%arg0: tensor<8x4xf32>, %arg1: tensor<3x8xf32>) -> tensor<3x4xf32> {
+  // CHECK: "tf.Einsum"(%arg1, %arg0) {equation = "ab,bc->ac"} : (tensor<3x8xf32>, tensor<8x4xf32>) -> tensor<3x4xf32>
+  %0 = "tf.Einsum"(%arg0, %arg1) {equation = "bc,ab->ac"} : (tensor<8x4xf32>, tensor<3x8xf32>) -> tensor<3x4xf32>
+  return %0 : tensor<3x4xf32>
+}
+
+// CHECK-LABEL: testEinsumDuplicate
+func.func @testEinsumDuplicate(%arg0: tensor<1x28x28x16xf32>) -> tensor<1x28x28x16xf32> {
+  // CHECK: "tf.Einsum"(%arg0, %arg0) {device = "", equation = "ijkl,ijkl->ijkl"} : (tensor<1x28x28x16xf32>, tensor<1x28x28x16xf32>) -> tensor<1x28x28x16xf32>
+%1 = "tf.Einsum"(%arg0, %arg0) {device = "", equation = "ijkl,ijkl->ijkl"} : (tensor<1x28x28x16xf32>, tensor<1x28x28x16xf32>) -> tensor<1x28x28x16xf32>
+  func.return %1: tensor<1x28x28x16xf32>
+}

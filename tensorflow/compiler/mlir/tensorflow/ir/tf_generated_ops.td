@@ -4459,6 +4459,7 @@ Comparison with `numpy.einsum`:
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasVerifier = 1;
+  let hasCanonicalizer = 1;
 }
 
 def TF_EluOp : TF_Op<"Elu", [Pure, TF_SameOperandsAndResultTypeResolveRef]> {
