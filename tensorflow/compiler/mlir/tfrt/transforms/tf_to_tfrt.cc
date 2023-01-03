@@ -2295,6 +2295,10 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
 
   AddTfDeviceAssignmentPasses(pm, options);
 
+  if (options.sink_in_invariant_ops) {
+    pm.addPass(CreateSinkInInvariantOpsPass());
+  }
+
   pm.addPass(CreateLowerTFSavedModelPass(options.hoist_invariant_ops));
 }
 
