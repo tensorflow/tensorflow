@@ -516,11 +516,11 @@ HloModule Test
 // CHECK-SAME:   lhs_contracting_dimensions = [2]
 // CHECK-SAME:   rhs_contracting_dimensions = [1]
 // CHECK-SAME: precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
-// CHECK-SAME:   : (tensor<1x3x4xf32>, tensor<1x4x5xf32>) -> tensor<1x4x5xf32>
+// CHECK-SAME:   : (tensor<1x3x4xf32>, tensor<1x4x5xf32>) -> tensor<1x3x5xf32>
 ENTRY main {
   %arg0 = f32[1,3,4]{2,1,0} parameter(0)
   %arg1 = f32[1,4,5]{2,1,0} parameter(1)
-  ROOT %out = f32[1,4,5]{2,1,0} dot(%arg0, %arg1), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+  ROOT %out = f32[1,3,5]{2,1,0} dot(%arg0, %arg1), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
 }
 
 // -----

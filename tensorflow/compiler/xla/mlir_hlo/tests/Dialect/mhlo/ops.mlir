@@ -1172,9 +1172,9 @@ func.func @cholesky_wrong_infer_shape(%arg0: tensor<1x2x2xf32>) -> tensor<1x2x2x
 
 // -----
 
-func.func @create_token() -> !stablehlo.token {
-  %0 = "stablehlo.create_token"() : () -> !stablehlo.token
-  func.return %0: !stablehlo.token
+func.func @create_token() -> !mhlo.token {
+  %0 = "mhlo.create_token"() : () -> !mhlo.token
+  func.return %0: !mhlo.token
 }
 
 // -----
@@ -1218,10 +1218,25 @@ func.func @dot_more_dynamic_output_type(%arg0: tensor<3xf32>, %arg1: tensor<?x3x
 
 // -----
 
-func.func @dot_illegal_result_type(%arg0: tensor<?x3xf32>, %arg1: tensor<3xf32>) -> tensor<3x?xf32> {
-  // expected-error@+1 {{'mhlo.dot' op inferred type(s) 'tensor<?xf32>' are incompatible with return type(s) of operation 'tensor<3x?xf32>'}}
+func.func @dot_cannot_infer_type(%arg0: tensor<?x?x3xf32>, %arg1: tensor<?x3x?xf32>) -> tensor<*xf32> {
+  // expected-error@+1 {{failed to infer shape for lhs 'tensor<?x?x3xf32>' and rhs 'tensor<?x3x?xf32>'}}
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<?x?x3xf32>, tensor<?x3x?xf32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @dot_result_type_mismatch_with_inferred_type(%arg0: tensor<?x3xf32>, %arg1: tensor<3xf32>) -> tensor<3x?xf32> {
+  // expected-error@+1 {{inferred shape '[?]' is incompatible with return type of operation 'tensor<3x?xf32>'}}
   %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<?x3xf32>, tensor<3xf32>) -> tensor<3x?xf32>
   func.return %0 : tensor<3x?xf32>
+}
+
+// -----
+
+func.func @dot_result_type_match_with_inferred_type(%arg0: tensor<?x3xf32>, %arg1: tensor<3xf32>) -> tensor<*xf32> {
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<?x3xf32>, tensor<3xf32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -1489,11 +1504,11 @@ func.func @map_mismatch_arguments_and_dimensions(%arg0: tensor<4x5xf32>, %arg1: 
 // -----
 
 // CHECK-LABEL: func @outfeed
-func.func @outfeed(%arg0: tensor<3x3x3xi32>, %arg1: !stablehlo.token) -> !stablehlo.token {
-  %0 = "stablehlo.outfeed"(%arg0, %arg1) {
+func.func @outfeed(%arg0: tensor<3x3x3xi32>, %arg1: !mhlo.token) -> !mhlo.token {
+  %0 = "mhlo.outfeed"(%arg0, %arg1) {
     outfeed_config = ""
-  } : (tensor<3x3x3xi32>, !stablehlo.token) -> !stablehlo.token
-  func.return %0 : !stablehlo.token
+  } : (tensor<3x3x3xi32>, !mhlo.token) -> !mhlo.token
+  func.return %0 : !mhlo.token
 }
 
 // -----
@@ -2580,6 +2595,21 @@ func.func @reshape_invalid_shapes(%operand: tensor<2x4xf32>) -> tensor<3x3xf32> 
 
 // -----
 
+// CHECK-LABEL: func @dot_general
+func.func @dot_general(%arg0: tensor<2x3x4xf32>, %arg1: tensor<2x3x5xf32>) -> tensor<2x4x5xf32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [1]
+    >
+  } : (tensor<2x3x4xf32>, tensor<2x3x5xf32>) -> tensor<2x4x5xf32>
+  func.return %0 : tensor<2x4x5xf32>
+}
+
+// -----
+
 func.func @dot_general(%arg0: tensor<1x?x1x?xf32>, %arg1: tensor<?x1x?x1x?xf32>) {
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
@@ -2638,7 +2668,7 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<*xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op lhs and rhs should have the same number of batching dimensions}}
+  // expected-error @+1 {{lhs and rhs should have the same number of batching dimensions}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0],
@@ -2653,7 +2683,7 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op lhs and rhs should have the same number of batching dimensions}}
+  // expected-error @+1 {{lhs and rhs should have the same number of batching dimensions}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0],
@@ -2668,7 +2698,7 @@ func.func @dot_general(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op lhs and rhs should have the same number of contracting dimensions}}
+  // expected-error @+1 {{lhs and rhs should have the same number of contracting dimensions}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0],
@@ -2683,7 +2713,7 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op lhs and rhs should have the same number of contracting dimensions}}
+  // expected-error @+1 {{lhs and rhs should have the same number of contracting dimensions}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0],
@@ -2698,7 +2728,7 @@ func.func @dot_general(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op has duplicated dimension from lhs_batching_dimensions and lhs_contracting_dimensions: 0}}
+  // expected-error @+1 {{has duplicated dimension from lhs_batching_dimensions and lhs_contracting_dimensions: 0}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0, 0],
@@ -2713,7 +2743,7 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op has duplicated dimension from lhs_batching_dimensions and lhs_contracting_dimensions: 0}}
+  // expected-error @+1 {{has duplicated dimension from lhs_batching_dimensions and lhs_contracting_dimensions: 0}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0, 0],
@@ -2728,7 +2758,7 @@ func.func @dot_general(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op has duplicated dimension from lhs_batching_dimensions and lhs_contracting_dimensions: 1}}
+  // expected-error @+1 {{has duplicated dimension from lhs_batching_dimensions and lhs_contracting_dimensions: 1}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0],
@@ -2743,7 +2773,7 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op has duplicated dimension from lhs_batching_dimensions and lhs_contracting_dimensions: 1}}
+  // expected-error @+1 {{has duplicated dimension from lhs_batching_dimensions and lhs_contracting_dimensions: 1}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0],
@@ -2758,7 +2788,7 @@ func.func @dot_general(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op has duplicated dimension from lhs_batching_dimensions and lhs_contracting_dimensions: 0}}
+  // expected-error @+1 {{has duplicated dimension from lhs_batching_dimensions and lhs_contracting_dimensions: 0}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0],
@@ -2773,7 +2803,7 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op has duplicated dimension from lhs_batching_dimensions and lhs_contracting_dimensions: 0}}
+  // expected-error @+1 {{has duplicated dimension from lhs_batching_dimensions and lhs_contracting_dimensions: 0}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0],
@@ -2788,7 +2818,7 @@ func.func @dot_general(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op has duplicated dimension from rhs_batching_dimensions and rhs_contracting_dimensions: 0}}
+  // expected-error @+1 {{has duplicated dimension from rhs_batching_dimensions and rhs_contracting_dimensions: 0}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0],
@@ -2803,7 +2833,7 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op has duplicated dimension from rhs_batching_dimensions and rhs_contracting_dimensions: 0}}
+  // expected-error @+1 {{has duplicated dimension from rhs_batching_dimensions and rhs_contracting_dimensions: 0}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0],
@@ -2818,7 +2848,7 @@ func.func @dot_general(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op lhs_batching_dimensions value: -1 is out of range: [0, 3)}}
+  // expected-error @+1 {{lhs_batching_dimensions value: -1 is out of range: [0, 3)}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [-1],
@@ -2833,7 +2863,7 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op lhs_batching_dimensions value: 3 is out of range: [0, 3)}}
+  // expected-error @+1 {{lhs_batching_dimensions value: 3 is out of range: [0, 3)}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [3],
@@ -2848,7 +2878,7 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op rhs_batching_dimensions value: -1 is out of range: [0, 3)}}
+  // expected-error @+1 {{rhs_batching_dimensions value: -1 is out of range: [0, 3)}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0],
@@ -2863,7 +2893,7 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op rhs_batching_dimensions value: 3 is out of range: [0, 3)}}
+  // expected-error @+1 {{rhs_batching_dimensions value: 3 is out of range: [0, 3)}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0],
@@ -2878,7 +2908,7 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op lhs_contracting_dimensions value: -1 is out of range: [0, 3)}}
+  // expected-error @+1 {{lhs_contracting_dimensions value: -1 is out of range: [0, 3)}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0],
@@ -2893,7 +2923,7 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op lhs_contracting_dimensions value: 3 is out of range: [0, 3)}}
+  // expected-error @+1 {{lhs_contracting_dimensions value: 3 is out of range: [0, 3)}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0],
@@ -2908,7 +2938,7 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op rhs_contracting_dimensions value: -1 is out of range: [0, 3)}}
+  // expected-error @+1 {{rhs_contracting_dimensions value: -1 is out of range: [0, 3)}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0],
@@ -2923,7 +2953,7 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op rhs_contracting_dimensions value: 3 is out of range: [0, 3)}}
+  // expected-error @+1 {{rhs_contracting_dimensions value: 3 is out of range: [0, 3)}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0],
@@ -2938,7 +2968,7 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<2x?x?xf32>, %arg1: tensor<3x?x?xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op batching dimension sizes must match for lhs/rhs}}
+  // expected-error @+1 {{batching dimension sizes must match for lhs/rhs}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0],
@@ -2953,7 +2983,7 @@ func.func @dot_general(%arg0: tensor<2x?x?xf32>, %arg1: tensor<3x?x?xf32>) {
 // -----
 
 func.func @dot_general(%arg0: tensor<?x2x?xf32>, %arg1: tensor<?x3x?xf32>) {
-  // expected-error @+1 {{'mhlo.dot_general' op contracting dimension sizes must match for lhs/rhs}}
+  // expected-error @+1 {{contracting dimension sizes must match for lhs/rhs}}
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [0],
@@ -2963,6 +2993,38 @@ func.func @dot_general(%arg0: tensor<?x2x?xf32>, %arg1: tensor<?x3x?xf32>) {
     >
   } : (tensor<?x2x?xf32>, tensor<?x3x?xf32>) -> tensor<?x?x?xf32>
   func.return
+}
+
+// -----
+
+// CHECK-LABEL: func @dot_general
+func.func @dot_general(%arg0: tensor<2x3x4xf32>, %arg1: tensor<2x3x5xf32>) -> tensor<2x4x6xf32> {
+  // expected-error@+1 {{inferred shape '[2, 4, 5]' is incompatible with return type of operation 'tensor<2x4x6xf32>'}}
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [1]
+    >
+  } : (tensor<2x3x4xf32>, tensor<2x3x5xf32>) -> tensor<2x4x6xf32>
+  func.return %0 : tensor<2x4x6xf32>
+}
+
+// -----
+
+func.func @dot_general_invalid_precision_config(%arg0: tensor<2x3x4xf32>, %arg1: tensor<2x3x5xf32>) -> tensor<2x4x5xf32> {
+  // expected-error@+1 {{expects precision config to be null or of size 2}}
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [1]
+    >,
+    precision_config = [#mhlo<precision DEFAULT>]
+  } : (tensor<2x3x4xf32>, tensor<2x3x5xf32>) -> tensor<2x4x5xf32>
+  func.return %0 : tensor<2x4x5xf32>
 }
 
 // -----

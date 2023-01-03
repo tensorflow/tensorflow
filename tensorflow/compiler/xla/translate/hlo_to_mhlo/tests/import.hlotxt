@@ -570,7 +570,7 @@ add {
 // CHECK-LABEL:  @test_dot_general
 // CHECK-SAME: [[ARG0:%[a-zA-Z0-9]+]]
 // CHECK-SAME: [[ARG1:%[a-zA-Z0-9]+]]
-%test_dot_general (Arg_0.1: f32[4, 1], Arg_1.2: f32[1, 4]) -> f32[] {
+%test_dot_general (Arg_0.1: f32[4, 1], Arg_1.2: f32[1, 4]) -> f32[1] {
   %Arg_0.1 = f32[4, 1] parameter(0)
   %Arg_1.2 = f32[1, 4] parameter(1)
 
@@ -580,20 +580,20 @@ add {
   // CHECK-SAME: lhs_contracting_dimensions = [0]
   // CHECK-SAME: rhs_contracting_dimensions = [1]
   // CHECK-SAME: precision_config = [#mhlo<precision HIGH>, #mhlo<precision HIGHEST>]
-  dot.3 = f32[] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={1}, operand_precision={high,highest}
+  dot.3 = f32[1, 1] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={1}, operand_precision={high,highest}
 
   // CHECK-NEXT:  [[R1:%.+]] = "mhlo.dot_general"([[ARG0]], [[ARG1]])
   // CHECK-SAME: precision_config = [#mhlo<precision HIGHEST>, #mhlo<precision DEFAULT>]
-  dot.4 = f32[] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={1}, operand_precision={highest,default}
+  dot.4 = f32[1, 1] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={1}, operand_precision={highest,default}
 
   // CHECK-NEXT:  [[R2:%.+]] = "mhlo.dot_general"([[ARG0]], [[ARG1]])
   // CHECK-SAME: precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
-  %dot.5 = f32[] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={1}, operand_precision={default,default}
+  %dot.5 = f32[1, 1] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={1}, operand_precision={default,default}
 
   // TODO(b/129709049) consider making this default precision config inferred.
   // CHECK-NEXT:  "mhlo.dot_general"([[ARG0]], [[ARG1]])
   // CHECK-SAME: precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}
-  %dot.6 = f32[] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  %dot.6 = f32[1, 1] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={1}
 
   // CHECK: [[rehape:%[a-zA-Z0-9]+]] = mhlo.reshape
   // CHECK-NEXT:  "mhlo.dot_general"([[rehape]], [[ARG1]])
@@ -601,7 +601,7 @@ add {
   // CHECK-SAME: rhs_contracting_dimensions = [1]
   // CHECK-SAME: precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}
   reshape.0 = f32[4]{0} reshape(f32[4, 1] Arg_0.1)
-  ROOT %dot.7 = f32[] dot(%reshape.0, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  ROOT %dot.7 = f32[1] dot(%reshape.0, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={1}
 }
 
 // CHECK-LABEL:  func private @test_dynamic_slice

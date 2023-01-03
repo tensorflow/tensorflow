@@ -33,7 +33,104 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
    if (failed(verifyCompatibleShape(type1, type2))) return false;
    return tensorsHaveSameElType(type1.cast<ShapedType>(),
                                 type2.cast<ShapedType>(), ignoreFpPrecision);
-@@ -2920,7 +2904,8 @@
+@@ -785,6 +769,17 @@
+   return success();
+ }
+ 
++// Checks if the precision config has a valid size, if provided.
++LogicalResult verifyPrecisionConfig(Optional<Location> loc,
++                                    Optional<ArrayAttr> maybeArrayAttr) {
++  if (!maybeArrayAttr.has_value()) return success();
++  auto arrayAttr = maybeArrayAttr.value();
++  return !arrayAttr || arrayAttr.size() == 2 || arrayAttr.empty()
++             ? success()
++             : emitOptionalError(
++                   loc, "expects precision config to be null or of size 2.");
++}
++
+ // Verifies the following properties:
+ //  P1. The input, kernel, and output spatial-dimentions are valid.
+ //  P2. Given,
+@@ -805,14 +800,16 @@
+ //          dim(lhs, f) / fgc = dim(rhs, i)
+ //        * dim(rhs, o) (or dim(output, f')) % bgc == 0 and
+ //          dim(rhs, o) (or dim(output, f')) % fgc == 0
++//  P3. Precision config is null, of size 0 or of size 2.
+ LogicalResult verifyConvolutionAttributes(
+-    Value lhs, Value rhs, int64_t inputBatchDimension,
+-    int64_t inputFeatureDimension, ArrayRef<int64_t> inputSpatialDimensions,
++    Optional<Location> location, Value lhs, Value rhs,
++    int64_t inputBatchDimension, int64_t inputFeatureDimension,
++    ArrayRef<int64_t> inputSpatialDimensions,
+     int64_t kernelInputFeatureDimension, int64_t kernelOutputFeatureDimension,
+     ArrayRef<int64_t> kernelSpatialDimensions, int64_t outputBatchDimension,
+     int64_t outputFeatureDimension, ArrayRef<int64_t> outputSpatialDimensions,
+     int64_t featureGroupCount, int64_t batchGroupCount,
+-    Optional<Location> location) {
++    Optional<ArrayAttr> precisionConfig) {
+   // P1.
+   if (failed(isSpatialDimensionsValid(
+           lhs, inputBatchDimension, inputFeatureDimension,
+@@ -892,18 +889,11 @@
+                              "batch_group_count. Got batch_group_count = ",
+                              batchGroupCount, ".");
+ 
+-  return success();
+-}
+-
+-// Checks if the precision config has a valid size, if provided.
+-LogicalResult verifyPrecisionConfig(Optional<Location> loc,
+-                                    Optional<ArrayAttr> maybeArrayAttr) {
+-  if (!maybeArrayAttr.has_value()) return success();
+-  auto arrayAttr = maybeArrayAttr.value();
+-  return !arrayAttr || arrayAttr.size() == 2 || arrayAttr.empty()
+-             ? success()
+-             : emitOptionalError(
+-                   loc, "expects precision config to be null or of size 2.");
++  // P3.
++  if (failed(verifyPrecisionConfig(location, precisionConfig)))
++    return failure();
++
++  return success();
+ }
+ 
+ LogicalResult inferDotShape(RankedTensorType lhs, RankedTensorType rhs,
+@@ -2804,7 +2794,6 @@
+  *  P3. Verify and collect the window atributes.
+  *  P4. Verify precision_config attribute.
+  *  P5. Verify the return shape.
+- *      TODO(b/232574102): Verify the element-type of return-value.
+  */
+ LogicalResult verifyConvolutionOp(
+     Optional<Location> location, Value lhs, Value rhs,
+@@ -2839,11 +2828,11 @@
+ 
+   // P2.
+   if (failed(verifyConvolutionAttributes(
+-          lhs, rhs, inputBatchDimension, inputFeatureDimension,
++          location, lhs, rhs, inputBatchDimension, inputFeatureDimension,
+           inputSpatialDimensions, kernelInputFeatureDimension,
+           kernelOutputFeatureDimension, kernelSpatialDimensions,
+           outputBatchDimension, outputFeatureDimension, outputSpatialDimensions,
+-          featureGroupCount, batchGroupCount, location)))
++          featureGroupCount, batchGroupCount, precisionConfig)))
+     return failure();
+ 
+   if ((size_t)numDims != inputSpatialDimensions.size() + 2)
+@@ -2878,11 +2867,7 @@
+       *rhsDilationOrErr, *windowReversalOrErr, location);
+   if (failed(windowOrErr)) return failure();
+ 
+-  // P3.
+-  if (failed(verifyPrecisionConfig(location, precisionConfig)))
+-    return failure();
+-
+-  // P5.
++  // P4.
+   SmallVector<int64_t> outputDimensions(lhsType.getShape().size(),
+                                         ShapedType::kDynamic);
+ 
+@@ -2920,7 +2905,8 @@
  }
  
  LogicalResult verifyDotOp(Optional<Location> location, Value lhs, Value rhs,
@@ -43,7 +140,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
    auto lhsType = lhs.getType().dyn_cast<RankedTensorType>();
    auto rhsType = rhs.getType().dyn_cast<RankedTensorType>();
    auto resultType = result.getType().dyn_cast<RankedTensorType>();
-@@ -2937,7 +2922,7 @@
+@@ -2937,7 +2923,7 @@
          location, "inferred shape '", dimSizesToString(inferredShape), "' ",
          "is incompatible with return type of operation ", resultType, "");
  
@@ -55,7 +152,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
 diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/dialect/TypeInference.h
 --- stablehlo/stablehlo/dialect/TypeInference.h
 +++ stablehlo/stablehlo/dialect/TypeInference.h
-@@ -39,6 +39,73 @@
+@@ -39,6 +39,83 @@
                           ArrayRef<int64_t> collapsedSliceDims,
                           ArrayRef<int64_t> startIndexMap,
                           int64_t indexVectorDim, SmallVectorImpl<Value>& shape);
@@ -126,6 +223,16 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/d
 +                                  bool allGroupsMustHaveSameSize,
 +                                  bool useGlobalDeviceIds,
 +                                  Optional<size_t> expectedGroupSize);
++
++LogicalResult verifyConvolutionAttributes(
++    Optional<Location> location, Value lhs, Value rhs,
++    int64_t inputBatchDimension, int64_t inputFeatureDimension,
++    ArrayRef<int64_t> inputSpatialDimensions,
++    int64_t kernelInputFeatureDimension, int64_t kernelOutputFeatureDimension,
++    ArrayRef<int64_t> kernelSpatialDimensions, int64_t outputBatchDimension,
++    int64_t outputFeatureDimension, ArrayRef<int64_t> outputSpatialDimensions,
++    int64_t featureGroupCount, int64_t batchGroupCount,
++    Optional<ArrayAttr> precisionConfig);
  
  //===----------------------------------------------------------------------===//
  // Shape functions for ops.

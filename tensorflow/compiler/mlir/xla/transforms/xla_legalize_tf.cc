@@ -328,7 +328,8 @@ class ConvertUniformQuantizedDotHybridOp
       return failure();
     }
 
-    rewriter.replaceOpWithNewOp<mhlo::DotOp>(op, op.getLhs(), *rhs,
+    rewriter.replaceOpWithNewOp<mhlo::DotOp>(op, op.getType(), op.getLhs(),
+                                             *rhs,
                                              /*precision_config=*/nullptr);
     return success();
   }

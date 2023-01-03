@@ -2258,8 +2258,7 @@ def MHLO_CustomCallOp: MHLO_Op<"custom_call",
   }];
 }
 
-def MHLO_DotOp: MHLO_Op<"dot",
-    [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def MHLO_DotOp: MHLO_Op<"dot", [Pure]> {
   let summary = "Dot operator";
   let description = [{
     Performs dot products between vectors, vector/matrix and matrix/matrix
@@ -2276,12 +2275,7 @@ def MHLO_DotOp: MHLO_Op<"dot",
   // Dot op required custom exporter to pass the preferred element type
   // to Xla builder.
   let hasCustomHLOConverter = 1;
-
-  let extraClassDeclaration = [{
-    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return succeeded(mlir::verifyCompatibleShapes(l, r));
-    }
-  }];
+  let hasVerifier = 1;
 }
 
 def MHLO_DotGeneralOp: MHLO_ShapedInterfaceOp<"dot_general", [Pure]> {
