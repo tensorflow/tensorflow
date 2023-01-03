@@ -2679,8 +2679,7 @@ static Value convertGenericReduceOp(PatternRewriter& rewriter, Operation* op,
           .value();
 
   auto transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
-      rewriter, loc, UnrankedTensorType::get(rewriter.getI32Type()), input,
-      perms_value);
+      rewriter, loc, UnrankedTensorType::get(input_etype), input, perms_value);
 
   auto reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, loc,
@@ -3787,6 +3786,15 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
     (void)rewriter.notifyMatchFailure(
         op, "axis must be >= batch_dims for a valid gather op");
     return llvm::None;
+  }
+
+  // tf/tfl allow i64 indices, but tosa does not.
+  if (indices_type.getElementType().isInteger(64)) {
+    indices_type =
+        indices_type.clone(rewriter.getI32Type()).dyn_cast<RankedTensorType>();
+    indices_value = CreateOpAndInfer<tosa::CastOp>(rewriter, op->getLoc(),
+                                                   indices_type, indices_value)
+                        .getResult();
   }
 
   // Sizes for each of these fields.

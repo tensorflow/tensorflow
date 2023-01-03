@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
+
 // This file implements logic for translating mixed IR to buffer form.
-
-#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
-
 #include "mlir-hlo/Transforms/rewriters.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -125,11 +125,11 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
       // We assume the buffer will be small, so we allocate it on the stack.
       // TODO(b/181654096): Replace AllocaOp with AllocOp.
       auto result = lb.create<memref::AllocaOp>(resultType, ranks[i]);
-      lb.create<scf::ForOp>(zero, ranks[i], one, llvm::None,
+      lb.create<scf::ForOp>(zero, ranks[i], one, std::nullopt,
                             [&one, &result](OpBuilder &b, Location l, Value idx,
                                             ValueRange /*vr*/) {
                               b.create<memref::StoreOp>(l, one, result, idx);
-                              b.create<scf::YieldOp>(l, llvm::None);
+                              b.create<scf::YieldOp>(l, std::nullopt);
                             });
       resultShapes.push_back(result);
     }
@@ -299,7 +299,7 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
                                    b.create<memref::StoreOp>(l, outputSize,
                                                              resultShapes[i],
                                                              outputDimension);
-                                   b.create<scf::YieldOp>(l, llvm::None);
+                                   b.create<scf::YieldOp>(l, std::nullopt);
                                  });
                            }
                            b.create<scf::YieldOp>(l, newDimensionOffset);
@@ -379,12 +379,12 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
     Value zero = lb.create<arith::ConstantIndexOp>(0);
     Value one = lb.create<arith::ConstantIndexOp>(1);
     lb.create<scf::ForOp>(
-        zero, newRank, one, llvm::None,
+        zero, newRank, one, std::nullopt,
         [&](OpBuilder &b, Location l, Value idx, ValueRange /*vr*/) {
           Value idxWithOffset = b.create<arith::AddIOp>(l, idx, leadingOnes);
           auto size = b.create<memref::LoadOp>(l, extentMemref, idxWithOffset);
           b.create<memref::StoreOp>(l, size, result, idx);
-          b.create<scf::YieldOp>(l, llvm::None);
+          b.create<scf::YieldOp>(l, std::nullopt);
         });
     return result;
   }

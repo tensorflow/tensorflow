@@ -88,6 +88,12 @@ Status CreateTestFiles(const std::vector<tstring>& filenames,
 }
 }  // namespace
 
+std::string LocalTempFilename() {
+  std::string path;
+  CHECK(Env::Default()->LocalTempFilename(&path));
+  return path;
+}
+
 DatasetDef RangeDataset(int64_t range) {
   DatasetDef dataset_def;
   *dataset_def.mutable_graph() = GDef(

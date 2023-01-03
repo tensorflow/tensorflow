@@ -45,6 +45,9 @@ message QuantizationMethod {
     // determined in the graph executions. The weights are quantized during
     // conversion.
     DYNAMIC_RANGE = 2;
+
+    // Weight-only quantization. Only weights are quantized during conversion.
+    WEIGHT_ONLY = 3;
   }
 
   // Quantization method is either exprimental or non-experimental method.
@@ -158,4 +161,9 @@ message QuantizationOptions {
   // not applied regardless of the op support. Currently, it is supported for
   // Uniform Quantized opset only.
   bool enable_per_channel_quantization = 7;
+
+  // Enables two inputs of an operation to be both tensors.
+  // Currently supports MatMul and BatchMatMul ops for XLA.
+  // TODO(b/263528090): Check the condition when this feature is beneficial.
+  bool enable_two_input_tensors = 8;
 }

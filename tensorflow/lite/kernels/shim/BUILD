@@ -19,7 +19,6 @@ filegroup(
         "tf_op_shim.h",
         "tf_tensor_view.h",
     ],
-    # copybara:uncomment compatible_with = ["//buildenv/target:gce"],
     visibility = ["//tensorflow/core:__pkg__"],
 )
 

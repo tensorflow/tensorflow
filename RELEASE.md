@@ -13,6 +13,8 @@
         signature is malformed, e.g.
             *   Using functools.wraps on a function with different signature
             *   Using functools.partial with an invalid tf.function input
+    *   tf.types.experimental.TraceType now requires an additional 
+        `placeholder_value` method to be defined.
 
 *   `tf.config.experimental.enable_mlir_graph_optimization`:
 
@@ -69,6 +71,11 @@
     *   Updated `tf.keras.layers.BatchNormalization` to support masking of the
         inputs (`mask` argument) when computing the mean and variance.
     *   Add `tf.keras.layers.Identity`, a placeholder pass-through layer.
+    *   Add `show_trainable` option to `tf.keras.utils.model_to_dot` to display
+        layer trainable status in model plots.
+    *   Add ability to save a `tf.keras.utils.FeatureSpace` object, via
+        `feature_space.save("myfeaturespace.keras")`, and reload it via
+        `feature_space = tf.keras.models.load_model("myfeaturespace.keras")`.
 
 *   `tf.experimental.dtensor`:
 
@@ -80,7 +87,7 @@
     *   Added support for alternative checkpointing protocol which makes it
         possible to checkpoint the state of the input pipeline without having
         to store the contents of internal buffers. The new functionality can
-        be enabled through the `experimental_symbolic_checkpointing` option of
+        be enabled through the `experimental_symbolic_checkpoint` option of
         `tf.data.Options()`.
     *   Added a new `rerandomize_each_iteration` argument for the
         `tf.data.Dataset.random()` operation, which controls whether the
@@ -109,6 +116,13 @@
 * `tf.experimental.ExtensionType`
   * Added function `experimental.extension_type.as_dict()`, which converts an
     instance of `tf.experimental.ExtensionType` to a `dict` representation.
+* `stream_executor`
+  * Top level `stream_executor` directory has been deleted, users should use
+    equivalent headers and targets under `compiler/xla/stream_executor`.
+* `tf.nn`
+  * Added `tf.nn.experimental.general_dropout`, which is similar to
+    `tf.random.experimental.stateless_dropout` but accepts a custom sampler
+    function.
 
 
 # Thanks to our Contributors
@@ -10855,3 +10869,5 @@ answered questions, and were part of inspiring discussions.
 # Release 0.5.0
 
 Initial release of TensorFlow.
+
+<!-- mdformat global-off(b/169948621#comment2) -->

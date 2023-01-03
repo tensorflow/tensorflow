@@ -97,7 +97,7 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
 #endif  // GOOGLE_CUDA
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  RegisterCustomCall(registry);
+  RegisterXlaClassicCustomCalls(registry);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
@@ -106,12 +106,10 @@ void RegisterXlaGpuTypeIdNames(TypeIDNameRegistry& registry) {
       "__type_id_se_dnn_activation");
   registry.Register<Tagged<DotDimensionNumbers>>(
       "__type_id_dot_dimension_numbers");
-  registry.Register<Tagged<ConvDimensionNumbers>>(
-      "__type_id_conv_dimension_numbers");
   registry.Register<Tagged<se::fft::Type>>("__type_id_se_fft_type");
-  registry.Register<Tagged<ConvBackendConfig>>("__type_id_conv_backend_config");
 
   RegisterTracingTypeIdNames(registry);
+  RegisterConvTypeIdNames(registry);
 
 #if GOOGLE_CUDA
   registry.Register<Tagged<se::cuda::BlasLt::Epilogue>>(
@@ -192,10 +190,8 @@ GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
         runtime::CreateDefaultXlaGpuRuntimeCompilationPipeline(passes, copts);
       };
 
-  // TODO(b/241296710): LLVM optimizations interact badly with the memory
-  // loads and stores pattern generated in very large XLA programs, and can
-  // take minutes to run. Currently we do not expect any expensive code
-  // running on the host, so we can safely disable optimization passes.
+  // Do not run expensive optimization passes because we do not expect any
+  // non-trivial host code in XLA:GPU host executables.
   opts.compiler.jit_code_opt_level = llvm::CodeGenOpt::None;
 
   // Instantiate new JitExecutable from the MLIR source.
@@ -302,6 +298,10 @@ Status GpuRuntimeExecutable::Execute(
     const std::vector<uint8_t>& binary,
     const BufferAllocations& buffer_allocations,
     const BufferAllocation* temp_alloc) {
+  // We pass a pointer to the executable through UserData, so that we can
+  // get access to other exported functions from custom call handlers.
+  runtime::Executable& executable = this->executable();
+
   // Pack buffer allocations as executable arguments. It is guaranteed that
   // the compiled function will make a copy of all arguments and will write all
   // results after the call to `Execute` completes, so it is safe to keep them
@@ -310,6 +310,23 @@ Status GpuRuntimeExecutable::Execute(
 
   llvm::SmallVector<void*, 16> ptrs;  // storage for device address pointers
   InitializeCallFrame(call_frame, buffer_allocations, buffer_sizes_, ptrs);
+
+  // Check that initialized call frame is compatible with the executable
+  // entry point signature, otherwise compiled executable can read memory out of
+  // arguments bounds and crash with a segfault.
+  const runtime::FunctionType& signature = executable.signature();
+  if (signature.num_operands() != buffer_allocations.size())
+    return InternalError("Expected %d arguments but got %d buffer allocations",
+                         signature.num_operands(), buffer_allocations.size());
+
+  for (unsigned i = 0; i < executable.signature().num_operands(); ++i) {
+    auto* memref = llvm::dyn_cast<runtime::MemrefType>(signature.operand(i));
+    if (!memref) return InvalidArgument("Expected memref as %d-th argument", i);
+
+    if (memref->rank() != 1 || memref->sizes()[0] != buffer_sizes_[i])
+      return InvalidArgument("Expected a buffer of size %d but got %d",
+                             memref->sizes()[0], buffer_sizes_[i]);
+  }
 
   // XLA Runtime executables do not return any values.
   runtime::NoResultConverter converter;
@@ -323,7 +340,7 @@ Status GpuRuntimeExecutable::Execute(
   // Async collective support instantiated for each Gpu executable run, so that
   // concurrent executions can run independenty using a separate set of events
   // for communication.
-  JitRtAsyncCollectiveSupport async_collectives(
+  AsyncCollectivesSupport async_collectives(
       async_comms_stream.ok() ? async_comms_stream->get() : nullptr);
 
   // Always pass in the temp buffer, even if it is null, to accommodate the
@@ -332,13 +349,10 @@ Status GpuRuntimeExecutable::Execute(
   if (temp_alloc)
     temp_buffer = buffer_allocations.GetDeviceAddress(temp_alloc->index());
 
-  // We pass a pointer to the executable through UserData, so that we can
-  // get access to other exported functions from custom call handlers.
-  runtime::Executable& executable = this->executable();
-
   // Take snapshots of every state required by custom calls.
   StreamExecutorKernels::Snapshot kernels = gpu_kernels_(executor)->snapshot();
   GemmConfigs::Snapshot gemm_configs = gemm_configs_.snapshot();
+  FftPlans::Snapshot fft_plans = fft_plans_.snapshot();
 
   // Initialize state required for running functions exported from FFI modules.
   FfiStateVector ffi_state = ffi_modules_state_.state_vector();
@@ -347,7 +361,7 @@ Status GpuRuntimeExecutable::Execute(
   runtime::CustomCall::UserData user_data(
       run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
       &ffi_state, &binary, &kernels, &gemm_configs, &conv_runners_cache_,
-      &collectives_,
+      &collectives_, &fft_plans,
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.
       async_collectives.async_comm_stream() ? &async_collectives : nullptr);

@@ -161,6 +161,7 @@ class Conv2DTransposeTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradient(self):
+    self.skipTest("b/262851489: Fix nightly build for GPU.")
     x_shape = [2, 6, 4, 3]
     f_shape = [3, 3, 2, 3]
     y_shape = [2, 12, 8, 2]

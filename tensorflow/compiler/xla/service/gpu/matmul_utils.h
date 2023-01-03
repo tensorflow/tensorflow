@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
@@ -99,8 +100,18 @@ struct GemmConfig {
       double alpha_real, double alpha_imag, double beta,
       std::optional<int64_t> algorithm, int64_t compute_precision);
 
+  // As above with additional `c_shape` parameter.
+  static StatusOr<GemmConfig> For(
+      const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
+      absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,
+      absl::Span<const int64_t> rhs_batch_dims,
+      absl::Span<const int64_t> rhs_contracting_dims, const Shape& c_shape,
+      const Shape& output_shape, double alpha_real, double alpha_imag,
+      double beta, std::optional<int64_t> algorithm, int64_t compute_precision);
+
   MatrixLayout lhs_layout;
   MatrixLayout rhs_layout;
+  MatrixLayout c_layout;
   MatrixLayout output_layout;
   complex128 alpha;
   double beta;
@@ -146,7 +157,43 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
 
 class MatmulPlan {
  public:
-  static StatusOr<MatmulPlan> For(mlir::lmhlo_gpu::CublasLtMatmulOp op);
+  template <typename CublasLtMatmulMaybeF8Op,
+            typename = std::enable_if<
+                std::is_same<CublasLtMatmulMaybeF8Op,
+                             mlir::lmhlo_gpu::CublasLtMatmulOp>::value ||
+                std::is_same<CublasLtMatmulMaybeF8Op,
+                             mlir::lmhlo_gpu::CublasLtMatmulF8Op>::value>>
+  static StatusOr<MatmulPlan> For(CublasLtMatmulMaybeF8Op op) {
+    mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
+
+    int64_t compute_precision = 0;  // Default
+    if (op.getPrecisionConfig().has_value()) {
+      auto precision_config = op.getPrecisionConfig();
+      for (auto attr : precision_config.value()) {
+        int64_t value = static_cast<int64_t>(
+            attr.template cast<mlir::mhlo::PrecisionAttr>().getValue());
+        if (value > compute_precision) {
+          compute_precision = value;
+        }
+      }
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        GemmConfig config,
+        GemmConfig::For(
+            GetShape(op.getA()), dot_dims.getLhsBatchingDimensions(),
+            dot_dims.getLhsContractingDimensions(), GetShape(op.getB()),
+            dot_dims.getRhsBatchingDimensions(),
+            dot_dims.getRhsContractingDimensions(), GetShape(op.getC()),
+            GetShape(op.getD()), op.getAlphaReal().convertToDouble(),
+            op.getAlphaImag().convertToDouble(), op.getBeta().convertToDouble(),
+            op.getAlgorithm(), compute_precision));
+
+    TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::Epilogue epilogue,
+                        AsBlasLtEpilogue(op.getEpilogue()));
+    return From(config, epilogue);
+  }
+
   static StatusOr<MatmulPlan> From(const GemmConfig& config,
                                    se::cuda::BlasLt::Epilogue epilogue);
 
@@ -156,6 +203,9 @@ class MatmulPlan {
       se::DeviceMemoryBase d_buffer,
       se::DeviceMemoryBase bias_buffer,  // may be null
       se::DeviceMemoryBase aux_buffer,   // may be null
+      se::DeviceMemoryBase a_scale_buffer, se::DeviceMemoryBase b_scale_buffer,
+      se::DeviceMemoryBase c_scale_buffer, se::DeviceMemoryBase d_scale_buffer,
+      se::DeviceMemoryBase d_amax_buffer,
       const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
       se::ScratchAllocator& scratch_allocator,
       se::blas::ProfileResult* profile_result = nullptr) const;
@@ -171,12 +221,16 @@ class MatmulPlan {
         beta_(beta),
         must_swap_operands_(must_swap_operands) {}
 
-  template <typename Input, typename Scale = Input>
+  template <typename Scale, typename A, typename B = A, typename C = A,
+            typename D = A>
   Status DoMatmul(se::Stream* stream, se::DeviceMemoryBase a_buffer,
                   se::DeviceMemoryBase b_buffer, se::DeviceMemoryBase c_buffer,
                   se::DeviceMemoryBase d_buffer,
                   se::DeviceMemoryBase bias_buffer,  // may be null
                   se::DeviceMemoryBase aux_buffer,   // may be null
+                  se::DeviceMemoryBase a_scale, se::DeviceMemoryBase b_scale,
+                  se::DeviceMemoryBase c_scale, se::DeviceMemoryBase d_scale,
+                  se::DeviceMemoryBase d_amax,
                   const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
                   se::ScratchAllocator& scratch_allocator,
                   se::blas::ProfileResult* profile_result) const;

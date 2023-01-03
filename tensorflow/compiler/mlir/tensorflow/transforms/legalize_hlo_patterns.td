@@ -353,8 +353,7 @@ def : Pat<(MHLO_SelectOp
            (SameValue $rem, $rem2),
            (SameValue $rem, $rem3),
            (SameTypeOrDefaultCompare $compare_type, $cst),
-           (SameTypeOrDefaultCompare $compare_type1, $cst1),
-           (SameTypeOrDefaultCompare $compare_type2, $compare_type)]>;
+           (SameTypeOrDefaultCompare $compare_type1, $cst1)]>;
 
 // Converts a dag of HLOs representing floor_mod with a constant to
 // tf.FloorMod. The pattern matched executes the following computation:

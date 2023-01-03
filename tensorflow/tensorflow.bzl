@@ -301,6 +301,12 @@ def if_override_eigen_strong_inline(a):
 
 if_nccl = _if_nccl
 
+def if_zendnn(if_true, if_false = []):
+    return select({
+        "//tensorflow:linux_x86_64": if_true,
+        "//conditions:default": if_false,
+    })
+
 def if_libtpu(if_true, if_false = []):
     """Shorthand for select()ing whether to build backend support for TPUs when building libtpu.so"""
     return select({
@@ -429,6 +435,7 @@ def tf_copts(
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
         if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
+        if_zendnn(["-DAMD_ZENDNN"]) +
         if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +
         if_android_arm(["-mfpu=neon"]) +
         if_linux_x86_64(["-msse3"]) +
@@ -1397,7 +1404,7 @@ def tf_cc_test(
         **kwargs
     )
 
-def tf_cc_test_noshared(
+def tf_cc_shared_test(
         name,
         srcs,
         deps,
@@ -1425,34 +1432,16 @@ def tf_cc_test_noshared(
             ],
             clean_dep("//third_party/compute_library:build_with_acl"): ["-fopenmp"],
         }) + linkopts + _rpath_linkopts(name),
-        deps = deps + [
-            "//tensorflow/c/experimental/filesystem:filesystem_interface",
-            "//tensorflow/c/experimental/stream_executor:stream_executor",
-            "//tensorflow/c:env",
-            "//tensorflow/c:kernels",
-            "//tensorflow/c:kernels_experimental",
-            "//tensorflow/c:logging",
-            "//tensorflow/c:ops",
-            "//tensorflow/cc/saved_model:fingerprinting_impl",
-            "//tensorflow/cc/saved_model:loader_lite_impl",
-            "//tensorflow/cc/saved_model:metrics_impl",
-            "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
-            "//tensorflow/core/common_runtime:core_cpu_impl",
-            "//tensorflow/core:framework_internal_impl",
-            "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
-            "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
-            "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
-            "//tensorflow/core:lib_internal_impl",
-            "//tensorflow/core/profiler:profiler_impl",
-            "//tensorflow/core/util:determinism",  # Must be linked and exported to libtensorflow_framework.so.
-            "//tensorflow/lite/kernels/shim:tf_kernel_shim",
-            "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
-        ] + select({
-            "//tensorflow:macos": [],
-            "//conditions:default": [
-                "//tensorflow/core/data:captured_function",
+        deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
+            [
+                clean_dep("//third_party/mkl:intel_binary_blob"),
             ],
-        }) + tf_binary_dynamic_kernel_deps(kernels),
+        ),
+        dynamic_deps = if_static(
+            extra_deps = [],
+            macos = ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+            otherwise = ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+        ),
         data = data + tf_binary_dynamic_kernel_dsos(),
         exec_properties = tf_exec_properties(kwargs),
         **kwargs
@@ -2285,6 +2274,13 @@ def pywrap_tensorflow_macro_opensource(
         ],
     })
     additional_linker_inputs = if_windows([], otherwise = ["%s.lds" % vscriptname])
+
+    # This is needed so that libtensorflow_cc is included in the pip package.
+    srcs += select({
+        clean_dep("//tensorflow:macos"): [clean_dep("//tensorflow:libtensorflow_cc.%s.dylib" % VERSION_MAJOR)],
+        clean_dep("//tensorflow:windows"): [],
+        "//conditions:default": [clean_dep("//tensorflow:libtensorflow_cc.so.%s" % VERSION_MAJOR)],
+    })
 
     tf_cc_shared_library_opensource(
         name = cc_shared_library_name,

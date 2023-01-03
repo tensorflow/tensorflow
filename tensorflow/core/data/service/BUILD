@@ -338,7 +338,6 @@ cc_library(
         ":common",
         ":common_proto_cc",
         ":credentials_factory",
-        ":data_transfer",
         ":dispatcher_cc_grpc_proto",
         ":dispatcher_proto_cc",
         ":grpc_util",

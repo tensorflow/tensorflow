@@ -55,6 +55,8 @@ _version: int
 mlir_api_version: int
 
 bfloat16: numpy.dtype
+float8_e4m3fn: numpy.dtype
+float8_e5m2: numpy.dtype
 XLA_ELEMENT_TYPE_TO_DTYPE: Dict[PrimitiveType, numpy.dtype]
 
 

@@ -108,8 +108,9 @@ void SetFunctionPrivate(func::FuncOp& func) {
     }
   }
 
+  auto iface = cast<FunctionOpInterface>(func.getOperation());
   for (int i = 0; i < func.getNumArguments(); ++i) {
-    for (auto& attr : func.getArgAttrs(i)) {
+    for (auto& attr : iface.getArgAttrs(i)) {
       const StringAttr& attr_name = attr.getName();
       if (attr_name.getValue().startswith("tf_saved_model.")) {
         func.removeArgAttr(i, attr_name);
@@ -117,7 +118,7 @@ void SetFunctionPrivate(func::FuncOp& func) {
     }
   }
   for (int i = 0; i < func.getNumResults(); ++i) {
-    for (auto& attr : func.getResultAttrs(i)) {
+    for (auto& attr : iface.getResultAttrs(i)) {
       const StringAttr& attr_name = attr.getName();
       if (attr_name.getValue().startswith("tf_saved_model.")) {
         func.removeResultAttr(i, attr_name);

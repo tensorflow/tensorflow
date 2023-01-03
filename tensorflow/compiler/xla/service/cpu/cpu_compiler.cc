@@ -91,6 +91,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/all_gather_decomposer.h"
+#include "tensorflow/compiler/xla/service/all_reduce_promotion.h"
 #include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
 #include "tensorflow/compiler/xla/service/batch_dot_simplification.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
@@ -580,6 +581,10 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<CallInliner>(/*single_call_site=*/true);
   pipeline.AddPass<BatchDotSimplification>();
   pipeline.AddPass<DotDecomposer>();
+  // Promote BF16 all-reduce to F32.
+  const std::pair<PrimitiveType, PrimitiveType> ar_promoted_types[] = {
+      {BF16, F32}};
+  pipeline.AddPass<AllReducePromotion>(ar_promoted_types);
   // Convert BF16 operations to F32 operations so that the CPU backend can
   // support BF16 operations without directly implementing a BF16 lowering for
   // most ops.
@@ -1344,9 +1349,16 @@ StatusOr<std::unique_ptr<XlaRuntimeCpuExecutable>> GetXlaRuntimeCpuExecutable(
     return InternalError("Failed to compile XLA Runtime program: %s",
                          jit_executable.status().message());
   }
+
+  // Instantiate state for all registered FFI modules.
+  auto ffi_modules_state = runtime::ffi::FfiModulesState::Instantiate();
+  if (!ffi_modules_state.ok())
+    return InternalError("Failed to instantiate FFI modules state: %s",
+                         ffi_modules_state.status().message());
+
   return std::make_unique<XlaRuntimeCpuExecutable>(
       std::make_unique<runtime::JitExecutable>(std::move(*jit_executable)),
-      xla_framework_mapping);
+      xla_framework_mapping, std::move(*ffi_modules_state));
 }
 }  // namespace
 

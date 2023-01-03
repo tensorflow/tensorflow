@@ -15,12 +15,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/python/jax_to_tfl_flatbuffer.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/ToolOutputFile.h"
@@ -193,7 +193,7 @@ Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
       model_flags, toco_flags, std::move(module), pass_config,
       /*saved_model_tags=*/{}, result,
-      /*session=*/llvm::None);
+      /*session=*/std::nullopt);
   return status;
 }
 

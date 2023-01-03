@@ -64,6 +64,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/size_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
@@ -395,10 +396,8 @@ class ConvertTFDepthwiseConv2dNative
     SmallVector<Attribute, 4> result_shape_data(4);
     for (int i = 0; i < 4; ++i) {
       auto size = result_shape[i];
-      // TODO(b/259719789): clean up dynamic shape check (e.g. into a
-      // discrete function) once bug is completely fixed.
-      result_shape_data[i] = rewriter.getI32IntegerAttr(
-          mlir::ShapedType::isDynamic(size) ? -1 : static_cast<int32_t>(size));
+      result_shape_data[i] =
+          rewriter.getI32IntegerAttr(ConvertToTfliteSize(size));
     }
     auto shape_attr = DenseElementsAttr::get(shape_type, result_shape_data);
     auto shape = rewriter.create<TF::ConstOp>(loc, shape_type, shape_attr);
@@ -470,10 +469,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
     SmallVector<Attribute, 4> result_shape_data(dim_size);
     for (int i = 0; i < dim_size; ++i) {
       auto size = revised_shape[i];
-      // TODO(b/259719789): clean up dynamic shape check (e.g. into a
-      // discrete function) once bug is completely fixed.
-      result_shape_data[i] = rewriter.getI32IntegerAttr(
-          mlir::ShapedType::isDynamic(size) ? -1 : static_cast<int32_t>(size));
+      result_shape_data[i] =
+          rewriter.getI32IntegerAttr(ConvertToTfliteSize(size));
     }
 
     auto shape_attr = DenseElementsAttr::get(shape_type, result_shape_data);

@@ -43,11 +43,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
-        "//tensorflow/compiler/xla/service/gpu:nccl_utils",
-        "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:executor_cache",
-        "@llvm-project//llvm:Support",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -135,6 +134,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/runtime:custom_call_registry",
         "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/runtime:state",
         "//tensorflow/compiler/xla/service/gpu:fft_thunk",
         "//tensorflow/compiler/xla/stream_executor:fft",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:attribute_exporter",
@@ -233,8 +233,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lt_header",
         "//tensorflow/tsl/platform:status",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@llvm-project//llvm:Support",
     ],
 )
 

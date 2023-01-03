@@ -53,6 +53,9 @@ void AddQuantizationPasses(const mlir::quant::QuantizationSpecs& quant_specs,
                            mlir::OpPassManager& pass_manager) {
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreatePrepareQuantizePass(quant_specs));
+  if (quant_specs.enable_mlir_variable_quantization) {
+    pass_manager.addPass(mlir::TFL::CreatePrepareQuantizeVariablesPass());
+  }
   if (quant_specs.default_ranges.first.has_value() ||
       quant_specs.default_ranges.second.has_value()) {
     pass_manager.addNestedPass<mlir::func::FuncOp>(
@@ -80,6 +83,9 @@ void AddDynamicRangeQuantizationPasses(
     mlir::OpPassManager& pass_manager) {
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreatePrepareDynamicRangeQuantizePass(quant_specs));
+  if (quant_specs.enable_mlir_variable_quantization) {
+    pass_manager.addPass(mlir::TFL::CreatePrepareQuantizeVariablesPass());
+  }
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateQuantizePass(quant_specs));
   bool emit_quant_adaptor_ops =

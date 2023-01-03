@@ -104,6 +104,7 @@ add_mlir_library(MhloToThloConversion
 
   LINK_LIBS PUBLIC
   MhloDialect
+  MhloToArithmeticConversion
   MhloTypeConversion
   THLODialect
   MLIRIR
@@ -238,6 +239,7 @@ add_mlir_library(MhloToLinalg
   HloToLinalgUtils
   LmhloDialect
   MhloDialect
+  MhloToArithmeticConversion
   MhloTypeConversion
   MLIRBufferizationDialect
   MLIRComplexDialect

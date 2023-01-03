@@ -267,6 +267,7 @@ filegroup(
         "graph_optimizer.h",
         "gradients.h",
         "input_colocation_exemption_registry.h",
+        "int32_fulltype.h",
         "isolate_placer_inspection_required_ops_pass.h",
         "local_device.h",
         "local_executor_params.h",
@@ -793,6 +794,7 @@ cc_library(
         ":graph_constructor",
         ":graph_optimizer",
         ":inline_function_utils",
+        ":int32_fulltype",
         ":memory_types",
         ":optimization_registry",
         ":optimize_function_graph_utils",
@@ -1174,6 +1176,22 @@ cc_library(
         "//tensorflow/core/platform:errors",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "int32_fulltype",
+    srcs = ["int32_fulltype.cc"],
+    hdrs = [
+        "int32_fulltype.h",
+        "optimization_registry.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        ":optimization_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+    ],
 )
 
 cc_library(
@@ -1838,6 +1856,7 @@ tf_cuda_library(
         ":graph_view",
         ":hierarchical_tree_broadcaster",
         ":input_colocation_exemption_registry",
+        ":int32_fulltype",
         ":isolate_placer_inspection_required_ops_pass",
         ":local_device",
         ":lower_functional_ops",
@@ -3293,5 +3312,20 @@ tf_cc_test(
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cc_test(
+    name = "int32_fulltype_test",
+    size = "small",
+    srcs = [
+        "int32_fulltype_test.cc",
+    ],
+    deps = [
+        ":core",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

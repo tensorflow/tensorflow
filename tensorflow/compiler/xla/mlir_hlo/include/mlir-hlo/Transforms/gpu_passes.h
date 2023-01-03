@@ -57,6 +57,12 @@ void createHloToGpuPipeline(OpPassManager& pm, ArrayRef<int64_t> blockTileDim,
                             ArrayRef<int64_t> threadTileDim,
                             bool experimentalSoftmax);
 
+/// Creates a pipeline that converts operations in HLO dialect to Triton
+/// kernels. `blockTileDim`, indicates the block-level tile size that the
+/// problem will be tiled to.
+void createHloToTritonPipeline(OpPassManager& pm,
+                               ArrayRef<int64_t> blockTileDim);
+
 #define GEN_PASS_REGISTRATION
 #include "mlir-hlo/Transforms/gpu_passes.h.inc"
 

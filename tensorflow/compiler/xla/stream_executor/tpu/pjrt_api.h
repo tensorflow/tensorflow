@@ -29,9 +29,10 @@ namespace tpu {
 xla::StatusOr<const PJRT_Api*> PjrtApi(absl::string_view device_type);
 xla::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api);
 
-// Loads a PJRT plugin. This method dlopen the plugin library, gets `PJRT_Api*`
-// and calls `SetPjrtApi`. Currently this method only supports libtpu.
-// TODO(b/261137756): support other PJRT plugins.
+// Loads a PJRT plugin. The library provided by library_path must export a
+// symbol called `GetPjrtApi` with function signature `const PJRT_Api*
+// GetPjrtApi()`. This method dlopen the plugin library, dlsym `GetPjrtApi`,
+// calls `GetPjrtApi`, and `SetPjrtApi`.
 xla::Status LoadPjrtPlugin(absl::string_view device_type,
                            absl::string_view library_path);
 

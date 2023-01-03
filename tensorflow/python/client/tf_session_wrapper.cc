@@ -936,6 +936,15 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
           tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
         });
 
+  m.def("TF_GraphRemoveFunction", [](TF_Graph* graph, const char* func_name) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    // Release GIL.
+    py::gil_scoped_release release;
+    TF_GraphRemoveFunction(graph, func_name, status.get());
+    tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
+  });
+
   m.def(
       "TF_FunctionImportFunctionDef",
       [](py::bytes proto) {

@@ -415,9 +415,13 @@ typedef struct {
 } TfLiteArgMinParams;
 
 typedef struct {
+  // Parameters supported by version 1:
   TfLitePadding padding;
   int stride_width;
   int stride_height;
+
+  // Parameters supported by version 4:
+  TfLiteFusedActivation activation;
 } TfLiteTransposeConvParams;
 
 typedef struct {

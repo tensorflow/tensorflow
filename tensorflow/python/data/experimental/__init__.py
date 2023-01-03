@@ -142,10 +142,10 @@ from tensorflow.python.data.experimental.ops.unique import unique
 from tensorflow.python.data.experimental.ops.writers import TFRecordWriter
 from tensorflow.python.data.ops.dataset_ops import AUTOTUNE
 from tensorflow.python.data.ops.dataset_ops import DatasetSpec as DatasetStructure
-from tensorflow.python.data.ops.dataset_ops import enable_debug_mode
 from tensorflow.python.data.ops.dataset_ops import from_variant
 from tensorflow.python.data.ops.dataset_ops import get_structure
 from tensorflow.python.data.ops.dataset_ops import to_variant
+from tensorflow.python.data.ops.debug_mode import enable_debug_mode
 from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
 from tensorflow.python.data.ops.optional_ops import Optional
 from tensorflow.python.data.ops.optional_ops import OptionalSpec as OptionalStructure

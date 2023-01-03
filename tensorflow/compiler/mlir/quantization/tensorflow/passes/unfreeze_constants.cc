@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
@@ -31,6 +32,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Pass/PassOptions.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/const_op_size.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -48,12 +51,32 @@ using ::mlir::tf_saved_model::SessionInitializerOp;
 
 constexpr absl::string_view kDefaultConstName = "const";
 
+// The default lower threshold for the constant size for unfreezing.
+constexpr int64_t kDefaultConstantSizeThresholdInBytes = 64 * 1024;  // 64KiB
+
+// This pass "unfreezes" constants found in the moudle and converts them to
+// `tf.VarHandleOp`s. Also, an initialization pattern
+// `tf.AssignVariableOp(tf.VarHandleOp, tf.ConstOp)` is inserted to the
+// initializer function of type "restore_op" for each of the unfrozen constants.
+//
+// The constants whose sizes are smaller than `size_threshold_in_bytes_` will
+// not be converted to variables.
 class UnfreezeConstantsPass
     : public PassWrapper<UnfreezeConstantsPass, OperationPass<ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(UnfreezeConstantsPass)
 
-  explicit UnfreezeConstantsPass() = default;
+  explicit UnfreezeConstantsPass()
+      : UnfreezeConstantsPass(kDefaultConstantSizeThresholdInBytes) {}
+
+  explicit UnfreezeConstantsPass(const int64_t size_threshold_in_bytes)
+      : size_threshold_in_bytes_(
+            CreateSizeThresholdInBytesOption(size_threshold_in_bytes)) {}
+
+  UnfreezeConstantsPass(const UnfreezeConstantsPass& other)
+      : UnfreezeConstantsPass{} {
+    size_threshold_in_bytes_ = other.size_threshold_in_bytes_.getValue();
+  }
 
   StringRef getArgument() const override { return "quant-unfreeze-constants"; }
 
@@ -64,10 +87,23 @@ class UnfreezeConstantsPass
   void runOnOperation() override;
 
  private:
+  Option<int64_t> CreateSizeThresholdInBytesOption(const int64_t init_value) {
+    return Option<int64_t>(
+        *this, "size_threshold_in_bytes", llvm::cl::init(init_value),
+        llvm::cl::desc(
+            "Lower threshold of the constant size for unfreezing. Constants "
+            "smaller than this value will not be converted to variables."));
+  }
+
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TF::TensorFlowDialect,
                     tf_saved_model::TensorFlowSavedModelDialect>();
   }
+
+  // Lower-bound threshold for the size of the constant in bytes. Constants
+  // larger than this threshold will not be unfrozen and will remain as
+  // constants.
+  Option<int64_t> size_threshold_in_bytes_;
 };
 
 // Adds the symbol to the "initializers" attribute of the session_initializer
@@ -177,15 +213,18 @@ std::string GetConstOpName(TF::ConstOp const_op) {
 }
 
 // Collects the ConstOps to unfreeze.
-std::vector<TF::ConstOp> GetTargetConstOps(ModuleOp module_op) {
+std::vector<TF::ConstOp> GetTargetConstOps(const int64_t size_threshold,
+                                           ModuleOp module_op) {
   std::vector<TF::ConstOp> target_const_ops{};
 
   // TODO(b/254636388): Lift the assumption that there are no intializer
   // functions and avoid converting ConstOps inside initializer functions.
   for (auto func_op : module_op.getOps<func::FuncOp>()) {
-    auto const_ops = func_op.getOps<TF::ConstOp>();
-    target_const_ops.insert(target_const_ops.end(), const_ops.begin(),
-                            const_ops.end());
+    absl::c_copy_if(func_op.getOps<TF::ConstOp>(),
+                    std::back_inserter(target_const_ops),
+                    [size_threshold](TF::ConstOp const_op) -> bool {
+                      return GetSizeInBytes(const_op) > size_threshold;
+                    });
   }
 
   return target_const_ops;
@@ -269,7 +308,7 @@ void UnfreezeConstantsPass::runOnOperation() {
 
   // Find the ConstOps to "unfreeze" into VarHandleOps.
   const std::vector<TF::ConstOp> target_const_ops =
-      GetTargetConstOps(module_op);
+      GetTargetConstOps(size_threshold_in_bytes_.getValue(), module_op);
   if (target_const_ops.empty()) {
     VLOG(1) << "No ConstOps found. UnfreezeConstantsPass is a no-op.";
     return;

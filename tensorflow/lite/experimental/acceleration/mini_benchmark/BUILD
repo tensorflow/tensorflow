@@ -979,6 +979,7 @@ cc_test(
         ":status_codes",
         ":validator_runner_entrypoint",
         ":validator_runner_impl",
+        ":validator_runner_options",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
@@ -989,6 +990,7 @@ cc_test(
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
     ],
 )
 
@@ -1006,7 +1008,7 @@ cc_test(
         ":validator_runner_options",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "@com_google_googletest//:gtest_main",
-        "@flatbuffers//:public_headers_lib",
+        "@flatbuffers",
     ],
 )
 

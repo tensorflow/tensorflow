@@ -21,11 +21,9 @@ from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import loader_impl
@@ -62,8 +60,9 @@ class _Initializer(resource.CapturableResource):
     self._init_fn = init_fn
 
   def _create_resource(self):
-    return array_ops.placeholder(
-        dtype=dtypes.resource, shape=[], name="unused_resource")
+    # Return a constant here so that when re-saved, the traced `create_resource`
+    # has valid returns.
+    return constant_op.constant(1.)
 
   def _initialize(self):
     return self._init_fn(*[path.asset_path for path in self._asset_paths])

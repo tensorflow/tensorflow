@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <list>
 
-#include "mlir-hlo/Analysis/userange_analysis.h"
+#include "analysis/userange_analysis.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/Transforms/BufferUtils.h"

@@ -20,6 +20,7 @@ limitations under the License.
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -31,8 +32,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/tsl/concurrency/concurrent_vector.h"
 #include "tensorflow/tsl/concurrency/ref_count.h"
-#include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/mem.h"
 
 namespace tsl {
 
@@ -45,6 +44,11 @@ class ConcreteAsyncValue;
 
 template <typename T>
 constexpr bool kMaybeBase = std::is_class<T>::value && !std::is_final<T>::value;
+
+// TODO(ezhulenev): Switch to `tsl::port::Aligned(Malloc|Free)` once TFRT will
+// be able to properly depend on TSL in the open source build.
+void* AlignedAlloc(size_t alignment, size_t size);
+void AlignedFree(void* ptr);
 
 }  // namespace internal
 
@@ -881,20 +885,26 @@ const T& AsyncValue::get() const {
   switch (kind()) {
     case Kind::kConcrete:
 #ifndef NDEBUG
-      if (!GetTypeInfo().has_data(this))
-        LOG(FATAL) << "Cannot call get() when ConcreteAsyncValue"  // Crash OK
-                   << " isn't constructed; state: " << s.DebugString() << ","
-                   << " error message: "
-                   << (IsError() ? GetError().message() : "None");
+      // TODO(ezhulenev): Use `DLOG_IF` when absl logging is available.
+      if (!GetTypeInfo().has_data(this)) {
+        std::cerr << "Cannot call get() when ConcreteAsyncValue"  // Crash OK
+                  << " isn't constructed; state: " << s.DebugString() << ","
+                  << " error message: "
+                  << (IsError() ? GetError().message() : "None");
+        std::abort();
+      }
 #endif  // NDEBUG
       return GetConcreteValue<T>();
     case Kind::kIndirect:
 #ifndef NDEBUG
-      if (s != State::kConcrete)
-        LOG(FATAL) << "Cannot call get() when IndirectAsyncValue"  // Crash OK
-                   << " isn't concrete; state: " << s.DebugString() << ","
-                   << " error message: "
-                   << (IsError() ? GetError().message() : "None");
+      // TODO(ezhulenev): Use `DLOG_IF` when absl logging is available.
+      if (s != State::kConcrete) {
+        std::cerr << "Cannot call get() when IndirectAsyncValue"  // Crash OK
+                  << " isn't concrete; state: " << s.DebugString() << ","
+                  << " error message: "
+                  << (IsError() ? GetError().message() : "None");
+        std::abort();
+      }
 #endif  // NDEBUG
       auto* iv_value = static_cast<const IndirectAsyncValue*>(this)->value_;
       assert(iv_value && "Indirect value not resolved");
@@ -970,12 +980,12 @@ inline void AsyncValue::Destroy() {
     // explicit check and instead make ~IndirectAsyncValue go through the
     // GetTypeInfo().destructor case below.
     static_cast<IndirectAsyncValue*>(this)->~IndirectAsyncValue();
-    if (was_ref_counted) port::AlignedFree(this);
+    if (was_ref_counted) internal::AlignedFree(this);
     return;
   }
 
   GetTypeInfo().destructor(this);
-  if (was_ref_counted) port::AlignedFree(this);
+  if (was_ref_counted) internal::AlignedFree(this);
 }
 
 }  // namespace tsl

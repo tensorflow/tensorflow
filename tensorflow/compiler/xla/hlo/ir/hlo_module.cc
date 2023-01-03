@@ -563,6 +563,15 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
                  module_config.num_partitions());
       }
     }
+    std::vector<bool> param_requires_broadcast_via_collectives(
+        execution_options->param_requires_broadcast_via_collectives().begin(),
+        execution_options->param_requires_broadcast_via_collectives().end());
+    module_config.set_param_requires_broadcast_via_collectives(
+        param_requires_broadcast_via_collectives);
+    module_config.set_allow_separate_sharding_programs(
+        execution_options->allow_separate_sharding_programs());
+    HloModuleConfig::AssignStructShardableValueUpdatePairs(
+        module_config, execution_options->shardable_value_update_pairs());
   }
 
   // The module config is constructed with default layouts regardless of what is

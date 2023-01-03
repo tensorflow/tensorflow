@@ -2683,16 +2683,6 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     return OkStatus();
   }
 
-  static bool HasFp8Operand(HloInstruction* instruction) {
-    for (HloInstruction* operand : instruction->operands()) {
-      if (ShapeUtil::HasPrimitiveType(operand->shape(), F8E5M2) ||
-          ShapeUtil::HasPrimitiveType(operand->shape(), F8E4M3FN)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   static Status VerifyF8Usage(HloInstruction* instruction) {
     bool has_fp8_operand =
         absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
@@ -2701,11 +2691,23 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         });
     // TODO(b/259609697): Support FP8 operands in all instructions that support
     // inputs of other floating-point dtypes. Currently the CPU and GPU backends
-    // only support FP8 operands in the convert instruction.
-    if (has_fp8_operand && instruction->opcode() != HloOpcode::kConvert) {
+    // only support FP8 operands in the convert, tuple, get-tuple-element and
+    // transpose instructions and FP8 Custom Calls.
+    if (has_fp8_operand && instruction->opcode() != HloOpcode::kConvert &&
+        instruction->opcode() != HloOpcode::kBitcast &&
+        instruction->opcode() != HloOpcode::kTuple &&
+        instruction->opcode() != HloOpcode::kGetTupleElement &&
+        instruction->opcode() != HloOpcode::kTranspose &&
+        instruction->opcode() != HloOpcode::kDot &&
+        instruction->opcode() != HloOpcode::kFusion &&
+        instruction->opcode() != HloOpcode::kReshape &&
+        instruction->opcode() != HloOpcode::kCopy &&
+        instruction->opcode() != HloOpcode::kCustomCall) {
       return InvalidArgument(
-          "FP8 is currently only supported in convert instructions, but got "
-          "instruction with FP8 input: %s",
+          "FP8 is currently only supported in convert, bitcast, tuple, "
+          "get-tuple-element, transpose, dot, fusion, reshape and copy "
+          "instructions as well as Custom Calls, but got instruction with FP8 "
+          "input: %s",
           instruction->ToString());
     }
     return OkStatus();

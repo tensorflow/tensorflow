@@ -15,6 +15,7 @@
 
 add_mlir_library(MHLOTOSATransforms
   legalize_mhlo.cc
+  prepare_mhlo.cc
 
   DEPENDS
   MHLOTOSATransformsPassIncGen
@@ -27,4 +28,5 @@ add_mlir_library(MHLOTOSATransforms
   MLIRIR
   MLIRPass
   MLIRTransforms
+  MhloPasses
   )

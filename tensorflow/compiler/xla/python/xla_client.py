@@ -21,7 +21,7 @@ import gzip
 import inspect
 import logging
 import os
-from typing import List, Sequence, Tuple, Union
+from typing import Dict, List, Sequence, Tuple, Union
 
 from . import xla_extension as _xla
 import numpy as np
@@ -43,10 +43,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 109
+_version = 113
 
 # Version number for MLIR:Python components.
-mlir_api_version = 39
+mlir_api_version = 42
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -98,7 +98,7 @@ def make_gpu_client(distributed_client=None, node_id=0, platform_name=None,
 
 
 def make_tfrt_tpu_c_api_client():
-  return _xla.get_tfrt_tpu_c_api_client()
+  return _xla.get_c_api_client('tpu')
 
 
 def _use_pjrt_c_api() -> bool:
@@ -139,8 +139,29 @@ def make_plugin_device_client():
         '(defaults to false) to enable this.') from e
 
 
-def _get_tpu_library_path() -> str:
-  return os.getenv('TPU_LIBRARY_PATH', 'libtpu.so')
+def _get_pjrt_plugin_names_and_library_paths() -> Dict[str, str]:
+  """Gets the names and library paths of PJRT plugins to load from ENV.
+
+  By default, TPU with path set in 'TPU_LIBRARY_PATH' will be loaded. Set
+  PJRT_NAMES_AND_LIBRARY_PATHS='name1:path1,name2:path2' to load other PJRT
+  plugins as well.
+
+  Returns:
+    A dict of {plugin_name: library path} for the PJRT plugins to load.
+  """
+  pjrt_plugins = {'tpu': os.getenv('TPU_LIBRARY_PATH', 'libtpu.so')}
+  plugins_from_env = os.getenv('PJRT_NAMES_AND_LIBRARY_PATHS', '')
+  if not plugins_from_env:
+    return pjrt_plugins
+
+  for plugin in plugins_from_env.split(','):
+    try:
+      name, library_path = plugin.split(':')
+      pjrt_plugins[name] = library_path
+    except ValueError:
+      logger.warning('invalid value in env PJRT_NAMES_AND_LIBRARY_PATHS: %s',
+                     plugin)
+  return pjrt_plugins
 
 
 # TODO(b/237099479): Move to xla_bridge.py when ready.
@@ -149,18 +170,13 @@ def maybe_load_pjrt_plugins() -> None:
   if not _use_pjrt_c_api():
     return
   # TODO(b/261345120): implement plugin discovery.
-  pjrt_plugins = [('tpu', _get_tpu_library_path())]
-  for plugin_name, library_path in pjrt_plugins:
+  pjrt_plugins = _get_pjrt_plugin_names_and_library_paths()
+  for plugin_name, library_path in pjrt_plugins.items():
     try:
       _xla.load_pjrt_plugin(plugin_name, library_path)
-    except _xla.XlaRuntimeError as e:
-      msg, *_ = e.args
-      # TODO(b/261137756): _xla.load_pjrt_plugin currently only supports libtpu.
-      # It should be generalized to support other PJRT plugins as well.
-      if isinstance(msg, str) and msg.startswith('UNIMPLEMENTED'):
-        logger.debug(msg)
-      else:
-        raise
+    except Exception as e:  # pylint: disable=broad-except
+      logger.error("Error loading '%s' plugin from '%s': %s", plugin_name,
+                   library_path, e)
 
 
 class OpMetadata:
@@ -188,6 +204,8 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
 PrimitiveType = _xla.PrimitiveType
 
 bfloat16 = _xla.bfloat16_dtype()
+float8_e4m3fn = _xla.float8_e4m3fn_dtype()
+float8_e5m2 = _xla.float8_e5m2_dtype()
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.PRED: np.dtype('bool'),
@@ -199,6 +217,8 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.U16: np.dtype('uint16'),
     PrimitiveType.U32: np.dtype('uint32'),
     PrimitiveType.U64: np.dtype('uint64'),
+    PrimitiveType.F8E4M3FN: np.dtype(float8_e4m3fn),
+    PrimitiveType.F8E5M2: np.dtype(float8_e5m2),
     PrimitiveType.BF16: np.dtype(bfloat16),
     PrimitiveType.F16: np.dtype('float16'),
     PrimitiveType.F32: np.dtype('float32'),

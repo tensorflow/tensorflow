@@ -98,6 +98,9 @@ FunctionDef XTimesTwoInt32();
 // x: T -> (x * 2) * 2.
 FunctionDef XTimesFour();
 
+// x: T -> (x * 2) * 2, where x is int32
+FunctionDef XTimesFourInt32();
+
 // x: T -> ((x * 2) * 2) * 2.
 FunctionDef XTimes16();
 

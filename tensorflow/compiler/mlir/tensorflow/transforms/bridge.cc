@@ -59,9 +59,6 @@ tensorflow::Status RunTFXLABridge(
   // Populate a passmanager with the list of passes that implement the bridge.
   pipeline_builder(bridge);
 
-  // Add set of passes to lower back to graph (from tf_executor).
-  TF::AddGraphExportLoweringPasses(bridge);
-
   mlir::StatusScopedDiagnosticHandler diag_handler(
       module.getContext(), /*propagate=*/false,
       /*filter_stack=*/!VLOG_IS_ON(1));
@@ -226,8 +223,11 @@ void CreateTPUBridgePipelineV1(OpPassManager &pm) {
 
 tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
                              bool fallback_enabled) {
-  Status status =
-      RunTFXLABridge(module, enable_logging, CreateTPUBridgePipeline);
+  Status status = RunTFXLABridge(module, enable_logging, [](OpPassManager &pm) {
+    CreateTPUBridgePipeline(pm);
+    // Add set of passes to lower back to graph (from tf_executor).
+    TF::AddGraphExportLoweringPasses(pm);
+  });
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       "tpu", "v2", fallback_enabled, status.ok() ? "success" : "failure");
   OkOrSetErrorCounterPayload(
@@ -237,8 +237,11 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
 }
 tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool enable_logging,
                                      bool fallback_enabled) {
-  Status status =
-      RunTFXLABridge(module, enable_logging, CreateTPUBridgePipelineV1);
+  Status status = RunTFXLABridge(module, enable_logging, [](OpPassManager &pm) {
+    CreateTPUBridgePipelineV1(pm);
+    // Add set of passes to lower back to graph (from tf_executor).
+    TF::AddGraphExportLoweringPasses(pm);
+  });
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       "tpu", "v1", fallback_enabled, status.ok() ? "success" : "failure");
   return status;
@@ -261,6 +264,37 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
       /*legacy_graph_export=*/true));
   add_pass(TFDevice::CreateLaunchToDeviceAttributePass(
       /*legacy_graph_export=*/true));
+  pm.addNestedPass<func::FuncOp>(TFTPU::CreateTPUDevicePropagationPass());
+  pm.addPass(createSymbolDCEPass());
+  if (tensorflow::GetMlirCommonFlags()
+          ->tf_mlir_enable_convert_control_to_data_outputs_pass) {
+    pm.addPass(tf_executor::CreateTFExecutorConvertControlToDataOutputsPass());
+  }
+  pm.addPass(CreateVerifySuitableForExportPass());
+}
+
+void AddGraphExportLoweringPassesV2(OpPassManager &pm) {
+  // First, we need to convert from functional, to executor dialect.
+  pm.addNestedPass<func::FuncOp>(
+      CreateFunctionalToExecutorDialectConversionPass());
+
+  // Do a single pass to split the graph's single island op into an island per
+  // op as expected by the following passes.
+  pm.addNestedPass<func::FuncOp>(CreateSplitIntoIslandPerOpPass());
+
+  pm.addNestedPass<func::FuncOp>(TFDevice::CreateReplicateToIslandPass(
+      /*legacy_graph_export=*/false));
+  pm.addNestedPass<func::FuncOp>(
+      TFDevice::CreateReplicaIDToDeviceOrdinalPass());
+  pm.addNestedPass<func::FuncOp>(TFDevice::CreateParallelExecuteToIslandsPass(
+      /*legacy_graph_export=*/false));
+  pm.addNestedPass<func::FuncOp>(TFDevice::CreateLaunchToDeviceAttributePass(
+      /*legacy_graph_export=*/false));
+
+  // Do a single pass to encode necessary control deps in the IR according to
+  // the results of side effect analysis.
+  pm.addPass(tf_executor::CreateTFExecutorUpdateControlDependenciesPass());
+
   pm.addNestedPass<func::FuncOp>(TFTPU::CreateTPUDevicePropagationPass());
   pm.addPass(createSymbolDCEPass());
   if (tensorflow::GetMlirCommonFlags()
@@ -345,8 +379,12 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
 }
 
 tensorflow::Status RunTFXLABridge(ModuleOp module, bool enable_logging) {
-  Status status = mlir::TFTPU::RunTFXLABridge(module, enable_logging,
-                                              CreateTFXLABridgePipeline);
+  Status status = mlir::TFTPU::RunTFXLABridge(
+      module, enable_logging, [](OpPassManager &pm) {
+        CreateTFXLABridgePipeline(pm);
+        // Add set of passes to lower back to graph (from tf_executor).
+        TF::AddGraphExportLoweringPasses(pm);
+      });
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       /*device type*/ "cpu/gpu", /*bridge version*/ "tfxla",
       /*fallback_enabled*/ false,

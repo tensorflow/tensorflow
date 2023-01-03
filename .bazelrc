@@ -149,6 +149,12 @@ build --experimental_cc_shared_library
 # cc_shared_library ensures no library is linked statically more than once.
 build --experimental_link_static_libraries_once=false
 
+# Prevent regressions on those two incompatible changes
+# TODO: remove those flags when they are flipped in the default Bazel version TF uses.
+build --incompatible_enforce_config_setting_visibility
+# TODO: also enable this flag after fixing the visbility violations
+# build --incompatible_config_setting_private_default_visibility
+
 # Default options should come above this line.
 
 # Allow builds using libc++ as a linker library
@@ -374,8 +380,8 @@ build:windows --host_copt=-DNOGDI
 
 # MSVC (Windows): Standards-conformant preprocessor mode
 # See https://docs.microsoft.com/en-us/cpp/preprocessor/preprocessor-experimental-overview
-build:windows --copt=/experimental:preprocessor
-build:windows --host_copt=/experimental:preprocessor
+build:windows --copt=/Zc:preprocessor
+build:windows --host_copt=/Zc:preprocessor
 
 # Misc build options we need for windows.
 build:windows --linkopt=/DEBUG
@@ -662,6 +668,7 @@ build:asan --copt -g
 build:asan --copt -O3
 build:asan --copt -fno-omit-frame-pointer
 build:asan --linkopt -fsanitize=address
+build:asan --@libjpeg_turbo//:noasm=yes
 
 # Memory sanitizer
 # CC=clang bazel build --config msan

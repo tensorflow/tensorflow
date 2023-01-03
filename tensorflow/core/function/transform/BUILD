@@ -34,6 +34,7 @@ pytype_strict_library(
         "//tensorflow/python/framework:function_def_to_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/platform",
         "//tensorflow/python/util",
     ],
 )

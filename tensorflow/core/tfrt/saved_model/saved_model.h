@@ -122,6 +122,11 @@ class SavedModel {
     // If not found, will use the path as a normal SavedModel directory.
     bool maybe_load_from_mla = false;
 
+    // If true, the lazy loading path will use tfrt_stub::GraphExecutor.
+    //
+    // TODO(b/216379787): Remove this option once b/239749833 is unblocked.
+    bool lazy_loading_use_graph_executor = false;
+
     GraphExecutionOptions graph_execution_options;
   };
 

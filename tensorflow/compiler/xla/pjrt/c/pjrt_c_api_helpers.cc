@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
@@ -29,6 +30,7 @@ namespace pjrt {
 
 const absl::string_view kHloFormat = "hlo";
 const absl::string_view kMlirFormat = "mlir";
+const absl::string_view kHloWithConfigFormat = "hlo_with_config";
 
 PJRT_ClientDeleter MakeClientDeleter(const PJRT_Api* api) {
   return [api](PJRT_Client* client) -> void {
@@ -364,6 +366,36 @@ xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
     return PjRtFuture<Status>(s);
   }
   return PjRtFuture<Status>(std::move(promise));
+}
+
+PJRT_SerializedExecutableDeleter MakeSerializedExecutableDeleter(
+    const PJRT_Api* api) {
+  return [api](PJRT_SerializedExecutable* serialized_executable) -> void {
+    PJRT_SerializedExecutable_Destroy_Args destroy_args;
+    destroy_args.struct_size =
+        PJRT_SerializedExecutable_Destroy_Args_STRUCT_SIZE;
+    destroy_args.priv = nullptr;
+    destroy_args.serialized_executable = serialized_executable;
+    pjrt::LogFatalIfPjrtError(
+        api->PJRT_SerializedExecutable_Destroy(&destroy_args), api);
+  };
+}
+
+static std::string StructSizeErrorMsg(absl::string_view struct_name,
+                                      size_t expected_size,
+                                      size_t actual_size) {
+  return absl::StrCat("Unexpected ", struct_name, " size: expected ",
+                      expected_size, ", got ", actual_size,
+                      ". Check installed software versions.");
+}
+
+xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
+                                     size_t expected_size, size_t actual_size) {
+  if (expected_size != actual_size) {
+    return tsl::errors::InvalidArgument(
+        StructSizeErrorMsg(struct_name, expected_size, actual_size));
+  }
+  return tsl::OkStatus();
 }
 
 }  // namespace pjrt

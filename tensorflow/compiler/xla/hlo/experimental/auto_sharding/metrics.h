@@ -16,14 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_METRICS_H_
 #define TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_METRICS_H_
 
-#include "absl/base/integral_types.h"
+#include <cstdint>
 
 namespace xla {
 namespace metrics {
 
 void RecordAutoShardingInvocations();
 
-void RecordAutoShardingCompilationTime(uint64 time_usecs);
+void RecordAutoShardingCompilationTime(uint64_t time_usecs);
 
 }  // namespace metrics
 }  // namespace xla

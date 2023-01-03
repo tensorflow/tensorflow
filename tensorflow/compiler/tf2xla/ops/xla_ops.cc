@@ -1369,7 +1369,8 @@ specification of how to compute its value, as a string, in the form
 E.g., the specification "2.1" denotes the value args[2].shape[1].
 
 args: A list of `Tensor` with possibly different types to be passed as arguments
-  to the HLO module.
+  to the HLO module. These are all non-dimension arguments. The dimension
+  arguments are computed at JIT time.
 version: Changes when we change the semantics of the op, to support backwards
   compatibility. Version 1 carries an MHLO text or bytecode `module`. From
   version 2, the op carries a StableHLO text or bytecode `module`.

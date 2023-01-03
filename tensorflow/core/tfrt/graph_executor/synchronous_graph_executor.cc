@@ -18,6 +18,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
+#include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
+#include "learning/brain/experimental/tfrt/native_lowering/kernels/sync_fallback_kernels.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/status.h"
@@ -47,7 +50,9 @@ tensorflow::tfrt_stub::GraphExecutionOptions GetGraphExecutionOptions(
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<SynchronousGraphExecutor>>
-SynchronousGraphExecutor::Create(const GraphDef& graph) {
+SynchronousGraphExecutor::Create(
+    const GraphDef& graph,
+    std::unique_ptr<mlrt::KernelRegistry> kernel_registry) {
   auto runtime =
       tensorflow::tfrt_stub::Runtime::Create(/*num_inter_op_threads=*/1);
   tensorflow::tfrt_stub::GraphExecutionOptions graph_execution_options =
@@ -62,10 +67,16 @@ SynchronousGraphExecutor::Create(const GraphDef& graph) {
     return absl::InternalError(fallback_state.status().ToString());
   }
 
+  // Register infra and standard math kernels
+  tensorflow::tf_mlrt::RegisterTfMlrtKernels(*kernel_registry);
+  tfrt::cpu::RegisterMlrtMathKernels(kernel_registry.get());
+  tfrt::cpu::RegisterMlrtFallbackCompatKernels(kernel_registry.get());
+
   tensorflow::StatusOr<std::unique_ptr<tensorflow::tfrt_stub::GraphExecutor>>
       graph_executor = tensorflow::tfrt_stub::GraphExecutor::Create(
           graph_execution_options, *(*fallback_state),
-          /*tpu_model_resource=*/nullptr, std::move(graph));
+          /*tpu_model_resource=*/nullptr, std::move(graph),
+          std::move(kernel_registry));
   if (!graph_executor.ok()) {
     return absl::InternalError(graph_executor.status().ToString());
   }
@@ -76,12 +87,12 @@ SynchronousGraphExecutor::Create(const GraphDef& graph) {
 }
 
 absl::Status SynchronousGraphExecutor::Run(
-    const std::string& graph_name, absl::Span<tfrt::Value*> input_values,
+    const std::string& graph_name, absl::Span<mlrt::Value> input_values,
     absl::Span<const std::string> input_names,
     absl::Span<const tensorflow::DataType> input_dtypes,
     absl::Span<const std::string> output_tensor_names,
     absl::Span<const std::string> target_tensor_names,
-    absl::Span<tfrt::Value*> outputs) {
+    absl::Span<mlrt::Value> outputs) {
   return tfrt::AbslStatusFromTfStatus(graph_executor_->RunWithSyncInterpreter(
       graph_name, input_values, input_names, input_dtypes, output_tensor_names,
       target_tensor_names, outputs));

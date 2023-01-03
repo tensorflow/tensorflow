@@ -27,7 +27,9 @@ cc_library(
     hdrs = ["quantize_model.h"],
     compatible_with = get_compatible_with_cloud(),
     visibility = [
-        # Directly linked to `lib_pywrap_tensorflow_internal.so`.
+        # Directly linked to `libtensorflow_cc.so` or
+        # `_pywrap_tensorflow_internal.so` if static build.
+        "//tensorflow:__pkg__",
         "//tensorflow/python:__pkg__",
     ],
     deps = [
@@ -57,6 +59,7 @@ cc_library(
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -121,12 +124,16 @@ pytype_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:variables",
         "//tensorflow/python/client:session",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/types",
         "@absl_py//absl/logging",
     ],
 )

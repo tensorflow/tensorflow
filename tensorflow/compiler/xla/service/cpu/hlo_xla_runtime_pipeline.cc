@@ -85,7 +85,10 @@ void AddSparsificationPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createSparsificationAndBufferizationPass(
       GetBufferizationOptions(), mlir::SparsificationOptions(),
       mlir::SparseTensorConversionOptions(), /*enableRuntimeLibrary=*/false,
-      /*enableBufferInitialization=*/false));
+      /*enableBufferInitialization=*/false,
+      /*vectorLength=*/0,
+      /*enableVLAVectorization=*/false,
+      /*enableSIMDIndex32*/false));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createFinalizingBufferizePass());
 }
@@ -168,7 +171,7 @@ static Status CreateHloXlaPipeline(
     return tsl::errors::Internal("Failed to set up detensorize pass.");
   }
   pm.addNestedPass<mlir::func::FuncOp>(std::move(detensorize));
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createScalarizationPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::gml_st::createScalarizationPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createEmptyTensorToAllocTensorPass());
 

@@ -5,29 +5,25 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_cc_shared_test",
     "tf_cc_test",
-    "tf_cc_test_noshared",
-)
-load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_additional_binary_deps",
 )
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 # A trivial fuzzer with no pre-specified corpus.
-tf_cc_test_noshared(
+tf_cc_shared_test(
     name = "identity_fuzz",
     srcs = ["identity_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
-        "@com_google_googletest//:gtest_main",
-        "@com_google_fuzztest//fuzztest",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:array",
         "//tensorflow/security/fuzzing/cc:fuzz_session",
-    ] + tf_additional_binary_deps(),
+        "@com_google_fuzztest//fuzztest",
+        "@com_google_fuzztest//fuzztest:fuzztest_gtest_main",
+    ],
 )
 
 tf_cc_test(
@@ -40,7 +36,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:array",
         "//tensorflow/security/fuzzing/cc:fuzz_session",
         "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_fuzztest//fuzztest:fuzztest_gtest_main",
     ],
 )
 
@@ -54,7 +50,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:array",
         "//tensorflow/security/fuzzing/cc:fuzz_session",
         "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_fuzztest//fuzztest:fuzztest_gtest_main",
     ],
 )
 
@@ -69,6 +65,6 @@ tf_cc_test(
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/security/fuzzing/cc:fuzz_session",
         "@com_google_fuzztest//fuzztest",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_fuzztest//fuzztest:fuzztest_gtest_main",
     ],
 )

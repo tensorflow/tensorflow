@@ -41,6 +41,7 @@ exports_files([
 
 JAVA_SRCS = glob([
     "src/main/java/org/tensorflow/lite/*.java",
+    "src/main/java/org/tensorflow/lite/acceleration/*.java",
     "src/main/java/org/tensorflow/lite/annotations/*.java",
 ]) + [
     "//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_api_src",
@@ -64,6 +65,7 @@ JAVA_API_SRCS = [
     "src/main/java/org/tensorflow/lite/Tensor.java",
     "src/main/java/org/tensorflow/lite/TensorFlowLite.java",
     "src/main/java/org/tensorflow/lite/annotations/UsedByReflection.java",
+    "src/main/java/org/tensorflow/lite/acceleration/ValidatedAccelerationConfig.java",
     "//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_api_src",
 ]
 
@@ -98,6 +100,7 @@ filegroup(
         "src/main/java/org/tensorflow/lite/Tensor.java",
         "src/main/java/org/tensorflow/lite/TensorFlowLite.java",
         "src/main/java/org/tensorflow/lite/TensorImpl.java",
+        "src/main/java/org/tensorflow/lite/acceleration/ValidatedAccelerationConfig.java",
         "src/main/java/org/tensorflow/lite/annotations/UsedByReflection.java",
         "src/main/java/org/tensorflow/lite/package-info.java",
         "//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_src",
@@ -636,6 +639,7 @@ java_test_with_tflite(
     visibility = ["//visibility:private"],
     deps = [
         ":tensorflowlite_javalib_stable",
+        "//third_party/java/mockito",
         "@com_google_truth",
         "@junit",
     ],

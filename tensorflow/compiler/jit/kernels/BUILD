@@ -18,7 +18,7 @@ XLA_OPS_DEPS = [
     "//tensorflow/compiler/jit:flags",
     "//tensorflow/compiler/jit:xla_activity_listener",
     "//tensorflow/compiler/jit:xla_activity_proto_cc",
-    "//tensorflow/compiler/jit:xla_compilation_cache",
+    "//tensorflow/compiler/jit:device_compiler",
     "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
     "//tensorflow/compiler/jit:xla_cluster_util",
     "//tensorflow/compiler/jit:xla_launch_util",

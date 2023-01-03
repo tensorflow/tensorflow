@@ -15,16 +15,54 @@ limitations under the License.
 
 #include "tensorflow/tsl/concurrency/async_value.h"
 
+#include <cstdlib>
 #include <functional>
 #include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "tensorflow/tsl/concurrency/async_value_ref.h"
-#include "tensorflow/tsl/platform/blocking_counter.h"
 
 namespace tsl {
+
+namespace internal {
+
+void* AlignedAlloc(size_t alignment, size_t size) {
+  size = (size + alignment - 1) / alignment * alignment;
+#ifdef _WIN32
+  // MSVC runtime doesn't support aligned_alloc(). See
+  // https://developercommunity.visualstudio.com/t/c17-stdaligned-alloc%E7%BC%BA%E5%A4%B1/468021#T-N473365
+  return _aligned_malloc(size, alignment);
+#elif defined(__ANDROID__) || defined(OS_ANDROID)
+  return memalign(alignment, size);
+#else
+  // posix_memalign requires that the requested alignment be at least
+  // alignof(void*). In this case, fall back on malloc which should return
+  // memory aligned to at least the size of a pointer.
+  if (alignment <= alignof(void*)) return std::malloc(size);
+  void* ptr = nullptr;
+  if (posix_memalign(&ptr, alignment, size) != 0)
+    return nullptr;
+  else
+    return ptr;
+#endif
+}
+
+void AlignedFree(void* ptr) {
+#ifdef _WIN32
+  // _aligned_alloc() must be paired with _aligned_free().
+  //
+  // Attempting to use free() with a pointer returned by _aligned_malloc()
+  // results in runtime issues that are hard to debug.
+  _aligned_free(ptr);
+#else
+  free(ptr);
+#endif
+}
+
+}  // namespace internal
 
 // This is a singly linked list of nodes waiting for notification, hanging off
 // of AsyncValue.  When the value becomes available or if an error occurs, the
@@ -181,7 +219,7 @@ void IndirectAsyncValue::ForwardTo(RCReference<AsyncValue> value) {
 //===----------------------------------------------------------------------===//
 
 void BlockUntilReady(AsyncValue* async_value) {
-  BlockingCounter cnt(1);
+  absl::BlockingCounter cnt(1);
   async_value->AndThen([&] { cnt.DecrementCount(); });
   cnt.Wait();
 }

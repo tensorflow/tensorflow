@@ -83,7 +83,7 @@ TfLiteRegistrationExternal* GetDelegateKernelRegistration(
 }
 
 TfLiteStatus DelegatePrepare(TfLiteOpaqueContext* opaque_context,
-                             struct TfLiteOpaqueDelegateStruct* opaque_delegate,
+                             TfLiteOpaqueDelegate* opaque_delegate,
                              void* data) {
   auto* simple_opaque_delegate =
       reinterpret_cast<SimpleOpaqueDelegateInterface*>(data);
@@ -119,8 +119,7 @@ TfLiteStatus DelegatePrepare(TfLiteOpaqueContext* opaque_context,
 }
 }  // namespace
 
-struct TfLiteOpaqueDelegateStruct*
-TfLiteOpaqueDelegateFactory::CreateSimpleDelegate(
+TfLiteOpaqueDelegate* TfLiteOpaqueDelegateFactory::CreateSimpleDelegate(
     std::unique_ptr<SimpleOpaqueDelegateInterface> simple_delegate,
     int64_t flags) {
   if (simple_delegate == nullptr) {
@@ -136,7 +135,7 @@ TfLiteOpaqueDelegateFactory::CreateSimpleDelegate(
 }
 
 void TfLiteOpaqueDelegateFactory::DeleteSimpleDelegate(
-    struct TfLiteOpaqueDelegateStruct* opaque_delegate) {
+    TfLiteOpaqueDelegate* opaque_delegate) {
   TfLiteDelegate* delegate = reinterpret_cast<TfLiteDelegate*>(opaque_delegate);
   if (!delegate) return;
   SimpleOpaqueDelegateInterface* simple_delegate =

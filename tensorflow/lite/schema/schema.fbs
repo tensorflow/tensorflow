@@ -920,9 +920,13 @@ table SliceOptions {
 }
 
 table TransposeConvOptions {
+  // Parameters supported by version 1, 2, 3:
   padding:Padding;
   stride_w:int;
   stride_h:int;
+
+  // Parameters supported by version 4:
+  fused_activation_function:ActivationFunctionType = NONE;
 }
 
 table ExpandDimsOptions {

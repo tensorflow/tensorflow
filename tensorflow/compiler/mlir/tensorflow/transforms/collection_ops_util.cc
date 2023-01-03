@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 
+#include <optional>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Optional.h"
@@ -211,7 +213,7 @@ llvm::Optional<RankedTensorType> GetElementTypeFromAccess(
       if (elem_type && elem_type.hasStaticShape()) return elem_type;
     }
   }
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Creates a ReadVariableOp on a local variable.

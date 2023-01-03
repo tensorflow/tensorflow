@@ -102,16 +102,18 @@ PjRtTpuClient::PjRtTpuClient(
       }()) {
   // We always initialize the tpu client even if libtpu isn't linked in or
   // initialized.
-  if (tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_InitFn !=
-      nullptr) {
-    tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_InitFn();
+  if (stream_executor::tpu::ExecutorApiFn()
+          ->TpuAsyncCollectiveOffloadHelper_InitFn != nullptr) {
+    stream_executor::tpu::ExecutorApiFn()
+        ->TpuAsyncCollectiveOffloadHelper_InitFn();
   }
 }
 
 PjRtTpuClient::~PjRtTpuClient() {
-  if (tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_ShutdownFn !=
-      nullptr) {
-    tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_ShutdownFn();
+  if (stream_executor::tpu::ExecutorApiFn()
+          ->TpuAsyncCollectiveOffloadHelper_ShutdownFn != nullptr) {
+    stream_executor::tpu::ExecutorApiFn()
+        ->TpuAsyncCollectiveOffloadHelper_ShutdownFn();
   }
 }
 

@@ -16,9 +16,6 @@ limitations under the License.
 
 #include <string>
 
-#include "flatbuffers/buffer.h"  // from @flatbuffers
-#include "flatbuffers/vector.h"  // from @flatbuffers
-
 #ifndef _WIN32
 #include <fcntl.h>
 #include <sys/file.h>

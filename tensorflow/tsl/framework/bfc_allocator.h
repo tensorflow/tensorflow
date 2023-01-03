@@ -612,7 +612,7 @@ class BFCAllocator : public Allocator {
   // Stats.
   AllocatorStats stats_ TF_GUARDED_BY(lock_);
 #ifdef TENSORFLOW_MEM_DEBUG
-  int64 action_counter_ = 0 TF_GUARDED_BY(lock_);
+  int64 action_counter_ TF_GUARDED_BY(lock_) = 0;
 #define MEM_DEBUG_SIZE_HISTORY_SIZE 4096
   int64 size_history_[MEM_DEBUG_SIZE_HISTORY_SIZE];
 #endif

@@ -54,13 +54,16 @@ class LiftQuantizableSpotsAsFunctionsPass
 
   LiftQuantizableSpotsAsFunctionsPass() = default;
 
-  explicit LiftQuantizableSpotsAsFunctionsPass(OpSet op_set) {
+  explicit LiftQuantizableSpotsAsFunctionsPass(OpSet op_set,
+                                               bool enable_two_input_tensors) {
     op_set_ = op_set;
+    enable_two_input_tensors_ = enable_two_input_tensors;
   }
 
   LiftQuantizableSpotsAsFunctionsPass(
       const LiftQuantizableSpotsAsFunctionsPass& other) {
     op_set_ = other.op_set_;
+    enable_two_input_tensors_ = other.enable_two_input_tensors_;
   }
 
   StringRef getArgument() const final {
@@ -91,13 +94,18 @@ class LiftQuantizableSpotsAsFunctionsPass
           clEnumValN(OpSet::XLA, "XLA", "Uses TF XLA ops"),
           clEnumValN(OpSet::UNIFORM_QUANTIZED, "UNIFORM_QUANTIZED",
                      "Uses TF Uniform Quantized ops"))};
+
+  bool enable_two_input_tensors_{false};
 };
 
 class CheckQuantizableOps
     : public mlir::OpRewritePattern<TF::PartitionedCallOp> {
  public:
-  explicit CheckQuantizableOps(MLIRContext* context, OpSet op_set)
-      : OpRewritePattern<TF::PartitionedCallOp>(context), op_set_(op_set) {}
+  explicit CheckQuantizableOps(MLIRContext* context, OpSet op_set,
+                               bool enable_two_input_tensors)
+      : OpRewritePattern<TF::PartitionedCallOp>(context),
+        op_set_(op_set),
+        enable_two_input_tensors_(enable_two_input_tensors) {}
 
  private:
   LogicalResult matchAndRewrite(TF::PartitionedCallOp call_op,
@@ -112,7 +120,8 @@ class CheckQuantizableOps
     tensorflow::Status check_status;
     switch (op_set_) {
       case OpSet::XLA:
-        check_status = checkQuantizableOpsForXla(call_op, function_name);
+        check_status = checkQuantizableOpsForXla(call_op, function_name,
+                                                 enable_two_input_tensors_);
         break;
       default:
         check_status = tensorflow::OkStatus();
@@ -128,8 +137,9 @@ class CheckQuantizableOps
     return success();
   }
 
-  tensorflow::Status checkQuantizableOpsForXla(TF::PartitionedCallOp call_op,
-                                               StringRef function_name) const {
+  tensorflow::Status checkQuantizableOpsForXla(
+      TF::PartitionedCallOp call_op, StringRef function_name,
+      bool enable_two_input_tensors) const {
     // Disable quantization for the DepthwiseConv since it has no benefits in
     // the XLA opset.
     if (function_name.contains("depthwise_conv2d")) {
@@ -178,8 +188,10 @@ class CheckQuantizableOps
       }
 
       if (!is_weight_constant) {
-        return tensorflow::errors::Unknown(
-            "Non-constant weights are not supported at the moment.");
+        if (!enable_two_input_tensors || !function_name.contains("matmul")) {
+          return tensorflow::errors::Unknown(
+              "Non-constant weights are not supported at the moment.");
+        }
       }
     }
     return tensorflow::OkStatus();
@@ -211,6 +223,7 @@ class CheckQuantizableOps
   }
 
   OpSet op_set_;
+  bool enable_two_input_tensors_;
 };
 
 static PassRegistration<LiftQuantizableSpotsAsFunctionsPass> pass;
@@ -223,7 +236,7 @@ void LiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
   ModuleOp module = getOperation();
 
   populateWithGenerated(patterns);
-  patterns.add<CheckQuantizableOps>(ctx, op_set_);
+  patterns.add<CheckQuantizableOps>(ctx, op_set_, enable_two_input_tensors_);
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
   for (auto func : module.getOps<func::FuncOp>()) {
     if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
@@ -236,8 +249,10 @@ void LiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateLiftQuantizableSpotsAsFunctionsPass(OpSet target_opset) {
-  return std::make_unique<LiftQuantizableSpotsAsFunctionsPass>(target_opset);
+CreateLiftQuantizableSpotsAsFunctionsPass(OpSet target_opset,
+                                          bool enable_two_input_tensors) {
+  return std::make_unique<LiftQuantizableSpotsAsFunctionsPass>(
+      target_opset, enable_two_input_tensors);
 }
 
 }  // namespace quant

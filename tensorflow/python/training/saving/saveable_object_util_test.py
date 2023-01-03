@@ -182,7 +182,7 @@ class TrackableState(State):
     }
 
   def _restore_from_tensors(self, restored_tensors):
-    self.assign(restored_tensors["value"])
+    return self.assign(restored_tensors["value"])
 
 
 class SaveableCompatibilityEndToEndTest(test.TestCase):

@@ -157,7 +157,7 @@ class AsyncRuntime {
   // ------------------------------------------------------------------------ //
 
   // Returns a pointer to the async value storage.
-  static void* GetStorage(Value* value);
+  static std::byte* GetStorage(Value* value);
 
   // Extracts async value that holds a chain owned by the value.
   static tsl::AsyncValue* GetAsyncValue(Value* value);

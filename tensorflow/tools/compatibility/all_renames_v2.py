@@ -358,10 +358,16 @@ manual_symbol_renames = {
         "tf.compat.v1.losses.Reduction.SUM_OVER_NONZERO_WEIGHTS",
     "tf.lite.constants.FLOAT":
         "tf.float32",
+    "tf.lite.constants.FLOAT16":
+        "tf.float16",
+    "tf.lite.constants.INT16":
+        "tf.int16",
     "tf.lite.constants.INT32":
         "tf.int32",
     "tf.lite.constants.INT64":
         "tf.int64",
+    "tf.lite.constants.INT8":
+        "tf.int8",
     "tf.lite.constants.STRING":
         "tf.string",
     "tf.lite.constants.QUANTIZED_UINT8":
