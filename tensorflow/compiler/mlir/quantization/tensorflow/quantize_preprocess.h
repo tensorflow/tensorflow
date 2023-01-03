@@ -30,12 +30,14 @@ inline constexpr absl::string_view kDefaultTfQuantMlirDumpFilePrefix =
     "tf_quant";
 
 // Preprocesses the `module_op` for quantization. The preprocess steps include
-// freezing the variables in the graph into constants.
+// freezing the variables in the graph into constants. `is_inliner_run`
+// determines whether the `InlinerPass` should be run after unfreezing.
 //
 // `mlir_dump_file_prefix` is primarily used for debugging and does not affect
 // the preprocessing behavior. Instructions for producing MLIR dump files are in
 // the comments of `tensorflow::quantization::MaybeEnableIrPrinting` function.
 absl::Status PreprocessAndFreezeGraph(absl::string_view mlir_dump_file_prefix,
+                                      bool is_inliner_run,
                                       mlir::ModuleOp module_op,
                                       mlir::MLIRContext* context,
                                       llvm::Optional<Session*> session);
@@ -46,8 +48,8 @@ inline absl::Status PreprocessAndFreezeGraph(mlir::ModuleOp module_op,
                                              mlir::MLIRContext* context,
                                              llvm::Optional<Session*> session) {
   return PreprocessAndFreezeGraph(
-      /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix, module_op,
-      context, session);
+      /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
+      /*is_inliner_run=*/true, module_op, context, session);
 }
 
 }  // namespace quantization

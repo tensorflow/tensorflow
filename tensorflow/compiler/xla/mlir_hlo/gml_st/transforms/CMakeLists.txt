@@ -72,6 +72,7 @@ add_mlir_library(GmlStPasses
   MLIRIR
   MLIRLinalgDialect
   MLIRLinalgTransforms
+  MLIRMemRefDialect
   MLIRPass
   MLIRSCFUtils
   MLIRSupport

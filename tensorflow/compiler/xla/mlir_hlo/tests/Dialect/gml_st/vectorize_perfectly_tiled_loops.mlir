@@ -136,3 +136,23 @@ func.func @pad(%arg0: tensor<10x10xf32>) -> tensor<16x10xf32> {
 // CHECK:         %[[READ:.*]] = vector.transfer_read
 // CHECK:         %[[WRITE:.*]] = vector.transfer_write %[[READ]], %[[FILL]]
 // CHECK:         return %[[WRITE]]
+
+// -----
+
+func.func @transpose(%input: tensor<4x5x6xf32>,
+    %init: tensor<5x6x4xf32>) -> tensor<5x6x4xf32> {
+  %transpose = linalg.transpose
+    ins(%input:tensor<4x5x6xf32>)
+    outs(%init:tensor<5x6x4xf32>)
+    permutation = [1, 2, 0]
+  func.return %transpose : tensor<5x6x4xf32>
+}
+
+// CHECK-LABEL: func @transpose(
+// CHECK-SAME:  %[[INPUT:.*]]: tensor<4x5x6xf32>
+// CHECK-SAME:  %[[INIT:.*]]: tensor<5x6x4xf32>
+
+// CHECK:         %[[READ:.*]] = vector.transfer_read %[[INPUT]]
+// CHECK:         %[[TRANSPOSE:.*]] = vector.transpose %[[READ]], [1, 2, 0]
+// CHECK:         %[[WRITE:.*]] = vector.transfer_write %[[TRANSPOSE]], %[[INIT]]
+// CHECK:         return %[[WRITE]]

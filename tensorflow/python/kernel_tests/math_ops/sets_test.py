@@ -82,6 +82,16 @@ class SetOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(
         [0, 3], self._set_size(_dense_to_sparse([[], [1, 9, 2]], dtype)))
 
+  def test_invalid_size(self):
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError,
+                                 errors_impl.InternalError),
+                                "Index out of range|expected <"):
+      sparse_data = sparse_tensor_lib.SparseTensor(
+          constant_op.constant([[804, 7450], [48245, 2577]], dtypes.int64),
+          constant_op.constant([1, 1], dtypes.int64),
+          constant_op.constant([812, 390], dtypes.int64))
+      self.evaluate(sets.set_size(sparse_data, validate_indices=False))
+
   @test_util.run_deprecated_v1
   def test_set_size_duplicates_2d(self):
     for dtype in _DTYPES:

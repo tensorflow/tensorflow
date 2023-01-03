@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/IR/TensorTilingInterfaceImpl.h"
@@ -46,6 +47,7 @@ namespace mlir::gml_st {
 namespace {
 
 #define GEN_PASS_DEF_TRANSFORMMATMULFORCPUPASS
+#define GEN_PASS_DEF_SIMPLIFYDEADCOPYPASS
 #include "gml_st/transforms/passes.h.inc"
 
 static constexpr llvm::StringRef kMatmulTransformedLabel =
@@ -346,53 +348,6 @@ struct MatmulToMmt4dPattern : public OpRewritePattern<linalg::MatmulOp> {
     Value result = extractSliceLike(loc, rewriter, paddedResult, acc);
     rewriter.replaceOp(matmulOp, ArrayRef<Value>{result});
 
-    return success();
-  }
-};
-
-/// Canonicalizes [tensor.empty() -> linalg.fill -> linalg.generic] ->
-/// [tensor.empty() -> linalg.fill] where linalg.generic does only copy e.g
-/// a transpose.
-struct FoldFillGenericOpPattern : public OpRewritePattern<linalg::GenericOp> {
-  using OpRewritePattern<linalg::GenericOp>::OpRewritePattern;
-
-  explicit FoldFillGenericOpPattern(MLIRContext *context,
-                                    PatternBenefit benefit = 1)
-      : OpRewritePattern<linalg::GenericOp>(context, benefit) {}
-
-  LogicalResult matchAndRewrite(linalg::GenericOp genericOp,
-                                PatternRewriter &rewriter) const override {
-    if (genericOp.getNumDpsInputs() != 1) return failure();
-    if (genericOp.getNumDpsInits() != 1) return failure();
-
-    // Check linalg.generic does have copy only semantics.
-    if (genericOp.getNumParallelLoops() != genericOp.getNumLoops()) {
-      return failure();
-    }
-    auto results =
-        llvm::to_vector<4>(genericOp.getBody()->getOps<linalg::YieldOp>());
-    if (results.size() != 1) return failure();
-    if (results[0].getValues().size() != 1) return failure();
-    auto blockArgument = results[0].getValues()[0].dyn_cast<BlockArgument>();
-    if (!blockArgument || blockArgument.getArgNumber() != 0) return failure();
-
-    auto input = genericOp.getInputs()[0];
-
-    auto outputType =
-        genericOp.getOutputs()[0].getType().dyn_cast<RankedTensorType>();
-
-    // FIXME: To enable dynamic shapes we need to apply the same permutation on
-    // init tensor sizes.
-    if (!outputType || !outputType.hasStaticShape()) return failure();
-
-    auto fillOp = dyn_cast<linalg::FillOp>(input.getDefiningOp());
-    if (!fillOp) return failure();
-
-    auto loc = genericOp.getLoc();
-    Value newInitTensor = rewriter.create<tensor::EmptyOp>(
-        loc, outputType.getShape(), outputType.getElementType());
-    rewriter.replaceOpWithNewOp<linalg::FillOp>(genericOp, fillOp.value(),
-                                                newInitTensor);
     return success();
   }
 };
@@ -748,7 +703,6 @@ struct TransformMatmulForCpuPass
       tensor::ExpandShapeOp::getCanonicalizationPatterns(patterns, ctx);
       tensor::EmptyOp::getCanonicalizationPatterns(patterns, ctx);
       linalg::FillOp::getCanonicalizationPatterns(patterns, ctx);
-      patterns.add<FoldFillGenericOpPattern>(ctx);
 
       if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
         return signalPassFailure();
@@ -789,6 +743,68 @@ struct TransformMatmulForCpuPass
     }
   }
 };
+
+/// Remove memref::CopyOp whose target (can be either a memref::SubViewOp or
+/// memref::AllocOp) has no other users.
+struct SimplifyDeadCopyPattern : public OpRewritePattern<memref::CopyOp> {
+  using OpRewritePattern<memref::CopyOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(memref::CopyOp op,
+                                PatternRewriter &rewriter) const override {
+    auto valueIt = op.getTarget();
+    Operation *onlyNonStoreLikeUser = op;
+    for (auto subviewOp = valueIt.getDefiningOp<memref::SubViewOp>(); subviewOp;
+         onlyNonStoreLikeUser = subviewOp, valueIt = subviewOp.getSource(),
+              subviewOp = valueIt.getDefiningOp<memref::SubViewOp>()) {
+      // TODO(vuson) simplify if other uses are also memref.copy writing to
+      // subview
+      //    %alloc_4 = memref.alloc()
+      //    %subview_5 = memref.subview %alloc_4
+      //    %subview_6 = memref.subview %alloc_4
+      //    memref.copy %arg0, %subview_6
+      //    memref.copy %arg1, %subview_5
+      if (!subviewOp->hasOneUse()) return failure();
+    }
+
+    auto hasOnlyStoreLikeUsers = [&](Value alloc) {
+      return !llvm::any_of(alloc.getUsers(), [&](Operation *op) {
+        if (op == onlyNonStoreLikeUser) return false;
+        // TODO(vuson) remove this exception when MemoryEffectOpInterface gets
+        // corrected for linalg::FillOp. Right now it has MemoryEffects::Read
+        // while the only thing it ever reads is metadata such as dynamic sizes.
+        if (isa<linalg::FillOp>(op)) return false;
+        if (auto effect = dyn_cast<MemoryEffectOpInterface>(op)) {
+          return effect.getEffectOnValue<MemoryEffects::Read>(alloc)
+                     .has_value() ||
+                 !effect.getEffectOnValue<MemoryEffects::Write>(alloc)
+                      .has_value();
+        }
+        return true;
+      });
+    };
+    if (!valueIt.getDefiningOp<memref::AllocOp>() ||
+        !hasOnlyStoreLikeUsers(valueIt))
+      return failure();
+
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
+struct SimplifyDeadCopyPass
+    : public impl::SimplifyDeadCopyPassBase<SimplifyDeadCopyPass> {
+  void runOnOperation() override {
+    auto func = getOperation();
+    auto *ctx = func.getContext();
+
+    RewritePatternSet patterns(ctx);
+    patterns.add<SimplifyDeadCopyPattern>(ctx);
+    memref::AllocOp::getCanonicalizationPatterns(patterns, ctx);
+    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+      return signalPassFailure();
+    }
+  }
+};
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
@@ -801,6 +817,10 @@ createTransformMatmulForCpuPass(llvm::ArrayRef<int64_t> matmulTileSizes,
                                 bool lowerToMmt4DOp) {
   return std::make_unique<mlir::gml_st::TransformMatmulForCpuPass>(
       matmulTileSizes, lowerToMmt4DOp);
+}
+
+std::unique_ptr<OperationPass<func::FuncOp>> createSimplifyDeadCopyPass() {
+  return std::make_unique<SimplifyDeadCopyPass>();
 }
 
 }  // namespace mlir::gml_st

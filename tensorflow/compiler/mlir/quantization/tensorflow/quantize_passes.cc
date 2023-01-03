@@ -56,7 +56,8 @@ void AddQuantizeQatPasses(mlir::PassManager &pm,
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass(
-      quantization_options.op_set()));
+      quantization_options.op_set(),
+      quantization_options.enable_two_input_tensors()));
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
       quantization_options.quantization_method().experimental_method(),
       quantization_options.op_set()));
@@ -130,7 +131,8 @@ void AddQuantizePtqPreCalibrationPasses(
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass(
-      quantization_options.op_set()));
+      quantization_options.op_set(),
+      quantization_options.enable_two_input_tensors()));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateInsertCustomAggregationOpsPass());
   pm.addPass(mlir::quant::CreateIssueIDsOfCustomAggregationOpsPass());

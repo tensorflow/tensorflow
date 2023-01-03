@@ -63,8 +63,9 @@ absl::Status RunPassesOnModuleOp(const absl::string_view mlir_dump_file_name,
 }  // namespace
 
 absl::Status PreprocessAndFreezeGraph(
-    const absl::string_view mlir_dump_file_prefix, mlir::ModuleOp module_op,
-    mlir::MLIRContext* context, llvm::Optional<Session*> session) {
+    const absl::string_view mlir_dump_file_prefix, const bool is_inliner_run,
+    mlir::ModuleOp module_op, mlir::MLIRContext* context,
+    llvm::Optional<Session*> session) {
   mlir::PassManager pm_before_freezing_variables(context);
   mlir::StatusScopedDiagnosticHandler statusHandler(module_op.getContext(),
                                                     /*propagate=*/true);
@@ -81,7 +82,9 @@ absl::Status PreprocessAndFreezeGraph(
   mlir::PassManager pm_after_freezing_variables(context);
   pm_after_freezing_variables.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm_after_freezing_variables.addPass(mlir::createCanonicalizerPass());
-  pm_after_freezing_variables.addPass(mlir::createInlinerPass());
+  if (is_inliner_run) {
+    pm_after_freezing_variables.addPass(mlir::createInlinerPass());
+  }
 
   if (const auto pre_variable_freezing_status = RunPassesOnModuleOp(
           /*mlir_dump_file_name=*/absl::StrCat(

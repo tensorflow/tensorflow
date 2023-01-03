@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include <cstring>
 #include <string>
+#include <unordered_set>
+#include <vector>
 
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
+#include "pybind11/stl.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model_wrapper.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
@@ -39,7 +42,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
     )pbdoc");
   m.def(
       "get_max_from_calibrator",
-      [](const absl::string_view id) {
+      [](const absl::string_view id) -> float {
         return tensorflow::quantization::GetMaxFromCalibrator(id);
       },
       R"pbdoc(
@@ -47,7 +50,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
     )pbdoc");
   m.def(
       "get_min_from_calibrator",
-      [](const absl::string_view id) {
+      [](const absl::string_view id) -> float {
         return tensorflow::quantization::GetMinFromCalibrator(id);
       },
       R"pbdoc(
@@ -56,13 +59,12 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
   m.def(
       "quantize_qat_model",
       [](const absl::string_view saved_model_path,
-         const absl::string_view exported_names_str,
-         const absl::string_view tags,
-         const absl::string_view quant_opts_serialized) {
+         const std::vector<std::string>& signature_keys,
+         const std::unordered_set<std::string>& tags,
+         const absl::string_view quant_opts_serialized) -> py::bytes {
         const std::string exported_model_serialized =
-            tensorflow::quantization::QuantizeQatModel(saved_model_path,
-                                                       exported_names_str, tags,
-                                                       quant_opts_serialized);
+            tensorflow::quantization::QuantizeQatModel(
+                saved_model_path, signature_keys, tags, quant_opts_serialized);
 
         return py::bytes(exported_model_serialized);
       },
@@ -73,13 +75,12 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
   m.def(
       "quantize_ptq_dynamic_range",
       [](const absl::string_view saved_model_path,
-         const absl::string_view exported_names_str,
-         const absl::string_view tags,
-         const absl::string_view quant_opts_serialized) {
+         const std::vector<std::string>& signature_keys,
+         const std::unordered_set<std::string>& tags,
+         const absl::string_view quant_opts_serialized) -> py::bytes {
         const std::string exported_model_serialized =
             tensorflow::quantization::QuantizePtqDynamicRange(
-                saved_model_path, exported_names_str, tags,
-                quant_opts_serialized);
+                saved_model_path, signature_keys, tags, quant_opts_serialized);
 
         return py::bytes(exported_model_serialized);
       },
@@ -90,13 +91,12 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
   m.def(
       "quantize_ptq_model_pre_calibration",
       [](const absl::string_view saved_model_path,
-         const absl::string_view exported_names_str,
-         const absl::string_view tags,
-         const absl::string_view quant_opts_serialized) {
+         const std::vector<std::string>& signature_keys,
+         const std::unordered_set<std::string>& tags,
+         const absl::string_view quant_opts_serialized) -> py::bytes {
         const std::string exported_model_serialized =
             tensorflow::quantization::QuantizePtqModelPreCalibration(
-                saved_model_path, exported_names_str, tags,
-                quant_opts_serialized);
+                saved_model_path, signature_keys, tags, quant_opts_serialized);
 
         return py::bytes(exported_model_serialized);
       },
@@ -107,13 +107,12 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
   m.def(
       "quantize_ptq_model_post_calibration",
       [](const absl::string_view saved_model_path,
-         const absl::string_view exported_names_str,
-         const absl::string_view tags,
-         const absl::string_view quant_opts_serialized) {
+         const std::vector<std::string>& signature_keys,
+         const std::unordered_set<std::string>& tags,
+         const absl::string_view quant_opts_serialized) -> py::bytes {
         const std::string exported_model_serialized =
             tensorflow::quantization::QuantizePtqModelPostCalibration(
-                saved_model_path, exported_names_str, tags,
-                quant_opts_serialized);
+                saved_model_path, signature_keys, tags, quant_opts_serialized);
 
         return py::bytes(exported_model_serialized);
       },

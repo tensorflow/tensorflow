@@ -67,6 +67,9 @@ namespace quantization {
 namespace internal {
 namespace {
 
+using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
+using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
+
 // Options when running passes for exporting an MLIR ModuleOp.
 struct ExportOptions {
   // If set to `true`, it runs `DuplicateShapeDeterminingConstantsPass` before
@@ -112,27 +115,36 @@ void AddExportPasses(const bool duplicate_shape_determining_constants,
   pm.addPass(mlir::quant::CreateMergeInitializerFunctionOpsToMainPass());
 }
 
-// Returns the name of the initializer node from a set of control return nodes.
-// Returns an empty string if no initializer node exists. This assumes that
-// there is only one node for initialization.
-std::string GetInitNodeName(
-    const absl::flat_hash_set<Node *> &control_ret_nodes) {
+// Finds and returns the name of the node from a set of control output nodes.
+// The name should contain the string `contains`. Returns an empty string if no
+// node whose name contains `contains` is found. Assumes there is at most one
+// such a node.
+std::string GetNodeName(const absl::flat_hash_set<Node *> &control_ret_nodes,
+                        const absl::string_view contains) {
   for (Node *control_ret_node : control_ret_nodes) {
-    if (absl::StrContains(control_ret_node->name(), kInitOpNamePrefix)) {
-      VLOG(1) << "Init node found: " << control_ret_node->name();
+    if (absl::StrContains(control_ret_node->name(), contains)) {
+      VLOG(1) << "Node found: " << control_ret_node->name()
+              << ", contains: " << contains;
       return control_ret_node->name();
     }
   }
+  VLOG(1) << "Could not find node whose name conatins: " << contains;
   return "";
 }
 
 [[nodiscard]] ExportedModel CreateExportedModel(
     GraphDef &&graph_def, const absl::string_view init_node_name,
-    const absl::string_view checkpoint_dir) {
+    const absl::string_view restore_node_name,
+    const absl::string_view checkpoint_dir,
+    const std::vector<std::string> &variable_shared_names) {
   ExportedModel exported_model{};
   *exported_model.mutable_graph_def() = graph_def;
   exported_model.set_init_node_name(std::string(init_node_name));
+  exported_model.set_restore_node_name(std::string(restore_node_name));
   exported_model.set_checkpoint_dir(std::string(checkpoint_dir));
+  for (auto &shared_name : variable_shared_names) {
+    *exported_model.mutable_variable_shared_names()->Add() = shared_name;
+  }
 
   return exported_model;
 }
@@ -140,7 +152,8 @@ std::string GetInitNodeName(
 // Converts MLIR ModuleOp to ExportedModel. Returns InternalError status
 // when the conversion fails.
 absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
-    const mlir::ModuleOp module_op, const absl::string_view checkpoint_dir) {
+    const mlir::ModuleOp module_op, const absl::string_view checkpoint_dir,
+    const std::vector<std::string> &variable_shared_names) {
   const GraphExportConfig config{};
   FunctionLibraryDefinition flib_def{OpRegistry::Global(),
                                      FunctionDefLibrary()};
@@ -156,8 +169,14 @@ absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
   GraphDef graph_def{};
   graph->ToGraphDef(&graph_def);
 
-  return CreateExportedModel(
-      std::move(graph_def), GetInitNodeName(control_ret_nodes), checkpoint_dir);
+  const std::string init_node_name =
+      GetNodeName(control_ret_nodes, kTfSavedModelInitializerInitType);
+  const std::string restore_node_name =
+      GetNodeName(control_ret_nodes, kTfSavedModelInitializerRestoreType);
+
+  return CreateExportedModel(std::move(graph_def), init_node_name,
+                             restore_node_name, checkpoint_dir,
+                             variable_shared_names);
 }
 
 // Runs MLIR passes with `module_op`. The passes are added by calling
@@ -256,25 +275,36 @@ absl::StatusOr<std::vector<std::string>> UnfreezeConstantsAndSaveVariables(
 
 // Sets up and runs the passes for exporting `module_op`. The behavior of the
 // exporting passes is controlled by `export_opts`.
-absl::Status RunExportPasses(const ExportOptions &export_opts,
-                             mlir::MLIRContext &ctx, mlir::ModuleOp module_op) {
+absl::StatusOr<std::vector<std::string>> RunExportPasses(
+    const ExportOptions &export_opts, mlir::MLIRContext &ctx,
+    mlir::ModuleOp module_op) {
+  std::vector<std::string> variable_shared_names;
+
   if (export_opts.unfreeze_constants) {
-    const absl::StatusOr<std::vector<std::string>> variable_shared_names =
+    const absl::StatusOr<std::vector<std::string>> shared_names =
         UnfreezeConstantsAndSaveVariables(export_opts.checkpoint_dir, ctx,
                                           module_op);
-    if (!variable_shared_names.ok()) {
-      return variable_shared_names.status();
+    if (!shared_names.ok()) {
+      return shared_names.status();
     }
+
     LOG(INFO) << "Unfrozen constants and saved variables to checkpoint file: "
               << export_opts.checkpoint_dir;
+
+    variable_shared_names = std::move(*shared_names);
   }
 
-  return RunPasses(
-      /*name=*/export_opts.debug_name,
-      /*add_passes_func=*/
-      [dup_constants = export_opts.duplicate_shape_determining_constants](
-          mlir::PassManager &pm) { AddExportPasses(dup_constants, pm); },
-      ctx, module_op);
+  if (const absl::Status pass_run_status = RunPasses(
+          /*name=*/export_opts.debug_name,
+          /*add_passes_func=*/
+          [dup_constants = export_opts.duplicate_shape_determining_constants](
+              mlir::PassManager &pm) { AddExportPasses(dup_constants, pm); },
+          ctx, module_op);
+      !pass_run_status.ok()) {
+    return pass_run_status;
+  }
+
+  return variable_shared_names;
 }
 
 // Creates MLIRContext where the dialects required for quantization are
@@ -292,12 +322,9 @@ mlir::MLIRContext CreateMlirContextForTfQuantization() {
 
 absl::StatusOr<ExportedModel> QuantizeQatModel(
     const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags,
+    const std::vector<std::string> &signature_keys,
+    const std::unordered_set<std::string> &tags,
     const absl::string_view quant_opts_serialized) {
-  const std::unordered_set<std::string> tag_set =
-      absl::StrSplit(tags, ',', absl::SkipEmpty());
-  std::vector<std::string> exported_names =
-      absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
   QuantizationOptions quantization_options;
   if (!quantization_options.ParseFromString(
           // NOLINTNEXTLINE: std::string conversion required.
@@ -314,8 +341,9 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
   auto bundle = std::make_unique<SavedModelBundle>();
 
   // TODO(b/213406917): Add support for the object graph based saved model input
+  std::vector<std::string> exported_names = signature_keys;
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
-      SavedModelSignatureDefsToMlirImport(saved_model_path, tag_set,
+      SavedModelSignatureDefsToMlirImport(saved_model_path, tags,
                                           absl::MakeSpan(exported_names),
                                           &context, import_options,
                                           /*lift_variables=*/false, &bundle);
@@ -351,27 +379,27 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
     LOG(ERROR) << "Failed to get checkpoint directory name.";
     return checkpoint_dir.status();
   }
+
   const auto export_opts =
       ExportOptions{/*duplicate_shape_determining_constants=*/true,
                     unfreeze_constants, *checkpoint_dir,
                     /*debug_name=*/kTfQuantQatStepName};
-  if (const absl::Status export_status =
-          RunExportPasses(export_opts, context, *module_ref);
-      !export_status.ok()) {
-    return export_status;
+
+  const absl::StatusOr<std::vector<std::string>> variable_shared_names =
+      RunExportPasses(export_opts, context, *module_ref);
+  if (!variable_shared_names.ok()) {
+    return variable_shared_names.status();
   }
 
-  return ConvertMlirModuleToExportedModel(*module_ref, *checkpoint_dir);
+  return ConvertMlirModuleToExportedModel(*module_ref, *checkpoint_dir,
+                                          *variable_shared_names);
 }
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags,
+    const std::vector<std::string> &signature_keys,
+    const std::unordered_set<std::string> &tags,
     const absl::string_view quant_opts_serialized) {
-  const std::unordered_set<std::string> tag_set =
-      absl::StrSplit(tags, ',', absl::SkipEmpty());
-  std::vector<std::string> exported_names =
-      absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
   QuantizationOptions quantization_options;
   if (!quantization_options.ParseFromString(
           // NOLINTNEXTLINE: std::string conversion required.
@@ -388,8 +416,9 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
   auto bundle = std::make_unique<SavedModelBundle>();
 
   // TODO(b/213406917): Add support for the object graph based saved model input
+  std::vector<std::string> exported_names = signature_keys;
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
-      SavedModelSignatureDefsToMlirImport(saved_model_path, tag_set,
+      SavedModelSignatureDefsToMlirImport(saved_model_path, tags,
                                           absl::MakeSpan(exported_names),
                                           &context, import_options,
                                           /*lift_variables=*/false, &bundle);
@@ -401,7 +430,9 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
   if (const absl::Status preprocess_status = PreprocessAndFreezeGraph(
-          module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr);
+          /*mlir_dump_file_prefix=*/kTfQuantPtqPreCalibrationStepName,
+          /*is_inliner_run=*/true, module_ref.get(), &context,
+          bundle ? bundle->GetSession() : nullptr);
       !preprocess_status.ok()) {
     return preprocess_status;
   }
@@ -429,23 +460,22 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
       ExportOptions{/*duplicate_shape_determining_constants=*/false,
                     unfreeze_constants, *checkpoint_dir,
                     /*debug_name=*/kTfQuantPtqPreCalibrationStepName};
-  if (const absl::Status export_status =
-          RunExportPasses(export_opts, context, *module_ref);
-      !export_status.ok()) {
-    return export_status;
+
+  const absl::StatusOr<std::vector<std::string>> variable_shared_names =
+      RunExportPasses(export_opts, context, *module_ref);
+  if (!variable_shared_names.ok()) {
+    return variable_shared_names.status();
   }
 
-  return ConvertMlirModuleToExportedModel(*module_ref, *checkpoint_dir);
+  return ConvertMlirModuleToExportedModel(*module_ref, *checkpoint_dir,
+                                          *variable_shared_names);
 }
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
     const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags,
+    const std::vector<std::string> &signature_keys,
+    const std::unordered_set<std::string> &tags,
     const absl::string_view quant_opts_serialized) {
-  const std::unordered_set<std::string> tag_set =
-      absl::StrSplit(tags, ',', absl::SkipEmpty());
-  std::vector<std::string> exported_names =
-      absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
   QuantizationOptions quantization_options;
   if (!quantization_options.ParseFromString(
           // NOLINTNEXTLINE: std::string conversion required.
@@ -462,11 +492,12 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
   auto bundle = std::make_unique<SavedModelBundle>();
 
   // TODO(b/213406917): Add support for the object graph based saved model input
+  std::vector<std::string> exported_names = signature_keys;
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
-      SavedModelSignatureDefsToMlirImport(saved_model_path, tag_set,
+      SavedModelSignatureDefsToMlirImport(saved_model_path, tags,
                                           absl::MakeSpan(exported_names),
                                           &context, import_options,
-                                          /*lift_variables=*/true, &bundle);
+                                          /*lift_variables=*/false, &bundle);
 
   if (!module.status().ok()) {
     return absl::InternalError("Failed to import SavedModel: " +
@@ -474,6 +505,17 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
+
+  // Freezing is required again since variables might have been produced during
+  // the pre-calibration step. `is_inliner_run = false` to prevent the functions
+  // lifted for quantization from being inlined.
+  if (const absl::Status preprocess_status = PreprocessAndFreezeGraph(
+          /*mlir_dump_file_prefix=*/kTfQuantPtqPostCalibrationStepName,
+          /*is_inliner_run=*/false, module_ref.get(), &context,
+          bundle ? bundle->GetSession() : nullptr);
+      !preprocess_status.ok()) {
+    return preprocess_status;
+  }
 
   if (const absl::Status pre_calib_pass_status = RunPasses(
           /*name=*/kTfQuantPtqPostCalibrationStepName,
@@ -496,23 +538,22 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
       ExportOptions{/*duplicate_shape_determining_constants=*/true,
                     unfreeze_constants, *checkpoint_dir,
                     /*debug_name=*/kTfQuantPtqPostCalibrationStepName};
-  if (const absl::Status export_status =
-          RunExportPasses(export_opts, context, *module_ref);
-      !export_status.ok()) {
-    return export_status;
+
+  const absl::StatusOr<std::vector<std::string>> variable_shared_names =
+      RunExportPasses(export_opts, context, *module_ref);
+  if (!variable_shared_names.ok()) {
+    return variable_shared_names.status();
   }
 
-  return ConvertMlirModuleToExportedModel(*module_ref, *checkpoint_dir);
+  return ConvertMlirModuleToExportedModel(*module_ref, *checkpoint_dir,
+                                          *variable_shared_names);
 }
 
 absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
     const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags,
+    const std::vector<std::string> &signature_keys,
+    const std::unordered_set<std::string> &tags,
     const absl::string_view quant_opts_serialized) {
-  const std::unordered_set<std::string> tag_set =
-      absl::StrSplit(tags, ',', absl::SkipEmpty());
-  std::vector<std::string> exported_names =
-      absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
   QuantizationOptions quantization_options;
   if (!quantization_options.ParseFromString(
           // NOLINTNEXTLINE: std::string conversion required.
@@ -529,8 +570,9 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
   auto bundle = std::make_unique<SavedModelBundle>();
 
   // TODO(b/213406917): Add support for the object graph based saved model input
+  std::vector<std::string> exported_names = signature_keys;
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
-      SavedModelSignatureDefsToMlirImport(saved_model_path, tag_set,
+      SavedModelSignatureDefsToMlirImport(saved_model_path, tags,
                                           absl::MakeSpan(exported_names),
                                           &context, import_options,
                                           /*lift_variables=*/false, &bundle);
@@ -569,13 +611,14 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
       ExportOptions{/*duplicate_shape_determining_constants=*/true,
                     unfreeze_constants, *checkpoint_dir,
                     /*debug_name=*/kTfQuantPtqDynamicRangeStepName};
-  if (const absl::Status export_status =
-          RunExportPasses(export_opts, context, *module_ref);
-      !export_status.ok()) {
-    return export_status;
+  const absl::StatusOr<std::vector<std::string>> variable_shared_names =
+      RunExportPasses(export_opts, context, *module_ref);
+  if (!variable_shared_names.ok()) {
+    return variable_shared_names.status();
   }
 
-  return ConvertMlirModuleToExportedModel(*module_ref, *checkpoint_dir);
+  return ConvertMlirModuleToExportedModel(*module_ref, *checkpoint_dir,
+                                          *variable_shared_names);
 }
 
 }  // namespace internal

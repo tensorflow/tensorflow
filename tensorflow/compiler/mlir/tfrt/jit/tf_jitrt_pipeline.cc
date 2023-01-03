@@ -221,6 +221,9 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   if (options.vectorize)
     pm.addNestedPass<FuncOp>(mlir::gml_st::createVectorizeCopyPass());
 
+  if (options.enable_xla_cpu_transformations)
+    pm.addNestedPass<FuncOp>(mlir::gml_st::createSimplifyDeadCopyPass());
+
   // Deallocate all temporary buffers.
   pm.addNestedPass<FuncOp>(mlir::bufferization::createBufferDeallocationPass());
 
