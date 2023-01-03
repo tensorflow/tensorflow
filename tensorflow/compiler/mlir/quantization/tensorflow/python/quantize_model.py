@@ -501,8 +501,8 @@ def _run_static_range_qat(
   logging.info('Running static-range quantization for QAT model.')
   exported_model_serialized = (
       quantize_model_wrapper.quantize_qat_model(saved_model_path,
-                                                ','.join(signature_def_keys),
-                                                ','.join(tags),
+                                                list(signature_def_keys),
+                                                set(tags),
                                                 quant_opts.SerializeToString()))
 
   exported_model = exported_model_pb2.ExportedModel.FromString(
@@ -578,7 +578,7 @@ def _run_static_range_ptq(
   logging.info('Running post-training quantization pre-calibration step.')
   exported_model_serialized = (
       quantize_model_wrapper.quantize_ptq_model_pre_calibration(
-          saved_model_path, ','.join(signature_def_keys), ','.join(tags),
+          saved_model_path, list(signature_def_keys), set(tags),
           quant_opts.SerializeToString()))
 
   exported_model = exported_model_pb2.ExportedModel.FromString(
@@ -615,7 +615,7 @@ def _run_static_range_ptq(
   logging.info('Running post-training quantization post-calibration step.')
   exported_model_serialized = (
       quantize_model_wrapper.quantize_ptq_model_post_calibration(
-          calibrated_model_dir, ','.join(signature_def_keys), ','.join(tags),
+          calibrated_model_dir, list(signature_def_keys), set(tags),
           quant_opts.SerializeToString()))
 
   exported_model = exported_model_pb2.ExportedModel.FromString(
@@ -766,7 +766,7 @@ def _dynamic_range_quantize(
   # Apply post-training dynamic range quantization to the model.
   exported_model_serialized = (
       quantize_model_wrapper.quantize_ptq_dynamic_range(
-          saved_model_path, ','.join(signature_keys), ','.join(tags),
+          saved_model_path, list(signature_keys), set(tags),
           quantization_options.SerializeToString()))
 
   exported_model = exported_model_pb2.ExportedModel.FromString(

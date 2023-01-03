@@ -322,12 +322,9 @@ mlir::MLIRContext CreateMlirContextForTfQuantization() {
 
 absl::StatusOr<ExportedModel> QuantizeQatModel(
     const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags,
+    const std::vector<std::string> &signature_keys,
+    const std::unordered_set<std::string> &tags,
     const absl::string_view quant_opts_serialized) {
-  const std::unordered_set<std::string> tag_set =
-      absl::StrSplit(tags, ',', absl::SkipEmpty());
-  std::vector<std::string> exported_names =
-      absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
   QuantizationOptions quantization_options;
   if (!quantization_options.ParseFromString(
           // NOLINTNEXTLINE: std::string conversion required.
@@ -344,8 +341,9 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
   auto bundle = std::make_unique<SavedModelBundle>();
 
   // TODO(b/213406917): Add support for the object graph based saved model input
+  std::vector<std::string> exported_names = signature_keys;
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
-      SavedModelSignatureDefsToMlirImport(saved_model_path, tag_set,
+      SavedModelSignatureDefsToMlirImport(saved_model_path, tags,
                                           absl::MakeSpan(exported_names),
                                           &context, import_options,
                                           /*lift_variables=*/false, &bundle);
@@ -399,12 +397,9 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags,
+    const std::vector<std::string> &signature_keys,
+    const std::unordered_set<std::string> &tags,
     const absl::string_view quant_opts_serialized) {
-  const std::unordered_set<std::string> tag_set =
-      absl::StrSplit(tags, ',', absl::SkipEmpty());
-  std::vector<std::string> exported_names =
-      absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
   QuantizationOptions quantization_options;
   if (!quantization_options.ParseFromString(
           // NOLINTNEXTLINE: std::string conversion required.
@@ -421,8 +416,9 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
   auto bundle = std::make_unique<SavedModelBundle>();
 
   // TODO(b/213406917): Add support for the object graph based saved model input
+  std::vector<std::string> exported_names = signature_keys;
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
-      SavedModelSignatureDefsToMlirImport(saved_model_path, tag_set,
+      SavedModelSignatureDefsToMlirImport(saved_model_path, tags,
                                           absl::MakeSpan(exported_names),
                                           &context, import_options,
                                           /*lift_variables=*/false, &bundle);
@@ -477,12 +473,9 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
     const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags,
+    const std::vector<std::string> &signature_keys,
+    const std::unordered_set<std::string> &tags,
     const absl::string_view quant_opts_serialized) {
-  const std::unordered_set<std::string> tag_set =
-      absl::StrSplit(tags, ',', absl::SkipEmpty());
-  std::vector<std::string> exported_names =
-      absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
   QuantizationOptions quantization_options;
   if (!quantization_options.ParseFromString(
           // NOLINTNEXTLINE: std::string conversion required.
@@ -499,8 +492,9 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
   auto bundle = std::make_unique<SavedModelBundle>();
 
   // TODO(b/213406917): Add support for the object graph based saved model input
+  std::vector<std::string> exported_names = signature_keys;
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
-      SavedModelSignatureDefsToMlirImport(saved_model_path, tag_set,
+      SavedModelSignatureDefsToMlirImport(saved_model_path, tags,
                                           absl::MakeSpan(exported_names),
                                           &context, import_options,
                                           /*lift_variables=*/false, &bundle);
@@ -557,12 +551,9 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
 
 absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
     const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags,
+    const std::vector<std::string> &signature_keys,
+    const std::unordered_set<std::string> &tags,
     const absl::string_view quant_opts_serialized) {
-  const std::unordered_set<std::string> tag_set =
-      absl::StrSplit(tags, ',', absl::SkipEmpty());
-  std::vector<std::string> exported_names =
-      absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
   QuantizationOptions quantization_options;
   if (!quantization_options.ParseFromString(
           // NOLINTNEXTLINE: std::string conversion required.
@@ -579,8 +570,9 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
   auto bundle = std::make_unique<SavedModelBundle>();
 
   // TODO(b/213406917): Add support for the object graph based saved model input
+  std::vector<std::string> exported_names = signature_keys;
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
-      SavedModelSignatureDefsToMlirImport(saved_model_path, tag_set,
+      SavedModelSignatureDefsToMlirImport(saved_model_path, tags,
                                           absl::MakeSpan(exported_names),
                                           &context, import_options,
                                           /*lift_variables=*/false, &bundle);
