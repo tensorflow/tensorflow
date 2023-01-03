@@ -60,6 +60,7 @@ class GemmRewriteTest : public GpuCodegenTest {
   void TearDown() override {
     tsl::enable_tensor_float_32_execution(tf32_state_);
   }
+
  private:
   bool tf32_state_;
 };
