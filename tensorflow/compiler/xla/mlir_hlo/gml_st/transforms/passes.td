@@ -180,6 +180,14 @@ def VectorizeCopyPass :
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }
 
+def SimplifyDeadCopyPass :
+    Pass<"simplify-dead-copy", "mlir::func::FuncOp"> {
+  let summary = "Pass to simplify dead `memref.copy`.";
+  let constructor = "::mlir::gml_st::createSimplifyDeadCopyPass()";
+  let dependentDialects = ["::mlir::vector::VectorDialect",
+                           "::mlir::memref::MemRefDialect"];
+}
+
 def LowerVectorContractPass :
     Pass<"lower-vector-contract", "mlir::func::FuncOp"> {
   let summary = "Pass to lower vector.contract";
