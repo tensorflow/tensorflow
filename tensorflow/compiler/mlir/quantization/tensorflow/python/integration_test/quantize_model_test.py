@@ -530,6 +530,145 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @parameterized.parameters(
       parameter_combinations([{
+          'shapes': [([3, 3], [3, 3]), ([3, None], [None, 3]),
+                     ([None, None], [None, None]), ([4, 3, 3], [4, 3, 3]),
+                     ([4, 3, None], [4, None, 3]),
+                     ([None, None, None], [None, None, None])],
+          'activation_fn': [None, nn_ops.relu, nn_ops.relu6],
+          'has_bias': [True, False],
+      }]))
+  @test_util.run_in_graph_and_eager_modes
+  def test_qat_matmul_model_without_kernel(
+      self, shapes: Sequence[Tuple[_TensorShape, _TensorShape]],
+      activation_fn: Optional[ops.Operation], has_bias: bool):
+
+    class MatmulModelWithoutKernel(module.Module):
+
+      def __init__(self, bias: Optional[core.Tensor]):
+        self._bias = bias
+        self._min = (-0.8, -0.8, -0.9)
+        self._max = (0.9, 0.9, 1.0)
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(
+              name='x', shape=shapes[0], dtype=dtypes.float32),
+          tensor_spec.TensorSpec(
+              name='y', shape=shapes[1], dtype=dtypes.float32)
+      ])
+      def matmul(self, x: core.Tensor,
+                 y: core.Tensor) -> Mapping[str, core.Tensor]:
+        """A tensor-by-tensor matmul function with fake-quants.
+
+        Args:
+          x: First tensor for matmul.
+          y: Second tensor for matmul.
+
+        Returns:
+          The matmul result with fake-quant operation attached.
+        """
+        x = array_ops.fake_quant_with_min_max_vars(
+            x,
+            min=ops.convert_to_tensor(self._min[0]),
+            max=ops.convert_to_tensor(self._max[0]),
+            num_bits=8,
+            narrow_range=False)
+        y = array_ops.fake_quant_with_min_max_vars(
+            y,
+            min=ops.convert_to_tensor(self._min[1]),
+            max=ops.convert_to_tensor(self._max[1]),
+            num_bits=8,
+            narrow_range=False)
+
+        out = math_ops.matmul(x, y)
+        if self._bias is not None:
+          out = nn_ops.bias_add(out, self._bias)
+        if activation_fn is not None:
+          out = activation_fn(out)
+        out = array_ops.fake_quant_with_min_max_vars(
+            out,
+            min=ops.convert_to_tensor(self._min[2]),
+            max=ops.convert_to_tensor(self._max[2]),
+            num_bits=8,
+            narrow_range=False)
+        return {'output': out}
+
+    np.random.seed(1234)
+    bias = None
+    if has_bias:
+      bias_shape = shapes[1][-1]
+      if bias_shape is not None:
+        bias = array_ops.constant(
+            np.random.uniform(size=[shapes[1][-1]]), dtype=dtypes.float32)
+    model = MatmulModelWithoutKernel(bias)
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    tags = {tag_constants.SERVING}
+
+    # Check the converted model with TF opset as the baseline.
+    output_directory = self.create_tempdir().full_path
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE),
+        op_set=quant_opts_pb2.TF)
+
+    converted_model = quantize_model.quantize(input_saved_model_path,
+                                              [signature_key], tags,
+                                              output_directory,
+                                              quantization_options)
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {signature_key})
+
+    n = 5
+    x_shape = [v if v is not None else n for v in shapes[0]]
+    y_shape = [v if v is not None else n for v in shapes[1]]
+
+    x = array_ops.constant(
+        np.random.uniform(size=x_shape), dtype=dtypes.float32)
+    y = array_ops.constant(
+        np.random.uniform(size=y_shape), dtype=dtypes.float32)
+
+    expected_outputs = model.matmul(x, y)
+    got_outputs = converted_model.signatures[signature_key](x=x, y=y)
+    # TODO(b/263335799): The gap must be reduced.
+    self.assertAllClose(expected_outputs, got_outputs, atol=1e-1)
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(
+        self._contains_quantized_function_call(output_meta_graphdef))
+
+    # Check the converted model in the XLA opset.
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE),
+        enable_two_input_tensors=True,
+        op_set=quant_opts_pb2.XLA)
+
+    output_directory = self.create_tempdir().full_path
+    converted_model = quantize_model.quantize(input_saved_model_path,
+                                              [signature_key], tags,
+                                              output_directory,
+                                              quantization_options)
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {signature_key})
+    loader = saved_model_loader.SavedModelLoader(output_directory)
+    meta_graphdef = loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(self._contains_op(meta_graphdef, 'XlaDotV2'))
+
+    new_outputs = converted_model.signatures[signature_key](x=x, y=y)
+
+    # The difference between TF and XLA path is expected to be small (smaller
+    # or equal to 1 in the quantized domain).
+    # TODO(b/263335799): The gap must be reduced.
+    self.assertAllClose(new_outputs, expected_outputs, atol=1e-1)
+
+  @parameterized.parameters(
+      parameter_combinations([{
           'activation_fn': [None, nn_ops.relu, nn_ops.relu6],
           'has_bias': [True, False],
           'has_batch_norm': [True, False],

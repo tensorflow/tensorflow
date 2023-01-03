@@ -172,7 +172,9 @@ def ConvertTFMatMulToXLADotV2Op : Pat<
     (TF_CastOp (TF_IdentityOp $weight), $truncate1),
     $transpose_a, $transpose_b),
   (CreateXlaDotV2OpFromTfMatMulOp
-    $input, $weight, $input_zp, $matmul, $transpose_a, $transpose_b),
+    $input, $weight, $input_zp,
+    /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">), $matmul,
+    $transpose_a, $transpose_b),
   [(IsInt8ElementType $input),
    (IsInt8ElementType $weight),
    (IsConstTensor $input_zp),
@@ -190,6 +192,7 @@ def ConvertTFMatMulToXLADotV2OpDynamicRange : Pat<
     $transpose_a, $transpose_b),
   (CreateXlaDotV2OpFromTfMatMulOp
     $input, $weight, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     $matmul, $transpose_a, $transpose_b),
   [(IsInt32ElementType $input),
    (IsInt8ElementType $weight),
@@ -207,6 +210,7 @@ def ConvertTFMatMulWithNoZeroPointToXLADotV2Op : Pat<
     $transpose_a, $transpose_b),
   (CreateXlaDotV2OpFromTfMatMulOp
     $input, $weight, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     $matmul, $transpose_a, $transpose_b),
   [(IsInt8ElementType $input),
    (IsInt8ElementType $weight),
@@ -214,6 +218,80 @@ def ConvertTFMatMulWithNoZeroPointToXLADotV2Op : Pat<
    (IsInt32ElementType $matmul),
    (HasStaticShapeConstraint $weight)],
   (addBenefit 10)>;
+
+// Converts inlined MatMul pattern to TF XlaDotV2 op. This pattern supports
+// non-constant weights.
+def ConvertTFMatMulWithTwoInputTensorsToXLADotV2Op : Pat<
+  (TF_MatMulOp:$matmul
+    (TF_SubOp (TF_CastOp $input, $truncate1), $input_zp),
+    (TF_SubOp (TF_CastOp $weight, $truncate2), $weight_zp),
+    $transpose_a, $transpose_b),
+  (CreateXlaDotV2OpFromTfMatMulOp
+    $input, $weight, $input_zp, $weight_zp, $matmul, $transpose_a, $transpose_b),
+  [(IsInt8ElementType $input),
+   (IsInt8ElementType $weight),
+   (HasRank $input),
+   (HasRank $weight),
+   (HasRankOf<0> $input_zp),
+   (HasRankOf<0> $weight_zp),
+   (IsInt32ElementType $matmul)],
+  (addBenefit 10)>;
+
+// Same as ConvertTFMatMulWithTwoInputTensorsToXLADotV2Op but handles the case
+// where input zero point is 0 and the Sub op has been folded.
+def ConvertTFMatMulWithTwoInputTensorsAndNoInputZeroPointToXLADotV2Op : Pat<
+  (TF_MatMulOp:$matmul
+    (TF_CastOp $input, $truncate),
+    (TF_SubOp (TF_CastOp $weight, $truncate2), $weight_zp),
+    $transpose_a, $transpose_b),
+  (CreateXlaDotV2OpFromTfMatMulOp
+    $input, $weight, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    $weight_zp, $matmul, $transpose_a, $transpose_b),
+  [(IsInt8ElementType $input),
+   (IsInt8ElementType $weight),
+   (HasRank $input),
+   (HasRank $weight),
+   (HasRankOf<0> $weight_zp),
+   (IsInt32ElementType $matmul)],
+  (addBenefit 10)>;
+
+// Same as ConvertTFMatMulWithTwoInputTensorsToXLADotV2Op but handles the case
+// where weight zero point is 0 and the Sub op has been folded.
+def ConvertTFMatMulWithTwoInputTensorsAndNoWeightZeroPointToXLADotV2Op : Pat<
+  (TF_MatMulOp:$matmul
+    (TF_SubOp (TF_CastOp $input, $truncate), $input_zp),
+    (TF_CastOp $weight, $truncate1),
+    $transpose_a, $transpose_b),
+  (CreateXlaDotV2OpFromTfMatMulOp
+    $input, $weight, $input_zp,
+    /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    $matmul, $transpose_a, $transpose_b),
+  [(IsInt8ElementType $input),
+   (IsInt8ElementType $weight),
+   (HasRank $input),
+   (HasRank $weight),
+   (HasRankOf<0> $input_zp),
+   (IsInt32ElementType $matmul)],
+  (addBenefit 10)>;
+
+// Same as ConvertTFMatMulWithTwoInputTensorsToXLADotV2Op but handles the case
+// where both zero point is 0 and the Sub op has been folded.
+def ConvertTFMatMulWithTwoInputTensorsAndNoBothZeroPointsToXLADotV2Op : Pat<
+  (TF_MatMulOp:$matmul
+    (TF_CastOp $input, $truncate),
+    (TF_CastOp $weight, $truncate1),
+    $transpose_a, $transpose_b),
+  (CreateXlaDotV2OpFromTfMatMulOp
+    $input, $weight, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    $matmul, $transpose_a, $transpose_b),
+  [(IsInt8ElementType $input),
+   (IsInt8ElementType $weight),
+   (HasRank $input),
+   (HasRank $weight),
+   (IsInt32ElementType $matmul)],
+  (addBenefit 10)>;
+
 
 // Converts inlined Conv3D pattern to TF XlaConvV2 op. This pattern
 // doesn't support non-constant weights.
@@ -268,7 +346,9 @@ def ConvertTFBatchMatMulToXLADotV2Op : Pat<
     (TF_CastOp (TF_IdentityOp $weight), $truncate1),
     $adj_x, $adj_y),
   (CreateXlaDotV2OpFromTfBatchMatMulOp
-    $input, $weight, $input_zp, $batch_matmul, $adj_x, $adj_y),
+    $input, $weight, $input_zp,
+    /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    $batch_matmul, $adj_x, $adj_y),
   [(IsInt8ElementType $input),
    (HasRank $input),
    (IsInt8ElementType $weight),
@@ -286,6 +366,7 @@ def ConvertTFBatchMatMulWithNoZeroPointToXLADotV2Op : Pat<
     $adj_x, $adj_y),
   (CreateXlaDotV2OpFromTfBatchMatMulOp
     $input, $weight, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     $batch_matmul, $adj_x, $adj_y),
   [(IsInt8ElementType $input),
    (HasRank $input),
@@ -294,4 +375,81 @@ def ConvertTFBatchMatMulWithNoZeroPointToXLADotV2Op : Pat<
    (IsInt32ElementType $batch_matmul),
    (HasStaticShapeConstraint $weight)],
   (addBenefit 10)>;
+
+// Converts inlined BatchMatMul pattern to TF XlaDotV2 op. Support for
+// non-constant weights.
+// TODO(b/263529454): Remove redundant identity of the rule input on the second
+// argument.
+def ConvertTFBatchMatMulWithTwoInputTensorsToXLADotV2Op : Pat<
+  (TF_BatchMatMulV2Op:$batch_matmul
+    (TF_SubOp (TF_CastOp $input, $truncate), $input_zp),
+    (TF_SubOp (TF_CastOp (TF_IdentityOp $weight), $truncate1), $weight_zp),
+    $adj_x, $adj_y),
+  (CreateXlaDotV2OpFromTfBatchMatMulOp
+    $input, $weight, $input_zp, $weight_zp, $batch_matmul, $adj_x, $adj_y),
+  [(IsInt8ElementType $input),
+   (IsInt8ElementType $weight),
+   (HasRank $input),
+   (HasRank $weight),
+   (HasRankOf<0> $input_zp),
+   (HasRankOf<0> $weight_zp),
+   (IsInt32ElementType $batch_matmul)],
+  (addBenefit 10)>;
+
+// Same as ConvertTFBatchMatMulWithTwoInputTensorsToXLADotV2O but handles
+// the case where input zero point is 0 and the Sub op has been folded.
+def ConvertTFBatchMatMulWithTwoInputTensorsAndNoInputZeroPointToXLADotV2Op : Pat<
+  (TF_BatchMatMulV2Op:$batch_matmul
+    (TF_CastOp $input, $truncate),
+    (TF_SubOp (TF_CastOp (TF_IdentityOp $weight), $truncate1), $weight_zp),
+    $adj_x, $adj_y),
+  (CreateXlaDotV2OpFromTfBatchMatMulOp
+    $input, $weight, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    $weight_zp, $batch_matmul, $adj_x, $adj_y),
+  [(IsInt8ElementType $input),
+   (IsInt8ElementType $weight),
+   (HasRank $input),
+   (HasRank $weight),
+   (HasRankOf<0> $weight_zp),
+   (IsInt32ElementType $batch_matmul)],
+  (addBenefit 10)>;
+
+// Same as ConvertTFBatchMatMulWithTwoInputTensorsToXLADotV2O but handles
+// the case where weight zero point is 0 and the Sub op has been folded.
+def ConvertTFBatchMatMulWithTwoInputTensorsAndNoWeightZeroPointToXLADotV2Op : Pat<
+  (TF_BatchMatMulV2Op:$batch_matmul
+    (TF_SubOp (TF_CastOp $input, $truncate1), $input_zp),
+    (TF_CastOp $weight, $truncate2),
+    $adj_x, $adj_y),
+  (CreateXlaDotV2OpFromTfBatchMatMulOp
+    $input, $weight, $input_zp,
+    /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    $batch_matmul, $adj_x, $adj_y),
+  [(IsInt8ElementType $input),
+   (IsInt8ElementType $weight),
+   (HasRank $input),
+   (HasRank $weight),
+   (HasRankOf<0> $input_zp),
+   (IsInt32ElementType $batch_matmul)],
+  (addBenefit 10)>;
+
+// Same as ConvertTFBatchMatMulWithTwoInputTensorsToXLADotV2O but handles
+// the case where both zero points are 0 and the Sub op has been folded.
+def ConvertTFBatchMatMulWithTwoInputTensorsAndNoBothZeroPointsToXLADotV2Op : Pat<
+  (TF_BatchMatMulV2Op:$batch_matmul
+    (TF_CastOp $input, $truncate1),
+    (TF_CastOp $weight, $truncate2),
+    $adj_x, $adj_y),
+  (CreateXlaDotV2OpFromTfBatchMatMulOp
+    $input, $weight, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    $batch_matmul, $adj_x, $adj_y),
+  [(IsInt8ElementType $input),
+   (IsInt8ElementType $weight),
+   (HasRank $input),
+   (HasRank $weight),
+   (IsInt32ElementType $batch_matmul)],
+  (addBenefit 10)>;
+
+
 
