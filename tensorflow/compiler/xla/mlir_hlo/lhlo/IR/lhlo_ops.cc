@@ -60,6 +60,8 @@ limitations under the License.
 namespace mlir {
 namespace lmhlo {
 
+using mhlo::TokenType;
+
 LmhloDialect::LmhloDialect(MLIRContext* context)
     : Dialect(getDialectNamespace(), context, TypeID::get<LmhloDialect>()) {
   context->loadDialect<mhlo::MhloDialect>();
