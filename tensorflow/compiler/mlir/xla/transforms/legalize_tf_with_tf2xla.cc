@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
@@ -701,11 +703,6 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
           "output");
     }
     mlir::Value value = hlo_builder_.GetValue(expr->AsXlaOp(&hlo_builder_));
-    mlir::OpResult old_result = op_->getResult(i);
-    if (value.getType() != old_result.getType()) {
-      value = hlo_builder_.create<mlir::tensor::CastOp>(old_result.getType(),
-                                                        value);
-    }
     values.push_back(value);
   }
   rewriter_.replaceOp(op_, values);
@@ -745,18 +742,27 @@ tensorflow::XlaExpression Tf2XlaRewriter::GetExprForOperand(Value operand,
   return tensorflow::XlaExpression::XlaOp(xla_op, dtype);
 }
 
-class Tf2XlaRewritePattern : public RewritePattern {
+class Tf2XlaRewritePattern : public ConversionPattern {
  public:
-  explicit Tf2XlaRewritePattern(MLIRContext* ctx,
+  explicit Tf2XlaRewritePattern(MLIRContext* ctx, TypeConverter& converter,
                                 const std::string& device_type,
                                 bool prefer_tf2xla, bool is_module_pass)
-      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx),
+      : ConversionPattern(converter, MatchAnyOpTypeTag(), /*benefit=*/1, ctx),
         device_type_(device_type),
         prefer_tf2xla_(prefer_tf2xla),
         is_module_pass_(is_module_pass) {}
 
-  LogicalResult matchAndRewrite(Operation* op,
-                                PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(
+      Operation* op, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const override {
+    // This pattern is a conversion pattern because we want to specify a type
+    // converter. However, this pattern still uses the original op's operands
+    // while creating the ops so make sure there aren't any type changes between
+    // the original op operands and the operands during the conversion.
+    for (auto&& [old_val, new_val] : llvm::zip(op->getOperands(), operands)) {
+      if (old_val.getType() != new_val.getType()) return failure();
+    }
+
     if (is_module_pass_) {
       // Module passes should only ever legalize ops that have been specifically
       // whitelisted for legalization within a module pass. They will never
@@ -780,12 +786,29 @@ class Tf2XlaRewritePattern : public RewritePattern {
 
 }  // end namespace
 
-void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
-                                          RewritePatternSet& patterns,
-                                          MLIRContext* ctx, bool prefer_tf2xla,
-                                          bool is_module_pass) {
-  patterns.add<Tf2XlaRewritePattern>(ctx, device_type.str(), prefer_tf2xla,
-                                     is_module_pass);
+Tf2XlaTypeConverter::Tf2XlaTypeConverter() {
+  // Currently, we don't do any type conversions. Any TensorFlow op with a type
+  // that is not supported in MHLO will fail conversion. Quantized types are
+  // going to handled separately so we don't need to handle those.
+  addConversion([](Type ty) { return ty; });
+
+  // This materialization is helpful in cases where we have more refined types
+  // after conversion to mhlo compared to the original type in TF. For example,
+  // a TF op with result type tensor<*xf32> will have a bounded type after
+  // fallback legalization.
+  auto cast_value = [&](OpBuilder& builder, Type result_type, ValueRange inputs,
+                        Location loc) -> Value {
+    return builder.create<mlir::tensor::CastOp>(loc, result_type,
+                                                inputs.front());
+  };
+  addSourceMaterialization(cast_value);
+}
+
+void PopulateLegalizeTfWithTf2XlaPatterns(
+    llvm::StringRef device_type, RewritePatternSet& patterns, MLIRContext* ctx,
+    Tf2XlaTypeConverter& converter, bool prefer_tf2xla, bool is_module_pass) {
+  patterns.add<Tf2XlaRewritePattern>(ctx, converter, device_type.str(),
+                                     prefer_tf2xla, is_module_pass);
 }
 
 }  // end namespace mhlo

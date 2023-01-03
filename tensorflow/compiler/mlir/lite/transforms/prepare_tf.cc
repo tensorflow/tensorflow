@@ -1221,7 +1221,9 @@ LogicalResult ConvertTf2XlaOps(func::FuncOp func, MLIRContext *context) {
   target.addIllegalOp<TF::XlaGatherOp>();
 
   RewritePatternSet patterns(context);
-  mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns, context);
+  mhlo::Tf2XlaTypeConverter converter;
+  mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns, context,
+                                             converter);
   mhlo::PopulateLegalizeTfPatterns(context, &patterns);
   TF::PopulateLegalizeHloToTfPatterns(&patterns, context);
   mhlo::GatherOp::getCanonicalizationPatterns(patterns, context);
