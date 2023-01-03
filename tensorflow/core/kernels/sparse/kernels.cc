@@ -75,6 +75,12 @@ Status SparseTensorToCSRSparseMatrixCPUFunctor::operator()(
   } else {  // rank == 3
     for (int64_t i = 0; i < total_nnz; ++i) {
       const int cur_batch = indices(i, 0);
+      if (cur_batch < 0 || cur_batch >= batch_size) {
+        return errors::InvalidArgument("Batch index ", cur_batch,
+                                       " is outside of valid batch range [", 0,
+                                       ", ", batch_size, ")");
+      }
+
       // For now, the rows pointers store the corresponding row counts.
       csr_row_ptr(cur_batch * (num_rows + 1) + indices(i, 1) + 1) += 1;
       csr_col_ind(i) = indices(i, 2);
