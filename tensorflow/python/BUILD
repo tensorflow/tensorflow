@@ -322,7 +322,13 @@ tf_pybind_cc_library_wrapper(
 tf_python_pybind_extension(
     name = "_pywrap_tfcompile",
     srcs = ["tfcompile_wrapper.cc"],
+    dynamic_deps = [":_pywrap_tensorflow_internal.so"] + select({
+        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+        "//tensorflow:windows": [],
+    }),
     features = ["-layering_check"],
+    static_deps = tf_python_pybind_static_deps(),
     deps = [
         ":tfcompile_headers_lib",
         "@pybind11",
