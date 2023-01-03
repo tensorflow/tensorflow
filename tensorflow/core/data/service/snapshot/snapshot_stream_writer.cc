@@ -64,12 +64,13 @@ std::unique_ptr<Thread> SnapshotStreamWriter::RunSnapshotThread() {
       std::move(snapshot_fn)));
 }
 
-Status SnapshotStreamWriter::WriteSnapshotFn() {
+Status SnapshotStreamWriter::WriteSnapshotFn() TF_LOCKS_EXCLUDED(mu_) {
   TF_RETURN_IF_ERROR(CreateChunksDirectory());
   while (ShouldWriteChunk()) {
     TF_RETURN_IF_ERROR(WriteChunk());
   }
-  return status();
+  mutex_lock l(mu_);
+  return status_;
 }
 
 Status SnapshotStreamWriter::CreateChunksDirectory() {
@@ -94,23 +95,19 @@ Status SnapshotStreamWriter::WriteChunk() {
   return CommitChunk(chunk_file_path);
 }
 
-std::string SnapshotStreamWriter::GetChunkFilePath() const
-    TF_LOCKS_EXCLUDED(mu_) {
-  mutex_lock l(mu_);
+std::string SnapshotStreamWriter::GetChunkFilePath() const {
   return tsl::io::JoinPath(
       UncommittedChunksDirectory(params_.snapshot_path, params_.stream_id),
       absl::StrCat("chunk_", chunk_index_));
 }
 
-Status SnapshotStreamWriter::CommitChunk(const std::string& chunk_file_path)
-    TF_LOCKS_EXCLUDED(mu_) {
+Status SnapshotStreamWriter::CommitChunk(const std::string& chunk_file_path) {
   // TODO(b/258691666): Write checkpoints.
   std::string chunk_basename(tsl::io::Basename(chunk_file_path));
   std::string committed_chunk_filename = tsl::io::JoinPath(
       CommittedChunksDirectory(params_.snapshot_path), chunk_basename);
   TF_RETURN_IF_ERROR(
       params_.env->RenameFile(chunk_file_path, committed_chunk_filename));
-  mutex_lock l(mu_);
   ++chunk_index_;
   chunk_size_bytes_ = 0;
   return OkStatus();
@@ -122,20 +119,14 @@ bool SnapshotStreamWriter::ShouldWriteRecord() const TF_LOCKS_EXCLUDED(mu_) {
          !end_of_sequence_ && status_.ok();
 }
 
-Status SnapshotStreamWriter::WriteRecord(snapshot_util::TFRecordWriter& writer)
-    TF_LOCKS_EXCLUDED(mu_) {
+Status SnapshotStreamWriter::WriteRecord(
+    snapshot_util::TFRecordWriter& writer) {
   std::vector<Tensor> element;
-  bool end_of_sequence = false;
-  {
-    mutex_lock l(mu_);
-    TF_RETURN_IF_ERROR(iterator_->GetNext(element, end_of_sequence));
-    end_of_sequence_ = end_of_sequence;
-  }
-  if (end_of_sequence) {
+  TF_RETURN_IF_ERROR(iterator_->GetNext(element, end_of_sequence_));
+  if (end_of_sequence_) {
     return writer.Close();
   }
   TF_RETURN_IF_ERROR(writer.WriteTensors(element));
-  mutex_lock l(mu_);
   chunk_size_bytes_ += EstimatedSizeBytes(element);
   return OkStatus();
 }
@@ -144,11 +135,6 @@ void SnapshotStreamWriter::Cancel() TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   status_ = errors::Cancelled(
       "The tf.data service snapshot writer has been cancelled.");
-}
-
-Status SnapshotStreamWriter::status() const TF_LOCKS_EXCLUDED(mu_) {
-  mutex_lock l(mu_);
-  return status_;
 }
 
 }  // namespace data
