@@ -164,11 +164,10 @@ StringRef GetString(const void* raw_buffer, int string_index) {
   // big-endian platform.
   const int32_t* offset =
       static_cast<const int32_t*>(raw_buffer) + (string_index + 1);
-  const size_t string_len = (*(offset + 1)) - (*offset);
+  const size_t string_len = TF_le32toh(*(offset + 1)) - TF_le32toh(*offset); // offsets are stored as little-endian
   return StringRef{
       static_cast<const char*>(raw_buffer) + TF_le32toh(*offset),
-      TF_le32toh(*(offset + 1)) - TF_le32toh(*offset), // offsets are stored as little-endian
-  };
+                  string_len};
 }
 
 StringRef GetString(const TfLiteTensor* tensor, int string_index) {
