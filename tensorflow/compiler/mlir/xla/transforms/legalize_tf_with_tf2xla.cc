@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -562,30 +563,53 @@ LogicalResult Tf2XlaRewriter::PrepareParams() {
   return success();
 }
 
+// Returns true if the given type is a ranked tensor type with static or bounded
+// dimensions.
+bool IsBounded(Type ty) {
+  auto ranked_ty = ty.dyn_cast<RankedTensorType>();
+  if (!ranked_ty) return false;
+
+  if (ranked_ty.hasStaticShape()) return true;
+
+  auto encoding =
+      ranked_ty.getEncoding().dyn_cast_or_null<TypeExtensionsAttr>();
+  if (!encoding) return false;
+
+  for (int i = 0; i < ranked_ty.getRank(); ++i) {
+    if (ranked_ty.isDynamicDim(i) &&
+        encoding.getBounds()[i] == ShapedType::kDynamic) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool HasSymbolRefAttr(Operation* op) {
+  for (const auto& attr : op->getAttrs()) {
+    Attribute attr_value = attr.getValue();
+    if (attr_value.isa<SymbolRefAttr>()) {
+      return true;
+    } else if (auto array_attr = attr_value.dyn_cast<ArrayAttr>()) {
+      if (!array_attr.empty() && array_attr.begin()->isa<SymbolRefAttr>()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 LogicalResult Tf2XlaRewriter::LegalizeOp() {
-  // Only static shaped operands are supported in XLA builders for now.
   for (Type ty : op_->getOperandTypes()) {
     auto ranked_ty = ty.dyn_cast<ShapedType>();
-    if (!ranked_ty || !ranked_ty.hasStaticShape()) {
+    // Only bounded operands are supported in the XLA builders.
+    if (!IsBounded(ranked_ty)) {
       return op_->emitRemark()
-             << "lowering requires static shaped tensor operands";
+             << "lowering requires bounded tensor operands " << ranked_ty;
     }
   }
 
-  for (const auto& attr : op_->getAttrs()) {
-    Attribute attr_value = attr.getValue();
-    bool has_symbol_ref = false;
-    if (attr_value.isa<SymbolRefAttr>()) {
-      has_symbol_ref = true;
-    } else if (auto array_attr = attr_value.dyn_cast<ArrayAttr>()) {
-      if (!array_attr.empty() && array_attr.begin()->isa<SymbolRefAttr>()) {
-        has_symbol_ref = true;
-      }
-    }
-    if (has_symbol_ref) {
-      return op_->emitRemark()
-             << "ops with symbol references are not supported";
-    }
+  if (HasSymbolRefAttr(op_)) {
+    return op_->emitRemark() << "ops with symbol references are not supported";
   }
 
   auto nodedef_or = tensorflow::ConvertTFDialectOpToNodeDef(
@@ -784,6 +808,72 @@ class Tf2XlaRewritePattern : public ConversionPattern {
   bool is_module_pass_;
 };
 
+bool ShouldRefineTypeTo(Type original_ty, Type updated_ty) {
+  auto updated = updated_ty.dyn_cast<ShapedType>();
+  auto original = original_ty.dyn_cast<ShapedType>();
+
+  // Both types must be shaped types.
+  if (!original || !updated) return false;
+
+  // Element types must match.
+  if (original.getElementType() != updated.getElementType()) return false;
+
+  // If the updated type doesn't have a rank, then it can't be a more refined
+  // type.
+  if (!updated.hasRank()) return false;
+
+  // If the original type doesn't have a rank, then refine as the updated type
+  // has a rank.
+  if (!original.hasRank()) return true;
+
+  // Both types must have the same rank.
+  if (original.getRank() != updated.getRank()) return false;
+
+  // Refine if the updated type is bounded.
+  return IsBounded(updated);
+}
+
+// Propagates more refined type by cloning op using the new operands. This
+// allows all rewrite patterns that requires refined types to work without
+// requiring a rewrite to the conversion pattern. Declarative rewrite pattern
+// (DRR) doesn't even support conversion patterns with TableGen.
+class TypePropagator : public ConversionPattern {
+ public:
+  explicit TypePropagator(MLIRContext* ctx)
+      : ConversionPattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx) {}
+
+  LogicalResult matchAndRewrite(
+      Operation* op, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const override {
+    // This could be generalized to other ops as needs arise. We could even
+    // remove this restriction altogether except for the terminators that
+    // require function signature change and shouldn't be
+    if (op->getName().getDialectNamespace() !=
+        TF::TensorFlowDialect::getDialectNamespace())
+      return failure();
+
+    // Refining types may have implications to the attached regions or symbol
+    // references so do not update such ops.
+    if (!op->getRegions().empty() || HasSymbolRefAttr(op)) return failure();
+
+    BlockAndValueMapping mapper;
+    bool has_type_change = false;
+    for (auto [original, updated] : llvm::zip(op->getOperands(), operands)) {
+      Type original_ty = original.getType();
+      Type updated_ty = updated.getType();
+      if (original_ty != updated_ty) has_type_change = true;
+
+      if (!ShouldRefineTypeTo(original_ty, updated_ty)) return failure();
+      mapper.map(original, updated);
+    }
+    if (!has_type_change) return failure();
+
+    Operation* cloned_op = rewriter.clone(*op, mapper);
+    rewriter.replaceOp(op, cloned_op->getResults());
+    return success();
+  }
+};
+
 }  // end namespace
 
 Tf2XlaTypeConverter::Tf2XlaTypeConverter() {
@@ -807,6 +897,7 @@ Tf2XlaTypeConverter::Tf2XlaTypeConverter() {
 void PopulateLegalizeTfWithTf2XlaPatterns(
     llvm::StringRef device_type, RewritePatternSet& patterns, MLIRContext* ctx,
     Tf2XlaTypeConverter& converter, bool prefer_tf2xla, bool is_module_pass) {
+  patterns.add<TypePropagator>(ctx);
   patterns.add<Tf2XlaRewritePattern>(ctx, converter, device_type.str(),
                                      prefer_tf2xla, is_module_pass);
 }
