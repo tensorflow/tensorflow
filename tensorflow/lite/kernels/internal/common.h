@@ -332,9 +332,9 @@ int CountLeadingZeros(T integer_input) {
     return std::numeric_limits<T>::digits;
   }
 #if defined(__GNUC__)
-  if (std::is_same<T, unsigned int>::value) {
+  if (std::is_same<T, uint32_t>::value) {
     return __builtin_clz(integer_input);
-  } else if (std::is_same<T, unsigned long long>::value) {
+  } else if (std::is_same<T, uint64_t>::value) {
     return __builtin_clzll(integer_input);
   }
 #endif
