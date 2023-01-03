@@ -59,6 +59,18 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "async_runtime_test",
+    srcs = ["async_runtime_test.cc"],
+    deps = [
+        ":async_runtime",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@tf_runtime//:async_value",
+    ],
+)
+
 cc_library(
     name = "async_values_cache",
     hdrs = ["async_values_cache.h"],
