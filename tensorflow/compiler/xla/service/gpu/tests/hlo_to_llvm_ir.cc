@@ -19,12 +19,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
-<<<<<<< HEAD
-#include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/tsl/platform/rocm_rocdl_path.h"
-=======
->>>>>>> google_upstream/master
 #endif
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
