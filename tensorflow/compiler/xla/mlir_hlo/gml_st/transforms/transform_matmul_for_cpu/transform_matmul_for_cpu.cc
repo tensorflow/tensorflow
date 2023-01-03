@@ -352,53 +352,6 @@ struct MatmulToMmt4dPattern : public OpRewritePattern<linalg::MatmulOp> {
   }
 };
 
-/// Canonicalizes [tensor.empty() -> linalg.fill -> linalg.generic] ->
-/// [tensor.empty() -> linalg.fill] where linalg.generic does only copy e.g
-/// a transpose.
-struct FoldFillGenericOpPattern : public OpRewritePattern<linalg::GenericOp> {
-  using OpRewritePattern<linalg::GenericOp>::OpRewritePattern;
-
-  explicit FoldFillGenericOpPattern(MLIRContext *context,
-                                    PatternBenefit benefit = 1)
-      : OpRewritePattern<linalg::GenericOp>(context, benefit) {}
-
-  LogicalResult matchAndRewrite(linalg::GenericOp genericOp,
-                                PatternRewriter &rewriter) const override {
-    if (genericOp.getNumDpsInputs() != 1) return failure();
-    if (genericOp.getNumDpsInits() != 1) return failure();
-
-    // Check linalg.generic does have copy only semantics.
-    if (genericOp.getNumParallelLoops() != genericOp.getNumLoops()) {
-      return failure();
-    }
-    auto results =
-        llvm::to_vector<4>(genericOp.getBody()->getOps<linalg::YieldOp>());
-    if (results.size() != 1) return failure();
-    if (results[0].getValues().size() != 1) return failure();
-    auto blockArgument = results[0].getValues()[0].dyn_cast<BlockArgument>();
-    if (!blockArgument || blockArgument.getArgNumber() != 0) return failure();
-
-    auto input = genericOp.getInputs()[0];
-
-    auto outputType =
-        genericOp.getOutputs()[0].getType().dyn_cast<RankedTensorType>();
-
-    // FIXME: To enable dynamic shapes we need to apply the same permutation on
-    // init tensor sizes.
-    if (!outputType || !outputType.hasStaticShape()) return failure();
-
-    auto fillOp = dyn_cast<linalg::FillOp>(input.getDefiningOp());
-    if (!fillOp) return failure();
-
-    auto loc = genericOp.getLoc();
-    Value newInitTensor = rewriter.create<tensor::EmptyOp>(
-        loc, outputType.getShape(), outputType.getElementType());
-    rewriter.replaceOpWithNewOp<linalg::FillOp>(genericOp, fillOp.value(),
-                                                newInitTensor);
-    return success();
-  }
-};
-
 FailureOr<TilingResult> tileMatmul(PatternRewriter &rewriter, Operation *op,
                                    ArrayRef<int64_t> tileSizes,
                                    bool distribute) {
@@ -750,7 +703,6 @@ struct TransformMatmulForCpuPass
       tensor::ExpandShapeOp::getCanonicalizationPatterns(patterns, ctx);
       tensor::EmptyOp::getCanonicalizationPatterns(patterns, ctx);
       linalg::FillOp::getCanonicalizationPatterns(patterns, ctx);
-      patterns.add<FoldFillGenericOpPattern>(ctx);
 
       if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
         return signalPassFailure();
