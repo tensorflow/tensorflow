@@ -689,21 +689,29 @@ PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args) {
           args->num_devices)};
     }
     std::vector<std::unique_ptr<xla::PjRtBuffer>> cpp_buffer_list;
+    std::optional<xla::PjRtFuture<xla::Status>> returned_future;
+    bool fill_future = args->device_complete_events != nullptr;
     if (args->executable->executable->num_partitions() == 1 &&
         args->executable->executable->num_replicas() == 1) {
       PJRT_ASSIGN_OR_RETURN(
           cpp_buffer_list,
           args->executable->executable->ExecutePortable(
-              cpp_argument_lists[0], args->execute_device->device, options));
+              cpp_argument_lists[0], args->execute_device->device, options,
+              returned_future, fill_future));
     } else {
       PJRT_ASSIGN_OR_RETURN(
           cpp_buffer_list,
           args->executable->executable->ExecuteSharded(
-              cpp_argument_lists[0], args->execute_device->device, options));
+              cpp_argument_lists[0], args->execute_device->device, options,
+              returned_future, fill_future));
     }
     for (int i = 0; i < cpp_buffer_list.size(); ++i) {
       args->output_lists[0][i] = new PJRT_Buffer{std::move(cpp_buffer_list[i]),
                                                  args->executable->client};
+    }
+    if (fill_future) {
+      args->device_complete_events[0] =
+          new PJRT_Event{std::move((*returned_future))};
     }
   }
 
