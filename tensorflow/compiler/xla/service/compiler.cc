@@ -112,7 +112,8 @@ Compiler::GetPlatformCompilers() {
 // Default implementation
 // TODO(b/256849421) Replace with non-null instantiation of MetricsHookInterface
 // with empty implementations.
-std::unique_ptr<MetricsHookInterface> Compiler::CreateMetricsHook() const {
+std::unique_ptr<MetricsHookInterface> Compiler::CreateMetricsHook(
+    absl::string_view filename_prefix) const {
   return nullptr;
 }
 
