@@ -2003,6 +2003,8 @@ def MHLO_ClampOp : MHLO_ShapedInterfaceOp<"clamp", [Pure,
   );
   let results = (outs MHLO_Tensor:$result);
 
+  let hasFolder = 1;
+
   let assemblyFormat = [{
     $min `,` $operand `,` $max attr-dict
       `:` custom<SameOperandsAndResultType>(type($min), type($operand), type($max), type($result))
