@@ -9,6 +9,7 @@ load("//third_party/nccl:nccl_configure.bzl", "nccl_configure")
 load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/py:python_configure.bzl", "python_configure")
 load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
+load("//tensorflow/tools/toolchains:cpus/aarch64/aarch64_compiler_configure.bzl", "aarch64_compiler_configure")
 load("//tensorflow/tools/toolchains:cpus/arm/arm_compiler_configure.bzl", "arm_compiler_configure")
 load("//tensorflow/tools/toolchains/embedded/arm-linux:arm_linux_toolchain_configure.bzl", "arm_linux_toolchain_configure")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
@@ -113,6 +114,9 @@ def _tf_toolchains():
         remote_config_repo_arm = "../arm_compiler",
         remote_config_repo_aarch64 = "../aarch64_compiler",
     )
+
+    # Load aarch64 toolchain
+    aarch64_compiler_configure()
 
     # TFLite crossbuild toolchain for embeddeds Linux
     arm_linux_toolchain_configure(
@@ -234,17 +238,17 @@ def _tf_repositories():
     tf_http_archive(
         name = "aarch64_linux_toolchain",
         build_file = "//tensorflow/tools/toolchains/embedded/arm-linux:aarch64-linux-toolchain.BUILD",
-        sha256 = "8ce3e7688a47d8cd2d8e8323f147104ae1c8139520eca50ccf8a7fa933002731",
-        strip_prefix = "gcc-arm-8.3-2019.03-x86_64-aarch64-linux-gnu",
-        urls = tf_mirror_urls("https://developer.arm.com/-/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-aarch64-linux-gnu.tar.xz"),
+        sha256 = "50cdef6c5baddaa00f60502cc8b59cc11065306ae575ad2f51e412a9b2a90364",
+        strip_prefix = "arm-gnu-toolchain-11.3.rel1-x86_64-aarch64-none-linux-gnu",
+        urls = tf_mirror_urls("https://developer.arm.com/-/media/Files/downloads/gnu/11.3.rel1/binrel/arm-gnu-toolchain-11.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz"),
     )
 
     tf_http_archive(
         name = "armhf_linux_toolchain",
         build_file = "//tensorflow/tools/toolchains/embedded/arm-linux:armhf-linux-toolchain.BUILD",
-        sha256 = "d4f6480ecaa99e977e3833cc8a8e1263f9eecd1ce2d022bb548a24c4f32670f5",
-        strip_prefix = "gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf",
-        urls = tf_mirror_urls("https://developer.arm.com/-/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz"),
+        sha256 = "3f76650b1d048036473b16b647b8fd005ffccd1a2869c10994967e0e49f26ac2",
+        strip_prefix = "arm-gnu-toolchain-11.3.rel1-x86_64-arm-none-linux-gnueabihf",
+        urls = tf_mirror_urls("https://developer.arm.com/-/media/Files/downloads/gnu/11.3.rel1/binrel/arm-gnu-toolchain-11.3.rel1-x86_64-arm-none-linux-gnueabihf.tar.xz"),
     )
 
     tf_http_archive(
@@ -474,9 +478,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_google_googletest",
-        sha256 = "bc1cc26d1120f5a7e9eb450751c0b24160734e46a02823a573f3c6b6c0a574a7",
-        strip_prefix = "googletest-e2c06aa2497e330bab1c1a03d02f7c5096eb5b0b",
-        urls = tf_mirror_urls("https://github.com/google/googletest/archive/e2c06aa2497e330bab1c1a03d02f7c5096eb5b0b.zip"),
+        sha256 = "81964fe578e9bd7c94dfdb09c8e4d6e6759e19967e397dbea48d1c10e45d0df2",
+        strip_prefix = "googletest-release-1.12.1",
+        urls = tf_mirror_urls("https://github.com/google/googletest/archive/refs/tags/release-1.12.1.tar.gz"),
     )
 
     tf_http_archive(
@@ -692,6 +696,14 @@ def _tf_repositories():
         sha256 = "162514b3cc264ac89d91898b58450190b8192e2af1142cf8ccac2d59aa160dda",
         strip_prefix = "cub-1.9.9",
         urls = tf_mirror_urls("https://github.com/NVlabs/cub/archive/1.9.9.zip"),
+    )
+
+    tf_http_archive(
+        name = "nvtx_archive",
+        build_file = "//third_party:nvtx.BUILD",
+        sha256 = "bb8d1536aad708ec807bc675e12e5838c2f84481dec4005cd7a9bbd49e326ba1",
+        strip_prefix = "NVTX-3.0.1/c/include",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/NVTX/archive/v3.0.1.tar.gz"),
     )
 
     tf_http_archive(

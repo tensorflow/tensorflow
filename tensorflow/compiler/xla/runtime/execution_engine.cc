@@ -32,11 +32,14 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
-#include "llvm/IR/Attributes.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
 
 namespace xla {
@@ -127,33 +130,69 @@ static absl::Status SetUpExportedFunction(llvm::Module &module,
   bb->insertInto(callee);
   builder.SetInsertPoint(bb);
 
-  llvm::SmallVector<llvm::Value *, 8> args;
+  // We collect all load instructions that load arguments from a single pointer,
+  // and duplicate them into the basic blocks where the value is used. We do it
+  // to avoid creating massive entry block with potentially tens of thousands of
+  // loads, which puts a lot of pressure on instruction scheduling.
+  //
+  // TODO(ezhulenev): Currently we do it only for loads with a single use, we
+  // should consider doing it for all loads with small number of uses.
+  llvm::SmallVector<std::pair<llvm::LoadInst *, llvm::LoadInst *>> args;
   args.reserve(llvm::size(func->args()));
 
   for (auto &indexed_arg : llvm::enumerate(func->args())) {
-    llvm::Value *arg_idx = llvm::Constant::getIntegerValue(
-        builder.getInt64Ty(), llvm::APInt(64, indexed_arg.index()));
-    llvm::Value *arg_ptr_ptr =
-        builder.CreateGEP(builder.getInt8PtrTy(), packed_args, arg_idx);
-    llvm::Value *arg_ptr =
-        builder.CreateLoad(builder.getInt8PtrTy(), arg_ptr_ptr);
     llvm::Type *art_ty = indexed_arg.value().getType();
-    arg_ptr = builder.CreateBitCast(arg_ptr, art_ty->getPointerTo());
-    llvm::Value *arg = builder.CreateLoad(art_ty, arg_ptr);
-    args.push_back(arg);
+
+    llvm::Value *arg_ptr_gep = builder.CreateConstGEP1_64(
+        builder.getPtrTy(), packed_args, indexed_arg.index());
+    llvm::LoadInst *arg_ptr_load =
+        builder.CreateLoad(builder.getPtrTy(), arg_ptr_gep);
+    llvm::LoadInst *arg_load = builder.CreateLoad(art_ty, arg_ptr_load);
+
+    args.emplace_back(arg_ptr_load, arg_load);
   }
 
   // Call the implementation function with the extracted arguments.
-  auto *call = builder.CreateCall(func, args);
+  llvm::SmallVector<llvm::Value *> args_values;
+  for (auto &[_, arg] : args) args_values.push_back(arg);
+  auto *call = builder.CreateCall(func, args_values);
+  builder.CreateRetVoid();
 
-  // Force LLVM to inline original function into the interface function.
-  call->addFnAttr(llvm::Attribute::AlwaysInline);
-
-  // And make sure that we do not keep exported function in the binary if we do
-  // not have other callers.
+  // Make sure that we do not keep exported function in the binary if we do not
+  // have any other callers.
   func->setLinkage(llvm::GlobalValue::LinkageTypes::PrivateLinkage);
 
-  builder.CreateRetVoid();
+  // Explicitly inline implementation function into the interface function,
+  // because it potentially can have thousands of arguments and it interacts
+  // badly with various SCCP passes in LLVM.
+  llvm::InlineFunctionInfo ifi;
+
+  // If inlined function is a coroutine (result of lowering async function),
+  // then we have to mark the interface function as a corotuine as well.
+  bool is_coro = func->isPresplitCoroutine();
+  if (auto inlined = llvm::InlineFunction(*call, ifi); inlined.isSuccess()) {
+    if (is_coro) callee->setPresplitCoroutine();
+  }
+
+  // Clean up loads from the packed argument pointer.
+  for (auto &[ptr_load, arg_load] : args) {
+    // Dead argument elimination after inlining.
+    if (arg_load->use_empty()) {
+      arg_load->eraseFromParent();
+      ptr_load->eraseFromParent();
+      continue;
+    }
+
+    // Move loads used only once into the entry block where they are used.
+    if (!arg_load->hasOneUser()) continue;
+
+    for (llvm::User *user : arg_load->users()) {
+      auto *inst = cast<llvm::Instruction>(user);
+      if (llvm::isa<llvm::PHINode>(inst)) continue;
+      arg_load->moveBefore(inst);
+      ptr_load->moveBefore(arg_load);
+    }
+  }
 
   // Always keep the frame pointer inside jit-compiled modules, so that we can
   // correctly walk the stack when collecting profiles at run time.
@@ -231,13 +270,6 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
   module->setDataLayout(options.target_machine->createDataLayout());
   module->setTargetTriple(options.target_machine->getTargetTriple().str());
 
-  // Run an optimization pipeline over the LLVM module.
-  auto transformer = options.make_optimizing_transformer(
-      options.opt_level, /*sizeLevel=*/0, options.target_machine);
-  if (auto err = transformer(module_ptr))
-    return InternalError("failed to run optimization pipeline: %s",
-                         ToString(err));
-
   // Set up exported functions interface functions in the LLVM module.
   for (std::string_view name : exported) {
     if (auto status = SetUpExportedFunction(*module, name); !status.ok())
@@ -245,6 +277,18 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
           "failed to set up exported function %s interface: %s", name,
           status.message());
   }
+
+  // Run an optimization pipeline over the LLVM module (alway run with default
+  // opt level independent of the options).
+  //
+  // TODO(ezhulenev): We should have out own optimizing transformer pipelines
+  // for different Xla backends, e.g. there is absolutely no need to run
+  // SLV vectorizer for Xla Gpi host side executable.
+  auto transformer = options.make_optimizing_transformer(
+      llvm::CodeGenOpt::Default, /*sizeLevel=*/0, options.target_machine);
+  if (auto err = transformer(module_ptr))
+    return InternalError("failed to run optimization pipeline: %s",
+                         ToString(err));
 
   // Callback to create the object layer with a user-provided section memory
   // mapper and JIT event listeners.

@@ -356,7 +356,7 @@ For example:
 
 ```
 # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-tf.angle(input) ==> [2.0132, 1.056]
+tf.math.angle(input) ==> [2.0132, 1.056]
 ```
 
 @compatibility(numpy)
@@ -19843,6 +19843,8 @@ Same shape condition as scales.}]>:$zero_points,
 
   TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniformQuantizeOp : TF_Op<"UniformQuantize", [Pure]> {
@@ -19871,6 +19873,8 @@ Same shape condition as scales.}]>:$zero_points,
 
   TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniformQuantizedAddOp : TF_Op<"UniformQuantizedAdd", [Pure]> {
@@ -20143,6 +20147,8 @@ Same shape condition as rhs_scales.}]>:$output_zero_points,
 
   TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniformQuantizedDotHybridOp : TF_Op<"UniformQuantizedDotHybrid", [Pure]> {
@@ -20229,6 +20235,8 @@ Same shape condition as scales.}]>:$output_zero_points,
 
   TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_UniqueOp : TF_Op<"Unique", [Pure]> {
@@ -21638,6 +21646,25 @@ key: A unique identifier for this region used to match up host transfers.
   let results = (outs);
 
   TF_DerivedOperandTypeAttr Tinput = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaSetBoundOp : TF_Op<"XlaSetBound", [Pure]> {
+  let summary = [{
+Set a bound for the given input value as a hint to Xla compiler,
+  }];
+
+  let description = [{
+returns the same value.
+  }];
+
+  let arguments = (ins
+    TF_Int32Tensor:$input,
+    TF_Int32Tensor:$bound
+  );
+
+  let results = (outs
+    TF_Int32Tensor:$output
+  );
 }
 
 def TF_XlaSetDynamicDimensionSizeOp : TF_Op<"XlaSetDynamicDimensionSize", [InferTensorType, Pure, TF_NoConstantFold]> {

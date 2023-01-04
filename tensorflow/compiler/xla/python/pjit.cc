@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/pjit.h"
 
+#include <algorithm>
 #include <exception>
 #include <memory>
 #include <optional>
@@ -25,9 +26,7 @@ limitations under the License.
 
 #include "absl/synchronization/notification.h"
 #include "tensorflow/compiler/xla/pjrt/lru_cache.h"
-#ifdef JAX_ENABLE_IFRT
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
-#endif
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
@@ -54,7 +53,7 @@ struct PjitCacheEntry {
   xla::PyTreeDef out_pytree_def;
   // Bitvector of kept arguments from Jaxpr DCE pass. Used to drop some `args`
   // in CompiledFunction::Call before calling into compiled computation.
-  std::optional<std::vector<bool>> kept_var_bitvec;
+  std::vector<bool> kept_var_bitvec;
 
   // Ensures a single thread performs the compilation for a given executable.
   //
@@ -69,12 +68,19 @@ struct PjitCacheEntry {
 class PjitFunction {
  public:
   PjitFunction(std::string function_name, py::function cache_miss,
-               std::vector<int> static_argnums, int executables_cache_size)
+               std::vector<int> static_argnums,
+               std::vector<py::str> static_argnames, int executables_cache_size)
       : function_name_(std::move(function_name)),
         cache_miss_(std::move(cache_miss)),
         static_argnums_(std::move(static_argnums)),
+        static_argnames_(std::move(static_argnames)),
         lru_list_(std::make_unique<Cache::LRUList>(executables_cache_size)),
-        executables_(std::make_unique<Cache>(lru_list_.get())) {}
+        executables_(std::make_unique<Cache>(lru_list_.get())) {
+    std::sort(static_argnums_.begin(), static_argnums_.end());
+    for (py::str& s : static_argnames_) {
+      PyUnicode_InternInPlace(&s.ptr());
+    }
+  }
 
   PjitFunction(const PjitFunction&) = delete;
   PjitFunction& operator=(const PjitFunction&) = delete;
@@ -101,6 +107,7 @@ class PjitFunction {
   std::string function_name_;
   py::function cache_miss_;
   std::vector<int> static_argnums_;
+  std::vector<py::str> static_argnames_;
 
   std::unique_ptr<Cache::LRUList> lru_list_;
   std::unique_ptr<Cache> executables_;
@@ -108,34 +115,18 @@ class PjitFunction {
 
 // Prepares the input PjRtBuffers from the python arguments. This is equivalent
 // to shard_args() in pxla.py but for only a few supported cases.
-#ifdef JAX_ENABLE_IFRT
 xla::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
 PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
                   ParsedArgumentsAsBuffers& arguments,
-                  const std::optional<std::vector<bool>>& kept_args) {
-#else
-xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
-    const xla::PyLoadedExecutable& executable,
-    ParsedArgumentsAsBuffers& arguments,
-    const std::optional<std::vector<bool>>& kept_args) {
-#endif
+                  const std::vector<bool>& kept_args) {
   const auto& addressable_devices = executable.AddressableDevices();
   int num_args = arguments.flat_dynamic_args.size();
 
-#ifdef JAX_ENABLE_IFRT
   std::vector<tsl::RCReference<xla::ifrt::Array>> num_args_arrays;
   num_args_arrays.reserve(num_args);
-#else
-  std::vector<std::vector<xla::PjRtBuffer*>> num_computation_num_args_buffers(
-      addressable_devices.size());
-  for (int i = 0; i < addressable_devices.size(); ++i) {
-    num_computation_num_args_buffers[i].reserve(num_args);
-  }
-#endif
 
-  bool input_pruning_enabled = kept_args.has_value();
   for (int i = 0; i < num_args; ++i) {
-    if (input_pruning_enabled && !kept_args.value()[i]) {
+    if (!kept_args[i]) {
       continue;
     }
     const py::object& arg = arguments.flat_dynamic_args[i];
@@ -161,7 +152,6 @@ xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
           addressable_devices.size(), py_array.num_shards());
     }
 
-#ifdef JAX_ENABLE_IFRT
     xla::ifrt::Array* ifrt_array = py_array.ifrt_array();
     // PyArray inputs should have already been checked in
     // `xla::PyArgSignatureOfValue()` called by
@@ -183,36 +173,11 @@ xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
     } else {
       num_args_arrays.push_back(tsl::FormRef(ifrt_array));
     }
-#else
-    if (cpp_sharding->num_devices() == 1) {
-      for (int j = 0; j < addressable_devices.size(); ++j) {
-        auto* to_device = addressable_devices[j].get();
-        xla::PjRtBuffer* buffer = py_array.pjrt_buffer(j);
-
-        if (buffer->device() == to_device) {
-          num_computation_num_args_buffers[j].push_back(buffer);
-        } else {
-          TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtBuffer> copied_buffer,
-                              buffer->CopyToDevice(to_device));
-          num_computation_num_args_buffers[j].push_back(copied_buffer.get());
-          arguments.keep_alive.push_back(std::move(copied_buffer));
-        }
-      }
-    } else {
-      for (int j = 0; j < addressable_devices.size(); ++j) {
-        num_computation_num_args_buffers[j].push_back(py_array.pjrt_buffer(j));
-      }
-    }
-#endif
 
     arguments.keep_alive_objects.push_back(arg);
   }
 
-#ifdef JAX_ENABLE_IFRT
   return num_args_arrays;
-#else
-  return num_computation_num_args_buffers;
-#endif
 }
 
 xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
@@ -245,9 +210,8 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
   absl::Span<PyObject* const> positional_args(args, num_positional_args);
   absl::Span<PyObject* const> keyword_args(args + num_positional_args,
                                            num_keyword_args);
-  auto status =
-      ParseArguments(positional_args, keyword_args, kwnames, static_argnums_,
-                     /*static_argnames=*/{}, arguments);
+  auto status = ParseArguments(positional_args, keyword_args, kwnames,
+                               static_argnums_, static_argnames_, arguments);
   if (!status.ok()) {
     VLOG(2) << "ParseArguments failed: " << status;
     return fallback_to_cache_miss();
@@ -337,10 +301,9 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
     return fallback_to_cache_miss();
   }
 
-#ifdef JAX_ENABLE_IFRT
   // A vector of [num_inputs].
   auto num_args_arrays = PrepareIfrtInputs(*cache_entry->executable, arguments,
-                                           *cache_entry->kept_var_bitvec);
+                                           cache_entry->kept_var_bitvec);
   if (!num_args_arrays.ok()) {
     VLOG(2) << "Failed to prepare IFRT inputs: " << num_args_arrays.status();
     return fallback_to_cache_miss();
@@ -378,57 +341,6 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
 
     outputs.push_back(std::move(py_array));
   }
-#else
-  // A vector of [num_devices, num_inputs].
-  auto num_computation_num_args_buffers = PreparePjRtInputs(
-      *cache_entry->executable, arguments, cache_entry->kept_var_bitvec);
-  if (!num_computation_num_args_buffers.ok()) {
-    VLOG(2) << "Failed to prepare PjRt inputs: "
-            << num_computation_num_args_buffers.status();
-    return fallback_to_cache_miss();
-  }
-  int num_computations = num_computation_num_args_buffers->size();
-
-  // A vector of [num_devices, num_outputs].
-  std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> output_buffers;
-  {
-    py::gil_scoped_release gil_release;
-    auto pjrt_executable = cache_entry->executable->pjrt_executable();
-    TF_ASSIGN_OR_RETURN(
-        output_buffers,
-        pjrt_executable->Execute(*num_computation_num_args_buffers,
-                                 cache_entry->executable->options()));
-  }
-
-  auto traceback = xla::Traceback::Get();
-  const auto& client = cache_entry->executable->client();
-
-  // Convert the PjRtBuffer objects to PyArray, and invert the order from
-  // [num_devices, num_args] to [num_args, num_devices].
-  int num_outputs = output_buffers[0].size();
-  absl::InlinedVector<py::object, 4> outputs;
-  outputs.reserve(num_outputs);
-  for (int i = 0; i < num_outputs; ++i) {
-    std::vector<std::shared_ptr<xla::PjRtBuffer>> pjrt_buffers;
-    pjrt_buffers.reserve(num_computations);
-
-    for (int j = 0; j < num_computations; ++j) {
-      pjrt_buffers.push_back(std::move(output_buffers[j][i]));
-    }
-
-    // Creating the PyArray result. In addition to the PjRtBuffers, the metadata
-    // like `aval` and `sharding` are retrieved from the cache for this
-    // function, which are produced by the python path in `cache_miss`.
-    xla::PyArray py_array(
-        cache_entry->out_avals[i], cache_entry->out_weak_types[i],
-        cache_entry->out_dtypes[i], cache_entry->out_shapes[i],
-        cache_entry->out_shardings[i], cache_entry->executable->client(),
-        traceback, std::move(pjrt_buffers),
-        /*committed=*/cache_entry->out_committed.at(i), /*skip_checks=*/true);
-
-    outputs.push_back(std::move(py_array));
-  }
-#endif
 
   py::object out = cache_entry->out_pytree_def.Unflatten(outputs);
 
@@ -542,16 +454,10 @@ void PjitFunction::PopulateCacheEntry(PjitCacheEntry& cache_entry,
   cache_entry.out_pytree_def =
       py::cast<xla::PyTreeDef>(fastpath_data.attr("out_pytree_def"));
 
-  auto kept_var_bitvec_attr =
-      py::getattr(fastpath_data, "kept_var_bitvec", py::none());
-  if (!kept_var_bitvec_attr.is_none()) {
-    auto kept_var_bitvec = py::cast<py::list>(kept_var_bitvec_attr);
-    cache_entry.kept_var_bitvec =
-        std::make_optional<std::vector<bool>>(kept_var_bitvec.size(), false);
-    for (int i = 0; i < kept_var_bitvec.size(); ++i) {
-      cache_entry.kept_var_bitvec.value()[i] =
-          py::cast<bool>(kept_var_bitvec[i]);
-    }
+  py::list kept_var_bitvec = fastpath_data.attr("kept_var_bitvec");
+  cache_entry.kept_var_bitvec.reserve(kept_var_bitvec.size());
+  for (py::handle k : kept_var_bitvec) {
+    cache_entry.kept_var_bitvec.push_back(py::cast<bool>(k));
   }
 }
 
@@ -703,13 +609,15 @@ PyObject* PjitFunction_tp_repr(PyObject* self) {
 
 py::object MakePjitFunction(std::string function_name, py::function cache_miss,
                             std::vector<int> static_argnums,
+                            std::vector<py::str> static_argnames,
                             int executables_cache_size) {
   py::object obj = py::reinterpret_steal<py::object>(PjitFunction_tp_new(
       reinterpret_cast<PyTypeObject*>(PjitFunction_Type), nullptr, nullptr));
   PjitFunctionObject* fn_obj = reinterpret_cast<PjitFunctionObject*>(obj.ptr());
   new (&fn_obj->fun)
       PjitFunction(std::move(function_name), std::move(cache_miss),
-                   std::move(static_argnums), executables_cache_size);
+                   std::move(static_argnums), std::move(static_argnames),
+                   executables_cache_size);
   return obj;
 }
 
@@ -757,9 +665,11 @@ void BuildPjitSubmodule(py::module& m) {
   cfun.attr("__module__") = m.attr("__name__");
 
   m.def("pjit", [](std::string function_name, py::function cache_miss,
-                   std::vector<int> static_argnums) {
+                   std::vector<int> static_argnums,
+                   std::vector<py::str> static_argnames) {
     return MakePjitFunction(std::move(function_name), std::move(cache_miss),
                             std::move(static_argnums),
+                            std::move(static_argnames),
                             /*executables_cache_size=*/4096);
   });
 }

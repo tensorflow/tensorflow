@@ -59,6 +59,18 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "async_runtime_test",
+    srcs = ["async_runtime_test.cc"],
+    deps = [
+        ":async_runtime",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@tf_runtime//:async_value",
+    ],
+)
+
 cc_library(
     name = "async_values_cache",
     hdrs = ["async_values_cache.h"],
@@ -90,6 +102,7 @@ cc_library(
     hdrs = ["custom_call.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        ":async_runtime",
         ":diagnostics",
         ":errors",
         ":logical_result",
@@ -97,11 +110,14 @@ cc_library(
         ":state",
         ":type_id",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/runtime/ffi:ffi_abi",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@tf_runtime//:async_value",
     ],
 )
 
@@ -241,6 +257,7 @@ cc_library(
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TransformUtils",
         "@llvm-project//llvm:X86AsmParser",
         "@llvm-project//llvm:X86CodeGen",
     ],
@@ -273,7 +290,7 @@ xla_cc_test(
         ":jit_executable",
         ":results",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
-        "//tensorflow/compiler/xla/runtime/ffi:ffi_api_hdrs",
+        "//tensorflow/compiler/xla/runtime/ffi:ffi_api",
         "//tensorflow/compiler/xla/runtime/ffi:ffi_c_api_hdrs",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",

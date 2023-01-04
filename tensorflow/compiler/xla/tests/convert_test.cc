@@ -545,16 +545,8 @@ XLA_TEST_F(ConvertTest, ConvertBF16F32) {
   ComputeAndCompareR1<uint32_t>(&builder, expected, {});
 }
 
-#if XLA_TEST_BACKEND_CPU || XLA_TEST_BACKEND_GPU
-constexpr bool fp8_supported = true;
-#else
-constexpr bool fp8_supported = false;
-#endif
-
 XLA_TEST_F(ConvertTest, ConvertF16F8e5m2Roundtrip) {
-  if (!fp8_supported) {
-    GTEST_SKIP() << "FP8 only supported on CPU and GPU";
-  }
+  // Convert from FP16 to FP8, then back to FP16
   XlaBuilder builder(TestName());
   float nan = std::numeric_limits<float>::quiet_NaN();
   float inf = std::numeric_limits<float>::infinity();
@@ -568,6 +560,7 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e5m2Roundtrip) {
       {1.0, 1.0},
       {-1.0, -1.0},
       {nan, nan},
+      {inf, inf},
       // clang-format on
       {0x1.2p0, 0x1p0},        // Round-to-even down
       {0x1.6p0, 0x1.8p0},      // Round-to-even up
@@ -593,50 +586,55 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e5m2Roundtrip) {
 }
 
 XLA_TEST_F(ConvertTest, ConvertF8e5m2F16RoundtripExhaustive) {
-  if (!fp8_supported) {
-    GTEST_SKIP() << "FP8 only supported on CPU and GPU";
-  }
+  // Convert from FP8 to FP16, then back to FP8
   XlaBuilder builder(TestName());
 
-  std::vector<Eigen::half> all_f8_as_f16;
+  std::vector<tsl::float8_e5m2> all_f8;
   for (int i = 0; i < 256; i++) {
-    tsl::float8_e5m2 val =
-        Eigen::numext::bit_cast<tsl::float8_e5m2>(static_cast<uint8_t>(i));
-    all_f8_as_f16.push_back(Eigen::half{val});
+    all_f8.push_back(
+        Eigen::numext::bit_cast<tsl::float8_e5m2>(static_cast<uint8_t>(i)));
   }
 
-  xla::XlaOp all_f8_as_f16_op =
-      ConstantR1<Eigen::half>(&builder, all_f8_as_f16);
-  xla::XlaOp all_f8_as_f8_op = ConvertElementType(all_f8_as_f16_op, F8E5M2);
-  ConvertElementType(all_f8_as_f8_op, F16);
-  ComputeAndCompareR1<Eigen::half>(&builder, all_f8_as_f16, {});
+  xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e5m2>(&builder, all_f8);
+  xla::XlaOp all_f8_as_f16 = ConvertElementType(all_f8_as_f8, F16);
+  ConvertElementType(all_f8_as_f16, F8E5M2);
+
+  // Pass in ErrorSpec, as this causes all NaNs to be treated as equal.
+  // Round-tripping a NaN will turn it into a quiet NaN and doesn't necessarily
+  // preserve the payload.
+  ComputeAndCompareR1<tsl::float8_e5m2>(&builder, all_f8, {}, ErrorSpec(0.));
 }
 
 XLA_TEST_F(ConvertTest, ConvertF16F8e4m3fnRoundtrip) {
-  if (!fp8_supported) {
-    GTEST_SKIP() << "FP8 only supported on CPU and GPU";
-  }
+  // Convert from FP16 to FP8, then back to FP16
   XlaBuilder builder(TestName());
   float nan = std::numeric_limits<float>::quiet_NaN();
+  float inf = std::numeric_limits<float>::infinity();
 
   struct TestCase {
     float input;
     float expected_roundtrip;
   } test_cases[] = {
-      // clang-format off
+    // clang-format off
       {0.0, 0.0},
       {1.0, 1.0},
       {-1.0, -1.0},
-      {nan, nan},
-      // clang-format on
-      {0x1.1p0, 0x1p0},    // Round-to-even down
-      {0x1.3p0, 0x1.4p0},  // Round-to-even up
-      {0x1.Cp8, 0x1.Cp8},  // Max value
-      {0x1.Dp8, 0x1.Cp8},  // Largest number that doesn't overflow
-      {0x1.D04p8, nan},    // Smallest number that overflows
-      {0x1p9, nan},        // Overflow
-      {0x1p-6, 0x1p-6},    // Smallest normal
-      {0x1.Cp-7, 0},       // Denormal truncation
+      {inf, nan},
+    // clang-format on
+    {0x1.1p0, 0x1p0},    // Round-to-even down
+    {0x1.3p0, 0x1.4p0},  // Round-to-even up
+    {0x1.Cp8, 0x1.Cp8},  // Max value
+    {0x1.Dp8, 0x1.Cp8},  // Largest number that doesn't overflow
+    {0x1.D04p8, nan},    // Smallest number that overflows
+    {0x1p9, nan},        // Overflow
+    {0x1p-6, 0x1p-6},    // Smallest normal
+                         // Denormals are only not truncated on the interpreter.
+  // TODO(b/259609697): Do not truncate denormals on any platform
+#if XLA_TEST_BACKEND_INTERPRETER
+    {0x1.Cp-7, 0x1.Cp-7},  // Denormal isn't truncated
+#else
+    {0x1.Cp-7, 0},  // Denormal truncation
+#endif
   };
 
   std::vector<Eigen::half> inputs;
@@ -653,30 +651,28 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e4m3fnRoundtrip) {
 }
 
 XLA_TEST_F(ConvertTest, ConvertF8e4m3fnF16RoundtripExhaustive) {
-  if (!fp8_supported) {
-    GTEST_SKIP() << "FP8 only supported on CPU and GPU";
-  }
+  // Convert from FP8 to FP16, then back to FP8
   XlaBuilder builder(TestName());
 
-  std::vector<Eigen::half> all_f8_as_f16;
+  std::vector<tsl::float8_e4m3fn> all_f8;
   for (int i = 0; i < 256; i++) {
-    tsl::float8_e4m3fn val =
-        Eigen::numext::bit_cast<tsl::float8_e4m3fn>(static_cast<uint8_t>(i));
-    all_f8_as_f16.push_back(Eigen::half{val});
+    all_f8.push_back(
+        Eigen::numext::bit_cast<tsl::float8_e4m3fn>(static_cast<uint8_t>(i)));
   }
 
-  xla::XlaOp all_f8_as_f16_op =
-      ConstantR1<Eigen::half>(&builder, all_f8_as_f16);
-  xla::XlaOp all_f8_as_f8_op = ConvertElementType(all_f8_as_f16_op, F8E4M3FN);
-  ConvertElementType(all_f8_as_f8_op, F16);
+  xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e4m3fn>(&builder, all_f8);
+  xla::XlaOp all_f8_as_f16 = ConvertElementType(all_f8_as_f8, F16);
+  ConvertElementType(all_f8_as_f16, F8E4M3FN);
 
+#if !XLA_TEST_BACKEND_INTERPRETER
   for (int i = 0; i < 0x8; i++) {
-    // Currently denormal FP8 values are truncated
-    all_f8_as_f16[i] = Eigen::half{0.};
-    all_f8_as_f16[i + 0x80] = Eigen::half{-0.};
+    // Currently denormal FP8 values are truncated on non-interpreter backends
+    all_f8[i] = tsl::float8_e4m3fn{0.};
+    all_f8[i + 0x80] = tsl::float8_e4m3fn{-0.};
   }
+#endif
 
-  ComputeAndCompareR1<Eigen::half>(&builder, all_f8_as_f16, {});
+  ComputeAndCompareR1<tsl::float8_e4m3fn>(&builder, all_f8, {});
 }
 
 }  // namespace

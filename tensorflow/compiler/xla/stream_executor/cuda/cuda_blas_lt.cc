@@ -246,14 +246,15 @@ BlasLt::GetMatmulAlgorithms(const BlasLt::MatmulPlan& plan,
   return std::move(algorithms);
 }
 
-port::Status BlasLt::DoMatmul(Stream* stream, const BlasLt::MatmulPlan& plan,
-                              const void* alpha, DeviceMemoryBase a,
-                              DeviceMemoryBase b, const void* beta,
-                              DeviceMemoryBase c, DeviceMemoryBase d,
-                              const BlasLt::MatmulAlgorithm& algorithm,
-                              ScratchAllocator& scratch_allocator,
-                              DeviceMemoryBase bias, DeviceMemoryBase aux,
-                              blas::ProfileResult* profile_result) {
+port::Status BlasLt::DoMatmul(
+    Stream* stream, const BlasLt::MatmulPlan& plan, const void* alpha,
+    DeviceMemoryBase a, DeviceMemoryBase b, const void* beta,
+    DeviceMemoryBase c, DeviceMemoryBase d,
+    const BlasLt::MatmulAlgorithm& algorithm,
+    ScratchAllocator& scratch_allocator, DeviceMemoryBase bias,
+    DeviceMemoryBase aux, DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
+    DeviceMemoryBase c_scale, DeviceMemoryBase d_scale, DeviceMemoryBase d_amax,
+    blas::ProfileResult* profile_result) {
   std::unique_ptr<gpu::GpuTimer, gpu::GpuTimerDeleter> timer;
   if (profile_result != nullptr) {
     timer.reset(new gpu::GpuTimer(parent_));
@@ -279,6 +280,39 @@ port::Status BlasLt::DoMatmul(Stream* stream, const BlasLt::MatmulPlan& plan,
                                  CUBLASLT_MATMUL_DESC_BIAS_POINTER,
                                  bias.opaque()));
     }
+#if CUDA_VERSION >= 11080
+    if (a_scale != nullptr) {
+      TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
+                                 CUBLASLT_MATMUL_DESC_A_SCALE_POINTER,
+                                 a_scale.opaque()));
+    }
+    if (b_scale != nullptr) {
+      TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
+                                 CUBLASLT_MATMUL_DESC_B_SCALE_POINTER,
+                                 b_scale.opaque()));
+    }
+    if (c_scale != nullptr) {
+      TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
+                                 CUBLASLT_MATMUL_DESC_C_SCALE_POINTER,
+                                 c_scale.opaque()));
+    }
+    if (d_scale != nullptr) {
+      TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
+                                 CUBLASLT_MATMUL_DESC_D_SCALE_POINTER,
+                                 d_scale.opaque()));
+    }
+    if (d_amax != nullptr) {
+      TF_RETURN_IF_ERROR(SetAttr(plan.op_desc.get(),
+                                 CUBLASLT_MATMUL_DESC_AMAX_D_POINTER,
+                                 d_amax.opaque()));
+    }
+#else
+    if (a_scale != nullptr || b_scale != nullptr || c_scale != nullptr ||
+        d_scale != nullptr || d_amax != nullptr) {
+      return port::InternalError(
+          "A/B/C/D scales and amax require cublasLt >= 11.8");
+    }
+#endif
 
     if (aux != nullptr) {
 #if CUDA_VERSION >= 11040

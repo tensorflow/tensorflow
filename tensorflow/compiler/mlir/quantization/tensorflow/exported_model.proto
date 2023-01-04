@@ -17,7 +17,16 @@ message ExportedModel {
   // resources like hash tables upon loading.
   string init_node_name = 2;
 
+  // Name of the restore node. When fetched it runs the `RestoreV2` op that
+  // restores variables from the checkpoint file specified by `checkpoint_dir`.
+  string restore_node_name = 3;
+
+  // A set of variable `shared_name`s to restore for the quantized model.
+  repeated string variable_shared_names = 4;
+
   // Path to the directory where checkpoint files are saved. This directoy is
-  // not expected to be persistent (usually a temporary directory).
-  string checkpoint_dir = 3;
+  // not expected to be persistent (usually a temporary directory). When
+  // fetching the restore op (see `restore_node_name`), this value is provided
+  // to the "file_prefix" tensor to identify the checkpoint directory.
+  string checkpoint_dir = 5;
 }

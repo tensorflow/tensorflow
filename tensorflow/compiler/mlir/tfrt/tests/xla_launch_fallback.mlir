@@ -54,3 +54,29 @@ func.func @multi_clusters(%arg0: tensor<1x3xf32>) -> tensor<*xf32> attributes {t
 
   func.return %3 : tensor<*xf32>
 }
+
+
+// Check that unused outputs of the XLA cluster are not transferred.
+
+func.func private @xla_func_3(%arg0: tensor<1x3xf32>, %arg1: tensor<1x3xf32>) -> (tensor<1x3xf32>, tensor<1x3xf32>) attributes {tf._XlaMustCompile = true, tf._noinline = true, tf._original_func_name = "should_not_be_used"} {
+  %1 = "tf.AddV2"(%arg0, %arg1) : (tensor<1x3xf32>, tensor<1x3xf32>) -> tensor<1x3xf32>
+  %2 = "tf.DIV"(%arg0, %arg1) : (tensor<1x3xf32>, tensor<1x3xf32>) -> tensor<1x3xf32>
+  func.return %1, %2 : tensor<1x3xf32>, tensor<1x3xf32>
+}
+
+// CHECK-LABEL: func @skip_unused_output
+func.func @skip_unused_output(%arg0: tensor<1x3xf32>) -> tensor<*xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "input:0", outputs = "output:0"}} {
+  %0 = "tf.VarHandleOp"() {device = "/device:CPU:0", container = "", shared_name = "variable"} : () -> tensor<!tf_type.resource<tensor<1x3xf32>>>
+  %1 = "tf.ReadVariableOp"(%0) {device = "/device:CPU:0"} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
+  // CHECK: [[INPUT_0:%.*]] = gpurt.transfer_to_device
+  // CHECK: [[VAR_0:%.*]] = gpurt.maybe_transfer_variable
+  // CHECK: tfrt_fallback_async.executeop.seq{{.*}}"tf.XlaLaunch"([[INPUT_0]], [[VAR_0]])
+  // CHECK-SAME: {function = "xla_func_3"}
+  // Since only one output of the XlaLaunch is used, there is only one data transfer.
+  // CHECK: gpurt.transfer_from_device
+  // CHECK-NOT: gpurt.transfer_from_device
+  %2:2 = "tf.XlaLaunch"(%arg0, %1) {_noinline = true, _xla_compile_device_type = "GPU", device = "/device:GPU:0", function = @xla_func_3, operand_segment_sizes = array<i32: 0, 2, 0>} : (tensor<1x3xf32>, tensor<1x3xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+  func.return %2#0 : tensor<*xf32>
+}
+
+

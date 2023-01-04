@@ -263,7 +263,7 @@ TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
     struct TfLiteOpaqueContext* opaque_context,
     TfLiteRegistrationExternal* registration_external,
     const TfLiteIntArray* nodes_to_replace,
-    struct TfLiteOpaqueDelegateStruct* opaque_delegate);
+    TfLiteOpaqueDelegate* opaque_delegate);
 
 // Returns modifiable access to the opaque tensor that corresponds to the
 // specified `index` and is associated with the provided `opaque_context`.

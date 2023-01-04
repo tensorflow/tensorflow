@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements logic for lowering HLO dialect to LHLO dialect.
 
 #include <algorithm>
+#include <optional>
 #include <utility>
 
 #include "lhlo/IR/lhlo_ops.h"
@@ -150,7 +151,7 @@ class HloToLhloOpConverter : public BaseOpConversion<HloOpTy> {
     Operation* op = hloOp.getOperation();
     SmallVector<Value, 4> bufferArgs(adaptor.getOperands());
     if (failed(convertResults(op, bufferArgs, rewriter))) return failure();
-    rewriter.create<mhlo::HloToLhloOp<HloOpTy>>(op->getLoc(), llvm::None,
+    rewriter.create<mhlo::HloToLhloOp<HloOpTy>>(op->getLoc(), std::nullopt,
                                                 bufferArgs, op->getAttrs());
     rewriter.replaceOp(op, llvm::makeArrayRef(bufferArgs)
                                .drop_front(adaptor.getOperands().size()));
@@ -174,7 +175,7 @@ class HloToLhloOpConverter<mhlo::DotOp> : public BaseOpConversion<mhlo::DotOp> {
     SmallVector<Value, 2> bufferArgs(adaptor.getOperands());
     if (failed(convertResults(op, bufferArgs, rewriter))) return failure();
 
-    auto dotOp = rewriter.create<lmhlo::DotOp>(op->getLoc(), llvm::None,
+    auto dotOp = rewriter.create<lmhlo::DotOp>(op->getLoc(), std::nullopt,
                                                bufferArgs, op->getAttrs());
     // MHLO's Dot uses rank-2 operands, of the form ([N, M], [M, O]) -> [N, O].
     auto dimensionNumbers = mhlo::DotDimensionNumbersAttr::get(
@@ -201,7 +202,7 @@ struct HloToLhloCustomCallOpConverter
     if (failed(convertResults(op, bufferArgs, rewriter))) return failure();
 
     auto lhloOp = rewriter.create<lmhlo::CustomCallOp>(
-        op->getLoc(), llvm::None, bufferArgs, op->getAttrs());
+        op->getLoc(), std::nullopt, bufferArgs, op->getAttrs());
     // Setup AttrSizedOperandSegments attribute to indicate number of operands
     // for args and outputs.
     const int32_t segments[2] = {
@@ -248,7 +249,7 @@ struct HloToLhloDotGeneralOpConverter
                                          resultsShape.front(), &rewriter);
     }
 
-    rewriter.create<lmhlo::DotOp>(op->getLoc(), llvm::None, bufferArgs,
+    rewriter.create<lmhlo::DotOp>(op->getLoc(), std::nullopt, bufferArgs,
                                   op->getAttrs());
     rewriter.replaceOp(op, bufferArgs[2]);
     return success();
@@ -273,7 +274,7 @@ struct HloToLhloReduceLikeOpConverter : public BaseOpConversion<HloOpTy> {
     SmallVector<Value, 4> bufferArgs(adaptor.getOperands());
     if (failed(convertResults(op, bufferArgs, rewriter))) return failure();
     auto newOp = rewriter.create<mhlo::HloToLhloOp<HloOpTy>>(
-        loc, llvm::None, bufferArgs, op->getAttrs());
+        loc, std::nullopt, bufferArgs, op->getAttrs());
 
     // Copy over the operations inside the region.
     rewriter.inlineRegionBefore(hloOp.getBody(), newOp.getBody(),

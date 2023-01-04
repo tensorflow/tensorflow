@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/hlo/ir/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -60,6 +61,9 @@ mlir::ArrayAttr ConvertOutputOperandAliasing(
 mlir::ArrayAttr ConvertCrossProgramPrefetches(
     absl::Span<const std::pair<int64_t, ShapeIndex>> prefetches,
     mlir::Builder* builder);
+
+mlir::ArrayAttr ConvertDynamicParameterBindings(DynamicParameterBinding dpb,
+                                                mlir::Builder* builder);
 
 StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type);
 StatusOr<mlir::mhlo::Transpose> ConvertTranspose(

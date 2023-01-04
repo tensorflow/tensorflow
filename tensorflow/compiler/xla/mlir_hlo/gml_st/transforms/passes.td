@@ -173,12 +173,38 @@ def VectorizePerfectlyTiledLoopsPass :
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }
 
+def VectorizeCopyPass :
+    Pass<"vectorize-copy", "mlir::func::FuncOp"> {
+  let summary = "Pass to vectorize `memref.copy`.";
+  let constructor = "::mlir::gml_st::createVectorizeCopyPass()";
+  let dependentDialects = ["::mlir::vector::VectorDialect"];
+}
+
+def SimplifyDeadCopyPass :
+    Pass<"simplify-dead-copy", "mlir::func::FuncOp"> {
+  let summary = "Pass to simplify dead `memref.copy`.";
+  let constructor = "::mlir::gml_st::createSimplifyDeadCopyPass()";
+  let dependentDialects = ["::mlir::vector::VectorDialect",
+                           "::mlir::memref::MemRefDialect"];
+}
+
 def LowerVectorContractPass :
     Pass<"lower-vector-contract", "mlir::func::FuncOp"> {
   let summary = "Pass to lower vector.contract";
   let constructor = "::mlir::gml_st::createLowerVectorContractPass()";
   let dependentDialects = ["::mlir::vector::VectorDialect",
                            "::mlir::gml_st::GmlStDialect"];
+}
+
+def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
+  let summary = "Converts ops on tensors with 1 element to scalar ops.";
+  let dependentDialects = [
+    "arith::ArithDialect",
+    "gml_st::GmlStDialect",
+    "scf::SCFDialect",
+    "tensor::TensorDialect"
+  ];
+  let constructor = "createScalarizationPass()";
 }
 
 def TransformScatterForCpuPass :

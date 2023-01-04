@@ -80,6 +80,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
         "//tensorflow/compiler/xla/stream_executor/lib",
+        "//tensorflow/tsl/platform:float8",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
@@ -92,6 +93,7 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 

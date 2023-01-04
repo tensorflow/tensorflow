@@ -530,6 +530,22 @@ func.func @custom_call(%ctx: !rt.execution_context) -> (memref<2x2xf32>) {
 
 // -----
 
+// CHECK: %[[C1:.*]] = arith.constant 1 : i32
+// CHECK: %[[RETS_ALLOCA:.*]] = llvm.alloca %[[C1]] x !llvm.array<3 x ptr>
+
+// CHECK: %[[C1_0:.*]] = arith.constant 1 : i32
+// CHECK: %[[MEMREF_ALLOCA:.*]] = llvm.alloca %[[C1_0]] x !llvm.struct<(i8, i8, ptr, array<4 x i64>)>
+
+// CHECK: call @f32_reduce
+func.func @custom_call(%ctx: !rt.execution_context)
+                          -> (!async.value<memref<2x2xf32>>) {
+  %status, %0 = rt.call %ctx["f32_reduce"] ()
+                          : () -> (!async.value<memref<2x2xf32>>)
+  return %0 : !async.value<memref<2x2xf32>>
+}
+
+// -----
+
 // Test that custom call encoding can pass a reference to exported function as a
 // custom call attribute.
 func.func @init(%ctx: !rt.execution_context)
@@ -562,7 +578,7 @@ func.func @trace(%ctx: !rt.execution_context) -> tensor<?xf32> {
   // CHECK: call @xla.trace.activity_start
   // CHECK: call @compute
   // CHECK: call @xla.trace.activity_end
-  %0 = rt.trace #rt.hlo_trace<"foo", "bar", 0>, %ctx -> tensor<?xf32> {
+  %0 = rt.trace #rt.hlo_trace<"foo">, %ctx -> tensor<?xf32> {
     %1 = func.call @compute(): () -> tensor<?xf32>
     yield %1 : tensor<?xf32>
   }
@@ -596,5 +612,38 @@ func.func @custom_call(%arg0: !rt.execution_context) {
   // CHECK: call @target
   %cst = arith.constant 123.456 : f32
   rt.call %arg0["target"] (%cst) : (f32) -> ()
+  func.return
+}
+
+// -----
+// Check that we reuse allocas for encoding arguments on the stack.
+
+// CHECK: func @custom_call(
+// CHECK:   %[[CTX:.*]]: !llvm.ptr,
+// CHECK:   %[[ARG:.*]]: f32
+// CHECK: )
+func.func @custom_call(%arg0: !rt.execution_context, %arg1: f32) {
+  // CHECK: %[[ARGS:.*]] = llvm.alloca {{.*}} x !llvm.array<3 x ptr>
+  // CHECK: %[[ARG_ALLOCA:.*]] = llvm.alloca %{{.*}} x f32
+  // CHECK-NOT: llvm.alloca
+
+  // llvm.intr.lifetime.start -1, %[[ARG_ALLOCA]] : !llvm.ptr
+  // CHECK: llvm.store %[[ARG]], %[[ARG_ALLOCA]] : f32, !llvm.ptr
+  // llvm.intr.lifetime.start -1, %[[ARGS]] : !llvm.ptr
+  // CHECK: llvm.store {{.*}}, %[[ARGS]]
+  // CHECK: call @target
+  rt.call %arg0["target"] (%arg1) : (f32) -> ()
+  // llvm.intr.lifetime.end -1, %[[ARGS]] : !llvm.ptr
+  // llvm.intr.lifetime.end -1, %[[ARG_ALLOCA]] : !llvm.ptr
+
+  // llvm.intr.lifetime.start -1, %[[ARG_ALLOCA]] : !llvm.ptr
+  // CHECK: llvm.store %[[ARG]], %[[ARG_ALLOCA]] : f32, !llvm.ptr
+  // llvm.intr.lifetime.start -1, %[[ARGS]] : !llvm.ptr
+  // CHECK: llvm.store {{.*}}, %[[ARGS]]
+  // CHECK: call @target
+  rt.call %arg0["target"] (%arg1) : (f32) -> ()
+  // llvm.intr.lifetime.end -1, %[[ARGS]] : !llvm.ptr
+  // llvm.intr.lifetime.end -1, %[[ARG_ALLOCA]] : !llvm.ptr
+
   func.return
 }

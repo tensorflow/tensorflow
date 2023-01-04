@@ -137,31 +137,19 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   }
 
   // Remove redundant shape operations left after legalizing to HLO.
+  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
-  // Resolve all shape constraints (e.g. broadcast constraints that can be
-  // proved statically and changed to const witness) early to allow more
-  // efficient broadcast operations moving.
-  pm.addNestedPass<FuncOp>(
-      CreateSymbolicShapeOptimizationPass(/*constraints_only=*/true));
-
-  // Analyze shapes and try to simplify the IR as early as possible.
+  // Analyze shapes and try to simplify the IR early.
   pm.addNestedPass<FuncOp>(mlir::createSymbolicShapeOptimizationPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
   // Move up broadcasting operations to allow for more fusion opportunities.
-  // Add the broadcast propagation pass first, because it can help to avoid
-  // exponential complexity from the EarlyBroadcastInDimOp pattern which is used
-  // in the merge assuming ops pass further down.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createMergeAssumingOpsPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createBroadcastPropagationPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
-
-  // After all shape constraints removed and broadcasts moved to the top, try
-  // to resolve broadcasts that can be converted to linalg generic operations.
-  pm.addNestedPass<FuncOp>(CreateSymbolicShapeOptimizationPass());
 
   // Group reduction and parallel dimensions of reduction operations and realize
   // them through equivalent 1D or 2D reductions, if possible.
@@ -229,6 +217,12 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
 
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
+
+  if (options.vectorize)
+    pm.addNestedPass<FuncOp>(mlir::gml_st::createVectorizeCopyPass());
+
+  if (options.enable_xla_cpu_transformations)
+    pm.addNestedPass<FuncOp>(mlir::gml_st::createSimplifyDeadCopyPass());
 
   // Deallocate all temporary buffers.
   pm.addNestedPass<FuncOp>(mlir::bufferization::createBufferDeallocationPass());

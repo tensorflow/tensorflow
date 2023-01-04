@@ -47,22 +47,6 @@ limitations under the License.
 
 namespace pjrt {
 
-xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
-                                     size_t expected_size, size_t actual_size) {
-  if (expected_size != actual_size) {
-    return tsl::errors::InvalidArgument(
-        StructSizeErrorMsg(struct_name, expected_size, actual_size));
-  }
-  return tsl::OkStatus();
-}
-
-std::string StructSizeErrorMsg(absl::string_view struct_name,
-                               size_t expected_size, size_t actual_size) {
-  return absl::StrCat("Unexpected ", struct_name, " size: expected ",
-                      expected_size, ", got ", actual_size,
-                      ". Check installed software versions.");
-}
-
 std::string ProgramFormatErrorMsg(absl::string_view program_format) {
   return absl::StrCat("Unknown program format '", program_format, "'.");
 }
@@ -705,21 +689,29 @@ PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args) {
           args->num_devices)};
     }
     std::vector<std::unique_ptr<xla::PjRtBuffer>> cpp_buffer_list;
+    std::optional<xla::PjRtFuture<xla::Status>> returned_future;
+    bool fill_future = args->device_complete_events != nullptr;
     if (args->executable->executable->num_partitions() == 1 &&
         args->executable->executable->num_replicas() == 1) {
-      // TODO(b/247013351): Implement portable execution.
-      return new PJRT_Error{xla::Unimplemented(
-          "PJRT_Executabe_Execute doesn't support portable execution; "
-          "execute_device must be null for single-device executables")};
+      PJRT_ASSIGN_OR_RETURN(
+          cpp_buffer_list,
+          args->executable->executable->ExecutePortable(
+              cpp_argument_lists[0], args->execute_device->device, options,
+              returned_future, fill_future));
     } else {
       PJRT_ASSIGN_OR_RETURN(
           cpp_buffer_list,
           args->executable->executable->ExecuteSharded(
-              cpp_argument_lists[0], args->execute_device->device, options));
+              cpp_argument_lists[0], args->execute_device->device, options,
+              returned_future, fill_future));
     }
     for (int i = 0; i < cpp_buffer_list.size(); ++i) {
       args->output_lists[0][i] = new PJRT_Buffer{std::move(cpp_buffer_list[i]),
                                                  args->executable->client};
+    }
+    if (fill_future) {
+      args->device_complete_events[0] =
+          new PJRT_Event{std::move((*returned_future))};
     }
   }
 
@@ -998,6 +990,74 @@ PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args) {
   };
   args->event->future.OnReady(impl_callback);
   return nullptr;
+}
+
+// Populates `c_device->attributes` with shallow copy of the vendor specific
+// attributes about the device.
+static void PopulatePjrtDeviceAttributes(PJRT_Device* c_device) {
+  CHECK(c_device != nullptr) << ": c device is null";
+  CHECK(c_device->device != nullptr) << ": cpp device is null";
+
+  const absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>& attributes =
+      c_device->device->Attributes();
+
+  c_device->attributes.resize(attributes.size());
+  int ind = 0;
+  // Doing shallow copy of attribute names and values when it's string or an
+  // array.
+  for (auto const& [name, value] : attributes) {
+    PJRT_NamedValue& cur_attribute = c_device->attributes[ind];
+    cur_attribute.struct_size = PJRT_NamedValue_STRUCT_SIZE;
+    cur_attribute.priv = nullptr;
+    cur_attribute.name = name.c_str();
+    cur_attribute.name_size = name.size();
+    if (const std::string* string_val = std::get_if<std::string>(&value)) {
+      cur_attribute.type = PJRT_NamedValue::PJRT_NamedValue_kString;
+      cur_attribute.string_value = string_val->c_str();
+      cur_attribute.value_size = string_val->size();
+    } else if (const std::vector<int64_t>* vector_val =
+                   std::get_if<std::vector<int64_t>>(&value)) {
+      cur_attribute.type = PJRT_NamedValue::PJRT_NamedValue_kInt64List;
+      cur_attribute.int64_array_value = vector_val->data();
+      cur_attribute.value_size = vector_val->size();
+    } else if (const int64_t* int_value = std::get_if<int64_t>(&value)) {
+      cur_attribute.type = PJRT_NamedValue::PJRT_NamedValue_kInt64;
+      cur_attribute.int64_value = *int_value;
+      cur_attribute.value_size = 1;
+    } else {
+      // Do not allow other types (such as
+      // PJRT_NamedValue::PJRT_NamedValue_kFloat) since device attributes
+      // currently should not return other types.
+      CHECK(false) << "Unexpected attribute type " << value.index() << " for "
+                   << name;
+    }
+    ++ind;
+  }
+}
+
+PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
+  PJRT_Client* c_client = new PJRT_Client{std::move(cpp_client)};
+
+  absl::Span<xla::PjRtDevice* const> cpp_devices = c_client->client->devices();
+  const size_t num_devices = cpp_devices.size();
+  c_client->owned_devices.reserve(num_devices);
+  c_client->devices.reserve(num_devices);
+  c_client->addressable_devices.reserve(
+      c_client->client->addressable_device_count());
+
+  for (xla::PjRtDevice* device : cpp_devices) {
+    c_client->owned_devices.push_back(PJRT_Device{device});
+    PJRT_Device* c_device = &c_client->owned_devices.back();
+    PopulatePjrtDeviceAttributes(c_device);
+    c_client->devices.push_back(c_device);
+    if (device->IsAddressable()) {
+      c_client->addressable_devices.push_back(c_device);
+    }
+    c_client->c_device_from_cpp_device[device] = c_device;
+  }
+  CHECK_EQ(c_client->addressable_devices.size(),
+           c_client->client->addressable_device_count());
+  return c_client;
 }
 
 }  // namespace pjrt

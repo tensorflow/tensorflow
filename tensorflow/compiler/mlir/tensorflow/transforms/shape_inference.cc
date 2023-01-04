@@ -19,12 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 #include <iterator>
+#include <optional>
 #include <queue>
 #include <stack>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -1433,7 +1433,7 @@ bool ShapeInference::InferShapeForVarHandleOp(VarHandleOp op) {
 }
 
 // Helper function for creating a Window proto from user-supplied data.
-// Returns llvm::None if the user-supplied data was invalid.
+// Returns std::nullopt if the user-supplied data was invalid.
 llvm::Optional<xla::Window> InferWindowFromDimensions(
     llvm::SmallVector<int64_t> window_dimensions,
     llvm::SmallVector<int64_t> window_strides,
@@ -1458,7 +1458,7 @@ llvm::Optional<xla::Window> InferWindowFromDimensions(
         verify_size(padding.size(), "padding entries") &&
         verify_size(lhs_dilation.size(), "lhs dilation factors") &&
         verify_size(rhs_dilation.size(), "rhs dilation factors")))
-    return llvm::None;
+    return std::nullopt;
 
   xla::Window window;
   for (size_t i = 0; i < window_dimensions.size(); i++) {
@@ -1498,7 +1498,7 @@ llvm::Optional<RankedTensorType> InferWindowOutputShape(
     llvm::errs() << "Window has dimension " << window.dimensions_size()
                  << " but base shape has dimension " << base_shape.getRank()
                  << "\n";
-    return llvm::None;
+    return std::nullopt;
   }
 
   std::vector<int64_t> output_dimensions(window.dimensions_size());
@@ -1508,22 +1508,22 @@ llvm::Optional<RankedTensorType> InferWindowOutputShape(
     if (dim.size() <= 0) {
       llvm::errs() << "Window " << window.DebugString()
                    << " has a non-positive dimension.\n";
-      return llvm::None;
+      return std::nullopt;
     }
     if (dim.stride() <= 0) {
       llvm::errs() << "Window " << window.DebugString()
                    << " has a non-positive stride.\n";
-      return llvm::None;
+      return std::nullopt;
     }
     if (dim.base_dilation() < 1) {
       llvm::errs() << "Window " << window.DebugString()
                    << " has a non-positive base area dilation factor.\n";
-      return llvm::None;
+      return std::nullopt;
     }
     if (dim.window_dilation() < 1) {
       llvm::errs() << "Window " << window.DebugString()
                    << " has a non-positive window dilation factor.\n";
-      return llvm::None;
+      return std::nullopt;
     }
 
     if (base_shape.isDynamicDim(i)) {
@@ -2321,7 +2321,7 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
 
   llvm::SmallVector<ShapedTypeComponents, 4> inferred_return_shapes;
   if (failed(InferReturnTypeComponentsForTFOp(
-          /*location=*/llvm::None, op, graph_version_, operand_as_constant_fn,
+          /*location=*/std::nullopt, op, graph_version_, operand_as_constant_fn,
           op_result_as_shape_fn, result_element_type_fn,
           inferred_return_shapes)))
     return false;

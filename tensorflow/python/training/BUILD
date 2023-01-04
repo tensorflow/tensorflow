@@ -108,6 +108,7 @@ py_library(
         "//tensorflow/python:learning_rate_decay",
         "//tensorflow/python:sdca_ops",
         "//tensorflow/python/checkpoint:checkpoint_management",
+        "//tensorflow/python/checkpoint:checkpoint_view",
         "//tensorflow/python/trackable:base_delegate",
         "//tensorflow/python/training/experimental:loss_scale_optimizer",
         "//tensorflow/python/training/experimental:mixed_precision",

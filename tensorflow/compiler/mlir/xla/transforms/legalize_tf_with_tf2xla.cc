@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -39,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -47,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
@@ -117,6 +120,9 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
             TypeID::get<TF::BitwiseOrOp>(),
             TypeID::get<TF::BitwiseXorOp>(),
             TypeID::get<TF::BucketizeOp>(),
+            // CaseOp isn't actually supported but is enabled for testing to
+            // make sure ops with symbol ref attributes are filtered out.
+            TypeID::get<TF::CaseOp>(),
             TypeID::get<TF::CastOp>(),
             TypeID::get<TF::ClipByValueOp>(),
             TypeID::get<TF::CholeskyOp>(),
@@ -201,6 +207,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
             TypeID::get<TF::PolygammaOp>(),
             TypeID::get<TF::PopulationCountOp>(),
             TypeID::get<TF::PowOp>(),
+            TypeID::get<TF::QrOp>(),
             // TODO(hinsu): Canonicalize QuantizeAndDequantize and
             // QuantizeAndDequantizeV2 to QuantizeAndDequantizeV3 by converting
             // attributes to operands.
@@ -421,20 +428,6 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
 }
 // LINT.ThenChange()
 
-bool IsOpAllowedForTesting(Operation* op) {
-  // clang-format off
-  static auto* ops =
-      new llvm::SmallDenseSet<mlir::TypeID, 16>{
-    // Op used to verify handling of XlaExpression of kind constant.
-    TypeID::get<TF::ConstOp>(),
-    TypeID::get<TF::CaseOp>(),
-  };
-  // clang-format on
-  auto abstractOp = op->getRegisteredInfo();
-  if (!abstractOp) return false;
-  return ops->count(abstractOp->getTypeID());
-}
-
 // List of ops that require falling back to XlaOpKernel legalizations and also
 // require the ability to create functions.
 bool IsOpAllowedTf2XlaFallbackAndCreateFunctions(Operation* op) {
@@ -570,30 +563,53 @@ LogicalResult Tf2XlaRewriter::PrepareParams() {
   return success();
 }
 
+// Returns true if the given type is a ranked tensor type with static or bounded
+// dimensions.
+bool IsBounded(Type ty) {
+  auto ranked_ty = ty.dyn_cast<RankedTensorType>();
+  if (!ranked_ty) return false;
+
+  if (ranked_ty.hasStaticShape()) return true;
+
+  auto encoding =
+      ranked_ty.getEncoding().dyn_cast_or_null<TypeExtensionsAttr>();
+  if (!encoding) return false;
+
+  for (int i = 0; i < ranked_ty.getRank(); ++i) {
+    if (ranked_ty.isDynamicDim(i) &&
+        encoding.getBounds()[i] == ShapedType::kDynamic) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool HasSymbolRefAttr(Operation* op) {
+  for (const auto& attr : op->getAttrs()) {
+    Attribute attr_value = attr.getValue();
+    if (attr_value.isa<SymbolRefAttr>()) {
+      return true;
+    } else if (auto array_attr = attr_value.dyn_cast<ArrayAttr>()) {
+      if (!array_attr.empty() && array_attr.begin()->isa<SymbolRefAttr>()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 LogicalResult Tf2XlaRewriter::LegalizeOp() {
-  // Only static shaped operands are supported in XLA builders for now.
   for (Type ty : op_->getOperandTypes()) {
     auto ranked_ty = ty.dyn_cast<ShapedType>();
-    if (!ranked_ty || !ranked_ty.hasStaticShape()) {
+    // Only bounded operands are supported in the XLA builders.
+    if (!IsBounded(ranked_ty)) {
       return op_->emitRemark()
-             << "lowering requires static shaped tensor operands";
+             << "lowering requires bounded tensor operands " << ranked_ty;
     }
   }
 
-  for (const auto& attr : op_->getAttrs()) {
-    Attribute attr_value = attr.getValue();
-    bool has_symbol_ref = false;
-    if (attr_value.isa<SymbolRefAttr>()) {
-      has_symbol_ref = true;
-    } else if (auto array_attr = attr_value.dyn_cast<ArrayAttr>()) {
-      if (!array_attr.empty() && array_attr.begin()->isa<SymbolRefAttr>()) {
-        has_symbol_ref = true;
-      }
-    }
-    if (has_symbol_ref) {
-      return op_->emitRemark()
-             << "ops with symbol references are not supported";
-    }
+  if (HasSymbolRefAttr(op_)) {
+    return op_->emitRemark() << "ops with symbol references are not supported";
   }
 
   auto nodedef_or = tensorflow::ConvertTFDialectOpToNodeDef(
@@ -711,11 +727,6 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
           "output");
     }
     mlir::Value value = hlo_builder_.GetValue(expr->AsXlaOp(&hlo_builder_));
-    mlir::OpResult old_result = op_->getResult(i);
-    if (value.getType() != old_result.getType()) {
-      value = hlo_builder_.create<mlir::tensor::CastOp>(old_result.getType(),
-                                                        value);
-    }
     values.push_back(value);
   }
   rewriter_.replaceOp(op_, values);
@@ -755,20 +766,27 @@ tensorflow::XlaExpression Tf2XlaRewriter::GetExprForOperand(Value operand,
   return tensorflow::XlaExpression::XlaOp(xla_op, dtype);
 }
 
-class Tf2XlaRewritePattern : public RewritePattern {
+class Tf2XlaRewritePattern : public ConversionPattern {
  public:
-  explicit Tf2XlaRewritePattern(MLIRContext* ctx,
+  explicit Tf2XlaRewritePattern(MLIRContext* ctx, TypeConverter& converter,
                                 const std::string& device_type,
-                                bool prefer_tf2xla, bool legalize_test_only_ops,
-                                bool is_module_pass)
-      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx),
+                                bool prefer_tf2xla, bool is_module_pass)
+      : ConversionPattern(converter, MatchAnyOpTypeTag(), /*benefit=*/1, ctx),
         device_type_(device_type),
         prefer_tf2xla_(prefer_tf2xla),
-        legalize_test_only_ops_(legalize_test_only_ops),
         is_module_pass_(is_module_pass) {}
 
-  LogicalResult matchAndRewrite(Operation* op,
-                                PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(
+      Operation* op, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const override {
+    // This pattern is a conversion pattern because we want to specify a type
+    // converter. However, this pattern still uses the original op's operands
+    // while creating the ops so make sure there aren't any type changes between
+    // the original op operands and the operands during the conversion.
+    for (auto&& [old_val, new_val] : llvm::zip(op->getOperands(), operands)) {
+      if (old_val.getType() != new_val.getType()) return failure();
+    }
+
     if (is_module_pass_) {
       // Module passes should only ever legalize ops that have been specifically
       // whitelisted for legalization within a module pass. They will never
@@ -777,8 +795,7 @@ class Tf2XlaRewritePattern : public RewritePattern {
         return failure();
       }
     } else if (!(IsOpAllowedTf2XlaFallback(op) ||
-                 (prefer_tf2xla_ && IsOpAllowedTf2XlaPreferred(op)) ||
-                 (legalize_test_only_ops_ && IsOpAllowedForTesting(op)))) {
+                 (prefer_tf2xla_ && IsOpAllowedTf2XlaPreferred(op)))) {
       return failure();
     }
     return Tf2XlaRewriter::RewriteOp(op, rewriter, device_type_,
@@ -788,52 +805,101 @@ class Tf2XlaRewritePattern : public RewritePattern {
  private:
   std::string device_type_;
   bool prefer_tf2xla_;
-  bool legalize_test_only_ops_;
   bool is_module_pass_;
 };
 
-// Include declaration for LegalizeTFWithTF2XLAOptions
-#define GEN_PASS_DECL_LEGALIZETFWITHTF2XLA
-#define GEN_PASS_DEF_LEGALIZETFWITHTF2XLA
-#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes.h.inc"
+bool ShouldRefineTypeTo(Type original_ty, Type updated_ty) {
+  auto updated = updated_ty.dyn_cast<ShapedType>();
+  auto original = original_ty.dyn_cast<ShapedType>();
 
-class LegalizeTF : public impl::LegalizeTFWithTF2XLABase<LegalizeTF> {
+  // Both types must be shaped types.
+  if (!original || !updated) return false;
+
+  // Element types must match.
+  if (original.getElementType() != updated.getElementType()) return false;
+
+  // If the updated type doesn't have a rank, then it can't be a more refined
+  // type.
+  if (!updated.hasRank()) return false;
+
+  // If the original type doesn't have a rank, then refine as the updated type
+  // has a rank.
+  if (!original.hasRank()) return true;
+
+  // Both types must have the same rank.
+  if (original.getRank() != updated.getRank()) return false;
+
+  // Refine if the updated type is bounded.
+  return IsBounded(updated);
+}
+
+// Propagates more refined type by cloning op using the new operands. This
+// allows all rewrite patterns that requires refined types to work without
+// requiring a rewrite to the conversion pattern. Declarative rewrite pattern
+// (DRR) doesn't even support conversion patterns with TableGen.
+class TypePropagator : public ConversionPattern {
  public:
-  LegalizeTF() = default;
-  explicit LegalizeTF(llvm::StringRef device_type, bool prefer_tf2xla) {
-    device_type_ = device_type.str();
-    prefer_tf2xla_ = prefer_tf2xla;
+  explicit TypePropagator(MLIRContext* ctx)
+      : ConversionPattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx) {}
+
+  LogicalResult matchAndRewrite(
+      Operation* op, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const override {
+    // This could be generalized to other ops as needs arise. We could even
+    // remove this restriction altogether except for the terminators that
+    // require function signature change and shouldn't be
+    if (op->getName().getDialectNamespace() !=
+        TF::TensorFlowDialect::getDialectNamespace())
+      return failure();
+
+    // Refining types may have implications to the attached regions or symbol
+    // references so do not update such ops.
+    if (!op->getRegions().empty() || HasSymbolRefAttr(op)) return failure();
+
+    BlockAndValueMapping mapper;
+    bool has_type_change = false;
+    for (auto [original, updated] : llvm::zip(op->getOperands(), operands)) {
+      Type original_ty = original.getType();
+      Type updated_ty = updated.getType();
+      if (original_ty != updated_ty) has_type_change = true;
+
+      if (!ShouldRefineTypeTo(original_ty, updated_ty)) return failure();
+      mapper.map(original, updated);
+    }
+    if (!has_type_change) return failure();
+
+    Operation* cloned_op = rewriter.clone(*op, mapper);
+    rewriter.replaceOp(op, cloned_op->getResults());
+    return success();
   }
-
-  LegalizeTF(const LegalizeTF&) {}
-
-  void runOnOperation() override {
-    RewritePatternSet patterns(&getContext());
-    patterns.add<Tf2XlaRewritePattern>(&getContext(), device_type_,
-                                       prefer_tf2xla_, legalize_test_only_ops_,
-                                       /*is_module_pass=*/false);
-    if (failed(
-            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
-      signalPassFailure();
-  }
-
- private:
 };
 
 }  // end namespace
 
-void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
-                                          RewritePatternSet& patterns,
-                                          MLIRContext* ctx, bool prefer_tf2xla,
-                                          bool is_module_pass) {
-  patterns.add<Tf2XlaRewritePattern>(ctx, device_type.str(), prefer_tf2xla,
-                                     /*legalize_test_only_ops=*/false,
-                                     is_module_pass);
+Tf2XlaTypeConverter::Tf2XlaTypeConverter() {
+  // Currently, we don't do any type conversions. Any TensorFlow op with a type
+  // that is not supported in MHLO will fail conversion. Quantized types are
+  // going to handled separately so we don't need to handle those.
+  addConversion([](Type ty) { return ty; });
+
+  // This materialization is helpful in cases where we have more refined types
+  // after conversion to mhlo compared to the original type in TF. For example,
+  // a TF op with result type tensor<*xf32> will have a bounded type after
+  // fallback legalization.
+  auto cast_value = [&](OpBuilder& builder, Type result_type, ValueRange inputs,
+                        Location loc) -> Value {
+    return builder.create<mlir::tensor::CastOp>(loc, result_type,
+                                                inputs.front());
+  };
+  addSourceMaterialization(cast_value);
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTfWithTf2XlaPass(
-    llvm::StringRef device_type, bool prefer_tf2xla) {
-  return std::make_unique<LegalizeTF>(device_type, prefer_tf2xla);
+void PopulateLegalizeTfWithTf2XlaPatterns(
+    llvm::StringRef device_type, RewritePatternSet& patterns, MLIRContext* ctx,
+    Tf2XlaTypeConverter& converter, bool prefer_tf2xla, bool is_module_pass) {
+  patterns.add<TypePropagator>(ctx);
+  patterns.add<Tf2XlaRewritePattern>(ctx, converter, device_type.str(),
+                                     prefer_tf2xla, is_module_pass);
 }
 
 }  // end namespace mhlo

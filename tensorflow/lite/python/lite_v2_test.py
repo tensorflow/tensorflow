@@ -2648,6 +2648,23 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
 class FromKerasModelTest(lite_v2_test_util.ModelTest):
 
+  @parameterized.named_parameters(('EnableMlirVariableQuantization', True),
+                                  ('DisablMlirVariableQuantization', False))
+  @test_util.run_v2_only
+  def testVariableQuantization(self, variable_quantization):
+    model, calibration_gen = self._createReadAssignModel()
+
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.representative_dataset = calibration_gen
+    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+    converter.inference_input_type = tf.int8  # or tf.uint8
+    converter.inference_output_type = tf.int8  # or tf.uint8
+    converter._experimental_variable_quantization = variable_quantization
+
+    converter.convert()
+    # TODO(b/261940892): Reinforce end-to-end test
+
   @test_util.run_v2_only
   def testSequentialModel(self):
     """Test a simple sequential tf.Keras model."""

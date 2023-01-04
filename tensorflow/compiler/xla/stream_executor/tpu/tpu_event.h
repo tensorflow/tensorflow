@@ -26,7 +26,7 @@ class TpuEvent : public ::stream_executor::internal::EventInterface {
  public:
   explicit TpuEvent(SE_Event* event) : event_(event) {}
   ~TpuEvent() override {
-    tensorflow::tpu::ExecutorApiFn()->TpuEvent_FreeFn(event_);
+    stream_executor::tpu::ExecutorApiFn()->TpuEvent_FreeFn(event_);
   }
 
  private:

@@ -424,43 +424,25 @@ void ComputeComputationPostOrder(HloComputation* computation,
   }
 }
 
-std::optional<int64_t> GetChannelId(const HloInstruction& inst) {
-  // Note that we only include Send and RecvDone, as we want to create a
-  // dependency between those, but not SendDone and Recv.
-  switch (inst.opcode()) {
-    case HloOpcode::kSend:
-    case HloOpcode::kRecvDone:
-    case HloOpcode::kAllReduce:
-    case HloOpcode::kAllGather:
-    case HloOpcode::kAllToAll:
-    case HloOpcode::kCollectivePermute:
-    case HloOpcode::kReduceScatter:
-      return inst.channel_id();
-    default:
-      return std::nullopt;
-  }
-}
-
 }  // namespace
 
 void HloComputation::ComputeInstructionPostOrder(
-    HloInstruction* root,
-    HloComputation::ChannelDependencyGroup& channel_dependencies,
+    HloInstruction* root, const ChannelDependencies& channel_dependencies,
     absl::flat_hash_map<HloInstruction*, VisitState>& visited,
     std::vector<HloInstruction*>& post_order) const {
   std::vector<HloInstruction*> dfs_stack = {root};
   while (!dfs_stack.empty()) {
     HloInstruction& current = *dfs_stack.back();
 
-    auto result = visited.insert({&current, kVisiting});
-    if (!result.second) {  // We've already seen this instruction.
+    auto [it, was_inserted] = visited.insert({&current, kVisiting});
+    if (!was_inserted) {  // We've already seen this instruction.
       dfs_stack.pop_back();
-      if (result.first->second != kVisited) {
+      if (it->second != kVisited) {
         DCHECK_EQ(current.parent(), this)
             << "Instruction " << current.name()
             << " is not in the current computation (" << name() << ").";
         post_order.push_back(&current);
-        result.first->second = kVisited;
+        it->second = kVisited;
       }
       continue;
     }
@@ -470,15 +452,10 @@ void HloComputation::ComputeInstructionPostOrder(
     // Collectives with the same channel ID must be performed together, as these
     // represent MPMD-partitioned that will later be split into separate modules
     // and the order must be preserved.
-    std::optional<int64_t> channel_id =
-        ((&current != root) && (current.opcode() != HloOpcode::kSend))
-            ? GetChannelId(current)
-            : std::nullopt;
-    if (channel_id) {
-      auto it = channel_dependencies.find(*channel_id);
+    if (&current != root) {
+      auto it = channel_dependencies.find(&current);
       if (it != channel_dependencies.end()) {
         dfs_stack.insert(dfs_stack.end(), it->second.begin(), it->second.end());
-        channel_dependencies.erase(it);
       }
     }
 
@@ -494,25 +471,68 @@ void HloComputation::ComputeInstructionPostOrder(
   }
 }
 
-HloComputation::ChannelDependencyGroup
-HloComputation::ComputeChannelDependencies() const {
+HloComputation::ChannelDependencies HloComputation::ComputeChannelDependencies()
+    const {
   if (parent() && parent()->config().has_static_device_assignment() &&
       (parent()->config().static_device_assignment().computation_count() == 1 ||
        parent()->config().use_spmd_partitioning())) {
     return {};
   }
 
-  ChannelDependencyGroup channel_dependencies;
+  using Instructions = absl::InlinedVector<HloInstruction*, 1>;
+  absl::flat_hash_map<int64_t, Instructions> channel_groups;
+
+  // Create dependencies RecvDone -> Send, and between partitioned collectives.
+  ChannelDependencies dependencies;
   for (const auto& instruction : instructions_) {
-    std::optional<int64_t> channel_id = GetChannelId(*instruction);
-    if (channel_id)
-      channel_dependencies[*channel_id].push_back(instruction.get());
+    switch (instruction->opcode()) {
+      case HloOpcode::kSend: {
+        Instructions& group = channel_groups[*instruction->channel_id()];
+        if (group.empty()) {
+          group.push_back(instruction.get());
+        } else {
+          dependencies[group[0]] = {instruction.get()};
+        }
+        break;
+      }
+      case HloOpcode::kRecvDone: {
+        Instructions& group = channel_groups[*instruction->channel_id()];
+        if (group.empty()) {
+          group.push_back(instruction.get());
+        } else {
+          dependencies[instruction.get()] = {group[0]};
+        }
+        break;
+      }
+      case HloOpcode::kAllReduce:
+      case HloOpcode::kAllGather:
+      case HloOpcode::kAllToAll:
+      case HloOpcode::kCollectivePermute:
+      case HloOpcode::kReduceScatter: {
+        std::optional<int64_t> channel_id = instruction->channel_id();
+        if (channel_id) {
+          Instructions& group = channel_groups[*channel_id];
+          for (const HloInstruction* group_inst : group) {
+            dependencies[group_inst].push_back(instruction.get());
+          }
+          dependencies[instruction.get()] = group;
+          group.push_back(instruction.get());
+        }
+        break;
+      }
+      default:
+        break;
+    }
   }
-  return channel_dependencies;
+  return dependencies;
 }
 
 std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
-  ChannelDependencyGroup channel_dependencies = ComputeChannelDependencies();
+  return MakeInstructionPostOrder(ComputeChannelDependencies());
+}
+
+std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder(
+    const ChannelDependencies& channel_dependencies) const {
   std::vector<HloInstruction*> post_order;
   post_order.reserve(instruction_count());
   absl::flat_hash_map<HloInstruction*, VisitState> visited;

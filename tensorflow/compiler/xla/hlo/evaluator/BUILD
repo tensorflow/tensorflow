@@ -28,6 +28,7 @@ cc_library(
         "hlo_evaluator_typed_visitor_complex64.cc",
         "hlo_evaluator_typed_visitor_double.cc",
         "hlo_evaluator_typed_visitor_float.cc",
+        "hlo_evaluator_typed_visitor_float8.cc",
         "hlo_evaluator_typed_visitor_half.cc",
         "hlo_evaluator_typed_visitor_int16.cc",
         "hlo_evaluator_typed_visitor_int32.cc",

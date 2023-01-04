@@ -41,8 +41,7 @@ namespace {
 
 // Exports all XLA functions in the form of XlaLaunch, and their nested
 // functions.
-Status ExportXlaFunctions(mlir::ModuleOp module,
-                          std::vector<FunctionDef>* xla_func_defs) {
+StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(mlir::ModuleOp module) {
   // Find all XLA functions.
   std::vector<std::string> xla_functions;
   module.walk([&](mlir::TF::XlaLaunchOp xla_launch_op) {
@@ -59,6 +58,7 @@ Status ExportXlaFunctions(mlir::ModuleOp module,
 
   const mlir::SymbolTable symbol_table(module);
   absl::flat_hash_set<std::string> visited;
+  std::vector<FunctionDef> xla_func_defs;
   while (!queue.empty()) {
     const std::string func_name = queue.front();
     queue.pop_front();
@@ -73,7 +73,7 @@ Status ExportXlaFunctions(mlir::ModuleOp module,
     FunctionDef func_def;
     TF_RETURN_IF_ERROR(ConvertMlirFunctionToFunctionLibraryDef(
         func_op, GraphExportConfig(), &func_def));
-    xla_func_defs->push_back(func_def);
+    xla_func_defs.push_back(func_def);
 
     // Visit each op in the function and find out referenced functions from the
     // attributes.
@@ -91,7 +91,7 @@ Status ExportXlaFunctions(mlir::ModuleOp module,
     });
     visited.insert(func_name);
   }
-  return OkStatus();
+  return xla_func_defs;
 }
 
 }  // namespace
@@ -127,7 +127,7 @@ Status ConvertFunctionToBef(
 
 Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
                           mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer,
-                          std::vector<FunctionDef>* xla_func_defs) {
+                          tfrt_stub::FallbackState* fallback_state) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
   if (options.device_target == TfrtDeviceInfraTarget::kTpurt) {
@@ -167,8 +167,15 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
     TF_RETURN_IF_ERROR(
         mlir::TF::RunTFXLABridge(module, /*enable_logging=*/VLOG_IS_ON(1)));
 
-    if (xla_func_defs != nullptr) {
-      TF_RETURN_IF_ERROR(ExportXlaFunctions(module, xla_func_defs));
+    // GPU XLA clusters are wrapped in functions, which could be transformed by
+    // bridge. Hence, the MLIR functions for XLA clusters are exported and added
+    // to the function library.
+    if (fallback_state != nullptr) {
+      TF_ASSIGN_OR_RETURN(const std::vector<FunctionDef> xla_func_defs,
+                          ExportXlaFunctions(module));
+      for (const auto& func_def : xla_func_defs) {
+        TF_RETURN_IF_ERROR(fallback_state->AddFunctionDef(func_def));
+      }
     }
   }
 

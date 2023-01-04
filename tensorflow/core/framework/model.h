@@ -1042,6 +1042,10 @@ class ModelTiming {
 
   // Computes the total time of an async interleave node.
   void ComputeAsyncInterleaveManyTotalTime(const Node& node);
+  // Computes the first input total time of an async interleave node.
+  double ComputeAsyncInterleaveManyFirstInputTotalTime(const Node& node);
+  // Computes the interleaved inputs' total time of an async interleave node.
+  double ComputeAsyncInterleaveManyInterleavedInputsTotalTime(const Node& node);
 
   // Returns a vector of all nodes in the model. The nodes are either in
   // breadth-first search or reverse breadth-first search order depending on the

@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
 #include <string>
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -139,7 +139,7 @@ LogicalResult HandleWhileOp(
   llvm::SmallDenseMap<Value, Value> body_map;
   auto find_arg_stack_type = [&](int64_t index) -> llvm::Optional<Type> {
     auto it = data_var_to_size_var.find(while_op.getOperand(index));
-    if (it == data_var_to_size_var.end()) return llvm::None;
+    if (it == data_var_to_size_var.end()) return std::nullopt;
     return it->getFirst().getType();
   };
   auto add_size_vars_to_return = [&](ArrayRef<BlockArgument> new_args) {
@@ -211,7 +211,7 @@ LogicalResult HandleIfOp(
 
   auto find_arg_stack_type = [&](int64_t index) -> llvm::Optional<Type> {
     auto it = data_var_to_size_var.find(if_op.getOperand(index + 1));
-    if (it == data_var_to_size_var.end()) return llvm::None;
+    if (it == data_var_to_size_var.end()) return std::nullopt;
     return it->getFirst().getType();
   };
   ModifyFunctionSignature(then_func, &then_map, find_arg_stack_type);
@@ -316,7 +316,7 @@ LogicalResult HandlePartitionedCallOp(
   }
   auto find_arg_stack_type = [&](int64_t index) -> llvm::Optional<Type> {
     auto it = data_var_to_size_var.find(call.getOperand(index));
-    if (it == data_var_to_size_var.end()) return llvm::None;
+    if (it == data_var_to_size_var.end()) return std::nullopt;
     return it->getFirst().getType();
   };
   ModifyFunctionSignature(lowered_callee, &callee_map, find_arg_stack_type);
@@ -357,7 +357,7 @@ LogicalResult HandleStackV2Op(
   auto elem_type = cutil::GetElementTypeFromAccess(
       stack.getHandle(), module, [](Operation* user) -> llvm::Optional<Type> {
         auto push = llvm::dyn_cast<TF::StackPushV2Op>(user);
-        if (!push) return llvm::None;
+        if (!push) return std::nullopt;
         return push.getElem().getType();
       });
   if (!elem_type.has_value()) {

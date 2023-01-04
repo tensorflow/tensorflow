@@ -63,6 +63,12 @@ def xla_aot_compile_gpu(
                " --platform=gpu" +
                " --gpu_target_config=$(location " + gpu_target_config + ")"),
         tools = [xla_compile_tool],
+        # copybara:comment_begin(oss-only)
+        target_compatible_with = select({
+            "@local_config_cuda//:is_cuda_enabled": [],
+            "//conditions:default": ["@platforms//:incompatible"],
+        }),
+        # copybara:comment_end
     )
 
     return

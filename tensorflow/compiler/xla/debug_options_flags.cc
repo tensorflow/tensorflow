@@ -717,6 +717,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_enable_async_all_reduce(),
       "Converts synchronous all-reduce ops into asynchronous."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_async_collective_permute",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_async_collective_permute),
+      debug_options->xla_gpu_enable_async_collective_permute(),
+      "Converts synchronous collective-permute ops into asynchronous."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_all_reduce_combine_threshold_bytes",
       int64_setter_for(
           &DebugOptions::set_xla_gpu_all_reduce_combine_threshold_bytes),

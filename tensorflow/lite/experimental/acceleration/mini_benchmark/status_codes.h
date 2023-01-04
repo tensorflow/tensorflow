@@ -117,6 +117,8 @@ enum MinibenchmarkStatus {
   //
   // Next available code: 1602
   kMinibenchmarkUnableToSetCpuAffinity = 1601,
+
+  kMinibenchmarkAbiMethodNotAvailable = 1701,
 };
 }  // namespace acceleration
 }  // namespace tflite

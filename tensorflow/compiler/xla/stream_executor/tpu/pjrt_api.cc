@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -60,10 +61,8 @@ xla::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api) {
   std::string canonicalize_device_type = CanonicalizeDeviceType(device_type);
   if (auto iter = pjrt_apis->find(canonicalize_device_type);
       iter != pjrt_apis->end()) {
-    // TODO(jieying): make this an error again
-    VLOG(1) << "PJRT_Api already exists for device type "
-            << canonicalize_device_type;
-    return tsl::OkStatus();
+    return tsl::errors::AlreadyExists(
+        "PJRT_Api already exists for device type ", canonicalize_device_type);
   }
   (*pjrt_apis)[canonicalize_device_type] = api;
   LOG(INFO) << "PJRT_Api is set for device type " << canonicalize_device_type;
@@ -83,7 +82,11 @@ xla::Status LoadPjrtPlugin(absl::string_view device_type,
   }
   LOG(INFO) << "GetPjrtApi was found for " << device_type << " at "
             << library_path;
-  TF_RETURN_IF_ERROR(stream_executor::tpu::SetPjrtApi(device_type, fptr()));
+
+  const PJRT_Api* pjrt_api = fptr();
+  TF_RETURN_IF_ERROR(pjrt::CheckMatchingStructSizes(
+      "PJRT_Api", PJRT_Api_STRUCT_SIZE, pjrt_api->struct_size));
+  TF_RETURN_IF_ERROR(stream_executor::tpu::SetPjrtApi(device_type, pjrt_api));
   return tsl::OkStatus();
 }
 

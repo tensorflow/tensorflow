@@ -146,14 +146,15 @@ TfLiteStatus AsyncSubgraph::InvokeAsync(TfLiteExecutionTask* task) {
   if (task == nullptr || async_kernel() == nullptr) {
     return kTfLiteError;
   }
-  if (task->task->Scheduled()) {
+  if (task->task->SetScheduled(true)) {
     TFLITE_LOG(tflite::TFLITE_LOG_ERROR,
                "The task has already been scheduled for execution.");
     return kTfLiteError;
   }
-  task->task->SetScheduled(true);
-  return (*async_kernel_->eval)(async_kernel_, opaque_context(), opaque_node_,
-                                task);
+  auto ret = (*async_kernel_->eval)(async_kernel_, opaque_context(),
+                                    opaque_node_, task);
+  task->task->SetStatus(ret);
+  return ret;
 }
 
 TfLiteStatus AsyncSubgraph::Wait(TfLiteExecutionTask* task) {
@@ -161,22 +162,24 @@ TfLiteStatus AsyncSubgraph::Wait(TfLiteExecutionTask* task) {
     return kTfLiteError;
   }
   if (!task->task->Scheduled()) {
-    // Nothing to wait.
-    return kTfLiteOk;
+    // Nothing to wait. Returns the previous status code in case multiple
+    // threads are waiting for the same task.
+    return task->task->Status();
   }
+  auto ret = (*async_kernel_->wait)(async_kernel_, opaque_context(), task);
+  task->task->SetStatus(ret);
   task->task->SetScheduled(false);
-  return (*async_kernel_->wait)(async_kernel_, opaque_context(), task);
+  return ret;
 }
 
 TfLiteStatus AsyncSubgraph::Finish(TfLiteExecutionTask* task) {
   if (async_kernel() == nullptr) return kTfLiteError;
-  if ((*async_kernel_->finish)(async_kernel_, opaque_context(), task) !=
-      kTfLiteOk) {
+  auto ret = (*async_kernel_->finish)(async_kernel_, opaque_context(), task);
+  if (ret != kTfLiteOk) {
     subgraph_->ReportError("Failed to finish task.");
-    return kTfLiteError;
   }
   delete task;
-  return kTfLiteOk;
+  return ret;
 }
 
 }  // namespace async

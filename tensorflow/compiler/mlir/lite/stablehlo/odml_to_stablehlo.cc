@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -133,7 +134,7 @@ opt<bool> skip_resize(
 // NOLINTNEXTLINE
 opt<bool> smuggle_disallowed_ops(
     "smuggle-disallowed-ops",
-    llvm::cl::desc("Smuggle disallowed ops via mhlo.custom_calls."),
+    llvm::cl::desc("Smuggle disallowed ops via stablehlo.custom_calls."),
     llvm::cl::Optional, llvm::cl::init(false));
 
 // NOLINTNEXTLINE
@@ -314,7 +315,7 @@ tensorflow::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
                                     elide_large_elements_attrs));
   }
 
-  llvm::Optional<tensorflow::Session*> session = llvm::None;
+  llvm::Optional<tensorflow::Session*> session = std::nullopt;
   if (bundle) session = bundle->GetSession();  // NOMUTANTS--it should pass.
 
   if (freeze_tf_graph) {
@@ -334,7 +335,7 @@ tensorflow::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
   auto conversion_status = ConvertTFToStableHLO(*module, pass_pipeline);
   auto export_path = conversion_status.ok()
                          ? output_path
-                         : absl::StrCat(verbose_dir, "/debug_mhlo.mlir");
+                         : absl::StrCat(verbose_dir, "/debug_stablehlo.mlir");
   return ExportModule(*module, export_path, elide_large_elements_attrs);
 }
 

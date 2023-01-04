@@ -46,9 +46,7 @@ limitations under the License.
 #endif  // XLA_PYTHON_ENABLE_GPU
 #include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#ifdef JAX_ENABLE_IFRT
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
-#endif
 #ifdef XLA_PYTHON_ENABLE_PLUGIN_DEVICE
 #include "tensorflow/compiler/xla/pjrt/pjrt_plugin_device_client.h"
 #endif  // XLA_PYTHON_ENABLE_PLUGIN_DEVICE
@@ -86,6 +84,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/distributed_runtime/preemption/preemption_sync_manager.h"
 #include "tensorflow/tsl/python/lib/core/bfloat16.h"
+#include "tensorflow/tsl/python/lib/core/float8.h"
 
 // TODO(phawkins): remove host_id properties after JAX is update to avoid them.
 
@@ -107,6 +106,8 @@ bool IsOptimizedBuild() {
 PYBIND11_MODULE(xla_extension, m) {
   tsl::ImportNumpy();
   CHECK(tsl::RegisterNumpyBfloat16());
+  CHECK(tsl::RegisterNumpyFloat8e4m3fn());
+  CHECK(tsl::RegisterNumpyFloat8e5m2());
 
   // Exceptions
   py::register_exception<XlaRuntimeError>(m, "XlaRuntimeError",
@@ -125,6 +126,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("U32", U32)
       .value("U64", U64)
       .value("F16", F16)
+      .value("F8E4M3FN", F8E4M3FN)
+      .value("F8E5M2", F8E5M2)
       .value("BF16", BF16)
       .value("F32", F32)
       .value("F64", F64)
@@ -135,6 +138,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("TOKEN", TOKEN);
 
   m.def("bfloat16_dtype", []() { return py::handle(tsl::Bfloat16Dtype()); });
+  m.def("float8_e4m3fn_dtype",
+        []() { return py::handle(tsl::Float8e4m3fnDtype()); });
+  m.def("float8_e5m2_dtype",
+        []() { return py::handle(tsl::Float8e5m2Dtype()); });
 
   // Must be before PyClient.compile.
   BuildXlaCompilerSubmodule(m);
@@ -307,24 +314,16 @@ PYBIND11_MODULE(xla_extension, m) {
         py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                             GetTfrtCpuClient(asynchronous));
-#ifdef JAX_ENABLE_IFRT
         return std::make_shared<PyClient>(
             ifrt::PjRtClient::Create(std::move(client)));
-#else
-        return std::make_shared<PyClient>(std::move(client));
-#endif
       },
       py::arg("asynchronous") = true);
   m.def("get_interpreter_client", []() -> StatusOr<std::shared_ptr<PyClient>> {
     py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                         GetInterpreterClient());
-#ifdef JAX_ENABLE_IFRT
     return std::make_shared<PyClient>(
         ifrt::PjRtClient::Create(std::move(client)));
-#else
-    return std::make_shared<PyClient>(std::move(client));
-#endif
   });
   m.def("load_pjrt_plugin",
         [](std::string platform_name, std::string library_path) -> Status {
@@ -357,12 +356,8 @@ PYBIND11_MODULE(xla_extension, m) {
             GetStreamExecutorGpuClient(asynchronous, allocator_config,
                                        std::move(distributed_client), node_id,
                                        allowed_devices, platform_name));
-#ifdef JAX_ENABLE_IFRT
         return std::make_shared<PyClient>(
             ifrt::PjRtClient::Create(std::move(client)));
-#else
-        return std::make_shared<PyClient>(std::move(client));
-#endif
       },
       py::arg("asynchronous") = true,
       py::arg("allocator_config") = GpuAllocatorConfig(),
@@ -378,12 +373,8 @@ PYBIND11_MODULE(xla_extension, m) {
         py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtClient> client,
                             GetTpuClient(max_inflight_computations));
-#ifdef JAX_ENABLE_IFRT
         return std::make_shared<PyClient>(
             ifrt::PjRtClient::Create(std::move(client)));
-#else
-        return std::make_shared<PyClient>(std::move(client));
-#endif
       },
       py::arg("max_inflight_computations") = 32);
   // TODO(b/262050449): move out from `#ifdef XLA_PYTHON_ENABLE_TPU` when
@@ -393,12 +384,8 @@ PYBIND11_MODULE(xla_extension, m) {
           py::gil_scoped_release gil_release;
           TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> c_api_client,
                               GetCApiClient(platform_name));
-#ifdef JAX_ENABLE_IFRT
           return std::make_shared<PyClient>(
               ifrt::PjRtClient::Create(std::move(c_api_client)));
-#else
-          return std::make_shared<PyClient>(std::move(c_api_client));
-#endif
         });
 #endif  // XLA_PYTHON_ENABLE_TPU
 
@@ -408,12 +395,8 @@ PYBIND11_MODULE(xla_extension, m) {
           py::gil_scoped_release gil_release;
           TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                               GetTfrtPluginDeviceClient());
-#ifdef JAX_ENABLE_IFRT
           return std::make_shared<PyClient>(
               ifrt::PjRtClient::Create(std::move(client)));
-#else
-          return std::make_shared<PyClient>(std::move(client));
-#endif
         });
 #endif  // XLA_PYTHON_ENABLE_PLUGIN_DEVICE
 

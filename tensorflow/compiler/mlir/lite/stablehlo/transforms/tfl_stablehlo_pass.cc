@@ -35,12 +35,10 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
 
 namespace mlir {
 namespace odml {
@@ -59,10 +57,7 @@ class TflToStablehloPass
   void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry& registry) const override {
-    mlir::mhlo::registerAllMhloDialects(registry);
     mlir::stablehlo::registerAllDialects(registry);
-    registry.insert<::mlir::mhlo::MhloDialect>();
-    registry.insert<shape::ShapeDialect>();
   }
   inline TFL::ConstBytesAttr CustomOption(OpBuilder* builder,
                                           const std::string& content) {
@@ -99,8 +94,15 @@ class TflToStablehloPass
           for (size_t i = 0; i < vector.size(); i++) {
             vec.push_back(vector[i].AsInt64());
           }
+          std::vector<int64_t> shape;
+          if (std::string{key} == "padding") {
+            shape.push_back(vec.size() / 2);
+            shape.push_back(2);
+          } else {
+            shape.push_back(vec.size());
+          }
           RankedTensorType ty = tensorflow::GetTypeFromTFTensorShape(
-              {static_cast<int64_t>(vec.size())}, builder->getIntegerType(64));
+              shape, builder->getIntegerType(64));
           auto named_attr =
               builder->getNamedAttr(key, DenseIntElementsAttr::get(ty, vec));
           attrs.push_back(named_attr);
@@ -112,10 +114,10 @@ class TflToStablehloPass
           if (std::string{key} == "precision_config") {
             llvm::SmallVector<mlir::Attribute> precision_attrs;
             for (size_t i = 0; i < vector.size(); i++) {
-              auto conf_attr = mlir::mhlo::PrecisionAttr::get(
-                  builder->getContext(),
-                  mlir::mhlo::symbolizePrecision(vector[i].AsString().str())
-                      .value());
+              auto conf_attr = mlir::stablehlo::PrecisionAttr::get(
+                  builder->getContext(), mlir::stablehlo::symbolizePrecision(
+                                             vector[i].AsString().str())
+                                             .value());
               precision_attrs.push_back(conf_attr);
             }
             auto named_attr = builder->getNamedAttr(
@@ -143,7 +145,7 @@ class TflToStablehloPass
             auto vec2 = FlatbufferVecToMlirVec(value_vec[5].AsVector());
             auto vec3 = FlatbufferVecToMlirVec(value_vec[8].AsVector());
             auto conv_dimension_numbers_attr =
-                mlir::mhlo::ConvDimensionNumbersAttr::get(
+                mlir::stablehlo::ConvDimensionNumbersAttr::get(
                     builder->getContext(), value_vec[0].AsInt64(),
                     value_vec[1].AsInt64(), llvm::ArrayRef<int64_t>(vec1),
                     value_vec[3].AsInt64(), value_vec[4].AsInt64(),
@@ -188,13 +190,13 @@ void TflToStablehloPass::runOnOperation() {
     }
     op_state.addTypes(output_tys);
     op_state.addAttributes(attr);
-    auto mhlo_op = builder.create(op_state);
-    custom_op.replaceAllUsesWith(mhlo_op);
+    auto stablehlo_op = builder.create(op_state);
+    custom_op.replaceAllUsesWith(stablehlo_op);
     custom_op.erase();
   });
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateTflToMhloPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTflToStablehloPass() {
   return std::make_unique<TflToStablehloPass>();
 }
 

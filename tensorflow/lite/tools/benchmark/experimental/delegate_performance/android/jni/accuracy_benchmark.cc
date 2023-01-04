@@ -27,65 +27,24 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
-#include "tensorflow/lite/delegates/utils/experimental/stable_delegate/tflite_settings_json_parser.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/blocking_validator_runner.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_options.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
-#include "tensorflow/lite/tools/command_line_flags.h"
-#include "tensorflow/lite/tools/tool_params.h"
+#include "tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/jni/status_codes.h"
 
 namespace tflite {
 namespace benchmark {
 namespace accuracy {
-namespace {
 
-template <typename T>
-Flag CreateFlag(const char* name, tools::ToolParams* params,
-                const std::string& usage) {
-  return Flag(
-      name,
-      [params, name](const T& val, int argv_position) {
-        params->Set<T>(name, val, argv_position);
-      },
-      params->Get<T>(name), usage, Flag::kRequired);
-}
-
-AccuracyBenchmarkStatus ParseTfLiteSettingsFilePathFromArgs(
-    const std::vector<std::string>& args,
-    std::string& tflite_settings_file_path) {
-  tools::ToolParams params;
-  params.AddParam("stable_delegate_settings_file",
-                  tools::ToolParam::Create<std::string>(""));
-
-  std::vector<const char*> argv;
-  std::string arg0 = "(MiniBenchmarkAndroid)";
-  argv.push_back(const_cast<char*>(arg0.data()));
-  for (auto& arg : args) {
-    argv.push_back(arg.data());
-  }
-  int argc = argv.size();
-  if (!Flags::Parse(
-          &argc, argv.data(),
-          {CreateFlag<std::string>("stable_delegate_settings_file", &params,
-                                   "Path to the JSON-formatted stable delegate "
-                                   "TFLiteSettings file.")})) {
-    return kAccuracyBenchmarkArgumentParsingFailed;
-  }
-  tflite_settings_file_path =
-      params.Get<std::string>("stable_delegate_settings_file");
-  return kAccuracyBenchmarkSuccess;
-}
-
-}  // namespace
-
-AccuracyBenchmarkStatus Benchmark(const std::vector<std::string>& args,
-                                  int model_fd, size_t model_offset,
-                                  size_t model_size,
-                                  const char* result_path_chars) {
+flatbuffers::Offset<BenchmarkEvent> Benchmark(
+    flatbuffers::FlatBufferBuilder& fbb, const TFLiteSettings& tflite_settings,
+    int model_fd, size_t model_offset, size_t model_size,
+    const char* result_path_chars) {
   std::string result_path(result_path_chars);
   acceleration::ValidatorRunnerOptions options;
   options.model_fd = model_fd;
@@ -109,30 +68,18 @@ AccuracyBenchmarkStatus Benchmark(const std::vector<std::string>& args,
         "MiniBenchmark BlockingValidatorRunner initialization failed with "
         "error code %d",
         status);
-    return kAccuracyBenchmarkRunnerInitializationFailed;
+    BenchmarkErrorBuilder error_builder(fbb);
+    error_builder.add_stage(BenchmarkStage_INITIALIZATION);
+    error_builder.add_exit_code(kBenchmarkRunnerInitializationFailed);
+    error_builder.add_mini_benchmark_error_code(status);
+    flatbuffers::Offset<BenchmarkError> error = error_builder.Finish();
+    BenchmarkEventBuilder builder(fbb);
+    builder.add_event_type(BenchmarkEventType_ERROR);
+    builder.add_error(error);
+    return builder.Finish();
   }
 
-  std::string tflite_settings_file_path;
-  AccuracyBenchmarkStatus parse_status =
-      ParseTfLiteSettingsFilePathFromArgs(args, tflite_settings_file_path);
-  delegates::utils::TfLiteSettingsJsonParser parser;
-
-  if (parse_status != kAccuracyBenchmarkSuccess) {
-    TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
-                    "Failed to parse arguments with error code %d",
-                    parse_status);
-    return parse_status;
-  }
-  const TFLiteSettings* tflite_settings =
-      parser.Parse(tflite_settings_file_path);
-  if (tflite_settings == nullptr) {
-    TFLITE_LOG_PROD(
-        TFLITE_LOG_ERROR,
-        "Failed to parse TFLiteSettings from the input JSON file %s",
-        tflite_settings_file_path.c_str());
-    return kAccuracyBenchmarkTfLiteSettingsParsingFailed;
-  }
-  std::vector<const TFLiteSettings*> settings = {tflite_settings};
+  std::vector<const TFLiteSettings*> settings = {&tflite_settings};
   std::vector<flatbuffers::FlatBufferBuilder> results =
       runner.TriggerValidation(settings);
   if (results.size() != settings.size()) {
@@ -140,16 +87,21 @@ AccuracyBenchmarkStatus Benchmark(const std::vector<std::string>& args,
         TFLITE_LOG_ERROR,
         "Number of result events (%zu) doesn't match the expectation (%zu).",
         results.size(), settings.size());
-    return kAccuracyBenchmarkResultCountMismatch;
+    flatbuffers::Offset<BenchmarkError> error =
+        CreateBenchmarkError(fbb, BenchmarkStage_INFERENCE,
+                             /*exit_code=*/kBenchmarkResultCountMismatch);
+    BenchmarkEventBuilder builder(fbb);
+    builder.add_event_type(BenchmarkEventType_ERROR);
+    builder.add_error(error);
+    return builder.Finish();
   }
   // The settings contains one test only. Therefore, the benchmark checks for
   // the first result only.
-  const BenchmarkEvent* result_event =
-      flatbuffers::GetRoot<BenchmarkEvent>(results[0].GetBufferPointer());
-  if (!result_event->result() || !result_event->result()->ok()) {
-    return kAccuracyBenchmarkFail;
-  }
-  return kAccuracyBenchmarkPass;
+  TFLITE_CHECK_EQ(results.size(), 1);
+  BenchmarkEventT benchmark_event;
+  flatbuffers::GetRoot<tflite::BenchmarkEvent>(results[0].GetBufferPointer())
+      ->UnPackTo(&benchmark_event);
+  return CreateBenchmarkEvent(fbb, &benchmark_event);
 }
 
 }  // namespace accuracy

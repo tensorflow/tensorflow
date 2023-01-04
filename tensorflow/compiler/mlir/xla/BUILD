@@ -92,6 +92,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )
 
@@ -143,6 +144,7 @@ cc_library(
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TransformUtils",
         "@stablehlo//:chlo_ops",
     ],
 )
@@ -259,8 +261,12 @@ cc_library(
     srcs = [
         "transforms/legalize_tf_with_tf2xla.cc",
     ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
     deps = [
         ":tf_xla_passes_inc_gen",
+        ":xla_legalize_tf_passes_inc_gen",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",

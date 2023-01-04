@@ -69,7 +69,6 @@ typedef enum TfLiteExternalContextType {
 struct TfLiteContext;
 struct TfLiteDelegate;
 struct TfLiteRegistration;
-struct TfLiteOpaqueDelegateStruct;
 struct TfLiteOpaqueDelegateBuilder;
 
 // An external context is a collection of information unrelated to the TF Lite
@@ -690,7 +689,7 @@ typedef struct TfLiteDelegateParams {
 // See also the `CreateOpaqueDelegateParams` function in `subgraph.cc`
 // details.
 typedef struct TfLiteOpaqueDelegateParams {
-  struct TfLiteOpaqueDelegateStruct* delegate;
+  TfLiteOpaqueDelegate* delegate;
   void* delegate_data;
   TfLiteIntArray* nodes_to_replace;
   TfLiteIntArray* input_tensors;
@@ -1074,7 +1073,7 @@ typedef struct TfLiteDelegate {
 TfLiteDelegate TfLiteDelegateCreate(void);
 
 // `TfLiteOpaqueDelegateBuilder` is used for constructing
-// `TfLiteOpaqueDelegateStruct`, see `TfLiteOpaqueDelegateCreate` below.  Note:
+// `TfLiteOpaqueDelegate`, see `TfLiteOpaqueDelegateCreate` below.  Note:
 // This struct is not ABI stable.
 //
 // For forward source compatibility `TfLiteOpaqueDelegateBuilder` objects should
@@ -1094,27 +1093,26 @@ typedef struct TfLiteOpaqueDelegateBuilder {
   // to ask the TensorFlow lite runtime to create macro-nodes to represent
   // delegated subgraphs of the original graph.
   TfLiteStatus (*Prepare)(TfLiteOpaqueContext* context,  // NOLINT
-                          struct TfLiteOpaqueDelegateStruct* delegate,
-                          void* data);
+                          TfLiteOpaqueDelegate* delegate, void* data);
   // Copies the data from delegate buffer handle into raw memory of the given
   // 'tensor'. Note that the delegate is allowed to allocate the raw bytes as
   // long as it follows the rules for kTfLiteDynamic tensors, in which case this
   // cannot be null.
   TfLiteStatus (*CopyFromBufferHandle)(  // NOLINT
-      TfLiteOpaqueContext* context, struct TfLiteOpaqueDelegateStruct* delegate,
-      void* data, TfLiteBufferHandle buffer_handle, TfLiteOpaqueTensor* tensor);
+      TfLiteOpaqueContext* context, TfLiteOpaqueDelegate* delegate, void* data,
+      TfLiteBufferHandle buffer_handle, TfLiteOpaqueTensor* tensor);
   // Copies the data from raw memory of the given 'tensor' to delegate buffer
   // handle. This can be null if the delegate doesn't use its own buffer.
   TfLiteStatus (*CopyToBufferHandle)(  // NOLINT
-      TfLiteOpaqueContext* context, struct TfLiteOpaqueDelegateStruct* delegate,
-      void* data, TfLiteBufferHandle buffer_handle, TfLiteOpaqueTensor* tensor);
+      TfLiteOpaqueContext* context, TfLiteOpaqueDelegate* delegate, void* data,
+      TfLiteBufferHandle buffer_handle, TfLiteOpaqueTensor* tensor);
   // Frees the Delegate Buffer Handle. Note: This only frees the handle, but
   // this doesn't release the underlying resource (e.g. textures). The
   // resources are either owned by application layer or the delegate.
   // This can be null if the delegate doesn't use its own buffer.
   void (*FreeBufferHandle)(TfLiteOpaqueContext* context,  // NOLINT
-                           struct TfLiteOpaqueDelegateStruct* delegate,
-                           void* data, TfLiteBufferHandle* handle);
+                           TfLiteOpaqueDelegate* delegate, void* data,
+                           TfLiteBufferHandle* handle);
   // Bitmask flags. See the comments in `TfLiteDelegateFlags`.
   int64_t flags;
 } TfLiteOpaqueDelegateBuilder;
@@ -1123,18 +1121,18 @@ typedef struct TfLiteOpaqueDelegateBuilder {
 // behave according to the provided 'opaque_delegate_builder'.  The lifetime of
 // the objects pointed to by any of the fields within the
 // 'opaque_delegate_builder' must outlive the returned
-// 'TfLiteOpaqueDelegateStruct' and any 'TfLiteInterpreter',
+// 'TfLiteOpaqueDelegate' and any 'TfLiteInterpreter',
 // 'TfLiteInterpreterOptions', 'tflite::Interpreter', or
 // 'tflite::InterpreterBuilder' that the delegate is added to.  The returned
 // address should be passed to 'TfLiteOpaqueDelegateDelete' for deletion.  If
 // 'opaque_delegate_builder' is a null pointer, then a null pointer will be
 // returned.
-struct TfLiteOpaqueDelegateStruct* TfLiteOpaqueDelegateCreate(
+TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
     const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder);
 
 // Deletes the provided opaque 'delegate'.  This function has no effect if the
 // 'delegate' is a null pointer.
-void TfLiteOpaqueDelegateDelete(struct TfLiteOpaqueDelegateStruct* delegate);
+void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* delegate);
 
 #ifdef __cplusplus
 }  // extern "C"

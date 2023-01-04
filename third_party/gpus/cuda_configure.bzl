@@ -957,7 +957,7 @@ def _tf_sysroot(repository_ctx):
     return get_host_environ(repository_ctx, _TF_SYSROOT, "")
 
 def _compute_cuda_extra_copts(repository_ctx, compute_capabilities):
-    copts = []
+    copts = ["--no-cuda-include-ptx=all"] if _use_cuda_clang(repository_ctx) else []
     for capability in compute_capabilities:
         if capability.startswith("compute_"):
             capability = capability.replace("compute_", "sm_")

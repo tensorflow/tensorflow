@@ -233,7 +233,6 @@ tfrt_cc_library(
     name = "tf_jitrt_request_context",
     srcs = ["jit/tf_jitrt_request_context.cc"],
     hdrs = ["jit/tf_jitrt_request_context.h"],
-    # copybara:uncomment compatible_with = ["//buildenv/target:gce"],
     deps = [
         "//tensorflow/compiler/xla/runtime:async_values_cache",
         "//tensorflow/compiler/xla/runtime:jit_executable",
@@ -392,6 +391,7 @@ cc_library(
         "transforms/remove_device_attribute.cc",
         "transforms/remove_tf_if_const_args.cc",
         "transforms/reorder_assert.cc",
+        "transforms/sink_in_invariant_ops.cc",
         "transforms/tf_to_tfrt.cc",
         "transforms/tpu_passes.h",
     ],
@@ -553,6 +553,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:function_body",
         "//tensorflow/core/common_runtime:function_def_utils",
+        "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/platform:status",
         "@tf_runtime//:bef",
         "@tf_runtime//:mlirtobef",
@@ -820,5 +821,15 @@ cc_library(
         "@tf_runtime//:basic_kernels_opdefs",
         "@tf_runtime//:core_runtime_opdefs",
         "@tf_runtime//:support",
+    ],
+)
+
+cc_library(
+    name = "transforms/update_op_cost_in_tfrt_mlir",
+    srcs = ["transforms/update_op_cost_in_tfrt_mlir.cc"],
+    hdrs = ["transforms/update_op_cost_in_tfrt_mlir.h"],
+    deps = [
+        "//tensorflow/core/tfrt/fallback:cost_recorder",
+        "@llvm-project//mlir:IR",
     ],
 )

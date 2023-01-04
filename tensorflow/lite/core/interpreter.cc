@@ -90,7 +90,6 @@ TfLiteQuantization GetQuantizationFromLegacy(
 Interpreter::Interpreter(ErrorReporter* error_reporter)
     : error_reporter_(error_reporter ? error_reporter
                                      : DefaultErrorReporter()) {
-  // TODO(b/128420794): Include the TFLite runtime version in the log.
   // Prod logging is useful for mobile platforms where scraping console logs is
   // critical for debugging.
 #if defined(TFLITE_IS_MOBILE_PLATFORM)

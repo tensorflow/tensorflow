@@ -968,8 +968,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       const int64_t feature_group_index =
           out_index[output_z_dim] / output_feature_group_size;
 
-      const int64_t depthwise_multiplier =
-          batch_group_count > 1 ? output_z_size / batch_group_count : 1;
+      const int64_t depthwise_multiplier = output_z_size / batch_group_count;
       const int64_t batch_group_index =
           out_index[output_z_dim] / depthwise_multiplier;
 
@@ -1042,9 +1041,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           // This approach works out automatically for 'groups' in batches
           // with group_size > 1, because we already descend down the batch
           // dimension for the 'output_batch_dim' above.
-          lhs_linear_index +=
-              ((batch_group_index * batch_group_size) % input_batch_size) *
-              lhs_dim_multipliers[input_batch_dim];
+          lhs_linear_index += (batch_group_index * batch_group_size) *
+                              lhs_dim_multipliers[input_batch_dim];
 
           lhs_linear_index += iz * lhs_dim_multipliers[input_z_dim];
           int64_t rhs_linear_index = rhs_linear_spatial_index;
@@ -1625,6 +1623,16 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<int64_t>(map));
         break;
       }
+      case F8E5M2: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map],
+                            MapImpl<tsl::float8_e5m2>(map));
+        break;
+      }
+      case F8E4M3FN: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map],
+                            MapImpl<tsl::float8_e4m3fn>(map));
+        break;
+      }
       case F16: {
         TF_ASSIGN_OR_RETURN(parent_->evaluated_[map],
                             MapImpl<Eigen::half>(map));
@@ -2172,8 +2180,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           // [2] http://open-std.org/JTC1/SC22/WG21/docs/lwg-active.html#2524
           const ReturnT low_val = low.Get<ReturnT>({});
           const ReturnT high_val = high.Get<ReturnT>({});
-          std::uniform_real_distribution<ElementwiseT> generator(low_val,
-                                                                 high_val);
+          std::uniform_real_distribution<ElementwiseT> generator(
+              static_cast<ElementwiseT>(low_val),
+              static_cast<ElementwiseT>(high_val));
           TF_RETURN_IF_ERROR(result.Populate<ReturnT>(
               [&](absl::Span<const int64_t> /*indexes*/) {
                 while (true) {
@@ -2193,7 +2202,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
               parent_->GetEvaluatedLiteralFor(random->operand(1));
 
           std::normal_distribution<ElementwiseT> generator(
-              mean.Get<ReturnT>({}), stddev.Get<ReturnT>({}));
+              static_cast<ElementwiseT>(mean.Get<ReturnT>({})),
+              static_cast<ElementwiseT>(stddev.Get<ReturnT>({})));
 
           TF_RETURN_IF_ERROR(result.Populate<ReturnT>(
               [&](absl::Span<const int64_t> /*indexes*/) {
@@ -2464,10 +2474,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       if (Eigen::numext::isnan(operand)) {
         return static_cast<ResultT>(0);
       }
-      if (operand >= std::numeric_limits<ResultT>::max()) {
+      if (operand >= static_cast<Fp>(std::numeric_limits<ResultT>::max())) {
         return std::numeric_limits<ResultT>::max();
       }
-      if (operand <= std::numeric_limits<ResultT>::min()) {
+      if (operand <= static_cast<Fp>(std::numeric_limits<ResultT>::min())) {
         return std::numeric_limits<ResultT>::min();
       }
 
@@ -2478,7 +2488,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
       // Removes the integral piece to obtain the fractional piece.
       Fp fractional = operand - static_cast<Fp>(truncated);
-      if (fractional == 0) {
+      if (fractional == Fp{0}) {
         // No rounding necessary.
         return is_negative ? -truncated : truncated;
       }
@@ -2602,6 +2612,8 @@ extern template class HloEvaluatorTypedVisitor<double>;
 extern template class HloEvaluatorTypedVisitor<complex64>;
 extern template class HloEvaluatorTypedVisitor<complex128>;
 extern template class HloEvaluatorTypedVisitor<bfloat16, float>;
+extern template class HloEvaluatorTypedVisitor<tsl::float8_e5m2, float>;
+extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3fn, float>;
 
 }  // namespace xla
 

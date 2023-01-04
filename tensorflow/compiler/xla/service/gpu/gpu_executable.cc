@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
@@ -185,7 +186,7 @@ namespace {
 Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
                            uint64_t start_nanos, se::Stream* stream_to_sync);
 
-Status ExecuteThunks(const std::string& module_name,
+Status ExecuteThunks(const std::string& module_name, ModuleIdentifier module_id,
                      const ThunkSequence& thunk_sequence,
                      const ServiceExecutableRunOptions* run_options,
                      const BufferAllocations& buffer_allocations,
@@ -201,6 +202,15 @@ Status ExecuteThunks(const std::string& module_name,
   tsl::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tsl::profiler::TraceMeLevel::kInfo);
+
+  ScopedAnnotation annotation([&] {
+    std::string module_id_str;
+    if (module_id >= 0) {
+      module_id_str = absl::StrFormat(",program_id=%d", module_id);
+    }
+    return absl::StrFormat("XlaModule:#hlo_module=%s%s#", module_name,
+                           module_id_str);
+  });
 
   for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
     // Annotate execution of this op if tracing was enabled when we started
@@ -439,6 +449,7 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
 }
 
 static Status ExecuteXlaRuntime(const std::string& module_name,
+                                ModuleIdentifier module_id,
                                 GpuRuntimeExecutable& gpu_runtime_executable,
                                 const ServiceExecutableRunOptions* run_options,
                                 const std::string& asm_text,
@@ -452,7 +463,14 @@ static Status ExecuteXlaRuntime(const std::string& module_name,
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tsl::profiler::TraceMeLevel::kInfo);
 
-  ScopedAnnotation annotation([] { return std::string("ExecuteXlaRuntime"); });
+  ScopedAnnotation annotation([&] {
+    std::string module_id_str;
+    if (module_id >= 0) {
+      module_id_str = absl::StrFormat(",program_id=%d", module_id);
+    }
+    return absl::StrFormat("XlaModule:#hlo_module=%s%s#", module_name,
+                           module_id_str);
+  });
 
   auto executed = gpu_runtime_executable.Execute(
       run_options, asm_text, binary, buffer_allocations, temp_buffer);
@@ -629,12 +647,19 @@ Status GpuExecutable::ExecuteThunksOrXlaRuntime(
   TF_RETURN_IF_ERROR(
       CheckCompatibilityWithServiceExecutableRunOptions(run_options));
 
+  // There isn't always an HLO module.
+  ModuleIdentifier unique_id = -1;
+  if (has_module()) {
+    unique_id = module().unique_id();
+  }
+
   if (thunks_) {
     se::StreamExecutor* executor = run_options->stream()->parent();
     for (const std::unique_ptr<Thunk>& thunk : *thunks_) {
       TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
     }
-    return ExecuteThunks(module_name_, *thunks_, run_options,
+
+    return ExecuteThunks(module_name_, unique_id, *thunks_, run_options,
                          buffer_allocations, block_host_until_done);
   }
 
@@ -648,7 +673,7 @@ Status GpuExecutable::ExecuteThunksOrXlaRuntime(
         if (temp_buffer == nullptr) temp_buffer = &alloc;
       }
     }
-    return ExecuteXlaRuntime(module_name_, *gpu_runtime_executable_,
+    return ExecuteXlaRuntime(module_name_, unique_id, *gpu_runtime_executable_,
                              run_options, text_, binary_, buffer_allocations,
                              temp_buffer, block_host_until_done);
   }

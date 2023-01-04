@@ -50,11 +50,9 @@ limitations under the License.
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
-#ifdef JAX_ENABLE_IFRT
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/client.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
-#endif
 #include "tensorflow/compiler/xla/pjrt/lru_cache.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
@@ -353,7 +351,7 @@ struct CacheEntry {
 
   // Bitvector of kept arguments from Jaxpr DCE pass. Used to drop some `args`
   // in CompiledFunction::Call before calling into compiled computation.
-  std::optional<std::vector<bool>> kept_var_bitvec;
+  std::vector<bool> kept_var_bitvec;
   std::optional<xla::ClientAndPtr<xla::PjRtDevice>> sticky_device;
 
   // Fallback to Python happens:
@@ -512,9 +510,7 @@ class CompiledFunction {
   void ClearCache() {
 // Setting `default_device_` to nullptr forces Call() to retrieve the
 // device.
-#ifdef JAX_ENABLE_IFRT
     default_client_ = nullptr;
-#endif
     default_device_ = nullptr;
     executables_->Clear();
   }
@@ -587,9 +583,7 @@ class CompiledFunction {
   //   which case, we will always copy input buffers to this device.
   // These fields are protected by the GIL.
 
-#ifdef JAX_ENABLE_IFRT
   xla::ifrt::Client* default_client_ = nullptr;
-#endif
   xla::PjRtDevice* default_device_ = nullptr;
   bool is_committed_;
 };
@@ -638,7 +632,7 @@ CompiledFunction::CompiledFunction(py::function fun, py::function cache_miss,
       get_device_(std::move(get_device)),
       cache_(std::move(cache)) {
   std::sort(static_argnums_.begin(), static_argnums_.end());
-  for (py::str& s : static_argnames) {
+  for (py::str& s : static_argnames_) {
     PyUnicode_InternInPlace(&s.ptr());
   }
   executables_ = cache_->Lookup(fun_, donate_argnums);
@@ -652,8 +646,8 @@ CompiledFunction::~CompiledFunction() {
 }
 
 // Returns nullptr if arg has no sticky device
-static xla::StatusOr<xla::PjRtDevice*> GetJitArgumentStickyDevice(
-    py::handle arg) {
+static xla::StatusOr<std::pair<xla::ifrt::Client*, xla::PjRtDevice*>>
+GetJitArgumentStickyDevice(py::handle arg) {
   struct PythonTypes {
     py::object device_array;
   };
@@ -675,13 +669,12 @@ static xla::StatusOr<xla::PjRtDevice*> GetJitArgumentStickyDevice(
       }
 
       if (!py_array.committed()) {
-        return nullptr;
+        return std::pair<xla::ifrt::Client*, xla::PjRtDevice*>{nullptr,
+                                                               nullptr};
       }
-#ifdef JAX_ENABLE_IFRT
-      return py_array.ifrt_array()->sharding().devices().front();
-#else
-      return py_array.pjrt_buffer(0)->device();
-#endif
+      return std::pair<xla::ifrt::Client*, xla::PjRtDevice*>{
+          py_array.ifrt_array()->client(),
+          py_array.ifrt_array()->sharding().devices().front()};
     }
   }
 
@@ -690,24 +683,23 @@ static xla::StatusOr<xla::PjRtDevice*> GetJitArgumentStickyDevice(
   if (arg.get_type().ptr() == xla::PyBuffer::type()) {
     xla::PyBuffer* buffer = xla::PyBuffer::AsPyBufferUnchecked(arg);
     if (!buffer->sticky_device()) {
-      return nullptr;
+      return std::pair<xla::ifrt::Client*, xla::PjRtDevice*>{nullptr, nullptr};
     }
-    return buffer->sticky_device();
+    return std::pair<xla::ifrt::Client*, xla::PjRtDevice*>{
+        buffer->ifrt_array()->client(), buffer->sticky_device()};
   }
 
   if (arg.get_type().ptr() == types.device_array.ptr()) {
     if (arg.attr("_device").is_none()) {
-      return nullptr;
+      return std::pair<xla::ifrt::Client*, xla::PjRtDevice*>{nullptr, nullptr};
     }
     try {
       // This can fail, e.g. for cloud TPU 2VM buffers.
       TF_ASSIGN_OR_RETURN(xla::PyBuffer * buffer,
                           xla::PyBuffer::AsPyBuffer(arg.attr("device_buffer")));
-#ifdef JAX_ENABLE_IFRT
-      return buffer->ifrt_array()->sharding().devices().front();
-#else
-      return buffer->pjrt_buffer()->device();
-#endif
+      return std::pair<xla::ifrt::Client*, xla::PjRtDevice*>{
+          buffer->ifrt_array()->client(),
+          buffer->ifrt_array()->sharding().devices().front()};
     } catch (const py::cast_error& e) {
       return xla::InvalidArgument(
           "%s", absl::StrCat("[jaxjit] Unsupported subclass of `DeviceArray`: "
@@ -718,7 +710,7 @@ static xla::StatusOr<xla::PjRtDevice*> GetJitArgumentStickyDevice(
     }
   }
 
-  return nullptr;
+  return std::pair<xla::ifrt::Client*, xla::PjRtDevice*>{nullptr, nullptr};
 }
 
 // Compute signature for arguments.
@@ -726,6 +718,7 @@ static xla::StatusOr<xla::PjRtDevice*> GetJitArgumentStickyDevice(
 // Returns `OkStatus()` on success. Returning an error should lead to
 // calling the Python fallback.
 xla::Status ComputeSignature(bool jax_enable_x64,
+                             xla::ifrt::Client* default_client,
                              xla::PjRtDevice* default_device, bool is_committed,
                              ParsedArgumentsAsBuffers& arguments) {
   tsl::profiler::TraceMe traceme("ComputeSignature");
@@ -737,14 +730,15 @@ xla::Status ComputeSignature(bool jax_enable_x64,
   // https://github.com/google/jax/pull/1916 for the rationale why the
   // computation follows the data locality.
   // It's also similar to PyTorch's behavior.
+  xla::ifrt::Client* ifrt_client = nullptr;
   xla::PjRtDevice* data_device = nullptr;
-  if (is_committed) {
-    data_device = default_device;
-  } else {
+  if (!is_committed) {
     for (int i = 0; i < num_flat_dynamic_args; ++i) {
       TF_ASSIGN_OR_RETURN(
-          xla::PjRtDevice * device,
+          auto client_and_device,
           GetJitArgumentStickyDevice(arguments.flat_dynamic_args[i]));
+      xla::ifrt::Client* client = client_and_device.first;
+      xla::PjRtDevice* device = client_and_device.second;
       if (device) {
         if (data_device && (device != data_device)) {
           throw std::invalid_argument(absl::StrCat(
@@ -752,16 +746,18 @@ xla::Status ComputeSignature(bool jax_enable_x64,
               "C++ jax.jit). Arguments are on devices: ",
               device->DebugString(), " and ", data_device->DebugString()));
         } else {
+          ifrt_client = client;
           data_device = device;
         }
       }
     }
   }
   if (!data_device) {
-    // No `DeviceArray` were found default to `default_device`.
+    ifrt_client = default_client;
     data_device = default_device;
   }
   CHECK(data_device);
+  arguments.ifrt_client = ifrt_client;
   arguments.signature.device = data_device;
 
   arguments.signature.dynamic_arg_signatures.reserve(num_flat_dynamic_args);
@@ -777,56 +773,34 @@ xla::Status ComputeSignature(bool jax_enable_x64,
 // Copy buffers to device, skipping pruned arguments.
 // Returns `OkStatus()` on success. Returning an error should lead to
 // calling the Python fallback.
-xla::Status CopyBuffersToDevice(
-    bool jax_enable_x64, const std::optional<std::vector<bool>>& kept_args,
-    ParsedArgumentsAsBuffers& arguments) {
-#ifdef JAX_ENABLE_IFRT
+xla::Status CopyBuffersToDevice(bool jax_enable_x64,
+                                const std::vector<bool>& kept_args,
+                                ParsedArgumentsAsBuffers& arguments) {
   std::vector<tsl::RCReference<xla::ifrt::Array>>& ifrt_arg_arrays =
       arguments.ifrt_arg_arrays;
-#else
-  std::vector<xla::PjRtBuffer*>& arg_buffers = arguments.arg_buffers;
-#endif
   xla::PjRtDevice* data_device = arguments.signature.device;
 
   int num_flat_dynamic_args = arguments.flat_dynamic_args.size();
   xla::DevicePutOptions options;
   options.squash_64bit_types = !jax_enable_x64;
   options.allow_zero_copy = true;
-#ifdef JAX_ENABLE_IFRT
   ifrt_arg_arrays.reserve(num_flat_dynamic_args);
-#else
-  arg_buffers.reserve(num_flat_dynamic_args);
-#endif
-  bool input_pruning_enabled = kept_args.has_value();
   for (int i = 0; i < num_flat_dynamic_args; ++i) {
-    if (input_pruning_enabled && !kept_args.value()[i]) {
+    if (!kept_args[i]) {
       continue;
     }
 
     py::handle arg = arguments.flat_dynamic_args[i];
     TF_ASSIGN_OR_RETURN(xla::DevicePutResult on_device,
                         DevicePut(arg,
-#ifdef JAX_ENABLE_IFRT
                                   arguments.ifrt_client,
-#endif
                                   data_device, options));
 
-#ifdef JAX_ENABLE_IFRT
     ifrt_arg_arrays.push_back(std::move(on_device.ifrt_array));
     if (on_device.owning_pybuffer) {
       arguments.keep_alive_objects.push_back(
           std::move(on_device.owning_pybuffer));
     }
-#else
-    xla::PjRtBuffer* buffer = on_device.buffer;
-    arg_buffers.push_back(buffer);
-    if (on_device.owned_buffer) {
-      arguments.keep_alive.push_back(std::move(on_device.owned_buffer));
-    } else if (on_device.owning_pybuffer) {
-      arguments.keep_alive_objects.push_back(
-          std::move(on_device.owning_pybuffer));
-    }
-#endif
   }
   return ::tsl::OkStatus();
 }
@@ -845,13 +819,8 @@ void CompiledFunction::PopulateCacheEntry(
   auto executable = py::cast<std::shared_ptr<xla::PyLoadedExecutable>>(
       executable_handlers_out_tree.attr("xla_executable"));
   cache_entry->executable = std::move(executable);
-#ifdef JAX_ENABLE_IFRT
   int num_devices =
       cache_entry->executable->ifrt_executable()->addressable_devices().size();
-#else
-  int num_devices =
-      cache_entry->executable->pjrt_executable()->addressable_devices().size();
-#endif
   // The presence of jit(pmap) is detected from Python.
   CHECK_EQ(num_devices, 1);
 
@@ -894,16 +863,11 @@ void CompiledFunction::PopulateCacheEntry(
     cache_entry->committed.push_back(c.cast<bool>());
   }
 
-  auto kept_var_bitvec_attr =
-      py::getattr(executable_handlers_out_tree, "kept_var_bitvec", py::none());
-  if (!kept_var_bitvec_attr.is_none()) {
-    auto kept_var_bitvec = py::cast<py::list>(kept_var_bitvec_attr);
-    cache_entry->kept_var_bitvec =
-        std::make_optional<std::vector<bool>>(kept_var_bitvec.size(), false);
-    for (int i = 0; i < kept_var_bitvec.size(); ++i) {
-      cache_entry->kept_var_bitvec.value()[i] =
-          py::cast<bool>(kept_var_bitvec[i]);
-    }
+  auto kept_var_bitvec =
+      py::cast<py::list>(executable_handlers_out_tree.attr("kept_var_bitvec"));
+  cache_entry->kept_var_bitvec.reserve(kept_var_bitvec.size());
+  for (const auto& b : kept_var_bitvec) {
+    cache_entry->kept_var_bitvec.push_back(b.cast<bool>());
   }
 }
 
@@ -925,9 +889,7 @@ void CompiledFunction::TryToPopulateDefaultDevice() {
           device_and_is_committed.attr("default_device"));
       is_committed_ =
           py::cast<bool>(device_and_is_committed.attr("committed_to_device"));
-#ifdef JAX_ENABLE_IFRT
       default_client_ = default_pydevice.client->ifrt_client();
-#endif
       default_device_ = default_pydevice.contents;
     } catch (const py::cast_error& e) {
       // Pathways, Cloud TPU 2VM, and UPTC runtime.
@@ -979,9 +941,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::handle callable,
     return fallback_to_cache_miss();
   }
 
-#ifdef JAX_ENABLE_IFRT
   xla::ifrt::Client* client = nullptr;
-#endif
   xla::PjRtDevice* device = nullptr;
   // Whether `device` should override an input with a sticky device.
   bool is_committed;
@@ -998,9 +958,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::handle callable,
       cast_success = false;
     }
     if (cast_success) {
-#ifdef JAX_ENABLE_IFRT
       client = pjrt_device_ptr.client->ifrt_client();
-#endif
       device = pjrt_device_ptr.get();
       is_committed = false;
       VLOG(3) << "Using config.default_device (uncommitted): "
@@ -1019,9 +977,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::handle callable,
         return fallback_to_cache_miss();
       }
     }
-#ifdef JAX_ENABLE_IFRT
     client = default_client_;
-#endif
     device = default_device_;
     is_committed = is_committed_;
     VLOG(3) << "Using device from Python): " << device->DebugString()
@@ -1030,9 +986,6 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::handle callable,
   CHECK(device != nullptr);
 
   ParsedArgumentsAsBuffers arguments;
-#ifdef JAX_ENABLE_IFRT
-  arguments.ifrt_client = client;
-#endif
   arguments.signature.function_name = function_name_;
   size_t num_positional_args = PyVectorcall_NARGS(nargs);
   size_t num_keyword_args = kwnames ? PyTuple_GET_SIZE(kwnames) : 0;
@@ -1052,7 +1005,8 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::handle callable,
   arguments.signature.jax_array = GetEnableJaxArray();
   // The C++ jit do not support Tracers arguments inputs yet. The Python-based
   // jit function will be called if any of the dynamic arguments is unsupported.
-  status = ComputeSignature(jax_enable_x64, device, is_committed, arguments);
+  status =
+      ComputeSignature(jax_enable_x64, client, device, is_committed, arguments);
   if (!status.ok()) {
     VLOG(2) << "ComputeSignature failed: " << status;
     return fallback_to_cache_miss();
@@ -1124,7 +1078,6 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::handle callable,
   }
 
 // Executes the computation.
-#ifdef JAX_ENABLE_IFRT
   std::vector<tsl::RCReference<xla::ifrt::Array>> output_arrays;
   {
     py::gil_scoped_release gil_release;
@@ -1135,28 +1088,13 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::handle callable,
                             /*devices=*/std::nullopt));
     output_arrays = std::move(result.outputs);
   }
-#else
-  std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> output_buffers;
-  {
-    py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(
-        output_buffers,
-        cache_entry->executable->pjrt_executable()->Execute(
-            {arguments.arg_buffers}, cache_entry->executable->options()));
-  }
-#endif
   auto traceback = xla::Traceback::Get();
 
-#ifdef JAX_ENABLE_IFRT
   int num_outputs = output_arrays.size();
-#else
-  int num_outputs = output_buffers[0].size();
-#endif
   absl::InlinedVector<py::object, 1> flat_device_arrays;
   flat_device_arrays.reserve(num_outputs);
 
   if (!cache_entry->out_shardings.empty()) {
-#ifdef JAX_ENABLE_IFRT
     for (int i = 0; i < output_arrays.size(); ++i) {
       xla::PyArray array(
           cache_entry->out_avals[i], cache_entry->out_weak_types[i],
@@ -1166,21 +1104,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::handle callable,
           /*committed=*/cache_entry->committed.at(i), /*skip_checks=*/true);
       flat_device_arrays.push_back(std::move(array));
     }
-#else
-    for (int i = 0; i < output_buffers[0].size(); ++i) {
-      std::vector<std::shared_ptr<xla::PjRtBuffer>> pjrt_buffers{
-          std::move(output_buffers[0][i])};
-      xla::PyArray array(
-          cache_entry->out_avals[i], cache_entry->out_weak_types[i],
-          cache_entry->out_dtypes[i], cache_entry->out_shapes[i],
-          cache_entry->out_shardings.at(i), cache_entry->executable->client(),
-          traceback, std::move(pjrt_buffers),
-          /*committed=*/cache_entry->committed.at(i), /*skip_checks=*/true);
-      flat_device_arrays.push_back(std::move(array));
-    }
-#endif
   } else {
-#ifdef JAX_ENABLE_IFRT
     for (int i = 0; i < output_arrays.size(); ++i) {
       bool last = (i == (num_outputs - 1));
       xla::PyBuffer::object buffer = xla::PyBuffer::Make(
@@ -1194,21 +1118,6 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::handle callable,
       }
       flat_device_arrays.push_back(std::move(buffer));
     }
-#else
-    for (int i = 0; i < output_buffers[0].size(); ++i) {
-      bool last = (i == (num_outputs - 1));
-      xla::PyBuffer::object buffer = xla::PyBuffer::Make(
-          cache_entry->executable->client(), std::move(output_buffers[0][i]),
-          last ? std::move(traceback) : traceback);
-      buffer.buf()->SetAval(cache_entry->out_avals[i]);
-      buffer.buf()->set_weak_type(cache_entry->out_weak_types[i]);
-      if (cache_entry->sticky_device.has_value()) {
-        TF_RETURN_IF_ERROR(buffer.buf()->set_sticky_device(
-            (*cache_entry->sticky_device).get()));
-      }
-      flat_device_arrays.push_back(std::move(buffer));
-    }
-#endif
   }
   py::object out = cache_entry->out_pytree_def.Unflatten(flat_device_arrays);
 
@@ -1626,26 +1535,14 @@ void BuildJaxjitSubmodule(py::module& m) {
         xla::DevicePutOptions options;
         options.squash_64bit_types = !jax_enable_x64;
         options.allow_zero_copy = true;
-#ifdef JAX_ENABLE_IFRT
         xla::StatusOr<xla::DevicePutResult> results = DevicePut(
             obj, pyclient->ifrt_client(), to_device.contents, options);
-#else
-        xla::StatusOr<xla::DevicePutResult> results =
-            DevicePut(obj, to_device.contents, options);
-#endif
         if (!results.ok()) {
           throw xla::XlaRuntimeError(results.status().error_message());
         }
-#ifdef JAX_ENABLE_IFRT
         if (results->ifrt_array) {
           auto buffer = xla::PyBuffer::Make(
               pyclient, std::move(results->ifrt_array), xla::Traceback::Get());
-#else
-        if (results->owned_buffer) {
-          auto buffer =
-              xla::PyBuffer::Make(pyclient, std::move(results->owned_buffer),
-                                  xla::Traceback::Get());
-#endif
 
           static const auto* jax_core =
               new py::module(py::module::import("jax.core"));

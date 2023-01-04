@@ -4213,6 +4213,7 @@ tf_kernel_library(
     gpu_srcs = [
         "topk_op.h",
         "topk_op_gpu.h",
+        "topk_op_gpu_bfloat16.cu.cc",
         "topk_op_gpu_double.cu.cc",
         "topk_op_gpu_float.cu.cc",
         "topk_op_gpu_half.cu.cc",
@@ -6400,6 +6401,8 @@ filegroup(
         "cwise_op_bitwise_or.cc",
         "cwise_op_bitwise_xor.cc",
         "cwise_op_ceil.cc",
+        "cwise_op_clip.h",
+        "cwise_op_clip.cc",
         "cwise_op_complex.cc",
         "cwise_op_conj.cc",
         "cwise_op_cos.cc",

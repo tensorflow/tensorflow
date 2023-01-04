@@ -18,6 +18,7 @@ load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additi
 
 visibility = [
     "//tensorflow:__subpackages__",
+    "//tensorflow/dtensor:dtensor-internal",
     "//learning/brain/tfrt:__subpackages__",
     "//third_party/py/tensorflow_numerics:__subpackages__",
     "//tensorflow_models/google:__subpackages__",
@@ -317,6 +318,7 @@ py_library(
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/lib/core:_pywrap_bfloat16",
+        "//tensorflow/python/lib/core:_pywrap_custom_casts",
         "//tensorflow/python/lib/core:_pywrap_float8",
         "//tensorflow/python/types:doc_typealias",
     ],
@@ -2251,3 +2253,15 @@ tf_python_pybind_extension(
 #     deps = [":cpp_shape_inference_proto"],
 # )
 # copybara:uncomment_end
+
+py_library(
+    name = "summary_test_util",
+    testonly = True,
+    srcs = ["summary_test_util.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
+    ],
+)

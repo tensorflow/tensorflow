@@ -58,7 +58,6 @@ cc_library(
         "tf_jitrt_passes.cc",
         "tf_jitrt_peel_tiled_loops.cc",
         "tf_jitrt_rewrite_vector_multi_reduction.cc",
-        "tf_jitrt_symbolic_shape_optimization.cc",
         "tf_jitrt_tile_cwise.cc",
         "tf_jitrt_tile_reduction.cc",
         "tf_jitrt_tile_transpose.cc",

@@ -199,7 +199,7 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
     "mhlo.return"(%max) : (tensor<f32>) -> ()
   })
   {
-    replica_groups = dense<[[0, 2, 4, -1], [1, 3, 5, 7]]> : tensor<2x4xi64>,
+    replica_groups = dense<[[0, 2, 4, -1], [1, 3, 5, 6]]> : tensor<2x4xi64>,
     channel_handle = #mhlo.channel_handle<
       handle = 5,
       type = 2
@@ -213,7 +213,7 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 // CHECK:  %[[ARG0:.*]] = f32[10] parameter(0)
 // CHECK:  ROOT %[[RESULT:.*]] = f32[10] all-reduce(f32[10] %[[ARG0]])
 // CHECK-SAME:  channel_id=5
-// CHECK-SAME{LITERAL}:  replica_groups={{0,2,4},{1,3,5,7}}
+// CHECK-SAME{LITERAL}:  replica_groups={{0,2,4},{1,3,5,6}}
 // CHECK-SAME:  to_apply=%[[COMPUTATION]]
 
 // -----
@@ -597,6 +597,12 @@ func.func @main() {
 
   // CHECK: c128[] constant((1, 0))
   %cst_10 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f64>>
+
+  // CHECK: f8e5m2[4] constant({1, 2, 3, 4})
+  %cst_11 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E5M2>
+
+  // CHECK: f8e4m3fn[4] constant({1, 2, 3, 4})
+  %cst_12 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E4M3FN>
 
   func.return
 }
@@ -2198,3 +2204,13 @@ func.func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3x
 // CHECK-SAME:  custom_call_has_side_effect=true
 // CHECK-SAME:  api_version=API_VERSION_TYPED_FFI
 // CHECK-SAME:  backend_config="{user_attr0 = 123 : i32, user_attr1 = dense<42> : tensor<i32>}"
+
+// -----
+
+// CHECK: ENTRY
+// CHECK:  [[VAL_1:%.*]] = f32[] parameter(0), parameter_replication={true}
+// CHECK:  [[VAL_2:%.*]] = (f32[2,4], (f32[2,4])) parameter(1), parameter_replication={false,true}
+
+func.func @main(%arg0: tensor<f32> {mhlo.parameter_replication = [true]}, %arg1: tuple<tensor<2x4xf32>, tuple<tensor<2x4xf32>>> {mhlo.parameter_replication = [false, true]}) -> tensor<f32> {
+  return %arg0 : tensor<f32>
+}

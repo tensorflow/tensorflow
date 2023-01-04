@@ -41,6 +41,14 @@ struct GatherScatterParallelDims {
   std::vector<int64_t> index_parallel_in_dim;
 };
 
+// Determines if the first operand 'potential_subsharding' is a subsharding of
+// the second operand 'sharding'. Subsharding means that the tiles in
+// 'potential_subsharding' define tiles that have a subset or the same data that
+// the tiles in 'sharding' define.
+bool IsSubTilingOrEqualSharding(const Shape& shape,
+                                const HloSharding& potential_subsharding,
+                                const HloSharding& sharding);
+
 // Returns true if the lhs sharding is preferable over the rhs sharding.
 // The most specific sharding is tile maximal followed by single device tile
 // maximal and finally replicated. This order aims to primarily reduce memory

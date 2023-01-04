@@ -1134,9 +1134,9 @@ inline bool VerifySingleConstant(utils::MutableNodeView* node_view,
       if (dtype == DT_FLOAT) {
         const_value = const_tensor.flat<float>()(0);
       } else if (dtype == DT_BFLOAT16) {
-        const_value = const_tensor.flat<bfloat16>()(0);
+        const_value = static_cast<float>(const_tensor.flat<bfloat16>()(0));
       } else if (dtype == DT_HALF) {
-        const_value = const_tensor.flat<Eigen::half>()(0);
+        const_value = static_cast<float>(const_tensor.flat<Eigen::half>()(0));
       } else {
         return false;
       }

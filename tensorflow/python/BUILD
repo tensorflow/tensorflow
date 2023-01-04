@@ -25,6 +25,7 @@ visibility = [
     "//third_party/cloud_tpu/convergence_tools:__subpackages__",
     "//third_party/mlperf:__subpackages__",
     "//tensorflow:internal",
+    "//tensorflow/dtensor:dtensor-internal",
     "//tensorflow/lite/toco/python:__pkg__",
     "//tensorflow_models:__subpackages__",
     "//tensorflow_model_optimization:__subpackages__",
@@ -268,6 +269,7 @@ py_library(
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/python/tools/api/generator:__pkg__",
+        "//tensorflow/tools/compatibility/update:__pkg__",
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
@@ -278,6 +280,7 @@ py_library(
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
+        "//tensorflow/python/distribute/failure_handling:preemption_watcher",
     ],
 )
 
@@ -319,7 +322,13 @@ tf_pybind_cc_library_wrapper(
 tf_python_pybind_extension(
     name = "_pywrap_tfcompile",
     srcs = ["tfcompile_wrapper.cc"],
+    dynamic_deps = [":_pywrap_tensorflow_internal.so"] + select({
+        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+        "//tensorflow:windows": [],
+    }),
     features = ["-layering_check"],
+    static_deps = tf_python_pybind_static_deps(),
     deps = [
         ":tfcompile_headers_lib",
         "@pybind11",
@@ -365,11 +374,6 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_py_exception_registry",
     srcs = ["py_exception_registry_wrapper.cc"],
-    hdrs = [
-        "//tensorflow/c:headers",
-        "//tensorflow/c/eager:headers",
-        "//tensorflow/python/lib/core:py_exception_registry_hdr",
-    ],
     dynamic_deps = [":_pywrap_tensorflow_internal.so"] + select({
         "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
         "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
@@ -380,6 +384,7 @@ tf_python_pybind_extension(
         ":py_exception_registry",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
+        "//tensorflow/python/lib/core:py_exception_registry",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:fixed_array",
         "@pybind11",
@@ -522,6 +527,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
+        "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/array_ops:__pkg__",
         "//tensorflow/python/kernel_tests/control_flow:__pkg__",
@@ -541,6 +547,7 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/quantization:__pkg__",
+        "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python/kernel_tests:__pkg__",
     ],
 )
@@ -663,6 +670,7 @@ tf_gen_op_wrapper_private_py(
     name = "io_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python/checkpoint:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/array_ops:__pkg__",
@@ -675,7 +683,10 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "linalg_ops_gen",
-    visibility = ["//learning/brain/python/ops:__pkg__"],
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/dtensor:dtensor-internal",
+    ],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -761,6 +772,7 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/google/python/ops:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
+        "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/math_ops:__pkg__",
     ],
@@ -771,6 +783,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
+        "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/nn_ops:__pkg__",
         "//tensorflow/python/kernel_tests/sparse_ops:__pkg__",
@@ -811,6 +824,7 @@ tf_gen_op_wrapper_private_py(
     name = "resource_variable_ops_gen",
     visibility = [
         "//tensorflow/compiler/tf2xla:internal",
+        "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python/distribute:__pkg__",
     ],
 )
@@ -818,12 +832,14 @@ tf_gen_op_wrapper_private_py(
 tf_gen_op_wrapper_private_py(
     name = "stateless_random_ops_gen",
     visibility = [
+        "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python/data/experimental/ops:__pkg__",
     ],
 )
 
 tf_gen_op_wrapper_private_py(
     name = "stateless_random_ops_v2_gen",
+    visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -832,6 +848,7 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "list_ops_gen",
+    visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -869,11 +886,15 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "spectral_ops_gen",
-    visibility = ["//tensorflow/python/ops/signal:__pkg__"],
+    visibility = [
+        "//tensorflow/dtensor:dtensor-internal",
+        "//tensorflow/python/ops/signal:__pkg__",
+    ],
 )
 
 tf_gen_op_wrapper_private_py(
     name = "string_ops_gen",
+    visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -1973,6 +1994,7 @@ py_library(
         ":resource_variable_ops_gen",
         ":variables",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/checkpoint:tensor_callable",
         "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
@@ -3335,6 +3357,7 @@ pywrap_tensorflow_macro(
         "@mkl_dnn_v1//:__subpackages__",
         "@nccl_archive//:__subpackages__",
         "@nsync//:__subpackages__",
+        "@nvtx_archive//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",
@@ -3467,6 +3490,7 @@ filegroup(
     name = "win_lib_files_for_exported_symbols",
     srcs = [
         "//tensorflow/tsl/python/lib/core:bfloat16_lib",  # bfloat16
+        "//tensorflow/tsl/python/lib/core:custom_casts_lib",
         "//tensorflow/tsl/python/lib/core:float8_lib",  # float8_e4m3fn, float8_e5m2
         "//tensorflow/python/grappler:cost_analyzer_lib",
         "//tensorflow/python/util:cpp_nest",

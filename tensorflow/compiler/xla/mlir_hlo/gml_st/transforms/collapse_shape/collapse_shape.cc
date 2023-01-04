@@ -79,9 +79,9 @@ struct CollapseBcastPattern : OpRewritePattern<linalg::BroadcastOp> {
 
     bool firstDimsBroadcasted = true;
     if (!nonBroadcastedDims.empty()) {
-      int i = 0;
-      while (i < nonBroadcastedDims.size() && nonBroadcastedDims[i] == i &&
-             i < numCollapsedDims) {
+      int64_t i = 0;
+      while (i < (int64_t)nonBroadcastedDims.size() &&
+             nonBroadcastedDims[i] == i && i < numCollapsedDims) {
         ++i;
       }
       if (i >= numCollapsedDims) {

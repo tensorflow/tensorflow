@@ -18,30 +18,35 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK-LABEL: func @conv_with_multiple_uses
 // CHECK: %[[div:.*]] = "tf.Div"(%arg0
 // CHECK: %[[add:.*]] = "tf.AddV2"(%[[div]]
-// CHECK: %[[floor:.*]] = "tf.Floor"(%[[add]]
-// CHECK: %[[clip:.*]] = "tf.ClipByValue"(%[[floor]]
-// CHECK: %[[quant:.*]] = "tf.Cast"(%[[clip]]) : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3xi8>
+// CHECK: %[[maximum:.*]] = "tf.Maximum"(%[[add]]
+// CHECK: %[[minimum:.*]] = "tf.Minimum"(%[[maximum]]
+// CHECK: %[[round:.*]] = "tf.Round"(%[[minimum]]
+// CHECK: %[[quant:.*]] = "tf.Cast"(%[[round]]) : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3xi8>
 // CHECK: %[[pad:.*]] = "tf.PadV2"(%[[quant]]
 // CHECK: %[[xlaconv:.*]] = "tf.XlaConvV2"(%[[pad]]
 // CHECK: %[[sub:.*]] = "tf.Sub"(%[[xlaconv]]
 // CHECK: %[[cast:.*]] = "tf.Cast"(%[[sub]]) {Truncate = false} : (tensor<1x3x2x2xi32>) -> tensor<1x3x2x2xf32>
 // CHECK: %[[dequant1:.*]] = "tf.Mul"(%[[cast]]
 // CHECK: %[[relu:.*]] = "tf.Relu"(%[[dequant1]]
+// CHECK: %[[clamped:.*]] = "tf.Minimum"(%[[relu]]
 
 // CHECK: %[[rescale1:.*]] = "tf.Mul"(%[[cast]]
 // CHECK: %[[add2:.*]] = "tf.AddV2"(%[[rescale1]]
-// CHECK: %[[floor2:.*]] = "tf.Floor"(%[[add2]]
-// CHECK: %[[clip2:.*]] = "tf.ClipByValue"(%[[floor2]]
-// CHECK: %[[quant2:.*]] = "tf.Cast"(%[[clip2]]) {Truncate = false} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xi8>
+// CHECK: %[[maximum2:.*]] = "tf.Maximum"(%[[add2]]
+// CHECK: %[[minimum2:.*]] = "tf.Minimum"(%[[maximum2]]
+// CHECK: %[[round2:.*]] = "tf.Round"(%[[minimum2]]
+// CHECK: %[[quant2:.*]] = "tf.Cast"(%[[round2]]) {Truncate = false} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xi8>
 
 // CHECK: %[[pad2:.*]] = "tf.PadV2"(%[[quant2]]
 // CHECK: %[[xlaconv2:.*]] = "tf.XlaConvV2"(%[[pad2]]
 // CHECK: %[[sub2:.*]] = "tf.Sub"(%[[xlaconv2]]
 // CHECK: %[[cast2:.*]] = "tf.Cast"(%[[sub2]]) {Truncate = false} : (tensor<1x3x2x2xi32>) -> tensor<1x3x2x2xf32>
 // CHECK: %[[rescale2:.*]] = "tf.Mul"(%[[cast2]]
+// CHECK: %[[rescale2_maxclamped:.*]] = "tf.Maximum"(%[[rescale2]]
+// CHECK: %[[rescale2_minclamped:.*]] = "tf.Minimum"(%[[rescale2_maxclamped]]
 
-// CHECK: %[[sum:.*]] = "tf.Sum"(%[[relu]]
-// CHECK: return %[[rescale2]], %[[sum]]
+// CHECK: %[[sum:.*]] = "tf.Sum"(%[[clamped]]
+// CHECK: return %[[rescale2_minclamped]], %[[sum]]
 }
 
 // -----

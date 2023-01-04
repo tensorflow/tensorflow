@@ -83,14 +83,24 @@ StatusOr<mlir::Value> ComputeDimensionValue(int version, string dim_arg_spec,
                                    " in dim_arg_spec '", dim_arg_spec, "'");
   }
   mlir::Value val;
+  mlir::Type get_dim_type =
+      mlir::RankedTensorType::get({}, op_builder.getI32Type());
   if (version >= VERSION_START_STABLE_HLO) {
     val = op_builder.create<mlir::stablehlo::GetDimensionSizeOp>(
-        arguments[arg_idx].getLoc(), dim_arg_type, arguments[arg_idx],
+        arguments[arg_idx].getLoc(), get_dim_type, arguments[arg_idx],
         op_builder.getI64IntegerAttr(arg_axis_idx));
+    if (dim_arg_type != get_dim_type) {
+      val = op_builder.create<mlir::stablehlo::ConvertOp>(
+          arguments[arg_idx].getLoc(), dim_arg_type, val);
+    }
   } else {
     val = op_builder.create<mlir::mhlo::GetDimensionSizeOp>(
-        arguments[arg_idx].getLoc(), dim_arg_type, arguments[arg_idx],
+        arguments[arg_idx].getLoc(), get_dim_type, arguments[arg_idx],
         op_builder.getI64IntegerAttr(arg_axis_idx));
+    if (dim_arg_type != get_dim_type) {
+      val = op_builder.create<mlir::mhlo::ConvertOp>(
+          arguments[arg_idx].getLoc(), dim_arg_type, val);
+    }
   }
   return val;
 }
@@ -108,6 +118,7 @@ StatusOr<mlir::Value> ComputeDimensionValue(int version, string dim_arg_spec,
 // for %arg0 and one for %arg1. E.g., ['0.0', '0.1'] specifies that %arg0
 // should be set to the size of axis 0 or array argument 0 (%arg2), while
 // %arg1 should be set to the size of axis 1.
+// The dimension arguments must be 0-dimensional tensors of integer type.
 //
 // We create a new "main" function as follows:
 //   func public main(%arg2: f32[?, ?, 8]) {
@@ -167,11 +178,13 @@ Status AddMainWrapper(int version, mlir::ModuleOp module,
       mlir::Type arg_type = orig_main.getArgument(i).getType();
       mlir::RankedTensorType arg_ranked_type =
           arg_type.dyn_cast<mlir::RankedTensorType>();
-      if (!arg_ranked_type || !arg_ranked_type.getShape().empty()) {
+      if (!arg_ranked_type ||
+          !arg_ranked_type.getElementType().dyn_cast<mlir::IntegerType>() ||
+          !arg_ranked_type.getShape().empty()) {
         return errors::InvalidArgument(
             "Module argument at index ", i,
-            " should be a scalar dimension argument but has type ",
-            debugString(arg_type));
+            " should be a 0-dimensional integer-tensor dimension argument",
+            " but has type ", debugString(arg_type));
       }
       TF_ASSIGN_OR_RETURN(call_args[i],
                           ComputeDimensionValue(

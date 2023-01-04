@@ -25,19 +25,23 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/executable.pb.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
-#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/util/command_line_flags.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/service/gpu/executable.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
+#endif
 
 namespace xla {
 namespace xla_compile {
@@ -63,11 +67,19 @@ StatusOr<std::string> AotCompileCpuExecutable(
   return result;
 }
 
+#if GOOGLE_CUDA
 StatusOr<std::string> AotCompileGpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
     const gpu::GpuTargetConfig& gpu_target_config) {
   gpu::NVPTXCompiler nvptx_compiler;
-  auto module_group = std::make_unique<HloModuleGroup>(std::move(hlo_module));
+  Compiler::CompileOptions compile_options;
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> module_after_opt,
+      nvptx_compiler.RunHloPassesWithoutDevice(
+          std::move(hlo_module), compile_options, gpu_target_config));
+
+  auto module_group =
+      std::make_unique<HloModuleGroup>(std::move(module_after_opt));
   AotCompilationOptions aot_options(nvptx_compiler.PlatformId());
   aot_options.set_target_config(gpu_target_config);
   TF_ASSIGN_OR_RETURN(
@@ -76,6 +88,7 @@ StatusOr<std::string> AotCompileGpuExecutable(
   TF_ASSIGN_OR_RETURN(std::string result, aot_results[0]->SerializeAsString());
   return result;
 }
+#endif
 
 xla::Status XlaCompileMain(const std::string& module_path,
                            const std::string& output_path,
@@ -105,9 +118,9 @@ xla::Status XlaCompileMain(const std::string& module_path,
   HloModuleProto hlo_module_proto = xla_computation.proto();
 
   TF_ASSIGN_OR_RETURN(ProgramShape shape, xla_computation.GetProgramShape());
-  DebugOptions debug_options;
-  debug_options.set_xla_gpu_enable_xla_runtime_executable(true);
-  debug_options.set_xla_backend_optimization_level(2);
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  // Disable autotuning because there is no attached device.
+  debug_options.set_xla_gpu_autotune_level(0);
   HloModuleConfig config(shape);
   config.set_debug_options(debug_options);
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
@@ -117,6 +130,7 @@ xla::Status XlaCompileMain(const std::string& module_path,
   std::string result;
   if (platform == "cpu") {
     TF_ASSIGN_OR_RETURN(result, AotCompileCpuExecutable(std::move(hlo_module)));
+#if GOOGLE_CUDA
   } else if (platform == "gpu") {
     // Parse GpuTargetConfig.
     std::string gpu_target_config_string;
@@ -131,6 +145,7 @@ xla::Status XlaCompileMain(const std::string& module_path,
 
     TF_ASSIGN_OR_RETURN(result, AotCompileGpuExecutable(std::move(hlo_module),
                                                         gpu_target_config));
+#endif
   } else {
     return Unimplemented("platform %s not supported", platform);
   }

@@ -44,6 +44,9 @@ tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool enable_logging,
 
 namespace TF {
 
+inline constexpr char kStandardPipelineBefore[] = "standard_pipeline_before";
+inline constexpr char kStandardPipelineAfter[] = "standard_pipeline_after";
+
 // Runs all passes involved in transforming or optimizing an MLIR graph without
 // any target specialization. When enable_logging is true, enables
 // tensorflow::BridgeLogger. When enable_inliner is true, enables the inliner

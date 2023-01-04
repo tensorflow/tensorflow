@@ -618,8 +618,8 @@ class ReadySetLt {
     }
     if (sched_state_.config.aggressive_scheduling_policies) {
       // If an instruction releasing a resource is not resource constrained and
-      // has an async depth of 0 delay it as much as possible to avoid potential
-      // cost model inefficiencies.
+      // has an async depth of 0, delay it as much as possible to avoid
+      // potential cost model inefficiencies.
       if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
               /*first_cond=*/!(a.node->DoesReleaseAnyResource() &&
                                a.node->GetAsyncDepth() == 0 &&
@@ -774,7 +774,7 @@ class ReadySetLt {
         gn.GetInstr().opcode() != HloOpcode::kSendDone) {
       return true;
     }
-    // Try to delay the send-done for a host based operations like outside
+    // Try to delay the send-done for host based operations like outside
     // compilation to avoid allocating memory unnecessarily.
     const HloGraphNode& start =
         sched_state_.sched_graph.GetNode(gn.GetInstr().operand(0));
@@ -791,8 +791,9 @@ class ReadySetLt {
     if (cand.pressure_change) {
       return *cand.pressure_change;
     }
-    return sched_state_.memory_pressure_tracker->MemoryPressureDifference(
-        &cand.node->GetInstr());
+    cand.pressure_change =
+        sched_state_.memory_pressure_tracker->MemoryPressureDifference(
+            &cand.node->GetInstr());
     return *cand.pressure_change;
   }
 };
@@ -866,7 +867,7 @@ HloGraphNode* DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
                     ? ready_chosen.node->GetInstr().name()
                     : ready_candidate.node->GetInstr().name())
             << ") Reason: " << cand_result.reason;
-    if (cand_result.result.node == *ready_node_it) {
+    if (new_candidate_selected) {
       ready_chosen = cand_result.result;
       chosen_it = ready_node_it;
     }
@@ -874,7 +875,7 @@ HloGraphNode* DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
   if (ready_chosen.node == nullptr) {
     return nullptr;
   }
-  CHECK_NE(ready_chosen.node, nullptr);
+  CHECK(chosen_it != sched_state.ready_set.end());
   std::swap(*chosen_it, sched_state.ready_set.back());
   sched_state.ready_set.pop_back();
   return ready_chosen.node;
@@ -931,12 +932,11 @@ StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
     break;
   }
 
-  // After scheduling the node we decided to schedule release the nodes that
-  // don't have any more successors unscheduled. If a node is not ready for
-  // scheduling yet even if it doesn't have any more dependencies unscheduled
-  // (because for example the node latency would make us stall while we could
-  // schedule something else in between) we put it into the pending set.
-  // We schedule from the pending set if there's nothing in the ready set.
+  // After scheduling the node we decided to schedule, release the nodes that
+  // don't have any more successors unscheduled by putting them in the
+  // ready_set. If a released node ready time is higher than the current time we
+  // put it also in the next_ready_stack, which is used in the ReadySetLt class
+  // for nodes cost comparison.
   for (HloEdge& edge : n->GetPredecessors()) {
     const int64_t current_outdegree = edge.Target().GetOutdegree();
     // Node is not ready yet. Decrease the outdegree and continue.
@@ -946,8 +946,7 @@ StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
     }
     // This node is now ready to schedule. Set the outdegree to 0 and compute
     // the time at which it is gonna be ready to be scheduled. If the time is
-    // not what the current time is we put it into the pending set , otherwise
-    // the node is good for the ready set.
+    // not what the current time is we put it also in next_ready_stack.
     edge.Target().SetOutdegree(0);
     LatencyEstimator::TimeCost ready_time = current_time;
     for (const HloEdge& pred : edge.Target().GetSuccessors()) {
@@ -957,8 +956,6 @@ StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
         ready_time = edge_time;
       }
     }
-    auto resources = sched_state->async_tracker->GetResourcesFromInstruction(
-        edge.Target().GetInstr());
     for (auto& resource :
          sched_state->async_tracker->GetResourcesFromInstruction(
              edge.Target().GetInstr())) {
@@ -1309,12 +1306,14 @@ void DefaultSchedulerCore::DumpLatencyHidingSchedule(
     const std::vector<HloInstruction*>& instructions,
     const DebugOptions& debug_options) {
   ScheduleProto proto;
+  proto.set_computation_id(computation->unique_id());
 
   const HloGraphNode& first_node = schedule_graph.GetNode(instructions.front());
   const double total_time = first_node.GetReadyTime() + first_node.GetCost();
   for (const HloInstruction* instr : instructions) {
     const HloGraphNode& instr_node = schedule_graph.GetNode(instr);
-    const double start_time = total_time - instr_node.GetReadyTime();
+    const double start_time =
+        total_time - (instr_node.GetReadyTime() + instr_node.GetCost());
     const double end_time = start_time + instr_node.GetCost();
 
     ScheduleProto::Instruction* instr_msg = proto.add_instructions();
@@ -1323,7 +1322,7 @@ void DefaultSchedulerCore::DumpLatencyHidingSchedule(
     instr_msg->set_end_timestamp_cycles(end_time);
   }
 
-  const std::string fn = absl::StrFormat("%s.schedule.pb", computation->name());
+  const std::string fn = absl::StrFormat("%s.schedule", computation->name());
   DumpProtobufToFile(proto, debug_options, fn);
 }
 
@@ -1433,21 +1432,20 @@ LatencyHidingScheduler::LatencyHidingStatistics(
                                     memory_pressure_state->live_ids_at_bottom);
   }
   return LatencyHidingScheduler::SchedulerStatistics{
-      .computation = computation,
-      .all_gather_wasted_cycles =
-          wasted_time_per_collective[AsyncKind::kAllGather],
-      .all_reduce_wasted_cycles =
-          wasted_time_per_collective[AsyncKind::kAllReduce],
-      .collective_permute_wasted_cycles =
-          wasted_time_per_collective[AsyncKind::kCollectivePermute],
-      .send_wasted_cycles = wasted_time_per_collective[AsyncKind::kSend],
-      .recv_wasted_cycles = wasted_time_per_collective[AsyncKind::kRecv],
-      .total_cycles = current_time,
-      .memory_pressure_peak =
-          memory_pressure_state
-              ? mem_pressure_tracker.initial_memory_pressure() +
-                    memory_pressure_state->memory_peak
-              : 0};
+      /*computation=*/computation,
+      /*all_gather_wasted_cycles=*/
+      wasted_time_per_collective[AsyncKind::kAllGather],
+      /*all_reduce_wasted_cycles=*/
+      wasted_time_per_collective[AsyncKind::kAllReduce],
+      /*collective_permute_wasted_cycles=*/
+      wasted_time_per_collective[AsyncKind::kCollectivePermute],
+      /*send_wasted_cycles=*/wasted_time_per_collective[AsyncKind::kSend],
+      /*recv_wasted_cycles=*/wasted_time_per_collective[AsyncKind::kRecv],
+      /*total_cycles=*/current_time,
+      /*memory_pressure_peak=*/
+      memory_pressure_state ? mem_pressure_tracker.initial_memory_pressure() +
+                                  memory_pressure_state->memory_peak
+                            : 0};
 }
 
 // Prints a SchedulerStatistics object.

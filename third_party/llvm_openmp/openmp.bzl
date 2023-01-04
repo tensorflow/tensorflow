@@ -4,7 +4,7 @@ after the TF 2.4 branch cut has passed.
 """
 
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_binary",
 )
 

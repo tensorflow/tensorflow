@@ -225,8 +225,9 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     if not isinstance(other, type(self)) and not isinstance(self, type(other)):
       raise ValueError('comparing with type : {0} but expecting : {1}'.format(
           type(other), type(self)))
-    return self.as_proto().SerializeToString() == other.as_proto(
-    ).SerializeToString()
+    return (self.as_proto().SerializeToString(
+        deterministic=True) == other.as_proto().SerializeToString(
+            deterministic=True))
 
   def __getitem__(self, dim_name: str) -> MeshDimension:
     if dim_name not in self._dim_dict:
@@ -581,6 +582,9 @@ class Layout(object):
   def __repr__(self) -> str:
     return f'Layout(sharding_specs={self.sharding_specs}, mesh={self.mesh})'
 
+  def __hash__(self) -> int:
+    return hash(self.serialized_string())
+
   def as_proto(self) -> layout_pb2.LayoutProto:
     """Create a proto representation of a layout."""
     layout_proto = layout_pb2.LayoutProto()
@@ -690,7 +694,7 @@ class Layout(object):
 
   def serialized_string(self) -> bytes:
     """Returns a serialized Protobuf binary string representation."""
-    return self.as_proto().SerializeToString()
+    return self.as_proto().SerializeToString(deterministic=True)
 
   # A layout with no sharding specs is acceptable, therefore we only check the
   # mesh.
@@ -703,11 +707,3 @@ class Layout(object):
 
     mesh_str = 'mesh:' + self.mesh.to_string()
     return sharding_spec_str + ' ' + mesh_str
-
-  def unravel(self, unpacked_tensors: List[np.ndarray]) -> np.ndarray:
-    """Convert a flattened list of shards into a sharded array."""
-    unravelled = np.ndarray([self.num_shards(i) for i in range(self.rank)],
-                            dtype=np.object)
-    for offset, loc in enumerate(self.offset_to_shard()):
-      unravelled[loc] = unpacked_tensors[offset]
-    return unravelled

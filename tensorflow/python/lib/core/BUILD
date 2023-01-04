@@ -60,6 +60,16 @@ tf_python_pybind_extension(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_pywrap_custom_casts",
+    srcs = ["custom_casts_wrapper.cc"],
+    deps = [
+        "//tensorflow/tsl/python/lib/core:custom_casts_hdr",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
 cc_library(
     name = "ndarray_tensor_bridge",
     srcs = ["ndarray_tensor_bridge.cc"],

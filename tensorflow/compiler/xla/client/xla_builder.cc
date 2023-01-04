@@ -2120,15 +2120,35 @@ void XlaBuilder::Outfeed(XlaOp operand, const Shape& shape_with_layout,
 
     // Outfeed takes a token as its second operand. Generate the token to pass
     // to the outfeed.
-    HloInstructionProto token_instr;
-    *token_instr.mutable_shape() = ShapeUtil::MakeTokenShape().ToProto();
-    TF_ASSIGN_OR_RETURN(XlaOp token, AddInstruction(std::move(token_instr),
-                                                    HloOpcode::kAfterAll, {}));
-
-    TF_RETURN_IF_ERROR(
-        AddInstruction(std::move(instr), HloOpcode::kOutfeed, {operand, token})
-            .status());
-
+    XlaOp token;
+    auto make_token = [&]() {
+      HloInstructionProto token_instr;
+      *token_instr.mutable_shape() = ShapeUtil::MakeTokenShape().ToProto();
+      return AddInstruction(std::move(token_instr), HloOpcode::kAfterAll, {});
+    };
+    auto make_outfeed = [&](XlaOp token) {
+      return AddInstruction(std::move(instr), HloOpcode::kOutfeed,
+                            {operand, token});
+    };
+    if (sharding()) {
+      XlaScopedShardingAssignment scoped_sharding(
+          this, sharding_builder::AssignDevice(0));
+      TF_ASSIGN_OR_RETURN(token, make_token());
+    } else {
+      TF_ASSIGN_OR_RETURN(token, make_token());
+    }
+    if (sharding()) {
+      OpSharding tuple_sharding = *sharding();
+      if (tuple_sharding.type() != OpSharding::TUPLE) {
+        tuple_sharding = sharding_builder::Tuple({});
+        *tuple_sharding.add_tuple_shardings() = *sharding();
+      }
+      *tuple_sharding.add_tuple_shardings() = sharding_builder::AssignDevice(0);
+      XlaScopedShardingAssignment scoped_sharding(this, tuple_sharding);
+      TF_RETURN_IF_ERROR(make_outfeed(token).status());
+    } else {
+      TF_RETURN_IF_ERROR(make_outfeed(token).status());
+    }
     // The outfeed instruction produces a token. However, existing users expect
     // a nil shape (empty tuple). This should only be relevant if the outfeed is
     // the root of a computation.

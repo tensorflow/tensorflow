@@ -1434,6 +1434,7 @@ def MHLO_AllReduceOp : MHLO_Op<"all_reduce",
       "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>];
 
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 def MHLO_ReduceScatterOp : MHLO_Op<"reduce_scatter",
@@ -1761,7 +1762,6 @@ def MHLO_BatchNormGradOp : MHLO_Op<"batch_norm_grad", [Pure,
       1DTensorOf<[MHLO_Float]>:$grad_offset);
 
   let hasCustomHLOConverter = 1;
-  let hasVerifier = 1;
 }
 
 def MHLO_BatchNormInferenceOp : MHLO_Op<"batch_norm_inference",
@@ -1786,8 +1786,6 @@ def MHLO_BatchNormInferenceOp : MHLO_Op<"batch_norm_inference",
   );
 
   let results = (outs RankedTensorOf<[MHLO_Float]>:$result);
-
-  let hasVerifier = 1;
 }
 
 def MHLO_BatchNormTrainingOp : MHLO_Op<"batch_norm_training",
@@ -1815,7 +1813,6 @@ def MHLO_BatchNormTrainingOp : MHLO_Op<"batch_norm_training",
       1DTensorOf<[MHLO_Float]>:$batch_mean,
       1DTensorOf<[MHLO_Float]>:$batch_var);
 
-  let hasVerifier = 1;
   let hasCustomHLOConverter = 1;
 }
 
@@ -2262,8 +2259,7 @@ def MHLO_CustomCallOp: MHLO_Op<"custom_call",
   }];
 }
 
-def MHLO_DotOp: MHLO_Op<"dot",
-    [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def MHLO_DotOp: MHLO_Op<"dot", [Pure]> {
   let summary = "Dot operator";
   let description = [{
     Performs dot products between vectors, vector/matrix and matrix/matrix
@@ -2280,12 +2276,7 @@ def MHLO_DotOp: MHLO_Op<"dot",
   // Dot op required custom exporter to pass the preferred element type
   // to Xla builder.
   let hasCustomHLOConverter = 1;
-
-  let extraClassDeclaration = [{
-    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return succeeded(mlir::verifyCompatibleShapes(l, r));
-    }
-  }];
+  let hasVerifier = 1;
 }
 
 def MHLO_DotGeneralOp: MHLO_ShapedInterfaceOp<"dot_general", [Pure]> {
@@ -2493,7 +2484,9 @@ def MHLO_DynamicReshapeOp: MHLO_ShapedInterfaceOp<"dynamic_reshape", [Pure]> {
   let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
-def MHLO_ScatterOp: MHLO_Op<"scatter", [SameVariadicOperandSize, RecursiveMemoryEffects]> {
+def MHLO_ScatterOp: MHLO_Op<"scatter",
+      [SameVariadicOperandSize, RecursiveMemoryEffects,
+      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Scatter operator";
   let description = [{
     Generates a result which is the value of the input array `operand`,
@@ -2549,7 +2542,6 @@ def MHLO_SelectOp: MHLO_Op<"select", [Pure, HLO_BroadcastingElementwise,
   let results = (outs MHLO_Tensor:$result);
 
   let hasFolder = 1;
-  let hasVerifier = 1;
   let hasCanonicalizer = 1;
 
   let assemblyFormat = [{
@@ -2559,7 +2551,7 @@ def MHLO_SelectOp: MHLO_Op<"select", [Pure, HLO_BroadcastingElementwise,
 }
 
 def MHLO_SelectAndScatterOp: MHLO_Op<"select_and_scatter",
-      [RecursiveMemoryEffects]> {
+      [RecursiveMemoryEffects, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "SelectAndScatter operator";
   let description = [{
     Runs a windowed selection `select` function over `operand` with shape
@@ -2875,7 +2867,9 @@ def MHLO_ReduceWindowOp: MHLO_Op<"reduce_window", [
   }];
 }
 
-def MHLO_ReturnOp : MHLO_Op<"return", [Pure, Terminator]> {
+def MHLO_ReturnOp : MHLO_Op<"return",
+      [Pure, Terminator,
+      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     The `hlo.return` operation terminates a region and returns values.
 

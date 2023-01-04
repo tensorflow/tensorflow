@@ -609,6 +609,7 @@ tf_kernel_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core/data:finalization_utils",
+        "//tensorflow/core/data:unbounded_thread_pool",
         "//tensorflow/core/kernels/data:iterator_ops",
         "//tensorflow/core/platform",
     ],

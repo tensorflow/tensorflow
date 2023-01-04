@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 
+#include "absl/hash/hash.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -60,7 +61,9 @@ const int kThresholdToSkipConstTensorInstantiation = 128;
 
 template <typename Handle>
 struct HashHandle {
-  std::size_t operator()(const Handle& h) const { return h.Handle(); }
+  std::size_t operator()(const Handle& h) const {
+    return absl::HashOf(h.Handle());
+  }
 };
 template <typename Handle>
 struct CompareHandle {
@@ -1148,13 +1151,14 @@ class SymbolicShapeRefiner {
   struct ShapeId {
     const NodeDef* node;
     int port_id;
-    bool operator==(const ShapeId& other) const {
-      return node == other.node && port_id == other.port_id;
+
+    friend bool operator==(const ShapeId& lhs, const ShapeId& rhs) {
+      return lhs.node == rhs.node && lhs.port_id == rhs.port_id;
     }
-  };
-  struct HashShapeId {
-    std::size_t operator()(const ShapeId& shp) const {
-      return std::hash<const NodeDef*>{}(shp.node) + shp.port_id;
+
+    template <typename H>
+    friend H AbslHashValue(H h, const ShapeId& s) {
+      return H::combine(std::move(h), s.node, s.port_id);
     }
   };
 
@@ -1162,16 +1166,15 @@ class SymbolicShapeRefiner {
     const NodeDef* node;
     int port_id;
     int dim_index;
-    bool operator==(const DimId& other) const {
-      return node == other.node && port_id == other.port_id &&
-             dim_index == other.dim_index;
-    }
-  };
 
-  struct HashDimId {
-    std::size_t operator()(const DimId& dim) const {
-      return std::hash<const NodeDef*>{}(dim.node) + dim.port_id +
-             dim.dim_index;
+    friend bool operator==(const DimId& lhs, const DimId& rhs) {
+      return lhs.node == rhs.node && lhs.port_id == rhs.port_id &&
+             lhs.dim_index == rhs.dim_index;
+    }
+
+    template <typename H>
+    friend H AbslHashValue(H h, const DimId& d) {
+      return H::combine(std::move(h), d.node, d.port_id, d.dim_index);
     }
   };
 
@@ -2043,8 +2046,8 @@ class SymbolicShapeRefiner {
   const GraphView& graph_;
   int graph_def_version_;
   absl::flat_hash_map<const NodeDef*, NodeContext> node_to_context_;
-  absl::flat_hash_map<ShapeId, ShapeHandle, HashShapeId> unknown_shapes_;
-  absl::flat_hash_map<DimId, DimensionHandle, HashDimId> unknown_dims_;
+  absl::flat_hash_map<ShapeId, ShapeHandle> unknown_shapes_;
+  absl::flat_hash_map<DimId, DimensionHandle> unknown_dims_;
   // Store function instantiations only for valid function. If function
   // instantiation failed it will have an `absl::nullopt`.
   absl::flat_hash_map<string, absl::optional<GrapplerFunctionItem>>

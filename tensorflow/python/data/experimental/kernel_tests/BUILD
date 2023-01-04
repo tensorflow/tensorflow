@@ -206,7 +206,6 @@ tf_py_test(
     size = "large",
     srcs = ["index_shuffle_test.py"],
     shard_count = 12,
-    tags = ["requires-mem:24g"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",

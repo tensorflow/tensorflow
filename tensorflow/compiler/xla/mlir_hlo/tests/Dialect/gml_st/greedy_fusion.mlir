@@ -25,8 +25,6 @@ func.func @fuse_broadcast_map(%arg0: tensor<16xf32>, %arg1: tensor<16x32xf32>)
 
 // CHECK:      %[[INIT:.*]] = tensor.empty()
 // CHECK:      %[[RESULT:.*]] = gml_st.parallel
-// CHECK-DAG:  gml_st.tile
-// CHECK-DAG:  gml_st.tile
 // CHECK-DAG:  %[[INIT_SLICE:.*]] = gml_st.materialize %[[INIT]]
 // CHECK-DAG:  %[[ARG0_SLICE:.*]] = gml_st.materialize %[[ARG0]]
 // CHECK:      %[[BCAST:.*]] = linalg.broadcast
@@ -69,7 +67,6 @@ func.func @do_not_fuse_map_reduce(%arg0: tensor<16x32xf32>, %arg1: tensor<16xf32
 // CHECK:      %[[INIT:.*]] = tensor.empty()
 // CHECK:      %[[REDUCE:.*]] = linalg.reduce
 // CHECK:      %[[RESULT:.*]] = gml_st.parallel
-// CHECK-DAG:  gml_st.tile
 // CHECK-DAG:  %[[REDUCE_SLICE:.*]] = gml_st.materialize %[[REDUCE]]
 // CHECK-DAG:  %[[ARG1_SLICE:.*]] = gml_st.materialize %[[ARG1]]
 // CHECK-DAG:  %[[INIT_SLICE:.*]] = gml_st.materialize %[[INIT]]

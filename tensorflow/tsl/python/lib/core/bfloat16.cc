@@ -193,7 +193,13 @@ bool Initialize() {
   if (!custom_float_internal::RegisterNumpyDtype<float8_e4m3b11>(numpy.get())) {
     return false;
   }
-  // TODO(parkers): Enable CanCast to-from fp8 and bf16 and f16.
+
+  // Casts between bfloat16 and float8_e4m3b11.
+  if (!custom_float_internal::RegisterCustomFloatCast<float8_e4m3b11,
+                                                      bfloat16>()) {
+    return false;
+  }
+
   return true;
 }
 
@@ -226,6 +232,10 @@ int Bfloat16NumpyType() {
 PyObject* Float8_E4M3B11Dtype() {
   return reinterpret_cast<PyObject*>(
       custom_float_internal::TypeDescriptor<float8_e4m3b11>::type_ptr);
+}
+
+int Float8_E4M3B11NumpyType() {
+  return custom_float_internal::TypeDescriptor<float8_e4m3b11>::Dtype();
 }
 
 }  // namespace tsl

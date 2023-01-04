@@ -16,7 +16,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_QUANTIZE_MODEL_WRAPPER_H_
 
 #include <string>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 
@@ -26,28 +28,33 @@ namespace quantization {
 // Runs quantization on a model trained with quantization-aware training (QAT).
 // Returns serialized ExportedModel.
 std::string QuantizeQatModel(absl::string_view saved_model_path,
-                             absl::string_view exported_names_str,
-                             absl::string_view tags,
+                             const std::vector<std::string>& signature_keys,
+                             const std::unordered_set<std::string>& tags,
                              absl::string_view quant_opts_serialized);
 
 // Runs dynamic range post-training quantization (PTQ). Returns serialized
 // ExportedModel.
-std::string QuantizePtqDynamicRange(absl::string_view saved_model_path,
-                                    absl::string_view exported_names_str,
-                                    absl::string_view tags,
-                                    absl::string_view quant_opts_serialized);
+std::string QuantizePtqDynamicRange(
+    absl::string_view saved_model_path,
+    const std::vector<std::string>& signature_keys,
+    const std::unordered_set<std::string>& tags,
+    absl::string_view quant_opts_serialized);
 
 // Runs the pre-calibration step of post-training quantization (PTQ). Returns
 // serialized ExportedModel.
 std::string QuantizePtqModelPreCalibration(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags, absl::string_view quant_opts_serialized);
+    absl::string_view saved_model_path,
+    const std::vector<std::string>& signature_keys,
+    const std::unordered_set<std::string>& tags,
+    absl::string_view quant_opts_serialized);
 
 // Runs the post-calibration step of post-training quantization (PTQ). Returns
 // serialized ExportedModel.
 std::string QuantizePtqModelPostCalibration(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags, absl::string_view quant_opts_serialized);
+    absl::string_view saved_model_path,
+    const std::vector<std::string>& signature_keys,
+    const std::unordered_set<std::string>& tags,
+    absl::string_view quant_opts_serialized);
 
 void ClearCollectedInformationFromCalibrator();
 
