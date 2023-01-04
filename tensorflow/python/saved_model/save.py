@@ -38,6 +38,7 @@ from tensorflow.python.checkpoint import util as checkpoint_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
+from tensorflow.python.eager.polymorphic_function import saved_model_exported_concrete
 from tensorflow.python.eager.polymorphic_function import saved_model_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation
@@ -835,7 +836,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
       return object_map[function](*args)
     # Registered saver/restore functions do not appear in `object_map`, because
     # they are not in the object graph.
-    return saved_model_utils.ExportedConcreteFunction(
+    return saved_model_exported_concrete.ExportedConcreteFunction(
         function, tensor_map)(*args)
 
   for obj in object_map.values():
