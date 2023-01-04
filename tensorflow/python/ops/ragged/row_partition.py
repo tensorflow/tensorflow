@@ -746,14 +746,14 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     return self._row_splits
 
-  def value_rowids(self, allow_persist=True):
+  def value_rowids(self, cache=True):
     """Returns the row indices for this row partition.
 
     `value_rowids` specifies the row index fo reach value.  In particular,
     `value_rowids[i]` is the row index for `values[i]`.
 
     Args:
-      allow_persist: If True, the generated value_rowids tensor will be 
+      cache: If True, the generated value_rowids tensor will be 
       stored internally and reused if needed again. Defaults to True.
 
     Returns:
@@ -763,7 +763,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     if self._value_rowids is not None:
       return self._value_rowids
     value_rowids = segment_id_ops.row_splits_to_segment_ids(self._row_splits)
-    if allow_persist:
+    if cache:
       self._value_rowids = value_rowids
     return value_rowids
 
@@ -834,11 +834,11 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     return self._row_splits[1:]
 
-  def row_lengths(self, allow_persist=True):
+  def row_lengths(self, cache=True):
     """Returns the lengths of rows in this `RowPartition`.
 
     Args:
-      allow_persist: If True, the generated row_lengths tensor will be
+      cache: If True, the generated row_lengths tensor will be
       stored internally and reused if needed again. Defaults to True.
 
     Returns:
@@ -850,7 +850,7 @@ class RowPartition(composite_tensor.CompositeTensor):
       return self._row_lengths
     splits = self._row_splits
     row_lengths = splits[1:] - splits[:-1]
-    if allow_persist:
+    if cache:
       self._row_lengths = row_lengths
     return row_lengths
 
