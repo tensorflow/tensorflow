@@ -151,38 +151,10 @@ renames = {
         'tf.math.angle',
     'tf.app.run':
         'tf.compat.v1.app.run',
-    'tf.assert_greater_equal':
-        'tf.compat.v1.assert_greater_equal',
-    'tf.assert_integer':
-        'tf.compat.v1.assert_integer',
-    'tf.assert_less_equal':
-        'tf.compat.v1.assert_less_equal',
-    'tf.assert_near':
-        'tf.compat.v1.assert_near',
-    'tf.assert_negative':
-        'tf.compat.v1.assert_negative',
-    'tf.assert_non_negative':
-        'tf.compat.v1.assert_non_negative',
-    'tf.assert_non_positive':
-        'tf.compat.v1.assert_non_positive',
-    'tf.assert_none_equal':
-        'tf.compat.v1.assert_none_equal',
-    'tf.assert_positive':
-        'tf.compat.v1.assert_positive',
     'tf.assert_proper_iterable':
         'tf.debugging.assert_proper_iterable',
-    'tf.assert_rank_at_least':
-        'tf.compat.v1.assert_rank_at_least',
-    'tf.assert_rank_in':
-        'tf.compat.v1.assert_rank_in',
     'tf.assert_same_float_dtype':
         'tf.debugging.assert_same_float_dtype',
-    'tf.assert_scalar':
-        'tf.compat.v1.assert_scalar',
-    'tf.assert_type':
-        'tf.compat.v1.assert_type',
-    'tf.assert_variables_initialized':
-        'tf.compat.v1.assert_variables_initialized',
     'tf.assign':
         'tf.compat.v1.assign',
     'tf.assign_add':
@@ -252,7 +224,7 @@ renames = {
     'tf.delete_session_tensor':
         'tf.compat.v1.delete_session_tensor',
     'tf.depth_to_space':
-        'tf.compat.v1.depth_to_space',
+        'tf.nn.depth_to_space',
     'tf.dequantize':
         'tf.quantization.dequantize',
     'tf.deserialize_many_sparse':
@@ -533,6 +505,24 @@ renames = {
         'tf.keras.experimental.LinearModel',
     'tf.keras.models.WideDeepModel':
         'tf.keras.experimental.WideDeepModel',
+    'tf.keras.optimizers.Adadelta':
+        'tf.keras.optimizers.legacy.Adadelta',
+    'tf.keras.optimizers.Adagrad':
+        'tf.keras.optimizers.legacy.Adagrad',
+    'tf.keras.optimizers.Adam':
+        'tf.keras.optimizers.legacy.Adam',
+    'tf.keras.optimizers.Adamax':
+        'tf.keras.optimizers.legacy.Adamax',
+    'tf.keras.optimizers.Ftrl':
+        'tf.keras.optimizers.legacy.Ftrl',
+    'tf.keras.optimizers.Nadam':
+        'tf.keras.optimizers.legacy.Nadam',
+    'tf.keras.optimizers.Optimizer':
+        'tf.keras.optimizers.legacy.Optimizer',
+    'tf.keras.optimizers.RMSprop':
+        'tf.keras.optimizers.legacy.RMSprop',
+    'tf.keras.optimizers.SGD':
+        'tf.keras.optimizers.legacy.SGD',
     'tf.keras.utils.DeterministicRandomTestTool':
         'tf.compat.v1.keras.utils.DeterministicRandomTestTool',
     'tf.keras.utils.get_or_create_layer':
@@ -724,7 +714,7 @@ renames = {
     'tf.make_template':
         'tf.compat.v1.make_template',
     'tf.manip.gather_nd':
-        'tf.compat.v1.manip.gather_nd',
+        'tf.gather_nd',
     'tf.manip.reshape':
         'tf.reshape',
     'tf.manip.reverse':
@@ -983,6 +973,8 @@ renames = {
         'tf.random.gamma',
     'tf.random_normal':
         'tf.random.normal',
+    'tf.random_poisson':
+        'tf.random.poisson',
     'tf.random_shuffle':
         'tf.random.shuffle',
     'tf.random_uniform':
@@ -1059,10 +1051,8 @@ renames = {
         'tf.compat.v1.saved_model.get_tensor_from_tensor_info',
     'tf.saved_model.is_valid_signature':
         'tf.compat.v1.saved_model.is_valid_signature',
-    'tf.saved_model.loader.load':
-        'tf.compat.v1.saved_model.loader.load',
     'tf.saved_model.loader.maybe_saved_model_directory':
-        'tf.compat.v1.saved_model.loader.maybe_saved_model_directory',
+        'tf.saved_model.contains_saved_model',
     'tf.saved_model.main_op.main_op':
         'tf.compat.v1.saved_model.main_op.main_op',
     'tf.saved_model.main_op.main_op_with_restore':
@@ -1070,7 +1060,7 @@ renames = {
     'tf.saved_model.main_op_with_restore':
         'tf.compat.v1.saved_model.main_op_with_restore',
     'tf.saved_model.maybe_saved_model_directory':
-        'tf.compat.v1.saved_model.maybe_saved_model_directory',
+        'tf.saved_model.contains_saved_model',
     'tf.saved_model.predict_signature_def':
         'tf.compat.v1.saved_model.predict_signature_def',
     'tf.saved_model.regression_signature_def':
@@ -1158,9 +1148,9 @@ renames = {
     'tf.self_adjoint_eigvals':
         'tf.linalg.eigvalsh',
     'tf.serialize_many_sparse':
-        'tf.compat.v1.serialize_many_sparse',
+        'tf.io.serialize_many_sparse',
     'tf.serialize_sparse':
-        'tf.compat.v1.serialize_sparse',
+        'tf.io.serialize_sparse',
     'tf.serialize_tensor':
         'tf.io.serialize_tensor',
     'tf.set_random_seed':
@@ -1176,7 +1166,7 @@ renames = {
     'tf.sets.set_union':
         'tf.sets.union',
     'tf.space_to_depth':
-        'tf.compat.v1.space_to_depth',
+        'tf.nn.space_to_depth',
     'tf.sparse.SparseConditionalAccumulator':
         'tf.compat.v1.sparse.SparseConditionalAccumulator',
     'tf.sparse.matmul':
@@ -1189,6 +1179,10 @@ renames = {
         'tf.compat.v1.sparse.reduce_max_sparse',
     'tf.sparse.reduce_sum_sparse':
         'tf.compat.v1.sparse.reduce_sum_sparse',
+    'tf.sparse_add':
+        'tf.sparse.add',
+    'tf.sparse_concat':
+        'tf.sparse.concat',
     'tf.sparse_fill_empty_rows':
         'tf.sparse.fill_empty_rows',
     'tf.sparse_mask':
@@ -1201,8 +1195,12 @@ renames = {
         'tf.sparse.minimum',
     'tf.sparse_placeholder':
         'tf.compat.v1.sparse_placeholder',
+    'tf.sparse_reduce_max':
+        'tf.sparse.reduce_max',
     'tf.sparse_reduce_max_sparse':
         'tf.compat.v1.sparse_reduce_max_sparse',
+    'tf.sparse_reduce_sum':
+        'tf.sparse.reduce_sum',
     'tf.sparse_reduce_sum_sparse':
         'tf.compat.v1.sparse_reduce_sum_sparse',
     'tf.sparse_reorder':
@@ -1214,15 +1212,17 @@ renames = {
     'tf.sparse_retain':
         'tf.sparse.retain',
     'tf.sparse_segment_mean':
-        'tf.compat.v1.sparse_segment_mean',
+        'tf.sparse.segment_mean',
     'tf.sparse_segment_sqrt_n':
-        'tf.compat.v1.sparse_segment_sqrt_n',
+        'tf.sparse.segment_sqrt_n',
     'tf.sparse_segment_sum':
-        'tf.compat.v1.sparse_segment_sum',
+        'tf.sparse.segment_sum',
     'tf.sparse_slice':
         'tf.sparse.slice',
     'tf.sparse_softmax':
         'tf.sparse.softmax',
+    'tf.sparse_split':
+        'tf.sparse.split',
     'tf.sparse_tensor_dense_matmul':
         'tf.sparse.sparse_dense_matmul',
     'tf.sparse_tensor_to_dense':
@@ -1604,7 +1604,7 @@ renames = {
     'tf.variables_initializer':
         'tf.compat.v1.variables_initializer',
     'tf.verify_tensor_all_finite':
-        'tf.compat.v1.verify_tensor_all_finite',
+        'tf.debugging.assert_all_finite',
     'tf.wrap_function':
         'tf.compat.v1.wrap_function',
     'tf.write_file':

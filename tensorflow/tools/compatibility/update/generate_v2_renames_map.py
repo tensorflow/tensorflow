@@ -131,17 +131,30 @@ def collect_function_renames():
   # Set of rename lines to write to output file in the form:
   #   'tf.deprecated_name': 'tf.canonical_name'
   renames = set()
+  all_v2_names = get_all_v2_names()
 
   def visit(unused_path, unused_parent, children):
     """Visitor that collects rename strings to add to rename_line_set."""
     for child in children:
       _, attr = tf_decorator.unwrap(child[1])
-      api_names_v1 = tf_export.get_v1_names(attr)
+      api_names_v1 = [
+          name for name in tf_export.get_v1_names(attr)
+          if '.__internal__.' not in name
+      ]
       api_names_v2 = tf_export.get_v2_names(attr)
+
+      if not api_names_v2:
+        # It is possible that a different function is exported with the same
+        # name. For e.g. when creating a different function to rename arguments.
+        # Determine if this is the case to not do a useless rename to compat.v1
+        # for the function and its aliases.
+        # Note that unsafe v1 to v2 renames created here are overridden by the
+        # manual_symbol_renames in all_renames_v2.py.
+        api_names_v2 = [name for name in api_names_v1 if name in all_v2_names]
+
       deprecated_api_names = set(api_names_v1) - set(api_names_v2)
       for name in deprecated_api_names:
-        if '.__internal__.' not in name:
-          renames.add((name, get_canonical_name(api_names_v2, name)))
+        renames.add((name, get_canonical_name(api_names_v2, name)))
 
   visitor = public_api.PublicAPIVisitor(visit)
   visitor.do_not_descend_map['tf'].append('contrib')
@@ -152,12 +165,6 @@ def collect_function_renames():
   traverse.traverse(tf.compat.v2, visitor)
   traverse.traverse(tf.compat.v2.estimator, visitor)
 
-  # It is possible that a different function is exported with the
-  # same name. For e.g. when creating a different function to
-  # rename arguments. Exclude it from renames in this case.
-  v2_names = get_all_v2_names()
-  renames = set((name, new_name) for name, new_name in renames
-                if name not in v2_names)
   return renames
 
 
@@ -175,8 +182,7 @@ def update_renames_v2(output_file_path):
   function_renames = collect_function_renames()
   constant_renames = collect_constant_renames()
   all_renames = function_renames.union(constant_renames)
-  manual_renames = set(
-      all_renames_v2.manual_symbol_renames.keys())
+  manual_renames = all_renames_v2.manual_symbol_renames
 
   # List of rename lines to write to output file in the form:
   #   'tf.deprecated_name': 'tf.canonical_name'
