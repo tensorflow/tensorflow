@@ -340,8 +340,9 @@ class RandomGammaOp : public OpKernel {
           .Device(DEVICE_CPU)                                                  \
           .HostMemory("shape")                                                 \
           .TypeConstraint<TYPE>("dtype"),                                      \
-      PhiloxRandomOp<CPUDevice, random::UniformDistribution<                   \
-                                    random::PhiloxRandom, TYPE, true>>);       \
+      PhiloxRandomOp<CPUDevice,                                                \
+                     random::UniformDistribution<random::PhiloxRandom, TYPE,   \
+                                                 /*Vectorized=*/true>>);       \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("RandomStandardNormal")                                             \
           .Device(DEVICE_CPU)                                                  \
