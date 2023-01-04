@@ -27,6 +27,11 @@ TEST(PathUtilsTest, StreamDirectory) {
               MatchesRegex("/path/to/snapshot.streams.stream_0"));
 }
 
+TEST(PathUtilsTest, CheckpointsDirectory) {
+  EXPECT_THAT(CheckpointsDirectory("/path/to/snapshot", /*stream_id=*/0),
+              MatchesRegex("/path/to/snapshot.streams.stream_0.checkpoints"));
+}
+
 TEST(PathUtilsTest, CommittedChunksDirectory) {
   EXPECT_THAT(CommittedChunksDirectory("/path/to/snapshot"),
               MatchesRegex("/path/to/snapshot.committed_chunks"));

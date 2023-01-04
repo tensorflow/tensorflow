@@ -24,6 +24,10 @@ namespace data {
 std::string StreamDirectory(const std::string& snapshot_path,
                             int64_t stream_id);
 
+// Returns the directory path for snapshot checkpoints.
+std::string CheckpointsDirectory(const std::string& snapshot_path,
+                                 int64_t stream_id);
+
 // Returns the directory path for committed chunks.
 std::string CommittedChunksDirectory(const std::string& snapshot_path);
 
