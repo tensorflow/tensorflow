@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/tfrt/fallback/op_cost_map.pb.h"
-#include "tfrt/host_context/shared_context.h"  // from @tf_runtime
 
 namespace tfrt {
 class HostContext;
@@ -36,12 +35,10 @@ namespace tensorflow {
 namespace tfrt_stub {
 
 // Thread-safe.
-// TODO(b/259602527): `CostRecorder` shouldn't be a `SharedContext` because
-// `op_key` is only unique within a model.
-class CostRecorder : public tfrt::SharedContext {
+// Maintains the execution durations by `op_key`. Note that `op_key` is only
+// unique within a model.
+class CostRecorder {
  public:
-  explicit CostRecorder(tfrt::HostContext* host) {}
-
   // Records an execution duration for the op keyed by `op_key`.
   void RecordCostNanosecond(int64_t op_key, uint64_t execution_time_ns);
 
