@@ -877,9 +877,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     save(mod, '/tmp/kwonlyf', defined.get_concrete_function(*signature))
     loaded = load('/tmp/kwonlyf')
     result = loaded.signatures['serving_default'](
-        a=array_ops.constant(1),
-        b=array_ops.constant(2),
-        d=array_ops.constant(5))
+        a=array_ops.constant(1), b=array_ops.constant(2))
     self.assertEqual(result['output_0'].numpy(), 11)
 
   def testInputSignatureWithKeywordOnlyArgsNoDefaults(self):
