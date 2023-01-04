@@ -39,8 +39,8 @@ inline constexpr absl::string_view kTfQuantPtqDynamicRangeStepName =
     "tf_quant_ptq_dynamic_range";
 inline constexpr absl::string_view kTfQuantConstantUnfreezingStepName =
     "tf_quant_constant_unfreezing";
-inline constexpr absl::string_view kTfQuantCreateRestoreOpStepName =
-    "tf_quant_create_restore_op";
+inline constexpr absl::string_view kTfQuantInsertRestoreOpStepName =
+    "tf_quant_insert_restore_op";
 
 absl::StatusOr<ExportedModel> QuantizeQatModel(
     absl::string_view saved_model_path,

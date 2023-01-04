@@ -260,7 +260,7 @@ absl::StatusOr<std::vector<std::string>> UnfreezeConstantsAndSaveVariables(
   }
 
   if (const absl::Status pass_run_status =
-          RunPasses(/*name=*/kTfQuantCreateRestoreOpStepName,
+          RunPasses(/*name=*/kTfQuantInsertRestoreOpStepName,
                     /*add_passes_func=*/
                     [](mlir::PassManager &pm) {
                       pm.addPass(mlir::quant::CreateInsertRestoreOpPass());
