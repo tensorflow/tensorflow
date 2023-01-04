@@ -80,7 +80,7 @@ py_library(
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/saved_model:utils",
+        "//tensorflow/python/saved_model:path_helpers",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:data_structures",

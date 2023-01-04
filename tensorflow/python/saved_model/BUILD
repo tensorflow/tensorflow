@@ -70,6 +70,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":constants",
+        ":path_helpers",
         ":pywrap_saved_model",
         ":signature_def_utils",
         ":utils",
@@ -93,6 +94,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":constants",
+        ":path_helpers",
         ":pywrap_saved_model",
         ":signature_def_utils",
         ":utils",
@@ -191,6 +193,17 @@ tf_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/training:saver_test_utils",
+    ],
+)
+
+py_strict_library(
+    name = "path_helpers",
+    srcs = ["path_helpers.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":constants",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -333,6 +346,7 @@ py_strict_library(
     deps = [
         ":builder",
         ":function_serialization",
+        ":path_helpers",
         ":pywrap_saved_model",
         ":revived_types",
         ":save_context",
@@ -413,6 +427,7 @@ py_library(
         ":load_options",
         ":load_v1_in_v2",
         ":loader",
+        ":path_helpers",
         ":pywrap_saved_model",
         ":revived_types",
         ":utils",

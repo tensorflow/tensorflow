@@ -49,7 +49,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.saved_model import utils_impl
+from tensorflow.python.saved_model import path_helpers
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.trackable import base
@@ -2577,9 +2577,9 @@ class Checkpoint(autotrackable.AutoTrackable):
       save_path = os.fspath(save_path)
 
     if save_path is not None and gfile.IsDirectory(save_path) and (
-        (gfile.Exists(utils_impl.get_saved_model_pb_path(save_path)) or
-         gfile.Exists(utils_impl.get_saved_model_pbtxt_path(save_path)))):
-      save_path = utils_impl.get_variables_path(save_path)
+        (gfile.Exists(path_helpers.get_saved_model_pb_path(save_path)) or
+         gfile.Exists(path_helpers.get_saved_model_pbtxt_path(save_path)))):
+      save_path = path_helpers.get_variables_path(save_path)
 
     try:
       status = self.read(save_path, options=options)

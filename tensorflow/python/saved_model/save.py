@@ -54,6 +54,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import function_serialization
+from tensorflow.python.saved_model import path_helpers
 from tensorflow.python.saved_model import pywrap_saved_model
 from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import revived_types
@@ -1046,7 +1047,7 @@ def _export_debug_info(exported_graph, export_dir):
       exported_operations)
   file_io.atomic_write_string_to_file(
       file_io.join(
-          utils_impl.get_or_create_debug_dir(export_dir),
+          path_helpers.get_or_create_debug_dir(export_dir),
           constants.DEBUG_INFO_FILENAME_PB),
       graph_debug_info.SerializeToString(deterministic=True))
 
@@ -1279,11 +1280,11 @@ def save_and_return_nodes(obj,
   # Write the checkpoint, copy assets into the assets directory, and write out
   # the SavedModel proto itself.
   if not experimental_skip_checkpoint:
-    utils_impl.get_or_create_variables_dir(export_dir)
+    path_helpers.get_or_create_variables_dir(export_dir)
     ckpt_options = checkpoint_options.CheckpointOptions(
         experimental_io_device=options.experimental_io_device)
     object_saver.save(
-        utils_impl.get_variables_path(export_dir), options=ckpt_options)
+        path_helpers.get_variables_path(export_dir), options=ckpt_options)
   builder_impl.copy_assets_to_destination_dir(asset_info.asset_filename_map,
                                               export_dir)
   # Note that this needs to be the last file operation when saving the
