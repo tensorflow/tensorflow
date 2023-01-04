@@ -531,10 +531,9 @@ def cast_inputs(args, kwargs, input_signature):
   """Casts args, kwargs to TF values based on an optional input_signature."""
   if input_signature is None:
     args = cast_numpy_inputs(args)
-    kwargs = cast_numpy_inputs(kwargs)
   else:
     args = cast_inputs_to_signature(args, input_signature)
-    kwargs = {}
+  kwargs = cast_numpy_inputs(kwargs)
 
   return args, kwargs
 

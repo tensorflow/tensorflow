@@ -1141,20 +1141,24 @@ class Function(core.GenericFunction, trackable.Trackable):
     Returns:
       A list of instances of `ConcreteFunction`.
     """
-    concrete_functions = self._list_all_concrete_functions()
     seen_signatures = []
-    for concrete_function in concrete_functions:
-      signature = concrete_function.structured_input_signature
-      flattened = nest.flatten(signature)
-      if any(
-          isinstance(arg, func_graph_module.UnknownArgument)
-          for arg in flattened):
-        logging.info("Unsupported signature for serialization: %s.", signature)
-        continue
-      equal_to_signature = functools.partial(
-          function_spec_lib.is_same_structure, signature, check_values=True)
-      if not any(equal_to_signature(s) for s in seen_signatures):
-        seen_signatures.append(signature)
+    if self.input_signature is not None:
+      seen_signatures.append((self.input_signature, {}))
+    else:
+      concrete_functions = self._list_all_concrete_functions()
+      for concrete_function in concrete_functions:
+        signature = concrete_function.structured_input_signature
+        flattened = nest.flatten(signature)
+        if any(
+            isinstance(arg, func_graph_module.UnknownArgument)
+            for arg in flattened):
+          logging.info("Unsupported signature for serialization: %s.",
+                       signature)
+          continue
+        equal_to_signature = functools.partial(
+            function_spec_lib.is_same_structure, signature, check_values=True)
+        if not any(equal_to_signature(s) for s in seen_signatures):
+          seen_signatures.append(signature)
 
     # Re-create concrete functions for these signatures. Re-creating ensures
     # that if the cache key has changed, the function will be traced again.
