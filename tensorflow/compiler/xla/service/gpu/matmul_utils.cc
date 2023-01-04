@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
@@ -412,11 +411,7 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
       return se::blas::ComputationType::kF32;
     case F32:  // fall-through
     case C64:
-      if (tsl::tensor_float_32_execution_enabled()) {
-        return se::blas::ComputationType::kTF32AsF32;
-      } else {
-        return se::blas::ComputationType::kF32;
-      }
+      return se::blas::ComputationType::kTF32AsF32;
     case F64:  // fall-through
     case C128:
       return se::blas::ComputationType::kF64;

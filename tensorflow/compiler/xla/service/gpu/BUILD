@@ -971,7 +971,6 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/tsl/platform:statusor",
-        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lt_header",
