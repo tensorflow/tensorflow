@@ -162,6 +162,37 @@ const auto kDimTot = TilingScheme::DimTot;
 const auto kLinearIndexingX = TilingScheme::LinearIndexingX;
 const auto kStridedIndexingX = TilingScheme::StridedIndexingX;
 
+// Some HLO operations are not implemented as Thunks, and only available when
+// XLA:GPU compiled for XLA runtime. However we still depend on emitting thunk
+// sequence during compilation, and for unsupported operations we emit
+// unreachable thunk, which is not supposed to be executed, and exists only
+// during compilation as we transition from thunks to XLA runtime.
+//
+// Examples: Point-to-point communication operations (Send and Recv) are only
+// available as XLA runtime custom calls. API_VERSION_TYPED_FFI custom calls
+// are only implemented when executing with XLA runtime.
+class UnreachableThunk : public Thunk {
+ public:
+  UnreachableThunk(mlir::Operation* op, std::string error_message)
+      : Thunk(Kind::kKernel, ThunkInfo(op)),
+        error_message_(std::move(error_message)) {}
+
+  UnreachableThunk(const UnreachableThunk&) = delete;
+  UnreachableThunk& operator=(const UnreachableThunk&) = delete;
+
+  Status Initialize(const GpuExecutable& executable,
+                    se::StreamExecutor* executor) final {
+    return tsl::errors::Internal(error_message_);
+  }
+
+  Status ExecuteOnStream(const ExecuteParams& params) final {
+    return tsl::errors::Internal(error_message_);
+  }
+
+ private:
+  std::string error_message_;
+};
+
 void AnnotateWithInt32Value(std::string name, int64_t value,
                             const std::string& kernel_name,
                             llvm::Module* llvm_module) {
@@ -537,6 +568,13 @@ StatusOr<BufferAllocation::Slice> IrEmitterUnnested::GetAllocationSlice(
     mlir::Value v, std::string* constant_name) {
   return xla::gpu::GetAllocationSlice(v, ir_emitter_context_->allocations(),
                                       constant_name);
+}
+
+Status IrEmitterUnnested::EmitUnreachable(mlir::Operation* op,
+                                          std::string error_message) {
+  AddThunkToThunkSequence(std::unique_ptr<Thunk>(
+      new UnreachableThunk(op, std::move(error_message))));
+  return OkStatus();
 }
 
 Status IrEmitterUnnested::EmitConstant(mlir::Operation* op) {
@@ -5446,6 +5484,18 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
   // because constants have no side effects.
   if (mlir::isa<mlir::arith::ConstantOp>(op)) {
     return OkStatus();
+  }
+
+  // Point to point communication operations are only implemented as XLA
+  // GPU runtime custom calls.
+  bool is_gpu_runtime = hlo_module_config_.debug_options()
+                            .xla_gpu_enable_xla_runtime_executable();
+  if (is_gpu_runtime &&
+      mlir::isa<mlir::lmhlo::SendOp, mlir::lmhlo::RecvOp,
+                mlir::lmhlo::SendDoneOp, mlir::lmhlo::RecvDoneOp>(op)) {
+    return EmitUnreachable(op,
+                           "Point-to-point communication operations are not "
+                           "implemented as thunks");
   }
 
   return InternalError("Unrecognized op: %s", MlirToString(op));

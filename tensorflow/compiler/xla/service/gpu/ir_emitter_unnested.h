@@ -181,6 +181,8 @@ class IrEmitterUnnested : public IrEmitter {
   IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
                     IrEmitterContext* ir_emitter_context);
 
+  Status EmitUnreachable(mlir::Operation* op, std::string error_message);
+
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter. It also mixes in some special handling for custom kernels
   // via the ThunkEmitter.
