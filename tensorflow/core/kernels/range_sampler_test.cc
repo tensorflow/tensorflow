@@ -170,6 +170,7 @@ TEST_F(RangeSamplerTest, FixedUnigramNoExistingFilename) {
   string fname = "NoExistingFile";
   FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
   Status s = test_sampler->SetDistributionSampler(env, fname);
+  sampler_.reset(test_sampler);
   EXPECT_TRUE(errors::IsNotFound(s)) << s;
 }
 TEST_F(RangeSamplerTest, FixedUnigramNoMatchingRangeWeights) {
@@ -178,6 +179,7 @@ TEST_F(RangeSamplerTest, FixedUnigramNoMatchingRangeWeights) {
   TF_CHECK_OK(WriteStringToFile(env, fname, kVocabContent));
   FixedUnigramSampler* test_sampler = new FixedUnigramSampler(8, 0.8, 0, 1, 0);
   Status s = test_sampler->SetDistributionSampler(env, fname);
+  sampler_.reset(test_sampler);
   EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
 }
 TEST_F(RangeSamplerTest, FixedUnigramChecksum) {
