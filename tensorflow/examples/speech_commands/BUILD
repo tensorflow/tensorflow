@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -16,7 +17,6 @@ py_binary(
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -29,7 +29,6 @@ py_binary(
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -56,13 +55,12 @@ py_library(
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
 tf_py_test(
     name = "models_test",
-    size = "small",
+    size = "medium",
     srcs = ["models_test.py"],
     tags = [
         "no_pip",  # b/131330719
@@ -83,7 +81,6 @@ py_library(
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -121,7 +118,6 @@ py_library(
         ":models",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 

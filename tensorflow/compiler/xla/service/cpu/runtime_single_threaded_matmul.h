@@ -19,7 +19,6 @@ limitations under the License.
 #include <complex>
 
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/core/platform/types.h"
 
 extern "C" {
 
@@ -56,10 +55,9 @@ extern void __xla_cpu_runtime_EigenSingleThreadedMatMulC128(
     int32_t transpose_lhs, int32_t transpose_rhs);
 
 extern void __xla_cpu_runtime_EigenSingleThreadedMatMulS32(
-    const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
-    tensorflow::int32* out, tensorflow::int32* lhs, tensorflow::int32* rhs,
-    int64_t m, int64_t n, int64_t k, int32_t transpose_lhs,
-    int32_t transpose_rhs);
+    const void* /* xla::ExecutableRunOptions* */ run_options_ptr, int32_t* out,
+    int32_t* lhs, int32_t* rhs, int64_t m, int64_t n, int64_t k,
+    int32_t transpose_lhs, int32_t transpose_rhs);
 
 }  // extern "C"
 

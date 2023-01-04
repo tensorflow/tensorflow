@@ -81,7 +81,6 @@ void ExternalDelegateProvider::LogParams(const ToolParams& params,
 
 TfLiteDelegatePtr ExternalDelegateProvider::CreateTfLiteDelegate(
     const ToolParams& params) const {
-  TfLiteDelegatePtr delegate(nullptr, [](TfLiteDelegate*) {});
   std::string lib_path = params.Get<std::string>("external_delegate_path");
   if (!lib_path.empty()) {
     auto delegate_options =
@@ -116,7 +115,7 @@ TfLiteDelegatePtr ExternalDelegateProvider::CreateTfLiteDelegate(
       TfLiteExternalDelegateDelete(delegate);
     });
   }
-  return delegate;
+  return CreateNullDelegate();
 }
 
 std::pair<TfLiteDelegatePtr, int>

@@ -27,10 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -47,12 +43,13 @@ class AllocationTracker {
   // handle that can be used for talking to XLA clients. The given shaped buffer
   // will be treated as the buffer corresponding to the only replica.
   StatusOr<GlobalDataHandle> Register(ScopedShapedBuffer shaped_buffer,
-                                      const string& tag);
+                                      const std::string& tag);
 
   // Registers a vector of shaped buffers of device memory, one per replica, and
   // returns a corresponding handle that can be used for talking to XLA clients.
   StatusOr<GlobalDataHandle> RegisterReplicatedBuffers(
-      std::vector<ScopedShapedBuffer> replicated_buffers, const string& tag);
+      std::vector<ScopedShapedBuffer> replicated_buffers,
+      const std::string& tag);
 
   // Unregister the allocation for the given data handle.
   Status Unregister(const GlobalDataHandle& data);
@@ -87,7 +84,7 @@ class AllocationTracker {
   // Internal helper which resolves the given GlobalDataHandle to a
   // list of ScopedShapedBuffers.
   StatusOr<std::vector<const ShapedBuffer*>> ResolveInternal(
-      const GlobalDataHandle& data) const TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+      const GlobalDataHandle& data) const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Internal helper which registers a vector of shaped buffers, one per
   // replica.  ShapedBufferTy is either ScopedShapedBuffer or ShapedBuffer.  If
@@ -95,26 +92,26 @@ class AllocationTracker {
   // object -- presumably this is a call from DeconstructTuple.
   template <typename ShapedBufferTy>
   StatusOr<GlobalDataHandle> RegisterInternal(
-      std::vector<ShapedBufferTy> replicated_buffers, const string& tag)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+      std::vector<ShapedBufferTy> replicated_buffers, const std::string& tag)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Adds the given device address to the allocation tracker, or if it already
   // exists, then increment its reference count.
   void AddAllocationOrIncrementRefCount(se::DeviceMemoryBase device_memory,
                                         int device_ordinal)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Decrements the reference count of the given device memory. Then, if it is
   // zero, deallocate the memory.
   Status DecrementRefCount(se::DeviceMemoryBase device_memory,
                            int device_ordinal)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // A map from device memory opaque value to allocation. One such map is
   // maintained per device ordinal.
   using AllocationMap = absl::flat_hash_map<const void*, Allocation>;
 
-  mutable tensorflow::mutex mutex_;
+  mutable absl::Mutex mutex_;
 
   // Backend to use with this tracker. The backend supplies the memory allocator
   // to use when deallocating memory.
@@ -122,11 +119,11 @@ class AllocationTracker {
 
   // The next handle to assign to an allocation, guarded by the same mutex as
   // the mapping as they'll be mutated at the same time.
-  int64_t next_handle_ TF_GUARDED_BY(mutex_);
+  int64_t next_handle_ ABSL_GUARDED_BY(mutex_);
 
   // A map from device ordinal to AllocationMap.
   absl::flat_hash_map<int, AllocationMap> opaque_to_allocation_map_
-      TF_GUARDED_BY(mutex_);
+      ABSL_GUARDED_BY(mutex_);
 
   // A map from data handle to a vector of shaped buffers that represent the
   // buffers for different replicas.
@@ -146,9 +143,10 @@ class AllocationTracker {
   // free'd when both the view *and* the original tuple are Unregistered.  This
   // refcounting is managed in opaque_to_allocation_map_.
   absl::flat_hash_map<int64_t, std::vector<std::unique_ptr<ShapedBuffer>>>
-      handle_to_shaped_buffers_ TF_GUARDED_BY(mutex_);
+      handle_to_shaped_buffers_ ABSL_GUARDED_BY(mutex_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(AllocationTracker);
+  AllocationTracker(const AllocationTracker&) = delete;
+  AllocationTracker& operator=(const AllocationTracker&) = delete;
 };
 
 }  // namespace xla

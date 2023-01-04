@@ -19,8 +19,8 @@ limitations under the License.
 
 #include <algorithm>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
@@ -338,10 +338,14 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
       if (need_broadcast) {
         TF_LITE_ADD(reference_ops, BroadcastAdd4DSlow, int16_t);
       } else {
-        reference_ops::Add(
-            op_params, GetTensorShape(input1), GetTensorData<int16_t>(input1),
-            GetTensorShape(input2), GetTensorData<int16_t>(input2),
-            GetTensorShape(output), GetTensorData<int16_t>(output), false);
+        if (kernel_type == kReference) {
+          reference_ops::Add(
+              op_params, GetTensorShape(input1), GetTensorData<int16_t>(input1),
+              GetTensorShape(input2), GetTensorData<int16_t>(input2),
+              GetTensorShape(output), GetTensorData<int16_t>(output), false);
+        } else {
+          TF_LITE_ADD(optimized_integer_ops, Add, int16_t);
+        }
       }
     } else {
       if (kernel_type == kReference) {

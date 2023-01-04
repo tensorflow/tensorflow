@@ -14,7 +14,6 @@
 # ==============================================================================
 """Tests for inplace_ops."""
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -28,7 +27,7 @@ from tensorflow.python.platform import test as test_lib
 class InplaceOpsTest(test_util.TensorFlowTestCase):
 
   def testBasicUpdate(self):
-    for dtype in [dtypes.float32, dtypes.int32, dtypes.int64]:
+    for dtype in [dtypes.float32, dtypes.int32, dtypes.int64, dtypes.bfloat16]:
       with test_util.use_gpu():
         x = array_ops.ones([7, 3], dtype)
         y = np.ones([7, 3], dtype.as_numpy_dtype)
@@ -62,7 +61,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(x, y)
 
   def testBasicAdd(self):
-    for dtype in [dtypes.float32, dtypes.int32, dtypes.int64]:
+    for dtype in [dtypes.float32, dtypes.int32, dtypes.int64, dtypes.bfloat16]:
       with test_util.use_gpu():
         x = array_ops.ones([7, 3], dtype)
         y = np.ones([7, 3], dtype.as_numpy_dtype)
@@ -81,7 +80,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
         self.assertAllClose(x, y)
 
   def testBasicSub(self):
-    for dtype in [dtypes.float32, dtypes.int32, dtypes.int64]:
+    for dtype in [dtypes.float32, dtypes.int32, dtypes.int64, dtypes.bfloat16]:
       with test_util.use_gpu():
         x = array_ops.ones([7, 3], dtype)
         y = np.ones([7, 3], dtype.as_numpy_dtype)
@@ -104,7 +103,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
       d0, d1, d2 = 100, 3, 5
       x = array_ops.zeros([d0, d1, d2])
       y = np.zeros([d0, d1, d2])
-      for _ in xrange(20):
+      for _ in range(20):
         idx = np.random.choice(d0, d0 // 10, replace=False)
         val = np.random.randint(10, size=(d0 // 10, d1, d2))
         op = np.random.randint(3)
@@ -124,7 +123,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
       d0 = 100
       x = array_ops.zeros([d0])
       y = np.zeros([d0])
-      for _ in xrange(20):
+      for _ in range(20):
         idx = np.random.choice(d0, d0 // 10, replace=False)
         val = np.random.randint(10, size=(d0 // 10))
         op = np.random.randint(3)
@@ -162,7 +161,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
   def testEmpty(self):
     for dtype in [
         dtypes.float32, dtypes.float64, dtypes.int32, dtypes.int64, dtypes.bool,
-        dtypes.uint8
+        dtypes.uint8, dtypes.bfloat16
     ]:
       with test_util.use_gpu():
         test_shapes = [(), (1,), (2, 3), (0, 2), (2, 3, 5), (2, 0, 5)]

@@ -109,7 +109,7 @@ REGISTER_OP("SdcaFprint")
       ShapeHandle output_shape;
       TF_RETURN_IF_ERROR(c->Concatenate(handle, c->Vector(2), &output_shape));
       c->set_output(0, output_shape);
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

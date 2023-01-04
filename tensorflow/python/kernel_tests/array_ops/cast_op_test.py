@@ -16,11 +16,14 @@
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -108,6 +111,18 @@ class CastOpTest(test.TestCase):
       b = math_ops.cast(math_ops.cast(a, dtypes.bfloat16), dtypes.float32)
       self.assertAllClose(a, self.evaluate(b), rtol=1 / 128.)
 
+  def testFloat8(self):
+    a = np.random.uniform(-100, 100, 100).astype(np.float32)
+    for float8 in (dtypes.float8_e4m3fn, dtypes.float8_e5m2):
+      # Including float8_e4m3fn should cover the float8 combinations without
+      # loss of precision.
+      for dtype in (dtypes.float32, dtypes.bfloat16, dtypes.float16,
+                    dtypes.float8_e4m3fn):
+        with self.cached_session(use_gpu=True):
+          b = ops.convert_to_tensor(a, float8)
+          c = math_ops.cast(math_ops.cast(b, dtype), float8)
+          self.assertAllEqual(b, c)
+
   def testRandom(self):
     self._testAll(np.random.normal(0, 10, 210).reshape([2, 3, 5, 7]))
     self._testAll(np.random.normal(0, 1e6, 210).reshape([2, 3, 5, 7]))
@@ -180,6 +195,13 @@ class CastOpTest(test.TestCase):
               *gradient_checker_v2.compute_gradient(cast, [x]))
           self.assertLess(err, 1e-3)
 
+  def testRefDtype(self):
+    with context.graph_mode(), self.cached_session():
+      x = gen_state_ops.variable(shape=[1], dtype=dtypes.float32)
+      result = math_ops.cast(x, dtypes.float32)
+      self.assertEqual(x.dtype, dtypes.float32_ref)
+      self.assertEqual(result.dtype, dtypes.float32)
+
 
 class SparseTensorCastTest(test.TestCase):
 
@@ -212,6 +234,55 @@ class SaturateCastTest(test.TestCase):
         correct = np.maximum(out_type.min, np.minimum(out_type.max, x))
         self.assertAllEqual(correct, y)
 
+  def testSaturateRealToComplex(self):
+    in_types = (dtypes.float32, dtypes.float64)
+    out_types = (dtypes.complex64, dtypes.complex128)
+    for in_type in in_types:
+      for out_type in out_types:
+        lo, hi = in_type.min, in_type.max
+        x = constant_op.constant([lo, lo + 1, lo // 2, hi // 2, hi - 1, hi],
+                                 dtype=in_type)
+        y = math_ops.saturate_cast(x, dtype=out_type)
+        self.assertEqual(y.dtype, out_type)
+        x, y = self.evaluate([x, y])
+        correct = np.maximum(out_type.real_dtype.min,
+                             np.minimum(out_type.real_dtype.max, x))
+        self.assertAllEqual(correct, y)
+
+  def testSaturateComplexToReal(self):
+    in_types = (dtypes.complex64, dtypes.complex128)
+    out_types = (dtypes.float32, dtypes.float64)
+    for in_type in in_types:
+      for out_type in out_types:
+        lo, hi = in_type.real_dtype.min, in_type.real_dtype.max
+        x = constant_op.constant([lo, lo + 1, lo // 2, hi // 2, hi - 1, hi],
+                                 dtype=in_type)
+        y = math_ops.saturate_cast(x, dtype=out_type)
+        self.assertEqual(y.dtype, out_type)
+        x, y = self.evaluate([x, y])
+        correct = np.maximum(out_type.min, np.minimum(out_type.max, x))
+        self.assertAllEqual(correct, y)
+
+  @test_util.disable_xla("Clamp is not implemented for C128 in XLA")
+  def testSaturateComplexToComplex(self):
+    in_types = (dtypes.complex64, dtypes.complex128)
+    out_types = (dtypes.complex64, dtypes.complex128)
+    for in_type in in_types:
+      for out_type in out_types:
+        lo, hi = in_type.real_dtype.min, in_type.real_dtype.max
+        x_real = constant_op.constant(
+            [lo, lo + 1, lo // 2, hi // 2, hi - 1, hi],
+            dtype=in_type.real_dtype)
+        x = math_ops.complex(x_real, array_ops.transpose(x_real))
+        y = math_ops.saturate_cast(x, dtype=out_type)
+        self.assertEqual(y.dtype, out_type)
+        x, y = self.evaluate([x, y])
+        correct = np.maximum(
+            out_type.real_dtype.min,
+            np.minimum(out_type.real_dtype.max, np.real(x))) + 1j * np.maximum(
+                out_type.real_dtype.min,
+                np.minimum(out_type.real_dtype.max, np.imag(x)))
+        self.assertAllEqual(correct, y)
 
 if __name__ == "__main__":
   test.main()

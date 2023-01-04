@@ -18,7 +18,6 @@ import gc
 import time
 
 from absl.testing import parameterized
-from six.moves import xrange
 import tensorflow as tf
 
 from tensorflow.python.eager import forwardprop
@@ -122,14 +121,14 @@ class HVPBenchmarks(tf.test.Benchmark):
         labels = tf.constant(labels)
         model.build(images.shape)
         vector = [tf.ones_like(v) for v in model.trainable_variables]
-        for _ in xrange(num_burn):
+        for _ in range(num_burn):
           results = hvp_fn(model, images, labels, vector)
           for result in results:
             result.cpu()
         self._force_device_sync()
         gc.collect()
         start = time.time()
-        for _ in xrange(num_iters):
+        for _ in range(num_iters):
           results = hvp_fn(model, images, labels, vector)
           for result in results:
             result.cpu()

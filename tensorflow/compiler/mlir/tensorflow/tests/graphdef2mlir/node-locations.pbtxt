@@ -90,6 +90,6 @@ library {
 }
 
 # TODO(b/142400497): What is the semantic contract for locations?
-# CHECK: "tf.Const"{{.*}}value = dense<2>{{.*}}loc(fused["n1@f1", "n2@f2", "fused_node_outside_function"])
-# CHECK: "tf.Const"{{.*}}value = dense<0>{{.*}}loc("node_outside_function")
-# CHECK: "tf.Const"{{.*}}value = dense<1>{{.*}}loc("node_inside_function@foo")
+# CHECK: "tf.Const"{{.*}}value = dense<2>{{.*}}loc(fused["Const:",  "n1@f1", "n2@f2", "fused_node_outside_function"])
+# CHECK: "tf.Const"{{.*}}value = dense<0>{{.*}}loc(fused["Const:", "node_outside_function"])
+# CHECK: "tf.Const"{{.*}}value = dense<1>{{.*}}loc(fused["Const:", "node_inside_function@foo"])

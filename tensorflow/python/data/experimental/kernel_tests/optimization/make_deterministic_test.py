@@ -35,6 +35,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
@@ -108,6 +109,46 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.map(map_fn, num_parallel_calls=5)
       self.evaluate(variables.global_variables_initializer())
       expected_output = list(zip(range(0, 5), range(1, 6)))
+      self.assertDatasetProduces(
+          dataset,
+          expected_output=expected_output,
+          requires_initialization=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def test_stateful_ops_map_with_random_ops(self):
+    with test_util.deterministic_ops():
+
+      def map_fn(x):
+        return x + random_ops.random_uniform(
+            (), 0, 2, dtype=dtypes.int64, seed=1)
+
+      dataset = dataset_ops.Dataset.range(5)
+      dataset = dataset.apply(testing.assert_next(["Map", "ParallelMap"]))
+      dataset = dataset.map(map_fn, num_parallel_calls=5)
+      get_next = self.getNext(dataset, requires_initialization=True)
+      for i in range(5):
+        self.assertIn(self.evaluate(get_next()), [i, i + 1])
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(use_function=[False, True])))
+  def test_stateful_ops_map_ignore_input(self, use_function):
+    with test_util.deterministic_ops():
+
+      v = variables.Variable(0.)
+
+      def map_fn(x):
+        del x
+        v.assign_add(1.)
+        return math_ops.constant_op.constant(1.)
+
+      if use_function:
+        map_fn = def_function.function(map_fn)
+
+      dataset = dataset_ops.Dataset.range(5)
+      dataset = dataset.map(map_fn, num_parallel_calls=5)
+      self.evaluate(variables.global_variables_initializer())
+      expected_output = [1.] * 5
       self.assertDatasetProduces(
           dataset,
           expected_output=expected_output,

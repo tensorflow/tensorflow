@@ -21,10 +21,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/op_expander_pass.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
@@ -67,7 +67,7 @@ StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
     // TODO(b/122298745): Handle Sort ops where S32 is too small for the number
     // of elements in the sort dimension.
     if (iota_shape.dimensions(sort->sort_dimension()) >
-        std::numeric_limits<int32>::max()) {
+        std::numeric_limits<int32_t>::max()) {
       return Unimplemented(
           "Stable sorting of more than 2^31-1 elements is not implemented");
     }
@@ -91,7 +91,7 @@ StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
         absl::StrCat("p.", sort->operand_count(), ".rhs")));
     extra_parameter_ptrs.push_back(extra_parameters.back().get());
     sort->set_to_apply(sort->GetModule()->AddEmbeddedComputation(
-        comparator->CloneWithReplacements(std::move(replacements),
+        comparator->CloneWithReplacements(&replacements,
                                           extra_parameter_ptrs)));
 
     // Replace the original sort op.

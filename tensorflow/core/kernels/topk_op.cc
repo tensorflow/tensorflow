@@ -120,14 +120,9 @@ struct TopKFunctor<CPUDevice, T> {
 
     // Special case for k == 1.
     if (k == 1) {
-#ifdef EIGEN_HAS_INDEX_LIST
       typename Eigen::IndexList<Eigen::type2index<1>> reduce_on_cols;
       typename Eigen::IndexList<int, Eigen::type2index<1>> rows_by_one;
       rows_by_one.set(0, num_rows);
-#else
-      Eigen::array<int, 1> reduce_on_cols = {1};
-      Eigen::array<int, 2> rows_by_one = {static_cast<int>(num_rows), 1};
-#endif
 
       values.device(d) =
           input.maximum(/*dims=*/reduce_on_cols).eval().reshape(rows_by_one);
@@ -143,7 +138,7 @@ struct TopKFunctor<CPUDevice, T> {
         values(r, 0) = input(r, indices(r, 0));
       }
 
-      return Status::OK();
+      return OkStatus();
     }
 
     auto SortIndices = [&](int64_t start_batch, int64_t limit_batch) {
@@ -237,7 +232,7 @@ struct TopKFunctor<CPUDevice, T> {
     Shard(worker_threads.num_threads, worker_threads.workers, num_rows,
           final_cost, SortIndices);
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -269,6 +264,7 @@ namespace functor {
   extern template struct functor::TopKFunctor<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
+TF_CALL_bfloat16(DECLARE_GPU_SPEC);
 TF_CALL_INTEGRAL_TYPES(DECLARE_GPU_SPEC);
 
 #undef DECLARE_GPU_SPEC
@@ -286,6 +282,7 @@ TF_CALL_INTEGRAL_TYPES(DECLARE_GPU_SPEC);
                           TopK<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNELS);
+TF_CALL_bfloat16(REGISTER_KERNELS);
 TF_CALL_INTEGRAL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 

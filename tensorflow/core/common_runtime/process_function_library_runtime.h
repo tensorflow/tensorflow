@@ -15,25 +15,29 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_
 
+#include <functional>
+#include <optional>
+#include <string>
 #include <unordered_map>
 
-// clang-format off
-// Required for IS_MOBILE_PLATFORM
-#include "tensorflow/core/platform/platform.h"
-// clang-format on
-
-#include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/optimized_function_graph_info.h"
+#include "tensorflow/core/common_runtime/stats_publisher_interface.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/tsl/platform/notification.h"
+#include "tensorflow/tsl/platform/thread_annotations.h"
+
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
-#endif  // IS_MOBILE_PLATFORM
+#endif  // !IS_MOBILE_PLATFORM
 
 namespace tensorflow {
 
@@ -70,7 +74,8 @@ class ProcessFunctionLibraryRuntime {
       thread::ThreadPool* thread_pool = nullptr,
       DistributedFunctionLibraryRuntime* parent = nullptr,
       const SessionMetadata* session_metadata = nullptr,
-      Rendezvous::Factory rendezvous_factory = Rendezvous::Factory());
+      Rendezvous::Factory rendezvous_factory = Rendezvous::Factory(),
+      StatsPublisherFactory stats_publisher_factory = CreateNoOpStatsPublisher);
 
   ~ProcessFunctionLibraryRuntime() {
     // Deleting the FunctionLibraryRuntime map will delete the function handles
@@ -79,6 +84,11 @@ class ProcessFunctionLibraryRuntime {
     // since the flr_map_ may have already been deleted. Explicitly releasing
     // flr_map_ here and checking flr_map_ in ReleaseHandle to avoid this.
     flr_map_.reset();
+    // Graph and stats publishers might have pending work in async threads that
+    // requires access to PFLR instance. Wait for completion before destructing.
+    for (const auto& n : stats_publisher_completed_) {
+      n->WaitForNotification();
+    }
   }
 
   // Sends `tensors_to_send` from `source_device` to `target_device` using
@@ -164,18 +174,6 @@ class ProcessFunctionLibraryRuntime {
   Status IsCrossProcess(FunctionLibraryRuntime::Handle handle,
                         bool* is_cross_process) const;
 
-  // TODO(iga): Reword
-  // Pins each arg that emits a `DT_RESOURCE` tensor to the device on which the
-  // corresponding resource lives. This ensures that the Placer assigns ops that
-  // access these resources to the appropriate devices.
-  static Status PinArgsAndRets(const std::vector<string>& input_devices,
-                               const std::vector<string>& output_devices,
-                               const DeviceSet& device_set,
-                               const std::vector<Node*>& arg_nodes,
-                               const std::vector<Node*>& ret_nodes,
-                               const FunctionLibraryDefinition* lib_def,
-                               Device* default_device);
-
   // Delegates to the local FLR that owns state corresponding to `handle` and
   // tells it to release it. If the `handle` isn't needed at all, the local FLR
   // might call RemoveHandle on this to get rid of the state owned by the Proc
@@ -242,6 +240,31 @@ class ProcessFunctionLibraryRuntime {
 #endif  // IS_MOBILE_PLATFORM
   };
 
+  // Structure detailing the asynchronous assumptions of a component function,
+  // such as whether it can support synchronous execution and any information
+  // needed to execute in proper order to resolve inter-subgraph dependencies.
+  class AsyncAttributes {
+   public:
+    enum Summary { kSafeForSync = 0, kSendOnly, kRecvOnly, kAsyncRequired };
+
+    AsyncAttributes()
+        : allow_control_flow_sync_execution_(false), summary_(kSafeForSync) {}
+    explicit AsyncAttributes(const Graph* graph,
+                             bool allow_control_flow_sync_execution)
+        : allow_control_flow_sync_execution_(allow_control_flow_sync_execution),
+          summary_(Summarize(graph)) {}
+    Summary summary() const { return summary_; }
+    bool allow_control_flow_sync_execution() const {
+      return allow_control_flow_sync_execution_;
+    }
+
+   private:
+    // This data member should be initialized before the summary_.
+    bool allow_control_flow_sync_execution_;
+    Summary summary_;
+    Summary Summarize(const Graph* graph);
+  };
+
   // Structure to keep track of how a component function (a single-device
   // piece of a multi-device function) fits into the multi-device function.
   struct ComponentFunctionData {
@@ -261,6 +284,8 @@ class ProcessFunctionLibraryRuntime {
     // ret_alloc_attrs[i] are the allocator attributes of the i-th return value
     // of the component function.
     std::vector<AllocatorAttributes> ret_alloc_attrs;
+
+    AsyncAttributes async_attributes;
   };
 
   // Data structure holding information for a single instantiated multi-device
@@ -295,6 +320,9 @@ class ProcessFunctionLibraryRuntime {
     bool is_cross_process_;
     // Indicates whether this function has remote outputs.
     bool has_remote_outputs;
+
+    //  Indicates if running this function synchronously is both allowed + safe.
+    bool enable_sync_execution;
 
     // Maps the device name to the information about the component function
     // be run on this device.
@@ -400,11 +428,21 @@ class ProcessFunctionLibraryRuntime {
                                  InternalArgs* comp_args);
 #endif  // IS_MOBILE_PLATFORM
 
+  std::vector<string> GetOrderedSubgraphs(
+      const MultiDeviceFunctionData* data) const;
+
   Status PrepareRunMultiDevice(const FunctionLibraryRuntime::Options& opts,
                                FunctionLibraryRuntime::Handle handle,
                                const MultiDeviceFunctionData** data) const;
 
-  void RunMultiDevice(
+  Status RunMultiDeviceSync(
+      const FunctionLibraryRuntime::Options& opts,
+      FunctionLibraryRuntime::Handle handle, std::vector<FunctionRet>* rets,
+      std::function<Status(const ComponentFunctionData& comp_data,
+                           InternalArgs* args)>
+          get_component_args) const;
+
+  void RunMultiDeviceAsync(
       const FunctionLibraryRuntime::Options& opts,
       FunctionLibraryRuntime::Handle handle, std::vector<FunctionRet>* rets,
       std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
@@ -412,6 +450,11 @@ class ProcessFunctionLibraryRuntime {
       std::function<Status(const ComponentFunctionData& comp_data,
                            InternalArgs* args)>
           get_component_args) const;
+
+  void PublishSubgraphs(
+      const std::string& function_name,
+      std::unique_ptr<std::unordered_map<string, std::unique_ptr<Graph>>>
+          subgraphs);
 
   // Data structure holding information for a single instantiated remote
   // (to be executed on `target_device`) function.
@@ -460,7 +503,7 @@ class ProcessFunctionLibraryRuntime {
   mutable mutex mu_;
 
   Env* const env_;
-  const absl::optional<const ConfigProto> config_;
+  const std::optional<const ConfigProto> config_;
   const DeviceMgr* const device_mgr_;
   const FunctionLibraryDefinition* lib_def_;
   thread::ThreadPool* default_thread_pool_;
@@ -497,6 +540,14 @@ class ProcessFunctionLibraryRuntime {
 
   const OptimizerOptions optimizer_options_;
   const int graph_def_version_;
+
+  StatsPublisherFactory stats_publisher_factory_;
+  // Holds all stats publishers, one for publishing subgraphs of each
+  // instantiated function.
+  std::vector<std::unique_ptr<StatsPublisherInterface>> stats_publishers_
+      TF_GUARDED_BY(mu_);
+  std::vector<std::unique_ptr<tsl::Notification>> stats_publisher_completed_
+      TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

@@ -16,7 +16,7 @@ limitations under the License.
 #include <cmath>
 #include <random>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -55,7 +55,7 @@ void Free(TfLiteContext* context, void* buffer) {
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  // TODO(b/111309333): Handle optional seed input.
+  // The seed/seed2 attributes are not handled in this custom op implementation.
   TF_LITE_ENSURE(context, NumInputs(node) == 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 

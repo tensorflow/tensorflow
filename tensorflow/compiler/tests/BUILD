@@ -1,6 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_cuda_cc_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load(
     "//tensorflow/compiler/tests:build_defs.bzl",
@@ -14,6 +13,7 @@ load(
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":internal"],
     licenses = ["notice"],
 )
@@ -729,7 +729,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "slice_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["slice_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
@@ -808,14 +808,17 @@ tf_xla_py_test(
     size = "small",
     timeout = "long",
     srcs = ["image_ops_test.py"],
-    disabled_backends = [
-        "gpu",  # Fails on CUDA 11 b/190787813
+    enable_mlir_bridge = False,
+    enabled_backends = [
+        "cpu",
+        "gpu",
     ],
     python_version = "PY3",
     shard_count = 10,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
+        "requires-gpu-nvidia",
     ],
     deps = [
         ":xla_test",
@@ -843,7 +846,6 @@ tf_xla_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform_test",
-        "@six_archive//:six",
     ],
 )
 
@@ -1062,7 +1064,7 @@ tf_xla_py_test(
         "cpu",
         "cpu_ondemand",
     ],
-    enable_mlir_bridge = False,
+    enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 5,
     tags = [
@@ -1152,7 +1154,7 @@ tf_xla_py_test(
     name = "reduce_window_test",
     size = "small",
     srcs = ["reduce_window_test.py"],
-    enable_mlir_bridge = False,
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -1227,6 +1229,7 @@ tf_xla_py_test(
     srcs = ["scan_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
+    shard_count = 6,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
@@ -1349,6 +1352,7 @@ tf_xla_py_test(
     srcs = ["stateless_random_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
+    shard_count = 10,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
@@ -1419,6 +1423,7 @@ tf_xla_py_test(
     srcs = ["ternary_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
+    shard_count = 4,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "noasan",
@@ -1441,6 +1446,7 @@ tf_xla_py_test(
     srcs = ["unary_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
+    shard_count = 4,
     tags = [
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -1485,7 +1491,7 @@ tf_xla_py_test(
     name = "variable_ops_test",
     size = "small",
     srcs = ["variable_ops_test.py"],
-    enable_mlir_bridge = False,
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -1550,7 +1556,6 @@ tf_xla_py_test(
     size = "small",
     srcs = ["cast_ops_test.py"],
     disabled_backends = ["cpu_ondemand"],
-    enable_mlir_bridge = False,  # TODO(b/200894060): Re-enable on MLIR bridge.
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -1627,7 +1632,7 @@ tf_xla_py_test(
     srcs = ["sort_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
-    shard_count = 10,
+    shard_count = 50,
     # Times out in fastbuild mode.
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -1833,6 +1838,7 @@ tf_cuda_cc_test(
         "no_cuda_asan",  # TODO(b/201651800)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "requires-gpu-nvidia",
+        "no_rocm",  # ROCmSoftwarePlatform #958
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
 )
@@ -1853,6 +1859,7 @@ tf_cuda_cc_test(
         "no_cuda_asan",  # TODO(b/201651800)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "requires-gpu-nvidia",
+        "no_rocm",  # ROCmSoftwarePlatform #958
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
 )
@@ -2016,6 +2023,51 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "xla_custom_call_ops_test",
+    size = "small",
+    srcs = ["xla_custom_call_ops_test.py"],
+    disabled_backends = [
+        "gpu",
+    ],
+    enable_mlir_bridge = False,
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
+    ],
+    use_xla_device = False,  # Uses tf.function(jit_compile=True)
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
+    name = "runtime_shape_check_test",
+    size = "small",
+    srcs = ["runtime_shape_check_test.py"],
+    disabled_backends = [
+        "cpu",
+        "cpu_ondemand",
+    ],
+    enable_mlir_bridge = False,
+    python_version = "PY3",
+    tags = [
+        "no_pip",
+        "notap",
+    ],
+    use_xla_device = False,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "conv_node_name_test",
     size = "medium",
     srcs = ["conv_node_name_test.py"],
@@ -2042,11 +2094,25 @@ tf_xla_py_test(
     name = "tridiagonal_solve_ops_test",
     size = "medium",
     srcs = ["tridiagonal_solve_ops_test.py"],
-    disabled_backends = [
-        "cpu_ondemand",
-        "cpu",
-        "gpu",
+    enable_mlir_bridge = True,
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
     ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:standard_ops",
+    ],
+)
+
+tf_xla_py_test(
+    name = "tridiagonal_matmul_ops_test",
+    size = "medium",
+    srcs = ["tridiagonal_matmul_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
@@ -2081,6 +2147,46 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "repeat_op_test",
+    size = "medium",
+    srcs = ["repeat_op_test.py"],
+    enable_mlir_bridge = True,
+    shard_count = 5,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:math_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
+    name = "image_ops_jit_compile_test",
+    size = "medium",
+    srcs = ["image_ops_jit_compile_test.py"],
+    disabled_backends = [
+        "cpu_ondemand",
+    ],
+    enable_mlir_bridge = False,
+    shard_count = 5,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
+    use_xla_device = False,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:math_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
     name = "ensure_shape_op_test",
     size = "medium",
     srcs = ["ensure_shape_op_test.py"],
@@ -2102,16 +2208,44 @@ tf_xla_py_test(
     name = "where_op_test",
     size = "small",
     srcs = ["where_op_test.py"],
+    enable_mlir_bridge = False,
+    enabled_backends = [
+        "cpu",
+        "gpu",
+    ],
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python/compiler/xla:compiler_py",
+    ],
+)
+
+tf_xla_py_test(
+    name = "where_op_tpu_test",
+    size = "small",
+    srcs = ["where_op_test.py"],
+    args = ["--tpu_use_tfrt=true"],
     disabled_backends = [
         "cpu",
         "cpu_ondemand",
         "gpu",
     ],
     enable_mlir_bridge = False,
+    main = "where_op_test.py",
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
     deps = [
         ":xla_test",
-        "//tensorflow/compiler/jit",
-        "//tensorflow/contrib/tpu",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
@@ -2140,10 +2274,42 @@ tf_xla_py_test(
     ],
 )
 
+tf_xla_py_test(
+    name = "const_arg_test",
+    size = "small",
+    srcs = ["const_arg_test.py"],
+    enable_mlir_bridge = False,
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:is_mlir_bridge_test_false",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "const_test",
+    size = "small",
+    srcs = ["const_test.py"],
+    python_version = "PY3",
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework",
+    ],
+)
+
 tpu_py_test(
-    name = "const_op_test",
+    name = "giant_const_op_test",
     srcs = [
-        "const_op_test.py",
+        "giant_const_op_test.py",
     ],
     disable_experimental = True,
     # TODO(b/188995810): Add an optimization in MLIR importer to not
@@ -2183,5 +2349,46 @@ tf_xla_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/tpu:tpu_lib",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tpu_py_test(
+    name = "approx_topk_test",
+    srcs = ["approx_topk_test.py"],
+    disable_experimental = False,
+    disable_mlir_bridge = False,
+    tags = ["no_oss"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
+    name = "xla_call_module_test",
+    size = "small",
+    srcs = ["xla_call_module_test.py"],
+    enable_mlir_bridge = False,
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
+    ],
+    use_xla_device = False,  # Uses tf.function(jit_compile=True)
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
     ],
 )

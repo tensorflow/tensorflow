@@ -46,14 +46,14 @@ class CollectiveRemoteAccessLocalTest : public ::testing::Test {
     device_count->insert({"CPU", NUM_DEVS});
     std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(options, kTaskName, &devices));
-    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
-    drl_ = absl::make_unique<DeviceResolverLocal>(device_mgr_.get());
-    prl_ = absl::make_unique<CollectiveParamResolverLocal>(
+    device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
+    drl_ = std::make_unique<DeviceResolverLocal>(device_mgr_.get());
+    prl_ = std::make_unique<CollectiveParamResolverLocal>(
         cp, device_mgr_.get(), drl_.get(), /*nccl_communicator*/ nullptr,
         kTaskName);
-    rma_ = absl::make_unique<CollectiveRemoteAccessLocal>(device_mgr_.get(),
+    rma_ = std::make_unique<CollectiveRemoteAccessLocal>(device_mgr_.get(),
                                                           drl_.get(), kStepId);
-    cm_ = absl::make_unique<CancellationManager>();
+    cm_ = std::make_unique<CancellationManager>();
   }
 
   ~CollectiveRemoteAccessLocalTest() override = default;

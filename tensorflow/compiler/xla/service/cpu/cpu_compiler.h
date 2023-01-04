@@ -17,20 +17,24 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_COMPILER_H_
 
 #include <memory>
+#include <string_view>
 
 #include "absl/types/span.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/service/cpu/executable.pb.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace cpu {
+
+class CpuExecutable;
+class XlaFrameworkMapping;
 
 // This class wraps the configurability options that LLVM exposes including: the
 // target triple, the target cpu and the target features.  It also includes the
@@ -51,8 +55,8 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
     BigPie
   };
 
-  CpuAotCompilationOptions(string triple, string cpu_name, string features,
-                           string entry_point_name,
+  CpuAotCompilationOptions(std::string triple, std::string cpu_name,
+                           std::string features, std::string entry_point_name,
                            RelocationModel relocation_model);
 
   ~CpuAotCompilationOptions() override;
@@ -60,22 +64,58 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
   se::Platform::Id PlatformId() const override;
 
   // The triple used for compilation, similar to clang's -target flag.
-  const string& triple() const { return triple_; }
+  const std::string& triple() const { return triple_; }
   // The CPU name used for compilation, similar to clang's -mcpu flag.
-  const string& cpu_name() const { return cpu_name_; }
+  const std::string& cpu_name() const { return cpu_name_; }
   // The target features used for compilation ("+avx2", "+neon", etc).
-  const string& features() const { return features_; }
+  const std::string& features() const { return features_; }
   // The name to be used for the compiled code's entry point.
-  const string& entry_point_name() const { return entry_point_name_; }
+  const std::string& entry_point_name() const { return entry_point_name_; }
   // The relocation model used for compilation.
   RelocationModel relocation_model() const { return relocation_model_; }
 
+  bool use_mlir_hlo_lowering() const { return use_mlir_hlo_lowering_; }
+  void set_use_mlir_hlo_lowering(bool value) { use_mlir_hlo_lowering_ = value; }
+
  private:
-  const string triple_;
-  const string cpu_name_;
-  const string features_;
-  const string entry_point_name_;
+  const std::string triple_;
+  const std::string cpu_name_;
+  const std::string features_;
+  const std::string entry_point_name_;
   const RelocationModel relocation_model_;
+  bool use_mlir_hlo_lowering_ = false;
+};
+
+class CpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
+ public:
+  CpuXlaRuntimeAotCompilationResult(HloModuleProto hlo,
+                                    std::string_view obj_file,
+                                    std::string_view mlir_module,
+                                    XlaFrameworkMapping xla_framework_mapping);
+
+  explicit CpuXlaRuntimeAotCompilationResult(
+      XlaRuntimeCpuExecutableProto executable)
+      : xla_runtime_cpu_executable_(executable) {}
+
+  StatusOr<std::string> SerializeAsString() const override {
+    return xla_runtime_cpu_executable_.SerializeAsString();
+  }
+
+  static StatusOr<std::unique_ptr<CpuXlaRuntimeAotCompilationResult>>
+  FromString(const std::string& serialized) {
+    XlaRuntimeCpuExecutableProto xla_runtime_cpu_executable;
+    if (!xla_runtime_cpu_executable.ParseFromString(serialized)) {
+      return InternalError("Failed to parse serialized JitRtExecutableProto.");
+    }
+    return std::make_unique<CpuXlaRuntimeAotCompilationResult>(
+        xla_runtime_cpu_executable);
+  }
+
+  StatusOr<std::unique_ptr<Executable>> LoadExecutable(
+      Compiler* compiler, se::StreamExecutor* executor) const override;
+
+ private:
+  XlaRuntimeCpuExecutableProto xla_runtime_cpu_executable_;
 };
 
 class CpuAotCompilationResult : public AotCompilationResult {
@@ -149,6 +189,19 @@ class CpuCompiler : public LLVMCompiler {
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
 
+  StatusOr<std::unique_ptr<AotCompilationResult>> Export(
+      Executable* executable) const override;
+
+  // Returns a (deserialized) AotCompilationResult from a serialized
+  // AotCompilationResult.
+  StatusOr<std::unique_ptr<AotCompilationResult>> LoadAotCompilationResult(
+      const std::string& serialized_aot_result) override {
+    return CpuXlaRuntimeAotCompilationResult::FromString(serialized_aot_result);
+  }
+
+  StatusOr<std::unique_ptr<CpuExecutable>> CompileXlaRuntimeCpuExecutable(
+      std::unique_ptr<HloModule> module);
+
  private:
   // Initialize the LLVM target.
   static void InitializeLLVMTarget();
@@ -156,21 +209,25 @@ class CpuCompiler : public LLVMCompiler {
   // Runs the HLO passes which are necessary for both optimizations and
   // correctness.
   Status RunHloPasses(HloModule* module, bool is_aot_compile,
-                      llvm::TargetMachine* target_machine);
+                      llvm::TargetMachine* target_machine,
+                      bool is_mlir_compile = false);
 
   // Runs HLO passes up to and including layout assignment.
   Status RunHloPassesThroughLayoutAssn(
       HloModule* module, bool /*is_aot_compile*/,
-      LLVMTargetMachineFeatures* target_machine_features);
+      LLVMTargetMachineFeatures* target_machine_features,
+      bool is_mlir_compile = false);
 
   // Runs HLO passes after layout assignment.
   Status RunHloPassesAfterLayoutAssn(
       HloModule* module, bool is_aot_compile,
-      LLVMTargetMachineFeatures* target_machine_features);
+      LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile);
 
-  mutable std::unique_ptr<HloProto> hlo_proto_;
+  StatusOr<std::unique_ptr<CpuExecutable>> CompileLegacyCpuExecutable(
+      std::unique_ptr<HloModule> module);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CpuCompiler);
+  CpuCompiler(const CpuCompiler&) = delete;
+  CpuCompiler& operator=(const CpuCompiler&) = delete;
 };
 
 }  // namespace cpu

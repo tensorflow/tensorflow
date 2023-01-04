@@ -73,7 +73,7 @@ void MklQuantizationRangeForMultiplication(float min_a, float max_a,
 #ifdef ENABLE_ONEDNN_OPENMP
 #pragma omp parallel for
 #endif  // ENABLE_ONEDNN_OPENMP
-  // TODO: Add eigen parallel_for
+  // TODO(intel-tf): Add eigen parallel_for
   for (int64_t n = 0; n < n_channel; ++n) {
     float a_float_for_one_quant_level =
         MklFloatForOneQuantizedLevel<T1>(min_a, max_a);

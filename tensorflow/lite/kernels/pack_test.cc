@@ -62,7 +62,7 @@ TEST(PackOpTest, FloatThreeInputs) {
   model.SetInput(0, {1, 4});
   model.SetInput(1, {2, 5});
   model.SetInput(2, {3, 6});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 2));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 4, 2, 5, 3, 6}));
 }
@@ -72,7 +72,7 @@ TEST(PackOpTest, FloatThreeInputsDifferentAxis) {
   model.SetInput(0, {1, 4});
   model.SetInput(1, {2, 5});
   model.SetInput(2, {3, 6});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
@@ -82,7 +82,7 @@ TEST(PackOpTest, FloatThreeInputsNegativeAxis) {
   model.SetInput(0, {1, 4});
   model.SetInput(1, {2, 5});
   model.SetInput(2, {3, 6});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
@@ -91,7 +91,7 @@ TEST(PackOpTest, FloatMultilDimensions) {
   PackOpModel<float> model({TensorType_FLOAT32, {2, 3}}, 1, 2);
   model.SetInput(0, {1, 2, 3, 4, 5, 6});
   model.SetInput(1, {7, 8, 9, 10, 11, 12});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 2, 3));
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
@@ -102,7 +102,7 @@ TEST(PackOpTest, FloatFiveDimensions) {
   model.SetInput(0, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   model.SetInput(
       1, {17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 2, 2, 2, 2));
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({1,  2,  3,  4,  5,  6,  7,  8,  17, 18, 19,
@@ -116,7 +116,7 @@ TEST(PackOpTest, Int32ThreeInputs) {
   model.SetInput(0, {1, 4});
   model.SetInput(1, {2, 5});
   model.SetInput(2, {3, 6});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 2));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 4, 2, 5, 3, 6}));
 }
@@ -126,7 +126,7 @@ TEST(PackOpTest, Int32ThreeInputsDifferentAxis) {
   model.SetInput(0, {1, 4});
   model.SetInput(1, {2, 5});
   model.SetInput(2, {3, 6});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
@@ -136,7 +136,7 @@ TEST(PackOpTest, Int32ThreeInputsNegativeAxis) {
   model.SetInput(0, {1, 4});
   model.SetInput(1, {2, 5});
   model.SetInput(2, {3, 6});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
@@ -145,7 +145,7 @@ TEST(PackOpTest, Int32MultilDimensions) {
   PackOpModel<int32_t> model({TensorType_INT32, {2, 3}}, 1, 2);
   model.SetInput(0, {1, 2, 3, 4, 5, 6});
   model.SetInput(1, {7, 8, 9, 10, 11, 12});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 2, 3));
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
@@ -157,7 +157,7 @@ TEST(PackOpTest, Int64ThreeInputs) {
   model.SetInput(0, {1LL << 33, 4});
   model.SetInput(1, {2, 5});
   model.SetInput(2, {3, -(1LL << 34)});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 2));
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({1LL << 33, 4LL, 2LL, 5LL, 3LL, -(1LL << 34)}));
@@ -168,7 +168,7 @@ TEST(PackOpTest, Int64ThreeInputsDifferentAxis) {
   model.SetInput(0, {1LL << 33, 4});
   model.SetInput(1, {2, 5});
   model.SetInput(2, {3, -(1LL << 34)});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({1LL << 33, 2LL, 3LL, 4LL, 5LL, -(1LL << 34)}));
@@ -179,7 +179,7 @@ TEST(PackOpTest, Int64ThreeInputsNegativeAxis) {
   model.SetInput(0, {1LL << 33, 4});
   model.SetInput(1, {2, 5});
   model.SetInput(2, {3, -(1LL << 34)});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({1LL << 33, 2LL, 3LL, 4LL, 5LL, -(1LL << 34)}));
@@ -189,7 +189,7 @@ TEST(PackOpTest, Int64MultilDimensions) {
   PackOpModel<int64_t> model({TensorType_INT64, {2, 3}}, 1, 2);
   model.SetInput(0, {1LL << 33, 2, 3, 4, 5, 6});
   model.SetInput(1, {7, 8, -(1LL << 34), 10, 11, 12});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 2, 3));
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({1LL << 33, 2LL, 3LL, 7LL, 8LL, -(1LL << 34),
@@ -215,7 +215,7 @@ TYPED_TEST(PackOpTestInt, ThreeInputs) {
   model.SetInput(0, {1, 4});
   model.SetInput(1, {2, 5});
   model.SetInput(2, {3, 6});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 2));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 4, 2, 5, 3, 6}));
 }
@@ -226,7 +226,7 @@ TYPED_TEST(PackOpTestInt, ThreeInputsDifferentAxis) {
   model.SetInput(0, {1, 4});
   model.SetInput(1, {2, 5});
   model.SetInput(2, {3, 6});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
@@ -237,7 +237,7 @@ TYPED_TEST(PackOpTestInt, ThreeInputsNegativeAxis) {
   model.SetInput(0, {1, 4});
   model.SetInput(1, {2, 5});
   model.SetInput(2, {3, 6});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
@@ -247,7 +247,7 @@ TYPED_TEST(PackOpTestInt, MultilDimensions) {
       {TestFixture::TENSOR_TYPE, {2, 3}}, 1, 2);
   model.SetInput(0, {1, 2, 3, 4, 5, 6});
   model.SetInput(1, {7, 8, 9, 10, 11, 12});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 2, 3));
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));

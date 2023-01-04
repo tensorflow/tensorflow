@@ -103,7 +103,7 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
                             [[4, 6680]])
 
   def setUp(self):
-    super(trt_test.TfTrtIntegrationTestBase, self).setUp()  # pylint: disable=bad-super-call
+    super().setUp()
     # Disable layout optimizer, since it will convert BiasAdd with NHWC
     # format to NCHW format under four dimentional input.
     self.DisableNonTrtOptimizers()
@@ -121,9 +121,9 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
       # Increased conversion rate in dynamic shape mode due to a few additional
       # conversions for MatMul, Reshape and Concat ops. This increases the size
       # of the candidate segments and results in two more TrtEngineOps.
-      return ["TRTEngineOp_0", "TRTEngineOp_1", "TRTEngineOp_2"]
+      return ["TRTEngineOp_000", "TRTEngineOp_001", "TRTEngineOp_002"]
     else:
-      return ["TRTEngineOp_0"]
+      return ["TRTEngineOp_000"]
 
 
 if __name__ == "__main__":

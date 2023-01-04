@@ -99,7 +99,7 @@ struct DenseUpdate<CPUDevice, string, ASSIGN> {
             " using device: ", context->device()->name());                    \
     }                                                                         \
     *to = tensor;                                                             \
-    return Status::OK();                                                      \
+    return OkStatus();                                                        \
   }
 
 INSTANTIATE_GET_VARIANT_COPY_FN(CPUDevice, TF_CALL_ALL_TYPES, CPU_DENSE_COPY);
@@ -114,6 +114,7 @@ INSTANTIATE_GET_VARIANT_COPY_FN(CPUDevice, TF_CALL_ALL_TYPES, CPU_DENSE_COPY);
   }
 #define TF_CALL_GPU_AND_ADDITIONAL_TYPES(T) \
   TF_CALL_GPU_ALL_TYPES(T);                 \
+  TF_CALL_bfloat16(T);                      \
   TF_CALL_int32(T);                         \
   TF_CALL_int64(T);
 INSTANTIATE_GET_VARIANT_COPY_FN(GPUDevice, TF_CALL_GPU_AND_ADDITIONAL_TYPES,

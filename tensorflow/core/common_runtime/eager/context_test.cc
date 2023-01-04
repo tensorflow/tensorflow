@@ -35,7 +35,7 @@ static Device* CreateDevice(const string& type, int n) {
   class FakeDevice : public Device {
    public:
     explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
-    Status Sync() override { return Status::OK(); }
+    Status Sync() override { return OkStatus(); }
     Allocator* GetAllocator(AllocatorAttributes) override { return nullptr; }
   };
   DeviceAttributes attr;
@@ -53,21 +53,23 @@ class EagerContextTest : public ::testing::Test {
                    ContextDevicePlacementPolicy policy, bool async = false) {
     ASSERT_EQ(context_, nullptr);
     InitDeviceManager();
-    context_ = core::RefCountPtr<EagerContext>(
-        new EagerContext(opts, policy, async, device_manager_.get(),
-                         /*device_mgr_owned=*/false, /*rendezvous=*/nullptr,
-                         /*cluster_flr=*/nullptr));
+    context_ = core::RefCountPtr<EagerContext>(new EagerContext(
+        opts, policy, async, device_manager_.get(),
+        /*device_mgr_owned=*/false, /*rendezvous=*/nullptr,
+        /*cluster_flr=*/nullptr, /*collective_executor_mgr=*/nullptr,
+        /*run_eager_op_as_function=*/true));
   }
 
  protected:
   void InitDeviceManager() {
     ASSERT_EQ(device_manager_, nullptr);
-    device_manager_ = absl::make_unique<DynamicDeviceMgr>();
+    device_manager_ = std::make_unique<DynamicDeviceMgr>();
     std::vector<std::unique_ptr<Device>> added_devices;
     added_devices.emplace_back(CreateDevice(DEVICE_CPU, 0));
     added_devices.emplace_back(CreateDevice(DEVICE_CPU, 1));
     added_devices.emplace_back(CreateDevice(DEVICE_GPU, 0));
     added_devices.emplace_back(CreateDevice(DEVICE_GPU, 1));
+    added_devices.emplace_back(CreateDevice(DEVICE_TPU, 0));
 
     TF_CHECK_OK(device_manager_->AddDevices(std::move(added_devices)));
   }
@@ -304,21 +306,55 @@ TEST_F(EagerContextTest, FunctionErrorRecovery) {
   retvals[0] = nullptr;
 }
 
+TEST_F(EagerContextTest, XlaCompileDeviceType) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT, /*async=*/true);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
+  const FunctionDef x_times_two = FDH::Define(
+      // Name
+      "XTimesTwo",
+      // Args
+      {"x: int64"},
+      // Return values
+      {"y: int64"}, {},
+      // Nodes
+      {
+          {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+          {{"y"}, "Mul", {"x", "two"}, {{"T", DT_INT64}}},
+      });
+
+  Status s = context()->AddFunctionDef(x_times_two);
+  context()->SetJitCompileRewrite(true);
+  auto op = ImmediateOpPtr(context()->CreateOperation());
+  TF_ASSERT_OK(
+      op->Reset("XTimesTwo", "/job:localhost/replica:0/task:0/device:CPU:0"));
+  Tensor int_tensor = test::AsScalar<int64_t>(3);
+  auto input_int = core::RefCountPtr<ImmediateExecutionTensorHandle>(
+      context()->CreateLocalHandleFromTFTensor(
+          int_tensor, context()->HostCPUName().c_str()));
+  TF_ASSERT_OK(op->AddInput(input_int.get()));
+  std::vector<AbstractTensorHandle*> retvals(1);
+  int num_retvals = retvals.size();
+  TF_ASSERT_OK(op->Execute(absl::MakeSpan(retvals), &num_retvals));
+  retvals[0]->Unref();
+  retvals[0] = nullptr;
+}
+
 TEST_F(EagerContextTest, LocalRendezvousCreation) {
   InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
-  std::function<Rendezvous*(const int64_t)> rendezvous_creator =
-      context()->RendezvousCreator();
+  auto rendezvous_creator = context()->RendezvousFactory();
 
   // Create a new rendezvous instance.
   // Initially its ref-count is 2:
-  // one added upopn rendezvous creation, the other one added by EagerContext.
-  Rendezvous* rendezvous_1 = rendezvous_creator(1);
+  // one added upon rendezvous creation, the other one added by EagerContext.
+  Rendezvous* rendezvous_1;
+  TF_ASSERT_OK(rendezvous_creator(1, nullptr, &rendezvous_1));
   EXPECT_EQ(rendezvous_1->RefCount(), 2);
 
   // Create another rendezvous instance with the same step-id.
   // This would add one more ref-count to the existing rendezvous insteance
   // insted of creating a new instance.
-  Rendezvous* rendezvous_2 = rendezvous_creator(1);
+  Rendezvous* rendezvous_2;
+  TF_ASSERT_OK(rendezvous_creator(1, nullptr, &rendezvous_2));
   EXPECT_EQ(rendezvous_2->RefCount(), 3);
 
   // Caller releases rendezvous-1.
@@ -334,16 +370,19 @@ void TestGlobalRendezvous(EagerContext* context, bool reuse_global_rendezvous) {
   context->SetReuseRendezvousForFunctions(reuse_global_rendezvous);
   EXPECT_EQ(context->GetReuseRendezvousForFunctions(), reuse_global_rendezvous);
 
-  auto rendezvous_creator = context->RendezvousCreator();
-  Rendezvous* rendezvous_1 = rendezvous_creator(-1);
+  auto rendezvous_creator = context->RendezvousFactory();
+  Rendezvous* rendezvous_1;
+  TF_ASSERT_OK(rendezvous_creator(-1, nullptr, &rendezvous_1));
   EXPECT_EQ(rendezvous_1->RefCount(), 2);
-  Rendezvous* rendezvous_2 = rendezvous_creator(-1);
+  Rendezvous* rendezvous_2;
+  TF_ASSERT_OK(rendezvous_creator(-1, nullptr, &rendezvous_2));
   EXPECT_EQ(rendezvous_2->RefCount(), 3);
 
   // Global rendezvous's ref-count should be back to 1 after resetting.
   context->ResetGlobalRendezvousForFunction();
 
-  Rendezvous* rendezvous_3 = rendezvous_creator(-1);
+  Rendezvous* rendezvous_3;
+  TF_ASSERT_OK(rendezvous_creator(-1, nullptr, &rendezvous_3));
   EXPECT_EQ(rendezvous_3->RefCount(), 2);
 
   // Callers release rendezvous.
@@ -363,19 +402,6 @@ TEST_F(EagerContextTest, ReuseGlobalRendezvous) {
   EXPECT_FALSE(context()->GetReuseRendezvousForFunctions());
 
   TestGlobalRendezvous(context(), true);
-}
-
-TEST_F(EagerContextTest, StepId) {
-  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
-
-  EXPECT_EQ(context()->GetDistributedManager(), nullptr);
-  context()->SetDistributedManager(
-      std::make_unique<tensorflow::EagerContextDistributedManager>(context()));
-  auto* ctx_dist_mgr = context()->GetDistributedManager();
-
-  EXPECT_EQ(ctx_dist_mgr->step_id(), 0);
-  EXPECT_EQ(ctx_dist_mgr->GetNextStepId(), 1);
-  EXPECT_EQ(ctx_dist_mgr->step_id(), 1);
 }
 
 }  // namespace

@@ -16,15 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_COST_UTIL_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_COST_UTIL_H_
 
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/common_runtime/cost_measurement.h"
 #include "tensorflow/core/common_runtime/request_cost_accessor.h"
 
 namespace tensorflow {
 
-// Creates an instance of CostMeasurement. The type to create is determined by
-// env. Returns nullptr if the type is not specified in env, or the type of
-// CostMeasurement is unregistered.
-std::unique_ptr<CostMeasurement> CreateCostMeasurement();
+// Creates instances of CostMeasurement. The types to create are determined by
+// env.
+std::vector<std::unique_ptr<CostMeasurement>> CreateCostMeasurements(
+    const CostMeasurement::Context& context);
 
 // Creates an instance of RequestCostAccessor. The type to create is determined
 // by env. Returns nullptr if the type is not specified in env, or the type of

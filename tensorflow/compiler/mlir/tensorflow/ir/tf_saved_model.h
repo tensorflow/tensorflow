@@ -16,12 +16,35 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_SAVED_MODEL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_SAVED_MODEL_H_
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 
 namespace mlir {
 namespace tf_saved_model {
+
+// The name of the attribute indicating under what name an object is exported.
+inline constexpr StringRef kTfSavedModelExportedNamesAttr =
+    "tf_saved_model.exported_names";
+
+// The name of the attribute attached to input arguments or results of a
+// function to represent the path which one would use to index into a structured
+// value to reach a given tensor.
+inline constexpr StringRef kTfSavedModelIndexPathAttr =
+    "tf_saved_model.index_path";
+
+// Name of the attribute that inidicates the type of initializer. It should be
+// on a function and the function should exist in the initializers attribute of
+// the SessionInitializerOp.
+inline constexpr StringRef kTfSavedModelInitializerTypeAttr =
+    "tf_saved_model.initializer_type";
+
+// Indicates that the initializer corresponds to the restore op.
+inline constexpr StringRef kTfSavedModelInitializerRestoreType = "restore_op";
+
+// Indicates that the initializer corresponds to the init op.
+inline constexpr StringRef kTfSavedModelInitializerInitType = "init_op";
 
 class TensorFlowSavedModelDialect : public Dialect {
  public:
@@ -61,11 +84,11 @@ bool HasTfSavedModelSemantics(ModuleOp module);
 
 // Returns the tf_saved_model.global_tensor op that func's arg_index'th argument
 // refers to as a bound input, or null.
-Operation *LookupBoundInput(FuncOp func, int arg_index,
+Operation *LookupBoundInput(func::FuncOp func, int arg_index,
                             const SymbolTable &symbol_table);
 
 template <typename T>
-T LookupBoundInputOfType(FuncOp func, int arg_index,
+T LookupBoundInputOfType(func::FuncOp func, int arg_index,
                          const SymbolTable &symbol_table) {
   return llvm::dyn_cast_or_null<T>(
       LookupBoundInput(func, arg_index, symbol_table));

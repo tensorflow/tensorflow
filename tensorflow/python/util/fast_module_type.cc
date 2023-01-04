@@ -12,10 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <Python.h>
-
-#include "absl/container/flat_hash_map.h"
+// clang-format off
+// These headers must be at the top, before including Python.h header
+// Otherwise, we get C2039 on MSVC due to 'copysign'
+#include "pybind11/complex.h"
 #include "pybind11/pybind11.h"
+// clang-format on
+
+#include "Python.h"
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace py = pybind11;

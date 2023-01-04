@@ -23,9 +23,9 @@ namespace xla {
 
 inline Status FromGrpcStatus(const ::grpc::Status& s) {
   if (s.ok()) {
-    return Status::OK();
+    return OkStatus();
   } else {
-    return Status(static_cast<tensorflow::error::Code>(s.error_code()),
+    return Status(static_cast<tsl::error::Code>(s.error_code()),
                   s.error_message());
   }
 }

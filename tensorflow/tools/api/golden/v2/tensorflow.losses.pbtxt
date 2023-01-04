@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "BinaryFocalCrossentropy"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CategoricalCrossentropy"
     mtype: "<type \'type\'>"
   }
@@ -91,6 +95,10 @@ tf_module {
   member_method {
     name: "binary_crossentropy"
     argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'label_smoothing\', \'axis\'], varargs=None, keywords=None, defaults=[\'False\', \'0.0\', \'-1\'], "
+  }
+  member_method {
+    name: "binary_focal_crossentropy"
+    argspec: "args=[\'y_true\', \'y_pred\', \'apply_class_balancing\', \'alpha\', \'gamma\', \'from_logits\', \'label_smoothing\', \'axis\'], varargs=None, keywords=None, defaults=[\'False\', \'0.25\', \'2.0\', \'False\', \'0.0\', \'-1\'], "
   }
   member_method {
     name: "categorical_crossentropy"
@@ -182,7 +190,7 @@ tf_module {
   }
   member_method {
     name: "sparse_categorical_crossentropy"
-    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'axis\'], varargs=None, keywords=None, defaults=[\'False\', \'-1\'], "
+    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'axis\', \'ignore_class\'], varargs=None, keywords=None, defaults=[\'False\', \'-1\', \'None\'], "
   }
   member_method {
     name: "squared_hinge"

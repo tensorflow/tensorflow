@@ -1,13 +1,9 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "tsl_pybind_extension")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )
 
@@ -27,6 +23,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:executable_build_options",
+        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:semaphore",
         "//tensorflow/compiler/xla/python/tpu_driver",
@@ -36,19 +33,20 @@ cc_library(
         "//tensorflow/compiler/xla/python/tpu_driver:recording_tpu_driver",
         "//tensorflow/compiler/xla/python/tpu_driver:tpu_driver_proto_cc",
         "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/core/framework:allocator",
-        "//tensorflow/core/platform:casts",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/tsl/framework:allocator",
+        "//tensorflow/tsl/platform:casts",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
     ],
 )
 
-pybind_extension(
+tsl_pybind_extension(
     name = "tpu_client_extension",
     srcs = [
         "tpu_client_extension.cc",
@@ -58,17 +56,19 @@ pybind_extension(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    module_name = "tpu_client_extension",
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_client",
+        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/python:python_ref_manager",
         "//tensorflow/compiler/xla/python:types",
+        "//tensorflow/compiler/xla/python:util",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
-        "//tensorflow/python:bfloat16_lib",
+        "//tensorflow/tsl/python/lib/core:bfloat16_lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@llvm-project//mlir:IR",
         "@pybind11",
     ],
 )

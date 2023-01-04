@@ -47,7 +47,7 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.saved_model import revived_types
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -1099,8 +1099,7 @@ class OptimizerV2(trackable.Trackable):
     >>> m.compile(opt, loss='mse')
     >>> data = np.arange(100).reshape(5, 20)
     >>> labels = np.zeros(5)
-    >>> print('Training'); results = m.fit(data, labels)
-    Training ...
+    >>> results = m.fit(data, labels)  # Training.
     >>> len(opt.get_weights())
     3
 
@@ -1130,8 +1129,7 @@ class OptimizerV2(trackable.Trackable):
     >>> m.compile(opt, loss='mse')
     >>> data = np.arange(100).reshape(5, 20)
     >>> labels = np.zeros(5)
-    >>> print('Training'); results = m.fit(data, labels)
-    Training ...
+    >>> results = m.fit(data, labels)  # Training.
     >>> new_weights = [np.array(10), np.ones([20, 10]), np.zeros([10])]
     >>> opt.set_weights(new_weights)
     >>> opt.iterations

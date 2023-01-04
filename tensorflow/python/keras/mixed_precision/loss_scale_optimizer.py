@@ -35,10 +35,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging
+from tensorflow.python.trackable import base as trackable
+from tensorflow.python.trackable import base_delegate
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.experimental import mixed_precision
-from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import base_delegate
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -153,20 +153,23 @@ class _DynamicLossScaleState(trackable.Trackable):
     backend.track_variable(variable)
     return variable
 
-  @property
-  def _checkpoint_dependencies(self):
+  def _trackable_children(self,
+                          save_type=trackable.SaveType.CHECKPOINT,
+                          **kwargs):
     """From Trackable. Gather graph-specific weights to save."""
     if context.executing_eagerly():
       graph_key = None
     else:
       graph = ops.get_default_graph()
       graph_key = graph._graph_key  # pylint: disable=protected-access
-    weights = []
+    weights = {}
     for (name, g), v in sorted(self._weights.items(), key=lambda i: i[0][0]):
       if g == graph_key:
-        weights.append(trackable.TrackableReference(name=name, ref=v))
-    return (super(_DynamicLossScaleState, self)._checkpoint_dependencies +
-            weights)
+        weights[name] = v
+    weights.update(
+        super(_DynamicLossScaleState,
+              self)._trackable_children(save_type, **kwargs))
+    return weights
 
   def _lookup_dependency(self, name):
     """From Trackable. Find a weight in the current graph."""
@@ -893,7 +896,7 @@ class LossScaleOptimizerV1(LossScaleOptimizer):
   examples of converting the use of the experimental class to the equivalent
   non-experimental class.
 
-  >>> # In all of the the examples below, `opt1` and `opt2` are identical
+  >>> # In all of the examples below, `opt1` and `opt2` are identical
   >>> opt1 = tf.keras.mixed_precision.experimental.LossScaleOptimizer(
   ...     tf.keras.optimizers.SGD(), loss_scale='dynamic')
   >>> opt2 = tf.keras.mixed_precision.LossScaleOptimizer(

@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
 
 namespace tensorflow {
@@ -51,6 +52,18 @@ auto* saved_model_read_api = monitoring::Counter<1>::New(
     "/tensorflow/core/saved_model/read/api",
     "The API used to load the SavedModel.", "api_label");
 
+// Gauge that contains the fingerprint (saved_model_checksum) of the newly
+// written SavedModel.
+auto* saved_model_write_fingerprint = monitoring::Gauge<string, 0>::New(
+    "/tensorflow/core/saved_model/write/fingerprint",
+    "The fingerprint (saved_model_checksum) of the exported SavedModel.");
+
+// Gauge that contains the fingerprint (saved_model_checksum) of the loaded
+// SavedModel.
+auto* saved_model_read_fingerprint = monitoring::Gauge<string, 0>::New(
+    "/tensorflow/core/saved_model/read/fingerprint",
+    "The fingerprint (saved_model_checksum) of the loaded SavedModel.");
+
 // Distribution of checkpoint write durations.
 auto* checkpoint_write_durations = monitoring::Sampler<1>::New(
     {
@@ -73,6 +86,18 @@ auto* checkpoint_read_durations = monitoring::Sampler<1>::New(
     // Scale of 1000, growth factor of 1.5 with upper bound of ~184 minutes.
     monitoring::Buckets::Exponential(1000, 1.5, 41));
 
+// Distribution of async checkpoint write durations.
+auto* async_checkpoint_write_durations = monitoring::Sampler<1>::New(
+    {
+        "/tensorflow/core/checkpoint/write/async_write_durations",  // Metric
+                                                                    // name.
+        "Distribution of the wall time duration in microseconds of the async "
+        "checkpoint write operation",  // Metric description.
+        "api_label"                    // Cell label.
+    },
+    // Scale of 1000, growth factor of 1.5 with upper bound of ~184 minutes.
+    monitoring::Buckets::Exponential(1000, 1.5, 41));
+
 // Counter that accumulates total time elapsed between module import time and
 // the last successful Checkpoint write prior to job pre-emption or completion.
 auto* checkpoint_training_time_saved = monitoring::Counter<1>::New(
@@ -81,6 +106,15 @@ auto* checkpoint_training_time_saved = monitoring::Counter<1>::New(
     "operations in a single job or between Checkpoint construction and the "
     "first write operation.",
     "api_label");
+
+// Counter that records filesize (MB) of written checkpoint. Contains two cells:
+// (api_label, filesize). Cardinality should not be an issue as the filesize
+// should be equal among all checkpoints written per job.
+auto* checkpoint_size = monitoring::Counter<2>::New(
+    "/tensorflow/core/checkpoint/write/checkpoint_size",
+    "Size of checkpoint (.index and sharded data files), rounded to the "
+    "nearest 100 MB.",
+    "api_label", "filesize");
 
 }  // namespace
 
@@ -100,6 +134,14 @@ monitoring::CounterCell& SavedModelReadApi(absl::string_view api_label) {
   return *saved_model_read_api->GetCell(std::string(api_label));
 }
 
+monitoring::GaugeCell<string>& SavedModelReadFingerprint() {
+  return *saved_model_read_fingerprint->GetCell();
+}
+
+monitoring::GaugeCell<string>& SavedModelWriteFingerprint() {
+  return *saved_model_write_fingerprint->GetCell();
+}
+
 monitoring::SamplerCell& CheckpointReadDuration(absl::string_view api_label) {
   return *checkpoint_read_durations->GetCell(std::string(api_label));
 }
@@ -108,8 +150,19 @@ monitoring::SamplerCell& CheckpointWriteDuration(absl::string_view api_label) {
   return *checkpoint_write_durations->GetCell(std::string(api_label));
 }
 
+monitoring::SamplerCell& AsyncCheckpointWriteDuration(
+    absl::string_view api_label) {
+  return *async_checkpoint_write_durations->GetCell(std::string(api_label));
+}
+
 monitoring::CounterCell& TrainingTimeSaved(absl::string_view api_label) {
   return *checkpoint_training_time_saved->GetCell(std::string(api_label));
+}
+
+monitoring::CounterCell& CheckpointSize(absl::string_view api_label,
+                                        int64_t filesize) {
+  return *checkpoint_size->GetCell(std::string(api_label),
+                                   std::to_string(filesize));
 }
 
 }  // namespace metrics

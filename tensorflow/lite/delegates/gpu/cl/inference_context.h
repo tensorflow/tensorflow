@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/recordable_queue_builder.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_model.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
@@ -60,38 +61,33 @@ struct CLNode {
   CLNode& operator=(const CLNode&) = delete;
 };
 
+enum class TensorType { kVariable, kConst, kExternal, kRuntime };
+
 class InferenceContext {
  public:
-  struct CreateInferenceInfo {
-    CalculationsPrecision precision;
-    TensorStorageType storage_type;
-    ModelHints hints;
-  };
-
-  struct GpuModel {
-    std::vector<std::pair<ValueId, ValueId>> input_ids_and_refs;
-    std::vector<std::pair<ValueId, ValueId>> variable_ids_and_refs;
-    std::vector<std::pair<ValueId, ValueId>> output_ids_and_refs;
-    std::vector<CLNode> nodes;
-    absl::flat_hash_map<ValueId, TensorDescriptor> tensors;
-    absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors;
-  };
-
-  absl::Status InitFromGraph(const CreateInferenceInfo& create_info,
+  absl::Status InitFromGraph(const CreateGpuModelInfo& create_info,
                              const GraphFloat32& graph, Environment* env,
                              std::vector<uint8_t>* serialized_model = nullptr);
+
+  absl::Status InitFromGpuModel(
+      const CreateGpuModelInfo& create_info, GpuModel* gpu_model,
+      Environment* env, std::vector<uint8_t>* serialized_model = nullptr,
+      Buffer* shared_buffer = nullptr);
+
+  absl::Status AddToCommanBuffer(cl_command_buffer_khr cb);
 
   // Applies OpenCL-specific transformations to the graph before the
   // initialization. These transformations are either impossible or useless in
   // other backends.
   absl::Status InitFromGraphWithTransforms(
-      const CreateInferenceInfo& create_info, GraphFloat32* graph,
+      const CreateGpuModelInfo& create_info, GraphFloat32* graph,
       Environment* env, std::vector<uint8_t>* serialized_model = nullptr);
 
   absl::Status AddToQueue(CLCommandQueue* queue);
   absl::Status Profile(ProfilingCommandQueue* queue, ProfilingInfo* result);
   // for profiling and memory statistics
   uint64_t GetSizeOfMemoryAllocatedForIntermediateTensors() const;
+  uint64_t GetConstantTensorsSize() const;
 
   absl::Status SetInputTensor(ValueId id, const TensorFloat32& tensor,
                               CLCommandQueue* queue);
@@ -107,47 +103,51 @@ class InferenceContext {
   const std::vector<ValueId>& GetOutputIds() const { return output_ids_; }
 
   absl::Status RestoreDeserialized(
-      const absl::Span<const uint8_t> serialized_model, Environment* env);
+      const absl::Span<const uint8_t> serialized_model, Environment* env,
+      CreateGpuModelInfo* create_info = nullptr);
+
+  // Can be used only with ids from external_mutable_tensors in create_info
+  // Must be called after initialization and before execution
+  absl::Status SetTensor(const ValueId& tensor_id, Tensor* tensor_ptr);
 
  private:
-  enum class TensorMemoryType { kStrongShape, kBuffer, kVariable, kConst };
+  flatbuffers::Offset<data::InferenceContext> Encode(
+      const CLDevice& device, const ProgramCache& program_cache,
+      flatbuffers::Offset<tflite::gpu::data::GpuModel> gpu_model_fb,
+      flatbuffers::FlatBufferBuilder* builder);
 
-  friend flatbuffers::Offset<data::InferenceContext> Encode(
-      const CLDevice& device, const InferenceContext& inference,
-      const ProgramCache& program_cache, const std::vector<int64_t>& in_refs,
-      std::vector<int64_t>& out_refs, flatbuffers::FlatBufferBuilder* builder);
-  friend absl::Status Decode(const CLContext& context, const CLDevice& device,
-                             ProgramCache* program_cache,
-                             const data::InferenceContext* fb_inference,
-                             InferenceContext* inference);
+  void InitFromGpuModel(GpuModel* gpu_model);
 
-  absl::Status AllocateMemory(const GpuInfo& gpu_info, CLContext* context);
+  absl::Status AllocateMemory(const GpuModel& gpu_model,
+                              const GpuInfo& gpu_info,
+                              const CreateGpuModelInfo* create_info,
+                              CLContext* context);
 
-  absl::Status AllocateMemoryForConstTensors(CLContext* context);
+  absl::Status AllocateConstTensors(const GpuModel& gpu_model,
+                                    CLContext* context);
 
-  absl::Status AllocateMemoryForVariableTensors(CLContext* context);
+  absl::Status AllocateVariableTensors(const GpuModel& gpu_model,
+                                       CLContext* context);
 
-  absl::Status AllocateMemoryForBuffers(const GpuInfo& gpu_info,
-                                        CLContext* context);
+  absl::Status AllocateBufferBasedTensors(const GpuModel& gpu_model,
+                                          const GpuInfo& gpu_info,
+                                          const CreateGpuModelInfo* create_info,
+                                          CLContext* context);
 
-  absl::Status AllocateMemoryForStrongShapes(const GpuInfo& gpu_info,
-                                             CLContext* context);
-
-  // utility function
-  void GetUsages(const std::function<bool(ValueId)>& functor,
-                 std::map<ValueId, int2>* usages);
-
-  TensorMemoryType GetTensorMemoryType(const GpuInfo& gpu_info, ValueId id);
+  absl::Status AllocateStrongShapesTensors(
+      const GpuModel& gpu_model, const GpuInfo& gpu_info,
+      const CreateGpuModelInfo* create_info, CLContext* context);
 
   void BindMemoryToOperations();
   absl::Status Compile(const CreationContext& creation_context);
   absl::Status Tune(TuningType tuning_type, const GpuInfo& gpu_info,
                     ProfilingCommandQueue* profiling_queue);
   absl::Status UpdateParams();
+  void PrepareExternal();
 
   void InitRecordableQueue(Environment* env);
 
-  void ReleaseCPURepresentation();
+  absl::Status ProfileTime(ProfilingCommandQueue* queue, ProfilingInfo* result);
 
   struct ExecutionHints {
     bool need_flush = false;
@@ -173,12 +173,17 @@ class InferenceContext {
   //  anywhere.
   std::vector<CLNode> nodes_;
 
-  absl::flat_hash_map<ValueId, TensorDescriptor> tensors_descs_;
-  absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors_descs_;
+  absl::flat_hash_map<ValueId, Tensor*> external_immutable_tensors_;
+  absl::flat_hash_map<ValueId, Tensor*> external_mutable_tensors_;
+  absl::flat_hash_map<ValueId, std::vector<int>> external_tensor_to_nodes_;
+
   std::map<ValueId, Tensor> const_tensors_;
 
+  std::map<ValueId, ValueId> variable_ids_and_refs_;
   std::map<ValueId, Tensor> variable_tensors_;
-  Buffer shared_buffers_parent_;
+
+  std::unique_ptr<Buffer> shared_buffers_parent_;
+  Buffer* shared_buffers_parent_ptr_ = nullptr;
   std::vector<Buffer> shared_buffers_;
   std::vector<Tensor>
       shared_buffer_tensors_;  // use references to memory from shared_buffers_
@@ -188,14 +193,21 @@ class InferenceContext {
   std::map<ValueId, ValueId> graph_ids_to_strong_shape_tensors_;
 
   std::vector<ValueId> input_ids_;
-  std::map<ValueId, ValueId> variable_ids_and_refs_;
   std::vector<ValueId> output_ids_;
 
-  std::unique_ptr<RecordableQueue> recordable_queue_;
+  std::unique_ptr<RecordableQueue> recordable_queue_ = nullptr;
+
+  GpuInfo gpu_info_;
 };
 
-// Runs OpenCL specific transforms for the graph.
-absl::Status RunGraphTransforms(GraphFloat32* graph);
+absl::Status GetInOutRefs(const absl::Span<const uint8_t> serialized_model,
+                          std::vector<int64_t>* in_refs,
+                          std::vector<int64_t>* out_refs);
+
+absl::Status GetTotalBufferSizeForTensors(const GpuModel& gpu_model,
+                                          const CreateGpuModelInfo& create_info,
+                                          const GpuInfo& gpu_info,
+                                          uint64_t* result);
 
 }  // namespace cl
 }  // namespace gpu

@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import critical_section_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -54,8 +55,17 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
   def __init__(self):
     super().__init__()
     self._m_2_by_2 = random_ops.random_uniform((2, 2))
+    self._m_2_by_2_int32 = random_ops.random_uniform((2, 2),
+                                                     maxval=5,
+                                                     dtype=dtypes.int32)
     self._m_100_by_100 = random_ops.random_uniform((100, 100))
+    self._m_100_by_100_int32 = random_ops.random_uniform((100, 100),
+                                                         maxval=5,
+                                                         dtype=dtypes.int32)
     self._m_1000_by_1000 = random_ops.random_uniform((1000, 1000))
+    self._m_1000_by_1000_int32 = random_ops.random_uniform((1000, 1000),
+                                                           maxval=5,
+                                                           dtype=dtypes.int32)
 
   def _get_benchmark_name(self):
     """Copied from benchmarks_test.py."""
@@ -94,23 +104,66 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       func = lambda: math_ops.matmul(mat, mat)
       self._run(func, num_iters=5000)
 
+  def _benchmark_bitwise_and(self, mat, device):
+    if device == GPU and not context.num_gpus():
+      return
+    with context.device(device):
+      if device == GPU:
+        mat = mat.gpu()
+      func = lambda: bitwise_ops.bitwise_and(mat, mat)
+      self._run(func, num_iters=5000)
+
+  def _benchmark_random_normal(self, device):
+    if device == GPU and not context.num_gpus():
+      return
+    with context.device(device):
+
+      def func():
+        mat = constant_op.constant([3], dtypes.int32)
+        s = mat + mat
+        random_ops.random_normal(shape=s)
+
+      self._run(func, num_iters=5000)
+
+  # This only needs to be tested on GPU where redundant data transfers can occur
+  def benchmark_random_normal_GPU(self):
+    self._benchmark_random_normal(GPU)
+
   def benchmark_tf_matmul_2_by_2_CPU(self):
     self._benchmark_matmul(self._m_2_by_2, CPU)
+
+  def benchmark_tf_bitwise_and_2_by_2_CPU(self):
+    self._benchmark_bitwise_and(self._m_2_by_2_int32, CPU)
 
   def benchmark_tf_matmul_2_by_2_GPU(self):
     self._benchmark_matmul(self._m_2_by_2, GPU)
 
+  def benchmark_tf_bitwise_and_2_by_2_GPU(self):
+    self._benchmark_bitwise_and(self._m_2_by_2_int32, GPU)
+
   def benchmark_tf_matmul_100_by_100_CPU(self):
     self._benchmark_matmul(self._m_100_by_100, CPU)
+
+  def benchmark_tf_bitwise_and_100_by_100_CPU(self):
+    self._benchmark_bitwise_and(self._m_100_by_100_int32, CPU)
 
   def benchmark_tf_matmul_100_by_100_GPU(self):
     self._benchmark_matmul(self._m_100_by_100, GPU)
 
+  def benchmark_tf_bitwise_and_100_by_100_GPU(self):
+    self._benchmark_bitwise_and(self._m_100_by_100_int32, GPU)
+
   def benchmark_tf_matmul_1000_by_1000_CPU(self):
     self._benchmark_matmul(self._m_1000_by_1000, CPU)
 
+  def benchmark_tf_bitwise_and_1000_by_1000_CPU(self):
+    self._benchmark_bitwise_and(self._m_1000_by_1000_int32, CPU)
+
   def benchmark_tf_matmul_1000_by_1000_GPU(self):
     self._benchmark_matmul(self._m_1000_by_1000, GPU)
+
+  def benchmark_tf_bitwise_and_1000_by_1000_GPU(self):
+    self._benchmark_bitwise_and(self._m_1000_by_1000_int32, GPU)
 
 
 @test_util.with_eager_op_as_function
@@ -176,6 +229,49 @@ class RunEagerOpAsFunctionTest(test.TestCase):
   def testCreateCriticalSection(self):
     cs = critical_section_ops.CriticalSection(shared_name="cs")
     cs.execute(lambda: 1.0)
+
+
+class RunEagerOpAsFunctionInternalsTest(test.TestCase):
+
+  @test_util.enable_eager_op_as_function
+  def testSimpleGraphExecutesSynchronously(self):
+    if context.num_gpus():
+      self.skipTest("CPU-only test (requires unpartitioned graph).")
+
+    default_executor = test_util.TestDelta("flr_executor", "default")
+    single_threaded = test_util.TestDelta("flr_executor", "single_threaded")
+    run_async = test_util.TestDelta("pflr_runsync", "async")
+    run_sync = test_util.TestDelta("pflr_runsync", "sync")
+    safe = test_util.TestDelta("subgraph_async_summary", "safe_for_sync")
+
+    array_ops.fill([2], constant_op.constant(7, dtype=dtypes.int64))
+
+    assert default_executor.Get() == 0
+    assert single_threaded.Get() > 0
+    assert run_async.Get() == 0
+    assert run_sync.Get() > 0
+    assert safe.Get() > 0
+
+  @test_util.enable_eager_op_as_function
+  def testSendRecvPartitionedGraphExecutesSynchronously(self):
+    if not context.num_gpus():
+      self.skipTest("GPU-only test (requires partitioned graph).")
+
+    default_executor = test_util.TestDelta("flr_executor", "default")
+    single_threaded = test_util.TestDelta("flr_executor", "single_threaded")
+    run_async = test_util.TestDelta("pflr_runsync", "async")
+    run_sync = test_util.TestDelta("pflr_runsync", "sync")
+    send_only = test_util.TestDelta("subgraph_async_summary", "send_only")
+    recv_only = test_util.TestDelta("subgraph_async_summary", "recv_only")
+
+    array_ops.fill([2], constant_op.constant(7, dtype=dtypes.int64))
+
+    assert default_executor.Get() == 0
+    assert single_threaded.Get() > 0
+    assert run_async.Get() == 0
+    assert run_sync.Get() > 0
+    assert send_only.Get() > 0
+    assert recv_only.Get() > 0
 
 if __name__ == "__main__":
   test.main()

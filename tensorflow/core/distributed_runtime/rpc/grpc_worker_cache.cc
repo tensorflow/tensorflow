@@ -78,19 +78,14 @@ class GrpcWorkerCache : public WorkerCachePartial {
   Status GetEagerClientCache(
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
     eager_client_cache->reset(eager::NewGrpcEagerClientCache(channel_cache_));
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetCoordinationClientCache(std::unique_ptr<CoordinationClientCache>*
                                         coordination_client_cache) override {
-#if defined(PLATFORM_GOOGLE)
     coordination_client_cache->reset(
         NewGrpcCoordinationClientCache(channel_cache_));
-    return Status::OK();
-#else
-    return errors::Unimplemented(
-        "Coordination service in open source is not yet implemented.");
-#endif
+    return OkStatus();
   }
 
   void SetLogging(bool v) override { logger_.SetLogging(v); }

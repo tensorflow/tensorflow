@@ -23,10 +23,10 @@ limitations under the License.
 #include "flatbuffers/flexbuffers.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/tools/optimize/model_utils.h"
@@ -207,7 +207,7 @@ TfLiteStatus SetInputTypeToUINT8(ModelT* model,
     TensorT* float_tensor = subgraph->tensors[tot.input_index].get();
     float_tensor->type = TensorType_UINT8;
     if (float_tensor->quantization == nullptr) {
-      float_tensor->quantization = absl::make_unique<QuantizationParametersT>();
+      float_tensor->quantization = std::make_unique<QuantizationParametersT>();
     }
     float_tensor->quantization->scale.push_back(quant_tensor_scale);
     float_tensor->quantization->zero_point.push_back(quant_tensor_zp + 128);
@@ -234,7 +234,7 @@ TfLiteStatus SetOutputTypeToUINT8(ModelT* model,
     TensorT* float_tensor = subgraph->tensors[tot.output_index].get();
     float_tensor->type = TensorType_UINT8;
     if (float_tensor->quantization == nullptr) {
-      float_tensor->quantization = absl::make_unique<QuantizationParametersT>();
+      float_tensor->quantization = std::make_unique<QuantizationParametersT>();
     }
     float_tensor->quantization->scale.push_back(quant_tensor_scale);
     float_tensor->quantization->zero_point.push_back(quant_tensor_zp + 128);
@@ -380,7 +380,7 @@ TfLiteStatus ModifyModelInterface(const string& input_file,
   auto model_builder = utils::FinishModel(tflite_model.get());
 
   auto fixed_point_model_builder =
-      absl::make_unique<flatbuffers::FlatBufferBuilder>();
+      std::make_unique<flatbuffers::FlatBufferBuilder>();
   flatbuffers::FlatBufferBuilder builder;
 
   auto status = ModifyModelInterface(&builder, tflite_model.get(), input_type,

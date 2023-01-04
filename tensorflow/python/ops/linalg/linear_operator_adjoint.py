@@ -147,7 +147,7 @@ class LinearOperatorAdjoint(linear_operator.LinearOperator):
     # Initialization.
     if name is None:
       name = operator.name + "_adjoint"
-    with ops.name_scope(name, values=operator.graph_parents):
+    with ops.name_scope(name):
       super(LinearOperatorAdjoint, self).__init__(
           dtype=operator.dtype,
           is_non_singular=is_non_singular,
@@ -156,8 +156,6 @@ class LinearOperatorAdjoint(linear_operator.LinearOperator):
           is_square=is_square,
           parameters=parameters,
           name=name)
-    # TODO(b/143910018) Remove graph_parents in V3.
-    self._set_graph_parents(operator.graph_parents)
 
   @property
   def operator(self):
@@ -231,3 +229,7 @@ class LinearOperatorAdjoint(linear_operator.LinearOperator):
   @property
   def _composite_tensor_fields(self):
     return ("operator",)
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    return {"operator": 0}

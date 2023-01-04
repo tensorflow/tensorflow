@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/ADT/DenseMap.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
@@ -36,7 +37,7 @@ class PerFunctionAggregateAnalysis {
   using Info = InfoT;
 
   // Returns the analysis info for the given function.
-  const Info& GetAnalysisForFunc(FuncOp func) const {
+  const Info& GetAnalysisForFunc(func::FuncOp func) const {
     auto it = info_map_.find(func);
     assert(it != info_map_.end());
     return it->second;
@@ -45,27 +46,34 @@ class PerFunctionAggregateAnalysis {
  protected:
   // Since `InfoT` might be large, DenseMap is used instead of SmallDenseMap to
   // avoid stack overflow.
-  llvm::DenseMap<FuncOp, InfoT> info_map_;
+  llvm::DenseMap<func::FuncOp, InfoT> info_map_;
 };
 
 }  // namespace detail
 
 // Base CRTP class to help write passes that are consumes a per-function
 // aggregate analysis and operate on all non-extern functions (similar to a
-// FunctionPass, but with no concurrency between functions). The derived classes
-// need to provide a runOnFunction() method that accepts the function and the
-// analysis information for that function.
+// OperationPass<func::FuncOp>, but with no concurrency between functions). The
+// derived classes need to provide a runOnFunction() method that accepts the
+// function and the analysis information for that function.
 template <typename DerivedT, typename AnalysisT>
 class PerFunctionAggregateAnalysisConsumerPass
     : public PassWrapper<
           PerFunctionAggregateAnalysisConsumerPass<DerivedT, AnalysisT>,
           OperationPass<ModuleOp>> {
+ public:
+  static ::mlir::TypeID resolveTypeID() {
+    static ::mlir::SelfOwningTypeID id;
+    return id;
+  }
+
+ private:
   void runOnOperation() override {
     ModuleOp op = this->getOperation();
     DerivedT& derived = *static_cast<DerivedT*>(this);
     auto& analysis = this->template getAnalysis<AnalysisT>();
 
-    for (auto func : op.getOps<FuncOp>())
+    for (auto func : op.getOps<func::FuncOp>())
       if (!func.isExternal())
         derived.runOnFunction(func, analysis.GetAnalysisForFunc(func));
   }

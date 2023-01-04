@@ -24,12 +24,16 @@ namespace tensorflow {
 
 namespace functor {
 
+// This functor can take the PhiloxRandom input from either device memory `key`
+// and `counter` or a stack value `random`. If both `key` and `counter` are not
+// nullptr, they provide the input; otherwise `random` provides the input.
 template <typename Device, typename T>
 struct StatelessRandomGammaFunctor {
   static Status Fill(OpKernelContext* ctx, const T* alpha_flat,
                      int64_t num_samples, int64_t num_alphas,
-                     int64_t samples_per_alpha,
-                     const random::PhiloxRandom& random, T* samples_flat);
+                     int64_t samples_per_alpha, const uint64* key,
+                     const uint64* counter, const random::PhiloxRandom& random,
+                     T* samples_flat);
 };
 
 }  // namespace functor

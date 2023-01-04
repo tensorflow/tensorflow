@@ -22,11 +22,11 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/string_type.h"
 
 namespace tflite {
@@ -37,7 +37,7 @@ absl::Status InterpreterInvokeWithOpResolver(
     const ::tflite::Model* model, TfLiteDelegate* delegate,
     const OpResolver& op_resolver, const std::vector<TensorFloat32>& inputs,
     std::vector<TensorFloat32>* outputs) {
-  auto interpreter = absl::make_unique<Interpreter>();
+  auto interpreter = std::make_unique<Interpreter>();
   if (InterpreterBuilder(model, op_resolver)(&interpreter) != kTfLiteOk) {
     return absl::InternalError("Unable to create TfLite InterpreterBuilder");
   }

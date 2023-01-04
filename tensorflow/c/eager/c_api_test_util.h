@@ -119,7 +119,7 @@ TFE_Op* RecvOp(TFE_Context* ctx, const std::string& op_name,
                const std::string& send_device, const std::string& recv_device,
                tensorflow::uint64 send_device_incarnation);
 
-// Return an 1-D INT32 tensor containing a single value 1.
+// Return a 1-D INT32 tensor containing a single value 1.
 TFE_TensorHandle* TestAxisTensorHandle(TFE_Context* ctx);
 
 // Return an op taking minimum of `input` long `axis` dimension.

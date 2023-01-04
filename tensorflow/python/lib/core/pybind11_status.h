@@ -18,14 +18,16 @@ limitations under the License.
 
 #include <Python.h>
 
+#include "pybind11/cast.h"
 #include "pybind11/pybind11.h"
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/python/lib/core/py_exception_registry.h"
 
-namespace tensorflow {
+namespace tsl {
 
 namespace internal {
 
@@ -75,7 +77,7 @@ inline void MaybeRaiseFromStatus(const Status& status) {
 }
 
 inline void SetRegisteredErrFromStatus(const tensorflow::Status& status) {
-  PyErr_SetObject(PyExceptionRegistry::Lookup(status.code()),
+  PyErr_SetObject(tensorflow::PyExceptionRegistry::Lookup(status.code()),
                   pybind11::make_tuple(pybind11::none(), pybind11::none(),
                                        status.error_message(),
                                        internal::StatusPayloadToDict(status))
@@ -83,7 +85,7 @@ inline void SetRegisteredErrFromStatus(const tensorflow::Status& status) {
 }
 
 inline void SetRegisteredErrFromTFStatus(TF_Status* status) {
-  PyErr_SetObject(PyExceptionRegistry::Lookup(TF_GetCode(status)),
+  PyErr_SetObject(tensorflow::PyExceptionRegistry::Lookup(TF_GetCode(status)),
                   pybind11::make_tuple(pybind11::none(), pybind11::none(),
                                        TF_Message(status),
                                        internal::TFStatusPayloadToDict(status))
@@ -133,11 +135,25 @@ inline void MaybeRaiseRegisteredFromTFStatusWithGIL(TF_Status* status) {
   }
 }
 
+}  // namespace tsl
+
+namespace tensorflow {
+
+using tsl::MaybeRaiseFromStatus;
+using tsl::MaybeRaiseFromTFStatus;
+using tsl::MaybeRaiseRegisteredFromStatus;
+using tsl::MaybeRaiseRegisteredFromStatusWithGIL;
+using tsl::MaybeRaiseRegisteredFromTFStatus;
+using tsl::MaybeRaiseRegisteredFromTFStatusWithGIL;
+using tsl::SetRegisteredErrFromStatus;
+using tsl::SetRegisteredErrFromTFStatus;
 }  // namespace tensorflow
 
 namespace pybind11 {
 namespace detail {
 
+// Convert tensorflow::Status
+//
 // Raise an exception if a given status is not OK, otherwise return None.
 //
 // The correspondence between status codes and exception classes is given
@@ -150,6 +166,49 @@ struct type_caster<tensorflow::Status> {
   static handle cast(tensorflow::Status status, return_value_policy, handle) {
     tensorflow::MaybeRaiseFromStatus(status);
     return none().inc_ref();
+  }
+};
+
+// Convert tensorflow::StatusOr
+//
+// Uses the same logic as the Abseil implementation: raise an exception if the
+// status is not OK, otherwise return its payload.
+template <typename PayloadType>
+struct type_caster<tensorflow::StatusOr<PayloadType>> {
+ public:
+  using PayloadCaster = make_caster<PayloadType>;
+  using StatusCaster = make_caster<tensorflow::Status>;
+  static constexpr auto name = PayloadCaster::name;
+
+  static handle cast(const tensorflow::StatusOr<PayloadType>* src,
+                     return_value_policy policy, handle parent) {
+    if (!src) return none().release();
+    return cast_impl(*src, policy, parent);
+  }
+
+  static handle cast(const tensorflow::StatusOr<PayloadType>& src,
+                     return_value_policy policy, handle parent) {
+    return cast_impl(src, policy, parent);
+  }
+
+  static handle cast(tensorflow::StatusOr<PayloadType>&& src,
+                     return_value_policy policy, handle parent) {
+    return cast_impl(std::move(src), policy, parent);
+  }
+
+ private:
+  template <typename CType>
+  static handle cast_impl(CType&& src, return_value_policy policy,
+                          handle parent) {
+    if (src.ok()) {
+      // Convert and return the payload.
+      return PayloadCaster::cast(std::forward<CType>(src).value(), policy,
+                                 parent);
+    } else {
+      // Convert and return the error.
+      return StatusCaster::cast(std::forward<CType>(src).status(),
+                                return_value_policy::move, parent);
+    }
   }
 };
 

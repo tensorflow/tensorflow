@@ -19,7 +19,6 @@ import numbers
 import sys
 
 import numpy as np
-import six
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -226,7 +225,7 @@ def matmul(x1, x2):  # pylint: disable=missing-docstring
                   x1, x2, axes=[[0], [-2]]),
               lambda: math_ops.matmul(x1, x2)))
     except errors.InvalidArgumentError as err:
-      six.reraise(ValueError, ValueError(str(err)), sys.exc_info()[2])
+      raise ValueError(str(err)).with_traceback(sys.exc_info()[2])
 
   return _bin_op(f, x1, x2)
 
@@ -386,14 +385,14 @@ def kron(a, b):  # pylint: disable=missing-function-docstring
   # pylint: disable=protected-access,g-complex-comprehension
   a, b = np_array_ops._promote_dtype(a, b)
   t_a = np_utils.cond(
-      a.ndim < b.ndim,
+      a.shape.rank < b.shape.rank,
       lambda: np_array_ops.reshape(  # pylint: disable=g-long-lambda
-          a, np_array_ops._pad_left_to(b.ndim, a.shape)),
+          a, np_array_ops._pad_left_to(b.shape.rank, a.shape)),
       lambda: a)
   t_b = np_utils.cond(
-      b.ndim < a.ndim,
+      b.shape.rank < a.shape.rank,
       lambda: np_array_ops.reshape(  # pylint: disable=g-long-lambda
-          b, np_array_ops._pad_left_to(a.ndim, b.shape)),
+          b, np_array_ops._pad_left_to(a.shape.rank, b.shape)),
       lambda: b)
 
   def _make_shape(shape, prepend):
@@ -1081,6 +1080,9 @@ def linspace(  # pylint: disable=missing-docstring
     else:
       result = math_ops.linspace(start, stop, num, axis=axis)
   if dtype:
+    if dtype.is_integer:
+      # Since numpy 1.20, linspace's rounding is towards -inf instead of 0
+      result = math_ops.floor(result)
     result = math_ops.cast(result, dtype)
   if retstep:
     return (result, step)
@@ -1239,7 +1241,7 @@ def append(arr, values, axis=None):
 
 @np_utils.np_doc('average')
 def average(a, axis=None, weights=None, returned=False):  # pylint: disable=missing-docstring
-  if axis is not None and not isinstance(axis, six.integer_types):
+  if axis is not None and not isinstance(axis, int):
     # TODO(wangpeng): Support tuple of ints as `axis`
     raise ValueError('Argument `axis` must be an integer. '
                      f'Received axis={axis} (of type {type(axis)})')

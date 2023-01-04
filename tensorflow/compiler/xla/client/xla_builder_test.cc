@@ -15,16 +15,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 
+#include <algorithm>
+#include <complex>
+#include <functional>
+#include <memory>
 #include <string>
+#include <vector>
 
+#include "tensorflow/compiler/xla/client/sharding_builder.h"
+#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -64,7 +70,7 @@ class XlaBuilderTest : public ::testing::Test {
   }
 
   // Returns the name of the test currently being run.
-  string TestName() const {
+  std::string TestName() const {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 };
@@ -82,7 +88,7 @@ TEST_F(XlaBuilderTest, UnaryOperatorsBuildExpectedHLO) {
       [&](std::function<XlaOp(XlaOp)> op,
           ::testing::Matcher<const ::xla::HloInstruction*> matches_pattern) {
         XlaBuilder b(TestName());
-        op(ConstantR0<int32>(&b, 1));
+        op(ConstantR0<int32_t>(&b, 1));
         TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
         auto root = module->entry_computation()->root_instruction();
         EXPECT_THAT(root, matches_pattern);
@@ -96,7 +102,7 @@ TEST_F(XlaBuilderTest, BinaryOperatorsBuildExpectedHLO) {
       [&](std::function<XlaOp(XlaOp, XlaOp)> op,
           ::testing::Matcher<const ::xla::HloInstruction*> matches_pattern) {
         XlaBuilder b(TestName());
-        op(ConstantR0<int32>(&b, 1), ConstantR0<int32>(&b, 2));
+        op(ConstantR0<int32_t>(&b, 1), ConstantR0<int32_t>(&b, 2));
         TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
         auto root = module->entry_computation()->root_instruction();
         EXPECT_THAT(root, matches_pattern);
@@ -127,7 +133,7 @@ TEST_F(XlaBuilderTest, BinaryOperatorsBuildExpectedHLO) {
       [&](std::function<XlaOp(XlaOp, XlaOp)> op,
           ::testing::Matcher<const ::xla::HloInstruction*> matches_pattern) {
         XlaBuilder b(TestName());
-        op(ConstantR0<uint32>(&b, 1), ConstantR0<uint32>(&b, 2));
+        op(ConstantR0<uint32_t>(&b, 1), ConstantR0<uint32_t>(&b, 2));
         TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
         auto root = module->entry_computation()->root_instruction();
         EXPECT_THAT(root, matches_pattern);
@@ -448,6 +454,7 @@ TEST_F(XlaBuilderTest, AllToAll) {
       ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {8, 8})));
 }
 
+// Test the special case where split_dimension is the same as concat_dimension.
 TEST_F(XlaBuilderTest, AllToAllSpecial) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16, 8}), "x");
@@ -460,6 +467,28 @@ TEST_F(XlaBuilderTest, AllToAllSpecial) {
   EXPECT_EQ(root->opcode(), HloOpcode::kAllToAll);
   EXPECT_TRUE(
       ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {4, 16, 8})));
+}
+
+TEST_F(XlaBuilderTest, AllToAllTuple) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {2, 4}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {2, 4}), "p1");
+  ReplicaGroup replica_group;
+  replica_group.add_replica_ids(0);
+  replica_group.add_replica_ids(1);
+
+  AllToAllTuple({p0, p1}, {replica_group}, LayoutUtil::MakeAscendingLayout(2));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+
+  // AllToAll is converted into a single all-to-all HloInstruction.
+  EXPECT_EQ(root->opcode(), HloOpcode::kAllToAll);
+  auto expected_shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, /* dimensions= */ {2, 4},
+                                          /* minor_to_major= */ {0, 1});
+  EXPECT_THAT(root, op::ShapeWithLayout(ShapeUtil::MakeTupleShape(
+                        {expected_shape, expected_shape})));
+  EXPECT_THAT(root, op::ReplicaGroups({{0, 1}}));
 }
 
 TEST_F(XlaBuilderTest, CollectivePermute) {
@@ -575,7 +604,7 @@ TEST_F(XlaBuilderTest, ProtoMatches) {
     auto one = ConstantR0<float>(&b, 1);
     auto two = ConstantR0<float>(&b, 2);
     Add(Call(&b, call, {x, y}), Call(&b, call, {one, two}));
-    computations.push_back(b.Build().ValueOrDie());
+    computations.push_back(b.Build().value());
   }
   auto c0_string = computations[0].proto().SerializeAsString();
   auto c1_string = computations[1].proto().SerializeAsString();
@@ -777,6 +806,34 @@ TEST_F(XlaBuilderTest, DynamicSelectOnlyPredDynamic) {
       module->entry_computation()->root_instruction()->shape();
   EXPECT_TRUE(ContainersEqual(result_shape.dynamic_dimensions(), {true}))
       << result_shape;
+}
+
+TEST_F(XlaBuilderTest, SelectIntoConditional) {
+  XlaBuilder b(TestName());
+  Shape selector_shape = ShapeUtil::MakeShape(PRED, {});
+  Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(F32, {})});
+  XlaOp p0 = Parameter(&b, 0, selector_shape, "p0");
+  XlaOp p1 = Parameter(&b, 1, tuple_param_shape, "p1");
+  XlaOp p2 = Parameter(&b, 2, tuple_param_shape, "p2");
+
+  Select(p0, p1, p2);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          BuildHloModule(&b));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Conditional(op::Parameter(0), op::Parameter(1), op::Parameter(2)));
+  EXPECT_THAT(module->entry_computation()
+                  ->root_instruction()
+                  ->branch_computation(0)
+                  ->root_instruction(),
+              op::Parameter(0));
+  EXPECT_THAT(module->entry_computation()
+                  ->root_instruction()
+                  ->branch_computation(1)
+                  ->root_instruction(),
+              op::Parameter(0));
 }
 
 TEST_F(XlaBuilderTest, DynamicPad) {
@@ -1360,7 +1417,7 @@ TEST_F(XlaBuilderTest, AddFrontendAttribute) {
 
 TEST_F(XlaBuilderTest, ComparisonType) {
   XlaBuilder b(TestName());
-  (void)Le(ConstantR0<int32>(&b, 1), ConstantR0<int32>(&b, 2));
+  (void)Le(ConstantR0<int32_t>(&b, 1), ConstantR0<int32_t>(&b, 2));
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
   ASSERT_THAT(root, op::Compare(op::Constant(), op::Constant()));
@@ -1371,16 +1428,88 @@ TEST_F(XlaBuilderTest, ComparisonType) {
 TEST_F(XlaBuilderTest, StableLookUpInstructionByHandle) {
   XlaBuilder b(TestName());
   internal::XlaBuilderFriend builder_friend;
-  XlaOp le = Le(ConstantR0<int32>(&b, 1), ConstantR0<int32>(&b, 2));
+  XlaOp le = Le(ConstantR0<int32_t>(&b, 1), ConstantR0<int32_t>(&b, 2));
   HloInstructionProto* first_op = builder_friend.GetInstruction(le);
   // Create some more instructions.
   for (int i = 0; i < 100; ++i) {
-    (void)Le(ConstantR0<int32>(&b, 1), ConstantR0<int32>(&b, 2));
+    (void)Le(ConstantR0<int32_t>(&b, 1), ConstantR0<int32_t>(&b, 2));
   }
   // Make sure first_op hasn't changed.
   HloInstructionProto* first_op_now = builder_friend.GetInstruction(le);
   EXPECT_EQ(first_op, first_op_now);
 }
 
+TEST_F(XlaBuilderTest, ComplexAbsConstant) {
+  XlaBuilder b(TestName());
+  XlaOp out =
+      Abs(ConstantR0<std::complex<float>>(&b, std::complex<float>{-1, -1}));
+  ValueInference value_inference(&b);
+  StatusOr<OptionalLiteral> analyzed =
+      value_inference.AnalyzeConstant(out, kUpperBound);
+  EXPECT_IS_OK(analyzed.status());
+  EXPECT_EQ(analyzed->GetValue().value().shape().element_type(),
+            PrimitiveType::F32);
+}
+
+TEST_F(XlaBuilderTest, OutfeedDummyTupleSharding) {
+  XlaBuilder b(TestName());
+  XlaOp value = ConstantR1<int32_t>(&b, {0});
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, /* dimensions= */ {1},
+                                                    /* minor_to_major= */ {0});
+  Outfeed(value, shape, "");
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  EXPECT_FALSE(module->entry_computation()->root_instruction()->has_sharding());
+}
+
+TEST_F(XlaBuilderTest, OutfeedTokenSharding) {
+  XlaBuilder b(TestName());
+  XlaOp value = ConstantR1<int32_t>(&b, {0});
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, /* dimensions= */ {1},
+                                                    /* minor_to_major= */ {0});
+  b.SetSharding(sharding_builder::Replicate());
+  Outfeed(value, shape, "");
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto it = std::find_if(module->entry_computation()->instructions().begin(),
+                         module->entry_computation()->instructions().end(),
+                         [](const HloInstruction* i) {
+                           return i->opcode() == HloOpcode::kOutfeed;
+                         });
+  EXPECT_NE(it, module->entry_computation()->instructions().end());
+  auto* outfeed = *it;
+  EXPECT_TRUE(outfeed->has_sharding());
+  EXPECT_TRUE(outfeed->sharding().IsTuple());
+  EXPECT_EQ(outfeed->sharding().tuple_elements().size(), 2);
+  EXPECT_TRUE(outfeed->operand(1)->has_sharding());
+  EXPECT_EQ(outfeed->sharding().tuple_elements().back(),
+            HloSharding::FromProto(sharding_builder::AssignDevice(0)).value());
+  EXPECT_EQ(outfeed->operand(1)->sharding(),
+            HloSharding::FromProto(sharding_builder::AssignDevice(0)).value());
+}
+
+TEST_F(XlaBuilderTest, NormalizeTupleSharding) {
+  XlaBuilder b(TestName());
+  Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {5}), ShapeUtil::MakeShape(F32, {6})});
+  b.SetSharding(sharding_builder::Replicate());
+  Parameter(&b, 0, tuple_param_shape, "p0");
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(root->has_sharding());
+  EXPECT_TRUE(root->sharding().IsTuple());
+  EXPECT_EQ(root->sharding().tuple_elements().size(), 2);
+}
+
+TEST_F(XlaBuilderTest, InvalidSharding) {
+  XlaBuilder b(TestName());
+  Shape shape2d = ShapeUtil::MakeShape(F32, {6, 8});
+  Shape shape1d = ShapeUtil::MakeShape(F32, {5});
+  b.SetSharding(sharding_builder::Tile1D(shape1d, 4));
+  Parameter(&b, 0, shape2d, "p0");
+  auto statusor = b.Build();
+  EXPECT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("Number of tile assignment dimensions (excluding "
+                        "subgroups) is different than the input rank"));
+}
 }  // namespace
 }  // namespace xla

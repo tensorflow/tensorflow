@@ -14,65 +14,100 @@
 # limitations under the License.
 # ==============================================================================
 
+# Called like install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.10"
 PIP="$1"
 PIP_INSTALL=("${PIP}" "install" "--prefer-binary" --upgrade)
 
-if [[ ! -x "$(which "${PIP}")" ]]; then
-  # Python2 doesn't ship with pip by default.
-  PYTHON="${PIP/pip/python}"
-  wget "https://bootstrap.pypa.io/get-pip.py"
-  "${PYTHON}" "get-pip.py"
-  rm "get-pip.py"
-fi
+PYTHON="${PIP/pip/python}"
+wget "https://bootstrap.pypa.io/get-pip.py"
+"${PYTHON}" "get-pip.py" --force-reinstall
+rm "get-pip.py"
+"${PYTHON}" -m ensurepip --upgrade
 
-PACKAGES=(
-  # NOTE: As numpy has releases that break semver guarantees and several other
-  # deps depend on numpy without an upper bound, we must install numpy before
-  # everything else.
-  "numpy~=1.21.2"
-  "auditwheel"
+PYTHON_VERSION=$(echo ${PIP##*.})  # only the last number, eg. 10
+
+JAX_PACKAGES=(
+  # https://github.com/numpy/numpy/issues/22623
+  "setuptools<=65.5.1"
   "wheel"
-  "setuptools"
-  "virtualenv"
-  "six"
-  "future"
+  "cloudpickle"
+  "colorama>=0.4.4"
+  "matplotlib"
+  "pillow>=9.1.0"
+  "rich"
   "absl-py"
-  "werkzeug"
-  "bleach"
-  "markdown"
-  "protobuf"
-  "scipy"
-  "scikit-learn"
-  "pandas"
-  "psutil"
-  "py-cpuinfo"
-  "pylint==2.7.4"
-  "pycodestyle"
   "portpicker"
-  "grpcio"
-  "astor"
-  "gast"
-  "termcolor"
-  "keras-nightly"
-  "keras_preprocessing"
-  "h5py"
-  "tf-estimator-nightly"
-  "tb-nightly"
-  "argparse"
-  "dm-tree"
-  "dill"
-  "tblib"
-  "pybind11"
-  "libclang"
+  "six"
+  "opt-einsum"
+  "auditwheel"
+  "msgpack"
+  "typing_extensions"
 )
 
-# tf.mock require the following for python2:
-if [[ "${PIP}" == *pip2* ]]; then
-  PACKAGES+=("mock")
-fi
+PACKAGES=(
+  "absl-py"
+  "argparse"
+  "astor"
+  "auditwheel"
+  "bleach"
+  "dill"
+  "dm-tree"
+  "future"
+  "gast"
+  "grpcio"
+  "h5py"
+  "keras-nightly"
+  "libclang"
+  "markdown"
+  "pandas"
+  "packaging"
+  "portpicker"
+  "protobuf"
+  "psutil"
+  "py-cpuinfo"
+  "pybind11"
+  "pycodestyle"
+  "pylint==2.7.4"
+  "scikit-learn"
+  "scipy"
+  "six"
+  "tb-nightly"
+  "tblib"
+  "termcolor"
+  "tf-estimator-nightly"
+  "werkzeug"
+  "wheel"
+)
 
 # Get the latest version of pip so it recognize manylinux2010
 "${PIP}" "install" "--upgrade" "pip"
+"${PIP}" "install" "--upgrade" "setuptools" "virtualenv"
 
-"${PIP_INSTALL[@]}" "${PACKAGES[@]}"
+if [[ "$2" == "jax" ]]; then
+  "${PIP_INSTALL[@]}" "${JAX_PACKAGES[@]}"
+else
+  "${PIP_INSTALL[@]}" "${PACKAGES[@]}"
+fi
+
+if [[ "$2" == "jax" ]]; then
+  # Special casing by version of Python
+  # E.g., numpy supports py3.10 only from 1.21.3
+  if [[ ${PYTHON_VERSION} -eq 10 ]]; then
+    "${PIP_INSTALL[@]}" "numpy==1.21.3" "scipy==1.7.2"
+  elif [[ ${PYTHON_VERSION} -eq 11 ]]; then
+    "${PIP_INSTALL[@]}" "numpy==1.23.4" "scipy==1.9.2"
+  else
+    "${PIP_INSTALL[@]}" "numpy==1.20.3" "scipy==1.5.4"
+  fi
+else
+  # Special casing by version of Python
+  # E.g., numpy supports py3.10 only from 1.21.3
+  if [[ ${PYTHON_VERSION} -eq 10 ]]; then
+    "${PIP_INSTALL[@]}" "numpy==1.21.3"
+  elif [[ ${PYTHON_VERSION} -eq 11 ]]; then
+    "${PIP_INSTALL[@]}" "numpy==1.23.4"
+  else
+    "${PIP_INSTALL[@]}" "numpy==1.19"
+  fi
+fi
 

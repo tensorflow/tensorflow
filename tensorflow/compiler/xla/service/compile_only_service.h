@@ -20,8 +20,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/service.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 
@@ -42,22 +42,16 @@ class CompileOnlyService : public Service {
   struct AotXlaComputationInstance {
     HloModuleProto computation;
     std::vector<const Shape*> argument_layouts;
-    const Shape* result_layout = nullptr;
+    Shape result_layout;
   };
 
   // Compiles a list of xla computations for ahead-of-time execution.  This is
   // intended for use in static compilation.  See
   // |CompileOnlyClient::CompileAheadOfTime| for additional details.
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(
-      const absl::Span<const AotXlaComputationInstance> computations,
-      const AotCompilationOptions& options);
-
-  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(
-      const absl::Span<const AotXlaComputationInstance> computations,
-      const AotCompilationOptions& options,
-      std::unique_ptr<AotCompilationMetadata>* metadata);
+  CompileAheadOfTime(absl::Span<const AotXlaComputationInstance> computations,
+                     const AotCompilationOptions& options,
+                     std::unique_ptr<AotCompilationMetadata>* metadata);
 
   Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
                           GetDeviceHandlesResponse* result) override {

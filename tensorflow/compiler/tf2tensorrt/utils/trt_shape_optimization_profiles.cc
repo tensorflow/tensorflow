@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
@@ -35,9 +36,9 @@ template <typename TensorShapeType>
 std::vector<nvinfer1::Dims> GetDimVec(std::vector<TensorShapeType> shape_vec) {
   std::vector<nvinfer1::Dims> dimvec(shape_vec.size());
   absl::c_transform(shape_vec, dimvec.begin(), [](TensorShapeType shape) {
-    nvinfer1::Dims dims;
-    TF_CHECK_OK(TensorShapeToTrtDims(shape, false, &dims));
-    return dims;
+    auto adap = DimsAdapter::Create(shape);
+    TF_CHECK_OK(adap.status());
+    return adap->AsTrtDims();
   });
   return dimvec;
 }
@@ -98,12 +99,12 @@ Status ShapeProfileBinaryOp(std::vector<nvinfer1::Dims>* x,
       x->at(i).d[j] = op(x->at(i).d[j], y[i].d[j]);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TrtShapeOptimizationProfile::RangeStrategy(
     const std::vector<std::vector<nvinfer1::Dims>>& collected_shapes) {
-  if (collected_shapes.empty()) return Status::OK();
+  if (collected_shapes.empty()) return OkStatus();
 
   std::vector<nvinfer1::Dims> min = collected_shapes[0];
   std::vector<nvinfer1::Dims> max = min;
@@ -120,7 +121,7 @@ Status TrtShapeOptimizationProfile::RangeStrategy(
           << DebugString(min) << ", opt=max=" << DebugString(max);
   OptimizationProfileConfig profConfig{min, max, max};
   profiles_.push_back(std::move(profConfig));
-  return Status::OK();
+  return OkStatus();
 }
 
 void TrtShapeOptimizationProfile::OptimalStrategy(
@@ -139,6 +140,9 @@ void TrtShapeOptimizationProfile::OptimalStrategy(
 // Collects the values of tensors that are ShapeTensorCompatible to. The values
 // are stored in the actual_shape_values_ member variable.
 Status TrtShapeOptimizationProfile::CollectShapeValues(OpKernelContext* ctx) {
+  tensorflow::profiler::TraceMe activity(
+      "TrtShapeOptimizationProfile::CollectShapeValues",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   const cudaStream_t* stream = CHECK_NOTNULL(
       reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
                                                 ->stream()
@@ -155,6 +159,12 @@ Status TrtShapeOptimizationProfile::CollectShapeValues(OpKernelContext* ctx) {
   // First copy all the shape value candidates into actual_shape_values_ vector.
   for (int i = 0; i < ctx->num_inputs(); i++) {
     if (is_shape_tensor_[i]) {
+      if (ctx->input_dtype(i) != DT_INT32) {
+        // In case the is_shape_tensor mask was initialized with the input
+        // shapes only (without knowledge of dtype) then we apply correction.
+        is_shape_tensor_[i] = false;
+        continue;
+      }
       // We have to copy the shape values to the host, because TRT's
       // ExecutionContext::setInputShapeBinding expects a host pointer.
       n_shape_val++;
@@ -177,7 +187,7 @@ Status TrtShapeOptimizationProfile::CollectShapeValues(OpKernelContext* ctx) {
     // to host.
     cudaStreamSynchronize(*stream);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Collects the values of tensors that are ShapeTensorCompatible to. To be used
@@ -202,7 +212,7 @@ Status TrtShapeOptimizationProfile::CollectShapeValues(const DataVec& input) {
       actual_shape_values_[i] = {0, {}};
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Adjusts shape value profile to prevent TRT from removing shape value input
@@ -301,7 +311,9 @@ void TrtShapeOptimizationProfile::InitProfiles(
   if (input_partial_shapes.size() > 0) {
     for (OptimizationProfileConfig& prof : profiles_) {
       // TODO: Remove this when the bug is fixed.
+#if !IS_TRT_VERSION_GE(8, 0, 0, 0)
       FixShapeValueProfile(&prof, is_shape_tensor_);
+#endif
       for (int i = 0; i < input_partial_shapes.size(); i++) {
         auto network_input = input_partial_shapes[i];
         EnforceCompatibility(&prof.min[i], network_input);
@@ -312,13 +324,58 @@ void TrtShapeOptimizationProfile::InitProfiles(
   }
 }
 
+void TrtShapeOptimizationProfile::InitCalibProfile(
+    const std::vector<TensorShape>& shapes) {
+  VLOG(1) << "Collected shape(s) " << DebugString(shapes) << " for "
+          << " calibration profile.";
+  auto shape_vec = shapes;
+  if (!shape_vec.empty()) {
+    std::vector<nvinfer1::Dims> dimvec = GetDimVec(shape_vec);
+    dimvec.insert(dimvec.end(), actual_shape_values_.begin(),
+                  actual_shape_values_.end());
+    VLOG(2) << "Initializing calibration optimization profile config with "
+            << "min=opt=max " << DebugString(dimvec);
+
+    OptimizationProfileConfig profConfig{dimvec, dimvec, dimvec};
+    calib_profiles_ = std::move(profConfig);
+  } else {
+    VLOG(2) << "Failed to initialize calibration optimization profile.";
+  }
+}
+
 Status TrtShapeOptimizationProfile::AddProfiles(
     nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config,
     const nvinfer1::INetworkDefinition* network) {
+  // Create optimization profile for calibration if necessary.
+  if (!calib_profiles_.min.empty()) {
+    VLOG(2) << "Setting up calibration profies";
+    auto* calibProfile = builder->createOptimizationProfile();
+    Status status =
+        calib_profiles_.SetDimensions(network, calibProfile, input_mask_);
+    if (!status.ok()) {
+      return status;
+    }
+    bool result = false;
+    if (calibProfile->isValid()) {
+      result = config->setCalibrationProfile(calibProfile);
+    } else {
+      VLOG(2) << "Calibration profile is not valid";
+    }
+    if (result) {
+      VLOG(2) << "Added calibration optimization profile "
+              << calib_profiles_.DebugString() << " to builder config.";
+    } else {
+      VLOG(2) << "FAILED TO ADD PROFILE";
+      LOG(ERROR) << "Failed to add calibration optimization profile "
+                 << calib_profiles_.DebugString()
+                 << ". This usually happens when profile is invalid.";
+    }
+  }
   // Create a vector of optimization profiles.
   for (int i = 0; i < profiles_.size(); i++) {
     auto* optProfile = builder->createOptimizationProfile();
-    Status status = profiles_[i].SetDimensions(network, optProfile);
+    Status status =
+        profiles_[i].SetDimensions(network, optProfile, input_mask_);
     if (!status.ok()) {
       return status;
     }
@@ -345,19 +402,19 @@ Status TrtShapeOptimizationProfile::AddProfiles(
     return errors::Internal("Failure in adding an optimization profile.");
   }
   need_profiles_ = config->getNbOptimizationProfiles() > 0;
-  // Update the the mask that flag shape tensors. The network is known now,
+  // Update the mask that flag shape tensors. The network is known now,
   // the mask will be correct.
   SetShapeTensorMask(network);
   is_pruned_input_.resize(network->getNbInputs());
   absl::c_fill(is_pruned_input_, false);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TrtShapeOptimizationProfile::ConfigureBuilder(
     nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config,
     const nvinfer1::INetworkDefinition* network) {
   TF_RETURN_IF_ERROR(AddProfiles(builder, config, network));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Sets the shape tensor mask from the TRT engine definition.
@@ -400,6 +457,10 @@ void TrtShapeOptimizationProfile::SetShapeTensorMask(
 // definition or the engine would give concrete answers.
 void TrtShapeOptimizationProfile::SetShapeTensorMask(
     const std::vector<PartialTensorShape>& input_partial_shapes) {
+  if (is_shape_tensor_.size() == input_partial_shapes.size()) {
+    // Already initialized, e.g. by TRTEngineOp::ComputeAsync().
+    return;
+  }
   is_shape_tensor_.resize(input_partial_shapes.size(), false);
   for (int i = 0; i < input_partial_shapes.size(); i++) {
     is_shape_tensor_[i] = IsTrtShapeTensorCompatible(input_partial_shapes[i]);
@@ -413,6 +474,9 @@ void TrtShapeOptimizationProfile::SetShapeTensorMask(
 
 int TrtShapeOptimizationProfile::GetProfileNumber(
     const std::vector<TensorShape>& shapes) {
+  tensorflow::profiler::TraceMe activity(
+      "TrtShapeOptimizationProfile::GetProfileNumber",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   if (!need_profiles_) return 0;
   // TODO(tfeher): Return the best profile not just the first compatible.
   for (int i = 0; i < profiles_.size(); i++) {
@@ -450,12 +514,15 @@ Status TrtShapeOptimizationProfile::CreateExecutionContexts(
     i++;
   } while (i < profiles_.size());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TrtShapeOptimizationProfile::SetInputShapeBinding(
     int input_index, int binding_index, nvinfer1::ICudaEngine* cuda_engine,
     nvinfer1::IExecutionContext* exec_context) const {
+  tensorflow::profiler::TraceMe activity(
+      "TrtShapeOptimizationProfile::SetInputShapeBinding",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   if (cuda_engine->isShapeBinding(binding_index)) {
     // Input shape binding data has to be in host memory. That is the reason
     // we can't use input_tensor.flat().data(). which contains the same
@@ -471,7 +538,7 @@ Status TrtShapeOptimizationProfile::SetInputShapeBinding(
                               binding_index);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // If binding_idx is a shape tensor, then returns the associated min/max/opt
@@ -505,16 +572,16 @@ Status TrtShapeOptimizationProfile::SetPrunedMask(
   for (int j = 0; j < n_network_inputs; j++) {
     int binding_idx;
     Status status = GetTrtBindingIndex(j, 0, engine, &binding_idx);
-    if (IS_TRT_VERSION_GE(8, 0, 0, 0)) {
-      TF_RETURN_IF_ERROR(status);
-    } else if (!status.ok()) {
+    if (!status.ok()) {
       // Before TRT 8, an input tensor can be pruned (nvbugs/3153064)
+      // Resource inputs are also unknown by TRT, so we can treat them as
+      // pruned (the engine includes the variable as weights).
       is_pruned_input_[j] = true;
       VLOG(2) << "Skipping pruned input " << j;
       continue;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TrtShapeOptimizationProfile::RestoreProfiles(
@@ -522,11 +589,11 @@ Status TrtShapeOptimizationProfile::RestoreProfiles(
   need_profiles_ = false;
   if (!engine) {
     // We do not need to restore profiles for an empty engine.
-    return Status::OK();
+    return OkStatus();
   }
   if (engine->hasImplicitBatchDimension()) {
     // Nothing to do, we cannot have profiles in implicit batch mode.
-    return Status::OK();
+    return OkStatus();
   }
   int n_profiles = engine->getNbOptimizationProfiles();
   need_profiles_ = n_profiles > 0;
@@ -572,7 +639,7 @@ Status TrtShapeOptimizationProfile::RestoreProfiles(
     VLOG(2) << "Restored profile " << cfg.DebugString();
     profiles_.push_back(std::move(cfg));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 int TrtShapeOptimizationProfile::GetNumProfiles() const {

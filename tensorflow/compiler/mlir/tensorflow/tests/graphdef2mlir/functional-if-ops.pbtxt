@@ -4,8 +4,8 @@
 # composite If op in MLIR with is_stateless attribute set accordingly to
 # distinguish between them.
 
-# CHECK-DAG: "tf.If"{{.*}} is_stateless = false{{.*}} loc("StatefulIf")
-# CHECK-DAG: "tf.If"{{.*}} is_stateless = true{{.*}} loc("StatelessIf")
+# CHECK-DAG: "tf.If"{{.*}} is_stateless = false{{.*}} loc(fused["If:", "StatefulIf"])
+# CHECK-DAG: "tf.If"{{.*}} is_stateless = true{{.*}} loc(fused["StatelessIf:", "StatelessIf"])
 
 node {
   name: "tf.Less"

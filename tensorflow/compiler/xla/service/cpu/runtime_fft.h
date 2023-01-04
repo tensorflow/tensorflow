@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_FFT_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_FFT_H_
 
-#include "tensorflow/core/platform/types.h"
+#include <stdint.h>
 
 extern "C" {
 

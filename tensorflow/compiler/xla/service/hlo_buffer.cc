@@ -23,13 +23,13 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -55,12 +55,13 @@ std::vector<HloPosition> HloBuffer::ComputePositions() const {
   return positions;
 }
 
-string HloBuffer::ToString() const {
+std::string HloBuffer::ToString() const {
   return absl::StrCat(
       "HloBuffer ", id_, ", values: ",
-      absl::StrJoin(values_, ", ", [](string* result, const HloValue* value) {
-        result->append(value->ToShortString());
-      }));
+      absl::StrJoin(values_, ", ",
+                    [](std::string* result, const HloValue* value) {
+                      result->append(value->ToShortString());
+                    }));
 }
 
 std::ostream& operator<<(std::ostream& out, const HloBuffer& buffer) {

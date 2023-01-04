@@ -370,6 +370,38 @@ def new_dataset_fn(input_context):
 dataset = coordinator.create_per_worker_dataset(new_dataset_fn)
 ```
 
+### Sharing tf.data service with concurrent trainers
+
+If you run multiple trainers concurrently using the same training data, it could
+save resources to cache the data in one tf.data service cluster and share the
+cluster with the trainers. For example, if you use Vizier to tune
+hyperparameters, the Vizier jobs can run concurrently and share one tf.data
+service cluster.
+
+To enable this feature, each trainer needs to generate a unique trainer ID, and
+you pass the trainer ID to `tf.data.experimental.service.distribute`. Once a job
+has consumed data, the data remains in the cache and is re-used by jobs with
+different `trainer_id`s. Requests with the same `trainer_id` do not re-use data.
+For example:
+
+```
+dataset = expensive_computation()
+dataset = dataset.apply(tf.data.experimental.service.distribute(
+    processing_mode=tf.data.experimental.service.ShardingPolicy.OFF,
+    service=FLAGS.tf_data_service_address,
+    job_name="job",
+    cross_trainer_cache=data_service_ops.CrossTrainerCache(
+        trainer_id=trainer_id())))
+```
+
+tf.data service uses a sliding-window cache to store shared data. When one
+trainer consumes data, the data remains in the cache. When other trainers need
+data, they can get data from the cache instead of repeating the expensive
+computation. The cache has a bounded size, so some workers may not read the full
+dataset. To ensure all the trainers get sufficient training data, we require the
+input dataset to be infinite. This can be achieved, for example, by repeating
+the dataset and performing random augmentation on the training instances.
+
 ## Limitations
 
 - Python-based data processing: Datasets which use Python-based data processing

@@ -19,8 +19,6 @@ import operator
 import sys
 from absl.testing import parameterized
 import numpy as np
-from six.moves import range
-from six.moves import zip
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function

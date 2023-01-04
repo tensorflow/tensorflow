@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_SINGLE_THREADED_CONV2D_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_SINGLE_THREADED_CONV2D_H_
 
+#include <stdint.h>
+
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/core/platform/types.h"
 
 extern "C" {
 
-extern void __xla_cpu_runtime_EigenSingleThreadedConvF16(
+extern void __xla_cpu_runtime_EigenSingleThreadedConv2DF16(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
     Eigen::half* out, Eigen::half* lhs, Eigen::half* rhs, int64_t input_batch,
     int64_t input_rows, int64_t input_cols, int64_t input_channels,
@@ -30,9 +31,10 @@ extern void __xla_cpu_runtime_EigenSingleThreadedConvF16(
     int64_t row_stride, int64_t col_stride, int64_t padding_top,
     int64_t padding_bottom, int64_t padding_left, int64_t padding_right,
     int64_t lhs_row_dilation, int64_t lhs_col_dilation,
-    int64_t rhs_row_dilation, int64_t rhs_col_dilation);
+    int64_t rhs_row_dilation, int64_t rhs_col_dilation,
+    int64_t feature_group_count);
 
-extern void __xla_cpu_runtime_EigenSingleThreadedConvF32(
+extern void __xla_cpu_runtime_EigenSingleThreadedConv2DF32(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, float* out,
     float* lhs, float* rhs, int64_t input_batch, int64_t input_rows,
     int64_t input_cols, int64_t input_channels, int64_t kernel_rows,
@@ -41,7 +43,7 @@ extern void __xla_cpu_runtime_EigenSingleThreadedConvF32(
     int64_t col_stride, int64_t padding_top, int64_t padding_bottom,
     int64_t padding_left, int64_t padding_right, int64_t lhs_row_dilation,
     int64_t lhs_col_dilation, int64_t rhs_row_dilation,
-    int64_t rhs_col_dilation);
+    int64_t rhs_col_dilation, int64_t feature_group_count);
 
 }  // extern "C"
 

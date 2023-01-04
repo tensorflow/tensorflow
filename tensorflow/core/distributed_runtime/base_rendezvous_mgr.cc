@@ -15,24 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/base_rendezvous_mgr.h"
 
+#include <functional>
+#include <memory>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
-#include "tensorflow/core/common_runtime/process_util.h"
-#include "tensorflow/core/distributed_runtime/worker_cache.h"
-#include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/framework/cancellation.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
@@ -117,24 +111,46 @@ void BaseRendezvousMgr::Cleanup(int64_t step_id) {
   }
 }
 
+void BaseRendezvousMgr::CleanupAll() {
+  mutex_lock l(mu_);
+  for (auto iter = table_.begin(); iter != table_.end(); iter++) {
+    iter->second->Unref();
+  }
+}
+
 BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env,
                                            int64_t step_id)
     : env_(env),
       step_id_(step_id),
-      local_(NewLocalRendezvous()),
-      session_(nullptr) {}
+      num_shards_(env_->experimental_num_shards),
+      local_(NewLocalRendezvous(num_shards_)),
+      session_(nullptr) {
+  DCHECK_GT(env_->experimental_num_shards, 0);
+}
 
 BaseRemoteRendezvous::~BaseRemoteRendezvous() {
-  CHECK(active_.empty());
+  {
+    mutex_lock l(calls_mu_);
+    calls_.clear();
+  }
   local_->Unref();
 }
 
 // Returns true if "device_name" is a valid full name of local device
-// of the "worker".  This helper is purely based on the worker name
+// of the "worker". This helper is purely based on the worker name
 // and device name and does no lookups in the worker->device_mgr.
 static bool IsLocalDevice(const StringPiece worker_name,
                           const StringPiece device_name) {
   return absl::StartsWith(device_name, worker_name);
+}
+
+// Returns true if the parsed device name is empty. An empty src device
+// is used to represent a Recv from the local host device when
+// the host device name is not known at the time when the graph node is
+// emitted.
+static bool IsImplicitLocalDevice(
+    const DeviceNameUtils::ParsedName parsed_device_name) {
+  return !DeviceNameUtils::HasSomeDetails(parsed_device_name);
 }
 
 Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
@@ -145,7 +161,7 @@ Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
     if (session_ != nullptr) {
       if (session_->worker_name() == session->worker_name()) {
         VLOG(1) << "Skipping rendezvous re-initialization.";
-        return Status::OK();
+        return OkStatus();
       }
       Status s = errors::Internal(
           "Double init! Worker names would have changed from: ",
@@ -159,7 +175,7 @@ Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
   for (auto& call : deferred_calls) {
     RecvLocalAsyncInternal(call.parsed, std::move(call.done));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 WorkerSession* BaseRemoteRendezvous::session() {
@@ -184,7 +200,8 @@ Status BaseRemoteRendezvous::Send(const Rendezvous::ParsedKey& parsed,
     sess = session_;
   }
 
-  if (!IsLocalDevice(sess->worker_name(), parsed.src_device)) {
+  if (!IsImplicitLocalDevice(parsed.src) &&
+      !IsLocalDevice(sess->worker_name(), parsed.src_device)) {
     return errors::InvalidArgument(
         "Invalid rendezvous key (src): ", parsed.FullKey(), " @ ",
         sess->worker_name());
@@ -207,7 +224,8 @@ Status BaseRemoteRendezvous::ValidateDevices(const ParsedKey& parsed,
     }
     sess = session_;
   }
-  if (is_src && !IsLocalDevice(sess->worker_name(), parsed.src_device)) {
+  if (is_src && !IsImplicitLocalDevice(parsed.src) &&
+      !IsLocalDevice(sess->worker_name(), parsed.src_device)) {
     return errors::InvalidArgument(
         "Invalid rendezvous key (src): ", parsed.FullKey(), " @ ",
         sess->worker_name());
@@ -217,7 +235,7 @@ Status BaseRemoteRendezvous::ValidateDevices(const ParsedKey& parsed,
         "Invalid rendezvous key (dst): ", parsed.FullKey(), " @ ",
         sess->worker_name());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void BaseRemoteRendezvous::SameWorkerRecvDone(
@@ -232,7 +250,7 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
       (recv_args.alloc_attrs.on_host() || parsed.dst.type == "CPU");
   if (src_host && dst_host) {
     *out = in;
-    done(Status::OK());
+    done(OkStatus());
     return;
   }
 
@@ -314,7 +332,10 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
 
   profiler::ScopedMemoryDebugAnnotation op_annotation("RecvAsync", step_id_);
   // Are src and dst in the same worker?
-  if (IsSameWorker(parsed.src, parsed.dst)) {
+  // At this point parsed.dst must be a local device asserted by the previous
+  // call to ValidateDevices.
+  if (IsImplicitLocalDevice(parsed.src) ||
+      IsSameWorker(parsed.src, parsed.dst)) {
     // Recv the tensor from local_.
     local_->RecvAsync(
         parsed, recv_args,
@@ -387,58 +408,150 @@ void BaseRemoteRendezvous::StartAbort(const Status& s) {
   }
 
   local_->StartAbort(derived_status);
+
+  bool status_ok = false;
   {
-    // Aborts all active RecvTensor calls.
     mutex_lock l(mu_);
-    if (status_.ok()) {
+    status_ok = status_.ok();
+    if (status_ok) {
       status_ = derived_status;
-      for (auto& entry : active_) {
-        entry.first->StartAbort(derived_status);
-        entry.second();
-      }
-      active_.clear();
     }
+  }
+
+  if (status_ok) {
+    // Aborts all active RecvTensor calls.
+    mutex_lock l(calls_mu_);
+    // Invoking callbacks while holding the lock, to block concurrent
+    // DeregisterCall(). Once DeregisterCall() returned, the caller may release
+    // resources needed by the callback.
+    for (auto& it : calls_) {
+      for (auto& bucket : it.second->buckets) {
+        mutex_lock l(bucket.mu);
+        for (auto& call : bucket.calls) {
+          call->StartAbort(derived_status);
+        }
+        bucket.calls.clear();
+      }
+    }
+    calls_.clear();
+  }
+}
+
+void BaseRemoteRendezvous::CancelledByManager(CancellationManager* cm) {
+  // Abort all the RecvTensor calls associated with thie cancellation
+  // manager.
+  mutex_lock l(calls_mu_);
+  auto it = calls_.find(cm);
+  if (it != calls_.end()) {
+    // Invoking callbacks while holding the lock, to block concurrent
+    // DeregisterCall(). Once DeregisterCall() returned, the caller may release
+    // resources needed by the callback.
+    for (auto& bucket : it->second->buckets) {
+      mutex_lock l(bucket.mu);
+      for (auto& call : bucket.calls) {
+        call->StartAbort(
+            errors::Cancelled("RecvFromRemoteAsync is cancelled."));
+      }
+    }
+    calls_.erase(it);
   }
 }
 
 void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
                                         const Rendezvous::Args& args) {
   CancellationManager* cm = args.cancellation_manager;
-  bool already_cancelled = false;
-  InactiveCallback callback = [] {};
   {
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     if (!status_.ok()) {
       call->StartAbort(status_);
       return;
     }
+  }
+
+  int hash = absl::Hash<void*>{}(call) % num_shards_;
+  bool buckets_found = false;
+  bool already_cancelled = false;
+  {
+    tf_shared_lock l(calls_mu_);
     if (cm != nullptr) {
-      auto token = cm->get_cancellation_token();
-      already_cancelled = !cm->RegisterCallback(token, [this, call] {
-        {
-          mutex_lock l(mu_);
-          if (active_.find(call) == active_.end()) return;
-          call->StartAbort(
-              errors::Cancelled("RecvFromRemoteAsync is cancelled."));
-        }
-      });
-      callback = [cm, token] { cm->TryDeregisterCallback(token); };
+      already_cancelled = cm->IsCancelled();
     }
-    if (already_cancelled) {
-      call->StartAbort(errors::Cancelled("RecvFromRemoteAsync is cancelled."));
-    } else {
-      CHECK(active_.emplace(call, callback).second);
+    auto it = calls_.find(cm);
+    buckets_found = it != calls_.end();
+    if (buckets_found && !already_cancelled) {
+      // Fast path for Cancellation manager that has been managed by this class.
+      it->second->num_calls.fetch_add(1);
+      auto& bucket = it->second->buckets[hash];
+      mutex_lock l(bucket.mu);
+      bool emplaced = bucket.calls.emplace(call).second;
+      CHECK(emplaced);  // Crash OK.
+      return;
     }
+  }
+  if (!buckets_found && !already_cancelled) {
+    mutex_lock l(calls_mu_);
+    auto it = calls_.find(cm);
+    if (it == calls_.end()) {
+      CancellationToken token = CancellationManager::kInvalidToken;
+      if (cm != nullptr) {
+        token = cm->get_cancellation_token();
+        already_cancelled = !cm->RegisterCallback(
+            token,
+            std::bind(&BaseRemoteRendezvous::CancelledByManager, this, cm));
+      }
+      if (!already_cancelled) {
+        it = calls_
+                 .emplace(cm,
+                          std::make_unique<PendingCalls>(token, 0, num_shards_))
+                 .first;
+      }
+    }
+    DCHECK(it != calls_.end());
+    if (!already_cancelled) {
+      it->second->num_calls.fetch_add(1);
+      auto& bucket = it->second->buckets[hash];
+      mutex_lock bucket_lock(bucket.mu);
+      bool emplaced = bucket.calls.emplace(call).second;
+      CHECK(emplaced);  // Crash OK.
+    }
+  }
+
+  if (already_cancelled) {
+    call->StartAbort(errors::Cancelled("RecvFromRemoteAsync is cancelled."));
   }
 }
 
-void BaseRemoteRendezvous::DeregisterCall(BaseRecvTensorCall* call) {
-  mutex_lock l(mu_);
-  auto it = active_.find(call);
-  if (it != active_.end()) {
-    // Deregister the cancellation callback, if one was registered.
-    it->second();
-    active_.erase(it);
+void BaseRemoteRendezvous::DeregisterCall(BaseRecvTensorCall* call,
+                                          const Rendezvous::Args& args) {
+  int hash = absl::Hash<void*>{}(call) % num_shards_;
+  auto cm = args.cancellation_manager;
+  bool is_last_call = false;
+  {
+    tf_shared_lock l(calls_mu_);
+    auto it = calls_.find(cm);
+    if (it != calls_.end()) {
+      auto& bucket = it->second->buckets[hash];
+      bool removed = false;
+      {
+        mutex_lock l(bucket.mu);
+        removed = bucket.calls.erase(call);
+      }
+      if (removed) {
+        is_last_call = it->second->num_calls.fetch_sub(1) == 1;
+      }
+    }
+  }
+  if (is_last_call) {
+    // Holds an exclusive lock so that all updating to the buckets are done, and
+    // num_calls is accurate.
+    mutex_lock l(calls_mu_);
+    auto it = calls_.find(cm);
+    if (it != calls_.end() && it->second->num_calls == 0) {
+      if (cm != nullptr) {
+        cm->TryDeregisterCallback(it->second->token);
+      }
+      calls_.erase(it);
+    }
   }
 }
 

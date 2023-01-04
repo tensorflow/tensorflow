@@ -34,13 +34,6 @@ Status GetElementAtIndexOp::DoCompute(OpKernelContext* ctx) {
   DatasetBase* finalized_dataset;
   TF_ASSIGN_OR_RETURN(finalized_dataset, GetFinalizedDataset(ctx, dataset));
 
-  int64_t cardinality = finalized_dataset->Cardinality();
-  if (cardinality == kInfiniteCardinality ||
-      cardinality == kUnknownCardinality) {
-    return tensorflow::errors::FailedPrecondition(
-        "Only datasets with finite known cardinality support random access.");
-  }
-
   int64 index = 0;
   TF_RETURN_IF_ERROR(ParseScalarArgument<int64_t>(ctx, "index", &index));
 
@@ -53,7 +46,7 @@ Status GetElementAtIndexOp::DoCompute(OpKernelContext* ctx) {
   for (int i = 0; i < components.size(); ++i) {
     ctx->set_output(i, components[i]);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {

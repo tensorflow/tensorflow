@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <numeric>
 #include <random>
 #include <vector>
@@ -26,10 +27,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "fp16.h"  // from @FP16
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/delegates/xnnpack/test_util.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
@@ -89,6 +90,10 @@ void FullyConnectedTester::Test(TfLiteDelegate* delegate) const {
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
+  if (weights_cache_ != nullptr) {
+    TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache_);
+  }
+
   float* default_input_data = default_interpreter->typed_input_tensor<float>(0);
   std::generate(default_input_data, default_input_data + InputSize(),
                 std::ref(input_rng));
@@ -126,7 +131,11 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
   std::vector<flatbuffers::Offset<Buffer>> buffers{
       {CreateBuffer(builder, builder.CreateVector({}))}};
 
-  float filter_scale = 0;
+  const std::vector<int32_t> filter_shape = {OutputChannels(), InputChannels()};
+  const std::vector<int32_t> bias_shape = {OutputChannels()};
+  std::vector<float> filter_scales;
+  std::vector<int64_t> filter_zero_points;
+  int32_t filter_quantized_dimension = 0;
   if (FP16Weights()) {
     operator_codes.emplace_back(
         CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
@@ -203,18 +212,31 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
       }
     }
 
-    if (INT8Weights()) {
-      filter_scale = GetInt8QuantizationScale(filter_data);
+    if (INT8Weights() || INT8ChannelWiseWeights()) {
       std::vector<int8_t> quantized_filter_data(filter_data.size());
-      std::transform(
-          filter_data.begin(), filter_data.end(), quantized_filter_data.begin(),
-          std::bind(QuantizeInt8, std::placeholders::_1, 0, filter_scale));
+      if (INT8Weights()) {
+        filter_scales.resize(1, GetInt8QuantizationScale(filter_data));
+        filter_zero_points.resize(1, 0);
+        std::transform(filter_data.begin(), filter_data.end(),
+                       quantized_filter_data.begin(),
+                       std::bind(QuantizeInt8, std::placeholders::_1, 0,
+                                 filter_scales[0]));
+      } else {
+        filter_quantized_dimension =
+            static_cast<int32_t>(filter_shape.size()) - 1;
+        const int32_t num_scales = filter_shape[filter_quantized_dimension];
+        filter_scales = GetInt8QuantizationScalePerChannel(
+            filter_data.data(), filter_quantized_dimension, filter_shape);
+        filter_zero_points.resize(num_scales, 0);
+        QuantizeInt8PerChannel(filter_scales.data(), filter_zero_points.data(),
+                               filter_quantized_dimension, filter_data.data(),
+                               quantized_filter_data.data(), filter_shape);
+      }
       buffers.emplace_back(CreateBuffer(
           builder,
           builder.CreateVector(
               reinterpret_cast<const uint8_t*>(quantized_filter_data.data()),
               sizeof(int8_t) * quantized_filter_data.size())));
-
       operator_codes.emplace_back(
           CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
       const std::array<int32_t, 1> dequantize_filter_inputs{{0}};
@@ -241,10 +263,6 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
     }
   }
 
-  const std::array<int32_t, 2> filter_shape{
-      {OutputChannels(), InputChannels()}};
-  const std::array<int32_t, 1> bias_shape{{OutputChannels()}};
-
   const std::vector<int32_t> output_shape = OutputShape();
   std::vector<flatbuffers::Offset<Tensor>> tensors;
   if (FP16Weights()) {
@@ -258,15 +276,17 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
           builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
           TensorType_FLOAT16, /*buffer=*/2));
     }
-  } else if (INT8Weights()) {
+  } else if (INT8Weights() || INT8ChannelWiseWeights()) {
     tensors.emplace_back(CreateTensor(
         builder,
         builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
         TensorType_INT8, /*buffer=*/1, /*name=*/0,
         CreateQuantizationParameters(
             builder, /*min=*/0, /*max=*/0,
-            builder.CreateVector<float>({filter_scale}),
-            builder.CreateVector<int64_t>({0}))));
+            builder.CreateVector<float>(filter_scales),
+            builder.CreateVector<int64_t>(filter_zero_points),
+            /*details_type=*/QuantizationDetails_NONE,
+            /*details=*/0, filter_quantized_dimension)));
   }
   tensors.emplace_back(CreateTensor(
       builder,
@@ -275,7 +295,9 @@ std::vector<char> FullyConnectedTester::CreateTfLiteModel() const {
   tensors.emplace_back(CreateTensor(
       builder,
       builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
-      TensorType_FLOAT32, /*buffer=*/(FP16Weights() || INT8Weights()) ? 0 : 1));
+      TensorType_FLOAT32,
+      /*buffer=*/
+      (FP16Weights() || INT8Weights() || INT8ChannelWiseWeights()) ? 0 : 1));
   if (HasBias()) {
     tensors.emplace_back(CreateTensor(
         builder,

@@ -18,7 +18,6 @@ import random
 import time
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
@@ -140,7 +139,7 @@ class PaddingFIFOQueueTest(test.TestCase):
 
       # Dequeue every element using a single thread.
       results = []
-      for _ in xrange(len(elems)):
+      for _ in range(len(elems)):
         results.append(self.evaluate(dequeued_t))
       self.assertItemsEqual(elems, results)
 
@@ -181,7 +180,7 @@ class PaddingFIFOQueueTest(test.TestCase):
       for enqueue_op in enqueue_ops:
         enqueue_op.run()
 
-      for i in xrange(len(elems)):
+      for i in range(len(elems)):
         vals = self.evaluate(dequeued_t)
         self.assertEqual([elems[i]], vals)
 
@@ -205,7 +204,7 @@ class PaddingFIFOQueueTest(test.TestCase):
       results = []
 
       def dequeue():
-        for _ in xrange(len(elems)):
+        for _ in range(len(elems)):
           results.append(self.evaluate(dequeued_t))
 
       enqueue_thread = self.checkedThread(target=enqueue)
@@ -230,7 +229,7 @@ class PaddingFIFOQueueTest(test.TestCase):
       for enqueue_op in enqueue_ops:
         enqueue_op.run()
 
-      for i in xrange(len(elems)):
+      for i in range(len(elems)):
         x_val, y_val = self.evaluate(dequeued_t)
         x, y = elems[i]
         self.assertEqual([x], x_val)
@@ -720,11 +719,11 @@ class PaddingFIFOQueueTest(test.TestCase):
       dequeued_t = q.dequeue()
 
       def enqueue():
-        for _ in xrange(100):
+        for _ in range(100):
           self.evaluate(enqueue_op)
 
       def dequeue():
-        for _ in xrange(100):
+        for _ in range(100):
           self.assertTrue(self.evaluate(dequeued_t) in (10.0, 20.0))
 
       enqueue_threads = [self.checkedThread(target=enqueue) for _ in range(10)]
@@ -756,7 +755,7 @@ class PaddingFIFOQueueTest(test.TestCase):
       close_op = q.close()
 
       def dequeue():
-        for i in xrange(250):
+        for i in range(250):
           self.assertEqual(i, self.evaluate(dequeued_t))
 
       dequeue_thread = self.checkedThread(target=dequeue)
@@ -1419,11 +1418,11 @@ class PaddingFIFOQueueTest(test.TestCase):
     with self.cached_session():
       num_queues = 10
       qlist = []
-      for _ in xrange(num_queues):
+      for _ in range(num_queues):
         qlist.append(
             data_flow_ops.PaddingFIFOQueue(10, dtypes_lib.float32, ((),)))
       # Enqueue/Dequeue into a dynamically selected queue
-      for _ in xrange(20):
+      for _ in range(20):
         index = np.random.randint(num_queues)
         q = data_flow_ops.PaddingFIFOQueue.from_list(index, qlist)
         q.enqueue((10.,)).run()

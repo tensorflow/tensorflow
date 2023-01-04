@@ -57,12 +57,13 @@ class BroadcastSimpleTest : public ClientLibraryTestBase {
       absl::Span<const int64_t> bounds,
       absl::Span<const int64_t> minor_to_major, Shape* r3_shape,
       Array3D<float>* r3_array, float start, float end, int seed) {
-    *r3_shape = ShapeUtil::MakeShapeWithLayout(F32, bounds, minor_to_major);
+    *r3_shape =
+        ShapeUtil::MakeShapeWithDenseLayout(F32, bounds, minor_to_major);
     r3_array->FillRandom(start, end, seed);
     auto r3_data = LiteralUtil::CreateR3FromArray3D(*r3_array).Relayout(
         LayoutUtil::MakeLayout(minor_to_major));
     std::unique_ptr<GlobalData> r3_global_data =
-        client_->TransferToServer(r3_data).ConsumeValueOrDie();
+        client_->TransferToServer(r3_data).value();
     return r3_global_data;
   }
 
@@ -70,12 +71,13 @@ class BroadcastSimpleTest : public ClientLibraryTestBase {
       absl::Span<const int64_t> bounds,
       absl::Span<const int64_t> minor_to_major, Shape* r2_shape,
       Array2D<float>* r2_array, float start, float end, int seed) {
-    *r2_shape = ShapeUtil::MakeShapeWithLayout(F32, bounds, minor_to_major);
+    *r2_shape =
+        ShapeUtil::MakeShapeWithDenseLayout(F32, bounds, minor_to_major);
     r2_array->FillRandom(start, end, seed);
     auto r2_data = LiteralUtil::CreateR2FromArray2D(*r2_array).Relayout(
         LayoutUtil::MakeLayout(minor_to_major));
     std::unique_ptr<GlobalData> r2_global_data =
-        client_->TransferToServer(r2_data).ConsumeValueOrDie();
+        client_->TransferToServer(r2_data).value();
     return r2_global_data;
   }
 

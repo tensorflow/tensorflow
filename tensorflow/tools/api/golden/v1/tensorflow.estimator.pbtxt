@@ -21,18 +21,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "BoostedTreesClassifier"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "BoostedTreesEstimator"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "BoostedTreesRegressor"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "CheckpointSaverHook"
     mtype: "<type \'type\'>"
   }

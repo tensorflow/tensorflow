@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 
+#include <string>
+
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -41,16 +43,13 @@ TEST_F(PatternMatcherTest, AddOp) {
   const HloInstruction* matched_inst;
   HloInstruction* matched_operand;
   Shape* matched_shape;
-  Layout* matched_layout;
 
   ASSERT_TRUE(Match(
       hlo_module->entry_computation()->root_instruction(),
       match::Op(&matched_inst)
           .WithName("two_plus_two")
           .WithOpcode(HloOpcode::kAdd)
-          .WithShape(
-              match::Shape(&matched_shape)
-                  .WithLayout(match::Layout(&matched_layout).WithDenseFormat()))
+          .WithShape(match::Shape(&matched_shape).IsDenseArray())
           .WithOperand(
               0,
               match::Op(&matched_operand).WithOpcode(HloOpcode::kConstant))));
@@ -97,9 +96,9 @@ TEST_F(PatternMatcherTest, DenseArrayShape) {
       Match(&array_shape, match::Shape().WithSubshape({0}, match::Shape())));
   Layout* matched_layout;
   EXPECT_TRUE(Match(&array_shape,
-                    match::Shape().WithLayout(
-                        match::Layout(&matched_layout).WithDenseFormat())));
+                    match::Shape().WithLayout(match::Layout(&matched_layout))));
   EXPECT_EQ(matched_layout, &array_shape.layout());
+  EXPECT_TRUE(Match(&array_shape, match::Shape().IsDenseArray()));
 }
 
 TEST_F(PatternMatcherTest, TupleShape) {
@@ -209,6 +208,22 @@ TEST_F(PatternMatcherTest, AnyOf) {
   EXPECT_FALSE(
       Match(root, match::AnyOf<HloInstruction>(match::ConstantScalar(0),
                                                match::ConstantScalar(2))));
+}
+
+TEST_F(PatternMatcherTest, AnyOfInstructionIsInstructionPattern) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module ENTRY test { ROOT constant = f16[] constant(1) })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  EXPECT_TRUE(
+      Match(root, match::AnyOf<HloInstruction>(match::ConstantScalar(0),
+                                               match::ConstantScalar(1))));
+  EXPECT_FALSE(
+      Match(root, match::AnyOf<HloInstruction>(match::ConstantScalar(0),
+                                               match::ConstantScalar(1))
+                      .WithName("foo")));
 }
 
 TEST_F(PatternMatcherTest, ConstantScalar) {
@@ -490,26 +505,88 @@ TEST_F(PatternMatcherTest, TestConcat) {
                         Reshape(ConstantScalar(4)))));
 }
 
+TEST_F(PatternMatcherTest, TestWithElementType) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      ROOT v = f16[] constant(42)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+  EXPECT_TRUE(Match(root, m::Op().WithElementType(F16)));
+  EXPECT_FALSE(Match(root, m::Op().WithElementType(F32)));
+}
+
+TEST_F(PatternMatcherTest, TestWithOperandIfPresent) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      a = f16[] constant(42)
+      b = f16[] add(a, a)
+      ROOT root = tuple(a, b)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+  auto* a = root->operand(0);
+  auto* b = root->operand(1);
+
+  // No operand 0, but that's ok, still passes.
+  EXPECT_TRUE(Match(a, m::Op().WithOperandIfPresent(0, m::Iota())));
+
+  EXPECT_TRUE(Match(b, m::Op().WithOperandIfPresent(0, m::Constant())));
+  EXPECT_TRUE(Match(b, m::Op().WithOperandIfPresent(1, m::Constant())));
+  EXPECT_FALSE(Match(b, m::Op().WithOperandIfPresent(0, m::Iota())));
+  // No operand 2/3, but that's ok, still passes.
+  EXPECT_TRUE(Match(b, m::Op().WithOperandIfPresent(2, m::Iota())));
+  EXPECT_TRUE(Match(b, m::Op().WithOperandIfPresent(3, m::Iota())));
+}
+
+TEST_F(PatternMatcherTest, TestWithPredicate) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      ROOT a = f16[] constant(42)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  EXPECT_TRUE(
+      Match(root, m::Op().WithPredicate([&](const HloInstruction* instr) {
+        return instr == root;
+      })));
+  EXPECT_FALSE(
+      Match(root, m::Op().WithPredicate([&](const HloInstruction* instr) {
+        return instr != root;
+      })));
+}
+
 template <typename Pattern>
-string Description(const Pattern& pattern) {
+std::string Description(const Pattern& pattern) {
   std::stringstream ss;
   pattern.DescribeTo(&ss);
   return ss.str();
 }
 
 template <typename Elem, typename Pattern>
-string Explanation(Elem* elem, const Pattern& pattern) {
+std::string Explanation(Elem* elem, const Pattern& pattern,
+                        bool single_user_only = false) {
   std::stringstream ss;
-  MatchOption options{/*.capture=*/true, /*.explain_os=*/&ss};
+  MatchOption options{/*.capture=*/true,
+                      /*.single_user_only=*/single_user_only,
+                      /*.explain_os=*/&ss};
   Match(elem, pattern, options);
   return ss.str();
 }
 template <typename Elem, typename Pattern>
-string Explanation(const std::unique_ptr<Elem>& elem, const Pattern& pattern) {
+std::string Explanation(const std::unique_ptr<Elem>& elem,
+                        const Pattern& pattern) {
   return Explanation(elem.get(), pattern);
 }
 template <typename Elem, typename Pattern>
-string Explanation(const Elem& elem, const Pattern& pattern) {
+std::string Explanation(const Elem& elem, const Pattern& pattern) {
   return Explanation(&elem, pattern);
 }
 
@@ -557,23 +634,37 @@ TEST_F(PatternMatcherTest, CustomCallTargetMatcherDescribeAndExplain) {
 
   auto* root = hlo_module->entry_computation()->root_instruction();
   EXPECT_TRUE(Match(root, match::Op().WithCustomCallTarget("test_target")));
+  EXPECT_TRUE(Match(
+      root, match::Op().WithCustomCallTarget({"test_target", "other_target"})));
+  EXPECT_TRUE(Match(
+      root, match::Op().WithCustomCallTarget({"other_target", "test_target"})));
   EXPECT_FALSE(Match(root, match::Op().WithCustomCallTarget("other_target")));
+  EXPECT_FALSE(Match(root, match::Op().WithCustomCallTarget(
+                               {"other_target", "other_target2"})));
 
   EXPECT_DESC_AND_EXPLANATION(
       root, match::Op().WithCustomCallTarget("other_target"),
       "an HloInstruction custom call with target 'other_target'",
       "HloInstruction is not a custom call with a target 'other_target'\nin "
       "out = f32[] custom-call(), custom_call_target=\"test_target\"");
+
+  EXPECT_DESC_AND_EXPLANATION(
+      root, match::Op().WithCustomCallTarget({"other_target", "other_target2"}),
+      "an HloInstruction custom call with target in {other_target, "
+      "other_target2}",
+      "HloInstruction is not a custom call with a target in {other_target, "
+      "other_target2}\nin "
+      "out = f32[] custom-call(), custom_call_target=\"test_target\"");
 }
 
 TEST_F(PatternMatcherTest, ShapeDescribeToAndExplain) {
-  auto shape = ShapeUtil::MakeShapeWithLayout(F32, {1, 2}, {0, 1});
+  auto shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 2}, {0, 1});
   auto layout = shape.layout();
 
   EXPECT_DESC_AND_EXPLANATION(static_cast<const Shape*>(nullptr), m::Shape(),
                               "a shape", "Shape is null");
   EXPECT_DESC_AND_EXPLANATION(
-      ShapeUtil::MakeShapeWithLayout(F32, {1, 2}, {1, 0}),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 2}, {1, 0}),
       m::Shape().EqualTo(&shape), "a shape equal to f32[1,2]{0,1}",
       "Shape not equal to f32[1,2]{0,1}\n"
       "in f32[1,2]{1,0}");
@@ -624,7 +715,7 @@ TEST_F(PatternMatcherTest, ShapeDescribeToAndExplain) {
                               "Shape is not an array\n"
                               "in ()");
   EXPECT_DESC_AND_EXPLANATION(
-      ShapeUtil::MakeShapeWithLayout(F32, {1, 2}, {1, 0}),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 2}, {1, 0}),
       m::Shape().WithLayoutEqualTo(&layout),
       "a shape with\n  a layout equal to {0,1}",
       "Layout {1,0} is not equal to expected {0,1}\n"
@@ -672,7 +763,7 @@ TEST_F(PatternMatcherTest, ShapeDescribeToAndExplain) {
 
 std::unique_ptr<HloInstruction> SetName(absl::string_view name,
                                         std::unique_ptr<HloInstruction> instr) {
-  instr->SetAndSanitizeName(string(name));
+  instr->SetAndSanitizeName(name);
   return instr;
 }
 
@@ -787,6 +878,26 @@ TEST_F(PatternMatcherTest, HloInstructionDescribeToAndExplain) {
                    absl::Hex(iota.get()),
                    " (i = s32[42]{0} iota(), iota_dimension=0)\n"
                    "in c = s32[] constant(0)"));
+
+  EXPECT_DESC_AND_EXPLANATION(
+      SetName("a",
+              HloInstruction::CreateBinary(constant->shape(), HloOpcode::kAdd,
+                                           constant.get(), constant.get())),
+      m::Op().WithOperandIfPresent(0, m::Iota()),  //
+      "an HloInstruction either with fewer than 1 operand, or with an operand "
+      "0 which is:\n"
+      "  an HloInstruction with opcode iota",
+      "HloInstruction doesn't have opcode iota\n"
+      "in c = s32[] constant(0)\n"
+      "in operand 0\n"
+      "in a = s32[] add(s32[] c, s32[] c)");
+
+  EXPECT_DESC_AND_EXPLANATION(
+      constant,
+      m::Op().WithPredicate([](const HloInstruction*) { return false; }),
+      "an HloInstruction which matches a user-specified predicate",
+      "HloInstruction does not match user-specified predicate\n"
+      "in c = s32[] constant(0)");
 }
 
 TEST_F(PatternMatcherTest, HloInstructionMatcherAnyOrderDescribeTo) {
@@ -847,23 +958,22 @@ TEST_F(PatternMatcherTest, HloInstructionMatcherAnyOrderDescribeTo) {
 
 TEST_F(PatternMatcherTest, AnyOfMatcherDescribeToAndExplain) {
   EXPECT_DESC_AND_EXPLANATION(
-      SetName("c", HloInstruction::CreateConstant(LiteralUtil::CreateR0(0))),
-      m::AnyOf<HloInstruction>(m::Op().WithName("foo"),
-                               m::Op().WithName("bar")),
+      ShapeUtil::MakeScalarShape(S32),
+      m::AnyOf<Shape>(m::Shape().WithRank(1), m::Shape().WithElementType(F32)),
       "any of:\n"
-      " - an HloInstruction named \"foo\" OR\n"
-      " - an HloInstruction named \"bar\"",
+      " - a shape that has 1 dimension OR\n"
+      " - a shape with element type F32",
       "None of the following matchers succeeded:\n"
       "Matcher #1\n"
-      " - an HloInstruction named \"foo\"\n"
+      " - a shape that has 1 dimension\n"
       "failed with\n"
-      " - HloInstruction not named \"foo\"\n"
-      "   in c = s32[] constant(0)\n"
+      " - Shape does not have rank 1\n"
+      "   in s32[]\n"
       "Matcher #2\n"
-      " - an HloInstruction named \"bar\"\n"
+      " - a shape with element type F32\n"
       "failed with\n"
-      " - HloInstruction not named \"bar\"\n"
-      "   in c = s32[] constant(0)");
+      " - Shape does not have element type F32\n"
+      "   in s32[]");
 }
 
 TEST_F(PatternMatcherTest, Parameter) {
@@ -945,6 +1055,120 @@ TEST_F(PatternMatcherTest, OneUseAndOneUser) {
             "in p0 = f32[] parameter(0)");
 }
 
+TEST_F(PatternMatcherTest, MatchSingleUserOnlyUnaryOpOneUser) {
+  auto param =
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p");
+  auto reshape =
+      SetName("reshape", HloInstruction::CreateReshape(
+                             ShapeUtil::MakeShape(F32, {1}), param.get()));
+  EXPECT_TRUE(MatchSingleUserOnly(reshape.get(), m::Reshape(m::Op())));
+  // Equivalent call of Match:
+  EXPECT_TRUE(Match(reshape.get(), m::Reshape(m::Op().WithOneUser())));
+}
+
+TEST_F(PatternMatcherTest, MatchSingleUserOnlyUnaryOpTwoUsers) {
+  auto param =
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p");
+  auto reshape =
+      SetName("reshape", HloInstruction::CreateReshape(
+                             ShapeUtil::MakeShape(F32, {1}), param.get()));
+  auto bitcast =
+      SetName("bitcast", HloInstruction::CreateBitcast(
+                             ShapeUtil::MakeShape(F32, {1}), param.get()));
+  EXPECT_TRUE(MatchSingleUserOnly(param.get(), m::Op()));
+  // Equivalent call of Match:
+  EXPECT_TRUE(Match(param.get(), m::Op()));
+
+  EXPECT_TRUE(MatchSingleUserOnly(bitcast.get(), m::Bitcast()));
+  EXPECT_TRUE(Match(bitcast.get(), m::Bitcast()));
+
+  EXPECT_FALSE(MatchSingleUserOnly(bitcast.get(), m::Bitcast(m::Op())));
+  EXPECT_FALSE(Match(bitcast.get(), m::Bitcast(m::Op().WithOneUser())));
+  EXPECT_EQ(Explanation(bitcast.get(), m::Bitcast(m::Op()),
+                        /*single_user_only=*/true),
+            "Operand 0 of HloInstruction has 2 users. Expected 1.\nin bitcast "
+            "= f32[1]{0} bitcast(f32[] p)");
+}
+
+TEST_F(PatternMatcherTest, MatchSingleUserOnlyBinaryOpOneUser) {
+  auto param0 =
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0");
+  auto add = SetName("add", HloInstruction::CreateBinary(
+                                ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd,
+                                param0.get(), param0.get()));
+  EXPECT_TRUE(MatchSingleUserOnly(add.get(), m::Add(m::Op(), m::Op())));
+  // Equivalent call of Match:
+  EXPECT_TRUE(
+      Match(add.get(), m::Add(m::Op().WithOneUser(), m::Op().WithOneUser())));
+}
+
+TEST_F(PatternMatcherTest, MatchSingleUserOnlyBinaryOpTwoUsers) {
+  auto param0 =
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0");
+  auto param1 =
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p1");
+  auto add = SetName("add", HloInstruction::CreateBinary(
+                                ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd,
+                                param0.get(), param0.get()));
+  auto mul =
+      SetName("mul", HloInstruction::CreateBinary(ShapeUtil::MakeShape(F32, {}),
+                                                  HloOpcode::kMultiply,
+                                                  param1.get(), param0.get()));
+  EXPECT_TRUE(MatchSingleUserOnly(mul.get(), m::Multiply()));
+  // Equivalent call of Match:
+  EXPECT_TRUE(Match(mul.get(), m::Multiply()));
+
+  EXPECT_FALSE(MatchSingleUserOnly(mul.get(), m::Multiply(m::Op(), m::Op())));
+  EXPECT_FALSE(Match(
+      mul.get(), m::Multiply(m::Op().WithOneUser(), m::Op().WithOneUser())));
+  EXPECT_EQ(Explanation(mul.get(), m::Multiply(m::Op(), m::Op()),
+                        /*single_user_only=*/true),
+            "Operand 1 of HloInstruction has 2 users. Expected 1.\nin mul = "
+            "f32[] multiply(f32[] p1, f32[] p0)");
+
+  EXPECT_FALSE(MatchSingleUserOnly(add.get(), m::Add(m::Op(), m::Op())));
+  EXPECT_FALSE(
+      Match(add.get(), m::Add(m::Op().WithOneUser(), m::Op().WithOneUser())));
+  EXPECT_EQ(Explanation(add.get(), m::Add(m::Op(), m::Op()),
+                        /*single_user_only=*/true),
+            "Operand 0 of HloInstruction has 2 users. Expected 1.\nin add = "
+            "f32[] add(f32[] p0, f32[] p0)");
+}
+
+TEST_F(PatternMatcherTest, MatchSingleUserOnlyBinaryOpTwoUsersLowerLevel) {
+  auto param0 =
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0");
+  auto param1 =
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p1");
+  auto add = SetName("add", HloInstruction::CreateBinary(
+                                ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd,
+                                param0.get(), param0.get()));
+  auto mul =
+      SetName("mul", HloInstruction::CreateBinary(ShapeUtil::MakeShape(F32, {}),
+                                                  HloOpcode::kMultiply,
+                                                  param1.get(), param0.get()));
+  auto div = SetName("div", HloInstruction::CreateBinary(
+                                ShapeUtil::MakeShape(F32, {}),
+                                HloOpcode::kDivide, add.get(), mul.get()));
+  EXPECT_TRUE(
+      MatchSingleUserOnly(div.get(), m::Divide(m::Add(), m::Multiply())));
+  // Equivalent call of Match:
+  EXPECT_TRUE(Match(div.get(), m::Divide(m::Add().WithOneUser(),
+                                         m::Multiply().WithOneUser())));
+
+  EXPECT_FALSE(MatchSingleUserOnly(
+      div.get(), m::Divide(m::Add(m::Op(), m::Op()), m::Multiply())));
+  EXPECT_FALSE(Match(
+      div.get(),
+      m::Divide(
+          m::Add(m::Op().WithOneUser(), m::Op().WithOneUser()).WithOneUser(),
+          m::Multiply().WithOneUser())));
+  EXPECT_EQ(Explanation(add.get(), m::Add(m::Op(), m::Op()),
+                        /*single_user_only=*/true),
+            "Operand 0 of HloInstruction has 2 users. Expected 1.\nin add = "
+            "f32[] add(f32[] p0, f32[] p0)");
+}
+
 TEST_F(PatternMatcherTest, Comparison) {
   auto shape = ShapeUtil::MakeShape(F32, {1});
   auto p0 = HloInstruction::CreateParameter(0, shape, "param.0");
@@ -1007,6 +1231,13 @@ TEST_F(PatternMatcherTest, CustomCallMatchers) {
   EXPECT_TRUE(Match(
       root, m::CustomCall("test_target", m::Parameter(0), m::Parameter(1))));
 
+  EXPECT_TRUE(Match(root, m::CustomCall({"test_target", "other_target"})));
+  EXPECT_TRUE(Match(root, m::CustomCall({"other_target", "test_target"})));
+  EXPECT_TRUE(Match(root, m::CustomCall({"test_target", "other_target"},
+                                        m::Parameter(0), m::Parameter(1))));
+  EXPECT_TRUE(Match(root, m::CustomCall({"other_target", "test_target"},
+                                        m::Parameter(0), m::Parameter(1))));
+
   HloInstruction* instr;
   EXPECT_TRUE(Match(root, m::CustomCall(&instr)));
   EXPECT_TRUE(Match(root, m::CustomCall(&instr, "test_target")));
@@ -1020,6 +1251,7 @@ TEST_F(PatternMatcherTest, CustomCallMatchers) {
                                         m::Parameter(0), m::Parameter(1))));
 
   EXPECT_FALSE(Match(root, m::CustomCall("other_target")));
+  EXPECT_FALSE(Match(root, m::CustomCall({"other_target", "other_target2"})));
   EXPECT_FALSE(Match(
       root, m::CustomCall("test_target", m::Parameter(1), m::Parameter(0))));
 }

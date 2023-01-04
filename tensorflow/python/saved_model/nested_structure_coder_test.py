@@ -322,7 +322,7 @@ class NestedStructureCoderTest(test.TestCase):
   def testEncodeDecodeBoundedTensorSpec(self):
     structure = [
         tensor_spec.BoundedTensorSpec([1, 2, 3], dtypes.int64, 0, 10,
-                                      "hello-0-10")
+                                      "hello_0_10")
     ]
     self.assertTrue(nested_structure_coder.can_encode(structure))
     encoded = nested_structure_coder.encode_structure(structure)
@@ -332,7 +332,7 @@ class NestedStructureCoderTest(test.TestCase):
     expected_tensor_spec.shape.dim.add().size = 1
     expected_tensor_spec.shape.dim.add().size = 2
     expected_tensor_spec.shape.dim.add().size = 3
-    expected_tensor_spec.name = "hello-0-10"
+    expected_tensor_spec.name = "hello_0_10"
     expected_tensor_spec.dtype = dtypes.int64.as_datatype_enum
     expected_tensor_spec.minimum.CopyFrom(
         tensor_util.make_tensor_proto([0], dtype=dtypes.int64, shape=[]))

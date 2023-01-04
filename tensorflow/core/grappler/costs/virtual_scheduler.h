@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_SCHEDULER_H_
 #define TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_SCHEDULER_H_
 
+#include <functional>
 #include <list>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -172,7 +174,7 @@ class ReadyNodeManager {
   virtual ~ReadyNodeManager() {}
   virtual Status Init(
       const std::unordered_map<const NodeDef*, NodeState>* node_map) {
-    return Status::OK();
+    return OkStatus();
   }
   virtual void AddNode(const NodeDef* node) = 0;
   virtual const NodeDef* GetCurrNode() = 0;
@@ -424,6 +426,10 @@ class SchedulerState {
   // Helper methods.
   void GetOutputNodes(const NodeDef* node, const Costs::Duration& curr_time,
                       std::vector<const NodeDef*>* output_nodes);
+  // Retrieves output size from node_cost at a port_num.  If the output size has
+  // not been set, defaults back to CalculateOutputSize.
+  int64_t GetOrCalculateOutputSize(const NodeState& node_state,
+                                   int port_num) const;
 
   std::unordered_map<const NodeDef*, NodeState> node_map_;
   std::unordered_map<string, DeviceState> device_;

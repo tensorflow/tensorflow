@@ -27,8 +27,8 @@ namespace tac {
 class GpuHardware : public TargetHardware {
  public:
   static constexpr char kId[] = "GPU";
-  mlir::OwningRewritePatternList GetTransformations(
-      MLIRContext *context) const override;
+  mlir::RewritePatternSet GetTransformations(
+      MLIRContext* context) const override;
 
   mlir::TypeID GetTypeId() const override {
     return mlir::TypeID::get<GpuHardware>();

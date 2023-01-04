@@ -80,6 +80,10 @@ absl::Status GetDeviceInfo(cl_device_id id, cl_device_info info, T* result) {
   return absl::OkStatus();
 }
 
+void ParseQualcommOpenClCompilerVersion(
+    const std::string& cl_driver_version,
+    AdrenoInfo::OpenClCompilerVersion* result);
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

@@ -32,6 +32,7 @@ from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
 
+@test_util.with_eager_op_as_function
 class LuOpTest(test.TestCase):
 
   @property
@@ -108,6 +109,8 @@ class LuOpTest(test.TestCase):
           array_ops.broadcast_to(
               math_ops.range(batch_size)[:, None], perm_reshaped.shape),
           dtype=output_idx_type)
+      if inv_perm_reshaped.shape == [0]:
+        inv_perm_reshaped = array_ops.zeros_like(batch_indices)
       permuted_verification_reshaped = array_ops.gather_nd(
           verification_reshaped,
           array_ops.stack([batch_indices, inv_perm_reshaped], axis=-1))
@@ -210,6 +213,7 @@ class LuOpTest(test.TestCase):
     data = np.random.rand(n, n) + 1j * np.random.rand(n, n)
     self._verifyLu(data)
 
+  @test_util.disable_xla("b/206106619")
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testEmpty(self):
     self._verifyLu(np.empty([0, 2, 2]))

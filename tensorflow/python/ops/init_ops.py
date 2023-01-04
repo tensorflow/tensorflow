@@ -48,7 +48,7 @@ from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
 
 
-class Initializer(object):
+class Initializer:
   """Initializer base class: all initializers inherit from this class."""
 
   def __call__(self, shape, dtype=None, partition_info=None):

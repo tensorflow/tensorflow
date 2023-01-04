@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <tuple>
 #include <utility>
 
@@ -27,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -42,8 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_alias_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/visitor_util.h"
 
 #define DEBUG_TYPE "tf-resource-device-inference"
 
@@ -54,6 +54,9 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncDeviceAttr[] = "tf.device";
 
+#define GEN_PASS_DEF_RESOURCEDEVICEINFERENCEPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // A pass that propagates device assignment of resources on a module. It
 // performs in-function propagation, as well as cross-function propagation from
 // callers to callees.
@@ -61,7 +64,7 @@ constexpr char kFuncDeviceAttr[] = "tf.device";
 // This pass changes the module by adding "tf.device" attribute to function
 // arguments and adding "device" attribute to TF ops.
 struct ResourceDeviceInference
-    : public ResourceDeviceInferencePassBase<ResourceDeviceInference> {
+    : public impl::ResourceDeviceInferencePassBase<ResourceDeviceInference> {
   void runOnOperation() override;
 };
 
@@ -69,13 +72,14 @@ struct ResourceDeviceInference
 class PerFunctionResult {
  public:
   explicit PerFunctionResult(
-      FuncOp func_op, const TF::ResourceAliasAnalysis::Info& alias_analysis)
+      func::FuncOp func_op,
+      const TF::ResourceAliasAnalysis::Info& alias_analysis)
       : alias_analysis_(alias_analysis) {}
 
   // Returns the recorded device assignment for a resource, if any.
   Optional<StringRef> DeviceForResource(Value resource) const {
     Optional<StringRef> result;
-    if (alias_analysis_.IsUnknownResource(resource)) return llvm::None;
+    if (alias_analysis_.IsUnknownResource(resource)) return std::nullopt;
     for (int64_t id : alias_analysis_.GetResourceUniqueIds(resource)) {
       auto it = resource_id_to_device_.find(id);
       if (it == resource_id_to_device_.end()) continue;
@@ -84,7 +88,7 @@ class PerFunctionResult {
         continue;
       }
       // Got conflicting assignments
-      return llvm::None;
+      return std::nullopt;
     }
     return result;
   }
@@ -127,7 +131,7 @@ LogicalResult AddResourceDeviceAndEmitError(Value resource, StringRef device,
 }
 
 // Extracts and canonicalizes the device attribute.
-inline StringRef GetDeviceAttr(FuncOp func, int arg_no) {
+inline StringRef GetDeviceAttr(func::FuncOp func, int arg_no) {
   auto device_attr =
       func.getArgAttrOfType<mlir::StringAttr>(arg_no, kFuncDeviceAttr);
   return device_attr ? device_attr.getValue() : "";
@@ -142,12 +146,13 @@ inline StringRef GetDeviceAttr(Operation* op) {
 // Print operation with debug info (to get line number info for debugging)
 void dump(StringRef message, Operation* op) {
   llvm::dbgs() << message;
-  op->print(llvm::dbgs(), OpPrintingFlags().enableDebugInfo(true));
+  op->print(llvm::dbgs(), OpPrintingFlags().enableDebugInfo(
+                              /*enable=*/true, /*prettyForm=*/true));
   llvm::dbgs() << "\n";
 }
 
 // Propagates device assignment inside a function.
-LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
+LogicalResult ComputeResourceDevicesInComputation(func::FuncOp func_op,
                                                   PerFunctionResult* result) {
   OpBuilder builder(func_op);
   // Function arguments.
@@ -169,65 +174,59 @@ LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
 
   // To support WhileRegion, we need to propagate device attributes from
   // WhileRegion operands to body/cond region arguments *prior* to visiting
-  // these regions. Use tensorflow::walk() instead of MLIR core walker to
-  // implement such a pre-order walk.
-  auto walk_res = tensorflow::GenericWalk(
-      func_op, [&](Operation* op, const tensorflow::WalkStage& stage) {
-        // We just need to visit operations in pre-order mode.
-        if (!stage.IsBeforeAllRegions()) return WalkResult::advance();
-
-        if (auto var_handle = dyn_cast<VarHandleOp>(op)) {
-          // Record VarHandleOp's device attribute.
-          StringRef device_attr = GetDeviceAttr(op);
-          if (device_attr.empty()) return WalkResult::advance();
-          auto res = AddResourceDeviceAndEmitError(var_handle.resource(),
-                                                   device_attr, op, result);
-          if (failed(res)) return WalkResult::interrupt();
-        } else if (auto identity = dyn_cast<IdentityOp>(op)) {
-          LLVM_DEBUG(dump("Visiting ", identity));
-          // Try to construct IdentityOp's attribute from recorded assignment.
-          if (!GetDeviceAttr(op).empty()) return WalkResult::advance();
-          for (auto output : filter_resources(op->getResults())) {
-            LLVM_DEBUG(llvm::dbgs() << "  Processing output #"
-                                    << output.getResultNumber() << "\n");
-            if (auto device = result->DeviceForResource(output)) {
-              LLVM_DEBUG(llvm::dbgs()
-                         << " Setting device = " << *device << "\n");
-              identity->setAttr(kDeviceAttr, builder.getStringAttr(*device));
-            }
-          }
-        } else if (auto while_region = dyn_cast<WhileRegionOp>(op)) {
-          // For WhileRegion, do local analysis prior to visiting the attached
-          // regions and propagate device annotations to the cond and body
-          // region arguments. The annotations are the union of annotations
-          // on the input and result. Resource alias analysis already propagates
-          // resource ID from the inputs to the results for a while, so just
-          // need to consider the results.
-          LLVM_DEBUG(llvm::dbgs() << "Visiting WhileRegion\n");
-
-          for (auto output : filter_resources(while_region.getResults())) {
-            auto device = result->DeviceForResource(output);
-            int output_index = output.getResultNumber();
-            if (!device) {
-              LLVM_DEBUG(llvm::dbgs()
-                         << "  No device for output #" << output_index << "\n");
-              continue;
-            }
-            // Transfer the annotation to both region arguments
-            for (Region* region : while_region.getRegions()) {
-              BlockArgument arg = region->getArgument(output_index);
-              LLVM_DEBUG(llvm::dbgs()
-                         << "  Propagating device = '" << *device
-                         << "' to arg #" << output_index << " of region #"
-                         << region->getRegionNumber() << "\n");
-              if (failed(AddResourceDeviceAndEmitError(arg, *device,
-                                                       while_region, result)))
-                return WalkResult::interrupt();
-            }
-          }
+  // these regions, so use a pre-order walk.
+  WalkResult walk_res = func_op.walk<WalkOrder::PreOrder>([&](Operation* op) {
+    if (auto var_handle = dyn_cast<VarHandleOp>(op)) {
+      // Record VarHandleOp's device attribute.
+      StringRef device_attr = GetDeviceAttr(op);
+      if (device_attr.empty()) return WalkResult::advance();
+      auto res = AddResourceDeviceAndEmitError(var_handle.getResource(),
+                                               device_attr, op, result);
+      if (failed(res)) return WalkResult::interrupt();
+    } else if (auto identity = dyn_cast<IdentityOp>(op)) {
+      LLVM_DEBUG(dump("Visiting ", identity));
+      // Try to construct IdentityOp's attribute from recorded assignment.
+      if (!GetDeviceAttr(op).empty()) return WalkResult::advance();
+      for (auto output : filter_resources(op->getResults())) {
+        LLVM_DEBUG(llvm::dbgs() << "  Processing output #"
+                                << output.getResultNumber() << "\n");
+        if (auto device = result->DeviceForResource(output)) {
+          LLVM_DEBUG(llvm::dbgs() << " Setting device = " << *device << "\n");
+          identity->setAttr(kDeviceAttr, builder.getStringAttr(*device));
         }
-        return WalkResult::advance();
-      });
+      }
+    } else if (auto while_region = dyn_cast<WhileRegionOp>(op)) {
+      // For WhileRegion, do local analysis prior to visiting the attached
+      // regions and propagate device annotations to the cond and body
+      // region arguments. The annotations are the union of annotations
+      // on the input and result. Resource alias analysis already propagates
+      // resource ID from the inputs to the results for a while, so just
+      // need to consider the results.
+      LLVM_DEBUG(llvm::dbgs() << "Visiting WhileRegion\n");
+
+      for (auto output : filter_resources(while_region.getResults())) {
+        auto device = result->DeviceForResource(output);
+        int output_index = output.getResultNumber();
+        if (!device) {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "  No device for output #" << output_index << "\n");
+          continue;
+        }
+        // Transfer the annotation to both region arguments
+        for (Region* region : while_region.getRegions()) {
+          BlockArgument arg = region->getArgument(output_index);
+          LLVM_DEBUG(llvm::dbgs()
+                     << "  Propagating device = '" << *device << "' to arg #"
+                     << output_index << " of region #"
+                     << region->getRegionNumber() << "\n");
+          if (failed(AddResourceDeviceAndEmitError(arg, *device, while_region,
+                                                   result)))
+            return WalkResult::interrupt();
+        }
+      }
+    }
+    return WalkResult::advance();
+  });
   return failure(walk_res.wasInterrupted());
 }
 
@@ -236,9 +235,9 @@ void ResourceDeviceInference::runOnOperation() {
   const auto& resource_alias_analysis =
       getAnalysis<TF::ResourceAliasAnalysis>();
 
-  llvm::SmallDenseMap<FuncOp, PerFunctionResult, 4> per_function_results;
-  llvm::SetVector<FuncOp> worklist;
-  for (auto func_op : module.getOps<FuncOp>()) {
+  llvm::SmallDenseMap<func::FuncOp, PerFunctionResult, 4> per_function_results;
+  llvm::SetVector<func::FuncOp> worklist;
+  for (auto func_op : module.getOps<func::FuncOp>()) {
     worklist.insert(func_op);
     per_function_results.try_emplace(
         func_op, func_op, resource_alias_analysis.GetAnalysisForFunc(func_op));
@@ -247,8 +246,8 @@ void ResourceDeviceInference::runOnOperation() {
   // called function's arguments.
   auto propagate_operands_to_callee_arguments =
       [&](Operation* caller, Operation::operand_range caller_operands,
-          ArrayRef<FuncOp> callees, const PerFunctionResult& caller_res) {
-        for (FuncOp callee : callees) {
+          ArrayRef<func::FuncOp> callees, const PerFunctionResult& caller_res) {
+        for (func::FuncOp callee : callees) {
           assert(callee);
           auto& callee_res = per_function_results.find(callee)->getSecond();
           bool callee_needs_recompute = false;
@@ -289,11 +288,11 @@ void ResourceDeviceInference::runOnOperation() {
           return WalkResult::interrupt();
       } else if (auto if_op = dyn_cast<IfOp>(op)) {
         if (failed(propagate_operands_to_callee_arguments(
-                if_op, if_op.input(),
+                if_op, if_op.getInput(),
                 {if_op.then_function(), if_op.else_function()}, func_res)))
           return WalkResult::interrupt();
       } else if (auto call = dyn_cast<CallOpInterface>(op)) {
-        auto func = dyn_cast<FuncOp>(call.resolveCallable());
+        auto func = dyn_cast<func::FuncOp>(call.resolveCallable());
         if (!func) {
           op->emitError(
               "Cannot propagate device attribute to callee: Unable to resolve "

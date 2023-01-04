@@ -117,6 +117,13 @@ TEST_F(NNGradTest, SoftmaxGrad) {
   RunTest(x, shape, y, shape);
 }
 
+TEST_F(NNGradTest, SoftmaxRank3Grad) {
+  TensorShape shape({32, 1, 10});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Softmax(scope_, x);
+  RunTest(x, shape, y, shape);
+}
+
 TEST_F(NNGradTest, SoftmaxCrossEntropyWithLogitsGrad) {
   TensorShape logits_shape({5, 3});
   TensorShape loss_shape({5});

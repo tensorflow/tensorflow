@@ -20,14 +20,7 @@ source tensorflow/tools/ci_build/release/common.sh
 
 install_ubuntu_16_python_pip_deps python3.6
 
-# Update bazel
-#
-# The update_bazel_linux function installs bazel in $HOME/bin, but adds /home/kbuilder/bin to the path.
-# "/home/kbuilder" does not exist in the ROCm docker container, and hence the "which bazel" cmd at the
-# end of that function fails!. So explicitly adding $HOME/bin to the PATH here
-export PATH="$HOME/bin:$PATH"
-
-update_bazel_linux
+install_bazelisk
 
 # Export required variables for running pip.sh
 export OS_TYPE="UBUNTU"

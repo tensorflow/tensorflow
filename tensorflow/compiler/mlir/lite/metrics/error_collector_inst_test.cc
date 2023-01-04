@@ -24,17 +24,18 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/metrics/types_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace mlir {
 namespace TFL {
@@ -49,6 +50,8 @@ class MockSuccessPass
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MockSuccessPass)
+
   explicit MockSuccessPass() {}
 
  private:
@@ -68,6 +71,8 @@ class MockFailurePass
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MockFailurePass)
+
   explicit MockFailurePass() {}
 
  private:
@@ -85,8 +90,8 @@ class MockFailurePass
   };
 };
 
-StatusOr<OwningModuleRef> LoadModule(MLIRContext* context,
-                                     const std::string& file_name) {
+StatusOr<OwningOpRef<mlir::ModuleOp>> LoadModule(MLIRContext* context,
+                                                 const std::string& file_name) {
   std::string error_message;
   auto file = openInputFile(file_name, &error_message);
   if (!file) {
@@ -95,13 +100,15 @@ StatusOr<OwningModuleRef> LoadModule(MLIRContext* context,
 
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(file), llvm::SMLoc());
-  return OwningModuleRef(parseSourceFile(source_mgr, context));
+  return OwningOpRef<mlir::ModuleOp>(
+      parseSourceFile<mlir::ModuleOp>(source_mgr, context));
 }
 
 TEST(ErrorCollectorTest, TessSuccessPass) {
   std::string input_file = tensorflow::GetDataDependencyFilepath(
       "tensorflow/compiler/mlir/lite/metrics/testdata/strided_slice.mlir");
   MLIRContext context;
+  context.getOrLoadDialect<mlir::func::FuncDialect>();
   context.allowUnregisteredDialects();
   context.enableMultithreading();
 
@@ -113,7 +120,7 @@ TEST(ErrorCollectorTest, TessSuccessPass) {
 
   pm.addInstrumentation(
       std::make_unique<ErrorCollectorInstrumentation>(&context));
-  EXPECT_EQ(succeeded(pm.run(module.ValueOrDie().get())), true);
+  EXPECT_EQ(succeeded(pm.run(module.value().get())), true);
 
   auto collected_errors =
       ErrorCollector::GetErrorCollector()->CollectedErrors();
@@ -123,9 +130,10 @@ TEST(ErrorCollectorTest, TessSuccessPass) {
 TEST(ErrorCollectorTest, TessFailurePass) {
   using tflite::metrics::ConverterErrorData;
   MLIRContext context;
+  context.getOrLoadDialect<mlir::func::FuncDialect>();
   const std::string input_file =
       "tensorflow/compiler/mlir/lite/metrics/testdata/strided_slice.mlir";
-  auto input_file_id = Identifier::get(input_file, &context);
+  auto input_file_id = StringAttr::get(&context, input_file);
 
   context.allowUnregisteredDialects();
   context.enableMultithreading();
@@ -140,7 +148,7 @@ TEST(ErrorCollectorTest, TessFailurePass) {
 
   pm.addInstrumentation(
       std::make_unique<ErrorCollectorInstrumentation>(&context));
-  EXPECT_EQ(succeeded(pm.run(module.ValueOrDie().get())), false);
+  EXPECT_EQ(succeeded(pm.run(module.value().get())), false);
 
   auto collected_errors =
       ErrorCollector::GetErrorCollector()->CollectedErrors();

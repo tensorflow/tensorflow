@@ -15,7 +15,6 @@
 """Tests for the behavior of the auto-compilation pass."""
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
@@ -52,7 +51,7 @@ class ClusteringTest(xla_test.XLATestCase):
         input2 = constant_op.constant(val2, name="const2")
       with self.test_scope():
         output = math_ops.add(input1, input2)
-      for _ in xrange(10):
+      for _ in range(10):
         result = self.evaluate(output)
         self.assertAllClose(result, expected, rtol=1e-3)
 

@@ -17,7 +17,6 @@
 import itertools
 from absl.testing import parameterized
 import numpy as np
-from six.moves import range
 
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops

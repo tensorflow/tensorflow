@@ -26,6 +26,7 @@ from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import remote
@@ -39,20 +40,24 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu
+from tensorflow.python.tpu import tpu_hardware_feature
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
@@ -83,7 +88,92 @@ def get_tpu_strategy(enable_packed_var=False):
 
 
 # TPU tests which don't use TPUStrategy.
+@test_util.with_eager_op_as_function
 class TPUTest(test.TestCase):
+
+  # In this case, the entire computation in foo is compiled using JIT
+  # compilation.
+  def test_single_tpu_jit_compile(self):
+    with ops.device("/device:TPU:0"):
+      a = variables.Variable(1)
+
+    def get_a_plus_one():
+      return a + 1
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    def foo(x):
+      b = x + get_a_plus_one()
+      b = b + get_a_plus_one()
+      return b + 1
+
+    with ops.device("/device:TPU:0"):
+      result = foo(a)
+    self.assertAllEqual(6, result)
+
+  # In this case, the entire computation in foo is compiled using JIT
+  # compilation and contains unsupported ops that should be outside compiled.
+  def test_single_tpu_jit_compile_with_outside_compilation(self):
+    context.enable_jit_compile_rewrite()
+    get_tpu_strategy(True)
+    config.set_soft_device_placement(True)
+    with ops.device("/device:TPU:1"):
+      a = variables.Variable(1)
+
+    def get_a_plus_one():
+      return a + 1
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    def foo(x):
+      b = x + get_a_plus_one()
+      my_str = string_ops.as_string(b)
+      new_str = my_str + "0"
+      c = string_ops.string_to_number(new_str, out_type=dtypes.int32)
+      logging_ops.print_v2(c)
+      b = c + get_a_plus_one()
+      return b + 1
+
+    with ops.device("/device:TPU:1"):
+      result = foo(a)
+    self.assertAllEqual(33, result)
+
+  # In this case, each of the ops in the TPU device scope are compiled and run
+  # individually.
+  def test_single_tpu_on_demand(self):
+    with ops.device("/device:TPU:0"):
+      a = variables.Variable(1)
+
+    def get_a_plus_one():
+      return a + 1
+
+    x = 1
+    with ops.device("/device:TPU:0"):
+      b = x + get_a_plus_one()
+      b = b + get_a_plus_one()
+    result = b + 1
+
+    self.assertAllEqual(6, result)
+
+  # In this case, each of the ops in the tf.function and TPU device scope are
+  # compiled and run individually.
+  def test_single_tpu_on_demand_tf_function(self):
+    with ops.device("/device:TPU:0"):
+      a = variables.Variable(1)
+
+    def get_a_plus_one():
+      return a + 1
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    def foo(x):
+      with ops.device("/device:TPU:0"):
+        b = x + get_a_plus_one()
+        b = b + get_a_plus_one()
+      return b + 1
+
+    result = foo(a)
+    self.assertAllEqual(6, result)
 
   def test_multiple_initialize_system(self):
     resolver = get_tpu_cluster_resolver()
@@ -162,6 +252,7 @@ class TPUTest(test.TestCase):
 
 
 @parameterized.named_parameters([("PackedVar", True), ("", False)])
+@test_util.with_eager_op_as_function
 class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
   def test_handle_in_cross_replica_context(self, enable_packed_var):
@@ -1044,7 +1135,18 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
       dist_iterator = iter(dist_dataset)
       train_steps(w, dist_iterator, 1)
 
+  def test_tpu_hardware_feature(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+    self.assertIsInstance(
+        strategy.extended.tpu_hardware_feature.embedding_feature,
+        tpu_hardware_feature.HardwareFeature.EmbeddingFeature)
 
+  def test_get_tpu_cluster_resolver(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+    self.assertIsNotNone(strategy.cluster_resolver)
+
+
+@test_util.with_eager_op_as_function
 class TPUStrategyDataPrefetchTest(test.TestCase):
 
   def test_prefetch_to_device_default(self):
@@ -1145,24 +1247,17 @@ class TPUStrategyDataPrefetchTest(test.TestCase):
       iter(strategy.distribute_datasets_from_function(dataset_fn))
 
   def test_create_iterator_on_device(self):
-    self.skipTest("b/205135143")
 
     @def_function.function
     def create_iter():
       with ops.device("/device:TPU:0"):
-        return gen_dataset_ops.anonymous_iterator_v2(
+        return gen_dataset_ops.anonymous_iterator_v3(
             output_types=[dtypes.float32], output_shapes=[[]])
 
-    handle, deleter = create_iter()
-
-    @def_function.function
-    def delete_iter():
-      with ops.device("/device:TPU:0"):
-        gen_dataset_ops.delete_iterator(handle=handle, deleter=deleter)
-
-    delete_iter()
+    create_iter()
 
 
+@test_util.with_eager_op_as_function
 class TPUStrategyDistributionTest(
     strategy_test_lib.DistributionTestBase,
     strategy_test_lib.TwoDeviceDistributionTestBase):
@@ -1296,6 +1391,7 @@ class TPUStrategyDistributionTest(
     self._test_trainable_variable(strategy)
 
 
+@test_util.with_eager_op_as_function
 class DeviceAssignmentTest(test.TestCase):
 
   def test_core_assignment(self):

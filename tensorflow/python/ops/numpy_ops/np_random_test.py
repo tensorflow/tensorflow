@@ -17,7 +17,6 @@
 
 from absl.testing import parameterized
 import numpy as onp
-from six.moves import range
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import numpy_ops as np

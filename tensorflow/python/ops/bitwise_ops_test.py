@@ -15,7 +15,6 @@
 """Tests for bitwise operations."""
 
 import numpy as np
-import six
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -57,7 +56,7 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
                   2**31 - 1, 2**31, 2**32 - 1, 2**32, -2**32 + 1, -2**32,
                   -2**63 + 1, 2**63 - 1]
     def count_bits(x):
-      return sum(bin(z).count("1") for z in six.iterbytes(x.tobytes()))
+      return sum(bin(z).count("1") for z in x.tobytes())
     for dtype in dtype_list:
       with self.cached_session():
         print("PopulationCount test: ", dtype)

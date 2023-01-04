@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for gather."""
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -55,22 +55,18 @@ def make_gather_tests(options):
           "constant_indices": [True],
           "fully_quantize": [True],
           "input_range": [(-10, 10)],
+      },
+      {
+          # Test with batch_dims.
+          "params_dtype": [tf.float32, tf.int32],
+          "params_shape": [[2, 2, 3, 5]],
+          "indices_dtype": [tf.int32],
+          "indices_shape": [[2, 2, 2]],
+          "axis": [0, 2],
+          "batch_dims": [1, 2],
+          "constant_params": [False, True],
       }
   ]
-
-  if options.use_experimental_converter:
-    test_parameters = test_parameters + [
-        # Test with batch_dims.
-        {
-            "params_dtype": [tf.float32, tf.int32],
-            "params_shape": [[2, 2, 3, 5]],
-            "indices_dtype": [tf.int32],
-            "indices_shape": [[2, 2, 2]],
-            "axis": [0, 2],
-            "batch_dims": [1, 2],
-            "constant_params": [False, True],
-        }
-    ]
 
   def build_graph(parameters):
     """Build the gather op testing graph."""

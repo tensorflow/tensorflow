@@ -16,44 +16,45 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
 
 #include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 
 namespace tflite {
 namespace gpu {
 
-void CreateReLU(const ReLUAttributes& attr, CalculationsPrecision precision,
-                Arguments* args, std::string* code) {
+ElementwiseDescriptor CreateReLU(const ReLUAttributes& attr,
+                                 CalculationsPrecision precision) {
+  ElementwiseDescriptor result;
   std::string min_func;
   if (attr.alpha != 0.0f) {
-    min_func = "min(in_out_value * args.alpha, INIT_FLT(0.0f))";
+    min_func = "min(in_value * args.alpha, INIT_FLT(0.0f))";
     if (precision == CalculationsPrecision::F32) {
-      args->AddFloat("alpha", attr.alpha);
+      result.args.AddFloat("alpha", attr.alpha);
     } else {
-      args->AddHalf("alpha", half(attr.alpha));
+      result.args.AddHalf("alpha", half(attr.alpha));
     }
   } else {
     min_func = "INIT_FLT4(0.0f)";
   }
   if (attr.clip != 0.0f) {
     if (precision == CalculationsPrecision::F32) {
-      args->AddFloat("clip", attr.clip);
+      result.args.AddFloat("clip", attr.clip);
     } else {
-      args->AddHalf("clip", half(attr.clip));
+      result.args.AddHalf("clip", half(attr.clip));
     }
-    *code = absl::StrCat("in_out_value = clamp(in_out_value, " + min_func +
-                         ", INIT_FLT4(args.clip));");
+    result.code = absl::StrCat("out_value = clamp(in_value, " + min_func +
+                               ", INIT_FLT4(args.clip));");
   } else {
-    *code = absl::StrCat("in_out_value = max(in_out_value, ", min_func, ");");
+    result.code = absl::StrCat("out_value = max(in_value, ", min_func, ");");
   }
+  return result;
 }
 
 GPUOperation CreateReLU(const OperationDef& definition,
                         const ReLUAttributes& attr) {
-  GPUOperation op(definition);
-  op.elementwise_ = true;
-  CreateReLU(attr, definition.precision, &op.args_, &op.code_);
-  return op;
+  ElementwiseDescriptor op_desc = CreateReLU(attr, definition.precision);
+  return CreateGpuOperation(definition, std::move(op_desc));
 }
 
 }  // namespace gpu

@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -30,7 +32,7 @@ class ShapeOutputTest(trt_test.TfTrtIntegrationTestBase):
   """Test shape value output with TF-TRT."""
 
   def setUp(self):
-    super(trt_test.TfTrtIntegrationTestBase, self).setUp()  # pylint: disable=bad-super-call
+    super().setUp()
     self.DisableNonTrtOptimizers()
 
   def GraphFn(self, x):
@@ -58,11 +60,16 @@ class ShapeOutputTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Returns the expected engines to build."""
     if run_params.dynamic_shape:
-      return ["TRTEngineOp_0", "TRTEngineOp_1"]
+      return ["TRTEngineOp_000", "TRTEngineOp_001"]
     else:
       # Second segment not converted in implicit batch mode, because its
       # tensors have only one dimensions
-      return ["TRTEngineOp_0"]
+      return ["TRTEngineOp_000"]
+
+  def ShouldRunTest(self, run_params):
+    # We cannot calibrate without bulding the engine, we turn of INT8 test.
+    return (run_params.dynamic_shape and
+            run_params.precision_mode != "INT8", "no calibration dynamic shape")
 
 
 class ShapeOutputWithSingleInputProfile(ShapeOutputTest):
@@ -112,7 +119,7 @@ class ShapeOutputWithSingleInputAndReshape(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Returns the expected engines to build."""
-    return ["TRTEngineOp_0", "TRTEngineOp_1"]
+    return ["TRTEngineOp_000", "TRTEngineOp_001"]
 
 
 class PrunedInputTest(trt_test.TfTrtIntegrationTestBase):
@@ -144,7 +151,7 @@ class PrunedInputTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Returns the expected engines to build."""
-    return ["TRTEngineOp_0"]
+    return ["TRTEngineOp_000"]
 
   def ShouldRunTest(self, run_params):
     # Shape op is only converted in dynamic shape mode.
@@ -178,12 +185,54 @@ class PrunedInputTest2(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Returns the expected engines to build."""
-    return ["TRTEngineOp_0"]
+    return ["TRTEngineOp_000"]
 
   def ShouldRunTest(self, run_params):
     # Shape op is only converted in dynamic shape mode.
     return (run_params.dynamic_shape and
             run_params.is_v2, "test v2 dynamic shape")
+
+
+class ShapeValueMaskTest(trt_test.TfTrtIntegrationTestBase):
+  """Confirm that 0D and 1D non int tensors are not treated as shape tensors."""
+
+  def setUp(self):
+    super().setUp()
+    # This is to test whether shape value mask is correctly set in case engine
+    # construction has failed.
+    os.environ["TF_TRT_ABORT_CUDA_ENGINE_BUILD"] = "True"
+    os.environ["TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION"] = "True"
+
+  def tearDown(self):
+    super().tearDown()
+    os.environ["TF_TRT_ABORT_CUDA_ENGINE_BUILD"] = "False"
+    os.environ["TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION"] = "False"
+
+  def GraphFn(self, x, y):
+    q = 2 * x + y
+    return array_ops.identity(q, name="output_0")
+
+  def GetParams(self):
+    return self.BuildParamsWithMask(
+        self.GraphFn,
+        dtypes.float16, [[3], []], [[3]],
+        extra_inputs=[],
+        extra_outputs=[],
+        input_mask=[[True], []],
+        output_mask=[[True]])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Returns the expected engines to build."""
+    if run_params.dynamic_shape:
+      return ["TRTEngineOp_000"]
+    else:
+      return []
+
+  def ShouldRunTest(self, run_params):
+    # We cannot calibrate without bulding the engine, we turn of INT8 test.
+    return (run_params.dynamic_shape and
+            run_params.precision_mode != "INT8", "no calibration dynamic shape")
+
 
 if __name__ == "__main__":
   test.main()

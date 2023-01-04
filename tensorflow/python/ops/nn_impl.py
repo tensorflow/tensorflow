@@ -109,15 +109,13 @@ def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
 
 @tf_export(v1=["nn.sigmoid_cross_entropy_with_logits"])
 @dispatch.add_dispatch_support
-def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
-    _sentinel=None,
+def sigmoid_cross_entropy_with_logits(
     labels=None,
     logits=None,
     name=None):
   """See sigmoid_cross_entropy_with_logits_v2."""
   # pylint: disable=protected-access
-  nn_ops._ensure_xent_args("sigmoid_cross_entropy_with_logits", _sentinel,
-                           labels, logits)
+  nn_ops._ensure_xent_args("sigmoid_cross_entropy_with_logits", labels, logits)
   # pylint: enable=protected-access
 
   with ops.name_scope(name, "logistic_loss", [logits, labels]) as name:
@@ -538,10 +536,11 @@ def relu_layer(x, weights, biases, name=None):
 @tf_export("nn.silu", "nn.swish")
 @dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
-@custom_gradient.custom_gradient
-def swish(features):
+def swish(features, beta=1.0):
   # pylint: disable=g-doc-args
-  """Computes the SiLU or Swish activation function: `x * sigmoid(x)`.
+  """Computes the SiLU or Swish activation function: `x * sigmoid(beta * x)`.
+
+  beta : Hyperparameter for Swish activation function. Default value 1.0.
 
   The SiLU activation function was introduced in "Gaussian Error Linear Units
   (GELUs)" [Hendrycks et al. 2016](https://arxiv.org/abs/1606.08415) and
@@ -553,28 +552,41 @@ def swish(features):
 
   Args:
     features: A `Tensor` representing preactivation values.
+    beta: A 'Tensor' representing value of beta hyperparameter.
 
   Returns:
     The activation value.
   """
   # pylint: enable=g-doc-args
   features = ops.convert_to_tensor(features, name="features")
+  beta = ops.convert_to_tensor(beta, name="beta")
+  beta = math_ops.cast(beta, features.dtype)
 
-  def grad(dy):
-    """Gradient for the Swish activation function"""
-    # Naively, x * tf.nn.sigmoid(x) requires keeping both x and sigmoid(x)
-    # around for backprop, effectively doubling the tensor's memory consumption.
-    # We use a control dependency here so that sigmoid(features) is re-computed
-    # during backprop (the control dep prevents it being de-duped with the
-    # forward pass) and we can free the sigmoid(features) expression immediately
-    # after use during the forward pass.
-    with ops.control_dependencies([dy]):
-      sigmoid_features = math_ops.sigmoid(features)
-    activation_grad = (
-        sigmoid_features * (1.0 + features * (1.0 - sigmoid_features)))
-    return dy * activation_grad
+  @custom_gradient.custom_gradient
+  def swish_impl(features, beta):
 
-  return features * math_ops.sigmoid(features), grad
+    def grad(dy):
+      """Gradient for the Swish activation function."""
+      # Naively, x * tf.nn.sigmoid(x) requires keeping both x and sigmoid(x)
+      # around for backprop, effectively doubling the tensor's memory
+      # consumption. We use a control dependency here so that sigmoid(features)
+      # is re-computed during backprop (the control dep prevents it being
+      # de-duped with the forward pass) and we can free the sigmoid(features)
+      # expression immediately after use during the forward pass.
+      with ops.control_dependencies([dy]):
+        sigmoid_features = math_ops.sigmoid(beta * features)
+
+      activation_grad = (
+          sigmoid_features * (1.0 + (beta * features) *
+                              (1.0 - sigmoid_features)))
+      beta_grad = math_ops.reduce_sum(
+          dy * math_ops.square(features) * sigmoid_features *
+          (1.0 - sigmoid_features))
+      return (dy * activation_grad, beta_grad)
+
+    return features * math_ops.sigmoid(beta * features), grad
+
+  return swish_impl(features, beta)
 
 
 # pylint: disable=redefined-builtin
@@ -904,13 +916,14 @@ def depthwise_conv2d_v2(input,
 
   In detail, with the default NHWC format,
 
-      output[b, i, j, k * channel_multiplier + q] = sum_{di, dj}
-           filter[di, dj, k, q] * input[b, strides[1] * i + rate[0] * di,
-                                           strides[2] * j + rate[1] * dj, k]
+      output[b, i, j, k * channel_multiplier + q] =
+          sum_{di, dj} filter[di, dj, k, q] *
+                       input[b, strides[1] * i + dilations[0] * di,
+                                strides[2] * j + dilations[1] * dj, k]
 
   Must have `strides[0] = strides[3] = 1`.  For the most common case of the
   same horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
-  If any value in `rate` is greater than 1, we perform atrous depthwise
+  If any value in `dilations` is greater than 1, we perform atrous depthwise
   convolution, in which case all values in the `strides` tensor must be equal
   to 1.
 
@@ -953,7 +966,9 @@ def depthwise_conv2d_v2(input,
     padding: Controls how to pad the image before applying the convolution. Can
       be the string `"SAME"` or `"VALID"` indicating the type of padding
       algorithm to use, or a list indicating the explicit paddings at the start
-      and end of each dimension. When explicit padding is used and data_format
+      and end of each dimension. See
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information. When explicit padding is used and data_format
       is `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
       [pad_left, pad_right], [0, 0]]`. When explicit padding used and
       data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
@@ -1670,11 +1685,6 @@ def fused_batch_norm(
   if variance is None:
     variance = constant_op.constant([])
 
-  # Set a minimum epsilon to 1.001e-5, which is a requirement by CUDNN to
-  # prevent exception (see cudnn.h).
-  min_epsilon = 1.001e-5
-  epsilon = epsilon if epsilon > min_epsilon else min_epsilon
-
   y, running_mean, running_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
       x,
       scale,
@@ -2010,7 +2020,7 @@ def nce_loss_v2(weights,
 
   See [Noise-contrastive estimation: A new estimation principle for
   unnormalized statistical
-  models](http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
+  models](https://arxiv.org/abs/1806.03664).
   Also see our [Candidate Sampling Algorithms
   Reference](https://www.tensorflow.org/extras/candidate_sampling.pdf)
 

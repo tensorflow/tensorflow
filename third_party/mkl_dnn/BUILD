@@ -1,6 +1,7 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:__subpackages__",
     ],
@@ -22,6 +23,15 @@ config_setting(
     name = "build_with_mkldnn_openmp",
     define_values = {
         "build_with_mkl": "true",
+        "build_with_openmp": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "build_with_mkl_aarch64_openmp",
+    define_values = {
+        "build_with_mkl_aarch64": "true",
         "build_with_openmp": "true",
     },
     visibility = ["//visibility:public"],

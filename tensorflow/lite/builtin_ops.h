@@ -176,6 +176,16 @@ typedef enum {
   kTfLiteBuiltinRandomStandardNormal = 146,
   kTfLiteBuiltinBucketize = 147,
   kTfLiteBuiltinRandomUniform = 148,
+  kTfLiteBuiltinMultinomial = 149,
+  kTfLiteBuiltinGelu = 150,
+  kTfLiteBuiltinDynamicUpdateSlice = 151,
+  kTfLiteBuiltinRelu0To1 = 152,
+  kTfLiteBuiltinUnsortedSegmentProd = 153,
+  kTfLiteBuiltinUnsortedSegmentMax = 154,
+  kTfLiteBuiltinUnsortedSegmentSum = 155,
+  kTfLiteBuiltinAtan2 = 156,
+  kTfLiteBuiltinUnsortedSegmentMin = 157,
+  kTfLiteBuiltinSign = 158,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

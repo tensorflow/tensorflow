@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/local_client.h"
 
+#include <memory>
+#include <string>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "llvm/ADT/Triple.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/backend.h"
@@ -112,7 +113,7 @@ Status LocalExecutable::ValidateExecutionOptions(
         backend.platform()->Name());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::pair<ServiceExecutableRunOptions, StreamPool::Ptr>>
@@ -355,13 +356,11 @@ Backend* LocalClient::mutable_backend() {
   return local_service_->mutable_backend();
 }
 
-StatusOr<std::vector<std::unique_ptr<LocalExecutable>>> LocalClient::Compile(
-    const XlaComputation& computation,
-    const absl::Span<const Shape* const> argument_layouts,
-    const ExecutableBuildOptions& options) {
+static StatusOr<ExecutableBuildOptions> UpdateBuildOptions(
+    const ExecutableBuildOptions& options, int default_device_ordinal) {
   ExecutableBuildOptions updated_options = options;
   if (options.device_ordinal() == -1) {
-    updated_options.set_device_ordinal(default_device_ordinal());
+    updated_options.set_device_ordinal(default_device_ordinal);
     VLOG(3) << "Set device ordinal to default value of: "
             << updated_options.device_ordinal();
   }
@@ -382,6 +381,15 @@ StatusOr<std::vector<std::unique_ptr<LocalExecutable>>> LocalClient::Compile(
           options.num_partitions(), options.device_assignment().ToString());
     }
   }
+  return updated_options;
+}
+
+StatusOr<std::vector<std::unique_ptr<LocalExecutable>>> LocalClient::Compile(
+    const XlaComputation& computation,
+    const absl::Span<const Shape* const> argument_layouts,
+    const ExecutableBuildOptions& options) {
+  TF_ASSIGN_OR_RETURN(ExecutableBuildOptions updated_options,
+                      UpdateBuildOptions(options, default_device_ordinal()));
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Executable>> executables,
                       local_service_->CompileExecutables(
                           computation, argument_layouts, updated_options));
@@ -390,12 +398,49 @@ StatusOr<std::vector<std::unique_ptr<LocalExecutable>>> LocalClient::Compile(
   local_executables.reserve(executables.size());
 
   for (auto& executable : executables) {
-    local_executables.push_back(absl::make_unique<LocalExecutable>(
+    local_executables.push_back(std::make_unique<LocalExecutable>(
         std::move(executable), local_service_->mutable_backend(),
         updated_options));
   }
 
   return std::move(local_executables);
+}
+
+StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+LocalClient::CompileAheadOfTime(
+    const XlaComputation& computation,
+    const absl::Span<const Shape* const> argument_layouts,
+    const ExecutableBuildOptions& options) {
+  TF_ASSIGN_OR_RETURN(ExecutableBuildOptions updated_options,
+                      UpdateBuildOptions(options, default_device_ordinal()));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
+      local_service_->CompileAotResults(computation, argument_layouts,
+                                        updated_options));
+
+  return std::move(aot_results);
+}
+
+StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Load(
+    const std::string& serialized_aot_result,
+    const ExecutableBuildOptions& options) {
+  TF_ASSIGN_OR_RETURN(ExecutableBuildOptions updated_options,
+                      UpdateBuildOptions(options, default_device_ordinal()));
+  TF_ASSIGN_OR_RETURN(
+      se::StreamExecutor * executor,
+      backend().stream_executor(updated_options.device_ordinal()));
+
+  TF_ASSIGN_OR_RETURN(Compiler * compiler,
+                      Compiler::GetForPlatform(platform()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::AotCompilationResult> aot_result,
+      compiler->LoadAotCompilationResult(serialized_aot_result));
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                      aot_result->LoadExecutable(compiler, executor));
+  return std::make_unique<LocalExecutable>(std::move(executable),
+                                           local_service_->mutable_backend(),
+                                           updated_options);
 }
 
 StatusOr<ScopedShapedBuffer> LocalClient::LiteralToShapedBuffer(

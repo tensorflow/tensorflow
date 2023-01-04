@@ -9,6 +9,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 package_group(
     name = "internal",
     packages = [
+        "//learning/brain/experimental/tfrt/native_lowering/kernels/...",
         "//tensorflow/core/runtime_fallback/...",
         "//tensorflow/core/tfrt/eager/backends/tpu/...",
         "//tensorflow/core/tfrt/utils/...",
@@ -16,6 +17,7 @@ package_group(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":internal"],
     features = ["-layering_check"],
     licenses = ["notice"],
@@ -80,7 +82,7 @@ cc_library(
     hdrs = ["fallback_test_util.h"],
     tags = ["no_oss"],
     deps = [
-        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_request_context",
+        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_request_context",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
@@ -126,9 +128,10 @@ tf_cuda_library(
     compatible_with = [],
     # Only build this library with --config=cuda.
     tags = [
+        "manual",
         "no_oss",
         "requires_cuda",
-    ] + if_oss(["manual"]),
+    ],
     deps = [
         "@tf_runtime//backends/gpu:gpu_device",
         "@tf_runtime//backends/gpu:gpu_config",
@@ -142,8 +145,8 @@ tf_cuda_library(
         "//conditions:default": [
             "//tensorflow/core/common_runtime/eager:tensor_handle",
             "//tensorflow/core/common_runtime/gpu:gpu_runtime",
-            "//tensorflow/stream_executor:platform",
-            "//tensorflow/stream_executor/cuda:cuda_driver",
+            "//tensorflow/compiler/xla/stream_executor:platform",
+            "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
             "//tensorflow/c:tf_tensor",
             "//tensorflow/c:tf_tensor_internal",
         ],

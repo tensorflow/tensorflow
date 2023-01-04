@@ -1,9 +1,12 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -13,50 +16,79 @@ package(
 cc_library(
     name = "coordination_client",
     hdrs = ["coordination_client.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
+    deps = [
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_client",
+    ],
 )
 
 cc_library(
-    name = "coordination_service",
-    hdrs = ["coordination_service.h"],
+    name = "coordination_service_rpc_handler",
+    hdrs = [
+        "coordination_service_rpc_handler.h",
+    ],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        ":coordination_client",
-        "//tensorflow/core:framework_internal",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_rpc_handler",
+    ],
+)
+
+cc_library(
+    name = "coordination_service_error_util",
+    hdrs = ["coordination_service_error_util.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
+    deps = [
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_error_util",
+    ],
+)
+
+cc_library(
+    name = "coordination_service_barrier_proxy",
+    srcs = ["coordination_service_barrier_proxy.cc"],
+    hdrs = ["coordination_service_barrier_proxy.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
+    deps = [
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+tf_cc_test(
+    name = "coordination_service_barrier_proxy_test",
+    srcs = ["coordination_service_barrier_proxy_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
+    deps = [
+        ":coordination_service_barrier_proxy",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/distributed_runtime:call_options",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_client",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "//tensorflow/tsl/protobuf:coordination_config_proto_cc",
+        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
+        "@com_google_absl//absl/time",
     ],
-)
-
-cc_library(
-    name = "coordination_service_impl",
-    deps = [
-        ":coordination_client",
-        ":coordination_service",
-    ],
-)
-
-cc_library(
-    name = "coordination_service_agent",
-    hdrs = ["coordination_service_agent.h"],
-    deps = [
-        ":coordination_client",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "coordination_service_agent_impl",
-    srcs = ["coordination_service_agent.cc"],
-    deps = [":coordination_service_agent"],
 )
 
 filegroup(
     name = "pywrap_required_hdrs",
     srcs = [
         "coordination_client.h",
-        "coordination_service.h",
     ],
     visibility = [
-        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/function:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],
 )

@@ -16,44 +16,44 @@
 
 import numpy as np
 
-from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_jitrt
 from tensorflow.python.platform import test
 
 specializations = [
-    tf_cpurt.Specialization.ENABLED,
-    tf_cpurt.Specialization.DISABLED,
-    tf_cpurt.Specialization.ALWAYS,
+    tf_jitrt.Specialization.ENABLED,
+    tf_jitrt.Specialization.DISABLED,
+    tf_jitrt.Specialization.ALWAYS,
 ]
 
 
 def log1p_1d():
   return """
-  func @log1p(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  func.func @log1p(%arg0: tensor<?xf32>) -> tensor<?xf32> {
     %0 = "tf.Log1p"(%arg0): (tensor<?xf32>) -> tensor<?xf32>
-    return %0 : tensor<?xf32>
+    func.return %0 : tensor<?xf32>
   }"""
 
 
 def log1p_2d():
   return """
-  func @log1p(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  func.func @log1p(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
     %0 = "tf.Log1p"(%arg0): (tensor<?x?xf32>) -> tensor<?x?xf32>
-    return %0 : tensor<?x?xf32>
+    func.return %0 : tensor<?x?xf32>
   }"""
 
 
-cpurt = tf_cpurt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
 def test_log1p(fn, rank):
   for specialize in specializations:
-    compiled = cpurt.compile(fn(), "log1p", specialize)
+    compiled = jitrt.compile(fn(), "log1p", specialize)
 
     for _ in range(100):
       shape = np.random.randint(0, 10, size=(rank))
       arg = np.random.uniform(0, 10.0, size=shape).astype(np.float32)
 
-      [res] = cpurt.execute(compiled, [arg])
+      [res] = jitrt.execute(compiled, [arg])
       np.testing.assert_allclose(res, np.log1p(arg), atol=1e-06)
 
 

@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/api_def/update_api_def.h"
 
 #include <ctype.h>
+
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 
@@ -231,7 +233,9 @@ string CreateApiDef(const OpDef& op) {
   FillBaseApiDef(api_defs.add_op(), op);
 
   const std::vector<string> multi_line_fields = {"description"};
-  string new_api_defs_str = api_defs.DebugString();
+  std::string new_api_defs_str;
+  ::tensorflow::protobuf::TextFormat::PrintToString(api_defs,
+                                                    &new_api_defs_str);
   return PBTxtToMultiline(new_api_defs_str, multi_line_fields);
 }
 

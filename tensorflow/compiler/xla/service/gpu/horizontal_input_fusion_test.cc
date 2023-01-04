@@ -62,9 +62,9 @@ TEST_F(HorizontalInputFusionTest, BasicTest) {
    ROOT tuple.1 = (f16[], f16[]) tuple(fusion.1, fusion.2)
  }
 )")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).value());
 
   const HloInstruction* entry_root =
       module->entry_computation()->root_instruction();
@@ -133,7 +133,7 @@ TEST_F(HorizontalInputFusionTest, ManyInputFusions) {
   // Verify that horizontal fusion is kicked in. Check that there are multiple
   // `reduce` instructions fused into the same fusion. 6 is just a randomly
   // picked number as we don't exactly know how large the fusion will be
-  // created due to the `FusionWouldBeTooLarge` constraint.
+  // created due to the `FusionFitsInBudget` constraint.
   CompileAndVerifyIr(module->Clone(), R"(CHECK: reduce-group-6)",
                      /*match_optimized_ir=*/false);
 
@@ -206,9 +206,9 @@ TEST_F(HorizontalInputFusionTest, MultiOutputFusionTest) {
        tuple(gte.3, gte.4, gte.5, gte.6)
  }
 )")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).value());
 }
 
 TEST_F(HorizontalInputFusionTest, NonfusionInstrs) {
@@ -230,9 +230,9 @@ TEST_F(HorizontalInputFusionTest, NonfusionInstrs) {
    ROOT tuple.0 = (f16[], f16[]) tuple(reduce.0, reduce.1)
  }
 )")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).value());
 
   const HloInstruction* entry_root =
       module->entry_computation()->root_instruction();

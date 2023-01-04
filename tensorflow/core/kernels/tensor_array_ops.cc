@@ -70,7 +70,7 @@ Status GetHandle(OpKernelContext* ctx, string* container, string* ta_handle) {
     *container = h(0);
     *ta_handle = h(1);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetTensorArray(OpKernelContext* ctx, TensorArray** tensor_array) {
@@ -82,7 +82,7 @@ Status GetTensorArray(OpKernelContext* ctx, TensorArray** tensor_array) {
     if (rm == nullptr) return errors::Internal("No resource manager.");
     TF_RETURN_IF_ERROR(
         ctx->step_container()->Lookup(rm, container + ta_handle, tensor_array));
-    return Status::OK();
+    return OkStatus();
   } else {
     return LookupResource(ctx, HandleFromInput(ctx, 0), tensor_array);
   }
@@ -94,7 +94,7 @@ Status SetupFlowControlInputs(OpKernelContext* ctx, bool set_output) {
   if (set_output) {
     TF_RETURN_IF_ERROR(ctx->set_output("flow_out", *flow_control));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // CREATION *******************************************************************
@@ -214,7 +214,7 @@ class TensorArrayOp : public TensorArrayCreationOp {
 
     *output_tensor_array = tensor_array;
 
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -1204,6 +1204,7 @@ TF_CALL_ALL_TYPES(REGISTER_SCATTER_AND_UNPACK);
 
 TF_CALL_int64(REGISTER_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
@@ -1372,6 +1373,7 @@ TF_CALL_ALL_TYPES(REGISTER_SPLIT);
                           TensorArraySplitOp<GPUDevice, type>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 

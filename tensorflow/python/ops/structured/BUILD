@@ -3,9 +3,10 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
-        "//tensorflow:structured_tensor_whitelist",
+        "//tensorflow:structured_tensor_allowlist",
     ],
     licenses = ["notice"],
 )
@@ -57,6 +58,17 @@ py_library(
 )
 
 py_library(
+    name = "structured_tensor_dynamic",
+    srcs = [
+        "structured_tensor_dynamic.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        ":structured_tensor",
+    ],
+)
+
+py_library(
     name = "structured_array_ops",
     srcs = [
         "structured_array_ops.py",
@@ -90,6 +102,7 @@ py_test(
     deps = [
         ":structured_array_ops",
         ":structured_tensor",
+        ":structured_tensor_dynamic",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -119,6 +132,7 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/framework:type_utils",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "@absl_py//absl/testing:parameterized",

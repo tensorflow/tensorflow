@@ -72,7 +72,9 @@ class ArgOp : public OpKernel {
     TensorShape output_shape;
     const TensorShape& input_shape = input.shape();
     for (int d = 0; d < input_dims - 1; ++d) {
-      output_shape.AddDim(input_shape.dim_size((d < axis) ? d : d + 1));
+      OP_REQUIRES_OK(context,
+                     output_shape.AddDimWithStatus(
+                         input_shape.dim_size((d < axis) ? d : d + 1)));
     }
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
@@ -151,7 +153,19 @@ class ArgMinOp
                               .TypeConstraint<type>("T")              \
                               .TypeConstraint<int32>("output_type")   \
                               .HostMemory("dimension"),               \
-                          ArgMinOp<CPUDevice, type, int32>);
+                          ArgMinOp<CPUDevice, type, int32>);          \
+  REGISTER_KERNEL_BUILDER(Name("ArgMax")                              \
+                              .Device(DEVICE_CPU)                     \
+                              .TypeConstraint<type>("T")              \
+                              .TypeConstraint<int16>("output_type")   \
+                              .HostMemory("dimension"),               \
+                          ArgMaxOp<CPUDevice, type, int16>);          \
+  REGISTER_KERNEL_BUILDER(Name("ArgMax")                              \
+                              .Device(DEVICE_CPU)                     \
+                              .TypeConstraint<type>("T")              \
+                              .TypeConstraint<uint16>("output_type")  \
+                              .HostMemory("dimension"),               \
+                          ArgMaxOp<CPUDevice, type, uint16>);
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_ARGMAX);
 TF_CALL_bool(REGISTER_ARGMAX);
@@ -195,8 +209,10 @@ namespace functor {
   extern template struct ArgMin<GPUDevice, T, int32>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
+TF_CALL_bfloat16(DECLARE_GPU_SPECS);
 TF_CALL_bool(DECLARE_GPU_SPECS);
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_CLASS);
+TF_CALL_bfloat16(DECLARE_GPU_CLASS);
 TF_CALL_bool(DECLARE_GPU_CLASS);
 
 #undef DECLARE_GPU_SPECS
@@ -236,6 +252,7 @@ TF_CALL_bool(DECLARE_GPU_CLASS);
                           ArgMinOp<GPUDevice, type, int32>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_ARGMAX_GPU);
+TF_CALL_bfloat16(REGISTER_ARGMAX_GPU);
 TF_CALL_bool(REGISTER_ARGMAX_GPU);
 
 #undef REGISTER_ARGMAX_GPU

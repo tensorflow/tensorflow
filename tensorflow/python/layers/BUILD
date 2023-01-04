@@ -5,6 +5,7 @@ visibility = [
 ]
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = visibility,
     licenses = ["notice"],
 )
@@ -48,7 +49,9 @@ py_library(
         ":layers_base",
         "//tensorflow/python/keras/legacy_tf_layers:convolutional",
         "//tensorflow/python/keras/legacy_tf_layers:core",
-        "//tensorflow/python/keras/legacy_tf_layers:normalization",
         "//tensorflow/python/keras/legacy_tf_layers:pooling",
+        # Normalization layer will need //third_party/py/keras/legacy_tf_layers:normalization
+        # Client lib should import that, since this target can't import it due to
+        # circular dependency.
     ],
 )

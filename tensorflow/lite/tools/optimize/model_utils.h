@@ -15,9 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_MODEL_UTILS_H_
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_MODEL_UTILS_H_
 
+#include <string>
+
 #include "absl/memory/memory.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/kernels/internal/types.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {

@@ -63,16 +63,6 @@ CAST_FUNCTORS(Eigen::ThreadPoolDevice);
     };                                                                    \
   }
 
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-
-// The subset of types which are currently not supported yet with the MLIR
-// generated kernels.
-#define CURRY_SUBSET_TYPES3(FN, arg0, arg1) \
-  FN(arg0, arg1, std::complex<float>);      \
-  FN(arg0, arg1, std::complex<double>)
-
-#endif
-
 // The functions below are implemented in the cast_op_impl_*.cc files.
 CastFunctorType GetCpuCastFromBool(DataType dst_dtype);
 
@@ -106,6 +96,10 @@ CastFunctorType GetCpuCastFromComplex128(DataType dst_dtype);
 
 CastFunctorType GetCpuCastFromBfloat(DataType dst_dtype);
 
+CastFunctorType GetCpuCastFromFloat8e5m2(DataType dst_dtype);
+
+CastFunctorType GetCpuCastFromFloat8e4m3fn(DataType dst_dtype);
+
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 // Same, for GPU.
@@ -138,6 +132,10 @@ CastFunctorType GetGpuCastFromComplex64(DataType dst_dtype);
 CastFunctorType GetGpuCastFromComplex128(DataType dst_dtype);
 
 CastFunctorType GetGpuCastFromBfloat(DataType dst_dtype);
+
+CastFunctorType GetGpuCastFromFloat8e5m2(DataType dst_dtype);
+
+CastFunctorType GetGpuCastFromFloat8e4m3fn(DataType dst_dtype);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/meta_support.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -457,10 +458,28 @@ class QuantizedAddOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& x = context->input(0);
     const Tensor& y = context->input(1);
-    const float min_x = context->input(2).flat<float>()(0);
-    const float max_x = context->input(3).flat<float>()(0);
-    const float min_y = context->input(4).flat<float>()(0);
-    const float max_y = context->input(5).flat<float>()(0);
+    const Tensor& min_x_tensor = context->input(2);
+    const Tensor& max_x_tensor = context->input(3);
+    const Tensor& min_y_tensor = context->input(4);
+    const Tensor& max_y_tensor = context->input(5);
+
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_x_tensor.shape()),
+                errors::InvalidArgument("`min_x` must be rank 0 but is rank ",
+                                        min_x_tensor.dims()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_x_tensor.shape()),
+                errors::InvalidArgument("`max_x` must be rank 0 but is rank ",
+                                        max_x_tensor.dims()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_y_tensor.shape()),
+                errors::InvalidArgument("`min_y` must be rank 0 but is rank ",
+                                        min_y_tensor.dims()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_y_tensor.shape()),
+                errors::InvalidArgument("`max_y` must be rank 0 but is rank ",
+                                        max_y_tensor.dims()));
+
+    const float min_x = min_x_tensor.scalar<float>()();
+    const float max_x = max_x_tensor.scalar<float>()();
+    const float min_y = min_y_tensor.scalar<float>()();
+    const float max_y = max_y_tensor.scalar<float>()();
 
     BCast bcast(BCast::FromShape(x.shape()), BCast::FromShape(y.shape()));
     if (!bcast.IsValid()) {

@@ -15,7 +15,6 @@
 """Tests for summary V1 audio op."""
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import ops
@@ -40,7 +39,7 @@ class SummaryV1AudioOpTest(test.TestCase):
           tag: "snd/audio/%d"
           audio { content_type: "audio/wav" sample_rate: %d
                   num_channels: %d length_frames: %d }
-        }""" % (i, sample_rate, num_channels, length_frames) for i in xrange(3))
+        }""" % (i, sample_rate, num_channels, length_frames) for i in range(3))
     self.assertProtoEquals(expected, audio_summ)
 
   def testAudioSummary(self):

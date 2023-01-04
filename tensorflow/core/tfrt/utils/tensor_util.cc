@@ -33,8 +33,6 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
 #include "tensorflow/core/runtime_fallback/util/tensor_util.h"
 #include "tensorflow/core/runtime_fallback/util/type_util.h"
-#include "tensorflow/core/tfrt/utils/statusor.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 #include "tfrt/core_runtime/tensor_handle.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/host_buffer.h"  // from @tf_runtime
@@ -50,6 +48,8 @@ limitations under the License.
 
 namespace tfrt {
 namespace {
+
+using ::tensorflow::StatusOr;
 
 llvm::Expected<tensorflow::Tensor> CopyScalarHostTensorToTFTensor(
     const AnyScalarHostTensor& tensor) {
@@ -133,11 +133,10 @@ llvm::Expected<tensorflow::Tensor> TFRTTensorToTFTensor(const Tensor& tensor,
 
 AsyncValueRef<TensorHandle> TFTensorToTFRTTensorHandle(
     const tensorflow::Tensor& tf_tensor, HostContext* host_ctx) {
-  auto knfbt = MakeAvailableAsyncValueRef<tensorflow::KernelFallbackTensor>(
-      host_ctx, tf_tensor);
+  auto knfbt =
+      MakeAvailableAsyncValueRef<tensorflow::KernelFallbackTensor>(tf_tensor);
   return MakeAvailableAsyncValueRef<TensorHandle>(
-      host_ctx, host_ctx->GetHostDeviceRef(), knfbt->metadata(),
-      std::move(knfbt));
+      host_ctx->GetHostDeviceRef(), knfbt->metadata(), std::move(knfbt));
 }
 
 StatusOr<TensorHandle> CreateTensorHandleFromTFTensor(

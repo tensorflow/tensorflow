@@ -160,12 +160,12 @@ TEST(AttrValueUtil, SummarizeAttrValueDoesNotElideShortLists) {
 }
 
 TEST(AttrValueUtil, SummarizeAttrValueElidesLongLists) {
-  std::vector<int> alist(60);
+  std::vector<int> alist(110);
   std::iota(alist.begin(), alist.end(), 0);
 
   AttrValue attr_value;
   SetAttrValue(alist, &attr_value);
-  EXPECT_EQ("[0, 1, 2, 3, 4, ..., 55, 56, 57, 58, 59]",
+  EXPECT_EQ("[0, 1, 2, 3, 4, 2587181569776227444, 105, 106, 107, 108, 109]",
             SummarizeAttrValue(attr_value));
 }
 

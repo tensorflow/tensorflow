@@ -138,12 +138,7 @@ struct RowMaxReduction {
   static inline void Compute(OpKernelContext* ctx,
                              typename TTypes<T>::ConstMatrix logits,
                              typename TTypes<T>::Vec maximum) {
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::array<int, 1> along_row;
-    along_row[0] = 1;
-#else
     Eigen::IndexList<Eigen::type2index<1> > along_row;
-#endif
     Device d = ctx->eigen_device<Device>();
     To32Bit(maximum).device(d) = To32Bit(logits).maximum(along_row);
   }
@@ -188,18 +183,6 @@ struct SparseXentEigenImpl {
 
 // These arrays are used to reduce along the class dimension, and broadcast
 // the resulting value to all classes.
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::array<int, 1> along_class;
-    along_class[0] = kClassDim;
-    Eigen::array<int, 1> batch_only;
-    batch_only[0] = batch_size;
-    Eigen::array<int, 2> batch_by_one;
-    batch_by_one[0] = batch_size;
-    batch_by_one[1] = 1;
-    Eigen::array<int, 2> one_by_class;
-    one_by_class[0] = 1;
-    one_by_class[1] = num_classes;
-#else
     Eigen::IndexList<Eigen::type2index<kClassDim> > along_class;
     Eigen::IndexList<int, Eigen::type2index<1> > batch_by_one;
     batch_by_one.set(0, batch_size);
@@ -207,7 +190,6 @@ struct SparseXentEigenImpl {
     batch_only.set(0, batch_size);
     Eigen::IndexList<Eigen::type2index<1>, int> one_by_class;
     one_by_class.set(1, num_classes);
-#endif
 
     // scratch = max_logits along classes.
     RowMaxReduction<Device, T>::Compute(ctx, logits, scratch);

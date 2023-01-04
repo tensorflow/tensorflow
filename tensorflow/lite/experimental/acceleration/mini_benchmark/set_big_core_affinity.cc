@@ -25,6 +25,7 @@ namespace tflite {
 namespace acceleration {
 
 int32_t SetBigCoresAffinity() {
+#ifdef __ANDROID__
   ::tflite::acceleration::BigLittleAffinity affinity =
       ::tflite::acceleration::GetAffinity();
 
@@ -35,11 +36,14 @@ int32_t SetBigCoresAffinity() {
       CPU_SET(i, &set);
     }
   }
-  if (sched_setaffinity(getpid(), sizeof(set), &set) == -1) {
+  if (sched_setaffinity(getpid(), sizeof(set), &set) != -1) {
     return 0;
   } else {
     return errno;
   }
+#else  // !__ANDROID__
+  return 0;
+#endif
 }
 
 }  // namespace acceleration

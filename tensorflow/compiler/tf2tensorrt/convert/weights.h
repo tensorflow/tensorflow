@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_TRT_WEIGHTS_H_
-#define TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_TRT_WEIGHTS_H_
+#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_WEIGHTS_H_
+#define TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_WEIGHTS_H_
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
@@ -40,7 +40,7 @@ class TRT_ShapedWeights {
   //
   // NOTE: this does not copy the underlying buffer but only increase its
   // reference count.
-  TRT_ShapedWeights(const TRT_ShapedWeights& rhs);
+  TRT_ShapedWeights(const TRT_ShapedWeights& rhs) = default;
 
   nvinfer1::Weights GetTrtWeights() const;
 
@@ -68,35 +68,33 @@ class TRT_ShapedWeights {
     switch (type_) {
       case nvinfer1::DataType::kFLOAT: {
         float* ptr = tensor_.flat<float>().data();
-        std::fill(ptr, ptr + count(), value);
+        std::fill(ptr, ptr + volume_, value);
         break;
       }
       case nvinfer1::DataType::kHALF: {
         Eigen::half* ptr = tensor_.flat<Eigen::half>().data();
-        std::fill(ptr, ptr + count(), Eigen::half(value));
+        std::fill(ptr, ptr + volume_, Eigen::half(value));
         break;
       }
       case nvinfer1::DataType::kINT32: {
         int32* ptr = tensor_.flat<int32>().data();
-        std::fill(ptr, ptr + count(), value);
+        std::fill(ptr, ptr + volume_, value);
         break;
       }
       default:
         return errors::InvalidArgument(
             "Unsupported data type ", tensorflow::tensorrt::DebugString(type_));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
-  Status SetShape(nvinfer1::Dims dims);
+  Status SetShape(DimsAdapter dims);
+  void SetShapeUnsafe(DimsAdapter dims) { shape_ = std::move(dims); }
 
   // Returns total number of elements. Returning 0 means either some dim is 0
   // or the number of dims is 0. Note that a TF scalar constant is marked as
   // Dims{0, {1}}, and has a count() == 1.
-  int64_t count() const { return count(shape_); }
-
-  // Returns the total number of elements in a weight with shape dims.
-  static int64_t count(nvinfer1::Dims dims);
+  int64_t count() const { return volume_; }
 
   size_t size_bytes() const;
 
@@ -104,7 +102,7 @@ class TRT_ShapedWeights {
 
   template <typename T>
   absl::Span<const T> GetSpan() const {
-    return absl::Span<const T>(tensor_.flat<T>().data(), count());
+    return absl::Span<const T>(tensor_.flat<T>().data(), volume_);
   }
 
   template <typename T>
@@ -115,16 +113,18 @@ class TRT_ShapedWeights {
 
   nvinfer1::DataType TrtDType() const { return type_; }
 
-  // TODO(aaroey): make these private.
-  // Scalar weights are supported, a scalar constant tensor is represented via
-  // TRT_ShapedWeights::shape_ = {0, {1}}.
-  nvinfer1::Dims shape_;  // Note: shape.type[] is not used.
+  const DimsAdapter& Shape() const { return shape_; }
+  DimsAdapter& Shape() { return shape_; }
 
  private:
-  // This constructor is only used by TrtWeightStore, which creates the
+  // The shape of the weights. Defaults to the empty shape.
+  DimsAdapter shape_;
+
+  // This creation method is only used by TrtWeightStore, which creates the
   // underlying buffer.
-  TRT_ShapedWeights(nvinfer1::DataType type, nvinfer1::Dims dims,
-                    Tensor tensor);
+  static StatusOr<TRT_ShapedWeights> CreateWithTensor(nvinfer1::DataType type,
+                                                      DimsAdapter dims,
+                                                      Tensor tensor);
 
   nvinfer1::DataType type_;
 
@@ -133,6 +133,8 @@ class TRT_ShapedWeights {
   // this reason, tensor_ should never be reassigned to a different value that
   // is not already present in the TrtWeightStore.
   Tensor tensor_;
+  // Contains the volume of the weight's shape.
+  int64_t volume_;
 
   friend class TrtWeightStore;
 };
@@ -147,19 +149,30 @@ class TRT_ShapedWeights {
 class TrtWeightStore {
  public:
   // Gets a TRT_ShapedWeights with 'type' and 'dims'.
-  TRT_ShapedWeights GetTempWeights(nvinfer1::DataType trt_type,
-                                   const nvinfer1::Dims& dims);
+  StatusOr<TRT_ShapedWeights> GetTempWeights(nvinfer1::DataType trt_type,
+                                             const DimsAdapter& dims);
 
   // Gets a TRT_ShapedWeights with the same data type and dimensions as
   // 'weights'.
-  TRT_ShapedWeights GetTempWeights(const TRT_ShapedWeights& weights) {
-    return GetTempWeights(weights.TrtDType(), weights.shape_);
+  StatusOr<TRT_ShapedWeights> GetTempWeights(const TRT_ShapedWeights& weights) {
+    return GetTempWeights(weights.TrtDType(), weights.Shape());
   }
 
  private:
   // The backend storage of the TRT_ShapedWeights.
   std::vector<Tensor> store_;
 };
+
+// Enumerates the possible types of arguments of a converter. This determines
+// what object is contained in TRT_TensorOrWeights, and converters can require
+// a specific type for each of their arguments.
+enum class TRT_ArgumentType {
+  TENSOR = 0,
+  WEIGHTS = 1,
+  RESOURCE = 2,
+};
+
+struct OpConverterParams;
 
 // Represents a TRT-style input to a TF node, it can be either a
 // ITensorProxyPtr (representing nvinfer1::ITensor* or SimpleITensor),
@@ -190,14 +203,28 @@ class TRT_TensorOrWeights {
   // Constructs a wrapper for the given weights.
   explicit TRT_TensorOrWeights(const TRT_ShapedWeights& weights);
 
+  // Constructs a wrapper for the given resource handle.
+  explicit TRT_TensorOrWeights(const ResourceHandle& resource);
+
   TRT_TensorOrWeights(const TRT_TensorOrWeights& rhs);
 
   void operator=(const TRT_TensorOrWeights& rhs);
 
-  bool is_tensor() const { return initialized_ && is_tensor_; }
-  bool is_weights() const { return initialized_ && !is_tensor_; }
+  bool is_tensor() const {
+    return initialized_ && arg_type_ == TRT_ArgumentType::TENSOR;
+  }
+  bool is_weights() const {
+    return initialized_ && arg_type_ == TRT_ArgumentType::WEIGHTS;
+  }
+  bool is_resource() const {
+    return initialized_ && arg_type_ == TRT_ArgumentType::RESOURCE;
+  }
 
   ITensorProxyPtr tensor() const;
+
+  ResourceHandle resource() const;
+
+  ITensorProxyPtr as_tensor(const OpConverterParams* params);
 
   TRT_ShapedWeights& weights() {
     DCHECK(is_weights());
@@ -217,6 +244,15 @@ class TRT_TensorOrWeights {
 
   string DebugString() const;
 
+  nvinfer1::DataType TrtDType() const {
+    if (arg_type_ == TRT_ArgumentType::RESOURCE) {
+      VLOG(0) << "Calling TrtDType() with a RESOURCE argument is undefined "
+                 "behavior.";
+    }
+    return arg_type_ == TRT_ArgumentType::TENSOR ? tensor_proxy_ptr_->getType()
+                                                 : weights_.TrtDType();
+  }
+
  private:
   void set_batch_size(int batch_size) { batch_size_ = batch_size; }
 
@@ -235,12 +271,19 @@ class TRT_TensorOrWeights {
   //
   // If use_implicit_batch is false, batch_size_ is unused and
   // tensor_->getDimensions() will contain the entire shape (A,B,C).
+  //
+  // tensor_proxy_ptr_ is used when arg_type_ == TENSOR.
   ITensorProxyPtr tensor_proxy_ptr_ = nullptr;
   int batch_size_ = -1;
 
+  // For DT_RESOURCE arguments (there is no corresponding type in TRT).
+  // resource_ is used when arg_type_ == RESOURCE.
+  ResourceHandle resource_;
+
+  // weights_ is used when arg_type_ == WEIGHTS.
   TRT_ShapedWeights weights_;
   bool initialized_ = false;
-  bool is_tensor_ = false;
+  TRT_ArgumentType arg_type_ = TRT_ArgumentType::WEIGHTS;
 
   friend class Converter;
 };
@@ -249,4 +292,4 @@ class TRT_TensorOrWeights {
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
-#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_TRT_WEIGHTS_H_
+#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_WEIGHTS_H_

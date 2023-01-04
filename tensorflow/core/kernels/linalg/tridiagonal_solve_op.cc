@@ -15,6 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
+#include <cmath>
+
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"

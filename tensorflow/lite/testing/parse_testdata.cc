@@ -25,6 +25,9 @@ limitations under the License.
 #include <fstream>
 #include <iostream>
 #include <streambuf>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/lite/error_reporter.h"
 #include "tensorflow/lite/testing/message.h"
@@ -33,6 +36,8 @@ limitations under the License.
 namespace tflite {
 namespace testing {
 namespace {
+
+const char kDefaultSignatureKey[] = "serving_default";
 
 // Fatal error if parse error occurs
 #define PARSE_CHECK_EQ(filename, current_line, x, y)                         \
@@ -245,85 +250,127 @@ TfLiteStatus CheckOutputs(tflite::Interpreter* interpreter,
   return kTfLiteOk;
 }
 
-// Process an 'invoke' message, triggering execution of the test runner, as
+// Processes Protobuf map<string, string> like message.
+// Supports format of
+// field_name {key: "KEY1" value: "VAL1"}
+// field_name {key: "KEY2" value: "VAL2"}
+// field_name {key: "KEY3" value: "VAL3"}
+//
+// for field `map<string, string> field_name = TAG;`
+//
+// Note: The parent of this field should track the ownership of the repeated
+// field. By calling KvMap::Finish() means a new entry is added to the map
+// instead of finish parsing of the whole map.
+class KvMap : public Message, public std::vector<std::pair<string, string>> {
+ public:
+  void SetField(const std::string& name, const std::string& value) override {
+    if (name == "key") {
+      key_ = value;
+    } else if (name == "value") {
+      value_ = value;
+    }
+  }
+  void Finish() override {
+    push_back(std::make_pair(key_, value_));
+    key_.clear();
+    value_.clear();
+  }
+
+ private:
+  string key_;
+  string value_;
+};
+
+// Processes an 'invoke' message, triggering execution of the test runner, as
 // well as verification of outputs. An 'invoke' message looks like:
 //   invoke {
-//     id: xyz
-//     input: 1,2,1,1,1,2,3,4
-//     output: 4,5,6
+//     id: "xyz"
+//     input { key: "a" value: "1,2,1,1,1,2,3,4"}
+//     input { key: "b" value: "1,2,1,1,1,2,3,4"}
+//     output { key: "x" value: "4,5,6"}
+//     output { key: "y" value: "14,15,16"}
+//     output_shape { key: "x" value: "3"}
+//     output_shape { key: "y" value: "1,3"}
 //   }
 class Invoke : public Message {
  public:
-  explicit Invoke(TestRunner* test_runner) : test_runner_(test_runner) {
-    expected_inputs_ = test_runner->GetInputs();
-    expected_outputs_ = test_runner->GetOutputs();
-  }
+  explicit Invoke(TestRunner* test_runner) : test_runner_(test_runner) {}
 
   void SetField(const std::string& name, const std::string& value) override {
     if (name == "id") {
       test_runner_->SetInvocationId(value);
-    } else if (name == "input") {
-      if (parsed_input_count_ >= expected_inputs_.size()) {
-        return test_runner_->Invalidate("Too many inputs");
-      }
-      test_runner_->SetInput(expected_inputs_[parsed_input_count_], value);
-      ++parsed_input_count_;
-    } else if (name == "output") {
-      if (parsed_output_count_ >= expected_outputs_.size()) {
-        return test_runner_->Invalidate("Too many outputs");
-      }
-      test_runner_->SetExpectation(expected_outputs_[parsed_output_count_],
-                                   value);
-      ++parsed_output_count_;
-    } else if (name == "output_shape") {
-      if (parsed_output_shape_count_ >= expected_outputs_.size()) {
-        return test_runner_->Invalidate("Too many output shapes");
-      }
-      test_runner_->SetShapeExpectation(
-          expected_outputs_[parsed_output_shape_count_], value);
-      ++parsed_output_shape_count_;
     }
   }
+
+  Message* AddChild(const std::string& s) override {
+    if (s == "input") {
+      return MaybeInitializeChild(&inputs_);
+    } else if (s == "output") {
+      return MaybeInitializeChild(&expected_outputs_);
+    } else if (s == "output_shape") {
+      return MaybeInitializeChild(&expected_output_shapes_);
+    }
+    return nullptr;
+  }
+
+  // Invokes the test runner and checks expectations.
   void Finish() override {
-    test_runner_->Invoke();
-    test_runner_->CheckResults();
+    using VectorT = std::vector<std::pair<string, string>>;
+    test_runner_->Invoke(inputs_ ? *inputs_ : VectorT());
+    test_runner_->CheckResults(
+        expected_outputs_ ? *expected_outputs_ : VectorT(),
+        expected_output_shapes_ ? *expected_output_shapes_ : VectorT());
   }
 
  private:
-  std::vector<int> expected_inputs_;
-  std::vector<int> expected_outputs_;
-
-  int parsed_input_count_ = 0;
-  int parsed_output_count_ = 0;
-  int parsed_output_shape_count_ = 0;
+  // Checks whether `*child` is initialized and return the message pointer.
+  // Initializes and owns it if it's not initialized.
+  Message* MaybeInitializeChild(KvMap** child) {
+    if (*child == nullptr) {
+      *child = new KvMap;
+      Store(*child);
+    }
+    return *child;
+  }
 
   TestRunner* test_runner_;
+
+  KvMap* inputs_ = nullptr;
+  KvMap* expected_outputs_ = nullptr;
+  KvMap* expected_output_shapes_ = nullptr;
 };
 
 // Process an 'reshape' message, triggering resizing of the input tensors via
 // the test runner. A 'reshape' message looks like:
 //   reshape {
-//     input: 1,2,1,1,1,2,3,4
+//     input { key: "a" value: "1,2,1,1,1,2,3,4"}
+//     input { key: "b" value: "1,2,1,1,1,2,3,4"}
 //   }
 class Reshape : public Message {
  public:
-  explicit Reshape(TestRunner* test_runner) : test_runner_(test_runner) {
-    expected_inputs_ = test_runner->GetInputs();
+  explicit Reshape(TestRunner* test_runner) : test_runner_(test_runner) {}
+
+  Message* AddChild(const std::string& s) override {
+    if (s != "input") return nullptr;
+    if (input_shapes_ == nullptr) {
+      input_shapes_ = new KvMap;
+      Store(input_shapes_);
+    }
+    return input_shapes_;
   }
 
-  void SetField(const std::string& name, const std::string& value) override {
-    if (name == "input") {
-      if (expected_inputs_.empty()) {
-        return test_runner_->Invalidate("Too many inputs to reshape");
-      }
-      test_runner_->ReshapeTensor(*expected_inputs_.begin(), value);
-      expected_inputs_.erase(expected_inputs_.begin());
+  // Reshapes tensors.
+  void Finish() override {
+    if (!input_shapes_) return;
+    for (const auto& item : *input_shapes_) {
+      test_runner_->ReshapeTensor(item.first, item.second);
     }
   }
 
  private:
-  std::vector<int> expected_inputs_;
   TestRunner* test_runner_;
+
+  KvMap* input_shapes_ = nullptr;
 };
 
 // This is the top-level message in a test file.
@@ -334,11 +381,11 @@ class TestData : public Message {
   void SetMaxInvocations(int max) { max_invocations_ = max; }
   void SetField(const std::string& name, const std::string& value) override {
     if (name == "load_model") {
-      test_runner_->LoadModel(value);
+      test_runner_->LoadModel(value, kDefaultSignatureKey);
     } else if (name == "init_state") {
       test_runner_->AllocateTensors();
-      for (int id : Split<int>(value, ",")) {
-        test_runner_->ResetTensor(id);
+      for (const auto& name : Split<string>(value, ",")) {
+        test_runner_->ResetTensor(name);
       }
     }
   }

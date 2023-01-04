@@ -18,9 +18,7 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 
-#include "absl/base/casts.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -38,8 +36,8 @@ namespace {
 
 // Rotates a 32-bit integer 'v' left by 'distance' bits.
 XlaOp RotateLeftU32(XlaOp v, int distance) {
-  return (v << ConstantR0<uint32>(v.builder(), distance)) |
-         ShiftRightLogical(v, ConstantR0<uint32>(v.builder(), 32 - distance));
+  return (v << ConstantR0<uint32_t>(v.builder(), distance)) |
+         ShiftRightLogical(v, ConstantR0<uint32_t>(v.builder(), 32 - distance));
 }
 
 // The internal state of the Three Fry implementation.
@@ -59,7 +57,7 @@ ThreeFry2x32State ThreeFry2x32(ThreeFry2x32State input, ThreeFry2x32State key) {
 
   std::array<XlaOp, 3> ks;
   // 0x1BD11BDA is a parity constant specified by the ThreeFry2x32 algorithm.
-  ks[2] = ConstantR0<uint32>(builder, 0x1BD11BDA);
+  ks[2] = ConstantR0<uint32_t>(builder, 0x1BD11BDA);
   for (int i = 0; i < 2; ++i) {
     ks[i] = key[i];
     x[i] = input[i];
@@ -85,40 +83,40 @@ ThreeFry2x32State ThreeFry2x32(ThreeFry2x32State input, ThreeFry2x32State key) {
   x = round(x, rotations[2]);
   x = round(x, rotations[3]);
   x[0] = x[0] + ks[1];
-  x[1] = x[1] + ks[2] + ConstantR0<uint32>(builder, 1);
+  x[1] = x[1] + ks[2] + ConstantR0<uint32_t>(builder, 1);
 
   x = round(x, rotations[4]);
   x = round(x, rotations[5]);
   x = round(x, rotations[6]);
   x = round(x, rotations[7]);
   x[0] = x[0] + ks[2];
-  x[1] = x[1] + ks[0] + ConstantR0<uint32>(builder, 2);
+  x[1] = x[1] + ks[0] + ConstantR0<uint32_t>(builder, 2);
 
   x = round(x, rotations[0]);
   x = round(x, rotations[1]);
   x = round(x, rotations[2]);
   x = round(x, rotations[3]);
   x[0] = x[0] + ks[0];
-  x[1] = x[1] + ks[1] + ConstantR0<uint32>(builder, 3);
+  x[1] = x[1] + ks[1] + ConstantR0<uint32_t>(builder, 3);
 
   x = round(x, rotations[4]);
   x = round(x, rotations[5]);
   x = round(x, rotations[6]);
   x = round(x, rotations[7]);
   x[0] = x[0] + ks[1];
-  x[1] = x[1] + ks[2] + ConstantR0<uint32>(builder, 4);
+  x[1] = x[1] + ks[2] + ConstantR0<uint32_t>(builder, 4);
 
   x = round(x, rotations[0]);
   x = round(x, rotations[1]);
   x = round(x, rotations[2]);
   x = round(x, rotations[3]);
   x[0] = x[0] + ks[2];
-  x[1] = x[1] + ks[0] + ConstantR0<uint32>(builder, 5);
+  x[1] = x[1] + ks[0] + ConstantR0<uint32_t>(builder, 5);
 
   return x;
 }
 
-// Converts a uint64 to two uint32s.
+// Converts a uint64_t to two uint32s.
 std::array<XlaOp, 2> Uint64ToUint32s(XlaOp u64) {
   XlaBuilder* builder = u64.builder();
   XlaOp const32 = ConstantR0WithType(builder, U64, 32);
@@ -127,7 +125,7 @@ std::array<XlaOp, 2> Uint64ToUint32s(XlaOp u64) {
   return {fst, snd};
 }
 
-// Converts two uint32s to a uint64.
+// Converts two uint32s to a uint64_t.
 XlaOp Uint32sToUint64(std::array<XlaOp, 2> u32s) {
   XlaBuilder* builder = u32s[0].builder();
   return ConvertElementType(u32s[0], U64) |
@@ -192,7 +190,9 @@ SplitShapePair SplitShapeIntoHalves(const Shape& shape) {
       }
     }
   }
-  CHECK_GE(pair.split_dim, 0);
+  if (pair.split_dim < 0) {
+    LOG(ERROR) << "This point shouldn't have been reached.";
+  }
   std::vector<int64_t> half_shape_dims;
   std::vector<int64_t> concat_shape_dims;
   const auto rank = shape.rank();
@@ -231,8 +231,7 @@ XlaOp CombineShapePair(absl::Span<const XlaOp> pair,
       original_shape.dimensions(shape_pair.split_dim);
   std::vector<int64_t> reshape_dims(original_shape.dimensions().begin(),
                                     original_shape.dimensions().end());
-  reshape_dims[shape_pair.split_dim] =
-      RoundUpToNearest<int64_t>(pre_split_size, 2);
+  reshape_dims[shape_pair.split_dim] = RoundUpTo<int64_t>(pre_split_size, 2);
   result = Reshape(result, reshape_dims);
   if (reshape_dims[shape_pair.split_dim] != pre_split_size) {
     result = Slice(result, std::vector<int64_t>(original_shape.rank(), 0),
@@ -254,6 +253,18 @@ RngOutput ThreeFryRngBit32(XlaOp key, XlaOp initial_state, const Shape& shape) {
   return {result, inputs_state.second};
 }
 
+// Generates random 16bits with the given shape using the Three Fry
+// implementation. Returns the random bits and the new state.
+RngOutput ThreeFryRngBit16(XlaOp op_key, XlaOp initial_state,
+                           const Shape& shape) {
+  // TODO(b/256713018): Use a better approach to not waste the upper 16 bits.
+  auto new_shape = shape;
+  new_shape.set_element_type(U32);
+  auto output = ThreeFryRngBit32(op_key, initial_state, new_shape);
+  output.value = ConvertElementType(output.value, U16);
+  return output;
+}
+
 // Generates random 64bits with the given shape using the Three Fry
 // implementation. Returns the random bits and the new state.
 RngOutput ThreeFryRngBit64(XlaOp key, XlaOp initial_state, const Shape& shape) {
@@ -273,10 +284,10 @@ using Philox4x32State = std::array<XlaOp, 4>;
 // Computes the Philox4x32 algorithm using 10 rounds.
 Philox4x32State Philox4x32(Philox4x32State state, Philox4x32Key key) {
   // Constants specified by the Philox algorithm.
-  static const uint32 kPhiloxW32A = 0x9E3779B9;
-  static const uint32 kPhiloxW32B = 0xBB67AE85;
-  static const uint32 kPhiloxM4x32A = 0xD2511F53;
-  static const uint32 kPhiloxM4x32B = 0xCD9E8D57;
+  static const uint32_t kPhiloxW32A = 0x9E3779B9;
+  static const uint32_t kPhiloxW32B = 0xBB67AE85;
+  static const uint32_t kPhiloxM4x32A = 0xD2511F53;
+  static const uint32_t kPhiloxM4x32B = 0xCD9E8D57;
 
   struct HighLowPair {
     XlaOp high;
@@ -284,7 +295,7 @@ Philox4x32State Philox4x32(Philox4x32State state, Philox4x32Key key) {
   };
 
   // Compute the high and low words from multiplying two 32-bit integers.
-  auto mul_hi_low = [](XlaOp x, uint32 k) {
+  auto mul_hi_low = [](XlaOp x, uint32_t k) {
     auto product =
         ConvertElementType(x, U64) * ConstantR0<uint64_t>(x.builder(), k);
     auto low = ConvertElementType(product, U32);
@@ -304,8 +315,8 @@ Philox4x32State Philox4x32(Philox4x32State state, Philox4x32Key key) {
   // Update the key after a round of Philox algorithm.
   auto raise_key = [](Philox4x32Key key) {
     XlaBuilder* builder = key[0].builder();
-    return Philox4x32Key{key[0] + ConstantR0<uint32>(builder, kPhiloxW32A),
-                         key[1] + ConstantR0<uint32>(builder, kPhiloxW32B)};
+    return Philox4x32Key{key[0] + ConstantR0<uint32_t>(builder, kPhiloxW32A),
+                         key[1] + ConstantR0<uint32_t>(builder, kPhiloxW32B)};
   };
 
   static const int kNumRounds = 10;
@@ -328,10 +339,10 @@ std::pair<Philox4x32State, Philox4x32Key> ScramblePhiloxKey(Philox4x32Key key) {
       ConvertElementType(key1, U32),
       ConvertElementType(key1 >> ScalarLike(key1, 32), U32),
   };
-  key = {ConstantR0<uint32>(builder, 0x3ec8f720),
-         ConstantR0<uint32>(builder, 0x02461e29)};
+  key = {ConstantR0<uint32_t>(builder, 0x3ec8f720),
+         ConstantR0<uint32_t>(builder, 0x02461e29)};
   state = Philox4x32(state, key);
-  XlaOp zero = ConstantR0<uint32>(builder, 0);
+  XlaOp zero = ConstantR0<uint32_t>(builder, 0);
   return {Philox4x32State{zero, zero, state[2], state[3]},
           Philox4x32Key{state[0], state[1]}};
 }
@@ -429,7 +440,22 @@ RngOutput PhiloxRngBit32(XlaOp op_key, XlaOp initial_state,
   numbers = Slice(numbers, /*start_indices=*/{0},
                   /*limit_indices=*/{num_elems},
                   /*strides=*/{1});
-  return {Reshape(numbers, AsInt64Slice(shape.dimensions())), new_state};
+  return {Reshape(numbers, shape.dimensions()), new_state};
+}
+
+// Generates an array of primitive type U16 with the given shape containing
+// random bits generated by the Philox algorithm. Returns the array and the new
+// state of the random number generator.
+RngOutput PhiloxRngBit16(XlaOp op_key, XlaOp initial_state,
+                         const Shape& shape) {
+  // We use PhiloxRngBit32 and throw away the upper 16 bits here, to align with
+  // the non-XLA kernels.
+  // TODO(b/256713018): Use a better approach to not waste the upper 16 bits.
+  auto new_shape = shape;
+  new_shape.set_element_type(U32);
+  auto output = PhiloxRngBit32(op_key, initial_state, new_shape);
+  output.value = ConvertElementType(output.value, U16);
+  return output;
 }
 
 // Generates an array of primitive type U64 with the given shape containing
@@ -462,7 +488,7 @@ RngOutput PhiloxRngBit64(XlaOp op_key, XlaOp initial_state,
   numbers = Slice(numbers, /*start_indices=*/{0},
                   /*limit_indices=*/{num_elems},
                   /*strides=*/{1});
-  return {Reshape(numbers, AsInt64Slice(shape.dimensions())), new_state};
+  return {Reshape(numbers, shape.dimensions()), new_state};
 }
 
 XlaOp ConvertRandomBitsToUniformFloatingPoint(XlaOp bits, XlaOp minval,
@@ -474,29 +500,59 @@ XlaOp ConvertRandomBitsToUniformFloatingPoint(XlaOp bits, XlaOp minval,
     TF_ASSIGN_OR_RETURN(const Shape* bits_shape, builder->GetShapePtr(bits));
     PrimitiveType value_type = minval_shape->element_type();
     PrimitiveType bit_type = bits_shape->element_type();
-    CHECK((value_type == F32 && bit_type == U32) ||
-          (value_type == F64 && bit_type == U64));
+    auto is_f32_or_f64 = (value_type == F32 && bit_type == U32) ||
+                         (value_type == F64 && bit_type == U64);
+    auto is_f16 = value_type == F16 && bit_type == U16;
+    if (!(is_f32_or_f64 || is_f16)) {
+      return InvalidArgument(
+          "In ConvertRandomBitsToUniformFloatingPoint, value_type and bit_type "
+          "can only be one of those combinations: (float16, uint16), (float32, "
+          "uint32) and (float64, uint64). Got combination: (%s, %s).",
+          primitive_util::LowercasePrimitiveTypeName(value_type),
+          primitive_util::LowercasePrimitiveTypeName(bit_type));
+    }
 
-    // Form random mantissa bits for float/double, with a leading 1 bit.
-    int num_float_bits = primitive_util::BitWidth(value_type);
-    // Subtract one as SignificandWidth includes the leading 1 bit.
-    int num_mantissa_bits = primitive_util::SignificandWidth(value_type) - 1;
+    if (is_f32_or_f64) {
+      // TODO(b/256715195): Consider using the approach in the F16 case.
 
-    // Ignore the exponent bits and convert the mantissa bits to the floating
-    // point type.
-    bits = ShiftRightLogical(
-        bits, ScalarLike(bits, num_float_bits - num_mantissa_bits));
+      // Form random mantissa bits for float/double, with a leading 1 bit.
+      int num_float_bits = primitive_util::BitWidth(value_type);
+      // Subtract one as SignificandWidth includes the leading 1 bit.
+      int num_mantissa_bits = primitive_util::SignificandWidth(value_type) - 1;
 
-    // We have an integer-valued floating point number in the range
-    // [0, 2**{num_mantissa_bits}).
-    XlaOp values = ConvertElementType(bits, value_type);
+      // Ignore the exponent bits and convert the mantissa bits to the floating
+      // point type.
+      bits = ShiftRightLogical(
+          bits, ScalarLike(bits, num_float_bits - num_mantissa_bits));
 
-    // Divide by 2**{-num_mantissa_bits} to get a number in the range
-    // [0.0, 1.0).
-    values = values * ScalarLike(values, std::ldexp(1., -num_mantissa_bits));
+      // We have an integer-valued floating point number in the range
+      // [0, 2**{num_mantissa_bits}).
+      XlaOp values = ConvertElementType(bits, value_type);
 
-    // Multiply and add to shift to the range [minval, maxval).
-    return values * (maxval - minval) + minval;
+      // Divide by 2**{-num_mantissa_bits} to get a number in the range
+      // [0.0, 1.0).
+      values = values * ScalarLike(values, std::ldexp(1., -num_mantissa_bits));
+
+      // Multiply and add to shift to the range [minval, maxval).
+      return values * (maxval - minval) + minval;
+    } else if (is_f16) {
+      // This path follows the approach of the non-XLA kernels (see
+      // `tsl::random::Uint16ToHalf`). IEEE754 halfs are formatted as follows
+      // (MSB first):
+      //    sign(1) exponent(5) mantissa(10)
+      // Conceptually construct the following:
+      //    sign == 0
+      //    exponent == 15  -- an excess 15 representation of a zero exponent
+      //    mantissa == 10 random bits
+
+      auto mantissa = bits & ScalarLike(bits, 0x3ffu);  // 10 bit mantissa
+      auto exponent = ScalarLike(bits, static_cast<uint16_t>(15) << 10);
+      auto u16_result = exponent | mantissa;
+      auto result = BitcastConvertType(u16_result, F16);
+      return result - ScalarLike(result, 1.0);
+    } else {
+      return InternalError("This point shouldn't have been reached.");
+    }
   });
 }
 
@@ -537,6 +593,10 @@ RngOutput ThreeFryBitGenerator(XlaOp key, XlaOp initial_state,
                                const Shape& shape) {
   PrimitiveType type = shape.element_type();
   switch (type) {
+    case F16:
+    case U16:
+    case S16:
+      return ThreeFryRngBit16(key, initial_state, shape);
     case F32:
     case U32:
     case S32:
@@ -546,11 +606,12 @@ RngOutput ThreeFryBitGenerator(XlaOp key, XlaOp initial_state,
     case S64:
       return ThreeFryRngBit64(key, initial_state, shape);
     default:
-      return {key.builder()->ReportError(Unimplemented(
-                  "Types other than F32, F64, U32, S32, U64 and S64 "
-                  "are not implemented by ThreeFryBitGenerator; got %s",
-                  primitive_util::LowercasePrimitiveTypeName(type))),
-              initial_state};
+      return {
+          key.builder()->ReportError(Unimplemented(
+              "Types other than F16, F32, F64, U16, S16, U32, S32, U64 and S64 "
+              "are not implemented by ThreeFryBitGenerator; got %s",
+              primitive_util::LowercasePrimitiveTypeName(type))),
+          initial_state};
   }
 }
 
@@ -558,6 +619,10 @@ RngOutput PhiloxBitGenerator(XlaOp key, XlaOp initial_state,
                              const Shape& shape) {
   PrimitiveType type = shape.element_type();
   switch (type) {
+    case F16:
+    case U16:
+    case S16:
+      return PhiloxRngBit16(key, initial_state, shape);
     case F32:
     case U32:
     case S32:
@@ -567,11 +632,12 @@ RngOutput PhiloxBitGenerator(XlaOp key, XlaOp initial_state,
     case S64:
       return PhiloxRngBit64(key, initial_state, shape);
     default:
-      return {key.builder()->ReportError(Unimplemented(
-                  "Types other than F32, F64, U32, S32, U64 and S64 "
-                  "are not implemented by PhiloxFryBitGenerator; got %s",
-                  primitive_util::LowercasePrimitiveTypeName(type))),
-              initial_state};
+      return {
+          key.builder()->ReportError(Unimplemented(
+              "Types other than F16, F32, F64, U16, S16, U32, S32, U64 and S64 "
+              "are not implemented by PhiloxBitGenerator; got %s",
+              primitive_util::LowercasePrimitiveTypeName(type))),
+          initial_state};
   }
 }
 
@@ -603,9 +669,14 @@ RngOutput UniformIntDistribution(XlaOp key, XlaOp initial_state,
   PrimitiveType unsigned_type;
   if (type == U32 || type == S32) {
     unsigned_type = U32;
-  } else {
-    DCHECK(type == U64 || type == S64);
+  } else if (type == U64 || type == S64) {
     unsigned_type = U64;
+  } else {
+    return {key.builder()->ReportError(Unimplemented(
+                "Types other than U32, S32, U64 and S64 "
+                "are not implemented by UniformIntDistribution; got %s",
+                primitive_util::LowercasePrimitiveTypeName(type))),
+            initial_state};
   }
   return {
       ConvertRandomBitsToUniformInt(bits, minval, maxval, type, unsigned_type),
@@ -615,10 +686,18 @@ RngOutput UniformIntDistribution(XlaOp key, XlaOp initial_state,
 RngOutput NormalFloatingPointDistribution(XlaOp key, XlaOp initial_state,
                                           BitGeneratorTy bit_generator,
                                           const Shape& shape) {
-  PrimitiveType primitive_type = shape.element_type();
-  DCHECK(primitive_type == F32 || primitive_type == F64);
-
   XlaBuilder* builder = key.builder();
+  PrimitiveType primitive_type = shape.element_type();
+  if (!(primitive_type == F16 || primitive_type == F32 ||
+        primitive_type == F64)) {
+    return {
+        builder->ReportError(Unimplemented(
+            "Types other than F16, F32 and F64 "
+            "are not implemented by NormalFloatingPointDistribution; got %s",
+            primitive_util::LowercasePrimitiveTypeName(primitive_type))),
+        initial_state};
+  }
+
   auto shape_pair = SplitShapeIntoHalves(shape);
   RngOutput bits_state = UniformFloatingPointDistribution(
       key, initial_state, bit_generator,

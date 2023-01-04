@@ -94,6 +94,11 @@ class DequantizeOp : public OpKernel {
     const Tensor& input_min_tensor = ctx->input(1);
     const Tensor& input_max_tensor = ctx->input(2);
 
+    OP_REQUIRES(
+        ctx, axis_ < input.dims(),
+        errors::InvalidArgument("Axis must be less than input dimension(",
+                                input.dims(), "), got ", axis_));
+
     int num_slices = 1;
     if (axis_ > -1) {
       num_slices = input.dim_size(axis_);

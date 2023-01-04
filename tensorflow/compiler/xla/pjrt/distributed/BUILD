@@ -1,18 +1,21 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
+load("//tensorflow/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 
 licenses(["notice"])
 
-package(default_visibility = ["//tensorflow:internal"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
+)
 
 tf_proto_library(
     name = "protocol_proto",
     srcs = ["protocol.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_grpc_version = 1,
+    create_grpc_library = True,
     use_grpc_namespace = True,
 )
 
@@ -30,7 +33,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-    ] + tf_grpc_cc_dependencies(),
+    ] + tsl_grpc_cc_dependencies(),
 )
 
 cc_library(
@@ -40,19 +43,29 @@ cc_library(
     deps = [
         ":key_value_store",
         ":protocol",
-        ":protocol_proto_cc",
+        ":protocol_cc_grpc_proto",
         ":util",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/memory",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-    ],
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_impl",
+        "//tensorflow/tsl/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
+        "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:random",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/protobuf:coordination_config_proto_cc",
+    ] + tsl_grpc_cc_dependencies(),
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "service_test",
     srcs = ["service_test.cc"],
     tags = [
@@ -63,8 +76,9 @@ tf_cc_test(
         ":service",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -78,15 +92,24 @@ cc_library(
     ],
     deps = [
         ":protocol",
-        ":protocol_proto_cc",
+        ":protocol_cc_grpc_proto",
         ":util",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:lib",
-    ] + tf_grpc_cc_dependencies(),
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_error_util",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_client",
+        "//tensorflow/tsl/distributed_runtime/rpc/coordination:grpc_coordination_client",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "//tensorflow/tsl/platform:random",
+        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
+        "//tensorflow/tsl/protobuf:coordination_config_proto_cc",
+    ] + tsl_grpc_cc_dependencies(),
 )
 
 cc_library(
@@ -94,7 +117,7 @@ cc_library(
     hdrs = ["util.h"],
     deps = [
         "//tensorflow/compiler/xla:status",
-    ] + tf_grpc_cc_dependencies(),
+    ] + tsl_grpc_cc_dependencies(),
 )
 
 cc_library(
@@ -105,10 +128,10 @@ cc_library(
         ":client",
         ":service",
         "//tensorflow/compiler/xla:statusor",
-    ] + tf_grpc_cc_dependencies(),
+    ] + tsl_grpc_cc_dependencies(),
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "client_server_test",
     size = "small",
     srcs = ["client_server_test.cc"],
@@ -122,11 +145,13 @@ tf_cc_test(
         ":service",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/strings",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ] + tf_grpc_cc_dependencies(),
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/platform:errors",
+    ] + tsl_grpc_cc_dependencies(),
 )

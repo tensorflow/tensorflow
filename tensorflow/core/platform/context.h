@@ -17,31 +17,16 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_CONTEXT_H_
 
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/tsl/platform/context.h"
 
 namespace tensorflow {
 
-enum class ContextKind {
-  // Initial state with default (empty) values.
-  kDefault,
-  // Initial state inherited from the creating or scheduling thread.
-  kThread,
-};
-
-// Context is a container for request-specific information that should be passed
-// to threads that perform related work. The default constructor should capture
-// all relevant context.
-class Context;
-
-// Scoped object that sets the current thread's context until the object is
-// destroyed.
-class WithContext;
+// NOLINTBEGIN(misc-unused-using-decls)
+using tsl::Context;
+using tsl::ContextKind;
+using tsl::WithContext;
+// NOLINTEND(misc-unused-using-decls)
 
 }  // namespace tensorflow
-
-#if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/context.h"
-#else
-#include "tensorflow/core/platform/default/context.h"
-#endif
 
 #endif  // TENSORFLOW_CORE_PLATFORM_CONTEXT_H_

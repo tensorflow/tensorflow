@@ -17,7 +17,6 @@ import argparse
 import sys
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow
 
 from tensorflow.python import debug as tf_debug
@@ -36,7 +35,7 @@ def main(_):
   n1 = tf.Variable(
       np.ones([FLAGS.tensor_size] * 2), dtype=tf.int32, name="node_01")
 
-  for i in xrange(2, FLAGS.length):
+  for i in range(2, FLAGS.length):
     n0, n1 = n1, tf.add(n0, n1, name="node_%.2d" % i)
 
   sess.run(tf.global_variables_initializer())

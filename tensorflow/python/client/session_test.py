@@ -23,7 +23,6 @@ import warnings
 
 import numpy as np
 import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.lib.core import error_codes_pb2
@@ -1567,7 +1566,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         size = 1
         for s in shape:
           size *= s
-        c_list = np.array([compat.as_bytes(str(i)) for i in xrange(size)],
+        c_list = np.array([compat.as_bytes(str(i)) for i in range(size)],
                           dtype=np.object_).reshape(shape) if size > 0 else []
         c = constant_op.constant(c_list)
         self.assertAllEqual(c, c_list)
@@ -1578,7 +1577,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         size = 1
         for s in shape:
           size *= s
-        c_list = np.array([compat.as_bytes(str(i)) for i in xrange(size)],
+        c_list = np.array([compat.as_bytes(str(i)) for i in range(size)],
                           dtype=np.object_).reshape(shape)
         feed_t = array_ops.placeholder(dtype=dtypes.string, shape=shape)
         c = array_ops.identity(feed_t)
@@ -1775,7 +1774,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         b = math_ops.add(a, a)
         c = array_ops.identity(b)
         d = math_ops.multiply(c, c)
-      for step in xrange(120):
+      for step in range(120):
         run_metadata = config_pb2.RunMetadata()
         sess.run(
             d,

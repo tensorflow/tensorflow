@@ -57,7 +57,7 @@ float ExponentialRandomPositiveFloat(float percentile, float percentile_val,
                                      float max_val);
 
 // Fills a vector with random floats between |min| and |max|.
-void FillRandom(std::vector<float>* vec, float min, float max);
+void FillRandomFloat(std::vector<float>* vec, float min, float max);
 
 template <typename T>
 void FillRandom(typename std::vector<T>::iterator begin_it,
@@ -74,7 +74,13 @@ void FillRandom(typename std::vector<T>::iterator begin_it,
 // Fills a vector with random numbers between |min| and |max|.
 template <typename T>
 void FillRandom(std::vector<T>* vec, T min, T max) {
-  return FillRandom(std::begin(*vec), std::end(*vec), min, max);
+  FillRandom(std::begin(*vec), std::end(*vec), min, max);
+}
+
+// Template specialization for float.
+template <>
+inline void FillRandom<float>(std::vector<float>* vec, float min, float max) {
+  FillRandomFloat(vec, min, max);
 }
 
 // Fills a vector with random numbers.

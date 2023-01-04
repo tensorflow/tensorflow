@@ -17,8 +17,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -189,6 +189,35 @@ TEST(IsBuiltinResource, IsBuiltinResourceTest) {
   TfLiteDelegate delegate;
   tensor.delegate = &delegate;
   EXPECT_FALSE(IsBuiltinResource(&tensor));
+}
+
+TEST(ResourceTest, GetMemoryUsage) {
+  ResourceVariable var;
+  EXPECT_FALSE(var.IsInitialized());
+
+  TfLiteTensor tensor;
+  std::vector<int> shape = {100};
+  InitTensor(shape, kTfLiteArenaRw, 1.0f, &tensor);
+
+  EXPECT_EQ(kTfLiteOk, var.AssignFrom(&tensor));
+  EXPECT_TRUE(var.IsInitialized());
+  auto* value = var.GetTensor();
+
+  // Variables are always dynamic type.
+  EXPECT_EQ(kTfLiteDynamic, value->allocation_type);
+  EXPECT_EQ(kTfLiteFloat32, value->type);
+  EXPECT_EQ(100 * sizeof(float), value->bytes);
+  EXPECT_EQ(1, value->dims->size);
+  EXPECT_EQ(100, value->dims->data[0]);
+  EXPECT_EQ(1.0f, value->data.f[0]);
+
+  // Check memory usage
+  EXPECT_EQ(100 * sizeof(float), var.GetMemoryUsage());
+
+  // Cleanup
+  // For non dynamic tensors we need to delete the buffers manually.
+  free(tensor.data.raw);
+  TfLiteTensorFree(&tensor);
 }
 
 }  // namespace resource

@@ -28,8 +28,9 @@ from tensorflow.python.ops import linalg_ops
 from tensorflow.python.platform import test
 
 
-def MakePlaceholder(x):
-  return array_ops.placeholder(dtypes.as_dtype(x.dtype), shape=x.shape)
+def MakePlaceholder(x, dtype=None):
+  return array_ops.placeholder(
+      dtypes.as_dtype(x.dtype) if dtype is None else dtype, shape=x.shape)
 
 
 class MatrixTriangularSolveOpTest(xla_test.XLATestCase):
@@ -51,12 +52,12 @@ class MatrixTriangularSolveOpTest(xla_test.XLATestCase):
     broadcasted_b = b + np.zeros(shape=broadcasted_shape, dtype=b.dtype)
     self.assertAllClose(broadcasted_b, verification_np, atol=atol)
 
-  def _VerifyTriangularSolve(self, a, b, lower, adjoint, atol):
+  def _VerifyTriangularSolve(self, a, b, lower, adjoint, atol, dtype=None):
     clean_a = np.tril(a) if lower else np.triu(a)
     with self.session() as sess:
-      placeholder_a = MakePlaceholder(a)
-      placeholder_ca = MakePlaceholder(clean_a)
-      placeholder_b = MakePlaceholder(b)
+      placeholder_a = MakePlaceholder(a, dtype)
+      placeholder_ca = MakePlaceholder(clean_a, dtype)
+      placeholder_b = MakePlaceholder(b, dtype)
       with self.test_scope():
         x = linalg_ops.matrix_triangular_solve(
             placeholder_a, placeholder_b, lower=lower, adjoint=adjoint)
@@ -66,11 +67,11 @@ class MatrixTriangularSolveOpTest(xla_test.XLATestCase):
                                       placeholder_b, a, clean_a, b,
                                       verification, atol)
 
-  def _VerifyTriangularSolveCombo(self, a, b, atol=1e-4):
+  def _VerifyTriangularSolveCombo(self, a, b, atol=1e-4, dtype=None):
     transp = lambda x: np.swapaxes(x, -1, -2)
     for lower, adjoint in itertools.product([True, False], repeat=2):
       self._VerifyTriangularSolve(
-          a if lower else transp(a), b, lower, adjoint, atol)
+          a if lower else transp(a), b, lower, adjoint, atol, dtype=dtype)
 
   def testBasic(self):
     rng = np.random.RandomState(0)
@@ -78,6 +79,12 @@ class MatrixTriangularSolveOpTest(xla_test.XLATestCase):
     b = rng.randn(5, 7)
     for dtype in self.float_types:
       self._VerifyTriangularSolveCombo(a.astype(dtype), b.astype(dtype))
+
+  def testBfloat16(self):
+    rng = np.random.RandomState(0)
+    a = np.tril(rng.randn(5, 5))
+    b = rng.randn(5, 7)
+    self._VerifyTriangularSolveCombo(a, b, atol=5e-2, dtype=dtypes.bfloat16)
 
   def testBasicNotActuallyTriangular(self):
     rng = np.random.RandomState(0)

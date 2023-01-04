@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/quantize_model.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -25,9 +28,10 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/util/command_line_flags.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
+#include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/tools/optimize/test_util.h"
 
 // Note: More rigorous model tests can be found in subgraph_quantizer_test.cc
@@ -66,12 +70,21 @@ void VerifyAsymmetricQuantizationScale(
   EXPECT_NEAR(scale, quantized_quant_params.scale[0], eps);
 }
 
+TensorType GetBiasTensorType(TensorType& activation_type) {
+  return activation_type == TensorType_INT16 ? TensorType_INT64
+                                             : TensorType_INT32;
+}
+
 class QuantizeModelTest : public testing::Test {
  protected:
-  QuantizeModelTest() {
-    input_model_ = ReadModel(internal::kConvModelWith0Plus10Weights);
+  QuantizeModelTest()
+      : QuantizeModelTest(ReadModel(internal::kConvModelWith0Plus10Weights)) {}
+
+  explicit QuantizeModelTest(std::unique_ptr<FlatBufferModel> input_model) {
+    input_model_ = std::move(input_model);
     readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
+    model_ =
+        *std::move(std::unique_ptr<tflite::ModelT>(readonly_model_->UnPack()));
   }
 
   std::unique_ptr<FlatBufferModel> input_model_;
@@ -122,13 +135,12 @@ void ExpectSameModels(const ModelT& model, const ModelT& expected_model) {
 class QuantizeConvModelTest : public QuantizeModelTest,
                               public testing::WithParamInterface<TensorType> {
  protected:
-  QuantizeConvModelTest() {
-    tensor_type_ = GetParam();
-    input_model_ = ReadModel(internal::kConvModelWith0Plus10Weights);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeConvModelTest()
+      : QuantizeModelTest(ReadModel(internal::kConvModelWith0Plus10Weights)),
+        tensor_type_(GetParam()),
+        bias_type_(GetBiasTensorType(tensor_type_)) {}
   TensorType tensor_type_;
+  TensorType bias_type_;
 };
 
 INSTANTIATE_TEST_SUITE_P(QuantizeConvModelTestInst, QuantizeConvModelTest,
@@ -136,9 +148,9 @@ INSTANTIATE_TEST_SUITE_P(QuantizeConvModelTestInst, QuantizeConvModelTest,
                                             TensorType_INT16}));
 
 TEST_P(QuantizeConvModelTest, QuantizationSucceeds) {
-  auto status =
-      QuantizeModelAllOperators(&builder_, &model_, tensor_type_, tensor_type_,
-                                false, tensor_type_, &error_reporter_);
+  auto status = QuantizeModelAllOperators(&builder_, &model_, tensor_type_,
+                                          tensor_type_, false, tensor_type_,
+                                          bias_type_, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
   const uint8_t* buffer = builder_.GetBufferPointer();
   const Model* output_model = GetModel(buffer);
@@ -146,9 +158,10 @@ TEST_P(QuantizeConvModelTest, QuantizationSucceeds) {
 }
 
 TEST_P(QuantizeConvModelTest, SkipUnspecifiedLayer) {
-  auto status = QuantizeModel(
-      &builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,
-      /*allow_float=*/true, {}, TensorType_FLOAT32, &error_reporter_);
+  auto status =
+      QuantizeModel(&builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,
+                    /*allow_float=*/true, {}, TensorType_FLOAT32,
+                    TensorType_FLOAT32, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
   ASSERT_EQ(model_.subgraphs.size(), readonly_model_->subgraphs()->size());
   // The resulting model should be the same.
@@ -171,9 +184,9 @@ TEST_P(QuantizeConvModelTest, SkipUnspecifiedLayer) {
 }
 
 TEST_P(QuantizeConvModelTest, TensorShapesAndStructureIsUnchanged) {
-  auto status =
-      QuantizeModelAllOperators(&builder_, &model_, tensor_type_, tensor_type_,
-                                false, tensor_type_, &error_reporter_);
+  auto status = QuantizeModelAllOperators(&builder_, &model_, tensor_type_,
+                                          tensor_type_, false, tensor_type_,
+                                          bias_type_, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
   ASSERT_EQ(model_.subgraphs.size(), readonly_model_->subgraphs()->size());
   for (size_t subgraph_idx = 0; subgraph_idx < model_.subgraphs.size();
@@ -198,9 +211,9 @@ TEST_P(QuantizeConvModelTest, TensorShapesAndStructureIsUnchanged) {
 }
 
 TEST_P(QuantizeConvModelTest, OperatorsAreUnchanged) {
-  auto status =
-      QuantizeModelAllOperators(&builder_, &model_, tensor_type_, tensor_type_,
-                                false, tensor_type_, &error_reporter_);
+  auto status = QuantizeModelAllOperators(&builder_, &model_, tensor_type_,
+                                          tensor_type_, false, tensor_type_,
+                                          bias_type_, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
   ASSERT_EQ(model_.operator_codes.size(),
             readonly_model_->operator_codes()->size());
@@ -236,7 +249,7 @@ TEST_P(QuantizeConvModelTest, OperatorsAreUnchanged) {
 TEST_P(QuantizeConvModelTest, GraphIsFullyQuantized) {
   auto status = QuantizeModelAllOperators(
       &builder_, &model_, tensor_type_, tensor_type_,
-      /*allow_float*/ false, tensor_type_, &error_reporter_);
+      /*allow_float*/ false, tensor_type_, bias_type_, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
   for (const auto& subgraph : model_.subgraphs) {
     for (const auto& tensor : subgraph->tensors) {
@@ -255,7 +268,7 @@ TEST_P(QuantizeConvModelTest, GraphIsFullyQuantized) {
 TEST_P(QuantizeConvModelTest, FloatInputAndOutput) {
   auto status = QuantizeModelAllOperators(
       &builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,
-      /*allow_float*/ false, tensor_type_, &error_reporter_);
+      /*allow_float*/ false, tensor_type_, bias_type_, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
 
   for (int32_t subgraph_idx = 0; subgraph_idx < model_.subgraphs.size();
@@ -318,9 +331,9 @@ TEST_P(QuantizeConvModelTest, FloatInputAndOutput) {
 }
 
 TEST_P(QuantizeConvModelTest, Uint8InputAndOutput) {
-  auto status = QuantizeModelAllOperators(&builder_, &model_, TensorType_UINT8,
-                                          TensorType_UINT8, false,
-                                          TensorType_INT8, &error_reporter_);
+  auto status = QuantizeModelAllOperators(
+      &builder_, &model_, TensorType_UINT8, TensorType_UINT8, false,
+      TensorType_INT8, TensorType_INT32, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
 
   for (int32_t subgraph_idx = 0; subgraph_idx < model_.subgraphs.size();
@@ -391,17 +404,14 @@ TEST_P(QuantizeConvModelTest, Uint8InputAndOutput) {
 
 class QuantizeConvNoBiasModelTest : public QuantizeModelTest {
  protected:
-  QuantizeConvNoBiasModelTest() {
-    input_model_ = ReadModel(internal::kConvModelWithNoBias);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeConvNoBiasModelTest()
+      : QuantizeModelTest(ReadModel(internal::kConvModelWithNoBias)) {}
 };
 
 TEST_F(QuantizeConvNoBiasModelTest, QuantizationSucceeds) {
-  auto status = QuantizeModelAllOperators(&builder_, &model_, TensorType_INT8,
-                                          TensorType_INT8, false,
-                                          TensorType_INT8, &error_reporter_);
+  auto status = QuantizeModelAllOperators(
+      &builder_, &model_, TensorType_INT8, TensorType_INT8, false,
+      TensorType_INT8, TensorType_INT32, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
   const uint8_t* buffer = builder_.GetBufferPointer();
   const Model* output_model = GetModel(buffer);
@@ -411,15 +421,16 @@ TEST_F(QuantizeConvNoBiasModelTest, QuantizationSucceeds) {
 class QuantizeConcatModelTest : public QuantizeModelTest,
                                 public testing::WithParamInterface<TensorType> {
  protected:
-  QuantizeConcatModelTest() {
-    input_model_ = ReadModel(internal::kFloatConcatMax5Max10Max10);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
+  QuantizeConcatModelTest()
+      : QuantizeModelTest(ReadModel(internal::kFloatConcatMax5Max10Max10)) {}
+
+  void SetUp() override {
+    tensor_type_ = GetParam();
+    bias_type_ = GetBiasTensorType(tensor_type_);
   }
 
-  void SetUp() override { tensor_type_ = GetParam(); }
-
   TensorType tensor_type_;
+  TensorType bias_type_;
 };
 
 // There are two inputs for concat, "input0" and "input1". "input0" has [0, 5]
@@ -432,9 +443,9 @@ class QuantizeConcatModelTest : public QuantizeModelTest,
 //                                       concat - output
 //                              input1 /
 TEST_P(QuantizeConcatModelTest, AddRequantBeforeConcat) {
-  auto status =
-      QuantizeModelAllOperators(&builder_, &model_, tensor_type_, tensor_type_,
-                                false, tensor_type_, &error_reporter_);
+  auto status = QuantizeModelAllOperators(&builder_, &model_, tensor_type_,
+                                          tensor_type_, false, tensor_type_,
+                                          bias_type_, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
 
   // There is only one subgraph.
@@ -524,19 +535,16 @@ INSTANTIATE_TEST_SUITE_P(QuantizeConcatModelInst, QuantizeConcatModelTest,
                                             TensorType_INT16}));
 class QuantizeSplitModelTest : public QuantizeModelTest {
  protected:
-  QuantizeSplitModelTest() {
-    input_model_ = ReadModel(internal::kModelSplit);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeSplitModelTest()
+      : QuantizeModelTest(ReadModel(internal::kModelSplit)) {}
 };
 
 // There are two outputs for split with different scales, the resulting model
 // should have the scales be hardcodes to the input scale value.
 TEST_F(QuantizeSplitModelTest, QuantizeSplit) {
-  auto status = QuantizeModelAllOperators(&builder_, &model_, TensorType_INT8,
-                                          TensorType_INT8, false,
-                                          TensorType_INT8, &error_reporter_);
+  auto status = QuantizeModelAllOperators(
+      &builder_, &model_, TensorType_INT8, TensorType_INT8, false,
+      TensorType_INT8, TensorType_INT32, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
 
   // There is only one subgraph.
@@ -592,17 +600,15 @@ TEST_F(QuantizeSplitModelTest, QuantizeSplit) {
 
 class QuantizeConvModel1Test : public QuantizeModelTest {
  protected:
-  QuantizeConvModel1Test() {
-    input_model_ = ReadModel(internal::kConvModelWithMinus128Plus127Weights);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeConvModel1Test()
+      : QuantizeModelTest(
+            ReadModel(internal::kConvModelWithMinus128Plus127Weights)) {}
 };
 
 TEST_F(QuantizeConvModel1Test, VerifyConvQuantizationWithUnitScale) {
-  auto status = QuantizeModelAllOperators(&builder_, &model_, TensorType_INT8,
-                                          TensorType_INT8, false,
-                                          TensorType_INT8, &error_reporter_);
+  auto status = QuantizeModelAllOperators(
+      &builder_, &model_, TensorType_INT8, TensorType_INT8, false,
+      TensorType_INT8, TensorType_INT32, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
   const auto& subgraph = model_.subgraphs[0];
 
@@ -696,23 +702,22 @@ TEST_F(QuantizeConvModel1Test, VerifyConvQuantizationWithUnitScale) {
 class QuantizeConvModel2Test : public QuantizeModelTest,
                                public testing::WithParamInterface<TensorType> {
  protected:
-  QuantizeConvModel2Test() {
-    tensor_type_ = GetParam();
-    input_model_ = ReadModel(internal::kConvModelWith0Plus10Weights);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeConvModel2Test()
+      : QuantizeModelTest(ReadModel(internal::kConvModelWith0Plus10Weights)),
+        tensor_type_(GetParam()),
+        bias_type_(GetBiasTensorType(tensor_type_)) {}
 
   TensorType tensor_type_;
+  TensorType bias_type_;
 };
 INSTANTIATE_TEST_SUITE_P(QuantizeConvModel2TestInst, QuantizeConvModel2Test,
                          testing::ValuesIn({TensorType_INT8,
                                             TensorType_INT16}));
 
 TEST_P(QuantizeConvModel2Test, VerifyConvQuantization) {
-  auto status =
-      QuantizeModelAllOperators(&builder_, &model_, tensor_type_, tensor_type_,
-                                false, tensor_type_, &error_reporter_);
+  auto status = QuantizeModelAllOperators(&builder_, &model_, tensor_type_,
+                                          tensor_type_, false, tensor_type_,
+                                          bias_type_, &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
   const auto& subgraph = model_.subgraphs[0];
   auto conv_op = subgraph->operators[0].get();
@@ -813,9 +818,10 @@ TEST_P(QuantizeConvModel2Test, VerifyConvQuantization) {
 }
 
 TEST_P(QuantizeConvModel2Test, VerifyConvDisablePerChannelQuantization) {
-  auto status = QuantizeModelAllOperators(
-      &builder_, &model_, tensor_type_, tensor_type_, false, tensor_type_,
-      /*disable_per_channel=*/true, &error_reporter_);
+  auto status =
+      QuantizeModelAllOperators(&builder_, &model_, tensor_type_, tensor_type_,
+                                false, tensor_type_, bias_type_,
+                                /*disable_per_channel=*/true, &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
   const auto& subgraph = model_.subgraphs[0];
   auto conv_op = subgraph->operators[0].get();
@@ -918,17 +924,15 @@ TEST_P(QuantizeConvModel2Test, VerifyConvDisablePerChannelQuantization) {
 
 class QuantizeSoftmaxTest : public QuantizeModelTest {
  protected:
-  QuantizeSoftmaxTest() {
-    input_model_ = ReadModel(internal::kSingleSoftmaxModelMinMinus5MaxPlus5);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeSoftmaxTest()
+      : QuantizeModelTest(
+            ReadModel(internal::kSingleSoftmaxModelMinMinus5MaxPlus5)) {}
 };
 
 TEST_F(QuantizeSoftmaxTest, VerifySoftmaxQuantization) {
-  auto status = QuantizeModelAllOperators(&builder_, &model_, TensorType_INT8,
-                                          TensorType_INT8, false,
-                                          TensorType_INT8, &error_reporter_);
+  auto status = QuantizeModelAllOperators(
+      &builder_, &model_, TensorType_INT8, TensorType_INT8, false,
+      TensorType_INT8, TensorType_INT32, &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
 
   const auto& subgraph = model_.subgraphs[0];
@@ -980,17 +984,15 @@ TEST_F(QuantizeSoftmaxTest, VerifySoftmaxQuantization) {
 
 class QuantizeAvgPoolTest : public QuantizeModelTest {
  protected:
-  QuantizeAvgPoolTest() {
-    input_model_ = ReadModel(internal::kSingleAvgPoolModelMinMinus5MaxPlus5);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeAvgPoolTest()
+      : QuantizeModelTest(
+            ReadModel(internal::kSingleAvgPoolModelMinMinus5MaxPlus5)) {}
 };
 
 TEST_F(QuantizeAvgPoolTest, VerifyAvgPoolQuantization) {
-  auto status = QuantizeModelAllOperators(&builder_, &model_, TensorType_INT8,
-                                          TensorType_INT8, false,
-                                          TensorType_INT8, &error_reporter_);
+  auto status = QuantizeModelAllOperators(
+      &builder_, &model_, TensorType_INT8, TensorType_INT8, false,
+      TensorType_INT8, TensorType_INT32, &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
 
   const auto& subgraph = model_.subgraphs[0];
@@ -1042,17 +1044,14 @@ TEST_F(QuantizeAvgPoolTest, VerifyAvgPoolQuantization) {
 
 class QuantizeMultiInputAddWithReshapeTest : public QuantizeModelTest {
  protected:
-  QuantizeMultiInputAddWithReshapeTest() {
-    input_model_ = ReadModel(internal::kMultiInputAddWithReshape);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeMultiInputAddWithReshapeTest()
+      : QuantizeModelTest(ReadModel(internal::kMultiInputAddWithReshape)) {}
 };
 
 TEST_F(QuantizeMultiInputAddWithReshapeTest, VerifyReshapeQuantization) {
-  auto status = QuantizeModelAllOperators(&builder_, &model_, TensorType_INT8,
-                                          TensorType_INT8, false,
-                                          TensorType_INT8, &error_reporter_);
+  auto status = QuantizeModelAllOperators(
+      &builder_, &model_, TensorType_INT8, TensorType_INT8, false,
+      TensorType_INT8, TensorType_INT32, &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
 
   // Verify Reshape is quantized.
@@ -1099,9 +1098,9 @@ TEST_F(QuantizeMultiInputAddWithReshapeTest, VerifyReshapeQuantization) {
 }
 
 TEST_F(QuantizeMultiInputAddWithReshapeTest, VerifyAddQuantization) {
-  auto status = QuantizeModelAllOperators(&builder_, &model_, TensorType_INT8,
-                                          TensorType_INT8, false,
-                                          TensorType_INT8, &error_reporter_);
+  auto status = QuantizeModelAllOperators(
+      &builder_, &model_, TensorType_INT8, TensorType_INT8, false,
+      TensorType_INT8, TensorType_INT32, &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
 
   // Verify ADD is quantized.
@@ -1155,23 +1154,22 @@ TEST_F(QuantizeMultiInputAddWithReshapeTest, VerifyAddQuantization) {
 class QuantizeConstInputTest : public QuantizeModelTest,
                                public testing::WithParamInterface<TensorType> {
  protected:
-  QuantizeConstInputTest() {
-    tensor_type_ = GetParam();
-    input_model_ = ReadModel(internal::kConstInputAddModel);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeConstInputTest()
+      : QuantizeModelTest(ReadModel(internal::kConstInputAddModel)),
+        tensor_type_(GetParam()),
+        bias_type_(GetBiasTensorType(tensor_type_)) {}
 
   TensorType tensor_type_;
+  TensorType bias_type_;
 };
 INSTANTIATE_TEST_SUITE_P(QuantizeConstInputTestInst, QuantizeConstInputTest,
                          testing::ValuesIn({TensorType_INT8,
                                             TensorType_INT16}));
 
 TEST_P(QuantizeConstInputTest, VerifyConstOpInput) {
-  auto status =
-      QuantizeModelAllOperators(&builder_, &model_, tensor_type_, tensor_type_,
-                                false, tensor_type_, &error_reporter_);
+  auto status = QuantizeModelAllOperators(&builder_, &model_, tensor_type_,
+                                          tensor_type_, false, tensor_type_,
+                                          bias_type_, &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
 
   // Verify ConstOp is quantized.
@@ -1214,17 +1212,14 @@ TEST_P(QuantizeConstInputTest, VerifyConstOpInput) {
 }
 class QuantizeArgMaxTest : public QuantizeModelTest {
  protected:
-  QuantizeArgMaxTest() {
-    input_model_ = ReadModel(internal::kModelWithArgMaxOp);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeArgMaxTest()
+      : QuantizeModelTest(ReadModel(internal::kModelWithArgMaxOp)) {}
 };
 
 TEST_F(QuantizeArgMaxTest, VerifyArgMax) {
-  auto status = QuantizeModelAllOperators(&builder_, &model_, TensorType_INT8,
-                                          TensorType_INT8, false,
-                                          TensorType_INT8, &error_reporter_);
+  auto status = QuantizeModelAllOperators(
+      &builder_, &model_, TensorType_INT8, TensorType_INT8, false,
+      TensorType_INT8, TensorType_INT32, &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
 
   const auto& subgraph = model_.subgraphs[0];
@@ -1258,18 +1253,15 @@ TEST_F(QuantizeArgMaxTest, VerifyArgMax) {
 
 class QuantizeLSTMTest : public QuantizeModelTest {
  protected:
-  QuantizeLSTMTest() {
-    input_model_ = ReadModel(internal::kLstmCalibrated);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeLSTMTest()
+      : QuantizeModelTest(ReadModel(internal::kLstmCalibrated)) {}
 };
 
 TEST_F(QuantizeLSTMTest, VerifyLSTM) {
   // Quantize model.
   auto status = QuantizeModelAllOperators(
       &builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32, false,
-      TensorType_INT8, &error_reporter_);
+      TensorType_INT8, TensorType_INT32, &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
 
   // Read expected model.
@@ -1283,18 +1275,15 @@ TEST_F(QuantizeLSTMTest, VerifyLSTM) {
 
 class QuantizeLSTM2Test : public QuantizeModelTest {
  protected:
-  QuantizeLSTM2Test() {
-    input_model_ = ReadModel(internal::kLstmCalibrated2);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeLSTM2Test()
+      : QuantizeModelTest(ReadModel(internal::kLstmCalibrated2)) {}
 };
 
 TEST_F(QuantizeLSTM2Test, VerifyLSTM) {
   // Quantize model.
   auto status = QuantizeModelAllOperators(
       &builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32, false,
-      TensorType_INT8, &error_reporter_);
+      TensorType_INT8, TensorType_INT32, &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
 
   // Read expected model.
@@ -1308,11 +1297,9 @@ TEST_F(QuantizeLSTM2Test, VerifyLSTM) {
 
 class QuantizeUnidirectionalSequenceLSTMTest : public QuantizeModelTest {
  protected:
-  QuantizeUnidirectionalSequenceLSTMTest() {
-    input_model_ = ReadModel(internal::kUnidirectionalSequenceLstmCalibrated);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeUnidirectionalSequenceLSTMTest()
+      : QuantizeModelTest(
+            ReadModel(internal::kUnidirectionalSequenceLstmCalibrated)) {}
 };
 
 TEST_F(QuantizeUnidirectionalSequenceLSTMTest,
@@ -1320,7 +1307,7 @@ TEST_F(QuantizeUnidirectionalSequenceLSTMTest,
   // Quantize model.
   auto status = QuantizeModelAllOperators(
       &builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32, false,
-      TensorType_INT8, &error_reporter_);
+      TensorType_INT8, TensorType_INT32, &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
 
   // Read expected model.
@@ -1335,18 +1322,15 @@ TEST_F(QuantizeUnidirectionalSequenceLSTMTest,
 
 class QuantizeSVDFTest : public QuantizeModelTest {
  protected:
-  QuantizeSVDFTest() {
-    input_model_ = ReadModel(internal::kSvdfCalibrated);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeSVDFTest()
+      : QuantizeModelTest(ReadModel(internal::kSvdfCalibrated)) {}
 };
 
 TEST_F(QuantizeSVDFTest, VerifySVDF) {
   // Quantize model.
-  auto status = QuantizeModelAllOperators(&builder_, &model_, TensorType_INT8,
-                                          TensorType_INT8, false,
-                                          TensorType_INT8, &error_reporter_);
+  auto status = QuantizeModelAllOperators(
+      &builder_, &model_, TensorType_INT8, TensorType_INT8, false,
+      TensorType_INT8, TensorType_INT32, &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
 
   // Read expected model.
@@ -1395,17 +1379,13 @@ TEST_F(QuantizeSVDFTest, VerifySVDF) {
 
 class QuantizeFCTest : public QuantizeModelTest {
  protected:
-  QuantizeFCTest() {
-    input_model_ = ReadModel(internal::kModelWithFCOp);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeFCTest() : QuantizeModelTest(ReadModel(internal::kModelWithFCOp)) {}
 };
 
 TEST_F(QuantizeFCTest, VerifyFC) {
-  auto status = QuantizeModelAllOperators(&builder_, &model_, TensorType_INT8,
-                                          TensorType_INT8, false,
-                                          TensorType_INT8, &error_reporter_);
+  auto status = QuantizeModelAllOperators(
+      &builder_, &model_, TensorType_INT8, TensorType_INT8, false,
+      TensorType_INT8, TensorType_INT32, &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
 
   const auto& subgraph = model_.subgraphs[0];
@@ -1449,17 +1429,19 @@ class QuantizeCustomOpTest
     : public QuantizeModelTest,
       public ::testing::WithParamInterface<tflite::TensorType> {
  protected:
-  QuantizeCustomOpTest() {
-    input_model_ = ReadModel(internal::kModelMixed);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeCustomOpTest()
+      : QuantizeModelTest(ReadModel(internal::kModelMixed)),
+        tensor_type_(GetParam()),
+        bias_type_(GetBiasTensorType(tensor_type_)) {}
+
+  TensorType tensor_type_;
+  TensorType bias_type_;
 };
 
 TEST_P(QuantizeCustomOpTest, VerifyMixedQuantization) {
   auto status = QuantizeModelAllOperators(
-      &builder_, &model_, GetParam(), GetParam(),
-      /*allow_float=*/true, GetParam(), &error_reporter_);
+      &builder_, &model_, tensor_type_, tensor_type_,
+      /*allow_float=*/true, tensor_type_, bias_type_, &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
   const auto& subgraph = model_.subgraphs[0];
   auto float_graph = readonly_model_->subgraphs()->Get(0);
@@ -1488,17 +1470,15 @@ INSTANTIATE_TEST_SUITE_P(QuantizeCustomOpTest, QuantizeCustomOpTest,
 
 class QuantizeOp16x8Test : public QuantizeModelTest {
  protected:
-  QuantizeOp16x8Test() {
-    input_model_ = ReadModel(internal::kModelMixed16x8);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeOp16x8Test()
+      : QuantizeModelTest(ReadModel(internal::kModelMixed16x8)) {}
 };
 
 TEST_F(QuantizeOp16x8Test, VerifyMixedQuantization16x8) {
   auto status = QuantizeModelAllOperators(
       &builder_, &model_, TensorType_INT16, TensorType_FLOAT32,
-      /*allow_float=*/true, TensorType_INT16, &error_reporter_);
+      /*allow_float=*/true, TensorType_INT16, TensorType_INT64,
+      &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
   const auto& subgraph = model_.subgraphs[0];
   auto float_graph = readonly_model_->subgraphs()->Get(0);
@@ -1522,11 +1502,7 @@ TEST_F(QuantizeOp16x8Test, VerifyMixedQuantization16x8) {
 
 class QuantizePackTest : public QuantizeModelTest {
  protected:
-  QuantizePackTest() {
-    input_model_ = ReadModel(internal::kModelPack);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizePackTest() : QuantizeModelTest(ReadModel(internal::kModelPack)) {}
 };
 
 TEST_F(QuantizePackTest, VerifyPack) {
@@ -1586,11 +1562,7 @@ class QuantizeMinimumMaximumTest
     : public QuantizeModelTest,
       public testing::WithParamInterface<const char*> {
  protected:
-  QuantizeMinimumMaximumTest() {
-    input_model_ = ReadModel(GetParam());
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeMinimumMaximumTest() : QuantizeModelTest(ReadModel(GetParam())) {}
 };
 
 TEST_P(QuantizeMinimumMaximumTest, VerifyMinimumMaximum) {
@@ -1613,13 +1585,8 @@ TEST_P(QuantizeMinimumMaximumTest, VerifyMinimumMaximum) {
       GetBuiltinCode(model_.operator_codes[requant1->opcode_index].get());
   ASSERT_TRUE(requant1_builtin_code == tflite::BuiltinOperator_QUANTIZE);
 
-  const auto& requant2 = subgraph->operators[2].get();
-  // Check that we have RE operator.
-  auto requant2_builtin_code =
-      GetBuiltinCode(model_.operator_codes[requant2->opcode_index].get());
-  ASSERT_TRUE(requant2_builtin_code == tflite::BuiltinOperator_QUANTIZE);
-
-  const auto& op = subgraph->operators[3].get();
+  // Constant is quantized rather than adding requant.
+  const auto& op = subgraph->operators[2].get();
 
   // Check that we have MINIMUM or MAXIMUM operator.
   auto op_builtin_code =
@@ -1651,15 +1618,14 @@ TEST_P(QuantizeMinimumMaximumTest, VerifyMinimumMaximum) {
   EXPECT_EQ(output->quantization->scale, input2->quantization->scale);
   EXPECT_EQ(output->quantization->zero_point, input2->quantization->zero_point);
 
-  EXPECT_EQ(subgraph->tensors.size(), 7);
+  EXPECT_EQ(subgraph->tensors.size(), 6);
 
   EXPECT_EQ(subgraph->tensors[0]->name, "input_int8");
   EXPECT_EQ(subgraph->tensors[1]->name, "output_int8");
   EXPECT_EQ(subgraph->tensors[2]->name, "output/y");
   EXPECT_EQ(subgraph->tensors[3]->name, "input_requantized");
-  EXPECT_EQ(subgraph->tensors[4]->name, "output/y_requantized");
-  EXPECT_EQ(subgraph->tensors[5]->name, "input");
-  EXPECT_EQ(subgraph->tensors[6]->name, "output");
+  EXPECT_EQ(subgraph->tensors[4]->name, "input");
+  EXPECT_EQ(subgraph->tensors[5]->name, "output");
 }
 
 INSTANTIATE_TEST_SUITE_P(MinimumMaximumTestInst, QuantizeMinimumMaximumTest,
@@ -1668,11 +1634,8 @@ INSTANTIATE_TEST_SUITE_P(MinimumMaximumTestInst, QuantizeMinimumMaximumTest,
 
 class QuantizeUnpackTest : public QuantizeModelTest {
  protected:
-  QuantizeUnpackTest() {
-    input_model_ = ReadModel(internal::kModelWithUnpack);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeUnpackTest()
+      : QuantizeModelTest(ReadModel(internal::kModelWithUnpack)) {}
 };
 TEST_F(QuantizeUnpackTest, VerifyUnpack) {
   auto status = QuantizeModel(&builder_, &model_, &error_reporter_);
@@ -1716,11 +1679,8 @@ TEST_F(QuantizeUnpackTest, VerifyUnpack) {
 
 class QuantizeTransposeTest : public QuantizeModelTest {
  protected:
-  QuantizeTransposeTest() {
-    input_model_ = ReadModel(internal::kModelWithTranspose);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeTransposeTest()
+      : QuantizeModelTest(ReadModel(internal::kModelWithTranspose)) {}
 };
 
 TEST_F(QuantizeTransposeTest, VerifyTranspose) {
@@ -1760,17 +1720,13 @@ TEST_F(QuantizeTransposeTest, VerifyTranspose) {
 
 class QuantizeQatTest : public QuantizeModelTest {
  protected:
-  QuantizeQatTest() {
-    input_model_ = ReadModel(internal::kQatModelWithFc);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeQatTest() : QuantizeModelTest(ReadModel(internal::kQatModelWithFc)) {}
 };
 
 TEST_F(QuantizeQatTest, VerifySingleQuantize) {
   auto status = QuantizeModelAllOperators(
       &builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32, false,
-      TensorType_INT8, &error_reporter_);
+      TensorType_INT8, TensorType_INT32, &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
 
   const auto& subgraph = model_.subgraphs[0];
@@ -1820,13 +1776,13 @@ class QuantizeBroadcastToModelTest
     : public QuantizeModelTest,
       public testing::WithParamInterface<TensorType> {
  protected:
-  QuantizeBroadcastToModelTest() {
-    tensor_type_ = GetParam();
-    input_model_ = ReadModel(internal::kModelWithBroadcastToOp);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeBroadcastToModelTest()
+      : QuantizeModelTest(ReadModel(internal::kModelWithBroadcastToOp)),
+        tensor_type_(GetParam()),
+        bias_type_(GetBiasTensorType(tensor_type_)) {}
+
   TensorType tensor_type_;
+  TensorType bias_type_;
 };
 
 INSTANTIATE_TEST_SUITE_P(QuantizeBroadcastToModelTestInst,
@@ -1835,9 +1791,9 @@ INSTANTIATE_TEST_SUITE_P(QuantizeBroadcastToModelTestInst,
                                             TensorType_INT16}));
 
 TEST_P(QuantizeBroadcastToModelTest, VerifyBroadcastToQuantization) {
-  auto status =
-      QuantizeModelAllOperators(&builder_, &model_, tensor_type_, tensor_type_,
-                                false, tensor_type_, &error_reporter_);
+  auto status = QuantizeModelAllOperators(&builder_, &model_, tensor_type_,
+                                          tensor_type_, false, tensor_type_,
+                                          bias_type_, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
 
   // There is only one subgraph.
@@ -1887,14 +1843,13 @@ class QuantizeGatherNDModelTest
     : public QuantizeModelTest,
       public testing::WithParamInterface<TensorType> {
  protected:
-  QuantizeGatherNDModelTest() {
-    tensor_type_ = GetParam();
-    input_model_ = ReadModel(internal::kModelWithGatherNDOp);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeGatherNDModelTest()
+      : QuantizeModelTest(ReadModel(internal::kModelWithGatherNDOp)),
+        tensor_type_(GetParam()),
+        bias_type_(GetBiasTensorType(tensor_type_)) {}
 
   TensorType tensor_type_;
+  TensorType bias_type_;
 };
 
 INSTANTIATE_TEST_SUITE_P(QuantizeGatherNDModelTestInst,
@@ -1903,9 +1858,9 @@ INSTANTIATE_TEST_SUITE_P(QuantizeGatherNDModelTestInst,
                                             TensorType_INT16}));
 
 TEST_P(QuantizeGatherNDModelTest, QuantizeGatherND) {
-  auto status =
-      QuantizeModelAllOperators(&builder_, &model_, tensor_type_, tensor_type_,
-                                false, tensor_type_, &error_reporter_);
+  auto status = QuantizeModelAllOperators(&builder_, &model_, tensor_type_,
+                                          tensor_type_, false, tensor_type_,
+                                          bias_type_, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
 
   // There is only one subgraph.
@@ -1950,11 +1905,8 @@ TEST_P(QuantizeGatherNDModelTest, QuantizeGatherND) {
 
 class QuantizeWhereModelTest : public QuantizeModelTest {
  protected:
-  QuantizeWhereModelTest() {
-    input_model_ = ReadModel(internal::kModelWithWhereOp);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_);
-  }
+  QuantizeWhereModelTest()
+      : QuantizeModelTest(ReadModel(internal::kModelWithWhereOp)) {}
 };
 
 TEST_F(QuantizeWhereModelTest, QuantizeWhere) {
@@ -2013,17 +1965,23 @@ struct TestType {
   ModifyRangeType modify_range;
 };
 
+struct BiasTestType {
+  TensorType tensor_type;
+  TensorType bias_type;
+  bool is_valid_bias_type;
+};
+
 class QuantizeResourcesModelTest
     : public QuantizeModelTest,
       public testing::WithParamInterface<TestType> {
  protected:
-  QuantizeResourcesModelTest() {
+  QuantizeResourcesModelTest()
+      : QuantizeModelTest(
+            ReadModel(internal::kModelWithResourceVarsCalibrated)) {
     TestType obj = GetParam();
     tensor_type_ = obj.tensor_type;
     modify_range_ = obj.modify_range;
-    input_model_ = ReadModel(internal::kModelWithResourceVarsCalibrated);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_, nullptr);
+    bias_type_ = GetBiasTensorType(tensor_type_);
     if (modify_range_ != ModifyRangeType::kNone) {
       ModifyRange(&model_);
     }
@@ -2053,6 +2011,7 @@ class QuantizeResourcesModelTest
     }
   }
   TensorType tensor_type_;
+  TensorType bias_type_;
   ModifyRangeType modify_range_ = ModifyRangeType::kAll;
 };
 
@@ -2071,7 +2030,7 @@ INSTANTIATE_TEST_SUITE_P(QuantizeResourcesModelTest, QuantizeResourcesModelTest,
 TEST_P(QuantizeResourcesModelTest, GraphIsFullyQuantized) {
   auto status = QuantizeModelAllOperators(
       &builder_, &model_, tensor_type_, tensor_type_,
-      /*allow_float*/ false, tensor_type_, &error_reporter_);
+      /*allow_float*/ false, tensor_type_, bias_type_, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
   std::vector<QuantizationParametersT*> quant_params;
   const float quant_eps = tensor_type_ == TensorType_INT8 ? 1e-1 : 1e-2;
@@ -2152,6 +2111,150 @@ TEST_P(QuantizeResourcesModelTest, GraphIsFullyQuantized) {
     EXPECT_EQ(test_param->zero_point, expected_quant_param->zero_point);
     EXPECT_EQ(test_param->min, expected_quant_param->min);
     EXPECT_EQ(test_param->max, expected_quant_param->max);
+  }
+}
+
+class QuantizeConcatConstModelTest
+    : public QuantizeModelTest,
+      public testing::WithParamInterface<TensorType> {
+ protected:
+  QuantizeConcatConstModelTest()
+      : QuantizeModelTest(ReadModel(internal::kFloatConcatMax5Max10Max10)) {
+    // Make one of the values constant.
+    MakeInputConstant(&model_);
+  }
+
+  void SetUp() override {
+    tensor_type_ = GetParam();
+    bias_type_ = GetBiasTensorType(tensor_type_);
+  }
+
+  void MakeInputConstant(tflite::ModelT* model) {
+    auto& subgraph = model->subgraphs[0];
+    const int tensor_id = subgraph->inputs.back();
+    int replace_tensor_id = subgraph->inputs[0];
+    subgraph->inputs[0] = tensor_id;
+    subgraph->inputs.pop_back();
+    auto& tensor = subgraph->tensors[replace_tensor_id];
+    tensor->name = "const_input0";
+    model->buffers.emplace_back(new tflite::BufferT());
+    tensor->buffer = model->buffers.size() - 1;
+    auto& buffer = model->buffers[tensor->buffer];
+    std::vector<float> tensor_buffer = {0.0, 5.0};
+    uint8_t* uint8_data = reinterpret_cast<uint8_t*>(tensor_buffer.data());
+    buffer->data = std::vector<uint8_t>(
+        uint8_data, uint8_data + (sizeof(float) * tensor_buffer.size()));
+  }
+
+  TensorType tensor_type_;
+  TensorType bias_type_;
+};
+
+TEST_P(QuantizeConcatConstModelTest, AddRequantBeforeConcat) {
+  auto status = QuantizeModelAllOperators(&builder_, &model_, tensor_type_,
+                                          tensor_type_, false, tensor_type_,
+                                          bias_type_, &error_reporter_);
+  EXPECT_EQ(status, kTfLiteOk);
+
+  // There is only one subgraph.
+  const int32_t subgraph_idx = 0;
+  const auto& subgraph = model_.subgraphs[subgraph_idx];
+  const auto& readonly_subgraph =
+      readonly_model_->subgraphs()->Get(subgraph_idx);
+
+  // There should be 1 op: concat.
+  EXPECT_EQ(readonly_subgraph->operators()->size(), 1);
+  EXPECT_EQ(subgraph->operators.size(), 1);
+  const auto& concat = subgraph->operators[0];
+  EXPECT_EQ(GetBuiltinCode(model_.operator_codes[concat->opcode_index].get()),
+            BuiltinOperator_CONCATENATION);
+
+  auto zero_point_control = tensor_type_ == TensorType_INT8 ? -128 : 0;
+
+  auto input0_scale_control =
+      tensor_type_ == TensorType_INT8 ? 0.039215688 : 0.00030518509;
+  auto input1_scale =
+      tensor_type_ == TensorType_INT8 ? 0.039215688 : 0.00030518509;
+
+  // There should be 3 tensors: const_input0, input1, output.
+  EXPECT_EQ(subgraph->tensors.size(), 3);
+  EXPECT_EQ(subgraph->tensors[0]->type, tensor_type_);
+  EXPECT_EQ(subgraph->tensors[0]->name, "const_input0");
+  EXPECT_EQ(subgraph->tensors[0]->quantization->scale.size(), 1);
+  EXPECT_EQ(subgraph->tensors[0]->quantization->zero_point.size(), 1);
+  EXPECT_FLOAT_EQ(subgraph->tensors[0]->quantization->scale[0],
+                  input0_scale_control);
+  EXPECT_FLOAT_EQ(subgraph->tensors[0]->quantization->zero_point[0],
+                  zero_point_control);
+
+  EXPECT_EQ(subgraph->tensors[1]->type, tensor_type_);
+  EXPECT_EQ(subgraph->tensors[1]->name, "input1");
+  EXPECT_EQ(subgraph->tensors[1]->quantization->scale.size(), 1);
+  EXPECT_EQ(subgraph->tensors[1]->quantization->zero_point.size(), 1);
+  EXPECT_FLOAT_EQ(subgraph->tensors[1]->quantization->scale[0], input1_scale);
+  EXPECT_FLOAT_EQ(subgraph->tensors[1]->quantization->zero_point[0],
+                  zero_point_control);
+  EXPECT_EQ(subgraph->tensors[2]->type, tensor_type_);
+  EXPECT_EQ(subgraph->tensors[2]->name, "output");
+  EXPECT_EQ(subgraph->tensors[2]->quantization->scale.size(), 1);
+  EXPECT_EQ(subgraph->tensors[2]->quantization->zero_point.size(), 1);
+  EXPECT_FLOAT_EQ(subgraph->tensors[2]->quantization->scale[0], input1_scale);
+  EXPECT_FLOAT_EQ(subgraph->tensors[2]->quantization->zero_point[0],
+                  zero_point_control);
+
+  EXPECT_EQ(concat->inputs.size(), 2);
+  EXPECT_EQ(concat->outputs.size(), 1);
+  EXPECT_EQ(concat->inputs[0], 0);
+  EXPECT_EQ(concat->inputs[1], 1);
+  EXPECT_EQ(concat->outputs[0], 2);
+
+  // check op and versioning.
+  EXPECT_EQ(model_.operator_codes.size(), 1);
+  EXPECT_EQ(GetBuiltinCode(model_.operator_codes[0].get()),
+            BuiltinOperator_CONCATENATION);
+  EXPECT_EQ(model_.operator_codes[0]->version, 2);
+}
+
+INSTANTIATE_TEST_SUITE_P(QuantizeConcatConstModelTest,
+                         QuantizeConcatConstModelTest,
+                         testing::ValuesIn({TensorType_INT8,
+                                            TensorType_INT16}));
+
+class BiasInputTest : public QuantizeModelTest,
+                      public testing::WithParamInterface<BiasTestType> {
+ protected:
+  BiasInputTest()
+      : QuantizeModelTest(ReadModel(internal::kConvModelWith0Plus10Weights)) {
+    BiasTestType obj = GetParam();
+    tensor_type_ = obj.tensor_type;
+    bias_type_ = obj.bias_type;
+    is_valid_bias_type_ = obj.is_valid_bias_type;
+  }
+  TensorType tensor_type_;
+  TensorType bias_type_;
+  bool is_valid_bias_type_;
+  tflite::TestErrorReporter test_error_reporter_;
+};
+
+INSTANTIATE_TEST_SUITE_P(BiasInputTestInst, BiasInputTest,
+                         testing::ValuesIn<BiasTestType>(
+                             {{TensorType_INT8, TensorType_INT32, true},
+                              {TensorType_INT8, TensorType_FLOAT32, false},
+                              {TensorType_INT16, TensorType_INT32, true},
+                              {TensorType_INT16, TensorType_INT64, true},
+                              {TensorType_INT16, TensorType_FLOAT32, false}}));
+
+TEST_P(BiasInputTest, QuantizationSucceeds) {
+  auto status = QuantizeModelAllOperators(&builder_, &model_, tensor_type_,
+                                          tensor_type_, false, tensor_type_,
+                                          bias_type_, &test_error_reporter_);
+  if (is_valid_bias_type_) {
+    EXPECT_EQ(status, kTfLiteOk);
+    const uint8_t* buffer = builder_.GetBufferPointer();
+    const Model* output_model = GetModel(buffer);
+    ASSERT_TRUE(output_model);
+  } else {
+    EXPECT_EQ(status, kTfLiteError);
   }
 }
 

@@ -98,7 +98,7 @@ void Check(std::initializer_list<int> input_shape,
       TileOpConstModel<MultipliersType> m(input_shape, input_type,
                                           multiply_type, multipliers_data);
       m.SetInput(input_data);
-      m.Invoke();
+      ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
       EXPECT_THAT(m.GetOutputShape(), ElementsAreArray(exp_output_shape));
       EXPECT_THAT(m.template GetOutput<InputType>(),
@@ -109,7 +109,7 @@ void Check(std::initializer_list<int> input_shape,
       TileOpDynamicModel m(input_shape, input_type, multiply_type);
       m.SetInput(input_data);
       m.SetMultipliers(multipliers_data);
-      m.Invoke();
+      ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
       EXPECT_THAT(m.GetOutputShape(), ElementsAreArray(exp_output_shape));
       EXPECT_THAT(m.template GetOutput<InputType>(),
@@ -256,11 +256,22 @@ TEST_P(TileTest, StringMatrix2) {
       /*multiply_type=*/TensorType_INT32, GetParam());
 }
 
+TEST_P(TileTest, StringMatrixEmptyInputElements) {
+  Check<std::string>(
+      /*input_shape=*/{0, 1, 1},
+      /*input_data=*/{},
+      /*multipliers_data=*/{2, 2, 2}, /*exp_output_shape=*/{0, 2, 2},
+      /*exp_output_data=*/
+      {},
+      /*input_type=*/TensorType_STRING,
+      /*multiply_type=*/TensorType_INT32, GetParam());
+}
+
 TEST(TileTest, TestEmptyInput) {
   TileOpDynamicModel m({2, 1, 3}, TensorType_INT32, TensorType_INT32);
   m.SetInput({11, 12, 13, 21, 22, 23});
   m.SetMultipliers({2, 0, 2});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 0, 6}));
 }

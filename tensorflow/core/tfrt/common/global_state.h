@@ -12,9 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_TFRT_GLOBAL_GLOBAL_STATE_H_
-#define TENSORFLOW_CORE_TFRT_GLOBAL_GLOBAL_STATE_H_
+#ifndef TENSORFLOW_CORE_TFRT_COMMON_GLOBAL_STATE_H_
+#define TENSORFLOW_CORE_TFRT_COMMON_GLOBAL_STATE_H_
 
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -22,21 +23,18 @@ namespace tfrt_global {
 
 class GlobalHostContext {
  public:
-  static void Set(::tfrt::HostContext* host_ctx, bool use_tpurt_kernels = true);
+  static void Set(::tfrt::HostContext* host_ctx);
   static ::tfrt::HostContext* Get();
-  static bool UseTpurtKernels();
 
  private:
   static ::tfrt::HostContext* host_ctx_;
-
-  // NOTE: If use_tpurt_kernels_==true, we can neither use TpuDeviceContext to
-  // transfer tpu tensor nor allocate tpu tensor via TpuDevice. This is because
-  // tpurt does not understand DenseTpuTensor wrapped by AsyncValueTensor.
-  // TODO(b/188940204): Clean up this technical debt.
-  static bool use_tpurt_kernels_;
 };
+
+// A global resource manager in TF core framework. It can be used to store
+// resources that are per host.
+ResourceMgr* GetTFGlobalResourceMgr();
 
 }  // namespace tfrt_global
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_TFRT_GLOBAL_GLOBAL_STATE_H_
+#endif  // TENSORFLOW_CORE_TFRT_COMMON_GLOBAL_STATE_H_

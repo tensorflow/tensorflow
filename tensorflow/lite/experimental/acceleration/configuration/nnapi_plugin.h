@@ -22,9 +22,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/experimental/acceleration/configuration/c/delegate_plugin.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/c/delegate_plugin.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
@@ -38,12 +38,12 @@ class NnapiPlugin : public DelegatePluginInterface {
     std::unique_ptr<tflite::StatefulNnApiDelegate> nnapi_delegate = nullptr;
     if (!support_library_handle_) {
       nnapi_delegate =
-          absl::make_unique<tflite::StatefulNnApiDelegate>(options_);
+          std::make_unique<tflite::StatefulNnApiDelegate>(options_);
     } else {
       auto nnapi_support_library_driver =
           reinterpret_cast<const NnApiSLDriverImplFL5*>(
               support_library_handle_);
-      nnapi_delegate = absl::make_unique<tflite::StatefulNnApiDelegate>(
+      nnapi_delegate = std::make_unique<tflite::StatefulNnApiDelegate>(
           nnapi_support_library_driver, options_);
     }
     return TfLiteDelegatePtr(
@@ -58,7 +58,7 @@ class NnapiPlugin : public DelegatePluginInterface {
   }
   static std::unique_ptr<NnapiPlugin> New(
       const TFLiteSettings& tflite_settings) {
-    return absl::make_unique<NnapiPlugin>(tflite_settings);
+    return std::make_unique<NnapiPlugin>(tflite_settings);
   }
   explicit NnapiPlugin(const TFLiteSettings& tflite_settings) {
     const NNAPISettings* nnapi_settings = tflite_settings.nnapi_settings();
@@ -129,7 +129,7 @@ class NnapiPlugin : public DelegatePluginInterface {
 
   std::string accelerator_, cache_dir_, model_token_;
   tflite::StatefulNnApiDelegate::Options options_;
-  int64_t support_library_handle_;
+  int64_t support_library_handle_ = 0;
 };
 
 }  // namespace delegates

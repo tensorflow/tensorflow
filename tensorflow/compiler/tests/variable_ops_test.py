@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for reading and writing variables."""
+import re
 
 import numpy as np
 
@@ -21,6 +22,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import init_ops
@@ -62,7 +64,8 @@ class VariableOpsTest(xla_test.XLATestCase):
         with ops.control_dependencies([x]):
           y = v.read_value()
         self.assertAllClose(
-            np.array([[2, 1 + 2j], [4, 5]]).astype(dtype), sess.run(y, {p: 1}))
+            np.array([[2, 1 + 2j], [4, 5]]).astype(dtype),
+            sess.run(y, {p: [[1, 1], [1, 1]]}))
 
   def testSparseRead0DIndices(self):
     for dtype in self.numeric_types:
@@ -130,6 +133,24 @@ class VariableOpsTest(xla_test.XLATestCase):
         self.assertEqual(s64.dtype, np.int64)
         self.assertAllEqual(s32, [2, 3])
         self.assertAllEqual(s64, [2, 3])
+
+  def testInvalidShape(self):
+    pattern = re.compile("shapes must be equal", re.IGNORECASE)
+    # test invalid shape on assign_add in XLA
+    with self.assertRaisesRegex(Exception, pattern):
+      with self.session() as sess, self.test_scope():
+        v = resource_variable_ops.ResourceVariable([0, 1, 2, 3])
+        sess.run(variables.variables_initializer([v]))
+        x = v.assign_add(1)
+        sess.run(x)
+
+    # test invalid shape raised on assign_sub in XLA
+    with self.assertRaisesRegex(Exception, pattern):
+      with self.session() as sess, self.test_scope():
+        v = resource_variable_ops.ResourceVariable([0, 1, 2, 3])
+        sess.run(variables.variables_initializer([v]))
+        x = v.assign_sub(1)
+        sess.run(x)
 
   def testReadWrite(self):
     """Tests initialization, reading, and writing a resource variable."""
@@ -227,6 +248,8 @@ class VariableOpsTest(xla_test.XLATestCase):
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
       self.assertAllEqual(self.evaluate(read), [[3], [7]])
 
+  @test_util.disable_mlir_bridge("TODO: MLIR bridge does not yet"
+                                 "support ResourceScatterSub")
   def testScatterSub(self):
     with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
@@ -240,6 +263,8 @@ class VariableOpsTest(xla_test.XLATestCase):
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
       self.assertAllEqual(self.evaluate(read), [[4], [-1]])
 
+  @test_util.disable_mlir_bridge("TODO: MLIR bridge does not yet"
+                                 "support ResourceScatterMul")
   def testScatterMul(self):
     with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
@@ -253,6 +278,8 @@ class VariableOpsTest(xla_test.XLATestCase):
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
       self.assertEqual(self.evaluate(read), [[5]])
 
+  @test_util.disable_mlir_bridge("TODO: MLIR bridge does not yet"
+                                 "support ResourceScatterDiv")
   def testScatterDiv(self):
     with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
@@ -266,6 +293,8 @@ class VariableOpsTest(xla_test.XLATestCase):
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
       self.assertAllEqual(self.evaluate(read), [[2]])
 
+  @test_util.disable_mlir_bridge("TODO: MLIR bridge does not yet"
+                                 "support ResourceScatterMin")
   def testScatterMin(self):
     with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
@@ -279,6 +308,8 @@ class VariableOpsTest(xla_test.XLATestCase):
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
       self.assertEqual(self.evaluate(read), [[3]])
 
+  @test_util.disable_mlir_bridge("TODO: MLIR bridge does not yet"
+                                 "support ResourceScatterMax")
   def testScatterMax(self):
     with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
@@ -305,7 +336,20 @@ class VariableOpsTest(xla_test.XLATestCase):
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
       self.assertEqual(self.evaluate(read), [[3]])
 
-  def testScatterAddScalar(self):
+  def testScatterScalarUpdate(self):
+    with self.session() as sess, self.test_scope():
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1, 1])
+      sess.run(
+          resource_variable_ops.assign_variable_op(
+              handle, constant_op.constant([[6]], dtype=dtypes.int32)))
+      sess.run(
+          resource_variable_ops.resource_scatter_update(
+              handle, [0], constant_op.constant(3, dtype=dtypes.int32)))
+      read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
+      self.assertEqual(self.evaluate(read), [[3]])
+
+  def testScatterAddScalarUpdate(self):
     with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1, 1])
@@ -318,6 +362,8 @@ class VariableOpsTest(xla_test.XLATestCase):
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
       self.assertEqual(self.evaluate(read), [[3]])
 
+  @test_util.disable_mlir_bridge("TODO: MLIR bridge does not yet"
+                                 "support ResourceScatterSub")
   def testScatterSubScalar(self):
     with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
@@ -331,6 +377,8 @@ class VariableOpsTest(xla_test.XLATestCase):
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
       self.assertEqual(self.evaluate(read), [[-1]])
 
+  @test_util.disable_mlir_bridge("TODO: MLIR bridge does not yet"
+                                 "support ResourceScatterMul")
   def testScatterMulScalar(self):
     with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
@@ -344,6 +392,8 @@ class VariableOpsTest(xla_test.XLATestCase):
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
       self.assertEqual(self.evaluate(read), [[5]])
 
+  @test_util.disable_mlir_bridge("TODO: MLIR bridge does not yet"
+                                 "support ResourceScatterDiv")
   def testScatterDivScalar(self):
     with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
@@ -357,6 +407,8 @@ class VariableOpsTest(xla_test.XLATestCase):
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
       self.assertEqual(self.evaluate(read), [[2]])
 
+  @test_util.disable_mlir_bridge("TODO: MLIR bridge does not yet"
+                                 "support ResourceScatterMin")
   def testScatterMinScalar(self):
     with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
@@ -370,6 +422,8 @@ class VariableOpsTest(xla_test.XLATestCase):
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
       self.assertEqual(self.evaluate(read), [[3]])
 
+  @test_util.disable_mlir_bridge("TODO: MLIR bridge does not yet"
+                                 "support ResourceScatterMax")
   def testScatterMaxScalar(self):
     with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
@@ -383,6 +437,8 @@ class VariableOpsTest(xla_test.XLATestCase):
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
       self.assertEqual(self.evaluate(read), [[6]])
 
+  @test_util.disable_mlir_bridge("TODO: MLIR bridge does not yet"
+                                 "support ResourceScatterNdAdd")
   def testScatterNdAddOps(self):
     with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
@@ -398,6 +454,8 @@ class VariableOpsTest(xla_test.XLATestCase):
           handle, dtype=dtypes.float32)
       self.assertAllClose(expected, self.evaluate(read))
 
+  @test_util.disable_mlir_bridge("TODO: MLIR bridge does not yet"
+                                 "support ResourceScatterNdUpdateAdd")
   def testScatterNdUpdateAddOps(self):
     with self.session() as sess, self.test_scope():
       handle = resource_variable_ops.var_handle_op(
@@ -446,6 +504,8 @@ class StridedSliceAssignChecker(object):
 
 class SliceAssignTest(xla_test.XLATestCase):
 
+  @test_util.disable_mlir_bridge("TODO: MLIR bridge does not yet"
+                                 "support ResourceStridedSliceAssign")
   def testSliceAssign(self):
     for dtype in self.numeric_types:
       checker = StridedSliceAssignChecker(
@@ -480,6 +540,8 @@ class SliceAssignTest(xla_test.XLATestCase):
         checker2[...] = 6  # ellipsis
       checker2[None] = [6]  # new axis
 
+  @test_util.disable_mlir_bridge("TODO: MLIR bridge does not yet"
+                                 "support uninitialized resource variable")
   def testUninitialized(self):
     with self.assertRaisesRegex(errors.FailedPreconditionError,
                                 "uninitialized"):

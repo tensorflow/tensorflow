@@ -15,12 +15,11 @@ limitations under the License.
 
 #include <array>
 
-#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/compiler/xla/tests/test_utils.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -28,6 +27,10 @@ namespace {
 class TokenHloTest : public HloTestBase {};
 
 XLA_TEST_F(TokenHloTest, SingleTokenInstruction) {
+  if (IsMlirLoweringEnabled()) {
+    // The MLIR pipeline doesn't support returning tokens.
+    GTEST_SKIP() << "Returning tokens unsupported by MLIR";
+  }
   std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   builder.AddInstruction(HloInstruction::CreateToken());
@@ -39,6 +42,10 @@ XLA_TEST_F(TokenHloTest, SingleTokenInstruction) {
 }
 
 XLA_TEST_F(TokenHloTest, TokenInTuple) {
+  if (IsMlirLoweringEnabled()) {
+    // The MLIR pipeline doesn't support returning tokens.
+    GTEST_SKIP() << "Returning tokens unsupported by MLIR";
+  }
   std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
@@ -53,6 +60,10 @@ XLA_TEST_F(TokenHloTest, TokenInTuple) {
 }
 
 XLA_TEST_F(TokenHloTest, TokenTree) {
+  if (IsMlirLoweringEnabled()) {
+    // The MLIR pipeline doesn't support returning tokens.
+    GTEST_SKIP() << "Returning tokens unsupported by MLIR";
+  }
   std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto token0 = builder.AddInstruction(HloInstruction::CreateToken());
@@ -75,7 +86,7 @@ XLA_TEST_F(TokenHloTest, InvalidTokenShapedEntryParameter) {
   builder.AddInstruction(
       HloInstruction::CreateParameter(1, ShapeUtil::MakeTokenShape(), "p1"));
   builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(42)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(42)));
   module->AddEntryComputation(builder.Build());
 
   Status status =
@@ -111,7 +122,7 @@ XLA_TEST_F(TokenHloTest, InvalidTupleTokenShapedEntryParameter) {
 XLA_TEST_F(TokenHloTest, TokenInWhileLoop) {
   // Thread a token around a while loop. Token is created and consumed by a
   // AfterAll instruction in the while body.
-  string module_string = R"(
+  std::string module_string = R"(
 HloModule TokenInWhileLoop
 
 %Body (param.1: (s32[], token[])) -> (s32[], token[]) {
@@ -151,7 +162,7 @@ ENTRY %TokenInWhileLoop () -> s32[] {
 }
 
 XLA_TEST_F(TokenHloTest, TokenInConditional) {
-  string module_string = R"(
+  std::string module_string = R"(
 HloModule TokenInConditional
 
 %True (param.1: token[]) -> (s32[], token[]) {
@@ -186,7 +197,7 @@ ENTRY %TokenInConditional (param.3: pred[]) -> s32[] {
         HloRunner::CreateModuleFromString(module_string, debug_options));
     auto arg = LiteralUtil::CreateR0<bool>(true);
     TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&arg}));
-    EXPECT_EQ(42, result.Get<int32>({}));
+    EXPECT_EQ(42, result.Get<int32_t>({}));
   }
 
   {
@@ -196,12 +207,16 @@ ENTRY %TokenInConditional (param.3: pred[]) -> s32[] {
         HloRunner::CreateModuleFromString(module_string, debug_options));
     auto arg = LiteralUtil::CreateR0<bool>(false);
     TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&arg}));
-    EXPECT_EQ(7, result.Get<int32>({}));
+    EXPECT_EQ(7, result.Get<int32_t>({}));
   }
 }
 
 XLA_TEST_F(TokenHloTest, AddDependency) {
-  string module_string = R"(
+  if (IsMlirLoweringEnabled()) {
+    // This test generates invalid HLO. The after-all op only takes tokens.
+    GTEST_SKIP() << "Invalid HLO unsupported by MLIR";
+  }
+  std::string module_string = R"(
 HloModule AddDependency, is_scheduled=true
 
 // Computes (p0 + 42) * (-p1)
@@ -229,7 +244,11 @@ ENTRY %AddDependency (p0: f32[], p1: f32[]) -> f32[] {
 }
 
 XLA_TEST_F(TokenHloTest, AddDependencyOfConstant) {
-  string module_string = R"(
+  if (IsMlirLoweringEnabled()) {
+    // This test generates invalid HLO. The after-all op only takes tokens.
+    GTEST_SKIP() << "Invalid HLO unsupported by MLIR";
+  }
+  std::string module_string = R"(
 HloModule AddDependencyOfConstant, is_scheduled=true
 
 ENTRY %AddDependency (p0: f32[]) -> f32[] {
@@ -249,7 +268,7 @@ ENTRY %AddDependency (p0: f32[]) -> f32[] {
 }
 
 XLA_TEST_F(TokenHloTest, AddDependencyAsRoot) {
-  string module_string = R"(
+  std::string module_string = R"(
 HloModule AddDependencyAsRoot, is_scheduled=true
 ENTRY %AddDependency (p: f32[3]) -> f32[3] {
   %p = f32[3] parameter(0)
@@ -267,7 +286,7 @@ ENTRY %AddDependency (p: f32[3]) -> f32[3] {
 }
 
 XLA_TEST_F(TokenHloTest, TupleShapedAddDependency) {
-  string module_string = R"(
+  std::string module_string = R"(
 HloModule TupleShapedAddDependency, is_scheduled=true
 ENTRY %TupleShapedAddDependency (p0: f32[3], p1: f32[3]) -> f32[3] {
   %p0 = f32[3] parameter(0)

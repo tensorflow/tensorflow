@@ -41,7 +41,7 @@ class ShuffleDatasetParams : public DatasetParams {
         seed2_(seed2),
         count_(count),
         reshuffle_each_iteration_(reshuffle_each_iteration) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
                                    input_dataset_params.iterator_prefix());
@@ -68,7 +68,7 @@ class ShuffleDatasetParams : public DatasetParams {
     if (count_ != 1) {
       input_names->emplace_back(ShuffleAndRepeatDatasetOp::kCount);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -78,7 +78,7 @@ class ShuffleDatasetParams : public DatasetParams {
     attr_vector->emplace_back("reshuffle_each_iteration",
                               reshuffle_each_iteration_);
     attr_vector->emplace_back("metadata", "");
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override {

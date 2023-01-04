@@ -1,5 +1,5 @@
 package(
-    default_visibility = ["//tensorflow:internal"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -33,9 +33,10 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
+        "//third_party/py/numpy",
+        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v1_estimator",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/debug:debug_py",
-        "//third_party/py/numpy",
     ],
 )
 

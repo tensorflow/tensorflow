@@ -32,11 +32,11 @@ import unittest
 
 from absl.testing import parameterized
 import numpy as np
-import six
 
 from google.protobuf import descriptor_pool
 from google.protobuf import text_format
 
+from tensorflow.core.config import flags
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_sanitizers
@@ -49,6 +49,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import _test_metrics_util
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -357,8 +358,7 @@ def GpuSupportsHalfMatMulAndConv():
 
 
 def IsMklEnabled():
-  return (_pywrap_util_port.IsMklEnabled() or
-          os.getenv("TF_ENABLE_ONEDNN_OPTS", "False").lower() in ["true", "1"])
+  return _pywrap_util_port.IsMklEnabled()
 
 
 def InstallStackTraceHandler():
@@ -1092,11 +1092,11 @@ def run_all_in_graph_and_eager_modes(cls):
   return cls
 
 
-def enable_eager_op_as_function(fn):
-  """Decorator for enabling eager_op_as_function on a test.
+def enable_nested_function_shape_inference(fn):
+  """Decorator for enabling nested_function_shape_inference on a test.
 
   This function returns a decorator intended to be applied to test methods in
-  a `tf.test.TestCase` class. Doing so will enable run_eager_op_as_function,
+  a `tf.test.TestCase` class. Doing so will set nested_function_shape_inference,
   reset the context, execute the test, then reset the context to the state
   it was in prior to this test.
 
@@ -1104,7 +1104,7 @@ def enable_eager_op_as_function(fn):
 
   class MyTest(test.TestCase):
 
-    @enable_eager_op_as_function
+    @enable_nested_function_shape_inference
     def testFoo(self):
       ...
 
@@ -1116,73 +1116,168 @@ def enable_eager_op_as_function(fn):
   """
 
   def wrapper(*args, **kwargs):
-    # If `run_eager_op_as_function` is already enabled do nothing.
-    if context.run_eager_op_as_function_enabled():
+    # If `nested_function_shape_inference` is already enabled do nothing.
+    if flags.config().enable_nested_function_shape_inference.value():
       return fn(*args, **kwargs)
 
-    context.enable_run_eager_op_as_function()
+    flags.config().enable_nested_function_shape_inference.reset(True)
     try:
       return fn(*args, **kwargs)
     finally:
-      context.disable_run_eager_op_as_function()
+      flags.config().enable_nested_function_shape_inference.reset(False)
 
   return wrapper
 
 
-def with_eager_op_as_function(cls=None, only_as_function=False):
-  """Adds methods that call original methods with eager_op_as_function enabled.
+def enable_quantized_dtypes_training(fn):
+  """Decorator for enabling quantized_dtypes_training on a test.
+
+  This function returns a decorator intended to be applied to test methods in
+  a `tf.test.TestCase` class. Doing so will set quantized_dtypes_training,
+  reset the context, execute the test, then reset the context to the state
+  it was in prior to this test.
 
   Example:
 
-  @test_util.with_eager_op_as_function
-  class SessionTest(test.TestCase):
+  class MyTest(test.TestCase):
 
-    def testEnabledForEagerOpAsFunction(self):
-      ...
-
-    @disable_eager_op_as_function("b/xyzabc")
-    def testDisabledForEagerOpAsFunction(self):
-      ...
-
-  Generated class:
-  class SessionTest(test.TestCase):
-
-    def testEnabledForEagerOpAsFunction(self):
-      ...
-
-    def testEnabledForEagerOpAsFunctionWithEagerOpAsFunctionEnabled(self):
-      // Enable run_eager_op_as_function
-      // Reset context
-      testEnabledForEagerOpAsFunction(self)
-      // Disable run_eager_op_as_function
-      // Reset context
-
-    def testDisabledForEagerOpAsFunction(self):
+    @enable_quantized_dtypes_training
+    def testFoo(self):
       ...
 
   Args:
+    fn: the function to be wrapped.
+
+  Returns:
+    The wrapped function.
+  """
+
+  def wrapper(*args, **kwargs):
+    # If `enable_quantized_dtypes_training` is already enabled do nothing.
+    if flags.config().enable_quantized_dtypes_training.value():
+      return fn(*args, **kwargs)
+
+    flags.config().enable_quantized_dtypes_training.reset(True)
+    try:
+      return fn(*args, **kwargs)
+    finally:
+      flags.config().enable_quantized_dtypes_training.reset(False)
+
+  return wrapper
+
+
+def enable_eager_op_as_function(fn):
+  """Returns the same fn. This will be removed once all usages are removed.
+
+  Args:
+    fn: the function to be wrapped.
+
+  Returns:
+    The wrapped function.
+  """
+
+  def wrapper(*args, **kwargs):
+    return fn(*args, **kwargs)
+
+  return wrapper
+
+
+@tf_export("test.with_eager_op_as_function")
+def with_eager_op_as_function(cls=None, only_as_function=False):  # pylint: disable=unused-argument
+  """Returns the same class. This will be removed once all usages are removed.
+
+  Args:
     cls: class to decorate.
-    only_as_function: whether to run all the tests in the TestCase in eager mode
-      and in eager_op_as_function mode. By default it will run all tests in both
-      modes. When `only_as_function=True` tests will not be run in eager mode.
+    only_as_function: unused argument.
+
+  Returns:
+    cls
+  """
+
+  def decorator(cls):
+    return cls
+
+  if cls is not None:
+    return decorator(cls)
+
+  return decorator
+
+
+def enable_graph_building_optimization(fn):
+  """Decorator for enabling graph_building_optimization on a test.
+
+  This function returns a decorator intended to be applied to test methods in
+  a `tf.test.TestCase` class. Doing so will enable graph_building_optimization,
+  execute the test, then reset the feature flag to its default value.
+
+  Example:
+
+  class MyTest(test.TestCase):
+
+    @enable_graph_building_optimization
+    def testFoo(self):
+      ...
+
+  Args:
+    fn: the function to be wrapped.
+
+  Returns:
+    The wrapped function.
+  """
+
+  def wrapper(*args, **kwargs):
+    # If `graph_building_optimization` is already enabled do nothing.
+    if flags.config().graph_building_optimization.value():
+      return fn(*args, **kwargs)
+
+    flags.config().graph_building_optimization.reset(True)
+    try:
+      return fn(*args, **kwargs)
+    finally:
+      flags.config().graph_building_optimization.reset(False)
+
+  return wrapper
+
+
+def add_graph_building_optimization_tests(cls=None):
+  """Adds methods with graph_building_optimization enabled to the test suite.
+
+  Example:
+
+  @test_util.add_graph_building_optimization_tests
+  class FooTest(test.TestCase):
+
+    def testBar(self):
+      ...
+
+  Generated class:
+  class FooTest(test.TestCase):
+
+    def testBar(self):
+      ...
+
+    def testBarWithGraphBuildingOptimization(self):
+      // Enable graph_building_optimization
+      testBar(self)
+      // Disable graph_building_optimization
+
+  Args:
+    cls: class to decorate.
 
   Returns:
     cls with new test methods added.
   """
 
   def decorator(cls):
-    if context.run_eager_op_as_function_enabled():
+    if flags.config().graph_building_optimization.value():
       return cls
 
     for name, value in cls.__dict__.copy().items():
       if (callable(value) and
           (name.startswith(unittest.TestLoader.testMethodPrefix) or
-           name.startswith("benchmark")) and
-          not getattr(value, "_disable_eager_op_as_function", False)):
-        setattr(cls, name + "WithEagerOpAsFunctionEnabled",
-                enable_eager_op_as_function(value))
-        if only_as_function:
-          delattr(cls, name)
+           name.startswith("benchmark"))):
+        setattr(cls, name + "WithGraphBuildingOptimization",
+                enable_graph_building_optimization(value))
     return cls
 
   if cls is not None:
@@ -1202,12 +1297,7 @@ def disable_eager_op_as_function(unused_msg):
   Returns:
     The wrapped function with _disable_eager_op_as_function attr set to True.
   """
-
-  def wrapper(func):
-    func._disable_eager_op_as_function = True
-    return func
-
-  return wrapper
+  return _disable_test(execute_func=False)
 
 
 def set_xla_env_flag(func=None, flag=""):
@@ -1301,7 +1391,7 @@ def build_as_function_and_v1_graph(func=None):
           function_in_eager()
         ops.dismantle_graph(graph_for_eager_test)
       else:
-        return ValueError("Unknown run mode %s" % run_mode)
+        raise ValueError("Unknown run mode %s" % run_mode)
 
     return decorated
 
@@ -1394,6 +1484,7 @@ def run_in_graph_and_eager_modes(func=None,
           "Did you mean to use `run_all_in_graph_and_eager_modes`?")
 
     def decorated(self, *args, **kwargs):
+      logging.info("Running %s in GRAPH mode.", f.__name__)
       try:
         with context.graph_mode():
           with self.test_session(use_gpu=use_gpu, config=config):
@@ -1402,6 +1493,7 @@ def run_in_graph_and_eager_modes(func=None,
         pass
 
       def run_eagerly(self, **kwargs):
+        logging.info("Running %s in EAGER mode.", f.__name__)
         if not use_gpu:
           with ops.device("/device:CPU:0"):
             f(self, *args, **kwargs)
@@ -1884,7 +1976,7 @@ def deterministic_ops():
     config.disable_op_determinism()
 
 
-class CapturedWrites(object):
+class CapturedWrites:
   """A utility class to load the captured writes made to a stream."""
 
   def __init__(self, capture_location):
@@ -1897,7 +1989,7 @@ class CapturedWrites(object):
     return output_data
 
 
-class FakeEagerSession(object):
+class FakeEagerSession:
   """Fake session so tests that conditionally use placeholders can use eager.
 
   There are a number of tests that conditionally use placeholders for shape
@@ -1959,7 +2051,7 @@ class ErrorLoggingSession(session.Session):
 
   def run(self, *args, **kwargs):
     try:
-      return super(ErrorLoggingSession, self).run(*args, **kwargs)
+      return super().run(*args, **kwargs)
     except Exception as e:  # pylint: disable=broad-except
       # Note: disable the logging for OutOfRangeError, which makes the output
       # of tf.data tests hard to read, because OutOfRangeError is used as the
@@ -2286,7 +2378,7 @@ def matmul_without_tf32(a, b, *args, **kwargs):
     return math_ops.matmul(a, b, *args, **kwargs)
 
 
-class EagerSessionWarner(object):
+class EagerSessionWarner:
 
   def __getattr__(self, attr):
     raise AttributeError(
@@ -2303,7 +2395,7 @@ class TensorFlowTestCase(googletest.TestCase):
   """Base class for tests that need to test TensorFlow."""
 
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
-    super(TensorFlowTestCase, self).__init__(methodName)
+    super().__init__(methodName)
     # Make sure we get unfiltered stack traces during the test
     traceback_utils.disable_traceback_filtering()
     if is_xla_enabled():
@@ -2333,7 +2425,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self._set_default_seed = True
 
   def setUp(self):
-    super(TensorFlowTestCase, self).setUp()
+    super().setUp()
     self._ClearCachedSession()
     random.seed(random_seed.DEFAULT_GRAPH_SEED)
     np.random.seed(random_seed.DEFAULT_GRAPH_SEED)
@@ -2369,7 +2461,7 @@ class TensorFlowTestCase(googletest.TestCase):
       thread.check_termination()
 
     self._ClearCachedSession()
-    super(TensorFlowTestCase, self).tearDown()
+    super().tearDown()
 
   def _ClearCachedSession(self):
     if self._cached_session is not None:
@@ -2430,14 +2522,13 @@ class TensorFlowTestCase(googletest.TestCase):
     """
     stream.flush()
     fd = stream.fileno()
-    tmp_file_path = tempfile.mktemp(dir=self.get_temp_dir())
-    tmp_file = open(tmp_file_path, "w")
+    tmp_file, tmp_file_path = tempfile.mkstemp(dir=self.get_temp_dir())
     orig_fd = os.dup(fd)
-    os.dup2(tmp_file.fileno(), fd)
+    os.dup2(tmp_file, fd)
     try:
       yield CapturedWrites(tmp_file_path)
     finally:
-      tmp_file.close()
+      os.close(tmp_file)
       os.dup2(orig_fd, fd)
 
   def _AssertProtoEquals(self, a, b, msg=None):
@@ -2511,6 +2602,7 @@ class TensorFlowTestCase(googletest.TestCase):
       return self._eval_helper(tensor())
     else:
       try:
+        # for compatibility with TF1 test cases
         if sparse_tensor.is_sparse(tensor):
           return sparse_tensor.SparseTensorValue(tensor.indices.numpy(),
                                                  tensor.values.numpy(),
@@ -2523,12 +2615,20 @@ class TensorFlowTestCase(googletest.TestCase):
           return indexed_slices.IndexedSlicesValue(
               values=tensor.values.numpy(),
               indices=tensor.indices.numpy(),
-              dense_shape=tensor.dense_shape.numpy())
-        # Convert tensors and composite tensors to numpy arrays.
-        return nest.map_structure(lambda t: t.numpy(), tensor,
-                                  expand_composites=True)
+              dense_shape=None
+              if tensor.dense_shape is None else tensor.dense_shape.numpy())
+        else:
+          if hasattr(tensor, "numpy") and callable(tensor.numpy):
+            return tensor.numpy()
+          else:
+            # Try our best to convert CompositeTensor components to NumPy
+            # arrays. Officially, we don't support NumPy arrays as
+            # CompositeTensor components. So don't be surprised if this doesn't
+            # work.
+            return nest.map_structure(lambda t: t.numpy(), tensor,
+                                      expand_composites=True)
       except AttributeError as e:
-        six.raise_from(ValueError("Unsupported type %s." % type(tensor)), e)
+        raise ValueError(f"Unsupported type {type(tensor).__name__!r}.") from e
 
   def _eval_helper(self, tensors):
     if tensors is None:
@@ -2873,12 +2973,15 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertEqual(a.shape, b.shape, shape_mismatch_msg)
 
     msgs = [msg]
-    # np.allclose does not always work for our custom bfloat16 extension type
-    # when type promotions are involved, so we first cast any bfloat16 arrays
-    # to float32.
+    # np.allclose does not always work for our custom bfloat16 and float8
+    # extension types when type promotions are involved, so we first cast any
+    # arrays of such types to float32.
     a_dtype = a.dtype
-    a = a.astype(np.float32) if a.dtype == dtypes.bfloat16.as_numpy_dtype else a
-    b = b.astype(np.float32) if b.dtype == dtypes.bfloat16.as_numpy_dtype else b
+    custom_dtypes = (dtypes.bfloat16.as_numpy_dtype,
+                     dtypes.float8_e5m2.as_numpy_dtype,
+                     dtypes.float8_e4m3fn.as_numpy_dtype)
+    a = a.astype(np.float32) if a.dtype in custom_dtypes else a
+    b = b.astype(np.float32) if b.dtype in custom_dtypes else b
     if not np.allclose(a, b, rtol=rtol, atol=atol):
       # Adds more details to np.testing.assert_allclose.
       #
@@ -3116,9 +3219,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
     same = (a == b)
 
-    if (a.dtype in [
-        np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype
-    ]):
+    if dtypes.as_dtype(a.dtype).is_floating:
       same = np.logical_or(same, np.logical_and(np.isnan(a), np.isnan(b)))
     msgs = [msg]
     if not np.all(same):
@@ -3134,24 +3235,20 @@ class TensorFlowTestCase(googletest.TestCase):
       msgs.append("not equal lhs = %r" % x)
       msgs.append("not equal rhs = %r" % y)
 
-      # Handle mixed string types as a result of PY2to3 migration. That is, the
-      # mixing between bytes (b-prefix strings, PY2 default) and unicodes
-      # (u-prefix strings, PY3 default).
-      if six.PY3:
-        if (a.dtype.kind != b.dtype.kind and
-            {a.dtype.kind, b.dtype.kind}.issubset({"U", "S", "O"})):
-          a_list = []
-          b_list = []
-          # OK to flatten `a` and `b` because they are guaranteed to have the
-          # same shape.
-          for out_list, flat_arr in [(a_list, a.flat), (b_list, b.flat)]:
-            for item in flat_arr:
-              if isinstance(item, str):
-                out_list.append(item.encode("utf-8"))
-              else:
-                out_list.append(item)
-          a = np.array(a_list)
-          b = np.array(b_list)
+      if (a.dtype.kind != b.dtype.kind and
+          {a.dtype.kind, b.dtype.kind}.issubset({"U", "S", "O"})):
+        a_list = []
+        b_list = []
+        # OK to flatten `a` and `b` because they are guaranteed to have the
+        # same shape.
+        for out_list, flat_arr in [(a_list, a.flat), (b_list, b.flat)]:
+          for item in flat_arr:
+            if isinstance(item, str):
+              out_list.append(item.encode("utf-8"))
+            else:
+              out_list.append(item)
+        a = np.array(a_list)
+        b = np.array(b_list)
 
       np.testing.assert_array_equal(a, b, err_msg="\n".join(msgs))
 
@@ -3168,6 +3265,7 @@ class TensorFlowTestCase(googletest.TestCase):
       self.assertAllEqual(a, b)
     except AssertionError:
       return
+    msg = msg or ""
     raise AssertionError("The two values are equal at all elements. %s" % msg)
 
   @py_func_if_in_function
@@ -3405,23 +3503,33 @@ class TensorFlowTestCase(googletest.TestCase):
         exception_type, r"Incompatible shapes|Dimensions must be equal|"
         r"required broadcastable shapes")
 
-  def assertShapeEqual(self, np_array, tf_tensor, msg=None):
-    """Asserts that a Numpy ndarray and a TensorFlow tensor have the same shape.
+  def assertShapeEqual(self, input_a, input_b, msg=None):
+    """Asserts that two Numpy or TensorFlow objects have the same shape.
+
+    For Tensors, this compares statically known shapes at compile time, not
+    dynamic shapes at runtime.
 
     Args:
-      np_array: A Numpy ndarray or Numpy scalar.
-      tf_tensor: A Tensor.
+      input_a: A Numpy ndarray, Numpy scalar, or a Tensor.
+      input_b: A Numpy ndarray, Numpy scalar, or a Tensor.
       msg: Optional message to report on failure.
 
     Raises:
       TypeError: If the arguments have the wrong type.
     """
-    if not isinstance(np_array, (np.ndarray, np.generic)):
-      raise TypeError("np_array must be a Numpy ndarray or Numpy scalar")
-    if not isinstance(tf_tensor, ops.Tensor):
-      raise TypeError("tf_tensor must be a Tensor")
-    self.assertAllEqual(
-        np_array.shape, tf_tensor.get_shape().as_list(), msg=msg)
+    if not isinstance(input_a, (np.ndarray, np.generic, ops.Tensor)):
+      raise TypeError(
+          "input_a must be a Numpy ndarray, Numpy scalar, or a Tensor."
+          f"Instead received {type(input_a)}")
+    if not isinstance(input_b, (np.ndarray, np.generic, ops.Tensor)):
+      raise TypeError(
+          "input_b must be a Numpy ndarray, Numpy scalar, or a Tensor."
+          f"Instead received {type(input_b)}")
+    shape_a = input_a.get_shape().as_list() if isinstance(
+        input_a, ops.Tensor) else input_a.shape
+    shape_b = input_b.get_shape().as_list() if isinstance(
+        input_b, ops.Tensor) else input_b.shape
+    self.assertAllEqual(shape_a, shape_b, msg=msg)
 
   def assertDeviceEqual(self, device1, device2, msg=None):
     """Asserts that the two given devices are the same.
@@ -3509,16 +3617,15 @@ class TensorFlowTestCase(googletest.TestCase):
       self._assertAllCloseRecursive(a, b, rtol, atol, path, msg)
 
   # Fix Python 3+ compatibility issues
-  if not six.PY2:
-    # pylint: disable=invalid-name
+  # pylint: disable=invalid-name
 
-    # Silence a deprecation warning
-    assertRaisesRegexp = googletest.TestCase.assertRaisesRegex
+  # Silence a deprecation warning
+  assertRaisesRegexp = googletest.TestCase.assertRaisesRegex
 
-    # assertItemsEqual is assertCountEqual as of 3.2.
-    assertItemsEqual = googletest.TestCase.assertCountEqual
+  # assertItemsEqual is assertCountEqual as of 3.2.
+  assertItemsEqual = googletest.TestCase.assertCountEqual
 
-    # pylint: enable=invalid-name
+  # pylint: enable=invalid-name
 
   @contextlib.contextmanager
   def _constrain_devices_and_set_default(self, sess, use_gpu, force_gpu):
@@ -3615,6 +3722,28 @@ class TensorFlowTestCase(googletest.TestCase):
       return self._cached_session
 
 
+ASSIGNED_PORTS = set()
+lock = threading.Lock()
+
+
+def pick_unused_port():
+  """Returns an unused and unassigned local port."""
+  import portpicker  # pylint: disable=g-import-not-at-top
+
+  global ASSIGNED_PORTS
+  with lock:
+    while True:
+      try:
+        port = portpicker.pick_unused_port()
+      except portpicker.NoFreePortFoundError as porterror:
+        raise unittest.SkipTest("Flakes in portpicker library do not represent"
+                                " TensorFlow errors.") from porterror
+      if port > 10000 and port not in ASSIGNED_PORTS:
+        ASSIGNED_PORTS.add(port)
+        logging.info("Using local port %r", port)
+        return port
+
+
 @tf_export("test.create_local_cluster")
 def create_local_cluster(num_workers,
                          num_ps,
@@ -3673,9 +3802,8 @@ def create_local_cluster(num_workers,
   Raises:
     ImportError: if portpicker module was not found at load time
   """
-  import portpicker  # pylint: disable=g-import-not-at-top
-  worker_ports = [portpicker.pick_unused_port() for _ in range(num_workers)]
-  ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
+  worker_ports = [pick_unused_port() for _ in range(num_workers)]
+  ps_ports = [pick_unused_port() for _ in range(num_ps)]
   cluster_dict = {
       "worker": ["localhost:%s" % port for port in worker_ports],
       "ps": ["localhost:%s" % port for port in ps_ports]
@@ -3822,3 +3950,20 @@ def run_functions_eagerly(run_eagerly):
     yield
   finally:
     def_function.run_functions_eagerly(initial_state)
+
+
+class TestDelta:
+  """A utility class to track increments to test counters."""
+
+  def __init__(self, name, label):
+    self.name = name
+    self.label = label
+    self.Reset()
+
+  def Reset(self):
+    self.last_value = _test_metrics_util.test_counter_value(
+        self.name, self.label)
+
+  def Get(self):
+    value = _test_metrics_util.test_counter_value(self.name, self.label)
+    return value - self.last_value

@@ -18,6 +18,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_FAKE_QUANT_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_FAKE_QUANT_UTILS_H_
 
+#include <string>
+
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -34,9 +36,9 @@ struct FetchMinMaxAttrs {
   using AttrType = FloatAttr;
   bool operator()(TFFakeQuantOp tf_op, AttrType &min_value,
                   AttrType &max_value) const {
-    min_value = tf_op.minAttr();
-    max_value = tf_op.maxAttr();
-    return true;  // Succesfully matched and fetched.
+    min_value = tf_op.getMinAttr();
+    max_value = tf_op.getMaxAttr();
+    return true;  // Successfully matched and fetched.
   }
 };
 
@@ -45,14 +47,14 @@ struct FetchConstantMinMaxInputs {
   using AttrType = DenseFPElementsAttr;
   bool operator()(TFFakeQuantOp tf_op, AttrType &min_value,
                   AttrType &max_value) const {
-    Value min = tf_op.min(), max = tf_op.max();
+    Value min = tf_op.getMin(), max = tf_op.getMax();
     if (!matchPattern(min, m_Constant(&min_value))) {
       return false;
     }
     if (!matchPattern(max, m_Constant(&max_value))) {
       return false;
     }
-    return true;  // Succesfully matched and fetched.
+    return true;  // Successfully matched and fetched.
   }
 };
 
@@ -94,13 +96,16 @@ struct FetchConstantMinMaxInputs {
 template <typename TFFakeQuantOp, bool PerAxis, class FetchMinMax>
 class InsertTFLQuantOpsAfterTFFakeQuantOp {
  public:
+  explicit InsertTFLQuantOpsAfterTFFakeQuantOp(bool use_fake_quant_num_bits)
+      : use_fake_quant_num_bits_(use_fake_quant_num_bits) {}
+
   FetchMinMax fetch_min_max_;
 
   using FetchAttrType = typename FetchMinMax::AttrType;
   LogicalResult matchAndRewrite(TFFakeQuantOp tf_op,
                                 OpBuilder &rewriter) const {
     // We don't want to insert quantize/dequantize if the quantize op exists.
-    auto res = tf_op.outputs();
+    auto res = tf_op.getOutputs();
     if (!res.hasOneUse() || isa<QuantizeOp>(*res.user_begin())) {
       return failure();
     }
@@ -122,12 +127,13 @@ class InsertTFLQuantOpsAfterTFFakeQuantOp {
     // Use the min/max from the operands and the num_bits and narrow_range
     // attribute to create the quantization parameter for the new quantize op.
     rewriter.setInsertionPointAfter(tf_op.getOperation());
-    IntegerAttr num_bits = rewriter.getI64IntegerAttr(tf_op.num_bits());
-    BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.narrow_range());
+    IntegerAttr num_bits = rewriter.getI64IntegerAttr(tf_op.getNumBits());
+    BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.getNarrowRange());
     Type res_type = tf_op.getType();
     TypeAttr qtype = quant::GetQuantizedTypeAttr(
         rewriter, res_type, min_value, max_value, quant_dim, num_bits,
-        narrow_range, /*is_signed=*/false);
+        narrow_range, /*is_signed=*/false, /*legacy_float_scale=*/false,
+        use_fake_quant_num_bits_);
     if (!qtype) {
       return failure();
     }
@@ -135,21 +141,24 @@ class InsertTFLQuantOpsAfterTFFakeQuantOp {
     // Finally, use the quantization parameter to create the quantize and
     // dequantize ops, and insert them between the tf.FakeQuantWithMinMaxVarsOp
     // and its users.
-    Value value = tf_op.outputs();
+    Value value = tf_op.getOutputs();
     auto quantize = rewriter.create<TFL::QuantizeOp>(
         tf_op.getLoc(), qtype.getValue(), value, qtype);
     auto dequantize = rewriter.create<TFL::DequantizeOp>(
-        tf_op.getLoc(), res_type, quantize.output());
+        tf_op.getLoc(), res_type, quantize.getOutput());
     value.replaceAllUsesWith(dequantize);
     quantize.getOperation()->replaceUsesOfWith(dequantize, value);
 
     return success();
   }
+
+  bool use_fake_quant_num_bits_;
 };
 
 // Removes the wrapper of the tf.FakeQuant* ops and creates the tfl.quantize
 // and tfl.dequantize pairs before tf.FakeQuant* being foled.
-LogicalResult ConvertFakeQuantOps(FuncOp func, MLIRContext *ctx);
+LogicalResult ConvertFakeQuantOps(func::FuncOp func, MLIRContext *ctx,
+                                  bool use_fake_quant_num_bits = false);
 
 // Returns the names of all the considered tf.FakeQuant* ops.
 std::vector<std::string> AllTfFakeQuantOps();

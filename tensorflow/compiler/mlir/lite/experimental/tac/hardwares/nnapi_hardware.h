@@ -27,7 +27,7 @@ class NNAPIHardware : public SimpleHardware {
  public:
   static constexpr char kId[] = "NNAPI";
 
-  mlir::OwningRewritePatternList GetTransformations(
+  mlir::RewritePatternSet GetTransformations(
       MLIRContext* context) const override;
 
   mlir::TypeID GetTypeId() const override {

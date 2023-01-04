@@ -16,7 +16,7 @@
 
 import os as _os
 import sys as _sys
-import six as _six
+import typing as _typing
 
 from tensorflow.python.tools import module_util as _module_util
 from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
@@ -45,15 +45,6 @@ if _module_dir:
   _current_module.__path__ = [_module_dir] + _current_module.__path__
 setattr(_current_module, "keras", keras)
 
-# Explicitly import lazy-loaded modules to support autocompletion.
-# pylint: disable=g-import-not-at-top
-if not _six.PY2:
-  import typing as _typing
-  if _typing.TYPE_CHECKING:
-    from tensorflow_estimator.python.estimator.api._v1 import estimator
-# pylint: enable=g-import-not-at-top
-
-
 from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
 _current_module.app.flags = flags  # pylint: disable=undefined-variable
 setattr(_current_module, "flags", flags)
@@ -80,3 +71,14 @@ if hasattr(_current_module, "keras"):
     _current_module.nn.rnn_cell = _rnn_cell
   except ImportError:
     pass
+
+# Explicitly import lazy-loaded modules to support autocompletion.
+# pylint: disable=g-import-not-at-top
+if _typing.TYPE_CHECKING:
+  from tensorflow_estimator.python.estimator.api._v1 import estimator as estimator
+  from keras.api._v1 import keras
+  from keras.api._v1.keras import losses
+  from keras.api._v1.keras import metrics
+  from keras.api._v1.keras import optimizers
+  from keras.api._v1.keras import initializers
+# pylint: enable=g-import-not-at-top

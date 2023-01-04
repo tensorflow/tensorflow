@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/testing/test_runner.h"
 
+#include <string>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -24,20 +26,23 @@ namespace {
 class ConcreteTestRunner : public TestRunner {
  public:
   void LoadModel(const string& bin_file_path) override {}
-  const std::vector<int>& GetInputs() override { return ids_; }
-  const std::vector<int>& GetOutputs() override { return ids_; }
-  void ReshapeTensor(int id, const string& csv_values) override {}
   void AllocateTensors() override {}
-  void ResetTensor(int id) override {}
-  void SetInput(int id, const string& csv_values) override {}
-  void SetExpectation(int id, const string& csv_values) override {}
-  void SetShapeExpectation(int id, const string& csv_values) override {}
-  string ReadOutput(int id) override { return ""; }
-  void Invoke() override {}
-  bool CheckResults() override { return true; }
   bool CheckFloatSizes(size_t bytes, size_t values) {
     return CheckSizes<float>(bytes, values);
   }
+  void LoadModel(const string& bin_file_path,
+                 const string& signature) override {}
+  void ReshapeTensor(const string& name, const string& csv_values) override {}
+  void ResetTensor(const std::string& name) override {}
+  string ReadOutput(const string& name) override { return ""; }
+  void Invoke(const std::vector<std::pair<string, string>>& inputs) override {}
+  bool CheckResults(
+      const std::vector<std::pair<string, string>>& expected_outputs,
+      const std::vector<std::pair<string, string>>& expected_output_shapes)
+      override {
+    return true;
+  }
+  std::vector<string> GetOutputNames() override { return {}; }
 
  private:
   std::vector<int> ids_;

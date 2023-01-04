@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/tile_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -30,17 +31,17 @@ absl::Status TileChannelsTest(TestExecutionEnvironment* env) {
   src_tensor.shape = BHWC(1, 2, 1, 3);
   src_tensor.data = {half(1.0f), half(2.0f), half(3.0f),
                      half(4.0f), half(5.0f), half(6.0f)};
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateTile(op_def, src_tensor.shape.c);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 6), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({half(1.0f), half(2.0f), half(3.0f), half(1.0f),
@@ -57,17 +58,17 @@ absl::Status TileChannelsX4Test(TestExecutionEnvironment* env) {
   src_tensor.shape = BHWC(1, 2, 1, 4);
   src_tensor.data = {half(1.0f), half(2.0f), half(3.0f), half(7.0f),
                      half(4.0f), half(5.0f), half(6.0f), half(8.0f)};
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateTile(op_def, src_tensor.shape.c);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 8), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({half(1.0f), half(2.0f), half(3.0f), half(7.0f),
@@ -85,17 +86,17 @@ absl::Status TileWidthTest(TestExecutionEnvironment* env) {
   src_tensor.shape = BHWC(1, 1, 2, 3);
   src_tensor.data = {half(1.0f), half(2.0f), half(3.0f),
                      half(4.0f), half(5.0f), half(6.0f)};
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateTile(op_def, src_tensor.shape.c);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 1, 4, 3), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({half(1.0f), half(2.0f), half(3.0f), half(4.0f),
@@ -112,17 +113,17 @@ absl::Status TileHeightTest(TestExecutionEnvironment* env) {
   src_tensor.shape = BHWC(1, 2, 1, 3);
   src_tensor.data = {half(1.0f), half(2.0f), half(3.0f),
                      half(4.0f), half(5.0f), half(6.0f)};
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateTile(op_def, src_tensor.shape.c);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 4, 1, 3), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({half(1.0f), half(2.0f), half(3.0f), half(4.0f),
@@ -140,17 +141,17 @@ absl::Status TileHWCTest(TestExecutionEnvironment* env) {
   src_tensor.data = {half(1.0f), half(2.0f),  half(3.0f),  half(4.0f),
                      half(5.0f), half(6.0f),  half(7.0f),  half(8.0f),
                      half(9.0f), half(10.0f), half(11.0f), half(12.0f)};
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateTile(op_def, src_tensor.shape.c);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 4, 4, 6), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(
           {half(1.0f),  half(2.0f),  half(3.0f),  half(1.0f),  half(2.0f),

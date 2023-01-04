@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -29,6 +29,7 @@ class EagerContext;
 
 enum class IrExportStage {
   HLO,
+  HLO_NO_METADATA,
   HLO_SERIALIZED,
   OPTIMIZED_HLO,
   OPTIMIZED_HLO_SERIALIZED,

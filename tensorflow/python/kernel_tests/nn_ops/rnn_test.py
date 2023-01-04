@@ -20,7 +20,6 @@ import timeit
 
 import numpy as np
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
@@ -839,7 +838,7 @@ class BenchmarkRNN(test.Benchmark):
       rnn_long_sequence_benchmark(batch_size, seqlen, num_units,
                                   dynamic, swap_memory, 2)
     # Measure the performance.
-    for slen in xrange(100, 1100, 100):
+    for slen in range(100, 1100, 100):
       rnn_long_sequence_benchmark(batch_size, slen, num_units, dynamic,
                                   swap_memory, 3)
 

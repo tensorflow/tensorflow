@@ -46,7 +46,6 @@ import java.io.Closeable;
 public class CompatibilityList implements Closeable {
 
   private static final long INVALID_COMPATIBILITY_LIST_HANDLE = 0;
-  private static final String TFLITE_GPU_LIB = "tensorflowlite_gpu_jni";
 
   private long compatibilityListHandle = INVALID_COMPATIBILITY_LIST_HANDLE;
 
@@ -65,6 +64,7 @@ public class CompatibilityList implements Closeable {
   }
 
   public CompatibilityList() {
+    GpuDelegateNative.init();
     compatibilityListHandle = createCompatibilityList();
   }
 
@@ -79,10 +79,6 @@ public class CompatibilityList implements Closeable {
       deleteCompatibilityList(compatibilityListHandle);
       compatibilityListHandle = INVALID_COMPATIBILITY_LIST_HANDLE;
     }
-  }
-
-  static {
-    System.loadLibrary(TFLITE_GPU_LIB);
   }
 
   private static native long createCompatibilityList();

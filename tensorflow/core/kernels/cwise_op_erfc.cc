@@ -11,12 +11,13 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-==============================================================================*/
+======================================================================================*/
 
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER3(UnaryOp, CPU, "Erfc", functor::erfc, float, Eigen::half, double);
+REGISTER4(UnaryOp, CPU, "Erfc", functor::erfc, float, Eigen::half, double,
+          bfloat16);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

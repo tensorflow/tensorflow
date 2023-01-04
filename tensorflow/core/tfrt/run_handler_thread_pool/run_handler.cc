@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_util.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/util/ptr_util.h"
+#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 
 namespace tfrt {
 namespace tf {
@@ -358,10 +359,10 @@ RunHandlerThreadPool::RunHandlerThreadPool(
   thread_data_.resize(num_threads_);
   for (int i = 0; i < num_threads_; ++i) {
     thread_data_[i].new_thread_work_sources =
-        absl::make_unique<Eigen::MaxSizeVector<ThreadWorkSource*>>(
+        std::make_unique<Eigen::MaxSizeVector<ThreadWorkSource*>>(
             options.max_concurrent_handler);
     thread_data_[i].current_thread_work_sources =
-        absl::make_unique<Eigen::MaxSizeVector<ThreadWorkSource*>>(
+        std::make_unique<Eigen::MaxSizeVector<ThreadWorkSource*>>(
             options.max_concurrent_handler);
   }
   VLOG(1) << "Creating RunHandlerThreadPool " << name << " with  "
@@ -856,7 +857,7 @@ class RunHandlerPool::Impl {
     // requests will trigger recomputation.
     if (wait_if_no_active_request_ && sorted_active_handlers_.empty()) {
       thread_local auto thread_work_sources =
-          absl::make_unique<Eigen::MaxSizeVector<internal::ThreadWorkSource*>>(
+          std::make_unique<Eigen::MaxSizeVector<internal::ThreadWorkSource*>>(
               max_handlers_);
       thread_work_sources->resize(0);
       auto version = ++version_;
@@ -1045,12 +1046,46 @@ void RunHandler::ScheduleIntraOpClosure(TaskFunction fn) {
   impl_->ScheduleInterOpClosure(std::move(fn));
 }
 
+int RunHandler::NumThreads() const {
+  return impl_->pool_impl()->run_handler_thread_pool()->NumThreads();
+}
+
+int64_t RunHandler::step_id() const { return impl_->step_id(); }
+
 tensorflow::thread::ThreadPoolInterface*
 RunHandler::AsIntraThreadPoolInterface() const {
   return impl_->thread_pool_interface();
 }
 
 RunHandler::~RunHandler() { impl_->pool_impl()->ReleaseHandler(impl_); }
+
+int RunHandlerWorkQueue::GetParallelismLevel() const {
+  return run_handler_->NumThreads();
+}
+
+void RunHandlerWorkQueue::AddTask(TaskFunction work) {
+  run_handler_->ScheduleInterOpClosure(tensorflow::tfrt_stub::WrapWork(
+      run_handler_->step_id(), "inter", std::move(work)));
+}
+
+Optional<TaskFunction> RunHandlerWorkQueue::AddBlockingTask(
+    TaskFunction work, bool allow_queuing) {
+  LOG_EVERY_N_SEC(ERROR, 10)
+      << "RunHandlerWorkQueue::AddBlockingTask() is not supposed to be called.";
+  return work;
+}
+
+void RunHandlerWorkQueue::Await(ArrayRef<RCReference<AsyncValue>> values) {
+  tfrt::Await(values);
+}
+
+bool RunHandlerWorkQueue::IsInWorkerThread() const {
+  // Simply return true here as this method is not used in savedmodel workflow
+  // and soon deprecated.
+  //
+  // TODO(b/198671794): Remove this method once it is removed from base.
+  return true;
+}
 
 }  // namespace tf
 }  // namespace tfrt

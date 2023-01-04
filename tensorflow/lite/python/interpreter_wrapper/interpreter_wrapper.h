@@ -27,7 +27,7 @@ limitations under the License.
 // automatically move <Python.h> before <locale>.
 #include <Python.h>
 
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 
 struct TfLiteDelegate;
 
@@ -75,17 +75,19 @@ class InterpreterWrapper {
   PyObject* ResizeInputTensor(int i, PyObject* value, bool strict,
                               int subgraph_index);
 
-  int NumTensors() const;
-  std::string TensorName(int i) const;
-  PyObject* TensorType(int i) const;
-  PyObject* TensorSize(int i) const;
-  PyObject* TensorSizeSignature(int i) const;
-  PyObject* TensorSparsityParameters(int i) const;
+  int NumTensors(int subgraph_index) const;
+  std::string TensorName(int tensor_index, int subgraph_index) const;
+  PyObject* TensorType(int tensor_index, int subgraph_index) const;
+  PyObject* TensorSize(int tensor_index, int subgraph_index) const;
+  PyObject* TensorSizeSignature(int tensor_index, int subgraph_index) const;
+  PyObject* TensorSparsityParameters(int tensor_index,
+                                     int subgraph_index) const;
   // Deprecated in favor of TensorQuantizationScales, below.
-  PyObject* TensorQuantization(int i) const;
-  PyObject* TensorQuantizationParameters(int i) const;
-  PyObject* SetTensor(int i, PyObject* value, int subgraph_index);
-  PyObject* GetTensor(int i, int subgraph_index) const;
+  PyObject* TensorQuantization(int tensor_index, int subgraph_index) const;
+  PyObject* TensorQuantizationParameters(int tensor_index,
+                                         int subgraph_index) const;
+  PyObject* SetTensor(int tensor_index, PyObject* value, int subgraph_index);
+  PyObject* GetTensor(int tensor_index, int subgraph_index) const;
   PyObject* GetSubgraphIndexFromSignature(const char* signature_key);
   PyObject* GetSignatureDefs() const;
   PyObject* ResetVariableTensors();

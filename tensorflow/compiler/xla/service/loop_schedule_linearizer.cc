@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/loop_schedule_linearizer.h"
 
-#include "tensorflow/compiler/xla/service/dump.h"
+#include <memory>
+
 #include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
 
 namespace xla {
@@ -40,7 +41,7 @@ struct ComputationInstructionOrdering {
     }
   }
 
-  int32 NodeIdForInstruction(const HloInstruction& instr) {
+  int32_t NodeIdForInstruction(const HloInstruction& instr) {
     int32_t instruction_id = instr.unique_id();
     auto it = node_id_to_graph_id.find(instruction_id);
 
@@ -60,7 +61,7 @@ struct ComputationInstructionOrdering {
     return graph_cycles.InsertEdge(source_id, dest_id);
   }
 
-  absl::flat_hash_map<int32, int32> node_id_to_graph_id;
+  absl::flat_hash_map<int32_t, int32_t> node_id_to_graph_id;
 
   tensorflow::GraphCycles graph_cycles;
 };
@@ -107,7 +108,7 @@ static StatusOr<bool> AddControlEdgesForLoopWrites(
       // into account.
       HloInstruction* write = value_at_root.defining_instruction();
 
-      for (const HloUse& use : value_at_input.uses()) {
+      for (const HloUse& use : value_at_input.GetUses()) {
         HloInstruction* read = use.instruction;
 
         if (read != write &&
@@ -140,25 +141,31 @@ static StatusOr<bool> AddControlEdgesForLoopWrites(
   return changed;
 }
 
-StatusOr<bool> LoopScheduleLinearizer::Run(HloModule* module) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, can_share_buffer_));
+StatusOr<bool> LoopScheduleLinearizer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  // Constructing HloAliasAnalysis is expensive, so don't do it until we find at
+  // least one kWhile op in the module.
+  std::unique_ptr<HloAliasAnalysis> alias_analysis;
 
   bool changed = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
-      if (instruction->opcode() == HloOpcode::kWhile) {
-        StatusOr<bool> updated_loop =
-            AddControlEdgesForLoopWrites(instruction, *alias_analysis);
-        TF_RETURN_IF_ERROR(updated_loop.status());
-        changed |= *updated_loop;
+      if (instruction->opcode() != HloOpcode::kWhile) {
+        continue;
       }
+
+      if (alias_analysis == nullptr) {
+        TF_ASSIGN_OR_RETURN(alias_analysis,
+                            HloAliasAnalysis::Run(module, can_share_buffer_));
+      }
+      TF_ASSIGN_OR_RETURN(bool updated_loop, AddControlEdgesForLoopWrites(
+                                                 instruction, *alias_analysis));
+      changed |= updated_loop;
     }
   }
-  DumpHloModuleDuringPassIfEnabled(
-      name(), "after inserting control edges inside while loop bodies",
-      *module);
 
   return changed;
 }

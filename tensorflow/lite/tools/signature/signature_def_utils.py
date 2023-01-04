@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utility functions related to SignatureDefs."""
+"""Utility functions related to SignatureDefs.
+
+Note: This utility is not compatiable with tensorflow.org/lite/guide/signatures.
+"""
 
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.lite.tools.signature import _pywrap_signature_def_util_wrapper as signature_def_util

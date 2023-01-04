@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -99,6 +101,8 @@ class XlaContext;
 // `tensor_array_gradients` ordered set.
 class XlaCompiler {
  public:
+  // TODO(b/255826209): Remove this alias. Depending on XlaCompiler just to use
+  // XlaArgument seeems weird and can cause circular dependencies.
   using Argument = ::tensorflow::XlaArgument;
 
   // Options pertaining to an individual call to CompileGraph() or
@@ -161,16 +165,13 @@ class XlaCompiler {
     // for CPU.
     bool allow_cpu_custom_calls = false;
 
-    // If both this and 'allow_cpu_custom_calls' are true then tf.fake_quant_*
-    // ops will be emitted as custom calls to a 'fake_quant_with_min_max_vars'
-    // function accepting the input, min, max, num_bits, and narrow_range values
-    // as runtime arguments.
-    bool custom_fake_quant_op_calls = false;
-
-    // If set, the XLA representation of variables represented to XLA as the
-    // shape given by this shape function. Variables are reshaped to this shape
-    // on write, and reshaped to their original shape on read.
-    XlaHelpers::ShapeRepresentationFn shape_representation_fn;
+    // A ShapeDeterminationFns (i.e., a bundle of LayoutSelectionFn and
+    // ShapeRepresentationFn). Each bundle describes the XLA representation of
+    // arguments represented to XLA as the shape given by this shape function.
+    // Arguments are input activations or weights to an XLA entry computation.
+    // Variables are reshaped to this shape on write, and reshaped to their
+    // original shape on read.
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns;
 
     // If not nullptr, populate_resource_manager is called with the
     // compilation device's resource manager when the compilation
@@ -202,6 +203,23 @@ class XlaCompiler {
     bool detailed_logging = true;
   };
 
+  // Argument for compiling a single op.
+  struct SingleOpCompileArgument {
+    // Data type of the output tensors. This is used to create _Retval node.
+    std::vector<DataType> output_dtypes;
+
+    // The NodeDef representing the op.
+    NodeDef node_def;
+
+    // This is currently only used to obtain MLIR TPU bridge rollout state.
+    // Can be removed once full rollout is complete.
+    ConfigProto config_proto;
+
+    SingleOpCompileArgument() = default;
+
+    explicit SingleOpCompileArgument(const OpKernelContext& ctx);
+  };
+
   explicit XlaCompiler(Options options);
 
   ~XlaCompiler();
@@ -214,6 +232,11 @@ class XlaCompiler {
                          const NameAttrList& fn_name_attrs,
                          absl::Span<const Argument> args,
                          CompilationResult* result);
+
+  Status CompileSingleOp(
+      const CompileOptions& options,
+      const SingleOpCompileArgument& single_op_compile_argument,
+      absl::Span<const Argument> args, CompilationResult* result);
 
   // Compiles a tensorflow::Graph into an xla::XlaComputation.
   // Similar to CompileFunction, but takes a Graph as input rather than a
@@ -228,7 +251,7 @@ class XlaCompiler {
   // convention.
   Status XLAShapeForArgument(
       const Argument& arg, bool is_entry_computation,
-      const absl::optional<xla::HloSharding>& arg_sharding,
+      const std::optional<xla::HloSharding>& arg_sharding,
       xla::Shape* xla_shape) const;
 
   // Retrieves the channel handle associated with `key`. Allocates

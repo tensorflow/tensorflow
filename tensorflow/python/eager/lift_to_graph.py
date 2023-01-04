@@ -287,6 +287,13 @@ def lift_to_graph(tensors,
       # we'll do ugly post-hoc mutations instead.
       ops_to_visit.append(next(iter(unvisited_ops)))
 
+  # When the topological sort fails due to loops, it can result in exceptions
+  # later when copying a node which inputs haven't been copied yet. We can
+  # improve that pseudo-topological order slightly by putting the ops without
+  # inputs, such as constants, at the start of the topological order (i.e at
+  # the end of ops_to_copy).
+  ops_to_copy.sort(key=(lambda op: len(op_selector.graph_inputs(op)) == 0))
+
   # When lifting from one FuncGraph to another, we will need to capture the
   # relevant tensors as well.
   captures = []

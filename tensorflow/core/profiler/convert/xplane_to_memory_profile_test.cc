@@ -92,6 +92,7 @@ TEST(ConvertXPlaneToMemoryProfile, OneAllocatorMultiActivitiesTest) {
   EXPECT_EQ(memory_profile.memory_ids_size(), 1);
   EXPECT_EQ(memory_profile.memory_profile_per_allocator().begin()->first,
             "GPU_0_bfc");
+  EXPECT_EQ(memory_profile.version(), 1);
   const auto& allocator_memory_profile =
       memory_profile.memory_profile_per_allocator().begin()->second;
   EXPECT_EQ(
@@ -103,10 +104,16 @@ TEST(ConvertXPlaneToMemoryProfile, OneAllocatorMultiActivitiesTest) {
             7000);
   EXPECT_EQ(allocator_memory_profile.profile_summary().peak_stats_time_ps(),
             70000);
-  EXPECT_EQ(allocator_memory_profile.memory_profile_snapshots_size(), 3);
+  EXPECT_EQ(allocator_memory_profile.sampled_timeline_snapshots_size(), 3);
+  EXPECT_EQ(allocator_memory_profile.memory_profile_snapshots_size(), 1);
+  EXPECT_EQ(allocator_memory_profile.memory_profile_snapshots()
+                .at(0)
+                .activity_metadata()
+                .tf_op_name(),
+            "mul_grad/Sum");
   EXPECT_EQ(allocator_memory_profile.active_allocations_size(), 3);
   EXPECT_EQ(
-      allocator_memory_profile.active_allocations().at(2).snapshot_index(), 2);
+      allocator_memory_profile.active_allocations().at(2).snapshot_index(), 0);
   EXPECT_EQ(allocator_memory_profile.special_allocations_size(), 2);
   EXPECT_EQ(allocator_memory_profile.special_allocations().at(1).tf_op_name(),
             "stack");

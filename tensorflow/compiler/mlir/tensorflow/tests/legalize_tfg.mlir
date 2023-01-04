@@ -12,10 +12,14 @@ module  {
     %ctl_1 = _Retval(%test_func_name0) name("func_call") {T = !tf_type.resource, index = 0 : i64} : tensor<*x!tf_type.resource>
     // CHECK: tf_executor.fetch
   }
-  // CHECK: func @test_func_name0(%arg0: tensor<*x!tf_type.resource> {tf._output_shapes = #tf_type.shape<*>, tf._resource_arg_unique_id = 0 : i64}, %arg1: !tf_type.control, %arg2: tensor<*x!tf_type.resource> {tf._output_shapes = #tf_type.shape<*>, tf._resource_arg_unique_id = 0 : i64}, %arg3: !tf_type.control) -> tensor<*x!tf_type.resource> attributes {resource_arg_unique_ids_keys = dense<[0, 1]> : tensor<2xi32>, resource_arg_unique_ids_values = dense<0> : tensor<2xi32>, tf._disable_call_shape_inference = true}
+
+  // CHECK: func @test_func_name0(%arg0: tensor<*x!tf_type.resource> {tf._output_shapes = #tf_type.shape<*>, tf._resource_arg_unique_id = 0 : i64}, %arg1: tensor<*x!tf_type.resource> {tf._output_shapes = #tf_type.shape<*>, tf._resource_arg_unique_id = 0 : i64}) -> tensor<*x!tf_type.resource> attributes {resource_arg_unique_ids_keys = dense<[0, 1]> : tensor<2xi32>, resource_arg_unique_ids_values = dense<0> : tensor<2xi32>, tf._disable_call_shape_inference = true}
   tfg.func @test_func_name0(%test_func_name0: tensor<*x!tf_type.resource> {tf._output_shapes = #tf_type.shape<*>, tf._resource_arg_unique_id = 0 : i64, tfg.name = "test_func_name0"},
                             %test_func_name01: tensor<*x!tf_type.resource> {tf._output_shapes = #tf_type.shape<*>, tf._resource_arg_unique_id = 0 : i64, tfg.name = "test_func_name01"})
        -> (tensor<*x!tf_type.resource> {tfg.dtype = !tf_type.resource, tfg.name = "test_func_name02"})
+   // CHECK: tf_executor.graph
+   // CHECK: tf_executor.fetch %arg0 : tensor<*x!tf_type.resource>
+   // CHECK: return %0 : tensor<*x!tf_type.resource>
    attributes {resource_arg_unique_ids_keys = dense<[0, 1]> : tensor<2xi32>, resource_arg_unique_ids_values = dense<0> : tensor<2xi32>, tf._disable_call_shape_inference = true} {
     return(%test_func_name0) : tensor<*x!tf_type.resource>
   }

@@ -18,7 +18,6 @@ import time
 
 import numpy as np
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -53,7 +52,7 @@ class SessionBenchmark(test.Benchmark):
       no_op = array_ops.identity(p).op
       with session.Session(target) as sess:
         sess.run(no_op, feed_dict={p: feed_val})  # Warm-up run.
-        for _ in xrange(iters):
+        for _ in range(iters):
           start_time = time.time()
           sess.run(no_op, feed_dict={p: feed_val})
           end_time = time.time()
@@ -81,7 +80,7 @@ class SessionBenchmark(test.Benchmark):
       with session.Session(target) as sess:
         sess.run(v.initializer)
         sess.run(v)  # Warm-up run.
-        for _ in xrange(iters):
+        for _ in range(iters):
           start_time = time.time()
           sess.run(v)
           end_time = time.time()
@@ -110,7 +109,7 @@ class SessionBenchmark(test.Benchmark):
         sess.run(v.initializer)
         runner = sess.make_callable(v)
         runner()  # Warm-up run.
-        for _ in xrange(iters):
+        for _ in range(iters):
           start_time = time.time()
           runner()
           end_time = time.time()
@@ -136,7 +135,7 @@ class SessionBenchmark(test.Benchmark):
       with session.Session(target) as sess:
         sess.run(v.initializer)
         sess.run(v.op)  # Warm-up run.
-        for _ in xrange(iters):
+        for _ in range(iters):
           start_time = time.time()
           sess.run(v.op)
           end_time = time.time()
@@ -163,7 +162,7 @@ class SessionBenchmark(test.Benchmark):
         sess.run(v.initializer)
         runner = sess.make_callable(v.op)
         runner()  # Warm-up run.
-        for _ in xrange(iters):
+        for _ in range(iters):
           start_time = time.time()
           runner()
           end_time = time.time()

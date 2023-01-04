@@ -66,7 +66,7 @@ Status LoadDynamicLibrary(const char* library_filename, void** result,
               if (seen_op_names.find(opdef.name()) == seen_op_names.end()) {
                 // Over writing a registration of an op not in this custom op
                 // library. Treat this as not an error.
-                return Status::OK();
+                return OkStatus();
               }
             }
             if (s.ok()) {
@@ -98,7 +98,7 @@ Status LoadDynamicLibrary(const char* library_filename, void** result,
   *len = str.length();
 
   *result = library.handle;
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

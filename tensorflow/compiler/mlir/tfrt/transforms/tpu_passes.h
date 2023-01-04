@@ -41,6 +41,12 @@ struct TfrtTpuCompileOptions
       *this, "move-resource-gather-to-host",
       llvm::cl::desc("Move resource gather ops to host"),
       llvm::cl::init(false)};
+  Option<int64_t> gather_table_width_threshold_bytes{
+      *this, "gather-table-width-threshold-bytes",
+      llvm::cl::desc(
+          "The threshold to control whether a TPU resource gather op should be "
+          "moved to host. A negative values means all are moved."),
+      llvm::cl::init(-1)};
 };
 
 struct TfrtTpuExecuteOpConversionOptions {
@@ -55,7 +61,7 @@ inline void RegisterTPUDialects(mlir::DialectRegistry *registry) {}
 
 // Adds a target dialect and a set of rewrite patterns for TFRT TPU lowering.
 inline void AddTPUTargetDialectAndPatterns(
-    mlir::ConversionTarget *target, mlir::OwningRewritePatternList *patterns,
+    mlir::ConversionTarget *target, mlir::RewritePatternSet *patterns,
     mlir::MLIRContext *context, CoreRTConverter *corert_converter,
     tfrt_compiler::FallbackConverter *fallback_converter,
     const TfrtTpuExecuteOpConversionOptions &tpu_exec_conv_opts,

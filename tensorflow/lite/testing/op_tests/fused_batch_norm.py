@@ -15,7 +15,7 @@
 """Test configs for fused_batch_norm."""
 import numpy as np
 
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -30,24 +30,17 @@ def make_fused_batch_norm_tests(options):
       "input_shape": [[1, 1, 6, 2]],
       "epsilon": [0.001, 0.1],
       "is_training": [False],
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[1, 1, 6, 2]],
+      "epsilon": [0.001, 0.1],
+      "is_training": [True],
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[1, None, 6, 2]],
+      "epsilon": [0.001, 0.1],
+      "is_training": [True, False],
   }]
-
-  # Training support in MLIR converter.
-  if options.use_experimental_converter:
-    test_parameters = test_parameters + [
-        {
-            "dtype": [tf.float32],
-            "input_shape": [[1, 1, 6, 2]],
-            "epsilon": [0.001, 0.1],
-            "is_training": [True],
-        },
-        {
-            "dtype": [tf.float32],
-            "input_shape": [[1, None, 6, 2]],
-            "epsilon": [0.001, 0.1],
-            "is_training": [True, False],
-        },
-    ]
 
   def build_graph(parameters):
     """Build the testing graph for fused batch normalization."""

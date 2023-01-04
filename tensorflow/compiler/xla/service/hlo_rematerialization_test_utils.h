@@ -21,17 +21,17 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_rematerialization.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 
@@ -55,7 +55,7 @@ class RematerializationTestBase : public HloTestBase {
   // (during execution of %concat_1) and about 12KB after rematerializing %bcast
   // for its use in %concat_2.
   std::unique_ptr<HloComputation> MakeRematerializableComputation(
-      const string& suffix = "") {
+      const std::string& suffix = "") {
     auto builder = HloComputation::Builder(TestName() + suffix);
     auto param = builder.AddInstruction(
         HloInstruction::CreateParameter(0, vec1_shape_, "param"));
@@ -100,7 +100,7 @@ class RematerializationTestBase : public HloTestBase {
   // the while subcomputations.
   std::unique_ptr<HloComputation> MakeRematerializableWhileComputation(
       HloComputation* while_cond, HloComputation* while_body,
-      const string& suffix = "") {
+      const std::string& suffix = "") {
     auto builder = HloComputation::Builder(TestName() + suffix);
     auto param = builder.AddInstruction(
         HloInstruction::CreateParameter(0, vec1_shape_, "param"));

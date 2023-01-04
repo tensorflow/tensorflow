@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Generate Java reference docs for TensorFlow.org."""
+"""Generate C++ reference docs for TensorFlow.org."""
+import os
 import pathlib
 import subprocess
 
@@ -34,6 +34,7 @@ TENSORFLOW_ROOT = DOCS_TOOLS_DIR.parents[2]
 
 def build_headers(output_dir):
   """Builds the headers files for TF."""
+  os.makedirs(output_dir, exist_ok=True)
 
   # `$ yes | configure`
   yes = subprocess.Popen(['yes', ''], stdout=subprocess.PIPE)

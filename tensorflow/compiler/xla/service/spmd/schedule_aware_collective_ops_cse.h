@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_SCHEDULE_AWARE_COLLECTIVE_OPS_CSE_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_SCHEDULE_AWARE_COLLECTIVE_OPS_CSE_H_
 
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -37,7 +37,10 @@ class ScheduleAwareCollectiveOpsCSE : public HloModulePass {
     return "schedule-aware-collective-cse";
   }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   int64_t distance_threshold_;

@@ -23,10 +23,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -43,9 +44,14 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   using NestedComputer = std::function<StatusOr<std::vector<llvm::Value*>>(
       const HloComputation&, absl::Span<llvm::Value* const>)>;
 
+  // Constructs a GpuElementalIrEmitter.
+  //
+  // ir_emitter_context is owned by the caller and should outlive the
+  // GpuElementalIrEmitter object.
   GpuElementalIrEmitter(const HloModuleConfig& hlo_module_config,
                         llvm::Module* module, llvm::IRBuilder<>* b,
-                        NestedComputer compute_nested);
+                        NestedComputer compute_nested,
+                        IrEmitterContext* ir_emitter_context);
 
  protected:
   llvm_ir::IrArray::Index GetSourceIndexOfBitcast(
@@ -95,11 +101,13 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
 
   StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
-      absl::string_view) override {
+      absl::string_view, bool /*is_reducer*/) override {
     return compute_nested_(callee, parameters);
   }
 
   llvm::Value* EmitThreadId() override;
+
+  StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value) override;
 
   bool fast_min_max() override {
     return hlo_module_config_.debug_options().xla_gpu_enable_fast_min_max();
@@ -115,7 +123,7 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   // callee_name according to T.  Returns the IR value that represents the
   // return value of the function.
   StatusOr<llvm::Value*> EmitLlvmIntrinsicMathCall(
-      const string& callee_name, absl::Span<llvm::Value* const> operands,
+      const std::string& callee_name, absl::Span<llvm::Value* const> operands,
       absl::Span<const PrimitiveType> input_types, PrimitiveType output_type);
 
   // Emits IR to call a device function of type [T] -> T.  Adjusts
@@ -129,13 +137,15 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   // Emits IR to call a function of type [T] -> T.  Does not munge callee_name.
   // Returns the IR value that represents the return value of the function.
   StatusOr<llvm::Value*> EmitMathCall(
-      const string& callee_name, absl::Span<llvm::Value* const> operands,
+      const std::string& callee_name, absl::Span<llvm::Value* const> operands,
       absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
       absl::string_view name = "");
 
   const HloModuleConfig& hlo_module_config_;
 
   NestedComputer compute_nested_;
+
+  IrEmitterContext* ir_emitter_context_;
 };
 
 }  // namespace gpu

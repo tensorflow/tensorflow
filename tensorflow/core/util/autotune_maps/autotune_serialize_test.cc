@@ -19,13 +19,14 @@ limitations under the License.
 #include "tensorflow/core/util/autotune_maps/autotune_serialize.h"
 
 #include "absl/types/variant.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/autotune_maps/conv_autotune_maps.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.pb.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "tensorflow/stream_executor/gpu/gpu_driver.h"
 
 namespace tensorflow {
 namespace {
@@ -34,6 +35,14 @@ using stream_executor::dnn::AlgorithmDesc;
 using stream_executor::gpu::GpuDriver;
 using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
+
+// Gets a GPU StreamExecutor instance.  Any one will do.
+se::StreamExecutor* GetStreamExec() {
+  se::Platform* platform =
+      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName()).value();
+  CHECK_GT(platform->VisibleDeviceCount(), 0);
+  return platform->ExecutorForDevice(0).value();
+}
 
 // Tests when there is no entry in the autotune maps.
 TEST(AutotuneSerializeTest, Empty) {
@@ -56,56 +65,56 @@ TEST(AutotuneSerializeTest, Consistency) {
   TF_CHECK_OK(GpuDriver::Init());
   ResetAutotuneMaps();
   ConvParameters conv_params_example_a = {
-      /*batch_size=*/1,
+      GetStreamExec(),
+      /*batch=*/1,
       /*in_depths=*/1,
       /*in=*/{{1, 1}},
       /*data_format=*/TensorFormat::FORMAT_NCHW,
-      /*out_depth=*/1,
+      /*out_depths=*/1,
       /*filter=*/{{1, 1}},
       /*dilation=*/{{1, 1}},
       /*stride=*/{{1, 1}},
       /*padding=*/{{1, 1}},
       /*dtype=*/DataType::DT_INT8,
-      /*device_id=*/0,
       /*group_count=*/1};
   ConvParameters fused_params_example_a = {
-      /*batch_size=*/1,
+      GetStreamExec(),
+      /*batch=*/1,
       /*in_depths=*/1,
       /*in=*/{{1, 1}},
       /*data_format=*/TensorFormat::FORMAT_NCHW,
-      /*out_depth=*/1,
+      /*out_depths=*/1,
       /*filter=*/{{1, 1}},
       /*dilation=*/{{1, 1}},
       /*stride=*/{{1, 1}},
       /*padding=*/{{1, 1}},
       /*dtype=*/DataType::DT_INT8,
-      /*device_id=*/0,
       /*group_count=*/1,
-      ConvParameters::FusionInfo{1.0, 0.,
+      ConvParameters::FusionInfo{1.0, 0., 0.,
                                  /*activation_mode=*/
                                  se::dnn::ActivationMode::kNone,
                                  /*is_contrib=*/false},
   };
   ConvParameters contrib_fused_params_example_a = {
-      /*batch_size=*/1,
+      GetStreamExec(),
+      /*batch=*/1,
       /*in_depths=*/1,
       /*in=*/{{1, 1}},
       /*data_format=*/TensorFormat::FORMAT_NCHW,
-      /*out_depth=*/1,
+      /*out_depths=*/1,
       /*filter=*/{{1, 1}},
       /*dilation=*/{{1, 1}},
       /*stride=*/{{1, 1}},
       /*padding=*/{{1, 1}},
       /*dtype=*/DataType::DT_INT8,
-      /*device_id=*/0,
       /*group_count=*/1,
-      ConvParameters::FusionInfo{1.0, 0.,
+      ConvParameters::FusionInfo{1.0, 0., 0.,
                                  /*activation_mode=*/
                                  se::dnn::ActivationMode::kRelu,
                                  /*is_contrib=*/true}};
 
-  AlgorithmDesc algorithm(/*algo_id=*/1, /*use_tensor_op=*/true);
-  AlgorithmDesc algorithm_no_scratch(/*algo_id=*/1, /*use_tensor_op=*/true);
+  AlgorithmDesc algorithm(/*algo_id=*/1, /*use_tensor_ops=*/true);
+  AlgorithmDesc algorithm_no_scratch(/*algo_id=*/1, /*use_tensor_ops=*/true);
   AutotuneEntry<se::dnn::ConvOp> example_a(algorithm, algorithm_no_scratch);
   ConvAutotuneMap::GetInstance()->Insert(conv_params_example_a, example_a);
   ConvAutotuneMap::GetInstance()->Insert(fused_params_example_a, example_a);
@@ -136,26 +145,26 @@ TEST(AutotuneSerializeTest, VersionControl) {
   ResetAutotuneMaps();
 
   ConvParameters fused_params_example_a = {
-      /*batch_size=*/1,
+      GetStreamExec(),
+      /*batch=*/1,
       /*in_depths=*/1,
       /*in=*/{{1, 1}},
       /*data_format=*/TensorFormat::FORMAT_NCHW,
-      /*out_depth=*/1,
+      /*out_depths=*/1,
       /*filter=*/{{1, 1}},
       /*dilation=*/{{1, 1}},
       /*stride=*/{{1, 1}},
       /*padding=*/{{1, 1}},
       /*dtype=*/DataType::DT_INT8,
-      /*device_id=*/0,
       /*group_count=*/1,
-      ConvParameters::FusionInfo{1.0, 0.,
+      ConvParameters::FusionInfo{1.0, 0., 0.,
                                  /*activation_mode=*/
                                  se::dnn::ActivationMode::kNone,
                                  /*is_contrib=*/false},
       /*version=*/ConvParameters::kVersion - 1};
 
-  AlgorithmDesc algorithm(/*algo_id=*/1, /*use_tensor_op=*/true);
-  AlgorithmDesc algorithm_no_scratch(/*algo_id=*/1, /*use_tensor_op=*/true);
+  AlgorithmDesc algorithm(/*algo_id=*/1, /*use_tensor_ops=*/true);
+  AlgorithmDesc algorithm_no_scratch(/*algo_id=*/1, /*use_tensor_ops=*/true);
   AlgorithmConfig algorithm_config_example_a(algorithm, /*scratch_size=*/1,
                                              algorithm_no_scratch);
 

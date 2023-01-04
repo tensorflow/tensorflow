@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
+
 #include "absl/strings/ascii.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
@@ -22,14 +23,14 @@ namespace xla {
 namespace {
 class IndexedArrayAnalysisTest : public HloTestBase {
  protected:
-  void AssertArrayForRootExpressionIs(const string& hlo_text,
-                                      const string& root_expression) {
+  void AssertArrayForRootExpressionIs(const std::string& hlo_text,
+                                      const std::string& root_expression) {
     AssertArrayForRootExpressionIsImpl(hlo_text, root_expression,
                                        /*print_constants=*/false);
   }
 
   void AssertArrayWithConstantsForRootExpressionIs(
-      const string& hlo_text, const string& root_expression) {
+      const std::string& hlo_text, const std::string& root_expression) {
     AssertArrayForRootExpressionIsImpl(hlo_text, root_expression,
                                        /*print_constants=*/true);
   }
@@ -38,8 +39,8 @@ class IndexedArrayAnalysisTest : public HloTestBase {
   // Replaces sequences of whitespace with a single space.  This makes the
   // strings being matched against "whitespace insensitive" which lets us indent
   // them for readability.
-  string CanonicalizeWhitespace(const string& text) {
-    string result;
+  std::string CanonicalizeWhitespace(const std::string& text) {
+    std::string result;
 
     for (char c : text) {
       if (!absl::ascii_isspace(c)) {
@@ -56,8 +57,8 @@ class IndexedArrayAnalysisTest : public HloTestBase {
     return result;
   }
 
-  void AssertArrayForRootExpressionIsImpl(const string& hlo_text,
-                                          const string& root_expression,
+  void AssertArrayForRootExpressionIsImpl(const std::string& hlo_text,
+                                          const std::string& root_expression,
                                           bool print_constants) {
     IndexedArrayAnalysis indexed_tensor_analysis;
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
@@ -66,7 +67,7 @@ class IndexedArrayAnalysisTest : public HloTestBase {
     TF_ASSERT_OK_AND_ASSIGN(IndexedArrayAnalysis::Array* const array_result,
                             indexed_tensor_analysis.GetArrayFor(
                                 m->entry_computation()->root_instruction()));
-    string string_result = CanonicalizeWhitespace(
+    std::string string_result = CanonicalizeWhitespace(
         indexed_tensor_analysis.ToString(array_result, print_constants));
     LOG(INFO) << string_result;
     ASSERT_EQ(string_result, CanonicalizeWhitespace(root_expression));
@@ -74,7 +75,7 @@ class IndexedArrayAnalysisTest : public HloTestBase {
 };
 
 TEST_F(IndexedArrayAnalysisTest, SimpleOneToOneGather) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule SimpleGather
 
 ENTRY main {
@@ -94,7 +95,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, SimpleOneToOneConstantGather) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule SimpleGather
 
 ENTRY main {
@@ -114,7 +115,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, GatherIsNotScalarIndexed0) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule SimpleGather
 
 ENTRY main {
@@ -133,7 +134,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, GatherIsNotScalarIndexed1) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule SimpleGather
 
 ENTRY main {
@@ -152,7 +153,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, GatherIsNotScalarIndexed2) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule SimpleGather
 
 ENTRY main {
@@ -171,7 +172,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, GatherIsNotScalarIndexed3) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule SimpleGather
 
 ENTRY main {
@@ -190,7 +191,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, GatherOfGather_OneToOne) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule SimpleGather
 
 ENTRY main {
@@ -219,7 +220,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, GatherOfGather_ManyToOneWithOneToOne) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule SimpleGather
 
 ENTRY main {
@@ -247,7 +248,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, GatherOfGather_OneToOneWithManyToOne) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule SimpleGather
 
 ENTRY main {
@@ -275,7 +276,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, GatherOfGather_ManyToOneWithManyToOne) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule SimpleGather
 
 ENTRY main {
@@ -304,7 +305,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather0) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule ReshapeOfGather
 
 ENTRY main {
@@ -325,7 +326,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather1) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule ReshapeOfGather
 
 ENTRY main {
@@ -347,7 +348,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather2) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule ReshapeOfGather
 
 ENTRY main {
@@ -372,7 +373,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather3) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule ReshapeOfGather
 
 ENTRY main {
@@ -400,7 +401,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather4) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule ReshapeOfGather
 
 ENTRY main {
@@ -433,7 +434,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather5) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule ReshapeOfGather
 
 ENTRY main {
@@ -460,7 +461,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather6) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule ReshapeOfGather
 
 ENTRY main {
@@ -491,7 +492,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather7) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule ReshapeOfGather
 
 ENTRY main {
@@ -522,7 +523,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, ReshapeOfGatherNoFold0) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule ReshapeOfGather
 
 ENTRY main {
@@ -551,7 +552,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, ReshapeOfGatherNoFold1) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule ReshapeOfGather
 
 ENTRY main {
@@ -583,7 +584,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, ReshapeOfGatherNoFold2) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule ReshapeOfGather
 
 ENTRY main {
@@ -615,7 +616,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, UnaryOpOfGather) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule UnaryOpOfGather
 
 ENTRY main {
@@ -640,7 +641,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, AddBroadcastedScalarWithGather) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule AddBroadcastedScalarWithGather
 
 ENTRY main {
@@ -668,7 +669,7 @@ ENTRY main {
 
 TEST_F(IndexedArrayAnalysisTest,
        SubtractBroadcastedScalarWithGather_GatherIsLhs) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule SubtractBroadcastedScalarWithGather
 
 ENTRY main {
@@ -696,7 +697,7 @@ ENTRY main {
 
 TEST_F(IndexedArrayAnalysisTest,
        SubtractBroadcastedScalarWithGather_GatherIsRhs) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule SubtractBroadcastedScalarWithGather
 
 ENTRY main {
@@ -723,7 +724,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, AddBroadcastedVectorWithGather) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule AddBroadcastedVectorWithGather
 
 ENTRY main {
@@ -750,7 +751,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, AddBroadcastedVectorWithGather_Negative) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule AddBroadcastedVectorWithGather
 
 ENTRY main {
@@ -772,7 +773,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, RegularUnaryOp) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule RegularUnaryOp
 
 ENTRY main {
@@ -785,7 +786,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, RegularBinaryOp) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule RegularUnaryOp
 
 ENTRY main {
@@ -799,7 +800,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, DotOpBasic_0) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule DotOp
 
 ENTRY main {
@@ -826,7 +827,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, DotOpBasic_1) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule DotOp
 
 ENTRY main {
@@ -854,7 +855,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, DotOpBasic_2) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule DotOp
 
 ENTRY main {
@@ -883,7 +884,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, DotOpBasic_3) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule DotOp
 
 ENTRY main {
@@ -912,7 +913,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, DotOpWithBatch) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule DotOp
 
 ENTRY main {
@@ -943,7 +944,7 @@ ENTRY main {
 }
 
 TEST_F(IndexedArrayAnalysisTest, DotOpNegative) {
-  string hlo_text = R"(
+  std::string hlo_text = R"(
 HloModule DotOp
 
 ENTRY main {

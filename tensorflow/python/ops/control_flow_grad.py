@@ -14,7 +14,6 @@
 # ==============================================================================
 
 """Gradients for operators defined in control_flow_ops.py."""
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
@@ -128,10 +127,12 @@ def _MergeGrad(op, grad, _):
     # pylint: enable=protected-access
   else:
     num_inputs = len(op.inputs)
-    cond = [math_ops.equal(op.outputs[1], i) for i in xrange(num_inputs)]
+    cond = [math_ops.equal(op.outputs[1], i) for i in range(num_inputs)]
     # pylint: disable=protected-access
-    return [control_flow_ops._SwitchRefOrTensor(grad, cond[i])[1]
-            for i in xrange(num_inputs)]
+    return [
+        control_flow_ops._SwitchRefOrTensor(grad, cond[i])[1]
+        for i in range(num_inputs)
+    ]
     # pylint: enable=protected-access
 
 

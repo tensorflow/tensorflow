@@ -15,8 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_EAGER_TFRT_CONTEXT_H_
 #define TENSORFLOW_CORE_TFRT_EAGER_TFRT_CONTEXT_H_
 
+#include <functional>
+#include <utility>
+
 #include "tensorflow/c/eager/immediate_execution_context.h"
+#include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/tfrt/runtime/tf_threadpool_concurrent_work_queue.h"
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -29,6 +34,44 @@ class CoreRuntime;
 class OpHandler;
 
 namespace tf {
+
+// Wraps an `Eigen::ThreadPoolInterface` as a
+// `tensorflow::thread::ThreadPoolInterface`.
+//
+// Copied from internal directory: http://shortn/_jsmzLpQu7q
+class ThreadPoolInterfaceWrapper
+    : public tensorflow::thread::ThreadPoolInterface {
+ public:
+  explicit ThreadPoolInterfaceWrapper(Eigen::ThreadPoolInterface* thread_pool)
+      : thread_pool_{thread_pool} {
+    DCHECK(thread_pool);
+  }
+
+  void Schedule(std::function<void()> fn) override {
+    return thread_pool().Schedule(std::move(fn));
+  }
+
+  void ScheduleWithHint(std::function<void()> fn, int start, int end) override {
+    return thread_pool().ScheduleWithHint(std::move(fn), start, end);
+  }
+
+  void Cancel() override { thread_pool().Cancel(); }
+
+  int NumThreads() const override { return thread_pool().NumThreads(); }
+
+  int CurrentThreadId() const override {
+    return thread_pool().CurrentThreadId();
+  }
+
+ private:
+  Eigen::ThreadPoolInterface& thread_pool() const {
+    DCHECK(thread_pool_);
+    return *thread_pool_;
+  }
+
+  // Not owning pointer to the thread pool.
+  Eigen::ThreadPoolInterface* thread_pool_ = nullptr;
+};
 
 // This class defines a list of objects needed to support execution with TFRT.
 class TfrtContext {
@@ -49,16 +92,28 @@ class TfrtContext {
 
   ResourceContext* GetResourceContext() { return &resource_context_; }
 
+  tensorflow::tfrt_stub::TfThreadPoolWorkQueue* GetTfThreadPoolWorkQueue() {
+    return tf_thread_pool_work_queue_.get();
+  }
+
   const tensorflow::DeviceNameUtils::ParsedName& HostCPUParsedName() const;
 
   bool IsAsync() const;
 
  private:
-  ResourceContext resource_context_;
   std::unique_ptr<CoreRuntime> corert_;
   ::tfrt::HostContext* host_context_;
   OpHandler* fallback_op_handler_;
+  ResourceContext resource_context_;
   tensorflow::EagerContext* eager_context_;
+  std::unique_ptr<ThreadPoolInterfaceWrapper> eager_ctx_thread_pool_;
+
+  // Manage the local thread pool's lifetime because the wrapper does not own
+  // the thread pool.
+  std::unique_ptr<tensorflow::thread::ThreadPool> local_thread_pool_;
+  std::unique_ptr<ThreadPoolInterfaceWrapper> local_thread_pool_wrapper_;
+  std::unique_ptr<tensorflow::tfrt_stub::TfThreadPoolWorkQueue>
+      tf_thread_pool_work_queue_;
 };
 
 }  // namespace tf

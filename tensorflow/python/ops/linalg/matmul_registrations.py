@@ -199,11 +199,15 @@ def _matmul_linear_operator_tril_diag(linop_triangular, linop_diag):
 # Circulant.
 
 
+# pylint: disable=protected-access
 @linear_operator_algebra.RegisterMatmul(
-    linear_operator_circulant.LinearOperatorCirculant,
-    linear_operator_circulant.LinearOperatorCirculant)
+    linear_operator_circulant._BaseLinearOperatorCirculant,
+    linear_operator_circulant._BaseLinearOperatorCirculant)
 def _matmul_linear_operator_circulant_circulant(linop_a, linop_b):
-  return linear_operator_circulant.LinearOperatorCirculant(
+  if not isinstance(linop_a, linop_b.__class__):
+    return _matmul_linear_operator(linop_a, linop_b)
+
+  return linop_a.__class__(
       spectrum=linop_a.spectrum * linop_b.spectrum,
       is_non_singular=registrations_util.combined_non_singular_hint(
           linop_a, linop_b),
@@ -213,6 +217,7 @@ def _matmul_linear_operator_circulant_circulant(linop_a, linop_b):
           registrations_util.combined_commuting_positive_definite_hint(
               linop_a, linop_b)),
       is_square=True)
+# pylint: enable=protected-access
 
 # Block Diag
 

@@ -16,6 +16,7 @@
 
 import abc
 import typing
+import typing_extensions
 
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
@@ -113,7 +114,7 @@ class ExtensionType(
   Python booleans      | `b: bool`
   Python None          | `n: None`
   Tensors              | `t: tf.Tensor`
-  Composite Tensors    | `rt: tf.RaggdTensor`
+  Composite Tensors    | `rt: tf.RaggedTensor`
   Extension Types      | `m: MyMaskedTensor`
   Tensor shapes        | `shape: tf.TensorShape`
   Tensor dtypes        | `dtype: tf.DType`
@@ -169,7 +170,10 @@ class ExtensionType(
       return cls._tf_extension_type_cached_fields
 
     try:
-      type_hints = typing.get_type_hints(cls)
+      # Using include_extras=False will replace all Annotated[T, ...] with T.
+      # The typing_extensions module is used since this is only supported in
+      # Python 3.9.
+      type_hints = typing_extensions.get_type_hints(cls, include_extras=False)
       ok_to_cache = True  # all forward references have been resolved.
     except (NameError, AttributeError):
       # Unresolved forward reference -- gather type hints manually.
@@ -295,6 +299,26 @@ class ExtensionType(
       self.__dict__[
           '_tf_extension_type_cached_type_spec'] = self.Spec.from_value(self)
     return self._tf_extension_type_cached_type_spec
+
+
+@tf_export('experimental.extension_type.as_dict')
+def as_dict(value):
+  """Extracts the attributes of `value` and their values to a dict format.
+
+  Unlike `dataclasses.asdict()`, this function is not recursive and in case of
+  nested `ExtensionType` objects, only the top level object is converted to a
+  dict.
+
+  Args:
+    value: An `ExtensionType` object.
+
+  Returns:
+    A dict that contains the attributes of `value` and their values.
+  """
+  return {
+      field.name: getattr(value, field.name)
+      for field in value._tf_extension_type_fields()  # pylint: disable=protected-access
+  }
 
 
 def pack(value):
@@ -689,7 +713,7 @@ class BatchableExtensionType(ExtensionType):
   `BatchableExtensionType`s can be used with APIs that require batching or
   unbatching, including `Keras`, `tf.data.Dataset`, and `tf.map_fn`.  E.g.:
 
-  >>> class Vehicle(BatchableExtensionType):
+  >>> class Vehicle(tf.experimental.BatchableExtensionType):
   ...   top_speed: tf.Tensor
   ...   mpg: tf.Tensor
   >>> batch = Vehicle([120, 150, 80], [30, 40, 12])

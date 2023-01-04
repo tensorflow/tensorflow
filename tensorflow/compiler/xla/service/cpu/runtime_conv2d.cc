@@ -17,13 +17,12 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "absl/base/dynamic_annotations.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/service/cpu/runtime_conv2d_impl.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_conv_impl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_lightweight_check.h"
-#include "tensorflow/core/platform/dynamic_annotations.h"
-#include "tensorflow/core/platform/types.h"
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConvF32(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConv2DF32(
     const void* run_options_ptr, float* out, float* lhs, float* rhs,
     int64_t input_batch, int64_t input_rows, int64_t input_cols,
     int64_t input_channels, int64_t kernel_rows, int64_t kernel_cols,
@@ -31,19 +30,21 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConvF32(
     int64_t output_cols, int64_t row_stride, int64_t col_stride,
     int64_t padding_top, int64_t padding_bottom, int64_t padding_left,
     int64_t padding_right, int64_t lhs_row_dilation, int64_t lhs_col_dilation,
-    int64_t rhs_row_dilation, int64_t rhs_col_dilation) {
+    int64_t rhs_row_dilation, int64_t rhs_col_dilation,
+    int64_t feature_group_count) {
   const xla::ExecutableRunOptions* run_options =
       static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
   XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);
-  tensorflow::xla::EigenConvImpl(
+  tensorflow::xla::EigenConv2DImpl(
       *run_options->intra_op_thread_pool(), out, lhs, rhs, input_batch,
       input_rows, input_cols, input_channels, kernel_rows, kernel_cols,
       kernel_channels, kernel_filters, output_rows, output_cols, row_stride,
       col_stride, padding_top, padding_bottom, padding_left, padding_right,
-      lhs_row_dilation, lhs_col_dilation, rhs_row_dilation, rhs_col_dilation);
+      lhs_row_dilation, lhs_col_dilation, rhs_row_dilation, rhs_col_dilation,
+      feature_group_count);
 }
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConvF16(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConv2DF16(
     const void* run_options_ptr, Eigen::half* out, Eigen::half* lhs,
     Eigen::half* rhs, int64_t input_batch, int64_t input_rows,
     int64_t input_cols, int64_t input_channels, int64_t kernel_rows,
@@ -52,14 +53,15 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConvF16(
     int64_t col_stride, int64_t padding_top, int64_t padding_bottom,
     int64_t padding_left, int64_t padding_right, int64_t lhs_row_dilation,
     int64_t lhs_col_dilation, int64_t rhs_row_dilation,
-    int64_t rhs_col_dilation) {
+    int64_t rhs_col_dilation, int64_t feature_group_count) {
   const xla::ExecutableRunOptions* run_options =
       static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
   XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);
-  tensorflow::xla::EigenConvImpl(
+  tensorflow::xla::EigenConv2DImpl(
       *run_options->intra_op_thread_pool(), out, lhs, rhs, input_batch,
       input_rows, input_cols, input_channels, kernel_rows, kernel_cols,
       kernel_channels, kernel_filters, output_rows, output_cols, row_stride,
       col_stride, padding_top, padding_bottom, padding_left, padding_right,
-      lhs_row_dilation, lhs_col_dilation, rhs_row_dilation, rhs_col_dilation);
+      lhs_row_dilation, lhs_col_dilation, rhs_row_dilation, rhs_col_dilation,
+      feature_group_count);
 }

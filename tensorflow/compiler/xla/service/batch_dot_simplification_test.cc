@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/batch_dot_simplification.h"
+
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -27,7 +28,7 @@ class BatchDotSimplificationTest : public HloTestBase {};
 
 TEST_F(BatchDotSimplificationTest,
        ElideSingleDegenerateBatchDotDim_VectorVector) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule BatchDot
 
 main {
@@ -40,7 +41,7 @@ main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_TRUE(pass.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(pass.Run(m.get()).value());
 
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root,
@@ -51,7 +52,7 @@ main {
 
 TEST_F(BatchDotSimplificationTest,
        ElideSingleDegenerateBatchDotDim_MatrixVector) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule BatchDot
 
 main {
@@ -64,7 +65,7 @@ main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_TRUE(pass.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(pass.Run(m.get()).value());
 
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root,
@@ -75,7 +76,7 @@ main {
 
 TEST_F(BatchDotSimplificationTest,
        ElideSingleDegenerateBatchDotDim_MatrixMatrix) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule BatchDot
 
 main {
@@ -88,7 +89,7 @@ main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_TRUE(pass.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(pass.Run(m.get()).value());
 
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root,
@@ -99,7 +100,7 @@ main {
 
 TEST_F(BatchDotSimplificationTest,
        ElideMultipleDegenerateBatchDotDims_VectorVector) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule BatchDot
 
 main {
@@ -112,7 +113,7 @@ main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_TRUE(pass.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(pass.Run(m.get()).value());
 
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root,
@@ -123,7 +124,7 @@ main {
 
 TEST_F(BatchDotSimplificationTest,
        ElideMultipleDegenerateBatchDotDims_VectorMatrix) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule BatchDot
 
 main {
@@ -136,7 +137,7 @@ main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_TRUE(pass.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(pass.Run(m.get()).value());
 
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root,
@@ -147,7 +148,7 @@ main {
 
 TEST_F(BatchDotSimplificationTest,
        ElideMultipleDegenerateBatchDotDims_MatrixMatrix) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule BatchDot
 
 main {
@@ -160,7 +161,7 @@ main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_TRUE(pass.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(pass.Run(m.get()).value());
 
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root,
@@ -187,7 +188,7 @@ main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_FALSE(pass.Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(pass.Run(m.get()).value());
 }
 
 TEST_F(BatchDotSimplificationTest,
@@ -208,7 +209,7 @@ main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_FALSE(pass.Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(pass.Run(m.get()).value());
 }
 
 }  // namespace

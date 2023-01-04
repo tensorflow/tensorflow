@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/sharding_op_util.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -23,7 +24,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_lexer.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 namespace sharding_op_util {
@@ -44,7 +44,7 @@ Status ParseAttributes(absl::string_view opaque,
       return InvalidArgumentStrCat("Cannot parse sharding op attributes: ",
                                    opaque);
     }
-    string attr_name = lexer.GetStrVal();
+    std::string attr_name = lexer.GetStrVal();
     if (attr_name == "unspecified_dims") {
       TF_RET_CHECK(lexer.Lex() == TokKind::kLsquare);
       while (lexer.Lex() == TokKind::kInt) {
@@ -59,7 +59,7 @@ Status ParseAttributes(absl::string_view opaque,
                                    attr_name);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace sharding_op_util

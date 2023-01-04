@@ -76,7 +76,7 @@ void CoreMlDelegateProvider::LogParams(const ToolParams& params,
 
 TfLiteDelegatePtr CoreMlDelegateProvider::CreateTfLiteDelegate(
     const ToolParams& params) const {
-  TfLiteDelegatePtr delegate(nullptr, [](TfLiteDelegate*) {});
+  TfLiteDelegatePtr delegate = CreateNullDelegate();
 
 #if defined(REAL_IPHONE_DEVICE)
   if (params.Get<bool>("use_coreml")) {
@@ -87,6 +87,12 @@ TfLiteDelegatePtr CoreMlDelegateProvider::CreateTfLiteDelegate(
         params.Get<int>("max_delegated_partitions");
     coreml_opts.min_nodes_per_partition =
         params.Get<int>("min_nodes_per_partition");
+#ifdef TFLITE_DEBUG_DELEGATE
+    coreml_opts.first_delegate_node_index =
+        params.Get<int>("first_delegate_node_index");
+    coreml_opts.last_delegate_node_index =
+        params.Get<int>("last_delegate_node_index");
+#endif  // TFLITE_DEBUG_DELEGATE
     delegate = TfLiteDelegatePtr(TfLiteCoreMlDelegateCreate(&coreml_opts),
                                  &TfLiteCoreMlDelegateDelete);
     if (!delegate) {

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/variant.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -49,7 +50,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class CancellationManager;
 class CollectiveExecutor;
 class DeviceSet;
 class Graph;
@@ -761,6 +761,37 @@ class FunctionLibraryRuntime {
 
     // If true, the function library runtime cache the function instantiation.
     bool use_function_cache = false;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // If True, allow optimizations which should be targeted at a limited
+    // set of small functions.  For example, running kernels synchronously can
+    // be faster under some conditions.
+    bool allow_small_function_optimizations = false;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // If True, allow graphs containing control flow nodes to be run on the
+    // single threaded executor.
+    bool allow_control_flow_sync_execution = false;
+
+    // TODO(b/176491312): Remove this if shape inference on import flag is
+    // removed. If True, allows mlir roundtrip to run shape inference on import.
+    bool shape_inference_on_tfe_dialect_import = true;
+
+    // Force int32 _Arg and _Retvals nodes to be left on device instead of
+    // pinning to host.
+    //
+    // Note that we do not pin int32 nodes to host for subgraphs running in
+    // TPU/XLA devices. So this is mainly used to handle the case of multi-CPU
+    // and GPU (non-XLA) graphs.
+    bool int_args_and_retvals_on_device = false;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // Instantiates the function for XLA compilation on device_type. If empty,
+    // function is not compiled.
+    std::string xla_compile_device_type;
   };
   typedef uint64 Handle;
   virtual Status Instantiate(const std::string& function_name, AttrSlice attrs,
@@ -797,13 +828,21 @@ class FunctionLibraryRuntime {
   // RPC calls.
   struct Options {
     Options() {}
-    explicit Options(const int64_t step_id) : step_id(step_id) {}
+    explicit Options(const int64_t step_id)
+        : step_id(step_id), cleanup_rendezvous_after_run(false) {}
+
     // Choose a step ID that is guaranteed not to clash with any
     // Session-generated step ID. DirectSession only generates
     // non-negative step IDs (contiguous, starting from 0), and
     // MasterSession generates 56-bit random step IDs whose MSB is
     // always 0, so a negative random step ID should suffice.
     const int64_t step_id = -std::abs(static_cast<int64_t>(random::New64()));
+
+    // Whether to clean up rendezvous after run.
+    // If the function is a remote component of a cross-process function, a
+    // higher level component should determine the end of a step, and cleanup
+    // the rendezvous.
+    const bool cleanup_rendezvous_after_run = true;
 
     // op_id of the function running in eager mode. Set when we want to copy
     // remote outputs lazily. All components of a remote multi-device function
@@ -816,7 +855,9 @@ class FunctionLibraryRuntime {
     CollectiveExecutor* collective_executor = nullptr;
     ScopedStepContainer* step_container = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
-    CoordinationServiceAgent* coordination_service_agent = nullptr;
+    tsl::CoordinationServiceAgent* coordination_service_agent = nullptr;
+
+    absl::optional<ManagedStackTrace> stack_trace = absl::nullopt;
 
     std::function<void(std::function<void()>)>* runner = nullptr;
 
@@ -1086,7 +1127,7 @@ Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
 //   } else {
 //     ... ...
 //   }
-//   return Status::OK();
+//   return OkStatus();
 // }
 //
 // NOTE: $T is substituted with the type variable "T" when the

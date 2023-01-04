@@ -15,15 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_PROFILER_LOCK_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_PROFILER_LOCK_H_
 
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/profiler/lib/profiler_lock.h"
+
 namespace tensorflow {
 namespace profiler {
 
-// If return false, other profiler session is active right now.
-// Otherwise the profiler lock is acquired.
-bool AcquireProfilerLock();
-
-// Release the acquired profiler lock.
-void ReleaseProfilerLock();
+using tsl::profiler::ProfilerLock;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

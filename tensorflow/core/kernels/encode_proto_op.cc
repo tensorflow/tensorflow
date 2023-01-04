@@ -277,7 +277,7 @@ Status WriteField(const FieldDescriptor& field_desc, const Tensor& input,
       Writer(value, output);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Writes a possibly repeated string, bytes, or message field.
@@ -293,7 +293,7 @@ Status WriteVarLenField(const FieldDescriptor& field_desc, const Tensor& input,
     // small speedup.
     Writer(field_desc.number(), value, output);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 static void WriteStringAdapter(int field_number, const tstring& value,
@@ -331,7 +331,7 @@ Status WriteGroup(const FieldDescriptor& field_desc, const Tensor& input,
     WireFormatLite::WriteTag(field_desc.number(),
                              WireFormatLite::WIRETYPE_END_GROUP, output);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Writes a (possibly repeated) field into an output stream. It is the caller's
@@ -574,7 +574,8 @@ class EncodeProtoOp : public OpKernel {
     }
 
     TensorShape expected_sizes_shape = common_prefix;
-    expected_sizes_shape.AddDim(field_descs_.size());
+    OP_REQUIRES_OK(ctx,
+                   expected_sizes_shape.AddDimWithStatus(field_descs_.size()));
 
     OP_REQUIRES(ctx, sizes_tensor->shape() == expected_sizes_shape,
                 errors::InvalidArgument(

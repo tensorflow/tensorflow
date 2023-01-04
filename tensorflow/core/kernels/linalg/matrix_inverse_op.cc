@@ -15,7 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif
 
@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/linalg/eye_functor.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
@@ -75,6 +75,48 @@ class MatrixInverseOp : public LinearAlgebraOp<Scalar> {
     OP_REQUIRES(context, min_abs_pivot > RealScalar(0),
                 errors::InvalidArgument("Input is not invertible."));
     outputs->at(0).noalias() = lu_decomposition.inverse();
+  }
+
+ private:
+  bool adjoint_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(MatrixInverseOp);
+};
+
+// For Eigen::half, compute inverse via float32 - otherwise precision is
+// too poor for meaningful results.
+template <>
+class MatrixInverseOp<Eigen::half> : public LinearAlgebraOp<Eigen::half> {
+ public:
+  INHERIT_LINALG_TYPEDEFS(Eigen::half);
+
+  explicit MatrixInverseOp(OpKernelConstruction* context) : Base(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("adjoint", &adjoint_));
+  }
+
+  void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
+                     MatrixMaps* outputs) final {
+    const ConstMatrixMap& input = inputs[0];
+    if (input.rows() == 0) {
+      // By definition, an empty matrix's inverse is an empty matrix.
+      return;
+    }
+
+    using FloatMatrix =
+        Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+
+    Eigen::PartialPivLU<FloatMatrix> lu_decomposition;
+    if (adjoint_) {
+      lu_decomposition.compute(input.adjoint().template cast<float>());
+    } else {
+      lu_decomposition.compute(input.template cast<float>());
+    }
+    const float min_abs_pivot =
+        lu_decomposition.matrixLU().diagonal().cwiseAbs().minCoeff();
+    OP_REQUIRES(context, min_abs_pivot > 0.0,
+                errors::InvalidArgument("Input is not invertible."));
+    outputs->at(0).noalias() =
+        lu_decomposition.inverse().template cast<Eigen::half>();
   }
 
  private:
@@ -227,15 +269,20 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
       functor::EyeFunctor<GPUDevice, Scalar> eye;
       eye(device, output_reshaped);
 
+#if GOOGLE_CUDA
+      cublasOperation_t trans = CUBLAS_OP_N;
+#elif TENSORFLOW_USE_ROCM
+      rocblas_operation trans = rocblas_operation_none;
+#endif
+
       // Solve A X = I.
       dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "getrs"));
       for (int batch = 0; batch < batch_size; ++batch) {
         OP_REQUIRES_OK_ASYNC(
             context,
-            solver->Getrs(CUBLAS_OP_N, n, n, &input_copy_reshaped(batch, 0, 0),
-                          n, &pivots_mat(batch, 0),
-                          &output_reshaped(batch, 0, 0), n,
-                          &dev_info.back()(batch)),
+            solver->Getrs(trans, n, n, &input_copy_reshaped(batch, 0, 0), n,
+                          &pivots_mat(batch, 0), &output_reshaped(batch, 0, 0),
+                          n, &dev_info.back()(batch)),
             done);
       }
     }
@@ -275,10 +322,14 @@ REGISTER_LINALG_OP_GPU("MatrixInverse", (MatrixInverseOpGpu<complex128>),
 
 #endif  // GOOGLE_CUDA
 
+REGISTER_LINALG_OP("MatrixInverse", (MatrixInverseOp<Eigen::half>),
+                   Eigen::half);
 REGISTER_LINALG_OP("MatrixInverse", (MatrixInverseOp<float>), float);
 REGISTER_LINALG_OP("MatrixInverse", (MatrixInverseOp<double>), double);
 REGISTER_LINALG_OP("MatrixInverse", (MatrixInverseOp<complex64>), complex64);
 REGISTER_LINALG_OP("MatrixInverse", (MatrixInverseOp<complex128>), complex128);
+REGISTER_LINALG_OP("BatchMatrixInverse", (MatrixInverseOp<Eigen::half>),
+                   Eigen::half);
 REGISTER_LINALG_OP("BatchMatrixInverse", (MatrixInverseOp<float>), float);
 REGISTER_LINALG_OP("BatchMatrixInverse", (MatrixInverseOp<double>), double);
 

@@ -24,6 +24,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.tensorflow.lite.Interpreter;
+import org.tensorflow.lite.InterpreterApi.Options.TfLiteRuntime;
 import org.tensorflow.lite.SupportedFeatures;
 import org.tensorflow.lite.TestInit;
 import org.tensorflow.lite.TestUtils;
@@ -35,6 +36,9 @@ public final class NnApiDelegateTest {
   private static final String MODEL_PATH = "tensorflow/lite/java/src/testdata/add.bin";
   private static final ByteBuffer MODEL_BUFFER = TestUtils.getTestFileAsBuffer(MODEL_PATH);
 
+  private static final Interpreter.Options INTERPRETER_OPTIONS =
+      new Interpreter.Options().setRuntime(TfLiteRuntime.PREFER_SYSTEM_OVER_APPLICATION);
+
   @Before
   public void setUp() throws Exception {
     TestInit.init();
@@ -42,14 +46,61 @@ public final class NnApiDelegateTest {
 
   @Test
   public void testBasic() throws Exception {
-    try (NnApiDelegate delegate = new NnApiDelegate()) {
+    Interpreter.Options options = new Interpreter.Options(INTERPRETER_OPTIONS);
+    try (NnApiDelegate delegate = new NnApiDelegate(); // Without options.
+        Interpreter interpreter = new Interpreter(MODEL_BUFFER, options.addDelegate(delegate))) {
       assertThat(delegate.getNativeHandle()).isNotEqualTo(0);
     }
   }
 
   @Test
+  public void testAccessBeforeInterpreterInitialized() throws Exception {
+    try (NnApiDelegate delegate = new NnApiDelegate()) {
+      try {
+        delegate.getNativeHandle();
+        fail("Expected IllegalStateException to be thrown");
+      } catch (IllegalStateException e) {
+        assertThat(e)
+            .hasMessageThat()
+            .contains("Should not access delegate before interpreter has been constructed");
+      }
+      // Merely adding the delegate to the options isn't enough either.
+      Interpreter.Options options =
+          new Interpreter.Options(INTERPRETER_OPTIONS).addDelegate(delegate);
+      try {
+        delegate.getNativeHandle();
+        fail("Expected IllegalStateException to be thrown");
+      } catch (IllegalStateException e) {
+        assertThat(e)
+            .hasMessageThat()
+            .contains("Should not access delegate before interpreter has been constructed");
+      }
+    }
+  }
+
+  @Test
+  public void testWithoutNnApiDelegateOptions() throws Exception {
+    Interpreter.Options options = new Interpreter.Options(INTERPRETER_OPTIONS);
+    try (NnApiDelegate delegate = new NnApiDelegate(); // Without options.
+        Interpreter interpreter = new Interpreter(MODEL_BUFFER, options.addDelegate(delegate))) {
+      assertThat(delegate.getNativeHandle()).isNotEqualTo(0);
+    } catch (IllegalStateException e) {
+      // This can happen if the TF Lite runtime isn't linked into the test.
+      assertThat(e)
+          .hasMessageThat()
+          .contains(
+              "Couldn't find TensorFlow Lite runtime's InterpreterFactoryImpl class -- make sure"
+                  + " your app links in the right TensorFlow Lite runtime. You should declare a"
+                  + " build dependency on org.tensorflow.lite:tensorflow-lite, or call"
+                  + " setTfLiteRuntime with a value other than TfLiteRuntime.FROM_APPLICATION_ONLY"
+                  + " (see docs for"
+                  + " org.tensorflow.lite.nnapi.NnApiDelegate.Options#setTfLiteRuntime).");
+    }
+  }
+
+  @Test
   public void testInterpreterWithNnApi() throws Exception {
-    Interpreter.Options options = new Interpreter.Options();
+    Interpreter.Options options = new Interpreter.Options(INTERPRETER_OPTIONS);
     try (NnApiDelegate delegate = new NnApiDelegate();
         Interpreter interpreter = new Interpreter(MODEL_BUFFER, options.addDelegate(delegate))) {
       float[] oneD = {1.23f, 6.54f, 7.81f};
@@ -70,7 +121,7 @@ public final class NnApiDelegateTest {
       System.err.println("Not testing NNAPI with XNNPACK, since XNNPACK isn't supported.");
       return;
     }
-    Interpreter.Options options = new Interpreter.Options();
+    Interpreter.Options options = new Interpreter.Options(INTERPRETER_OPTIONS);
     options.setUseXNNPACK(true);
 
     try (NnApiDelegate delegate = new NnApiDelegate();
@@ -89,8 +140,8 @@ public final class NnApiDelegateTest {
 
   @Test
   public void testInterpreterWithNnApiAllowFp16() throws Exception {
-    Interpreter.Options options = new Interpreter.Options();
     NnApiDelegate.Options nnApiOptions = new NnApiDelegate.Options();
+    Interpreter.Options options = new Interpreter.Options(INTERPRETER_OPTIONS);
     nnApiOptions.setAllowFp16(true);
 
     try (NnApiDelegate delegate = new NnApiDelegate(nnApiOptions);
@@ -109,7 +160,7 @@ public final class NnApiDelegateTest {
 
   @Test
   public void testGetNnApiErrnoReturnsZeroIfNoNnapiCallFailed() throws Exception {
-    Interpreter.Options options = new Interpreter.Options();
+    Interpreter.Options options = new Interpreter.Options(INTERPRETER_OPTIONS);
     try (NnApiDelegate delegate = new NnApiDelegate();
         Interpreter interpreter = new Interpreter(MODEL_BUFFER, options.addDelegate(delegate))) {
       float[] oneD = {1.23f, 6.54f, 7.81f};
@@ -125,8 +176,17 @@ public final class NnApiDelegateTest {
   }
 
   @Test
+  public void testGetNnApiErrnoBeforeInitializingInterpreterReturnsZero() {
+    NnApiDelegate delegate = new NnApiDelegate();
+    assertThat(delegate.getNnapiErrno()).isEqualTo(0);
+  }
+
+  @Test
   public void testGetNnApiErrnoThrowsExceptionAfterClosingDelegate() {
     NnApiDelegate delegate = new NnApiDelegate();
+    Interpreter interpreter =
+        new Interpreter(
+            MODEL_BUFFER, new Interpreter.Options(INTERPRETER_OPTIONS).addDelegate(delegate));
     assertThat(delegate.getNnapiErrno()).isEqualTo(0);
 
     delegate.close();
@@ -134,13 +194,16 @@ public final class NnApiDelegateTest {
       delegate.getNnapiErrno();
       fail("Expected IllegalStateException to be thrown.");
     } catch (IllegalStateException expected) {
+      assertThat(expected)
+          .hasMessageThat()
+          .contains("Should not access delegate after delegate has been closed");
     }
   }
 
   @Test
   public void testSupportLibraryIsSetFromHandle() {
-    Interpreter.Options options = new Interpreter.Options();
     NnApiDelegate.Options nnApiOptions = new NnApiDelegate.Options();
+    Interpreter.Options options = new Interpreter.Options(INTERPRETER_OPTIONS);
     long mockSlHandle = getMockSlHandle();
     try (NnApiDelegate delegate =
             new NnApiDelegate(

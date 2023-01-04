@@ -45,7 +45,7 @@ Status Coordinator::RegisterRunner(std::unique_ptr<RunnerInterface> runner) {
   }
   mutex_lock l(runners_lock_);
   runners_.push_back(std::move(runner));
-  return Status::OK();
+  return OkStatus();
 }
 
 bool Coordinator::AllRunnersStopped() {
@@ -66,7 +66,7 @@ Status Coordinator::RequestStop() {
   }
   should_stop_ = true;
   wait_for_stop_.notify_all();
-  return Status::OK();
+  return OkStatus();
 }
 
 bool Coordinator::ShouldStop() {
@@ -123,7 +123,7 @@ Status Coordinator::ExportCostGraph(CostGraphDef* cost_graph) const {
       return s;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

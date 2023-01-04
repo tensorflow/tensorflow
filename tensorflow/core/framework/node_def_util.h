@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
@@ -148,7 +149,7 @@ class AttrSlice {
   AttrSlice();  // Empty
   explicit AttrSlice(const AttrValueMap* a);
 
-  int size() const { return attrs_->size(); }
+  int size() const { return attrs()->size(); }
 
   // Returns the attr with attr_name if found.  Otherwise, returns
   // nullptr.
@@ -158,6 +159,8 @@ class AttrSlice {
   // Returns the attr_value for attr_name if found. Otherwise, returns a
   // NotFound status.
   Status Find(StringPiece attr_name, const AttrValue** attr_value) const;
+  Status FindByString(const std::string& attr_name,
+                      const AttrValue** attr_value) const;
 
   // Helper class to avoid allocations in EqualAttrs.
   // TODO(irving): Will go away once NodeInfo is used.
@@ -183,12 +186,18 @@ class AttrSlice {
   std::string SummarizeNode() const;
 
   // Iteration over all attrs
-  AttrValueMap::const_iterator begin() const { return attrs_->begin(); }
-  AttrValueMap::const_iterator end() const { return attrs_->end(); }
+  AttrValueMap::const_iterator begin() const { return attrs()->begin(); }
+  AttrValueMap::const_iterator end() const { return attrs()->end(); }
 
   std::string DebugString() const;
 
  private:
+  const AttrValueMap* attrs() const {
+    return ndef_ != nullptr ? &ndef_->attr() : attrs_;
+  }
+
+  Status CheckFind(StringPiece attr_name, const AttrValue* attr_value) const;
+
   const NodeDef* ndef_;
   const AttrValueMap* attrs_;
 };
@@ -246,6 +255,13 @@ Status GetNodeAttr(
     std::vector<PartialTensorShape>* value);  // type "list(shape)"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<Tensor>* value);  // type: "list(tensor)"
+
+template <typename T>
+StatusOr<T> GetNodeAttr(const NodeDef& ndef, absl::string_view attr_name) {
+  T val;
+  TF_RETURN_IF_ERROR(GetNodeAttr(ndef, attr_name, &val));
+  return val;
+}
 
 // This version avoids copying the TensorProto.
 // REQUIRES: Must not use *value beyond the lifetime of node_def.
@@ -348,6 +364,17 @@ Status InOutTypesForNode(const NodeDef& node_def, const OpDef& op_def,
 // REQUIRES: ValidateOpDef(op_def).ok()
 Status NumOutputsForNode(const NodeDef& node_def, const OpDef& op_def,
                          int* num_outputs);
+
+// Map a node/op's input/output port_id to arg_id.
+//
+// The port_id refers to the n-th tensor of the node, while the arg_id refers to
+// the n-th arg of the op. These two can be different if an op's arg is a list
+// of tensors.
+//
+// We return -1 for any invalid port_id (i.e., no corresponding arg_id).
+int OpPortIdToArgId(const NodeDef& node,
+                    const protobuf::RepeatedPtrField<OpDef::ArgDef>& args,
+                    int port_id);
 
 // Validates that the NodeDef:
 // * Defines all expected attrs from the OpDef.

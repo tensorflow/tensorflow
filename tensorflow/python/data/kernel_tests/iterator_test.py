@@ -23,6 +23,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import from_generator_op
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
@@ -49,6 +50,7 @@ from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 
 
+@test_util.with_eager_op_as_function
 class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.graph_only_combinations())
@@ -972,8 +974,9 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     @def_function.function
     def fn():
       output_signature = tensor_spec.TensorSpec((), dtypes.int64)
-      dataset = dataset_ops._GeneratorDataset(1, init_fn, next_fn, finalize_fn,
-                                              output_signature)
+      dataset = from_generator_op._GeneratorDataset(1, init_fn, next_fn,
+                                                    finalize_fn,
+                                                    output_signature)
       iterator = iter(dataset)
       next(iterator)
 

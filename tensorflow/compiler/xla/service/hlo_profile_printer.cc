@@ -20,12 +20,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/human_readable_profile_builder.h"
 
 namespace xla {
-string PrintHloProfile(const HloProfilePrinterData& hlo_profile_printer_data,
-                       const int64_t* counters, double clock_rate_ghz) {
+std::string PrintHloProfile(
+    const HloProfilePrinterData& hlo_profile_printer_data,
+    const int64_t* counters, double clock_rate_ghz) {
   using HloComputationInfo = HloProfilePrinterData::HloComputationInfo;
   using HloInstructionInfo = HloProfilePrinterData::HloInstructionInfo;
 
-  string result;
+  std::string result;
 
   for (const auto& item : hlo_profile_printer_data.extra_metrics()) {
     absl::StrAppend(&result, "Extra metric ", item.first, ": ",

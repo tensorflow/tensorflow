@@ -41,6 +41,8 @@ struct TFE_ContextOptions {
   bool use_tfrt_distributed_runtime = false;
   // Whether to run elementary eager ops wrapped in a call op.
   bool run_eager_op_as_function = false;
+  // Whether to rewrite jit_compile functions.
+  bool jit_compile_rewrite = false;
 };
 
 #endif  // TENSORFLOW_C_EAGER_C_API_INTERNAL_H_

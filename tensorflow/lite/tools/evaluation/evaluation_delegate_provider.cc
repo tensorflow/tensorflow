@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 
+#include <string>
+
 #include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
@@ -24,6 +26,7 @@ constexpr char kNnapiDelegate[] = "nnapi";
 constexpr char kGpuDelegate[] = "gpu";
 constexpr char kHexagonDelegate[] = "hexagon";
 constexpr char kXnnpackDelegate[] = "xnnpack";
+constexpr char kCoremlDelegate[] = "coreml";
 }  // namespace
 
 TfliteInferenceParams::Delegate ParseStringToDelegateType(
@@ -32,6 +35,7 @@ TfliteInferenceParams::Delegate ParseStringToDelegateType(
   if (val == kGpuDelegate) return TfliteInferenceParams::GPU;
   if (val == kHexagonDelegate) return TfliteInferenceParams::HEXAGON;
   if (val == kXnnpackDelegate) return TfliteInferenceParams::XNNPACK;
+  if (val == kCoremlDelegate) return TfliteInferenceParams::COREML;
   return TfliteInferenceParams::NONE;
 }
 
@@ -64,6 +68,11 @@ TfLiteDelegatePtr CreateTfLiteDelegate(const TfliteInferenceParams& params,
       if (!p && error_msg) *error_msg = "XNNPACK delegate not supported.";
       return p;
     }
+    case TfliteInferenceParams::COREML: {
+      auto p = CreateCoreMlDelegate();
+      if (!p && error_msg) *error_msg = "CoreML delegate not supported.";
+      return p;
+    }
     case TfliteInferenceParams::NONE:
       return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
     default:
@@ -91,7 +100,7 @@ DelegateProviders::DelegateProviders()
 
 std::vector<Flag> DelegateProviders::GetFlags() {
   std::vector<Flag> flags;
-  delegate_list_util_.AppendCmdlineFlags(&flags);
+  delegate_list_util_.AppendCmdlineFlags(flags);
   return flags;
 }
 
@@ -147,6 +156,11 @@ tools::ToolParams DelegateProviders::GetAllParams(
     case TfliteInferenceParams::XNNPACK:
       if (tool_params.HasParam("use_xnnpack")) {
         tool_params.Set<bool>("use_xnnpack", true);
+      }
+      break;
+    case TfliteInferenceParams::COREML:
+      if (tool_params.HasParam("use_coreml")) {
+        tool_params.Set<bool>("use_coreml", true);
       }
       break;
     default:

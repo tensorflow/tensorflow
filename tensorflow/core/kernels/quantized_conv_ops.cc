@@ -18,8 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "tensorflow/core/platform/errors.h"
-
 #define EIGEN_USE_THREADS
 
 #define GEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK
@@ -32,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/kernels/reference_gemm.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
@@ -285,7 +284,7 @@ class Im2ColConvFunctor {
               (kMaxChunkSize + (sizeof(T1) - 1)) / sizeof(T1);
 #endif
           *resource = new Im2ColBufferResource<T1, chunk_value_count>();
-          return Status::OK();
+          return OkStatus();
         };
     OP_REQUIRES_OK(context, context->resource_manager()->LookupOrCreate(
                                 "Conv2d", "im2col_buffer",
@@ -499,11 +498,26 @@ class QuantizedConv2DOp : public OpKernel {
 
     // For 2D convolution, there should be 4 dimensions.
     OP_REQUIRES(context, input.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().DebugString()));
+                errors::InvalidArgument("input must be rank 4 but is rank ",
+                                        input.shape().dims()));
     OP_REQUIRES(context, filter.dims() == 4,
-                errors::InvalidArgument("filter must be 4-dimensional: ",
-                                        filter.shape().DebugString()));
+                errors::InvalidArgument("filter must be rank 4 but is rank ",
+                                        filter.shape().dims()));
+
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(context->input(2).shape()),
+                errors::InvalidArgument("min_input must be rank 0 but is rank ",
+                                        context->input(2).shape().dims()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(context->input(3).shape()),
+                errors::InvalidArgument("max_input must be rank 0 but is rank ",
+                                        context->input(3).shape().dims()));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(context->input(4).shape()),
+        errors::InvalidArgument("min_filter must be rank 0 but is rank ",
+                                context->input(4).shape().dims()));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(context->input(5).shape()),
+        errors::InvalidArgument("max_filter must be rank 0 but is rank ",
+                                context->input(5).shape().dims()));
 
     const float min_input = context->input(2).flat<float>()(0);
     const float max_input = context->input(3).flat<float>()(0);

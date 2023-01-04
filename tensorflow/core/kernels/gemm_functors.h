@@ -28,6 +28,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_GEMM_FUNCTORS_H_
 
 #include <string.h>
+
 #include <map>
 #include <vector>
 
@@ -37,7 +38,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 // Apple provides an optimized BLAS library that is better than Eigen for their
@@ -107,6 +108,31 @@ class FastGemmFunctor {
     dim_pair[0].second = 0;
     c_matrix.device(ctx->eigen_device<Eigen::ThreadPoolDevice>()) =
         a_matrix.contract(b_matrix, dim_pair);
+  }
+};
+
+// Use float32 accumulation for bfloat16 to deal with precision accumulation
+// issues.
+template <>
+class FastGemmFunctor<Eigen::bfloat16, Eigen::bfloat16, Eigen::bfloat16> {
+ public:
+  void operator()(tensorflow::OpKernelContext* ctx, size_t m, size_t n,
+                  size_t k, const Eigen::bfloat16* a, size_t lda,
+                  const Eigen::bfloat16* b, size_t ldb, Eigen::bfloat16* c,
+                  size_t ldc) {
+    using ConstMatrix =
+        typename tensorflow::TTypes<const Eigen::bfloat16>::Matrix;
+    ConstMatrix a_matrix(a, m, k);
+    ConstMatrix b_matrix(b, k, n);
+    typename tensorflow::TTypes<Eigen::bfloat16>::Matrix c_matrix(c, m, n);
+
+    Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
+    dim_pair[0].first = 1;
+    dim_pair[0].second = 0;
+    c_matrix.device(ctx->eigen_device<Eigen::ThreadPoolDevice>()) =
+        a_matrix.cast<float>()
+            .contract(b_matrix.cast<float>(), dim_pair)
+            .template cast<Eigen::bfloat16>();
   }
 };
 

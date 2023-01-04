@@ -487,6 +487,8 @@ class TileTest(test.TestCase, parameterized.TestCase):
   def testTypes(self):
     types_to_test = {
         "bool": (dtypes.bool, bool),
+        "bfloat16": (dtypes.bfloat16, float),
+        "float16": (dtypes.float16, float),
         "float32": (dtypes.float32, float),
         "float64": (dtypes.float64, float),
         "complex64": (dtypes.complex64, complex),
@@ -724,7 +726,7 @@ class TileTest(test.TestCase, parameterized.TestCase):
     if test_util.is_xla_enabled():
       # The following test fails with XLA enabled.
       return
-    with self.assertRaises(errors_impl.InternalError):
+    with self.assertRaises(errors_impl.InvalidArgumentError):
       with self.cached_session():
         tiled = array_ops.tile(
             np.ones((1, 1, 1)), [100000000, 100000000, 100000000])

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_TRANSPOSE_CONV_TESTER_H_
-#define TENSORFLOW_LITE_DELEGATES_XNNPACK_TRANSPOSE_CONV_TESTER_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZED_TRANSPOSE_CONV_TESTER_H_
+#define TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZED_TRANSPOSE_CONV_TESTER_H_
 
 #include <cstdint>
 #include <functional>
@@ -22,7 +22,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -165,6 +166,12 @@ class QuantizedTransposeConvTester {
 
   inline bool Unsigned() const { return unsigned_; }
 
+  inline QuantizedTransposeConvTester& WeightsCache(
+      TfLiteXNNPackDelegateWeightsCache* weights_cache) {
+    weights_cache_ = weights_cache;
+    return *this;
+  }
+
   void Test(TfLiteDelegate* delegate) const;
 
  private:
@@ -216,9 +223,10 @@ class QuantizedTransposeConvTester {
   bool unsigned_ = true;
   bool use_bias_ = true;
   bool sparse_weights_ = false;
+  TfLiteXNNPackDelegateWeightsCache* weights_cache_ = nullptr;
 };
 
 }  // namespace xnnpack
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_XNNPACK_TRANSPOSE_CONV_TESTER_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZED_TRANSPOSE_CONV_TESTER_H_

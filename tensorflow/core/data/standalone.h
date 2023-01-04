@@ -112,12 +112,13 @@ class Dataset {
   const DatasetBase* Get() const;
 
  private:
-  Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,
-          ProcessFunctionLibraryRuntime* pflr,
+  Dataset(DatasetBase* finalized_dataset, DatasetBase* original_dataset,
+          DeviceMgr* device_mgr, ProcessFunctionLibraryRuntime* pflr,
           FunctionLibraryDefinition* flib_def, thread::ThreadPool* pool,
           std::function<void(std::function<void()>)> runner);
 
-  DatasetBase* dataset_;  // owned
+  DatasetBase* finalized_dataset_;  // owned
+  DatasetBase* original_dataset_;   // owned
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;

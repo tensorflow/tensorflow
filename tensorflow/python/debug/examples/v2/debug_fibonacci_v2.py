@@ -18,7 +18,6 @@ import sys
 
 import absl
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow.compat.v2 as tf
 
 FLAGS = None
@@ -46,7 +45,7 @@ def main(_):
   n0 = tf.constant(np.ones([FLAGS.tensor_size] * 2), dtype=tf.int32)
   n1 = tf.constant(np.ones([FLAGS.tensor_size] * 2), dtype=tf.int32)
 
-  for _ in xrange(2, FLAGS.length):
+  for _ in range(2, FLAGS.length):
     n0, n1 = n1, tf.add(n0, n1)
 
   print("Fibonacci number at position %d:\n%s" % (FLAGS.length, n1.numpy()))

@@ -17,15 +17,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NVPTX_COMPILER_H_
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/node_hash_map.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -39,28 +39,33 @@ class NVPTXCompiler : public GpuCompiler {
   ~NVPTXCompiler() override {}
 
   Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      HloModule* hlo_module, se::CudaComputeCapability cuda_compute_capability,
       se::DeviceMemoryAllocator* device_allocator) override;
 
   Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator) override;
+      se::DeviceMemoryAllocator* device_allocator,
+      const GpuTargetConfig& gpu_target_config) override;
 
   HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() override;
 
   GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) override;
 
-  StatusOr<std::pair<std::string, std::vector<uint8>>> CompileTargetBinary(
+  StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
-      GpuVersion gpu_version, se::StreamExecutor* stream_exec, bool relocatable,
+      GpuVersion gpu_version, bool relocatable,
       const HloModule* debug_module) override;
 
  private:
-  StatusOr<std::vector<uint8>> LinkModules(
-      se::StreamExecutor* stream_exec,
-      std::vector<std::vector<uint8>> modules) override;
+  StatusOr<bool> CanUseLinkModules(
+      const HloModuleConfig& module_config) override;
 
-  tensorflow::mutex mutex_;
+  StatusOr<std::vector<uint8_t>> LinkModules(
+      se::StreamExecutor* stream_exec,
+      std::vector<std::vector<uint8_t>> modules,
+      const DebugOptions& debug_options) override;
+
+  absl::Mutex mutex_;
 
   // When compiling an HLO module, we need to find a path to the nvvm libdevice
   // files.  We search in the module's config.debug_options().cuda_data_dir()
@@ -69,14 +74,14 @@ class NVPTXCompiler : public GpuCompiler {
   // We cache the cuda_data_dir() and the result of our search, so that if the
   // next module we have to compile has the same cuda_data_dir(), we can skip
   // the search.
-  string cached_cuda_data_dir_ TF_GUARDED_BY(mutex_);
-  string cached_libdevice_dir_ TF_GUARDED_BY(mutex_);
+  std::string cached_cuda_data_dir_ ABSL_GUARDED_BY(mutex_);
+  std::string cached_libdevice_dir_ ABSL_GUARDED_BY(mutex_);
 
   // Tries to compile the given ptx string to cubin.  Returns a vector with the
   // compiled cubin.  If compilation was unsuccessful, returns an empty vector.
-  std::vector<uint8> CompileGpuAsmOrGetCachedResult(
-      se::StreamExecutor* stream_exec, const string& ptx,
-      se::CudaComputeCapability cc, const HloModuleConfig& hlo_module_config,
+  std::vector<uint8_t> CompileGpuAsmOrGetCachedResult(
+      const std::string& ptx, se::CudaComputeCapability cc,
+      const HloModuleConfig& hlo_module_config, absl::string_view module_name,
       bool relocatable);
 
   // The compilation_cache_ map is a cache from {ptx string, cc_major, cc_minor}
@@ -98,43 +103,36 @@ class NVPTXCompiler : public GpuCompiler {
           cc_major(cc_major),
           cc_minor(cc_minor),
           relocatable(relocatable) {}
-    string ptx;
+    template <typename H>
+    friend H AbslHashValue(H h, const CompilationCacheKey& key) {
+      return H::combine(std::move(h), key.ptx, key.cc_major, key.cc_minor,
+                        key.relocatable);
+    }
+    friend bool operator==(const CompilationCacheKey& a,
+                           const CompilationCacheKey& b) {
+      return a.cc_major == b.cc_major && a.cc_minor == b.cc_minor &&
+             a.ptx == b.ptx && a.relocatable == b.relocatable;
+    }
+    std::string ptx;
     int cc_major;
     int cc_minor;
     bool relocatable;
   };
-  struct CompilationCacheHash {
-    size_t operator()(const CompilationCacheKey& key) const {
-      return tensorflow::Hash64Combine(
-          tensorflow::Hash64Combine(
-              tensorflow::Hash64Combine(tensorflow::Hash64(key.ptx),
-                                        key.cc_major),
-              key.cc_minor),
-          key.relocatable);
-    }
-  };
-  struct CompilationCacheEq {
-    size_t operator()(const CompilationCacheKey& a,
-                      const CompilationCacheKey& b) const {
-      return a.cc_major == b.cc_major && a.cc_minor == b.cc_minor &&
-             a.ptx == b.ptx && a.relocatable == b.relocatable;
-    }
-  };
   struct CompilationCacheValue {
     bool compilation_done = false;
-    std::vector<uint8> cubin_data;
+    std::vector<uint8_t> cubin_data;
     // mutex and condition variable to serialize compilation completing.
-    tensorflow::mutex mutex_;
-    tensorflow::condition_variable compilation_done_cv_;
+    absl::Mutex mutex;
+    absl::CondVar compilation_done_cv;
   };
 
   // Don't even think about switching this to flat_hash_map; iterator stability
   // is critical here.
-  absl::node_hash_map<CompilationCacheKey, CompilationCacheValue,
-                      CompilationCacheHash, CompilationCacheEq>
-      compilation_cache_ TF_GUARDED_BY(mutex_);
+  absl::node_hash_map<CompilationCacheKey, CompilationCacheValue>
+      compilation_cache_ ABSL_GUARDED_BY(mutex_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(NVPTXCompiler);
+  NVPTXCompiler(const NVPTXCompiler&) = delete;
+  NVPTXCompiler& operator=(const NVPTXCompiler&) = delete;
 };
 
 }  // namespace gpu

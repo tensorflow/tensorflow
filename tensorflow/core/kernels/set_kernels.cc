@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -59,7 +60,7 @@ Status GroupShape(const VarDimArray& input_shape, ShapeArray* grouped_shape) {
   }
   // grouped_shape is input_shape[:-1]
   *grouped_shape = ShapeArray(input_shape.begin(), input_shape.end() - 1);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Build `SparseTensor` from indices, values, and shape in inputs
@@ -68,8 +69,13 @@ Status SparseTensorFromContext(OpKernelContext* ctx, const int32_t base_index,
                                const bool validate_indices,
                                sparse::SparseTensor* tensor) {
   // Assume row-major order.
-  const TensorShape shape =
-      TensorShape(ctx->input(base_index + 2).vec<int64_t>());
+  TensorShape shape;
+  const Tensor& shape_tensor = ctx->input(base_index + 2);
+  if (shape_tensor.dims() != 1) {
+    return errors::InvalidArgument("Shape must be a 1D tensor.");
+  }
+  TF_RETURN_IF_ERROR(
+      TensorShape::BuildTensorShape(shape_tensor.vec<int64_t>(), &shape));
   CheckRankAtLeast2(ctx, shape);
   std::vector<int64_t> order(shape.dims());
   std::iota(order.begin(), order.end(), 0);
@@ -282,6 +288,9 @@ void SetSizeOp<T>::Compute(OpKernelContext* ctx) {
     const auto group_key = group.group();
     const auto output_index = std::inner_product(
         group_key.begin(), group_key.end(), output_strides.begin(), 0LL);
+    OP_REQUIRES(ctx, output_index < out.size(),
+                errors::InvalidArgument("Index out of range, ", group.indices(),
+                                        " vs ", output_shape_ts.DebugString()));
     out(output_index) = group_set.size();
   }
 }
@@ -416,7 +425,7 @@ Status CheckShapesMatch(VarDimArray shape1, VarDimArray shape2) {
                                    absl::StrJoin(shape1, ","), "] vs [",
                                    absl::StrJoin(shape2, ","), "]");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Validate ranks are the same, and all but last dimension are the same.
@@ -429,7 +438,7 @@ Status GroupShapeFromInputs(VarDimArray shape1, VarDimArray shape2,
   TF_RETURN_IF_ERROR(GroupShape(shape2, &group_shape_2));
   TF_RETURN_IF_ERROR(CheckShapesMatch(group_shape_1, group_shape_2));
   *group_shape = group_shape_1;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Split `flat_group_index` into separate dimensions based on `group_shape`.
@@ -504,7 +513,7 @@ void SetOperationOp<T>::ComputeDenseToDense(OpKernelContext* ctx) const {
 
   TensorShape output_shape;
   OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(group_shape, &output_shape));
-  output_shape.AddDim(max_set_size);
+  OP_REQUIRES_OK(ctx, output_shape.AddDimWithStatus(max_set_size));
   OutputSparseTensor<T>(ctx, output_shape, num_result_values, group_sets);
 }
 
@@ -585,7 +594,7 @@ void SetOperationOp<T>::ComputeDenseToSparse(OpKernelContext* ctx) const {
 
   TensorShape output_shape;
   OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(group_shape, &output_shape));
-  output_shape.AddDim(max_set_size);
+  OP_REQUIRES_OK(ctx, output_shape.AddDimWithStatus(max_set_size));
   OutputSparseTensor<T>(ctx, output_shape, num_result_values, group_sets);
 }
 
@@ -703,7 +712,7 @@ void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
 
   TensorShape output_shape;
   OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(group_shape, &output_shape));
-  output_shape.AddDim(max_set_size);
+  OP_REQUIRES_OK(ctx, output_shape.AddDimWithStatus(max_set_size));
   OutputSparseTensor<T>(ctx, output_shape, num_result_values, group_sets);
 }
 

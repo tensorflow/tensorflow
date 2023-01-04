@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -62,15 +62,13 @@ StatusOr<std::pair<XlaOp, XlaOp>> CholeskyExpander::CholeskyUnblocked(
                                   a_shape.dimensions().end());
   error_dims.back() = error_dims.at(ndims - 2) = 1;
 
-  auto major_dims = AsInt64Slice(a_shape.dimensions())
-                        .subspan(
-                            /*pos=*/0,
-                            /*len=*/ndims - 2);
+  auto major_dims = a_shape.dimensions().subspan(
+      /*pos=*/0,
+      /*len=*/ndims - 2);
 
-  auto matrix_dims = AsInt64Slice(a_shape.dimensions())
-                         .subspan(
-                             /*pos=*/0,
-                             /*len=*/ndims);
+  auto matrix_dims = a_shape.dimensions().subspan(
+      /*pos=*/0,
+      /*len=*/ndims);
 
   XlaOp l = ZerosLike(a);
 
@@ -222,11 +220,11 @@ bool CholeskyExpander::InstructionMatchesPattern(HloInstruction* instruction) {
 StatusOr<HloInstruction*> CholeskyExpander::ExpandInstruction(
     HloInstruction* instruction) {
   const CholeskyOptions& options = instruction->cholesky_options();
-  const string name = absl::StrFormat(
+  const std::string name = absl::StrFormat(
       "xla.cholesky_%s_%s", instruction->operand(0)->shape().ToString(),
       options.lower() ? "lower" : "upper");
 
-  HloModule* module = instruction->parent()->parent();
+  HloModule* module = instruction->GetModule();
 
   HloComputation*& computation =
       computation_cache_.emplace(name, nullptr).first->second;

@@ -39,7 +39,7 @@ class TestCustomDevice : public CustomDevice {
                             ImmediateExecutionTensorHandle** result) override {
     tensor->Ref();
     *result = tensor;
-    return Status::OK();
+    return OkStatus();
   }
   Status CopyTensorFromDevice(
       ImmediateExecutionTensorHandle* tensor,
@@ -47,7 +47,7 @@ class TestCustomDevice : public CustomDevice {
       ImmediateExecutionTensorHandle** result) override {
     tensor->Ref();
     *result = tensor;
-    return Status::OK();
+    return OkStatus();
   }
   Status Execute(const ImmediateExecutionOperation* op,
                  ImmediateExecutionTensorHandle** retvals,
@@ -58,6 +58,12 @@ class TestCustomDevice : public CustomDevice {
   Status Pack(absl::Span<ImmediateExecutionTensorHandle*> handles,
               ImmediateExecutionTensorHandle** result) override {
     return errors::Unimplemented("Packing is not implemented");
+  }
+
+  // Pins `op` to `device`.
+  StatusOr<bool> ShallPinToThisDevice(
+      const ImmediateExecutionOperation* op) override {
+    return errors::Unimplemented("No preference in custom device pinning.");
   }
 
  private:
@@ -74,12 +80,12 @@ class TestCustomDeviceTensorHandle : public CustomDeviceTensorHandle {
   void* DevicePointer() const override { return nullptr; }
   Status NumDims(int* num_dims) const override {
     *num_dims = 1;
-    return Status::OK();
+    return OkStatus();
   }
   Status Dim(int dim_index, int64_t* dim) const override {
     if (dim_index == 0) {
       *dim = length_;
-      return Status::OK();
+      return OkStatus();
     } else {
       return errors::Internal("Dim out of bounds");
     }
@@ -87,7 +93,7 @@ class TestCustomDeviceTensorHandle : public CustomDeviceTensorHandle {
 
   Status SummarizeValue(std::string& summary) const override {
     summary = std::string("TestValue");
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -100,7 +106,8 @@ TEST(CustomDevice, TestTensorHandle) {
   core::RefCountPtr<EagerContext> ctx(new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      &device_mgr, false, nullptr, nullptr));
+      &device_mgr, false, nullptr, nullptr, nullptr,
+      /*run_eager_op_as_function=*/true));
   std::string device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:15";
   TestCustomDevice device(device_name);
   core::RefCountPtr<TestCustomDeviceTensorHandle> tensor(
@@ -129,7 +136,8 @@ TEST(CustomDevice, TestTensorHandleUnknownDimNumElements) {
   core::RefCountPtr<EagerContext> ctx(new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      &device_mgr, false, nullptr, nullptr));
+      &device_mgr, false, nullptr, nullptr, nullptr,
+      /*run_eager_op_as_function=*/true));
   std::string device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:15";
   TestCustomDevice device(device_name);
   core::RefCountPtr<TestCustomDeviceTensorHandle> tensor(
@@ -147,7 +155,8 @@ TEST(CustomDevice, TestResourcePlacement) {
   core::RefCountPtr<EagerContext> ctx(new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      &device_mgr, false, nullptr, nullptr));
+      &device_mgr, false, nullptr, nullptr, nullptr,
+      /*run_eager_op_as_function=*/true));
   std::string custom_device_name =
       "/job:localhost/replica:0/task:0/device:CUSTOM:15";
   TestCustomDevice custom_device(custom_device_name);

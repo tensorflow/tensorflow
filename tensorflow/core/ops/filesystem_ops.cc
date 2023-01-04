@@ -26,6 +26,6 @@ REGISTER_OP("FileSystemSetConfiguration")
     .Input("key: string")
     .Input("value: string")
     .SetIsStateful()
-    .SetShapeFn(shape_inference::ScalarShape);
+    .SetShapeFn(shape_inference::NoOutputs);
 
 }  // namespace tensorflow

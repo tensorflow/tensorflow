@@ -73,8 +73,6 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
   compiler_options.flib_def = &graph->flib_def();
   compiler_options.graph_def_version = graph->versions().producer();
   compiler_options.allow_cpu_custom_calls = true;
-  compiler_options.custom_fake_quant_op_calls =
-      config.conversion_options().custom_fake_quant_op_calls();
 
   XlaCompiler compiler(compiler_options);
 
@@ -127,7 +125,7 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
       ++input_index;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvertVarHandlesToAotVarHandles(GraphDef* graph_def) {
@@ -143,7 +141,7 @@ Status ConvertVarHandlesToAotVarHandles(GraphDef* graph_def) {
         node.mutable_attr()->erase("allowed_devices");
       }
     }
-    return Status::OK();
+    return OkStatus();
   };
   for (auto& node : *graph_def->mutable_node()) {
     TF_RETURN_IF_ERROR(update_var_handle_op_node(node));
@@ -153,7 +151,7 @@ Status ConvertVarHandlesToAotVarHandles(GraphDef* graph_def) {
       TF_RETURN_IF_ERROR(update_var_handle_op_node(node));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -166,7 +164,7 @@ Status ConvertGraphDefToXla(GraphDef graph_def, const tf2xla::Config& config,
   TF_RETURN_IF_ERROR(InitGraph(graph_def, config, &graph));
   TF_RETURN_IF_ERROR(
       ConvertGraphToXla(std::move(graph), config, client, computation));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

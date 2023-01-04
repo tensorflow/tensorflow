@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -45,11 +47,13 @@ GPUResources BufferDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
 }
 
 absl::Status BufferDescriptor::PerformSelector(
-    const GpuInfo& gpu_info, const std::string& selector,
+    const GpuInfo& gpu_info, absl::string_view selector,
     const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) const {
   if (selector == "Read") {
     return PerformReadSelector(gpu_info, args, result);
+  } else if (selector == "Write") {
+    return PerformWriteSelector(gpu_info, args, result);
   } else if (selector == "GetPtr") {
     return PerformGetPtrSelector(args, template_args, result);
   } else {
@@ -67,8 +71,20 @@ absl::Status BufferDescriptor::PerformReadSelector(
                      args.size(), " was passed"));
   }
   if (gpu_info.IsGlsl()) {
-    if (element_type == DataType::FLOAT16) {
+    if (element_type == DataType::FLOAT16 &&
+        !gpu_info.IsGlslSupportsExplicitFp16()) {
       if (memory_type == MemoryType::CONSTANT) {
+        bool is_kernel_global_space = false;
+        for (const auto& attribute : attributes) {
+          if (attribute == "kernel_global_space") {
+            is_kernel_global_space = true;
+            break;
+          }
+        }
+        if (is_kernel_global_space) {
+          *result = absl::StrCat("buffer[", args[0], "]");
+          return absl::OkStatus();
+        }
         const std::string arg0 = "(" + args[0] + ")";
         *result =
             absl::StrCat("vec4(unpackHalf2x16(buffer[", arg0, " / 2][", arg0,
@@ -108,6 +124,18 @@ absl::Status BufferDescriptor::PerformReadSelector(
     *result = absl::StrCat("buffer[", args[0], "]");
     return absl::OkStatus();
   }
+}
+
+absl::Status BufferDescriptor::PerformWriteSelector(
+    const GpuInfo& gpu_info, const std::vector<std::string>& args,
+    std::string* result) const {
+  if (args.size() != 2) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "BufferDescriptor Write require two arguments(value, index), but ",
+        args.size(), " was passed"));
+  }
+  *result = absl::StrCat("buffer[", args[1], "] = ", args[0]);
+  return absl::OkStatus();
 }
 
 absl::Status BufferDescriptor::PerformGetPtrSelector(

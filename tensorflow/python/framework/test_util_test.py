@@ -36,10 +36,12 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_ops  # pylint: disable=unused-import
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -535,6 +537,10 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertNotAllEqual([20] * 3, j)
 
     with self.assertRaisesRegex(
+        AssertionError, r"two values are equal at all elements. $"):
+      self.assertNotAllEqual([120], k)
+
+    with self.assertRaisesRegex(
         AssertionError, r"two values are equal at all elements.*extra message"):
       self.assertNotAllEqual([120], k, msg="extra message")
 
@@ -703,6 +709,65 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaises(AssertionError):
       self.assertAllInSet(x, (42,))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testAssertShapeEqualSameInputTypes(self):
+    # Test with arrays
+    array_a = np.random.rand(3, 1)
+    array_b = np.random.rand(3, 1)
+    array_c = np.random.rand(4, 2)
+
+    self.assertShapeEqual(array_a, array_b)
+    with self.assertRaises(AssertionError):
+      self.assertShapeEqual(array_a, array_c)
+
+    # Test with tensors
+    tensor_x = random_ops.random_uniform((5, 2, 1))
+    tensor_y = random_ops.random_uniform((5, 2, 1))
+    tensor_z = random_ops.random_uniform((2, 4))
+
+    self.assertShapeEqual(tensor_x, tensor_y)
+    with self.assertRaises(AssertionError):
+      self.assertShapeEqual(tensor_x, tensor_z)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAssertShapeEqualMixedInputTypes(self):
+
+    # Test mixed multi-dimensional inputs
+    array_input = np.random.rand(4, 3, 2)
+    tensor_input = random_ops.random_uniform((4, 3, 2))
+    tensor_input_2 = random_ops.random_uniform((10, 5))
+
+    self.assertShapeEqual(array_input, tensor_input)
+    self.assertShapeEqual(tensor_input, array_input)
+    with self.assertRaises(AssertionError):
+      self.assertShapeEqual(array_input, tensor_input_2)
+
+    # Test with scalar inputs
+    array_input = np.random.rand(1)
+    tensor_input = random_ops.random_uniform((1,))
+    tensor_input_2 = random_ops.random_uniform((3, 1))
+
+    self.assertShapeEqual(array_input, tensor_input)
+    self.assertShapeEqual(tensor_input, array_input)
+    with self.assertRaises(AssertionError):
+      self.assertShapeEqual(array_input, tensor_input_2)
+
+  def testAssertShapeEqualDynamicShapes(self):
+
+    array_a = np.random.rand(4)
+    values = [1, 1, 2, 3, 4, 4]
+
+    # Dynamic shape should be resolved in eager execution.
+    with context.eager_mode():
+      tensor_b = array_ops.unique(values)[0]
+      self.assertShapeEqual(array_a, tensor_b)
+
+    # Shape comparison should fail when a graph is traced but not evaluated.
+    with context.graph_mode():
+      tensor_c = array_ops.unique(values)[0]
+      with self.assertRaises(AssertionError):
+        self.assertShapeEqual(array_a, tensor_c)
+
   def testRandomSeed(self):
     # Call setUp again for WithCApi case (since it makes a new default graph
     # after setup).
@@ -720,6 +785,12 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertEqual(a, b)
       self.assertEqual(a_np_rand, b_np_rand)
       self.assertAllEqual(a_rand, b_rand)
+
+  def testIndexedSlices(self):
+    with context.eager_mode():
+      self.evaluate(
+          indexed_slices.IndexedSlices(
+              constant_op.constant(1.0), constant_op.constant(0.0)))
 
   @test_util.run_in_graph_and_eager_modes
   def test_callable_evaluate(self):

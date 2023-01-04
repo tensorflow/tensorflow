@@ -52,7 +52,8 @@ namespace cpu {
 
 class IrFunction {
  public:
-  IrFunction(const string& function_name, llvm::Function::LinkageTypes linkage,
+  IrFunction(const std::string& function_name,
+             llvm::Function::LinkageTypes linkage,
              const HloModuleConfig& module_config, llvm::Module* llvm_module,
              llvm::IRBuilder<>* b, int64_t num_dynamic_loop_bounds);
   ~IrFunction();
@@ -102,7 +103,7 @@ class IrFunction {
 
  private:
   // Initialize an llvm::Function with standard signature based on arguments.
-  void Initialize(const string& function_name,
+  void Initialize(const std::string& function_name,
                   llvm::Function::LinkageTypes linkage,
                   const HloModuleConfig& module_config);
 
@@ -146,9 +147,8 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
 // calls to 'parallel_function' (and joins threads before returning).
 Status EmitCallToParallelForkJoin(
     const std::vector<llvm::Value*>& arguments, const Shape& shape,
-    const std::vector<int64_t>& dimension_partition_counts,
-    llvm::IRBuilder<>* b, llvm::Function* parallel_function,
-    const string& name);
+    absl::Span<const int64_t> dimension_partition_counts, llvm::IRBuilder<>* b,
+    llvm::Function* parallel_function, const std::string& name);
 
 }  // namespace cpu
 }  // namespace xla

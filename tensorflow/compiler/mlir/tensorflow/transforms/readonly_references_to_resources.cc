@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -39,6 +38,9 @@ namespace {
 constexpr StringRef kClassAttr = "_class";
 constexpr StringRef kSharedNameAttr = "shared_name";
 constexpr StringRef kLocationPrefix = "loc:@";
+
+#define GEN_PASS_DEF_CONVERTREADONLYREFERENCEVARIABLESTORESOURCEVARIABLESPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 
 // A pass that converts readonly reference variables to the corresponding
 // resource variables.
@@ -56,9 +58,9 @@ constexpr StringRef kLocationPrefix = "loc:@";
 // heuristic method that assumes that all the users of them is Identity op,
 // fed directly.
 class ConvertReadonlyReferenceVariablesToResourceVariablesPass
-    : public ConvertReadonlyReferenceVariablesToResourceVariablesPassBase<
+    : public impl::ConvertReadonlyReferenceVariablesToResourceVariablesPassBase<
           ConvertReadonlyReferenceVariablesToResourceVariablesPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Parse node name from "_class" or "shared_name" attributes.
@@ -109,8 +111,9 @@ StringRef GetNodeNameFromClassAttrOrSharedNameAttr(Operation *op) {
   return result;
 }
 
-void ConvertReadonlyReferenceVariablesToResourceVariablesPass::runOnFunction() {
-  FuncOp func = getFunction();
+void ConvertReadonlyReferenceVariablesToResourceVariablesPass::
+    runOnOperation() {
+  func::FuncOp func = getOperation();
 
   OpBuilder builder(func.getContext());
   SmallVector<VariableV2Op, 4> variable_v2s_to_replace;
@@ -165,7 +168,8 @@ void ConvertReadonlyReferenceVariablesToResourceVariablesPass::runOnFunction() {
         ArrayRef<Value>{},
         ArrayRef<NamedAttribute>{
             builder.getNamedAttr("device", device_attr),
-            builder.getNamedAttr("container", variable_v2_op.containerAttr()),
+            builder.getNamedAttr("container",
+                                 variable_v2_op.getContainerAttr()),
             builder.getNamedAttr("shared_name",
                                  builder.getStringAttr(variable_name))});
     for (Operation *user :
@@ -183,7 +187,7 @@ void ConvertReadonlyReferenceVariablesToResourceVariablesPass::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateConvertReadonlyReferenceVariablesToResourceVariablesPass() {
   return std::make_unique<
       ConvertReadonlyReferenceVariablesToResourceVariablesPass>();

@@ -1,0 +1,8 @@
+op 	 {
+  name: "ShutdownTPUSystem"
+  output_arg {
+    name: "success"
+    type: DT_BOOL
+  }
+  is_stateful: true
+}

@@ -47,7 +47,7 @@ class RpcCollectiveExecutorMgrTest : public ::testing::Test {
     device_count->insert({"CPU", NUM_DEVS});
     std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices));
-    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
+    device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
     std::unique_ptr<DeviceResolverDistributed> dr(
         new DeviceResolverDistributed(device_mgr_.get()));
     std::unique_ptr<CollectiveParamResolverDistributed> cpr(

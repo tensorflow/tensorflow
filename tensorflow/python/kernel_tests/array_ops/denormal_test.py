@@ -24,6 +24,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
+@test_util.with_eager_op_as_function
 class DenormalTest(test.TestCase):
 
   def testPythonHasDenormals(self):
@@ -36,7 +37,8 @@ class DenormalTest(test.TestCase):
     if (platform.machine() == "ppc64le" or platform.machine() == "s390x" or
         platform.machine() == "aarch64"):
       # Disabled denormal_test on power/s390x/aarch64 platform
-      # Check relevant discussion - https://github.com/tensorflow/tensorflow/issues/11902
+      # Check relevant discussion -
+      # https://github.com/tensorflow/tensorflow/issues/11902
       return
     for dtype in dtypes:
       tiny = np.finfo(dtype).tiny

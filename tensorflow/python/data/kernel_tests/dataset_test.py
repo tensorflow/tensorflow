@@ -25,6 +25,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import debug_mode
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import readers
@@ -564,7 +565,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     else:
       iterator = dataset_ops.make_one_shot_iterator(dataset)
       next_first, next_second = iterator.get_next()
-      self.assertEqual(next_second, None)
+      self.assertIsNone(next_second)
       with self.cached_session() as sess:
         self.assertEqual(sess.run(next_first), 42)
 
@@ -625,10 +626,10 @@ class DebugDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def setUp(self):
     super(DebugDatasetTest, self).setUp()
-    dataset_ops.toggle_debug_mode(True)
+    debug_mode.toggle_debug_mode(True)
 
   def tearDown(self):
-    dataset_ops.toggle_debug_mode(False)
+    debug_mode.toggle_debug_mode(False)
     super(DebugDatasetTest, self).tearDown()
 
   @combinations.generate(test_base.eager_only_combinations())
@@ -649,12 +650,35 @@ class DebugDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertLen(counter, 11)
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testDebugModeGenerator(self):
+    def gen():
+      yield from range(10)
+
+    ds = dataset_ops.Dataset.from_generator(
+        gen,
+        output_signature=tensor_spec.TensorSpec(shape=(), dtype=dtypes.int64))
+    self.assertDatasetProduces(ds, list(range(10)))
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDebugModeGeneratorTwoComponents(self):
+    data = [(n, n+1) for n in range(10)]
+
+    def gen():
+      yield from data
+
+    ds = dataset_ops.Dataset.from_generator(
+        gen,
+        output_signature=(tensor_spec.TensorSpec(shape=(), dtype=dtypes.int64),
+                          tensor_spec.TensorSpec(shape=(), dtype=dtypes.int64)))
+    self.assertDatasetProduces(ds, data)
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testDebugModeSequentialExecution(self):
     ds = dataset_ops.Dataset.range(10)
     ds = ds.apply(
         testing.assert_next(["Interleave", "Map", "Batch", "FiniteTake"]))
     ds = ds.interleave(
-        lambda x: dataset_ops.Dataset.from_tensors(x),
+        dataset_ops.Dataset.from_tensors,
         cycle_length=10,
         num_parallel_calls=10)
     ds = ds.map(lambda x: x * x, num_parallel_calls=10)

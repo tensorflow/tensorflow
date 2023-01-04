@@ -20,7 +20,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
-#include "mlir/IR/Identifier.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 
 namespace mlir {
 
@@ -66,8 +66,11 @@ std::string GetNameFromLoc(Location loc) {
       // Add name in NameLoc. For NameLoc we also account for names due to ops
       // in functions where the op's name is first.
       auto name = name_loc.getName().strref().split('@').first;
-      loc_names.push_back(name);
-      if (!name.empty()) names_is_nonempty = true;
+      // Skip if the name is for op type.
+      if (!name.endswith(":")) {
+        loc_names.push_back(name);
+        if (!name.empty()) names_is_nonempty = true;
+      }
       continue;
     } else if (auto call_loc = curr_loc.dyn_cast<CallSiteLoc>()) {
       // Use location of the Callee to generate the name.

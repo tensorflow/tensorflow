@@ -28,6 +28,7 @@ from tensorflow.python.ops.parallel_for.test_util import PForTestCase
 from tensorflow.python.platform import test
 
 
+@test_util.with_eager_op_as_function
 @test_util.run_all_in_graph_and_eager_modes
 class ArrayTest(PForTestCase):
 
@@ -262,6 +263,16 @@ class ArrayTest(PForTestCase):
     def loop_fn(i):
       x1 = array_ops.gather(x, i)
       return array_ops.pad(x1, padding, mode="CONSTANT")
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_pad_v2(self):
+    x = random_ops.random_uniform([3, 2, 3])
+    padding = constant_op.constant([[1, 2], [3, 4]])
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      return array_ops.pad_v2(x1, padding, mode="CONSTANT")
 
     self._test_loop_fn(loop_fn, 3)
 

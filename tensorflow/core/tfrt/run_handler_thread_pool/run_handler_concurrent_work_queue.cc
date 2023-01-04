@@ -15,12 +15,14 @@ limitations under the License.
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_concurrent_work_queue.h"
 
 #include <memory>
+#include <ostream>
+#include <utility>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
+#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
-#include "tfrt/support/error_util.h"  // from @tf_runtime
-#include "tfrt/support/latch.h"  // from @tf_runtime
 
 namespace tfrt {
 namespace tf {
@@ -53,58 +55,25 @@ RunHandlerThreadWorkQueue::RunHandlerThreadWorkQueue(const Options& options)
   pool_options.enable_wake_up = options.enable_wake_up;
   pool_options.wait_if_no_active_request = options.wait_if_no_active_request;
   pool_options.use_adaptive_waiting_time = options.use_adaptive_waiting_time;
-  handler_pool_ = absl::make_unique<RunHandlerPool>(pool_options);
+  handler_pool_ = std::make_unique<RunHandlerPool>(pool_options);
 }
 
-tensorflow::Status RunHandlerThreadWorkQueue::InitializeRequest(
-    tfrt::RequestContextBuilder* request_context_builder,
-    tensorflow::thread::ThreadPoolInterface** intra_op_threadpool) const {
-  DCHECK(intra_op_threadpool);
+tensorflow::StatusOr<std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>>
+RunHandlerThreadWorkQueue::InitializeRequest(int64_t request_id) const {
   RunHandlerOptions options;
-  options.priority = request_context_builder->request_options().priority;
-  std::unique_ptr<RunHandler> handler = handler_pool_->Get(
-      request_context_builder->id(), options_.init_timeout_ms, options);
+  std::unique_ptr<RunHandler> handler =
+      handler_pool_->Get(request_id, options_.init_timeout_ms, options);
   if (!handler) {
     return tensorflow::errors::Internal(absl::StrCat(
         "Could not obtain RunHandler for request after waiting for ",
         options_.init_timeout_ms, " ms."));
   }
 
-  *intra_op_threadpool = handler->AsIntraThreadPoolInterface();
-
-  // insert both the raw pointer and the std::unique_ptr of RunHandler, the raw
-  // pointer is used for accessing methods of RunHandler and can be copied into
-  // other RequestContext, the std::unique_ptr is used for proper life-time
-  // management
-  request_context_builder->context_data().insert(handler.get());
-  request_context_builder->context_data().insert(std::move(handler));
-
-  return tensorflow::Status::OK();
+  return {std::make_unique<RunHandlerWorkQueue>(std::move(handler))};
 }
 
 void RunHandlerThreadWorkQueue::AddTask(TaskFunction work) {
   non_blocking_work_queue_.AddTask(std::move(work));
-}
-
-void RunHandlerThreadWorkQueue::AddTask(const ExecutionContext& exec_ctx,
-                                        TaskFunction work) {
-  auto* request_context = exec_ctx.request_ctx();
-  DCHECK(request_context);
-  request_context->GetData<RunHandler*>()->ScheduleInterOpClosure(
-      tensorflow::tfrt_stub::WrapWork(request_context->id(), "inter",
-                                      std::move(work)));
-}
-
-Optional<TaskFunction> RunHandlerThreadWorkQueue::AddBlockingTask(
-    const tfrt::ExecutionContext& exec_ctx, TaskFunction work,
-    bool allow_queuing) {
-  if (allow_queuing) {
-    exec_ctx.request_ctx()->GetData<RunHandler*>()->ScheduleInterOpClosure(
-        std::move(work));
-  } else {
-    return blocking_work_queue_.RunBlockingTask(std::move(work));
-  }
-  return llvm::None;
 }
 
 Optional<TaskFunction> RunHandlerThreadWorkQueue::AddBlockingTask(
@@ -125,21 +94,38 @@ void RunHandlerThreadWorkQueue::Quiesce() {
 
 void RunHandlerThreadWorkQueue::Await(
     ArrayRef<RCReference<AsyncValue>> values) {
-  // We are done when values_remaining drops to zero.
-  tfrt::latch values_remaining(values.size());
-
-  // As each value becomes available, we decrement the count.
-  for (auto& value : values) {
-    value->AndThen([&values_remaining]() { values_remaining.count_down(); });
-  }
-
-  // Wait until all values are resolved.
-  values_remaining.wait();
+  tfrt::Await(values);
 }
 
 bool RunHandlerThreadWorkQueue::IsInWorkerThread() const {
   // TODO(b/192247530): Check if we have cases it is not true.
   return true;
+}
+
+std::ostream& operator<<(std::ostream& strm,
+                         const RunHandlerThreadWorkQueue::Options& options) {
+  return strm << "{"
+              << "num_main_threads = " << options.num_main_threads
+              << ", num_complementary_threads = "
+              << options.num_complementary_threads
+              << ", init_timeout_ms = " << options.init_timeout_ms
+              << ", max_concurrent_handler = " << options.max_concurrent_handler
+              << ", num_sub_thread_pool = " << options.num_sub_thread_pool
+              << ", num_threads_in_sub_thread_pool = ["
+              << absl::StrJoin(options.num_threads_in_sub_thread_pool, ",")
+              << "]"
+              << ", sub_thread_request_percentage = ["
+              << absl::StrJoin(options.sub_thread_request_percentage, ",")
+              << "]"
+              << ", non_blocking_threads_sleep_time_micro_sec = "
+              << options.non_blocking_threads_sleep_time_micro_sec
+              << ", blocking_threads_max_sleep_time_micro_sec = "
+              << options.blocking_threads_max_sleep_time_micro_sec
+              << ", use_adaptive_waiting_time = "
+              << options.use_adaptive_waiting_time
+              << ", wait_if_no_active_request = "
+              << options.wait_if_no_active_request
+              << ", enable_wake_up = " << options.enable_wake_up << "}";
 }
 
 }  // namespace tf

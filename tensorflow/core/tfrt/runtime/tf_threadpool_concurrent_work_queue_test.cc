@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/tfrt/utils/thread_pool.h"
@@ -29,41 +30,36 @@ namespace tensorflow {
 namespace tfrt_stub {
 namespace {
 
-using ::tensorflow::testing::IsOk;
-
 const int32_t kNumThreads = 2;
 
 class TfThreadpoolWorkQueueTest : public ::testing::Test {
  protected:
   TfThreadpoolWorkQueueTest()
-      : intra_op_threadpool_(/*name=*/"intra", kNumThreads),
-        inter_op_threadpool_(/*name=*/"inter", kNumThreads),
-        tf_threadpool_cwq_(&intra_op_threadpool_, &inter_op_threadpool_) {}
-  TfThreadPool intra_op_threadpool_;
-  TfThreadPool inter_op_threadpool_;
-  TfThreadPoolWorkQueue tf_threadpool_cwq_;
+      : tf_threadpool_cwq_(CreateDefaultTfThreadPoolWorkQueue(
+            /*num_inter_op_threads=*/kNumThreads,
+            /*num_intra_op_threads=*/kNumThreads)) {}
+  std::unique_ptr<TfThreadPoolWorkQueue> tf_threadpool_cwq_;
 };
 
 TEST_F(TfThreadpoolWorkQueueTest, GetParallelismLevelOk) {
-  EXPECT_GT(tf_threadpool_cwq_.GetParallelismLevel(), 0);
+  EXPECT_GT(tf_threadpool_cwq_->GetParallelismLevel(), 0);
 }
 
 TEST_F(TfThreadpoolWorkQueueTest, GetNameOk) {
-  EXPECT_EQ(tf_threadpool_cwq_.name(), "TfThreadPoolWorkQueue");
+  EXPECT_EQ(tf_threadpool_cwq_->name(), "TfThreadPoolWorkQueue");
 }
 
 TEST_F(TfThreadpoolWorkQueueTest, InitializeRequestOk) {
   tfrt::RequestContextBuilder ctx_builder(/*host=*/nullptr,
                                           /*resource_context=*/nullptr);
-  tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
-  EXPECT_THAT(
-      tf_threadpool_cwq_.InitializeRequest(&ctx_builder, &intra_op_threadpool),
-      IsOk());
-  EXPECT_EQ(intra_op_threadpool, &intra_op_threadpool_);
+  auto queue = tf_threadpool_cwq_->InitializeRequest(/*request_id=*/0);
+  TF_ASSERT_OK(queue.status());
+  EXPECT_NE(*queue, nullptr);
+  EXPECT_NE((*queue)->GetIntraOpThreadPool(), nullptr);
 }
 
 TEST_F(TfThreadpoolWorkQueueTest, IsInWorkerThreadOk) {
-  EXPECT_TRUE(tf_threadpool_cwq_.IsInWorkerThread());
+  EXPECT_TRUE(tf_threadpool_cwq_->IsInWorkerThread());
 }
 
 TEST_F(TfThreadpoolWorkQueueTest, RunningBlockingTask) {
@@ -71,14 +67,14 @@ TEST_F(TfThreadpoolWorkQueueTest, RunningBlockingTask) {
   int n = 0;
   tensorflow::mutex m;
   for (int i = 0; i < 10; ++i) {
-    tf_threadpool_cwq_.AddBlockingTask(tfrt::TaskFunction([&n, &m, &latch] {
-                                         {
-                                           tensorflow::mutex_lock lock(m);
-                                           ++n;
-                                         }
-                                         latch.count_down();
-                                       }),
-                                       true);
+    tf_threadpool_cwq_->AddBlockingTask(tfrt::TaskFunction([&n, &m, &latch] {
+                                          {
+                                            tensorflow::mutex_lock lock(m);
+                                            ++n;
+                                          }
+                                          latch.count_down();
+                                        }),
+                                        true);
   }
   latch.wait();
   EXPECT_EQ(n, 10);
@@ -89,7 +85,7 @@ TEST_F(TfThreadpoolWorkQueueTest, RunningNonBlockingTask) {
   int n = 0;
   tensorflow::mutex m;
   for (int i = 0; i < 10; ++i) {
-    tf_threadpool_cwq_.AddTask(tfrt::TaskFunction([&n, &m, &latch] {
+    tf_threadpool_cwq_->AddTask(tfrt::TaskFunction([&n, &m, &latch] {
       {
         tensorflow::mutex_lock lock(m);
         ++n;
@@ -101,37 +97,26 @@ TEST_F(TfThreadpoolWorkQueueTest, RunningNonBlockingTask) {
   EXPECT_EQ(n, 10);
 }
 
-std::unique_ptr<tfrt::HostContext> CreateTestHostContext() {
-  return std::make_unique<tfrt::HostContext>(
-      [](const tfrt::DecodedDiagnostic&) {}, tfrt::CreateMallocAllocator(),
-      tfrt::CreateMultiThreadedWorkQueue(1, 1));
-}
-
 TEST_F(TfThreadpoolWorkQueueTest, RunningMixedTask) {
-  auto host = CreateTestHostContext();
-  tfrt::RequestContextBuilder req_ctx_builder{host.get(),
-                                              /*resource_context=*/nullptr};
-  auto req_ctx = std::move(req_ctx_builder).build();
-  tfrt::ExecutionContext exec_ctx(std::move(*req_ctx));
   tfrt::latch latch(20);
   int n = 0;
   tensorflow::mutex m;
   for (int i = 0; i < 10; ++i) {
-    tf_threadpool_cwq_.AddTask(exec_ctx, tfrt::TaskFunction([&n, &m, &latch] {
-                                 {
-                                   tensorflow::mutex_lock lock(m);
-                                   ++n;
-                                 }
-                                 latch.count_down();
-                               }));
-    tf_threadpool_cwq_.AddBlockingTask(tfrt::TaskFunction([&n, &m, &latch] {
-                                         {
-                                           tensorflow::mutex_lock lock(m);
-                                           ++n;
-                                         }
-                                         latch.count_down();
-                                       }),
-                                       true);
+    tf_threadpool_cwq_->AddTask(tfrt::TaskFunction([&n, &m, &latch] {
+      {
+        tensorflow::mutex_lock lock(m);
+        ++n;
+      }
+      latch.count_down();
+    }));
+    tf_threadpool_cwq_->AddBlockingTask(tfrt::TaskFunction([&n, &m, &latch] {
+                                          {
+                                            tensorflow::mutex_lock lock(m);
+                                            ++n;
+                                          }
+                                          latch.count_down();
+                                        }),
+                                        true);
   }
   latch.wait();
   EXPECT_EQ(n, 20);

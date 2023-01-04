@@ -16,16 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_ALGORITHM_PICKER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_ALGORITHM_PICKER_H_
 
+#include <optional>
+
 #include "absl/time/time.h"
-#include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/autotune_results.pb.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/protobuf/autotuning.pb.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/tsl/protobuf/autotuning.pb.h"
+
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
+#endif
 
 namespace xla {
 namespace gpu {
@@ -34,6 +40,10 @@ namespace gpu {
 // each and adding explicit scratch space to the CustomCalls.
 class GpuConvAlgorithmPicker : public HloModulePass {
  public:
+  static void ClearAutotuneResults();
+  static Status WriteAutotuneResults(AutotuneResults* results);
+  static Status LoadAutotuneResults(const AutotuneResults& results);
+
   // If the `allocator` parameter is not null, we will use it to allocate temp
   // memory while timing the various convolution algorithms.  If it's null,
   // we'll use the default allocator on the StreamExecutor.
@@ -45,7 +55,10 @@ class GpuConvAlgorithmPicker : public HloModulePass {
     return "gpu-conv-algorithm-picker";
   }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   StatusOr<bool> RunOnComputation(HloComputation* computation);
@@ -54,6 +67,22 @@ class GpuConvAlgorithmPicker : public HloModulePass {
       const HloCustomCallInstruction* instr);
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+  // Simple bundle of an algorithm and its output, for comparing results across
+  // autotuned algorithms.
+  struct ReferenceResult {
+    stream_executor::dnn::AlgorithmDesc algorithm;
+    stream_executor::DeviceMemoryBase buffer;
+  };
+
+  StatusOr<tensorflow::AutotuneResult> AutotuneOneConvRunner(
+      const GpuConvConfig& config, const HloCustomCallInstruction* instr,
+      se::DeviceMemoryAllocator* allocator,
+      se::RedzoneAllocator* input_output_allocator, se::Stream* stream,
+      MaybeFusedConvRunner* const runner,
+      absl::Span<const stream_executor::DeviceMemoryBase> operand_buffers,
+      stream_executor::DeviceMemoryBase result_buffer,
+      std::optional<ReferenceResult>* reference_result,
+      absl::Span<const stream_executor::dnn::AlgorithmDesc> disabled_algos);
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheCuda(
       const HloCustomCallInstruction* instr,
       se::DeviceMemoryAllocator* allocator, se::Stream* stream);

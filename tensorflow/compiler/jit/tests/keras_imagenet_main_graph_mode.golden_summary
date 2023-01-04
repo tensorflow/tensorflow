@@ -1,17 +1,17 @@
-Clustered nodes: 1904
-Unclustered nodes: 509
+Clustered nodes: 1968
+Unclustered nodes: 445
 Number of clusters: 1
 
-unclustered size 509
+unclustered size 445
  AssignAddVariableOp 2
- Const 65
+ Const 1
  DivNoNan 1
  Identity 1
  NoOp 1
  ReadVariableOp 2
  VarHandleOp 435
  _Retval 2
-cluster 0 size 1904
+cluster 0 size 1968
  Add 17
  AddN 72
  ArgMax 1
@@ -20,7 +20,7 @@ cluster 0 size 1904
  BiasAdd 1
  BiasAddGrad 1
  Cast 3
- Const 83
+ Const 147
  Conv2D 53
  Conv2DBackpropFilter 53
  Conv2DBackpropInput 52

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
@@ -37,19 +38,20 @@ _TfrtGetResourceOp::GetResourceHandleValueAndIdList(
   llvm::SmallVector<ResourceHandleValueAndId, 4> resource_vec;
   llvm::StringRef device = GetDeviceOrEmpty(getOperation());
 
-  for (auto iter : llvm::enumerate(results())) {
+  for (auto iter : llvm::enumerate(getResults())) {
     auto index = iter.index();
     if (getElementTypeOrSelf(iter.value().getType()).isa<TF::ResourceType>()) {
       resource_vec.push_back(GetResourceHandleValueAndIdBase(
-          container()[index].cast<mlir::StringAttr>().getValue(),
-          shared_name()[index].cast<mlir::StringAttr>().getValue(), device,
-          results()[index], resource_handle_id_map, next_id));
+          getContainer()[index].cast<mlir::StringAttr>().getValue(),
+          getSharedName()[index].cast<mlir::StringAttr>().getValue(), device,
+          getResults()[index], resource_handle_id_map, next_id));
     }
   }
   return resource_vec;
 }
 
-static LogicalResult Verify(_TfrtGetResourceOp get_resource_op) {
+LogicalResult _TfrtGetResourceOp::verify() {
+  _TfrtGetResourceOp get_resource_op = *this;
   // The sizes of indices, shared_name and container must be equal.
   int32_t indices_size =
       get_resource_op->getAttrOfType<mlir::ArrayAttr>("indices").size();

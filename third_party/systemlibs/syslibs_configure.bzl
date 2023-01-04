@@ -15,6 +15,7 @@ VALID_LIBS = [
     "boringssl",
     "com_github_googlecloudplatform_google_cloud_cpp",
     "com_github_grpc_grpc",
+    "com_google_absl",
     "com_google_protobuf",
     "com_googlesource_code_re2",
     "curl",

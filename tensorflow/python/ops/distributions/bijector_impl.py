@@ -20,7 +20,6 @@ import contextlib
 import re
 
 import numpy as np
-import six
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -105,7 +104,7 @@ class _Mapping(collections.namedtuple(
     """Helper to merge two dictionaries."""
     old = {} if old is None else old
     new = {} if new is None else new
-    for k, v in six.iteritems(new):
+    for k, v in new.items():
       val = old.get(k, None)
       if val is not None and val is not v:
         raise ValueError("Found different value for existing key "
@@ -128,8 +127,7 @@ class _Mapping(collections.namedtuple(
             if isinstance(x, (list, tuple)) else x)
 
 
-@six.add_metaclass(abc.ABCMeta)
-class Bijector(object):
+class Bijector(metaclass=abc.ABCMeta):
   r"""Interface for transformations of a `Distribution` sample.
 
   Bijectors can be used to represent any differentiable and injective

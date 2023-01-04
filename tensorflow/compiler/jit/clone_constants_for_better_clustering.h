@@ -16,10 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_CLONE_CONSTANTS_FOR_BETTER_CLUSTERING_H_
 #define TENSORFLOW_COMPILER_JIT_CLONE_CONSTANTS_FOR_BETTER_CLUSTERING_H_
 
-#include "tensorflow/core/common_runtime/optimization_registry.h"
-
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 
 namespace tensorflow {
 // Clones small host constants in the graph to make it easier to form larger
@@ -58,16 +57,6 @@ class CloneConstantsForBetterClusteringPass : public GraphOptimizationPass {
   CloneConstantsForBetterClusteringPass() = default;
 
   Status Run(const GraphOptimizationPassOptions& options) override;
-
- private:
-  Status CloneSmallHostConstantInputs(
-      Graph* g, const absl::flat_hash_set<string>& name_set, Node* n);
-  string GenerateUniqueName(const absl::flat_hash_set<string>& name_set,
-                            absl::string_view prefix);
-  se::port::StatusOr<Node*> CloneNode(
-      Graph* g, const absl::flat_hash_set<string>& name_set, Node* n);
-
-  int unique_name_counter_ = 0;
 };
 }  // namespace tensorflow
 

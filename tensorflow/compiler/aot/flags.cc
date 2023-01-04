@@ -80,6 +80,10 @@ void AppendMainFlags(std::vector<Flag>* flag_list, MainFlags* flags) {
       {"experimental_quantize", &flags->experimental_quantize,
        "If set, quantization passes will run and dump the result before HLO "
        "code generation."},
+      {"sanitize_dataflow", &flags->sanitize_dataflow,
+       "Enable DataFlow Sanitizer pass."},
+      {"sanitize_abilists_dataflow", &flags->sanitize_abilists_dataflow,
+       "Comma separated list of ABIList file paths."},
       {"gen_name_to_index", &flags->gen_name_to_index,
        "Generate name-to-index data for Lookup{Arg,Result}Index methods."},
       {"gen_program_shape", &flags->gen_program_shape,

@@ -349,7 +349,7 @@ class FixedLenSequenceFeature(collections.namedtuple(
         cls, shape, dtype, allow_missing, default_value)
 
 
-class _ParseOpParams(object):
+class _ParseOpParams:
   """Raw parameters used by `gen_parsing_ops`.
 
   Attributes:

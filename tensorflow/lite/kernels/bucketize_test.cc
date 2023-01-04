@@ -64,7 +64,7 @@ TEST(BucketizeOpTest, Float) {
   // input: [[-5, 10000], [150, 10], [5, 100]]
   model.PopulateTensor<float>(model.input(),
                               {-5.0f, 10000.0f, 150.0f, 10.0f, 5.0f, 100.0f});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   // output: [[0, 3], [3, 2], [1, 3]]
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 2));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({0, 3, 3, 2, 1, 3}));
@@ -78,7 +78,7 @@ TEST(BucketizeOpTest, Int32) {
 
   // input: [[-5, 10000], [150, 10], [5, 100]]
   model.PopulateTensor<int32_t>(model.input(), {-5, 10000, 150, 10, 5, 100});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   // output: [[0, 3], [3, 2], [1, 3]]
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 2));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({0, 3, 3, 2, 1, 3}));

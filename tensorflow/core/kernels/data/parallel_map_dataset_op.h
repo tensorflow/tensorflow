@@ -54,7 +54,18 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
   bool sloppy_;
   bool preserve_cardinality_;
   DeterminismPolicy deterministic_;
+
+  friend std::unique_ptr<DatasetBase> MakeDataServiceUncompressDataset(
+      DatasetBase* input, std::unique_ptr<CapturedFunction> captured_function,
+      const DataTypeVector& output_types,
+      const std::vector<PartialTensorShape>& output_shapes);
 };
+
+// Used by tf.data service to create a map dataset for uncompression.
+std::unique_ptr<DatasetBase> MakeDataServiceUncompressDataset(
+    DatasetBase* input, std::unique_ptr<CapturedFunction> captured_function,
+    const DataTypeVector& output_types,
+    const std::vector<PartialTensorShape>& output_shapes);
 
 }  // namespace data
 }  // namespace tensorflow

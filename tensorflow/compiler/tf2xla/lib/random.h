@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_LIB_RANDOM_H_
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 

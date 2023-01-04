@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/defs.h"
 
+#include <atomic>
+
 namespace tensorflow {
 
 const char* const kXlaMustCompileAttr = "_XlaMustCompile";
@@ -29,5 +31,15 @@ const char* const kXlaScopeAttr = "_XlaScope";
 const char* const kXlaInternalScopeAttr = "_XlaInternalScope";
 
 const char* const kXlaClusterIdAttr = "_xla_compile_id";
+
+static std::atomic<bool> xla_devices_creation_required(false);
+
+// Request XLA:GPU and XLA:CPU device creation. Deprecated, only used by XRT
+// backend.
+void RequestXlaDevicesCreation() { xla_devices_creation_required = true; }
+
+// Check whether XLA:GPU and XLA:CPU device creation was requested. Deprecated,
+// only used by XRT backend.
+bool XlaDevicesCreationRequired() { return xla_devices_creation_required; }
 
 }  // namespace tensorflow

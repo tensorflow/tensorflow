@@ -15,14 +15,19 @@ limitations under the License.
 
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/InitAllPasses.h"  // from @llvm-project
-#include "mlir/Support/MlirOptMain.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
+#include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
+#include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/xla/transforms/adjust_layout.h"
-#include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir/framework/ir/xla_framework.h"
+#include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/service/cpu/hlo_xla_runtime_pipeline.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h"
 #include "tensorflow/core/ir/types/dialect.h"
 
 int main(int argc, char **argv) {
@@ -32,15 +37,18 @@ int main(int argc, char **argv) {
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
   // These are in compiler/mlir/xla and not part of the above MHLO passes.
-  mlir::mhlo::registerXlaPasses();
+  mlir::mhlo::registerTfXlaPasses();
+  mlir::mhlo::registerXlaFrameworkPasses();
   mlir::mhlo::RegisterAdjustLayoutPass();
   mlir::mhlo::registerLegalizeTfPasses();
   mlir::RegisterMhloToLhloWithXlaPass();
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
-  registry.insert<mlir::TF::TensorFlowDialect, mlir::tf_type::TFTypeDialect>();
-  return failed(mlir::MlirOptMain(argc, argv, "TensorFlow pass driver\n",
-                                  registry,
-                                  /*preloadDialectsInContext=*/false));
+  mlir::stablehlo::registerAllDialects(registry);
+  xla::cpu::RegisterHloXlaRuntimePipelineDialects(registry);
+  registry.insert<mlir::xla_framework::XLAFrameworkDialect,
+                  mlir::TF::TensorFlowDialect, mlir::tf_type::TFTypeDialect>();
+  return failed(
+      mlir::MlirOptMain(argc, argv, "TensorFlow pass driver\n", registry));
 }

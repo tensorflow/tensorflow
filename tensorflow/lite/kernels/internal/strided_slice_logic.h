@@ -72,6 +72,69 @@ inline void StridedSlicePadIndices(tflite::StridedSliceParams* p,
 // Return the index for the first element along that axis. This index will be a
 // positive integer between [0, axis_size] (or [-1, axis_size -1] if stride < 0)
 // that can be used to index directly into the data.
+inline int StridedSliceStartForAxis(const tflite::StridedSliceParams& params,
+                                    const RuntimeShape& input_shape,
+                                    int32_t axis) {
+  const int32_t axis_size = input_shape.Dims(axis);
+  int32_t start = params.start_indices[axis];
+  const int32_t stride = params.strides[axis];
+  const int32_t begin_mask = (params.begin_mask & 1 << axis);
+  if (start < 0) {
+    start += axis_size;
+  }
+  if (stride > 0) {
+    start = Clamp(start, 0, axis_size);
+  } else {
+    start = Clamp(start, -1, axis_size - 1);
+  }
+  if (begin_mask) {
+    if (stride > 0) {
+      start = 0;
+    } else {
+      start = axis_size - 1;
+    }
+  }
+  return start;
+}
+
+inline int StridedSliceEndForAxis(const tflite::StridedSliceParams& params,
+                                  const RuntimeShape& input_shape, int axis,
+                                  int start) {
+  const auto shrink_axis_mask = params.shrink_axis_mask;
+  const bool shrink_axis = shrink_axis_mask & (1 << axis);
+  const int axis_size = input_shape.Dims(axis);
+  if (shrink_axis) {
+    if (start >= axis_size) {
+      return start;
+    } else {
+      return start + 1;
+    }
+  }
+  const auto* indices = params.stop_indices;
+  int end = indices[axis];
+  const int32_t stride = params.strides[axis];
+  const int32_t end_mask = (params.end_mask & 1 << axis);
+  if (end < 0) {
+    end += axis_size;
+  }
+  if (stride > 0) {
+    end = Clamp(end, 0, axis_size);
+  } else {
+    end = Clamp(end, -1, axis_size - 1);
+  }
+  if (end_mask) {
+    if (stride > 0) {
+      end = axis_size;
+    } else {
+      end = -1;
+    }
+  }
+  return end;
+}
+
+// Return the index for the first element along that axis. This index will be a
+// positive integer between [0, axis_size] (or [-1, axis_size -1] if stride < 0)
+// that can be used to index directly into the data.
 inline int StartForAxis(const tflite::StridedSliceParams& params,
                         const RuntimeShape& input_shape, int axis) {
   const auto begin_mask = params.begin_mask;

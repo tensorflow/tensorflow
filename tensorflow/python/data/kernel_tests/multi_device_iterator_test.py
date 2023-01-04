@@ -20,6 +20,7 @@ import numpy as np
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import from_generator_op
 from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import cancellation
@@ -98,6 +99,12 @@ class MultiDeviceIteratorCommonTest(test_base.DatasetTestBase,
     ping.enqueue(0)
     self.assertEqual(1,
                      multi_device_iterator.get_next(self._devices[2]).numpy())
+    # FIXME(b/209534797): Workaround an asan error caused by this test.
+    # Remove the dangling reference from tf.function to ensure queue objects
+    # are not freed before they are flushed.
+    import gc  # pylint: disable=g-import-not-at-top
+    del get_next_device1
+    gc.collect()
 
   @combinations.generate(
       combinations.times(test_base.eager_only_combinations(), cls_combination))
@@ -374,7 +381,7 @@ class OwnedMultiDeviceIteratorTest(test_base.DatasetTestBase,
 
     @def_function.function
     def fn():
-      dataset = dataset_ops._GeneratorDataset(
+      dataset = from_generator_op._GeneratorDataset(
           1,
           init_fn,
           next_fn,

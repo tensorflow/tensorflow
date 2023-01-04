@@ -1,0 +1,16 @@
+path: "tensorflow.tpu.experimental.HardwareFeature.EmbeddingFeature"
+tf_class {
+  is_instance: "<enum \'EmbeddingFeature\'>"
+  member {
+    name: "UNSUPPORTED"
+    mtype: "<enum \'EmbeddingFeature\'>"
+  }
+  member {
+    name: "V1"
+    mtype: "<enum \'EmbeddingFeature\'>"
+  }
+  member {
+    name: "V2"
+    mtype: "<enum \'EmbeddingFeature\'>"
+  }
+}

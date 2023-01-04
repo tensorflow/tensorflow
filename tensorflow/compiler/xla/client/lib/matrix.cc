@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,7 +31,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
@@ -59,12 +59,12 @@ XlaOp GetDiagonalMask(XlaOp x, int diagonal) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    auto n_dims = static_cast<int32>(shape.rank());
+    auto n_dims = static_cast<int32_t>(shape.rank());
     TF_RET_CHECK(n_dims >= 2);
     auto m = shape.dimensions(n_dims - 2);
     auto n = shape.dimensions(n_dims - 1);
     absl::Span<const int64_t> major_dims =
-        AsInt64Slice(shape.dimensions()).subspan(/*pos=*/0, /*len=*/n_dims - 2);
+        shape.dimensions().subspan(/*pos=*/0, /*len=*/n_dims - 2);
     auto a = Iota(builder, S32, n);
     auto b = Iota(builder, S32, m) + ConstantR0WithType(builder, S32, diagonal);
     auto indicator = Eq(b, Broadcast(a, {m}), /*broadcast_dimensions=*/{0});
@@ -77,7 +77,7 @@ XlaOp GetMatrixDiagonal(XlaOp x, int k) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    auto n_dims = static_cast<int32>(shape.rank());
+    auto n_dims = static_cast<int32_t>(shape.rank());
     TF_RET_CHECK(n_dims >= 2);
     const int64_t m = shape.dimensions(n_dims - 2);
     const int64_t n = shape.dimensions(n_dims - 1);
@@ -111,7 +111,7 @@ XlaOp GetMatrixDiagonalViaGather(XlaOp x, int k) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    auto n_dims = static_cast<int32>(shape.rank());
+    auto n_dims = static_cast<int32_t>(shape.rank());
     TF_RET_CHECK(n_dims >= 2);
     const int64_t m = shape.dimensions(n_dims - 2);
     const int64_t n = shape.dimensions(n_dims - 1);
@@ -175,7 +175,7 @@ XlaOp SetMatrixDiagonal(XlaOp matrix, XlaOp diag, int k) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(matrix));
     TF_ASSIGN_OR_RETURN(Shape diag_shape, builder->GetShape(diag));
-    auto n_dims = static_cast<int32>(shape.rank());
+    auto n_dims = static_cast<int32_t>(shape.rank());
     TF_RET_CHECK(n_dims >= 2);
     const int64_t m = shape.dimensions(n_dims - 2);
     const int64_t n = shape.dimensions(n_dims - 1);
@@ -218,9 +218,9 @@ XlaOp TriangleMask(XlaOp x, int diagonal) {
     const int64_t m = shape.dimensions(n_dims - 2);
     const int64_t n = shape.dimensions(n_dims - 1);
     absl::Span<const int64_t> major_dims =
-        AsInt64Slice(shape.dimensions()).subspan(/*pos=*/0, /*len=*/n_dims - 2);
+        shape.dimensions().subspan(/*pos=*/0, /*len=*/n_dims - 2);
     auto a = Iota(builder, S32, n);
-    auto b = Iota(builder, S32, m) + ConstantR0<int32>(builder, diagonal);
+    auto b = Iota(builder, S32, m) + ConstantR0<int32_t>(builder, diagonal);
     XlaOp indicator;
     indicator = Ge(b, Broadcast(a, {m}), /*broadcast_dimensions=*/{0});
     return Broadcast(indicator, major_dims);
@@ -267,7 +267,7 @@ XlaOp Symmetrize(XlaOp x, bool lower) {
 }
 
 namespace {
-absl::optional<std::array<std::vector<int64_t>, 3>> EinsumDiagonalLabels(
+std::optional<std::array<std::vector<int64_t>, 3>> EinsumDiagonalLabels(
     absl::Span<const int64_t> config) {
   std::vector<int64_t> unique_labels;
   std::vector<int64_t> reduce_dims;
@@ -283,7 +283,7 @@ absl::optional<std::array<std::vector<int64_t>, 3>> EinsumDiagonalLabels(
     }
   }
   if (unique_labels.size() == config.size()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return {{unique_labels, reduce_dims, broadcast_dims}};
 }
@@ -384,7 +384,7 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64_t> x_config,
                   xla::XlaOp y, absl::Span<const int64_t> y_config,
                   absl::Span<const int64_t> output_config,
                   xla::PrecisionConfig::Precision precision,
-                  absl::optional<PrimitiveType> preferred_element_type) {
+                  std::optional<PrimitiveType> preferred_element_type) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     auto x_diagonal_labels = EinsumDiagonalLabels(x_config);
@@ -484,10 +484,10 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64_t> x_config,
     absl::c_sort(rhs_outer_dims);
     absl::InlinedVector<int64_t, 8> output_transpose_dims;
 
-    auto output_dimension_number = [&](int64_t d) -> absl::optional<int64_t> {
+    auto output_dimension_number = [&](int64_t d) -> std::optional<int64_t> {
       auto pos = absl::c_find(output_config, d);
       if (pos == output_config.end()) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       return pos - output_config.begin();
     };
@@ -571,13 +571,13 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64_t> x_config,
 }
 
 XlaOp BatchDot(XlaOp x, XlaOp y, PrecisionConfig::Precision precision,
-               absl::optional<PrimitiveType> preferred_element_type) {
+               std::optional<PrimitiveType> preferred_element_type) {
   return BatchDot(x, false, y, false, precision, preferred_element_type);
 }
 
 XlaOp BatchDot(XlaOp x, bool transpose_x, XlaOp y, bool transpose_y,
                PrecisionConfig::Precision precision,
-               absl::optional<PrimitiveType> preferred_element_type) {
+               std::optional<PrimitiveType> preferred_element_type) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     std::string string("...mk,...kn->...mn");
@@ -602,7 +602,7 @@ StatusOr<std::array<std::vector<int64_t>, 3>> ParseEinsumString(
 
   auto maybe_invalid_character = [](char d) {
     if (absl::ascii_isalpha(d)) {
-      return Status::OK();
+      return OkStatus();
     }
     if (d == '.') {
       return InvalidArgument("Unsupported \".\" in einsum config.");
@@ -708,7 +708,7 @@ std::string NormalizeEinsumString(absl::string_view einsum_config) {
 
 XlaOp Einsum(XlaOp x, XlaOp y, absl::string_view einsum_config,
              PrecisionConfig::Precision precision,
-             absl::optional<PrimitiveType> preferred_element_type) {
+             std::optional<PrimitiveType> preferred_element_type) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     auto new_config = NormalizeEinsumString(einsum_config);

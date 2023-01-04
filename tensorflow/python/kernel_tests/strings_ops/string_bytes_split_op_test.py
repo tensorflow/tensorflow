@@ -69,7 +69,7 @@ class StringsToBytesOpTest(test_util.TensorFlowTestCase,
       return ragged_string_ops.string_bytes_split(v)
 
     with self.assertRaisesRegex(ValueError,
-                                'input must have a statically-known rank'):
+                                'inputs incompatible with input_signature'):
       f(['foo'])
 
 

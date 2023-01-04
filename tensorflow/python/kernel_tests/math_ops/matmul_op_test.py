@@ -68,6 +68,14 @@ class MatVecTest(test_lib.TestCase):
     self.assertAllEqual((2,), c.shape)
     self.assertAllEqual([5 + 2 * 6, 3 * 5 + 4 * 6], c)
 
+  def testEmpty(self):
+    full = np.array([[1., 2.], [3., 4.], [5., 6.]])
+    empty = np.empty([3, 0])
+    self.assertShapeEqual(
+        np.matmul(full.T, empty), math_ops.matmul(full, empty, adjoint_a=True))
+    self.assertShapeEqual(
+        np.matmul(empty.T, full), math_ops.matmul(empty, full, adjoint_a=True))
+
 
 def _AddTest(test, op_name, testcase_name, fn):
   test_name = "_".join(["test", op_name, testcase_name])
@@ -138,9 +146,14 @@ class MatMulGradientTest(test_lib.TestCase):
 
 def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
 
+  @test_util.run_without_tensor_float_32("Tests matmul")
   def Test(self):
     if not use_static_shape_ or a_np_.dtype in (np.int32, np.int64, np.float16):
       self.skipTest("Skipping infeasible gradient test.")
+
+    if (a_np_.dtype == dtypes.bfloat16.as_numpy_dtype and
+        not test_util.is_gpu_available()):
+      self.skipTest("The bfloat16 tests might fail on CPU")
 
     # Transpose and possibly conjugate a_np_ and b_np_ according to the
     # attributes such that tf.matmul(effective_a_np, effective_b_np, **kwargs)
@@ -149,7 +162,13 @@ def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     effective_a_np = _GetTransposedMatrices(a_np_, "a", kwargs_)
     effective_b_np = _GetTransposedMatrices(b_np_, "b", kwargs_)
 
-    epsilon = np.finfo(a_np_.dtype).eps
+    # np.finfo doesn't support bfloat16. So, we manually compute the eps which
+    # defines the difference between 1.0 and the next smallest representable
+    # float larger than 1.0. For bfloat16, the difference is 1/128.
+    if a_np_.dtype == dtypes.bfloat16.as_numpy_dtype:
+      epsilon = 0.0078125
+    else:
+      epsilon = np.finfo(a_np_.dtype).eps
     delta = epsilon**(1.0 / 3.0)
     tol = 20 * delta
     with self.session():
@@ -256,8 +275,9 @@ if __name__ == "__main__":
   trans_options = [[False, False], [True, False], [False, True]]
   dtypes_to_test = [
       np.int32, np.int64, np.float16, np.float32, np.float64, np.complex64,
-      np.complex128
+      np.complex128, dtypes.bfloat16.as_numpy_dtype
   ]
+
   # TF2 does not support placeholders under eager so we skip it
   for use_static_shape in set([True, tf2.enabled()]):
     for dtype in dtypes_to_test:
@@ -266,6 +286,9 @@ if __name__ == "__main__":
           for k in sizes:
             # Construct compatible random matrices a_np of size [m, k] and b_np
             # of size [k, n].
+            # Add seed value to make the tests for bfloat16 stable.
+            if dtype == dtypes.bfloat16.as_numpy_dtype:
+              np.random.seed(12)
             a_np = np.random.normal(-5, 5, m * k).astype(dtype).reshape([m, k])
             if dtype in (np.complex64, np.complex128):
               a_np.imag = np.random.normal(-5, 5,

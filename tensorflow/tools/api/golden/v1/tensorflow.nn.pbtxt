@@ -13,6 +13,14 @@ tf_module {
     argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
+    name: "approx_max_k"
+    argspec: "args=[\'operand\', \'k\', \'reduction_dimension\', \'recall_target\', \'reduction_input_size_override\', \'aggregate_to_topk\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'0.95\', \'-1\', \'True\', \'None\'], "
+  }
+  member_method {
+    name: "approx_min_k"
+    argspec: "args=[\'operand\', \'k\', \'reduction_dimension\', \'recall_target\', \'reduction_input_size_override\', \'aggregate_to_topk\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'0.95\', \'-1\', \'True\', \'None\'], "
+  }
+  member_method {
     name: "atrous_conv2d"
     argspec: "args=[\'value\', \'filters\', \'rate\', \'padding\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -354,11 +362,11 @@ tf_module {
   }
   member_method {
     name: "sigmoid_cross_entropy_with_logits"
-    argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "silu"
-    argspec: "args=[\'features\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'features\', \'beta\'], varargs=None, keywords=None, defaults=[\'1.0\'], "
   }
   member_method {
     name: "softmax"
@@ -366,7 +374,7 @@ tf_module {
   }
   member_method {
     name: "softmax_cross_entropy_with_logits"
-    argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'dim\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'-1\', \'None\', \'None\'], "
+    argspec: "args=[\'labels\', \'logits\', \'dim\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'-1\', \'None\', \'None\'], "
   }
   member_method {
     name: "softmax_cross_entropy_with_logits_v2"
@@ -390,7 +398,7 @@ tf_module {
   }
   member_method {
     name: "sparse_softmax_cross_entropy_with_logits"
-    argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "static_bidirectional_rnn"
@@ -410,7 +418,7 @@ tf_module {
   }
   member_method {
     name: "swish"
-    argspec: "args=[\'features\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'features\', \'beta\'], varargs=None, keywords=None, defaults=[\'1.0\'], "
   }
   member_method {
     name: "tanh"

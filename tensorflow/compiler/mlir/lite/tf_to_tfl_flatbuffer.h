@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_
 
+#include <string>
 #include <unordered_set>
 
 #include "absl/types/span.h"
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -27,8 +29,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
@@ -37,7 +40,7 @@ namespace tensorflow {
 // file; otherwise, load from a GraphDef.
 // Setting prune_unused_nodes to true, would prune unreachable nodes if
 // output_arrays is specified.
-stream_executor::port::StatusOr<mlir::OwningModuleRef>
+stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 LoadFromGraphdefOrMlirSource(
     const std::string& input_filename, bool input_mlir,
     bool use_splatted_constant, const std::vector<std::string>& extra_tf_opdefs,
@@ -49,13 +52,20 @@ LoadFromGraphdefOrMlirSource(
 
 // Load Saved model (either v1 or v2) into MLIR.
 // 'saved_model_bundle' will be initialized if V1 model was loaded.
-stream_executor::port::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
+stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+ImportSavedModel(
     const std::string& input_filename, const int saved_model_version,
     const std::unordered_set<std::string>& tags,
     absl::Span<const std::string> extra_tf_opdefs,
     absl::Span<std::string> exported_names, const GraphImportConfig& specs,
     bool enable_variable_lifting, mlir::MLIRContext* context,
     std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle);
+
+Status ConvertTFExecutorToStablehloFlatbuffer(
+    mlir::PassManager& pass_manager, mlir::ModuleOp module, bool export_to_mlir,
+    mlir::StatusScopedDiagnosticHandler& statusHandler,
+    const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
+    llvm::Optional<tensorflow::Session*> session, std::string* result);
 
 // Taking a MLIR module in TF executor dialect and a set of parameters,
 // applies a set of passes (configured accordingly to the provided

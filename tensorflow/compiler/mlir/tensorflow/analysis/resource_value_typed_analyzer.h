@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_RESOURCE_VALUE_TYPED_ANALYZER_H_
-#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_RESOURCE_VALUE_TYPED_ANALYZER_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_ANALYSIS_RESOURCE_VALUE_TYPED_ANALYZER_H_
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_ANALYSIS_RESOURCE_VALUE_TYPED_ANALYZER_H_
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 
 namespace mlir {
@@ -68,4 +68,4 @@ class ResourceAnalyzer {
 }  // namespace TF
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_RESOURCE_VALUE_TYPED_ANALYZER_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_ANALYSIS_RESOURCE_VALUE_TYPED_ANALYZER_H_

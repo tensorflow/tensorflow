@@ -13,9 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-package(default_visibility = [
-    "//visibility:public",
-])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [
+        "//visibility:public",
+    ],
+)
 
 licenses(["notice"])
 
@@ -25,13 +28,13 @@ objc_library(
     name = "coreml_executor",
     srcs = ["coreml_executor.mm"],
     hdrs = ["coreml_executor.h"],
+    copts = ["-std=c++17"],
+    features = ["-layering_check"],
     sdk_frameworks = [
-        "Foundation",
         "CoreML",
+        "Foundation",
     ],
-    deps = [
-        ":mlmodel_proto_cc",
-    ],
+    deps = [":mlmodel_proto_cc"],
 )
 
 cc_library(
@@ -45,23 +48,26 @@ objc_library(
     name = "coreml_delegate",
     srcs = ["coreml_delegate.mm"],
     hdrs = ["coreml_delegate.h"],
+    copts = ["-std=c++17"],
+    defines = select({
+        "//tensorflow/lite/delegates:tflite_debug_delegate": ["TFLITE_DEBUG_DELEGATE"],
+        "//conditions:default": [],
+    }),
     module_name = "TensorFlowLiteCCoreML",
-    # By setting CoreML as weak_framework, the TensorFlow Lite can be built for older iOS versions.
-    weak_sdk_frameworks = [
-        "CoreML",
-    ],
     deps = [
         ":coreml_delegate_kernel",
         ":mlmodel_proto_cc",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/delegates/coreml/builders:op_builder",
         "//tensorflow/lite/delegates/coreml/builders:op_validator",
         "//tensorflow/lite/delegates/coreml/builders:util",
         "//tensorflow/lite/kernels:kernel_util",
     ],
+    alwayslink = 1,
 )
 
 objc_library(
@@ -72,14 +78,17 @@ objc_library(
     hdrs = [
         "coreml_delegate_kernel.h",
     ],
+    copts = ["-std=c++17"],
     deps = [
         ":coreml_executor",
         ":mlmodel_proto_cc",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/coreml/builders:op_builder",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/kernels/internal:types",
+        "@FP16",
     ],
 )

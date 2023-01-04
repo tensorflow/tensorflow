@@ -75,6 +75,6 @@ struct SimplifyDoubleConversion
 // Register rewrite pattern as "canonicalization" patterns on the MoveDhtToTftOp
 // so that they can be picked up by the Canonicalization framework.
 void mlir::tfd::ConvertTftToDhtOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
-  results.insert<SimplifyDoubleConversion>(context);
+    RewritePatternSet& results, MLIRContext* context) {
+  results.add<SimplifyDoubleConversion>(context);
 }

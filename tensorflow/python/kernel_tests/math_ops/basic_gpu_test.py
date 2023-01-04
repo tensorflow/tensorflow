@@ -18,7 +18,6 @@ import itertools
 import threading
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -215,7 +214,7 @@ class GpuMultiSessionMemoryTest(test_util.TensorFlowTestCase):
         x4 = math_ops.matmul(array_ops.transpose(x3), x3, name='x4')
         s.run(variables.global_variables_initializer())
 
-        for _ in xrange(n_iterations):
+        for _ in range(n_iterations):
           value = s.run(x4)
           results.add(value.flat[0])
           if len(results) != 1:
@@ -226,7 +225,7 @@ class GpuMultiSessionMemoryTest(test_util.TensorFlowTestCase):
     n_threads = 4
     threads = []
     results = []
-    for _ in xrange(n_threads):
+    for _ in range(n_threads):
       session = self.session(graph=ops.Graph(), use_gpu=True)
       results.append(set())
       args = (session, results[-1])

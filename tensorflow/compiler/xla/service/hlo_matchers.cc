@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/test.h"
 
 namespace xla {
@@ -55,7 +55,7 @@ bool HloMatcher::MatchAndExplain(
                   << operands[index]->ToString()
                   << "\ndoesn't match expected:\n\t";
         operands_[index].DescribeTo(listener->stream());
-        string explanation = inner_listener.str();
+        std::string explanation = inner_listener.str();
         if (!explanation.empty()) {
           *listener << ", " << explanation;
         }

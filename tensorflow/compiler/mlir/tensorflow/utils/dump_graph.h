@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_DUMP_GRAPH_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_DUMP_GRAPH_H_
 
+#include <optional>
 #include <string>
 
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -35,6 +36,11 @@ Status DumpTextualIRToFile(const MlirDumpConfig& config, const Graph& graph,
 
 // Config of the textual dump.
 struct MlirDumpConfig {
+  enum class Dialect {
+    // Tensorflow Graph Dialect
+    kTFG,
+  };
+
   // The limit of element size that gets printed.
   MlirDumpConfig& elide_large_attributes(int large_element_limit = 16) {
     this->op_printing_flags.elideLargeElementsAttrs(large_element_limit);
@@ -45,12 +51,20 @@ struct MlirDumpConfig {
   // debug information is printed in a more readable 'pretty' form but this
   // pretty form is not parsable (so only for human readability).
   MlirDumpConfig& emit_location_information(bool pretty_form = false) {
-    this->op_printing_flags.enableDebugInfo(pretty_form);
+    this->op_printing_flags.enableDebugInfo(/*enable=*/true, pretty_form);
+    return *this;
+  }
+
+  MlirDumpConfig& emit_dialect(Dialect dialect) {
+    this->dialect = dialect;
     return *this;
   }
 
   // Op printing flags.
-  mlir::OpPrintingFlags op_printing_flags = llvm::None;
+  mlir::OpPrintingFlags op_printing_flags = std::nullopt;
+
+  // The target MLIR dialect.
+  Dialect dialect = Dialect::kTFG;
 };
 
 // Change DumpGraphToFile to dump MLIR textual IR instead of protobuf.

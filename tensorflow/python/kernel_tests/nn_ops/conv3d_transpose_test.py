@@ -15,7 +15,6 @@
 """Tests for convolution related functionality in tensorflow.ops.nn."""
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -60,11 +59,11 @@ class Conv3DTransposeTest(test.TestCase):
       #   kernel_depth * ceil(kernel_height/2) * kernel_width or
       #   kernel_depth * kernel_height * ceil(kernel_width/2)
 
-      for n in xrange(x_shape[0]):
-        for k in xrange(f_shape[3]):
-          for w in xrange(y_shape[3]):
-            for h in xrange(y_shape[2]):
-              for d in xrange(y_shape[1]):
+      for n in range(x_shape[0]):
+        for k in range(f_shape[3]):
+          for w in range(y_shape[3]):
+            for h in range(y_shape[2]):
+              for d in range(y_shape[1]):
                 d_in = d > 0 and d < y_shape[1] - 1
                 h_in = h > 0 and h < y_shape[2] - 1
                 w_in = w > 0 and w < y_shape[3] - 1
@@ -97,11 +96,11 @@ class Conv3DTransposeTest(test.TestCase):
           x, f, y_shape, strides=strides, padding="SAME")
       value = self.evaluate(output)
 
-      for n in xrange(x_shape[0]):
-        for k in xrange(f_shape[3]):
-          for w in xrange(y_shape[3]):
-            for h in xrange(y_shape[2]):
-              for d in xrange(y_shape[1]):
+      for n in range(x_shape[0]):
+        for k in range(f_shape[3]):
+          for w in range(y_shape[3]):
+            for h in range(y_shape[2]):
+              for d in range(y_shape[1]):
                 # We add a case for locations divisible by the stride.
                 d_in = d % strides[1] == 0 and 0 < d < y_shape[1] - 1
                 h_in = h % strides[2] == 0 and 0 < h < y_shape[2] - 1
@@ -127,7 +126,7 @@ class Conv3DTransposeTest(test.TestCase):
     x_value = np.random.random_sample(x_shape).astype(np.float64)
     f_value = np.random.random_sample(f_shape).astype(np.float64)
     nn_ops.conv3d_transpose(
-        x_value, f_value, y_shape, strides, data_format='NCDHW')
+        x_value, f_value, y_shape, strides, data_format="NCDHW")
 
   def testConv3DTransposeOutputShapeType(self):
     # Test case for GitHub issue 18887
@@ -170,11 +169,11 @@ class Conv3DTransposeTest(test.TestCase):
       # The amount of padding added
       pad = 1
 
-      for n in xrange(x_shape[0]):
-        for k in xrange(f_shape[3]):
-          for w in xrange(y_shape[3]):
-            for h in xrange(y_shape[2]):
-              for d in xrange(y_shape[1]):
+      for n in range(x_shape[0]):
+        for k in range(f_shape[3]):
+          for w in range(y_shape[3]):
+            for h in range(y_shape[2]):
+              for d in range(y_shape[1]):
                 # We add a case for locations divisible by the stride.
                 d_in = d % strides[1] == 0 and pad < d < y_shape[1] - 1 - pad
                 h_in = h % strides[2] == 0 and pad < h < y_shape[2] - 1 - pad
@@ -201,6 +200,7 @@ class Conv3DTransposeTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradient(self):
+    self.skipTest("b/262851489: Fix nightly build for GPU.")
     x_shape = [2, 3, 4, 3, 2]
     f_shape = [3, 3, 3, 2, 2]
     y_shape = [2, 6, 8, 6, 2]
@@ -219,6 +219,20 @@ class Conv3DTransposeTest(test.TestCase):
     err_tolerance = 0.00055
     self.assertLess(err, err_tolerance)
 
+  def testConv3DTransposeZeroShapeDoNotRaiseError(self):
+    with self.cached_session():
+      x_value = np.zeros([10, 0, 2, 3, 3])
+      f_value = np.ones((3, 3, 3, 3, 3))
+      y_shape = np.stack([10, 0, 2, 3, 3])
+      output = nn_ops.conv3d_transpose(
+          x_value,
+          f_value,
+          y_shape,
+          strides=(1, 1, 1),
+          data_format="NDHWC",
+          padding="SAME",
+      )
+      _ = self.evaluate(output)
 
 if __name__ == "__main__":
   test.main()

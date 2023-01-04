@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -41,7 +42,10 @@ namespace tac {
 namespace {
 
 struct DeviceTransformNNAPIPass
-    : public mlir::PassWrapper<DeviceTransformNNAPIPass, FunctionPass> {
+    : public mlir::PassWrapper<DeviceTransformNNAPIPass,
+                               OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DeviceTransformNNAPIPass)
+
   llvm::StringRef getArgument() const final {
     return "tfl-device-transform-nnapi";
   }
@@ -51,14 +55,14 @@ struct DeviceTransformNNAPIPass
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TF::TensorFlowDialect>();
   }
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void DeviceTransformNNAPIPass::runOnFunction() {
-  auto func = getFunction();
+void DeviceTransformNNAPIPass::runOnOperation() {
+  auto func = getOperation();
   auto* ctx = &getContext();
   NNAPIHardware nnapi_hardware;
-  OwningRewritePatternList patterns = nnapi_hardware.GetTransformations(ctx);
+  RewritePatternSet patterns = nnapi_hardware.GetTransformations(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 

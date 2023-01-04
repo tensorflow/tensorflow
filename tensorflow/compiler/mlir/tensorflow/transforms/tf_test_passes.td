@@ -40,7 +40,7 @@ def InitTextFileToImportSavedModelTestPass : Pass<"tf-init-text-file-to-import-s
   let constructor = "::mlir::tf_test::CreateInitTextFileToImportSavedModelTestPass()";
 }
 
-def TestTensorFlowLowerTFPass : Pass<"test-tf-lower-tf", "FuncOp"> {
+def TestTensorFlowLowerTFPass : Pass<"test-tf-lower-tf", "mlir::func::FuncOp"> {
   let summary = "Test pass for TF->TF lowerings";
   let constructor = "::mlir::tf_test::CreateTestTFLowerTFPass()";
 
@@ -52,32 +52,13 @@ def TestTensorFlowLowerTFPass : Pass<"test-tf-lower-tf", "FuncOp"> {
   ];
 }
 
-def TestResourceAliasAnalysis : Pass<"tf-test-resource-alias-analysis", "FuncOp"> {
+def TestResourceAliasAnalysis : Pass<"tf-test-resource-alias-analysis", "mlir::func::FuncOp"> {
   let summary = "Add remarks based on resource alias analysis result, for "
     "testing purpose.";
   let constructor = "::mlir::tf_test::CreateTestResourceAliasAnalysisPass()";
 }
 
-def TestTensorFlowVisitorUtil : FunctionPass<"tf-test-visitor-util"> {
-  let summary = "Test pass for TF visitor utils";
-  let description = [{
-    Add remarks that trace order of visiting operations using TF visitor
-    utilities.
-  }];
-  let constructor = "::mlir::tf_test::CreateTestVisitorUtilPass()";
-}
-
-def TestTensorFlowVisitorUtilInterrupt :
-  FunctionPass<"tf-test-visitor-util-interrupt"> {
-  let summary = "Test pass for TF visitor utils with interruption";
-  let description = [{
-    Add remarks that trace order of visiting operations using TF visitor
-    utilities, interrupt version.
-  }];
-  let constructor = "::mlir::tf_test::CreateTestVisitorUtilInterruptPass()";
-}
-
-def TestClusteringPolicyPass : Pass<"tf-test-clustering-policy", "FuncOp"> {
+def TestClusteringPolicyPass : Pass<"tf-test-clustering-policy", "mlir::func::FuncOp"> {
   let summary = "Test pass for clustering based on the user defined policy";
   let constructor = "::mlir::tf_test::CreateTestClusteringPolicyPass()";
 }

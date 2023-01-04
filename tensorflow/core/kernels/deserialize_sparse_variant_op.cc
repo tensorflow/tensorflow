@@ -296,7 +296,7 @@ class DeserializeSparseOp : public OpKernel {
           (*output_shape)->shape().DebugString());
     }
     *output_num_non_zeros = serialized_values.get<Tensor>()->NumElements();
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAndValidateSparseTensorIndicesAndValues(
@@ -356,7 +356,7 @@ class DeserializeSparseOp : public OpKernel {
           (*output_values)->dim_size(0));
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   DataType dtype_;

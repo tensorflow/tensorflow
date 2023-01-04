@@ -57,7 +57,7 @@ using ::testing::_;
 
 Status BuildXlaOps(const Scope& s, const FunctionDefLibrary& fdef_lib,
                    std::unique_ptr<Graph>* result) {
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_RETURN_IF_ERROR(s.ToGraph(graph.get()));
   FunctionLibraryDefinition flib_def(graph->op_registry(), fdef_lib);
 
@@ -82,7 +82,7 @@ Status BuildXlaOps(const Scope& s, const FunctionDefLibrary& fdef_lib,
   TF_RETURN_IF_ERROR(pass.Run(opt_options));
   VLOG(3) << graph->ToGraphDefDebug().DebugString();
   *result = std::move(graph);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MakeXlaCompiledKernel(Graph* graph, const string& callee_name,
@@ -94,9 +94,8 @@ Status MakeXlaCompiledKernel(Graph* graph, const string& callee_name,
   AddNodeAttr(kXlaCompiledKernelAttr, true, &call_node);
   AddNodeAttr(kXlaNumConstantArgsAttr, num_constant_args, &call_node);
   AddNodeAttr(kXlaNumResourceArgsAttr, num_resource_args, &call_node);
-  Status s;
-  *result = graph->AddNode(call_node, &s);
-  return s;
+  TF_ASSIGN_OR_RETURN(*result, graph->AddNode(call_node));
+  return OkStatus();
 }
 
 Status MakeXlaCompiledKernel(Graph* graph, const string& callee_name,

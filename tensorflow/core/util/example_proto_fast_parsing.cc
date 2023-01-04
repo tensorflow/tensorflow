@@ -25,11 +25,11 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -125,7 +125,7 @@ class Feature {
     DCHECK(dtype != nullptr);
     if (serialized_.empty()) {
       *dtype = DT_INVALID;
-      return Status::OK();
+      return OkStatus();
     }
     uint8 oneof_tag = static_cast<uint8>(*serialized_.data());
     serialized_.remove_prefix(1);
@@ -144,7 +144,7 @@ class Feature {
         *dtype = DT_INVALID;
         return errors::InvalidArgument("Unsupported datatype.");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   bool GetNumElementsInBytesList(int* num_elements) {
@@ -385,12 +385,27 @@ bool ParseFeatureMapEntry(protobuf::io::CodedInputStream* stream,
   uint32 length;
   if (!stream->ReadVarint32(&length)) return false;
   auto limit = stream->PushLimit(length);
-  if (!stream->ExpectTag(kDelimitedTag(1))) return false;
-  if (!ParseString(stream, &feature_map_entry->first)) return false;
-  if (!stream->ExpectTag(kDelimitedTag(2))) return false;
-  StringPiece feature_string_piece;
-  if (!ParseString(stream, &feature_string_piece)) return false;
-  feature_map_entry->second = parsed::Feature(feature_string_piece);
+
+  // Protobufs allow an arbitrary order for the key and value fields.
+  for (int n = 0; n < 2; ++n) {
+    const uint32_t tag = stream->ReadTag();
+    switch (tag) {
+      case kDelimitedTag(1):
+        if (!ParseString(stream, &feature_map_entry->first)) return false;
+        break;
+
+      case kDelimitedTag(2): {
+        StringPiece feature_string_piece;
+        if (!ParseString(stream, &feature_string_piece)) return false;
+        feature_map_entry->second = parsed::Feature(feature_string_piece);
+        break;
+      }
+
+      default:
+        return false;
+    }
+  }
+
   if (!stream->ExpectAtEnd()) return false;
   stream->PopLimit(limit);
   return true;
@@ -926,7 +941,7 @@ Status FastParseSerializedExample(
     out.example_end_indices.push_back(prev_example_end_index);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CheckConfigDataType(DataType dtype) {
@@ -934,7 +949,7 @@ Status CheckConfigDataType(DataType dtype) {
     case DT_INT64:
     case DT_FLOAT:
     case DT_STRING:
-      return Status::OK();
+      return OkStatus();
     default:
       return errors::InvalidArgument("Invalid config dtype: ",
                                      DataTypeString(dtype));
@@ -964,7 +979,7 @@ Status CheckConfigDataTypes(const Config& config) {
                                      DataTypeString(c.splits_dtype));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T>
@@ -1423,7 +1438,7 @@ Status FastParseExample(const Config& config,
     MergeRaggedMinibatches(d);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FastParseSingleExample(const Config& config, StringPiece serialized,
@@ -1810,7 +1825,7 @@ Status FastParseSingleExample(const Config& config, StringPiece serialized,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Private helper functions for FastParseSequenceExample.
@@ -2138,7 +2153,7 @@ Status ExtractFeaturesFromSequenceExamples(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Populates context_features[k].length based on context_features[k].protos
@@ -2173,7 +2188,7 @@ Status GetContextFeatureLengths(const gtl::ArraySlice<tstring> example_names,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Populates sequence_features[k].length and sequence_features[k].num_rows based
@@ -2240,7 +2255,7 @@ Status GetSequenceFeatureLengths(const gtl::ArraySlice<tstring> example_names,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Copies src into dst[dst_offset:dst_offset+src.size], and then increments
@@ -2333,7 +2348,7 @@ Status ParseContextDenseFeatures(const FeatureProtosMap& context_features,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Parses sparse features in `context_features`, and writes their parsed
@@ -2395,7 +2410,7 @@ Status ParseContextSparseFeatures(const FeatureProtosMap& context_features,
       out_shape(0) = max_num_cols;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Parses ragged features in `context_features`, and writes their parsed
@@ -2473,7 +2488,7 @@ Status ParseContextRaggedFeatures(const FeatureProtosMap& context_features,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Parses dense features in `sequence_features`, and writes their parsed
@@ -2627,7 +2642,7 @@ Status ParseSequenceDenseFeatures(const FeatureProtosMap& sequence_features,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Parses sparse features in `sequence_features`, and writes their parsed
@@ -2755,7 +2770,7 @@ Status ParseSequenceSparseFeatures(
       out_shape(1) = max_num_cols;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Parses ragged features in `sequence_features`, and writes their parsed
@@ -2900,7 +2915,7 @@ Status ParseSequenceRaggedFeatures(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -3062,7 +3077,7 @@ Status FastParseSequenceExample(const FastParseExampleConfig& context_config,
       sequence_features, sequence_config, example_names, is_batch, num_examples,
       allocator, sequence_result));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace example

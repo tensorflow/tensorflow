@@ -16,10 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/saved_model/saved_model.h"
 
 #include "absl/strings/str_split.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
@@ -36,6 +37,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 
 llvm::StringRef ProcessIndexPath(mlir::ArrayAttr index_path) {
   if (index_path.size() == 1 && index_path[0].isa<mlir::StringAttr>()) {
@@ -67,14 +70,14 @@ Status MapFunctionSignaturesFromTFSavedModelMLIR(
     llvm::function_ref<void(const TFRTSavedModelSignatureInfo&)> map_fn) {
   // Create bound inputs for each functions.
   mlir::SymbolTable symbol_table(module);
-  tensorflow::Status status = tensorflow::Status::OK();
-  module.walk([&symbol_table, map_fn, &status](mlir::FuncOp func) {
+  tensorflow::Status status = OkStatus();
+  module.walk([&symbol_table, map_fn, &status](mlir::func::FuncOp func) {
     // Use the exported name as the function name, and skip non-exported
     // functions.
     auto func_names = mlir::tf_saved_model::GetExportedNames(func);
     if (func_names.empty()) return mlir::WalkResult::advance();
 
-    auto func_type = func.getType();
+    auto func_type = func.getFunctionType();
 
     // Here we walk through each arguments and find out the input/output names,
     // and input devices, variables used by this function.
@@ -86,7 +89,7 @@ Status MapFunctionSignaturesFromTFSavedModelMLIR(
     llvm::SmallVector<mlir::Operation*, 4> bound_inputs;
     for (unsigned i = 0, e = func.getNumArguments(); i != e; ++i) {
       if (auto input_index_path = func.getArgAttrOfType<mlir::ArrayAttr>(
-              i, "tf_saved_model.index_path")) {
+              i, kTfSavedModelIndexPathAttr)) {
         input_names.push_back(ProcessIndexPath(input_index_path));
         auto statusor_spec =
             ProcessTensorSpec(func_type.getInput(i).cast<mlir::TensorType>());
@@ -94,7 +97,7 @@ Status MapFunctionSignaturesFromTFSavedModelMLIR(
           status = std::move(statusor_spec).status();
           return mlir::WalkResult::interrupt();
         }
-        input_specs.push_back(std::move(statusor_spec).ValueOrDie());
+        input_specs.push_back(std::move(statusor_spec).value());
         if (auto input_device =
                 func.getArgAttrOfType<mlir::StringAttr>(i, "tf.device")) {
           input_devices.push_back(input_device.getValue());
@@ -114,7 +117,7 @@ Status MapFunctionSignaturesFromTFSavedModelMLIR(
         output_specs;
     for (unsigned i = 0, e = func.getNumResults(); i != e; ++i) {
       if (auto output_index_path = func.getResultAttrOfType<mlir::ArrayAttr>(
-              i, "tf_saved_model.index_path")) {
+              i, kTfSavedModelIndexPathAttr)) {
         output_names.push_back(ProcessIndexPath(output_index_path));
         auto statusor_spec =
             ProcessTensorSpec(func_type.getResult(i).cast<mlir::TensorType>());
@@ -122,7 +125,7 @@ Status MapFunctionSignaturesFromTFSavedModelMLIR(
           status = std::move(statusor_spec).status();
           return mlir::WalkResult::interrupt();
         }
-        output_specs.push_back(std::move(statusor_spec).ValueOrDie());
+        output_specs.push_back(std::move(statusor_spec).value());
       }
     }
 

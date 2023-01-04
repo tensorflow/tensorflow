@@ -167,6 +167,10 @@ void FillPhiloxRandom<CPUDevice, Distribution>::operator()(
     const uint64* counter, random::PhiloxRandom gen,
     typename Distribution::ResultElementType* data, int64_t size,
     Distribution dist) {
+  if (key != nullptr && counter != nullptr) {
+    gen = GetPhiloxRandomFromCounterKeyMem(counter, key);
+  }
+
   const int kGroupSize = Distribution::kResultElementCount;
 
   auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
@@ -175,10 +179,6 @@ void FillPhiloxRandom<CPUDevice, Distribution>::operator()(
 
   const int kGroupCost = kGroupSize * (random::PhiloxRandom::kElementCost +
                                        Distribution::kElementCost);
-
-  if (key != nullptr && counter != nullptr) {
-    gen = GetPhiloxRandomFromCounterKeyMem(counter, key);
-  }
 
   Shard(worker_threads.num_threads, worker_threads.workers, total_group_count,
         kGroupCost,

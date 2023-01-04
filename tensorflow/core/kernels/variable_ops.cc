@@ -76,7 +76,7 @@ void VariableOp::Compute(OpKernelContext* ctx) {
   auto creator = [this](LegacyVar** var) {
     *var = new LegacyVar(dtype_);
     (*var)->tensor()->set_shape(shape_);
-    return Status::OK();
+    return OkStatus();
   };
   LegacyVar* var;
   OP_REQUIRES_OK(ctx, cinfo_.resource_manager()->LookupOrCreate<LegacyVar>(
@@ -227,6 +227,7 @@ REGISTER_KERNEL_BUILDER(Name("IsVariableInitialized").Device(DEVICE_CPU),
 TF_CALL_int64(REGISTER_GPU_KERNELS);
 TF_CALL_uint32(REGISTER_GPU_KERNELS);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -254,6 +255,7 @@ TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_DEFAULT_KERNELS);
 TF_CALL_uint32(REGISTER_DEFAULT_KERNELS);
 TF_CALL_GPU_ALL_TYPES(REGISTER_DEFAULT_KERNELS);
+TF_CALL_bfloat16(REGISTER_DEFAULT_KERNELS);
 #undef REGISTER_DEFAULT_KERNELS
 
 }  // namespace tensorflow

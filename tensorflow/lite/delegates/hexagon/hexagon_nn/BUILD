@@ -13,12 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 
+load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object")
+
 package(default_visibility = [
     "//visibility:public",
 ])
 
 licenses(["notice"])  # Apache 2.0
 
+#Just header file, needed for data types in the interface.
 cc_library(
     name = "hexagon_nn_header",
     hdrs = [
@@ -30,15 +33,76 @@ cc_library(
     ],
 )
 
-genrule(
-    name = "libhexagon_interface",
-    srcs = [] + select({
-        "//tensorflow:android_arm64": ["@hexagon_nn//:hexagon/arm64-v8a/libhexagon_interface.so"],
-        "//tensorflow:android_arm": ["@hexagon_nn//:hexagon/armeabi-v7a/libhexagon_interface.so"],
-        "//conditions:default": [],
-    }),
-    outs = ["libhexagon_interface.so"],
-    cmd = "cp $(SRCS) $(@D)",
-    local = 1,
-    output_to_bindir = 1,
+# Fetches the QC SoC of the device.
+cc_library(
+    name = "soc_model",
+    srcs = [
+        "soc_model.cc",
+    ],
+    hdrs = [
+        "soc_model.h",
+    ],
+    deps = [
+        "@hexagon_nn//:hexagon_soc",
+        "@hexagon_nn//:remote",
+    ],
 )
+
+# DSP interface used to communicate to the aDSP/cDSP.
+cc_library(
+    name = "adsprpc_interface",
+    srcs = ["adsprpc_interface.cc"],
+    deps = [
+        ":hexagon_nn_header",
+        ":soc_model",
+    ],
+)
+
+cc_library(
+    name = "hexagon_nn_init",
+    srcs = ["hexagon_nn_init.cc"],
+    hdrs = ["hexagon_nn_init.h"],
+    deps = [
+        ":adsprpc_interface",
+        ":soc_model",
+        "@hexagon_nn//:AEEStdDef",
+        "@hexagon_nn//:remote",
+        "@hexagon_nn//:rpcmem",
+    ],
+    alwayslink = 1,
+)
+
+tflite_cc_shared_object(
+    name = "libhexagon_interface.so",
+    linkopts = [
+        "-Wl,-soname=libhexagon_interface.so",
+        "-z defs",
+        "-Wl,--version-script,$(location //tensorflow/lite/delegates/hexagon/hexagon_nn:version_scripts.lds)",
+    ] + select({
+        "//tensorflow:android": [
+            "-llog",
+            "-ldl",
+        ],
+        "//conditions:default": [
+            "-ldl",
+        ],
+    }),
+    linkstatic = 1,
+    deps = [
+        ":hexagon_nn_init",
+        ":version_scripts.lds",
+        "@hexagon_nn",
+    ],
+)
+
+cc_library(
+    name = "hexagon_interface_so",
+    srcs = [":libhexagon_interface.so"],
+)
+
+android_library(
+    name = "hexagon_interface_android",
+    exports = [":hexagon_interface_so"],
+)
+
+exports_files(["version_script.lds"])

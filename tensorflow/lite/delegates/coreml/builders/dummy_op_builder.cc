@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/coreml/builders/dummy_op_builder.h"
 
+#include <string>
+
 #include "tensorflow/lite/delegates/coreml/builders/op_factory.h"
 
 namespace tflite {

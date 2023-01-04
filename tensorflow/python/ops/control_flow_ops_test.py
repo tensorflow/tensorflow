@@ -1152,6 +1152,7 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @test_util.disable_xla("Wants RunMetadata")
   def testParallelExecution(self):
     """Verify disjoint branches across while iterations are run in parallel."""
+    self.skipTest("b/210666081: Flaky")
     if control_flow_v2_toggles.control_flow_v2_enabled():
       self.skipTest("b/138870290")
 

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PROPAGATOR_STATE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PROPAGATOR_STATE_H_
 
+#include <queue>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/entry.h"
@@ -106,6 +107,7 @@ class PropagatorState {
       }
     }
     bool empty() const { return ready_.empty(); }
+    int size() const { return ready_.size() - front_index_; }
 
    private:
     // TODO(b/152925936): Re-evaluate these constants with current usage
@@ -167,6 +169,31 @@ class PropagatorState {
     int dead_count(PendingCounts::Handle h) { return counts.dead_count(h); }
     void increment_dead_count(PendingCounts::Handle h) {
       counts.increment_dead_count(h);
+    }
+    // REQUIRES: Node corresponding to "h" is a merge node
+    PendingCounts::AdjustResult adjust_for_mark_live(PendingCounts::Handle h) {
+      return counts.adjust_for_mark_live(h);
+    }
+    // REQUIRES: Node corresponding to "h" is a merge node
+    PendingCounts::AdjustResult adjust_for_mark_live_atomic(
+        PendingCounts::Handle h) {
+      return counts.adjust_for_mark_live_atomic(h);
+    }
+    PendingCounts::AdjustResult adjust_for_decrement_pending(
+        PendingCounts::Handle h, int decrement_pending) {
+      return counts.adjust_for_decrement_pending(h, decrement_pending);
+    }
+    PendingCounts::AdjustResult adjust_for_decrement_pending_atomic(
+        PendingCounts::Handle h, int decrement_pending) {
+      return counts.adjust_for_decrement_pending_atomic(h, decrement_pending);
+    }
+    PendingCounts::AdjustResult adjust_for_increment_dead(
+        PendingCounts::Handle h) {
+      return counts.adjust_for_increment_dead(h);
+    }
+    PendingCounts::AdjustResult adjust_for_increment_dead_atomic(
+        PendingCounts::Handle h) {
+      return counts.adjust_for_increment_dead_atomic(h);
     }
     PendingCounts::AdjustResult adjust_for_activation(PendingCounts::Handle h,
                                                       bool increment_dead) {
@@ -271,20 +298,24 @@ class PropagatorState {
     // we make it available to all active iterations. When the frame starts
     // a new iteration, we make all the current loop invariants available
     // to the new iteration.
-    std::vector<std::pair<const NodeItem*, Entry>> inv_values TF_GUARDED_BY(mu);
+    std::vector<std::pair<const NodeItem*, Entry>> inv_values
+        TF_GUARDED_BY(iter_mu);
 
     // The list of dead exit node items for the current highest iteration. We
     // will only "execute" the dead exits of the final iteration.
-    std::vector<const NodeItem*> dead_exits TF_GUARDED_BY(mu);
+    std::vector<const NodeItem*> dead_exits TF_GUARDED_BY(iter_mu);
 
     // Static information specific to this frame.
     PendingCounts* pending_counts = nullptr;
     int total_input_tensors = 0;
     std::vector<const NodeItem*>* nodes = nullptr;
 
-    // Lock ordering: ExecutorState.mu_ < mu;
+    // Lock ordering: ExecutorState.mu_ < mu < iter_mu;
     // during structured traversal: parent_frame->mu < mu.
     mutex mu;
+
+    // This mutex lock should only be held when entering next iteration.
+    mutex iter_mu;
 
     void InitializeFrameInfo(const ImmutableExecutorState::FrameInfo& finfo);
 
@@ -357,11 +388,9 @@ class PropagatorState {
     // invocations.
     //
     // Return true if the frame is done after activation.
-    bool ActivateNodesAndAdjustOutstanding(const NodeItem* item,
-                                           const bool is_dead,
-                                           IterationState* iter_state,
-                                           EntryVector* outputs,
-                                           TaggedNodeSeq* ready);
+    bool ActivateNodesAndAdjustOutstanding(
+        const NodeItem* item, const bool is_dead, IterationState* iter_state,
+        EntryVector* outputs, TaggedNodeSeq* ready, int decrement_activation);
 
     // Same as the above, but requires 'mu' already held in exclusive mode.
     int ActivateNodesLocked(const NodeItem* item, const bool is_dead,
@@ -418,10 +447,27 @@ class PropagatorState {
                                       EntryVector* outputs,
                                       TaggedNodeSeq* ready);
 
-    int ActivateNodesSlowPath(const NodeItem* item, const bool is_dead,
-                              IterationState* iter_state, EntryVector* outputs,
-                              TaggedNodeSeq* ready)
-        TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
+    int ActivateNodesSlowPathLocked(const NodeItem* item, const bool is_dead,
+                                    IterationState* iter_state,
+                                    EntryVector* outputs, TaggedNodeSeq* ready)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
+      return ActivateNodesSlowPathInternal<false>(item, is_dead, iter_state,
+                                                  outputs, ready);
+    }
+
+    int ActivateNodesSlowPathShared(const NodeItem* item, const bool is_dead,
+                                    IterationState* iter_state,
+                                    EntryVector* outputs, TaggedNodeSeq* ready)
+        TF_SHARED_LOCKS_REQUIRED(mu) {
+      return ActivateNodesSlowPathInternal<true>(item, is_dead, iter_state,
+                                                 outputs, ready);
+    }
+
+    template <bool atomic>
+    int ActivateNodesSlowPathInternal(const NodeItem* item, const bool is_dead,
+                                      IterationState* iter_state,
+                                      EntryVector* outputs,
+                                      TaggedNodeSeq* ready);
   };
 
  public:
@@ -516,6 +562,45 @@ class PropagatorState {
 inline int64_t PropagatorState::TaggedNode::get_iter_num() const {
   return input_iter->iter_num;
 }
+
+// `OrderedPropagatorState` replaces `PropagatorState`s `TaggedNodeReadyQueue`
+// with a priority queue. This ensures that the order in which we dequeue
+// `TaggedNode&`s is stable with respect to ASLR.
+//
+// This is not always needed, as in a multithreaded environment, executions are
+// expected to happen nondeterministically, but this nondeteminism can be a
+// problem: For example, In usecases that are running close to the RAM limit of
+// a device, reordering ops can cause an increase in memory fragmenenation,
+// causing an OOM.
+// This codepath is enabled using TF_DETERMINISTIC_ORDER=1 in executor.cc
+class OrderedPropagatorState : public PropagatorState {
+  using PropagatorState::PropagatorState;
+
+ public:
+  class TaggedNodeReadyQueue : PropagatorState::TaggedNodeReadyQueue {
+   public:
+    TaggedNodeReadyQueue() : readyp_(compare) {}
+    void push_back(const TaggedNode& node) { readyp_.push(node); }
+    TaggedNode front() const { return readyp_.top(); }
+    void pop_front() { readyp_.pop(); }
+    bool empty() const { return readyp_.empty(); }
+    int size() const { return readyp_.size(); }
+
+   private:
+    static bool compare(TaggedNode const& lhs, TaggedNode const& rhs) {
+      std::tuple<int, uint64, int64_t> lhs_prio{lhs.node_item->node_id,
+                                                lhs.input_frame->frame_id,
+                                                lhs.input_iter->iter_num};
+      std::tuple<int, uint64, int64_t> rhs_prio{rhs.node_item->node_id,
+                                                rhs.input_frame->frame_id,
+                                                rhs.input_iter->iter_num};
+      return lhs_prio < rhs_prio;
+    }
+
+    std::priority_queue<TaggedNode, std::vector<TaggedNode>, decltype(&compare)>
+        readyp_;
+  };
+};
 
 }  // namespace tensorflow
 

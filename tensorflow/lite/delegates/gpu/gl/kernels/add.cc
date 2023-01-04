@@ -16,9 +16,13 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/add.h"
 
 #include <algorithm>
+#include <any>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -37,26 +41,35 @@ class Add : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
-    const auto& attr =
-        absl::any_cast<const ElementwiseAttributes&>(ctx.op_attr);
-    auto adds = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
-    auto scalar = absl::get_if<float>(&attr.param);
+    const auto& attr = std::any_cast<const ElementwiseAttributes&>(ctx.op_attr);
+    auto adds = std::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
+    auto scalar = std::get_if<float>(&attr.param);
 
     const auto* hwc_tensor =
-        absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.param);
+        std::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.param);
 
     if (hwc_tensor) {
+      std::string code;
+      const std::string x_coord = hwc_tensor->shape.w == 1 ? "0" : "gid.x";
+      const std::string y_coord = hwc_tensor->shape.h == 1 ? "0" : "gid.y";
+      const std::string s_coord = hwc_tensor->shape.c == 1 ? "0" : "gid.z";
+      code = absl::StrCat("vec4 second_val = $hwc_buffer[", x_coord, ", ",
+                          y_coord, ", ", s_coord, "]$;\n");
+      if (hwc_tensor->shape.c == 1) {
+        code += "  second_val.y = second_val.x;\n";
+        code += "  second_val.z = second_val.x;\n";
+        code += "  second_val.w = second_val.x;\n";
+      }
+      code += "  value_0 += second_val;\n";
       *generated_code = {
           /*parameters=*/{},
           /*objects=*/
           {{"hwc_buffer",
             MakeReadonlyObject(
-                uint3(
-                    static_cast<int>(ctx.input_shapes[0][2]),
-                    static_cast<int>(ctx.input_shapes[0][1]),
-                    DivideRoundUp(static_cast<int>(ctx.input_shapes[0][3]), 4)),
+                uint3(hwc_tensor->shape.w, hwc_tensor->shape.h,
+                      DivideRoundUp(hwc_tensor->shape.c, 4)),
                 ConvertToPHWC4(
-                    absl::get<Tensor<HWC, DataType::FLOAT32>>(attr.param)))}},
+                    std::get<Tensor<HWC, DataType::FLOAT32>>(attr.param)))}},
           /*shared_variables=*/{},
           // Declare workload explicitly because shader depends on gid.z.
           /*workload=*/
@@ -64,7 +77,7 @@ class Add : public NodeShader {
                 static_cast<int>(ctx.input_shapes[0][1]),
                 DivideRoundUp(static_cast<int>(ctx.input_shapes[0][3]), 4)),
           /*workgroup=*/uint3(),
-          /*source_code=*/"value_0 += $hwc_buffer[gid.x, gid.y, gid.z]$;",
+          /*source_code=*/std::move(code),
           /*input=*/IOStructure::AUTO,
           /*output=*/IOStructure::AUTO,
       };
@@ -148,7 +161,7 @@ class Add : public NodeShader {
 }  // namespace
 
 std::unique_ptr<NodeShader> NewAddNodeShader() {
-  return absl::make_unique<Add>();
+  return std::make_unique<Add>();
 }
 
 }  // namespace gl

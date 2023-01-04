@@ -13,6 +13,9 @@ node {
       i: 0
     }
   }
+  experimental_type {
+    type_id: TFT_TENSOR
+  }
 }
 node {
   name: "arg1"
@@ -138,6 +141,9 @@ node {
     value {
       i: 2
     }
+  }
+  experimental_type {
+    type_id: TFT_TENSOR
   }
 }
 versions {

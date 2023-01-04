@@ -15,15 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 
+#include <vector>
+
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
-#include "tensorflow/compiler/xla/service/pattern_matcher.h"
-#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -38,11 +36,10 @@ bool ElementIsF32OrF16(const Shape& shape) {
 
 /*static*/ bool GpuInstructionFusion::IsExpensive(
     const HloInstruction& instruction) {
-  // We say that some floating-point math ops are cheap on the GPU. Unlike other
-  // intrinsics that can be expanded into many instructions, Div and Rsqrt are
-  // lowered into single hardware instructions.
+  // Some floating-point math ops are cheap on the GPU.
   switch (instruction.opcode()) {
     case HloOpcode::kDivide:
+    case HloOpcode::kSqrt:
     case HloOpcode::kRsqrt:
     case HloOpcode::kExp:
       if (ElementIsF32OrF16(instruction.shape())) {
@@ -55,52 +52,64 @@ bool ElementIsF32OrF16(const Shape& shape) {
   return InstructionFusion::IsExpensive(instruction);
 }
 
-bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
-                                                       int64_t operand_index) {
+FusionDecision GpuInstructionFusion::ShouldFuseInexpensiveChecks(
+    HloInstruction* consumer, int64_t operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
   // Output fusions are not currently supported on GPUs.
   if (producer->opcode() == HloOpcode::kFusion) {
-    VLOG(4) << "Producer " << producer->name() << " is a fusion op";
-    return false;
+    return "the producer is a fusion";
   }
   // Cost condition: not fuse (simple, expensive producers) and (consumers who
   // reuse operand elements).
   if (producer->opcode() != HloOpcode::kFusion && is_expensive(*producer) &&
       ReusesOperandElements(consumer, operand_index)) {
-    VLOG(4) << "Do not fuse simple, expensive producer " << producer->name()
-            << " and consumer which reuses operand elements.";
-    return false;
+    return "the producer is expensive, and the consumer reuses inputs";
   }
 
-  if (!IsProducerConsumerFusible(*producer, *consumer) ||
-      !InstructionFusion::ShouldFuse(consumer, operand_index)) {
-    VLOG(4) << "Producer " << producer->name()
-            << " is not fusible or should not be fused.";
-    return false;
+  // Do not fuse into fusions if the resulting kernel would suffer from
+  // uncoalesced reads due to a transposed memory access pattern.
+  if (IsInputFusibleReduction(*consumer) &&
+      IsPhysicallyTransposing(*producer)) {
+    return "fusing the producer would break read coalescing";
   }
-  return true;
+
+  if (NoFusionPossible fusible =
+          !IsProducerConsumerFusible(*producer, *consumer)) {
+    return !fusible;
+  }
+
+  if (CreatesHeavyComputation(*producer, *consumer)) {
+    return "the fusion would create a heavy computation";
+  }
+
+  if (NoFusionPossible fusible =
+          !InstructionFusion::ShouldFuse(consumer, operand_index)) {
+    return !fusible;
+  }
+  return {};
 }
 
-bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
-                                      int64_t operand_index) {
-  if (!ShouldFuseInexpensiveChecks(consumer, operand_index)) {
-    VLOG(5) << "Not fusing inexpensive checks of operand " << operand_index
-            << " of " << consumer->ToString();
-    return false;
+FusionDecision GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
+                                                int64_t operand_index) {
+  if (NoFusionPossible fusible =
+          !ShouldFuseInexpensiveChecks(consumer, operand_index)) {
+    return !fusible;
   }
+
   auto producer = consumer->operand(operand_index);
 
   // The following checks are potentially expensive.
-  if (FusionWouldBeTooLarge(*consumer, *producer,
-                            /*is_consumer_producer_fusion=*/true)) {
-    VLOG(5) << "Fusion of (" << producer->ToString() << ") into ("
-            << consumer->ToString() << ") would be too large";
-    return false;
+  if (NoFusionPossible too_large =
+          !FusionFitsInBudget(*consumer, *producer,
+                              /*is_consumer_producer_fusion=*/true)) {
+    return !too_large;
   }
+
   if (consumer->opcode() != HloOpcode::kFusion) {
-    return true;
+    return {};
   }
+
   // Also check that our emitter can handle the fusion node. We currently can
   // have exponential time/memory requirements for emitting certain fusion
   // kernels, in which case we don't want to fuse.
@@ -114,21 +123,29 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
                                      FusionNodeIndexingEvaluation(consumer));
   }
   if (fusion_node_evaluations_.at(consumer).CodeDuplicationTooHigh(producer)) {
-    VLOG(5) << "Fusion of " << producer->name() << " into " << consumer->name()
-            << " would result in overly large code duplication.";
-    return false;
+    return "the fusion would result in an overly large code duplication";
   }
-  return true;
-}
-
-bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,
-                                                     int64_t operand_index) {
-  return false;
+  return {};
 }
 
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
   return ChooseFusionKind(*producer, *consumer);
+}
+
+std::vector<HloComputation*> GpuInstructionFusion::GetFusionComputations(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  std::vector<HloComputation*> computations =
+      InstructionFusion::GetFusionComputations(module, execution_threads);
+  computations.erase(
+      std::remove_if(computations.begin(), computations.end(),
+                     [](HloComputation* c) {
+                       return c->IsCustomCallComputation() &&
+                              IsSoftmaxCustomCall(*c->CustomCallInstruction());
+                     }),
+      computations.end());
+  return computations;
 }
 
 HloInstruction* GpuInstructionFusion::FuseInstruction(

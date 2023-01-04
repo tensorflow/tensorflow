@@ -55,7 +55,7 @@ Status ValidateCSRSparseMatrix(const CSRSparseMatrix& csr_sparse_matrix,
     return errors::InvalidArgument("CSR SparseMatrix must have rank 2 or 3; ",
                                    "but dense_shape has size ", rank);
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 

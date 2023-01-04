@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,11 +18,11 @@
 # pylint:disable=unused-variable
 
 import collections
+import io
 import re
 import sys
 
 import numpy as np
-import six
 
 from tensorflow.python.autograph.operators import control_flow
 from tensorflow.python.autograph.operators import variables as variable_operators
@@ -193,7 +192,8 @@ class ForLoopTest(testing.AutoGraphTestCase):
     self.assertOpCreated('StatelessWhile')
 
   def test_tensor_with_extra_test_object_vars(self):
-    class MutableObject(object):
+
+    class MutableObject:
       field_1 = constant_op.constant(0, dtype=dtypes.int32)
       field_2 = constant_op.constant(1, dtype=dtypes.int32)
     state = MutableObject()
@@ -592,7 +592,7 @@ class ForLoopTest(testing.AutoGraphTestCase):
     return s
 
   def test_tensor_illegal_input(self):
-    with self.assertRaisesRegex(ValueError, '\'s\' may not be None'):
+    with self.assertRaisesRegex(ValueError, '\'s\' is not allowed to be None'):
       self._basic_loop(None, lambda i, s: s)
     with self.assertRaisesRegex(ValueError, '\'s\' must be defined'):
       self._basic_loop(variable_operators.Undefined(''), lambda i, s: s)
@@ -796,8 +796,62 @@ class WhileLoopTest(testing.AutoGraphTestCase):
     self.assertEqual(v, (12345,))
     self.assertOpCreated('While')
 
+  def test_tensor_failing_to_determine_placeholder(self):
+
+    class UserType:
+      pass
+
+    def body():
+      nonlocal v
+      v = UserType()
+
+    def set_state(loop_vars):
+      nonlocal v
+      v, = loop_vars
+
+    v = variable_operators.Undefined('v')
+
+    with self.assertRaisesRegex(
+        ValueError,
+        re.compile('must be defined.*tried to define.*unsupported type',
+                   re.DOTALL)):
+      control_flow.while_stmt(
+          test=lambda: constant_op.constant(True),
+          body=body,
+          get_state=lambda: (v,),
+          set_state=set_state,
+          symbol_names=('v',),
+          opts={})
+
+  def test_tensor_failing_to_stage_loop_body(self):
+
+    def body():
+      nonlocal i, s
+      i = constant_op.constant(2)
+      raise ValueError('testing')
+      s = i ** 5  # pylint: disable=unreachable
+
+    def set_state(loop_vars):
+      nonlocal i, s
+      i, s = loop_vars
+
+    i = variable_operators.Undefined('i')
+    s = constant_op.constant(0)
+
+    with self.assertRaisesRegex(
+        ValueError,
+        re.compile('must be defined.*tried to define.*testing', re.DOTALL)):
+      control_flow.while_stmt(
+          test=lambda: math_ops.equal(s, 0),
+          body=body,
+          get_state=lambda: (i, s),
+          set_state=set_state,
+          symbol_names=('i', 's'),
+          opts={})
+
   def test_tensor_with_python_state(self):
-    class MutableObject(object):
+
+    class MutableObject:
       field = constant_op.constant(0, dtype=dtypes.int32)
     state = MutableObject()
 
@@ -898,7 +952,7 @@ class WhileLoopTest(testing.AutoGraphTestCase):
     with test.mock.patch.object(
         control_flow, 'INEFFICIENT_UNROLL_MIN_ITERATIONS', 10):
       with ops.Graph().as_default():
-        out_capturer = six.StringIO()
+        out_capturer = io.StringIO()
         with test.mock.patch.object(sys, 'stdout', out_capturer):
           with test.mock.patch.object(ag_logging, 'echo_log_to_stdout', True):
             def custom_iterator():
@@ -924,7 +978,7 @@ class WhileLoopTest(testing.AutoGraphTestCase):
     with test.mock.patch.object(
         control_flow, 'INEFFICIENT_UNROLL_MIN_ITERATIONS', 10):
       with ops.Graph().as_default():
-        out_capturer = six.StringIO()
+        out_capturer = io.StringIO()
         with test.mock.patch.object(sys, 'stdout', out_capturer):
           with test.mock.patch.object(ag_logging, 'echo_log_to_stdout', True):
             def body():
@@ -967,7 +1021,7 @@ class WhileLoopTest(testing.AutoGraphTestCase):
     return s
 
   def test_tensor_illegal_input(self):
-    with self.assertRaisesRegex(ValueError, "'s' may not be None"):
+    with self.assertRaisesRegex(ValueError, "'s' is not allowed to be None"):
       self._basic_loop(None, lambda i, s: s)
     with self.assertRaisesRegex(ValueError, "'s' must be defined"):
       self._basic_loop(variable_operators.Undefined(''), lambda i, s: s)

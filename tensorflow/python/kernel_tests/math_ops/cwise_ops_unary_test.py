@@ -412,16 +412,16 @@ class UnaryOpTest(test.TestCase):
     y = (x + .5).astype(bfloat16)  # no zero
     z = (x + 15.5).astype(bfloat16)  # all positive
     k = np.arange(-0.90, 0.90, 0.05).astype(bfloat16)  # between -1 and 1
-    self._compareCpu(x, np.abs, math_ops.abs)
-    self._compareCpu(x, np.abs, _ABS)
+    self._compareBoth(x, np.abs, math_ops.abs)
+    self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, math_ops.negative)
     self._compareBoth(x, np.negative, _NEG)
-    self._compareCpu(y, compute_f32(self._inv), math_ops.reciprocal)
+    self._compareBoth(y, compute_f32(self._inv), math_ops.reciprocal)
     self._compareCpu(x, np.exp, math_ops.exp)
     self._compareCpu(x, np.expm1, math_ops.expm1)
     self._compareCpu(z, compute_f32(np.log), math_ops.log)
     self._compareCpu(z, compute_f32(np.log1p), math_ops.log1p)
-    self._compareCpu(y, np.sign, math_ops.sign)
+    self._compareBoth(y, np.sign, math_ops.sign)
     self._compareCpu(z, self._rsqrt, math_ops.rsqrt)
     self._compareBoth(x, compute_f32(np.sin), math_ops.sin)
     self._compareBoth(x, compute_f32(np.cos), math_ops.cos)
@@ -437,6 +437,8 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(k, compute_f32(np.arctanh), math_ops.atanh,
                       grad_tol=1e-2)
     self._compareBoth(x, compute_f32(np.vectorize(math.erf)), math_ops.erf)
+    self._compareBoth(x, compute_f32(np.vectorize(math.erfc)), math_ops.erfc)
+    self._compareBoth(x, compute_f32(np.square), math_ops.square)
 
   @test.disable_with_predicate(
       pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
@@ -450,6 +452,12 @@ class UnaryOpTest(test.TestCase):
 
   @test.disable_with_predicate(
       pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
+  def testUInt8Basic(self):
+    x = np.arange(6).reshape(1, 3, 2).astype(np.uint8)
+    self._compareBoth(x, np.square, math_ops.square)
+
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
   def testInt16Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int16)
     self._compareCpu(x, np.abs, math_ops.abs)
@@ -457,6 +465,12 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.negative, math_ops.negative)
     self._compareBoth(x, np.negative, _NEG)
     self._compareBoth(x, np.sign, math_ops.sign)
+
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
+  def testUInt16Basic(self):
+    x = np.arange(6).reshape(1, 3, 2).astype(np.uint16)
+    self._compareBoth(x, np.square, math_ops.square)
 
   def testInt32Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int32)
@@ -471,6 +485,12 @@ class UnaryOpTest(test.TestCase):
     self._compareBothSparse(x, np.negative, math_ops.negative)
     self._compareBothSparse(x, np.square, math_ops.square)
     self._compareBothSparse(x, np.sign, math_ops.sign)
+
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
+  def testUInt32Basic(self):
+    x = np.arange(6).reshape(1, 3, 2).astype(np.uint32)
+    self._compareBoth(x, np.square, math_ops.square)
 
   def testInt64Basic(self):
     x = np.arange(-6 << 40, 6 << 40, 2 << 40).reshape(1, 3, 2).astype(np.int64)
@@ -488,6 +508,12 @@ class UnaryOpTest(test.TestCase):
     x = np.arange(-6 << 20, 6 << 20, 2 << 20).reshape(1, 3, 2).astype(np.int64)
     self._compareCpu(x, np.square, math_ops.square)
     self._compareBothSparse(x, np.square, math_ops.square)
+
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
+  def testUInt64Basic(self):
+    x = np.arange(6).reshape(1, 3, 2).astype(np.uint64)
+    self._compareBoth(x, np.square, math_ops.square)
 
   @test_util.run_deprecated_v1
   def testComplex64Basic(self):
@@ -508,6 +534,8 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.sinh, math_ops.sinh)
     self._compareCpu(x, np.cosh, math_ops.cosh)
     self._compareCpu(x, np.tanh, math_ops.tanh)
+    self._compareCpu(x, np.arcsin, math_ops.asin)
+    self._compareCpu(x, np.arctan, math_ops.atan)
 
     # Complex64 versions of asinh() and acosh() in libstdc++ only have 6 digits
     # of precision.
@@ -558,6 +586,8 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, self._sigmoid, math_ops.sigmoid)
     self._compareCpu(x, np.sin, math_ops.sin)
     self._compareCpu(x, np.cos, math_ops.cos)
+    self._compareCpu(x, np.arcsin, math_ops.asin)
+    self._compareCpu(x, np.arctan, math_ops.atan)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)

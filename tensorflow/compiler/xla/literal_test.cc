@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal.h"
 
+#include <cstdint>
 #include <limits>
+#include <memory>
 #include <vector>
 
 #include "absl/base/casts.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -29,9 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/float8.h"
 
 namespace xla {
 namespace {
@@ -103,10 +104,10 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
   auto false_lit = LiteralUtil::CreateR0<bool>(false);
   EXPECT_EQ("pred[] false", false_lit.ToString());
 
-  auto u32_lit = LiteralUtil::CreateR0<uint32>(42);
+  auto u32_lit = LiteralUtil::CreateR0<uint32_t>(42);
   EXPECT_EQ("u32[] 42", u32_lit.ToString());
 
-  auto s32_lit = LiteralUtil::CreateR0<int32>(-999);
+  auto s32_lit = LiteralUtil::CreateR0<int32_t>(-999);
   EXPECT_EQ("s32[] -999", s32_lit.ToString());
 
   auto f32_lit = LiteralUtil::CreateR0<float>(3.14f);
@@ -132,6 +133,19 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
   auto bf16_lit_truncated2 =
       LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(9.001f));
   EXPECT_EQ("bf16[] 9", bf16_lit_truncated2.ToString());
+
+  auto f8e5m2_lit =
+      LiteralUtil::CreateR0<tsl::float8_e5m2>(tsl::float8_e5m2(0.5));
+  EXPECT_EQ("f8e5m2[] 0.5", f8e5m2_lit.ToString());
+
+  // 3.14 will be rounded to 3 in e5m2 format.
+  auto f8e5m2_lit_truncated =
+      LiteralUtil::CreateR0<tsl::float8_e5m2>(tsl::float8_e5m2(3.141));
+  EXPECT_EQ("f8e5m2[] 3", f8e5m2_lit_truncated.ToString());
+
+  auto f8e4m3_lit =
+      LiteralUtil::CreateR0<tsl::float8_e4m3fn>(tsl::float8_e4m3fn(0.5));
+  EXPECT_EQ("f8e4m3fn[] 0.5", f8e4m3_lit.ToString());
 }
 
 TEST_F(LiteralUtilTest, LiteralVectorToString) {
@@ -141,7 +155,7 @@ TEST_F(LiteralUtilTest, LiteralVectorToString) {
 
 TEST_F(LiteralUtilTest, R2ToString) {
   const auto literal = LiteralUtil::CreateR2({{1, 2}, {3, 4}, {5, 6}});
-  const string expected = R"(s32[3,2] {
+  const std::string expected = R"(s32[3,2] {
   { 1, 2 },
   { 3, 4 },
   { 5, 6 }
@@ -152,7 +166,7 @@ TEST_F(LiteralUtilTest, R2ToString) {
 TEST_F(LiteralUtilTest, R2DynamicToString) {
   auto literal = LiteralUtil::CreateR2({{1, 2}, {3, 4}, {5, 6}});
   literal.SetDynamicSize(0, {}, 2);
-  const string expected = R"(s32[<=3,2](2,2) {
+  const std::string expected = R"(s32[<=3,2](2,2) {
   { 1, 2 },
   { 3, 4 }
 })";
@@ -161,7 +175,7 @@ TEST_F(LiteralUtilTest, R2DynamicToString) {
   // A Less trivial case where the memory layout is not consecutive.
   auto literal2 = LiteralUtil::CreateR2({{1, 2, 3}, {4, 5, 6}});
   literal2.SetDynamicSize(1, {}, 2);
-  const string expected2 = R"(s32[2,<=3](2,2) {
+  const std::string expected2 = R"(s32[2,<=3](2,2) {
   { 1, 2 },
   { 4, 5 }
 })";
@@ -171,7 +185,7 @@ TEST_F(LiteralUtilTest, R2DynamicToString) {
 TEST_F(LiteralUtilTest, R3ToString) {
   const auto literal =
       LiteralUtil::CreateR3({{{1}, {2}}, {{3}, {4}}, {{5}, {6}}});
-  const string expected = R"(s32[3,2,1] {
+  const std::string expected = R"(s32[3,2,1] {
 {
   {1},
   {2}
@@ -191,7 +205,7 @@ TEST_F(LiteralUtilTest, R3ToString) {
 TEST_F(LiteralUtilTest, R6ToString) {
   const auto literal =
       LiteralUtil::CreateFromDimensions(S32, {2, 2, 1, 1, 1, 2});
-  const string expected = R"(s32[2,2,1,1,1,2] {
+  const std::string expected = R"(s32[2,2,1,1,1,2] {
 { /*i0=0*/
 { /*i1=0*/
 { /*i2=0*/
@@ -232,7 +246,7 @@ TEST_F(LiteralUtilTest, TupleToString) {
   auto scalar = LiteralUtil::CreateR0<float>(1.0);
   auto matrix = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto tuple = LiteralUtil::MakeTuple({&scalar, &matrix});
-  const string expected = R"((
+  const std::string expected = R"((
 f32[] 1,
 f32[2,2] {
   { 1, 2 },
@@ -256,8 +270,8 @@ TEST_F(LiteralUtilTest, CreateR3FromArray3d) {
 
   auto literal = LiteralUtil::CreateR3FromArray3D(array_3d);
   EXPECT_THAT(literal.shape().dimensions(), ElementsAre(2, 3, 2));
-  string result = literal.ToString();
-  const string expected = R"(f32[2,3,2] {
+  std::string result = literal.ToString();
+  const std::string expected = R"(f32[2,3,2] {
 {
   { 1, 2 },
   { 3, 4 },
@@ -281,8 +295,8 @@ TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
   }, /*projection_p=*/1, /*projection_z=*/2);
   // clang-format on
   EXPECT_THAT(literal.shape().dimensions(), ElementsAre(1, 2, 3, 2));
-  string result = literal.ToString();
-  const string expected = R"(f32[1,2,3,2] {
+  std::string result = literal.ToString();
+  const std::string expected = R"(f32[1,2,3,2] {
 { /*i0=0*/
 { /*i1=0*/
   { 1, 2 },
@@ -302,8 +316,8 @@ TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
 TEST_F(LiteralUtilTest, LiteralR4F32Stringifies) {
   EXPECT_THAT(literal_r4_2x2x3x3_dim0major_.shape().dimensions(),
               ElementsAre(2, 2, 3, 3));
-  string result = literal_r4_2x2x3x3_dim0major_.ToString();
-  const string expected = R"(f32[2,2,3,3] {
+  std::string result = literal_r4_2x2x3x3_dim0major_.ToString();
+  const std::string expected = R"(f32[2,2,3,3] {
 { /*i0=0*/
 { /*i1=0*/
   { 1, 2, 3 },
@@ -339,13 +353,13 @@ TEST_F(LiteralUtilTest, EachCellR2F32) {
     {9.3f, 12.4f},
   });
   // clang-format on
-  std::vector<std::tuple<int64_t, int64_t, string>> seen;
+  std::vector<std::tuple<int64_t, int64_t, std::string>> seen;
   literal.EachCellAsString(
-      [&seen](absl::Span<const int64_t> indices, const string& value) {
+      [&seen](absl::Span<const int64_t> indices, const std::string& value) {
         seen.emplace_back(indices[0], indices[1], value);
       });
 
-  using Elem = std::tuple<int64_t, int64_t, string>;
+  using Elem = std::tuple<int64_t, int64_t, std::string>;
   std::vector<Elem> expected = {Elem(0, 0, "3.1"), Elem(0, 1, "4.2"),
                                 Elem(1, 0, "9.3"), Elem(1, 1, "12.4")};
   EXPECT_EQ(expected, seen);
@@ -403,13 +417,13 @@ TEST_F(LiteralUtilTest, TokenEquality) {
 
 TEST_F(LiteralUtilTest, DifferentLayoutEquality) {
   // Test equality with literals which have different layouts.
-  Literal colmajor(ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1}));
+  Literal colmajor(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {0, 1}));
   colmajor.Set<float>({0, 0}, 1.0);
   colmajor.Set<float>({0, 1}, 2.0);
   colmajor.Set<float>({1, 0}, 3.0);
   colmajor.Set<float>({1, 1}, 4.0);
 
-  Literal rowmajor(ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0}));
+  Literal rowmajor(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0}));
   rowmajor.Set<float>({0, 0}, 1.0);
   rowmajor.Set<float>({0, 1}, 2.0);
   rowmajor.Set<float>({1, 0}, 3.0);
@@ -505,7 +519,7 @@ TEST_F(LiteralUtilTest, IsAllTuple) {
 // Verifies that CreateFromShape works for tuples.
 TEST_F(LiteralUtilTest, CreateFromShapeTuple) {
   auto scalar = LiteralUtil::CreateR0<float>(0.0);
-  auto matrix = LiteralUtil::CreateR2<int32>({{0, 0}, {0, 0}});
+  auto matrix = LiteralUtil::CreateR2<int32_t>({{0, 0}, {0, 0}});
   auto tuple = LiteralUtil::MakeTuple({&scalar, &matrix});
 
   auto x = Literal::CreateFromShape(tuple.shape());
@@ -523,8 +537,8 @@ TEST_F(LiteralUtilTest, IsAll) {
 
   // We shouldn't reinterpret int8_min as an unsigned type and then decide that
   // it is equal to 255.
-  auto int8_min = std::numeric_limits<int8>::min();
-  EXPECT_FALSE(LiteralUtil::CreateR0<uint8>(255).IsAll(int8_min));
+  auto int8_min = std::numeric_limits<int8_t>::min();
+  EXPECT_FALSE(LiteralUtil::CreateR0<uint8_t>(255).IsAll(int8_min));
 
   EXPECT_TRUE(LiteralUtil::CreateR0<float>(42.0).IsAll(42));
   EXPECT_FALSE(LiteralUtil::CreateR0<float>(42.0001).IsAll(42));
@@ -554,6 +568,15 @@ TEST_F(LiteralUtilTest, IsAll) {
   bfloat16 b90(9.00f);
   EXPECT_TRUE(LiteralUtil::CreateR2<bfloat16>({{b91}, {b90}}).IsAll(9.0));
 
+  tsl::float8_e5m2 q16(8);
+  EXPECT_TRUE(LiteralUtil::CreateR1<tsl::float8_e5m2>({q16}).IsAll(8));
+  // 9 rounds to 8 in E5M2 but is not equal to 8, so this should be false
+  EXPECT_FALSE(LiteralUtil::CreateR1<tsl::float8_e5m2>({q16}).IsAll(9));
+
+  tsl::float8_e4m3fn r16(9);  // Exactly representable in e4m3
+  EXPECT_FALSE(LiteralUtil::CreateR1<tsl::float8_e4m3fn>({r16}).IsAll(8));
+  EXPECT_TRUE(LiteralUtil::CreateR1<tsl::float8_e4m3fn>({r16}).IsAll(9));
+
   complex64 c8_9 = {8, 9};
   EXPECT_FALSE(LiteralUtil::CreateR2<complex64>({{c8_9}, {c8_9}}).IsAll(8));
 
@@ -566,8 +589,8 @@ TEST_F(LiteralUtilTest, IsAll) {
 TEST_F(LiteralUtilTest, IsAllFloat) {
   // IsAllFloat always returns false when the literal is not floating-point.
   EXPECT_FALSE(LiteralUtil::CreateR0<bool>(false).IsAllFloat(0));
-  EXPECT_FALSE(LiteralUtil::CreateR0<int8>(0).IsAllFloat(0));
-  EXPECT_FALSE(LiteralUtil::CreateR0<uint8>(0).IsAllFloat(0));
+  EXPECT_FALSE(LiteralUtil::CreateR0<int8_t>(0).IsAllFloat(0));
+  EXPECT_FALSE(LiteralUtil::CreateR0<uint8_t>(0).IsAllFloat(0));
   EXPECT_FALSE(LiteralUtil::CreateR0<int>(0).IsAllFloat(0));
 
   EXPECT_TRUE(LiteralUtil::CreateR0<float>(0).IsAllFloat(0));
@@ -585,13 +608,17 @@ TEST_F(LiteralUtilTest, IsAllFloat) {
   EXPECT_FALSE(LiteralUtil::CreateR0<double>(-.5).IsAllFloat(-.49));
   EXPECT_FALSE(
       LiteralUtil::CreateR2<double>({{0, 0, 0}, {0, .1, 0}}).IsAllFloat(0));
+
+  // IsAllFloat rounds the input scalar to the literal type
+  EXPECT_TRUE(
+      LiteralUtil::CreateR0<bfloat16>(bfloat16(128.)).IsAllFloat(128.5));
 }
 
 TEST_F(LiteralUtilTest, IsAllComplex) {
   // IsAllComplex always returns false when the literal is not complex.
   EXPECT_FALSE(LiteralUtil::CreateR0<bool>(false).IsAllComplex(0));
-  EXPECT_FALSE(LiteralUtil::CreateR0<int8>(0).IsAllComplex(0));
-  EXPECT_FALSE(LiteralUtil::CreateR0<uint8>(0).IsAllComplex(0));
+  EXPECT_FALSE(LiteralUtil::CreateR0<int8_t>(0).IsAllComplex(0));
+  EXPECT_FALSE(LiteralUtil::CreateR0<uint8_t>(0).IsAllComplex(0));
   EXPECT_FALSE(LiteralUtil::CreateR0<int>(0).IsAllComplex(0));
   EXPECT_FALSE(LiteralUtil::CreateR0<float>(0).IsAllComplex(0));
   EXPECT_FALSE(LiteralUtil::CreateR0<double>(0).IsAllComplex(0));
@@ -610,13 +637,13 @@ TEST_F(LiteralUtilTest, IsAllFirst) {
   // IsAllComplex always returns false when the literal is not complex.
   EXPECT_FALSE(LiteralUtil::CreateR1<bool>({false, true}).IsAllFirst());
   EXPECT_TRUE(LiteralUtil::CreateR1<bool>({false, false}).IsAllFirst());
-  EXPECT_FALSE(LiteralUtil::CreateR1<int8>({1, 1, 2}).IsAllFirst());
-  EXPECT_TRUE(LiteralUtil::CreateR1<int8>({5, 5, 5, 5}).IsAllFirst());
-  EXPECT_FALSE(LiteralUtil::CreateR1<uint8>({1, 1, 2}).IsAllFirst());
-  EXPECT_TRUE(LiteralUtil::CreateR1<int32>({5, 5, 5, 5}).IsAllFirst());
-  EXPECT_FALSE(LiteralUtil::CreateR1<int32>({1, 1, 2}).IsAllFirst());
-  EXPECT_TRUE(LiteralUtil::CreateR1<uint32>({5, 5, 5, 5}).IsAllFirst());
-  EXPECT_FALSE(LiteralUtil::CreateR1<uint32>({1, 1, 2}).IsAllFirst());
+  EXPECT_FALSE(LiteralUtil::CreateR1<int8_t>({1, 1, 2}).IsAllFirst());
+  EXPECT_TRUE(LiteralUtil::CreateR1<int8_t>({5, 5, 5, 5}).IsAllFirst());
+  EXPECT_FALSE(LiteralUtil::CreateR1<uint8_t>({1, 1, 2}).IsAllFirst());
+  EXPECT_TRUE(LiteralUtil::CreateR1<int32_t>({5, 5, 5, 5}).IsAllFirst());
+  EXPECT_FALSE(LiteralUtil::CreateR1<int32_t>({1, 1, 2}).IsAllFirst());
+  EXPECT_TRUE(LiteralUtil::CreateR1<uint32_t>({5, 5, 5, 5}).IsAllFirst());
+  EXPECT_FALSE(LiteralUtil::CreateR1<uint32_t>({1, 1, 2}).IsAllFirst());
 
   complex64 c8_9 = {8, 9};
   complex64 c7_9 = {7, 9};
@@ -630,7 +657,7 @@ TEST_F(LiteralUtilTest, IsZero) {
   EXPECT_TRUE(scalar_zero.IsZero({}));
   EXPECT_FALSE(scalar_one.IsZero({}));
 
-  auto array = LiteralUtil::CreateR2<uint32>({{1, 2, 0, 3}, {1, 0, 1, 2}});
+  auto array = LiteralUtil::CreateR2<uint32_t>({{1, 2, 0, 3}, {1, 0, 1, 2}});
   EXPECT_FALSE(array.IsZero({0, 1}));
   EXPECT_TRUE(array.IsZero({0, 2}));
   EXPECT_TRUE(array.IsZero({1, 1}));
@@ -645,7 +672,7 @@ TEST_F(LiteralUtilTest, IsZero) {
 template <typename T>
 class LiteralUtilTestTemplated : public ::testing::Test {};
 
-using TestedTypes = ::testing::Types<float, int32, uint32, complex64>;
+using TestedTypes = ::testing::Types<float, int32_t, uint32_t, complex64>;
 TYPED_TEST_SUITE(LiteralUtilTestTemplated, TestedTypes);
 
 TYPED_TEST(LiteralUtilTestTemplated, Relayout2x2) {
@@ -666,7 +693,7 @@ TYPED_TEST(LiteralUtilTestTemplated, Relayout2x2) {
 
 TEST_F(LiteralUtilTest, ReshapeR0) {
   auto original = LiteralUtil::CreateR0<float>(1.7f);
-  auto reshape = original.Reshape(/*dimensions=*/{}).ConsumeValueOrDie();
+  auto reshape = original.Reshape(/*dimensions=*/{}).value();
   EXPECT_EQ(original, reshape);
 }
 
@@ -685,7 +712,7 @@ TEST_F(LiteralUtilTest, ReshapeR4) {
     {{26, 27}, {28, 29}, {30, 31}, {32, 33}},
   }, layout_r3_dim0major_);
   // clang-format on
-  auto reshape = original.Reshape({3, 4, 2}).ConsumeValueOrDie();
+  auto reshape = original.Reshape({3, 4, 2}).value();
 
   EXPECT_EQ(expected, reshape);
 }
@@ -705,7 +732,7 @@ TEST_F(LiteralUtilTest, ReshapeR4Dim0Minor) {
     {{26, 27}, {28, 29}, {30, 31}, {32, 33}},
   }, layout_r3_dim0major_);
   // clang-format on
-  auto reshape = original.Reshape({3, 4, 2}).ConsumeValueOrDie();
+  auto reshape = original.Reshape({3, 4, 2}).value();
 
   EXPECT_EQ(expected, reshape);
 }
@@ -788,25 +815,25 @@ TEST_F(LiteralUtilTest, TestR4RelayoutEquivalence) {
 
 TEST_F(LiteralUtilTest, TestR2LinearLayout) {
   // Test expected memory layout of R2 dim0-minor (column-major) literal.
-  auto mat_dim0minor = LiteralUtil::CreateR2WithLayout<int32>(
+  auto mat_dim0minor = LiteralUtil::CreateR2WithLayout<int32_t>(
       {{1, 2, 3}, {4, 5, 6}}, layout_r2_dim0minor_);
   EXPECT_EQ(mat_dim0minor.element_count(), 6);
-  EXPECT_THAT(mat_dim0minor.data<int32>(), ElementsAre(1, 4, 2, 5, 3, 6));
+  EXPECT_THAT(mat_dim0minor.data<int32_t>(), ElementsAre(1, 4, 2, 5, 3, 6));
 
   // Test expected memory layout when using Relayout to row major.
   auto relaid_mat_to_dim0major = mat_dim0minor.Relayout(layout_r2_dim0major_);
-  EXPECT_THAT(relaid_mat_to_dim0major.data<int32>(),
+  EXPECT_THAT(relaid_mat_to_dim0major.data<int32_t>(),
               ElementsAre(1, 2, 3, 4, 5, 6));
 
   // Test expected memory layout of R2 created with dim0-major (row-major).
-  auto mat_dim0major = LiteralUtil::CreateR2WithLayout<int32>(
+  auto mat_dim0major = LiteralUtil::CreateR2WithLayout<int32_t>(
       {{1, 2, 3}, {4, 5, 6}}, layout_r2_dim0major_);
   EXPECT_EQ(mat_dim0major.element_count(), 6);
-  EXPECT_THAT(mat_dim0major.data<int32>(), ElementsAre(1, 2, 3, 4, 5, 6));
+  EXPECT_THAT(mat_dim0major.data<int32_t>(), ElementsAre(1, 2, 3, 4, 5, 6));
 
   // Test expected memory layout when using Relayout to column major.
   auto relaid_mat_to_dim0minor = mat_dim0major.Relayout(layout_r2_dim0minor_);
-  EXPECT_THAT(relaid_mat_to_dim0minor.data<int32>(),
+  EXPECT_THAT(relaid_mat_to_dim0minor.data<int32_t>(),
               ElementsAre(1, 4, 2, 5, 3, 6));
 }
 
@@ -829,30 +856,30 @@ TEST_F(LiteralUtilTest, TestR3LinearLayout) {
 
   EXPECT_EQ(lit_dim0minor.element_count(), 12);
   std::vector<int> expected_dim0minor{1, 7, 4, 10, 2, 8, 5, 11, 3, 9, 6, 12};
-  EXPECT_THAT(lit_dim0minor.data<int32>(),
+  EXPECT_THAT(lit_dim0minor.data<int32_t>(),
               testing::ElementsAreArray(expected_dim0minor));
 
   // Test expected memory layout when using Relayout to row major.
   auto relaid_lit_to_dim0major = lit_dim0minor.Relayout(layout_r3_dim0major_);
   std::vector<int> expected_dim0major{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
-  EXPECT_THAT(relaid_lit_to_dim0major.data<int32>(),
+  EXPECT_THAT(relaid_lit_to_dim0major.data<int32_t>(),
               testing::ElementsAreArray(expected_dim0major));
 
   // Test expected memory layout of R3 created with dim0-major (row-major).
   auto lit_dim0major = LiteralUtil::CreateR3FromArray3DWithLayout<int>(
       arr3d, layout_r3_dim0major_);
   EXPECT_EQ(lit_dim0major.element_count(), 12);
-  EXPECT_THAT(lit_dim0major.data<int32>(),
+  EXPECT_THAT(lit_dim0major.data<int32_t>(),
               testing::ElementsAreArray(expected_dim0major));
 
   // Test expected memory layout when using Relayout to column major.
   auto relaid_lit_to_dim0minor = lit_dim0major.Relayout(layout_r3_dim0minor_);
-  EXPECT_THAT(relaid_lit_to_dim0minor.data<int32>(),
+  EXPECT_THAT(relaid_lit_to_dim0minor.data<int32_t>(),
               testing::ElementsAreArray(expected_dim0minor));
 }
 
 TEST_F(LiteralUtilTest, SliceR0S32) {
-  auto input = LiteralUtil::CreateR0<int32>(1);
+  auto input = LiteralUtil::CreateR0<int32_t>(1);
   auto result = input.Slice({}, {});
   EXPECT_EQ(input, result);
 }
@@ -865,47 +892,47 @@ TEST_F(LiteralUtilTest, SliceR1F32) {
 }
 
 TEST_F(LiteralUtilTest, SliceR2U32) {
-  auto input_3x4 = LiteralUtil::CreateR2<uint32>(
+  auto input_3x4 = LiteralUtil::CreateR2<uint32_t>(
       {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}});
   auto result = input_3x4.Slice({0, 2}, {2, 4});
-  auto expected = LiteralUtil::CreateR2<uint32>({{3, 4}, {7, 8}});
+  auto expected = LiteralUtil::CreateR2<uint32_t>({{3, 4}, {7, 8}});
   EXPECT_EQ(expected, result);
 }
 
 TEST_F(LiteralUtilTest, SliceR3U32Full) {
-  auto input_2x3x2 = LiteralUtil::CreateR3<uint32>(
+  auto input_2x3x2 = LiteralUtil::CreateR3<uint32_t>(
       {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 12}}});
   auto result = input_2x3x2.Slice({0, 0, 0}, {2, 3, 2});
   EXPECT_EQ(input_2x3x2, result);
 }
 
 TEST_F(LiteralUtilTest, SliceR2Dynamic) {
-  auto input_3x4 = LiteralUtil::CreateR2<uint32>(
+  auto input_3x4 = LiteralUtil::CreateR2<uint32_t>(
       {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}});
   input_3x4.SetDynamicSize(1, 3);
   // slice second dim from dynamic size 3 to dynamic size 1.
   auto result = input_3x4.Slice({0, 1}, {2, 2});
-  auto expected = LiteralUtil::CreateR2<uint32>({{2}, {6}});
+  auto expected = LiteralUtil::CreateR2<uint32_t>({{2}, {6}});
   EXPECT_EQ(expected, result);
   EXPECT_EQ(result.GetDynamicSize(1), 1);
 }
 
 TEST_F(LiteralUtilTest, SliceR2DynamicInBound) {
-  auto input_3x4 = LiteralUtil::CreateR2<uint32>(
+  auto input_3x4 = LiteralUtil::CreateR2<uint32_t>(
       {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}});
   input_3x4.SetDynamicSize(1, 1);
   auto result = input_3x4.Slice({0, 0}, {2, 2});
-  auto expected = LiteralUtil::CreateR2<uint32>({{1}, {5}});
+  auto expected = LiteralUtil::CreateR2<uint32_t>({{1}, {5}});
   EXPECT_EQ(expected, result);
   EXPECT_EQ(result.GetDynamicSize(1), 1);
 }
 
 TEST_F(LiteralUtilTest, SliceR2DynamicOutOfBound) {
-  auto input_3x4 = LiteralUtil::CreateR2<uint32>(
+  auto input_3x4 = LiteralUtil::CreateR2<uint32_t>(
       {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}});
   input_3x4.SetDynamicSize(1, 1);
   auto result = input_3x4.Slice({0, 1}, {2, 3});
-  auto expected = LiteralUtil::CreateR2<uint32>({{}, {}});
+  auto expected = LiteralUtil::CreateR2<uint32_t>({{}, {}});
   EXPECT_EQ(expected, result);
   // Out of bound access clamps into 0 sized dimension.
   EXPECT_EQ(result.GetDynamicSize(1), 0);
@@ -1032,11 +1059,27 @@ TEST_F(LiteralUtilTest, PopulateWithValueR2F16) {
   EXPECT_EQ(output, expected);
 }
 
+TEST_F(LiteralUtilTest, PopulateWithValueR0F8e5m2) {
+  Literal output(ShapeUtil::MakeShape(F8E5M2, {}));
+  tsl::float8_e5m2 x(0.25f);
+  output.PopulateWithValue<tsl::float8_e5m2>(x);
+  auto expected = LiteralUtil::CreateR0<tsl::float8_e5m2>(x);
+  EXPECT_EQ(output, expected);
+}
+
+TEST_F(LiteralUtilTest, PopulateWithValueR1F8e4m3) {
+  Literal output(ShapeUtil::MakeShape(F8E4M3FN, {3}));
+  tsl::float8_e4m3fn x(0.5f);
+  output.PopulateWithValue<tsl::float8_e4m3fn>(x);
+  auto expected = LiteralUtil::CreateR1<tsl::float8_e4m3fn>({x, x, x});
+  EXPECT_EQ(output, expected);
+}
+
 TEST_F(LiteralUtilTest, ReplicateR2U32) {
-  auto input = LiteralUtil::CreateR2<uint32>(
+  auto input = LiteralUtil::CreateR2<uint32_t>(
       {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}});
-  auto output = input.Replicate<uint32>(3);
-  auto expected = LiteralUtil::CreateR3<uint32>(
+  auto output = input.Replicate<uint32_t>(3);
+  auto expected = LiteralUtil::CreateR3<uint32_t>(
       {{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}},
        {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}},
        {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}}});
@@ -1048,13 +1091,13 @@ TEST_F(LiteralUtilTest, CopySliceFrom) {
   const int64_t layouts[][4] = {
       {3, 2, 1, 0}, {0, 2, 1, 3}, {0, 1, 2, 3}, {2, 0, 3, 1}, {1, 3, 0, 2}};
   for (const auto& layout : layouts) {
-    Shape shape = ShapeUtil::MakeShapeWithLayout(
-        primitive_util::NativeToPrimitiveType<uint32>(), dimensions, layout);
+    Shape shape = ShapeUtil::MakeShapeWithDenseLayout(
+        primitive_util::NativeToPrimitiveType<uint32_t>(), dimensions, layout);
 
     auto source = Literal::CreateFromShape(shape);
     const int64_t zero_base[] = {0, 0, 0, 0};
     const int64_t step[] = {1, 1, 1, 1};
-    uint32 seqnr = 0;
+    uint32_t seqnr = 0;
     auto init_proc = [&](absl::Span<const int64_t> indexes) {
       source.Set(indexes, ++seqnr);
       return true;
@@ -1078,8 +1121,8 @@ TEST_F(LiteralUtilTest, CopySliceFrom) {
       std::copy(indexes.begin(), indexes.end(), blank_indexes.begin());
       std::transform(blank_indexes.begin(), blank_indexes.end(), dest_base,
                      blank_indexes.begin(), std::plus<int64_t>());
-      auto bval = blank.Get<uint32>(blank_indexes);
-      matched = (bval != 0 && bval == source.Get<uint32>(source_indexes));
+      auto bval = blank.Get<uint32_t>(blank_indexes);
+      matched = (bval != 0 && bval == source.Get<uint32_t>(source_indexes));
       return matched;
     };
 
@@ -1090,16 +1133,16 @@ TEST_F(LiteralUtilTest, CopySliceFrom) {
 }
 
 TEST_F(LiteralUtilTest, CopyFromScalars) {
-  auto zero = LiteralUtil::CreateR0<uint32>(0);
-  auto nine = LiteralUtil::CreateR0<uint32>(9);
+  auto zero = LiteralUtil::CreateR0<uint32_t>(0);
+  auto nine = LiteralUtil::CreateR0<uint32_t>(9);
   TF_EXPECT_OK(zero.CopyFrom(nine));
   EXPECT_EQ(zero, nine);
 
-  auto vect = LiteralUtil::CreateR1<uint32>({3, 4, 9, 12, 5, 17, 21});
+  auto vect = LiteralUtil::CreateR1<uint32_t>({3, 4, 9, 12, 5, 17, 21});
   TF_EXPECT_OK(zero.CopySliceFrom(vect, {5}, {}, {}));
-  EXPECT_EQ(zero.Get<uint32>({}), 17);
+  EXPECT_EQ(zero.Get<uint32_t>({}), 17);
   TF_EXPECT_OK(vect.CopySliceFrom(zero, {}, {4}, {}));
-  EXPECT_EQ(vect.Get<uint32>({4}), 17);
+  EXPECT_EQ(vect.Get<uint32_t>({4}), 17);
 }
 
 TEST_F(LiteralUtilTest, CopyFromAndToZeroElement) {
@@ -1155,20 +1198,20 @@ TEST_F(LiteralUtilTest, CopyFromArrays) {
 TEST_F(LiteralUtilTest, CopyFromTuples) {
   auto matrix = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   Literal nil_literal(ShapeUtil::MakeNil());
-  Literal inner_elements[] = {LiteralUtil::CreateR0<int32>(42),
+  Literal inner_elements[] = {LiteralUtil::CreateR0<int32_t>(42),
                               LiteralUtil::CreateR1<double>({23.0, 44.0})};
   Literal inner_tuple = LiteralUtil::MakeTuple(
       {&inner_elements[0], &inner_elements[1], &nil_literal});
   Literal nested_tuple = LiteralUtil::MakeTuple({&matrix, &inner_tuple});
   // Create a tuple the same shape as the inner tuple of nested_tuple but with
   // different values..
-  Literal int32_minus5 = LiteralUtil::CreateR0<int32>(-5);
+  Literal int32_minus5 = LiteralUtil::CreateR0<int32_t>(-5);
   Literal double_2_4 = LiteralUtil::CreateR1<double>({2.0, 4.0});
   Literal tuple =
       LiteralUtil::MakeTuple({&int32_minus5, &double_2_4, &nil_literal});
 
   EXPECT_EQ(matrix, LiteralSlice(nested_tuple, {0}));
-  EXPECT_EQ(nested_tuple.Get<int32>({}, {1, 0}), 42);
+  EXPECT_EQ(nested_tuple.Get<int32_t>({}, {1, 0}), 42);
   EXPECT_EQ(nested_tuple.Get<double>({0}, {1, 1}), 23.0);
   EXPECT_EQ(nested_tuple.Get<double>({1}, {1, 1}), 44.0);
 
@@ -1181,24 +1224,24 @@ TEST_F(LiteralUtilTest, CopyFromTuples) {
   EXPECT_EQ(matrix, LiteralSlice(nested_tuple, {0}));
 
   // The tuple element should have been copied from 'tuple'.
-  EXPECT_EQ(nested_tuple.Get<int32>({}, {1, 0}), -5);
+  EXPECT_EQ(nested_tuple.Get<int32_t>({}, {1, 0}), -5);
   EXPECT_EQ(nested_tuple.Get<double>({0}, {1, 1}), 2.0);
   EXPECT_EQ(nested_tuple.Get<double>({1}, {1, 1}), 4.0);
 }
 TEST_F(LiteralUtilTest, CopyBetweenSameTuple) {
-  Literal elements[] = {LiteralUtil::CreateR0<int32>(-2),
-                        LiteralUtil::CreateR0<int32>(4)};
+  Literal elements[] = {LiteralUtil::CreateR0<int32_t>(-2),
+                        LiteralUtil::CreateR0<int32_t>(4)};
   Literal tuple = LiteralUtil::MakeTuple({&elements[0], &elements[1]});
 
-  EXPECT_EQ(tuple.Get<int32>({}, {0}), -2);
-  EXPECT_EQ(tuple.Get<int32>({}, {1}), 4);
+  EXPECT_EQ(tuple.Get<int32_t>({}, {0}), -2);
+  EXPECT_EQ(tuple.Get<int32_t>({}, {1}), 4);
 
   // Copy from one element to the other.
   TF_ASSERT_OK(tuple.CopyFrom(tuple, /*dest_shape_index=*/{1},
                               /*src_shape_index=*/{0}));
 
-  EXPECT_EQ(tuple.Get<int32>({}, {0}), -2);
-  EXPECT_EQ(tuple.Get<int32>({}, {1}), -2);
+  EXPECT_EQ(tuple.Get<int32_t>({}, {0}), -2);
+  EXPECT_EQ(tuple.Get<int32_t>({}, {1}), -2);
 }
 
 TEST_F(LiteralUtilTest, CopyFromDifferentShapes) {
@@ -1251,24 +1294,24 @@ TEST_F(LiteralUtilTest, Populate) {
       {{6, 11, 5, 17}, {3, 2, 0, 1}},
   };
   for (const auto& data : populate_data) {
-    Shape shape = ShapeUtil::MakeShapeWithLayout(
-        primitive_util::NativeToPrimitiveType<uint32>(), data.dimensions,
+    Shape shape = ShapeUtil::MakeShapeWithDenseLayout(
+        primitive_util::NativeToPrimitiveType<uint32_t>(), data.dimensions,
         data.layout);
     Literal literal(shape);
-    auto generator = [&](absl::Span<const int64_t> indexes) -> uint32 {
+    auto generator = [&](absl::Span<const int64_t> indexes) -> uint32_t {
       // Offsets from linear index just to avoid R0 literals to be initialized
       // with zero.
       return IndexUtil::MultidimensionalIndexToLinearIndex(literal.shape(),
                                                            indexes) +
              17;
     };
-    TF_EXPECT_OK(literal.Populate<uint32>(generator));
+    TF_EXPECT_OK(literal.Populate<uint32_t>(generator));
 
     std::vector<int64_t> zero_base(data.dimensions.size(), 0);
     std::vector<int64_t> step(data.dimensions.size(), 1);
     bool matched = true;
     auto check_function = [&](absl::Span<const int64_t> indexes) {
-      auto value = literal.Get<uint32>(indexes);
+      auto value = literal.Get<uint32_t>(indexes);
       matched = matched && (value == generator(indexes));
       return matched;
     };
@@ -1293,25 +1336,26 @@ TEST_F(LiteralUtilTest, PopulateParallel) {
       {{6, 11, 5, 17}, {3, 2, 0, 1}},
   };
   for (const auto& data : populate_data) {
-    Shape shape = ShapeUtil::MakeShapeWithLayout(
-        primitive_util::NativeToPrimitiveType<uint32>(), data.dimensions,
+    Shape shape = ShapeUtil::MakeShapeWithDenseLayout(
+        primitive_util::NativeToPrimitiveType<uint32_t>(), data.dimensions,
         data.layout);
     Literal literal(shape);
-    auto generator = [&](absl::Span<const int64_t> indexes) -> uint32 {
+    auto generator = [&](absl::Span<const int64_t> indexes,
+                         int /*thread_id*/) -> uint32_t {
       // Offsets from linear index just to avoid R0 literals to be initialized
       // with zero.
       return IndexUtil::MultidimensionalIndexToLinearIndex(literal.shape(),
                                                            indexes) +
              17;
     };
-    TF_EXPECT_OK(literal.PopulateParallel<uint32>(generator));
+    TF_EXPECT_OK(literal.PopulateParallel<uint32_t>(generator));
 
     std::vector<int64_t> zero_base(data.dimensions.size(), 0);
     std::vector<int64_t> step(data.dimensions.size(), 1);
     bool matched = true;
     auto check_function = [&](absl::Span<const int64_t> indexes) {
-      auto value = literal.Get<uint32>(indexes);
-      matched = matched && (value == generator(indexes));
+      auto value = literal.Get<uint32_t>(indexes);
+      matched = matched && (value == generator(indexes, /*thread_id=*/-1));
       return matched;
     };
     ShapeUtil::ForEachIndex(literal.shape(), zero_base, data.dimensions, step,
@@ -1322,12 +1366,12 @@ TEST_F(LiteralUtilTest, PopulateParallel) {
 
 TEST_F(LiteralUtilTest, ConvertR4) {
   // clang-format off
-  auto original = LiteralUtil::CreateR4WithLayout<int8>({{
+  auto original = LiteralUtil::CreateR4WithLayout<int8_t>({{
      {{10, 11, 12, 13}, {14, 15, 16, 17}},
      {{18, 19, 20, 21}, {22, 23, 24, 25}},
      {{26, 27, 28, 29}, {30, 31, 32, 33}},
   }}, layout_r4_dim0major_);
-  auto expected = LiteralUtil::CreateR4WithLayout<uint32>({{
+  auto expected = LiteralUtil::CreateR4WithLayout<uint32_t>({{
      {{10, 11, 12, 13}, {14, 15, 16, 17}},
      {{18, 19, 20, 21}, {22, 23, 24, 25}},
      {{26, 27, 28, 29}, {30, 31, 32, 33}},
@@ -1340,27 +1384,27 @@ TEST_F(LiteralUtilTest, ConvertR4) {
 
 TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
   // clang-format off
-  auto s8 = LiteralUtil::CreateR4WithLayout<int8>({{
+  auto s8 = LiteralUtil::CreateR4WithLayout<int8_t>({{
     {{10, 0, 12, 0}, {0, 15, 0, 17}},
     {{0, 19, 0, 21}, {22, 0, 24, 0}},
     {{26, 0, 28, 0}, {0, 31, 0, 33}},
   }}, layout_r4_dim0major_);
-  auto s16 = LiteralUtil::CreateR4WithLayout<int16>({{
+  auto s16 = LiteralUtil::CreateR4WithLayout<int16_t>({{
     {{10, 0, 12, 0}, {0, 15, 0, 17}},
     {{0, 19, 0, 21}, {22, 0, 24, 0}},
     {{26, 0, 28, 0}, {0, 31, 0, 33}},
   }}, layout_r4_dim0major_);
-  auto s32 = LiteralUtil::CreateR4WithLayout<int32>({{
+  auto s32 = LiteralUtil::CreateR4WithLayout<int32_t>({{
     {{10, 0, 12, 0}, {0, 15, 0, 17}},
     {{0, 19, 0, 21}, {22, 0, 24, 0}},
     {{26, 0, 28, 0}, {0, 31, 0, 33}},
   }}, layout_r4_dim0major_);
-  auto u16 = LiteralUtil::CreateR4WithLayout<uint16>({{
+  auto u16 = LiteralUtil::CreateR4WithLayout<uint16_t>({{
     {{10, 0, 12, 0}, {0, 15, 0, 17}},
     {{0, 19, 0, 21}, {22, 0, 24, 0}},
     {{26, 0, 28, 0}, {0, 31, 0, 33}},
   }}, layout_r4_dim0major_);
-  auto u32 = LiteralUtil::CreateR4WithLayout<uint32>({{
+  auto u32 = LiteralUtil::CreateR4WithLayout<uint32_t>({{
     {{10, 0, 12, 0}, {0, 15, 0, 17}},
     {{0, 19, 0, 21}, {22, 0, 24, 0}},
     {{26, 0, 28, 0}, {0, 31, 0, 33}},
@@ -1380,7 +1424,7 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
     {{false, true, false, true}, {true, false, true, false}},
     {{true, false, true, false}, {false, true, false, true}},
   }}, layout_r4_dim0major_);
-  auto int32_pred = LiteralUtil::CreateR4WithLayout<int32>({{
+  auto int32_pred = LiteralUtil::CreateR4WithLayout<int32_t>({{
     {{1, 0, 1, 0}, {0, 1, 0, 1}},
     {{0, 1, 0, 1}, {1, 0, 1, 0}},
     {{1, 0, 1, 0}, {0, 1, 0, 1}},
@@ -1423,89 +1467,138 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
   }}, layout_r4_dim0major_);  // clang-format on
   Literal conv;
 
-  conv = s8.Convert(U16).ConsumeValueOrDie();
+  conv = s8.Convert(U16).value();
   EXPECT_EQ(conv, u16);
 
-  conv = s8.Convert(S16).ConsumeValueOrDie();
+  conv = s8.Convert(S16).value();
   EXPECT_EQ(conv, s16);
 
-  conv = s8.Convert(U32).ConsumeValueOrDie();
+  conv = s8.Convert(U32).value();
   EXPECT_EQ(conv, u32);
 
-  conv = s8.Convert(S32).ConsumeValueOrDie();
+  conv = s8.Convert(S32).value();
   EXPECT_EQ(conv, s32);
 
-  conv = s8.Convert(U64).ConsumeValueOrDie();
+  conv = s8.Convert(U64).value();
   EXPECT_EQ(conv, u64);
 
-  conv = s8.Convert(S64).ConsumeValueOrDie();
+  conv = s8.Convert(S64).value();
   EXPECT_EQ(conv, s64);
 
-  conv = s8.Convert(PRED).ConsumeValueOrDie();
+  conv = s8.Convert(PRED).value();
   EXPECT_EQ(conv, pred);
 
-  conv = bf16.Convert(S32).ConsumeValueOrDie();
+  conv = bf16.Convert(S32).value();
   EXPECT_EQ(conv, s32);
 
-  conv = bf16.Convert(F32).ConsumeValueOrDie();
+  conv = bf16.Convert(F32).value();
   EXPECT_EQ(conv, f32);
 
-  conv = pred.Convert(S32).ConsumeValueOrDie();
+  conv = pred.Convert(S32).value();
   EXPECT_EQ(conv, int32_pred);
 
-  conv = f32.Convert(S32).ConsumeValueOrDie();
+  conv = f32.Convert(S32).value();
   EXPECT_EQ(conv, s32);
 
-  conv = f64.Convert(S32).ConsumeValueOrDie();
+  conv = f64.Convert(S32).value();
   EXPECT_EQ(conv, s32);
 
-  conv = s32.Convert(F32).ConsumeValueOrDie();
+  conv = s32.Convert(F32).value();
   EXPECT_EQ(conv, f32);
 
-  conv = f32.Convert(F16).ConsumeValueOrDie();
+  conv = f32.Convert(F16).value();
   EXPECT_EQ(conv, f16);
 
-  conv = f64.Convert(F16).ConsumeValueOrDie();
+  conv = f64.Convert(F16).value();
   EXPECT_EQ(conv, f16);
 
-  conv = s32.Convert(F16).ConsumeValueOrDie();
+  conv = s32.Convert(F16).value();
   EXPECT_EQ(conv, f16);
 
-  conv = u32.Convert(F16).ConsumeValueOrDie();
+  conv = u32.Convert(F16).value();
   EXPECT_EQ(conv, f16);
 
-  conv = s32.Convert(C64).ConsumeValueOrDie();
+  conv = s32.Convert(C64).value();
   EXPECT_EQ(conv, c64);
 
-  conv = f16.Convert(C64).ConsumeValueOrDie();
+  conv = f16.Convert(C64).value();
   EXPECT_EQ(conv, c64);
 
-  conv = s32.Convert(S16).ConsumeValueOrDie();
+  conv = s32.Convert(S16).value();
   EXPECT_EQ(conv, s16);
 
-  conv = s32.Convert(U16).ConsumeValueOrDie();
+  conv = s32.Convert(U16).value();
   EXPECT_EQ(conv, u16);
 
-  conv = s32.Convert(C128).ConsumeValueOrDie();
+  conv = s32.Convert(C128).value();
   EXPECT_EQ(conv, c128);
 
-  conv = f16.Convert(C128).ConsumeValueOrDie();
+  conv = f16.Convert(C128).value();
   EXPECT_EQ(conv, c128);
 
-  EXPECT_EQ(s32.Convert(TUPLE).status().code(),
-            tensorflow::error::UNIMPLEMENTED);
-  EXPECT_EQ(c64.Convert(F32).status().code(), tensorflow::error::UNIMPLEMENTED);
-  EXPECT_EQ(c64.Convert(S32).status().code(), tensorflow::error::UNIMPLEMENTED);
-  EXPECT_EQ(c128.Convert(F32).status().code(),
-            tensorflow::error::UNIMPLEMENTED);
-  EXPECT_EQ(c128.Convert(S32).status().code(),
-            tensorflow::error::UNIMPLEMENTED);
+  EXPECT_EQ(s32.Convert(TUPLE).status().code(), tsl::error::UNIMPLEMENTED);
+  EXPECT_EQ(c64.Convert(F32).status().code(), tsl::error::UNIMPLEMENTED);
+  EXPECT_EQ(c64.Convert(S32).status().code(), tsl::error::UNIMPLEMENTED);
+  EXPECT_EQ(c128.Convert(F32).status().code(), tsl::error::UNIMPLEMENTED);
+  EXPECT_EQ(c128.Convert(S32).status().code(), tsl::error::UNIMPLEMENTED);
+}
+
+TEST_F(LiteralUtilTest, ConvertIfTypesMatchF8) {
+  auto s8 = LiteralUtil::CreateR2WithLayout<int8_t>({{0, 1}, {2, 3}},
+                                                    layout_r2_dim0major_);
+  auto f32 = LiteralUtil::CreateR2WithLayout<float>({{0., 1.}, {2., 3.}},
+                                                    layout_r2_dim0major_);
+  auto c128 = LiteralUtil::CreateR2WithLayout<complex128>({{0., 1.}, {2., 3.}},
+                                                          layout_r2_dim0major_);
+  using e5 = tsl::float8_e5m2;
+  auto f8e5m2 = LiteralUtil::CreateR2WithLayout<e5>(
+      {{e5{0.}, e5{1.}}, {e5{2.}, e5{3.}}}, layout_r2_dim0major_);
+  using e4 = tsl::float8_e4m3fn;
+  auto f8e4m3 = LiteralUtil::CreateR2WithLayout<e4>(
+      {{e4{0.}, e4{1.}}, {e4{2.}, e4{3.}}}, layout_r2_dim0major_);
+  Literal conv;
+
+  conv = s8.Convert(F8E5M2).value();
+  EXPECT_EQ(conv, f8e5m2);
+
+  conv = f32.Convert(F8E5M2).value();
+  EXPECT_EQ(conv, f8e5m2);
+
+  conv = f8e4m3.Convert(F8E5M2).value();
+  EXPECT_EQ(conv, f8e5m2);
+
+  conv = s8.Convert(F8E4M3FN).value();
+  EXPECT_EQ(conv, f8e4m3);
+
+  conv = f32.Convert(F8E4M3FN).value();
+  EXPECT_EQ(conv, f8e4m3);
+
+  conv = f8e5m2.Convert(F8E4M3FN).value();
+  EXPECT_EQ(conv, f8e4m3);
+
+  conv = f8e5m2.Convert(S8).value();
+  EXPECT_EQ(conv, s8);
+
+  conv = f8e5m2.Convert(F32).value();
+  EXPECT_EQ(conv, f32);
+
+  conv = f8e5m2.Convert(C128).value();
+  EXPECT_EQ(conv, c128);
+
+  conv = f8e4m3.Convert(S8).value();
+  EXPECT_EQ(conv, s8);
+
+  conv = f8e4m3.Convert(F32).value();
+  EXPECT_EQ(conv, f32);
+
+  conv = f8e4m3.Convert(C128).value();
+  EXPECT_EQ(conv, c128);
 }
 
 TEST_F(LiteralUtilTest, BitcastConvert) {
-  Literal original = LiteralUtil::CreateR1<uint32>(
-      {absl::bit_cast<uint32>(2.5f), absl::bit_cast<uint32>(-42.25f),
-       absl::bit_cast<uint32>(100.f), 0xbeef});
+  Literal original = LiteralUtil::CreateR1<uint32_t>(
+      {absl::bit_cast<uint32_t>(2.5f), absl::bit_cast<uint32_t>(-42.25f),
+       absl::bit_cast<uint32_t>(100.f), 0xbeef});
   Literal expected = LiteralUtil::CreateR1<float>(
       {2.5f, -42.25f, 100.0f, absl::bit_cast<float>(0xbeef)});
   TF_ASSERT_OK_AND_ASSIGN(Literal converted,
@@ -1514,11 +1607,11 @@ TEST_F(LiteralUtilTest, BitcastConvert) {
 }
 
 TEST_F(LiteralUtilTest, BitcastConvertBetweenInvalidTypes) {
-  Literal literal = LiteralUtil::CreateR0<uint32>(1234);
+  Literal literal = LiteralUtil::CreateR0<uint32_t>(1234);
   Status status =
       literal.BitcastConvert(ShapeUtil::ChangeElementType(literal.shape(), F64))
           .status();
-  EXPECT_NE(Status::OK(), status);
+  EXPECT_NE(OkStatus(), status);
   EXPECT_TRUE(absl::StrContains(status.error_message(),
                                 "to a shape of different size"));
 }
@@ -1526,7 +1619,6 @@ TEST_F(LiteralUtilTest, BitcastConvertBetweenInvalidTypes) {
 // Sets the layout of the given ShapeProto to the default.
 void SetDefaultLayoutOnProto(ShapeProto* shape_proto) {
   CHECK(ShapeUtil::IsArrayPrimitiveType(shape_proto->element_type()));
-  shape_proto->mutable_layout()->set_format(DENSE);
   auto* minor_to_major =
       shape_proto->mutable_layout()->mutable_minor_to_major();
   minor_to_major->Resize(shape_proto->dimensions_size(), 0);
@@ -1604,8 +1696,8 @@ TEST_F(LiteralUtilTest, CopyFromProto_f16) {
 }
 
 TEST_F(LiteralUtilTest, CopyFromProto_u16) {
-  uint16 u1(0xabcd);
-  uint16 u2(0x1234);
+  uint16_t u1(0xabcd);
+  uint16_t u2(0x1234);
 
   const unsigned char uint16_vals[8] = {0xcd, 0xab, 0x34, 0x12,
                                         0x34, 0x12, 0xcd, 0xab};
@@ -1617,7 +1709,7 @@ TEST_F(LiteralUtilTest, CopyFromProto_u16) {
   p.clear_u16s();
   p.set_u16s(uint16_vals, 8);
   TF_ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(p));
-  auto r = literal.data<uint16>();
+  auto r = literal.data<uint16_t>();
   ASSERT_EQ(4, r.size());
   EXPECT_EQ(u1, r[0]);
   EXPECT_EQ(u2, r[1]);
@@ -1736,11 +1828,11 @@ TEST_F(LiteralUtilTest, LiteralMove) {
 TEST_F(LiteralUtilTest, DecomposeTuple) {
   Literal nil_literal(ShapeUtil::MakeNil());
   Literal inner_elements[] = {
-      LiteralUtil::CreateR0<int32>(42),
+      LiteralUtil::CreateR0<int32_t>(42),
       LiteralUtil::CreateR1<double>({23.0, 44.0}),
   };
   Literal tuple_elements[] = {
-      LiteralUtil::CreateR2<int32>({{1, 2}, {3, 4}}),
+      LiteralUtil::CreateR2<int32_t>({{1, 2}, {3, 4}}),
       LiteralUtil::MakeTuple(
           {&inner_elements[0], &inner_elements[1], &nil_literal}),
   };
@@ -1755,17 +1847,17 @@ TEST_F(LiteralUtilTest, DecomposeTuple) {
 
   EXPECT_TRUE(ShapeUtil::Compatible(elements[0].shape(),
                                     ShapeUtil::MakeShape(S32, {2, 2})));
-  EXPECT_EQ(elements[0].Get<int32>({0, 0}), 1);
-  EXPECT_EQ(elements[0].Get<int32>({0, 1}), 2);
-  EXPECT_EQ(elements[0].Get<int32>({1, 0}), 3);
-  EXPECT_EQ(elements[0].Get<int32>({1, 1}), 4);
+  EXPECT_EQ(elements[0].Get<int32_t>({0, 0}), 1);
+  EXPECT_EQ(elements[0].Get<int32_t>({0, 1}), 2);
+  EXPECT_EQ(elements[0].Get<int32_t>({1, 0}), 3);
+  EXPECT_EQ(elements[0].Get<int32_t>({1, 1}), 4);
 
   EXPECT_TRUE(ShapeUtil::Compatible(
       elements[1].shape(),
       ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(S32, {}),
                                  ShapeUtil::MakeShape(F64, {2}),
                                  ShapeUtil::MakeNil()})));
-  EXPECT_EQ(elements[1].Get<int32>({}, /*shape_index=*/{0}), 42);
+  EXPECT_EQ(elements[1].Get<int32_t>({}, /*shape_index=*/{0}), 42);
   EXPECT_EQ(elements[1].Get<double>({0}, /*shape_index=*/{1}), 23.0);
   EXPECT_EQ(elements[1].Get<double>({1}, /*shape_index=*/{1}), 44.0);
 
@@ -1781,9 +1873,9 @@ TEST_F(LiteralUtilTest, DecomposeEmptyTuple) {
 TEST_F(LiteralUtilTest, MoveIntoTuple) {
   std::vector<Literal> elements;
   elements.push_back(LiteralUtil::CreateR0<float>(1.0));
-  elements.push_back(LiteralUtil::CreateR1<int32>({4, 8}));
+  elements.push_back(LiteralUtil::CreateR1<int32_t>({4, 8}));
   std::vector<Literal> inner_elements;
-  inner_elements.push_back(LiteralUtil::CreateR0<int32>(42));
+  inner_elements.push_back(LiteralUtil::CreateR0<int32_t>(42));
   inner_elements.push_back(LiteralUtil::CreateR1<double>({23.0, 44.0}));
   elements.push_back(
       LiteralUtil::MakeTuple({&inner_elements[0], &inner_elements[1]}));
@@ -1793,9 +1885,9 @@ TEST_F(LiteralUtilTest, MoveIntoTuple) {
   ASSERT_EQ(ShapeUtil::TupleElementCount(literal.shape()), 3);
 
   EXPECT_EQ(literal.Get<float>({}, /*shape_index=*/{0}), 1.0);
-  EXPECT_EQ(literal.Get<int32>({0}, /*shape_index=*/{1}), 4);
-  EXPECT_EQ(literal.Get<int32>({1}, /*shape_index=*/{1}), 8);
-  EXPECT_EQ(literal.Get<int32>({}, /*shape_index=*/{2, 0}), 42);
+  EXPECT_EQ(literal.Get<int32_t>({0}, /*shape_index=*/{1}), 4);
+  EXPECT_EQ(literal.Get<int32_t>({1}, /*shape_index=*/{1}), 8);
+  EXPECT_EQ(literal.Get<int32_t>({}, /*shape_index=*/{2, 0}), 42);
   EXPECT_EQ(literal.Get<double>({0}, /*shape_index=*/{2, 1}), 23.0);
   EXPECT_EQ(literal.Get<double>({1}, /*shape_index=*/{2, 1}), 44.0);
 
@@ -1859,9 +1951,9 @@ TEST_F(LiteralUtilTest, CreateFromShapeZeroInitialized) {
   EXPECT_TRUE(scalar_f32.IsAll(0));
 
   Literal vector_s32 = Literal::CreateFromShape(ShapeUtil::MakeShape(S32, {3}));
-  EXPECT_EQ(vector_s32.Get<int32>({0}), 0);
-  EXPECT_EQ(vector_s32.Get<int32>({1}), 0);
-  EXPECT_EQ(vector_s32.Get<int32>({2}), 0);
+  EXPECT_EQ(vector_s32.Get<int32_t>({0}), 0);
+  EXPECT_EQ(vector_s32.Get<int32_t>({1}), 0);
+  EXPECT_EQ(vector_s32.Get<int32_t>({2}), 0);
   EXPECT_TRUE(vector_s32.IsAll(0));
 
   Literal tuple = Literal::CreateFromShape(ShapeUtil::MakeTupleShape(
@@ -1882,8 +1974,8 @@ TEST_F(LiteralUtilTest, ProtoRoundTrip) {
   // Test serializing then deserializing a Literal through a proto.
   auto one_f32 = LiteralUtil::CreateR0<float>(1.0);
   auto two_f32 = LiteralUtil::CreateR0<float>(2.0);
-  auto vector_int8 = LiteralUtil::CreateR1<int8>({-128, 0, 2, 4, 7, 56, 127});
-  auto vector_uint8 = LiteralUtil::CreateR1<uint8>({128, 0, 2, 56, 127, 255});
+  auto vector_int8 = LiteralUtil::CreateR1<int8_t>({-128, 0, 2, 4, 7, 56, 127});
+  auto vector_uint8 = LiteralUtil::CreateR1<uint8_t>({128, 0, 2, 56, 127, 255});
   auto vector_c64 = LiteralUtil::CreateR1<complex64>({{1.0, 2.0}, {3.0, 4.0}});
   auto vector_c128 =
       LiteralUtil::CreateR1<complex128>({{1.0, 2.0}, {3.0, 4.0}});
@@ -1891,6 +1983,12 @@ TEST_F(LiteralUtilTest, ProtoRoundTrip) {
       {bfloat16{-1.0}, bfloat16{2.0}, bfloat16{-3.0}});
   auto vector_half =
       LiteralUtil::CreateR1<half>({half{10.0}, half{20.0}, half{-30.0}});
+  using e5 = tsl::float8_e5m2;
+  auto vector_f8e5m2 =
+      LiteralUtil::CreateR1<e5>({e5{10.0}, e5{20.0}, e5{-32.0}});
+  using e4 = tsl::float8_e4m3fn;
+  auto vector_f8e4m3 =
+      LiteralUtil::CreateR1<e4>({e4{10.0}, e4{20.0}, e4{-32.0}});
   auto matrix_pred =
       LiteralUtil::CreateR2<bool>({{true, false, true}, {false, false, true}});
   auto tuple = LiteralUtil::MakeTuple(
@@ -1900,7 +1998,7 @@ TEST_F(LiteralUtilTest, ProtoRoundTrip) {
       LiteralUtil::MakeTuple({&tuple, &vector_bfloat16, &tuple, &nil_literal});
 
   auto to_from_proto = [](const Literal& literal) -> Literal {
-    return Literal::CreateFromProto(literal.ToProto()).ValueOrDie();
+    return Literal::CreateFromProto(literal.ToProto()).value();
   };
 
   EXPECT_EQ(one_f32, to_from_proto(one_f32));
@@ -1909,6 +2007,8 @@ TEST_F(LiteralUtilTest, ProtoRoundTrip) {
   EXPECT_EQ(vector_c64, to_from_proto(vector_c64));
   EXPECT_EQ(vector_c128, to_from_proto(vector_c128));
   EXPECT_EQ(vector_bfloat16, to_from_proto(vector_bfloat16));
+  EXPECT_EQ(vector_f8e5m2, to_from_proto(vector_f8e5m2));
+  EXPECT_EQ(vector_f8e4m3, to_from_proto(vector_f8e4m3));
   EXPECT_EQ(matrix_pred, to_from_proto(matrix_pred));
   EXPECT_EQ(tuple, to_from_proto(tuple));
   EXPECT_EQ(nested_tuple, to_from_proto(nested_tuple));
@@ -2080,13 +2180,13 @@ TEST_F(LiteralUtilTest, BroadcastVectorToMatrix1) {
 }
 
 TEST_F(LiteralUtilTest, BroadcastScalarToMatrix) {
-  Literal literal = LiteralUtil::CreateR0<int32>(9);
+  Literal literal = LiteralUtil::CreateR0<int32_t>(9);
   TF_ASSERT_OK_AND_ASSIGN(
       Literal broadcasted_literal,
       literal.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(S32, {2, 2}),
                         /*dimensions=*/{}));
   EXPECT_EQ(broadcasted_literal,
-            LiteralUtil::CreateR2<int32>({{9, 9}, {9, 9}}));
+            LiteralUtil::CreateR2<int32_t>({{9, 9}, {9, 9}}));
 }
 
 TEST_F(LiteralUtilTest, DynamicBroadcast) {
@@ -2130,19 +2230,320 @@ TEST_F(LiteralUtilTest, IsEqualAt) {
   Literal c2 = LiteralUtil::CreateR0<double>(10);
   EXPECT_TRUE(c2.IsEqualAt({}, val_double));
   EXPECT_TRUE(c2.IsEqualAt({}, val_integral));
-  complex128 val_complex = {10, 0};
-  EXPECT_TRUE(c2.IsEqualAt({}, val_complex));
-  EXPECT_TRUE(c1.IsEqualAt({}, val_complex));
-  Literal c3 = LiteralUtil::CreateR0<complex128>(val_complex);
+  Literal c3 =
+      LiteralUtil::CreateR0<tsl::float8_e5m2>(tsl::float8_e5m2{val_double});
   EXPECT_TRUE(c3.IsEqualAt({}, val_double));
   EXPECT_TRUE(c3.IsEqualAt({}, val_integral));
+  complex128 val_complex = {10, 0};
+  EXPECT_TRUE(c1.IsEqualAt({}, val_complex));
+  EXPECT_TRUE(c2.IsEqualAt({}, val_complex));
   EXPECT_TRUE(c3.IsEqualAt({}, val_complex));
-  EXPECT_FALSE(c3.IsEqualAt({}, std::numeric_limits<double>::infinity()));
+  Literal c4 = LiteralUtil::CreateR0<complex128>(val_complex);
+  EXPECT_TRUE(c4.IsEqualAt({}, val_double));
+  EXPECT_TRUE(c4.IsEqualAt({}, val_integral));
+  EXPECT_TRUE(c4.IsEqualAt({}, val_complex));
+  EXPECT_FALSE(c4.IsEqualAt({}, std::numeric_limits<double>::infinity()));
   complex128 val_true_complex = {10, 3};
   complex64 val_smaller_complex = {10, 3};
-  Literal c4 = LiteralUtil::CreateR0<complex128>(val_true_complex);
-  EXPECT_TRUE(c4.IsEqualAt({}, val_true_complex));
-  EXPECT_TRUE(c4.IsEqualAt({}, val_smaller_complex));
+  Literal c5 = LiteralUtil::CreateR0<complex128>(val_true_complex);
+  EXPECT_TRUE(c5.IsEqualAt({}, val_true_complex));
+  EXPECT_TRUE(c5.IsEqualAt({}, val_smaller_complex));
+}
+
+TEST_F(LiteralUtilTest, CreateFromShapeWithUnknownLeafArrays) {
+  Literal c1 = Literal::CreateFromShapeWithUnknownLeafArrays(
+      ShapeUtil::MakeShape(F32, {4, 4}));
+  EXPECT_FALSE(c1.IsKnown());
+}
+
+TEST_F(LiteralUtilTest, CreatePartiallyKnownTuple) {
+  Literal c1 = Literal::CreateFromShapeWithUnknownLeafArrays(
+      ShapeUtil::MakeShape(F32, {4, 4}));
+  Literal c2 = LiteralUtil::CreateR0<int>(10);
+  Literal c3 = LiteralUtil::MakeTuple({&c1, &c2});
+  Literal c4 = LiteralUtil::CreateR0<int>(100);
+  Literal c5 = LiteralUtil::MakeTuple({&c4, &c3});
+  EXPECT_FALSE(c5.IsKnown());
+}
+
+TEST_F(LiteralUtilTest, CopyFromPartiallyKnownTuple) {
+  Literal c1 = Literal::CreateFromShapeWithUnknownLeafArrays(
+      ShapeUtil::MakeShape(F32, {4, 4}));
+  Literal c2 = LiteralUtil::CreateR0<int>(10);
+  Literal c3 = LiteralUtil::MakeTuple({&c1, &c2});
+  Literal c4 = LiteralUtil::CreateR0<int>(100);
+  Literal c5 = LiteralUtil::MakeTuple({&c4, &c3});
+  Literal c6 = Literal::CreateFromShape(c5.shape());
+  TF_ASSERT_OK(
+      c6.CopyFrom(c5, /*dest_shape_index=*/{1}, /*src_shape_index=*/{1}));
+  EXPECT_FALSE(c6.IsKnown());
+}
+
+TEST_F(LiteralUtilTest, CopyFromPartiallyKnownTupleUnknownTupleElement) {
+  Literal c1 = Literal::CreateFromShapeWithUnknownLeafArrays(
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4, 4}),
+                                 ShapeUtil::MakeShape(F32, {4, 4})}));
+  Literal c2 = LiteralUtil::CreateR0<int>(10);
+  Literal c3 = LiteralUtil::MakeTuple({&c1, &c2});
+  Literal c4 = LiteralUtil::CreateR0<int>(100);
+  Literal c5 = LiteralUtil::MakeTuple({&c4, &c3});
+  Literal c6 = Literal::CreateFromShape(c5.shape());
+  Literal c1_copy = Literal::CreateFromShape(c1.shape());
+  Literal c2_copy = Literal::CreateFromShape(c2.shape());
+  TF_ASSERT_OK(
+      c6.CopyFrom(c5, /*dest_shape_index=*/{1}, /*src_shape_index=*/{1}));
+  TF_ASSERT_OK(c1_copy.CopyFrom(c6, /*dest_shape_index=*/{},
+                                /*src_shape_index=*/{1, 0}));
+  TF_ASSERT_OK(c2_copy.CopyFrom(c6, /*dest_shape_index=*/{},
+                                /*src_shape_index=*/{1, 1}));
+  EXPECT_FALSE(c6.IsKnown());
+  EXPECT_FALSE(c1_copy.IsKnown());
+  EXPECT_TRUE(c2_copy.IsKnown());
+}
+
+TEST_F(LiteralUtilTest, PopulateR1Dynamic) {
+  auto literal = Literal(ShapeUtil::MakeShape(U32, {20}));
+  literal.SetDynamicSize(0, 10);
+  literal.PopulateR1<uint32_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  std::string expected = "u32[<=20](10) {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}";
+  EXPECT_EQ(expected, literal.ToString());
+}
+
+TEST_F(LiteralUtilTest, PopulateR2DynamicDim0) {
+  auto literal = Literal(ShapeUtil::MakeShape(U32, {5, 2}));
+  literal.SetDynamicSize(0, 3);
+  literal.PopulateR2<uint32_t>({{1, 2}, {3, 4}, {5, 6}});
+  std::string expected = R"(u32[<=5,2](3,2) {
+  { 1, 2 },
+  { 3, 4 },
+  { 5, 6 }
+})";
+  EXPECT_EQ(expected, literal.ToString());
+}
+
+TEST_F(LiteralUtilTest, PopulateR2DynamicDim1) {
+  auto literal = Literal(ShapeUtil::MakeShape(U32, {2, 5}));
+  literal.SetDynamicSize(1, 3);
+  literal.PopulateR2<uint32_t>({{1, 2, 3}, {4, 5, 6}});
+  std::string expected = R"(u32[2,<=5](2,3) {
+  { 1, 2, 3 },
+  { 4, 5, 6 }
+})";
+  EXPECT_EQ(expected, literal.ToString());
+}
+
+TEST_F(LiteralUtilTest, PopulateFrom1DArray) {
+  auto literal = Literal(ShapeUtil::MakeShape(F32, {20}));
+  literal.SetDynamicSize(0, 10);
+  xla::Array<float_t> array({10});
+  for (int i = 0; i < 10; i++) {
+    array(i) = static_cast<float_t>(i);
+  }
+  literal.PopulateFromArray(array);
+  std::string expected = "f32[<=20](10) {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}";
+  EXPECT_EQ(expected, literal.ToString());
+}
+
+TEST_F(LiteralUtilTest, PopulateFromArrayDynamicDim0) {
+  auto literal = Literal(ShapeUtil::MakeShape(F32, {5, 5}));
+  const uint32_t rows = 3;
+  const uint32_t cols = 5;
+  literal.SetDynamicSize(0, rows);
+  xla::Array<float_t> array({rows, cols});
+  for (int i = 0; i < rows; i++) {
+    for (int j = 0; j < cols; j++) {
+      array(i, j) = static_cast<float_t>(j);
+    }
+  }
+  literal.PopulateFromArray(array);
+  std::string expected = R"(f32[<=5,5](3,5) {
+  { 0, 1, 2, 3, 4 },
+  { 0, 1, 2, 3, 4 },
+  { 0, 1, 2, 3, 4 }
+})";
+  EXPECT_EQ(expected, literal.ToString());
+}
+
+TEST_F(LiteralUtilTest, PopulateFromArrayDynamicDim1) {
+  auto literal = Literal(ShapeUtil::MakeShape(F32, {5, 5}));
+  const uint32_t rows = 5;
+  const uint32_t cols = 3;
+  literal.SetDynamicSize(1, cols);
+  xla::Array<float_t> array({rows, cols});
+  for (int i = 0; i < rows; i++) {
+    for (int j = 0; j < cols; j++) {
+      array(i, j) = static_cast<float_t>(j);
+    }
+  }
+  literal.PopulateFromArray(array);
+  std::string expected = R"(f32[5,<=5](5,3) {
+  { 0, 1, 2 },
+  { 0, 1, 2 },
+  { 0, 1, 2 },
+  { 0, 1, 2 },
+  { 0, 1, 2 }
+})";
+  EXPECT_EQ(expected, literal.ToString());
+}
+
+TEST_F(LiteralUtilTest, PopulateR2FromArray2DDynamicDim0) {
+  auto literal = Literal(ShapeUtil::MakeShape(F32, {5, 5}));
+  const uint32_t rows = 3;
+  const uint32_t cols = 5;
+  literal.SetDynamicSize(0, rows);
+  xla::Array2D<float_t> array({rows, cols});
+  for (int i = 0; i < rows; i++) {
+    for (int j = 0; j < cols; j++) {
+      array(i, j) = static_cast<float_t>(j);
+    }
+  }
+  literal.PopulateR2FromArray2D(array);
+  std::string expected = R"(f32[<=5,5](3,5) {
+  { 0, 1, 2, 3, 4 },
+  { 0, 1, 2, 3, 4 },
+  { 0, 1, 2, 3, 4 }
+})";
+  EXPECT_EQ(expected, literal.ToString());
+}
+
+TEST_F(LiteralUtilTest, PopulateR2FromArray2DDynamicDim1) {
+  auto literal = Literal(ShapeUtil::MakeShape(F32, {5, 5}));
+  const uint32_t rows = 5;
+  const uint32_t cols = 3;
+  literal.SetDynamicSize(1, cols);
+  xla::Array2D<float_t> array({rows, cols});
+  for (int i = 0; i < rows; i++) {
+    for (int j = 0; j < cols; j++) {
+      array(i, j) = static_cast<float_t>(j);
+    }
+  }
+  literal.PopulateR2FromArray2D(array);
+  std::string expected = R"(f32[5,<=5](5,3) {
+  { 0, 1, 2 },
+  { 0, 1, 2 },
+  { 0, 1, 2 },
+  { 0, 1, 2 },
+  { 0, 1, 2 }
+})";
+  EXPECT_EQ(expected, literal.ToString());
+}
+
+TEST_F(LiteralUtilTest, PopulateR2FromArray2DDynamicDim0Dim1) {
+  auto literal = Literal(ShapeUtil::MakeShape(F32, {5, 5}));
+  const uint32_t rows = 3;
+  const uint32_t cols = 2;
+  literal.SetDynamicSize(0, rows);
+  literal.SetDynamicSize(1, cols);
+  xla::Array2D<float_t> array({rows, cols});
+  for (int i = 0; i < rows; i++) {
+    for (int j = 0; j < cols; j++) {
+      array(i, j) = static_cast<float_t>(j);
+    }
+  }
+  literal.PopulateR2FromArray2D(array);
+  std::string expected = R"(f32[<=5,<=5](3,2) {
+  { 0, 1 },
+  { 0, 1 },
+  { 0, 1 }
+})";
+  EXPECT_EQ(expected, literal.ToString());
+}
+
+TEST_F(LiteralUtilTest, PopulateR3FromArray3DDynamicDim0) {
+  auto literal = Literal(ShapeUtil::MakeShape(S32, {3, 3, 3}));
+  const uint32_t rows = 2;
+  const uint32_t cols = 3;
+  const uint32_t depth = 3;
+  literal.SetDynamicSize(0, rows);
+  xla::Array3D<int32_t> array({rows, cols, depth});
+  for (int i = 0; i < rows; i++) {
+    for (int j = 0; j < cols; j++) {
+      for (int k = 0; k < depth; k++) {
+        array(i, j, k) = static_cast<int32_t>(k);
+      }
+    }
+  }
+  literal.PopulateR3FromArray3D(array);
+  std::string expected = R"(s32[<=3,3,3](2,3,3) {
+{
+  { 0, 1, 2 },
+  { 0, 1, 2 },
+  { 0, 1, 2 }
+},
+{
+  { 0, 1, 2 },
+  { 0, 1, 2 },
+  { 0, 1, 2 }
+}
+})";
+  EXPECT_EQ(expected, literal.ToString());
+}
+
+TEST_F(LiteralUtilTest, PopulateR3FromArray3DDynamicDim1) {
+  auto literal = Literal(ShapeUtil::MakeShape(S32, {3, 3, 3}));
+  const uint32_t rows = 3;
+  const uint32_t cols = 2;
+  const uint32_t depth = 3;
+  literal.SetDynamicSize(1, cols);
+  xla::Array3D<int32_t> array({rows, cols, depth});
+  for (int i = 0; i < rows; i++) {
+    for (int j = 0; j < cols; j++) {
+      for (int k = 0; k < depth; k++) {
+        array(i, j, k) = static_cast<int32_t>(k);
+      }
+    }
+  }
+  literal.PopulateR3FromArray3D(array);
+  std::string expected = R"(s32[3,<=3,3](3,2,3) {
+{
+  { 0, 1, 2 },
+  { 0, 1, 2 }
+},
+{
+  { 0, 1, 2 },
+  { 0, 1, 2 }
+},
+{
+  { 0, 1, 2 },
+  { 0, 1, 2 }
+}
+})";
+  EXPECT_EQ(expected, literal.ToString());
+}
+
+TEST_F(LiteralUtilTest, PopulateR3FromArray3DDynamicDim2) {
+  auto literal = Literal(ShapeUtil::MakeShape(S32, {3, 3, 3}));
+  const uint32_t rows = 3;
+  const uint32_t cols = 3;
+  const uint32_t depth = 2;
+  literal.SetDynamicSize(2, depth);
+  xla::Array3D<int32_t> array({rows, cols, depth});
+  for (int i = 0; i < rows; i++) {
+    for (int j = 0; j < cols; j++) {
+      for (int k = 0; k < depth; k++) {
+        array(i, j, k) = static_cast<int32_t>(k);
+      }
+    }
+  }
+  literal.PopulateR3FromArray3D(array);
+  std::string expected = R"(s32[3,3,<=3](3,3,2) {
+{
+  { 0, 1 },
+  { 0, 1 },
+  { 0, 1 }
+},
+{
+  { 0, 1 },
+  { 0, 1 },
+  { 0, 1 }
+},
+{
+  { 0, 1 },
+  { 0, 1 },
+  { 0, 1 }
+}
+})";
+  EXPECT_EQ(expected, literal.ToString());
 }
 
 }  // namespace

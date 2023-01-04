@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_OPS_RAGGED_TO_DENSE_UTIL_H_
-#define TENSORFLOW_CORE_OPS_RAGGED_TO_DENSE_UTIL_H_
+#ifndef TENSORFLOW_CORE_UTIL_RAGGED_TO_DENSE_UTIL_H_
+#define TENSORFLOW_CORE_UTIL_RAGGED_TO_DENSE_UTIL_H_
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -57,4 +57,4 @@ Status ValidateDefaultValueShape(const TensorShapeProto& default_value_shape,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_OPS_RAGGED_TO_DENSE_UTIL_H_
+#endif  // TENSORFLOW_CORE_UTIL_RAGGED_TO_DENSE_UTIL_H_

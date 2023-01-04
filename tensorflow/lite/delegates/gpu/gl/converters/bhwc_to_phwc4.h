@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_CONVERTERS_BHWC_TO_PHWC4_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_GL_CONVERTERS_BHWC_TO_PHWC4_H_
 
+#include <utility>
+
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"

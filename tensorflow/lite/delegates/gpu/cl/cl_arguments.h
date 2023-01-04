@@ -35,19 +35,9 @@ class CLArguments : public ArgumentsBinder {
   CLArguments() = default;
 
   absl::Status Init(const GpuInfo& gpu_info,
-                    const std::map<std::string, std::string>& linkables,
                     CLContext* context, Arguments* args, std::string* code);
   absl::Status Init(const GpuInfo& gpu_info, Arguments* args,
                     CLContext* context);
-
-  // Temporary, will be resolved later
-  void MoveObjectRefsIn(Arguments* args) {
-    object_refs_ = std::move(args->object_refs_);
-  }
-  void MoveObjectRefsOut(Arguments* args) {
-    args->object_refs_ = std::move(object_refs_);
-  }
-  void CopyScalarValues(Arguments* args) const;
 
   // Move only
   CLArguments(CLArguments&& args) = default;
@@ -62,23 +52,13 @@ class CLArguments : public ArgumentsBinder {
 
   absl::Status Bind(cl_kernel kernel, int offset = 0);
 
+  // Compares Int, Float, Half names to values mapping with the mapping in
+  // `other` and returns true if they are the same.
+  bool HasEqualScalarArguments(const CLArguments& other) const;
+
  private:
   absl::Status AllocateObjects(const Arguments& args, CLContext* context);
-  absl::Status AddObjectArgs(const GpuInfo& gpu_info, Arguments* args);
-
-  absl::Status ResolveSelectorsPass(
-      const GpuInfo& gpu_info, const Arguments& args,
-      const std::map<std::string, std::string>& linkables, std::string* code);
-  absl::Status ResolveSelector(
-      const GpuInfo& gpu_info, const Arguments& args,
-      const std::map<std::string, std::string>& linkables,
-      const std::string& object_name, const std::string& selector,
-      const std::vector<std::string>& function_args,
-      const std::vector<std::string>& template_args, std::string* result);
-  void ResolveObjectNames(const std::string& object_name,
-                          const std::vector<std::string>& member_names,
-                          std::string* code);
-  void ResolveArgsPass(std::string* code);
+  absl::Status AddObjectArgs(const GpuInfo& gpu_info, const Arguments& args);
 
   void CopyArguments(const Arguments& args, bool use_f32_for_halfs);
   void RenameArgumentsInCode(std::string* code);
@@ -93,8 +73,7 @@ class CLArguments : public ArgumentsBinder {
                       const GPUImageBufferDescriptor& desc);
   void AddCustomMemory(const std::string& name,
                        const GPUCustomMemoryDescriptor& desc);
-  void AddGPUResources(const std::string& name, const GPUResources& resources,
-                       Arguments* args);
+  void AddGPUResources(const std::string& name, const GPUResources& resources);
   absl::Status SetObjectsResources(const Arguments& args);
   absl::Status SetGPUResources(const std::string& name,
                                const GPUResourcesWithValue& resources);
@@ -116,6 +95,11 @@ class CLArguments : public ArgumentsBinder {
 
     // offset to shared storage.
     uint32_t offset = -1;
+
+    bool operator==(const IntValue& other) const {
+      return value == other.value && offset == other.offset &&
+             active == other.active;
+    }
   };
   std::map<std::string, IntValue> int_values_;
   std::vector<int32_t> shared_int4s_data_;
@@ -129,6 +113,11 @@ class CLArguments : public ArgumentsBinder {
 
     // offset to shared storage.
     uint32_t offset = -1;
+
+    bool operator==(const FloatValue& other) const {
+      return value == other.value && offset == other.offset &&
+             active == other.active;
+    }
   };
   std::map<std::string, FloatValue> float_values_;
   std::vector<float> shared_float4s_data_;
@@ -145,6 +134,11 @@ class CLArguments : public ArgumentsBinder {
 
     // offset to shared uniform storage.
     uint32_t offset = -1;
+
+    bool operator==(const HalfValue& other) const {
+      return value == other.value && offset == other.offset &&
+             active == other.active;
+    }
   };
   std::map<std::string, HalfValue> half_values_;
   std::vector<half> shared_half4s_data_;

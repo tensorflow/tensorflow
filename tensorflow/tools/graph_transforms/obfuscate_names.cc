@@ -89,7 +89,7 @@ Status ObfuscateNames(const GraphDef& input_graph_def,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("obfuscate_names", ObfuscateNames);

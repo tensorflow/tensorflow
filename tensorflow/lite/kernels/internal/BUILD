@@ -2,9 +2,10 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_arm_config_settings", "tflite_portable_test_suite_combined")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -150,6 +151,13 @@ config_setting(
 )
 
 config_setting(
+    name = "ios_sim_arm64",
+    values = {
+        "cpu": "ios_sim_arm64",
+    },
+)
+
+config_setting(
     name = "k8",
     values = {
         "cpu": "k8",
@@ -242,6 +250,7 @@ selects.config_setting_group(
         ":ios_armv7",
         ":ios_arm64",
         ":ios_arm64e",
+        ":ios_sim_arm64",
         ":darwin_arm64",
         ":raspberry_pi_with_neon",
     ] + tflite_extra_arm_config_settings(),
@@ -263,7 +272,6 @@ cc_library(
 
 cc_library(
     name = "optimized_base",
-    srcs = [],
     hdrs = [
         "optimized/batch_matmul.h",
         "optimized/depthwiseconv_3x3_filter_common.h",
@@ -279,32 +287,42 @@ cc_library(
         "optimized/integer_ops/depthwise_conv_hybrid.h",
         "optimized/integer_ops/depthwise_conv_hybrid_3x3_filter.h",
         "optimized/integer_ops/fully_connected.h",
+        "optimized/integer_ops/leaky_relu.h",
+        "optimized/integer_ops/lut.h",
         "optimized/integer_ops/mean.h",
         "optimized/integer_ops/mul.h",
         "optimized/integer_ops/pooling.h",
+        "optimized/integer_ops/sub.h",
         "optimized/integer_ops/transpose_conv.h",
         "optimized/optimized_ops.h",
+        "optimized/optimized_ops_utils.h",
+        "optimized/reduce.h",
         "optimized/resize_bilinear.h",
         "optimized/sparse_ops/fully_connected.h",
+        "reduce_common.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+    defines = ["EIGEN_NEON_GEBP_NR=4"],
     deps = [
+        ":avx2_quantization_utils",
         ":common",
         ":compatibility",
         ":cppmath",
         ":cpu_check",
         ":quantization_util",
+        ":reduce_utils",
         ":reference_base",
         ":strided_slice_logic",
         ":tensor",
         ":tensor_utils",
         ":transpose_utils",
         ":types",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
+        "//tensorflow/lite/kernels:kernel_util",
         "//third_party/eigen3",
         "@gemmlowp//:fixedpoint",
         "@ruy//ruy/profiler:instrumentation",
@@ -337,7 +355,7 @@ cc_library(
         ":tensor_utils",
         ":transpose_utils",
         ":types",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
@@ -359,8 +377,8 @@ cc_library(
         ":common",
         ":optimized_base",
         ":types",
-        "//tensorflow/core/kernels:eigen_spatial_convolutions-inl",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/tsl/framework/convolution:eigen_spatial_convolutions-inl",
         "//third_party/eigen3",
     ],
 )
@@ -406,9 +424,45 @@ cc_library(
 cc_test(
     name = "quantization_util_test",
     srcs = ["quantization_util_test.cc"],
+    defines = [
+        "TFLITE_SINGLE_ROUNDING=0",
+    ],
     deps = [
         ":common",
         ":quantization_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "quantization_util_single_rounding",
+    srcs = ["quantization_util.cc"],
+    hdrs = ["quantization_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    defines = [
+        "TFLITE_SINGLE_ROUNDING=1",
+    ],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
+    deps = [
+        ":compatibility",
+        ":cppmath",
+        ":types",
+    ],
+)
+
+cc_test(
+    name = "quantization_util_test_single_rounding",
+    srcs = ["quantization_util_test.cc"],
+    defines = [
+        "TFLITE_SINGLE_ROUNDING=1",
+    ],
+    deps = [
+        ":common",
+        ":quantization_util_single_rounding",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -485,6 +539,7 @@ cc_library(
         "reference/floor_mod.h",
         "reference/fully_connected.h",
         "reference/gather.h",
+        "reference/gelu.h",
         "reference/hard_swish.h",
         "reference/integer_ops/add.h",
         "reference/integer_ops/conv.h",
@@ -492,6 +547,7 @@ cc_library(
         "reference/integer_ops/fully_connected.h",
         "reference/integer_ops/l2normalization.h",
         "reference/integer_ops/logistic.h",
+        "reference/integer_ops/lut.h",
         "reference/integer_ops/mean.h",
         "reference/integer_ops/mul.h",
         "reference/integer_ops/pooling.h",
@@ -501,6 +557,7 @@ cc_library(
         "reference/leaky_relu.h",
         "reference/logistic.h",
         "reference/log_softmax.h",
+        "reference/lstm_cell.h",
         "reference/maximum_minimum.h",
         "reference/mul.h",
         "reference/neg.h",
@@ -511,10 +568,12 @@ cc_library(
         "reference/process_broadcast_shapes.h",
         "reference/quantize.h",
         "reference/reduce.h",
+        "reduce_common.h",
         "reference/requantize.h",
         "reference/resize_bilinear.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
+        "reference/select.h",
         "reference/slice.h",
         "reference/softmax.h",
         "reference/space_to_batch_nd.h",
@@ -548,15 +607,15 @@ cc_library(
     deps = [
         ":common",
         ":compatibility",
+        ":constants",
         ":cppmath",
-        ":portable_tensor_utils",
         ":quantization_util",
         ":strided_slice_logic",
         ":tensor",
         ":tensor_utils",
         ":types",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
@@ -603,6 +662,7 @@ cc_library(
         "reference/legacy_reference_ops.h",
         "reference/log_softmax.h",
         "reference/logistic.h",
+        "reference/lstm_cell.h",
         "reference/maximum_minimum.h",
         "reference/mul.h",
         "reference/neg.h",
@@ -616,6 +676,7 @@ cc_library(
         "reference/requantize.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
+        "reference/select.h",
         "reference/slice.h",
         "reference/softmax.h",
         "reference/space_to_batch_nd.h",
@@ -648,8 +709,9 @@ cc_library(
         ":tensor_utils",
         ":types",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:op_macros",
+        "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//third_party/eigen3",
         "@gemmlowp",
         "@ruy//ruy/profiler:instrumentation",
@@ -672,7 +734,7 @@ cc_library(
     deps = [
         ":types",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -692,7 +754,7 @@ cc_library(
     deps = [
         ":types",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -754,11 +816,23 @@ cc_library(
         ":cpu_check",
         ":neon_tensor_utils",
         ":portable_tensor_utils",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:op_macros",
         "@ruy//ruy/profiler:instrumentation",
+    ],
+)
+
+cc_library(
+    name = "avx2_quantization_utils",
+    hdrs = [
+        "optimized/avx2_quantization_utils.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        ":compatibility",
     ],
 )
 
@@ -770,8 +844,17 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":tensor_utils",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
+)
+
+cc_library(
+    name = "reduce_utils",
+    hdrs = [
+        "optimized/reduce_utils.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
 )
 
 # Audio support classes imported directly from TensorFlow.
@@ -800,19 +883,19 @@ cc_library(
 cc_library(
     name = "tensor_utils",
     srcs = [
+        "portable_tensor_utils.cc",
         "tensor_utils.cc",
     ],
     hdrs = [
         "portable_tensor_utils.h",
         "tensor_utils.h",
-        "tensor_utils_common.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE,
     deps = [
         ":cpu_check",
         "//third_party/eigen3",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ] + selects.with_or({
         (
             ":arm_any",
@@ -858,7 +941,7 @@ cc_test(
         ":common",
         ":quantization_util",
         ":tensor_utils",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
@@ -997,7 +1080,6 @@ cc_test(
     srcs = [
         "strided_slice_logic_test.cc",
     ],
-    shard_count = 4,
     deps = [
         ":strided_slice_logic",
         "@com_google_googletest//:gtest_main",
@@ -1087,6 +1169,13 @@ cc_library(
     }),
 )
 
+cc_library(
+    name = "constants",
+    hdrs = ["constants.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+)
+
 cc_test(
     name = "batch_to_space_nd_test",
     srcs = ["batch_to_space_nd_test.cc"],
@@ -1124,6 +1213,38 @@ cc_test(
         ":reference_base",
         ":types",
         "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "avx2_quantization_utils_test",
+    srcs = ["optimized/avx2_quantization_utils_test.cc"],
+    copts = select(
+        {
+            ":haswell": [
+                "-mavx2",
+            ],
+            ":k8": [
+                "-mavx2",
+            ],
+            "//conditions:default": [
+            ],
+        },
+    ),
+    deps = [
+        ":avx2_quantization_utils",
+        ":common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "reduce_utils_test",
+    srcs = ["optimized/reduce_utils_test.cc"],
+    deps = [
+        ":common",
+        ":reduce_utils",
         "@com_google_googletest//:gtest_main",
     ],
 )

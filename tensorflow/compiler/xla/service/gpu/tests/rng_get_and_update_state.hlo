@@ -3,15 +3,12 @@
 HloModule TestModule
 
 // CHECK-LABEL: entry:
-// CHECK:         %[[VAL_0:.*]] = getelementptr inbounds i8, i8* %[[VAL_1:.*]], i64 0
-// CHECK:         %[[VAL_2:.*]] = bitcast i8* %[[VAL_0]] to [2 x i64]*
-// CHECK:         %[[VAL_3:.*]] = load i128, i128 addrspace(1)* @rng_state, align 16
-// CHECK:         %[[VAL_4:.*]] = add i128 %[[VAL_3]], 131072
-// CHECK:         store i128 %[[VAL_4]], i128 addrspace(1)* @rng_state, align 16
-// CHECK:         %[[VAL_5:.*]] = bitcast [2 x i64]* %[[VAL_2]] to i64*
-// CHECK:         %[[VAL_6:.*]] = getelementptr inbounds i64, i64* %[[VAL_5]], i64 0
-// CHECK:         %[[VAL_7:.*]] = bitcast i64* %[[VAL_6]] to i128*
-// CHECK:         store i128 %[[VAL_3]], i128* %[[VAL_7]], align 16
+// CHECK:         %[[VAL_0:.*]] = getelementptr inbounds i8, ptr %[[VAL_1:.*]], i64 0
+// CHECK:         %[[VAL_2:.*]] = load i128, ptr addrspace(1) @rng_state, align 16
+// CHECK:         %[[VAL_3:.*]] = add i128 %[[VAL_2]], 131072
+// CHECK:         store i128 %[[VAL_3]], ptr addrspace(1) @rng_state, align 16
+// CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i64, ptr %[[VAL_0]], i64 0
+// CHECK:         store i128 %[[VAL_2]], ptr %[[VAL_4]], align 16
 // CHECK:         ret void
 ENTRY Test {
   ROOT %rng-get-and-update-state = u64[2]{0} rng-get-and-update-state(), delta=131072

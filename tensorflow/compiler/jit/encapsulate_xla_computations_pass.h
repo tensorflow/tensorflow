@@ -24,9 +24,13 @@
 #ifndef TENSORFLOW_COMPILER_JIT_ENCAPSULATE_XLA_COMPUTATIONS_PASS_H_
 #define TENSORFLOW_COMPILER_JIT_ENCAPSULATE_XLA_COMPUTATIONS_PASS_H_
 
+#include <functional>
+#include <string>
+
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -51,6 +55,28 @@ class EncapsulateXlaComputationsPass : public GraphOptimizationPass {
   //    operators. We also convert the XlaClusterOutput output nodes of the
   //    function call into the outputs of the XlaLaunch operator.
   static Status BuildXlaLaunchOps(Graph* graph);
+
+  struct XlaFunctionInfo {
+    int variable_start_index = -1;
+    std::string function_name;
+  };
+
+  // We need to introduce this version to adapt to the output of gpu inference
+  // converter. The single argument overload version calls this function.
+  //
+  // When add_edges_to_output_of_downstream_nodes is true, the output edges of
+  // the xla_launch_node's immediate downstream nodes would be attached to the
+  // generated xla node. For example, if the original graph is
+  // StatefulPartitionedCall{_xla_compile_id=1} -> XlaClusterOutput -> NodeA
+  // The output graph of this function would look like the following when
+  // add_edges_to_output_of_downstream_nodes is true:
+  // XlaLaunch -> NodeA
+  static Status BuildXlaLaunchOps(
+      Graph* graph,
+      const std::function<StatusOr<bool>(const Node&)>& is_xla_launch_node,
+      const std::function<StatusOr<XlaFunctionInfo>(const Node&)>&
+          get_xla_function_info,
+      bool add_edges_to_output_of_downstream_nodes);
 };
 
 }  // namespace tensorflow

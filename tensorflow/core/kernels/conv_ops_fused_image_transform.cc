@@ -344,7 +344,7 @@ class FusedResizeAndPadConvFunctor {
     std::function<Status(Im2ColBufferResource<T1, kMaxChunkSize>**)> creator =
         [](Im2ColBufferResource<T1, kMaxChunkSize>** resource) {
           *resource = new Im2ColBufferResource<T1, kMaxChunkSize>();
-          return Status::OK();
+          return OkStatus();
         };
     OP_REQUIRES_OK(context, context->resource_manager()->LookupOrCreate(
                                 "Conv2d", "im2col_buffer",
@@ -382,7 +382,7 @@ class FusedResizeAndPadConvFunctor {
         resize_creator =
             [](Im2ColBufferResource<T1, kResizeCacheSize>** resource) {
               *resource = new Im2ColBufferResource<T1, kResizeCacheSize>();
-              return Status::OK();
+              return OkStatus();
             };
     OP_REQUIRES_OK(context, context->resource_manager()->LookupOrCreate(
                                 "Conv2d", "resize_cache",
@@ -667,8 +667,11 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
       st.height_scale = 1.0f;
       st.width_scale = 1.0f;
     }
-    TensorShape resized_shape(
-        {input.dim_size(0), st.out_height, st.out_width, input.dim_size(3)});
+    TensorShape resized_shape;
+    OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(
+                                {input.dim_size(0), st.out_height, st.out_width,
+                                 input.dim_size(3)},
+                                &resized_shape));
     int paddings_index;
     int filter_index;
     if (DoResize) {
@@ -736,7 +739,8 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
                                     before, ", ", after, " not less than ",
                                     resized_shape.dim_size(d)));
       }
-      padded_shape.AddDim(before + resized_shape.dim_size(d) + after);
+      OP_REQUIRES_OK(context, padded_shape.AddDimWithStatus(
+                                  before + resized_shape.dim_size(d) + after));
     }
 
     OP_REQUIRES(
@@ -827,8 +831,10 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    GetWindowedOutputSize(padded_cols, filter_cols, stride_cols,
                                          padding_, &out_cols, &pad_cols));
-    TensorShape out_shape =
-        ShapeFromFormat(FORMAT_NHWC, batch, out_rows, out_cols, out_depth);
+    TensorShape out_shape;
+    OP_REQUIRES_OK(context,
+                   ShapeFromFormatWithStatus(FORMAT_NHWC, batch, out_rows,
+                                             out_cols, out_depth, &out_shape));
     OP_REQUIRES(context, (out_shape.num_elements() > 0),
                 errors::InvalidArgument("Output tensor can't be empty"));
 

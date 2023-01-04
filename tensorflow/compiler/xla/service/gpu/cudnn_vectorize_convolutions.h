@@ -27,13 +27,13 @@ namespace gpu {
 // Changes the shape of cudnn convolutions to allow faster "vectorized"
 // algorithms.
 //
-// On sm61+ will convert int8 convolutions from
+// On sm61+ will convert int8_t convolutions from
 //
 //   - [N, C, H, W] to [N, C/4, H, W, 4],
 //
 // assuming C is divisible by 4.
 //
-// On sm75+ will convert int8 convolutions from
+// On sm75+ will convert int8_t convolutions from
 //
 //   - [N, C, H, W]      to [N, C/32, H, W, 32],
 //   - [N, C/4, H, W, 4] to [N, C/32, H, W, 32], and
@@ -52,7 +52,10 @@ class CudnnVectorizeConvolutions : public HloModulePass {
   absl::string_view name() const override {
     return "cudnn_vectorize_convolutions";
   }
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   se::CudaComputeCapability compute_capability_;

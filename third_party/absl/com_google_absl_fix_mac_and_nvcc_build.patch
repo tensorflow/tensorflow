@@ -1,5 +1,5 @@
 diff --git a/absl/container/internal/compressed_tuple.h b/absl/container/internal/compressed_tuple.h
-index 02bfd03..d25d96d 100644
+index 5ebe1649..01db7134 100644
 --- a/absl/container/internal/compressed_tuple.h
 +++ b/absl/container/internal/compressed_tuple.h
 @@ -32,7 +32,6 @@
@@ -233,10 +233,10 @@ index 02bfd03..d25d96d 100644
  };
  
 diff --git a/absl/time/internal/cctz/BUILD.bazel b/absl/time/internal/cctz/BUILD.bazel
-index 45a9529..57c954e 100644
+index 7304d40d..75d8e086 100644
 --- a/absl/time/internal/cctz/BUILD.bazel
 +++ b/absl/time/internal/cctz/BUILD.bazel
-@@ -74,15 +74,6 @@ cc_library(
+@@ -72,15 +72,6 @@ cc_library(
          "include/cctz/time_zone.h",
          "include/cctz/zone_info_source.h",
      ],
@@ -252,23 +252,16 @@ index 45a9529..57c954e 100644
      visibility = ["//visibility:public"],
      deps = [
          ":civil_time",
-diff --git a/absl/copts/configure_copts.bzl b/absl/copts/configure_copts.bzl
-index 45a9529..57c954e 100644
---- a/absl/copts/configure_copts.bzl	2021-09-01 19:31:28.871165726 +0300
-+++ b/absl/copts/configure_copts.bzl	2021-09-01 19:31:37.702095719 +0300
-@@ -50,6 +50,7 @@
-     ":cpu_x64_windows": ABSL_RANDOM_HWAES_MSVC_X64_FLAGS,
-     ":cpu_k8": ABSL_RANDOM_HWAES_X64_FLAGS,
-     ":cpu_ppc": ["-mcrypto"],
-+    ":cpu_aarch64": ABSL_RANDOM_HWAES_ARM64_FLAGS,
+diff --git a/absl/base/config.h b/absl/base/config.h
+index 8533aea..07b4e80 100644
+--- a/absl/base/config.h.orig
++++ b/absl/base/config.h
+@@ -906,7 +906,7 @@ static_assert(ABSL_INTERNAL_INLINE_NAMESPACE_STR[0] != 'h' ||
+ // SIMD).
+ #ifdef ABSL_INTERNAL_HAVE_ARM_NEON
+ #error ABSL_INTERNAL_HAVE_ARM_NEON cannot be directly set
+-#elif defined(__ARM_NEON)
++#elif defined(__ARM_NEON) && !defined(__CUDACC__)
+ #define ABSL_INTERNAL_HAVE_ARM_NEON 1
+ #endif
  
-     # Supported by default or unsupported.
-     "//conditions:default": [],
-@@ -70,6 +71,7 @@
-         "darwin",
-         "x64_windows_msvc",
-         "x64_windows",
-+        "aarch64",
-     ]
-     for cpu in cpu_configs:
-         native.config_setting(

@@ -35,7 +35,7 @@ def encode_resource_handle(resource_handle):
                     dtype=dtypes.np_resource)
 
 
-class TensorHandle(object):
+class TensorHandle:
   """Represents a handle for a live tensor in a session."""
 
   def __init__(self, handle, dtype, session):

@@ -44,7 +44,7 @@ void init_basic_classes(py::module& m) {
            py::return_value_policy::reference)
       .def("end", &mlir::Block::end)
       .def("addArgument", [](mlir::Block& block, mlir::Type type) {
-        return block.addArgument(type, llvm::None);
+        return block.addArgument(type, block.getParent()->getLoc());
       });
 
   py::class_<mlir::Value>(m, "Value").def("getType", &mlir::Value::getType);

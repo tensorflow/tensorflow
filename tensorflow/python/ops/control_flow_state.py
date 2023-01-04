@@ -101,7 +101,7 @@ def _GetMaxSizeFromNestedMaximumIterations(value, while_ctxt):
   return max_size
 
 
-class _GradLoopState(object):
+class _GradLoopState:
   """The state used for constructing the gradient graph for a while loop.
 
   We create a _GradLoopState for each while loop in forward and its
@@ -487,7 +487,7 @@ class _GradLoopState(object):
     return real_value
 
 
-class _ControlFlowState(object):
+class _ControlFlowState:
   """Maintain the mapping from the loops to their grad states."""
 
   def __init__(self):

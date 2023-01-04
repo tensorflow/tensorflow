@@ -20,8 +20,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
@@ -34,21 +34,27 @@ class AMDGPUCompiler : public GpuCompiler {
   ~AMDGPUCompiler() override {}
 
   Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      HloModule* hlo_module, se::CudaComputeCapability cuda_compute_capability,
       se::DeviceMemoryAllocator* device_allocator) override;
+
+  Status OptimizeHloPostLayoutAssignment(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      se::DeviceMemoryAllocator* device_allocator,
+      const GpuTargetConfig& gpu_target_config) override;
 
   GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) override;
 
-  StatusOr<std::pair<std::string, std::vector<uint8>>> CompileTargetBinary(
+  StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
-      GpuVersion gpu_version, se::StreamExecutor* stream_exec, bool relocatable,
+      GpuVersion gpu_version, bool relocatable,
       const HloModule* debug_module) override;
 
  private:
   // The parent directory of ROCm-Device-Libs IR libraries.
-  string rocdl_dir_;
+  std::string rocdl_dir_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(AMDGPUCompiler);
+  AMDGPUCompiler(const AMDGPUCompiler&) = delete;
+  AMDGPUCompiler& operator=(const AMDGPUCompiler&) = delete;
 };
 
 }  // namespace gpu

@@ -29,14 +29,14 @@ StatusOr<XlaOp> BroadcastTo(XlaOp input,
                             absl::Span<int64_t const> output_dims) {
   XlaBuilder* builder = input.builder();
   TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
-  absl::Span<int64_t const> input_dims = AsInt64Slice(input_shape.dimensions());
+  absl::Span<int64_t const> input_dims = input_shape.dimensions();
 
   if (input_dims == output_dims) {
     return input;
   }
 
   if (input_dims.size() > output_dims.size()) {
-    return tensorflow::errors::InvalidArgument(
+    return tsl::errors::InvalidArgument(
         "Input shape (", ShapeUtil::HumanString(input_shape),
         ") must have rank less than or equal to the output shape [",
         absl::StrJoin(output_dims, ","), "]");
@@ -50,7 +50,7 @@ StatusOr<XlaOp> BroadcastTo(XlaOp input,
     if (input_it != input_dims.rend()) {
       if (!(*output_it == 0 && *input_it == 0) &&
           !(*input_it != 0 && *output_it % *input_it == 0)) {
-        return tensorflow::errors::InvalidArgument(
+        return tsl::errors::InvalidArgument(
             "Invalid shape broadcast from ",
             ShapeUtil::HumanString(input_shape), " to [",
             absl::StrJoin(output_dims, ","), "]");

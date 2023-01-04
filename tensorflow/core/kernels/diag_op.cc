@@ -52,10 +52,10 @@ class DiagOp : public OpKernel {
         errors::InvalidArgument("Input must be at least rank 1, got 0"));
     TensorShape out_shape;
     for (int i = 0; i < num_dims; ++i) {
-      out_shape.AddDim(diagonal.dim_size(i));
+      OP_REQUIRES_OK(context, out_shape.AddDimWithStatus(diagonal.dim_size(i)));
     }
     for (int i = 0; i < num_dims; ++i) {
-      out_shape.AddDim(diagonal.dim_size(i));
+      OP_REQUIRES_OK(context, out_shape.AddDimWithStatus(diagonal.dim_size(i)));
     }
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context,
@@ -92,7 +92,7 @@ class DiagPartOp : public OpKernel {
 
     TensorShape out_shape;
     for (int i = 0; i < out_dims; ++i) {
-      out_shape.AddDim(tensor.dim_size(i));
+      OP_REQUIRES_OK(context, out_shape.AddDimWithStatus(tensor.dim_size(i)));
     }
 
     Tensor* output = nullptr;
@@ -142,7 +142,7 @@ struct DiagFunctor<CPUDevice, T> {
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers, size, 5 * size,
           subDiag);
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -163,7 +163,7 @@ struct DiagPartFunctor<CPUDevice, T> {
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers, size, 5,
           subDiagPart);
-    return Status::OK();
+    return OkStatus();
   }
 };
 }  // namespace functor

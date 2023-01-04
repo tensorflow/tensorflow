@@ -188,7 +188,7 @@ def inverse(lin_op_a, name=None):
     return inverse_fn(lin_op_a)
 
 
-class RegisterAdjoint(object):
+class RegisterAdjoint:
   """Decorator to register an Adjoint implementation function.
 
   Usage:
@@ -230,7 +230,7 @@ class RegisterAdjoint(object):
     return adjoint_fn
 
 
-class RegisterCholesky(object):
+class RegisterCholesky:
   """Decorator to register a Cholesky implementation function.
 
   Usage:
@@ -272,7 +272,7 @@ class RegisterCholesky(object):
     return cholesky_fn
 
 
-class RegisterMatmul(object):
+class RegisterMatmul:
   """Decorator to register a Matmul implementation function.
 
   Usage:
@@ -318,7 +318,7 @@ class RegisterMatmul(object):
     return matmul_fn
 
 
-class RegisterSolve(object):
+class RegisterSolve:
   """Decorator to register a Solve implementation function.
 
   Usage:
@@ -364,7 +364,7 @@ class RegisterSolve(object):
     return solve_fn
 
 
-class RegisterInverse(object):
+class RegisterInverse:
   """Decorator to register an Inverse implementation function.
 
   Usage:

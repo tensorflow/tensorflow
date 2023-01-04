@@ -38,7 +38,7 @@ class WindowDatasetParams : public DatasetParams {
         shift_(shift),
         stride_(stride),
         drop_remainder_(drop_remainder) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
                                    input_dataset_params.iterator_prefix());
@@ -58,7 +58,7 @@ class WindowDatasetParams : public DatasetParams {
     input_names->emplace_back(WindowDatasetOp::kShift);
     input_names->emplace_back(WindowDatasetOp::kStride);
     input_names->emplace_back(WindowDatasetOp::kDropRemainder);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -66,7 +66,7 @@ class WindowDatasetParams : public DatasetParams {
     attr_vector->emplace_back("output_types", output_dtypes_);
     attr_vector->emplace_back("output_shapes", output_shapes_);
     attr_vector->emplace_back("metadata", "");
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override { return WindowDatasetOp::kDatasetType; }

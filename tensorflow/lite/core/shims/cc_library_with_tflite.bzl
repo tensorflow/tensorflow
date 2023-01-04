@@ -8,6 +8,16 @@ load(
 )
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 
+def _concat(lists):
+    """Concatenate a list of lists, without requiring the inner lists to be iterable.
+
+    This allows the inner lists to be obtained by calls to select().
+    """
+    result = []
+    for selected_list in lists:
+        result = result + selected_list
+    return result
+
 def alias_with_tflite(name, actual, **kwargs):
     """Defines an alias for a target that uses the TFLite shims.
 
@@ -62,6 +72,7 @@ def cc_library_with_tflite(
         tflite_jni_binaries = [],
         deps = [],
         tflite_deps = [],
+        tflite_deps_selects = [],
         **kwargs):
     """Defines a cc_library that uses the TFLite shims.
 
@@ -81,12 +92,39 @@ def cc_library_with_tflite(
       deps: as for cc_library.
       tflite_deps: dependencies on rules that are themselves defined using
         'cc_library_with_tflite'.
+      tflite_deps_selects: A list of dictionaries that will be converted to dependencies
+        with select on rules.
       **kwargs: Additional cc_library parameters.
     """
     native.cc_library(
         name = name,
         srcs = srcs + tflite_jni_binaries,
-        deps = deps + tflite_deps,
+        deps = deps + tflite_deps + _concat([select(map) for map in tflite_deps_selects]),
+        **kwargs
+    )
+
+def cc_library_with_stable_tflite_abi(
+        deps = [],
+        non_stable_abi_deps = [],
+        stable_abi_deps = [],  # @unused
+        **kwargs):
+    """Defines a cc_library that uses the TFLite shims.
+
+    This is a proxy method for cc_library_with_tflite() for targets that use
+    the TFLite shims.
+
+    Args:
+      deps: Same as for cc_library_with_tflite.
+      non_stable_abi_deps: dependencies that will be enabled only when NOT
+        using TFLite with stable ABI.  This should be used for dependencies
+        arising from code inside '#if !TFLITE_WITH_STABLE_ABI'.
+      stable_abi_deps: dependencies that will be enabled only when using TFLite
+        with stable ABI. This should be used for dependencies arising from code
+        inside '#if TFLITE_WITH_STABLE_ABI'.
+      **kwargs: Additional cc_library_with_tflite parameters.
+    """
+    cc_library_with_tflite(
+        deps = deps + non_stable_abi_deps,
         **kwargs
     )
 
@@ -224,6 +262,7 @@ def jni_binary_with_tflite(
 def custom_c_library_with_tflite(
         name,
         models = [],
+        experimental = False,
         **kwargs):
     """Generates a tflite c library, stripping off unused operators.
 
@@ -234,16 +273,29 @@ def custom_c_library_with_tflite(
         models: List of models. This TFLite build will only include
             operators used in these models. If the list is empty, all builtin
             operators are included.
+        experimental: Whether to include experimental APIs or not.
        **kwargs: kwargs to cc_library_with_tflite.
     """
     tflite_custom_c_library(
         name = "%s_c_api" % name,
         models = models,
+        experimental = experimental,
     )
+
+    if experimental:
+        hdrs = [
+            "//tensorflow/lite/core/shims:c/c_api.h",
+            "//tensorflow/lite/core/shims:c/c_api_experimental.h",
+            "//tensorflow/lite/core/shims:c/c_api_opaque.h",
+        ]
+    else:
+        hdrs = [
+            "//tensorflow/lite/core/shims:c/c_api.h",
+        ]
 
     cc_library_with_tflite(
         name = name,
-        hdrs = ["//tensorflow/lite/core/shims:c/c_api.h"],
+        hdrs = hdrs,
         copts = tflite_copts_warnings(),
         deps = [
             ":%s_c_api" % name,

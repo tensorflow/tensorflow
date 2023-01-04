@@ -1,4 +1,4 @@
-# RUN: tf_tfl_translate -tf-input-arrays=input -tf-input-shapes=1,8,8,2 -tf-input-data-types=DT_FLOAT -tf-output-arrays=output_0 -print-function-result-mapping %s -o - 2>&1 | FileCheck %s
+# RUN: tf_tfl_translate -tf-input-arrays=input -tf-input-shapes=1,2,8,2 -tf-input-data-types=DT_FLOAT -tf-output-arrays=output_0 -print-function-result-mapping %s -o - 2>&1 | FileCheck %s
 
 node {
   name: "input"
@@ -17,7 +17,7 @@ node {
           size: 1
         }
         dim {
-          size: 8
+          size: 2
         }
         dim {
           size: 8

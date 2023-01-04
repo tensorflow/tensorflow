@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/device_transform.h"
 
+#include <string>
+#include <utility>
+
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -37,8 +40,8 @@ namespace {
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/generated_transform_patterns.inc"
 }  // namespace
 
-OwningRewritePatternList GetHardwareRewritePatterns(
-    MLIRContext* context, const std::string& hardware) {
+RewritePatternSet GetHardwareRewritePatterns(MLIRContext* context,
+                                             const std::string& hardware) {
   auto* devce_hardware = GetTargetHardware(hardware);
   if (devce_hardware == nullptr) return {context};
   return devce_hardware->GetTransformations(context);
@@ -53,7 +56,7 @@ bool IsSupported(Operation* op, const std::string& hardware) {
 // ================== Convert Quantized Op ============================
 
 // Walk through the func and convert the quantize ops to their float version.
-void ConvertQuantizedOpToFloat(mlir::FuncOp func, OpBuilder* builder) {
+void ConvertQuantizedOpToFloat(mlir::func::FuncOp func, OpBuilder* builder) {
   func.walk([&](Operation* op) {
     // TODO(renjieliu): Find a generic way to deal with const ops.
     if (op->hasTrait<OpTrait::IsTerminator>() ||
@@ -113,7 +116,7 @@ void ConvertQuantizedOpToFloat(mlir::FuncOp func, OpBuilder* builder) {
     state.attributes = op->getAttrs();
     state.successors = op->getSuccessors();
     builder->setInsertionPoint(op);
-    Operation* new_op = builder->createOperation(state);
+    Operation* new_op = builder->create(state);
 
     // Insert quantize ops for every outputs and rewrite.
     for (int i = 0; i < op->getNumResults(); ++i) {
@@ -144,7 +147,7 @@ struct FoldQuantizedI32ToFloat : public OpRewritePattern<TFL::DequantizeOp> {
   LogicalResult matchAndRewrite(TFL::DequantizeOp dequant_op,
                                 PatternRewriter& rewriter) const override {
     // We only fold i32 -> float pattern.
-    auto input = dequant_op.input().getDefiningOp();
+    auto input = dequant_op.getInput().getDefiningOp();
     if (!input) return failure();
 
     auto input_dequant = llvm::dyn_cast_or_null<TFL::QConstOp>(input);
@@ -153,7 +156,7 @@ struct FoldQuantizedI32ToFloat : public OpRewritePattern<TFL::DequantizeOp> {
     if (!IsQI32Type(input_dequant.getType())) return failure();
 
     auto output_type =
-        dequant_op.output().getType().dyn_cast_or_null<ShapedType>();
+        dequant_op.getOutput().getType().dyn_cast_or_null<ShapedType>();
     if (!output_type || !output_type.getElementType().isF32()) return failure();
 
     auto input_type = input_dequant.getType().dyn_cast<ShapedType>();
@@ -165,7 +168,7 @@ struct FoldQuantizedI32ToFloat : public OpRewritePattern<TFL::DequantizeOp> {
     const float scale = q_type.getScale();
     const float zp = q_type.getZeroPoint();
 
-    auto input_values = input_dequant.value();
+    auto input_values = input_dequant.getValue();
 
     // mapValues always takes a function returning APInt, even when the output
     // is actually float.
@@ -203,10 +206,11 @@ struct RemoveUnusedQuant : public OpRewritePattern<TFL::QuantizeOp> {
   }
 };
 
-void OptimizeQuantizedOpToFloat(FuncOp func, MLIRContext* context) {
-  OwningRewritePatternList patterns(func.getContext());
-  patterns.insert<FoldQuantizedI32ToFloat, FoldQuantizeDequantize,
-                  RemoveUnusedQuant>(context);
+void OptimizeQuantizedOpToFloat(func::FuncOp func, MLIRContext* context) {
+  RewritePatternSet patterns(func.getContext());
+  patterns
+      .add<FoldQuantizedI32ToFloat, FoldQuantizeDequantize, RemoveUnusedQuant>(
+          context);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 

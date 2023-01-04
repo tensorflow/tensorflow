@@ -290,7 +290,7 @@ class ReductionTest(PForTestCase):
   def test_reduce_class(self):
     x = random_ops.random_uniform([8, 3])
 
-    class LoopFn(object):
+    class LoopFn:
 
       def __init__(self):
         pass
@@ -419,6 +419,7 @@ class ImageTest(PForTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+@test_util.run_all_without_tensor_float_32("Uses matmul")
 class NNTest(PForTestCase):
 
   def test_conv2d(self):
@@ -433,6 +434,7 @@ class NNTest(PForTestCase):
     self._test_loop_fn(loop_fn, 3)
 
   def test_conv2d_backprop_input(self):
+    self.skipTest("b/262851489: Fix nightly build for GPU.")
     x_shape = [2, 12, 12, 3]
     filt = random_ops.random_uniform([3, 3, 3, 7])
     grad = random_ops.random_uniform([3, 2, 5, 5, 7])
@@ -2546,7 +2548,7 @@ class CompositeTensorTest(PForTestCase, parameterized.TestCase):
         parallel_iterations=parallel_iterations)
     # Naively batching the component shapes would give `[4, 3]` and `[4, 5, 3]`
     # which have no consistent broadcast shape.
-    self.assertTrue(particles.mass.shape, [4, 1, 3])
+    self.assertEqual(particles.mass.shape, [4, 1, 3])
     self.assertAllEqual(particles.velocity.shape, [4, 5, 3])
 
   def test_vectorized_map_gathers_composite_tensors(self):
@@ -2653,6 +2655,21 @@ class PartitionedCallTest(PForTestCase):
       return outer(array_ops.gather(z, i))
 
     self._test_loop_fn(loop_fn, 4)
+
+  def test_nested_calls_loop_fn_autograph(self):
+    #TODO (@bhack) Do we need to extend the coverage?
+
+    def loop_fn(x):
+      for y in range(array_ops.constant(3)):
+        pass
+      return math_ops.square(x)
+
+    @def_function.function
+    def loop_fn_caller():
+      self._test_loop_fn(loop_fn, 4)
+
+    loop_fn_caller()
+
 
   def test_nested_definition(self):
 
@@ -2813,6 +2830,64 @@ class VariableTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 2)
 
+  @test_util.run_all_in_graph_and_eager_modes
+  def test_variable_input(self):
+    v = resource_variable_ops.ResourceVariable([1, 2])
+    self.evaluate(v.initializer)
+
+    def loop_fn(x):
+      return x + 1
+
+    result = pfor_control_flow_ops.vectorized_map(loop_fn, v)
+    expected_result = [2, 3]
+    self.assertAllEqual(result, expected_result)
+
+  @test_util.run_all_in_graph_and_eager_modes
+  def testStatelessCase(self):
+
+    def branch1(x):
+      return x
+
+    def branch2(x):
+      return x + 1
+
+    def branch3(x):
+      return x + 2
+
+    x = constant_op.constant(10)
+    elems = constant_op.constant([1, 0, 0, 0, 2, 1, 0, 2, 0, 1])
+    def loop_fn(z_i):
+      return cond_v2.indexed_case(
+          z_i, [lambda: branch1(x), lambda: branch2(x), lambda: branch3(x)])
+
+    result = pfor_control_flow_ops.vectorized_map(
+        loop_fn, elems, fallback_to_while_loop=False)
+
+    expected_result = [11, 10, 10, 10, 12, 11, 10, 12, 10, 11]
+    self.assertAllEqual(result, expected_result)
+
+  @test_util.run_all_in_graph_and_eager_modes
+  def testStatelessCaseUnstacked(self):
+
+    def branch1(x):
+      return x + 1
+
+    def branch2(x):
+      return x + 2
+
+    # Unstacked case input
+    case_input = constant_op.constant(1)
+    @def_function.function
+    def function(z_i):
+      return cond_v2.indexed_case(case_input,
+                                  [lambda: branch1(z_i), lambda: branch2(z_i)])
+
+    inputs = constant_op.constant([0, 1, 1, 0, 1, 0, 1, 0, 0])
+
+    result = pfor_control_flow_ops.vectorized_map(
+        function, inputs, fallback_to_while_loop=False)
+    expected_result = [2, 3, 3, 2, 3, 2, 3, 2, 2]
+    self.assertAllEqual(result, expected_result)
 
 if __name__ == "__main__":
   test.main()

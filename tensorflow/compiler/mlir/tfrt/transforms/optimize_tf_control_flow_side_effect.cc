@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
@@ -22,8 +23,8 @@ namespace tfrt_compiler {
 namespace {
 
 bool FunctionHasSideEffect(
-    mlir::FuncOp func_op,
-    llvm::DenseMap<mlir::FuncOp, bool>& function_side_effect) {
+    mlir::func::FuncOp func_op,
+    llvm::DenseMap<mlir::func::FuncOp, bool>& function_side_effect) {
   auto iter = function_side_effect.find(func_op);
   if (iter != function_side_effect.end()) return iter->second;
 
@@ -31,7 +32,7 @@ bool FunctionHasSideEffect(
 
   auto op_has_side_effect = [&](mlir::Operation* op) {
     if (auto while_op = llvm::dyn_cast<mlir::TF::WhileOp>(op)) {
-      if (while_op.is_stateless()) return false;
+      if (while_op.getIsStateless()) return false;
 
       return FunctionHasSideEffect(while_op.cond_function(),
                                    function_side_effect) ||
@@ -40,7 +41,7 @@ bool FunctionHasSideEffect(
     }
 
     if (auto if_op = llvm::dyn_cast<mlir::TF::IfOp>(op)) {
-      if (if_op.is_stateless()) return false;
+      if (if_op.getIsStateless()) return false;
 
       return FunctionHasSideEffect(if_op.else_function(),
                                    function_side_effect) ||
@@ -52,7 +53,7 @@ bool FunctionHasSideEffect(
     // ops' callee functions contain them, we treat them as non-side-effecting.
     if (llvm::isa<mlir::TF::AssertOp, mlir::TF::TimestampOp>(op)) return false;
 
-    return !mlir::MemoryEffectOpInterface::hasNoEffect(op);
+    return !mlir::isMemoryEffectFree(op);
   };
 
   // Speculatively setting the function to have no side effect to avoid infinite
@@ -76,6 +77,11 @@ bool FunctionHasSideEffect(
 class OptimizeTfControlFlowSideEffectPass
     : public mlir::PassWrapper<OptimizeTfControlFlowSideEffectPass,
                                mlir::OperationPass<mlir::ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      OptimizeTfControlFlowSideEffectPass)
+
+ private:
   llvm::StringRef getArgument() const final {
     return "tfrt-optimize-tf-control-flow-side-effect";
   }
@@ -85,12 +91,12 @@ class OptimizeTfControlFlowSideEffectPass
   }
   void runOnOperation() override {
     auto module = getOperation();
-    llvm::DenseMap<mlir::FuncOp, bool> function_side_effect;
+    llvm::DenseMap<mlir::func::FuncOp, bool> function_side_effect;
 
     mlir::Builder builder(module.getContext());
     module.walk([&](mlir::Operation* op) {
       if (auto while_op = llvm::dyn_cast<mlir::TF::WhileOp>(op)) {
-        if (while_op.is_stateless()) return;
+        if (while_op.getIsStateless()) return;
 
         if (!FunctionHasSideEffect(while_op.cond_function(),
                                    function_side_effect) &&
@@ -101,7 +107,7 @@ class OptimizeTfControlFlowSideEffectPass
       }
 
       if (auto if_op = llvm::dyn_cast<mlir::TF::IfOp>(op)) {
-        if (if_op.is_stateless()) return;
+        if (if_op.getIsStateless()) return;
 
         if (!FunctionHasSideEffect(if_op.else_function(),
                                    function_side_effect) &&

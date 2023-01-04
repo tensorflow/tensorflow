@@ -74,6 +74,10 @@ TF_CAPI_EXPORT unsigned char TF_SetTfXlaCpuGlobalJit(unsigned char enable);
 // as if passed in XLA_FLAGS. This has global effect.
 TF_CAPI_EXPORT void TF_SetXlaAutoJitMode(const char* mode);
 
+// Returns whether the single GPU or general XLA auto jit optimizations are
+// enabled through MarkForCompilationPassFlags.
+TF_CAPI_EXPORT unsigned char TF_GetXlaAutoJitEnabled();
+
 // Sets XLA's minimum cluster size. This has global effect.
 TF_CAPI_EXPORT void TF_SetXlaMinClusterSize(int size);
 
@@ -324,6 +328,12 @@ TF_CAPI_EXPORT extern TF_Library* TF_LoadPluggableDeviceLibrary(
 // Does NOT unload the library.
 TF_CAPI_EXPORT extern void TF_DeletePluggableDeviceLibraryHandle(
     TF_Library* lib_handle);
+
+// Removes `func_name` from `g`. If `func_name` is not in `g`, an error will be
+// returned.
+TF_CAPI_EXPORT extern void TF_GraphRemoveFunction(TF_Graph* g,
+                                                  const char* func_name,
+                                                  TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/Transforms.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/Transforms/Transforms.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 
 namespace mlir {
@@ -22,21 +23,22 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_FUSEINNERPARALLELLOOPSPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 struct FuseInnerParallelLoopsPass
-    : FuseInnerParallelLoopsPassBase<FuseInnerParallelLoopsPass> {
-  void runOnFunction() override {
-    getFunction().walk([](mlir::scf::ParallelOp op) {
-      mlir::scf::naivelyFuseParallelOps(op.region());
+    : impl::FuseInnerParallelLoopsPassBase<FuseInnerParallelLoopsPass> {
+  void runOnOperation() override {
+    getOperation().walk([](mlir::scf::ParallelOp op) {
+      mlir::scf::naivelyFuseParallelOps(op.getRegion());
     });
   }
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateFuseInnerParallelLoopsPass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateFuseInnerParallelLoopsPass() {
   return std::make_unique<FuseInnerParallelLoopsPass>();
 }
 

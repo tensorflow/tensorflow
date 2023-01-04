@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_RESOURCE_HANDLE_H_
-#define TENSORFLOW_FRAMEWORK_RESOURCE_HANDLE_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_RESOURCE_HANDLE_H_
+#define TENSORFLOW_CORE_FRAMEWORK_RESOURCE_HANDLE_H_
 
 #include <string>
 
@@ -104,7 +104,7 @@ class ResourceHandle {
 
   std::string DebugString() const;
 
-  std::string SummarizeValue() const { return "Resource Tensor"; }
+  std::string SummarizeValue() const;
 
   // GUID for anonymous resources. Resources with this shared_name will have
   // their shared_name replaced with a GUID at creation time
@@ -202,4 +202,4 @@ bool DecodeResourceHandleList(std::unique_ptr<port::StringListDecoder> d,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_RESOURCE_HANDLE_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_RESOURCE_HANDLE_H_

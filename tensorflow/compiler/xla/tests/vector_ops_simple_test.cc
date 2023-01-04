@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cmath>
+#include <limits>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/array4d.h"
@@ -25,14 +27,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -121,21 +122,21 @@ XLA_TEST_F(VecOpsSimpleTest, NegateTenFloatValues) {
 
 XLA_TEST_F(VecOpsSimpleTest, NegateTenInt32Values) {
   XlaBuilder builder(TestName());
-  auto x = ConstantR1<int32>(&builder, {2, -2, 12, -4, 5, 20, -15, 0, -2, 1});
+  auto x = ConstantR1<int32_t>(&builder, {2, -2, 12, -4, 5, 20, -15, 0, -2, 1});
   Neg(x);
 
   std::vector<int> expected = {-2, 2, -12, 4, -5, -20, 15, 0, 2, -1};
-  ComputeAndCompareR1<int32>(&builder, expected, {});
+  ComputeAndCompareR1<int32_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(VecOpsSimpleTest, NegateUint32Values) {
   XlaBuilder builder(TestName());
-  auto x = ConstantR1<uint32>(
-      &builder, {0, 1, 42, static_cast<uint32>(-1), static_cast<uint32>(-12)});
+  auto x = ConstantR1<uint32_t>(&builder, {0, 1, 42, static_cast<uint32_t>(-1),
+                                           static_cast<uint32_t>(-12)});
   Neg(x);
-  std::vector<uint32> expected = {0, static_cast<uint32>(-1),
-                                  static_cast<uint32>(-42), 1, 12};
-  ComputeAndCompareR1<uint32>(&builder, expected, {});
+  std::vector<uint32_t> expected = {0, static_cast<uint32_t>(-1),
+                                    static_cast<uint32_t>(-42), 1, 12};
+  ComputeAndCompareR1<uint32_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(VecOpsSimpleTest, InvSqrtSevenValues) {
@@ -348,7 +349,7 @@ XLA_TEST_F(VecOpsSimpleTest, MapTenValues) {
     Add(x_value, half);
     auto computation_status = builder.Build();
     ASSERT_IS_OK(computation_status.status());
-    add_half = computation_status.ConsumeValueOrDie();
+    add_half = std::move(computation_status).value();
   }
 
   XlaComputation clamp;
@@ -361,7 +362,7 @@ XLA_TEST_F(VecOpsSimpleTest, MapTenValues) {
     Clamp(zero, y_value, ConstantR0<float>(&builder, 5));
     auto computation_status = builder.Build();
     ASSERT_IS_OK(computation_status.status());
-    clamp = computation_status.ConsumeValueOrDie();
+    clamp = std::move(computation_status).value();
   }
 
   XlaComputation mult_relu_add;
@@ -378,7 +379,7 @@ XLA_TEST_F(VecOpsSimpleTest, MapTenValues) {
     Map(&builder, {inner}, clamp, {});
     auto computation_status = builder.Build();
     ASSERT_IS_OK(computation_status.status());
-    mult_relu_add = computation_status.ConsumeValueOrDie();
+    mult_relu_add = std::move(computation_status).value();
   }
 
   XlaBuilder builder("map10");
@@ -395,12 +396,12 @@ XLA_TEST_F(VecOpsSimpleTest, MapTenValues) {
 
 XLA_TEST_F(VecOpsSimpleTest, RemainderTenValuesS32) {
   XlaBuilder builder(TestName());
-  auto x = ConstantR1<int32>(&builder, {-5, -4, -3, -2, -1, 0, 1, 2, 3, 4});
-  auto y = ConstantR0<int32>(&builder, 3);
+  auto x = ConstantR1<int32_t>(&builder, {-5, -4, -3, -2, -1, 0, 1, 2, 3, 4});
+  auto y = ConstantR0<int32_t>(&builder, 3);
   Rem(x, y);
 
-  std::vector<int32> expected = {-2, -1, 0, -2, -1, 0, 1, 2, 0, 1};
-  ComputeAndCompareR1<int32>(&builder, expected, {});
+  std::vector<int32_t> expected = {-2, -1, 0, -2, -1, 0, 1, 2, 0, 1};
+  ComputeAndCompareR1<int32_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(VecOpsSimpleTest, VectorPredicateEqual) {
@@ -425,13 +426,14 @@ XLA_TEST_F(VecOpsSimpleTest, VectorPredicateNotEqual) {
 
 XLA_TEST_F(VecOpsSimpleTest, CbrtSevenValues) {
   XlaBuilder builder(TestName());
-  std::vector<float> expected = {16.0, 1888.0, -102.0, 0.16, 0.2, 0., 1.23};
-  std::vector<float> cube = {4096.0, 6729859072., -1061208, .004096,
-                             0.008,  0.,          1.860867};
+  float inf = std::numeric_limits<float>::infinity();
+  float qnan = std::numeric_limits<float>::quiet_NaN();
+  std::vector<float> cube = {0.0f,     -0.0f,   4096.0, 6729859072.,
+                             -1061208, .004096, 0.008,  0.,
+                             1.860867, -inf,    inf,    qnan};
   auto x = ConstantR1<float>(&builder, cube);
   Cbrt(x);
-  ComputeAndCompareR1<float>(&builder, expected, {},
-                             ErrorSpec(/*aabs=*/1e-7, /*arel=*/3e-7));
+  ComputeAndCompare(&builder, {}, ErrorSpec(/*aabs=*/1e-7, /*arel=*/3e-7));
 }
 
 }  // namespace

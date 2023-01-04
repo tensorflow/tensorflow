@@ -1,0 +1,336 @@
+# RUN: tfg-translate -graphdef-to-mlir %s | FileCheck %s
+
+# CHECK: If
+# CHECK-SAME: else_branch = #tf_type.func<@XTimesTwo, {}>,
+# CHECK-SAME: then_branch = #tf_type.func<@IfWithWhileThen, {}>
+# CHECK-SAME: -> (tensor<*xi32>)
+
+# CHECK: func generic @XTimesTwo
+
+node {
+  name: "pred"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+}
+node {
+  name: "A"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+}
+node {
+  name: "if"
+  op: "If"
+  input: "pred"
+  input: "A"
+  attr {
+    key: "Tcond"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "Tin"
+    value {
+      list {
+        type: DT_INT32
+      }
+    }
+  }
+  attr {
+    key: "Tout"
+    value {
+      list {
+        type: DT_INT32
+      }
+    }
+  }
+  attr {
+    key: "_lower_using_switch_merge"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "else_branch"
+    value {
+      func {
+        name: "XTimesTwo"
+      }
+    }
+  }
+  attr {
+    key: "output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 4
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "then_branch"
+    value {
+      func {
+        name: "IfWithWhileThen"
+      }
+    }
+  }
+}
+library {
+  function {
+    signature {
+      name: "LessThanOrEqualToN"
+      input_arg {
+        name: "x"
+        type_attr: "T"
+      }
+      output_arg {
+        name: "z"
+        type: DT_BOOL
+      }
+      attr {
+        name: "T"
+        type: "type"
+        allowed_values {
+          list {
+            type: DT_FLOAT
+            type: DT_DOUBLE
+            type: DT_INT32
+            type: DT_INT64
+          }
+        }
+      }
+    }
+    node_def {
+      name: "N"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT64
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT64
+            tensor_shape {
+            }
+            int64_val: 8
+          }
+        }
+      }
+    }
+    node_def {
+      name: "y"
+      op: "Cast"
+      input: "N:output:0"
+      attr {
+        key: "DstT"
+        value {
+          placeholder: "T"
+        }
+      }
+      attr {
+        key: "SrcT"
+        value {
+          type: DT_INT64
+        }
+      }
+    }
+    node_def {
+      name: "z"
+      op: "LessEqual"
+      input: "x"
+      input: "y:y:0"
+      attr {
+        key: "T"
+        value {
+          placeholder: "T"
+        }
+      }
+    }
+    ret {
+      key: "z"
+      value: "z:z:0"
+    }
+  }
+  function {
+    signature {
+      name: "XTimesTwo"
+      input_arg {
+        name: "x"
+        type_attr: "T"
+      }
+      output_arg {
+        name: "y"
+        type_attr: "T"
+      }
+      attr {
+        name: "T"
+        type: "type"
+        allowed_values {
+          list {
+            type: DT_FLOAT
+            type: DT_DOUBLE
+            type: DT_INT32
+            type: DT_INT64
+          }
+        }
+      }
+    }
+    node_def {
+      name: "two"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT64
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT64
+            tensor_shape {
+            }
+            int64_val: 2
+          }
+        }
+      }
+    }
+    node_def {
+      name: "scale"
+      op: "Cast"
+      input: "two:output:0"
+      attr {
+        key: "DstT"
+        value {
+          placeholder: "T"
+        }
+      }
+      attr {
+        key: "SrcT"
+        value {
+          type: DT_INT64
+        }
+      }
+    }
+    node_def {
+      name: "y"
+      op: "Mul"
+      input: "x"
+      input: "scale:y:0"
+      attr {
+        key: "T"
+        value {
+          placeholder: "T"
+        }
+      }
+    }
+    ret {
+      key: "y"
+      value: "y:z:0"
+    }
+  }
+  function {
+    signature {
+      name: "IfWithWhileThen"
+      input_arg {
+        name: "x"
+        type: DT_INT32
+      }
+      output_arg {
+        name: "while"
+        type: DT_INT32
+      }
+      is_stateful: true
+    }
+    node_def {
+      name: "while"
+      op: "While"
+      input: "x"
+      attr {
+        key: "T"
+        value {
+          list {
+            type: DT_INT32
+          }
+        }
+      }
+      attr {
+        key: "_lower_using_switch_merge"
+        value {
+          b: true
+        }
+      }
+      attr {
+        key: "body"
+        value {
+          func {
+            name: "XTimesTwo"
+          }
+        }
+      }
+      attr {
+        key: "cond"
+        value {
+          func {
+            name: "LessThanOrEqualToN"
+          }
+        }
+      }
+      attr {
+        key: "output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: 4
+              }
+            }
+          }
+        }
+      }
+    }
+    ret {
+      key: "while"
+      value: "while:output:0"
+    }
+  }
+}
+versions {
+  producer: 764
+  min_consumer: 12
+}

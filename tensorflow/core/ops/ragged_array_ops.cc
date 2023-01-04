@@ -125,7 +125,7 @@ REGISTER_OP("RaggedCross")
 
       c->set_output(0, out_values);
       c->set_output(1, out_splits);
-      return Status::OK();
+      return OkStatus();
     });
 
 //==============================================================================
@@ -167,7 +167,7 @@ Status RaggedGatherShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->Concatenate(c->UnknownShapeOfRank(1), value, &values));
   c->set_output(num_splits, values);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

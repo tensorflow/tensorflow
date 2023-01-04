@@ -354,21 +354,21 @@ TEST_F(GraphTest, AddAttr) {
   n1->AddAttr("_a", "new_attr");
 
   string attr;
-  EXPECT_EQ(Status::OK(), GetNodeAttr(n1->attrs(), "_a", &attr));
+  EXPECT_EQ(OkStatus(), GetNodeAttr(n1->attrs(), "_a", &attr));
   EXPECT_EQ("new_attr", attr);
 
   Node* n2 = graph_.CopyNode(n1);
 
   n1->AddAttr("_b", "new_attr_2");
 
-  EXPECT_EQ(Status::OK(), GetNodeAttr(n1->attrs(), "_a", &attr));
+  EXPECT_EQ(OkStatus(), GetNodeAttr(n1->attrs(), "_a", &attr));
   EXPECT_EQ("new_attr", attr);
-  EXPECT_EQ(Status::OK(), GetNodeAttr(n1->attrs(), "_b", &attr));
+  EXPECT_EQ(OkStatus(), GetNodeAttr(n1->attrs(), "_b", &attr));
   EXPECT_EQ("new_attr_2", attr);
 
-  EXPECT_EQ(Status::OK(), GetNodeAttr(n2->attrs(), "_a", &attr));
+  EXPECT_EQ(OkStatus(), GetNodeAttr(n2->attrs(), "_a", &attr));
   EXPECT_EQ("new_attr", attr);
-  EXPECT_NE(Status::OK(), GetNodeAttr(n2->attrs(), "_b", &attr));
+  EXPECT_NE(OkStatus(), GetNodeAttr(n2->attrs(), "_b", &attr));
 }
 
 // Convert edge iteration results into a sorted string.
@@ -659,6 +659,19 @@ TEST_F(GraphTest, BuildNodeNameIndex) {
     EXPECT_NE(node_name_index.find(node_name), node_name_index.end());
     EXPECT_EQ(node_name_index[node_name], FindNode(node_name));
   }
+}
+
+TEST_F(GraphTest, Clear) {
+  const int num_nodes = 10;
+  const int num_edges_per_node = 2;
+  const GraphDef graph_def =
+      test::CreateGraphDef(num_nodes, num_edges_per_node);
+  const auto registry = OpRegistry::Global();
+  GraphConstructorOptions opts;
+  Graph graph(registry);
+  TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
+  graph.Clear();
+  EXPECT_EQ(graph.num_nodes(), 2);
 }
 
 void BM_InEdgeIteration(::testing::benchmark::State& state) {

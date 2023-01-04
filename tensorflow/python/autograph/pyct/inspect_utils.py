@@ -17,6 +17,7 @@
 This module contains whatever inspect doesn't offer out of the box.
 """
 
+import builtins
 import inspect
 import itertools
 import linecache
@@ -24,33 +25,13 @@ import sys
 import threading
 import types
 
-import six
-
 from tensorflow.python.util import tf_inspect
 
 # This lock seems to help avoid linecache concurrency errors.
 _linecache_lock = threading.Lock()
 
-
-# These functions test negative for isinstance(*, types.BuiltinFunctionType)
-# and inspect.isbuiltin, and are generally not visible in globals().
-# TODO(mdan): Remove this.
-SPECIAL_BUILTINS = {
-    'dict': dict,
-    'enumerate': enumerate,
-    'float': float,
-    'int': int,
-    'len': len,
-    'list': list,
-    'print': print,
-    'range': range,
-    'tuple': tuple,
-    'type': type,
-    'zip': zip
-}
-
-if six.PY2:
-  SPECIAL_BUILTINS['xrange'] = xrange
+# Cache all the builtin elements in a frozen set for faster lookup.
+_BUILTIN_FUNCTION_IDS = frozenset(id(v) for v in builtins.__dict__.values())
 
 
 def islambda(f):
@@ -61,8 +42,7 @@ def islambda(f):
     return False
   # Some wrappers can rename the function, but changing the name of the
   # code object is harder.
-  return (
-      (f.__name__ == '<lambda>') or (f.__code__.co_name == '<lambda>'))
+  return ((f.__name__ == '<lambda>') or (f.__code__.co_name == '<lambda>'))
 
 
 def isnamedtuple(f):
@@ -81,7 +61,7 @@ def isnamedtuple(f):
 
 def isbuiltin(f):
   """Returns True if the argument is a built-in function."""
-  if any(f is builtin for builtin in six.moves.builtins.__dict__.values()):
+  if id(f) in _BUILTIN_FUNCTION_IDS:
     return True
   elif isinstance(f, types.BuiltinFunctionType):
     return True
@@ -103,14 +83,14 @@ def isconstructor(cls):
 
   Args:
     cls: Any
+
   Returns:
     Bool
   """
-  return (
-      inspect.isclass(cls)
-      and not (issubclass(cls.__class__, type)
-               and hasattr(cls.__class__, '__call__')
-               and cls.__class__.__call__ is not type.__call__))
+  return (inspect.isclass(cls) and
+          not (issubclass(cls.__class__, type) and
+               hasattr(cls.__class__, '__call__') and
+               cls.__class__.__call__ is not type.__call__))
 
 
 def _fix_linecache_record(obj):
@@ -158,12 +138,13 @@ def getnamespace(f):
 
   Args:
     f: User defined function.
+
   Returns:
     A dict mapping symbol names to values.
   """
-  namespace = dict(six.get_function_globals(f))
-  closure = six.get_function_closure(f)
-  freevars = six.get_function_code(f).co_freevars
+  namespace = dict(f.__globals__)
+  closure = f.__closure__
+  freevars = f.__code__.co_freevars
   if freevars and closure:
     for name, cell in zip(freevars, closure):
       try:
@@ -187,10 +168,10 @@ def getqualifiedname(namespace, object_, max_depth=5, visited=None):
     namespace: Dict[str, Any], the namespace to search into.
     object_: Any, the value to search.
     max_depth: Optional[int], a limit to the recursion depth when searching
-        inside modules.
+      inside modules.
     visited: Optional[Set[int]], ID of modules to avoid visiting.
   Returns: Union[str, None], the fully-qualified name that resolves to the value
-      o, or None if it couldn't be found.
+    o, or None if it couldn't be found.
   """
   if visited is None:
     visited = set()
@@ -210,8 +191,7 @@ def getqualifiedname(namespace, object_, max_depth=5, visited=None):
 
   # If an object is not found, try to search its parent modules.
   parent = tf_inspect.getmodule(object_)
-  if (parent is not None and parent is not object_ and
-      parent is not namespace):
+  if (parent is not None and parent is not object_ and parent is not namespace):
     # No limit to recursion depth because of the guard above.
     parent_name = getqualifiedname(
         namespace, parent, max_depth=0, visited=visited)
@@ -237,33 +217,22 @@ def getqualifiedname(namespace, object_, max_depth=5, visited=None):
   return None
 
 
-def _get_unbound_function(m):
-  # TODO(mdan): Figure out why six.get_unbound_function fails in some cases.
-  # The failure case is for tf.keras.Model.
-  if hasattr(m, '__func__'):
-    return m.__func__
-  if hasattr(m, 'im_func'):
-    return m.im_func
-  return m
-
-
 def getdefiningclass(m, owner_class):
   """Resolves the class (e.g. one of the superclasses) that defined a method."""
-  # Normalize bound functions to their respective unbound versions.
-  m = _get_unbound_function(m)
-  for superclass in reversed(inspect.getmro(owner_class)):
-    if hasattr(superclass, m.__name__):
-      superclass_m = getattr(superclass, m.__name__)
-      if _get_unbound_function(superclass_m) is m:
-        return superclass
-      elif hasattr(m, '__self__') and m.__self__ == owner_class:
-        # Python 3 class methods only work this way it seems :S
-        return superclass
+  method_name = m.__name__
+  for super_class in inspect.getmro(owner_class):
+    if ((hasattr(super_class, '__dict__') and
+         method_name in super_class.__dict__) or
+        (hasattr(super_class, '__slots__') and
+         method_name in super_class.__slots__)):
+      return super_class
   return owner_class
 
 
 def getmethodclass(m):
-  """Resolves a function's owner, e.g. a method's class.
+  """Resolves a function's owner, e.g.
+
+  a method's class.
 
   Note that this returns the object that the function was retrieved from, not
   necessarily the class where it was defined.
@@ -289,7 +258,7 @@ def getmethodclass(m):
   # Callable objects: return their own class.
   if (not hasattr(m, '__name__') and hasattr(m, '__class__') and
       hasattr(m, '__call__')):
-    if isinstance(m.__class__, six.class_types):
+    if isinstance(m.__class__, type):
       return m.__class__
 
   # Instance and class: return the class of "self".
@@ -347,5 +316,6 @@ def getfutureimports(entity):
   """
   if not (tf_inspect.isfunction(entity) or tf_inspect.ismethod(entity)):
     return tuple()
-  return tuple(sorted(name for name, value in entity.__globals__.items()
-                      if getattr(value, '__module__', None) == '__future__'))
+  return tuple(
+      sorted(name for name, value in entity.__globals__.items()
+             if getattr(value, '__module__', None) == '__future__'))

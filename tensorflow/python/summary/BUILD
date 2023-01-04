@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_tests")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -18,6 +18,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:lib",
         "//tensorflow/python:logging_ops_gen",
@@ -32,8 +33,8 @@ py_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/summary/writer",
+        "//tensorflow/python/training:training_util",
         "//tensorflow/python/util",
-        "@six_archive//:six",
     ],
 )
 
@@ -44,6 +45,7 @@ py_tests(
         "plugin_asset_test.py",
         "summary_iterator_test.py",
         "summary_test.py",
+        "summary_v2_test.py",
     ],
     python_version = "PY3",
     deps = [
@@ -59,5 +61,6 @@ py_tests(
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/summary/writer",
+        "//tensorflow/python/training:training_util",
     ],
 )

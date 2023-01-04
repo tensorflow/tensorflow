@@ -40,10 +40,20 @@ class KernelTest;
 //   ... build interpreter ...
 //
 //   if (delegate) {
-//     interpreter->ModifyGraphWithDelegate(std::move(delegate));
+//     interpreter->ModifyGraphWithDelegate(delegate.get());
 //   }
+//
+//   void* delegate_data = delegate->data_;
+//   interpreter->SetCancellationFunction(
+//     delegate_data,
+//     FlexDelegate::HasCancelled);
+//
 //   ... run inference ...
+//
+//    static_cast<FlexDelegate*>(delegate_data)->Cancel();
+//
 //   ... destroy interpreter ...
+//   ... destroy delegate ...
 class FlexDelegate : public SimpleDelegateInterface {
  public:
   friend class flex::testing::KernelTest;
@@ -56,6 +66,17 @@ class FlexDelegate : public SimpleDelegateInterface {
   ~FlexDelegate() override {}
 
   flex::DelegateData* mutable_data() { return &delegate_data_; }
+
+  // This method is thread safe. It does two things:
+  //   1. Calls the CancellationManager of the TF eager runtime to support
+  //      intra-op cancellation in TF.
+  //   2. Uses the CancellationManager to signal TFLite interpreter for inter-op
+  //      cancellation.
+  // Training is non-recoverable after calling this API.
+  void Cancel();
+
+  // The param `data` must be a pointer to a FlexDelegate instance.
+  static bool HasCancelled(void* data);
 
  protected:
   // We sometimes have to create certain stub data to test FlexDelegate. To
@@ -90,6 +111,13 @@ class FlexDelegate : public SimpleDelegateInterface {
                                     TfLiteTensor* output);
 
   flex::DelegateData delegate_data_;
+
+  // Pointer to the base TfLiteDelegate which is created from the Create call.
+  TfLiteDelegate* base_delegate_ = nullptr;
+
+ private:
+  // A cancellation manager.
+  std::unique_ptr<tensorflow::CancellationManager> cancellation_manager_;
 };
 
 }  // namespace tflite

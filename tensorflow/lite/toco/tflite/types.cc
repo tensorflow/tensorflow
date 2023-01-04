@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/tflite/types.h"
+
+#include <string>
+
 #include "tensorflow/lite/string_util.h"
 
 namespace toco {
@@ -98,6 +101,8 @@ void CopyBuffer(const ::tflite::Buffer& buffer, Array* array) {
       return ::tflite::TensorType_INT64;
     case ArrayDataType::kUint8:
       return ::tflite::TensorType_UINT8;
+    case ArrayDataType::kUint16:
+      return ::tflite::TensorType_UINT16;
     case ArrayDataType::kString:
       return ::tflite::TensorType_STRING;
     case ArrayDataType::kBool:
@@ -127,6 +132,8 @@ ArrayDataType DataType::Deserialize(int tensor_type) {
       return ArrayDataType::kString;
     case ::tflite::TensorType_UINT8:
       return ArrayDataType::kUint8;
+    case ::tflite::TensorType_UINT16:
+      return ArrayDataType::kUint16;
     case ::tflite::TensorType_BOOL:
       return ArrayDataType::kBool;
     case ::tflite::TensorType_COMPLEX64:

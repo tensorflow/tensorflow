@@ -4,6 +4,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "get_win_copts", "tf_cc_shared_object", "tf_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -96,6 +97,7 @@ tf_cc_test(
     deps = [
         ":gcs_filesystem_impl",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/platform:test",
         "@com_google_absl//absl/strings",

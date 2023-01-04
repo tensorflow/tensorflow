@@ -28,14 +28,15 @@ namespace {
 
 using HloMatchersTest = HloTestBase;
 
-string DescribeHloMatcher(const ::testing::Matcher<const HloInstruction*>& m) {
+std::string DescribeHloMatcher(
+    const ::testing::Matcher<const HloInstruction*>& m) {
   std::stringstream ss;
   m.DescribeTo(&ss);
   return ss.str();
 }
 
 template <typename M, typename T>
-string Explain(const T& t, const M& m) {
+std::string Explain(const T& t, const M& m) {
   ::testing::StringMatchResultListener listener;
   EXPECT_THAT(t, ::testing::Not(m));  // For the error message.
   EXPECT_FALSE(m.MatchAndExplain(t, &listener));
@@ -92,7 +93,7 @@ TEST_F(HloMatchersTest, CustomCallMatcher) {
   auto c1 =
       HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({1, 2, 3}));
   auto c2 =
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({1, 2, 3}));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32_t>({1, 2, 3}));
   auto call = HloInstruction::CreateCustomCall(
       ShapeUtil::MakeShape(F32, {1}), {c1.get(), c2.get()}, "foo_target");
 
@@ -121,7 +122,7 @@ TEST_F(HloMatchersTest, CustomCallMatcher) {
 
 TEST_F(HloMatchersTest, ShapeMatcher) {
   auto p0 = HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShapeWithLayout(F32, {5, 7}, {0, 1}), "param");
+      0, ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 7}, {0, 1}), "param");
 
   EXPECT_THAT(p0.get(), op::Shape(ShapeUtil::MakeShape(F32, {5, 7})));
   EXPECT_THAT(p0.get(), op::Shape("f32[5,7]"));
@@ -136,22 +137,22 @@ TEST_F(HloMatchersTest, ShapeMatcher) {
       p0.get(),
       ::testing::Not(op::ShapeWithLayout(ShapeUtil::MakeShape(F32, {7, 5}))));
   EXPECT_THAT(p0.get(), ::testing::Not(op::ShapeWithLayout("f32[7,5]")));
-  EXPECT_THAT(p0.get(),
-              op::Shape(ShapeUtil::MakeShapeWithLayout(F32, {5, 7}, {0, 1})));
+  EXPECT_THAT(p0.get(), op::Shape(ShapeUtil::MakeShapeWithDenseLayout(
+                            F32, {5, 7}, {0, 1})));
   EXPECT_THAT(p0.get(), op::Shape("f32[5,7]{0,1}"));
-  EXPECT_THAT(p0.get(), op::ShapeWithLayout(ShapeUtil::MakeShapeWithLayout(
+  EXPECT_THAT(p0.get(), op::ShapeWithLayout(ShapeUtil::MakeShapeWithDenseLayout(
                             F32, {5, 7}, {0, 1})));
   EXPECT_THAT(p0.get(), op::ShapeWithLayout("f32[5,7]{0,1}"));
   EXPECT_THAT(p0.get(),
               ::testing::Not(op::ShapeWithLayout(
-                  ShapeUtil::MakeShapeWithLayout(F32, {5, 7}, {1, 0}))));
+                  ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 7}, {1, 0}))));
   EXPECT_THAT(p0.get(), ::testing::Not(op::ShapeWithLayout("f32[5,7]{1,0}")));
 
   EXPECT_THAT(Explain(p0.get(), op::Shape(ShapeUtil::MakeShape(F32, {7, 5}))),
               "%param = f32[5,7]{0,1} parameter(0) has incorrect shape "
               "(expected: f32[7,5])");
   EXPECT_THAT(
-      Explain(p0.get(), op::ShapeWithLayout(ShapeUtil::MakeShapeWithLayout(
+      Explain(p0.get(), op::ShapeWithLayout(ShapeUtil::MakeShapeWithDenseLayout(
                             F32, {7, 5}, {1, 0}))),
       "%param = f32[5,7]{0,1} parameter(0) has incorrect shape "
       "(expected: f32[7,5]{1,0})");
@@ -200,7 +201,7 @@ TEST_F(HloMatchersTest, ShardingMatcher) {
 }
 
 TEST_F(HloMatchersTest, DotMatcher) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule DotOperationFusion_TransposeFusion
 
 ENTRY DotOperationFusion_TransposeFusion {
@@ -268,12 +269,12 @@ TEST_F(HloMatchersTest, ComparisonMatcher) {
 }
 
 TEST_F(HloMatchersTest, AsyncCopyMatcher) {
-  Shape shape_memspace1 = ShapeUtil::MakeShapeWithLayout(
+  Shape shape_memspace1 = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {16}, /*minor_to_major=*/{0}, /*tiles=*/{},
-      /*element_size_in_bits=*/0, /*memory_space=*/1);
-  Shape shape_memspace2 = ShapeUtil::MakeShapeWithLayout(
+      /*memory_space=*/1);
+  Shape shape_memspace2 = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {16}, /*minor_to_major=*/{0}, /*tiles=*/{},
-      /*element_size_in_bits=*/0, /*memory_space=*/2);
+      /*memory_space=*/2);
 
   auto p0 = HloInstruction::CreateParameter(0, shape_memspace1, "p0");
   auto copy_start = HloInstruction::CreateCopyStart(
@@ -301,7 +302,7 @@ TEST_F(HloMatchersTest, AsyncCopyMatcher) {
 }
 
 TEST_F(HloMatchersTest, ConstantMatcher) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule Constant
 
 ENTRY main {
@@ -336,7 +337,7 @@ TEST_F(HloMatchersTest, ReplicaGroupsMatcher) {
   std::unique_ptr<HloInstruction> all_to_all =
       HloInstruction::CreateAllToAll(shape, {p0.get()}, replica_groups,
                                      /*constrain_layout=*/false,
-                                     /*channel_id=*/absl::nullopt);
+                                     /*channel_id=*/std::nullopt);
 
   EXPECT_THAT(Explain(p0.get(), op::ReplicaGroups({})),
               "%param = f32[5,7]{1,0} parameter(0) not a collective op");

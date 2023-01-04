@@ -62,7 +62,7 @@ class RequestCostAccessorRegistrar {
   namespace {                                                            \
   static ::tensorflow::RequestCostAccessorRegistrar                      \
       MyRequestCostAccessorClass##_registrar((name), [] {                \
-        return absl::make_unique<MyRequestCostAccessorClass>();          \
+        return std::make_unique<MyRequestCostAccessorClass>();          \
       });                                                                \
   }  // namespace
 

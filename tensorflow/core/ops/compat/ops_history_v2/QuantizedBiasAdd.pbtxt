@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "QuantizedBiasAdd"
   input_arg {
     name: "input"

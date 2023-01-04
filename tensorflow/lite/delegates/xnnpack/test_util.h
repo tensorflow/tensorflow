@@ -24,7 +24,16 @@ namespace xnnpack {
 
 int8_t QuantizeInt8(float value, int32_t zero_point, float scale);
 
+void QuantizeInt8PerChannel(const float* scale, const int64_t* zero_point,
+                            int32_t quantized_dimension,
+                            const float* input_data, int8_t* output_data,
+                            const std::vector<int32_t>& shape);
+
 float GetInt8QuantizationScale(const std::vector<float>& data);
+
+std::vector<float> GetInt8QuantizationScalePerChannel(
+    const float* data, int32_t quantized_dimension,
+    const std::vector<int32_t>& shape);
 
 }  // namespace xnnpack
 }  // namespace tflite

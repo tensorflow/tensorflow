@@ -112,7 +112,7 @@ class PythonAPIInfoTest(test_util.TensorFlowTestCase, parameterized.TestCase):
        "  inputs_with_type_attr=[\n"
        "    {type_attr=Tparams, tensor_params=[0]},\n"
        "    {type_attr=Tindices, tensor_params=[1], "
-       "ok_dtypes=[DT_INT32, DT_INT64]},\n"
+       "ok_dtypes=[DT_INT16, DT_INT32, DT_INT64]},\n"
        "    {type_attr=Taxis, tensor_params=[2], "
        "ok_dtypes=[DT_INT32, DT_INT64]},]\n"
        "  inferred_type_attrs=[Tparams, Tindices, Taxis]\n"),

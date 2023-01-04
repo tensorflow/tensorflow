@@ -89,7 +89,7 @@ RngOutput NormalFloatingPointDistribution(XlaOp key, XlaOp initial_state,
 xla::XlaOp ConcatScalars(xla::XlaBuilder* builder,
                          absl::Span<const xla::XlaOp> scalars);
 
-// Increases Philox counter (an uint128) by a delta (an uint64).
+// Increases Philox counter (an uint128_t) by a delta (an uint64_t).
 xla::XlaOp PhiloxIncreaseCounter(xla::XlaOp counter, xla::XlaOp delta);
 
 }  // namespace xla

@@ -17,7 +17,6 @@ import os
 import tempfile
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -392,7 +391,7 @@ def assert_node_attribute_lines(tst,
     tst.assertEqual("", next(line_iter))
 
     dump_timestamps_ms = []
-    for _ in xrange(num_dumped_tensors):
+    for _ in range(num_dumped_tensors):
       line = next(line_iter)
 
       tst.assertStartsWith(line.strip(), "Slot 0 @ DebugIdentity @")
@@ -1527,18 +1526,20 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     out = self._registry.dispatch_command("list_source", [])
 
     non_tf_lib_files_start = [
-        i for i in xrange(len(out.lines))
-        if out.lines[i].startswith("Source file path")][0] + 1
+        i for i in range(len(out.lines))
+        if out.lines[i].startswith("Source file path")
+    ][0] + 1
     non_tf_lib_files_end = [
-        i for i in xrange(len(out.lines))
-        if out.lines[i].startswith("TensorFlow Python library file(s):")][0] - 1
+        i for i in range(len(out.lines))
+        if out.lines[i].startswith("TensorFlow Python library file(s):")
+    ][0] - 1
     non_tf_lib_files = [
         line.split(" ")[0] for line
         in out.lines[non_tf_lib_files_start : non_tf_lib_files_end]]
     self.assertIn(self._curr_file_path, non_tf_lib_files)
 
     # Check that the TF library files are marked with special color attribute.
-    for i in xrange(non_tf_lib_files_end + 1, len(out.lines)):
+    for i in range(non_tf_lib_files_end + 1, len(out.lines)):
       if not out.lines[i]:
         continue
       for attr_seg in  out.font_attr_segs[i]:
@@ -1552,18 +1553,20 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     self.assertStartsWith(out.lines[1], "Node name regex filter: \".*/read\"")
 
     non_tf_lib_files_start = [
-        i for i in xrange(len(out.lines))
-        if out.lines[i].startswith("Source file path")][0] + 1
+        i for i in range(len(out.lines))
+        if out.lines[i].startswith("Source file path")
+    ][0] + 1
     non_tf_lib_files_end = [
-        i for i in xrange(len(out.lines))
-        if out.lines[i].startswith("TensorFlow Python library file(s):")][0] - 1
+        i for i in range(len(out.lines))
+        if out.lines[i].startswith("TensorFlow Python library file(s):")
+    ][0] - 1
     non_tf_lib_files = [
         line.split(" ")[0] for line
         in out.lines[non_tf_lib_files_start : non_tf_lib_files_end]]
     self.assertIn(self._curr_file_path, non_tf_lib_files)
 
     # Check that the TF library files are marked with special color attribute.
-    for i in xrange(non_tf_lib_files_end + 1, len(out.lines)):
+    for i in range(non_tf_lib_files_end + 1, len(out.lines)):
       if not out.lines[i]:
         continue
       for attr_seg in  out.font_attr_segs[i]:
@@ -2084,7 +2087,7 @@ class AnalyzerCLIWhileLoopTest(test_util.TensorFlowTestCase):
     self.assertEqual("Tensor \"while/Identity:0\" generated 10 dumps:",
                      output.lines[0])
 
-    for i in xrange(10):
+    for i in range(10):
       self.assertTrue(output.lines[i + 1].startswith("#%d" % i))
       self.assertTrue(output.lines[i + 1].endswith(
           " ms] while/Identity:0:DebugIdentity"))
@@ -2096,7 +2099,7 @@ class AnalyzerCLIWhileLoopTest(test_util.TensorFlowTestCase):
     self.assertEqual("  print_tensor while/Identity:0 -n 0", output.lines[-1])
 
   def testMultipleDumpsPrintTensorWithNumber(self):
-    for i in xrange(5):
+    for i in range(5):
       output = self._registry.dispatch_command(
           "pt", ["while/Identity:0", "-n", "%d" % i])
 

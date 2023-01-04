@@ -16,7 +16,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/function_optimization_registry.h"
-#include "tensorflow/core/common_runtime/lower_functional_ops.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/common_runtime/optimize_function_graph_utils.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -86,7 +87,7 @@ Status TransformGraphFunction(const std::string& func_name,
     VLOG(1) << "TransformGraphFunction(): " << device_name << " is unknown."
             << " default device for placer is not set.";
 
-  TF_RETURN_IF_ERROR(ProcessFunctionLibraryRuntime::PinArgsAndRets(
+  TF_RETURN_IF_ERROR(PinArgsAndRets(
       input_device_names, output_device_names, device_set, arg_nodes, ret_nodes,
       func_lib_def,
       eager_ctx->AllowSoftPlacement() ? default_device : nullptr));
@@ -127,8 +128,9 @@ Status TransformGraphFunction(const std::string& func_name,
   optimization_options.default_function_device = default_device;
   optimization_options.function_def = &fdef;
 
-  LowerFunctionalOpsPass pass;
-  TF_RETURN_IF_ERROR(pass.Run(optimization_options));
+  TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
+      OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
+  DumpGraph("After running pre placement passes", graph.get());
 
   // Run placer before importing GraphDef to MLIR.
   Placer placer(graph.get(), func_name, func_lib_def, &device_set,
@@ -180,6 +182,6 @@ Status TransformGraphFunction(const std::string& func_name,
   // Refresh `fbody`.
   TF_RETURN_IF_ERROR(
       FunctionDefToBodyHelper(new_func, AttrSlice(), func_lib_def, fbody));
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace tensorflow

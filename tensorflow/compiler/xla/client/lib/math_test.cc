@@ -199,9 +199,13 @@ XLA_TEST_F(MathTest, RealFpOnlyOps) {
     } else {
       continue;
     }
+    if (ty == F8E5M2 || ty == F8E4M3FN) {
+      // TODO(b/259609697): Add FP8 support to math ops
+      continue;
+    }
 
     for (const auto& test :
-         std::vector<std::pair<std::function<XlaOp(XlaOp)>, string>>({
+         std::vector<std::pair<std::function<XlaOp(XlaOp)>, std::string>>({
              {IsFinite, "is_finite"},
              {IsInf, "is_inf"},
              {IsPosInf, "is_pos_inf"},
@@ -228,7 +232,7 @@ XLA_TEST_F(MathTest, SqrtF32) {
   Literal zero_literal = LiteralUtil::Zero(PrimitiveType::F32);
 
   std::unique_ptr<GlobalData> zero_data =
-      client_->TransferToServer(zero_literal).ConsumeValueOrDie();
+      client_->TransferToServer(zero_literal).value();
 
   XlaOp zero = Parameter(&builder, 0, zero_literal.shape(), "zero");
   Sqrt(zero);
@@ -241,7 +245,7 @@ XLA_TEST_F(MathTest, SqrtF64) {
   Literal zero_literal = LiteralUtil::Zero(PrimitiveType::F64);
 
   std::unique_ptr<GlobalData> zero_data =
-      client_->TransferToServer(zero_literal).ConsumeValueOrDie();
+      client_->TransferToServer(zero_literal).value();
 
   XlaOp zero = Parameter(&builder, 0, zero_literal.shape(), "zero");
   Sqrt(zero);

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -20,21 +21,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-class XlaReplicaIdOp : public XlaOpKernel {
- public:
-  explicit XlaReplicaIdOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
-  void Compile(XlaOpKernelContext* ctx) override;
-
- private:
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaReplicaIdOp);
-};
-
-void XlaReplicaIdOp::Compile(XlaOpKernelContext* ctx) {
-  ctx->SetOutput(
-      0, xla::ConvertElementType(xla::ReplicaId(ctx->builder()), xla::S32));
-}
-
-REGISTER_XLA_OP(Name("XlaReplicaId"), XlaReplicaIdOp);
+REGISTER_XLA_OP(Name("XlaReplicaId"), MlirXlaOpKernel);
 
 }  // namespace
 }  // namespace tensorflow

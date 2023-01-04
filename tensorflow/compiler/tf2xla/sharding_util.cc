@@ -54,10 +54,10 @@ Status CoreOutOfRangeError(int core, int num_cores_per_replica) {
 }
 }  // namespace
 
-StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
+StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
     const string& device_name, int num_cores_per_replica,
-    absl::optional<xla::OpSharding> explicit_sharding,
-    absl::optional<xla::OpMetadata> metadata) {
+    std::optional<xla::OpSharding> explicit_sharding,
+    std::optional<xla::OpMetadata> metadata) {
   if (device_name.empty()) {
     return explicit_sharding;
   }
@@ -72,7 +72,7 @@ StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
   } else if (!parsed_device.has_type || !parsed_device.has_id ||
              !absl::StrContains(parsed_device.type,
                                 kDeviceSuffixReplicatedCore)) {
-    return absl::optional<xla::OpSharding>();
+    return std::optional<xla::OpSharding>();
   } else {
     const int core = parsed_device.id;
     if (core < 0 || core >= num_cores_per_replica) {
@@ -82,44 +82,44 @@ StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
     if (metadata.has_value()) {
       *sharding.add_metadata() = metadata.value();
     }
-    return absl::optional<xla::OpSharding>(sharding);
+    return std::optional<xla::OpSharding>(sharding);
   }
 }
 
-StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
+StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
     const NodeDef& node_def, int num_cores_per_replica, bool add_metadata) {
   const string& device_name = node_def.device();
-  TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> sharding,
+  TF_ASSIGN_OR_RETURN(std::optional<xla::OpSharding> sharding,
                       GetShardingFromNodeDef(node_def, add_metadata));
   return ParseShardingFromDevice(
       device_name, num_cores_per_replica, sharding,
-      add_metadata ? absl::optional<xla::OpMetadata>(
+      add_metadata ? std::optional<xla::OpMetadata>(
                          CreateOpMetadata(node_def.op(), node_def.name()))
-                   : absl::nullopt);
+                   : std::nullopt);
 }
 
-StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
+StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
     const Node& node, int num_cores_per_replica, bool add_metadata) {
   string device_name = node.assigned_device_name();
   if (device_name.empty()) {
     device_name = node.requested_device();
   }
-  TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> sharding,
+  TF_ASSIGN_OR_RETURN(std::optional<xla::OpSharding> sharding,
                       GetShardingFromNodeDef(node.def(), add_metadata));
   return ParseShardingFromDevice(
       device_name, num_cores_per_replica, sharding,
-      add_metadata ? absl::optional<xla::OpMetadata>(
+      add_metadata ? std::optional<xla::OpMetadata>(
                          CreateOpMetadata(node.type_string(), node.name()))
-                   : absl::nullopt);
+                   : std::nullopt);
 }
 
-StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
+StatusOr<std::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
     const Edge& edge, int num_cores_per_replica, bool add_metadata) {
   if (edge.src() == nullptr) {
     return tensorflow::errors::InvalidArgument(
         "Null src for ParseShardingFromEdgeSource edge=", edge.DebugString());
   }
-  TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> sharding,
+  TF_ASSIGN_OR_RETURN(std::optional<xla::OpSharding> sharding,
                       ParseShardingFromDevice(
                           *edge.src(), num_cores_per_replica, add_metadata));
   if (sharding.has_value() &&
@@ -130,7 +130,7 @@ StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
           "Tuple index out of bound: edge=", edge.DebugString(),
           " sharding=", sharding->DebugString());
     }
-    absl::optional<xla::OpSharding> subsharding =
+    std::optional<xla::OpSharding> subsharding =
         sharding.value().tuple_shardings(edge.src_output());
     return subsharding;
   }
@@ -150,10 +150,10 @@ void SetShardingDeviceAssignmentFromNode(const Node& src, Node* dst) {
 
 namespace {
 
-StatusOr<absl::optional<xla::OpSharding>> GetShardingFromNodeDefInternal(
+StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDefInternal(
     const NodeDef& node_def, bool add_metadata, const char* attribute) {
   if (!HasNodeAttr(node_def, attribute)) {
-    return absl::optional<xla::OpSharding>();
+    return std::optional<xla::OpSharding>();
   }
   string value;
   xla::OpSharding sharding;
@@ -167,12 +167,12 @@ StatusOr<absl::optional<xla::OpSharding>> GetShardingFromNodeDefInternal(
   if (add_metadata) {
     AssignOpMetadataToSharding(sharding, node_def.op(), node_def.name());
   }
-  return absl::optional<xla::OpSharding>(sharding);
+  return std::optional<xla::OpSharding>(sharding);
 }
 
 }  // namespace
 
-xla::StatusOr<absl::optional<xla::OpSharding>> GetShardingFromNodeDef(
+xla::StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDef(
     const NodeDef& node_def, bool add_metadata) {
   if (node_def.op() == "XlaSharding") {
     TF_ASSIGN_OR_RETURN(auto sharding,

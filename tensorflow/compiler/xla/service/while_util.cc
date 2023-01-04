@@ -21,10 +21,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
 
 namespace xla {
@@ -163,8 +163,9 @@ MakeCountedLoopConditionComputation(const Shape& loop_state_shape,
                       CreateComputationWithSignature(
                           {&loop_state_shape}, scalar_pred, "while_cond"));
 
-  HloInstruction* trip_count_constant = cond_computation->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(trip_count)));
+  HloInstruction* trip_count_constant =
+      cond_computation->AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR0<int32_t>(trip_count)));
 
   HloInstruction* param = cond_computation->parameter_instruction(0);
   TF_ASSIGN_OR_RETURN(HloInstruction * indvar,
@@ -179,13 +180,14 @@ MakeCountedLoopConditionComputation(const Shape& loop_state_shape,
 
 static StatusOr<std::unique_ptr<HloComputation>> MakeCountedLoopBodyComputation(
     const Shape& loop_state_shape,
-    const std::function<StatusOr<WhileUtil::LoopStateTy>(
-        HloInstruction*, const WhileUtil::LoopStateTy&)>& loop_body_generator) {
+    absl::FunctionRef<StatusOr<WhileUtil::LoopStateTy>(
+        HloInstruction*, const WhileUtil::LoopStateTy&)>
+        loop_body_generator) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> body_computation,
                       CreateComputationWithSignature(
                           {&loop_state_shape}, loop_state_shape, "while_body"));
   HloInstruction* one = body_computation->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
   HloInstruction* param = body_computation->parameter_instruction(0);
   TF_ASSIGN_OR_RETURN(HloInstruction * indvar,
                       MakeGetTupleElementHlo(param, 0));
@@ -214,7 +216,7 @@ MakeInitTupleFromInitValues(const WhileUtil::LoopStateTy& init_values) {
   std::vector<HloInstruction*> init_values_with_indvar;
   init_values_with_indvar.reserve(init_values.size() + 1);
   std::unique_ptr<HloInstruction> zero =
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0));
   init_values_with_indvar.push_back(zero.get());
   absl::c_copy(init_values, std::back_inserter(init_values_with_indvar));
   return std::make_pair(std::move(zero),
@@ -244,7 +246,7 @@ static Shape MakeLoopStateShapeWithLayout(
 /*static*/ StatusOr<WhileUtil::OwningLoopStateTy> WhileUtil::MakeCountedLoop(
     HloModule* module, int32_t trip_count,
     const WhileUtil::LoopStateTy& init_values,
-    const WhileUtil::LoopBodyGeneratorTy& loop_body_generator,
+    WhileUtil::LoopBodyGeneratorTy loop_body_generator,
     const OpMetadata& metadata) {
   CHECK_GE(trip_count, 0);
 
@@ -286,7 +288,7 @@ static Shape MakeLoopStateShapeWithLayout(
 /*static*/ StatusOr<WhileUtil::LoopStateTy> WhileUtil::MakeCountedLoop(
     HloComputation* computation, int32_t trip_count,
     const WhileUtil::LoopStateTy& init_values,
-    const WhileUtil::LoopBodyGeneratorTy& loop_body_generator,
+    WhileUtil::LoopBodyGeneratorTy loop_body_generator,
     const OpMetadata& metadata) {
   TF_ASSIGN_OR_RETURN(
       auto owning_loop_state,

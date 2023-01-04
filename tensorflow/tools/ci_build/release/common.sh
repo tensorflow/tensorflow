@@ -17,9 +17,8 @@
 
 # Keep in sync with tensorflow_estimator and configure.py.
 # LINT.IfChange
-LATEST_BAZEL_VERSION=3.7.2
+LATEST_BAZEL_VERSION=5.1.1
 # LINT.ThenChange(
-#   //tensorflow/opensource_only/configure.py,
 #   //tensorflow_estimator/google/kokoro/common.sh,
 #   //tensorflow/tools/ci_build/install/install_bazel.sh,
 #   //tensorflow/tools/ci_build/install/install_bazel_from_source.sh)
@@ -62,12 +61,17 @@ function install_bazelisk {
   date
   case "$(uname -s)" in
     Darwin) local name=bazelisk-darwin-amd64 ;;
-    Linux)  local name=bazelisk-linux-amd64  ;;
+    Linux)
+      case "$(uname -m)" in
+       x86_64) local name=bazelisk-linux-amd64 ;;
+       aarch64) local name=bazelisk-linux-arm64 ;;
+       *) die "Unknown machine type: $(uname -m)" ;;
+      esac ;;
     *) die "Unknown OS: $(uname -s)" ;;
   esac
   mkdir -p "$HOME/bin"
   wget --no-verbose -O "$HOME/bin/bazel" \
-      "https://github.com/bazelbuild/bazelisk/releases/download/v1.3.0/$name"
+      "https://github.com/bazelbuild/bazelisk/releases/download/v1.11.0/$name"
   chmod u+x "$HOME/bin/bazel"
   if [[ ! ":$PATH:" =~ :"$HOME"/bin/?: ]]; then
     PATH="$HOME/bin:$PATH"
@@ -117,7 +121,7 @@ function install_ubuntu_16_pip_deps {
   done
 
   # First, upgrade pypi wheels
-  "${PIP_CMD}" install --user --upgrade 'setuptools<53' pip wheel
+  "${PIP_CMD}" install --user --upgrade 'setuptools' pip wheel
 
   # LINT.IfChange(linux_pip_installations_orig)
   # Remove any historical keras package if they are installed.
@@ -146,7 +150,7 @@ function install_ubuntu_16_python_pip_deps {
   done
 
   # First, upgrade pypi wheels
-  ${PIP_CMD} install --user --upgrade 'setuptools<53' pip wheel
+  ${PIP_CMD} install --user --upgrade 'setuptools' pip wheel
 
   # LINT.IfChange(linux_pip_installations)
   # Remove any historical keras package if they are installed.
@@ -166,7 +170,7 @@ function install_ubuntu_pip_deps {
   # when upgrading auditwheel modify upload_wheel_cpu_ubuntu and upload_wheel_gpu_ubuntu
   # to match the filename generated.
   ${PIP_CMD} install --upgrade pip wheel auditwheel~=3.3.1
-  ${PIP_CMD} install -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
+  ${PIP_CMD} install -r tensorflow/tools/ci_build/release/${REQUIREMENTS_FNAME}
   ${PIP_CMD} list
 }
 
@@ -175,6 +179,7 @@ function setup_venv_ubuntu () {
   # First argument needs to be the python executable.
   ${1} -m venv ~/.venv/tf
   source ~/.venv/tf/bin/activate
+  REQUIREMENTS_FNAME="requirements_ubuntu.txt"
   install_ubuntu_pip_deps
 }
 
@@ -182,6 +187,16 @@ function remove_venv_ubuntu () {
   # Deactivate virtual environment and clean up
   deactivate
   rm -rf ~/.venv/tf
+}
+
+function install_ubuntu_pip_deps_novenv () {
+  # Install on default python Env (No Virtual Env for pip packages)
+  PIP_CMD="${1} -m pip"
+  REQUIREMENTS_FNAME="requirements_ubuntu.txt"
+  ${PIP_CMD} install --user --upgrade 'setuptools' pip wheel pyparsing auditwheel~=3.3.1
+  ${PIP_CMD} install --user -r tensorflow/tools/ci_build/release/${REQUIREMENTS_FNAME}
+  ${PIP_CMD} list
+
 }
 
 function upload_wheel_cpu_ubuntu() {
@@ -245,16 +260,17 @@ function install_macos_pip_deps {
   PIP_CMD="python -m pip"
 
   # First, upgrade pypi wheels
-  ${PIP_CMD} install --upgrade 'setuptools<53' pip wheel
+  ${PIP_CMD} install --upgrade 'setuptools' pip wheel
 
   # LINT.IfChange(mac_pip_installations)
   # Remove any historical keras package if they are installed.
   ${PIP_CMD} list
   ${PIP_CMD} uninstall -y keras
   ${PIP_CMD} install -r tensorflow/tools/ci_build/release/requirements_mac.txt
-  # LINT.ThenChange(:linux_pip_installations_orig)
-  # LINT.ThenChange(:install_macos_pip_deps_no_venv)
-  # LINT.ThenChange(:linux_pip_installations)
+  # LINT.ThenChange(
+  #   :linux_pip_installations_orig,
+  #   :install_macos_pip_deps_no_venv,
+  #   :linux_pip_installations)
 }
 
 # This hack is unfortunately necessary for MacOS builds that use pip_new.sh
@@ -264,7 +280,7 @@ function install_macos_pip_deps_no_venv {
   PIP_CMD="${1} -m pip"
 
   # First, upgrade pypi wheels
-  ${PIP_CMD} install --user --upgrade 'setuptools<53' pip wheel
+  ${PIP_CMD} install --user --upgrade 'setuptools' pip wheel
 
   # LINT.IfChange(mac_pip_installations)
   # Remove any historical keras package if they are installed.
@@ -293,11 +309,11 @@ function setup_python_from_pyenv_macos {
     PY_VERSION=$1
   fi
 
-  git clone --branch 1.2.27 https://github.com/pyenv/pyenv.git
+  git clone --branch v2.2.2 https://github.com/pyenv/pyenv.git
 
   PYENV_ROOT="$(pwd)/pyenv"
   export PYENV_ROOT
-  export PATH="$PYENV_ROOT/bin:$PATH"
+  export PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:$PATH"
 
   eval "$(pyenv init -)"
 
@@ -350,7 +366,7 @@ function copy_to_new_project_name {
   NEW_PROJECT_NAME_DASH="${NEW_PROJECT_NAME//_/-}"
 
   # We need to change the name in the METADATA file, but we need to ensure that
-  # all other occurences of the name stay the same, otherwise things such as
+  # all other occurrences of the name stay the same, otherwise things such as
   # URLs and depedencies might be broken (for example, replacing without care
   # might transform a `tensorflow_estimator` dependency into
   # `tensorflow_gpu_estimator`, which of course does not exist -- except by
@@ -407,13 +423,14 @@ function test_xml_summary_exit {
   exit "${RETVAL}"
 }
 
+# Note: The Docker-based Ubuntu TF-nightly jobs do not use this list. They use
+# //tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/wheel_verification.bats
+# instead. See go/tf-devinfra/docker.
 # CPU size
-MAC_CPU_MAX_WHL_SIZE=200M
-LINUX_CPU_MAX_WHL_SIZE=175M
+MAC_CPU_MAX_WHL_SIZE=240M
 WIN_CPU_MAX_WHL_SIZE=170M
 # GPU size
-LINUX_GPU_MAX_WHL_SIZE=475M
-WIN_GPU_MAX_WHL_SIZE=345M
+WIN_GPU_MAX_WHL_SIZE=360M
 
 function test_tf_whl_size() {
   WHL_PATH=${1}
@@ -429,26 +446,13 @@ function test_tf_whl_size() {
 within pypi's CDN distribution limit, we must not exceed that threshold."
       return 1
     fi
-    # Check Linux CPU whl size.
-    if [[ "$WHL_PATH" == *"-manylinux"* ]] && [[ $(find $WHL_PATH -type f -size +${LINUX_CPU_MAX_WHL_SIZE}) ]]; then
-        echo "Linux CPU whl size has exceeded ${LINUX_CPU_MAX_WHL_SIZE}. To keep
-within pypi's CDN distribution limit, we must not exceed that threshold."
-      return 1
-    fi
     # Check Windows CPU whl size.
     if [[ "$WHL_PATH" == *"-win"* ]] && [[ $(find $WHL_PATH -type f -size +${WIN_CPU_MAX_WHL_SIZE}) ]]; then
         echo "Windows CPU whl size has exceeded ${WIN_CPU_MAX_WHL_SIZE}. To keep
 within pypi's CDN distribution limit, we must not exceed that threshold."
       return 1
     fi
-  # Check GPU whl size
   elif [[ "$WHL_PATH" == *"_gpu"* ]]; then
-    # Check Linux GPU whl size.
-    if [[ "$WHL_PATH" == *"-manylinux"* ]] && [[ $(find $WHL_PATH -type f -size +${LINUX_GPU_MAX_WHL_SIZE}) ]]; then
-        echo "Linux GPU whl size has exceeded ${LINUX_GPU_MAX_WHL_SIZE}. To keep
-within pypi's CDN distribution limit, we must not exceed that threshold."
-      return 1
-    fi
     # Check Windows GPU whl size.
     if [[ "$WHL_PATH" == *"-win"* ]] && [[ $(find $WHL_PATH -type f -size +${WIN_GPU_MAX_WHL_SIZE}) ]]; then
         echo "Windows GPU whl size has exceeded ${WIN_GPU_MAX_WHL_SIZE}. To keep

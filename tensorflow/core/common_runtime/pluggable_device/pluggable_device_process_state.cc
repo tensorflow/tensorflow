@@ -20,10 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
+#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_init.h"
@@ -68,9 +68,9 @@ int PluggableDeviceProcessState::BusIdForPluggableDevice(
     TfDeviceId tf_device_id) {
   // Return the NUMA node associated with the PluggableDevice's StreamExecutor.
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
-  se::StreamExecutor* se = DeviceIdUtil::ExecutorForTfDeviceId(
+  se::StreamExecutor* se = se::DeviceIdUtil::ExecutorForTfDeviceId(
                                DeviceType(device_type_), platform, tf_device_id)
-                               .ValueOrDie();
+                               .value();
   int numa_node = se->GetDeviceDescription().numa_node();
   // `bus_id` must be non-negative. If the `numa_node` is unknown, use 0.
   return numa_node >= 0 ? numa_node : 0;
@@ -82,8 +82,8 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
   const string& allocator_type = options.allocator_type();
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
   mutex_lock lock(mu_);
-  DeviceIdUtil::CheckValidTfDeviceId(DeviceType(device_type_), platform,
-                                     tf_device_id);
+  se::DeviceIdUtil::CheckValidTfDeviceId(DeviceType(device_type_), platform,
+                                         tf_device_id);
 
   if (tf_device_id.value() >=
       static_cast<int64_t>(pluggable_device_allocators_.size())) {
@@ -110,11 +110,12 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
 
     bool use_unified_memory = options.per_process_gpu_memory_fraction() > 1.0 ||
                               options.experimental().use_unified_memory();
-    DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
-        DeviceIdUtil::ExecutorForPlatformDeviceId(platform, platform_device_id)
-            .ValueOrDie(),
-        platform_device_id, use_unified_memory,
-        pluggable_device_visitors_[bus_id], {});
+    DeviceMemAllocator* sub_allocator =
+        new DeviceMemAllocator(se::DeviceIdUtil::ExecutorForPlatformDeviceId(
+                                   platform, platform_device_id)
+                                   .value(),
+                               platform_device_id, use_unified_memory,
+                               pluggable_device_visitors_[bus_id], {});
 
     Allocator* device_allocator = nullptr;
     auto cplatform = dynamic_cast<se::CPlatform*>(platform);
@@ -125,7 +126,8 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
     if (cplatform->UseBfcAllocator()) {
       device_allocator = new PluggableDeviceBFCAllocator(
           sub_allocator, total_bytes, options,
-          strings::StrCat("PluggableDevice_", tf_device_id.value(), "_bfc"));
+          strings::StrCat("PluggableDevice_", tf_device_id.value(), "_bfc"),
+          cplatform->ForceMemoryGrowth());
     } else {
       device_allocator = new PluggableDeviceSimpleAllocator(sub_allocator);
     }
@@ -165,9 +167,9 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
   for (int i = 0; i < static_cast<int>(pluggable_device_allocators_.size());
        ++i) {
     if (pluggable_device_allocators_[i].allocator != nullptr) {
-      se = DeviceIdUtil::ExecutorForTfDeviceId(DeviceType(device_type_),
-                                               platform, TfDeviceId(i))
-               .ValueOrDie();
+      se = se::DeviceIdUtil::ExecutorForTfDeviceId(DeviceType(device_type_),
+                                                   platform, TfDeviceId(i))
+               .value();
       break;
     }
   }
@@ -196,9 +198,11 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
     int64_t pluggable_device_host_mem_limit =
         pluggable_device_host_mem_limit_in_mb << 20;
 
+    BFCAllocator::Options allocator_opts;
+    allocator_opts.allow_growth = true;
     Allocator* allocator = new BFCAllocator(
-        sub_allocator, pluggable_device_host_mem_limit, true /*allow_growth*/,
-        "pluggable_device_host_bfc" /*name*/);
+        absl::WrapUnique(sub_allocator), pluggable_device_host_mem_limit,
+        /*name=*/"pluggable_device_host_bfc", allocator_opts);
 
     if (LogMemory::IsEnabled() && !allocator->TracksAllocationSizes()) {
       // Wrap the allocator to track allocation ids for better logging

@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOCO_TFLITE_EXPORT_H_
 #define TENSORFLOW_LITE_TOCO_TFLITE_EXPORT_H_
 
+#include <string>
+
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 #include "tensorflow/lite/util.h"

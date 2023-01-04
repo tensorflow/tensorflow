@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/math_ops.h"
@@ -50,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/tsl/framework/fixedpoint/FixedPoint.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
@@ -89,19 +89,22 @@ class TRTEngineOpTestBase : public OpsTestBase {
 
     string segment_string;
     if (static_engine) {
-      convert::ConversionParams params;
+      convert::TRTOptimizationPass::ConversionParams params;
       convert::EngineInfo info;
       info.segment_graph_def.CopyFrom(graph_def);
       info.precision_mode = TrtPrecisionMode::FP32;
       info.max_workspace_size_bytes = 1 << 20;
-      info.engine_name = "TRTEngineOP_0_0";
+      info.engine_name = "TRTEngineOP_000_000";
       params.use_implicit_batch = use_implicit_batch;
       params.trt_logger_name = "DefaultLogger";
 
       TrtShapeOptimizationProfile profile;
-      TensorShape my_shape;
+      // We set the input mask to true (no resource inputs)
+      std::vector<bool> input_mask = {true};
+      profile.SetInputMask(input_mask);
       // We set profile 0 to be incompatible with the input used in the test.
       // This way we ensure that profile selection is tested.
+      TensorShape my_shape;
       TF_CHECK_OK(
           TensorShapeUtils::MakeShape(std::vector<int32>{4, 2}, &my_shape));
       profile.AddShape({my_shape, {}});
@@ -111,8 +114,8 @@ class TRTEngineOpTestBase : public OpsTestBase {
 
       profile.InitProfiles({shape}, ProfileStrategy::kOptimal);
       std::vector<PartialTensorShape> shape_vec{shape, {}};
-      TF_CHECK_OK(convert::CreateStaticEngine(params, info, 1, shape_vec,
-                                              &profile, &segment_string));
+      TF_CHECK_OK(convert::CreateStaticEngine(
+          params, info, 1, shape_vec, &profile, &segment_string, nullptr));
     }
 
     // Create the op.
@@ -277,7 +280,7 @@ TEST_F(TRTEngineOpTestBase, AllowBuildAtRuntime) {
   EXPECT_EQ(1, cache->size());
   ASSERT_EQ(1, cache->count({input_shape}));
   EngineContext* ectx = cache->at({input_shape}).get();
-  EXPECT_EQ(ectx->cuda_engine, nullptr);
+  EXPECT_EQ(ectx->GetCudaEngine(), nullptr);
 }
 
 TEST_P(TRTEngineOpTestWithParam, ExplicitBatch) {
@@ -304,7 +307,7 @@ TEST_P(TRTEngineOpTestWithParam, ExplicitBatch) {
   EXPECT_EQ(1, cache->size());
   ASSERT_EQ(1, cache->count({input_shape}));
   EngineContext* ectx = cache->at({input_shape}).get();
-  EXPECT_NE(ectx->cuda_engine, nullptr);
+  EXPECT_NE(ectx->GetCudaEngine(), nullptr);
 }
 
 TEST_P(TRTEngineOpTestWithParam, DynamicShapes) {
@@ -334,7 +337,7 @@ TEST_P(TRTEngineOpTestWithParam, DynamicShapes) {
   EXPECT_EQ(1, cache->size());
   ASSERT_EQ(1, cache->count({input_shape}));
   EngineContext* ectx = cache->at({input_shape}).get();
-  EXPECT_NE(ectx->cuda_engine, nullptr);
+  EXPECT_NE(ectx->GetCudaEngine(), nullptr);
 
   // Execute the op with an incompatible shape.
   ResetInputs();

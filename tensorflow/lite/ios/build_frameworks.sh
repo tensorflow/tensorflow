@@ -56,6 +56,18 @@ function generate_list_field {
   printf '%s' "${message[@]}"
 }
 
+# get_output_file_path takes one bazel target label as an argument, and prints
+# the path of the first output file of the specified target.
+function get_output_file_path {
+  local starlark_file="${TMP_DIR}/print_output_file.starlark"
+  cat > "${starlark_file}" << EOF
+def format(target):
+  return target.files.to_list()[0].path
+EOF
+  bazel cquery --config=ios $1 \
+    --output=starlark --starlark:file="${starlark_file}" 2> /dev/null
+}
+
 function print_output {
   echo "Output can be found here:"
   for i in "${OUT_FILES[@]}"
@@ -95,11 +107,11 @@ function generate_tflite_framework {
   printf '%s\n' "${message[@]}" >> BUILD
 
   # Build the framework package.
+  local target="//${TMP_DIR}:TensorFlowLiteC_framework"
   popd > /dev/null
-  bazel build -c opt --config=ios --ios_multi_cpus="${TARGET_ARCHS}" \
-    //${TMP_DIR}:TensorFlowLiteC_framework
+  bazel build -c opt --config=ios --ios_multi_cpus="${TARGET_ARCHS}" "${target}"
 
-  OUT_FILES+=("bazel-bin/${TMP_DIR}/TensorFlowLiteC_framework.zip")
+  OUT_FILES+=($(get_output_file_path "${target}"))
 }
 
 function generate_flex_framework {
@@ -125,10 +137,10 @@ function generate_flex_framework {
   popd
 
   # Build the framework.
-  bazel build -c opt --config=ios --ios_multi_cpus="${TARGET_ARCHS}" \
-    //${TMP_DIR}:TensorFlowLiteSelectTfOps_framework
+  local target="//${TMP_DIR}:TensorFlowLiteSelectTfOps_framework"
+  bazel build -c opt --config=ios --ios_multi_cpus="${TARGET_ARCHS}" "${target}"
 
-  OUT_FILES+=("bazel-bin/${TMP_DIR}/TensorFlowLiteSelectTfOps_framework.zip")
+  OUT_FILES+=($(get_output_file_path "${target}"))
 }
 
 # Check command line flags.

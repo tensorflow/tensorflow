@@ -32,7 +32,7 @@ using ::testing::NotNull;
 class LocalWorkersTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    test_cluster_ = absl::make_unique<TestCluster>(/*num_workers=*/0);
+    test_cluster_ = std::make_unique<TestCluster>(/*num_workers=*/0);
     TF_ASSERT_OK(test_cluster_->Initialize());
   }
 

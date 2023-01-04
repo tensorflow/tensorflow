@@ -29,6 +29,7 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -49,15 +50,16 @@ limitations under the License.
 namespace mlir {
 namespace tosa {
 namespace {
-#define GEN_PASS_CLASSES
+
+#define GEN_PASS_DEF_TOSACONVERTTFLUINT8PASS
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
 
 // Performs lowering to TOSA dialect.
 class ConvertUint8ToInt8
-    : public TosaConvertTFLUint8PassBase<ConvertUint8ToInt8> {
+    : public impl::TosaConvertTFLUint8PassBase<ConvertUint8ToInt8> {
  public:
   explicit ConvertUint8ToInt8() {}
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 struct ConvertUint8QConstOp : public RewritePattern {
@@ -87,7 +89,7 @@ struct ConvertUint8QConstOp : public RewritePattern {
     }
 
     mlir::DenseElementsAttr src_dense_attr =
-        tfl_qconst_op.value().cast<DenseElementsAttr>();
+        tfl_qconst_op.getValue().cast<DenseElementsAttr>();
 
     double type_range_min =
         static_cast<double>(output_element_type.getStorageTypeMin() -
@@ -129,7 +131,7 @@ struct ConvertUint8QConstOp : public RewritePattern {
 };
 
 LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
-                                         mlir::FuncOp &function) {
+                                         mlir::func::FuncOp &function) {
   size_t num_blocks_in_main = 0;
   mlir::Region *region = function.getCallableRegion();
   OpBuilder builder(&context);
@@ -326,13 +328,13 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
   return success();
 }
 
-void ConvertUint8ToInt8::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+void ConvertUint8ToInt8::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
   auto &ctx = getContext();
-  auto func = getFunction();
+  mlir::func::FuncOp func = getOperation();
 
   // Convert uint8 const tensor. const needs to be handled specifically.
-  patterns.insert<ConvertUint8QConstOp>(&ctx);
+  patterns.add<ConvertUint8QConstOp>(&ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Replace uint8 tensor in the graph and insert rescale as needed.
@@ -341,7 +343,7 @@ void ConvertUint8ToInt8::runOnFunction() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createConvertTFLUint8Pass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createConvertTFLUint8Pass() {
   return std::make_unique<ConvertUint8ToInt8>();
 }
 

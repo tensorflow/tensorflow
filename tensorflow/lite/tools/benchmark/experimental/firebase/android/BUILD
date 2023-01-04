@@ -6,6 +6,7 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_hexagon_nn_skel_libraries")
 load("@build_bazel_rules_android//android:rules.bzl", "android_binary")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],
 )
@@ -17,6 +18,7 @@ android_binary(
     ]),
     custom_package = "org.tensorflow.lite.benchmark.firebase",
     manifest = "AndroidManifest.xml",
+    multidex = "native",
     # In some platforms we don't have an Android SDK/NDK and this target
     # can't be built. We need to prevent the build system from trying to
     # use the target in that case.

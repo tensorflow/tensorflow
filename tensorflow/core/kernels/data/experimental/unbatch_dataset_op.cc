@@ -27,6 +27,8 @@ namespace data {
 namespace experimental {
 namespace {
 
+constexpr char kInputImplEmpty[] = "input_impl_empty";
+
 class UnbatchDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit UnbatchDatasetOp(OpKernelConstruction* ctx)
@@ -65,7 +67,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return absl::make_unique<Iterator>(
+      return std::make_unique<Iterator>(
           Iterator::Params{this, strings::StrCat(prefix, "::Unbatch")});
     }
 
@@ -92,7 +94,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return Status::OK();
+      return OkStatus();
     }
 
     Status CheckExternalState() const override {
@@ -106,7 +108,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node}, output));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:
@@ -117,6 +119,8 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
             current_index_(0),
             current_batch_size_(0),
             shapes_(params.dataset->output_shapes().size()) {}
+
+      bool SymbolicCheckpointCompatible() const override { return true; }
 
       Status Initialize(IteratorContext* ctx) override {
         return dataset()->input_->MakeIterator(ctx, this, prefix(),
@@ -129,7 +133,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
         mutex_lock l(mu_);
         if (!input_impl_) {
           *end_of_sequence = true;
-          return Status::OK();
+          return OkStatus();
         }
         *end_of_sequence = false;
         while (!*end_of_sequence) {
@@ -146,7 +150,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
             }
             ++current_index_;
             *end_of_sequence = false;
-            return Status::OK();
+            return OkStatus();
           }
           current_index_ = 0;
           current_batch_size_ = 0;
@@ -174,7 +178,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
           }
         }
         input_impl_.reset();
-        return Status::OK();
+        return OkStatus();
       }
 
      protected:
@@ -195,11 +199,10 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
       Status SaveInternal(SerializationContext* ctx,
                           IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            full_name(kInputImplEmpty), static_cast<int64_t>(!input_impl_)));
         if (input_impl_) {
           TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-        } else {
-          TF_RETURN_IF_ERROR(
-              writer->WriteScalar(full_name("input_impl_empty"), ""));
         }
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name("current_index"), current_index_));
@@ -211,13 +214,16 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
                 full_name(strings::StrCat("tensors[", i, "]")), tensors_[i]));
           }
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        if (!reader->Contains(full_name("input_impl_empty"))) {
+        int64_t input_empty;
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(full_name(kInputImplEmpty), &input_empty));
+        if (!static_cast<bool>(input_empty)) {
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         } else {
           input_impl_.reset();
@@ -237,7 +243,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
             shapes_[i].RemoveDim(0);
           }
         }
-        return Status::OK();
+        return OkStatus();
       }
 
      private:

@@ -38,7 +38,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
     string parsed_path;
     ParsePath(fname, &parsed_path);
     if (BodyExists(parsed_path)) {
-      return Status::OK();
+      return OkStatus();
     }
     return Status(tensorflow::error::NOT_FOUND, "File does not exist");
   }
@@ -58,13 +58,13 @@ class InterPlanetaryFileSystem : public NullFileSystem {
       return Status(tensorflow::error::INVALID_ARGUMENT, "Bad dirname");
     }
     if (split_path.empty()) {
-      return Status::OK();
+      return OkStatus();
     }
     if (split_path.size() == 1) {
       celestial_bodies_[""].insert(parsed_path);
       celestial_bodies_.insert(
           std::pair<string, std::set<string>>(parsed_path, {}));
-      return Status::OK();
+      return OkStatus();
     }
     if (split_path.size() == 2) {
       if (!BodyExists(split_path[0])) {
@@ -74,7 +74,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
       celestial_bodies_[split_path[0]].insert(split_path[1]);
       celestial_bodies_.insert(
           std::pair<string, std::set<string>>(parsed_path, {}));
-      return Status::OK();
+      return OkStatus();
     }
     if (split_path.size() == 3) {
       const string& parent_path = this->JoinPath(split_path[0], split_path[1]);
@@ -85,7 +85,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
       celestial_bodies_[parent_path].insert(split_path[2]);
       celestial_bodies_.insert(
           std::pair<string, std::set<string>>(parsed_path, {}));
-      return Status::OK();
+      return OkStatus();
     }
     return Status(tensorflow::error::FAILED_PRECONDITION, "Failed to create");
   }
@@ -102,7 +102,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
       return Status(tensorflow::error::FAILED_PRECONDITION, "Not a dir");
     }
     if (celestial_bodies_.find(parsed_path) != celestial_bodies_.end()) {
-      return Status::OK();
+      return OkStatus();
     }
     return Status(tensorflow::error::FAILED_PRECONDITION, "Not a dir");
   }
@@ -114,7 +114,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
     ParsePath(dir, &parsed_path);
     result->insert(result->begin(), celestial_bodies_[parsed_path].begin(),
                    celestial_bodies_[parsed_path].end());
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -279,7 +279,7 @@ class TestFileSystem : public NullFileSystem {
   // Only allow for a single root directory.
   Status IsDirectory(const string& dirname, TransactionToken* token) override {
     if (dirname == "." || dirname.empty()) {
-      return Status::OK();
+      return OkStatus();
     }
     return Status(tensorflow::error::FAILED_PRECONDITION, "Not a dir");
   }
@@ -290,7 +290,7 @@ class TestFileSystem : public NullFileSystem {
     if (dir == "." || dir.empty()) {
       result->push_back("test");
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 

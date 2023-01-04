@@ -19,9 +19,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 
@@ -55,8 +54,8 @@ class StreamPool {
   // This method is thread-safe.
   void ReturnStream(se::Stream* stream);
 
-  tensorflow::mutex mu_;
-  std::vector<std::unique_ptr<se::Stream>> streams_ TF_GUARDED_BY(mu_);
+  absl::Mutex mu_;
+  std::vector<std::unique_ptr<se::Stream>> streams_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace xla

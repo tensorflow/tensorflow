@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/util/port.h"
 
+#include "absl/base/call_once.h"
+#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
@@ -59,11 +62,92 @@ bool GpuSupportsHalfMatMulAndConv() {
 #endif
 }
 
-bool IsMklEnabled() {
-#if defined(INTEL_MKL) && defined(ENABLE_MKL)
+// Returns whether oneDNN should be enabled or disabled by default.
+//   - Linux: Enabled by default for CPUs with neural network features.
+//   - Windows: Disabled by default.
+inline bool DefaultOneDnnPolicy() {
+#if !defined(INTEL_MKL)
+  return false;
+#elif defined(PLATFORM_GOOGLE)
   return true;
+#elif defined(__linux__)
+  return port::TestCPUFeature(port::CPUFeature::AVX512_VNNI) ||
+         port::TestCPUFeature(port::CPUFeature::AVX512_BF16) ||
+         port::TestCPUFeature(port::CPUFeature::AVX_VNNI) ||
+         port::TestCPUFeature(port::CPUFeature::AMX_TILE) ||
+         port::TestCPUFeature(port::CPUFeature::AMX_INT8) ||
+         port::TestCPUFeature(port::CPUFeature::AMX_BF16);
 #else
   return false;
-#endif  // INTEL_MKL && ENABLE_MKL
+#endif  // !defined(INTEL_MKL)
 }
-}  // end namespace tensorflow
+
+bool IsMklEnabled() {
+#ifndef INTEL_MKL
+  return false;
+#endif
+  static absl::once_flag once;  // NOLINT(clang-diagnostic-unreachable-code)
+#ifdef ENABLE_MKL
+  // Keeping TF_DISABLE_MKL env variable for legacy reasons.
+  static bool oneDNN_disabled = false;
+  absl::call_once(once, [&] {
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_DISABLE_MKL", false, &oneDNN_disabled));
+    if (oneDNN_disabled) VLOG(2) << "TF-MKL: Disabling oneDNN";
+  });
+  return (!oneDNN_disabled);
+#else
+  static bool oneDNN_enabled = DefaultOneDnnPolicy();
+  absl::call_once(once, [&] {
+    auto status = ReadBoolFromEnvVar("TF_ENABLE_ONEDNN_OPTS", oneDNN_enabled,
+                                     &oneDNN_enabled);
+    if (!status.ok()) {
+      LOG(WARNING) << "TF_ENABLE_ONEDNN_OPTS is not set to either '0', 'false',"
+                   << " '1', or 'true'. Using the default setting: "
+                   << oneDNN_enabled;
+    }
+    if (oneDNN_enabled) {
+#ifndef DNNL_AARCH64_USE_ACL
+      LOG(INFO) << "oneDNN custom operations are on. "
+                << "You may see slightly different numerical results due to "
+                << "floating-point round-off errors from different computation "
+                << "orders. To turn them off, set the environment variable "
+                << "`TF_ENABLE_ONEDNN_OPTS=0`.";
+#else
+      LOG(INFO) << "Experimental oneDNN custom operations are on. "
+                << "If you experience issues, please turn them off by setting "
+                << "the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.";
+#endif  // !DNNL_AARCH64_USE_ACL
+    }
+  });
+  return oneDNN_enabled;
+#endif  // ENABLE_MKL
+}
+
+bool IsZenDnnEnabled() {
+#ifndef AMD_ZENDNN
+  return false;
+#else
+  static absl::once_flag once;
+  static bool ZenDNN_enabled = false;
+  absl::call_once(once, [&] {
+    auto status = ReadBoolFromEnvVar("TF_ENABLE_ZENDNN_OPTS", ZenDNN_enabled,
+                                     &ZenDNN_enabled);
+
+    if (!status.ok()) {
+      LOG(WARNING) << "TF_ENABLE_ZENDNN_OPTS is not set to either '0', 'false',"
+                   << " '1', or 'true'. Using the default setting: "
+                   << ZenDNN_enabled;
+    }
+    if (ZenDNN_enabled) {
+      LOG(INFO) << "ZenDNN custom operations are on. "
+                << "You may see slightly different numerical results due to "
+                << "floating-point round-off errors from different computation "
+                << "orders. To turn them off, set the environment variable "
+                << "`TF_ENABLE_ZENDNN_OPTS=0`.";
+    }
+  });
+  return ZenDNN_enabled;
+#endif  // !AMD_ZENDNN
+}
+
+}  // namespace tensorflow

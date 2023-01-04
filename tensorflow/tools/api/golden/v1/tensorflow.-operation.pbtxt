@@ -51,6 +51,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "experimental_set_type"
+    argspec: "args=[\'self\', \'type_proto\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_attr"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
   }

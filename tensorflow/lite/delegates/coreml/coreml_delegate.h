@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_COREML_COREML_DELEGATE_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_COREML_COREML_DELEGATE_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_COREML_COREML_DELEGATE_H_
+#define TENSORFLOW_LITE_DELEGATES_COREML_COREML_DELEGATE_H_
 
 #include "tensorflow/lite/c/common.h"
 
@@ -45,6 +45,12 @@ typedef struct {
   // This sets the minimum number of nodes per partition delegated with
   // Core ML delegate. Defaults to 2.
   int min_nodes_per_partition;
+#ifdef TFLITE_DEBUG_DELEGATE
+  // This sets the index of the first node that could be delegated.
+  int first_delegate_node_index;
+  // This sets the index of the last node that could be delegated.
+  int last_delegate_node_index;
+#endif
 } TfLiteCoreMlDelegateOptions;
 
 // Return a delegate that uses CoreML for ops execution.
@@ -59,4 +65,4 @@ void TfLiteCoreMlDelegateDelete(TfLiteDelegate* delegate);
 }
 #endif  // __cplusplus
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_COREML_COREML_DELEGATE_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_COREML_COREML_DELEGATE_H_

@@ -21,6 +21,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -33,6 +34,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import   array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_rnn_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -47,8 +49,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
-from tensorflow.python.training.tracking import tracking
-from tensorflow.python.training.tracking import util as trackable_utils
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.util import nest
 
 
@@ -237,9 +238,8 @@ class RNNTest(test.TestCase):
     cell = Plus1RNNCell()
     full_dropout_cell = rnn_cell.DropoutWrapper(
         cell, input_keep_prob=1e-6, seed=0)
-    (name, dep), = full_dropout_cell._checkpoint_dependencies
-    self.assertIs(dep, cell)
-    self.assertEqual("cell", name)
+    self.assertIn("cell", full_dropout_cell._trackable_children())
+    self.assertIs(full_dropout_cell._trackable_children()["cell"], cell)
     batch_size = 2
     input_size = 5
     max_length = 8
@@ -1323,6 +1323,88 @@ class LSTMTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testDynamicEquivalentToStaticRNNWithSequenceLength(self):
     self._testDynamicEquivalentToStaticRNN(use_sequence_length=True)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testLSTMBlockCellErrorHandling(self):
+    forget_bias = 1
+    cell_clip = 0
+    use_peephole = False
+    x = constant_op.constant(0.837607, shape=[28, 29], dtype=dtypes.float32)
+    cs_prev = constant_op.constant(0, shape=[28, 17], dtype=dtypes.float32)
+    h_prev = constant_op.constant(
+        0.592631638, shape=[28, 17], dtype=dtypes.float32)
+    w = constant_op.constant(0.887386262, shape=[46, 68], dtype=dtypes.float32)
+    wci = constant_op.constant(0, shape=[], dtype=dtypes.float32)
+    wcf = constant_op.constant(0, shape=[17], dtype=dtypes.float32)
+    wco = constant_op.constant(
+        0.592631638, shape=[28, 17], dtype=dtypes.float32)
+    b = constant_op.constant(0.75259006, shape=[68], dtype=dtypes.float32)
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      self.evaluate(
+          gen_rnn_ops.lstm_block_cell(
+              x=x,
+              cs_prev=cs_prev,
+              h_prev=h_prev,
+              w=w,
+              wci=wci,
+              wcf=wcf,
+              wco=wco,
+              b=b,
+              forget_bias=forget_bias,
+              cell_clip=cell_clip,
+              use_peephole=use_peephole))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testLSTMBlockCellGradErrorHandling(self):
+    use_peephole = False
+    seq_len_max = constant_op.constant(1, shape=[], dtype=dtypes.int64)
+    x = constant_op.constant(0.504355371, shape=[1, 1, 1], dtype=dtypes.float32)
+    cs_prev = constant_op.constant(
+        0.504355371, shape=[1, 1, 1], dtype=dtypes.float32)
+    h_prev = constant_op.constant(
+        0.504355371, shape=[1, 1], dtype=dtypes.float32)
+    w = constant_op.constant(0.504355371, shape=[1, 1], dtype=dtypes.float32)
+    wci = constant_op.constant(0.504355371, shape=[1], dtype=dtypes.float32)
+    wcf = constant_op.constant(0.504355371, shape=[1], dtype=dtypes.float32)
+    wco = constant_op.constant(0.504355371, shape=[1], dtype=dtypes.float32)
+    b = constant_op.constant(0.504355371, shape=[1], dtype=dtypes.float32)
+    i = constant_op.constant(0.504355371, shape=[1, 1, 1], dtype=dtypes.float32)
+    cs = constant_op.constant(
+        0.504355371, shape=[1, 1, 1], dtype=dtypes.float32)
+    f = constant_op.constant(0.504355371, shape=[1, 1, 1], dtype=dtypes.float32)
+    o = constant_op.constant(0.504355371, shape=[1, 1, 1], dtype=dtypes.float32)
+    ci = constant_op.constant(
+        0.504355371, shape=[1, 1, 1], dtype=dtypes.float32)
+    co = constant_op.constant(
+        0.504355371, shape=[1, 1, 1], dtype=dtypes.float32)
+    h = constant_op.constant(0.504355371, shape=[1, 1, 1], dtype=dtypes.float32)
+    cs_grad = constant_op.constant(
+        0.504355371, shape=[1, 1, 1], dtype=dtypes.float32)
+    h_grad = constant_op.constant(
+        0.504355371, shape=[1, 1, 1], dtype=dtypes.float32)
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                "must be rank"):
+      self.evaluate(
+          gen_rnn_ops.block_lstm_grad_v2(
+              seq_len_max=seq_len_max,
+              x=x,
+              cs_prev=cs_prev,
+              h_prev=h_prev,
+              w=w,
+              wci=wci,
+              wcf=wcf,
+              wco=wco,
+              b=b,
+              i=i,
+              cs=cs,
+              f=f,
+              o=o,
+              ci=ci,
+              co=co,
+              h=h,
+              cs_grad=cs_grad,
+              h_grad=h_grad,
+              use_peephole=use_peephole))
 
 
 class BidirectionalRNNTest(test.TestCase):
@@ -2584,8 +2666,8 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
               ],
               state_is_tuple=False)
           self.assertEqual(cell.dtype, None)
-          self.assertEqual("cell-0", cell._checkpoint_dependencies[0].name)
-          self.assertEqual("cell-1", cell._checkpoint_dependencies[1].name)
+          self.assertIn("cell-0", cell._trackable_children())
+          self.assertIn("cell-1", cell._trackable_children())
           cell.get_config()  # Should not throw an error
           g, out_m = cell(x, m)
           # Layer infers the input type.
@@ -2830,10 +2912,10 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
         bias_initializer=init_ops.constant_initializer(0.5))
     g, m_new = base_cell(x, m)
     wrapper_object = wrapper_type(base_cell)
-    (name, dep), = wrapper_object._checkpoint_dependencies
     wrapper_object.get_config()  # Should not throw an error
-    self.assertIs(dep, base_cell)
-    self.assertEqual("cell", name)
+
+    self.assertIn("cell", wrapper_object._trackable_children())
+    self.assertIs(wrapper_object._trackable_children()["cell"], base_cell)
 
     g_res, m_new_res = wrapper_object(x, m)
     self.evaluate([variables_lib.global_variables_initializer()])
@@ -2873,10 +2955,8 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
     m = array_ops.zeros([1, 3])
     cell = rnn_cell_impl.GRUCell(3)
     wrapped_cell = wrapper_type(cell, "/cpu:0")
-    (name, dep), = wrapped_cell._checkpoint_dependencies
     wrapped_cell.get_config()  # Should not throw an error
-    self.assertIs(dep, cell)
-    self.assertEqual("cell", name)
+    self.assertEqual(wrapped_cell._trackable_children()["cell"], cell)
 
     outputs, _ = wrapped_cell(x, m)
     self.assertIn("cpu:0", outputs.device.lower())
@@ -3066,7 +3146,7 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
       self.skipTest("b/175887901")
 
     with self.cached_session():
-      root = tracking.AutoTrackable()
+      root = autotrackable.AutoTrackable()
       root.cell = rnn_cell_impl.LSTMCell(8)
       @def_function.function(input_signature=[tensor_spec.TensorSpec([3, 8])])
       def call(x):

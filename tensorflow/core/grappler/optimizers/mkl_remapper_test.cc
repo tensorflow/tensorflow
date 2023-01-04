@@ -737,6 +737,194 @@ class FusedMatMulBiasAddAndGeluTest : public GrapplerTest {
 // changed by other optimizers before the remapper optimizer.
 TEST_F(FusedMatMulBiasAddAndGeluTest, Float32GeluExact) { RunTest<DT_FLOAT>(); }
 
+class MklFusedBatchMatMul : public MklRemapperTest {
+ public:
+  template <typename T>
+  void VerifyFused(bool adjx, bool adjy) {
+    using ::tensorflow::ops::Placeholder;
+    using normal_generator = Eigen::internal::NormalRandomGenerator<T>;
+
+    int b0 = 2;
+    int b1 = 2;
+    int m = 32;
+    int k = 16;
+    int n = 64;
+
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    auto input_shape =
+        adjx ? TensorShape({b0, b1, k, m}) : TensorShape({b0, b1, m, k});
+    auto weight_shape =
+        adjy ? TensorShape({b0, b1, n, k}) : TensorShape({b0, b1, k, n});
+    auto add_shape = TensorShape({b0, 1, m, n});
+
+    auto input_placeholder_shape = ops::Placeholder::Shape(input_shape);
+    auto weight_placeholder_shape = ops::Placeholder::Shape(weight_shape);
+    auto add_placeholder_shape = ops::Placeholder::Shape(add_shape);
+
+    auto input = Placeholder(s.WithOpName("input"), DataTypeToEnum<T>::v(),
+                             input_placeholder_shape);
+    auto weight = Placeholder(s.WithOpName("weight"), DataTypeToEnum<T>::v(),
+                              weight_placeholder_shape);
+    auto addend = Placeholder(s.WithOpName("addend"), DataTypeToEnum<T>::v(),
+                              add_placeholder_shape);
+
+    auto batchmatmul =
+        ops::BatchMatMulV2(s.WithOpName("batchmatmul"), input, weight,
+                           ops::BatchMatMulV2::Attrs().AdjX(adjx).AdjY(adjy));
+    auto scale_const = ops::Const(s.WithOpName("scale_const"), {0.1f});
+    auto scale =
+        ops::Cast(s.WithOpName("scale"), scale_const, DataTypeToEnum<T>::v());
+    auto mul = ops::Multiply(s.WithOpName("mul"), batchmatmul, scale);
+    auto add = ops::AddV2(s.WithOpName("add"), mul, addend);
+    auto fetch = ops::Identity(s.WithOpName("fetch"), add);
+
+    Tensor input_t = Tensor(DataTypeToEnum<T>::v(), input_shape);
+    Tensor weight_t = Tensor(DataTypeToEnum<T>::v(), weight_shape);
+    Tensor add_t = Tensor(DataTypeToEnum<T>::v(), add_shape);
+    input_t.flat<T>() =
+        input_t.flat<T>().template setRandom<normal_generator>();
+    weight_t.flat<T>() =
+        weight_t.flat<T>().template setRandom<normal_generator>();
+    add_t.flat<T>() = add_t.flat<T>().template setRandom<normal_generator>();
+
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"input", input_t}, {"weight", weight_t}, {"addend", add_t}};
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+    // Place all nodes on CPU.
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device("/device:CPU:0");
+    }
+
+    Remapper optimizer(RewriterConfig::ON);
+    GraphDef output;
+    TF_CHECK_OK(optimizer.Optimize(nullptr, item, &output));
+
+    int found = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() == "add") {
+        EXPECT_EQ("_MklFusedBatchMatMulV2", node.op());
+        EXPECT_EQ("input", node.input(0));
+        EXPECT_EQ("weight", node.input(1));
+        EXPECT_EQ("scale", node.input(2));
+        EXPECT_EQ("addend", node.input(3));
+        const auto fused_ops = node.attr().at("fused_ops").list().s();
+        EXPECT_EQ(2, fused_ops.size());
+        EXPECT_EQ("Mul", fused_ops[0]);
+        found++;
+        EXPECT_EQ("Add", fused_ops[1]);
+        found++;
+      }
+    }
+    EXPECT_EQ(2, found);
+
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    std::is_same<T, float>::value
+        ? test::ExpectClose(tensors_expected[0], tensors[0], 1e-6, 1e-6)
+        : test::ExpectClose(tensors_expected[0], tensors[0], 1e-2, 1e-2);
+  }
+};
+
+TEST_F(MklFusedBatchMatMul, MulAndAdd) {
+  for (const auto adjx : {false, true})
+    for (const auto adjy : {false, true}) {
+      this->VerifyFused<float>(adjx, adjy);
+      this->VerifyFused<bfloat16>(adjx, adjy);
+    }
+}
+
+class MklRemapperSwishTest : public GrapplerTest {
+ protected:
+  template <DataType DTYPE>
+  void RunTest() {
+    using ::tensorflow::ops::Placeholder;
+
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    auto mul_shape = ops::Placeholder::Shape({64, 64});
+
+    // We will test four sitations:
+    //  1. y = x * sigmoid(x)
+    //  2. y = sigmoid(x) * x
+    //  3. y = sigmoid(x) * sigmoid(sigmoid(x))
+    //  4. y = sigmoid(sigmoid(x)) * sigmoid(x)
+    auto input = Placeholder(s.WithOpName("input"), DTYPE, mul_shape);
+    auto sigmoid1 = ops::Sigmoid(s.WithOpName("sigmoid1"), input);
+    auto sigmoid2 = ops::Sigmoid(s.WithOpName("sigmoid2"), input);
+    auto sigmoid3_1 = ops::Sigmoid(s.WithOpName("sigmoid3_1"), input);
+    auto sigmoid3_2 = ops::Sigmoid(s.WithOpName("sigmoid3_2"), sigmoid3_1);
+    auto sigmoid4_1 = ops::Sigmoid(s.WithOpName("sigmoid4_1"), input);
+    auto sigmoid4_2 = ops::Sigmoid(s.WithOpName("sigmoid4_2"), sigmoid4_1);
+    auto mul1 = ops::Mul(s.WithOpName("mul1"), input, sigmoid1);
+    auto mul2 = ops::Mul(s.WithOpName("mul2"), sigmoid2, input);
+    auto mul3 = ops::Mul(s.WithOpName("mul3"), sigmoid3_1, sigmoid3_2);
+    auto mul4 = ops::Mul(s.WithOpName("mul4"), sigmoid4_2, sigmoid4_1);
+    auto fetch1 = ops::Identity(s.WithOpName("fetch1"), mul1);
+    auto fetch2 = ops::Identity(s.WithOpName("fetch2"), mul2);
+    auto fetch3 = ops::Identity(s.WithOpName("fetch3"), mul3);
+    auto fetch4 = ops::Identity(s.WithOpName("fetch4"), mul4);
+    auto mul_t = GenerateTensorWithSetRandom<DTYPE>({64, 64});
+
+    GrapplerItem item;
+    item.fetch = {"fetch1", "fetch2", "fetch3", "fetch4"};
+    item.feed = {{"input", mul_t}};
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+    // Place all nodes on CPU.
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device("/device:CPU:0");
+    }
+
+    Remapper optimizer(RewriterConfig::ON);
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+    int found = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() == "mul1") {
+        EXPECT_EQ(node.op(), "_MklSwish");
+        ASSERT_EQ(node.input_size(), 1);
+        EXPECT_EQ(node.input(0), "input");
+        ++found;
+      }
+      if (node.name() == "mul2") {
+        EXPECT_EQ(node.op(), "_MklSwish");
+        ASSERT_EQ(node.input_size(), 1);
+        EXPECT_EQ(node.input(0), "input");
+        ++found;
+      }
+      // mul3 won't be replaced by swish
+      // Coz of the limitation of patternMatcher with commutative op
+      if (node.name() == "mul4") {
+        EXPECT_EQ(node.op(), "_MklSwish");
+        ASSERT_EQ(node.input_size(), 1);
+        EXPECT_EQ(node.input(0), "sigmoid4_1");
+        ++found;
+      }
+    }
+    EXPECT_EQ(found, 3);
+
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_expected.size(), 4);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 4);
+    float atol = 1e-6, rtol = 1e-6;
+    if (DTYPE == DT_BFLOAT16) {
+      atol = 1e-2;
+      rtol = 1e-2;
+    }
+    test::ExpectClose(tensors[0], tensors_expected[0], atol, rtol);
+    test::ExpectClose(tensors[1], tensors_expected[1], atol, rtol);
+    test::ExpectClose(tensors[2], tensors_expected[2], atol, rtol);
+    test::ExpectClose(tensors[3], tensors_expected[3], atol, rtol);
+  }
+};
+
+TEST_F(MklRemapperSwishTest, F32) { RunTest<DT_FLOAT>(); }
+TEST_F(MklRemapperSwishTest, BF16) { RunTest<DT_BFLOAT16>(); }
+
 }  // namespace grappler
 }  // namespace tensorflow
 #endif  // INTEL_MKL && ENABLE_MKL

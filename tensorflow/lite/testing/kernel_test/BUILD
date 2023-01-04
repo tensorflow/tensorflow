@@ -5,6 +5,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -16,7 +17,7 @@ cc_library(
     hdrs = ["util.h"],
     deps = [
         ":input_generator",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:split",
         "//tensorflow/lite/testing:tflite_driver",
     ] + select({
@@ -35,8 +36,8 @@ tf_cc_test(
     size = "small",
     srcs = ["util_test.cc"],
     data = [
+        ":testdata/test_input.csv",
         "//tensorflow/lite:testdata/add.bin",
-        "//tensorflow/lite:testdata/test_input.csv",
     ],
     deps = [
         ":util",
@@ -69,7 +70,9 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/testing:join",
         "//tensorflow/lite/testing:split",
@@ -81,8 +84,8 @@ cc_test(
     size = "small",
     srcs = ["input_generator_test.cc"],
     data = [
+        ":testdata/test_input.csv",
         "//tensorflow/lite:testdata/multi_add.bin",
-        "//tensorflow/lite:testdata/test_input.csv",
     ],
     deps = [
         ":input_generator",
@@ -96,7 +99,8 @@ cc_library(
     hdrs = ["diff_analyzer.h"],
     deps = [
         "//tensorflow/lite:string",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:split",
     ],
 )
@@ -106,7 +110,7 @@ tf_cc_test(
     size = "small",
     srcs = ["diff_analyzer_test.cc"],
     data = [
-        "//tensorflow/lite:testdata/test_input.csv",
+        ":testdata/test_input.csv",
     ],
     deps = [
         ":diff_analyzer",

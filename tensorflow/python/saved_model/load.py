@@ -14,24 +14,29 @@
 # ==============================================================================
 """Import a trackable object from a SavedModel."""
 
+import collections
 import functools
+import os
 import sys
 
 from tensorflow.core.protobuf import graph_debug_info_pb2
+from tensorflow.python.checkpoint import checkpoint
+from tensorflow.python.checkpoint import checkpoint_options
+from tensorflow.python.checkpoint import graph_view
+from tensorflow.python.checkpoint import restore
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
-from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
+from tensorflow.python.eager.polymorphic_function import saved_model_utils as function_saved_model_utils
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
@@ -42,26 +47,28 @@ from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
+from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
-from tensorflow.python.training.saving import checkpoint_options
+from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import autotrackable
+from tensorflow.python.trackable import base
+from tensorflow.python.trackable import data_structures
+from tensorflow.python.trackable import resource
+from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training.saving import saveable_object_util
-from tensorflow.python.training.tracking import base
-from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking import graph_view
-from tensorflow.python.training.tracking import trackable_utils
-from tensorflow.python.training.tracking import tracking
-from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 # API label for SavedModel metrics.
 _LOAD_V2_LABEL = "load_v2"
-
 # Built-in registrations use the "oneof kind" field in the SavedObject proto,
 # instead of "registered_name" field. The "kind" field has almost the same
 # functionality as the registered_name, but only contains built-in TensorFlow
 # types (like variable, functions, assets).
-_BUILT_IN_REGISTRATIONS = {"asset": tracking.Asset}
+_BUILT_IN_REGISTRATIONS = {
+    "asset": asset.Asset,
+    "resource": resource.RestoredResource,
+    "constant": function_saved_model_utils.TrackableConstant}
 
 
 def _unused_handle():
@@ -73,9 +80,9 @@ def _unused_handle():
       "It seems that you are trying to save a "
       "tf.types.experimental.ConcreteFunction that involves a distributed "
       "model, and the model contains parts that are loaded form a SavedModel. "
-      "It's supported to save such tf.types.experimental.ConcreteFunction. Try"
-      " save a tf.function with input_signature instead, and file a bug there "
-      "are still issues.")
+      "It's not supported to save such tf.types.experimental.ConcreteFunction. "
+      "Try saving a tf.function with input_signature instead, and file a bug if"
+      " there are still issues.")
 
   assert_op = control_flow_ops.Assert(
       array_ops.placeholder_with_default(False, shape=()), [error_message])
@@ -149,10 +156,13 @@ class Loader(object):
             library=meta_graph.graph_def.library,
             saved_object_graph=self._proto,
             wrapper_function=_WrapperFunction))
+    # Store a set of all concrete functions that have been set up with
+    # captures.
+    self._restored_concrete_functions = set()
     self._checkpoint_options = ckpt_options
     self._save_options = save_options
 
-    self._pretty_printer = util.ObjectGraphProtoPrettyPrinter(self._proto)
+    self._pretty_printer = checkpoint.ObjectGraphProtoPrettyPrinter(self._proto)
 
     # Stores user-defined node_filters argument.
     self._node_filters = filters
@@ -182,7 +192,7 @@ class Loader(object):
     if not save_options.experimental_skip_checkpoint:
       self._restore_checkpoint()
     for node in self._nodes:
-      if isinstance(node, tracking.CapturableResource):
+      if isinstance(node, resource.CapturableResource):
         init_op = node._initialize()  # pylint: disable=protected-access
         if not context.executing_eagerly():
           ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
@@ -276,23 +286,38 @@ class Loader(object):
     """Loads all nodes and functions from the SavedModel and their edges."""
     self._load_nodes()
     self._load_edges()
-    # TODO(b/124045874): There are limitations with functions whose captures
-    # trigger other functions to be executed. For now it is only guaranteed to
-    # work if the captures of a function only trigger functions without
-    # captures.
-    self._setup_functions_captures()
 
-    self._create_saveable_object_factories()
+    # Set up concrete functions that aren't part of the object graph
+    # (e.g. gradient functions)
+    self._setup_remaining_functions()
+    self._load_checkpoint_save_and_restore_functions()
 
-  def _create_saveable_object_factories(self):
+  def _load_checkpoint_save_and_restore_functions(self):
+    """Restores the checkpoint-related save/restore functions to all nodes."""
+    temp_session = [None]
     for node_id, proto in self._iter_all_nodes():
       node = self.get(node_id)
-      node._self_saveable_object_factories = {}  # pylint: disable=protected-access
-      for name, saveable_object_proto in proto.saveable_objects.items():
-        node._self_saveable_object_factories[name] = (  # pylint: disable=protected-access
-            saveable_object_util.restored_saved_object_factory(
-                self.get(saveable_object_proto.save_function),
-                self.get(saveable_object_proto.restore_function)))
+      if proto.saveable_objects.keys() == {
+          trackable_utils.SERIALIZE_TO_TENSORS_NAME}:
+        # Restore Trackable serialize- and restore-from-tensor functions.
+        assert len(proto.saveable_objects) == 1
+        saveable_object_proto = next(iter(proto.saveable_objects.values()))
+        save_fn_id = saveable_object_proto.save_function
+        restore_fn_id = saveable_object_proto.restore_function
+        node._serialize_to_tensors = self.get(save_fn_id)  # pylint: disable=protected-access
+        node._restore_from_tensors = self.get(restore_fn_id)  # pylint: disable=protected-access
+      else:
+        # Restore legacy SaveableObject functions.
+        saveable_fn_by_name = {}
+        for name, saveable_object_proto in proto.saveable_objects.items():
+          save_fn_id = saveable_object_proto.save_function
+          restore_fn_id = saveable_object_proto.restore_function
+          saveable_fn_by_name[name] = (self.get(save_fn_id),
+                                       self.get(restore_fn_id))
+
+        node._self_saveable_object_factories = (  # pylint: disable=protected-access
+            saveable_object_util.recreate_saveable_objects(saveable_fn_by_name,
+                                                           temp_session))
 
   def _load_edges(self):
     """Adds edges from objects to other objects and functions."""
@@ -327,88 +352,22 @@ class Loader(object):
       if reference.local_name == "__call__" and not callable(obj):
         setattr(type(obj), "__call__", _call_attribute)
 
-  def _setup_functions_captures(self):
-    """Setup captures and variables in restored functions."""
-    concrete_functions = sorted(self._proto.concrete_functions.items())
-    for name, proto in concrete_functions:
-      concrete_function = self._concrete_functions[name]
-      bound_inputs = [
-          self._get_tensor_from_node(node_id, name)
-          for node_id in proto.bound_inputs]
-      bound_variables = [
-          self._nodes[node_id]
-          for node_id in proto.bound_inputs
-          if self._proto.nodes[node_id].WhichOneof("kind") == "variable"
-      ]
-      # TODO(b/205010575): This is only injecting the captured inputs into the
-      # concrete function, note that we did not modify the FuncGraph
-      # itself.
-      captured_inputs_list = []
-      concrete_function._func_graph.variables = bound_variables  # pylint: disable=protected-access
-      if bound_inputs:
-        for bound_input, internal_capture in zip(
-            bound_inputs, concrete_function.inputs[-len(bound_inputs):]):
-          if distribute_utils.is_distributed_variable(bound_input):
-            concrete_function.graph.capture_distributed_variable(
-                bound_input, internal_capture)
-            captured_inputs_list.append(bound_input)
-          elif distribute_utils.is_distributed_table(bound_input):
-            closure, spec = bound_input.resource_handle_call_time_value()
-            concrete_function.graph.replace_capture_with_deferred_capture(
-                bound_input._coordinator_instance.resource_handle,  # pylint: disable=protected-access
-                closure,
-                spec,
-                default_value=bound_input._coordinator_instance.resource_handle,  # pylint: disable=protected-access
-                placeholder=internal_capture)
-            captured_inputs_list.append(
-                concrete_function.graph.deferred_external_captures[-1])
+  def _setup_remaining_functions(self):
+    concrete_function_names = sorted(self._proto.concrete_functions.keys())
+    for name in concrete_function_names:
+      if name in self._restored_concrete_functions:
+        continue
+      self._setup_function_captures(name, self._nodes)
 
-          else:
-            captured_inputs_list.append(bound_input)
-            concrete_function.graph.replace_capture(bound_input,
-                                                    internal_capture)
-            if internal_capture.dtype == dtypes.resource:
-              if resource_variable_ops.is_resource_variable(bound_input):
-                try:
-                  handle = bound_input.handle
-                except ValueError:
-                  # For mirrored variables we'll copy handle data for components
-                  # as they get captured.
-                  pass
-                else:
-                  handle_data_util.copy_handle_data(handle, internal_capture)
-              else:
-                handle_data_util.copy_handle_data(bound_input, internal_capture)
-            # Setting "captures" first means "capture" won't create a new
-            # placeholder for this input.
-            concrete_function.graph.capture(bound_input)
-
-      concrete_function.set_external_captures(captured_inputs_list)
-
-  def _get_tensor_from_node(self, node_id, fn_name):
-    """Resolves a node id into a tensor to be captured for a function."""
-    if self._node_filters is not None and self._nodes[node_id] is None:
-      raise ValueError(
-          f"Error when processing nodes_to_load. Function '{fn_name}' requires "
-          "inputs/variables that are not loaded when nodes_to_load="
-          f"{self._node_filters}.")
-
-    with ops.init_scope():
-      obj = self._nodes[node_id]
-      if distribute_utils.is_distributed_variable(obj):
-        return obj
-      elif distribute_utils.is_distributed_table(obj):
-        return obj
-      elif resource_variable_ops.is_resource_variable(obj):
-        return obj.handle
-      elif isinstance(obj, tracking.Asset):
-        return obj.asset_path
-      elif tensor_util.is_tf_type(obj):
-        return obj
-      elif isinstance(obj, tracking.CapturableResource):
-        # Note: this executes restored functions in the CapturableResource.
-        return obj.resource_handle
-      raise ValueError(f"Cannot convert node {obj} to tensor.")
+  def _setup_function_captures(self, concrete_function_name, nodes):
+    """Setup captures and variables in a restored function."""
+    if concrete_function_name in self._restored_concrete_functions:
+      return
+    self._restored_concrete_functions.add(concrete_function_name)
+    concrete_function = self._concrete_functions[concrete_function_name]
+    proto = self._proto.concrete_functions[concrete_function_name]
+    inputs = [nodes[node_id] for node_id in proto.bound_inputs]
+    function_saved_model_utils.restore_captures(concrete_function, inputs)
 
   def _initialize_loaded_nodes(self):
     nodes = {}
@@ -418,6 +377,34 @@ class Loader(object):
       node_setters[node_id] = setter
     return nodes, node_setters
 
+  def _get_node_dependencies(self, proto):
+    """Returns a dictionary of all dependencies of an object.
+
+    Args:
+      proto: A SavedObject proto.
+
+    Returns:
+      Dict mapping string dependency name *or* int node id to the node id.
+      The int node id key is used for mapping function captures.
+    """
+    dependencies = {ref.local_name: ref.node_id for ref in proto.dependencies}
+    kind = proto.WhichOneof("kind")
+    if kind == "function":
+      concrete_functions = proto.function.concrete_functions
+      for fn_name in concrete_functions:
+        for bound_input in self._proto.concrete_functions[fn_name].bound_inputs:
+          dependencies[bound_input] = bound_input
+    elif kind == "bare_concrete_function":
+      fn_name = proto.bare_concrete_function.concrete_function_name
+      for bound_input in self._proto.concrete_functions[fn_name].bound_inputs:
+        dependencies[bound_input] = bound_input
+    elif kind == "resource":
+      # Make sure that the resource creator is listed as a dependency.
+      for child in proto.children:
+        if child.local_name == "_create_resource":
+          dependencies["_create_resource"] = child.node_id
+    return dependencies
+
   def _generate_ordered_node_ids(self):
     """Orders the node ids so that dependencies appear first."""
     if self._filtered_nodes is None:
@@ -425,22 +412,45 @@ class Loader(object):
     else:
       unordered_ids = list(self._filtered_nodes)
 
-    dependency_map = {}
+    # Maps node ids -> list of dependencies (ids of other nodes that must be
+    # loaded before it).
+    dependency_map = collections.defaultdict(list)
     for node_id in unordered_ids:
-      deps = dependency_map[node_id] = []
+      deps = dependency_map[node_id]
       if self._loaded_nodes.get(node_id) is not None:
         # Deps are only used if the node has not been created.
         continue
-      for reference in self._proto.nodes[node_id].dependencies:
-        dep = reference.node_id
+      proto = self._proto.nodes[node_id]
+      for dep in set(self._get_node_dependencies(proto).values()):
         deps.append(dep)
         if self._filtered_nodes is not None and dep not in self._filtered_nodes:
           raise ValueError(
               "Unable to partially load SavedModel since the specified filter "
-              "does not include all deserialization dependencies. Please "
-              "include this path in the filter: "
+              "does not include all required objects for loading (e.g. "
+              "variables used in functions or deserialization dependencies). "
+              "Please include this path in the filter: "
               f"{self._pretty_printer.node_names[dep]}")
 
+      # Add optimizer slot variable to dependency map.
+      prev_slot = None
+      for slot_variable_proto in proto.slot_variables:
+        slot_variable_node_id = slot_variable_proto.slot_variable_node_id
+        # The optimizer and original variable must be created before the slot
+        # variable, since the slot variable is generated using the Optimizer's
+        # add_slot API.
+        slot_deps = dependency_map[slot_variable_node_id]
+        slot_deps.append(node_id)
+        slot_deps.append(slot_variable_proto.original_variable_node_id)
+
+        if prev_slot is not None:
+          # Add previous slot to deps so that the optimizer slot variables are
+          # added in order. The ordering is needed because the slot name and
+          # variable are both added to ordered lists, which are exposed to the
+          # user via `Optimizer.get_slot_names()` and `Optimizer.weights`.
+          # TODO(kathywu): Maybe enforce some sort of deterministic ordering in
+          # `order_by_dependency` to avoid doing this?
+          slot_deps.append(prev_slot)
+        prev_slot = slot_variable_node_id
     try:
       return list(trackable_utils.order_by_dependency(dependency_map))
     except trackable_utils.CyclicDependencyError:
@@ -464,30 +474,23 @@ class Loader(object):
 
     # Figure out which objects are slot variables. These objects are created
     # with Optimizer.add_slot rather than _recreate_variable.
-    slot_variable_node_ids = set()
+    # Maps slot node id -> optimizer node id, SlotVariableReference proto
+    slot_variable_node_ids = {}
 
-    for _, proto in self._iter_all_nodes():
-      for slot_variable_proto in proto.slot_variables:
-        slot_variable_node_ids.add(slot_variable_proto.slot_variable_node_id)
-
-    # Re-create everything except slot variables.
     for node_id, proto in self._iter_all_nodes():
-      if node_id in slot_variable_node_ids or nodes.get(node_id) is not None:
-        # Defer recreating slot variables so we can use the public Optimizer
-        # interface.
-        continue
-      node, setter = self._recreate(proto, node_id, nodes)
-      nodes[node_id] = node
-      node_setters[node_id] = setter
-
-    # Now that we have created the variables being optimized, we have enough
-    # information to re-create slot variables for them.
-    for node_id, proto in self._iter_all_nodes():
-      if node_id not in nodes:
-        # This is a slot variable that has not been created yet.
-        continue
-      optimizer_object = nodes[node_id]
       for slot_variable_proto in proto.slot_variables:
+        slot_variable_node_id = slot_variable_proto.slot_variable_node_id
+        slot_variable_node_ids[slot_variable_node_id] = (node_id,
+                                                         slot_variable_proto)
+
+    # Re-create everything.
+    for node_id, proto in self._iter_all_nodes():
+      if nodes.get(node_id) is not None:
+        continue
+      elif node_id in slot_variable_node_ids:
+        # Use the public Optimizer interface when creating slot variables.
+        optimizer_node_id, slot_variable_proto = slot_variable_node_ids[node_id]
+        optimizer_object = nodes[optimizer_node_id]
         optimized_variable = nodes[
             slot_variable_proto.original_variable_node_id]
         slot_variable = optimizer_object.add_slot(
@@ -495,6 +498,10 @@ class Loader(object):
             slot_name=slot_variable_proto.slot_name)
         nodes[slot_variable_proto.slot_variable_node_id] = slot_variable
         node_setters[slot_variable_proto.slot_variable_node_id] = setattr
+      else:
+        node, setter = self._recreate(proto, node_id, nodes)
+        nodes[node_id] = node
+        node_setters[node_id] = setter
 
     # If root object is not loaded, add a dummy root object for checkpoint
     # compatibility.
@@ -510,7 +517,7 @@ class Loader(object):
     variables_path = saved_model_utils.get_variables_path(self._export_dir)
     # TODO(b/205010730): Clean use of private methods of TrackableSaver.
     # pylint: disable=protected-access
-    saver = util.TrackableSaver(graph_view.ObjectGraphView(self.get(0)))
+    saver = checkpoint.TrackableSaver(graph_view.ObjectGraphView(self.get(0)))
     with ops.device("CPU"):
       saver._file_prefix_placeholder = constant_op.constant(variables_path)
     if self._save_options.allow_partial_checkpoint:
@@ -520,7 +527,7 @@ class Loader(object):
     else:
       load_status = saver.restore(variables_path, self._checkpoint_options)
       load_status.assert_existing_objects_matched()
-    checkpoint = load_status._checkpoint
+    ckpt = load_status._checkpoint
 
     if not context.executing_eagerly():
       # When running in eager mode, the `restore` call above has already run and
@@ -530,9 +537,9 @@ class Loader(object):
       # wire them in the initializers of the objects so that they get
       # initialized properly when using common practices (e.g. the ones used by
       # ManagedSession) without further user action.
-      for object_id, obj in dict(checkpoint.object_by_proto_id).items():
-        position = base.CheckpointPosition(checkpoint=checkpoint,
-                                           proto_id=object_id)
+      for object_id, obj in dict(ckpt.object_by_proto_id).items():
+        position = restore.CheckpointPosition(checkpoint=ckpt,
+                                              proto_id=object_id)
         registered_saver = position.get_registered_saver_name()
         if registered_saver:
           raise NotImplementedError(
@@ -547,7 +554,8 @@ class Loader(object):
               obj._initializer_op = restore_ops[0]
             else:
               obj._initializer_op = control_flow_ops.group(*restore_ops)
-          elif isinstance(obj, lookup_ops.LookupInterface):
+          elif (isinstance(obj, lookup_ops.LookupInterface) or
+                isinstance(obj, resource.CapturableResource)):
             # We don't need to check for eager execution here, since this code
             # path should only be taken if we are restoring in graph mode.
             ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, restore_ops)
@@ -586,36 +594,40 @@ class Loader(object):
       the trackable children.
     """
     registered_class = registration.get_registered_class(proto.registered_name)
-    if registered_class is not None:
-      user_proto = proto.serialized_user_proto
-    else:
+    if registered_class is None:
       registered_class = _BUILT_IN_REGISTRATIONS.get(proto.WhichOneof("kind"))
-      user_proto = proto
+
+    dependencies = {}
+    for key, dep_node_id in self._get_node_dependencies(proto).items():
+      dependencies[key] = nodes[dep_node_id]
+
     if registered_class:
-      dependencies = {}
-      for reference in proto.dependencies:
-        dependencies[reference.local_name] = nodes[reference.node_id]
       obj = registered_class._deserialize_from_proto(  # pylint: disable=protected-access
-          proto=user_proto,
+          proto=proto.serialized_user_proto,
+          object_proto=proto,
           dependencies=dependencies,
           export_dir=self._export_dir,
-          asset_file_def=self._asset_file_def)
-      return obj, type(obj)._add_trackable_child  # pylint: disable=protected-access
+          asset_file_def=self._asset_file_def,
+          operation_attributes=self._operation_attributes)
+      if isinstance(obj, base.Trackable):
+        setter = type(obj)._add_trackable_child  # pylint: disable=protected-access
+      else:
+        # Returned object may be non-Trackable (e.g. when restoring captures).
+        setter = setattr
+      return obj, setter
     else:
-      return self._recreate_default(proto, node_id)
+      return self._recreate_default(proto, node_id, dependencies)
 
-  def _recreate_default(self, proto, node_id):
+  def _recreate_default(self, proto, node_id, deps):
     """Creates a Python object from a SavedObject protocol buffer."""
     factory = {
         "user_object": (
             lambda: self._recreate_user_object(proto.user_object, node_id)),
-        "function": lambda: self._recreate_function(proto.function),
+        "function": lambda: self._recreate_function(proto.function, deps),
         "bare_concrete_function": functools.partial(
             self._recreate_bare_concrete_function,
-            proto.bare_concrete_function),
+            proto=proto.bare_concrete_function, dependencies=deps),
         "variable": lambda: self._recreate_variable(proto.variable),
-        "constant": lambda: self._recreate_constant(proto.constant),
-        "resource": lambda: self._recreate_resource(proto.resource),
         "captured_tensor": functools.partial(
             self._get_tensor_from_fn, proto.captured_tensor),
     }
@@ -627,6 +639,19 @@ class Loader(object):
 
   def _recreate_user_object(self, proto, node_id):
     """Instantiates a SavedUserObject."""
+    if proto.identifier == "optimizer":
+      # Make sure that the Keras optimizers module is imported. This is needed
+      # to be able to load the "optimizer" object (OptimizerV2), which has
+      # special logic around adding slot variables with `add_slot` in this file.
+      try:
+        import keras.optimizers.legacy as _  # pylint: disable=g-import-not-at-top
+      except ImportError:
+        try:
+          import keras.optimizers.optimizer_v2 as _  # pylint: disable=g-import-not-at-top
+        except ImportError as e:
+          raise ImportError(
+              "Error when importing Keras. Unable to load SavedModel that "
+              "contains an optimizer without the Keras module.") from e
     looked_up = revived_types.deserialize(proto)
     if looked_up is None:
       return self._recreate_base_user_object(proto, node_id)
@@ -638,18 +663,23 @@ class Loader(object):
     # individually callable by adding a `__call__` method to the classes of
     # the objects instances that have a `__call__` property.
 
-    class _UserObject(tracking.AutoTrackable):
+    class _UserObject(autotrackable.AutoTrackable):
       pass
 
     return _UserObject(), setattr
 
-  def _recreate_function(self, proto):
-    return function_deserialization.recreate_function(
-        proto, self._concrete_functions), setattr
+  def _recreate_function(self, proto, dependencies):
+    fn = function_deserialization.recreate_function(
+        proto, self._concrete_functions)
+    for name in proto.concrete_functions:
+      self._setup_function_captures(name, dependencies)
+    return fn, setattr
 
-  def _recreate_bare_concrete_function(self, proto):
-    return function_deserialization.setup_bare_concrete_function(
-        proto, self._concrete_functions), setattr
+  def _recreate_bare_concrete_function(self, proto, dependencies):
+    fn = function_deserialization.setup_bare_concrete_function(
+        proto, self._concrete_functions)
+    self._setup_function_captures(proto.concrete_function_name, dependencies)
+    return fn, setattr
 
   def _recreate_variable(self, proto):
     name = proto.name if proto.name else None
@@ -673,75 +703,134 @@ class Loader(object):
     with ops.get_default_graph()._variable_creator_scope(  # pylint: disable=protected-access
         uninitialized_variable_creator,
         priority=50):
-      return variables.Variable(
-          shape=proto.shape,
-          dtype=proto.dtype,
-          name=name,
-          trainable=trainable,
-          synchronization=synchronization,
-          aggregation=aggregation), setattr
-
-  def _recreate_constant(self, proto):
-    tensor_proto = self._operation_attributes[proto.operation]["value"].tensor
-    ndarray = tensor_util.MakeNdarray(tensor_proto)
-    if dtypes.as_dtype(tensor_proto.dtype) == dtypes.string:
-      with ops.device("CPU"):
-        imported_constant = constant_op.constant(ndarray)
-    else:
-      imported_constant = constant_op.constant(ndarray)
-    return imported_constant, setattr
+      saved_device = proto.device
+      load_with_device = (
+          self._save_options.experimental_variable_policy
+          ._save_variable_devices() and config.get_soft_device_placement() and
+          saved_device)
+      if load_with_device:
+        with ops.device(saved_device):
+          return variables.Variable(
+              shape=proto.shape,
+              dtype=proto.dtype,
+              name=name,
+              trainable=trainable,
+              synchronization=synchronization,
+              aggregation=aggregation), setattr
+      else:
+        return variables.Variable(
+            shape=proto.shape,
+            dtype=proto.dtype,
+            name=name,
+            trainable=trainable,
+            synchronization=synchronization,
+            aggregation=aggregation), setattr
 
   def _get_tensor_from_fn(self, proto):
     outer_graph = self._concrete_functions[proto.concrete_function].graph
     captured_tensor = outer_graph.get_tensor_by_name(proto.name)
     return captured_tensor, setattr
 
-  def _recreate_resource(self, proto):
-    return _RestoredResource(device=proto.device), _setattr_and_track
-
-
-# TODO(b/124205571,b/124092991): Solve destruction of resources.
-class _RestoredResource(tracking.TrackableResource):
-  """Restored SavedResource."""
-
-  def __init__(self, device=""):
-    super(_RestoredResource, self).__init__(device=device)
-
-  def _create_resource(self):
-    raise RuntimeError()
-
-  def _initialize(self):
-    raise RuntimeError()
-
-  # _list_functions_for_serialization expects Function objects, but unlike
-  # _create_resource and _initialize, _destroy_function didn't always exist in
-  # older TrackableResource implementations, so this default stub must be a
-  # Function.
-  @def_function.function
-  def _destroy_resource(self):
-    raise RuntimeError()
-
-  def _list_functions_for_serialization(self, unused_serialization_cache):
-    # Overwrite this method to avoid the implementation of
-    # base class to re-wrap the polymorphic functions into
-    # another layer of `tf.function`.
-    functions = {
-        "_create_resource": self._create_resource,
-        "_initialize": self._initialize,
-        "_destroy_resource": self._destroy_resource,
-    }
-    return functions
-
 
 def _call_attribute(instance, *args, **kwargs):
   return instance.__call__(*args, **kwargs)
 
 
-def _setattr_and_track(obj, name, value):
-  """Sets new attribute and marks it as a dependency if Trackable."""
-  setattr(obj, name, value)
-  if isinstance(value, base.Trackable):
-    obj._track_trackable(value, name)  # pylint:disable=protected-access
+@tf_export("saved_model.load", v1=["saved_model.load_v2"])
+def load(export_dir, tags=None, options=None):
+  """Load a SavedModel from `export_dir`.
+
+  Signatures associated with the SavedModel are available as functions:
+
+  ```python
+  imported = tf.saved_model.load(path)
+  f = imported.signatures["serving_default"]
+  print(f(x=tf.constant([[1.]])))
+  ```
+
+  Objects exported with `tf.saved_model.save` additionally have trackable
+  objects and functions assigned to attributes:
+
+  ```python
+  exported = tf.train.Checkpoint(v=tf.Variable(3.))
+  exported.f = tf.function(
+      lambda x: exported.v * x,
+      input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32)])
+  tf.saved_model.save(exported, path)
+  imported = tf.saved_model.load(path)
+  assert 3. == imported.v.numpy()
+  assert 6. == imported.f(x=tf.constant(2.)).numpy()
+  ```
+
+  _Loading Keras models_
+
+  Keras models are trackable, so they can be saved to SavedModel. The object
+  returned by `tf.saved_model.load` is not a Keras object (i.e. doesn't have
+  `.fit`, `.predict`, etc. methods). A few attributes and functions are still
+  available: `.variables`, `.trainable_variables` and `.__call__`.
+
+  ```python
+  model = tf.keras.Model(...)
+  tf.saved_model.save(model, path)
+  imported = tf.saved_model.load(path)
+  outputs = imported(inputs)
+  ```
+
+  Use `tf.keras.models.load_model` to restore the Keras model.
+
+  _Importing SavedModels from TensorFlow 1.x_
+
+  SavedModels from `tf.estimator.Estimator` or 1.x SavedModel APIs have a flat
+  graph instead of `tf.function` objects. These SavedModels will be loaded with
+  the following attributes:
+
+  * `.signatures`: A dictionary mapping signature names to functions.
+  * `.prune(feeds, fetches) `: A method which allows you to extract
+    functions for new subgraphs. This is equivalent to importing the SavedModel
+    and naming feeds and fetches in a Session from TensorFlow 1.x.
+
+    ```python
+    imported = tf.saved_model.load(path_to_v1_saved_model)
+    pruned = imported.prune("x:0", "out:0")
+    pruned(tf.ones([]))
+    ```
+
+    See `tf.compat.v1.wrap_function` for details.
+  * `.variables`: A list of imported variables.
+  * `.graph`: The whole imported graph.
+  * `.restore(save_path)`: A function that restores variables from a checkpoint
+    saved from `tf.compat.v1.Saver`.
+
+  _Consuming SavedModels asynchronously_
+
+  When consuming SavedModels asynchronously (the producer is a separate
+  process), the SavedModel directory will appear before all files have been
+  written, and `tf.saved_model.load` will fail if pointed at an incomplete
+  SavedModel. Rather than checking for the directory, check for
+  "saved_model_dir/saved_model.pb". This file is written atomically as the last
+  `tf.saved_model.save` file operation.
+
+  Args:
+    export_dir: The SavedModel directory to load from.
+    tags: A tag or sequence of tags identifying the MetaGraph to load. Optional
+      if the SavedModel contains a single MetaGraph, as for those exported from
+      `tf.saved_model.save`.
+    options: `tf.saved_model.LoadOptions` object that specifies options for
+      loading.
+
+  Returns:
+    A trackable object with a `signatures` attribute mapping from signature
+    keys to functions. If the SavedModel was exported by `tf.saved_model.save`,
+    it also points to trackable objects, functions, debug info which it has been
+    saved.
+
+  Raises:
+    ValueError: If `tags` don't match a MetaGraph in the SavedModel.
+  """
+  if isinstance(export_dir, os.PathLike):
+    export_dir = os.fspath(export_dir)
+  result = load_partial(export_dir, None, tags, options)["root"]
+  return result
 
 
 @tf_export("__internal__.saved_model.load_partial", v1=[])
@@ -839,107 +928,6 @@ def load_partial(export_dir, filters, tags=None, options=None):
   Returns:
     A dictionary mapping node paths from the filter to loaded objects.
   """
-  return load_internal(export_dir, tags, options, filters=filters)
-
-
-@tf_export("saved_model.load", v1=["saved_model.load_v2"])
-def load(export_dir, tags=None, options=None):
-  """Load a SavedModel from `export_dir`.
-
-  Signatures associated with the SavedModel are available as functions:
-
-  ```python
-  imported = tf.saved_model.load(path)
-  f = imported.signatures["serving_default"]
-  print(f(x=tf.constant([[1.]])))
-  ```
-
-  Objects exported with `tf.saved_model.save` additionally have trackable
-  objects and functions assigned to attributes:
-
-  ```python
-  exported = tf.train.Checkpoint(v=tf.Variable(3.))
-  exported.f = tf.function(
-      lambda x: exported.v * x,
-      input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32)])
-  tf.saved_model.save(exported, path)
-  imported = tf.saved_model.load(path)
-  assert 3. == imported.v.numpy()
-  assert 6. == imported.f(x=tf.constant(2.)).numpy()
-  ```
-
-  _Loading Keras models_
-
-  Keras models are trackable, so they can be saved to SavedModel. The object
-  returned by `tf.saved_model.load` is not a Keras object (i.e. doesn't have
-  `.fit`, `.predict`, etc. methods). A few attributes and functions are still
-  available: `.variables`, `.trainable_variables` and `.__call__`.
-
-  ```python
-  model = tf.keras.Model(...)
-  tf.saved_model.save(model, path)
-  imported = tf.saved_model.load(path)
-  outputs = imported(inputs)
-  ```
-
-  Use `tf.keras.models.load_model` to restore the Keras model.
-
-  _Importing SavedModels from TensorFlow 1.x_
-
-  SavedModels from `tf.estimator.Estimator` or 1.x SavedModel APIs have a flat
-  graph instead of `tf.function` objects. These SavedModels will be loaded with
-  the following attributes:
-
-  * `.signatures`: A dictionary mapping signature names to functions.
-  * `.prune(feeds, fetches) `: A method which allows you to extract
-    functions for new subgraphs. This is equivalent to importing the SavedModel
-    and naming feeds and fetches in a Session from TensorFlow 1.x.
-
-    ```python
-    imported = tf.saved_model.load(path_to_v1_saved_model)
-    pruned = imported.prune("x:0", "out:0")
-    pruned(tf.ones([]))
-    ```
-
-    See `tf.compat.v1.wrap_function` for details.
-  * `.variables`: A list of imported variables.
-  * `.graph`: The whole imported graph.
-  * `.restore(save_path)`: A function that restores variables from a checkpoint
-    saved from `tf.compat.v1.Saver`.
-
-  _Consuming SavedModels asynchronously_
-
-  When consuming SavedModels asynchronously (the producer is a separate
-  process), the SavedModel directory will appear before all files have been
-  written, and `tf.saved_model.load` will fail if pointed at an incomplete
-  SavedModel. Rather than checking for the directory, check for
-  "saved_model_dir/saved_model.pb". This file is written atomically as the last
-  `tf.saved_model.save` file operation.
-
-  Args:
-    export_dir: The SavedModel directory to load from.
-    tags: A tag or sequence of tags identifying the MetaGraph to load. Optional
-      if the SavedModel contains a single MetaGraph, as for those exported from
-      `tf.saved_model.save`.
-    options: `tf.saved_model.LoadOptions` object that specifies options for
-      loading.
-
-  Returns:
-    A trackable object with a `signatures` attribute mapping from signature
-    keys to functions. If the SavedModel was exported by `tf.saved_model.save`,
-    it also points to trackable objects, functions, debug info which it has been
-    saved.
-
-  Raises:
-    ValueError: If `tags` don't match a MetaGraph in the SavedModel.
-  """
-  result = load_internal(export_dir, tags, options)["root"]
-  return result
-
-
-def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
-                  filters=None):
-  """Loader implementation."""
   options = options or load_options.LoadOptions()
   if tags is not None and not isinstance(tags, set):
     # Supports e.g. tags=SERVING and tags=[SERVING]. Sets aren't considered
@@ -961,7 +949,7 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
     if (tags is not None
         and set(tags) != set(meta_graph_def.meta_info_def.tags)):
       raise ValueError(
-          "Got an incompatible argument to `tags`: {tags}. The SavedModel at "
+          f"Got an incompatible argument to `tags`: {tags}. The SavedModel at "
           f"{export_dir} has one MetaGraph with tags "
           f"{meta_graph_def.meta_info_def.tags}. You may omit the argument, "
           "pass 'None', or pass matching tags.")
@@ -971,8 +959,8 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
         experimental_io_device=options.experimental_io_device)
     with ops.init_scope():
       try:
-        loader = loader_cls(object_graph_proto, saved_model_proto, export_dir,
-                            ckpt_options, options, filters)
+        loader = Loader(object_graph_proto, saved_model_proto, export_dir,
+                        ckpt_options, options, filters)
       except errors.NotFoundError as err:
         raise FileNotFoundError(
             str(err) + "\n You may be trying to load on a different device "
@@ -980,8 +968,7 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
             "`experimental_io_device` option in `tf.saved_model.LoadOptions` "
             "to the io_device such as '/job:localhost'.")
       root = loader.get(0)
-      if isinstance(loader, Loader):
-        root.graph_debug_info = loader.adjust_debug_info_func_names(debug_info)
+      root.graph_debug_info = loader.adjust_debug_info_func_names(debug_info)
     root.tensorflow_version = meta_graph_def.meta_info_def.tensorflow_version
     root.tensorflow_git_version = (
         meta_graph_def.meta_info_def.tensorflow_git_version)
@@ -993,6 +980,11 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
     with ops.init_scope():
       root = load_v1_in_v2.load(export_dir, tags)
       root.graph_debug_info = debug_info
+
+  # Read and log SavedModel checksum, if it is nonzero.
+  saved_model_checksum = fingerprinting.MaybeReadSavedModelChecksum(export_dir)
+  if saved_model_checksum != 0:
+    metrics.SetReadFingerprint(saved_model_checksum=str(saved_model_checksum))
 
   if filters:
     return {node_id: loader.get(node_id) for node_id in filters}

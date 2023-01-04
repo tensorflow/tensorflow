@@ -15,12 +15,12 @@
 """Tests for utilities working with arbitrarily nested structures."""
 
 import collections
+import collections.abc
 import time
 from typing import NamedTuple
 
 from absl.testing import parameterized
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -28,10 +28,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
 
 try:
   import attr  # pylint:disable=g-import-not-at-top
@@ -39,7 +39,7 @@ except ImportError:
   attr = None
 
 
-class _CustomMapping(collections_abc.Mapping):
+class _CustomMapping(collections.abc.Mapping):
 
   def __init__(self, *args, **kwargs):
     self._wrapped = dict(*args, **kwargs)
@@ -58,7 +58,7 @@ class _CustomList(list):
   pass
 
 
-class _CustomSequenceThatRaisesException(collections.Sequence):
+class _CustomSequenceThatRaisesException(collections.abc.Sequence):
 
   def __len__(self):
     return 1
@@ -620,6 +620,15 @@ class NestTest(parameterized.TestCase, test.TestCase):
     inp_deep = [1, 2]
     nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=False)
     nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=True)
+
+    # This assertion is expected to pass: a VariableSpec with alias_id and
+    # a Variable are considered identical.
+    inp_shallow = resource_variable_ops.VariableSpec(None, alias_id=0)
+    inp_deep = resource_variable_ops.ResourceVariable(1.)
+    nest.assert_shallow_structure(inp_shallow, inp_deep,
+                                  expand_composites=False)
+    nest.assert_shallow_structure(inp_shallow, inp_deep,
+                                  expand_composites=True)
 
   def testFlattenUpTo(self):
     # Shallow tree ends at scalar.
@@ -1307,11 +1316,11 @@ class NestBenchmark(test.Benchmark):
   def run_and_report(self, s1, s2, name):
     burn_iter, test_iter = 100, 30000
 
-    for _ in xrange(burn_iter):
+    for _ in range(burn_iter):
       nest.assert_same_structure(s1, s2)
 
     t0 = time.time()
-    for _ in xrange(test_iter):
+    for _ in range(test_iter):
       nest.assert_same_structure(s1, s2)
     t1 = time.time()
 

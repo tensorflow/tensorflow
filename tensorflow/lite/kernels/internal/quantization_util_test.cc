@@ -433,17 +433,21 @@ TEST(QuantizationUtilTest, MultiplyByQuantizedMultiplierInt32) {
   EXPECT_EQ(quant_and_multiply(0, 0.1), 0);
   EXPECT_EQ(quant_and_multiply(1, 0), 0);
   EXPECT_EQ(quant_and_multiply(10000, 0.00097656), 10);
-  EXPECT_EQ(quant_and_multiply(10000, -0.00097656), -10);
   EXPECT_EQ(quant_and_multiply(-10000, 0.00097656), -10);
-  EXPECT_EQ(quant_and_multiply(-10000, -0.00097656), 10);
   EXPECT_EQ(quant_and_multiply(std::numeric_limits<int32_t>::min(), 0.00001),
             -21475);
-  EXPECT_EQ(quant_and_multiply(std::numeric_limits<int32_t>::min(), -0.00001),
-            21475);
   EXPECT_EQ(quant_and_multiply(std::numeric_limits<int32_t>::max(), 0.00001),
+            21475);
+#if !TFLITE_SINGLE_ROUNDING
+  // Single-rounding doesn't support negative multipliers, only test negative
+  // multipliers in double-rounding mode.
+  EXPECT_EQ(quant_and_multiply(10000, -0.00097656), -10);
+  EXPECT_EQ(quant_and_multiply(-10000, -0.00097656), 10);
+  EXPECT_EQ(quant_and_multiply(std::numeric_limits<int32_t>::min(), -0.00001),
             21475);
   EXPECT_EQ(quant_and_multiply(std::numeric_limits<int32_t>::max(), -0.00001),
             -21475);
+#endif
 
   // Test with maximum possible x and quantized_multiplier
   const int32_t x = std::numeric_limits<int32_t>::max();
@@ -496,6 +500,16 @@ TEST(QuantizationUtilTest, PreprocessSoftmaxScaling) {
     return std::pair<int32_t, int>{q, s};
   };
 
+#if TFLITE_SINGLE_ROUNDING
+  // If beta * scale is greater than fits in the number of integer bits, the
+  // result is move near the maximum. Otherwise they quantize as expected.
+  // With 4 integer bits we can represent up to 8.0.
+  EXPECT_THAT(quantize(1.0, 8.0, 4), Pair(2147483646, 30));
+  EXPECT_THAT(quantize(1.0, 4.0, 4), Pair(1073741824, 30));
+  // But with 5 bits we can go further.
+  EXPECT_THAT(quantize(2.0, 8.0, 5), Pair(2147483646, 30));
+  EXPECT_THAT(quantize(2.0, 4.0, 5), Pair(1073741824, 30));
+#else
   // If beta * scale is greater than fits in the number of integer bits, the
   // result is move near the maximum. Otherwise they quantize as expected.
   // With 4 integer bits we can represent up to 16.0.
@@ -504,6 +518,7 @@ TEST(QuantizationUtilTest, PreprocessSoftmaxScaling) {
   // But with 5 bits we can go further.
   EXPECT_THAT(quantize(2.0, 16.0, 5), Pair(2147483647, 31));
   EXPECT_THAT(quantize(2.0, 8.0, 5), Pair(1073741824, 31));
+#endif
 }
 #endif  // GTEST_HAS_DEATH_TEST
 

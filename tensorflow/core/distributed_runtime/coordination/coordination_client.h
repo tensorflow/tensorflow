@@ -16,24 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_CLIENT_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_CLIENT_H_
 
+#include <memory>
 #include <string>
 
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_client.h"
+
 namespace tensorflow {
-
-// Client interface for communicating with coordination service.
-// Experimental feature, not yet implemented in open source.
-class CoordinationClient;
-
-// Simple wrapper class that can be used to retrieve CoordinationClients.
-class CoordinationClientCache {
- public:
-  virtual ~CoordinationClientCache() {}
-
-  // If the `target` names a remote task, returns a pointer of the
-  // CoordinationClient object wrapping that channel to the remote task.
-  virtual CoordinationClient* GetClient(const std::string& target) = 0;
-};
-
+// NOLINTBEGIN(misc-unused-using-decls)
+using tsl::CoordinationClient;
+using tsl::CoordinationClientCache;
+// NOLINTEND(misc-unused-using-decls)
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_CLIENT_H_

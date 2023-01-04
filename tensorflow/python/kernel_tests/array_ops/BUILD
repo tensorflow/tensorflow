@@ -1,13 +1,10 @@
 # Tests of TensorFlow array ops kernels written using the Python API.
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_xla_deps_py")
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -140,6 +137,7 @@ cuda_py_test(
     name = "concat_op_test",
     size = "medium",
     srcs = ["concat_op_test.py"],
+    shard_count = 4,
     tags = ["no_windows"],  # b/126916429
     xla_tags = [
         "no_cuda_asan",  # times out
@@ -161,6 +159,9 @@ cuda_py_test(
     name = "constant_op_eager_test",
     size = "small",
     srcs = ["constant_op_eager_test.py"],
+    tags = [
+        "no_windows",  # TODO(b/207048720): re-enable
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -442,7 +443,8 @@ cuda_py_test(
 
 cuda_py_test(
     name = "pad_op_test",
-    size = "small",
+    size = "medium",
+    timeout = "moderate",
     srcs = ["pad_op_test.py"],
     tags = ["no_mac"],  # test is times out on mac b/186262388
     xla_tags = [
@@ -606,6 +608,7 @@ cuda_py_test(
     name = "split_op_test",
     size = "medium",
     srcs = ["split_op_test.py"],
+    shard_count = 4,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -686,6 +689,7 @@ cuda_py_test(
     name = "where_op_test",
     size = "medium",
     srcs = ["where_op_test.py"],
+    tags = ["no_cuda_asan"],  #TODO(b/212580469)
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

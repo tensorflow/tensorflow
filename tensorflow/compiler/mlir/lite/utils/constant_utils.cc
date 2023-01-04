@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 
+#include <string>
+
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -46,7 +50,6 @@ stream_executor::port::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
   } else if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
     auto etype = complex_type.getElementType();
     if (etype.isF32()) {
-      auto dialect = etype.getContext()->getLoadedDialect("tf");
       tensorflow::TensorProto repr;
       repr.set_dtype(tensorflow::DT_COMPLEX64);
 
@@ -60,7 +63,7 @@ stream_executor::port::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
       repr.set_tensor_content(content);
       std::string mangled = tensorflow::mangling_util::MangleTensor(repr);
 
-      attr = mlir::OpaqueElementsAttr::get(dialect, scalar_type, mangled);
+      attr = mlir::TF::TensorProtoAttr::get(scalar_type, mangled);
     } else {
       return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
                                 "Unsupported type");

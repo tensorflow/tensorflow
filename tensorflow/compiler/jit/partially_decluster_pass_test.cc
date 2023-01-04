@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
@@ -309,14 +310,14 @@ TEST(PartiallyDeclusterPassTest, DeclusterMustBeConstantNodes) {
 
   AddToCluster({shape.node(), reshape.node()}, "cluster_0");
 
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(s.ToGraph(graph.get()));
   TF_ASSERT_OK(PartiallyDecluster(&graph));
 
   const Node* n = FindNodeByName(*graph, "shape");
   ASSERT_NE(n, nullptr);
 
-  EXPECT_EQ(GetXlaClusterForNode(*n), absl::nullopt);
+  EXPECT_EQ(GetXlaClusterForNode(*n), std::nullopt);
 }
 
 TEST(PartiallyDeclusterPassTest, DeclusteringStopsAtMetadataOps) {
@@ -337,7 +338,7 @@ TEST(PartiallyDeclusterPassTest, DeclusteringStopsAtMetadataOps) {
   AddToCluster({mul.node(), shape_of_mul.node(), shape.node(), reshape.node()},
                "cluster_0");
 
-  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(s.ToGraph(graph.get()));
   TF_ASSERT_OK(PartiallyDecluster(&graph));
 
@@ -362,7 +363,7 @@ TEST(PartiallyDeclusterPassTest, EdgeAcrossDifferentClusters) {
   AddToCluster({reshape.node()}, "cluster_0");
   AddToCluster({shape.node()}, "cluster_1");
 
-  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(s.ToGraph(graph.get()));
   TF_ASSERT_OK(PartiallyDecluster(&graph));
 
@@ -386,7 +387,7 @@ TEST(PartiallyDeclusterPassTest, DontDeclusterXlaDeviceOps) {
 
   AddToCluster({shape.node(), reshape.node()}, "cluster_0");
 
-  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(s.ToGraph(graph.get()));
 
   // This is needed to register the XLA_GPU device.
@@ -443,32 +444,32 @@ TEST(PartiallyDeclusterPassTest, MetadataOpsDontStartClusters) {
   Output d = ops::Size(in_cluster_and.WithOpName("d"), c);
   (void)ops::Shape(in_cluster_and.WithOpName("e"), d);
 
-  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(root.ToGraph(graph.get()));
 
   TF_ASSERT_OK(PartiallyDecluster(&graph));
 
   Node* n_b = FindNodeByName(*graph, "b");
   ASSERT_NE(n_b, nullptr);
-  EXPECT_EQ(GetXlaClusterForNode(*n_b), absl::nullopt);
+  EXPECT_EQ(GetXlaClusterForNode(*n_b), std::nullopt);
 
   Node* n_c = FindNodeByName(*graph, "c");
   ASSERT_NE(n_c, nullptr);
-  EXPECT_EQ(GetXlaClusterForNode(*n_c), absl::nullopt);
+  EXPECT_EQ(GetXlaClusterForNode(*n_c), std::nullopt);
 
   Node* n_d = FindNodeByName(*graph, "d");
   ASSERT_NE(n_d, nullptr);
-  EXPECT_EQ(GetXlaClusterForNode(*n_d), absl::nullopt);
+  EXPECT_EQ(GetXlaClusterForNode(*n_d), std::nullopt);
 
   Node* n_e = FindNodeByName(*graph, "e");
   ASSERT_NE(n_e, nullptr);
-  EXPECT_EQ(GetXlaClusterForNode(*n_e), absl::nullopt);
+  EXPECT_EQ(GetXlaClusterForNode(*n_e), std::nullopt);
 }
 
 TEST(PartiallyDeclusterPassTest, MetaConsumersArentDeclustered) {
   tensorflow::Scope root = tensorflow::Scope::NewRootScope();
   tensorflow::Scope in_cluster_and = root.WithXlaCluster("cluster_0");
-  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   Output a = ops::Placeholder(root.WithOpName("a"), DT_FLOAT);
   Output b = ops::Add(in_cluster_and.WithOpName("b"), a, a);
   Output c = ops::Rank(in_cluster_and.WithOpName("c"), b);
@@ -483,6 +484,73 @@ TEST(PartiallyDeclusterPassTest, MetaConsumersArentDeclustered) {
   Node* n_b = FindNodeByName(*graph, "b");
   ASSERT_NE(n_b, nullptr);
   EXPECT_EQ(GetXlaClusterForNode(*n_b), "cluster_0");
+
+  Node* n_c = FindNodeByName(*graph, "c");
+  ASSERT_NE(n_c, nullptr);
+  EXPECT_EQ(GetXlaClusterForNode(*n_c), "cluster_0");
+}
+
+TEST(PartiallyDeclusterPassTest, ConstInputsToSliceArentDeclustered) {
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  tensorflow::Scope in_cluster_and = root.WithXlaCluster("cluster_0");
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
+  Output a = ops::Placeholder(root.WithOpName("a"), DT_FLOAT,
+                              ops::Placeholder::Attrs{{4}});
+  Output b = ops::Const(in_cluster_and.WithOpName("b"), {1});
+  Output c = ops::Const(in_cluster_and.WithOpName("c"), {2});
+  Output d = ops::Slice(in_cluster_and.WithOpName("d"), a, b, c);
+
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+  TF_ASSERT_OK(PartiallyDecluster(&graph));
+
+  Node* n_b = FindNodeByName(*graph, "b");
+  ASSERT_NE(n_b, nullptr);
+  EXPECT_EQ(GetXlaClusterForNode(*n_b), "cluster_0");
+
+  Node* n_c = FindNodeByName(*graph, "c");
+  ASSERT_NE(n_c, nullptr);
+  EXPECT_EQ(GetXlaClusterForNode(*n_c), "cluster_0");
+}
+
+TEST(PartiallyDeclusterPassTest,
+     ConstInLoopWithCrossDeviceControlInputsAreDeclustered) {
+  // Based on DontClusterTheSpecialIdentityDrivingConstsInLoop in
+  // mark_for_compilation_pass_test.cc
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  tensorflow::Scope in_cluster_and = root.WithXlaCluster("cluster_0");
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
+  Output a = ops::Placeholder(root.WithOpName("a"), DT_FLOAT,
+                              ops::Placeholder::Attrs{{4}});
+  Output b = ops::Const(in_cluster_and.WithOpName("b"), {1});
+  Output c = ops::Const(in_cluster_and.WithOpName("c"), {2});
+  Output slice = ops::Slice(in_cluster_and.WithOpName("slice"), a, b, c);
+  Output cond = ops::Placeholder(root.WithOpName("cond"), DT_BOOL);
+  Output value = ops::Placeholder(root.WithOpName("value"), DT_FLOAT);
+  Output loop_cond = ops::LoopCond(root.WithOpName("loop_cond"), cond);
+  ops::Switch switch_node(root.WithOpName("switch"), value, loop_cond);
+  Output identity =
+      ops::Identity(root.WithOpName("identity"), switch_node.output_true);
+  root.graph()->AddControlEdge(identity.node(), b.node());
+
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  // This is needed to register the XLA_GPU device.
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_ASSERT_OK(DeviceFactory::AddDevices(
+      SessionOptions(), "/job:localhost/replica:0/task:0", &devices));
+
+  // Scope::ToGraph loses the assigned device name since it goes through
+  // GraphDef/NodeDef which does not have a field for the assigned device name.
+  Node* identity_node = FindNodeByName(*graph, "identity");
+  ASSERT_NE(identity_node, nullptr);
+  identity_node->set_assigned_device_name(
+      "/job:localhost/replica:0/task:0/device:XLA_GPU:0");
+
+  TF_ASSERT_OK(PartiallyDecluster(&graph));
+
+  Node* n_b = FindNodeByName(*graph, "b");
+  ASSERT_NE(n_b, nullptr);
+  EXPECT_EQ(GetXlaClusterForNode(*n_b), std::nullopt);
 
   Node* n_c = FindNodeByName(*graph, "c");
   ASSERT_NE(n_c, nullptr);

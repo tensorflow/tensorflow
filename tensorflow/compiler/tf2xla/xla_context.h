@@ -97,6 +97,11 @@ class XlaContext : public ResourceBase {
   // separate specialization of the computation for each DataType.
   const xla::XlaComputation* GetOrCreateAdd(const DataType type);
 
+  // Get an XLA lambda to compute LogAddExp. This is cached in the
+  // XlaContext since it may be used by multiple Ops. There is a
+  // separate specialization of the computation for each DataType.
+  const xla::XlaComputation* GetOrCreateLogAddExp(const DataType type);
+
   // Get an XLA lambda to compute Mul. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
@@ -105,11 +110,15 @@ class XlaContext : public ResourceBase {
   // The name of the XlaContext resource during symbolic graph execution.
   static const char kXlaContextResourceName[];
 
+  // Records the collective information from the nested compilation `result`.
+  Status RecordCollectiveInfoFromNestedCompilationResult(
+      const XlaCompilationResult& result);
+
   // Records the collective configurations for all the collectives in the XLA
   // cluster and returns the channel_id to be used for the next collective.
   StatusOr<int64_t> RecordCollectiveInfo(int group_key, int group_size);
 
-  const absl::optional<XlaCompilationResult::CollectiveInfo>&
+  const std::optional<XlaCompilationResult::CollectiveInfo>&
   GetCollectiveInfo() {
     return collective_info_;
   }
@@ -135,7 +144,7 @@ class XlaContext : public ResourceBase {
 
   // Information about encountered collective ops. We allow only a
   // single configuration per cluster.
-  absl::optional<XlaCompilationResult::CollectiveInfo> collective_info_;
+  std::optional<XlaCompilationResult::CollectiveInfo> collective_info_;
 
   // Cache of prebuilt computations indexed by their type.
   using ComputationMap = std::map<DataType, xla::XlaComputation>;
@@ -158,6 +167,10 @@ class XlaContext : public ResourceBase {
 
   // Cached computation to compute Mul of two elements, specialized by type.
   ComputationMap mul_func_;
+
+  // Cached computation to compute Log(Add(Exp())) of two elements, specialized
+  // by type.
+  ComputationMap log_add_exp_func_;
 
   // Cached computation to compute Sigmoid of an element, specialized by type.
   ComputationMap sigmoid_func_;

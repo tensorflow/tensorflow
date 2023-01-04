@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -53,10 +53,10 @@ TEST_F(SortSimplifierTest, RemoveUnusedSortOperandArrayResult) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   SortSimplifier simplifier;
-  uint64 num_executions = 0;
+  uint64_t num_executions = 0;
   do {
     num_executions++;
-  } while (simplifier.Run(module.get()).ValueOrDie());
+  } while (simplifier.Run(module.get()).value());
   EXPECT_EQ(num_executions, 2);
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Sort(m::Parameter(0))));
@@ -91,7 +91,7 @@ TEST_F(SortSimplifierTest, RemoveUnusedSortOperandTuple) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   SortSimplifier simplifier;
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,
@@ -122,7 +122,7 @@ TEST_F(SortSimplifierTest, DontRemoveUnusedSortKey) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   SortSimplifier simplifier;
-  EXPECT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(simplifier.Run(module.get()).value());
 }
 
 TEST_F(SortSimplifierTest, RemoveUnusedFirstOperand) {
@@ -148,10 +148,10 @@ TEST_F(SortSimplifierTest, RemoveUnusedFirstOperand) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   SortSimplifier simplifier;
-  uint64 num_executions = 0;
+  uint64_t num_executions = 0;
   do {
     num_executions++;
-  } while (simplifier.Run(module.get()).ValueOrDie());
+  } while (simplifier.Run(module.get()).value());
   EXPECT_EQ(num_executions, 2);
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Sort(m::Parameter(1))));

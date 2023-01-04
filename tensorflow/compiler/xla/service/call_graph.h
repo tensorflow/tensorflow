@@ -22,9 +22,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "absl/functional/function_ref.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 
 namespace xla {
 
@@ -47,7 +48,7 @@ enum class CallContext {
   kNone
 };
 
-string CallContextToString(CallContext context);
+std::string CallContextToString(CallContext context);
 std::ostream& operator<<(std::ostream& out, const CallContext& context);
 
 CallContext GetInstructionCallContext(HloOpcode opcode);
@@ -56,31 +57,32 @@ CallContext GetInstructionCallContext(HloOpcode opcode);
 class CallSite {
  public:
   CallSite(HloInstruction* instruction,
-           const std::vector<HloComputation*>& called_computations,
+           absl::Span<HloComputation* const> called_computations,
            CallContext context)
       : instruction_(CHECK_NOTNULL(instruction)),
-        called_computations_(called_computations),
+        called_computations_(called_computations.begin(),
+                             called_computations.end()),
         context_(context) {}
 
   // Returns the instruction associated with this call site.
   HloInstruction* instruction() const { return instruction_; }
 
   // Returns the computations called at this call site.
-  const std::vector<HloComputation*>& called_computations() const {
+  absl::Span<HloComputation* const> called_computations() const {
     return called_computations_;
   }
 
   // Returns the context in which computations are called at this call site.
   CallContext context() const { return context_; }
 
-  string ToString() const;
+  std::string ToString() const;
 
  private:
   // The calling instruction.
   HloInstruction* instruction_;
 
   // The computations called by this callsite.
-  const std::vector<HloComputation*> called_computations_;
+  const absl::InlinedVector<HloComputation*, 2> called_computations_;
 
   // The context in which the computations are called.
   const CallContext context_;
@@ -96,7 +98,7 @@ class CallGraphNode {
 
   // Returns the call sites in this computation. These are the instructions in
   // this computation which call other computations.
-  const std::vector<CallSite>& callsites() const { return callsites_; }
+  absl::Span<const CallSite> callsites() const { return callsites_; }
 
   // Returns the callsite associated with the given instruction. If this
   // instruction calls no computations nullptr is returned.
@@ -105,15 +107,15 @@ class CallGraphNode {
   const CallSite* GetCallSite(const HloInstruction* instruction) const;
 
   // Returns the computations called by this computation.
-  const std::vector<HloComputation*>& callees() const { return callees_; }
+  absl::Span<HloComputation* const> callees() const { return callees_; }
 
   // Returns the call sites in other computations which call this computation.
-  const std::vector<CallSite>& caller_callsites() const {
+  absl::Span<const CallSite> caller_callsites() const {
     return caller_callsites_;
   }
 
   // Returns the computations which call this computation.
-  const std::vector<HloComputation*>& callers() const { return callers_; }
+  absl::Span<HloComputation* const> callers() const { return callers_; }
 
   // Returns the context in which this computation is called.
   CallContext context() const { return context_; }
@@ -123,7 +125,12 @@ class CallGraphNode {
   // (usually the entry computation node) to this node.
   int depth() const { return depth_; }
 
-  string ToString() const;
+  std::string ToString() const;
+
+  CallGraphNode(const CallGraphNode&) = delete;
+  CallGraphNode& operator=(const CallGraphNode&) = delete;
+  CallGraphNode(CallGraphNode&&) = default;
+  CallGraphNode& operator=(CallGraphNode&&) = default;
 
  private:
   // Only CallGraph can modify CallGraphNode.
@@ -149,23 +156,23 @@ class CallGraphNode {
 
   // The computations called by this computation. The vector is used for a
   // stable ordering and the set enables fast membership testing.
-  std::vector<HloComputation*> callees_;
+  absl::InlinedVector<HloComputation*, 1> callees_;
   absl::flat_hash_set<HloComputation*> callee_set_;
 
   // The computations which call this computation. The vector is used for a
   // stable ordering and the set enables fast membership testing.
-  std::vector<HloComputation*> callers_;
+  absl::InlinedVector<HloComputation*, 1> callers_;
   absl::flat_hash_set<HloComputation*> caller_set_;
 
   // The call sites in this computation
-  std::vector<CallSite> callsites_;
+  absl::InlinedVector<CallSite, 1> callsites_;
 
   // The map from instruction to index in callsites_ for looking up the callsite
   // (if any) associated with a particular instruction in this computation.
   absl::flat_hash_map<const HloInstruction*, int64_t> callsite_instructions_;
 
   // The call sites in other computations which call this computation.
-  std::vector<CallSite> caller_callsites_;
+  absl::InlinedVector<CallSite, 1> caller_callsites_;
 
   // The context in which this computation is called.
   CallContext context_ = CallContext::kNone;
@@ -178,7 +185,7 @@ class CallGraphNode {
 // computation in the module.
 class CallGraph {
  public:
-  using VisitorFunction = std::function<Status(const CallGraphNode&)>;
+  using VisitorFunction = absl::FunctionRef<Status(const CallGraphNode&)>;
 
   // Builds and returns a call graph for the given HLO module.
   static std::unique_ptr<CallGraph> Build(const HloModule* module);
@@ -194,7 +201,7 @@ class CallGraph {
   // in post order (callees before callers). If visit_unreachable_nodes is true
   // then all nodes in the call graph are visited. Otherwise only those nodes
   // reachable from the entry computation are visited.
-  Status VisitNodes(const VisitorFunction& visitor_func,
+  Status VisitNodes(VisitorFunction visitor_func,
                     bool visit_unreachable_nodes = true) const;
 
   // Returns true if 'a' dominates 'b' in the call graph. Computation 'a'
@@ -246,9 +253,10 @@ class CallGraph {
 
   // Returns a vector of instructions calling the passed computation.
   // (Often a vector of size 1.)
-  std::vector<HloInstruction*> GetComputationCallers(HloComputation* c);
+  std::vector<HloInstruction*> GetComputationCallers(
+      const HloComputation* c) const;
 
-  string ToString() const;
+  std::string ToString() const;
 
  private:
   CallGraph(const HloModule* module);
@@ -268,7 +276,7 @@ class CallGraph {
   // nodes to 'visited' as each node is visited. Skips nodes already in
   // 'visited'.
   Status VisitNodesInternal(
-      const VisitorFunction& visitor_func, const CallGraphNode& node,
+      VisitorFunction visitor_func, const CallGraphNode& node,
       absl::flat_hash_set<const CallGraphNode*>* visited) const;
 
   // Recursive helper for computing whether 'a' dominates 'b' in the call

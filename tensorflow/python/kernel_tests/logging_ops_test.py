@@ -20,7 +20,7 @@ import sys
 import tempfile
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -270,7 +270,7 @@ class PrintV2Test(test.TestCase):
     self.assertIn((expected + "\n"), printed.contents())
 
   def testPrintTensorsToFile(self):
-    tmpfile_name = tempfile.mktemp(".printv2_test")
+    fd, tmpfile_name = tempfile.mkstemp(".printv2_test")
     tensor_0 = math_ops.range(0, 10)
     print_op_0 = logging_ops.print_v2(tensor_0,
                                       output_stream="file://"+tmpfile_name)
@@ -280,14 +280,14 @@ class PrintV2Test(test.TestCase):
                                       output_stream="file://"+tmpfile_name)
     self.evaluate(print_op_1)
     try:
-      f = open(tmpfile_name, "r")
+      f = os.fdopen(fd, "r")
       line_0 = f.readline()
       expected_0 = "[0 1 2 ... 7 8 9]"
       self.assertTrue(expected_0 in line_0)
       line_1 = f.readline()
       expected_1 = "[11 12 13 ... 17 18 19]"
       self.assertTrue(expected_1 in line_1)
-      f.close()
+      os.close(fd)
       os.remove(tmpfile_name)
     except IOError as e:
       self.fail(e)
@@ -327,7 +327,7 @@ class PrintV2Test(test.TestCase):
   def testPrintsOrderedInDefun(self):
     with context.eager_mode():
 
-      @function.defun
+      @def_function.function
       def prints():
         logging_ops.print_v2("A")
         logging_ops.print_v2("B")
@@ -338,22 +338,23 @@ class PrintV2Test(test.TestCase):
       self.assertTrue(("A\nB\nC\n"), printed.contents())
 
   def testPrintInDefunWithoutExplicitEvalOfPrint(self):
-    @function.defun
-    def f():
-      tensor = math_ops.range(10)
+    tensor = math_ops.range(10)
+
+    @def_function.function
+    def f(tensor):
       logging_ops.print_v2(tensor)
       return tensor
 
     expected = "[0 1 2 ... 7 8 9]"
     with self.captureWritesToStream(sys.stderr) as printed_one:
-      x = f()
+      x = f(tensor)
       self.evaluate(x)
     self.assertIn((expected + "\n"), printed_one.contents())
 
     # We execute the function again to make sure it doesn't only print on the
     # first call.
     with self.captureWritesToStream(sys.stderr) as printed_two:
-      y = f()
+      y = f(tensor)
       self.evaluate(y)
     self.assertIn((expected + "\n"), printed_two.contents())
 

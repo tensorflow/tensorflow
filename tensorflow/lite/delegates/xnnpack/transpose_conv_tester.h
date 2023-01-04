@@ -22,7 +22,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -113,6 +114,22 @@ class TransposeConvTester {
 
   inline bool FP16Weights() const { return fp16_weights_; }
 
+  inline TransposeConvTester& INT8Weights() {
+    int8_weights_ = true;
+    return *this;
+  }
+
+  inline bool INT8Weights() const { return int8_weights_; }
+
+  inline TransposeConvTester& INT8ChannelWiseWeights() {
+    int8_channel_wise_weights_ = true;
+    return *this;
+  }
+
+  inline bool INT8ChannelWiseWeights() const {
+    return int8_channel_wise_weights_;
+  }
+
   inline TransposeConvTester& SparseWeights() {
     sparse_weights_ = true;
     return *this;
@@ -156,6 +173,12 @@ class TransposeConvTester {
   }
 
   inline TransposeConvTester& NoBias() { return WithBias(false); }
+
+  inline TransposeConvTester& WeightsCache(
+      TfLiteXNNPackDelegateWeightsCache* weights_cache) {
+    weights_cache_ = weights_cache;
+    return *this;
+  }
 
   void Test(TfLiteDelegate* delegate) const;
 
@@ -202,7 +225,10 @@ class TransposeConvTester {
   ::tflite::Padding padding_ = ::tflite::Padding_VALID;
   bool use_bias_ = true;
   bool fp16_weights_ = false;
+  bool int8_weights_ = false;
+  bool int8_channel_wise_weights_ = false;
   bool sparse_weights_ = false;
+  TfLiteXNNPackDelegateWeightsCache* weights_cache_ = nullptr;
 };
 
 }  // namespace xnnpack

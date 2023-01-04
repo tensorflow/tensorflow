@@ -23,9 +23,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
@@ -106,7 +108,7 @@ bool SerializeSparseOp<Variant>::IsExpensive() {
 template <>
 Status SerializeSparseOp<tstring>::Initialize(Tensor* result) {
   *result = Tensor(DT_STRING, TensorShape({3}));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>
@@ -115,7 +117,7 @@ Status SerializeSparseOp<tstring>::Serialize(const Tensor& input,
   TensorProto proto;
   input.AsProtoTensorContent(&proto);
   *result = proto.SerializeAsString();
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_KERNEL_BUILDER(Name("SerializeSparse")
@@ -126,14 +128,14 @@ REGISTER_KERNEL_BUILDER(Name("SerializeSparse")
 template <>
 Status SerializeSparseOp<Variant>::Initialize(Tensor* result) {
   *result = Tensor(DT_VARIANT, TensorShape({3}));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>
 Status SerializeSparseOp<Variant>::Serialize(const Tensor& input,
                                              Variant* result) {
   *result = input;
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_KERNEL_BUILDER(Name("SerializeSparse")
@@ -212,7 +214,7 @@ struct SerializeGroups<T, tstring> {
       serialize_empty_element(empty_b);
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -327,7 +329,7 @@ struct SerializeGroups<T, Variant> {
       serialize_empty_element(empty_b);
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -366,7 +368,10 @@ class SerializeManySparseOp : public OpKernel {
         errors::InvalidArgument(
             "Rank of input SparseTensor should be > 1, but saw rank: ", rank));
 
-    TensorShape tensor_input_shape(input_shape->vec<int64_t>());
+    TensorShape tensor_input_shape;
+    OP_REQUIRES_OK(context,
+                   TensorShape::BuildTensorShape(input_shape->vec<int64_t>(),
+                                                 &tensor_input_shape));
     gtl::InlinedVector<int64_t, 8> std_order(rank);
     std::iota(std_order.begin(), std_order.end(), 0);
     SparseTensor input_st;

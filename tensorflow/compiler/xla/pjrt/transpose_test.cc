@@ -29,9 +29,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/platform/threadpool.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/threadpool.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace xla {
 
@@ -120,7 +120,7 @@ TEST(TransposeTest, InvalidTilings) {
       TransposePlan::Create(sizeof(float), {3, 4, 5}, {0, 1, 2},
                             /*input_layout=*/TransposePlan::Tiling{{8, 128}},
                             /*output_tiling=*/TransposePlan::Tiling{{4}});
-  EXPECT_EQ(plan.status().code(), tensorflow::error::UNIMPLEMENTED);
+  EXPECT_EQ(plan.status().code(), tsl::error::UNIMPLEMENTED);
   EXPECT_THAT(
       plan.status().error_message(),
       testing::HasSubstr(
@@ -133,8 +133,7 @@ int64_t SizeOfTiledArray(absl::Span<int64_t const> shape,
   int64_t size = 1;
   for (size_t i = 0; i < shape.size(); ++i) {
     if (i >= shape.size() - tiling.size()) {
-      size *= RoundUpToNearest(shape[i],
-                               tiling[i - (shape.size() - tiling.size())]);
+      size *= RoundUpTo(shape[i], tiling[i - (shape.size() - tiling.size())]);
     } else {
       size *= shape[i];
     }
@@ -355,8 +354,8 @@ class TransposeTest : public ::testing::TestWithParam<TransposeTestCase> {
   template <typename T>
   void TestTranspose(int parallelism) {
     const TransposeTestCase test = GetParam();
-    tensorflow::thread::ThreadPool threadpool(tensorflow::Env::Default(),
-                                              "Transpose", parallelism);
+    tsl::thread::ThreadPool threadpool(tsl::Env::Default(), "Transpose",
+                                       parallelism);
     std::vector<int64_t> output_dims = Permute(test.dims, test.permutation);
     TF_ASSERT_OK_AND_ASSIGN(
         auto plan, TransposePlan::Create(
@@ -385,14 +384,14 @@ class TransposeTest : public ::testing::TestWithParam<TransposeTestCase> {
   }
 };
 
-TEST_P(TransposeTest, TransposeInt8) { TestTranspose<int8>(1); }
-TEST_P(TransposeTest, TransposeInt16) { TestTranspose<int16>(1); }
-TEST_P(TransposeTest, TransposeInt32) { TestTranspose<int32>(1); }
+TEST_P(TransposeTest, TransposeInt8) { TestTranspose<int8_t>(1); }
+TEST_P(TransposeTest, TransposeInt16) { TestTranspose<int16_t>(1); }
+TEST_P(TransposeTest, TransposeInt32) { TestTranspose<int32_t>(1); }
 TEST_P(TransposeTest, TransposeInt64) { TestTranspose<int64_t>(1); }
 TEST_P(TransposeTest, TransposeInt128) { TestTranspose<absl::int128>(1); }
 
-TEST_P(TransposeTest, ParallelTransposeInt8) { TestTranspose<int8>(16); }
-TEST_P(TransposeTest, ParallelTransposeInt32) { TestTranspose<int32>(16); }
+TEST_P(TransposeTest, ParallelTransposeInt8) { TestTranspose<int8_t>(16); }
+TEST_P(TransposeTest, ParallelTransposeInt32) { TestTranspose<int32_t>(16); }
 
 INSTANTIATE_TEST_SUITE_P(TransposeTestInstance, TransposeTest,
                          ::testing::ValuesIn(GetTransposeTestCases()));
@@ -480,7 +479,7 @@ void BM_Eigen(const TransposeTestCase& bm, int parallelism,
   for (auto s : state) {
     TransposeUsingEigen(input.data(), output.data(), bm.dims, output_dims,
                         bm.permutation);
-    tensorflow::testing::DoNotOptimize(output);
+    tsl::testing::DoNotOptimize(output);
   }
 }
 static void BM_Eigen_uint8(const TransposeTestCase& bm, int parallelism,
@@ -504,13 +503,13 @@ void BM_Transpose(const TransposeTestCase& bm, int parallelism,
   input.FillIota(0);
   std::vector<int64_t> output_dims = Permute(bm.dims, bm.permutation);
   Array<T> output(output_dims);
-  tensorflow::thread::ThreadPool threadpool(tensorflow::Env::Default(),
-                                            "Transpose", parallelism);
+  tsl::thread::ThreadPool threadpool(tsl::Env::Default(), "Transpose",
+                                     parallelism);
   for (auto s : state) {
     plan->Execute(input.data(), output.data(), [&](std::function<void()> fn) {
       threadpool.Schedule(std::move(fn));
     });
-    tensorflow::testing::DoNotOptimize(output);
+    tsl::testing::DoNotOptimize(output);
   }
 }
 static void BM_Transpose_uint8(const TransposeTestCase& bm, int parallelism,

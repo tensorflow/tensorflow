@@ -15,7 +15,6 @@
 """Tests for tensorflow.ops.random_ops."""
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config
@@ -30,6 +29,13 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
+
+def get_float_types():
+  float_types = [dtypes.float16, dtypes.float32, dtypes.float64]
+  if test_util.is_gpu_available(
+      cuda_only=True, min_cuda_compute_capability=(8, 0)):
+    float_types += [dtypes.bfloat16]
+  return float_types
 
 class RandomOpTestCommon(test.TestCase):
 
@@ -68,7 +74,7 @@ class RandomNormalTest(RandomOpTestCommon):
         rng = random_ops.random_normal(
             [num], mean=mu, stddev=sigma, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
-        for i in xrange(10):
+        for i in range(10):
           ret[i, :] = self.evaluate(rng)
       return ret
 
@@ -78,7 +84,7 @@ class RandomNormalTest(RandomOpTestCommon):
   # to see the same sequence of values. Will catch buggy
   # implementations which uses the same random number seed.
   def testDistinct(self):
-    for dt in dtypes.float16, dtypes.float32, dtypes.float64:
+    for dt in get_float_types():
       sampler = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=True)
       x = sampler()
       y = sampler()
@@ -94,20 +100,22 @@ class RandomNormalTest(RandomOpTestCommon):
   # given the same random seed
   @test_util.run_deprecated_v1
   def testCPUGPUMatch(self):
-    for dt in dtypes.float16, dtypes.float32, dtypes.float64:
+    for dt in get_float_types():
       results = {}
       for use_gpu in [False, True]:
         sampler = self._Sampler(
             1000000, 0.0, 1.0, dt, use_gpu=use_gpu, seed=12345)
         results[use_gpu] = sampler()
+      rtol = atol = 1e-6
       if dt == dtypes.float16:
-        self.assertAllClose(results[False], results[True], rtol=1e-3, atol=1e-3)
-      else:
-        self.assertAllClose(results[False], results[True], rtol=1e-6, atol=1e-6)
+        rtol = atol = 1e-3
+      elif dt == dtypes.bfloat16:
+        rtol = atol = 1e-1
+      self.assertAllClose(results[False], results[True], rtol=rtol, atol=atol)
 
   @test_util.run_deprecated_v1
   def testSeed(self):
-    for dt in dtypes.float16, dtypes.float32, dtypes.float64:
+    for dt in get_float_types():
       sx = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=True, seed=345)
       sy = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=True, seed=345)
       self.assertAllEqual(sx(), sy())
@@ -125,14 +133,14 @@ class RandomNormalTest(RandomOpTestCommon):
   @test_util.run_deprecated_v1
   def testSingleSessionNotConstant(self):
     for use_gpu in [False, True]:
-      for dt in dtypes.float16, dtypes.float32, dtypes.float64:
+      for dt in get_float_types():
         self._testSingleSessionNotConstant(
             random_ops.random_normal, 100, dt, 0.0, 1.0, use_gpu=use_gpu)
 
   @test_util.run_deprecated_v1
   def testSingleSessionOpSeedNotConstant(self):
     for use_gpu in [False, True]:
-      for dt in dtypes.float16, dtypes.float32, dtypes.float64:
+      for dt in get_float_types():
         self._testSingleSessionNotConstant(
             random_ops.random_normal,
             100,
@@ -145,7 +153,7 @@ class RandomNormalTest(RandomOpTestCommon):
   @test_util.run_deprecated_v1
   def testSingleSessionGraphSeedNotConstant(self):
     for use_gpu in [False, True]:
-      for dt in dtypes.float16, dtypes.float32, dtypes.float64:
+      for dt in get_float_types():
         self._testSingleSessionNotConstant(
             random_ops.random_normal,
             100,
@@ -156,6 +164,7 @@ class RandomNormalTest(RandomOpTestCommon):
             graph_seed=965)
 
 
+@test_util.with_eager_op_as_function
 class TruncatedNormalTest(test.TestCase):
 
   def _Sampler(self, num, mu, sigma, dtype, use_gpu, seed=None):
@@ -165,7 +174,7 @@ class TruncatedNormalTest(test.TestCase):
         rng = random_ops.truncated_normal(
             [num], mean=mu, stddev=sigma, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
-        for i in xrange(10):
+        for i in range(10):
           ret[i, :] = self.evaluate(rng)
       return ret
 
@@ -177,7 +186,7 @@ class TruncatedNormalTest(test.TestCase):
   def testDistinct(self):
     # NOTE: TruncatedNormal on GPU is not supported.
     if not test.is_gpu_available():
-      for dt in dtypes.float16, dtypes.float32, dtypes.float64:
+      for dt in get_float_types():
         sampler = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=False)
         x = sampler()
         y = sampler()
@@ -197,7 +206,7 @@ class TruncatedNormalTest(test.TestCase):
     if not test.is_gpu_available():
       return
 
-    for dt in dtypes.float16, dtypes.float32, dtypes.float64:
+    for dt in get_float_types():
       results = {}
       for use_gpu in [False, True]:
         # We need a particular larger number of samples to test multiple rounds
@@ -205,14 +214,16 @@ class TruncatedNormalTest(test.TestCase):
         sampler = self._Sampler(
             1000000, 0.0, 1.0, dt, use_gpu=use_gpu, seed=12345)
         results[use_gpu] = sampler()
+      atol = rtol = 1e-6
       if dt == dtypes.float16:
-        self.assertAllClose(results[False], results[True], rtol=1e-3, atol=1e-3)
-      else:
-        self.assertAllClose(results[False], results[True], rtol=1e-6, atol=1e-6)
+        atol = rtol = 1e-3
+      if dt == dtypes.bfloat16:
+        atol = rtol = 1e-1
+      self.assertAllClose(results[False], results[True], rtol=rtol, atol=atol)
 
   @test_util.run_deprecated_v1
   def testSeed(self):
-    for dt in dtypes.float16, dtypes.float32, dtypes.float64:
+    for dt in get_float_types():
       sx = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=True, seed=345)
       sy = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=True, seed=345)
       self.assertAllEqual(sx(), sy())
@@ -220,12 +231,24 @@ class TruncatedNormalTest(test.TestCase):
   # The effective standard deviation of truncated normal is 85% of the
   # requested one.
   def testStdDev(self):
-    for dt in dtypes.float16, dtypes.float32, dtypes.float64:
+    for dt in get_float_types():
       stddev = 3.0
       sampler = self._Sampler(100000, 0.0, stddev, dt, use_gpu=True)
       x = sampler()
       print("std(x)", np.std(x), abs(np.std(x) / stddev - 0.85))
-      self.assertTrue(abs(np.std(x) / stddev - 0.85) < 0.04)
+      self.assertLess(abs(np.std(x) / stddev - 0.85), 0.04)
+
+  def testSuccessAfterError(self):
+    # Force an error on the TruncatedNormal kernel.
+    config.enable_op_determinism()
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "When determinism is enabled, random ops must have a seed specified"):
+      self.evaluate(gen_random_ops.truncated_normal((1,), dtypes.float32))
+    config.disable_op_determinism()
+
+    # Ensure the StdDev of the TruncatedNormal works as intended.
+    self.testStdDev()
 
   @test_util.run_deprecated_v1
   def testLargeShape(self):
@@ -256,6 +279,7 @@ class TruncatedNormalTest(test.TestCase):
       self.assertAllEqual(rnd1, rnd2)
 
 
+@test_util.with_eager_op_as_function
 @test_util.for_all_test_methods(test_util.disable_xla,
                                 "This never passed on XLA")
 class RandomUniformTest(RandomOpTestCommon):
@@ -267,17 +291,15 @@ class RandomUniformTest(RandomOpTestCommon):
         rng = random_ops.random_uniform(
             [num], minval=minv, maxval=maxv, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
-        for i in xrange(10):
+        for i in range(10):
           ret[i, :] = self.evaluate(rng)
       return ret
 
     return func
 
   def testRange(self):
-    for dt in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
-               dtypes.int64, dtypes.bfloat16):
-      use_gpu = (dt != dtypes.bfloat16)
-      sampler = self._Sampler(1000, minv=-2, maxv=8, dtype=dt, use_gpu=use_gpu)
+    for dt in get_float_types() + [dtypes.int32, dtypes.int64]:
+      sampler = self._Sampler(1000, minv=-2, maxv=8, dtype=dt, use_gpu=True)
       x = sampler()
       self.assertTrue(-2 <= np.min(x))
       self.assertTrue(np.max(x) < 8)
@@ -286,14 +308,17 @@ class RandomUniformTest(RandomOpTestCommon):
   # to see the same sequence of values. Will catch buggy
   # implementations which uses the same random number seed.
   def testDistinct(self):
-    for dt in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
-               dtypes.int64):
+    for dt in get_float_types() + [dtypes.int32, dtypes.int64]:
       maxv = 1.0 if dt.is_floating else 1 << 30
       sampler = self._Sampler(1000, minv=0, maxv=maxv, dtype=dt, use_gpu=True)
       x = sampler()
       y = sampler()
       count = (x == y).sum()
-      count_limit = 50 if dt == dtypes.float16 else 10
+      count_limit = 10
+      if dt == dtypes.float16:
+        count_limit = 50
+      elif dt == dtypes.bfloat16:
+        count_limit = 90
       if count >= count_limit:
         print("x = ", x)
         print("y = ", y)
@@ -348,8 +373,7 @@ class RandomUniformTest(RandomOpTestCommon):
   # given the same random seed
   @test_util.run_deprecated_v1
   def testCPUGPUMatch(self):
-    for dt in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
-               dtypes.int64):
+    for dt in get_float_types() + [dtypes.int32, dtypes.int64]:
       maxv = 1.0 if dt.is_floating else 17
       results = {}
       for use_gpu in False, True:
@@ -360,10 +384,8 @@ class RandomUniformTest(RandomOpTestCommon):
 
   @test_util.run_deprecated_v1
   def testSeed(self):
-    for dt in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
-               dtypes.int64, dtypes.bfloat16):
+    for dt in get_float_types() + [dtypes.int32, dtypes.int64]:
       for seed in [345, 2**100, -2**100]:
-        use_gpu = (dt != dtypes.bfloat16)
         sx = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=use_gpu, seed=seed)
         sy = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=use_gpu, seed=seed)
         self.assertAllEqual(sx(), sy())
@@ -381,16 +403,14 @@ class RandomUniformTest(RandomOpTestCommon):
   @test_util.run_deprecated_v1
   def testSingleSessionNotConstant(self):
     for use_gpu in [False, True]:
-      for dt in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
-                 dtypes.int64):
+      for dt in get_float_types() + [dtypes.int32, dtypes.int64]:
         self._testSingleSessionNotConstant(
             random_ops.random_uniform, 100, dt, 0, 17, use_gpu=use_gpu)
 
   @test_util.run_deprecated_v1
   def testSingleSessionOpSeedNotConstant(self):
     for use_gpu in [False, True]:
-      for dt in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
-                 dtypes.int64):
+      for dt in get_float_types() + [dtypes.int32, dtypes.int64]:
         self._testSingleSessionNotConstant(
             random_ops.random_uniform,
             100,
@@ -403,8 +423,7 @@ class RandomUniformTest(RandomOpTestCommon):
   @test_util.run_deprecated_v1
   def testSingleSessionGraphSeedNotConstant(self):
     for use_gpu in [False, True]:
-      for dt in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
-                 dtypes.int64):
+      for dt in get_float_types() + [dtypes.int32, dtypes.int64]:
         self._testSingleSessionNotConstant(
             random_ops.random_uniform,
             100,

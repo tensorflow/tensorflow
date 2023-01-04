@@ -154,6 +154,15 @@ class LinearOperatorToeplitzTest(
     with backprop.GradientTape() as tape:
       self.assertIsNotNone(tape.gradient(operator.trace(), col))
 
+  def test_convert_variables_to_tensors(self):
+    col = variables_module.Variable([1.])
+    row = variables_module.Variable([1.])
+    operator = linear_operator_toeplitz.LinearOperatorToeplitz(
+        col, row, is_self_adjoint=True, is_positive_definite=True)
+    with self.cached_session() as sess:
+      sess.run([x.initializer for x in operator.variables])
+      self.check_convert_variables_to_tensors(operator)
+
 
 if __name__ == "__main__":
   linear_operator_test_util.add_tests(LinearOperatorToeplitzTest)

@@ -21,14 +21,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/float8.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -44,11 +44,11 @@ class BitcastConvertTest : public ClientLibraryTestBase {
 
 TEST_F(BitcastConvertTest, ConvertR1S32ToR1S32) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(&builder, {42, 64});
+  auto a = ConstantR1<int32_t>(&builder, {42, 64});
   BitcastConvertType(a, S32);
 
-  std::vector<int32> expected = {42, 64};
-  ComputeAndCompareR1<int32>(&builder, expected, {});
+  std::vector<int32_t> expected = {42, 64};
+  ComputeAndCompareR1<int32_t>(&builder, expected, {});
 }
 
 TEST_F(BitcastConvertTest, ConvertR1F32ToR1F32) {
@@ -62,10 +62,10 @@ TEST_F(BitcastConvertTest, ConvertR1F32ToR1F32) {
 
 TEST_F(BitcastConvertTest, BitcastR1S32ToR1F32) {
   XlaBuilder builder(TestName());
-  auto a =
-      ConstantR1<int32>(&builder, {0, static_cast<int32>(0x80000000),
-                                   0x3F800000, static_cast<int32>(0xBF800000),
-                                   0x3F000000, static_cast<int32>(0xBF000000)});
+  auto a = ConstantR1<int32_t>(&builder,
+                               {0, static_cast<int32_t>(0x80000000), 0x3F800000,
+                                static_cast<int32_t>(0xBF800000), 0x3F000000,
+                                static_cast<int32_t>(0xBF000000)});
   BitcastConvertType(a, F32);
 
   std::vector<float> expected = {0.0f, -0.0f, 1.0f, -1.0f, 0.5f, -0.5f};
@@ -74,7 +74,7 @@ TEST_F(BitcastConvertTest, BitcastR1S32ToR1F32) {
 
 XLA_TEST_F(BitcastConvertTest, ConvertR1S0S32ToR1S0F32) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(&builder, {});
+  auto a = ConstantR1<int32_t>(&builder, {});
   BitcastConvertType(a, F32);
 
   std::vector<float> expected = {};
@@ -86,14 +86,24 @@ TEST_F(BitcastConvertTest, ConvertR1F32ToR1S32) {
   auto a = ConstantR1<float>(&builder, {42.6, 64.4});
   BitcastConvertType(a, S32);
 
-  std::vector<int32> expected = {0x422a6666, 0x4280cccd};
-  ComputeAndCompareR1<int32>(&builder, expected, {});
+  std::vector<int32_t> expected = {0x422a6666, 0x4280cccd};
+  ComputeAndCompareR1<int32_t>(&builder, expected, {});
+}
+
+TEST_F(BitcastConvertTest, ConvertR1F8e4m3fnToR1U8) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR1<uint8_t>(&builder, {0x38, 0xC0});
+  BitcastConvertType(a, F8E4M3FN);
+
+  std::vector<tsl::float8_e4m3fn> expected = {tsl::float8_e4m3fn{1.0},
+                                              tsl::float8_e4m3fn{-2.0}};
+  ComputeAndCompareR1<tsl::float8_e4m3fn>(&builder, expected, {});
 }
 
 TEST_F(BitcastConvertTest, ConvertS32Extremes) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(&builder, {std::numeric_limits<int32>::min(),
-                                        std::numeric_limits<int32>::max()});
+  auto a = ConstantR1<int32_t>(&builder, {std::numeric_limits<int32_t>::min(),
+                                          std::numeric_limits<int32_t>::max()});
   BitcastConvertType(a, F32);
 
   std::vector<float> expected = {-0.0f, NAN};
@@ -108,8 +118,8 @@ TEST_F(BitcastConvertTest, ConvertMapToS32) {
   auto a = ConstantR1<float>(&builder, {42.0f, 64.0f});
   Map(&builder, {a}, b->BuildAndNoteError(), {0});
 
-  std::vector<int32> expected = {0x42280000, 0x42800000};
-  ComputeAndCompareR1<int32>(&builder, expected, {});
+  std::vector<int32_t> expected = {0x42280000, 0x42800000};
+  ComputeAndCompareR1<int32_t>(&builder, expected, {});
 }
 
 TEST_F(BitcastConvertTest, ConvertMapToF32) {
@@ -117,7 +127,7 @@ TEST_F(BitcastConvertTest, ConvertMapToF32) {
   auto b = builder.CreateSubBuilder("convert");
   auto param = Parameter(b.get(), 0, ShapeUtil::MakeShape(S32, {}), "in");
   BitcastConvertType(param, F32);
-  auto a = ConstantR1<int32>(&builder, {0x42280000, 0x42800000});
+  auto a = ConstantR1<int32_t>(&builder, {0x42280000, 0x42800000});
   Map(&builder, {a}, b->BuildAndNoteError(), {0});
 
   std::vector<float> expected = {42.0f, 64.0f};
@@ -131,7 +141,7 @@ TEST_F(BitcastConvertTest, ConvertMapToF32) {
 // the new convert should have the same element type as the old convert.
 TEST_F(BitcastConvertTest, ConvertReshape) {
   XlaBuilder builder(TestName());
-  auto input = ConstantR1<int32>(&builder, {0x42280000});
+  auto input = ConstantR1<int32_t>(&builder, {0x42280000});
   auto reshape = Reshape(input, /*dimensions=*/{0}, /*new_sizes=*/{});
   BitcastConvertType(reshape, F32);
 

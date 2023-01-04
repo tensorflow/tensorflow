@@ -70,7 +70,7 @@ class QuantizationMissingAllRangesTest(trt_test.TfTrtIntegrationTestBase):
     # engine.
     # In static engine mode without calibration, the engine building will
     # succeed but fall back to non-quantized ops.
-    return ["TRTEngineOp_0"]
+    return ["TRTEngineOp_000"]
 
 
 class QuantizationWithRangesTest(trt_test.TfTrtIntegrationTestBase):
@@ -89,7 +89,7 @@ class QuantizationWithRangesTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["TRTEngineOp_0"]
+    return ["TRTEngineOp_000"]
 
   def ExpectedAbsoluteTolerance(self, run_params):
     """The absolute tolerance to compare floating point results."""
@@ -117,8 +117,8 @@ class NonQuantizedPrecisionsWithRangesTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     # The fake quant ops are not supported in FP32/FP16 mode, and will split the
-    # graph into three TRT segments.
-    return ["TRTEngineOp_0", "TRTEngineOp_1", "TRTEngineOp_2", "TRTEngineOp_3"]
+    # graph into two TRT segments.
+    return ["TRTEngineOp_000", "TRTEngineOp_001"]
 
   def ExpectedAbsoluteTolerance(self, run_params):
     """The absolute tolerance to compare floating point results."""

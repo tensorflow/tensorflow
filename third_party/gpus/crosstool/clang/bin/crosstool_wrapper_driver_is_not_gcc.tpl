@@ -185,7 +185,12 @@ def InvokeNvcc(argv, log=False):
   std_options = GetOptionValue(argv, '-std')
   # Supported -std flags as of CUDA 9.0. Only keep last to mimic gcc/clang.
   nvcc_allowed_std_options = ["c++03", "c++11", "c++14"]
-  std_options = ''.join([' -std=' + define
+  nvcc_std_map = {}
+  if int(NVCC_VERSION.split('.')[0]) >= 11:
+      nvcc_std_map["c++1z"] = "c++17"
+      nvcc_allowed_std_options += ["c++17", "c++1z"]
+  std_options = ''.join([' -std=' +
+      (nvcc_std_map[define] if define in nvcc_std_map else define)
       for define in std_options if define in nvcc_allowed_std_options][-1:])
   fatbin_options = ''.join([' --fatbin-options=' + option
       for option in GetOptionValue(argv, '-Xcuda-fatbinary')])
@@ -219,11 +224,21 @@ def InvokeNvcc(argv, log=False):
   out = ' -o ' + out_file[0]
 
   nvccopts = '-D_FORCE_INLINES '
-  for capability in GetOptionValue(argv, "--cuda-gpu-arch"):
+  capabilities_sm = set(GetOptionValue(argv, "--cuda-gpu-arch"))
+  capabilities_compute = set(GetOptionValue(argv, '--cuda-include-ptx'))
+  # When both "code=sm_xy" and "code=compute_xy" are requested for a single
+  # arch, they can be combined using "code=xy,compute_xy" which avoids a
+  # redundant PTX generation during compilation.
+  capabilities_both = capabilities_sm.intersection(capabilities_compute)
+  for capability in capabilities_both:
+    capability = capability[len('sm_'):]
+    nvccopts += r'-gencode=arch=compute_%s,code=\"sm_%s,compute_%s\" ' % (
+        capability, capability, capability)
+  for capability in capabilities_sm - capabilities_both:
     capability = capability[len('sm_'):]
     nvccopts += r'-gencode=arch=compute_%s,\"code=sm_%s\" ' % (capability,
                                                                capability)
-  for capability in GetOptionValue(argv, '--cuda-include-ptx'):
+  for capability in capabilities_compute - capabilities_both:
     capability = capability[len('sm_'):]
     nvccopts += r'-gencode=arch=compute_%s,\"code=compute_%s\" ' % (capability,
                                                                     capability)
@@ -233,6 +248,8 @@ def InvokeNvcc(argv, log=False):
   nvccopts += std_options
   nvccopts += m_options
   nvccopts += warning_options
+  # Force C++17 dialect (note, everything in just one string!)
+  nvccopts += ' --std c++17 '
   nvccopts += fatbin_options
 
   if depfiles:

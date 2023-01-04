@@ -40,6 +40,8 @@ namespace tensorflow {
 namespace serving {
 namespace {
 
+using ::testing::HasSubstr;
+
 class FakeTask : public BatchTask {
  public:
   explicit FakeTask(size_t size) : size_(size) {}
@@ -169,7 +171,7 @@ class SharedBatchSchedulerTest
               (*output_tasks)[i] = std::make_unique<FakeTask>(task_sizes[i]);
             }
 
-            return Status::OK();
+            return OkStatus();
           };
     }
     return nullptr;
@@ -593,8 +595,8 @@ TEST_P(SharedBatchSchedulerTest, ConstMethods) {
     EXPECT_THAT(
         ScheduleTask(1, queue.get()),
         testing::StatusIs(error::UNAVAILABLE,
-                          "The batch scheduling queue to which this task was "
-                          "submitted is full"));
+                          HasSubstr("The batch scheduling queue to which this "
+                                    "task was submitted is full")));
 
     EXPECT_EQ(max_enqueued_batches * 2, queue->NumEnqueuedTasks());
     EXPECT_EQ(0, queue->SchedulingCapacity());
@@ -837,7 +839,7 @@ void CreateQueues() {
     });
     busy_waiter.join();
     notifier.join();
-    return Status::OK();
+    return OkStatus();
   };
 
   internal::Queue<FakeTask>::ProcessBatchCallback process_batch_callback =

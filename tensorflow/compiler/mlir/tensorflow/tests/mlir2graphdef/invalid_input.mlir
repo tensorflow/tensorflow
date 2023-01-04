@@ -2,11 +2,11 @@
 
 // Tests function with multiple blocks.
 
-func @main() {
+func.func @main() {
   ^bb:
-    br ^bb1
+    cf.br ^bb1
   ^bb1:
-    return
+    func.return
 }
 
 // CHECK: functions must be of a single Graph with single op Islands: only single block functions are supported
@@ -15,43 +15,43 @@ func @main() {
 
 // Tests invalid functions for exporting to Graph/GraphDef.
 
-func @main() {
-  return
+func.func @main() {
+  func.return
 }
 
 // CHECK: functions must be of a single Graph with single op Islands: first op in function is not a tf_executor.graph
 
 // -----
 
-func @main() {
+func.func @main() {
   tf_executor.graph {
     tf_executor.fetch
   }
   tf_executor.graph {
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK: functions must be of a single Graph with single op Islands: function does not only contain a single tf_executor.graph
 
 // -----
 
-func @main() {
+func.func @main() {
   tf_executor.graph {
     %0 = tf_executor.island {
       tf_executor.yield
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK: functions must be of a single Graph with single op Islands: tf_executor.island must perfectly wrap a single op
 
 // -----
 
-func @main() {
+func.func @main() {
   tf_executor.graph {
     %0 = tf_executor.island {
       %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
@@ -60,14 +60,14 @@ func @main() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK: functions must be of a single Graph with single op Islands: tf_executor.island must perfectly wrap a single op
 
 // -----
 
-func @main() {
+func.func @main() {
   tf_executor.graph {
     %0 = tf_executor.island {
       %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
@@ -75,14 +75,14 @@ func @main() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK: functions must be of a single Graph with single op Islands: tf_executor.island must perfectly wrap a single op
 
 // -----
 
-func @main(%arg0: tensor<i32>, %arg1: tensor<i32>) {
+func.func @main(%arg0: tensor<i32>, %arg1: tensor<i32>) {
   tf_executor.graph {
     %0:3 = tf_executor.island {
       %1:2 = "tf.IdentityN"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>)
@@ -90,7 +90,7 @@ func @main(%arg0: tensor<i32>, %arg1: tensor<i32>) {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK: functions must be of a single Graph with single op Islands: tf_executor.island must perfectly wrap a single op

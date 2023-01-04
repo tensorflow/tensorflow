@@ -18,11 +18,9 @@ import unittest
 
 import numpy as np
 import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_functional_ops
@@ -80,7 +78,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
   def ListsAreClose(self, result, expected, rtol, atol):
     """Tests closeness of two lists of floats."""
     self.assertEqual(len(result), len(expected))
-    for i in xrange(len(result)):
+    for i in range(len(result)):
       self.assertAllClose(result[i], expected[i], rtol, atol)
 
   def AssertCloseAndSorted(self, result, expected, rtol, atol):
@@ -558,7 +556,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
       def quantize_and_dequantize_v2_round_half_up(x):
         return array_ops.quantize_and_dequantize(
             x,
-            -1,
+            -1.0,
             1.0,
             signed_input=True,
             num_bits=8,
@@ -567,10 +565,10 @@ class UnaryOpsTest(xla_test.XLATestCase):
 
       self._assertOpOutputMatchesExpected(
           quantize_and_dequantize_v2_round_half_up,
-          np.array([-0.8, -0.5, 0, 0.3, 0.8, -2, 33], dtype=dtype),
+          np.array([-0.8, -0.4, 0, 0.3, 0.8, -2, 33], dtype=dtype),
           expected=np.array([
               -102.0 / 127,
-              -63.0 / 127,
+              -51.0 / 127,
               0,
               38.0 / 127,
               102.0 / 127,
@@ -591,35 +589,17 @@ class UnaryOpsTest(xla_test.XLATestCase):
 
       self._assertOpOutputMatchesExpected(
           quantize_and_dequantize_v2_round_half_to_even,
-          np.array(
-              [
-                  -0.8,
-                  # The -0.5 should become -63.5 after scaling and with
-                  # rounding this should become -64. But with the test
-                  # unary_ops_test_cpu_ondemand, this fails as the result
-                  # before scaling becomes -63.499996 and gets rounded to -63.
-                  # TODO(sreenik): Some one more familiar with this test needs
-                  # to take a look and resolve this. This works on all other
-                  # variations of the platform like cpu, and gpu.
-                  # -0.5,
-                  0,
-                  0.3,
-                  0.8,
-                  -2,
-                  33
-              ],
-              dtype=dtype),
-          expected=np.array(
-              [
-                  -102.0 / 127,
-                  # -64.0 / 127,
-                  0,
-                  38.0 / 127,
-                  102.0 / 127,
-                  -128.0 / 127,
-                  1,
-              ],
-              dtype=dtype))
+          np.array([-0.8, -0.4, 0, 0.3, 0.8, -2, 33], dtype=dtype),
+          expected=np.array([
+              -102.0 / 127,
+              -51.0 / 127,
+              0,
+              38.0 / 127,
+              102.0 / 127,
+              -128.0 / 127,
+              1,
+          ],
+                            dtype=dtype))
 
   def testComplexOps(self):
     for dtype in self.complex_types:
@@ -884,51 +864,69 @@ class UnaryOpsTest(xla_test.XLATestCase):
         expected=np.array([14., 22.], dtype=np.float32))
 
   def testCast(self):
-    shapes = [[], [4], [2, 3], [2, 0, 4]]
     types = {
         dtypes.bool, dtypes.float32, dtypes.float64, dtypes.complex64,
         dtypes.int32, dtypes.int64, dtypes.uint32, dtypes.uint64
     }
     for src_type in types:
       for dst_type in types:
-        src_np_dtype = src_type.as_numpy_dtype
-        dst_np_dtype = dst_type.as_numpy_dtype
+        self._testCast(src_type, dst_type)
 
-        for shape in shapes:
-          src = np.arange(np.prod(shape)).astype(src_np_dtype)
+  def testCastFp8(self):
+    fp8_types = {dtypes.float8_e5m2, dtypes.float8_e4m3fn}
+    # TODO(b/259609697): Test casting to bool. Casting from float8 to bool is
+    # currently not supported since the cast is lowered to an Ne (not-equal) op,
+    # and FP8 is currently not supported with Ne.
+    other_types = {
+        dtypes.float32, dtypes.float64, dtypes.complex64,
+        dtypes.int32, dtypes.int64, dtypes.uint32, dtypes.uint64
+    }
+    for fp8_type in fp8_types:
+      for other_type in other_types | fp8_types:
+        self._testCast(fp8_type, other_type)
+        self._testCast(other_type, fp8_type)
 
-          if src_type in self.complex_tf_types:
-            src += (np.arange(np.prod(shape)) * 2j).astype(src_np_dtype)
-          src = src.reshape(shape)
-          dst = src.astype(dst_np_dtype)
-          self._assertOpOutputMatchesExpected(
-              lambda x, dst_type=dst_type: math_ops.cast(x, dst_type),
-              src,
-              expected=dst)
+  def _testCast(self, src_type, dst_type):
+    with self.subTest(src_type=src_type, dst_type=dst_type):
+      shapes = [[], [4], [2, 3], [2, 0, 4]]
+      src_np_dtype = src_type.as_numpy_dtype
+      dst_np_dtype = dst_type.as_numpy_dtype
 
-        # Check special values.
-        if src_type.is_integer:
-          imin = np.iinfo(src_np_dtype).min
-          imax = np.iinfo(src_np_dtype).max
-          src = np.array([imin, imax, 0, 1, -1], dtype=src_np_dtype)
-        elif src_type in self.float_tf_types:
-          if dst_type.is_integer:
-            imin = np.iinfo(dst_np_dtype).min
-            imax = np.iinfo(dst_np_dtype).max // 2
-            src = np.array([imin, imax, 0, 1], dtype=src_np_dtype)
-          elif dst_type in self.float_tf_types:
-            fmin = np.finfo(dst_np_dtype).min
-            fmax = np.finfo(dst_np_dtype).max
-            tiny = np.finfo(dst_np_dtype).tiny
-            eps = np.finfo(dst_np_dtype).eps
-            src = np.array(
-                [fmin, fmax, np.nan, eps, -eps, tiny, -tiny, np.inf, -np.inf],
-                dtype=src_np_dtype)
+      for shape in shapes:
+        src = np.arange(np.prod(shape)).astype(src_np_dtype)
+
+        if src_type in self.complex_tf_types:
+          src += (np.arange(np.prod(shape)) * 2j).astype(src_np_dtype)
+        src = src.reshape(shape)
         dst = src.astype(dst_np_dtype)
         self._assertOpOutputMatchesExpected(
             lambda x, dst_type=dst_type: math_ops.cast(x, dst_type),
             src,
             expected=dst)
+
+      # Check special values.
+      if src_type.is_integer:
+        imin = np.iinfo(src_np_dtype).min
+        imax = np.iinfo(src_np_dtype).max
+        src = np.array([imin, imax, 0, 1, -1], dtype=src_np_dtype)
+      elif src_type in self.float_tf_types:
+        if dst_type.is_integer:
+          imin = np.iinfo(dst_np_dtype).min
+          imax = np.iinfo(dst_np_dtype).max // 2
+          src = np.array([imin, imax, 0, 1], dtype=src_np_dtype)
+        elif dst_type in self.float_tf_types:
+          fmin = np.finfo(dst_np_dtype).min
+          fmax = np.finfo(dst_np_dtype).max
+          tiny = np.finfo(dst_np_dtype).tiny
+          eps = np.finfo(dst_np_dtype).eps
+          src = np.array(
+              [fmin, fmax, np.nan, eps, -eps, tiny, -tiny, np.inf, -np.inf],
+              dtype=src_np_dtype)
+      dst = src.astype(dst_np_dtype)
+      self._assertOpOutputMatchesExpected(
+          lambda x, dst_type=dst_type: math_ops.cast(x, dst_type),
+          src,
+          expected=dst)
 
   def testBitcast(self):
     self._assertOpOutputMatchesExpected(
@@ -953,8 +951,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([1, 0x100000003f800000], np.int64),
           expected=np.array([1, 0x100000003f800000], np.uint64))
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/195120263): MLIR bridge does not support int8 <-> float bitcast")
   def testBitcastInt8ToFloat(self):
     self._assertOpOutputMatchesExpected(
         lambda x: array_ops.bitcast(x, dtypes.float32),

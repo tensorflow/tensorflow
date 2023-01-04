@@ -132,7 +132,7 @@ StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
     return false;
   }
 
-  string while_instr_name = while_instr->ToString(print_no_metadata);
+  std::string while_instr_name = while_instr->ToString(print_no_metadata);
   VLOG(2) << "Trying to hoist from " << while_instr_name;
 
   auto maybe_upper_bound = ComputeWhileLoopTripCountUpperBound(while_instr);
@@ -332,13 +332,15 @@ StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
   return true;
 }
 
-StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::Run(HloModule* module) {
+StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "HLO module before WhileLoopExpensiveInvariantCodeMotion:";
   XLA_VLOG_LINES(2, module->ToString());
 
   bool changed = false;
   std::vector<HloInstruction*> while_instrs;
-  for (auto* comp : module->computations()) {
+  for (auto* comp : module->computations(execution_threads)) {
     absl::c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
                     [](const HloInstruction* instr) {
                       return instr->opcode() == HloOpcode::kWhile;

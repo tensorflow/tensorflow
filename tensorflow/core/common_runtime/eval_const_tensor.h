@@ -34,7 +34,7 @@ class Tensor;
 // If the evaluation is successful, `evaluated` will be set to true and
 // `tensor`s value returned in `result`. Otherwise `evaluated` will be set to
 // false. An error status is returned if something is wrong with the graph or
-// input. Note that `evaluated` may set to false if Status::OK() is returned.
+// input. Note that `evaluated` may set to false if OkStatus() is returned.
 //
 // Params:
 //   tensor - the tensor to be evaluated.

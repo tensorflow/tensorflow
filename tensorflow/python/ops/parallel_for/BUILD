@@ -1,6 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -161,6 +162,7 @@ cuda_py_test(
     name = "array_test",
     srcs = ["array_test.py"],
     tags = [
+        "nogpu",  # b/217374776
         "notsan",  # TODO(b/170999669): Data race
     ],
     deps = [

@@ -36,11 +36,14 @@ class CublasPadForGemms : public HloModulePass {
 
   absl::string_view name() const override { return "cublas-pad-for-gemms"; }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   PrimitiveType datatype_;
-  int32 pad_to_multiple_of_;
+  int32_t pad_to_multiple_of_;
 };
 
 }  // namespace gpu

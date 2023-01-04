@@ -26,8 +26,8 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/core/ir/importexport/graphdef_import.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
@@ -66,7 +66,7 @@ Status DumpTextualIRToFile(const MlirDumpConfig& config, const Graph& graph,
                            WritableFile* file) {
   WritableFileRawStream os(std::move(file));
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module;
+  mlir::OwningOpRef<mlir::ModuleOp> module;
   if (flib_def) {
     flib_def = &graph.flib_def();
   }
@@ -75,13 +75,15 @@ Status DumpTextualIRToFile(const MlirDumpConfig& config, const Graph& graph,
     // TODO(jpienaar): Both the graph debug info and import config should be
     // specifiable.
     GraphDebugInfo debug_info;
-    GraphImportConfig import_config;
-    import_config.graph_as_function = true;
-    import_config.prune_unused_nodes = false;
-    TF_ASSIGN_OR_RETURN(
-        module, ConvertGraphToMlir(graph, debug_info,
-                                   flib_def ? *flib_def : graph.flib_def(),
-                                   import_config, &context));
+    switch (config.dialect) {
+      case MlirDumpConfig::Dialect::kTFG: {
+        TF_ASSIGN_OR_RETURN(module,
+                            mlir::tfg::ImportGraphAndFunctionsToMlir(
+                                &context, debug_info, graph,
+                                flib_def ? *flib_def : graph.flib_def()));
+        break;
+      }
+    }
     if (failed(mlir::verify(*module))) {
       return status_handler.ConsumeStatus();
     }
@@ -90,7 +92,7 @@ Status DumpTextualIRToFile(const MlirDumpConfig& config, const Graph& graph,
 
   TF_RETURN_IF_ERROR(convert());
   module->print(os, config.op_printing_flags);
-  return Status::OK();
+  return OkStatus();
 }
 
 void UseMlirForGraphDump(const MlirDumpConfig& config) {

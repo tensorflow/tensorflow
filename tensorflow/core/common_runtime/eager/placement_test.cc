@@ -57,7 +57,7 @@ static Device* CreateDevice(const char* type, const char* name) {
   class FakeDevice : public Device {
    public:
     explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
-    Status Sync() override { return Status::OK(); }
+    Status Sync() override { return OkStatus(); }
     Allocator* GetAllocator(AllocatorAttributes) override { return nullptr; }
   };
   DeviceAttributes attr;
@@ -83,11 +83,12 @@ class PlacementTest : public ::testing::Test {
                    ContextDevicePlacementPolicy policy) {
     ASSERT_EQ(context_, nullptr);
     InitDeviceManager();
-    context_ =
-        new EagerContext(opts, policy,
-                         /* async */ false, device_manager_,
-                         /* device_mgr_owned */ false, /* rendezvous */ nullptr,
-                         /* cluster_flr */ nullptr);
+    context_ = new EagerContext(
+        opts, policy,
+        /* async */ false, device_manager_,
+        /* device_mgr_owned */ false, /* rendezvous */ nullptr,
+        /* cluster_flr */ nullptr, /*collective_executor_mgr=*/nullptr,
+        /*run_eager_op_as_function=*/true);
   }
 
  protected:

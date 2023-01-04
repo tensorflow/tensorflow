@@ -1,7 +1,8 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -62,6 +63,7 @@ test_files = glob(
 
 glob_lit_tests(
     data = [":test_utilities"],
+    default_size = "medium",
     default_tags = [
         "no_mac",  # TODO(b/191167848)
         "no_oss",  # TODO(b/190855110)

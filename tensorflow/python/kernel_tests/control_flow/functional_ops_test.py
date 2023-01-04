@@ -24,7 +24,6 @@ from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function as eager_def_function
 from tensorflow.python.eager import executor
-from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import config as framework_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -593,7 +592,7 @@ class FunctionalOpsTest(test.TestCase):
     def run():
       with ops.device("/cpu:0"):
         return functional_ops.remote_call(
-            args=[constant_op.constant([1.])],
+            args=[constant_op.constant([1.])] + _remote_fn.captured_inputs,
             Tout=[dtypes.float32],
             f=_remote_fn,
             target="/cpu:1")[0]
@@ -1028,7 +1027,7 @@ class FunctionalOpsTest(test.TestCase):
     def run():
       with ops.device("/cpu:0"):
         return functional_ops.remote_call(
-            args=[constant_op.constant([1.])],
+            args=[constant_op.constant([1.])] + collective_fn.captured_inputs,
             Tout=[dtypes.float32],
             f=collective_fn,
             target="/cpu:1")
@@ -1247,15 +1246,15 @@ class PartitionedCallTest(test.TestCase):
 class FunctionalOpsCaseTest(test.TestCase):
 
   def testCase(self):
-    @eager_function.defun
+    @eager_def_function.function
     def two(x):
       return x * 2
 
-    @eager_function.defun
+    @eager_def_function.function
     def three(x):
       return x * 3
 
-    @eager_function.defun
+    @eager_def_function.function
     def four(x):
       return x * 4
 
@@ -1318,7 +1317,7 @@ class FunctionalOpsCaseTest(test.TestCase):
   @test_util.disable_xla("Don't lower for XLA")
   def testCaseLowering(self):
     for use_gpu in (True, False):
-      @eager_function.defun
+      @eager_def_function.function
       def Run(branch, x):
         @function.Defun(dtypes.float32)
         def two(x):

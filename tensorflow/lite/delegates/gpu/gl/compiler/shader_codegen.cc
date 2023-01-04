@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/compiler/shader_codegen.h"
 
 #include <algorithm>
+#include <string>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"

@@ -3,18 +3,18 @@
 // -----
 // Basic test.
 // CHECK-LABEL: func @f
-func @f() {
+func.func @f() {
   // CHECK: call @g() : () -> ()
   // CHECK: call @[[NEWG:.+]]() : () -> ()
-  call @g() : () -> ()
-  call @g() : () -> ()
-  return
+  func.call @g() : () -> ()
+  func.call @g() : () -> ()
+  func.return
 }
 
 // CHECK: func @g()
 // CHECK: func private @[[NEWG]]()
-func @g() {
-  return
+func.func @g() {
+  func.return
 }
 
 // -----
@@ -28,27 +28,61 @@ func @g() {
 // CHECK-DAG: func private @h{{.*}}
 // CHECK-DAG: func private @h{{.*}}
 // CHECK-DAG: func private @h{{.*}}
-func @f() {
-  call @g() : () -> ()
-  call @g() : () -> ()
-  return
+func.func @f() {
+  func.call @g() : () -> ()
+  func.call @g() : () -> ()
+  func.return
 }
 
-func @g() {
-  call @h() : () -> ()
-  call @h() : () -> ()
-  return
+func.func @g() {
+  func.call @h() : () -> ()
+  func.call @h() : () -> ()
+  func.return
 }
 
-func @h() {
-  return
+func.func @h() {
+  func.return
 }
 
 // -----
 // Handle error case of infinite recursion.
-// expected-error @+1 {{reached cloning limit}}
-func private @f() {
-  call @f() : () -> ()
-  call @f() : () -> ()
-  return
+// expected-error @+1 {{recursive call graph cannot be transformed}}
+module {
+  func.func private @f() {
+    func.call @f() : () -> ()
+    func.call @f() : () -> ()
+    func.return
+  }
 }
+
+// -----
+// Handle error case of infinite recursion with mutually recursive ops.
+// expected-error @+1 {{recursive call graph cannot be transformed}}
+module {
+  func.func private @f() {
+    func.call @g() : () -> ()
+    func.return
+  }
+  func.func private @g() {
+    func.call @f() : () -> ()
+    func.return
+  }
+}
+
+// -----
+// Test stateful and stateless partitioned calls.
+// CHECK-LABEL: func @f
+func.func @f() {
+  // CHECK: "tf.PartitionedCall"() {config = "",  config_proto = "", executor_type = "", f = @g} : () -> ()
+  "tf.PartitionedCall"() {config = "",  config_proto = "", executor_type = "", f = @g} : () -> ()
+  // CHECK: "tf.StatefulPartitionedCall"() {config = "",  config_proto = "", executor_type = "", f = @[[NEWG:.+]]} : () -> ()
+  "tf.StatefulPartitionedCall"() {config = "",  config_proto = "", executor_type = "", f = @g} : () -> ()
+  func.return
+}
+
+// CHECK: func.func @g()
+// CHECK: func.func private @[[NEWG]]()
+func.func @g() {
+  func.return
+}
+

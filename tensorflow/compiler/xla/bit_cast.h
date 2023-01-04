@@ -20,7 +20,7 @@ limitations under the License.
 // of accessing their underlying representation.
 //
 // Concretely, we provide specializations for the "custom floating point types"
-// Eigen::half and tensorflow::bfloat16. Those types are effectively stored as
+// Eigen::half and tsl::bfloat16. Those types are effectively stored as
 // a sequence of bits, but the classes are not trivially copyable.
 
 #ifndef TENSORFLOW_COMPILER_XLA_BIT_CAST_H_
@@ -29,8 +29,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/bfloat16.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/bfloat16.h"
 
 namespace xla {
 
@@ -43,24 +42,23 @@ T BitCast(U src) {
 }
 
 template <>
-inline tensorflow::bfloat16 BitCast<tensorflow::bfloat16, uint16_t>(
-    uint16 src) {
-  return Eigen::numext::bit_cast<tensorflow::bfloat16>(src);
+inline tsl::bfloat16 BitCast<tsl::bfloat16, uint16_t>(uint16_t src) {
+  return Eigen::numext::bit_cast<tsl::bfloat16>(src);
 }
 
 template <>
-inline uint16 BitCast<uint16, tensorflow::bfloat16>(tensorflow::bfloat16 src) {
-  return Eigen::numext::bit_cast<uint16>(src);
+inline uint16_t BitCast<uint16_t, tsl::bfloat16>(tsl::bfloat16 src) {
+  return Eigen::numext::bit_cast<uint16_t>(src);
 }
 
 template <>
-inline Eigen::half BitCast<Eigen::half, uint16>(uint16 src) {
+inline Eigen::half BitCast<Eigen::half, uint16_t>(uint16_t src) {
   return Eigen::numext::bit_cast<Eigen::half>(src);
 }
 
 template <>
-inline uint16 BitCast<uint16, Eigen::half>(Eigen::half src) {
-  return Eigen::numext::bit_cast<uint16>(src);
+inline uint16_t BitCast<uint16_t, Eigen::half>(Eigen::half src) {
+  return Eigen::numext::bit_cast<uint16_t>(src);
 }
 
 }  // namespace xla

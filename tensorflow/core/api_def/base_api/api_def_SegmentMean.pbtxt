@@ -5,6 +5,9 @@ op {
     description: <<END
 A 1-D tensor whose size is equal to the size of `data`'s
 first dimension.  Values should be sorted and can be repeated.
+
+Caution: The values are always validated to be sorted on CPU, never validated
+on GPU.
 END
   }
   out_arg {
@@ -27,18 +30,23 @@ values summed.
 
 If the mean is empty for a given segment ID `i`, `output[i] = 0`.
 
+Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+and an error is thrown for indices that are not increasing. On GPU, this
+does not throw an error for unsorted indices. On GPU, out-of-order indices
+result in safe but unspecified behavior, which may include treating
+out-of-order indices as a smaller following index when computing the numerator
+of the mean.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMean.png" alt>
 </div>
 
 For example:
 
-```
-c = tf.constant([[1.0,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-tf.segment_mean(c, tf.constant([0, 0, 1]))
-# ==> [[2.5, 2.5, 2.5, 2.5],
-#      [5, 6, 7, 8]]
-```
+>>> c = tf.constant([[1.0,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+>>> tf.math.segment_mean(c, tf.constant([0, 0, 1])).numpy()
+array([[2.5, 2.5, 2.5, 2.5],
+       [5., 6., 7., 8.]], dtype=float32)
 
 END
 }

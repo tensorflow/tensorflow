@@ -16,14 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
 
 #include "tensorflow/compiler/xla/service/call_inliner.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -59,7 +59,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, VectorizeTo4) {
                   custom_call_target="__cudnn$convForward",
                   backend_config="{bar: 0}"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -118,7 +118,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo4UnsupportedFilterType) {
                   custom_call_target="__cudnn$convForward",
                   backend_config="{bar: 0}"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   EXPECT_FALSE(changed);
 }
@@ -134,7 +134,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, VectorizeTo4NCHW) {
                   window={size=2x2}, dim_labels=bf01_io01->bf01,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -187,7 +187,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, IncrementAllDnums) {
                   window={size=2x2}, dim_labels=fb01_i01o->fb01,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -240,7 +240,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, FilterDnums) {
                   window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -293,7 +293,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo4) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   CudnnVectorizeConvolutions pass({7, 5});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
 
@@ -301,8 +301,8 @@ TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo4) {
   EXPECT_FALSE(changed);
 }
 
-// Don't vectorize int8 -> int32 into int8x4 or int8x32; this is not supported
-// in cudnn.
+// Don't vectorize int8_t -> int32_t into int8x4 or int8x32; this is not
+// supported in cudnn.
 TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo4IfOutputIsS32) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule TestModule
@@ -314,14 +314,14 @@ TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo4IfOutputIsS32) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   SCOPED_TRACE(module->ToString());
   EXPECT_FALSE(changed);
 }
 
-// Don't vectorize int8 -> float into int8x4 or int8x32.  Vectorizing to int8x4
-// *is* allowed by cudnn, but we don't do it at the moment.
+// Don't vectorize int8_t -> float into int8x4 or int8x32.  Vectorizing to
+// int8x4 *is* allowed by cudnn, but we don't do it at the moment.
 TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo4IfOutputIsF32) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule TestModule
@@ -333,7 +333,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo4IfOutputIsF32) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   SCOPED_TRACE(module->ToString());
   EXPECT_FALSE(changed);
@@ -350,7 +350,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, VectorizeTo32) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -385,7 +385,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, BiasAndSideInput) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -420,7 +420,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo32) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 0}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -455,7 +455,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32) {
                   custom_call_target="__cudnn$convForward",
                   backend_config="{foo: 42}"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -525,7 +525,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32NCHW) {
                   window={size=2x2}, dim_labels=bf01_io01->bf01,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -593,7 +593,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32VectorDimFirst) {
                   window={size=3x5}, dim_labels=?b01f_?01io->?b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
   EXPECT_TRUE(changed);
 
@@ -661,7 +661,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, NoVectorize4To32) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })")
-                    .ValueOrDie();
+                    .value();
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 0}, module.get()));
   EXPECT_FALSE(changed);
 }

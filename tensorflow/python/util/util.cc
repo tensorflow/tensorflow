@@ -95,8 +95,6 @@ PyObject* RegisterPyObject(PyObject* name, PyObject* value) {
 namespace {
 const int kMaxItemsInCache = 1024;
 
-bool WarnedThatSetIsNotSequence = false;
-
 bool IsString(PyObject* o) {
   return PyBytes_Check(o) ||
 #if PY_MAJOR_VERSION < 3
@@ -364,12 +362,7 @@ int IsNestedHelper(PyObject* o) {
   if (IsMappingHelper(o)) return true;
   if (IsMappingViewHelper(o)) return true;
   if (IsAttrsHelper(o)) return true;
-  if (PySet_Check(o) && !WarnedThatSetIsNotSequence) {
-    LOG(WARNING) << "Sets are not currently considered sequences, "
-                    "but this may change in the future, "
-                    "so consider avoiding using them.";
-    WarnedThatSetIsNotSequence = true;
-  }
+
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
     int is_instance = IsInstanceOfRegisteredType(to_check, "Sequence");
 
@@ -577,7 +570,9 @@ bool IsSparseTensorValueType(PyObject* o) {
 // Returns -1 if an error occurred.
 bool IsCompositeTensorHelper(PyObject* o) {
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
-    return IsInstanceOfRegisteredType(to_check, "CompositeTensor");
+    // TODO(b/246438937): Remove the ResourceVariable test.
+    return IsInstanceOfRegisteredType(to_check, "CompositeTensor") &&
+           !IsResourceVariable(to_check);
   });
   return check_cache->CachedLookup(o);
 }
@@ -589,6 +584,7 @@ bool IsCompositeTensorHelper(PyObject* o) {
 bool IsTypeSpecHelper(PyObject* o) {
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
     int is_type_spec = IsInstanceOfRegisteredType(to_check, "TypeSpec");
+    // TODO(b/246438937): Remove the VariableSpec special case.
     int is_dense_spec = (IsInstanceOfRegisteredType(to_check, "TensorSpec") ||
                          IsInstanceOfRegisteredType(to_check, "VariableSpec"));
     if ((is_type_spec == -1) || (is_dense_spec == -1)) return -1;
@@ -611,7 +607,7 @@ int IsNestedOrCompositeHelper(PyObject* o) {
   return is_nested || is_composite || is_type_spec;
 }
 
-int IsSequenceForDataHelper(PyObject* o) {
+int IsNestedForDataHelper(PyObject* o) {
   return IsNestedHelper(o) == 1 && !PyList_Check(o) &&
          !IsSparseTensorValueType(o);
 }
@@ -816,8 +812,8 @@ bool AssertSameStructureHelper(
                && !(IsMappingHelper(o1) && IsMappingHelper(o2))
                /* For CompositeTensor & TypeSpec, we check below. */
                && !(check_composite_tensor_type_spec &&
-                    (IsCompositeTensor(o1) || IsCompositeTensor(o2)) &&
-                    (IsTypeSpec(o1) || IsTypeSpec(o2)))) {
+                    (IsCompositeTensor(o1) || IsTypeSpec(o1)) &&
+                    (IsCompositeTensor(o2) || IsTypeSpec(o2)))) {
       *is_type_error = true;
       *error_msg = tensorflow::strings::StrCat(
           "The two namedtuples don't have the same sequence type. "
@@ -880,17 +876,25 @@ bool AssertSameStructureHelper(
     }
 
     // Two composite tensors are considered to have the same structure if
-    // there is some type spec that is compatible with both of them.  Thus,
-    // we use most_specific_compatible_type(), and check if it raises an
-    // exception.  We do *not* use is_compatible_with, since that would
-    // prevent us from e.g. using a cond statement where the two sides have
-    // different shapes.
-    static char compatible_type[] = "most_specific_compatible_type";
-    static char argspec[] = "(O)";
-    Safe_PyObjectPtr struct_compatible(PyObject_CallMethod(
-        type_spec_1, compatible_type, argspec, type_spec_2));
-    if (PyErr_Occurred() || struct_compatible == nullptr) {
-      PyErr_Clear();
+    // they share a type spec that is a supertype of both of them. We do *not*
+    // use is_subtype_of, since that would prevent us from e.g. using a
+    // cond statement where the two sides have different shapes.
+
+    // TODO(b/206014848): We have to explicitly remove the names.
+    Safe_PyObjectPtr owned_nameless_type_spec_1(
+        PyObject_CallMethod(type_spec_1, "_without_tensor_names", nullptr));
+    Safe_PyObjectPtr owned_nameless_type_spec_2(
+        PyObject_CallMethod(type_spec_2, "_without_tensor_names", nullptr));
+    // TODO(b/222123181): Reconsider most_specific_common_supertype usage.
+    static char compatible_type[] = "most_specific_common_supertype";
+    static char argspec[] = "([O])";
+    Safe_PyObjectPtr struct_compatible(
+        PyObject_CallMethod(owned_nameless_type_spec_1.get(), compatible_type,
+                            argspec, owned_nameless_type_spec_2.get()));
+    if (PyErr_Occurred()) {
+      return false;
+    }
+    if (struct_compatible.get() == Py_None) {
       *is_type_error = false;
       *error_msg = tensorflow::strings::StrCat(
           "Incompatible CompositeTensor TypeSpecs: ",
@@ -1004,11 +1008,11 @@ bool IsCompositeTensor(PyObject* o) { return IsCompositeTensorHelper(o) == 1; }
 
 bool IsTypeSpec(PyObject* o) { return IsTypeSpecHelper(o) == 1; }
 
-bool IsSequenceForData(PyObject* o) { return IsSequenceForDataHelper(o) == 1; }
+bool IsNestedForData(PyObject* o) { return IsNestedForDataHelper(o) == 1; }
 
 PyObject* FlattenForData(PyObject* nested) {
   PyObject* list = PyList_New(0);
-  if (FlattenHelper(nested, list, IsSequenceForDataHelper,
+  if (FlattenHelper(nested, list, IsNestedForDataHelper,
                     GetValueIteratorForData)) {
     return list;
   } else {
@@ -1133,7 +1137,7 @@ PyObject* AssertSameStructureForData(PyObject* o1, PyObject* o2,
   string error_msg;
   bool is_type_error = false;
   AssertSameStructureHelper(o1, o2, check_types, &error_msg, &is_type_error,
-                            IsSequenceForDataHelper, GetValueIterator, false);
+                            IsNestedForDataHelper, GetValueIterator, false);
   if (PyErr_Occurred()) {
     // Don't hide Python exceptions while checking (e.g. errors fetching keys
     // from custom mappings).

@@ -3,7 +3,7 @@ op {
   in_arg {
     name: "dimension"
     description: <<END
-int32 or int64, must be in the range `[-rank(input), rank(input))`.
+int16, int32 or int64, must be in the range `[-rank(input), rank(input))`.
 Describes which dimension of the input Tensor to reduce across. For vectors,
 use dimension = 0.
 END

@@ -221,7 +221,7 @@ class KeyValueTensorIterator
  public:
   // keys and values are not owned by the iterator.
   explicit KeyValueTensorIterator(const Tensor* keys, const Tensor* values)
-      : keys_(keys), values_(values), valid_(true), status_(Status::OK()) {
+      : keys_(keys), values_(values), valid_(true), status_(OkStatus()) {
     TensorShape key_shape = keys_->shape();
     if (!key_shape.IsSameSize(values_->shape())) {
       valid_ = false;

@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "BarrierReadySize"
   input_arg {
     name: "handle"

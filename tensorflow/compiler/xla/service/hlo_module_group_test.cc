@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_module_group.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module_group.h"
 
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module_group_metadata.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 
@@ -36,7 +36,7 @@ class HloModuleGroupTest : public HloTestBase {
 };
 
 TEST_F(HloModuleGroupTest, SingleModule) {
-  const string text = R"(
+  const std::string text = R"(
 HloModule simple_module
 
 ENTRY %entry (x: f32[], y: f32[]) -> f32[] {
@@ -68,7 +68,7 @@ ENTRY %entry (x: f32[], y: f32[]) -> f32[] {
 }
 
 TEST_F(HloModuleGroupTest, MultipleModules) {
-  const string text_0 = R"(
+  const std::string text_0 = R"(
 HloModule module0
 
 ENTRY %entry (x: f32[], y: f32[]) -> f32[] {
@@ -77,7 +77,7 @@ ENTRY %entry (x: f32[], y: f32[]) -> f32[] {
   ROOT %add = f32[] add(%x, %y)
 }
 )";
-  const string text_1 = R"(
+  const std::string text_1 = R"(
 HloModule module1
 
 ENTRY %entry (a: f32[]) -> f32[] {
@@ -107,7 +107,7 @@ ENTRY %entry (a: f32[]) -> f32[] {
 }
 
 TEST_F(HloModuleGroupTest, BuildModuleGroupByPushBack) {
-  const string text_0 = R"(
+  const std::string text_0 = R"(
 HloModule module0
 
 ENTRY %entry (x: f32[], y: f32[]) -> f32[] {
@@ -116,7 +116,7 @@ ENTRY %entry (x: f32[], y: f32[]) -> f32[] {
   ROOT %add = f32[] add(%x, %y)
 }
 )";
-  const string text_1 = R"(
+  const std::string text_1 = R"(
 HloModule module1
 
 ENTRY %entry (a: f32[]) -> f32[] {

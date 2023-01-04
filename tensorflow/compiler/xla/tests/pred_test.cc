@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -86,7 +86,7 @@ TEST_F(PredTest, ConstantR1Pred) {
 TEST_F(PredTest, ConstantR2Pred) {
   XlaBuilder builder(TestName());
   ConstantR2<bool>(&builder, {{false, true, true}, {true, false, false}});
-  const string expected = R"(pred[2,3] {
+  const std::string expected = R"(pred[2,3] {
   { 0, 1, 1 },
   { 1, 0, 0 }
 })";

@@ -17,8 +17,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ESTIMATOR_H_
 
 #include <cmath>
+#include <string>
 #include <unordered_map>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
@@ -145,6 +148,12 @@ struct Costs {
   int64_t max_memory;  // Maximum main memory requirement in bytes over all ops.
   int64_t persistent_memory;
   int64_t temporary_memory;
+
+  // Output memory usage per port.
+  absl::flat_hash_map<int32_t, int64_t> output_tensor_size_bytes;
+
+  // Track persistent versus temporary memory.
+  absl::flat_hash_set<int32_t> persistent_output_ports;
 
   // These fields are used for TPU-related estimations. They are per-op
   // maximums, so each op is evaluated independently, but we want the maximum of

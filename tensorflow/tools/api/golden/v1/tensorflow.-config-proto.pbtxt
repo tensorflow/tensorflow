@@ -254,6 +254,12 @@ tf_proto {
         type: TYPE_MESSAGE
         type_name: ".tensorflow.CoordinationServiceConfig"
       }
+      field {
+        name: "disable_optimize_for_static_graph"
+        number: 24
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
       enum_type {
         name: "MlirBridgeRollout"
         value {

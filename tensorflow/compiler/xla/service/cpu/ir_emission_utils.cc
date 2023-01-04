@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
@@ -26,8 +26,7 @@ namespace cpu {
 
 int64_t GetMinimumAlignmentForArray(
     const Shape& shape, const TargetMachineFeatures& target_machine_features) {
-  CHECK(shape.IsArray());
-  CHECK(!LayoutUtil::HasLayout(shape) || LayoutUtil::IsDense(shape.layout()));
+  CHECK(LayoutUtil::IsDenseArray(shape));
 
   // We don't require a layout to be set on `shape`.  This only works on CPU
   // because we don't pad our tensors or otherwise have complicated data tiling
@@ -82,10 +81,9 @@ bool PotentiallyImplementedAsEigenConvolution(
 
   const ConvolutionDimensionNumbers& dnums =
       convolution.convolution_dimension_numbers();
-  // Only 1D and 2D convolutions are supported at the moment.
-  // TODO(b/32897908): add an optimized implementation for 3D convolution.
+  // Only 1D through 3D convolutions are supported at the moment.
   const int64_t num_spatial_dims = dnums.output_spatial_dimensions_size();
-  if (num_spatial_dims > 2) {
+  if (num_spatial_dims < 1 || num_spatial_dims > 3) {
     return false;
   }
 

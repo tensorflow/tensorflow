@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -26,9 +27,9 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_layout_helper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 
 #define DEBUG_TYPE "tf-layout-optimization"
@@ -37,7 +38,6 @@ namespace mlir {
 namespace TF {
 
 namespace {
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_helpers.inc"
 
 // Helper method that returns an op from 'transpose_ops' that match criteria
 // for an 'operand' and 'permutation'
@@ -66,10 +66,13 @@ TransposeOp ReuseExistingTranspose(const OpOperand* operand,
   return nullptr;
 }
 
+#define GEN_PASS_DEF_LAYOUTASSIGNMENTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // LayoutAssignmentPass assigns optimal data layout (data format) for all
 // layout sensitive operations.
 class LayoutAssignmentPass
-    : public LayoutAssignmentPassBase<LayoutAssignmentPass> {
+    : public impl::LayoutAssignmentPassBase<LayoutAssignmentPass> {
  public:
   LayoutAssignmentPass() = default;
   explicit LayoutAssignmentPass(const std::string& force_data_format) {
@@ -78,13 +81,17 @@ class LayoutAssignmentPass
 
   LayoutAssignmentPass(const LayoutAssignmentPass& pass) {}
 
-  void runOnFunction() final;
+  void runOnOperation() final;
 };
+
+#define GEN_PASS_DEF_MOVETRANSPOSESPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 
 // MoveTransposesPass moves all Transpose ops to the beginning or to the end of
 // the basic block where they are defined. This will allow canonicalzer to
 // delete redundant transposes.
-class MoveTransposesPass : public MoveTransposesPassBase<MoveTransposesPass> {
+class MoveTransposesPass
+    : public impl::MoveTransposesPassBase<MoveTransposesPass> {
  public:
   MoveTransposesPass() = default;
   explicit MoveTransposesPass(MoveTransposeDirection direction,
@@ -94,13 +101,13 @@ class MoveTransposesPass : public MoveTransposesPassBase<MoveTransposesPass> {
   }
   MoveTransposesPass(const MoveTransposesPass& pass) {}
 
-  void runOnFunction() final;
+  void runOnOperation() final;
 };
 
 using Permutation = SmallVector<int64_t, 4>;
 
-void LayoutAssignmentPass::runOnFunction() {
-  FuncOp func = getFunction();
+void LayoutAssignmentPass::runOnOperation() {
+  func::FuncOp func = getOperation();
 
   // Get runtime devices information from the closest parent module.
   RuntimeDevices devices;
@@ -194,13 +201,13 @@ void MoveTransposeBefore(Operation* op, SmallVector<Operation*, 8>* work_list) {
       if (!perm) return;
 
       // With the same permutation indices.
-      auto dense_elem_attr = perm.value().dyn_cast<DenseElementsAttr>();
+      auto dense_elem_attr = perm.getValue().dyn_cast<DenseElementsAttr>();
       if (!dense_elem_attr) return;
 
       if (!permutation_op) permutation_op = perm;
 
       // Check that permutation matches for all result transposes.
-      if (perm.value() != permutation_op.value()) return;
+      if (perm.getValue() != permutation_op.getValue()) return;
 
       // Add a transpose operation for later reuse.
       transpose_ops.push_back(transpose);
@@ -210,7 +217,7 @@ void MoveTransposeBefore(Operation* op, SmallVector<Operation*, 8>* work_list) {
   // Nothing to do here.
   if (!permutation_op || transpose_ops.empty()) return;
   SmallVector<int64_t, 4> permutation;
-  auto perm_attr = permutation_op.value().cast<DenseElementsAttr>();
+  auto perm_attr = permutation_op.getValue().cast<DenseElementsAttr>();
   for (const auto& value : perm_attr.getValues<APInt>())
     permutation.push_back(value.getSExtValue());
 
@@ -240,7 +247,8 @@ void MoveTransposeBefore(Operation* op, SmallVector<Operation*, 8>* work_list) {
 
   // Bypass Transpose nodes for all results.
   for (OpResult result : op->getResults()) {
-    result.setType(cast<TransposeOp>(*result.getUsers().begin()).y().getType());
+    result.setType(
+        cast<TransposeOp>(*result.getUsers().begin()).getY().getType());
     for (Operation* transpose : result.getUsers()) {
       transpose->getResult(0).replaceAllUsesWith(result);
     }
@@ -335,13 +343,13 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
     if (!perm) return;
 
     // With the same permutation indices.
-    auto dense_elem_attr = perm.value().dyn_cast<DenseElementsAttr>();
+    auto dense_elem_attr = perm.getValue().dyn_cast<DenseElementsAttr>();
     if (!dense_elem_attr) return;
 
     if (!permutation_op) permutation_op = perm;
 
     // Check that permutation matches for all result transposes.
-    if (perm.value() != permutation_op.value()) return;
+    if (perm.getValue() != permutation_op.getValue()) return;
 
     // Add a transpose operation for later reuse only if it's used once.
     if (transpose.getResult().hasOneUse()) transpose_ops.push_back(transpose);
@@ -357,7 +365,7 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
 
   SmallVector<int64_t, 8> permutation;
 
-  auto attr = permutation_op.value().cast<DenseElementsAttr>();
+  auto attr = permutation_op.getValue().cast<DenseElementsAttr>();
   for (const auto& value : attr.getValues<APInt>())
     permutation.push_back(value.getSExtValue());
 
@@ -365,7 +373,7 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
   if (fold_operands && fold_transpose_in_ops) {
     SmallVector<int64_t, 8> permutation;
 
-    auto attr = permutation_op.value().cast<DenseElementsAttr>();
+    auto attr = permutation_op.getValue().cast<DenseElementsAttr>();
     for (const auto& value : attr.getValues<APInt>())
       permutation.push_back(value.getSExtValue());
 
@@ -431,8 +439,8 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
   }
 }
 
-void MoveTransposesPass::runOnFunction() {
-  FuncOp func = getFunction();
+void MoveTransposesPass::runOnOperation() {
+  func::FuncOp func = getOperation();
 
   SmallVector<Operation*, 8> work_list;
 
@@ -444,7 +452,7 @@ void MoveTransposesPass::runOnFunction() {
       }
     } else {
       // Try to push transpose after the user operation.
-      for (Operation* user : transpose.y().getUsers()) {
+      for (Operation* user : transpose.getY().getUsers()) {
         if (!llvm::isa<TransposeOp>(user)) work_list.push_back(user);
       }
     }
@@ -486,7 +494,7 @@ void CreateLayoutOptimizationPipeline(
       MoveTransposeDirection::kEnd, !options.skip_fold_transpose_in_ops));
 }
 
-std::unique_ptr<FunctionPass> CreateLayoutAssignmentPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLayoutAssignmentPass() {
   // This static is kind of hack, it hooks the pipeline registration for the
   // command line and piggy-back to the TableGen generated registration code.
   static mlir::PassPipelineRegistration<LayoutOptimizationPipelineOptions>
@@ -497,7 +505,7 @@ std::unique_ptr<FunctionPass> CreateLayoutAssignmentPass() {
   return std::make_unique<LayoutAssignmentPass>();
 }
 
-std::unique_ptr<FunctionPass> CreateMoveTransposesPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateMoveTransposesPass() {
   return std::make_unique<MoveTransposesPass>();
 }
 

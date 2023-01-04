@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/verify_suitable_for_graph_export.h"
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 
@@ -27,7 +28,7 @@ constexpr char kInvalidExecutorGraphMsg[] =
 }  // namespace
 
 mlir::LogicalResult VerifyExportSuitable(mlir::ModuleOp module) {
-  mlir::WalkResult result = module.walk([&](mlir::FuncOp function) {
+  mlir::WalkResult result = module.walk([&](mlir::func::FuncOp function) {
     if (!llvm::hasSingleElement(function)) {
       function.emitError(kInvalidExecutorGraphMsg)
           << "only single block functions are supported";

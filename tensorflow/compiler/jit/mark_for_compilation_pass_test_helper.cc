@@ -59,7 +59,8 @@ namespace tensorflow {
   MarkForCompilationPass mark_for_compilation_pass;
   return mark_for_compilation_pass.RunForTest(
       opt_options,
-      /*disable_deadness_analysis=*/options.disable_deadness_analysis);
+      /*disable_deadness_analysis=*/options.disable_deadness_analysis,
+      /*deterministic_cluster_names=*/options.deterministic_cluster_names);
 }
 
 /*static*/ Status MarkForCompilationPassTestHelper::MarkForCompilation(

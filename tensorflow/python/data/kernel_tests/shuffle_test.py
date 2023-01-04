@@ -18,13 +18,14 @@ import functools
 
 from absl.testing import parameterized
 import numpy as np
-
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.experimental.ops import iterator_ops as contrib_iterator_ops
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -35,9 +36,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
-from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -344,7 +343,7 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testShuffleV2InFunction(self):
     counter_var = variables.Variable(0)
 
-    @function.defun
+    @def_function.function
     def consume():
       ds = dataset_ops.Dataset.range(10)
       ds = ds.shuffle(1)
@@ -377,23 +376,27 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.evaluate(get_next())
 
   @combinations.generate(
-      combinations.times(
-          test_base.default_test_combinations(),
-          combinations.combine(reshuffle=[True, False])))
-  def testRerandomizeOnReplicate(self, reshuffle):
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(reshuffle=[True, False])))
+  def testDontRerandomizeOnReplicate(self, reshuffle):
     random_seed.set_random_seed(None)
-    # When no seeds are fixed, each instantiation of the shuffle dataset should
-    # produce elements in a different order.
+    # Since the seed generator configuration is preserved across serialization
+    # of the dataset, each instantiation of the shuffle dataset
+    # should preserve the shuffle order if reshuffle=False. To preserve the
+    # shuffle order, the original dataset must be kept alive, since if the
+    # original dataset was destroyed, its seeds would also be destroyed.
     num_elements = 100
-    dataset = dataset_ops.Dataset.range(num_elements)
-    dataset = dataset.shuffle(num_elements, reshuffle_each_iteration=reshuffle)
+    dataset_1 = dataset_ops.Dataset.range(num_elements)
+    dataset_2 = dataset_1.shuffle(
+        num_elements, reshuffle_each_iteration=reshuffle)
 
-    shuffle_1 = self.getDatasetOutput(dataset)
-    dataset = self.graphRoundTrip(dataset, allow_stateful=True)
-    shuffle_2 = self.getDatasetOutput(dataset)
+    shuffle_1 = self.getDatasetOutput(dataset_2)
+    dataset_3 = self.graphRoundTrip(dataset_2, allow_stateful=True)
+    shuffle_2 = self.getDatasetOutput(dataset_3)
 
     self.assertCountEqual(shuffle_1, shuffle_2)
-    self.assertNotEqual(shuffle_1, shuffle_2)
+    if reshuffle:
+      self.assertNotEqual(shuffle_1, shuffle_2)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCheckpointLargeShuffleBuffer(self):

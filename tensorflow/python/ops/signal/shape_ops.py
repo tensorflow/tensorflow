@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -70,17 +71,17 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
 
   >>> # A batch size 3 tensor of 9152 audio samples.
   >>> audio = tf.random.normal([3, 9152])
-  >>> 
+  >>>
   >>> # Compute overlapping frames of length 512 with a step of 180 (frames overlap
   >>> # by 332 samples). By default, only 49 frames are generated since a frame
   >>> # with start position j*180 for j > 48 would overhang the end.
   >>> frames = tf.signal.frame(audio, 512, 180)
   >>> frames.shape.assert_is_compatible_with([3, 49, 512])
-  >>> 
+  >>>
   >>> # When pad_end is enabled, the final two frames are kept (padded with zeros).
   >>> frames = tf.signal.frame(audio, 512, 180, pad_end=True)
   >>> frames.shape.assert_is_compatible_with([3, 51, 512])
-  
+
   If the dimension along `axis` is N, and `pad_end=False`, the number of frames
   can be computed by:
    ```python
@@ -174,7 +175,8 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
       length_samples = signal_shape[axis]
     else:
       num_frames = math_ops.maximum(
-          0, 1 + (length_samples - frame_length) // frame_step)
+          constant_op.constant(0, dtype=frame_length.dtype),
+          1 + (length_samples - frame_length) // frame_step)
 
     subframe_length, _ = maybe_constant(util_ops.gcd(frame_length, frame_step))
     subframes_per_frame = frame_length // subframe_length
@@ -195,13 +197,15 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
     # that indexes into the appropriate frame in subframes. For example:
     # [[0, 0, 0, 0], [2, 2, 2, 2], [4, 4, 4, 4]]
     frame_selector = array_ops.reshape(
-        math_ops.range(num_frames) * subframes_per_hop, [num_frames, 1])
+        math_ops.range(num_frames, dtype=frame_length.dtype) *
+        subframes_per_hop, [num_frames, 1])
 
     # subframe_selector is a [num_frames, subframes_per_frame] tensor
     # that indexes into the appropriate subframe within a frame. For example:
     # [[0, 1, 2, 3], [0, 1, 2, 3], [0, 1, 2, 3]]
     subframe_selector = array_ops.reshape(
-        math_ops.range(subframes_per_frame), [1, subframes_per_frame])
+        math_ops.range(subframes_per_frame, dtype=frame_length.dtype),
+        [1, subframes_per_frame])
 
     # Adding the 2 selector tensors together produces a [num_frames,
     # subframes_per_frame] tensor of indices to use with tf.gather to select
@@ -210,10 +214,17 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
     # frames. For example: [[0, 1, 2, 3], [2, 3, 4, 5], [4, 5, 6, 7]].
     selector = frame_selector + subframe_selector
 
+    # Dtypes have to match.
+    outer_dimensions = ops.convert_to_tensor(outer_dimensions)
+    inner_dimensions = ops.convert_to_tensor(
+        inner_dimensions, dtype=outer_dimensions.dtype)
+    mid_dimensions = ops.convert_to_tensor([num_frames, frame_length],
+                                           dtype=outer_dimensions.dtype)
+
     frames = array_ops.reshape(
         array_ops.gather(subframes, selector, axis=axis),
-        array_ops.concat([outer_dimensions, [num_frames, frame_length],
-                          inner_dimensions], 0))
+        array_ops.concat([outer_dimensions, mid_dimensions, inner_dimensions],
+                         0))
 
     if result_shape:
       frames.set_shape(result_shape)

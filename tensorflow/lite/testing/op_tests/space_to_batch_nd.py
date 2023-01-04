@@ -14,7 +14,7 @@
 # ==============================================================================
 """Test configs for space_to_batch_nd."""
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -88,7 +88,7 @@ def make_space_to_batch_nd_tests(options):
           dtype=tf.int32, name="paddings", shape=shape)
       input_tensors.append(paddings)
 
-    out = tf.space_to_batch_nd(input_tensor, block_shape, paddings)
+    out = tf.space_to_batch(input_tensor, block_shape, paddings)
     return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
@@ -101,12 +101,9 @@ def make_space_to_batch_nd_tests(options):
       values.append(np.array(parameters["paddings"]))
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
-  if options.use_experimental_converter:
-    # Remove unsupported dimension cases. Currently, kernel supports 3 and 4-D
-    # inputs.
-    test_parameters = [
-        test_parameters[0], test_parameters[1], test_parameters[3]
-    ]
+  # Remove unsupported dimension cases. Currently, kernel supports 3 and 4-D
+  # inputs.
+  test_parameters = [test_parameters[0], test_parameters[1], test_parameters[3]]
 
   make_zip_of_tests(
       options,

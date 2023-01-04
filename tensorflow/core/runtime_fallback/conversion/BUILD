@@ -1,4 +1,5 @@
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/core/runtime_fallback:internal"],
     licenses = ["notice"],
 )
@@ -30,6 +31,7 @@ cc_library(
     deps = [
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
+        "//tensorflow/core/runtime_fallback/kernel:tensor_util",
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_tensor",
         "//tensorflow/core/tfrt/utils:error_util",
         "@tf_runtime//:hostcontext",

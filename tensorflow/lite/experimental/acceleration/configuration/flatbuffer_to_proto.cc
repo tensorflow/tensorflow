@@ -53,6 +53,8 @@ proto::Delegate ConvertDelegate(Delegate delegate) {
       return proto::Delegate::EDGETPU;
     case Delegate_EDGETPU_CORAL:
       return proto::Delegate::EDGETPU_CORAL;
+    case Delegate_CORE_ML:
+      return proto::Delegate::CORE_ML;
   }
   TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Unexpected value for Delegate: %d",
                   delegate);
@@ -243,6 +245,29 @@ proto::HexagonSettings ConvertHexagonSettings(const HexagonSettings& settings) {
 proto::XNNPackSettings ConvertXNNPackSettings(const XNNPackSettings& settings) {
   proto::XNNPackSettings proto_settings;
   proto_settings.set_num_threads(settings.num_threads());
+  proto_settings.set_flags(::tflite::proto::XNNPackFlags(settings.flags()));
+  return proto_settings;
+}
+
+proto::CoreMLSettings ConvertCoreMLSettings(const CoreMLSettings& settings) {
+  proto::CoreMLSettings proto_settings;
+  switch (settings.enabled_devices()) {
+    case CoreMLSettings_::EnabledDevices_DEVICES_ALL:
+      proto_settings.set_enabled_devices(proto::CoreMLSettings::DEVICES_ALL);
+      break;
+    case CoreMLSettings_::EnabledDevices_DEVICES_WITH_NEURAL_ENGINE:
+      proto_settings.set_enabled_devices(
+          proto::CoreMLSettings::DEVICES_WITH_NEURAL_ENGINE);
+      break;
+    default:
+      TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Invalid devices enum: %d",
+                      settings.enabled_devices());
+  }
+  proto_settings.set_coreml_version(settings.coreml_version());
+  proto_settings.set_max_delegated_partitions(
+      settings.max_delegated_partitions());
+  proto_settings.set_min_nodes_per_partition(
+      settings.min_nodes_per_partition());
   return proto_settings;
 }
 
@@ -302,6 +327,16 @@ proto::EdgeTpuSettings ConvertEdgeTpuSettings(const EdgeTpuSettings& settings) {
   return proto_settings;
 }
 
+proto::StableDelegateLoaderSettings ConvertStableDelegateLoaderSettings(
+    const StableDelegateLoaderSettings& settings) {
+  proto::StableDelegateLoaderSettings proto_settings;
+  if (settings.delegate_path() != nullptr) {
+    proto_settings.set_delegate_path(settings.delegate_path()->str());
+  }
+
+  return proto_settings;
+}
+
 proto::CoralSettings ConvertCoralSettings(const CoralSettings& settings) {
   proto::CoralSettings proto_settings;
   if (settings.device() != nullptr) {
@@ -319,42 +354,55 @@ proto::TFLiteSettings ConvertTfliteSettings(const TFLiteSettings& settings) {
   proto::TFLiteSettings proto_settings;
   proto_settings.set_delegate(ConvertDelegate(settings.delegate()));
   if (settings.nnapi_settings() != nullptr) {
-    *(proto_settings.mutable_nnapi_settings()) =
+    *proto_settings.mutable_nnapi_settings() =
         ConvertNNAPISettings(*settings.nnapi_settings());
   }
   if (settings.gpu_settings() != nullptr) {
-    *(proto_settings.mutable_gpu_settings()) =
+    *proto_settings.mutable_gpu_settings() =
         ConvertGPUSettings(*settings.gpu_settings());
   }
   if (settings.hexagon_settings() != nullptr) {
-    *(proto_settings.mutable_hexagon_settings()) =
+    *proto_settings.mutable_hexagon_settings() =
         ConvertHexagonSettings(*settings.hexagon_settings());
   }
 
   if (settings.xnnpack_settings() != nullptr) {
-    *(proto_settings.mutable_xnnpack_settings()) =
+    *proto_settings.mutable_xnnpack_settings() =
         ConvertXNNPackSettings(*settings.xnnpack_settings());
   }
 
+  if (settings.coreml_settings() != nullptr) {
+    *proto_settings.mutable_coreml_settings() =
+        ConvertCoreMLSettings(*settings.coreml_settings());
+  }
+
+  if (settings.stable_delegate_loader_settings() != nullptr) {
+    *proto_settings.mutable_stable_delegate_loader_settings() =
+        ConvertStableDelegateLoaderSettings(
+            *settings.stable_delegate_loader_settings());
+  }
+
   if (settings.cpu_settings() != nullptr) {
-    *(proto_settings.mutable_cpu_settings()) =
+    *proto_settings.mutable_cpu_settings() =
         ConvertCPUSettings(*settings.cpu_settings());
   }
 
   proto_settings.set_max_delegated_partitions(
       settings.max_delegated_partitions());
   if (settings.edgetpu_settings() != nullptr) {
-    *(proto_settings.mutable_edgetpu_settings()) =
+    *proto_settings.mutable_edgetpu_settings() =
         ConvertEdgeTpuSettings(*settings.edgetpu_settings());
   }
   if (settings.coral_settings() != nullptr) {
-    *(proto_settings.mutable_coral_settings()) =
+    *proto_settings.mutable_coral_settings() =
         ConvertCoralSettings(*settings.coral_settings());
   }
   if (settings.fallback_settings() != nullptr) {
-    *(proto_settings.mutable_fallback_settings()) =
+    *proto_settings.mutable_fallback_settings() =
         ConvertFallbackSettings(*settings.fallback_settings());
   }
+  proto_settings.set_disable_default_delegates(
+      settings.disable_default_delegates());
   return proto_settings;
 }
 

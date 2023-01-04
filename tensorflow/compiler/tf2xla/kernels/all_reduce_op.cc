@@ -69,6 +69,9 @@ class CollectiveReduceV2Op : public XlaOpKernel {
         ctx, final_op_name_ == "Id",
         errors::InvalidArgument("Only 'Id' is supported as a final operation "
                                 "for all-reduce tf2xla lowering"));
+    VLOG(2) << "Emitting xla::AllReduce on channel " << *channel_id
+            << " for Op " << ctx->op_kernel().name()
+            << " group_size=" << group_size << " group_key=" << group_key;
     xla::ChannelHandle channel_handle;
     channel_handle.set_type(xla::ChannelHandle::DEVICE_TO_DEVICE);
     channel_handle.set_handle(*channel_id);
@@ -85,9 +88,26 @@ class CollectiveReduceV2Op : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(CollectiveReduceV2Op);
 };
 
+class CollectiveAssignGroupV2Op : public XlaOpKernel {
+ public:
+  explicit CollectiveAssignGroupV2Op(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    OP_REQUIRES(
+        ctx, false,
+        errors::InvalidArgument("CollectiveAssignGroupV2 is unsupported in the "
+                                "legacy TF2XLA bridge"));
+  }
+};
+
 REGISTER_XLA_OP(Name("CollectiveReduceV2")
                     .CompileTimeConstantInput("group_key")
                     .CompileTimeConstantInput("group_size"),
                 CollectiveReduceV2Op);
+
+REGISTER_XLA_OP(Name("CollectiveAssignGroupV2")
+                    .CompileTimeConstantInput("group_assignment"),
+                CollectiveAssignGroupV2Op);
 
 }  // namespace tensorflow
