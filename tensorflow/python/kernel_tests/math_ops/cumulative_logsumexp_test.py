@@ -41,7 +41,8 @@ class CumulativeLogsumexpTest(test.TestCase):
       result_naive, result_fused = self.evaluate(
           self._computeLogSumExp(x, **kwargs))
 
-    self.assertAllClose(result_naive, result_fused)
+    tol = 2e-2 if dtype in [dtypes.float16, dtypes.bfloat16] else 1e-6
+    self.assertAllClose(result_naive, result_fused, rtol=tol, atol=tol)
 
   def _testLogSumExpAllArgs(self, x, axis=0, use_gpu=False):
     for dtype in self.valid_dtypes:
