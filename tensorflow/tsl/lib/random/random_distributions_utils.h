@@ -41,7 +41,7 @@ PHILOX_DEVICE_INLINE float InternalUint32ToFloat(uint32_t x) {
   const uint32_t exp = static_cast<uint32_t>(127);
   const uint32_t val = (exp << 23) | man;
 
-  // Assumes that endian-ness is same for float and uint32.
+  // Assumes that endian-ness is same for float and uint32_t.
   float result;
   memcpy(&result, &val, sizeof(val));
   return result;
