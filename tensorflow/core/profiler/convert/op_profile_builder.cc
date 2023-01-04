@@ -211,18 +211,22 @@ void PopulateOpMetricsNode(
   // TODO(b/219984562): Use hierarchical roofline.
   // For now, capture both overall and off-chip memory utilization.
   const double mem_bw_utilization = SafeDivide(
-      GibiBytesPerSecondPerCore(op_metrics, -1,
+      GibiBytesPerSecondPerCore(op_metrics, MemorySpace::kAllMemories,
                                 OpMetrics::MemoryAccessed::UNKNOWN),
       peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_ALL]);
   metrics->set_memory_bandwidth_util(mem_bw_utilization);
+  metrics->add_bandwidth_utils(mem_bw_utilization);
 
-  const uint64 kHbm = 1;
-  const double hbm_bw_gibibytes_per_second = GibiBytesPerSecondPerCore(
-      op_metrics, kHbm, OpMetrics::MemoryAccessed::UNKNOWN);
+  const double hbm_bw_gibibytes_per_second =
+      GigaToGibi(GigaBytesPerSecondPerCore(op_metrics, MemorySpace::kHbm,
+                                           OpMetrics::MemoryAccessed::READ)) +
+      GigaToGibi(GigaBytesPerSecondPerCore(op_metrics, MemorySpace::kHbm,
+                                           OpMetrics::MemoryAccessed::WRITE));
   const double hbm_bw_utilization = SafeDivide(
       hbm_bw_gibibytes_per_second,
       peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_HBM_RW]);
   metrics->set_hbm_bandwidth_util(hbm_bw_utilization);
+  metrics->add_bandwidth_utils(hbm_bw_utilization);
 
   metrics->set_raw_hbm_bytes_accessed(GibiToGiga(hbm_bw_gibibytes_per_second) *
                                       PicoToNano(op_metrics.time_ps()));
