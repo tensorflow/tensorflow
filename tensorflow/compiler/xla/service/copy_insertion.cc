@@ -1471,9 +1471,12 @@ class CopyRemover {
       VLOG(2) << copy->name() << " defines the first value in its buffer";
       bool live_range_before =
           // Live range of (s_x, s_{x-1},...) must be before 'next_dest' (d_1);
-          CheckLiveRangeBefore(copy_node.src, Next(*copy_node.dest)) &&
+          ((Next(*copy_node.dest) == copy_node.dest) || 
+           CheckLiveRangeBefore(copy_node.src, Next(*copy_node.dest))) &&
           // Live range of 'last_dest' (d_m) must be before 'next_src' s_{x+1}.
-          CheckLiveRangeBefore(copy_node.dest->prev, Next(*copy_node.src));
+          ((copy_node.dest->prev == copy_node.dest) || 
+           Next(*copy_node.src) == copy_node.src ||
+           CheckLiveRangeBefore(copy_node.dest->prev, Next(*copy_node.src)));
       VLOG(2) << "LiveRangeBefore result: " << live_range_before << "\n";
       if (!live_range_before &&
           CheckLiveRangeInterference(copy_node.src, copy_node.dest,
@@ -1501,7 +1504,8 @@ class CopyRemover {
               << copy_node.src->value->ToShortString() << ") in its buffer";
       bool live_range_before =
           // Live range of d_0, ..., d_{y-1} must be before s_0;
-          CheckLiveRangeBefore(Prev(*copy_node.dest), copy_node.src->next) &&
+          (Prev(*copy_node.dest) == copy_node.dest ||
+           CheckLiveRangeBefore(Prev(*copy_node.dest), copy_node.src->next)) &&
           // Live range of 'last_src' must be before next_dest d_{y+1}.
           CheckLiveRangeBefore(copy_node.src, Next(*copy_node.dest));
       VLOG(2) << "LiveRangeBefore result: " << live_range_before << "\n";
@@ -1721,12 +1725,10 @@ class CopyRemover {
   std::string ValueListToString(const ValueNode* element) {
     std::string result = "{";
     auto VisitValueNode = [&](const ValueNode* node) {
-      if (result == "{") {
-        result = node->value->ToShortString();
-      } else {
+      if (result != "{") {
         StrAppend(&result, ", ");
-        StrAppend(&result, node->value->ToShortString());
       }
+      StrAppend(&result, node->value->ToShortString());
     };
     VisitValueNode(element);
     StrAppend(&result, "}");
