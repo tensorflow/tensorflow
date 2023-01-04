@@ -2308,11 +2308,11 @@ class DecodeRawTest(test.TestCase):
       byte_tensor = parsing_ops.decode_raw_v1(example_tensor, dtypes.uint8)
       return self.evaluate(byte_tensor)
 
-  def _decode_v2(self, words, fixed_length=None):
+  def _decode_v2(self, words, fixed_length=None, dtype=dtypes.uint8):
     with self.cached_session():
       examples = np.array(words)
       byte_tensor = parsing_ops.decode_raw(
-          examples, dtypes.uint8, fixed_length=fixed_length)
+          examples, dtype, fixed_length=fixed_length)
       return self.evaluate(byte_tensor)
 
   def _ordinalize(self, words, fixed_length=None):
@@ -2366,6 +2366,21 @@ class DecodeRawTest(test.TestCase):
 
     self.assertAllEqual(expected.shape, observed.shape)
     self.assertAllEqual(expected, observed)
+
+  def testDecodeRawInvalidFixedLengthSize(self):
+    input_bytes = ["1"]
+    # Different error messages depending on shape inference vs kernel.
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                "must be a multiple of|evenly divisible by"):
+      self.evaluate(
+          self._decode_v2(input_bytes, fixed_length=7, dtype=dtypes.float32))
+
+  def testDecodeRawInvalidInputBytesSize(self):
+    input_bytes = ["1"]
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "must be a multiple of"):
+      self.evaluate(
+          self._decode_v2(input_bytes, fixed_length=8, dtype=dtypes.float32))
 
 
 @test_util.run_all_in_graph_and_eager_modes

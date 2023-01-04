@@ -60,6 +60,14 @@ class DecodePaddedRawOp : public OpKernel {
                 errors::InvalidArgument("fixed_length (", fixed_length,
                                         ") must be greater than zero."));
 
+    for (int64_t i = 0; i < flat_in.size(); ++i) {
+      OP_REQUIRES(context, flat_in(i).size() % sizeof(T) == 0,
+                  errors::InvalidArgument(
+                      "input_bytes length (", flat_in(i).size(),
+                      ") must be a multiple of the size of out_type (",
+                      sizeof(T), ")"));
+    }
+
     int width = fixed_length / sizeof(T);
 
     TensorShape out_shape = input.shape();
