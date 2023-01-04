@@ -48,28 +48,38 @@ jobs:
         # See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/toolchains/remote_config/configs.bzl
         # This is a mapping of name_container_map keys under sigbuild_tf_configs
         # to tag names on gcr.io/tensorflow-sigs/build.
+        # TF 2.9
         map sigbuild-r2.9 2.9-python3.9
         map sigbuild-r2.9-python3.8 2.9-python3.8
         map sigbuild-r2.9-python3.9 2.9-python3.9
         map sigbuild-r2.9-python3.10 2.9-python3.10
+        # TF 2.10
         map sigbuild-r2.10 2.10-python3.9
         map sigbuild-r2.10-python3.8 2.10-python3.8
         map sigbuild-r2.10-python3.9 2.10-python3.9
         map sigbuild-r2.10-python3.10 2.10-python3.10
+        # TF 2.11
+        map sigbuild-r2.11 2.11-python3.9
+        map sigbuild-r2.11-python3.8 2.11-python3.8
+        map sigbuild-r2.11-python3.9 2.11-python3.9
+        map sigbuild-r2.11-python3.10 2.11-python3.10
+        # WIP Clang Containers, used by TVCs
         map sigbuild-57469 57469-python3.9
         map sigbuild-57469-python3.8 57469-python3.8
         map sigbuild-57469-python3.9 57469-python3.9
         map sigbuild-57469-python3.10 57469-python3.10
-        map sigbuild-r2.11 2.11-python3.9
-        map sigbuild-r2.11-python3.8 2.11-python3.8
-        map sigbuild-r2.11-python3.9 2.11-python3.9
-        map sigbuild-r2.11-python3.11 2.11-python3.10
+        # TF 2.12
         map sigbuild-r2.12 2.12-python3.9
         map sigbuild-r2.12-python3.8 2.12-python3.8
         map sigbuild-r2.12-python3.9 2.12-python3.9
         map sigbuild-r2.12-python3.10 2.12-python3.10
         map sigbuild-r2.12-python3.11 2.12-python3.11
-
+        # TF 2.12 + Clang (containers are the same, but env vars in configs.bzl are different)
+        map sigbuild-r2.12-clang 2.12-python3.9
+        map sigbuild-r2.12-clang-python3.8 2.12-python3.8
+        map sigbuild-r2.12-clang-python3.9 2.12-python3.9
+        map sigbuild-r2.12-clang-python3.10 2.12-python3.10
+        map sigbuild-r2.12-clang-python3.11 2.12-python3.11
     - name: Create Pull Request with changes
       uses: peter-evans/create-pull-request@2b011faafdcbc9ceb11414d64d0573f37c774b04 # v4.2.3
       with:
