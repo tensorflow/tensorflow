@@ -21,6 +21,7 @@ from typing import List
 import weakref
 
 from tensorflow.core.function import trace_type
+from tensorflow.core.function.capture import capture_container
 from tensorflow.core.function.polymorphism import function_cache
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.python.eager import monitoring
@@ -119,7 +120,7 @@ class TracingCompiler:
     self.tracing_count = 0
     # Maintein a dict of all captures: identifier -> lambda function. It's used
     # to get runtime values for all captures during ConcreteFunction dispatch,
-    self._captures_container = func_graph_module.CapturesContainer()
+    self._func_captures = capture_container.FunctionCaptures()
     self._lock = threading.RLock()
     # _descriptor_cache is a of instance of a class to an instance-specific
     # `TracingCompiler`, used to make sure tf.function-decorated methods
@@ -333,7 +334,7 @@ class TracingCompiler:
       args = (*self.input_signature, *args[len(self.input_signature):])
 
     # Get runtime values of captures
-    captures = self._captures_container.get_snapshot()
+    captures = self._func_captures.get_by_ref_snapshot()
 
     current_func_context = function_context.make_function_context()
 
@@ -383,11 +384,12 @@ class TracingCompiler:
           concrete_function = self._create_concrete_function(
               args, kwargs, func_graph)
 
-          graph_capture_container = concrete_function.graph._capture_func_lib  # pylint: disable=protected-access
+          # TODO(b/263520817): Remove access to private attribute.
+          graph_capture_container = concrete_function.graph._function_captures  # pylint: disable=protected-access
           # Maintain the list of all captures
-          self._captures_container.update(graph_capture_container)
+          self._func_captures.merge_by_ref_with(graph_capture_container)
           # Get current active captures snapshot
-          captures = graph_capture_container.get_snapshot()
+          captures = graph_capture_container.get_by_ref_snapshot()
 
           # Create a cache_key with args and captures
           traced_func_deletion_observer = lookup_func_context.deletion_observer

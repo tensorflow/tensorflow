@@ -43,6 +43,7 @@ py_library(
     visibility = ["//tensorflow/python/eager:__pkg__"],
     deps = [
         ":monomorphic_function",
+        "//tensorflow/core/function/capture:capture_container",
     ],
 )
 

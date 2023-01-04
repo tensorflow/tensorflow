@@ -4809,7 +4809,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     @polymorphic_function.function
     def f():
       func = lambda: x
-      return ops.get_default_graph()._maybe_create_capture_placeholder(func)
+      # TODO(b/263520817): Remove access to private attribute.
+      return ops.get_default_graph(
+          )._function_captures._create_capture_placeholder(func)
 
     x = {
         'tensor': constant_op.constant(0),
@@ -4831,7 +4833,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     @polymorphic_function.function
     def f():
       func = lambda: x
-      return ops.get_default_graph()._maybe_create_capture_placeholder(func)
+      # TODO(b/263520817): Remove access to private attribute.
+      return ops.get_default_graph(
+          )._function_captures._create_capture_placeholder(func)
 
     # Set is not supported
     x = set([1, 2])
