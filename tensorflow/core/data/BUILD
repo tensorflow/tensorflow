@@ -455,9 +455,32 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:session_options",
+        "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/platform:refcount",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/memory",
     ],
+)
+
+tf_cc_test(
+    name = "standalone_save_restore_test",
+    srcs = ["standalone_save_restore_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
+    deps = [
+        ":standalone",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data/service:common_proto_cc",
+        "//tensorflow/core/data/service:test_util",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/protobuf:protos_all_cc",
+    ] + tf_protos_all(),
 )
 
 tf_cc_test(

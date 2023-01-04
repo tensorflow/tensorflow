@@ -18,12 +18,16 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/task_runner.h"
+#include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/lib/io/compression.h"
@@ -41,28 +45,20 @@ namespace {
 
 using ::testing::ElementsAre;
 using ::testing::IsEmpty;
+using ::testing::ValuesIn;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
-class RangeIterator : public TaskIterator {
- public:
-  explicit RangeIterator(const int64_t range) : range_(range) {}
-
-  Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override {
-    end_of_sequence = (next_ >= range_);
-    if (end_of_sequence) {
-      return OkStatus();
-    }
-    element = {Tensor{next_++}};
-    return OkStatus();
-  }
-
-  int64_t Cardinality() const override { return range_; }
-
- private:
-  const int64_t range_;
-  int64_t next_ = 0;
-};
+StatusOr<std::unique_ptr<StandaloneTaskIterator>> TestIterator(
+    const DatasetDef& dataset_def) {
+  std::unique_ptr<standalone::Dataset> dataset;
+  TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
+      standalone::Dataset::Params(), dataset_def.graph(), &dataset));
+  std::unique_ptr<standalone::Iterator> iterator;
+  TF_RETURN_IF_ERROR(dataset->MakeIterator(&iterator));
+  return std::make_unique<StandaloneTaskIterator>(std::move(dataset),
+                                                  std::move(iterator));
+}
 
 StatusOr<std::string> CreateSnapshotDirectory() {
   std::string snapshot_path;
@@ -104,17 +100,30 @@ StatusOr<std::vector<T>> ReadSnapshot(const std::string& snapshot_path,
   return result;
 }
 
+// Deletes the committed chunks but keeps the checkpoints.
+Status ClearCommittedChunks(const std::string& snapshot_path) {
+  int64_t undeleted_files = 0, undeleted_dirs = 0;
+  TF_RETURN_IF_ERROR(
+      Env::Default()->DeleteRecursively(CommittedChunksDirectory(snapshot_path),
+                                        &undeleted_files, &undeleted_dirs));
+  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(
+      CommittedChunksDirectory(snapshot_path)));
+  return OkStatus();
+}
+
 using SnapshotStreamWriterParameterizedTest =
     ::testing::TestWithParam<std::string>;
 
 TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshot) {
   int64_t range = 10;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
+                          TestIterator(testing::RangeDataset(range)));
+
   std::string compression = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
   SnapshotWriterParams writer_params{snapshot_path, /*stream_id=*/0,
                                      compression, Env::Default()};
-  SnapshotStreamWriter snapshot_writer(writer_params,
-                                       std::make_unique<RangeIterator>(range));
+  SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
   TF_ASSERT_OK(snapshot_writer.Wait());
 
   // The data is written to the committed chunks directory. The uncommitted
@@ -135,13 +144,15 @@ TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshot) {
 
 TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshotChunks) {
   int64_t range = 10;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
+                          TestIterator(testing::RangeDataset(range)));
+
   std::string compression = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
   SnapshotWriterParams writer_params{snapshot_path, /*stream_id=*/0,
                                      compression, Env::Default(),
                                      /*max_chunk_size_bytes=*/1};
-  SnapshotStreamWriter snapshot_writer(writer_params,
-                                       std::make_unique<RangeIterator>(range));
+  SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
   TF_ASSERT_OK(snapshot_writer.Wait());
 
   for (int i = 0; i < 10; ++i) {
@@ -154,20 +165,55 @@ TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshotChunks) {
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    Compression, SnapshotStreamWriterParameterizedTest,
-    testing::ValuesIn<std::string>({tsl::io::compression::kNone,
-                                    tsl::io::compression::kGzip,
-                                    tsl::io::compression::kSnappy,
-                                    tsl::io::compression::kZlib}));
+TEST_P(SnapshotStreamWriterParameterizedTest, SaveAndRestoreFromCheckpoints) {
+  int64_t range = 10;
+  std::string compression = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
+  // Each writer only writes 1 chunk, then returns.
+  SnapshotWriterParams writer_params{snapshot_path,
+                                     /*stream_id=*/0, compression,
+                                     Env::Default(),
+                                     /*max_chunk_size_bytes=*/1};
+
+  for (int i = 0; i < range; ++i) {
+    TF_ASSERT_OK(ClearCommittedChunks(snapshot_path));
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
+                            TestIterator(testing::RangeDataset(i + 1)));
+    SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
+    TF_ASSERT_OK(snapshot_writer.Wait());
+
+    // Each writer starts from the checkpointed chunk index. Therefore, they do
+    // not write previous chunks.
+    EXPECT_THAT(ReadSnapshot<int64_t>(
+                    tsl::io::JoinPath(CommittedChunksDirectory(snapshot_path),
+                                      absl::StrCat("chunk_", i)),
+                    compression,
+                    /*num_elements=*/1),
+                IsOkAndHolds(ElementsAre(i)));
+    for (int j = 0; j < i; ++j) {
+      EXPECT_THAT(Env::Default()->FileExists(
+                      tsl::io::JoinPath(CommittedChunksDirectory(snapshot_path),
+                                        absl::StrCat("chunk_", j))),
+                  StatusIs(error::NOT_FOUND));
+    }
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(Compression, SnapshotStreamWriterParameterizedTest,
+                         ValuesIn<std::string>({tsl::io::compression::kNone,
+                                                tsl::io::compression::kGzip,
+                                                tsl::io::compression::kSnappy,
+                                                tsl::io::compression::kZlib}));
 
 TEST(SnapshotStreamWriterTest, EmptyDataset) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
+                          TestIterator(testing::RangeDataset(0)));
+
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
   SnapshotWriterParams writer_params{snapshot_path, /*stream_id=*/0,
                                      tsl::io::compression::kSnappy,
                                      Env::Default()};
-  SnapshotStreamWriter snapshot_writer(writer_params,
-                                       std::make_unique<RangeIterator>(0));
+  SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
   TF_ASSERT_OK(snapshot_writer.Wait());
 
   EXPECT_THAT(
@@ -179,12 +225,14 @@ TEST(SnapshotStreamWriterTest, EmptyDataset) {
 
 TEST(SnapshotStreamWriterTest, Cancel) {
   const int64_t range = 10000;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
+                          TestIterator(testing::RangeDataset(range)));
+
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
   SnapshotWriterParams writer_params{snapshot_path, /*stream_id=*/0,
                                      tsl::io::compression::kSnappy,
                                      Env::Default()};
-  SnapshotStreamWriter snapshot_writer(writer_params,
-                                       std::make_unique<RangeIterator>(range));
+  SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
   snapshot_writer.Cancel();
   EXPECT_THAT(snapshot_writer.Wait(), StatusIs(error::CANCELLED));
 }
