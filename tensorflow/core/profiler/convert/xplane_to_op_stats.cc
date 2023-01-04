@@ -64,15 +64,14 @@ std::string Hostname(const XSpace& space) {
 }  // namespace
 
 PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
-                    double peak_bw_giga_bytes_per_second,
-                    double peak_hbm_bw_giga_bytes_per_second) {
+                    std::vector<double> peak_bws) {
   PerfEnv result;
   result.set_peak_tera_flops_per_second(peak_tera_flops_per_second);
-  result.set_peak_bw_giga_bytes_per_second(peak_bw_giga_bytes_per_second);
-  result.set_peak_hbm_bw_giga_bytes_per_second(
-      peak_hbm_bw_giga_bytes_per_second);
-  result.set_ridge_point(TeraToGiga(peak_tera_flops_per_second) /
-                         peak_hbm_bw_giga_bytes_per_second);
+
+  for (const auto bw : peak_bws) {
+    result.add_peak_bws_giga_bytes_per_second(bw);
+  }
+  result.set_ridge_point(TeraToGiga(peak_tera_flops_per_second) / peak_bws[1]);
   return result;
 }
 
@@ -82,7 +81,7 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
     return MakePerfEnv(
         GigaToTera(GetFlopMaxThroughputPerSM(cap)) * cap.num_cores(),
         // Ideally, the cap should report separate hbm BW, for now set to same.
-        UniToGiga(cap.memory_bandwidth()), UniToGiga(cap.memory_bandwidth()));
+        {UniToGiga(cap.memory_bandwidth()), UniToGiga(cap.memory_bandwidth())});
   } else {
     XPlaneVisitor visitor = CreateTfXPlaneVisitor(&device_plane);
     auto peak_tera_flops_per_second =
@@ -94,12 +93,12 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
     return MakePerfEnv(peak_tera_flops_per_second.has_value()
                            ? peak_tera_flops_per_second->DoubleValue()
                            : 0.0,
-                       peak_bw_giga_bytes_per_second.has_value()
-                           ? peak_bw_giga_bytes_per_second->DoubleValue()
-                           : 0.0,
-                       peak_hbm_bw_giga_bytes_per_second.has_value()
-                           ? peak_hbm_bw_giga_bytes_per_second->DoubleValue()
-                           : 0.0);
+                       {peak_bw_giga_bytes_per_second.has_value()
+                            ? peak_bw_giga_bytes_per_second->DoubleValue()
+                            : 0.0,
+                        peak_hbm_bw_giga_bytes_per_second.has_value()
+                            ? peak_hbm_bw_giga_bytes_per_second->DoubleValue()
+                            : 0.0});
   }
 }
 
