@@ -24,18 +24,32 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/runtime/ffi.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
+#include "tensorflow/compiler/xla/runtime/module_registry.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/collectives.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/graph_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
+
+// Register custom calls implementing Xla Gpu runtime.
+void RegisterXlaGpuRuntimeCustomCalls(
+    runtime::DirectCustomCallRegistry& registry);
+
+// Register mapping from XLA (SE) enums/structs type ids to symbol names.
+void RegisterXlaGpuTypeIdNames(runtime::TypeIDNameRegistry& registry);
+
+// Register encoding for (L)MHLO attributes required by the runtime functions.
+void RegisterXlaGpuAttrEncoding(runtime::CustomCallAttrEncodingSet& encoding);
 
 // Xla Gpu program lowered to the Xla runtime dialects. Gpu runtime executable
 // jit-compiles this program to an executable artifact (via lowering to LLVM).
@@ -72,6 +86,9 @@ struct GpuRuntimeProgram {
 // executable provides a lower level API exposing some of the implementation
 // details.
 class GpuRuntimeExecutable {
+  using ModulesState = ::xla::runtime::ModulesState;
+  using FfiModulesState = ::xla::runtime::ffi::FfiModulesState;
+
  public:
   // Creates GpuRuntimeExecutable from the Xla Gpu Program.
   static StatusOr<std::unique_ptr<GpuRuntimeExecutable>> Create(
@@ -99,11 +116,13 @@ class GpuRuntimeExecutable {
  private:
   GpuRuntimeExecutable(std::vector<int64_t> buffer_sizes,
                        std::unique_ptr<runtime::JitExecutable> jit_executable,
-                       DebugOptions debug_options);
+                       DebugOptions debug_options, ModulesState modules_state,
+                       FfiModulesState ffi_modules_state);
 
   GpuRuntimeExecutable(std::vector<int64_t> buffer_sizes,
                        std::unique_ptr<runtime::Executable> aot_executable,
-                       DebugOptions debug_options);
+                       DebugOptions debug_options, ModulesState modules_state,
+                       FfiModulesState ffi_modules_state);
 
   // Depending on the state of `executable_` returns a reference to active
   // Xla runtime executable.
@@ -129,12 +148,27 @@ class GpuRuntimeExecutable {
   ConvRunnerCache conv_runners_cache_;
 
   // Support for running collective operations.
-  JitRtCollectiveSupport collectives_;
+  CollectivesSupport collectives_;
+
+  // Keep a cache of fft plans for all FFT operations in the program.
+  FftPlans fft_plans_;
 
 #if GOOGLE_CUDA
   // Keep matmul execution plans (only if cuBLASLt is available).
   MatmulPlans cublas_lt_matmul_plans_;
+
+  // Keep captured and instantiated CUDA graphs instances.
+  GraphInstances graph_instances_;
 #endif  // GOOGLE_CUDA
+
+  // Keep an executable state for all registered runtime modules.
+  ModulesState modules_state_;
+
+  // Keeps an executable state for all registered FFI modules.
+  FfiModulesState ffi_modules_state_;
+
+  // Dynamic custom calls exported from XLA runtime modules (and FFI modules).
+  runtime::DynamicCustomCallRegistry dynamic_custom_calls_;
 };
 
 }  // namespace gpu

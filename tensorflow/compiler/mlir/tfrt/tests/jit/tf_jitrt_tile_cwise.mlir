@@ -77,15 +77,15 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?x
   %1 = gml_st.parallel (%arg2, %arg3) = (%c0, %c0) to (%dim_1, %dim_3) step (%c8, %c4) {
     %2 = affine.min affine_map<(d0)[s0] -> (-d0 + s0, 8)>(%arg2)[%dim_1]
     %3 = affine.min affine_map<(d0)[s0] -> (-d0 + s0, 4)>(%arg3)[%dim_3]
-    %4 = gml_st.tile [%arg2, 0] [%2, %dim_2] [1, 1] : !gml_st.tile<?x?>
-    %5 = gml_st.materialize %arg0[%4] : tensor<?x?xf32>[!gml_st.tile<?x?>] to tensor<?x?xf32>
-    %6 = gml_st.tile [0, %arg3] [%dim_2, %3] [1, 1] : !gml_st.tile<?x?>
-    %7 = gml_st.materialize %arg1[%6] : tensor<?x?xf32>[!gml_st.tile<?x?>] to tensor<?x?xf32>
-    %8 = gml_st.tile [%arg2, %arg3] [%2, %3] [1, 1] : !gml_st.tile<?x?>
-    %9 = gml_st.tile [%arg2, %arg3] [%2, %3] [1, 1] : !gml_st.tile<?x?>
-    %10 = gml_st.materialize %0[%9] : tensor<?x?xf32>[!gml_st.tile<?x?>] to tensor<?x?xf32>
+    %5 = gml_st.materialize %arg0[%arg2, 0] [%2, %dim_2] [1, 1]
+      : tensor<?x?xf32> to tensor<?x?xf32>
+    %7 = gml_st.materialize %arg1[0, %arg3] [%dim_2, %3] [1, 1]
+      : tensor<?x?xf32> to tensor<?x?xf32>
+    %10 = gml_st.materialize %0[%arg2, %arg3] [%2, %3] [1, 1]
+      : tensor<?x?xf32> to tensor<?x?xf32>
     %11 = linalg.fill ins(%cst : f32) outs(%10 : tensor<?x?xf32>) -> tensor<?x?xf32>
     %12 = linalg.matmul ins(%5, %7 : tensor<?x?xf32>, tensor<?x?xf32>) outs(%11 : tensor<?x?xf32>) -> tensor<?x?xf32>
+    %8 = gml_st.tile [%arg2, %arg3] [%2, %3] [1, 1] : !gml_st.tile<?x?>
     gml_st.set_yield %12 into %0[%8] : tensor<?x?xf32> into tensor<?x?xf32>[!gml_st.tile<?x?>]
   } : tensor<?x?xf32>
   return %1 : tensor<?x?xf32>
@@ -97,6 +97,7 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?x
 // CHECK-NOT:         gml_st.loop
 // CHECK:             %[[FILL:.*]] = linalg.fill
 // CHECK-NEXT:        %[[MATMUL:.*]] = linalg.matmul{{.*}}outs(%[[FILL]]
+// CHECK-NEXT:        gml_st.tile
 // CHECK-NEXT:        gml_st.set_yield %[[MATMUL]]
 // CHECK-NEXT:      }
 // CHECK-NEXT:      return %[[OUTPUT:.*]] : tensor<?x?xf32>

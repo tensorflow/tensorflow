@@ -97,6 +97,7 @@ tf_py_test(
     deps = [
         ":benchmark_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:map_op",
     ],
 )
 

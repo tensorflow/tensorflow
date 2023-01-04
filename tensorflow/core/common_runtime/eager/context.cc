@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/common_runtime/stats_publisher_interface.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -126,6 +127,9 @@ void EagerContext::LocalRendezvousTable::Remove(int64_t step_id) {
   mutex_lock l(table_lock_);
   auto iter = table_.find(step_id);
   if (iter != table_.end()) {
+    if (step_id != EagerContext::kGlobalRendezvousId) {
+      iter->second->Unref();
+    }
     table_.erase(iter);
   }
 }
@@ -204,8 +208,7 @@ EagerContext::EagerContext(
   // initialization of global_rendezvous_for_functions_ because the latter
   // depends on the former.
   local_rendezvous_table_ = std::make_unique<LocalRendezvousTable>();
-  global_rendezvous_for_functions_ =
-      core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
+  ResetGlobalRendezvousForFunction();
 }
 
 AbstractTensorInterface* EagerContext::CreateInt64Scalar(int64_t value) {
@@ -269,15 +272,12 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
                              const OptimizerOptions& optimizer_options,
                              thread::ThreadPool* thread_pool,
                              DistributedFunctionLibraryRuntime* cluster_flr) {
-  Rendezvous::Factory rendezvous_factory{
-      [this](const int64_t step_id, const DeviceMgr*, Rendezvous** r) {
-        *r = CreateRendezvous(step_id);
-        return OkStatus();
-      }};
+  Rendezvous::Factory rendezvous_factory = CreateRendezvousFactory();
   pflr_.reset(new ProcessFunctionLibraryRuntime(
       device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
       thread_pool, cluster_flr,
-      /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
+      /*session_metadata=*/nullptr, std::move(rendezvous_factory),
+      StatsPublisherInterface::GetStatsPublisherFactory()));
 }
 
 void EagerContext::InitPrioritizedDeviceTypeList() {
@@ -480,14 +480,16 @@ void EagerContext::ClearCachesAndThreadExecutors() {
 }
 
 void EagerContext::ClearCachesAndDefaultExecutor() {
-  // The executor stores pointers to kernels, so we need to make sure that no
-  // async eager ops are still executing. We lock the cache during this time
-  // as well.
-  mutex_lock ml(cache_mu_);
-  default_executor_.WaitForAllPendingNodes().IgnoreError();
-  kernel_cache_.clear();
-  for (auto& entry : registered_functions_) {
-    entry.second->cached_kernel_keys->clear();
+  {
+    // The executor stores pointers to kernels, so we need to make sure that no
+    // async eager ops are still pending to be executed. We lock the cache
+    // during this time as well.
+    mutex_lock ml(cache_mu_);
+    default_executor_.WaitForAllPendingNodes().IgnoreError();
+    kernel_cache_.clear();
+    for (auto& entry : registered_functions_) {
+      entry.second->cached_kernel_keys->clear();
+    }
   }
   {
     mutex_lock dl(device_cache_mu_);
@@ -495,8 +497,8 @@ void EagerContext::ClearCachesAndDefaultExecutor() {
   }
   {
     mutex_lock ml(metadata_mu_);
-    step_container_.reset(new ScopedStepContainer(
-        0, [this](const string& name) { ClearResourceContainer(name); }));
+    step_container_ = std::make_unique<ScopedStepContainer>(
+        0, [this](const string& name) { ClearResourceContainer(name); });
   }
 }
 
@@ -1352,7 +1354,7 @@ Status EagerContext::StoreCollectiveOpsServer(
     local_device_manager_.Reset(device_mgr);
     UpdateGlobalRendezvousDeviceManager(local_device_manager_.Get());
     if (rendezvous_ != nullptr) rendezvous_->Unref();
-    rendezvous_ = CreateRendezvous(-1);
+    TF_RETURN_IF_ERROR(RendezvousFactory()(-1, nullptr, &rendezvous_));
   }
   host_cpu_device_ = local_device_manager_.Get()->HostCPU();
 

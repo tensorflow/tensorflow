@@ -96,10 +96,6 @@ std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateFissionPass();
 // Pass to fuse Linalg generic operations on Tensors.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateFusionPass();
 
-// Pass to optimize broadcasts based on the symbolic shape constraints.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateSymbolicShapeOptimizationPass(bool constraints_only = false);
-
 // Pass to replace 0-d tensor inputs to LinalgOp with extracted elements.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateDetensorizeLinalgPass();
@@ -123,15 +119,6 @@ bool IsContiguousMemref(mlir::Value value);
 // ops with a single combiner are supported.
 mlir::FailureOr<mlir::Operation *> DetectCombiner(
     mlir::linalg::LinalgOp linalg_op);
-
-// Sets the attribute to the `op` that indicates that the op was transformed.
-void setTransformationAttr(mlir::OpBuilder &b, mlir::Operation *op);
-
-// Removes the attribute that indicates that it was transformed.
-void removeTransformationAttr(mlir::Operation *op);
-
-// Checks if `op` has the attribute that indicates that it was transformed.
-bool hasTransformationAttr(mlir::Operation *op);
 
 }  // namespace tensorflow
 

@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/runtime/graph_launch.h"
 
+#include <cstddef>
+#include <memory>
+#include <optional>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
@@ -32,41 +37,111 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+using absl::InternalError;
+using absl::OkStatus;
+using absl::StrFormat;
+
 using xla::runtime::CustomCall;
 using xla::runtime::Executable;
+using xla::runtime::StridedMemrefView;
 
 #if GOOGLE_CUDA
 using xla::runtime::Arguments;
 using xla::runtime::AsyncTaskRunner;
 using xla::runtime::MemrefDesc;
 using xla::runtime::ScalarArg;
-using xla::runtime::StridedMemrefView;
 #endif  // #if GOOGLE_CUDA
 
 //===----------------------------------------------------------------------===//
-// Define the cuda graph launch custom call.
+// RAII helpers for CUDA graph types.
 //===----------------------------------------------------------------------===//
 
-static absl::Status LaunchGraph(const ServiceExecutableRunOptions* run_options,
-                                const std::string* ptx,
-                                const std::vector<uint8_t>* cubin,
-                                se::DeviceMemoryBase* temp_buffer,
-                                runtime::Executable* executable,
-                                CustomCall::RemainingArgs fwd_args,
-                                CustomCall::FunctionOrdinal capture) {
 #if GOOGLE_CUDA
-  // Get a reference to exported function that captures the cuda graph.
-  runtime::FunctionRef function_ref = executable->function_ref(capture.ordinal);
 
-  VLOG(1) << "Launch Cuda Graph: capture=" << capture.ordinal;
+using OwnedGraph = GraphInstances::OwnedGraph;
+using OwnedGraphExec = GraphInstances::OwnedGraphExec;
 
-  // Forward user data required for launching kernels.
-  CustomCall::UserData user_data;
-  user_data.insert_all(run_options, ptx, cubin, temp_buffer, executable);
+void GraphInstances::DestroyGraph::operator()(cudaGraph_t graph) {
+  cudaError_t err = cudaGraphDestroy(graph);
+  CHECK(err == cudaSuccess)
+      << "Failed to destroy CUDA graph: " << cudaGetErrorString(err);
+}
 
-  // Graph capture function should not launch any async tasks.
+void GraphInstances::DestroyGraphExec::operator()(cudaGraphExec_t instance) {
+  cudaError_t err = cudaGraphExecDestroy(instance);
+  CHECK(err == cudaSuccess)
+      << "Failed to destroy CUDA graph instance: " << cudaGetErrorString(err);
+}
+
+#endif  // #if GOOGLE_CUDA
+
+//===----------------------------------------------------------------------===//
+// Helper structure to hash the remaining arguments' memref pointers.
+//===----------------------------------------------------------------------===//
+
+struct RemainingArgsPtrs {
+  CustomCall::RemainingArgs args;
+  se::DeviceMemoryBase* temp_buffer;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const RemainingArgsPtrs& m);
+};
+
+template <typename H>
+H AbslHashValue(H h, const RemainingArgsPtrs& m) {
+  for (size_t i = 0; i < m.args.size(); ++i) {
+    if (auto memref = m.args.get<StridedMemrefView>(i); succeeded(memref))
+      h = H::combine(std::move(h), memref->data);
+  }
+  return std::move(H::combine(std::move(h), m.temp_buffer->opaque()));
+}
+
+//----------------------------------------------------------------------------//
+// Runs capture function exported by the executable to constuct a CUDA graph.
+//----------------------------------------------------------------------------//
+
+#if GOOGLE_CUDA
+
+static absl::StatusOr<OwnedGraph> CaptureGraph(
+    const ServiceExecutableRunOptions* run_options,
+    runtime::FunctionRef function_ref, CustomCall::RemainingArgs fwd_args,
+    CustomCall::UserData user_data) {
+  // We capture graph on a borrowed stream because we do not want to
+  // accidentally record any concurrent kernel launches from other XLA
+  // executables.
+  se::StreamExecutor* executor = run_options->stream()->parent();
+  StatusOr<StreamPool::Ptr> capture_stream =
+      run_options->BorrowStream(executor->device_ordinal());
+
+  if (!capture_stream.ok())
+    return InternalError(
+        StrFormat("Failed to borrow a stream for graph capture: %s",
+                  capture_stream.status().error_message()));
+
+  // TODO(ezhulenev): Pass graph capture context explicitly to the custom calls
+  // via UserData to be able to detect when executing custom call in graph
+  // capture mode. Currently we rely on the fact that we know for sure that
+  // operations in the graph capture function do not need anything except the
+  // main stream (we capture only kernel launches).
+  ExecutableRunOptions capture_run_options;
+  capture_run_options.set_stream(capture_stream->get());
+
+  const ServiceExecutableRunOptions capture_opts(capture_run_options);
+  user_data.insert(&capture_opts);
+
+  std::string error;
+  runtime::DiagnosticEngine diagnostic_engine;
+  diagnostic_engine.AddHandler([&](runtime::Diagnostic& diagnostic) {
+    error.append(diagnostic.status().message());
+    return runtime::success();
+  });
+
+  // Prepare options for executing graph capture function.
   Executable::ExecuteOpts opts;
   opts.custom_call_data = &user_data;
+  opts.diagnostic_engine = &diagnostic_engine;
+
+  // Graph capture function should not launch any async tasks.
   opts.async_task_runner = reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
 
   // Graph capture functions can only have index arguments for launch
@@ -76,8 +151,8 @@ static absl::Status LaunchGraph(const ServiceExecutableRunOptions* run_options,
   Arguments<ScalarArg, MemrefDesc> args(fwd_args.size());
 
   for (size_t i = 0; i < fwd_args.size(); ++i) {
-    // `index` argument passed as intptr_t.
-    if (auto idx = fwd_args.get<intptr_t>(i); succeeded(idx)) {
+    // `index` argument passed as int64_t.
+    if (auto idx = fwd_args.get<int64_t>(i); succeeded(idx)) {
       args.emplace_back<ScalarArg>(*idx);
       continue;
     }
@@ -92,72 +167,141 @@ static absl::Status LaunchGraph(const ServiceExecutableRunOptions* run_options,
     return absl::InvalidArgumentError("Unsupported argument type");
   }
 
-  // TODO(ezhulenev): This function instantiates cuda graphs on every call,
-  // which is absolutely not how it should be done. Graphs have to be cached,
-  // and updated whenever we receive new arguments. This is a proof of concept
-  // demonstration of integrating Cuda Graphs with Xla runtime and trivial
-  // compiler pass that outlines sequences of device function launches.
+  // Get the underlying CUDA stream for passing to CUDA APIs.
+  auto stream = se::gpu::AsGpuStreamValue(capture_stream->get());
 
-  // Construct cuda graph from the exported function.
+  // We know for sure that graph capture function is single-threaded, and we do
+  // not want to accidentally record some unrelated command, so we always record
+  // graphs in thread local mode.
+  auto mode = cudaStreamCaptureModeThreadLocal;
+
   cudaGraph_t graph;
-  cudaGraphExec_t instance;
+
+  // Capture graph constructed by the exported graph capture function.
+  if (auto err = cudaStreamBeginCapture(stream, mode); err != cudaSuccess)
+    return InternalError(
+        StrFormat("Stream begin capture failed: %s", cudaGetErrorString(err)));
+
+  // Call into graph capture function.
+  auto captured = function_ref(args, runtime::NoResultConverter{}, opts);
+
+  // Always stop capturing the stream before checking `captured` result.
+  if (auto err = cudaStreamEndCapture(stream, &graph); err != cudaSuccess)
+    return InternalError(
+        StrFormat("Stream end capture failed: %s", cudaGetErrorString(err)));
+
+  if (!captured.ok())
+    return InternalError(StrFormat("Failed to capture CUDA graph: %s; %s",
+                                   captured.message(), error));
+
+  return OwnedGraph(graph);
+}
+
+#endif  // #if GOOGLE_CUDA
+
+//===----------------------------------------------------------------------===//
+// Define the cuda graph launch custom call.
+//===----------------------------------------------------------------------===//
+
+static absl::Status LaunchGraph(
+    const ServiceExecutableRunOptions* run_options, const std::string* ptx,
+    const std::vector<uint8_t>* cubin, se::DeviceMemoryBase* temp_buffer,
+    StreamExecutorKernels::Snapshot* kernels,
+    GraphInstances::Snapshot* instances, runtime::Executable* executable,
+    CustomCall::RemainingArgs fwd_args, CustomCall::FunctionOrdinal capture) {
+#if GOOGLE_CUDA
+  VLOG(1) << "Launch Cuda Graph: capture=" << capture.ordinal;
+
+  // Get a reference to exported function that captures the cuda graph.
+  runtime::FunctionRef function_ref = executable->function_ref(capture.ordinal);
+
+  // Compute the hash of the buffer arguments.
+  size_t ptrs_hash = absl::HashOf(RemainingArgsPtrs{fwd_args, temp_buffer});
+
+  // Forwards user data required for launching kernels.
+  auto user_data = [&] {
+    return CustomCall::UserData(run_options, ptx, cubin, temp_buffer, kernels,
+                                executable);
+  };
+
+  absl::StatusOr<GraphInstance*> instance = instances->GetOrCreate(
+      capture.ordinal, [&]() -> absl::StatusOr<GraphInstance> {
+        // Get a graph defined by the graph capture function.
+        auto g = CaptureGraph(run_options, function_ref, fwd_args, user_data());
+        if (!g.ok()) return g.status();
+
+        // Instantiate captured CUDA graph into an executable instance.
+        cudaGraphExec_t exec;
+        if (auto err = cudaGraphInstantiate(&exec, &**g, nullptr, nullptr, 0);
+            err != cudaSuccess) {
+          return InternalError(StrFormat("Graph instantiation failed: %s",
+                                         cudaGetErrorString(err)));
+        }
+
+        return GraphInstance(ptrs_hash, exec);
+      });
+
+  if (!instance.ok()) return instance.status();
 
   // Get the underlying cuda stream.
   auto stream = se::gpu::AsGpuStreamValue(run_options->stream());
 
-  cudaError_t err;
+  // Lock graph instance mutex for exclusive access, because we potentially
+  // might have to update it with a new graph version.
+  absl::MutexLock lock((*instance)->mutex.get());
 
-  // Capture graph constructed by the exported graph capture function.
-  err = cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal);
-  if (err != cudaSuccess)
-    return absl::InternalError("Stream begin capture failed");
+  // If pointers did not change we can run captured graph.
+  if (ptrs_hash == (*instance)->ptr_hash) {
+    VLOG(3) << "Execute cached graph instance";
+    return (cudaGraphLaunch((*instance)->exec.get(), stream) == cudaSuccess)
+               ? OkStatus()
+               : InternalError("Failed to run captured graph");
+  }
 
-  // Call into graph capture function.
-  auto captured = function_ref(args, runtime::NoResultConverter{}, opts);
-  if (!captured.ok()) return captured;
+  // Otherwise we have to re-capture the graph and update the graph
+  // instance.
+  VLOG(3) << "Update cached graph instance";
 
-  err = cudaStreamEndCapture(stream, &graph);
-  if (err != cudaSuccess)
-    return absl::InternalError("Stream end capture failed");
+  // Capture CUDA graph by running capture function.
+  auto g = CaptureGraph(run_options, function_ref, fwd_args, user_data());
+  if (!g.ok()) return g.status();
 
-  err = cudaGraphInstantiate(&instance, graph, nullptr, nullptr, 0);
-  if (err != cudaSuccess)
-    return absl::InternalError("Graph instantiation failed");
+  cudaGraphExecUpdateResult update_result;
+  cudaGraphNode_t error_node;
 
-  // Run captured graph.
-  cudaGraphLaunch(instance, stream);
-  if (err != cudaSuccess)
-    return absl::InternalError("Failed to run captured graph");
+  auto err = cudaGraphExecUpdate((*instance)->exec.get(), g->get(), &error_node,
+                                 &update_result);
+  if (err != cudaSuccess || update_result != cudaGraphExecUpdateSuccess)
+    return InternalError("Failed to update cuda graph");
 
-  // Destroy captured graph.
-  err = cudaGraphExecDestroy(instance);
-  if (err != cudaSuccess) return absl::InternalError("Instance destroy failed");
-  err = cudaGraphDestroy(graph);
-  if (err != cudaSuccess) return absl::InternalError("Graph destroy failed");
+  // Update captured graph pointers hash.
+  (*instance)->ptr_hash = ptrs_hash;
 
-  return absl::OkStatus();
-#else
-  return absl::InternalError("Cuda graphs are not supported");
+  return (cudaGraphLaunch((*instance)->exec.get(), stream) == cudaSuccess)
+             ? OkStatus()
+             : InternalError("Failed to run captured graph");
+
+#else  // #if !GOOGLE_CUDA
+
+  return InternalError("Cuda graphs are not supported");
+
 #endif  // #if GOOGLE_CUDA
 }
 
 //===----------------------------------------------------------------------===//
 
-static bool Launch(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                   void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.cuda.graph.launch")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const std::string*>()
-                             .UserData<const std::vector<uint8_t>*>()
-                             .UserData<se::DeviceMemoryBase*>()
-                             .UserData<Executable*>()
-                             .RemainingArgs()
-                             .Attr<CustomCall::FunctionOrdinal>("capture")
-                             .To<checks>(LaunchGraph)
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    Launch, FunctionWrapper<LaunchGraph>(), checks,
+    CustomCall::Bind("xla.gpu.cuda.graph.launch")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .UserData<const std::string*>()
+        .UserData<const std::vector<uint8_t>*>()
+        .UserData<se::DeviceMemoryBase*>()
+        .UserData<StreamExecutorKernels::Snapshot*>()
+        .UserData<GraphInstances::Snapshot*>()
+        .UserData<Executable*>()
+        .RemainingArgs()
+        .Attr<CustomCall::FunctionOrdinal>("capture"));
 
 void RegisterGraphLaunchCustomCalls(
     runtime::DirectCustomCallRegistry& registry) {

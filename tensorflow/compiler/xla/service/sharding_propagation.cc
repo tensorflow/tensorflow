@@ -94,23 +94,8 @@ bool MaybeImproveInstructionSharding(HloSharding sharding,
     if (!allow_aggressive_resharding && instruction->shape().IsArray() &&
         !instruction->sharding().IsTileMaximal() &&
         sharding.NumTiles() == sharding_tiles) {
-      std::vector<int64_t> diff_dims;
-      for (int64_t i = 0; i < instruction->shape().rank(); ++i) {
-        if (instruction->sharding().tile_assignment().dim(i) ==
-            sharding.tile_assignment().dim(i)) {
-          continue;
-        }
-        if (instruction->sharding().tile_assignment().dim(i) != 1) {
-          VLOG(10) << "Not merging because of dim i = " << i
-                   << " sharded differently";
-          VLOG(10) << "Instr sharding: " << instruction->sharding().ToString();
-          VLOG(10) << "New sharding " << sharding.ToString();
-          return false;
-        }
-        diff_dims.push_back(i);
-      }
-      if (hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-              sharding, diff_dims) != instruction->sharding()) {
+      if (!hlo_sharding_util::IsSubTilingOrEqualSharding(
+              instruction->shape(), sharding, instruction->sharding())) {
         VLOG(10) << "Not merging because of different device distribution";
         VLOG(10) << "Instr sharding: " << instruction->sharding().ToString();
         VLOG(10) << "New sharding " << sharding.ToString();
@@ -408,7 +393,7 @@ bool InferDotShardingFromOperands(
                                ? dnums.rhs_non_contracting_dims
                                : dnums.lhs_non_contracting_dims) {
       int64_t d = operand_index == 0 ? dim.lhs : dim.rhs;
-      if (d > 0) {
+      if (d >= 0) {
         contracting_dims.push_back(d);
       }
     }
@@ -939,12 +924,14 @@ Status CheckAndUpdateDeviceAssignmentsInWhileBody(
           return bad_status(instruction, device, channel_instruction,
                             *unique_device);
         }
-      } else if (opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv ||
+      } else if (((opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv) &&
+                  !Cast<HloSendRecvInstruction>(instruction)
+                       ->is_host_transfer())
                  // Cross-replica AllReduces don't have a channel_id, and we
                  // don't enforce any invariant about their device assignment.
-                 ((opcode == HloOpcode::kAllReduce ||
-                   opcode == HloOpcode::kReduceScatter) &&
-                  instruction->channel_id())) {
+                 || ((opcode == HloOpcode::kAllReduce ||
+                      opcode == HloOpcode::kReduceScatter) &&
+                     instruction->channel_id())) {
         channel_instruction = instruction;
         unique_device = device;
         if (!devices_to_instructions.empty()) {
@@ -1697,6 +1684,17 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
       return hlo_sharding_util::ReverseSharding(user.sharding(),
                                                 user.dimensions());
     }
+    case HloOpcode::kOutfeed: {
+      if (&instruction != user.operand(0)) {
+        return std::nullopt;
+      }
+      std::vector<Shape> operand_shapes(user.operand_count());
+      for (int i = 0; i < user.operand_count(); ++i) {
+        operand_shapes[i] = user.operand(i)->shape();
+      }
+      return user.sharding().GetSubSharding(
+          ShapeUtil::MakeTupleShape(operand_shapes), {0});
+    }
     case HloOpcode::kGather: {
       if (&instruction == user.operand(1)) {
         return hlo_sharding_util::
@@ -1873,7 +1871,9 @@ bool ShardingPropagation::InferShardingFromOperands(
            instruction->opcode() == HloOpcode::kDynamicSlice)) {
         return false;
       }
-      instruction->set_sharding(HloSharding::Manual(op->sharding().metadata()));
+      instruction->set_sharding(
+          HloSharding::Manual(op->sharding().metadata())
+              .NormalizeTupleSharding(instruction->shape()));
       return true;
     }
   }
@@ -2524,7 +2524,7 @@ StatusOr<bool> ShardingPropagation::Run(
         // propagate it to the other instructions, so they all share the same
         // sharding, in case the user didn't shard all of them. We don't check
         // that user shardings are consistent, because such check is already
-        // done by HloShardingVerifier.
+        // done by HLO verifier.
         const HloInstruction* sharded_inst = nullptr;
         auto related_instructions = get_related_instructions(instruction);
         for (auto inst : related_instructions) {

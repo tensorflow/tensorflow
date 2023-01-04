@@ -61,7 +61,9 @@ class MklLayerNormOp : public OpKernel {
                                   "tensors are not same."));
 
       auto cpu_engine = engine(engine::kind::cpu, 0);
-      auto engine_stream = stream(cpu_engine);
+      MklDnnThreadPool eigen_tp(ctx);
+      auto cpu_stream =
+          std::unique_ptr<stream>(CreateStream(&eigen_tp, cpu_engine));
 
       memory::dims src_dims = TFShapeToMklDnnDims(src_tensor.shape());
       auto src_md =
@@ -104,7 +106,7 @@ class MklLayerNormOp : public OpKernel {
       std::unordered_map<int, memory> scale_reorder_args;
       scale_reorder_args.insert({DNNL_ARG_FROM, scale_mem_src});
       scale_reorder_args.insert({DNNL_ARG_TO, scale_mem_dst});
-      scale_reorder_prim.execute(engine_stream, scale_reorder_args);
+      scale_reorder_prim.execute(*cpu_stream, scale_reorder_args);
 
       void* shift_buf_src =
           static_cast<void*>(const_cast<T*>(shift_tensor.flat<T>().data()));
@@ -122,7 +124,7 @@ class MklLayerNormOp : public OpKernel {
       std::unordered_map<int, memory> shift_reorder_args;
       shift_reorder_args.insert({DNNL_ARG_FROM, shift_mem_src});
       shift_reorder_args.insert({DNNL_ARG_TO, shift_mem_dst});
-      shift_reorder_prim.execute(engine_stream, shift_reorder_args);
+      shift_reorder_prim.execute(*cpu_stream, shift_reorder_args);
 
       // Create layer_normalization primitive
       auto lnorm_desc = layer_normalization_forward::desc(
@@ -150,7 +152,7 @@ class MklLayerNormOp : public OpKernel {
       lnorm_args.insert({DNNL_ARG_VARIANCE, variance_mem});
       lnorm_args.insert({DNNL_ARG_SCALE_SHIFT, scale_shift_mem});
       lnorm_args.insert({DNNL_ARG_DST, dst_mem});
-      lnorm_prim.execute(engine_stream, lnorm_args);
+      lnorm_prim.execute(*cpu_stream, lnorm_args);
     } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +

@@ -914,8 +914,9 @@ static bool TensorOpMathAvailable(
   return cuda_compute_capability.IsAtLeast(7);
 }
 
-static bool IsTensorMathEnabled(Stream* stream, dnn::DataType input_type) {
-  if (!TensorOpMathAvailable(stream->GetCudaComputeCapability())) {
+static bool IsTensorMathEnabled(CudaComputeCapability cuda_compute_capability,
+                                dnn::DataType input_type) {
+  if (!TensorOpMathAvailable(cuda_compute_capability)) {
     return false;
   }
   if (input_type == dnn::DataType::kFloat) {
@@ -928,6 +929,10 @@ static bool IsTensorMathEnabled(Stream* stream, dnn::DataType input_type) {
 #endif
   }
   return true;
+}
+
+static bool IsTensorMathEnabled(Stream* stream, dnn::DataType input_type) {
+  return IsTensorMathEnabled(stream->GetCudaComputeCapability(), input_type);
 }
 
 // Turns a PoolingDescriptor structure into a cudnn pooling descriptor handle
@@ -1152,6 +1157,8 @@ int CudnnDataTypeToByteSize(cudnnDataType_t data_type) {
       return sizeof(double);
     case CUDNN_DATA_HALF:
       return sizeof(Eigen::half);
+    case CUDNN_DATA_BFLOAT16:
+      return sizeof(Eigen::bfloat16);
     default:
       LOG(FATAL) << "Invalid DNN data type: " << static_cast<int>(data_type);
   }
@@ -4856,15 +4863,16 @@ port::Status CudnnSupport::GetConvolveRunners(
         return port::InternalError(absl::StrFormat(
             "Unknown ConvolutionKind for unfused conv: %d", kind));
       case dnn::ConvolutionKind::FORWARD:
-        got_algos = GetConvolveAlgorithms(cuda_compute_capability, &algorithms);
+        got_algos = GetConvolveAlgorithms(cuda_compute_capability, input_type,
+                                          &algorithms);
         break;
       case dnn::ConvolutionKind::BACKWARD_FILTER:
-        got_algos = GetConvolveBackwardFilterAlgorithms(cuda_compute_capability,
-                                                        &algorithms);
+        got_algos = GetConvolveBackwardFilterAlgorithms(
+            cuda_compute_capability, input_type, &algorithms);
         break;
       case dnn::ConvolutionKind::BACKWARD_DATA:
         got_algos = GetConvolveBackwardDataAlgorithms(cuda_compute_capability,
-                                                      &algorithms);
+                                                      input_type, &algorithms);
         break;
     }
     if (!got_algos) {
@@ -5318,7 +5326,8 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
     std::vector<dnn::AlgorithmDesc> algorithms;
 
     auto cuda_compute_capability = stream->GetCudaComputeCapability();
-    if (!GetConvolveAlgorithms(cuda_compute_capability, &algorithms)) {
+    if (!GetConvolveAlgorithms(cuda_compute_capability, input_type,
+                               &algorithms)) {
       return port::Status(port::error::UNKNOWN,
                           "Listing fused convolve algorithms failed.");
     }
@@ -5412,12 +5421,12 @@ port::Status CudnnSupport::GetFusedMatmulRunners(
 }
 
 bool CudnnSupport::GetConvolveAlgorithms(
-    CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   PreloadCudnnSubLibs(PreloadCudnnType::ConvFwd);
 
   bool tensor_op_math_available =
-      TensorOpMathAvailable(cuda_compute_capability);
+      IsTensorMathEnabled(cuda_compute_capability, input_type);
   out_algorithms->clear();
 
   std::vector<dnn::AlgorithmDesc::Index> algo_types;
@@ -5471,12 +5480,12 @@ bool CudnnSupport::GetRnnAlgorithms(
 }
 
 bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
-    CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   PreloadCudnnSubLibs(PreloadCudnnType::ConvBwdData);
 
   bool tensor_op_math_available =
-      TensorOpMathAvailable(cuda_compute_capability);
+      IsTensorMathEnabled(cuda_compute_capability, input_type);
   out_algorithms->clear();
 
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
@@ -5506,12 +5515,12 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
 }
 
 bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
-    CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   PreloadCudnnSubLibs(PreloadCudnnType::ConvBwdFilter);
 
   bool tensor_op_math_available =
-      TensorOpMathAvailable(cuda_compute_capability);
+      IsTensorMathEnabled(cuda_compute_capability, input_type);
   out_algorithms->clear();
 
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
@@ -5585,6 +5594,30 @@ bool CudnnSupport::DoBatchNormalizationForward(
   return IsStatusOk(
       DoBatchNormalizationForwardImpl<Eigen::half, float>(
           stream, dnn::DataType::kHalf, dnn::DataType::kFloat, x, scale, offset,
+          estimated_mean, estimated_variance, side_input, x_desc,
+          scale_offset_desc, epsilon, exponential_average_factor,
+          activation_mode, y, batch_mean, batch_var, saved_mean, saved_inv_var,
+          is_training, reserve_space_allocator, workspace_allocator),
+      /*report_error=*/true);
+}
+
+bool CudnnSupport::DoBatchNormalizationForward(
+    Stream* stream, const DeviceMemory<Eigen::bfloat16>& x,
+    const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
+    const DeviceMemory<float>& estimated_mean,
+    const DeviceMemory<float>& estimated_variance,
+    const DeviceMemory<Eigen::bfloat16>& side_input,
+    const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    const double exponential_average_factor,
+    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::bfloat16>* y,
+    DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
+    DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
+    bool is_training, ScratchAllocator* reserve_space_allocator,
+    ScratchAllocator* workspace_allocator) {
+  return IsStatusOk(
+      DoBatchNormalizationForwardImpl<Eigen::bfloat16, float>(
+          stream, dnn::DataType::kBF16, dnn::DataType::kFloat, x, scale, offset,
           estimated_mean, estimated_variance, side_input, x_desc,
           scale_offset_desc, epsilon, exponential_average_factor,
           activation_mode, y, batch_mean, batch_var, saved_mean, saved_inv_var,
@@ -5777,6 +5810,28 @@ bool CudnnSupport::DoBatchNormalizationBackward(
   return IsStatusOk(
       DoBatchNormalizationBackwardImpl(
           stream, CUDNN_DATA_HALF, CUDNN_DATA_FLOAT, y_backprop, x, scale,
+          offset, mean, inv_var, y, x_desc, scale_offset_desc, epsilon,
+          activation_mode, x_backprop, scale_backprop, offset_backprop,
+          side_input_backprop, reserve_space_data, workspace_allocator),
+      /*report_error=*/true);
+}
+
+bool CudnnSupport::DoBatchNormalizationBackward(
+    Stream* stream, const DeviceMemory<Eigen::bfloat16>& y_backprop,
+    const DeviceMemory<Eigen::bfloat16>& x, const DeviceMemory<float>& scale,
+    const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
+    const DeviceMemory<float>& inv_var, const DeviceMemory<Eigen::bfloat16>& y,
+    const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    dnn::ActivationMode activation_mode,
+    DeviceMemory<Eigen::bfloat16>* x_backprop,
+    DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+    DeviceMemory<Eigen::bfloat16>* side_input_backprop,
+    DeviceMemory<uint8_t>* reserve_space_data,
+    ScratchAllocator* workspace_allocator) {
+  return IsStatusOk(
+      DoBatchNormalizationBackwardImpl(
+          stream, CUDNN_DATA_BFLOAT16, CUDNN_DATA_FLOAT, y_backprop, x, scale,
           offset, mean, inv_var, y, x_desc, scale_offset_desc, epsilon,
           activation_mode, x_backprop, scale_backprop, offset_backprop,
           side_input_backprop, reserve_space_data, workspace_allocator),

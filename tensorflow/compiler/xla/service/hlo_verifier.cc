@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -1207,6 +1208,30 @@ Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
           "Shape mismatch between parameter number %d and its operand in "
           "%s.",
           param_no, fusion->ToString().c_str());
+    }
+  }
+  const HloFusionInstruction* casted_fusion =
+      DynCast<const HloFusionInstruction>(fusion);
+  for (const auto& pair : casted_fusion->output_to_operand_aliasing()) {
+    TF_RET_CHECK(pair.second.first < casted_fusion->operand_count())
+        << "Invalid aliasing operand index.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(
+        casted_fusion->operand(pair.second.first)->shape(), pair.second.second))
+        << "Invalid aliasing operand shape index.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(casted_fusion->shape(), pair.first))
+        << "Invalid aliasing output shape index.";
+    const Shape& output_subshape =
+        ShapeUtil::GetSubshape(casted_fusion->shape(), pair.first);
+    const Shape& operand_subshape = ShapeUtil::GetSubshape(
+        casted_fusion->operand(pair.second.first)->shape(), pair.second.second);
+    if (opts_.layout_sensitive) {
+      TF_RET_CHECK(operand_subshape == output_subshape)
+          << "Different aliasing shapes: " << operand_subshape.ToString()
+          << " vs " << output_subshape.ToString();
+    } else {
+      TF_RET_CHECK(ShapeUtil::Compatible(output_subshape, operand_subshape))
+          << "Different aliasing shapes: " << operand_subshape.ToString()
+          << " vs " << output_subshape.ToString();
     }
   }
   return OkStatus();
@@ -2486,6 +2511,14 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     // Allow kWhile to contain computations on separate thread.
     TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(
         xla_while, /*skip_nested_async_op_check=*/true));
+
+    // Verify consistency of sharding of while instructions and related
+    // instructions (parameters, root) in its called computations.
+    TF_RETURN_IF_ERROR(VerifyConsistentSharding(
+        xla_while, {xla_while, xla_while->while_body()->root_instruction(),
+                    xla_while->while_body()->parameter_instruction(0),
+                    xla_while->while_condition()->parameter_instruction(0)}));
+
     return OkStatus();
   }
 
@@ -2496,17 +2529,31 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   Status HandleConditional(HloInstruction* conditional) override {
-    for (int b = 0; b < conditional->branch_count(); ++b) {
-      if (conditional->branch_computation(b)->num_parameters() != 1) {
+    const std::vector<HloComputation*> branch_computations =
+        conditional->branch_computations();
+    std::vector<const HloInstruction*> sharding_check_instructions;
+    sharding_check_instructions.reserve(branch_computations.size() + 1);
+    sharding_check_instructions.push_back(conditional);
+
+    for (const HloComputation* branch_computation : branch_computations) {
+      if (branch_computation->num_parameters() != 1) {
         return FailedPrecondition(
             "Branch computation %s of %s must have 1 parameter instead of %d",
-            conditional->branch_computation(b)->name(), conditional->ToString(),
-            conditional->branch_computation(b)->num_parameters());
+            branch_computation->name(), conditional->ToString(),
+            branch_computation->num_parameters());
       }
+      sharding_check_instructions.push_back(
+          branch_computation->root_instruction());
     }
     // Allow kConditional to contain computations on separate thread.
     TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(
         conditional, /*skip_nested_async_op_check=*/true));
+
+    // Verify consistency of sharding of conditional instructions and roots of
+    // its branches.
+    TF_RETURN_IF_ERROR(
+        VerifyConsistentSharding(conditional, sharding_check_instructions));
+
     return OkStatus();
   }
 
@@ -2567,15 +2614,14 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   Status Preprocess(HloInstruction* instruction) override {
-    auto previous = instructions_by_name_.find(instruction->name());
-    TF_RET_CHECK(previous == instructions_by_name_.end())
-        << "HLO has name that is not unique within module:\n"
-        << instruction->ToString()
-        << " in computation: " << instruction->parent()->name()
-        << "\nPrevious HLO with same name:\n"
-        << previous->second->ToString()
-        << " in computation: " << previous->second->parent()->name();
-    instructions_by_name_[instruction->name()] = instruction;
+    auto [it, inserted] =
+        instructions_by_name_.insert({instruction->name(), instruction});
+    TF_RET_CHECK(inserted) << "HLO has name that is not unique within module:\n"
+                           << instruction->ToString() << " in computation: "
+                           << instruction->parent()->name()
+                           << "\nPrevious HLO with same name:\n"
+                           << it->second->ToString() << " in computation: "
+                           << it->second->parent()->name();
 
     if (instruction->has_sharding()) {
       Status status =
@@ -2610,11 +2656,63 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         }
       }
     }
+    TF_RETURN_IF_ERROR(VerifyF8Usage(instruction));
 
     return OkStatus();
   }
 
  private:
+  static Status VerifyConsistentSharding(
+      const HloInstruction* parent,
+      absl::Span<const HloInstruction* const> instructions) {
+    const HloInstruction* common_sharding_inst = nullptr;
+    for (const HloInstruction* check_inst : instructions) {
+      if (!check_inst->has_sharding()) {
+        continue;
+      }
+      if (!common_sharding_inst) {
+        common_sharding_inst = check_inst;
+        continue;
+      }
+      TF_RET_CHECK(check_inst->sharding() == common_sharding_inst->sharding())
+          << "Inconsistent " << HloOpcodeString(parent->opcode())
+          << " sharding among instructions: \n"
+          << common_sharding_inst->ToString() << "\n"
+          << check_inst->ToString();
+    }
+    return OkStatus();
+  }
+
+  static Status VerifyF8Usage(HloInstruction* instruction) {
+    bool has_fp8_operand =
+        absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
+          return ShapeUtil::HasPrimitiveType(operand->shape(), F8E5M2) ||
+                 ShapeUtil::HasPrimitiveType(operand->shape(), F8E4M3FN);
+        });
+    // TODO(b/259609697): Support FP8 operands in all instructions that support
+    // inputs of other floating-point dtypes. Currently the CPU and GPU backends
+    // only support FP8 operands in the convert, tuple, get-tuple-element and
+    // transpose instructions and FP8 Custom Calls.
+    if (has_fp8_operand && instruction->opcode() != HloOpcode::kConvert &&
+        instruction->opcode() != HloOpcode::kBitcast &&
+        instruction->opcode() != HloOpcode::kTuple &&
+        instruction->opcode() != HloOpcode::kGetTupleElement &&
+        instruction->opcode() != HloOpcode::kTranspose &&
+        instruction->opcode() != HloOpcode::kDot &&
+        instruction->opcode() != HloOpcode::kFusion &&
+        instruction->opcode() != HloOpcode::kReshape &&
+        instruction->opcode() != HloOpcode::kCopy &&
+        instruction->opcode() != HloOpcode::kCustomCall) {
+      return InvalidArgument(
+          "FP8 is currently only supported in convert, bitcast, tuple, "
+          "get-tuple-element, transpose, dot, fusion, reshape and copy "
+          "instructions as well as Custom Calls, but got instruction with FP8 "
+          "input: %s",
+          instruction->ToString());
+    }
+    return OkStatus();
+  }
+
   absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name_;
   const HloVerifierOpts& opts_;
   std::optional<int64_t> num_devices_;

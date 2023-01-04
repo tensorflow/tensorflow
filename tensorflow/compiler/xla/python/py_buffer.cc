@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 
+#include <cstring>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -26,6 +28,8 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/ifrt/array.h"
+#include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
@@ -33,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/python/util.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -82,13 +87,13 @@ void PyBuffer_tp_dealloc(PyObject* self) {
 }  // namespace
 
 /*static*/ PyBuffer::object PyBuffer::Make(
-    std::shared_ptr<PyClient> client, std::shared_ptr<PjRtBuffer> buffer,
+    std::shared_ptr<PyClient> client, tsl::RCReference<ifrt::Array> ifrt_array,
     std::shared_ptr<Traceback> traceback) {
   py::object obj = py::reinterpret_steal<py::object>(PyBuffer_tp_new(
       reinterpret_cast<PyTypeObject*>(type_), nullptr, nullptr));
   PyBufferPyObject* buf = reinterpret_cast<PyBufferPyObject*>(obj.ptr());
   new (&buf->buffer)
-      PyBuffer(std::move(client), std::move(buffer), std::move(traceback));
+      PyBuffer(std::move(client), std::move(ifrt_array), std::move(traceback));
   return py::reinterpret_borrow<PyBuffer::object>(obj);
 }
 
@@ -114,14 +119,14 @@ py::handle PyBuffer::AsHandle() {
 }
 
 PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
-                   std::shared_ptr<PjRtBuffer> buffer,
+                   tsl::RCReference<ifrt::Array> ifrt_array,
                    std::shared_ptr<Traceback> traceback)
     : client_(std::move(client)),
-      buffer_(std::move(buffer)),
+      ifrt_array_(std::move(ifrt_array)),
       traceback_(std::move(traceback)) {
   CHECK(PyGILState_Check());
-  next_ = client_->buffers_[buffer_->device()->id()];
-  client_->buffers_[buffer_->device()->id()] = this;
+  next_ = client_->buffers_[ifrt_array_->sharding().devices().front()->id()];
+  client_->buffers_[ifrt_array_->sharding().devices().front()->id()] = this;
   prev_ = nullptr;
   if (next_) {
     next_->prev_ = this;
@@ -142,7 +147,7 @@ PyBuffer::~PyBuffer() {
 }
 
 StatusOr<int64_t> PyBuffer::size() {
-  Shape max_buffer_shape = buffer()->on_device_shape();
+  Shape max_buffer_shape = pjrt_buffer()->on_device_shape();
   if (max_buffer_shape.is_dynamic()) {
     TF_ASSIGN_OR_RETURN(const auto* dynamic_shape, xla_dynamic_shape());
     return ShapeUtil::ElementsIn(*dynamic_shape);
@@ -152,8 +157,8 @@ StatusOr<int64_t> PyBuffer::size() {
 
 StatusOr<const Shape*> PyBuffer::xla_dynamic_shape() {
   CHECK(PyGILState_Check());
-  if (buffer_->on_device_shape().is_static()) {
-    return &buffer_->on_device_shape();
+  if (pjrt_buffer()->on_device_shape().is_static()) {
+    return &pjrt_buffer()->on_device_shape();
   }
   // Python buffer protocol references shape data by pointer, therefore we must
   // store a valid copy of the shape.
@@ -161,7 +166,8 @@ StatusOr<const Shape*> PyBuffer::xla_dynamic_shape() {
     Shape dynamic_shape;
     {
       py::gil_scoped_release gil_release;
-      TF_ASSIGN_OR_RETURN(dynamic_shape, buffer_->logical_on_device_shape());
+      TF_ASSIGN_OR_RETURN(dynamic_shape,
+                          pjrt_buffer()->logical_on_device_shape());
     }
     dynamic_shape_ = dynamic_shape;
   }
@@ -169,20 +175,25 @@ StatusOr<const Shape*> PyBuffer::xla_dynamic_shape() {
 }
 
 pybind11::tuple PyBuffer::python_shape() const {
-  return SpanToTuple(buffer()->on_device_shape().dimensions());
+  return SpanToTuple(pjrt_buffer()->on_device_shape().dimensions());
 }
 
 pybind11::dtype PyBuffer::python_dtype() const {
-  PrimitiveType primitive = buffer()->on_device_shape().element_type();
+  PrimitiveType primitive = pjrt_buffer()->on_device_shape().element_type();
   return PrimitiveTypeToDtype(primitive).value();
 }
 
 ClientAndPtr<PjRtDevice> PyBuffer::device() const {
-  return WrapWithClient(client_, buffer_->device());
+  return WrapWithClient(client_, ifrt_array_->sharding().devices().front());
 }
 
 PyBuffer::object PyBuffer::Clone() const {
-  auto buffer = Make(client_, buffer_, traceback_);
+  auto buffer = Make(client_,
+                     ifrt_array_
+                         ->Reshard(ifrt_array_->shared_ptr_sharding(),
+                                   ifrt::ArrayCopySemantics::kReuseInput)
+                         .value(),
+                     traceback_);
   buffer.buf()->sticky_device_ = sticky_device_;
   buffer.buf()->aval_ = aval_;
   return buffer;
@@ -202,10 +213,13 @@ StatusOr<py::object> PyBuffer::CopyToDevice(
       jax::ApplyTransferGuardToDeviceToDevice(transfer_guard_formatter));
 
   GlobalPyRefManager()->CollectGarbage();
-  std::unique_ptr<PjRtBuffer> out;
+  tsl::RCReference<ifrt::Array> out;
   {
     py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(out, buffer_->CopyToDevice(dst_device.get()));
+    TF_ASSIGN_OR_RETURN(
+        out, ifrt_array_->Reshard(
+                 ifrt::SingleDeviceSharding::Create(dst_device.get()),
+                 ifrt::ArrayCopySemantics::kReuseInput));
   }
   auto traceback = Traceback::Get();
   return Make(dst_device.client, std::move(out), std::move(traceback));
@@ -217,8 +231,8 @@ std::pair<Status, bool> PyBuffer::CopyToRemoteDevice(
   bool done = false;
   Status status;
   bool sends_were_enqueued;
-  buffer_->CopyToRemoteDevice(
-      serialized_descriptor,
+  pjrt_buffer()->CopyToRemoteDevice(
+      PjRtFuture<StatusOr<std::string>>(std::string(serialized_descriptor)),
       [&done, &status, &sends_were_enqueued, &mu](Status s, bool dispatched) {
         absl::MutexLock l(&mu);
         done = true;
@@ -237,11 +251,11 @@ std::pair<Status, bool> PyBuffer::CopyToRemoteDevice(
 Status PyBuffer::BlockHostUntilReady() {
   GlobalPyRefManager()->CollectGarbage();
   py::gil_scoped_release gil_release;
-  return buffer_->BlockHostUntilReady();
+  return AwaitBuffersReady(ifrt_array_.get());
 }
 
 Status PyBuffer::CopyToHostAsync() {
-  if (!buffer_->IsOnCpu() && !host_value_) {
+  if (!pjrt_buffer()->IsOnCpu() && !host_value_) {
     auto transfer_guard_formatter = [this] {
       auto shape = py::cast<std::string>(py::str(python_shape()));
       auto dtype = py::cast<std::string>(py::str(python_dtype()));
@@ -259,25 +273,26 @@ Status PyBuffer::CopyToHostAsync() {
     TF_ASSIGN_OR_RETURN(const auto* dynamic_shape, xla_dynamic_shape());
 
     py::gil_scoped_release gil;
+    // TODO(hyeontaek): Add a version using ifrt::Array::ToHostBuffer().
     host_value->value = std::make_shared<Literal>(
         ShapeUtil::DeviceShapeToHostShape(*dynamic_shape));
     Literal* literal = host_value->value.get();
-    buffer_->ToLiteral(literal,
-                       [host_value{std::move(host_value)}](Status status) {
-                         host_value->status = std::move(status);
-                         host_value->ready.Notify();
-                       });
+    pjrt_buffer()->ToLiteral(
+        literal, [host_value{std::move(host_value)}](Status status) {
+          host_value->status = std::move(status);
+          host_value->ready.Notify();
+        });
   }
   return OkStatus();
 }
 
 StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
-  if (buffer_->IsDeleted()) {
+  if (ifrt_array_->IsDeleted()) {
     return InvalidArgument("DeviceArray has been deleted.");
   }
-  TF_RET_CHECK(buffer_->on_device_shape().IsArray());
+  TF_RET_CHECK(pjrt_buffer()->on_device_shape().IsArray());
   // On CPU, we can return the value in a zero-copy way.
-  if (buffer_->IsOnCpu()) {
+  if (pjrt_buffer()->IsOnCpu()) {
     TF_ASSIGN_OR_RETURN(const auto* shape, xla_dynamic_shape());
     TF_ASSIGN_OR_RETURN(py::dtype dtype,
                         PrimitiveTypeToDtype(shape->element_type()));
@@ -288,7 +303,7 @@ StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
     };
     auto hold = std::make_unique<Hold>();
     TF_ASSIGN_OR_RETURN(hold->external_reference_hold,
-                        buffer_->AcquireExternalReference());
+                        pjrt_buffer()->AcquireExternalReference());
     hold->buffer = py::reinterpret_borrow<py::object>(this_obj);
     void* data = hold->external_reference_hold->OpaqueDeviceMemoryDataPointer();
     py::capsule hold_capsule(hold.release(),
@@ -298,7 +313,7 @@ StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
     array.attr("flags").attr("writeable") = Py_False;
     {
       py::gil_scoped_release gil;
-      TF_RETURN_IF_ERROR(buffer_->BlockHostUntilReady());
+      TF_RETURN_IF_ERROR(ifrt_array_->GetReadyFuture().Await());
     }
     return array;
   }
@@ -315,36 +330,44 @@ StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
 }
 
 StatusOr<std::uintptr_t> PyBuffer::UnsafeBufferPointer() const {
-  return client_->pjrt_client()->UnsafeBufferPointer(buffer_.get());
+  return client_->pjrt_client()->UnsafeBufferPointer(pjrt_buffer());
 }
 
 StatusOr<py::dict> PyBuffer::CudaArrayInterface() {
   // TODO(zhangqiaorjc): Differentiate between NVidia and other GPUs.
-  if (buffer_->client()->platform_id() != GpuId()) {
+  if (pjrt_buffer()->client()->platform_id() != GpuId()) {
     return InvalidArgument(
         "__cuda_array_interface__ is only defined for NVidia GPU buffers.");
   }
-  if (!buffer_->on_device_shape().IsArray()) {
+  if (!pjrt_buffer()->on_device_shape().IsArray()) {
     return InvalidArgument(
         "__cuda_array_interface__ is only defined for array buffers.");
   }
-  if (buffer_->on_device_shape().element_type() == BF16) {
+  if (pjrt_buffer()->on_device_shape().element_type() == BF16) {
     return InvalidArgument(
         "__cuda_array_interface__ is not supported for bfloat16 buffers.");
   }
+  if (pjrt_buffer()->on_device_shape().element_type() == F8E4M3FN) {
+    return InvalidArgument(
+        "__cuda_array_interface__ is not supported for F8E4M3FN buffers.");
+  }
+  if (pjrt_buffer()->on_device_shape().element_type() == F8E5M2) {
+    return InvalidArgument(
+        "__cuda_array_interface__ is not supported for F8E5M2 buffers.");
+  }
   TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(
-      buffer_->on_device_shape().layout()));
+      pjrt_buffer()->on_device_shape().layout()));
 
   py::dict result;
   TF_ASSIGN_OR_RETURN(const auto* dynamic_shape, xla_dynamic_shape());
   result["shape"] = SpanToTuple(dynamic_shape->dimensions());
   TF_ASSIGN_OR_RETURN(py::str typestr,
                       TypeDescriptorForPrimitiveType(
-                          buffer_->on_device_shape().element_type()));
+                          pjrt_buffer()->on_device_shape().element_type()));
   result["typestr"] = std::move(typestr);
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold,
-      buffer_->AcquireExternalReference());
+      pjrt_buffer()->AcquireExternalReference());
   const void* root_ptr =
       external_reference_hold->OpaqueDeviceMemoryDataPointer();
   py::tuple data(2);
@@ -357,6 +380,9 @@ StatusOr<py::dict> PyBuffer::CudaArrayInterface() {
 
 PyShardedBuffer PyShardedBuffer::CreateFromPyBuffers(
     absl::Span<const PyBuffer::object> py_buffers) {
+  // TODO(hyeontaek): This Array creation has insufficient information about
+  // the shape (a dummy shape is used). This should be removed if possible and
+  // only be used in the context where the shape information is unused.
   PyBuffer* first_py_buffer = py_buffers.at(0).buf();
   auto client = first_py_buffer->client();
   auto traceback = first_py_buffer->traceback();
@@ -367,22 +393,38 @@ PyShardedBuffer PyShardedBuffer::CreateFromPyBuffers(
     return buf.buf()->sticky_device() == nullptr;
   };
 
-  std::vector<std::shared_ptr<PjRtBuffer>> results;
-  results.reserve(py_buffers.size());
+  std::vector<tsl::RCReference<ifrt::Array>> arrays;
+  arrays.reserve(py_buffers.size());
+  ifrt::DeviceList::Devices devices;
+  devices.reserve(py_buffers.size());
+  std::vector<ifrt::Shape> shapes;
+  shapes.reserve(py_buffers.size());
   for (const auto& py_buffer : py_buffers) {
     // Either all device buffers are sticky or none of them are sticky.
     DCHECK(check_sticky(py_buffer));
-    results.push_back(py_buffer.buf()->shared_ptr_buffer());
+    arrays.push_back(tsl::FormRef(py_buffer.buf()->ifrt_array()));
+    devices.push_back(
+        py_buffer.buf()->ifrt_array()->sharding().devices().front());
+    shapes.push_back(py_buffer.buf()->ifrt_array()->shape());
   }
-
-  return PyShardedBuffer(std::move(client), std::move(results),
+  auto array = client->ifrt_client()->AssembleArrayFromSingleDeviceArrays(
+      arrays.front()->shape(),
+      ifrt::OpaqueSharding::Create(
+          ifrt::DeviceList(std::move(devices)),
+          ifrt::OpaqueSharding::MakeDisassembleFuncFromShapes(
+              std::move(shapes))),
+      absl::MakeSpan(arrays), ifrt::ArrayCopySemantics::kReuseInput);
+  if (!array.ok()) {
+    throw py::value_error(array.status().ToString());
+  }
+  return PyShardedBuffer(std::move(client), *std::move(array),
                          std::move(traceback), sticky);
 }
 
 Status PyShardedBuffer::BlockHostUntilReady() {
   GlobalPyRefManager()->CollectGarbage();
   py::gil_scoped_release gil_release;
-  return AwaitBuffersReady(buffers_);
+  return AwaitBuffersReady(ifrt_array());
 }
 
 // PEP 3118 buffer protocol implementation.
@@ -407,16 +449,18 @@ struct ExtraBufferInfo {
 int PyBuffer_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
   Status status = [&]() {
     TF_ASSIGN_OR_RETURN(PyBuffer * py_buffer, PyBuffer::AsPyBuffer(exporter));
-    PjRtBuffer& buffer = *py_buffer->buffer();
-    TF_ASSIGN_OR_RETURN(const auto* shape, py_buffer->xla_dynamic_shape());
-    // Py_buffer objects are POD C structures, so we don't need to hold the GIL.
-    // Additionally we call BlockHostUntilReady() below, which may block.
-    py::gil_scoped_release gil_release;
+    PjRtBuffer& buffer = *py_buffer->pjrt_buffer();
 
     if (!buffer.IsOnCpu()) {
       return InvalidArgument(
           "Python buffer protocol is only defined for CPU buffers.");
     }
+
+    TF_ASSIGN_OR_RETURN(const auto* shape, py_buffer->xla_dynamic_shape());
+    // Py_buffer objects are POD C structures, so we don't need to hold the GIL.
+    // Additionally we call BlockHostUntilReady() below, which may block.
+    py::gil_scoped_release gil_release;
+
     if (!buffer.on_device_shape().IsArray()) {
       return InvalidArgument(
           "Python buffer protocol is only defined for array buffers.");
@@ -428,6 +472,16 @@ int PyBuffer_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
         ((flags & PyBUF_FORMAT) == PyBUF_FORMAT)) {
       return InvalidArgument(
           "bfloat16 buffer format not supported by Python buffer protocol.");
+    }
+    if (buffer.on_device_shape().element_type() == F8E4M3FN &&
+        ((flags & PyBUF_FORMAT) == PyBUF_FORMAT)) {
+      return InvalidArgument(
+          "F8E4M3FN buffer format not supported by Python buffer protocol.");
+    }
+    if (buffer.on_device_shape().element_type() == F8E5M2 &&
+        ((flags & PyBUF_FORMAT) == PyBUF_FORMAT)) {
+      return InvalidArgument(
+          "F8E5M2 buffer format not supported by Python buffer protocol.");
     }
     if ((flags & PyBUF_WRITEABLE) == PyBUF_WRITEABLE) {
       return InvalidArgument("XLA buffers are read-only.");
@@ -624,15 +678,17 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       });
   type.attr("device_buffer") =
       property_readonly([](py::object self) { return self; });
-  type.attr(
-      "shape") = property_readonly([](PyBuffer::object self) -> py::tuple {
-    return SpanToTuple(self.buf()->buffer()->on_device_shape().dimensions());
-  });
-  type.attr("dtype") = property_readonly([](PyBuffer::object self) {
-    PrimitiveType primitive =
-        self.buf()->buffer()->on_device_shape().element_type();
-    return PrimitiveTypeToDtype(primitive).value();
-  });
+  type.attr("shape") =
+      property_readonly([](PyBuffer::object self) -> py::tuple {
+        return SpanToTuple(self.buf()->ifrt_array()->shape().dims());
+      });
+  type.attr("dtype") =
+      property_readonly([](PyBuffer::object self) -> StatusOr<py::dtype> {
+        TF_ASSIGN_OR_RETURN(
+            auto primitive_type,
+            ifrt::ToPrimitiveType(self.buf()->ifrt_array()->dtype()));
+        return PrimitiveTypeToDtype(primitive_type);
+      });
   type.attr("size") =
       property_readonly([](PyBuffer::object self) -> StatusOr<int64_t> {
         return self.buf()->size();
@@ -666,15 +722,6 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       py::is_method(type));
   type.attr("delete") = py::cpp_function(
       [](PyBuffer::object self) { self.buf()->Delete(); }, py::is_method(type));
-  type.attr("block_host_until_ready") = py::cpp_function(
-      [](PyBuffer::object self) {
-        // TODO(phawkins): remove 3 months after the release of jaxlib >= 0.3.2.
-        PythonDeprecationWarning(
-            "block_host_until_ready() on a JAX array object is deprecated, use "
-            "block_until_ready() instead.");
-        return self.buf()->BlockHostUntilReady();
-      },
-      py::is_method(type));
   type.attr("is_ready") = py::cpp_function(
       [](PyBuffer::object self) { return self.buf()->IsReady(); },
       py::is_method(type));
@@ -735,6 +782,16 @@ Status PyBuffer::RegisterTypes(py::module& m) {
   py::implicitly_convertible<std::vector<PyBuffer::object>, PyShardedBuffer>();
 
   return OkStatus();
+}
+
+StatusOr<ifrt::DType> ToIfRtDType(py::dtype dtype) {
+  TF_ASSIGN_OR_RETURN(auto primitive_type, DtypeToPrimitiveType(dtype));
+  return ifrt::ToDType(primitive_type);
+}
+
+StatusOr<py::dtype> ToPybind11DType(ifrt::DType dtype) {
+  TF_ASSIGN_OR_RETURN(auto primitive_type, ifrt::ToPrimitiveType(dtype));
+  return PrimitiveTypeToDtype(primitive_type);
 }
 
 }  // namespace xla

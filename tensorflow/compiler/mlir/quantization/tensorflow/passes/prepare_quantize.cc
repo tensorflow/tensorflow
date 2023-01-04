@@ -52,6 +52,9 @@ namespace quant {
 
 namespace {
 
+using QuantMethod =
+    tensorflow::quantization::QuantizationMethod::ExperimentalMethod;
+
 // Applies prepare quantization on the model in TF dialect. This pass runs
 // before the quantization pass and propagate the quantization parameters
 // across ops. This step is necessary for post-training quantization and also
@@ -73,10 +76,11 @@ class PrepareQuantizePass
     quant_specs_.inference_type = tensorflow::DT_QINT8;
   }
 
-  explicit PrepareQuantizePass(QuantizationMethod quantization_method) {
+  explicit PrepareQuantizePass(QuantMethod quantization_method) {
     quant_specs_.inference_type = tensorflow::DT_QINT8;
     enable_post_training_quantize_ =
-        (quantization_method == QuantizationMethod::kPostTrainingQuantization);
+        (quantization_method ==
+         tensorflow::quantization::QuantizationMethod::STATIC_RANGE);
   }
 
   PrepareQuantizePass(const PrepareQuantizePass& other) {
@@ -204,9 +208,8 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
         if (!min_max.first.has_value() || !min_max.second.has_value()) return;
 
         TypeAttr params = quant::GetQuantizedTypeAttr(
-            builder, input_type,
-            builder.getF64FloatAttr(min_max.first.getValue()),
-            builder.getF64FloatAttr(min_max.second.getValue()),
+            builder, input_type, builder.getF64FloatAttr(min_max.first.value()),
+            builder.getF64FloatAttr(min_max.second.value()),
             /*quant_dim=*/-1, num_bits, narrow_range, is_signed);
         builder.setInsertionPoint(block, insertion_point);
         auto q_op = builder.create<quantfork::QuantizeCastOp>(
@@ -389,7 +392,7 @@ void PrepareQuantizePass::runOnOperation() {
 
   // During the legalization, unsigned quantized type is used, so we have to
   // convert all of them to signed.
-  RewritePatternSet patterns(&getContext());
+  RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
   patterns.add<quant::ConvertUnsignedToSigned<quantfork::QuantizeCastOp>>(ctx);
   // Convert quant stats to int8 quantization parameters.
@@ -416,7 +419,7 @@ void PrepareQuantizePass::runOnOperation() {
 
 // Creates an instance of the TensorFlow dialect PrepareQuantize pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
-    QuantizationMethod quantization_method) {
+    QuantMethod quantization_method) {
   return std::make_unique<PrepareQuantizePass>(quantization_method);
 }
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/tsl/distributed_runtime/call_options.h"
 #include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/tsl/distributed_runtime/preemption/preemption_notifier.h"
+#include "tensorflow/tsl/lib/monitoring/gauge.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -41,6 +43,23 @@ constexpr char kPreemptionNoticeKey[] = "RECEIVED_PREEMPTION_NOTICE";
 constexpr char kPreemptionCounterDirKey[] = "PREEMPTION_CURRENT_COUNTER/";
 constexpr char kPreemptionBarrier[] = "PREEMPTION_SYNC_BARRIER";
 constexpr absl::Duration kPreemptionBarrierTimeout = absl::Minutes(3);
+
+auto* sync_usage_metric = monitoring::Gauge<bool, 0>::New(
+    "/coordination_service/preempt_manager/reached_sync_point_usage",
+    "Records if preempt sync manager's ReachSyncPoint() was called at least "
+    "once.");
+
+auto* notified_metric = monitoring::Gauge<bool, 0>::New(
+    "/coordination_service/preempt_manager/notified",
+    "Records receipt of preemption notification.");
+
+auto* set_sync_point_metric = monitoring::Gauge<bool, 0>::New(
+    "/coordination_service/preempt_manager/set_sync_point",
+    "Records that sync point is set.");
+
+auto* reached_sync_point_metric = monitoring::Gauge<bool, 0>::New(
+    "/coordination_service/preempt_manager/reached_sync_point",
+    "Records that sync point is reached.");
 
 // Only start protocol if death time is within `kProtocolDuration`, so that we
 // don't synchronize too early.
@@ -118,13 +137,15 @@ Status PreemptionSyncManagerImpl::Initialize(
           // its being destructed.
           if (errors::IsCancelled(death_time.status())) {
             LOG(INFO) << "Preemption sync protocol cancelled by notifier: "
-                      << death_time.status();
+                      << death_time.status()
+                      << ". This is expected during program shutdown.";
           } else {
             LOG(ERROR) << "Error from preemption notifier: "
                        << death_time.status();
           }
           return;
         }
+        notified_metric->GetCell()->Set(true);
         // Notify coordination service about preemption notice.
         const Status s = agent->InsertKeyValue(kPreemptionNoticeKey,
                                                absl::FormatTime(*death_time));
@@ -142,12 +163,16 @@ Status PreemptionSyncManagerImpl::Initialize(
         if (errors::IsCancelled(status_or_death_time.status())) {
           // The agent cancels pending GetKeyValue RPCs because of shutdown,
           // so simply log and return.
-          LOG(INFO) << "Cancelled call to retrive preemption notice.";
+          LOG(INFO) << "Cancelled call to retrieve preemption notice. This is "
+                       "expected upon program shutdown.";
           return;
         } else if (!status_or_death_time.ok()) {
-          LOG(ERROR) << "Failed to retrieve preemption notice from "
-                        "coordination service: "
-                     << status_or_death_time.status();
+          LOG(WARNING)
+              << "Failed to retrieve preemption notice from "
+                 "coordination service: "
+              << status_or_death_time.status()
+              << ". This is only expected if one of the tasks is unhealthy."
+                 " Check the logs for the actual root cause.";
           // Notify other tasks to not wait at the barrier. Note:
           // CancelPreemptionBarrier() cannot be used because this may be
           // triggered after preemption sync manager has been destroyed.
@@ -172,9 +197,6 @@ Status PreemptionSyncManagerImpl::Initialize(
           CancelPreemptionBarrier();
           return;
         }
-
-        LOG(INFO) << "Received preemption notice with death time: "
-                  << death_time;
 
         // Trigger protocol in a separate thread: compute max call counter.
         sync_protocol_thread_ = absl::WrapUnique(env_->StartThread(
@@ -232,7 +254,7 @@ void PreemptionSyncManagerImpl::ComputeSyncCallCounter(absl::Time death_time) {
   StatusOr<std::vector<KeyValueEntry>> all_counters =
       agent_->GetKeyValueDir(kPreemptionCounterDirKey);
   if (!all_counters.ok()) {
-    LOG(ERROR) << "Preemption sync failed - unable to retrieve call counters : "
+    LOG(ERROR) << "Preemption sync failed - unable to retrieve call counters: "
                << all_counters.status();
     return;
   }
@@ -261,6 +283,7 @@ void PreemptionSyncManagerImpl::ComputeSyncCallCounter(absl::Time death_time) {
   // 6. Set sync point to be the next possible call counter of the fastest task.
   preemption_sync_counter_ = max_counter + 1;
   LOG(INFO) << "Preemption sync counter is set: " << preemption_sync_counter_;
+  set_sync_point_metric->GetCell()->Set(true);
 }
 
 void PreemptionSyncManagerImpl::CancelPreemptionBarrier() {
@@ -272,6 +295,8 @@ void PreemptionSyncManagerImpl::CancelPreemptionBarrier() {
 }
 
 bool PreemptionSyncManagerImpl::ReachedSyncPoint(int step_counter) {
+  // Record that this API was called at least once.
+  sync_usage_metric->GetCell()->Set(true);
   // Note: if a preemption notice has been received and ComputeSyncCallCounter()
   // is ongoing , this method will be blocked until it acquires the lock. This
   // prevents updates to `call_counter_` while `preemption_sync_counter_` is
@@ -282,8 +307,12 @@ bool PreemptionSyncManagerImpl::ReachedSyncPoint(int step_counter) {
   VLOG(3) << "Current call counter: " << call_counter_
           << ", Preemption sync point: " << preemption_sync_counter_;
 
-  // Check if we have reached the sync point.
-  return preemption_sync_counter_ == call_counter_;
+  const bool reached_sync_point = preemption_sync_counter_ == call_counter_;
+  if (reached_sync_point) {
+    // Record that this job reached the sync point.
+    reached_sync_point_metric->GetCell()->Set(true);
+  }
+  return reached_sync_point;
 }
 }  // namespace
 std::unique_ptr<PreemptionSyncManager> CreatePreemptionSyncManager() {

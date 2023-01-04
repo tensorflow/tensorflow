@@ -22,10 +22,10 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
 #include "tensorflow/core/framework/typed_allocator.h"
@@ -43,9 +43,9 @@ limitations under the License.
 
 namespace tsl {
 namespace {
+using stream_executor::DeviceIdUtil;
 using stream_executor::GPUMachineManager;
 using tensorflow::BinSummary;
-using tensorflow::DeviceIdUtil;
 using tensorflow::DeviceMemAllocator;
 using tensorflow::GPUBFCAllocator;
 using tensorflow::GPUOptions;

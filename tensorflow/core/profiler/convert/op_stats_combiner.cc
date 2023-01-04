@@ -90,7 +90,6 @@ void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
     dst->set_replica_count(std::max(src.replica_count(), dst->replica_count()));
     dst->set_num_cores_per_replica(
         std::max(src.num_cores_per_replica(), dst->num_cores_per_replica()));
-    *dst->mutable_topology() = src.topology();
     *dst->mutable_system_topology() = src.system_topology();
   } else if (dst->device_type().empty()) {
     dst->set_device_type(src.device_type());
@@ -108,6 +107,12 @@ void CombinePerfEnv(const PerfEnv& src, PerfEnv* dst) {
   dst->set_peak_tera_flops_per_second(src.peak_tera_flops_per_second());
   dst->set_peak_hbm_bw_giga_bytes_per_second(
       src.peak_hbm_bw_giga_bytes_per_second());
+  if (src.peak_bws_giga_bytes_per_second_size() > 0) {
+    dst->add_peak_bws_giga_bytes_per_second(
+        src.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_ALL));
+    dst->add_peak_bws_giga_bytes_per_second(
+        src.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_HBM_RW));
+  }
   dst->set_ridge_point(src.ridge_point());
 }
 

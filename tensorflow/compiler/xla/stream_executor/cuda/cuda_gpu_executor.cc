@@ -502,7 +502,8 @@ port::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                                  const BlockDim& block_dims,
                                  const KernelBase& kernel,
                                  const KernelArgsArrayBase& args) {
-  CHECK_EQ(kernel.Arity(), args.number_of_arguments());
+  CHECK_EQ(kernel.Arity() + (args.number_of_shared_bytes() > 0),
+           args.number_of_arguments());
   CUstream custream = AsGpuStreamValue(stream);
   const GpuKernel* cuda_kernel = AsGpuKernel(&kernel);
   CUfunction cufunc = cuda_kernel->AsGpuFunctionHandle();

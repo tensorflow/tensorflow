@@ -34,18 +34,19 @@ class AMDGPUCompiler : public GpuCompiler {
   ~AMDGPUCompiler() override {}
 
   Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      HloModule* hlo_module, se::CudaComputeCapability cuda_compute_capability,
       se::DeviceMemoryAllocator* device_allocator) override;
 
   Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator) override;
+      se::DeviceMemoryAllocator* device_allocator,
+      const GpuTargetConfig& gpu_target_config) override;
 
   GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) override;
 
   StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
-      GpuVersion gpu_version, int device_ordinal, bool relocatable,
+      GpuVersion gpu_version, bool relocatable,
       const HloModule* debug_module) override;
 
  private:

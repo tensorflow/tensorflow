@@ -47,16 +47,20 @@ func.func @cwise_expr(%a: tensor<?x1024x1024xf32>, %b: tensor<?x1024x1024xf32>,
 // CHECK-SAME:      to (%[[A_D0]], %[[C1024]], %[[C1024]])
 // CHECK-SAME:      step (%[[C1]], %[[C4]], %[[C8]])
 // CHECK-SAME:      distribution ("test")
-// CHECK-DAG:     %[[TILE:.*]] = gml_st.tile [%[[I]], %[[J]], %[[K]]] [1, 4, 8] [1, 1, 1]
-// CHECK-DAG:     %[[A_SUB:.*]] = gml_st.materialize %[[A]][%[[TILE]]]
-// CHECK-DAG:     %[[B_SUB:.*]] = gml_st.materialize %[[B]][%[[TILE]]]
-// CHECK-DAG:     %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
+// CHECK-DAG:     %[[A_SUB:.*]] = gml_st.materialize %[[A]]
+// CHECK-SAME:      [%[[I]], %[[J]], %[[K]]] [1, 4, 8] [1, 1, 1]
+// CHECK-DAG:     %[[B_SUB:.*]] = gml_st.materialize %[[B]]
+// CHECK-SAME:      [%[[I]], %[[J]], %[[K]]] [1, 4, 8] [1, 1, 1]
+// CHECK-DAG:     %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]]
+// CHECK-SAME:      [%[[I]], %[[J]], %[[K]]] [1, 4, 8] [1, 1, 1]
 // CHECK-DAG:     %[[AB_SUB:.*]] = linalg.generic 
 // CHECK-SAME:        ins(%[[A_SUB]], %[[B_SUB]] : tensor<1x4x8xf32>, tensor<1x4x8xf32>) 
 // CHECK-SAME:        outs(%[[INIT_SUB]] : tensor<1x4x8xf32>)
-// CHECK-DAG:     %[[C_SUB:.*]] = gml_st.materialize %[[C]][%[[TILE]]]
+// CHECK-DAG:     %[[C_SUB:.*]] = gml_st.materialize %[[C]]
+// CHECK-SAME:      [%[[I]], %[[J]], %[[K]]] [1, 4, 8] [1, 1, 1]
 // CHECK-DAG:     %[[ABC_SUB:.*]] = linalg.generic
 // CHECK-SAME:        ins(%[[AB_SUB]], %[[C_SUB]] : tensor<1x4x8xf32>, tensor<1x4x8xf32>) 
 // CHECK-SAME:        outs(%[[INIT_SUB]] : tensor<1x4x8xf32>)
+// CHECK-DAG:     %[[TILE:.*]] = gml_st.tile [%[[I]], %[[J]], %[[K]]] [1, 4, 8] [1, 1, 1]
 // CHECK:         gml_st.set_yield %[[ABC_SUB]] into %[[INIT]][%[[TILE]]]
 // CHECK:       return %[[ABC]]

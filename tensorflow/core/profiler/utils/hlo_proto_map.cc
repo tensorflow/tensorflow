@@ -156,6 +156,16 @@ std::vector<absl::string_view> HloProtoMap::GetSortedModuleListByHeapTraceSize()
   return module_list;
 }
 
+absl::StatusOr<const xla::HloProto*> HloProtoMap::GetHloProtoByProgramId(
+    uint64_t program_id) const {
+  auto iter = hlo_protos_by_program_id_.find(program_id);
+  if (iter != hlo_protos_by_program_id_.end()) {
+    return iter->second;
+  }
+  return absl::NotFoundError(
+      absl::StrCat("Program id: ", program_id, " is not found."));
+}
+
 absl::StatusOr<const xla::HloProto*> HloProtoMap::GetHloProtoByModuleName(
     absl::string_view module_name) const {
   auto iter = hlo_protos_by_name_.find(module_name);

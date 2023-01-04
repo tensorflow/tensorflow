@@ -134,7 +134,6 @@ cc_library(
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/core:protos_all_cc",
     ] + tsl_grpc_cc_dependencies() + external_deps(),
     alwayslink = 1,
 )

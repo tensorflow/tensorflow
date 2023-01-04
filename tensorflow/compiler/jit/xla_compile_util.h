@@ -31,6 +31,12 @@ enum class DeviceCompileMode {
   kAsync,
 };
 
+enum class DeviceCompileState {
+  kUncompiled,
+  kCompiling,
+  kCompiled,
+};
+
 // Creates a single-node graph using the specified `node_def` as the only op
 // apart from the arg and retval nodes corresponding to `args` and
 // `result_types` respectively.
@@ -38,6 +44,7 @@ StatusOr<std::unique_ptr<Graph>> CreateSingleOpGraph(
     const NodeDef& node_def, absl::Span<const XlaArgument> args,
     absl::Span<const DataType> result_types);
 
+bool UsePjRtForSingleDeviceCompilation();
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_XLA_COMPILE_UTIL_H_

@@ -415,9 +415,13 @@ bool HloDataflowAnalysis::Phi(
     PrimitiveType ty = shape.element_type();
     bool is_array = shape.IsArray();
     absl::c_for_each(inputs, [&](const InstructionValueSet* input) {
-      DCHECK(ty == input->shape().element_type() &&
-             (!is_array || ShapeUtil::ElementsIn(shape) ==
-                               ShapeUtil::ElementsIn(input->shape())));
+      DCHECK(
+          ty == input->shape().element_type() &&
+          (!is_array ||
+           ShapeUtil::ElementsIn(shape) ==
+               ShapeUtil::ElementsIn(input->shape()) ||
+           ShapeUtil::ArraySize(shape) == ShapeUtil::ArraySize(input->shape())))
+          << shape.ToString() << " vs." << input->shape().ToString();
     });
   }
 
@@ -1835,7 +1839,26 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(
     }
     return in_place_pairs;
   } else if (instruction->opcode() == HloOpcode::kFusion) {
-    return GetFusionInstructionInPlaceInputOutputPairs(instruction);
+    const auto& aliasing_pairs =
+        Cast<HloFusionInstruction>(instruction)->output_to_operand_aliasing();
+    // WARNING: The users of fusion's output_to_operand_aliasing should be aware
+    // that the annotated output-operand-aliasing pairs should not conflict with
+    // those discovered by GetFusionInstructionInPlaceInputOutputPairs.
+    // TODO (b/259460539): Make sure the annotated and discovered pairs do not
+    // conflict (possibly through implementing a new pass)
+    auto in_place_pairs =
+        GetFusionInstructionInPlaceInputOutputPairs(instruction);
+    if (!aliasing_pairs.empty()) {
+      for (const auto& pair : aliasing_pairs) {
+        ShapeIndex output_shape_index = pair.first;
+        int64_t operand_index = pair.second.first;
+        ShapeIndex operand_shape_index = pair.second.second;
+        in_place_pairs.push_back(
+            {HloOperandIndex{operand_index, {operand_shape_index}},
+             output_shape_index});
+      }
+    }
+    return in_place_pairs;
   }
 
   return {};

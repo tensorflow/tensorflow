@@ -107,7 +107,7 @@ extern "C" void _mlir_ciface_tf_report_error(void* op_kernel_ctx,
   }
   auto* ctx = static_cast<tensorflow::OpKernelContext*>(op_kernel_ctx);
   ctx->CtxFailureWithWarning(
-      tensorflow::Status{ConvertAttrToEnumValue(symbol.getValue()), msg});
+      tensorflow::Status{ConvertAttrToEnumValue(symbol.value()), msg});
 }
 
 static void ReportError(void* op_kernel_ctx, ErrorCode error_code,

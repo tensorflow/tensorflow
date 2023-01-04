@@ -21,7 +21,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 
 
-def sparse_batch(input_dataset, batch_size, row_shape, name=None):
+def _sparse_batch(input_dataset, batch_size, row_shape, name=None):
   return _DenseToSparseBatchDataset(input_dataset, batch_size, row_shape, name)
 
 

@@ -373,7 +373,7 @@ region_cond5 {
 // CHECK-NEXT:        mhlo.return %[[CMP]] : tensor<i1>
 // CHECK-NEXT:    } do {
 // CHECK-NEXT:        %[[TUPLE:.*]] = mhlo.tuple %[[ITER_ARG_1]], %[[ITER_ARG_2]] : tuple<tensor<i32>, tensor<i32>>
-// CHECK-NEXT:        %[[CUSTOMCALL:.*]] = "mhlo.custom_call"(%[[ITER_ARG_1]], %[[TUPLE]]) [[CONFIG:.*]] : (tensor<i32>, tuple<tensor<i32>, tensor<i32>>) -> tuple<tensor<i32>, tensor<i32>>
+// CHECK-NEXT:        %[[CUSTOMCALL:.*]] = mhlo.custom_call @foo(%[[ITER_ARG_1]], %[[TUPLE]]) [[CONFIG:.*]] : (tensor<i32>, tuple<tensor<i32>, tensor<i32>>) -> tuple<tensor<i32>, tensor<i32>>
 // CHECK-NEXT:        %[[GTE1:.*]] = mhlo.get_tuple_element %[[CUSTOMCALL]][0] : (tuple<tensor<i32>, tensor<i32>>) -> tensor<i32>
 // CHECK-NEXT:        %[[GTE2:.*]] = mhlo.get_tuple_element %[[CUSTOMCALL]][1] : (tuple<tensor<i32>, tensor<i32>>) -> tensor<i32>
 // CHECK-NEXT:        mhlo.return %[[GTE1]], %[[GTE2]] : tensor<i32>, tensor<i32>

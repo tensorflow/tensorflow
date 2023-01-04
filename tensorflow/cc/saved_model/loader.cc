@@ -65,8 +65,8 @@ auto* load_latency_by_stage = monitoring::Sampler<2>::New(
         "model_path",
         "stage",
     },
-    // Scale of 10, power of 1.8 with bucket count 33 (~20 minutes).
-    monitoring::Buckets::Exponential(10, 1.8, 33));
+    // Scale of 10, power of 1.8 with bucket count 37 (~258 minutes).
+    monitoring::Buckets::Exponential(10, 1.8, 37));
 
 constexpr char kLoadAttemptFail[] = "fail";
 constexpr char kLoadAttemptSuccess[] = "success";
@@ -301,7 +301,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
   auto fingerprint_proto =
       saved_model::fingerprinting::ReadSavedModelFingerprint(export_dir);
   if (fingerprint_proto.ok()) {
-    // Set gauge cell with graph_def_checksum.
+    // Set gauge cell with saved_model_checksum.
     metrics::SavedModelReadFingerprint().Set(
         std::to_string(fingerprint_proto->saved_model_checksum()));
   }

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
@@ -91,10 +92,8 @@ ENTRY main {
   // Stream executor is not passed as an option.
   GpuTargetConfig gpu_target_config;
   gpu_target_config.gpu_device_info = GetGpuDeviceInfo(stream_exec);
-  gpu_target_config.cuda_compute_capability = cuda_compute_capability;
-  gpu_target_config.rocm_compute_capability = rocm_compute_capability;
+  gpu_target_config.gpu_version = cuda_compute_capability;
   gpu_target_config.platform_name = stream_exec->platform()->Name();
-  gpu_target_config.device_ordinal = stream_exec->device_ordinal();
 
   AotCompilationOptions aot_options(compiler.PlatformId());
   aot_options.set_target_config(gpu_target_config);

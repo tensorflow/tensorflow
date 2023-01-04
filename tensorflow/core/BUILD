@@ -69,6 +69,7 @@ load(
     "if_ios",
     "if_libtpu",
     "if_mobile",
+    "if_nccl",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -79,7 +80,7 @@ load(
     "tf_opts_nortti_if_lite_protos",
     "transitive_hdrs",
 )
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "if_nccl", "tensorflow_opensource_extra_deps", "tf_monitoring_framework_deps", "tf_selective_registration_deps")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "tensorflow_opensource_extra_deps", "tf_monitoring_framework_deps", "tf_selective_registration_deps")
 
 # For platform specific build config
 load(
@@ -88,7 +89,6 @@ load(
     "tf_additional_test_deps",
     "tf_dtensor_tpu_dependencies",
     "tf_jspb_proto_library",
-    "tf_kernel_tests_linkstatic",
     "tf_lib_proto_parsing_deps",
     "tf_portable_deps_no_runtime",
     "tf_portable_proto_lib",
@@ -115,7 +115,7 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        ":dependency_whitelist",
+        ":dependency_allowlist",
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
     ],
@@ -127,7 +127,7 @@ package(
 )
 
 package_group(
-    name = "dependency_whitelist",
+    name = "dependency_allowlist",
     packages = [
         "//learning/freud/topic_models/tensorflow/...",
         "//learning/infra/mira/...",
@@ -1095,7 +1095,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":portable_tensorflow_lib_lite",
-        ":protos_all_cc_impl",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:portable_tensorflow_kernels",
         "//third_party/eigen3",
         "@com_google_protobuf//:protobuf",
@@ -1785,6 +1785,7 @@ tf_cuda_library(
         ":function_ops_op_lib",
         ":functional_grad",
         ":functional_ops_op_lib",
+        "//tensorflow/core/common_runtime:stats_publisher_interface",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/kernels:required",
     ]),
@@ -1929,61 +1930,6 @@ tf_cc_test(
         ":test",
         ":test_main",
         "@com_google_absl//absl/memory",
-    ],
-)
-
-tf_cc_tests(
-    name = "core_higher_level_tests",
-    size = "small",
-    srcs = [
-        "//tensorflow/core/example:feature_util_test.cc",
-        "//tensorflow/core/graph:algorithm_test.cc",
-        "//tensorflow/core/graph:control_flow_test.cc",
-        "//tensorflow/core/graph:costmodel_test.cc",
-        "//tensorflow/core/graph:edgeset_test.cc",
-        "//tensorflow/core/graph:graph_def_builder_test.cc",
-        "//tensorflow/core/graph:graph_partition_test.cc",
-        "//tensorflow/core/graph:graph_test.cc",
-        "//tensorflow/core/graph:node_builder_test.cc",
-        "//tensorflow/core/graph:optimizer_cse_test.cc",
-        "//tensorflow/core/graph:subgraph_test.cc",
-        "//tensorflow/core/graph:tensor_id_test.cc",
-        "//tensorflow/core/graph:validate_test.cc",
-        "//tensorflow/core/util/sparse:higher_level_tests_group",
-    ],
-    linkopts = select({
-        "//tensorflow:macos": ["-headerpad_max_install_names"],
-        "//conditions:default": [],
-    }),
-    linkstatic = tf_kernel_tests_linkstatic(),
-    deps = [
-        ":core",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session_internal",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":ops",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/cc:function_ops",
-        "//tensorflow/cc:ops",
-        "//tensorflow/cc:scope",
-        "//tensorflow/cc:sendrecv_ops",
-        "//tensorflow/cc:while_loop",
-        "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/platform:regexp",
-        "//tensorflow/core/util:protos_test_cc",
-        "//third_party/eigen3",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -272,11 +272,13 @@ def _binary_assert_doc(sym, test_var):
   return _decorator
 
 
-def _binary_assert_doc_v2(sym):
+def _binary_assert_doc_v2(sym, opname, test_var):
   """Common docstring for v2 assert_* ops that compare two tensors element-wise.
 
   Args:
     sym: Binary operation symbol, i.e. "=="
+    opname: Name for the symbol, i.e. "assert_equal"
+    test_var: A number used in the docstring example
 
   Returns:
     Decorator that adds the appropriate docstring to the function for
@@ -292,7 +294,6 @@ def _binary_assert_doc_v2(sym):
     Returns:
       A version of `func` with documentation attached.
     """
-    opname = func.__name__
 
     func.__doc__ = """
     Assert the condition `x {sym} y` holds element-wise.
@@ -304,11 +305,30 @@ def _binary_assert_doc_v2(sym):
     If `x` {sym} `y` does not hold, `message`, as well as the first `summarize`
     entries of `x` and `y` are printed, and `InvalidArgumentError` is raised.
 
+    When using inside `tf.function`, this API takes effects during execution.
+    It's recommended to use this API with `tf.control_dependencies` to
+    ensure the correct execution order.
+
+    In the following example, without `tf.control_dependencies`, errors may
+    not be raised at all.
+    Check `tf.control_dependencies` for more details.
+
+    >>> def check_size(x):
+    ...   with tf.control_dependencies([
+    ...       tf.debugging.{opname}(tf.size(x), {test_var},
+    ...                       message='Bad tensor size')]):
+    ...     return x
+
+    >>> check_size(tf.ones([2, 3], tf.float32))
+    Traceback (most recent call last):
+       ...
+    InvalidArgumentError: ...
+
     Args:
       x:  Numeric `Tensor`.
       y:  Numeric `Tensor`, same dtype as and broadcastable to `x`.
-      message: A string to prefix to the default message.
-      summarize: Print this many entries of each tensor.
+      message: A string to prefix to the default message. (optional)
+      summarize: Print this many entries of each tensor. (optional)
       name: A name for this operation (optional).  Defaults to "{opname}".
 
     Returns:
@@ -324,7 +344,7 @@ def _binary_assert_doc_v2(sym):
         `x == y` is False. The check can be performed immediately during eager
         execution or if `x` and `y` are statically known.
     """.format(
-        sym=sym, opname=opname)
+        sym=sym, opname=opname, test_var=test_var)
     return func
 
   return _decorator
@@ -739,7 +759,7 @@ def assert_non_positive(x, data=None, summarize=None, message=None, name=None): 
 @tf_export('debugging.assert_equal', 'assert_equal', v1=[])
 @dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
-@_binary_assert_doc_v2('==')
+@_binary_assert_doc_v2('==', 'assert_equal', 3)
 def assert_equal_v2(x, y, message=None, summarize=None, name=None):
   return assert_equal(x=x, y=y, summarize=summarize, message=message, name=name)
 
@@ -760,7 +780,7 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):  # p
 @tf_export('debugging.assert_none_equal', v1=[])
 @dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
-@_binary_assert_doc_v2('!=')
+@_binary_assert_doc_v2('!=', 'assert_none_equal', 6)
 def assert_none_equal_v2(x, y, summarize=None, message=None, name=None):
   return assert_none_equal(x=x, y=y, summarize=summarize, message=message,
                            name=name)
@@ -919,7 +939,7 @@ def assert_near(
 @tf_export('debugging.assert_less', 'assert_less', v1=[])
 @dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
-@_binary_assert_doc_v2('<')
+@_binary_assert_doc_v2('<', 'assert_less', 3)
 def assert_less_v2(x, y, message=None, summarize=None, name=None):
   return assert_less(x=x, y=y, summarize=summarize, message=message, name=name)
 
@@ -936,7 +956,7 @@ def assert_less(x, y, data=None, summarize=None, message=None, name=None):
 @tf_export('debugging.assert_less_equal', v1=[])
 @dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
-@_binary_assert_doc_v2('<=')
+@_binary_assert_doc_v2('<=', 'assert_less_equal', 3)
 def assert_less_equal_v2(x, y, message=None, summarize=None, name=None):
   return assert_less_equal(x=x, y=y,
                            summarize=summarize, message=message, name=name)
@@ -955,7 +975,7 @@ def assert_less_equal(x, y, data=None, summarize=None, message=None, name=None):
 @tf_export('debugging.assert_greater', 'assert_greater', v1=[])
 @dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
-@_binary_assert_doc_v2('>')
+@_binary_assert_doc_v2('>', 'assert_greater', 9)
 def assert_greater_v2(x, y, message=None, summarize=None, name=None):
   return assert_greater(x=x, y=y, summarize=summarize, message=message,
                         name=name)
@@ -973,7 +993,7 @@ def assert_greater(x, y, data=None, summarize=None, message=None, name=None):  #
 @tf_export('debugging.assert_greater_equal', v1=[])
 @dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
-@_binary_assert_doc_v2('>=')
+@_binary_assert_doc_v2('>=', 'assert_greater_equal', 9)
 def assert_greater_equal_v2(x, y, message=None, summarize=None, name=None):
   return assert_greater_equal(x=x, y=y, summarize=summarize, message=message,
                               name=name)

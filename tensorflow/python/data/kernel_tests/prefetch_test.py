@@ -23,6 +23,7 @@ from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
+from tensorflow.python.data.ops import prefetch_op
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
@@ -52,7 +53,7 @@ class PrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
               buffer_size=[-1, None, 0, 42], slack_period=[1, 8])))
   def testPrefetchWithSlack(self, buffer_size, slack_period):
     dataset = dataset_ops.Dataset.range(100)
-    dataset = dataset_ops.PrefetchDataset(
+    dataset = prefetch_op._PrefetchDataset(  # pylint: disable=protected-access
         dataset, buffer_size, slack_period=slack_period)
     self.assertDatasetProduces(dataset, expected_output=range(100))
 

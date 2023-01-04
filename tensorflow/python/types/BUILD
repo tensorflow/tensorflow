@@ -31,7 +31,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     visibility = [
         "//tensorflow:__subpackages__",
-        "//tensorflow:types_whitelist",
+        "//tensorflow:types_allowlist",
     ],
     deps = [
         ":doc_typealias",

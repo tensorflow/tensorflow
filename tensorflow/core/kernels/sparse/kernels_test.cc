@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace {
@@ -71,6 +73,29 @@ TEST(SparseTensorToCSRSparseMatrix, BatchConversion) {
                                                         0, 0, 0, 0,  //
                                                         0, 1, 1, 1}));
   test::ExpectTensorEqual<int32>(csr_col_ind, test::AsTensor<int32>({0, 3, 1}));
+}
+
+TEST(SparseTensorToCSRSparseMatrix, InvalidBatchThrowsIllegalArgument) {
+  const auto indices =
+      test::AsTensor<int64_t>({0, 0, 0,  //
+                               4, 2, 3,  // Batch out of bounds.
+                               2, 0, 1},
+                              TensorShape({3, 3}));
+  Tensor batch_ptr(DT_INT32, {4});
+  Tensor csr_col_ind(DT_INT32, {3});
+  // row pointers have size = batch_size * (num_rows + 1) = 3 * 4 = 12
+  Tensor csr_row_ptr(DT_INT32, {12});
+  test::FillFn<int32>(&csr_row_ptr, [](int unused) { return 0; });
+
+  functor::SparseTensorToCSRSparseMatrixCPUFunctor coo_to_csr;
+  EXPECT_THAT(
+      coo_to_csr(3 /* batch_size */, 3 /* num_rows */,
+                 indices.template matrix<int64_t>(), batch_ptr.vec<int32>(),
+                 csr_row_ptr.vec<int32>(), csr_col_ind.vec<int32>()),
+      tsl::testing::StatusIs(
+          tsl::error::Code::INVALID_ARGUMENT,
+          ::testing::ContainsRegex(
+              "Batch index .* is outside of valid batch range")));
 }
 
 }  // namespace

@@ -1,0 +1,11 @@
+// Test only XNNPack delegate settings file.
+//
+// This file follows the TFLiteSettings structure in the schema of the generated
+// flatbuffer, which is based on the proto file:
+// tensorflow/lite/experimental/acceleration/configuration/configuration.proto
+{
+  "delegate": "XNNPACK",
+  "xnnpack_settings": {
+    "num_threads": 5
+  }
+}

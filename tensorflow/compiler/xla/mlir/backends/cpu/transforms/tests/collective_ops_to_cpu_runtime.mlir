@@ -48,3 +48,23 @@ func.func @all_reduce(%arg0: memref<32xf32, #map>, %arg1: memref<32xf32>) {
 //       CHECK: func.func private @xla.cpu.all_reduce(
 //  CHECK-SAME:     memref<32xf32>, memref<32xf32>)
 //  CHECK-SAME:     attributes {rt.custom_call = "xla.cpu.all_reduce"}
+
+
+// -----
+
+func.func @collective_permute(%arg0: memref<16x8xf32>, %arg1: memref<16x8xf32>) {
+  "xla_cpu.collective_permute"(%arg0, %arg1) {
+    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>,
+    channel_handle = 42 : i64
+  } : (memref<16x8xf32>, memref<16x8xf32>) -> ()
+  func.return
+}
+
+// CHECK-LABEL: @collective_permute
+//  CHECK-SAME:   %[[ARG0:.*]]: memref<16x8xf32>,
+//  CHECK-SAME:   %[[ARG1:.*]]: memref<16x8xf32>
+//       CHECK: call @xla.cpu.collective_permute(%[[ARG0]], %[[ARG1]])
+//  CHECK-SAME:   channel_handle = 42
+//  CHECK-SAME:   source_target_pairs = dense<
+//       CHECK: func.func private @xla.cpu.collective_permute(
+//  CHECK-SAME:     attributes {rt.custom_call = "xla.cpu.collective_permute"}

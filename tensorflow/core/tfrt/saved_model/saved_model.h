@@ -65,8 +65,6 @@ inline bool operator==(const TensorSpec& a, const TensorSpec& b) {
 namespace internal {
 
 struct Signature {
-  std::vector<tensorflow::Tensor> captures;
-
   // The following three fields should have the same size.
   std::vector<std::string> input_names;
   std::vector<TensorSpec> input_specs;
@@ -123,6 +121,11 @@ class SavedModel {
     // If true, we'll attempt to find MLArchive within the given loading path.
     // If not found, will use the path as a normal SavedModel directory.
     bool maybe_load_from_mla = false;
+
+    // If true, the lazy loading path will use tfrt_stub::GraphExecutor.
+    //
+    // TODO(b/216379787): Remove this option once b/239749833 is unblocked.
+    bool lazy_loading_use_graph_executor = false;
 
     GraphExecutionOptions graph_execution_options;
   };
@@ -279,15 +282,6 @@ class SavedModelImpl final : public SavedModel {
   GetOrCreateLoadingResult(const RunOptions& run_options,
                            absl::Span<const std::string> names)
       TF_LOCKS_EXCLUDED(loading_result_cache_mu_);
-
-  // Runs `func` with the given inputs, and outputs the result.
-  tensorflow::Status RunInternal(const RunOptions& run_options,
-                                 absl::string_view signature_name,
-                                 const tfrt::Function& func,
-                                 absl::Span<const tensorflow::Tensor> inputs,
-                                 absl::Span<const tensorflow::Tensor> captures,
-                                 std::vector<tensorflow::Tensor>* outputs,
-                                 tfrt::ResourceContext* resource_context);
 
   Options options_;
   // `meta_graph_def_` only contains metadata of the model. The graph_def field

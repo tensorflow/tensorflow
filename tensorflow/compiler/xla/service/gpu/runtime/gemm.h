@@ -24,11 +24,11 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Keep GemmConfigs for all gemm/matmul instances in the executable.
-class GemmConfigs : public runtime::StateVector<GemmConfig> {};
-
 // Registers XLA Gpu runtime Gemm# custom calls.
 void RegisterGemmCustomCalls(runtime::DirectCustomCallRegistry& registry);
+
+// Keep GemmConfigs for all gemm/matmul instances in the executable.
+class GemmConfigs : public runtime::StateVector<GemmConfig> {};
 
 }  // namespace gpu
 }  // namespace xla

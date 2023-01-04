@@ -45,6 +45,9 @@ namespace mlir {
 namespace TFL {
 namespace common {
 
+// Returns true if the `op` is a constant-like op or produces none type.
+bool IsConstantOrNone(Operation* op);
+
 // Computes the list of Value(s) referenced by Subgraph Operations that are
 // not defined within the Subgraph. Any such Value(s)
 // are validly in-scope for the initial Operation. They must be either

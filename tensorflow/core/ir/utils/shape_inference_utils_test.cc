@@ -14,7 +14,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "llvm/ADT/ArrayRef.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -22,7 +21,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/ir/dialect.h"
-#include "tensorflow/core/ir/importexport/convert_tensor.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 #include "tensorflow/core/platform/test.h"
@@ -86,10 +84,7 @@ class ShapeInferenceTest : public ::testing::Test {
       for (int i = 0; i < op.getNumResults() - 1; ++i) {
         ShapedType shape = op.getResultTypes()[i].cast<ShapedType>();
         EXPECT_EQ(shape.hasRank(), info[i].hasRank());
-        if (shape.hasRank())
-          EXPECT_EQ(
-              shape.getShape(),
-              llvm::makeArrayRef(ConvertTFShapeToMlir(info[i].getDims())));
+        if (shape.hasRank()) EXPECT_EQ(shape.getShape(), info[i].getDims());
         if (check_type)
           EXPECT_EQ(shape.getElementType(), info[i].getElementType());
       }

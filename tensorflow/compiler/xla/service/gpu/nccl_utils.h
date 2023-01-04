@@ -30,7 +30,11 @@ limitations under the License.
 
 // Common place for all collective thunks to include nccl/rccl headers.
 #if TENSORFLOW_USE_ROCM
+#if (TF_ROCM_VERSION >= 50200)
 #include "rocm/include/rccl/rccl.h"
+#else
+#include "rocm/include/rccl.h"
+#endif
 #else
 #include "third_party/nccl/nccl.h"
 #endif

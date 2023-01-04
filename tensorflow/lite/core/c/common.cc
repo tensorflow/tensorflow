@@ -105,9 +105,13 @@ void TfLiteTensorDataFree(TfLiteTensor* t) {
       t->allocation_type == kTfLitePersistentRo) {
     if (t->data.raw) {
 #ifdef TF_LITE_TENSORFLOW_PROFILER
+      tflite::PauseHeapMonitoring(/*pause=*/true);
       tflite::OnTfLiteTensorDealloc(t);
 #endif
       free(t->data.raw);
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+      tflite::PauseHeapMonitoring(/*pause=*/false);
+#endif
     }
   }
   t->data.raw = nullptr;
@@ -221,6 +225,9 @@ void TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
       tensor->allocation_type != kTfLitePersistentRo) {
     return;
   }
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+  tflite::PauseHeapMonitoring(/*pause=*/true);
+#endif
   size_t alloc_bytes = num_bytes;
   // TODO(b/145340303): Tensor data should be aligned.
 #ifdef TFLITE_KERNEL_USE_XNNPACK
@@ -247,6 +254,9 @@ void TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
     tflite::OnTfLiteTensorAlloc(tensor, alloc_bytes);
 #endif
   }
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+  tflite::PauseHeapMonitoring(/*pause=*/false);
+#endif
   tensor->bytes = num_bytes;
 }
 
@@ -301,7 +311,7 @@ const char* TfLiteTypeGetName(TfLiteType type) {
 
 TfLiteDelegate TfLiteDelegateCreate() { return TfLiteDelegate{}; }
 
-struct TfLiteOpaqueDelegateStruct* TfLiteOpaqueDelegateCreate(
+TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
     const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder) {
   if (!opaque_delegate_builder) return nullptr;
 
@@ -309,11 +319,10 @@ struct TfLiteOpaqueDelegateStruct* TfLiteOpaqueDelegateCreate(
   result->opaque_delegate_builder = new TfLiteOpaqueDelegateBuilder{};
   *(result->opaque_delegate_builder) = *opaque_delegate_builder;
 
-  return reinterpret_cast<struct TfLiteOpaqueDelegateStruct*>(result);
+  return reinterpret_cast<TfLiteOpaqueDelegate*>(result);
 }
 
-void TfLiteOpaqueDelegateDelete(
-    struct TfLiteOpaqueDelegateStruct* opaque_delegate) {
+void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* opaque_delegate) {
   if (!opaque_delegate) return;
 
   const TfLiteDelegate* tflite_delegate =

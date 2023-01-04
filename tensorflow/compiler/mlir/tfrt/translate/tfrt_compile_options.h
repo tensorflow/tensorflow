@@ -28,7 +28,9 @@ enum class TfrtDeviceInfraTarget {
   kTpurt,           // Target TPURT dialect and kernels.
   kTfFallback,      // Target TPU kernels in TF Fallback.
   kBridgeFallback,  // TPU support but choose kTpurt or kTfFallback depending on
-                    // whether the graph has unsupported feature in Bridge
+                    // whether the graph has unsupported feature in Bridge.
+  kGpu,             // Target GPU specific compiler passes and runtime
+                    // initializations.
 };
 
 std::ostream& operator<<(std::ostream& os, TfrtDeviceInfraTarget device_target);
@@ -41,9 +43,6 @@ struct TfrtCompileOptions {
 
   // Enable compiler optimization in TFRT dialect.
   bool enable_optimizer = true;
-
-  // This is deprecated and has no effect.
-  bool enable_native_ops = false;
 
   // If true, run grappler passes before compiling.
   bool enable_grappler = true;
@@ -126,6 +125,10 @@ struct TfrtCompileOptions {
 
   // Whether to compile to sync TFRT dialect.
   bool compile_to_sync_tfrt_dialect = false;
+
+  // Whether to use bridge for GPU.
+  // TODO(b/260915352): Remove the flag and default to using bridge.
+  bool use_bridge_for_gpu = false;
 };
 
 std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options);

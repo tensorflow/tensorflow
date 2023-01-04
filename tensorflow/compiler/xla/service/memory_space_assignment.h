@@ -1128,6 +1128,9 @@ struct Options {
   // An optional memory space assignment autotuning config, which is used
   // to sort allocated buffers.
   std::optional<std::vector<uint64_t>> autotuning_config = std::nullopt;
+
+  // Scales effective bandwidth for async copies. Valid range is (0, 1].
+  float async_copy_bandwidth_scaling_factor = 1.0;
 };
 
 // A struct representing an asynchronous copy with its logical start and end

@@ -6,10 +6,6 @@ load(
     "tf_cuda_cc_test",
 )
 load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
-)
-load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
@@ -60,7 +56,7 @@ cc_library(
         "nn_grad.h",
     ],
     visibility = [
-        "//tensorflow:internal",
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
     ],
     deps = [
         "//tensorflow/c/eager:abstract_tensor_handle",
@@ -119,7 +115,6 @@ tf_cuda_cc_test(
         "custom_gradient_test.cc",
     ],
     args = ["--heap_check="],  # TODO(b/174752220): Remove
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/c:tf_status_helper",
@@ -145,10 +140,7 @@ filegroup(
         "nn_grad.h",
         "not_differentiable.h",
     ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
-    ],
+    visibility = ["//tensorflow/python:__pkg__"],
 )
 
 cc_library(
@@ -157,7 +149,7 @@ cc_library(
     srcs = ["grad_test_helper.cc"],
     hdrs = ["grad_test_helper.h"],
     visibility = [
-        "//tensorflow:internal",
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
     ],
     deps = [
         "//tensorflow/c/eager:gradient_checker",
@@ -176,7 +168,6 @@ tf_cuda_cc_test(
         "nn_grad_test.cc",
     ],
     args = ["--heap_check="],  # TODO(b/174752220): Remove
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156,
     deps = [
         ":grad_test_helper",
@@ -203,7 +194,6 @@ tf_cuda_cc_test(
         "math_grad_test.cc",
     ],
     args = ["--heap_check="],  # TODO(b/174752220): Remove
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156,
     deps = [
         ":grad_test_helper",
@@ -230,7 +220,6 @@ tf_cuda_cc_test(
         "array_grad_test.cc",
     ],
     args = ["--heap_check="],  # TODO(b/174752220): Remove
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156,
     deps = [
         ":grad_test_helper",

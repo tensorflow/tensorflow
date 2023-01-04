@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_OP_STATS_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_OP_STATS_H_
 
-#include "tensorflow/core/platform/status.h"
+#include <vector>
+
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
@@ -44,7 +45,7 @@ void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
 
 // Populates PerfEnv.
 PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
-                    double peak_hbm_bw_giga_bytes_per_second);
+                    std::vector<double> peak_bws);
 
 // Extracts PerfEnv from XPlane stats.
 PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane);

@@ -929,8 +929,16 @@ tf_module {
     argspec: "args=[\'input\', \'filter_sizes\', \'out_backprop\', \'strides\', \'padding\', \'use_cudnn_on_gpu\', \'explicit_paddings\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'[]\', \'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
+    name: "Conv2DBackpropFilterV2"
+    argspec: "args=[\'input\', \'filter\', \'out_backprop\', \'strides\', \'padding\', \'use_cudnn_on_gpu\', \'explicit_paddings\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'[]\', \'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
+  }
+  member_method {
     name: "Conv2DBackpropInput"
     argspec: "args=[\'input_sizes\', \'filter\', \'out_backprop\', \'strides\', \'padding\', \'use_cudnn_on_gpu\', \'explicit_paddings\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'[]\', \'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
+  }
+  member_method {
+    name: "Conv2DBackpropInputV2"
+    argspec: "args=[\'input\', \'filter\', \'out_backprop\', \'strides\', \'padding\', \'use_cudnn_on_gpu\', \'explicit_paddings\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'[]\', \'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "Conv3D"
@@ -5311,6 +5319,10 @@ tf_module {
   member_method {
     name: "UniformQuantize"
     argspec: "args=[\'input\', \'scales\', \'zero_points\', \'Tout\', \'quantization_min_val\', \'quantization_max_val\', \'quantization_axis\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+  }
+  member_method {
+    name: "UniformQuantizedAdd"
+    argspec: "args=[\'lhs\', \'rhs\', \'lhs_scales\', \'lhs_zero_points\', \'rhs_scales\', \'rhs_zero_points\', \'output_scales\', \'output_zero_points\', \'lhs_quantization_min_val\', \'lhs_quantization_max_val\', \'rhs_quantization_min_val\', \'rhs_quantization_max_val\', \'output_quantization_min_val\', \'output_quantization_max_val\', \'lhs_quantization_axis\', \'rhs_quantization_axis\', \'output_quantization_axis\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'-1\', \'-1\', \'None\'], "
   }
   member_method {
     name: "UniformQuantizedClipByValue"

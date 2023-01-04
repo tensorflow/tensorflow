@@ -19,9 +19,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/Dialect/Utils/StaticValueUtils.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -46,19 +49,19 @@ class LegalizeCollectiveOpsPass
 
 Optional<xla_cpu::ReductionKind> MatchReductionComputation(Region& region) {
   if (!region.hasOneBlock()) {
-    return None;
+    return llvm::None;
   }
 
   auto ret = dyn_cast<mhlo::ReturnOp>(region.front().getTerminator());
   if (!ret || ret->getNumOperands() != 1) {
-    return None;
+    return llvm::None;
   }
 
   auto computation = ret.getOperand(0).getDefiningOp();
   if (computation->getNumOperands() != 2 ||
       computation->getOperand(0) != region.front().getArgument(0) ||
       computation->getOperand(1) != region.front().getArgument(1)) {
-    return None;
+    return llvm::None;
   }
 
   if (isa<mhlo::AddOp>(computation)) {
@@ -74,8 +77,9 @@ Optional<xla_cpu::ReductionKind> MatchReductionComputation(Region& region) {
     return xla_cpu::ReductionKind::ALL_REDUCE_MAX;
   }
 
-  if (!computation->getOperandTypes().front().isInteger(1)) {
-    return None;
+  auto type = computation->getOperandTypes().front().dyn_cast<ShapedType>();
+  if (!type || !type.getElementType().isInteger(1)) {
+    return llvm::None;
   }
 
   if (isa<mhlo::AndOp>(computation)) {
@@ -85,7 +89,14 @@ Optional<xla_cpu::ReductionKind> MatchReductionComputation(Region& region) {
     return xla_cpu::ReductionKind::ALL_REDUCE_MAX;
   }
 
-  return None;
+  return llvm::None;
+}
+
+// Returns a `tensor.empty` with the same shape as `tensor`.
+Value CreateEmptyLike(OpBuilder& b, Location loc, Value tensor) {
+  auto ty = tensor.getType().cast<ShapedType>();
+  auto sizes = tensor::getMixedSizes(b, loc, tensor);
+  return b.create<tensor::EmptyOp>(loc, sizes, ty.getElementType());
 }
 
 class AllReduceLowering : public OpRewritePattern<mhlo::AllReduceOp> {
@@ -99,11 +110,9 @@ class AllReduceLowering : public OpRewritePattern<mhlo::AllReduceOp> {
     }
 
     SmallVector<Value> dsts;
-    // TODO(jreiffers): Support dynamic dims.
-    for (auto ty : op->getResultTypes()) {
-      auto shaped_ty = ty.cast<ShapedType>();
-      dsts.push_back(rewriter.create<tensor::EmptyOp>(
-          op.getLoc(), shaped_ty.getShape(), shaped_ty.getElementType()));
+    for (auto operand : op->getOperands()) {
+      // The operands and results have the same shapes.
+      dsts.push_back(CreateEmptyLike(rewriter, op.getLoc(), operand));
     }
 
     rewriter.replaceOpWithNewOp<xla_cpu::AllReduceOp>(
@@ -145,9 +154,8 @@ class CollectivePermuteLowering
 
   LogicalResult matchAndRewrite(mhlo::CollectivePermuteOp op,
                                 PatternRewriter& rewriter) const override {
-    // TODO(jreiffers): Support dynamic dims.
-    Value dst = rewriter.create<tensor::EmptyOp>(
-        op.getLoc(), op.getType().getShape(), op.getType().getElementType());
+    // The result of collective_permute has the same shape as the operand.
+    Value dst = CreateEmptyLike(rewriter, op.getLoc(), op.getOperand());
     rewriter.replaceOpWithNewOp<xla_cpu::CollectivePermuteOp>(
         op, op->getResultTypes(), op->getOperand(0), dst,
         op.getSourceTargetPairsAttr(),
@@ -163,13 +171,88 @@ class AllToAllLowering : public OpRewritePattern<mhlo::AllToAllOp> {
 
   LogicalResult matchAndRewrite(mhlo::AllToAllOp op,
                                 PatternRewriter& rewriter) const override {
-    // TODO(jreiffers): Support dynamic dims.
-    Value dst = rewriter.create<tensor::EmptyOp>(
-        op.getLoc(), op.getType().getShape(), op.getType().getElementType());
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    SmallVector<Value> dsts;
+
+    if (!op.getConcatDimensionAttr()) {
+      for (auto operand : op->getOperands()) {
+        // The operands and results of TupleAllToAll the same shapes.
+        dsts.push_back(CreateEmptyLike(rewriter, op.getLoc(), operand));
+      }
+    } else {
+      auto sizes =
+          getAsValues(b, b.getLoc(),
+                      tensor::getMixedSizes(b, op.getLoc(), op->getOperand(0)));
+      uint64_t split_dimension = *op.getSplitDimension();
+      Value split_count = b.create<arith::ConstantIndexOp>(*op.getSplitCount());
+      sizes[split_dimension] = b.createOrFold<arith::DivUIOp>(
+          b.getIndexType(), sizes[split_dimension], split_count);
+      uint64_t concat_dimension = *op.getConcatDimension();
+      sizes[concat_dimension] =
+          b.createOrFold<arith::MulIOp>(sizes[concat_dimension], split_count);
+
+      dsts.push_back(rewriter.create<tensor::EmptyOp>(
+          op.getLoc(), getAsOpFoldResult(sizes),
+          op->getResultTypes()[0].cast<ShapedType>().getElementType()));
+    }
+
     rewriter.replaceOpWithNewOp<xla_cpu::AllToAllOp>(
-        op, op->getResultTypes(), op->getOperand(0), dst,
+        op, op->getResultTypes(), op->getOperands(), dsts,
         op.getReplicaGroupsAttr(), op.getSplitDimensionAttr(),
         op.getConcatDimensionAttr(), op.getSplitCountAttr());
+    return success();
+  };
+};
+
+class FftLowering : public OpRewritePattern<mhlo::FftOp> {
+  using OpRewritePattern<mhlo::FftOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::FftOp op,
+                                PatternRewriter& rewriter) const override {
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    // TODO(jreiffers): Support dynamic sizes.
+    auto dst = b.create<tensor::EmptyOp>(op.getLoc(), op.getType().getShape(),
+                                         op.getType().getElementType());
+
+    auto lengths =
+        llvm::to_vector<3>(op.getFftLengthAttr().getValues<int64_t>());
+    rewriter.replaceOpWithNewOp<xla_cpu::FftOp>(
+        op, op->getResultTypes(), op->getOperand(0), dst,
+        static_cast<int32_t>(op.getFftType()),
+        rewriter.getI64ArrayAttr(lengths));
+    return success();
+  };
+};
+
+class OutfeedLowering : public OpRewritePattern<mhlo::OutfeedOp> {
+  using OpRewritePattern<mhlo::OutfeedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::OutfeedOp op,
+                                PatternRewriter& rewriter) const override {
+    SmallVector<Attribute> result_types;
+    for (auto operand : op.getInputs()) {
+      result_types.push_back(
+          TypeAttr::get(operand.getType().cast<ShapedType>().getElementType()));
+    }
+    rewriter.create<xla_cpu::OutfeedOp>(
+        op.getLoc(), llvm::None, op.getInputs(), op.getOutfeedConfigAttr(),
+        ArrayAttr::get(op->getContext(), result_types));
+
+    // Replacing the op with the token.
+    rewriter.replaceOp(op, op.getToken());
+    return success();
+  };
+};
+
+class AddDependencyLowering : public OpRewritePattern<mhlo::AddDependencyOp> {
+  using OpRewritePattern<mhlo::AddDependencyOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::AddDependencyOp op,
+                                PatternRewriter& rewriter) const override {
+    rewriter.replaceOpWithNewOp<xla_cpu::AddDependencyOp>(
+        op, op->getResultTypes(), op->getOperands());
     return success();
   };
 };
@@ -183,7 +266,8 @@ void LegalizeCollectiveOpsPass::runOnOperation() {
   patterns
       .insert<AllReduceLowering, CollectivePermuteLowering, AllToAllLowering,
               IdLowering<mhlo::PartitionIdOp, xla_cpu::PartitionIdOp>,
-              IdLowering<mhlo::ReplicaIdOp, xla_cpu::ReplicaIdOp>>(ctx);
+              IdLowering<mhlo::ReplicaIdOp, xla_cpu::ReplicaIdOp>, FftLowering,
+              OutfeedLowering, AddDependencyLowering>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     return signalPassFailure();

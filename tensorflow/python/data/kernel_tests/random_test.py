@@ -17,7 +17,7 @@ import warnings
 
 from absl.testing import parameterized
 
-from tensorflow.python.compat import compat as tf_compat
+from tensorflow.python import tf2
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -39,9 +39,9 @@ class RandomTest(test_base.DatasetTestBase, parameterized.TestCase):
     random_seed.set_random_seed(global_seed)
     ds = dataset_ops.Dataset.random(seed=local_seed).take(10)
 
-    output_1 = self.getDatasetOutput(ds)
+    output_1 = self.getDatasetOutput(ds, requires_initialization=True)
     ds = self.graphRoundTrip(ds)
-    output_2 = self.getDatasetOutput(ds)
+    output_2 = self.getDatasetOutput(ds, requires_initialization=True)
 
     if expect_determinism:
       self.assertEqual(output_1, output_2)
@@ -52,30 +52,30 @@ class RandomTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertNotEqual(output_1, output_2)
 
   @combinations.generate(
-      combinations.times(
-          test_base.v1_only_combinations(),
-          combinations.combine(rerandomize=[None, True, False])))
-  def testRerandomizeEachIterationIgnored(self, rerandomize):
+      combinations.times(test_base.graph_only_combinations(),
+                         combinations.combine(rerandomize=[None, True, False])))
+  def testRerandomizeEachIterationEpochsIgnored(self, rerandomize):
     with warnings.catch_warnings(record=True) as w:
       dataset = dataset_ops.Dataset.random(
           seed=42,
           rerandomize_each_iteration=rerandomize,
           name="random").take(10)
-    if rerandomize is not None:
-      found_warning = False
-      for warning in w:
-        if ("The `rerandomize_each_iteration` argument is ignored" in
-            str(warning)):
-          found_warning = True
-          break
-      self.assertTrue(found_warning)
-    first_epoch = self.getDatasetOutput(dataset)
-    second_epoch = self.getDatasetOutput(dataset)
+    first_epoch = self.getDatasetOutput(dataset, requires_initialization=True)
+    second_epoch = self.getDatasetOutput(dataset, requires_initialization=True)
+    if rerandomize:
+      if not tf2.enabled() and rerandomize:
+        found_warning = False
+        for warning in w:
+          if ("In TF 1, the `rerandomize_each_iteration=True` option" in
+              str(warning)):
+            found_warning = True
+            break
+        self.assertTrue(found_warning)
 
     self.assertEqual(first_epoch, second_epoch)
 
   @combinations.generate(
-      combinations.times(test_base.v2_eager_only_combinations(),
+      combinations.times(test_base.eager_only_combinations(),
                          combinations.combine(rerandomize=[None, True, False])))
   def testRerandomizeEachIterationEpochs(self, rerandomize):
     dataset = dataset_ops.Dataset.random(
@@ -83,20 +83,20 @@ class RandomTest(test_base.DatasetTestBase, parameterized.TestCase):
     first_epoch = self.getDatasetOutput(dataset)
     second_epoch = self.getDatasetOutput(dataset)
 
-    if (rerandomize is not None or tf_compat.forward_compatible(2022, 12, 17)):
+    if rerandomize:
       self.assertEqual(first_epoch == second_epoch,
                        not rerandomize or rerandomize is None)
     else:
       self.assertEqual(first_epoch, second_epoch)
 
   @combinations.generate(
-      combinations.times(test_base.v2_eager_only_combinations(),
+      combinations.times(test_base.default_test_combinations(),
                          combinations.combine(rerandomize=[None, True, False])))
   def testRerandomizeRepeatEpochs(self, rerandomize):
     dataset = dataset_ops.Dataset.random(
         seed=42, rerandomize_each_iteration=rerandomize, name="random").take(10)
     dataset = dataset.repeat(2)
-    next_element = self.getNext(dataset)
+    next_element = self.getNext(dataset, requires_initialization=True)
     first_epoch = []
     for _ in range(10):
       first_epoch.append(self.evaluate(next_element()))
@@ -104,7 +104,7 @@ class RandomTest(test_base.DatasetTestBase, parameterized.TestCase):
     for _ in range(10):
       second_epoch.append(self.evaluate(next_element()))
 
-    if (rerandomize is not None or tf_compat.forward_compatible(2022, 12, 17)):
+    if rerandomize:
       self.assertEqual(first_epoch == second_epoch,
                        not rerandomize or rerandomize is None)
     else:
@@ -127,7 +127,7 @@ class RandomTest(test_base.DatasetTestBase, parameterized.TestCase):
     first_epoch = self.getDatasetOutput(dataset)
     second_epoch = self.getDatasetOutput(dataset)
 
-    if (rerandomize is not None or tf_compat.forward_compatible(2022, 12, 17)):
+    if rerandomize:
       self.assertEqual(first_epoch == second_epoch,
                        not rerandomize or rerandomize is None)
     else:
@@ -137,7 +137,8 @@ class RandomTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testName(self):
     dataset = dataset_ops.Dataset.random(
         seed=42, name="random").take(1).map(lambda _: 42)
-    self.assertDatasetProduces(dataset, [42])
+    self.assertDatasetProduces(dataset, expected_output=[42],
+                               requires_initialization=True)
 
 
 class RandomCheckpointTest(checkpoint_test_base.CheckpointTestBase,

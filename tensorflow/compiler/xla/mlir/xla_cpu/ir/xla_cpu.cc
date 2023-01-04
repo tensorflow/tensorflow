@@ -22,11 +22,14 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_dialect.cc.inc"
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_enums.cc.inc"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #define GET_ATTRDEF_CLASSES
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu_attrdefs.cc.inc"
 
 namespace mlir {
 namespace xla_cpu {
+
+using ::mlir::mhlo::TokenType;
 
 void XlaCpuDialect::initialize() {
   addOperations<
@@ -38,7 +41,8 @@ void XlaCpuDialect::initialize() {
 
 template <typename Op>
 LogicalResult BufferizeOp(Op op, RewriterBase &rewriter,
-                          const bufferization::BufferizationOptions &options) {
+                          const bufferization::BufferizationOptions &options,
+                          int64_t num_inputs) {
   if (op.getOperands().front().getType().template isa<MemRefType>()) {
     return success();
   }
@@ -54,7 +58,7 @@ LogicalResult BufferizeOp(Op op, RewriterBase &rewriter,
                       op.getOperation()->getAttrs());
   bufferization::replaceOpWithBufferizedValues(
       rewriter, op.getOperation(),
-      llvm::makeArrayRef(new_operands).drop_front(op.getNumOperands() / 2));
+      llvm::makeArrayRef(new_operands).drop_front(num_inputs));
   return success();
 }
 
@@ -80,7 +84,7 @@ SmallVector<OpResult> AllReduceOp::getAliasingOpResult(
 LogicalResult AllReduceOp::bufferize(
     RewriterBase &rewriter,
     const bufferization::BufferizationOptions &options) {
-  return BufferizeOp(*this, rewriter, options);
+  return BufferizeOp(*this, rewriter, options, this->getNumOperands() / 2);
 }
 
 bufferization::BufferRelation AllReduceOp::bufferRelation(
@@ -91,13 +95,39 @@ bufferization::BufferRelation AllReduceOp::bufferRelation(
 LogicalResult CollectivePermuteOp::bufferize(
     RewriterBase &rewriter,
     const bufferization::BufferizationOptions &options) {
-  return BufferizeOp(*this, rewriter, options);
+  return BufferizeOp(*this, rewriter, options, this->getNumOperands() / 2);
 }
 
 LogicalResult AllToAllOp::bufferize(
     RewriterBase &rewriter,
     const bufferization::BufferizationOptions &options) {
-  return BufferizeOp(*this, rewriter, options);
+  return BufferizeOp(*this, rewriter, options, this->getNumOperands() / 2);
+}
+
+LogicalResult FftOp::bufferize(
+    RewriterBase &rewriter,
+    const bufferization::BufferizationOptions &options) {
+  return BufferizeOp(*this, rewriter, options, this->getNumOperands() / 2);
+}
+
+LogicalResult OutfeedOp::bufferize(
+    RewriterBase &rewriter,
+    const bufferization::BufferizationOptions &options) {
+  return BufferizeOp(*this, rewriter, options, this->getNumOperands());
+}
+
+LogicalResult AddDependencyOp::bufferize(
+    RewriterBase &rewriter,
+    const bufferization::BufferizationOptions &options) {
+  FailureOr<Value> maybe_buffer =
+      getBuffer(rewriter, this->getOperand(), options);
+  if (failed(maybe_buffer)) {
+    return rewriter.notifyMatchFailure(*this,
+                                       "failed during bufferizing operand");
+  }
+  bufferization::replaceOpWithBufferizedValues(rewriter, this->getOperation(),
+                                               *maybe_buffer);
+  return success();
 }
 
 }  // namespace xla_cpu

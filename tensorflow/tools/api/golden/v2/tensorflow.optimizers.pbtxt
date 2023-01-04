@@ -5,11 +5,19 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Adafactor"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Adagrad"
     mtype: "<type \'type\'>"
   }
   member {
     name: "Adam"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "AdamW"
     mtype: "<type \'type\'>"
   }
   member {

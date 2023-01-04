@@ -1335,11 +1335,21 @@ int TensorDescriptor::GetLinearIndex(const BHWDC& shape5d, int b, int x, int y,
   }
 }
 
+template <DataType DataTypeT>
 void TensorDescriptor::UploadData(
-    const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src) {
+    const tflite::gpu::Tensor<HWC, DataTypeT>& src) {
   shape_ = BHWDC(1, src.shape.h, src.shape.w, 1, src.shape.c);
   UploadData(src.data.data());
 }
+
+template void TensorDescriptor::UploadData(
+    const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src);
+
+template void TensorDescriptor::UploadData(
+    const tflite::gpu::Tensor<HWC, DataType::BOOL>& src);
+
+template void TensorDescriptor::UploadData(
+    const tflite::gpu::Tensor<HWC, DataType::INT32>& src);
 
 bool TensorDescriptor::SupportsZeroClamp(const Axis& axis,
                                          const GpuInfo& gpu_info) const {
@@ -1594,9 +1604,10 @@ TensorStorageType GetStorageTypeForLinearTensor(const GpuInfo& gpu_info,
   }
 }
 
+template <DataType DataTypeT>
 TensorDescriptor CreateConstantLinearTensorDescriptor(
     DataType data_type, TensorStorageType storage_type,
-    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src) {
+    const tflite::gpu::Tensor<Linear, DataTypeT>& src) {
   TensorDescriptor tensor_desc =
       TensorDescriptor(data_type, storage_type, Layout::LINEAR);
   tensor_desc.SetBHWDCShape(BHWDC(1, 1, 1, 1, src.shape.v));
@@ -1604,13 +1615,38 @@ TensorDescriptor CreateConstantLinearTensorDescriptor(
   return tensor_desc;
 }
 
+template <DataType DataTypeT>
 TensorDescriptor CreateConstantLinearTensorDescriptor(
     const GpuInfo& gpu_info, DataType data_type,
-    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src) {
+    const tflite::gpu::Tensor<Linear, DataTypeT>& src) {
   return CreateConstantLinearTensorDescriptor(
       data_type, GetStorageTypeForLinearTensor(gpu_info, data_type, src.shape),
       src);
 }
+
+template TensorDescriptor CreateConstantLinearTensorDescriptor(
+    DataType data_type, TensorStorageType storage_type,
+    const tflite::gpu::Tensor<Linear, DataType::BOOL>& src);
+
+template TensorDescriptor CreateConstantLinearTensorDescriptor(
+    const GpuInfo& gpu_info, DataType data_type,
+    const tflite::gpu::Tensor<Linear, DataType::BOOL>& src);
+
+template TensorDescriptor CreateConstantLinearTensorDescriptor(
+    DataType data_type, TensorStorageType storage_type,
+    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src);
+
+template TensorDescriptor CreateConstantLinearTensorDescriptor(
+    const GpuInfo& gpu_info, DataType data_type,
+    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src);
+
+template TensorDescriptor CreateConstantLinearTensorDescriptor(
+    DataType data_type, TensorStorageType storage_type,
+    const tflite::gpu::Tensor<Linear, DataType::INT32>& src);
+
+template TensorDescriptor CreateConstantLinearTensorDescriptor(
+    const GpuInfo& gpu_info, DataType data_type,
+    const tflite::gpu::Tensor<Linear, DataType::INT32>& src);
 
 TensorDescriptor CreateConstantHWVec4TensorDescriptor(
     DataType data_type, TensorStorageType storage_type, int width, int height,

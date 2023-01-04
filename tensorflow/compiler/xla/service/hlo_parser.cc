@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/gtl/map_util.h"
+#include "tensorflow/tsl/platform/float8.h"
 
 namespace xla {
 
@@ -2433,12 +2434,24 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
                         &fusion_computation};
       optional<HloInstruction::FusionKind> fusion_kind;
       attrs["kind"] = {/*required=*/true, AttrTy::kFusionKind, &fusion_kind};
+      optional<
+          std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
+          output_to_operand_aliasing;
+      attrs["output_to_operand_aliasing"] = {/*required=*/false,
+                                             AttrTy::kInstructionAliasing,
+                                             &output_to_operand_aliasing};
       if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
         return nullptr;
       }
-      return builder->AddInstruction(HloInstruction::CreateFusion(
+      auto instr = builder->AddInstruction(HloInstruction::CreateFusion(
           *shape, *fusion_kind, operands, *fusion_computation));
+      auto fusion_instr = Cast<HloFusionInstruction>(instr);
+      if (output_to_operand_aliasing.has_value()) {
+        fusion_instr->set_output_to_operand_aliasing(
+            std::move(*output_to_operand_aliasing));
+      }
+      return instr;
     }
     case HloOpcode::kInfeed: {
       optional<std::string> config;
@@ -3316,6 +3329,12 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, double value, int64_t index,
                                       Literal* literal) {
   const Shape& shape = literal->shape();
   switch (shape.element_type()) {
+    case F8E5M2:
+      return SetValueInLiteralHelper<tsl::float8_e5m2>(loc, value, index,
+                                                       literal);
+    case F8E4M3FN:
+      return SetValueInLiteralHelper<tsl::float8_e4m3fn>(loc, value, index,
+                                                         literal);
     case F16:
       return SetValueInLiteralHelper<Eigen::half>(loc, value, index, literal);
     case BF16:
@@ -3458,22 +3477,34 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
       return true;
     }
     auto nan_payload = GetNanPayload(parsed_value_component);
-    if (nan_payload == QuietNanWithoutPayload<double>()) {
-      nan_payload = QuietNanWithoutPayload<LiteralNativeComponentT>();
+    if constexpr (std::is_same<LiteralNativeComponentT,
+                               tsl::float8_e4m3fn>::value) {
+      if (nan_payload != QuietNanWithoutPayload<double>()) {
+        return Error(
+            loc, StrCat("tries to set NaN payload 0x", absl::Hex(nan_payload),
+                        " to a literal in shape ",
+                        ShapeUtil::HumanString(literal->shape()),
+                        " at linear index ", index,
+                        ", but f8e4m3fn does not support payloads"));
+      }
+    } else {
+      if (nan_payload == QuietNanWithoutPayload<double>()) {
+        nan_payload = QuietNanWithoutPayload<LiteralNativeComponentT>();
+      }
+      const auto kLargestPayload = NanPayloadBitMask<LiteralNativeComponentT>();
+      if (nan_payload > kLargestPayload) {
+        return Error(
+            loc, StrCat("tries to set NaN payload 0x", absl::Hex(nan_payload),
+                        " to a literal in shape ",
+                        ShapeUtil::HumanString(literal->shape()),
+                        " at linear index ", index,
+                        ", but the NaN payload is out of range (0x",
+                        absl::Hex(kLargestPayload), ")"));
+      }
+      *literal_value_component = NanWithSignAndPayload<LiteralNativeComponentT>(
+          /*sign=*/std::signbit(static_cast<double>(parsed_value_component)),
+          /*nan_payload=*/nan_payload);
     }
-    const auto kLargestPayload = NanPayloadBitMask<LiteralNativeComponentT>();
-    if (nan_payload > kLargestPayload) {
-      return Error(
-          loc,
-          StrCat("tries to set NaN payload 0x", absl::Hex(nan_payload),
-                 " to a literal in shape ",
-                 ShapeUtil::HumanString(literal->shape()), " at linear index ",
-                 index, ", but the NaN payload is out of range (0x",
-                 absl::Hex(kLargestPayload), ")"));
-    }
-    *literal_value_component = NanWithSignAndPayload<LiteralNativeComponentT>(
-        /*sign=*/std::signbit(static_cast<double>(parsed_value_component)),
-        /*nan_payload=*/nan_payload);
     return true;
   };
   const ParsedElemComponentT parsed_real_value = GetReal(value);
@@ -3759,22 +3790,29 @@ struct MinMaxFiniteValue {
   static T min() { return std::numeric_limits<T>::lowest(); }
 };
 
-template <>
-struct MinMaxFiniteValue<Eigen::half> {
+template <typename T>
+struct MinMaxFiniteValueCustomFloat {
   static double max() {
     // Sadly this is not constexpr, so this forces `value` to be a method.
-    return static_cast<double>(Eigen::NumTraits<Eigen::half>::highest());
+    return static_cast<double>(Eigen::NumTraits<T>::highest());
   }
   static double min() { return -max(); }
 };
 
 template <>
-struct MinMaxFiniteValue<bfloat16> {
-  static double max() {
-    return static_cast<double>(Eigen::NumTraits<Eigen::bfloat16>::highest());
-  }
-  static double min() { return -max(); }
-};
+struct MinMaxFiniteValue<Eigen::half>
+    : MinMaxFiniteValueCustomFloat<Eigen::half> {};
+
+template <>
+struct MinMaxFiniteValue<bfloat16> : MinMaxFiniteValueCustomFloat<bfloat16> {};
+
+template <>
+struct MinMaxFiniteValue<tsl::float8_e5m2>
+    : MinMaxFiniteValueCustomFloat<tsl::float8_e5m2> {};
+
+template <>
+struct MinMaxFiniteValue<tsl::float8_e4m3fn>
+    : MinMaxFiniteValueCustomFloat<tsl::float8_e4m3fn> {};
 
 // MSVC's standard C++ library does not define isnan/isfinite for integer types.
 // To work around that we will need to provide our own.

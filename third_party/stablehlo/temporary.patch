@@ -1,506 +1,257 @@
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo/dialect/StablehloAttrs.td
---- stablehlo/stablehlo/dialect/StablehloAttrs.td
-+++ stablehlo/stablehlo/dialect/StablehloAttrs.td
-@@ -20,7 +20,10 @@
- include "mlir/IR/OpBase.td"
- include "mlir/IR/TensorEncoding.td"
- 
--def StableHLO_Dim : ArrayRefParameter<"int64_t", "Dimension">;
-+def StableHLO_Dim : ArrayRefParameter<"int64_t", "Dimension"> {
-+  let parser = "mlir::stablehlo::parseIntArray($_parser)";
-+  let printer = "mlir::stablehlo::printIntArray($_printer, $_self)";
-+}
- 
- def StableHLO_ScatterDimensionNumbers : AttrDef<StableHLO_Dialect, "ScatterDimensionNumbers"> {
-   let cppNamespace = "::mlir::stablehlo";
-@@ -172,7 +175,7 @@
- 
-     See `HLO_BoundedAttrInterface` for documentation for `bounds`.
-   }];
--  let assemblyFormat = "`<` `bounds` `=` `[` $bounds `]` `>`";
-+  let hasCustomAssemblyFormat = 1;
- }
- 
- // A layout attribute (1D tensor of index type)
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
---- stablehlo/stablehlo/dialect/StablehloOps.cpp
-+++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -182,6 +182,57 @@
-     llvm::function_ref<mlir::InFlightDiagnostic()> emitError) const {
-   return hlo::verifyBounds(
-       getBounds(), RankedTensorType::get(bounds, elementType), emitError);
-+}
-+
-+namespace {
-+
-+void printCommaSeparatedDynamicShapes(AsmPrinter& printer,
-+                                      llvm::ArrayRef<int64_t> shape) {
-+  printer << '[';
-+  auto printIntOrQuestion = [&](int64_t value) {
-+    if (ShapedType::isDynamic(value))
-+      printer << '?';
-+    else
-+      printer << value;
-+  };
-+  llvm::interleaveComma(shape, printer, printIntOrQuestion);
-+  printer << ']';
-+}
-+
-+ParseResult parseCommaSeparatedDynamicShapes(AsmParser& parser,
-+                                             SmallVectorImpl<int64_t>& shape) {
-+  auto parseElt = [&]() -> ParseResult {
-+    if (!parser.parseOptionalQuestion()) {
-+      shape.push_back(ShapedType::kDynamicSize);
-+      return success();
-+    }
-+    return parser.parseInteger(shape.emplace_back());
-+  };
-+  return parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, parseElt);
-+}
-+
-+}  // namespace
-+
-+void TypeExtensionsAttr::print(AsmPrinter& printer) const {
-+  printer << "<bounds = ";
-+  printCommaSeparatedDynamicShapes(printer, getBounds());
-+  printer << ">";
-+}
-+
-+Attribute TypeExtensionsAttr::parse(AsmParser& parser, mlir::Type) {
-+  if (parser.parseLess() || parser.parseKeyword("bounds") ||
-+      parser.parseEqual())
-+    return {};
-+
-+  SmallVector<int64_t> resultBounds;
-+  if (parseCommaSeparatedDynamicShapes(parser, resultBounds)) {
-+    parser.emitError(parser.getCurrentLocation(),
-+                     "failed to parse TypeExtensions parameter 'bounds' which "
-+                     "is to be a `::llvm::ArrayRef<int64_t>`");
-+    return {};
-+  }
-+  if (parser.parseGreater()) return {};
-+  return TypeExtensionsAttr::get(parser.getContext(), resultBounds);
- }
- 
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -65,22 +65,6 @@
+ // Utils for shape functions.
  //===----------------------------------------------------------------------===//
-@@ -4509,6 +4560,21 @@
+ 
+-// WindowDimension described how the kernel window moves across the base area
+-// in a particular dimension.
+-// Describes the windowing in an operation such as convolution.
+-// The window is moved across a base area and for each position of the
+-// window a computation is performed. The field below describes the
+-// window and the movement of the window across a base area.
+-struct WindowDimension {
+-  int64_t size = 0;
+-  int64_t stride = 1;
+-  int64_t paddingLow = 0;
+-  int64_t paddingHigh = 0;
+-  int64_t windowDilation = 1;
+-  int64_t baseDilation = 1;
+-  bool windowReversal = false;
+-};
+-
+ // Checks if the vector `nums` has duplicates.
+ const auto hasDuplicates = [](const ArrayRef<int64_t> nums) {
+   llvm::SmallDenseSet<int64_t> set(nums.begin(), nums.end());
+@@ -107,7 +91,7 @@
+ // type. If 'ignoreFpPrecision' is True, then allow floats with different
+ // precisions while checking element-types.
+ bool compatibleShapeAndElementType(Type type1, Type type2,
+-                                   bool ignoreFpPrecision = false) {
++                                   bool ignoreFpPrecision) {
+   if (failed(verifyCompatibleShape(type1, type2))) return false;
+   return tensorsHaveSameElType(type1.cast<ShapedType>(),
+                                type2.cast<ShapedType>(), ignoreFpPrecision);
+@@ -785,6 +769,17 @@
    return success();
  }
  
-+FailureOr<SmallVector<int64_t>> parseIntArray(AsmParser& parser) {
-+  SmallVector<int64_t> ints;
-+  auto parse =
-+      parser.parseCommaSeparatedList({}, [&] {
-+        ints.emplace_back();
-+        return parser.parseInteger(ints.back());
-+      });
-+  if (!failed(parse)) return ints;
-+  return {{}};
++// Checks if the precision config has a valid size, if provided.
++LogicalResult verifyPrecisionConfig(Optional<Location> loc,
++                                    Optional<ArrayAttr> maybeArrayAttr) {
++  if (!maybeArrayAttr.has_value()) return success();
++  auto arrayAttr = maybeArrayAttr.value();
++  return !arrayAttr || arrayAttr.size() == 2 || arrayAttr.empty()
++             ? success()
++             : emitOptionalError(
++                   loc, "expects precision config to be null or of size 2.");
 +}
 +
-+void printIntArray(AsmPrinter& printer, ArrayRef<int64_t> ints) {
-+  llvm::interleaveComma(ints, printer);
-+}
-+
- /// Parse a custom attribute that resembles a struct of the form
- /// <
- ///   foo = something_parsed_by_custom_parser,
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/dialect/StablehloOps.h
---- stablehlo/stablehlo/dialect/StablehloOps.h
-+++ stablehlo/stablehlo/dialect/StablehloOps.h
-@@ -183,6 +183,9 @@
-                                   DenseIntElementsAttr &rhsDilation,
-                                   DenseElementsAttr &windowReversal);
+ // Verifies the following properties:
+ //  P1. The input, kernel, and output spatial-dimentions are valid.
+ //  P2. Given,
+@@ -805,14 +800,16 @@
+ //          dim(lhs, f) / fgc = dim(rhs, i)
+ //        * dim(rhs, o) (or dim(output, f')) % bgc == 0 and
+ //          dim(rhs, o) (or dim(output, f')) % fgc == 0
++//  P3. Precision config is null, of size 0 or of size 2.
+ LogicalResult verifyConvolutionAttributes(
+-    Value lhs, Value rhs, int64_t inputBatchDimension,
+-    int64_t inputFeatureDimension, ArrayRef<int64_t> inputSpatialDimensions,
++    Optional<Location> location, Value lhs, Value rhs,
++    int64_t inputBatchDimension, int64_t inputFeatureDimension,
++    ArrayRef<int64_t> inputSpatialDimensions,
+     int64_t kernelInputFeatureDimension, int64_t kernelOutputFeatureDimension,
+     ArrayRef<int64_t> kernelSpatialDimensions, int64_t outputBatchDimension,
+     int64_t outputFeatureDimension, ArrayRef<int64_t> outputSpatialDimensions,
+     int64_t featureGroupCount, int64_t batchGroupCount,
+-    Optional<Location> location) {
++    Optional<ArrayAttr> precisionConfig) {
+   // P1.
+   if (failed(isSpatialDimensionsValid(
+           lhs, inputBatchDimension, inputFeatureDimension,
+@@ -892,18 +889,11 @@
+                              "batch_group_count. Got batch_group_count = ",
+                              batchGroupCount, ".");
  
-+// Print and parse IntArrays
-+FailureOr<SmallVector<int64_t>> parseIntArray(AsmParser &parser);
-+void printIntArray(AsmPrinter &printer, ArrayRef<int64_t> ints);
- }  // end namespace stablehlo
- }  // end namespace mlir
- 
-diff --ruN a/stablehlo/stablehlo/tests/infer_stablehlo.mlir b/stablehlo/stablehlo/tests/infer_stablehlo.mlir
---- stablehlo/stablehlo/tests/infer_stablehlo.mlir
-+++ stablehlo/stablehlo/tests/infer_stablehlo.mlir
-@@ -554,7 +554,7 @@
- func.func @tensor_bounds(%arg0: tensor<3x5xf32>, %arg1: tensor<i32>) -> tensor<*xindex> {
-   %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 0 : i64} : (tensor<3x5xf32>, tensor<i32>) -> tensor<*xf32>
- 
--  // CHECK: types0 = tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, -1]>>
-+  // CHECK: types0 = tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, ?]>>
-   %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
-@@ -562,9 +562,9 @@
- // -----
- 
- // CHECK-LABEL: @static_tensor_bounds
--func.func @static_tensor_bounds(%arg0: tensor<?x5xf32, #stablehlo.type_extensions<bounds = [8, -1]>>) -> tensor<*xindex> {
-+func.func @static_tensor_bounds(%arg0: tensor<?x5xf32, #stablehlo.type_extensions<bounds = [8, ?]>>) -> tensor<*xindex> {
-   %bounds = stablehlo.constant dense<8> : tensor<i32>
--  %result = "stablehlo.set_dimension_size"(%arg0, %bounds) {dimension = 0 : i64} : (tensor<?x5xf32, #stablehlo.type_extensions<bounds = [8, -1]>>, tensor<i32>) -> tensor<*xf32>
-+  %result = "stablehlo.set_dimension_size"(%arg0, %bounds) {dimension = 0 : i64} : (tensor<?x5xf32, #stablehlo.type_extensions<bounds = [8, ?]>>, tensor<i32>) -> tensor<*xf32>
- 
-   // CHECK: types0 = tensor<8x5xf32>
-   %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
-@@ -574,8 +574,8 @@
- // -----
- 
- // CHECK-LABEL: @edit_tensor_bounds
--func.func @edit_tensor_bounds(%arg0: tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
--  %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
-+func.func @edit_tensor_bounds(%arg0: tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
-+  %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
- 
-   // CHECK: types0 = tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, 5]>>
-   %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
-@@ -585,10 +585,10 @@
- // -----
- 
- // CHECK-LABEL: @retain_tensor_bounds
--func.func @retain_tensor_bounds(%arg0: tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
--  %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 0 : i64} : (tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
+-  return success();
+-}
 -
--  // CHECK: types0 = tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, -1]>>
-+func.func @retain_tensor_bounds(%arg0: tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
-+  %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 0 : i64} : (tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
+-// Checks if the precision config has a valid size, if provided.
+-LogicalResult verifyPrecisionConfig(Optional<Location> loc,
+-                                    Optional<ArrayAttr> maybeArrayAttr) {
+-  if (!maybeArrayAttr.has_value()) return success();
+-  auto arrayAttr = maybeArrayAttr.value();
+-  return !arrayAttr || arrayAttr.size() == 2 || arrayAttr.empty()
+-             ? success()
+-             : emitOptionalError(
+-                   loc, "expects precision config to be null or of size 2.");
++  // P3.
++  if (failed(verifyPrecisionConfig(location, precisionConfig)))
++    return failure();
 +
-+  // CHECK: types0 = tensor<?x5xf32, #stablehlo.type_extensions<bounds = [3, ?]>>
-   %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
++  return success();
  }
-@@ -596,10 +596,10 @@
- // -----
  
- // CHECK-LABEL: @unknown_bounds
--func.func @unknown_bounds(%arg0: tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
--  %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
+ LogicalResult inferDotShape(RankedTensorType lhs, RankedTensorType rhs,
+@@ -2804,7 +2794,6 @@
+  *  P3. Verify and collect the window atributes.
+  *  P4. Verify precision_config attribute.
+  *  P5. Verify the return shape.
+- *      TODO(b/232574102): Verify the element-type of return-value.
+  */
+ LogicalResult verifyConvolutionOp(
+     Optional<Location> location, Value lhs, Value rhs,
+@@ -2839,11 +2828,11 @@
+ 
+   // P2.
+   if (failed(verifyConvolutionAttributes(
+-          lhs, rhs, inputBatchDimension, inputFeatureDimension,
++          location, lhs, rhs, inputBatchDimension, inputFeatureDimension,
+           inputSpatialDimensions, kernelInputFeatureDimension,
+           kernelOutputFeatureDimension, kernelSpatialDimensions,
+           outputBatchDimension, outputFeatureDimension, outputSpatialDimensions,
+-          featureGroupCount, batchGroupCount, location)))
++          featureGroupCount, batchGroupCount, precisionConfig)))
+     return failure();
+ 
+   if ((size_t)numDims != inputSpatialDimensions.size() + 2)
+@@ -2878,11 +2867,7 @@
+       *rhsDilationOrErr, *windowReversalOrErr, location);
+   if (failed(windowOrErr)) return failure();
+ 
+-  // P3.
+-  if (failed(verifyPrecisionConfig(location, precisionConfig)))
+-    return failure();
 -
--  // CHECK: types0 = tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>
-+func.func @unknown_bounds(%arg0: tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, %arg1: tensor<i32>) -> tensor<*xindex> {
-+  %result = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
+-  // P5.
++  // P4.
+   SmallVector<int64_t> outputDimensions(lhsType.getShape().size(),
+                                         ShapedType::kDynamic);
+ 
+@@ -2920,7 +2905,8 @@
+ }
+ 
+ LogicalResult verifyDotOp(Optional<Location> location, Value lhs, Value rhs,
+-                          Optional<ArrayAttr> precisionConfig, Value result) {
++                          Optional<ArrayAttr> /*precisionConfig*/,
++                          Value result) {
+   auto lhsType = lhs.getType().dyn_cast<RankedTensorType>();
+   auto rhsType = rhs.getType().dyn_cast<RankedTensorType>();
+   auto resultType = result.getType().dyn_cast<RankedTensorType>();
+@@ -2937,7 +2923,7 @@
+         location, "inferred shape '", dimSizesToString(inferredShape), "' ",
+         "is incompatible with return type of operation ", resultType, "");
+ 
+-  return verifyPrecisionConfig(location, precisionConfig);
++  return success();
+ }
+ 
+ LogicalResult verifyDotGeneralOp(Optional<Location> location, Value lhs,
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/dialect/TypeInference.h
+--- stablehlo/stablehlo/dialect/TypeInference.h
++++ stablehlo/stablehlo/dialect/TypeInference.h
+@@ -39,6 +39,83 @@
+                          ArrayRef<int64_t> collapsedSliceDims,
+                          ArrayRef<int64_t> startIndexMap,
+                          int64_t indexVectorDim, SmallVectorImpl<Value>& shape);
 +
-+  // CHECK: types0 = tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, ?]>>
-   %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<*xf32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
-@@ -622,21 +622,21 @@
- // See PairwiseSameOperandAndResultType::inferDimWithBound()
- // CHECK-LABEL: @add_bounds
- func.func @add_bounds(
--  %arg0: tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, -1, -1, -1, 3, 3]>>,
--  %arg1: tensor<3x?x?x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, 4, -1, 3, 3, 4]>>) -> tensor<*xindex> {
-+  %arg0: tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, ?, ?, ?, 3, 3]>>,
-+  %arg1: tensor<3x?x?x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, 4, ?, 3, 3, 4]>>) -> tensor<*xindex> {
-   %result1 = "stablehlo.add"(%arg0, %arg1) : (
--    tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, -1, -1, -1, 3, 3]>>,
--    tensor<3x?x?x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, 4, -1, 3, 3, 4]>>)
-+    tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, ?, ?, ?, 3, 3]>>,
-+    tensor<3x?x?x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, 4, ?, 3, 3, 4]>>)
-     -> tensor<?x?x?x?x?x?x?xf32>
-   %result2 = "stablehlo.add"(%arg1, %arg0) : (
--    tensor<3x?x?x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, 4, -1, 3, 3, 4]>>,
--    tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, -1, -1, -1, 3, 3]>>)
-+    tensor<3x?x?x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, 4, ?, 3, 3, 4]>>,
-+    tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, ?, ?, ?, 3, 3]>>)
-     -> tensor<?x?x?x?x?x?x?xf32>
- 
--  // CHECK: types0 = tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, -1, -1, 3, 3, 3]>>
-+  // CHECK: types0 = tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, ?, ?, 3, 3, 3]>>
-   %1 = "hlo_test_infer.get_return_types"(%result1) : (tensor<?x?x?x?x?x?x?xf32>) -> tensor<*xindex>
- 
--  // CHECK: types0 = tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [-1, -1, -1, -1, 3, 3, 3]>>
-+  // CHECK: types0 = tensor<3x3x3x?x?x?x?xf32, #stablehlo.type_extensions<bounds = [?, ?, ?, ?, 3, 3, 3]>>
-   %2 = "hlo_test_infer.get_return_types"(%result2) : (tensor<?x?x?x?x?x?x?xf32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
-@@ -646,11 +646,11 @@
- // This test covers "Error out" case for type inference of binary op with bounds
- // See PairwiseSameOperandAndResultType::inferDimWithBound()
- func.func @add_bounds_mismatch(
--  %arg0: tensor<3xf32, #stablehlo.type_extensions<bounds = [-1]>>,
-+  %arg0: tensor<3xf32, #stablehlo.type_extensions<bounds = [?]>>,
-   %arg1: tensor<?xf32, #stablehlo.type_extensions<bounds = [2]>>) -> tensor<*xindex> {
-   // expected-error@+1 {{requires compatible types for all operands and results}}
-   %result = "stablehlo.add"(%arg0, %arg1) : (
--    tensor<3xf32, #stablehlo.type_extensions<bounds = [-1]>>,
-+    tensor<3xf32, #stablehlo.type_extensions<bounds = [?]>>,
-     tensor<?xf32, #stablehlo.type_extensions<bounds = [2]>>) -> tensor<?xf32>
-   %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?xf32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
-@@ -682,10 +682,10 @@
- // -----
- 
- // CHECK-LABEL: func @transpose_with_bounds
--func.func @transpose_with_bounds(%arg0: tensor<?x2x?x4xi32, #stablehlo.type_extensions<bounds = [1, -1, 3, -1]>>) -> tensor<*xindex> {
--  %0 = "stablehlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<?x2x?x4xi32, #stablehlo.type_extensions<bounds = [1, -1, 3, -1]>>) -> tensor<*xi32>
--
--  // CHECK: types0 = tensor<2x?x4x?xi32, #stablehlo.type_extensions<bounds = [-1, 1, -1, 3]>>
-+func.func @transpose_with_bounds(%arg0: tensor<?x2x?x4xi32, #stablehlo.type_extensions<bounds = [1, ?, 3, ?]>>) -> tensor<*xindex> {
-+  %0 = "stablehlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<?x2x?x4xi32, #stablehlo.type_extensions<bounds = [1, ?, 3, ?]>>) -> tensor<*xi32>
++// TODO(zhouxin) Remove these utils when all type inference code are integrated
++// And move `WindowDimension` to `TypeInference.cpp`
 +
-+  // CHECK: types0 = tensor<2x?x4x?xi32, #stablehlo.type_extensions<bounds = [?, 1, ?, 3]>>
-   %1 = "hlo_test_infer.get_return_types"(%0) : (tensor<*xi32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
-@@ -693,8 +693,8 @@
- // -----
++bool compatibleShapeAndElementType(Type type1, Type type2,
++                                   bool ignoreFpPrecision = false);
++
++FailureOr<SmallVector<int64_t>> convert1DAttribute(
++    Optional<DenseIntElementsAttr> optionalAttr, Optional<Location> loc,
++    StringRef attrName);
++
++FailureOr<SmallVector<std::pair<int64_t, int64_t>>> convertPaddingAttribute(
++    Optional<DenseIntElementsAttr> optionalAttr, Optional<Location> loc);
++
++// Convert a 1D dense bool attribute to a list of values.
++FailureOr<SmallVector<bool>> convertWindowReversalAttribute(
++    Optional<DenseElementsAttr> optionalAttr, Optional<Location> loc,
++    StringRef attrName);
++
++// WindowDimension described how the kernel window moves across the base area
++// in a particular dimension.
++// Describes the windowing in an operation such as convolution.
++// The window is moved across a base area and for each position of the
++// window a computation is performed. The field below describes the
++// window and the movement of the window across a base area.
++struct WindowDimension {
++  int64_t size = 0;
++  int64_t stride = 1;
++  int64_t paddingLow = 0;
++  int64_t paddingHigh = 0;
++  int64_t windowDilation = 1;
++  int64_t baseDilation = 1;
++  bool windowReversal = false;
++};
++
++FailureOr<SmallVector<WindowDimension>>
++verifyWindowAttributesAndInferWindowDimensions(
++    ArrayRef<int64_t> windowDimensions, ArrayRef<int64_t> windowStrides,
++    ArrayRef<std::pair<int64_t, int64_t>> padding,
++    ArrayRef<int64_t> lhsDilation, ArrayRef<int64_t> rhsDilation,
++    ArrayRef<bool> windowReversal, Optional<Location> loc);
++
++SmallVector<int64_t> inferWindowOutputShape(
++    const ArrayRef<int64_t> baseShape, const ArrayRef<WindowDimension> window);
++
++unsigned potentiallyComplexBitwidth(Type type);
++
++LogicalResult verifyReducerShape(Optional<Location> loc, Block& block,
++                                 ArrayRef<TensorType> inputArgTypes,
++                                 ArrayRef<TensorType> initValueTypes,
++                                 int64_t numInputs,
++                                 ArrayRef<int64_t> allowedDimensions,
++                                 bool allInputsUnranked);
++
++// Verifies replica groups attached to collective communication operations.
++// P1. 'replicaGroups' must be a 2-D tensor.
++// P2. replicaGroups' cannot be empty.
++// P3. If `allGroupsMustHaveSameSize` is true, then each group is of the same
++//     size.
++// P4. All values in `replica_groups` are unique and covers all the values in
++//     the interval [0, N-1], where N is the total number of replica ids.
++// P5. replica group size must be equal to 'expectedGroupSize'.
++LogicalResult verifyReplicaGroups(Optional<Location> location,
++                                  DenseIntElementsAttr replicaGroups,
++                                  bool allGroupsMustHaveSameSize,
++                                  bool useGlobalDeviceIds,
++                                  Optional<size_t> expectedGroupSize);
++
++LogicalResult verifyConvolutionAttributes(
++    Optional<Location> location, Value lhs, Value rhs,
++    int64_t inputBatchDimension, int64_t inputFeatureDimension,
++    ArrayRef<int64_t> inputSpatialDimensions,
++    int64_t kernelInputFeatureDimension, int64_t kernelOutputFeatureDimension,
++    ArrayRef<int64_t> kernelSpatialDimensions, int64_t outputBatchDimension,
++    int64_t outputFeatureDimension, ArrayRef<int64_t> outputSpatialDimensions,
++    int64_t featureGroupCount, int64_t batchGroupCount,
++    Optional<ArrayAttr> precisionConfig);
  
- // CHECK-LABEL: func @slice_with_bounds
--func.func @slice_with_bounds(%arg0: tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [-1, 4, -1]>>) -> tensor<*xindex> {
--  %0 = "stablehlo.slice"(%arg0) {start_indices = dense<[1, 0, 0]> : tensor<3xi64>, limit_indices = dense<[2, 4, 4]> : tensor<3xi64>, strides = dense<[1, 2, 2]> : tensor<3xi64>} : (tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [-1, 4, -1]>>) -> tensor<*xi32>
-+func.func @slice_with_bounds(%arg0: tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [?, 4, ?]>>) -> tensor<*xindex> {
-+  %0 = "stablehlo.slice"(%arg0) {start_indices = dense<[1, 0, 0]> : tensor<3xi64>, limit_indices = dense<[2, 4, 4]> : tensor<3xi64>, strides = dense<[1, 2, 2]> : tensor<3xi64>} : (tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [?, 4, ?]>>) -> tensor<*xi32>
-   // CHECK: types0 = tensor<1x2x2xi32>
-   %1 = "hlo_test_infer.get_return_types"(%0) : (tensor<*xi32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
-@@ -702,9 +702,9 @@
- 
- // -----
- 
--func.func @slice_with_index_larger_than_bound_dim(%arg0: tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [-1, 4, -1]>>) -> tensor<*xindex> {
-+func.func @slice_with_index_larger_than_bound_dim(%arg0: tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [?, 4, ?]>>) -> tensor<*xindex> {
-   // expected-error@+1 {{limit index 5 is larger than dimension bound 4 in dimension 1}}
--  %0 = "stablehlo.slice"(%arg0) {start_indices = dense<[1, 0, 0]> : tensor<3xi64>, limit_indices = dense<[2, 5, 4]> : tensor<3xi64>, strides = dense<[1, 2, 2]> : tensor<3xi64>} : (tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [-1, 4, -1]>>) -> tensor<*xi32>
-+  %0 = "stablehlo.slice"(%arg0) {start_indices = dense<[1, 0, 0]> : tensor<3xi64>, limit_indices = dense<[2, 5, 4]> : tensor<3xi64>, strides = dense<[1, 2, 2]> : tensor<3xi64>} : (tensor<3x?x?xi32, #stablehlo.type_extensions<bounds = [?, 4, ?]>>) -> tensor<*xi32>
-   %1 = "hlo_test_infer.get_return_types"(%0) : (tensor<*xi32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
-@@ -712,26 +712,26 @@
- // -----
- 
- // CHECK-LABEL: @pad_with_bounds
--func.func @pad_with_bounds(%arg0: tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [-1, 3, -1]>>, %arg1: tensor<f16>) -> tensor<*xindex> {
-+func.func @pad_with_bounds(%arg0: tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [?, 3, ?]>>, %arg1: tensor<f16>) -> tensor<*xindex> {
-   %0 = "stablehlo.pad"(%arg0, %arg1) {
-     edge_padding_low = dense<[2, 2, 0]> : tensor<3xi64>,
-     edge_padding_high = dense<[0, 0, 0]> : tensor<3xi64>,
-     interior_padding = dense<[1, 1, 1]> : tensor<3xi64>
--  } : (tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [-1, 3, -1]>>, tensor<f16>) -> tensor<*xf16>
-+  } : (tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [?, 3, ?]>>, tensor<f16>) -> tensor<*xf16>
-   %1 = "hlo_test_infer.get_return_types"(%0) : (tensor<*xf16>) -> tensor<*xindex>
--  // CHECK: types0 = tensor<7x?x?xf16, #stablehlo.type_extensions<bounds = [-1, 7, -1]>>
--  func.return %1 : tensor<*xindex>
+ //===----------------------------------------------------------------------===//
+ // Shape functions for ops.
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
+@@ -1485,14 +1485,6 @@
+ // CHECK-LABEL: func @dot_precision_config
+ func.func @dot_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -> tensor<2x2xi32> {
+   %0 = "stablehlo.dot"(%arg0, %arg1) {precision_config = [#stablehlo<precision HIGH>, #stablehlo<precision HIGHEST>]} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+-  func.return %0: tensor<2x2xi32>
 -}
 -
 -// -----
 -
--func.func @pad_with_negative_inferred_bounds(%arg0: tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [-1, 3, -1]>>, %arg1: tensor<f16>) -> tensor<*xindex> {
-+  // CHECK: types0 = tensor<7x?x?xf16, #stablehlo.type_extensions<bounds = [?, 7, ?]>>
-+  func.return %1 : tensor<*xindex>
-+}
-+
-+// -----
-+
-+func.func @pad_with_negative_inferred_bounds(%arg0: tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [?, 3, ?]>>, %arg1: tensor<f16>) -> tensor<*xindex> {
-   // expected-error@+1 {{Padding result in negative bound for dimension 1}}
-   %0 = "stablehlo.pad"(%arg0, %arg1) {
-     edge_padding_low = dense<[2, -10, 0]> : tensor<3xi64>,
-     edge_padding_high = dense<[0, 0, 0]> : tensor<3xi64>,
-     interior_padding = dense<[1, 1, 1]> : tensor<3xi64>
--  } : (tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [-1, 3, -1]>>, tensor<f16>) -> tensor<*xf16>
-+  } : (tensor<3x?x?xf16, #stablehlo.type_extensions<bounds = [?, 3, ?]>>, tensor<f16>) -> tensor<*xf16>
-   %1 = "hlo_test_infer.get_return_types"(%0) : (tensor<*xf16>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
-@@ -750,13 +750,13 @@
- 
- // CHECK-LABEL: @concat_bounds_c0
- func.func @concat_bounds_c0(
--  %arg0: tensor<5x1xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--  %arg1: tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>)  -> tensor<*xindex> {
-+  %arg0: tensor<5x1xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+  %arg1: tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>)  -> tensor<*xindex> {
-   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
--    tensor<5x1xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>) -> tensor<?x?xi32>
-+    tensor<5x1xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
-   // CHECK: types0 = tensor<5x3xi32>
--  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex> 
-+  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
- 
-@@ -764,19 +764,19 @@
- 
- // CHECK-LABEL: @concat_bounds_c1
- func.func @concat_bounds_c1(
--  %arg0: tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>)  -> tensor<*xindex> {
-+  %arg0: tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>)  -> tensor<*xindex> {
-   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
--    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>) -> tensor<?x?xi32>
-+    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
-   // CHECK: types0 = tensor<5x?xi32>
--  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex> 
-+  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex>
- 
-   %result_swap = "stablehlo.concatenate"(%arg1, %arg0) { dimension = 1 : i64 } : (
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>) -> tensor<?x?xi32>
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
-   // CHECK: types0 = tensor<5x?xi32>
--  %2 = "hlo_test_infer.get_return_types"(%result_swap) : (tensor<?x?xi32>) -> tensor<*xindex> 
-+  %2 = "hlo_test_infer.get_return_types"(%result_swap) : (tensor<?x?xi32>) -> tensor<*xindex>
- 
-   func.return %1 : tensor<*xindex>
- }
-@@ -785,19 +785,19 @@
- 
- // CHECK-LABEL: @concat_bounds_c2
- func.func @concat_bounds_c2(
--  %arg0: tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>)  -> tensor<*xindex> {
-+  %arg0: tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>)  -> tensor<*xindex> {
-   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
--    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>) -> tensor<?x?xi32>
--  // CHECK: types0 = tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 6]>>
--  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex> 
-+    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>) -> tensor<?x?xi32>
-+  // CHECK: types0 = tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 6]>>
-+  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex>
- 
-   %result_swap = "stablehlo.concatenate"(%arg1, %arg0) { dimension = 1 : i64 } : (
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>, 
--    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>) -> tensor<?x?xi32>
--  // CHECK: types0 = tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 6]>>
--  %2 = "hlo_test_infer.get_return_types"(%result_swap) : (tensor<?x?xi32>) -> tensor<*xindex> 
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>,
-+    tensor<5x2xi32, #stablehlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
-+  // CHECK: types0 = tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 6]>>
-+  %2 = "hlo_test_infer.get_return_types"(%result_swap) : (tensor<?x?xi32>) -> tensor<*xindex>
- 
-   func.return %1 : tensor<*xindex>
- }
-@@ -806,13 +806,13 @@
- 
- // CHECK-LABEL: @concat_bounds_c3
- func.func @concat_bounds_c3(
--  %arg0: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>)  -> tensor<*xindex> {
-+  %arg0: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>)  -> tensor<*xindex> {
-   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>) -> tensor<?x?xi32>
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
-   // CHECK: types0 = tensor<5x?xi32>
--  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex> 
-+  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
- 
-@@ -820,19 +820,19 @@
- 
- // CHECK-LABEL: @concat_bounds_c4
- func.func @concat_bounds_c4(
--  %arg0: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>)  -> tensor<*xindex> {
-+  %arg0: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>)  -> tensor<*xindex> {
-   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>, 
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>) -> tensor<?x?xi32>
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>,
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>) -> tensor<?x?xi32>
-   // CHECK: types0 = tensor<5x?xi32>
--  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex> 
-+  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex>
- 
-   %result_swap = "stablehlo.concatenate"(%arg1, %arg0) { dimension = 1 : i64 } : (
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>, 
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, -1]>>) -> tensor<?x?xi32>
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>,
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, ?]>>) -> tensor<?x?xi32>
-   // CHECK: types0 = tensor<5x?xi32>
--  %2 = "hlo_test_infer.get_return_types"(%result_swap) : (tensor<?x?xi32>) -> tensor<*xindex> 
-+  %2 = "hlo_test_infer.get_return_types"(%result_swap) : (tensor<?x?xi32>) -> tensor<*xindex>
- 
-   func.return %1 : tensor<*xindex>
- }
-@@ -841,13 +841,13 @@
- 
- // CHECK-LABEL: @concat_bounds_c5
- func.func @concat_bounds_c5(
--  %arg0: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 3]>>, 
--  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>)  -> tensor<*xindex> {
-+  %arg0: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 3]>>,
-+  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>)  -> tensor<*xindex> {
-   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 3]>>, 
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>) -> tensor<?x?xi32>
--  // CHECK: types0 = tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 7]>>
--  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex> 
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 3]>>,
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>) -> tensor<?x?xi32>
-+  // CHECK: types0 = tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 7]>>
-+  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<?x?xi32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
- 
-@@ -860,13 +860,13 @@
- //
- // CHECK-LABEL: @concat_bounds_unranked_c0
- func.func @concat_bounds_unranked_c0(
--  %arg0: tensor<*xi32>, 
--  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>)  -> tensor<*xindex> {
-+  %arg0: tensor<*xi32>,
-+  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>)  -> tensor<*xindex> {
-   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (
--    tensor<*xi32>, 
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>) -> tensor<5x?xi32>
--  // CHECK: types0 = tensor<?x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>
--  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<5x?xi32>) -> tensor<*xindex> 
-+    tensor<*xi32>,
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>) -> tensor<5x?xi32>
-+  // CHECK: types0 = tensor<?x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>
-+  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<5x?xi32>) -> tensor<*xindex>
-   func.return %1 : tensor<*xindex>
- }
- 
-@@ -874,12 +874,12 @@
- 
- // CHECK-LABEL: @concat_bounds_unranked_c1
- func.func @concat_bounds_unranked_c1(
--  %arg0: tensor<*xi32>, 
--  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>)  -> tensor<*xindex> {
-+  %arg0: tensor<*xi32>,
-+  %arg1: tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>)  -> tensor<*xindex> {
-   %result = "stablehlo.concatenate"(%arg0, %arg1) { dimension = 1 : i64 } : (
--    tensor<*xi32>, 
--    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [-1, 4]>>) -> tensor<5x?xi32>
-+    tensor<*xi32>,
-+    tensor<5x?xi32, #stablehlo.type_extensions<bounds = [?, 4]>>) -> tensor<5x?xi32>
-   // CHECK: types0 = tensor<5x?xi32>
--  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<5x?xi32>) -> tensor<*xindex> 
--  func.return %1 : tensor<*xindex>
--}
-+  %1 = "hlo_test_infer.get_return_types"(%result) : (tensor<5x?xi32>) -> tensor<*xindex>
-+  func.return %1 : tensor<*xindex>
-+}
-diff --ruN a/stablehlo/stablehlo/tests/print_stablehlo.mlir b/stablehlo/stablehlo/tests/print_stablehlo.mlir
---- stablehlo/stablehlo/tests/print_stablehlo.mlir
-+++ stablehlo/stablehlo/tests/print_stablehlo.mlir
-@@ -268,10 +268,10 @@
- }
- 
- // CHECK-LABEL: func @extensions
--func.func @extensions(%arg0 : tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>,
-+func.func @extensions(%arg0 : tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, ?]>>,
-                 %arg1 : tensor<i32>) -> () {
--  // CHECK:      %0 = stablehlo.set_dimension_size %arg0, %arg1, dim = 1 : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
--  %0 = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
-+  // CHECK:      %0 = stablehlo.set_dimension_size %arg0, %arg1, dim = 1 : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
-+  %0 = "stablehlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
-   "stablehlo.return"() : () -> ()
+-func.func @dot_precision_invalid_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -> tensor<2x2xi32> {
+-  // expected-error@+1 {{expects precision config to be null or of size 2.}}
+-  %0 = "stablehlo.dot"(%arg0, %arg1) {precision_config = [#stablehlo<precision HIGH>]} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+   func.return %0: tensor<2x2xi32>
  }
  
 

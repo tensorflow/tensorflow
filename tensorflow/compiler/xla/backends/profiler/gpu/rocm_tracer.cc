@@ -1013,7 +1013,12 @@ tsl::Status RocmActivityCallbackImpl::operator()(const char* begin,
     }
 
     RETURN_IF_ROCTRACER_ERROR(static_cast<roctracer_status_t>(
-        roctracer_next_record(record, &record)));
+#if TF_ROCM_VERSION >= 50300
+        se::wrap::roctracer_next_record(record, &record)
+#else
+        roctracer_next_record(record, &record)
+#endif
+            ));
   }
 
   return tsl::OkStatus();
@@ -1406,12 +1411,14 @@ void RocmTracer::Disable() {
 void ApiCallback(uint32_t domain, uint32_t cbid, const void* cbdata,
                  void* user_data) {
   RocmTracer* tracer = reinterpret_cast<RocmTracer*>(user_data);
-  tracer->ApiCallbackHandler(domain, cbid, cbdata);
+  tracer->ApiCallbackHandler(domain, cbid, cbdata).IgnoreError();
 }
 
-void RocmTracer::ApiCallbackHandler(uint32_t domain, uint32_t cbid,
-                                    const void* cbdata) {
-  if (api_tracing_enabled_) (*api_cb_impl_)(domain, cbid, cbdata);
+tsl::Status RocmTracer::ApiCallbackHandler(uint32_t domain, uint32_t cbid,
+                                           const void* cbdata) {
+  if (api_tracing_enabled_)
+    TF_RETURN_IF_ERROR((*api_cb_impl_)(domain, cbid, cbdata));
+  return tsl::OkStatus();
 }
 
 tsl::Status RocmTracer::EnableApiTracing() {
@@ -1468,12 +1475,13 @@ tsl::Status RocmTracer::DisableApiTracing() {
 
 void ActivityCallback(const char* begin, const char* end, void* user_data) {
   RocmTracer* tracer = reinterpret_cast<RocmTracer*>(user_data);
-  tracer->ActivityCallbackHandler(begin, end);
+  tracer->ActivityCallbackHandler(begin, end).IgnoreError();
 }
 
-void RocmTracer::ActivityCallbackHandler(const char* begin, const char* end) {
+tsl::Status RocmTracer::ActivityCallbackHandler(const char* begin,
+                                                const char* end) {
   if (activity_tracing_enabled_) {
-    (*activity_cb_impl_)(begin, end);
+    TF_RETURN_IF_ERROR((*activity_cb_impl_)(begin, end));
   } else {
     LOG(WARNING) << "ActivityCallbackHandler called when "
                     "activity_tracing_enabled_ is false";
@@ -1486,10 +1494,17 @@ void RocmTracer::ActivityCallbackHandler(const char* begin, const char* end) {
     while (record < end_record) {
       DumpActivityRecord(record,
                          "activity_tracing_enabled_ is false. Dropped!");
-      roctracer_next_record(record, &record);
+#if TF_ROCM_VERSION >= 50300
+      RETURN_IF_ROCTRACER_ERROR(static_cast<roctracer_status_t>(
+          se::wrap::roctracer_next_record(record, &record)));
+#else
+      RETURN_IF_ROCTRACER_ERROR(static_cast<roctracer_status_t>(
+          roctracer_next_record(record, &record)));
+#endif
     }
     VLOG(3) << "Dropped Activity Records End";
   }
+  return tsl::OkStatus();
 }
 
 tsl::Status RocmTracer::EnableActivityTracing() {

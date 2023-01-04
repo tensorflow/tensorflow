@@ -699,7 +699,7 @@ func AngleTout(value tf.DataType) AngleAttr {
 //
 // ```
 // # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-// tf.angle(input) ==> [2.0132, 1.056]
+// tf.math.angle(input) ==> [2.0132, 1.056]
 // ```
 //
 // @compatibility(numpy)
@@ -7182,6 +7182,104 @@ func Conv2DBackpropFilter(scope *Scope, input tf.Output, filter_sizes tf.Output,
 	return op.Output(0)
 }
 
+// Conv2DBackpropFilterV2Attr is an optional argument to Conv2DBackpropFilterV2.
+type Conv2DBackpropFilterV2Attr func(optionalAttr)
+
+// Conv2DBackpropFilterV2UseCudnnOnGpu sets the optional use_cudnn_on_gpu attribute to value.
+// If not specified, defaults to true
+func Conv2DBackpropFilterV2UseCudnnOnGpu(value bool) Conv2DBackpropFilterV2Attr {
+	return func(m optionalAttr) {
+		m["use_cudnn_on_gpu"] = value
+	}
+}
+
+// Conv2DBackpropFilterV2ExplicitPaddings sets the optional explicit_paddings attribute to value.
+//
+// value: If `padding` is `"EXPLICIT"`, the list of explicit padding amounts. For the ith
+// dimension, the amount of padding inserted before and after the dimension is
+// `explicit_paddings[2 * i]` and `explicit_paddings[2 * i + 1]`, respectively. If
+// `padding` is not `"EXPLICIT"`, `explicit_paddings` must be empty.
+// If not specified, defaults to {}
+func Conv2DBackpropFilterV2ExplicitPaddings(value []int64) Conv2DBackpropFilterV2Attr {
+	return func(m optionalAttr) {
+		m["explicit_paddings"] = value
+	}
+}
+
+// Conv2DBackpropFilterV2DataFormat sets the optional data_format attribute to value.
+//
+// value: Specify the data format of the input and output data. With the
+// default format "NHWC", the data is stored in the order of:
+//
+//	[batch, in_height, in_width, in_channels].
+//
+// Alternatively, the format could be "NCHW", the data storage order of:
+//
+//	[batch, in_channels, in_height, in_width].
+//
+// If not specified, defaults to "NHWC"
+func Conv2DBackpropFilterV2DataFormat(value string) Conv2DBackpropFilterV2Attr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// Conv2DBackpropFilterV2Dilations sets the optional dilations attribute to value.
+//
+// value: 1-D tensor of length 4.  The dilation factor for each dimension of
+// `input`. If set to k > 1, there will be k-1 skipped cells between each filter
+// element on that dimension. The dimension order is determined by the value of
+// `data_format`, see above for details. Dilations in the batch and depth
+// dimensions must be 1.
+// If not specified, defaults to {i:1 i:1 i:1 i:1}
+func Conv2DBackpropFilterV2Dilations(value []int64) Conv2DBackpropFilterV2Attr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes the gradients of convolution with respect to the filter.
+//
+// Arguments:
+//
+//	input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
+//	filter: 4-D with shape `[filter_height, filter_width, in_channels, out_channels]`.
+//
+// Only shape of tensor is used.
+//
+//	out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
+//
+// Gradients w.r.t. the output of the convolution.
+//
+//	strides: The stride of the sliding window for each dimension of the input
+//
+// of the convolution. Must be in the same order as the dimension specified with
+// format.
+//
+//	padding: The type of padding algorithm to use.
+//
+// Returns 4-D with shape
+// `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
+// the `filter` input of the convolution.
+func Conv2DBackpropFilterV2(scope *Scope, input tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...Conv2DBackpropFilterV2Attr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Conv2DBackpropFilterV2",
+		Input: []tf.Input{
+			input, filter, out_backprop,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Conv2DBackpropInputAttr is an optional argument to Conv2DBackpropInput.
 type Conv2DBackpropInputAttr func(optionalAttr)
 
@@ -7275,6 +7373,106 @@ func Conv2DBackpropInput(scope *Scope, input_sizes tf.Output, filter tf.Output, 
 		Type: "Conv2DBackpropInput",
 		Input: []tf.Input{
 			input_sizes, filter, out_backprop,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Conv2DBackpropInputV2Attr is an optional argument to Conv2DBackpropInputV2.
+type Conv2DBackpropInputV2Attr func(optionalAttr)
+
+// Conv2DBackpropInputV2UseCudnnOnGpu sets the optional use_cudnn_on_gpu attribute to value.
+// If not specified, defaults to true
+func Conv2DBackpropInputV2UseCudnnOnGpu(value bool) Conv2DBackpropInputV2Attr {
+	return func(m optionalAttr) {
+		m["use_cudnn_on_gpu"] = value
+	}
+}
+
+// Conv2DBackpropInputV2ExplicitPaddings sets the optional explicit_paddings attribute to value.
+//
+// value: If `padding` is `"EXPLICIT"`, the list of explicit padding amounts. For the ith
+// dimension, the amount of padding inserted before and after the dimension is
+// `explicit_paddings[2 * i]` and `explicit_paddings[2 * i + 1]`, respectively. If
+// `padding` is not `"EXPLICIT"`, `explicit_paddings` must be empty.
+// If not specified, defaults to {}
+func Conv2DBackpropInputV2ExplicitPaddings(value []int64) Conv2DBackpropInputV2Attr {
+	return func(m optionalAttr) {
+		m["explicit_paddings"] = value
+	}
+}
+
+// Conv2DBackpropInputV2DataFormat sets the optional data_format attribute to value.
+//
+// value: Specify the data format of the input and output data. With the
+// default format "NHWC", the data is stored in the order of:
+//
+//	[batch, in_height, in_width, in_channels].
+//
+// Alternatively, the format could be "NCHW", the data storage order of:
+//
+//	[batch, in_channels, in_height, in_width].
+//
+// If not specified, defaults to "NHWC"
+func Conv2DBackpropInputV2DataFormat(value string) Conv2DBackpropInputV2Attr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// Conv2DBackpropInputV2Dilations sets the optional dilations attribute to value.
+//
+// value: 1-D tensor of length 4.  The dilation factor for each dimension of
+// `input`. If set to k > 1, there will be k-1 skipped cells between each filter
+// element on that dimension. The dimension order is determined by the value of
+// `data_format`, see above for details. Dilations in the batch and depth
+// dimensions must be 1.
+// If not specified, defaults to {i:1 i:1 i:1 i:1}
+func Conv2DBackpropInputV2Dilations(value []int64) Conv2DBackpropInputV2Attr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes the gradients of convolution with respect to the input.
+//
+// Arguments:
+//
+//	input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
+//
+// Only shape of tensor is used.
+//
+//	filter: 4-D with shape
+//
+// `[filter_height, filter_width, in_channels, out_channels]`.
+//
+//	out_backprop: 4-D with shape `[batch, out_height, out_width, out_channels]`.
+//
+// Gradients w.r.t. the output of the convolution.
+//
+//	strides: The stride of the sliding window for each dimension of the input
+//
+// of the convolution. Must be in the same order as the dimension specified with
+// format.
+//
+//	padding: The type of padding algorithm to use.
+//
+// Returns 4-D with shape `[batch, in_height, in_width, in_channels]`.  Gradient
+// w.r.t. the input of the convolution.
+func Conv2DBackpropInputV2(scope *Scope, input tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...Conv2DBackpropInputV2Attr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Conv2DBackpropInputV2",
+		Input: []tf.Input{
+			input, filter, out_backprop,
 		},
 		Attrs: attrs,
 	}
@@ -16343,7 +16541,11 @@ func FakeQuantWithMinMaxArgsNarrowRange(value bool) FakeQuantWithMinMaxArgsAttr 
 	}
 }
 
-// Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same type.
+// Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same shape and type.
+//
+//	Quantization is called fake since the output is still in floating point.
+//	The API converts inputs into values within the range [min and max] and returns
+//	as output.
 //
 // # Attributes
 //
@@ -16364,7 +16566,26 @@ func FakeQuantWithMinMaxArgsNarrowRange(value bool) FakeQuantWithMinMaxArgsAttr 
 // *   If `min <= 0 <= max`: `scale = (max - min) / (2^num_bits - 1) `,
 // `min_adj = scale * round(min / scale)` and `max_adj = max + min_adj - min`.
 //
-// Quantization is called fake since the output is still in floating point.
+// # Examples
+//
+// ```python
+//
+// inp = tf.constant ([10.03, -10.23, 3])
+// out = tf.quantization.fake_quant_with_min_max_args(inp, min=-5, max=5,
+//
+//	num_bits=16)
+//
+// print(out)
+//
+// #  Output:
+// #  tf.Tensor([ 4.9999237 -5.0000763  3.0000763], shape=(3,), dtype=float32)
+// ```
+//
+// Raises:
+//   - InvalidArgumentError:
+//   - If num_bits are outside of range [2, 16].
+//   - If min >= max.
+//   - ValueError: If `inputs` are of any other type than float32.
 func FakeQuantWithMinMaxArgs(scope *Scope, inputs tf.Output, optional ...FakeQuantWithMinMaxArgsAttr) (outputs tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -53524,7 +53745,7 @@ func TridiagonalSolve(scope *Scope, diagonals tf.Output, rhs tf.Output, optional
 	return op.Output(0)
 }
 
-// Returns x / y element-wise for integer types.
+// Returns x / y element-wise, rounded towards zero.
 //
 // Truncation designates that negative numbers will round fractional quantities
 // toward zero. I.e. -7 / 5 = -1. This matches C semantics but it is different
@@ -54453,6 +54674,136 @@ func UniformQuantize(scope *Scope, input tf.Output, scales tf.Output, zero_point
 		Type: "UniformQuantize",
 		Input: []tf.Input{
 			input, scales, zero_points,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// UniformQuantizedAddAttr is an optional argument to UniformQuantizedAdd.
+type UniformQuantizedAddAttr func(optionalAttr)
+
+// UniformQuantizedAddLhsQuantizationAxis sets the optional lhs_quantization_axis attribute to value.
+//
+// value: Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+// If set to -1 (default), this indicates per-tensor quantization.
+// For the `lhs`, only per-tensor quantization is supported.
+// Thus, this must be set to -1.
+// Other values will raise error at OpKernel construction.
+// If not specified, defaults to -1
+func UniformQuantizedAddLhsQuantizationAxis(value int64) UniformQuantizedAddAttr {
+	return func(m optionalAttr) {
+		m["lhs_quantization_axis"] = value
+	}
+}
+
+// UniformQuantizedAddRhsQuantizationAxis sets the optional rhs_quantization_axis attribute to value.
+//
+// value: Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+// If set to -1 (default), this indicates per-tensor quantization.
+// For the `rhs`, only per-tensor quantization
+// or per-channel quantization along `kernel_output_feature_dimension` is supported.
+// Thus, this must be set to -1 or `dimension_numbers.kernel_output_feature_dimension`.
+// Other values will raise error at OpKernel construction.
+// If not specified, defaults to -1
+func UniformQuantizedAddRhsQuantizationAxis(value int64) UniformQuantizedAddAttr {
+	return func(m optionalAttr) {
+		m["rhs_quantization_axis"] = value
+	}
+}
+
+// UniformQuantizedAddOutputQuantizationAxis sets the optional output_quantization_axis attribute to value.
+//
+// value: Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+// If set to -1 (default), this indicates per-tensor quantization.
+// For the `output`, only per-tensor quantization or per-channel quantization along `output_feature_dimension` is supported.
+// Thus, this must be set to -1 or `dimension_numbers.output_feature_dimension`.
+// Other values will raise error at OpKernel construction.
+// If not specified, defaults to -1
+func UniformQuantizedAddOutputQuantizationAxis(value int64) UniformQuantizedAddAttr {
+	return func(m optionalAttr) {
+		m["output_quantization_axis"] = value
+	}
+}
+
+// Perform quantized add of quantized Tensor `lhs` and quantized Tensor `rhs` to make quantized `output`.
+//
+// Given quantized `lhs` and quantized `rhs`, performs quantized add on `lhs` and `rhs` to make quantized `output`.
+//
+// `UniformQuantizedAdd` follows Numpy broadcasting rules.
+// The two input array shapes are compared element-wise.
+// Starting with the trailing dimensions, the two dimensions either have to be equal or one of them needs to be 1.
+//
+// `lhs` and `rhs` must be quantized Tensor, where data value is quantized using the formula:
+// ```
+// quantized_data = clip(original_data / scale + zero_point, quantization_min_val, quantization_max_val)
+// ```
+// `output` is also quantized, using the same formula.
+//
+// If `lhs` and `output` is both per-axis quantized, the quantization axis must match.
+// Also, if `rhs` and `output` is both per-axis quantized, the quantization axis must match.
+// *Match* means the axis must match when adding, regarding the broadcasting.
+// i.e. For both operands `lhs` and `rhs`,
+// if `operand.quantization_axis` >= 0 and `output.quantization_axis` >= 0,
+// `operand.dims` - `operand.quantization_axis` must be equal to `output.dims` - `output.quantization_axis`.
+//
+// Arguments:
+//
+//	lhs: Must be a quantized tensor.
+//	rhs: Must be a quantized tensor.
+//	lhs_scales: The float value(s) used as scale factors when quantizing the original data that `lhs` represents.
+//	lhs_zero_points: The int32 value(s) used as zero points when quantizing original data that `lhs` represents.
+//
+// Must have same shape with `lhs_scales`.
+//
+//	rhs_scales: The float value(s) used as scale factors when quantizing the original data that `rhs` represents.
+//	rhs_zero_points: The int32 value(s) used as zero points when quantizing original data that `rhs` represents.
+//
+// Must have same shape with `rhs_scales`.
+//
+//	output_scales: The float value(s) to use as scale factors when quantizing original data that `output` represents.
+//	output_zero_points: The int32 value(s) used as zero points when quantizing original data that output represents.
+//
+// Must have same shape with `output_scales`.
+//
+//	lhs_quantization_min_val: The min value of the quantized data stored in `lhs`.
+//
+// For example, if `Tin` is `qint8`, this must be set to -127 if narrow range quantized or -128 if not.
+//
+//	lhs_quantization_max_val: The max value of the quantized data stored in `lhs`.
+//
+// For example, if `Tin` is `qint8`, this must be set to 127.
+//
+//	rhs_quantization_min_val: The min value of the quantized data stored in `rhs`.
+//
+// For example, if `Tin` is `qint8`, this must be set to -127 if narrow range quantized or -128 if not.
+//
+//	rhs_quantization_max_val: The max value of the quantized data stored in `rhs`.
+//
+// For example, if `Tin` is `qint8`, this must be set to 127.
+//
+//	output_quantization_min_val: The min value of the quantized data stored in `output`.
+//
+// For example, if  `Tout` is `qint8`, this must be set to -127 if narrow range quantized or -128 if not.
+//
+//	output_quantization_max_val: The max value of the quantized data stored in `output`.
+//
+// For example, if `Tout` is `qint8`, this must be set to 127.
+//
+// Returns The output quantized tensor.
+func UniformQuantizedAdd(scope *Scope, lhs tf.Output, rhs tf.Output, lhs_scales tf.Output, lhs_zero_points tf.Output, rhs_scales tf.Output, rhs_zero_points tf.Output, output_scales tf.Output, output_zero_points tf.Output, lhs_quantization_min_val int64, lhs_quantization_max_val int64, rhs_quantization_min_val int64, rhs_quantization_max_val int64, output_quantization_min_val int64, output_quantization_max_val int64, optional ...UniformQuantizedAddAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"lhs_quantization_min_val": lhs_quantization_min_val, "lhs_quantization_max_val": lhs_quantization_max_val, "rhs_quantization_min_val": rhs_quantization_min_val, "rhs_quantization_max_val": rhs_quantization_max_val, "output_quantization_min_val": output_quantization_min_val, "output_quantization_max_val": output_quantization_max_val}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "UniformQuantizedAdd",
+		Input: []tf.Input{
+			lhs, rhs, lhs_scales, lhs_zero_points, rhs_scales, rhs_zero_points, output_scales, output_zero_points,
 		},
 		Attrs: attrs,
 	}
@@ -56706,7 +57057,8 @@ func XlaBroadcastHelper(scope *Scope, lhs tf.Output, rhs tf.Output, broadcast_di
 //
 //	args: A list of `Tensor` with possibly different types to be passed as arguments
 //
-// to the HLO module.
+// to the HLO module. These are all non-dimension arguments. The dimension
+// arguments are computed at JIT time.
 //
 //	version: Changes when we change the semantics of the op, to support backwards
 //

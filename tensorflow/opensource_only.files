@@ -7,6 +7,7 @@ tensorflow/compat_template_v1.__init__:.py
 tensorflow/compiler/mlir/glob_lit_test.bzl:
 tensorflow/compiler/mlir/quantization/tensorflow/internal_visibility_allowlist.bzl:
 tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h:
+tensorflow/compiler/xla/glob_lit_test.bzl:
 tensorflow/compiler/xla/mlir_hlo/WORKSPACE:
 tensorflow/compiler/xla/stream_executor/build_defs.bzl:
 tensorflow/core/platform/default/build_config/BUILD:
@@ -16,8 +17,10 @@ tensorflow/core/tfrt/mla/mla_utils.h:
 tensorflow/core/tfrt/saved_model/saved_model_mira_impl.h:
 tensorflow/core/tfrt/tpu/tpu_resources.h:
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h:
-tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal.cc:
-tensorflow/dtensor/mlir/utils/update_tpu_metadata.cc:
+tensorflow/dtensor/build_defs:.bzl
+tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal:.cc
+tensorflow/dtensor/mlir/utils/update_tpu_metadata:.cc
+tensorflow/dtensor/python/tests/test_backend_name:.py
 tensorflow/examples/custom_ops_doc/multiplex_1/BUILD:
 tensorflow/examples/custom_ops_doc/multiplex_1/multiplex_1_op.py:
 tensorflow/examples/custom_ops_doc/multiplex_2/BUILD:
@@ -32,7 +35,15 @@ tensorflow/examples/custom_ops_doc/sleep/BUILD:
 tensorflow/examples/custom_ops_doc/sleep/sleep_op.py:
 tensorflow/go/BUILD:
 tensorflow/go/README.md:
+tensorflow/go/core/framework/BUILD:
+tensorflow/go/core/protobuf/BUILD:
+tensorflow/go/genop/BUILD:
+tensorflow/go/genop/internal/BUILD:
+tensorflow/go/op/BUILD:
 tensorflow/go/op/wrappers.go:
+tensorflow/go/stream_executor/BUILD:
+tensorflow/go/tsl/profiler/protobuf/BUILD:
+tensorflow/go/tsl/protobuf/BUILD:
 tensorflow/java/README.md:
 tensorflow/java/src/main/native/BUILD:
 tensorflow/lite/core/c/special_rules.bzl:
@@ -40,6 +51,7 @@ tensorflow/lite/core/shims/BUILD:
 tensorflow/lite/core/shims/c/builtin_op_data.h:
 tensorflow/lite/core/shims/c/c_api.h:
 tensorflow/lite/core/shims/c/c_api_experimental.h:
+tensorflow/lite/core/shims/c/c_api_opaque.h:
 tensorflow/lite/core/shims/c/c_api_types.h:
 tensorflow/lite/core/shims/c/common.h:
 tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h:
@@ -87,9 +99,7 @@ tensorflow/python/tpu/profiler/pip_package/build_pip_package.sh:
 tensorflow/python/tpu/profiler/pip_package/setup:.py
 tensorflow/python/tpu/tpu.bzl:
 tensorflow/security/fuzzing/tf_fuzzing:.bzl
-tensorflow/tools/benchmark/parse_onednn_benchmarks:.py
-tensorflow/tools/benchmark/run_models:.sh
-tensorflow/tools/benchmark/run_onednn_benchmarks:.sh
+tensorflow/tools/benchmark/onednn_benchmark_config:.sh
 tensorflow/tools/build_info/BUILD:
 tensorflow/tools/ci_build/a100/nightly.sh:
 tensorflow/tools/ci_build/horovod/gpu/nightly.sh:
@@ -157,6 +167,10 @@ tensorflow/tools/toolchains/win_1803/py36/BUILD:
 tensorflow/tools/toolchains/win_1803/py37/BUILD:
 tensorflow/tools/toolchains/win_1803/py38/BUILD:
 tensorflow/tools/toolchains/win_1803/py39/BUILD:
+tensorflow/tsl/mkl/BUILD:
+tensorflow/tsl/mkl/LICENSE:
+tensorflow/tsl/mkl/MKL_LICENSE:
+tensorflow/tsl/mkl/build_defs.bzl:
 tensorflow/tsl/platform/default/build_config/BUILD:
 tensorflow/virtual_root_template_v1.__init__:.py
 tensorflow/virtual_root_template_v2.__init__:.py
@@ -247,8 +261,6 @@ third_party/llvm_openmp/expand_cmake_vars:.py
 third_party/llvm_openmp/openmp.bzl:
 third_party/lmdb.BUILD:
 third_party/mkl/BUILD:
-third_party/mkl/LICENSE:
-third_party/mkl/MKL_LICENSE:
 third_party/mkl/build_defs.bzl:
 third_party/mkl_dnn/LICENSE:
 third_party/mkl_dnn/build_defs.bzl:

@@ -44,6 +44,7 @@ cc_library(
         ":pluggable_device_simple_allocator",
         "//tensorflow/c/experimental/stream_executor",
         "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
+        "//tensorflow/compiler/xla/stream_executor:device_id_utils",
         "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:kernel",

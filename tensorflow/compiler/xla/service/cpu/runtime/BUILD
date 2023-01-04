@@ -47,6 +47,23 @@ cc_library(
 )
 
 cc_library(
+    name = "fft_call",
+    srcs = ["fft_call.cc"],
+    hdrs = ["fft_call.h"],
+    deps = [
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/compiler/xla/service/cpu:runtime_fft",
+        "@com_google_absl//absl/status",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "xfeed",
     srcs = ["xfeed.cc"],
     hdrs = ["xfeed.h"],
@@ -57,6 +74,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:custom_call_registry",
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/service/cpu:cpu_runtime",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
 )

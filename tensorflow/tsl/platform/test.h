@@ -40,7 +40,7 @@ limitations under the License.
 // better error messages, more maintainable tests and more test coverage.
 #if !defined(PLATFORM_GOOGLE) && !defined(PLATFORM_GOOGLE_ANDROID) && \
     !defined(PLATFORM_CHROMIUMOS)
-#include <gmock/gmock-generated-matchers.h>  // IWYU pragma: export
+#include <gmock/gmock-actions.h>
 #include <gmock/gmock-matchers.h>            // IWYU pragma: export
 #include <gmock/gmock-more-matchers.h>       // IWYU pragma: export
 #endif
@@ -68,6 +68,10 @@ std::string TmpDir();
 // function should do the right thing both within and outside of tests allowing
 // avoiding test specific APIs.
 std::string TensorFlowSrcRoot();
+
+// Returns the path to XLA in the directory containing data
+// dependencies.
+std::string XlaSrcRoot();
 
 // Return a random number generator seed to use in randomized tests.
 // Returns the same value for the lifetime of the process.

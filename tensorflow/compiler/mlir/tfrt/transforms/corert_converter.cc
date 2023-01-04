@@ -31,7 +31,6 @@ limitations under the License.
 #include "tfrt/core_runtime/opdefs/attributes.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/core_runtime.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/types.h"  // from @tf_runtime
-#include "tfrt/distributed_runtime/opdefs/kernels.h"  // from @tf_runtime
 
 namespace tensorflow {
 
@@ -65,7 +64,8 @@ void CoreRTConverter::MaterializeDerivedAttributes(mlir::Operation *op) {
 
 mlir::ArrayAttr CoreRTConverter::CreateOpFuncAttrs(
     const mlir::SymbolTable &symbol_table, ArrayRef<NamedAttribute> attrs,
-    llvm::SmallVector<mlir::StringAttr, 4> *func_attr_keys) {
+    llvm::SmallVector<mlir::StringAttr, 4> *func_attr_keys,
+    bool use_mlir_func_name) {
   llvm::SmallVector<mlir::Attribute, 4> attr_array;
   for (auto key_and_value : attrs) {
     auto attr_key = key_and_value.getName();
@@ -73,7 +73,8 @@ mlir::ArrayAttr CoreRTConverter::CreateOpFuncAttrs(
     if (!IsUnusedTfrtAttribute(attr_key) &&
         attr_value.isa<mlir::FlatSymbolRefAttr, mlir::SymbolRefAttr>()) {
       auto func_attr = attr_value.dyn_cast<mlir::FlatSymbolRefAttr>();
-      auto converted = ConvertSymbolAttrToStringAttr(symbol_table, func_attr);
+      auto converted = ConvertSymbolAttrToStringAttr(symbol_table, func_attr,
+                                                     use_mlir_func_name);
       if (!converted) return {};
 
       mlir::StringAttr key = builder_.getStringAttr(attr_key.strref());
@@ -216,8 +217,13 @@ mlir::Value CoreRTConverter::GetTaskHandle(
 }
 
 mlir::StringAttr CoreRTConverter::ConvertSymbolAttrToStringAttr(
-    const mlir::SymbolTable &symbol_table,
-    mlir::FlatSymbolRefAttr symbol_attr) {
+    const mlir::SymbolTable &symbol_table, mlir::FlatSymbolRefAttr symbol_attr,
+    bool use_mlir_func_name) {
+  if (use_mlir_func_name) {
+    return mlir::StringAttr::get(builder_.getContext(),
+                                 symbol_attr.getValue().str());
+  }
+
   // Currently in TF graph to MLIR importing, a "0" is appended to the original
   // function name. The renaming is for TF/XLA v1 bridge use cases. Refer to
   // b/142268695, b/141617294 for more context.

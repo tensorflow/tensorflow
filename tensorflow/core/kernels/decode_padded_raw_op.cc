@@ -63,7 +63,7 @@ class DecodePaddedRawOp : public OpKernel {
     int width = fixed_length / sizeof(T);
 
     TensorShape out_shape = input.shape();
-    out_shape.AddDim(width);
+    OP_REQUIRES_OK(context, out_shape.AddDimWithStatus(width));
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output("output", out_shape, &output_tensor));

@@ -21,31 +21,23 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
+#include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
-Status AwaitBuffersReady(
-    const std::vector<std::shared_ptr<PjRtBuffer>>& buffers) {
-  std::vector<PjRtFuture<Status>> futures;
-  futures.reserve(buffers.size());
-  Status status = OkStatus();
-  for (const auto& buffer : buffers) {
-    futures.push_back(buffer->GetReadyFuture());
-  }
-  for (PjRtFuture<Status>& future : futures) {
-    Status s = future.Await();
-    if (!s.ok()) {
-      // Fix up error string because some clients rely on it.
-      if (s.error_message() ==
-          "GetReadyFuture() called on deleted or donated buffer") {
-        status = InvalidArgument(
-            "BlockHostUntilReady() called on deleted or donated buffer");
-      } else {
-        status = std::move(s);
-      }
+
+Status AwaitBuffersReady(ifrt::Array* ifrt_array) {
+  Status s = ifrt_array->GetReadyFuture().Await();
+  if (!s.ok()) {
+    // Fix up error string because some clients rely on it.
+    if (s.error_message() ==
+        "GetReadyFuture() called on deleted or donated buffer") {
+      s = InvalidArgument(
+          "BlockHostUntilReady() called on deleted or donated buffer");
     }
   }
-  return status;
+  return s;
 }
+
 }  // namespace xla

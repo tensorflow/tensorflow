@@ -187,7 +187,6 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         },
         "tf.nn.softmax_cross_entropy_with_logits": {
             "dim": "axis",
-            "_sentinel": None,
         },
         "tf.nn.softmax_cross_entropy_with_logits_v2": {
             "dim": "axis"
@@ -1665,7 +1664,8 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
     return root_node, visitor.log, visitor.warnings_and_errors
 
   def clear_preprocessing(self):
-    self.__init__()
+    self.__init__(import_rename=self.import_rename,
+                  upgrade_compat_v1_import=self.upgrade_compat_v1_import)
 
 
 def _is_ast_str(node):

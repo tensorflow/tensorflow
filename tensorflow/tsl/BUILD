@@ -31,6 +31,7 @@ alias(
         "@local_config_cuda//:is_cuda_enabled",
         "@local_config_cuda//cuda:using_clang",
     ),
+    visibility = ["//visibility:public"],
 )
 
 selects.config_setting_group(
@@ -39,6 +40,7 @@ selects.config_setting_group(
         ":is_cuda_enabled",
         ":oss",
     ],
+    visibility = ["//visibility:public"],
 )
 
 # Crosses between framework_shared_object and a bunch of other configurations
@@ -79,6 +81,7 @@ selects.config_setting_group(
         ":macos_x86_64_with_framework_shared_object",
         ":macos_arm64_with_framework_shared_object",
     ],
+    visibility = ["//visibility:public"],
 )
 
 # This should be removed after Tensorflow moves to cc_shared_library
@@ -356,6 +359,7 @@ selects.config_setting_group(
         ":linux_aarch64",
         ":linux_armhf",
     ],
+    visibility = ["//visibility:public"],
 )
 
 # TODO(jakeharmon): Remove equivalent from tensorflow/BUILD
@@ -395,6 +399,21 @@ selects.config_setting_group(
         ":with_tpu_support_define",
         ":with_tpu_support_flag",
     ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "freebsd",
+    values = {"cpu": "freebsd"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "no_nccl_support",
+    define_values = dict(
+        if_google({"GOOGLE_CUDA_COMPILER": "clang"}),
+        no_nccl_support = "true",
+    ),
     visibility = ["//visibility:public"],
 )
 

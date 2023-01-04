@@ -163,17 +163,22 @@ void AllocateAndParseJitRtFlags() {
   jitrt_flags = new JitRtFlags;
   jitrt_flags->always_specialize = false;
   jitrt_flags->cost_driven_async_parallel_for = false;
-  jitrt_flags->log_query_of_death = false;
-  jitrt_flags->vectorize = false;
   jitrt_flags->enable_crash_reproducer = false;
+  jitrt_flags->enable_xla_cpu_transformations = false;
+  jitrt_flags->log_query_of_death = false;
+  jitrt_flags->pack_matmul = false;
+  jitrt_flags->vectorize = false;
   jitrt_flag_list = new std::vector<Flag>({
       Flag("always_specialize", &jitrt_flags->always_specialize, ""),
       Flag("cost_driven_async_parallel_for",
            &jitrt_flags->cost_driven_async_parallel_for, ""),
-      Flag("log_query_of_death", &jitrt_flags->log_query_of_death, ""),
-      Flag("vectorize", &jitrt_flags->vectorize, ""),
       Flag("enable_crash_reproducer", &jitrt_flags->enable_crash_reproducer,
            ""),
+      Flag("enable_xla_cpu_transformations",
+           &jitrt_flags->enable_xla_cpu_transformations, ""),
+      Flag("log_query_of_death", &jitrt_flags->log_query_of_death, ""),
+      Flag("pack_matmul", &jitrt_flags->pack_matmul, ""),
+      Flag("vectorize", &jitrt_flags->vectorize, ""),
   });
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_JITRT_FLAGS", *jitrt_flag_list);
 }
@@ -214,6 +219,7 @@ void AllocateAndParseFlags() {
   ops_flags = new XlaOpsCommonFlags;
   ops_flags->tf_xla_always_defer_compilation = false;
   ops_flags->tf_xla_async_compilation = false;
+  ops_flags->tf_xla_use_device_api = false;
 
   jitter_flags = new IntroduceFloatingPointJitterPassFlags;
   jitter_flags->jitter_amount = 1e-5;
@@ -273,6 +279,9 @@ void AllocateAndParseFlags() {
             "When lazy compilation is enabled, asynchronous compilation starts "
             "the cluster compilation in the background, and the fallback path "
             "is executed until the compilation has finished."),
+       Flag("tf_xla_use_device_api", &ops_flags->tf_xla_use_device_api,
+            "If true, uses the Device API (PjRt) for single device compilation."
+            " Defaults to false."),
 
        Flag("tf_introduce_floating_point_jitter_to_tensors",
             setter_for_jitter_tensor_names, "",

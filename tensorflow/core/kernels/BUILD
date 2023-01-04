@@ -6,6 +6,7 @@ load(
     "if_cuda_or_rocm",
     "if_google",
     "if_mobile",
+    "if_nccl",
     "if_not_windows",
     "if_oss",
     "tf_cc_binary",
@@ -24,14 +25,13 @@ load(
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_fingerprint_deps",
-    "tf_kernel_tests_linkstatic",
 )
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
     "mkl_deps",
 )
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "if_nccl", "tf_cc_shared_library", "tf_cuda_cc_test", "tf_cuda_cc_tests", "tf_disable_ptxas_warning_flags", "tf_kernel_library")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "tf_cc_shared_library", "tf_cuda_cc_test", "tf_cuda_cc_tests", "tf_disable_ptxas_warning_flags", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -45,16 +45,6 @@ load(
 
 # Description:
 # Op kernel implementations for TensorFlow.
-#
-# Note: Any test that uses GPU support and which we would like to
-# benchmark should be linked statically so that it can be executed
-# from a py_binary or cuda_py_test test logger.  For such a test,
-# append "_gpu" to the test name to invoke the GPU benchmarks.  Example:
-#
-#   # for CPU tests
-#   $ bazel test --config opt //third_party/tensorflow/core/kernels:my_op_test
-#   # for GPU benchmarks
-#   $ bazel run --config opt --config=cuda //third_party/tensorflow/core/kernels:my_op_test_gpu -- --benchmark_filter=..
 #
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -691,6 +681,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/util/tensor_bundle",
     ],
 )
@@ -1556,6 +1547,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -2501,7 +2493,6 @@ tf_kernel_library(
 tf_cuda_cc_test(
     name = "scoped_allocator_ops_test",
     srcs = ["scoped_allocator_ops_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),  #Required for benchmarking
     deps = [
         ":cwise_op",
         ":dense_update_ops",
@@ -3331,6 +3322,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
     ],
 )
 
@@ -4132,6 +4124,7 @@ tf_kernel_library(
     name = "fused_batch_norm_op",
     prefix = "fused_batch_norm_op",
     deps = NN_DEPS + [
+        ":cast_op",
         ":fill_functor",
         ":redux_functor",
         ":transpose_functor",
@@ -4220,6 +4213,7 @@ tf_kernel_library(
     gpu_srcs = [
         "topk_op.h",
         "topk_op_gpu.h",
+        "topk_op_gpu_bfloat16.cu.cc",
         "topk_op_gpu_double.cu.cc",
         "topk_op_gpu_float.cu.cc",
         "topk_op_gpu_half.cu.cc",
@@ -4386,6 +4380,7 @@ tf_kernel_library(
         "pooling_ops_3d_gpu.cu.cc",
     ],
     deps = [
+        ":cast_op",
         ":conv_2d",
         ":conv_3d",
         ":conv_ops",
@@ -4802,7 +4797,6 @@ tf_kernel_library(
 tf_cc_test(
     name = "sendrecv_ops_test",
     srcs = ["sendrecv_ops_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -5111,7 +5105,6 @@ tf_cc_test(
     name = "sdca_ops_test",
     size = "small",
     srcs = ["sdca_ops_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     deps = [
         ":ops_util",
         "//tensorflow/core:all_kernels",
@@ -6130,6 +6123,7 @@ filegroup(
         "cast_op_impl_complex64.cc",
         "cast_op_impl_double.cc",
         "cast_op_impl_float.cc",
+        "cast_op_impl_float8.cc",
         "cast_op_impl_half.cc",
         "cast_op_impl_int16.cc",
         "cast_op_impl_int32.cc",
@@ -6407,6 +6401,8 @@ filegroup(
         "cwise_op_bitwise_or.cc",
         "cwise_op_bitwise_xor.cc",
         "cwise_op_ceil.cc",
+        "cwise_op_clip.h",
+        "cwise_op_clip.cc",
         "cwise_op_complex.cc",
         "cwise_op_conj.cc",
         "cwise_op_cos.cc",
@@ -6876,10 +6872,27 @@ cc_library(
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
-        "//tensorflow/core:protos_all_cc_impl",
+        "//tensorflow/core/example:example_protos_cc",
+        "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:dataset_options_proto_cc",
+        "//tensorflow/core/framework:dataset_proto_cc",
+        "//tensorflow/core/framework:full_type_proto_cc",
+        "//tensorflow/core/framework:function_proto_cc",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:model_proto_cc",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:reader_base_proto_cc",
+        "//tensorflow/core/framework:summary_proto_cc",
+        "//tensorflow/core/framework:tensor_proto_cc",
+        "//tensorflow/core/framework:tensor_shape_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/platform:strong_hash",
         "//tensorflow/core/platform:types",
+        "//tensorflow/core/protobuf:autotuning_proto_cc",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core/util/quantization:uniform_quant_ops_attr_proto_cc",
         "//tensorflow/tsl/framework/fixedpoint",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
@@ -6906,6 +6919,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:portable_tensorflow_lib_lite",
+        "//tensorflow/core/framework:reader_base_proto_cc",
     ],
     alwayslink = 1,
 )
@@ -7663,6 +7677,11 @@ cc_library(
     textual_hdrs = glob(["*.h"]),
     visibility = [
         "//visibility:public",
+    ],
+    deps = [
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
     ],
 )
 

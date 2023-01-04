@@ -65,6 +65,7 @@ cuda_py_test(
     # TODO(b/128347673): Re-enable.
     tags = ["no_windows"],
     deps = [
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
