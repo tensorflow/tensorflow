@@ -5342,7 +5342,9 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
       return EmitSliceToDynamic(op);
     }
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-    if (call.getCallTargetName() == kTriangularSolveCallTarget) {
+    auto call_target = call.getCallTargetName();
+    if (absl::string_view(call_target.data(), call_target.size()) ==
+        kTriangularSolveCallTarget) {
       return EmitTriangularSolveCustomCall(op);
     }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

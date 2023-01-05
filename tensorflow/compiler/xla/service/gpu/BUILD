@@ -750,6 +750,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
     ],
 )
 
