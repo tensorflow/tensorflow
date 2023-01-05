@@ -493,4 +493,13 @@ TfLiteStatus Interpreter::EnableCancellation() {
 
 TfLiteStatus Interpreter::Cancel() { return primary_subgraph().Cancel(); }
 
+void Interpreter::AddProfiler(std::unique_ptr<Profiler> profiler) {
+  if (profiler == nullptr) return;
+  if (root_profiler_ == nullptr) {
+    root_profiler_ = std::make_unique<profiling::RootProfiler>();
+  }
+  root_profiler_->AddProfiler(std::move(profiler));
+  SetSubgraphProfiler();
+}
+
 }  // namespace tflite
