@@ -29,11 +29,12 @@ func.func @test_depthwise_conv2d(%arg0: tensor<1x32x32x8xf32>, %arg1: tensor<2x2
 
 // -----
 
-// CHECK-LABEL: test_transpose_conv2d
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<[2, 0, 1, 3]> : tensor<4xi32>}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<16xf32>}
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.transpose"(%arg1, %[[VAR0]])
-// CHECK: %[[VAR3:.*]] = "tosa.transpose_conv2d"(%arg0, %[[VAR2]], %[[VAR1]]) {out_pad = [0, 0, 0, 0], out_shape = [1, 32, 32, 16], stride = [1, 1]}
+// CHECK-LABEL: @test_transpose_conv2d
+// CHECK-SAME:      %[[ARG0:.*]]: tensor<1x32x32x8xf32>, %[[ARG1:.*]]: tensor<1x1x16x8xf32>
+// CHECK:         %[[CONST:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<16xf32>}
+// CHECK:         %[[RESHAPE:.*]] = "tosa.reshape"(%[[ARG1]]) {new_shape = [16, 1, 1, 8]}
+// CHECK:         %[[TRANSPOSE:.*]] = "tosa.transpose_conv2d"(%[[ARG0]], %[[RESHAPE]], %[[CONST]]) {out_pad = [0, 0, 0, 0], out_shape = [1, 32, 32, 16], stride = [1, 1]}
+// CHECK:         return %[[TRANSPOSE]]
 func.func @test_transpose_conv2d(%arg0: tensor<1x32x32x8xf32>, %arg1: tensor<1x1x16x8xf32>) -> tensor<1x32x32x16xf32> {
   %3 = "tf.Const"()  {value = dense<[1, 32, 32, 16]> : tensor<4xi32>}  : () -> tensor<4xi32>
   %4 = "tf.Conv2DBackpropInput"(%3, %arg1, %arg0)  {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true}  : (tensor<4xi32>, tensor<1x1x16x8xf32>, tensor<1x32x32x8xf32>) -> tensor<1x32x32x16xf32>
@@ -865,17 +866,16 @@ func.func @test_right_shift(%arg0: tensor<4x4xi32>, %arg1: tensor<1x1xi32>) -> t
 
 // -----
 
-// CHECK-LABEL: test_one_hot
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<[0, 2, 1]> : tensor<3xi32>}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg1) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.tile"(%[[VAR1]]) {multiples = [16, 1, 1]}
-// CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%arg2) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR4:.*]] = "tosa.tile"(%[[VAR3]]) {multiples = [16, 2, 1]}
-// CHECK-DAG: %[[VAR5:.*]] = "tosa.reshape"(%arg0) {new_shape = [16, 1]}
-// CHECK-DAG: %[[VAR6:.*]] = "tosa.scatter"(%[[VAR4]], %[[VAR5]], %[[VAR2]])
-// CHECK-DAG: %[[VAR7:.*]] = "tosa.reshape"(%[[VAR6]]) {new_shape = [16, 1, 2]}
-// CHECK-DAG: %[[VAR8:.*]] = "tosa.transpose"(%[[VAR7]], %[[VAR0]])
-// CHECK: %[[VAR9:.*]] = "tosa.reshape"(%[[VAR8]]) {new_shape = [4, 4, 2]}
+// CHECK-LABEL: @test_one_hot
+// CHECK-SAME:      %[[ARG0_0:.*]]: tensor<4x4xi32>, %[[ARG1_0:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>
+// CHECK:         %[[RESHAPE_0:.*]] = "tosa.reshape"(%[[ARG1_0]]) {new_shape = [1, 1, 1]}
+// CHECK:         %[[TILE:.*]] = "tosa.tile"(%[[RESHAPE_0]]) {multiples = [16, 1, 1]}
+// CHECK:         %[[RESHAPE_1:.*]] = "tosa.reshape"(%[[ARG2]]) {new_shape = [1, 1, 1]}
+// CHECK:         %[[TILE_0:.*]] = "tosa.tile"(%[[RESHAPE_1]]) {multiples = [16, 2, 1]}
+// CHECK:         %[[RESHAPE_2:.*]] = "tosa.reshape"(%[[ARG0_0]]) {new_shape = [16, 1]}
+// CHECK:         %[[SCATTER:.*]] = "tosa.scatter"(%[[TILE_0]], %[[RESHAPE_2]], %[[TILE]])
+// CHECK:         %[[RESHAPE_3:.*]] = "tosa.reshape"(%[[SCATTER]]) {new_shape = [4, 4, 2]}
+// CHECK:         return %[[RESHAPE_3]]
 func.func @test_one_hot(%arg0: tensor<4x4xi32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<4x4x2xf32> {
   %0 = "tf.Const"()  {value = dense<2> : tensor<i32>}  : () -> tensor<i32>
   %1 = "tf.OneHot"(%arg0, %0, %arg1, %arg2) {axis = -1 : i64} : (tensor<4x4xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<4x4x2xf32>
