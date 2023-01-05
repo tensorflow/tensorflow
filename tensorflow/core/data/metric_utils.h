@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/time/time.h"
+#include "tensorflow/core/data/tfdataz_metrics.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -78,6 +79,10 @@ class IteratorMetricsCollector {
   // Records the end time (in microseconds) of the most recent `RecordStop()`
   // call.
   uint64_t end_time_us_ TF_GUARDED_BY(mu_) = 0;
+
+  // Records the iterators' performance metrics which will then be exported to
+  // /tfdataz page.
+  TfDatazMetricsCollector tf_dataz_metrics_collector_;
 };
 
 }  // namespace data
