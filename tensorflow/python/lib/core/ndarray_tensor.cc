@@ -484,8 +484,8 @@ Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray) {
   // Default TF implementation compares ndarray bytes with TF_Tensor bytes
   // which is allocated using allocate_output API for fixed size.
   // ZenDNN mempool optimization utilizes pre-allocated buffers with TF_Tensor.
-  // Hence, amount of allocated TF_Tensor bytes can be greater than or equal
-  // to requested bytes by the Op execution.
+  // Hence, the amount of allocated TF_Tensor bytes is always greater than or
+  // equal to the number of bytes requested by the op execution.
   else if (IsZenDnnEnabled() && (static_cast<size_t>(PyArray_NBYTES(py_array)) >
                                  TF_TensorByteSize(tensor.get()))) {
     return errors::Internal("ndarray was ", PyArray_NBYTES(py_array),
