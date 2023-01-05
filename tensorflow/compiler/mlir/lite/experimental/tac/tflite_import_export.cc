@@ -109,7 +109,8 @@ absl::Status TfLiteExporter::Export(mlir::ModuleOp module) {
   }
 
   return mlir::TFL::tac::ExportFlatbufferOrMlir(options_.output_file_name,
-                                                options_.output_mlir, module);
+                                                options_.output_mlir, module,
+                                                /*enable_select_tf_ops=*/false);
 }
 
 }  // namespace tac

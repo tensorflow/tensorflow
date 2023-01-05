@@ -55,6 +55,19 @@ _AttrValType = Union[List[int], bool, str, None]
 class QuantizedModelTest(test.TestCase, parameterized.TestCase):
   """Base test class for TF-quant tests."""
 
+  def setUp(self) -> None:
+    super().setUp()
+
+    # Many test cases for quantization involve creating and saving the input
+    # model and saving the output quantized model. These two member
+    # attributes can be used to specify the paths for such models,
+    # respectively. These paths will be cleaned up after each test case.
+    self._input_saved_model_path = self.create_tempdir('input').full_path
+    self._output_saved_model_path = self.create_tempdir('output').full_path
+    # Extra output path occasionally used for comparing two different
+    # quantized models.
+    self._output_saved_model_path_2 = self.create_tempdir('output2').full_path
+
   def _is_quantized_function(self, func: function_pb2.FunctionDef) -> bool:
     """Determine whether a FunctionDef is quantized.
 
@@ -164,14 +177,18 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         return True
     return False
 
-  def _create_simple_tf1_conv_model(self,
-                                    use_variable_for_filter=False
-                                   ) -> Tuple[core.Tensor, core.Tensor]:
+  def _create_simple_tf1_conv_model(
+      self,
+      input_shape: Sequence[int] = (1, 3, 4, 3),
+      filter_shape: Sequence[int] = (2, 3, 3, 2),
+      use_variable_for_filter=False) -> Tuple[core.Tensor, core.Tensor]:
     """Creates a basic convolution model.
 
     This is intended to be used for TF1 (graph mode) tests.
 
     Args:
+      input_shape: Shape of the input tensor.
+      filter_shape: Shape of the filter.
       use_variable_for_filter: Setting this to `True` makes the filter for the
         conv operation a `tf.Variable`.
 
@@ -179,10 +196,10 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       in_placeholder: Input tensor placeholder.
       output_tensor: The resulting tensor of the convolution operation.
     """
-    in_placeholder = array_ops.placeholder(dtypes.float32, shape=[1, 3, 4, 3])
+    in_placeholder = array_ops.placeholder(dtypes.float32, shape=input_shape)
 
     filters = random_ops.random_uniform(
-        shape=(2, 3, 3, 2), minval=-1., maxval=1.)
+        shape=filter_shape, minval=-1., maxval=1.)
     if use_variable_for_filter:
       filters = variables.Variable(filters)
 
@@ -220,6 +237,48 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     output_tensor = array_ops.gather_v2(filters, in_placeholder)
 
     return in_placeholder, output_tensor
+
+  def _create_and_save_vocab_table_lookup_model_tf1(
+      self,
+      output_path: str,
+      tags: Collection[str],
+      signature_def_key: str,
+  ) -> Tuple[Mapping[str, core.Tensor], Mapping[str, core.Tensor]]:
+    """Creates and saves a simple model that uses a vocab table.
+
+    Args:
+      output_path: Path to the directory to save the created model.
+      tags: Set of strings that identifies the saved meta graph.
+      signature_def_key: Name of the SignatureDef. Used to identify the
+        SignatureDef within the meta graph.
+
+    Returns:
+      inputs: A mapping of input_key -> input_tensor (placeholder). The input
+        key is "input_vocabs".
+      outputs: A mapping of output_key -> output_tensor. The output keys are
+        "lookup" and "output".
+    """
+    with session.Session(graph=ops.Graph()) as sess:
+      input_vocabs_placeholder, lookup_tensor, output_tensor = (
+          self._create_vocab_table_lookup_model_tf1(sess))
+
+      inputs = {'input_vocabs': input_vocabs_placeholder}
+      outputs = {
+          'lookup': lookup_tensor,
+          'output': output_tensor,
+      }
+
+      self._save_tf1_model(
+          sess,
+          output_path,
+          signature_def_key,
+          tags,
+          inputs=inputs,
+          outputs=outputs,
+          init_op=lookup_ops.tables_initializer(),
+          assets_collection=ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS))
+
+    return inputs, outputs
 
   def _create_vocab_table_lookup_model_tf1(
       self,
@@ -275,6 +334,117 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     weight = array_ops.transpose_v2(array_ops.stack([weight_row, weight_row]))
     # shape: (2, 2)
     output_tensor = math_ops.matmul(matmul_input, weight)
+
+    return input_vocabs_placeholder, lookup_vals, output_tensor
+
+  def _create_and_save_vocab_table_lookup_qat_model_tf1(
+      self,
+      output_path: str,
+      tags: Collection[str],
+      signature_def_key: str,
+  ) -> Tuple[Mapping[str, core.Tensor], Mapping[str, core.Tensor]]:
+    """Creates and saves a simple QAT model that uses a vocab table.
+
+    Args:
+      output_path: Path to the directory to save the created model.
+      tags: Set of strings that identifies the saved meta graph.
+      signature_def_key: Name of the SignatureDef. Used to identify the
+        SignatureDef within the meta graph.
+
+    Returns:
+      inputs: A mapping of input_key -> input_tensor (placeholder). The input
+        key is "input_vocabs".
+      outputs: A mapping of output_key -> output_tensor. The output keys are
+        "lookup" and "output".
+    """
+    with session.Session(graph=ops.Graph()) as sess:
+      input_vocabs_placeholder, lookup_tensor, output_tensor = (
+          self._create_vocab_table_lookup_qat_model_tf1(sess))
+
+      inputs = {'input_vocabs': input_vocabs_placeholder}
+      outputs = {
+          'lookup': lookup_tensor,
+          'output': output_tensor,
+      }
+
+      self._save_tf1_model(
+          sess,
+          output_path,
+          signature_def_key,
+          tags,
+          inputs=inputs,
+          outputs=outputs,
+          init_op=lookup_ops.tables_initializer(),
+          assets_collection=ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS))
+
+    return inputs, outputs
+
+  def _create_vocab_table_lookup_qat_model_tf1(
+      self,
+      sess: session.Session) -> Tuple[core.Tensor, core.Tensor, core.Tensor]:
+    """Creates a simple QAT model that initializes and lookups a vocab table.
+
+    This model creates an asset file at "vocab_file.txt" containing
+    comma-separated vocabularies.  It also initializes a `StaticVocabularyTable`
+    and performs a lookup with the input vocabs, which is a 1D tensor of
+    strings.
+
+    Args:
+      sess: Tensorflow Session to create the model in.
+
+    Returns:
+      (input_vocabs_placeholder, lookup_vals, output_tensor), where
+      * input_vocabs_placeholder is a placeholder tensor of 1D strings
+      * lookup_vals is an output tensor that is a direct result of table lookup
+      * output_tensor is a float 2x2 matrix
+    """
+    # Creates and populates an asset file.
+    asset_dir = self.create_tempdir('assets').full_path
+    asset_file = os.path.join(asset_dir, 'vocab_file.txt')
+    file_io.write_string_to_file(
+        filename=asset_file, file_content='hello,model,quantization\n')
+
+    vocab_file = asset.Asset(asset_file)
+
+    raw_vocab = io_ops.read_file(vocab_file)
+    vocabs = ragged_string_ops.string_split_v2(
+        string_ops.string_strip(raw_vocab), sep=',')
+
+    # Initialize the vocab table. Each comma-separated word in vocab_file.txt
+    # corresponds to the numeric identifiers in `values`.
+    kv_init = lookup_ops.KeyValueTensorInitializer(
+        keys=vocabs, values=np.array([0, 1, 2]), value_dtype=dtypes.int64)
+    table = lookup_ops.StaticVocabularyTable(kv_init, num_oov_buckets=5)
+
+    input_vocabs_placeholder = array_ops.placeholder(
+        dtypes.string, shape=(None,), name='input_vocabs')
+
+    # Introduce a matmul op that takes the lookup values to observe the
+    # effects of quantization.
+    lookup_vals = math_ops.cast(
+        table.lookup(input_vocabs_placeholder), dtypes.float32)
+
+    # shape: (2, ?)
+    matmul_input = array_ops.stack([lookup_vals, lookup_vals])
+    # Insert fake quant to simulate a QAT model.
+    matmul_input = array_ops.fake_quant_with_min_max_args(
+        matmul_input, min=-0.3, max=0.3, num_bits=8, narrow_range=False)
+
+    # Create a dummy weight matrix filled with ones.
+    weight_row = array_ops.ones(
+        shape=array_ops.shape(input_vocabs_placeholder), dtype=dtypes.float32)
+
+    # shape: (?, 2)
+    weight = array_ops.transpose_v2(array_ops.stack([weight_row, weight_row]))
+    # Insert fake quant to simulate a QAT model.
+    weight = array_ops.fake_quant_with_min_max_args(
+        weight, min=-0.1, max=0.2, num_bits=8, narrow_range=False)
+
+    # shape: (2, 2)
+    output_tensor = math_ops.matmul(matmul_input, weight)
+    # Insert fake quant to simulate a QAT model.
+    output_tensor = array_ops.fake_quant_with_min_max_args(
+        output_tensor, min=-0.2, max=0.2, num_bits=8, narrow_range=False)
 
     return input_vocabs_placeholder, lookup_vals, output_tensor
 
@@ -518,12 +688,13 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
 
     return ConvModel()
 
-  def _create_matmul_model(self,
-                           input_shape: Sequence[int],
-                           weight_shape: Sequence[int],
-                           saved_model_path: str,
-                           has_bias: bool = False,
-                           activation_fn: Optional[ops.Operation] = None) ->...:
+  def _create_matmul_model(
+      self,
+      input_shape: Sequence[int],
+      weight_shape: Sequence[int],
+      saved_model_path: str,
+      has_bias: bool = False,
+      activation_fn: Optional[ops.Operation] = None) -> module.Module:
 
     class MatmulModel(module.Module):
       """A simple model with a single matmul.
@@ -581,13 +752,86 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
                 shape=input_shape, dtype=dtypes.float32, name='input_tensor')))
     return model
 
-  def _create_and_save_tf1_conv_model(self,
-                                      saved_model_path: str,
-                                      signature_key: str,
-                                      tags: Collection[str],
-                                      input_key: str,
-                                      output_key: str,
-                                      use_variable=False) -> core.Tensor:
+  def _create_einsum_model(
+      self,
+      saved_model_path: str,
+      equation: str,
+      input_shape: Sequence[int],
+      weight_shape: Sequence[int],
+      bias_shape: Optional[Sequence[int]] = None,
+      activation_fn: Optional[ops.Operation] = None) -> module.Module:
+
+    class EinsumModel(module.Module):
+      """A simple model with a single einsum.
+
+      Bias and activation function are optional.
+      """
+
+      def __init__(self,
+                   equation: str,
+                   weight_shape: Sequence[int],
+                   bias_shape: Optional[Sequence[int]] = None,
+                   activation_fn: Optional[ops.Operation] = None) -> None:
+        """Initializes a EinsumModel.
+
+        Args:
+          equation: a string describing the contraction.
+          weight_shape: Shape of the weight tensor.
+          bias_shape: Shape of the bias. This is not always 1D so Einsum ops
+            usually use Add op instead of BiasAdd.
+          activation_fn: The activation function to be used. No activation
+            function if None.
+        """
+        self.equation = equation
+        self.activation_fn = activation_fn
+        self.weight = np.random.uniform(low=-1.0, high=1.0, size=weight_shape)
+        self.bias = np.random.uniform(
+            low=-1.0, high=1.0,
+            size=bias_shape) if bias_shape is not None else None
+
+      @def_function.function
+      def einsum(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+        """Evaluates the Einstein summation convention.
+
+        Depending on self.has_bias and self.activation_fn, it may add a bias
+        term or go through the activaction function.
+
+        Args:
+          input_tensor: Input tensor to einsum with the weight.
+
+        Returns:
+          A map of: output key -> output result.
+        """
+        out = tensorflow.einsum(self.equation, input_tensor, self.weight)
+
+        if self.bias is not None:
+          out = out + self.bias
+
+        if self.activation_fn is not None:
+          out = self.activation_fn(out)
+
+        return {'output': out}
+
+    model = EinsumModel(equation, weight_shape, bias_shape, activation_fn)
+    saved_model_save.save(
+        model,
+        saved_model_path,
+        signatures=model.einsum.get_concrete_function(
+            tensor_spec.TensorSpec(
+                shape=input_shape, dtype=dtypes.float32, name='input_tensor')))
+    return model
+
+  def _create_and_save_tf1_conv_model(
+      self,
+      saved_model_path: str,
+      signature_key: str,
+      tags: Collection[str],
+      input_key: str,
+      output_key: str,
+      *,
+      input_shape: Sequence[int] = (1, 3, 4, 3),
+      filter_shape: Sequence[int] = (2, 3, 3, 2),
+      use_variable: bool = False) -> core.Tensor:
     """Creates and saves a simple convolution model.
 
     This is intended to be used for TF1 (graph mode) tests.
@@ -599,6 +843,8 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       tags: Set of tags associated with the model.
       input_key: The key to the input tensor.
       output_key: The key to the output tensor.
+      input_shape: Shape of the input tensor.
+      filter_shape: Shape of the filter.
       use_variable: Setting this to `True` makes the filter for the conv
         operation a `tf.Variable`.
 
@@ -607,6 +853,8 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     """
     with ops.Graph().as_default(), session.Session() as sess:
       in_placeholder, output_tensor = self._create_simple_tf1_conv_model(
+          input_shape=input_shape,
+          filter_shape=filter_shape,
           use_variable_for_filter=use_variable)
 
       if use_variable:

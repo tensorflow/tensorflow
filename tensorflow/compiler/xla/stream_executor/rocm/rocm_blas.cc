@@ -841,12 +841,24 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
   MAPPED_T *beta_ptr = reinterpret_cast<MAPPED_T *>(&beta);
 
   bool ok;
-  ok = DoBlasInternal(rocblas_func, stream, /* pointer_mode_host = */ true,
-                      ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m,
-                      n, k, GpuComplex(alpha_ptr), GpuMemory(a), lda,
-                      batch_stride_a, GpuMemory(b), ldb, batch_stride_b,
-                      GpuComplex(beta_ptr), GpuMemoryMutable(&c), ldc,
-                      batch_stride_c, batch_count);
+  if constexpr (std::is_same<T, Eigen::bfloat16>::value) {
+    ok = DoBlasInternal(
+        rocblas_func, stream, /* pointer_mode_host = */ true,
+        ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k,
+        GpuComplex(alpha_ptr), GpuMemory(a), rocblas_datatype_bf16_r, lda,
+        batch_stride_a, GpuMemory(b), rocblas_datatype_bf16_r, ldb,
+        batch_stride_b, GpuComplex(beta_ptr), GpuMemoryMutable(&c),
+        rocblas_datatype_bf16_r, ldc, batch_stride_c, GpuMemoryMutable(&c),
+        rocblas_datatype_bf16_r, ldc, batch_stride_c, batch_count,
+        rocblas_datatype_f32_r, rocblas_gemm_algo_standard, 0, 0);
+  } else {
+    ok = DoBlasInternal(rocblas_func, stream, /* pointer_mode_host = */ true,
+                        ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m,
+                        n, k, GpuComplex(alpha_ptr), GpuMemory(a), lda,
+                        batch_stride_a, GpuMemory(b), ldb, batch_stride_b,
+                        GpuComplex(beta_ptr), GpuMemoryMutable(&c), ldc,
+                        batch_stride_c, batch_count);
+  }
   if (!ok)
     return port::Status(port::error::INTERNAL,
                         "failed BLAS call, see log for details");
@@ -881,12 +893,22 @@ bool ROCMBlas::DoBlasGemmBatched(
 bool ROCMBlas::DoBlasGemmBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
     uint64_t n, uint64 k, float alpha,
-    const absl::Span<DeviceMemory<Eigen::bfloat16> *const> &a, int lda,
-    const absl::Span<DeviceMemory<Eigen::bfloat16> *const> &b, int ldb,
-    float beta, const absl::Span<DeviceMemory<Eigen::bfloat16> *const> &c,
+    const absl::Span<DeviceMemory<Eigen::bfloat16> *const> &a_array, int lda,
+    const absl::Span<DeviceMemory<Eigen::bfloat16> *const> &b_array, int ldb,
+    float beta, const absl::Span<DeviceMemory<Eigen::bfloat16> *const> &c_array,
     int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
-  LOG(ERROR) << "DoBlasGemmBatched not implemented for bfloat16";
-  return false;
+  blas_log("DoBlasGemmBatched");
+  const Eigen::bfloat16 alpha_bf16(alpha);
+  const Eigen::bfloat16 beta_bf16(beta);
+
+  port::Status status = DoBlasGemmBatchedInternal(
+      wrap::rocblas_gemm_strided_batched_ex, stream, transa, transb, m, n, k,
+      alpha_bf16, a_array, lda, b_array, ldb, beta_bf16, c_array, ldc,
+      batch_count, scratch_allocator);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
+  }
+  return status.ok();
 }
 
 bool ROCMBlas::DoBlasGemmBatched(

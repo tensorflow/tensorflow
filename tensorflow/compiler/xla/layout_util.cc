@@ -354,6 +354,14 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
           "layout has a physical_shape, but is not a sparse array: %s",
           shape.ShortDebugString());
     }
+    for (const auto& tile : layout.tiles()) {
+      if (tile.dimensions().empty() ||
+          absl::c_any_of(tile.dimensions(),
+                         [](int64_t dim) { return dim == 0; })) {
+        return InvalidArgument("layout has invalid tiles: %s",
+                               shape.ShortDebugString());
+      }
+    }
   }
 
   for (int64_t dim = 0; dim < shape.rank(); ++dim) {

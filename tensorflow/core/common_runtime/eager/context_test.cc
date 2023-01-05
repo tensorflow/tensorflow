@@ -53,10 +53,11 @@ class EagerContextTest : public ::testing::Test {
                    ContextDevicePlacementPolicy policy, bool async = false) {
     ASSERT_EQ(context_, nullptr);
     InitDeviceManager();
-    context_ = core::RefCountPtr<EagerContext>(
-        new EagerContext(opts, policy, async, device_manager_.get(),
-                         /*device_mgr_owned=*/false, /*rendezvous=*/nullptr,
-                         /*cluster_flr=*/nullptr));
+    context_ = core::RefCountPtr<EagerContext>(new EagerContext(
+        opts, policy, async, device_manager_.get(),
+        /*device_mgr_owned=*/false, /*rendezvous=*/nullptr,
+        /*cluster_flr=*/nullptr, /*collective_executor_mgr=*/nullptr,
+        /*run_eager_op_as_function=*/true));
   }
 
  protected:

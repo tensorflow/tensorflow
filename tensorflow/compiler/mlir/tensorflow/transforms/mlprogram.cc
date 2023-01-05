@@ -36,6 +36,8 @@ void PopulateLowerToMlProgramAndHloPipeline(mlir::OpPassManager& pm) {
   // Remove unused global tensors, or make then immutable if possible.
   pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
 
+  pm.addPass(
+      mlir::tf_saved_model::CreateConvertSessionInitializerToFunctionPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
   pm.addPass(mlir::TF::CreateNameAnonymousIteratorsPass());

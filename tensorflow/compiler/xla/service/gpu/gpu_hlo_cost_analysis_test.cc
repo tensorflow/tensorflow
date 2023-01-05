@@ -69,6 +69,53 @@ ENTRY entry {
   EXPECT_EQ(analysis_.flop_count(*conv1), 159694848);
 }
 
+TEST_F(GpuHloCostAnalysisTest, SoftmaxCustomCall) {
+  absl::string_view hlo_string = R"(
+HloModule softmax
+
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+
+add_computation {
+  arg_0.1 = f32[] parameter(0)
+  arg_1.1 = f32[] parameter(1)
+  ROOT maximum = f32[] add(arg_0.1, arg_1.1)
+}
+
+softmax_computation {
+  param_0 = f32[127,125]{1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
+  exponential = f32[127,125]{1,0} exponential(subtract)
+  constant_zero = f32[] constant(0)
+  second_reduce = f32[127]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
+  second_broadcast = f32[127,125]{1,0} broadcast(second_reduce), dimensions={0}
+  ROOT divide = f32[127,125]{1,0} divide(exponential, second_broadcast)
+}
+
+ENTRY entry {
+  param = f32[127,125]{1,0} parameter(0)
+  ROOT softmax = f32[127,125]{1,0} custom-call(param), custom_call_target="__softmax_fusion", to_apply=softmax_computation
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  HloComputation* comp = module->entry_computation();
+  const HloInstruction* softmax = comp->GetInstructionWithName("softmax");
+  int op_size = sizeof(float) * 127 * 125;
+  int out_size = sizeof(float) * 127 * 125;
+  EXPECT_EQ(analysis_.operand_bytes_accessed(*softmax, 0), op_size);
+  EXPECT_EQ(analysis_.output_bytes_accessed(*softmax), out_size);
+  EXPECT_EQ(analysis_.bytes_accessed(*softmax), op_size + out_size);
+  EXPECT_EQ(analysis_.flop_count(*softmax), 237363);
+}
+
 TEST_F(GpuHloCostAnalysisTest, ReduceWindowWithOverlapsRepeatedReads) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
@@ -459,6 +506,74 @@ TEST_F(GpuHloCostAnalysisTest, DynUpdateSliceNotUsingOperandData) {
 
   EXPECT_EQ(analysis_.operand_bytes_accessed(*fusion, 0), 0);
   EXPECT_EQ(analysis_.output_bytes_accessed(*fusion), 1);
+}
+
+TEST_F(GpuHloCostAnalysisTest, CommonElementwiseUseTwoParameters) {
+  const char* hlo_fusion_module_str = R"(
+  HloModule m
+
+  add {
+    p0 = s8[] parameter(0)
+    p1 = s8[] parameter(1)
+    ROOT _ = s8[] add(p0, p1)
+  }
+
+  f {
+    p0 = s8[10] parameter(0)
+    p1 = s8[10] parameter(1)
+    a = s8[10] add(p0, p1)
+    c0 = s8[] constant(0)
+    r0 = s8[] reduce(a, c0), dimensions={0}, to_apply=add
+    c1 = s8[] constant(100)
+    r1 = s8[] reduce(a, c1), dimensions={0}, to_apply=add
+    ROOT _ = s8[] add(r0, r1)
+  }
+
+  ENTRY _ {
+    p0 = s8[10] parameter(0)
+    p1 = s8[10] parameter(1)
+    ROOT _ = s8[] fusion(p0, p1), kind=kLoop, calls=f
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_fusion_module_str));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+
+  EXPECT_EQ(analysis_.CommonElementwiseUtilization(fusion->fused_parameter(0),
+                                                   fusion->fused_parameter(1)),
+            2.f);
+}
+
+TEST_F(GpuHloCostAnalysisTest, CommonElementwiseUseParameterAndRoot) {
+  const char* hlo_fusion_module_str = R"(
+  HloModule m
+
+  f {
+    p0 = s8[10] parameter(0)
+    p1 = s8[] parameter(1)
+    p1b = s8[10] broadcast(p1)
+    a = s8[10] add(p0, p1b)
+    ROOT _ = s8[10] negate(a)
+  }
+
+  ENTRY _ {
+    p0 = s8[10] parameter(0)
+    p1 = s8[] parameter(1)
+    ROOT _ = s8[10] fusion(p0, p1), kind=kLoop, calls=f
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_fusion_module_str));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+
+  EXPECT_EQ(analysis_.CommonElementwiseUtilization(
+                fusion->fused_parameter(0), fusion->fused_expression_root()),
+            1.f);
+  EXPECT_EQ(analysis_.CommonElementwiseUtilization(
+                fusion->fused_parameter(1), fusion->fused_expression_root()),
+            0.f);
 }
 
 }  // namespace gpu

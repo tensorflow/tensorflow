@@ -2299,7 +2299,6 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
-        "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/schema:schema_fbs",

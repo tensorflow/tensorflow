@@ -106,8 +106,11 @@ class AvgPoolingOp : public UnaryOp<T> {
                 errors::InvalidArgument("tensor_in must be 4-dimensional"));
 
     Tensor* output = nullptr;
+    TensorShape params_forward_output_shape;
+    OP_REQUIRES_OK(context,
+                   params.forward_output_shape(&params_forward_output_shape));
     OP_REQUIRES_OK(context, context->allocate_output(
-                                0, params.forward_output_shape(), &output));
+                                0, params_forward_output_shape, &output));
 
     SpatialAvgPool<Device, T>(context, output, tensor_in, params, padding_);
   }
@@ -185,7 +188,8 @@ class AvgPoolingOp<GPUDevice, T> : public UnaryOp<T> {
     OP_REQUIRES(context, tensor_in.dims() == 4,
                 errors::InvalidArgument("tensor_in must be 4-dimensional"));
 
-    TensorShape output_shape = params.forward_output_shape();
+    TensorShape output_shape;
+    OP_REQUIRES_OK(context, params.forward_output_shape(&output_shape));
     if (output_shape.num_elements() == 0) {
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context,

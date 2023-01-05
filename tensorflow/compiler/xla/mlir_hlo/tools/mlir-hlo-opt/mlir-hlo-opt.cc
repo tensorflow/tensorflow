@@ -21,18 +21,18 @@ limitations under the License.
 #include "lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "mhlo/IR/register.h"
 #include "mhlo/transforms/passes.h"
-#include "mlir-hlo/Transforms/gpu_passes.h"
-#include "mlir-hlo/Transforms/passes.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "stablehlo/dialect/Register.h"
 #include "thlo/IR/thlo_ops.h"
 #include "thlo/transforms/passes.h"
+#include "transforms/gpu_passes.h"
+#include "transforms/passes.h"
 
 using namespace mlir;
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   mlir::registerAllPasses();
   mlir::hlo::registerLMHLOTransformsPasses();
   mlir::registerLMHLOGPUTransformsPasses();
@@ -66,6 +66,23 @@ int main(int argc, char **argv) {
         return createHloToGpuPipeline(pm, opts.blockTileDim, opts.warpTileDim,
                                       opts.threadTileDim,
                                       opts.experimentalSoftmax);
+      });
+  mlir::PassPipelineRegistration<gml_st::GmlStCPUPipelineOptions>
+      gmlStTilingAndFusionTransformations(
+          "gml-st-cpu-pipeline",
+          "Tiles, fuses, vectorizes tileable ops for CPU",
+          gml_st::addTileableOpsTransformationsForCPU);
+
+  struct HloToTritonPipelineOptions
+      : public PassPipelineOptions<HloToTritonPipelineOptions> {
+    ListOption<int64_t> blockTileDim{
+        *this, "block-tile",
+        llvm::cl::desc("dimensions of the subproblem processed by the block")};
+  };
+  mlir::PassPipelineRegistration<HloToTritonPipelineOptions>(
+      "hlo-to-triton-pipeline", "Pipeline to transform HLO to Triton dialect.",
+      [](OpPassManager& pm, const HloToTritonPipelineOptions& opts) {
+        return createHloToTritonPipeline(pm, opts.blockTileDim);
       });
 
   mlir::DialectRegistry registry;

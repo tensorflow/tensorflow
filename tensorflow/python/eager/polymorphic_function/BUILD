@@ -14,7 +14,7 @@ py_library(
     deps = [
         ":function_context",
         ":function_spec",
-        ":saved_model_utils",
+        ":saved_model_exported_concrete",
         "//tensorflow/core/function/polymorphism:function_cache",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -43,6 +43,7 @@ py_library(
     visibility = ["//tensorflow/python/eager:__pkg__"],
     deps = [
         ":monomorphic_function",
+        "//tensorflow/core/function/capture:capture_container",
     ],
 )
 
@@ -327,6 +328,16 @@ py_library(
         "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:resource",
+    ],
+)
+
+py_library(
+    name = "saved_model_exported_concrete",
+    srcs = ["saved_model_exported_concrete.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python/trackable:base",
     ],
 )
 

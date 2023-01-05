@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/tensorlist_setitem_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/top_k_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/trivial_spmd_expander.h"
+#include "tensorflow/dtensor/mlir/expansions/unsupported_op_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/spmd_expander.h"
 
 namespace tensorflow {
@@ -216,10 +217,17 @@ REGISTER_SPMD(L2Loss, TF::L2LossOp, ReduceSPMDExpander);
 REGISTER_SPMD(Conv2D, TF::Conv2DOp, ConvSPMDExpander);
 REGISTER_SPMD(Conv2DBackpropFilter, TF::Conv2DBackpropFilterOp,
               ConvSPMDExpander);
+REGISTER_SPMD(Conv2DBackpropFilterV2, TF::Conv2DBackpropFilterV2Op,
+              ConvSPMDExpander);
 REGISTER_SPMD(Conv2DBackpropInput, TF::Conv2DBackpropInputOp, ConvSPMDExpander);
+REGISTER_SPMD(Conv2DBackpropInputV2, TF::Conv2DBackpropInputV2Op,
+              ConvSPMDExpander);
 REGISTER_SPMD(Conv3D, TF::Conv3DOp, ConvSPMDExpander);
+REGISTER_SPMD(Conv3DBackpropFilter, TF::Conv3DBackpropFilterOp,
+              ConvSPMDExpander);
 REGISTER_SPMD(Conv3DBackpropFilterV2, TF::Conv3DBackpropFilterV2Op,
               ConvSPMDExpander);
+REGISTER_SPMD(Conv3DBackpropInput, TF::Conv3DBackpropInputOp, ConvSPMDExpander);
 REGISTER_SPMD(Conv3DBackpropInputV2, TF::Conv3DBackpropInputV2Op,
               ConvSPMDExpander);
 REGISTER_SPMD(MaxPool, TF::MaxPoolOp, ConvSPMDExpander);
@@ -514,5 +522,20 @@ REGISTER_SPMD(WriteSummary, TF::WriteSummaryOp, IOOpSPMDExpander);
 REGISTER_SPMD(DisableCopyOnRead, TF::DisableCopyOnReadOp,
               DisableCopyOnReadSPMDExpander);
 REGISTER_SPMD(ShardedFilename, TF::ShardedFilenameOp, ReplicatedOpSPMDExpander);
+
+// Unsupported ops.
+REGISTER_SPMD(RandomNormal, TF::RandomUniformOp, UnsupportedOpSPMDExpander,
+              /*error_message=*/
+              "Stateful random operations are not supported in DTensor. Please "
+              "use stateless random operations instead.");
+REGISTER_SPMD(RandomNormalInt, TF::RandomUniformIntOp,
+              UnsupportedOpSPMDExpander,
+              /*error_message=*/
+              "Stateful random operations are not supported in DTensor. Please "
+              "use stateless random operations instead.");
+
+// Unique
+REGISTER_SPMD(Unique, TF::UniqueOp, ReplicatedOpSPMDExpander,
+              /*relayout_when_sharded=*/true);
 }  // namespace dtensor
 }  // namespace tensorflow

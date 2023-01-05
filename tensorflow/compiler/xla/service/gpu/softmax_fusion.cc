@@ -45,16 +45,39 @@ bool HasDefaultLayout(const Shape& shape) {
          LayoutUtil::IsMonotonicWithDim0Major(shape.layout());
 }
 
-bool ShapeInvolvesComplexNumbers(const Shape& shape) {
+bool ShapeInvolvesUnsupportedElementType(const Shape& shape) {
   if (shape.IsArray() &&
-      (shape.element_type() == C64 || shape.element_type() == C128)) {
+      (shape.element_type() == C64 || shape.element_type() == C128 ||
+       shape.element_type() == U8 || shape.element_type() == U16 ||
+       shape.element_type() == U32 || shape.element_type() == U64 ||
+       shape.element_type() == BF16)) {
     return true;
   } else if (shape.IsTuple()) {
     for (auto& tuple_shape : shape.tuple_shapes())
-      if (ShapeInvolvesComplexNumbers(tuple_shape)) return true;
+      if (ShapeInvolvesUnsupportedElementType(tuple_shape)) return true;
   }
 
   return false;
+}
+
+bool IsSupportedReductionElementType(PrimitiveType element_type) {
+  return element_type == F16 || element_type == F32 || element_type == S32 ||
+         element_type == S16 || element_type == PRED;
+}
+
+bool IsSupportedReductionComputation(HloComputation* computation) {
+  static const absl::flat_hash_set<HloOpcode>* const kSupportedOpcodes =
+      new absl::flat_hash_set<HloOpcode>{
+          HloOpcode::kAdd,     HloOpcode::kMultiply, HloOpcode::kMaximum,
+          HloOpcode::kMinimum, HloOpcode::kAnd,      HloOpcode::kOr,
+          HloOpcode::kXor};
+  HloInstruction* root = computation->root_instruction();
+  if (root->operand_count() != 2 ||
+      root->operand(0)->opcode() != HloOpcode::kParameter ||
+      root->operand(1)->opcode() != HloOpcode::kParameter) {
+    return false;
+  }
+  return kSupportedOpcodes->contains(root->opcode());
 }
 
 bool MatchesSoftmaxPattern(HloInstruction* instr) {
@@ -93,6 +116,9 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
 
                    int64_t rank = instr->shape().rank();
                    return instr->IsElementwiseBinary() &&
+                          // We rely on L1 cache for performance, and there are
+                          // 256 elements in L1 cache per warp.
+                          instr->shape().dimensions().back() <= 256 &&
                           // If the product of the first dimensions is 1, it
                           // currently crashes the pipeline. Also, we expect
                           // that the performance is not so good if the
@@ -138,6 +164,9 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
   // The reduction should reduce the last dimension of the operand shape.
   if (reduce_or_unary->opcode() != HloOpcode::kReduce ||
       reduce_or_unary->dimensions().size() != 1 ||
+      !IsSupportedReductionElementType(
+          reduce_or_unary->shape().element_type()) ||
+      !IsSupportedReductionComputation(reduce_or_unary->to_apply()) ||
       reduce_or_unary->dimensions()[0] != reduce_or_unary->shape().rank()) {
     return false;
   }
@@ -181,15 +210,15 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
     has_major_to_minor_layout = false;
   }
 
-  if (ShapeInvolvesComplexNumbers(root->shape()) ||
-      ShapeInvolvesComplexNumbers(broadcast->shape()) ||
-      ShapeInvolvesComplexNumbers(reduce_or_unary->shape()) ||
-      ShapeInvolvesComplexNumbers(producer->shape())) {
+  if (ShapeInvolvesUnsupportedElementType(root->shape()) ||
+      ShapeInvolvesUnsupportedElementType(broadcast->shape()) ||
+      ShapeInvolvesUnsupportedElementType(reduce_or_unary->shape()) ||
+      ShapeInvolvesUnsupportedElementType(producer->shape())) {
     return false;
   }
 
   for (HloInstruction* operand : producer->operands()) {
-    if (ShapeInvolvesComplexNumbers(operand->shape())) {
+    if (ShapeInvolvesUnsupportedElementType(operand->shape())) {
       return false;
     }
   }
@@ -203,7 +232,7 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
     if (current_operand->operand_count() != 1 ||
         !current_operand->IsElementwise() ||
         current_operand->user_count() > 1 ||
-        ShapeInvolvesComplexNumbers(current_operand->shape())) {
+        ShapeInvolvesUnsupportedElementType(current_operand->shape())) {
       return false;
     }
     if (!HasDefaultLayout(current_operand->shape())) {
@@ -259,17 +288,15 @@ bool IsSupportedBroadcast(HloInstruction* hlo) {
     // If there is a broadcast dimension in the part of dimensions that are
     // collapsed into 1 dimension, then all those rank - 1 dimensions need to be
     // broadcast dimensions.
-    if (hlo->dimensions(0) < rank - 1 &&
-        (hlo->dimensions().size() < rank - 1 ||
-         hlo->dimensions()[rank - 1] != rank - 1)) {
+    if (hlo->dimensions(0) < rank - 1 && hlo->dimensions().size() < rank) {
       return false;
     }
   }
   return true;
 }
 
-Status ReplaceSoftmaxWithCustomCall(HloInstruction* root,
-                                    HloInstruction* producer) {
+StatusOr<bool> TryReplaceSoftmaxWithCustomCall(HloInstruction* root,
+                                               HloInstruction* producer) {
   absl::flat_hash_map<const HloInstruction*, HloInstruction*>
       old_to_new_mapping;
   auto builder = HloComputation::Builder("softmax_computation");
@@ -287,6 +314,13 @@ Status ReplaceSoftmaxWithCustomCall(HloInstruction* root,
   while (!worklist.empty()) {
     HloInstruction* current = worklist.front();
     worklist.pop();
+    // If it is a broadcast that we cannot fuse in, we should not replace the
+    // matched softmax with the custom call, because not fusing the broadcast
+    // can have negative impact on performance.
+    if (current->opcode() == HloOpcode::kBroadcast &&
+        !IsSupportedBroadcast(current)) {
+      return false;
+    }
     // TODO(akuegel): Currently our MLIR lowering doesn't work if we fuse
     // constants in. This results in an error like:
     // 'memref.get_global' op '__constant_150xf32' does not reference a valid
@@ -299,9 +333,9 @@ Status ReplaceSoftmaxWithCustomCall(HloInstruction* root,
          (current == producer && current->user_count() == 2)) &&
         ((current->IsElementwise() &&
           current->opcode() != HloOpcode::kConstant) ||
-         IsSupportedBroadcast(current)) &&
+         current->opcode() == HloOpcode::kBroadcast) &&
         llvm::none_of(current->operands(), [](HloInstruction* operand) {
-          return ShapeInvolvesComplexNumbers(operand->shape());
+          return ShapeInvolvesUnsupportedElementType(operand->shape());
         })) {
       for (HloInstruction* operand : current->operands()) {
         if (!visited.contains(operand)) {
@@ -348,7 +382,7 @@ Status ReplaceSoftmaxWithCustomCall(HloInstruction* root,
     TF_RETURN_IF_ERROR(
         root->parent()->ReplaceInstruction(root, softmax_custom_call));
   }
-  return OkStatus();
+  return true;
 }
 
 }  // anonymous namespace
@@ -376,6 +410,7 @@ StatusOr<bool> SoftmaxFusion::Run(
   }
 
   absl::flat_hash_set<HloInstruction*> processed_softmax_roots;
+  bool changed = false;
   for (HloInstruction* root : softmax_roots) {
     if (processed_softmax_roots.contains(root)) {
       continue;
@@ -429,10 +464,11 @@ StatusOr<bool> SoftmaxFusion::Run(
       processed_softmax_roots.insert(merged_root);
     }
     HloInstruction* merged_producer = SoftmaxProducer(root);
-    TF_RETURN_IF_ERROR(
-        ReplaceSoftmaxWithCustomCall(merged_root, merged_producer));
+    TF_ASSIGN_OR_RETURN(bool replaced, TryReplaceSoftmaxWithCustomCall(
+                                           merged_root, merged_producer));
+    changed = changed || replaced;
   }
-  return true;
+  return changed;
 }
 
 }  // namespace xla::gpu

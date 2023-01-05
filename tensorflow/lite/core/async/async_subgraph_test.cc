@@ -141,7 +141,14 @@ TEST_F(AsyncSubgraphTest, BasicTest) {
   // Scheduling another execution w/o waiting on the task should return error.
   EXPECT_EQ(kTfLiteError, subgraph_->InvokeAsync(task));
   EXPECT_TRUE(task->task->Scheduled());
+  EXPECT_EQ(kTfLiteOk, task->task->Status());
   EXPECT_EQ(kTfLiteOk, subgraph_->Wait(task));
+
+  // If waiting the task failed, all successive `Wait` should also fail.
+  task->task->SetStatus(kTfLiteError);
+  EXPECT_EQ(kTfLiteError, subgraph_->Wait(task));
+  EXPECT_EQ(kTfLiteError, subgraph_->Wait(task));
+
   EXPECT_FALSE(task->task->Scheduled());
   // Deletes `task`
   subgraph_->Finish(task);

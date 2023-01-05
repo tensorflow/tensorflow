@@ -125,8 +125,9 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
                                      "test_out.py", out_file))
     return count, report, errors, out_file.getvalue()
 
-  def _upgrade_multiple(self, old_file_texts):
-    upgrader = ast_edits.ASTCodeUpgrader(tf_upgrade_v2.TFAPIChangeSpec())
+  def _upgrade_multiple(self, upgrade_compat_v1_import, old_file_texts):
+    upgrader = ast_edits.ASTCodeUpgrader(
+        tf_upgrade_v2.TFAPIChangeSpec(True, upgrade_compat_v1_import))
     results = []
     for old_file_text in old_file_texts:
       in_file = io.StringIO(old_file_text)
@@ -1939,8 +1940,18 @@ def _log_prob(self, x):
   def test_saved_model_load(self):
     text = "tf.saved_model.load(sess, ['foo_graph'])"
     expected = "tf.compat.v1.saved_model.load(sess, ['foo_graph'])"
-    _, _, _, new_text = self._upgrade(text)
+    _, report, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
+    expected_info = "tf.saved_model.load works differently in 2.0"
+    self.assertIn(expected_info, report)
+
+  def test_saved_model_loader_load(self):
+    text = "tf.saved_model.loader.load(sess, ['foo_graph'])"
+    expected = "tf.compat.v1.saved_model.load(sess, ['foo_graph'])"
+    _, report, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+    expected_info = "tf.saved_model.load works differently in 2.0"
+    self.assertIn(expected_info, report)
 
   def test_saved_model_load_v2(self):
     text = "tf.saved_model.load_v2('/tmp/blah')"
@@ -2356,21 +2367,32 @@ def _log_prob(self, x):
                   report)
     self.assertEmpty(errors)
 
-  def test_api_spec_reset_between_files(self):
-    for old_symbol, new_symbol in [
-        ("tf.conj(a)", "tf.math.conj(a)"),
-        ("tf.to_int32(x)", "tf.cast(x, dtype=tf.int32)")]:
-
-      ## Test that the api spec is reset in between files:
-      import_header = "import tensorflow.compat.v2 as tf\n"
-      text_a = import_header + old_symbol
-      expected_text_a = import_header + old_symbol
-      text_b = old_symbol
-      expected_text_b = new_symbol
-      results = self._upgrade_multiple([text_a, text_b])
-      result_a, result_b = results[0], results[1]
-      self.assertEqual(result_a[3], expected_text_a)
-      self.assertEqual(result_b[3], expected_text_b)
+  @parameterized.parameters(
+      [False,
+       "import tensorflow.compat.v2 as tf\ntf.conj(a)",
+       "import tensorflow.compat.v2 as tf\ntf.conj(a)",
+       "tf.conj(a)",
+       "tf.math.conj(a)"],
+      [False,
+       "import tensorflow.compat.v2 as tf\ntf.to_int32(x)",
+       "import tensorflow.compat.v2 as tf\ntf.to_int32(x)",
+       "tf.to_int32(x)",
+       "tf.cast(x, dtype=tf.int32)"],
+      # Verify that upgrade_compat_v1_import option persists between files
+      [True,
+       "import tensorflow.compat.v1 as tf\ntf.conj(a)",
+       "import tensorflow.compat.v2 as tf\ntf.math.conj(a)",
+       "import tensorflow.compat.v1 as tf\ntf.to_int32(x)",
+       "import tensorflow.compat.v2 as tf\ntf.cast(x, dtype=tf.int32)"],
+  )  # pyformat: disable
+  def test_api_spec_reset_between_files(self,
+                                        upgrade_compat_v1_import,
+                                        text_a, expected_text_a,
+                                        text_b, expected_text_b):
+    results = self._upgrade_multiple(upgrade_compat_v1_import, [text_a, text_b])
+    result_a, result_b = results[0], results[1]
+    self.assertEqual(result_a[3], expected_text_a)
+    self.assertEqual(result_b[3], expected_text_b)
 
   def test_model_to_estimator_checkpoint_warning(self):
     text = "tf.keras.estimator.model_to_estimator(model)"

@@ -203,7 +203,7 @@ tf_py_test(
 
 tf_py_test(
     name = "index_shuffle_test",
-    size = "medium",
+    size = "large",
     srcs = ["index_shuffle_test.py"],
     shard_count = 12,
     deps = [

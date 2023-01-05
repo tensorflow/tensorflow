@@ -359,11 +359,15 @@ ParseResult TFRFuncOp::parse(OpAsmParser &parser, OperationState &result) {
          function_interface_impl::VariadicFlag,
          std::string &) { return builder.getFunctionType(arg_types, results); };
   return function_interface_impl::parseFunctionOp(
-      parser, result, /*allowVariadic=*/false, build_func_type);
+      parser, result, /*allowVariadic=*/false,
+      getFunctionTypeAttrName(result.name), build_func_type,
+      getArgAttrsAttrName(result.name), getResAttrsAttrName(result.name));
 }
 
 void TFRFuncOp::print(OpAsmPrinter &p) {
-  function_interface_impl::printFunctionOp(p, *this, /*isVariadic=*/false);
+  function_interface_impl::printFunctionOp(
+      p, *this, /*isVariadic=*/false, getFunctionTypeAttrName(),
+      getArgAttrsAttrName(), getResAttrsAttrName());
 }
 
 }  // namespace TFR

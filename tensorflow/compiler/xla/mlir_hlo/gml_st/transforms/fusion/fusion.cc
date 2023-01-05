@@ -76,9 +76,7 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
       auto dimConstantIndex = op.getConstantIndex();
       if (!dimConstantIndex.has_value()) return failure();
 
-      auto tileOp = materializeOp.getSet().getDefiningOp<TileOp>();
-      if (!tileOp) return failure();
-      rewriter.replaceOp(op, tileOp.getSizes()[*dimConstantIndex]);
+      rewriter.replaceOp(op, materializeOp.getSizes()[*dimConstantIndex]);
       return success();
     }
     // Case LinalgOp.
@@ -238,7 +236,8 @@ void eliminateEqualOps(PatternRewriter& rewriter, Block& block) {
 }
 
 void eliminateTriviallyDeadUsers(PatternRewriter& rewriter, Operation* op) {
-  for (auto* user : llvm::make_early_inc_range(op->getUsers())) {
+  for (auto* user :
+       DenseSet<Operation*>(op->getUsers().begin(), op->getUsers().end())) {
     if (isOpTriviallyDead(user)) rewriter.eraseOp(user);
   }
 }
@@ -250,7 +249,7 @@ void reifyDimOp(PatternRewriter& rewriter, tensor::DimOp dimOp) {
       dyn_cast<ReifyRankedShapedTypeOpInterface>(dimValue.getOwner());
   if (!rankedShapeTypeOp) return;
 
-  Optional<int64_t> dimIndex = dimOp.getConstantIndex();
+  std::optional<int64_t> dimIndex = dimOp.getConstantIndex();
   if (!dimIndex) return;
 
   SmallVector<SmallVector<Value>> reifiedResultShapes;
@@ -378,14 +377,8 @@ FailureOr<Value> createFusedOp(PatternRewriter& rewriter,
         materializeOp, "expected source to be defined by tiling interface op ");
   }
 
-  auto tileOp = materializeOp.getSet().getDefiningOp<gml_st::TileOp>();
-  if (!tileOp) {
-    return rewriter.notifyMatchFailure(
-        materializeOp, "expected set to be defined by gml_st.tile");
-  }
-
-  SmallVector<OpFoldResult> offsets = tileOp.getMixedOffsets();
-  SmallVector<OpFoldResult> sizes = tileOp.getMixedSizes();
+  SmallVector<OpFoldResult> offsets = materializeOp.getMixedOffsets();
+  SmallVector<OpFoldResult> sizes = materializeOp.getMixedSizes();
 
   // Tile the producer.
   OpBuilder::InsertionGuard guard(rewriter);

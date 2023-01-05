@@ -166,29 +166,6 @@ def JitRtLegalizeI1Types
   ];
 }
 
-def SymbolicShapeOptimization
-    : Pass<"tf-jitrt-symbolic-shape-optimization", "mlir::func::FuncOp"> {
-  let summary = "Optimizes broadcasts based on the symbolic shapes";
-  let constructor = "tensorflow::CreateSymbolicShapeOptimizationPass()";
-  let description = [{
-    A simple pass that replaces shape constraints with const witnesses and
-    rewrites mhlo.broadcast_in_dim operations with linalg.generic broadcasts
-    using the symbolic shape attributes defined on the entrypoint function
-    arguments.
-  }];
-  let dependentDialects = [
-    "mlir::mhlo::MhloDialect",
-    "mlir::linalg::LinalgDialect"
-  ];
-
-  let options = [
-   Option<"optimize_only_constraints", "optimize-only-constraints",
-          "bool", /*default=*/"false",
-          "Optimize only shape constraints and do not touch broadcasts.">,
-
-  ];
-}
-
 def Clustering : Pass<"tf-jitrt-clustering", "mlir::func::FuncOp"> {
   let summary = "Creates `tf_device.cluster` operations according to the TF "
                 "JitRt clustering policy";

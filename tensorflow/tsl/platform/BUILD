@@ -79,6 +79,7 @@ cc_library(
 cc_library(
     name = "blocking_counter",
     hdrs = ["blocking_counter.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":logging",
         ":mutex",

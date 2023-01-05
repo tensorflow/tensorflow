@@ -28,33 +28,16 @@ namespace xla {
 namespace gpu {
 
 using xla::runtime::CustomCall;
-using xla::runtime::Executable;
 using xla::runtime::State;
+using xla::runtime::StridedMemrefView;
 
-namespace {
-struct Gemm {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          const DebugOptions* debug_options,
-                          State<GemmConfig> state,
-                          runtime::StridedMemrefView lhs,
-                          runtime::StridedMemrefView rhs,
-                          runtime::StridedMemrefView out, int64_t algorithm,
-                          double alpha_real, double alpha_imag, double beta,
-                          DotDimensionNumbers dot_dims) const;
-
-  static Gemm Handler() { return Gemm(); }
-};
-}  // namespace
-
-absl::Status Gemm::operator()(const ServiceExecutableRunOptions* run_options,
-                              const DebugOptions* debug_options,
-                              State<GemmConfig> state,
-                              runtime::StridedMemrefView lhs,
-                              runtime::StridedMemrefView rhs,
-                              runtime::StridedMemrefView out, int64_t algorithm,
-                              double alpha_real, double alpha_imag, double beta,
-                              DotDimensionNumbers dot_dims) const {
+static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
+                             const DebugOptions* debug_options,
+                             State<GemmConfig> state, StridedMemrefView lhs,
+                             StridedMemrefView rhs, StridedMemrefView out,
+                             int64_t algorithm, double alpha_real,
+                             double alpha_imag, double beta,
+                             DotDimensionNumbers dot_dims) {
   se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
   se::DeviceMemoryBase rhs_data = GetDeviceAddress(rhs);
   se::DeviceMemoryBase output_data = GetDeviceAddress(out);
@@ -78,28 +61,23 @@ absl::Status Gemm::operator()(const ServiceExecutableRunOptions* run_options,
   return absl::OkStatus();
 }
 
-static bool Gemm(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                 void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.gemm")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .UserData<const DebugOptions*>()
-                             .State<GemmConfig>("uid")
-                             .Arg<runtime::StridedMemrefView>()  // lhs
-                             .Arg<runtime::StridedMemrefView>()  // rhs
-                             .Arg<runtime::StridedMemrefView>()  // out
-                             .Attr<int64_t>("algorithm")
-                             .Attr<double>("alpha_real")
-                             .Attr<double>("alpha_imag")
-                             .Attr<double>("beta")
-                             .Attr<DotDimensionNumbers>("dot_dims")
-                             .To<checks>(Gemm::Handler())
-                             .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    Gemm, FunctionWrapper<GemmImpl>(), checks,
+    CustomCall::Bind("xla.gpu.gemm")
+        .UserData<const ServiceExecutableRunOptions*>()
+        .UserData<const DebugOptions*>()
+        .State<GemmConfig>("uid")
+        .Arg<StridedMemrefView>()  // lhs
+        .Arg<StridedMemrefView>()  // rhs
+        .Arg<StridedMemrefView>()  // out
+        .Attr<int64_t>("algorithm")
+        .Attr<double>("alpha_real")
+        .Attr<double>("alpha_imag")
+        .Attr<double>("beta")
+        .Attr<DotDimensionNumbers>("dot_dims"));
 
 void RegisterGemmCustomCalls(runtime::DirectCustomCallRegistry& registry) {
-  registry.Register("xla.gpu.gemm", &xla::gpu::Gemm);
+  registry.Register("xla.gpu.gemm", Gemm);
 }
 
 }  // namespace gpu

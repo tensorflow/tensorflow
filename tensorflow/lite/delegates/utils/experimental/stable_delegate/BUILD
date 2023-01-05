@@ -113,6 +113,7 @@ cc_test(
         ":tflite_settings_json_parser",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
     ],
 )
 

@@ -558,3 +558,12 @@ func.func @variant_block_arg(tensor<!tf_type.variant<tensor<f32>>>) -> () {
     func.return
 }
 
+// CHECK-LABEL: func @set_bound
+func.func @set_bound(%arg0: tensor<i32>) -> tensor<i32> {
+  %bound = "tf.Const"() {value = dense<16> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: tf.XlaSetBound
+  // CHECK-NOT: _xla_outside_compilation
+  %bounded = "tf.XlaSetBound"(%arg0, %bound) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  func.return %bounded : tensor<i32>
+}
+

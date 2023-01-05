@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/env.h"
@@ -60,6 +61,12 @@ Status StandaloneTaskIterator::GetNext(std::vector<Tensor>& element,
 
 int64_t StandaloneTaskIterator::Cardinality() const {
   return dataset_->Get()->Cardinality();
+}
+
+StatusOr<Tensor> StandaloneTaskIterator::Save() { return iterator_->Save(); }
+
+Status StandaloneTaskIterator::Restore(const Tensor& saved_iterator) {
+  return iterator_->Restore(saved_iterator);
 }
 
 Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,

@@ -75,7 +75,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportFlatbufferOrMlir(
 }
 
 absl::Status ExportFlatbufferOrMlir(const std::string& output_filename,
-                                    bool output_mlir, mlir::ModuleOp module) {
+                                    bool output_mlir, mlir::ModuleOp module,
+                                    bool enable_select_tf_ops) {
   std::string error_msg;
   auto output = mlir::openOutputFile(output_filename, &error_msg);
   if (output == nullptr) {
@@ -91,8 +92,13 @@ absl::Status ExportFlatbufferOrMlir(const std::string& output_filename,
   } else {
     tflite::FlatbufferExportOptions options;
     options.toco_flags.set_force_select_tf_ops(false);
-    options.toco_flags.set_enable_select_tf_ops(false);
     options.toco_flags.set_allow_custom_ops(true);
+    if (enable_select_tf_ops) {
+      options.toco_flags.set_enable_select_tf_ops(true);
+      options.toco_flags.set_allow_all_select_tf_ops(true);
+    } else {
+      options.toco_flags.set_enable_select_tf_ops(false);
+    }
     if (!tflite::MlirToFlatBufferTranslateFunction(module, options, &result)) {
       return absl::UnknownError("Failed to export tflite file.");
     }

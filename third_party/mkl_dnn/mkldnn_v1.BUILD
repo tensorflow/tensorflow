@@ -1,4 +1,4 @@
-load("@org_tensorflow//tensorflow:tensorflow.bzl", "tf_openmp_copts")
+load("@org_tensorflow//tensorflow/tsl:tsl.bzl", "tf_openmp_copts")
 load("@org_tensorflow//third_party/mkl:build_defs.bzl", "if_mkl")
 load("@org_tensorflow//third_party/mkl_dnn:build_defs.bzl", "if_mkldnn_openmp")
 load("@org_tensorflow//third_party/mkl:build_defs.bzl", "if_mkl_ml")
@@ -95,7 +95,7 @@ template_rule(
 )
 
 _COPTS_LIST = select({
-    "@org_tensorflow//tensorflow:windows": [],
+    "@org_tensorflow//tensorflow/tsl:windows": [],
     "//conditions:default": ["-fexceptions"],
 }) + [
     "-UUSE_MKL",
@@ -162,9 +162,9 @@ cc_library(
     includes = _INCLUDES_LIST,
     # TODO(penpornk): Use lrt_if_needed from tensorflow.bzl instead.
     linkopts = select({
-        "@org_tensorflow//tensorflow:linux_aarch64": ["-lrt"],
-        "@org_tensorflow//tensorflow:linux_x86_64": ["-lrt"],
-        "@org_tensorflow//tensorflow:linux_ppc64le": ["-lrt"],
+        "@org_tensorflow//tensorflow/tsl:linux_aarch64": ["-lrt"],
+        "@org_tensorflow//tensorflow/tsl:linux_x86_64": ["-lrt"],
+        "@org_tensorflow//tensorflow/tsl:linux_ppc64le": ["-lrt"],
         "//conditions:default": [],
     }),
     textual_hdrs = _TEXTUAL_HDRS_LIST,

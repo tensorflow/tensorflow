@@ -9,6 +9,10 @@ load(
     "tf_proto_library",
 )
 load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "tf_cuda_library",
     "tf_cuda_only_cc_test",
@@ -68,7 +72,9 @@ cc_library(
         "conv_autotune_maps.h",
         "conv_parameters.h",
     ],
-    visibility = ["//tensorflow/core/kernels:__pkg__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 tf_cuda_library(

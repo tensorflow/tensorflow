@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_FRAMEWORK_OPS_H_
 #define TENSORFLOW_CC_FRAMEWORK_OPS_H_
 
+#include <string>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"

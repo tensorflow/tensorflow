@@ -1,7 +1,6 @@
 """Helpers for defining multi-platform DTensor test targets."""
 
-load("//devtools/build_cleaner/skylark:build_defs.bzl", "register_extension_info")
-load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "py_strict_test")
 
 # LINT.IfChange
 ALL_BACKENDS = ["cpu", "gpu", "tpu"]
@@ -66,7 +65,8 @@ def dtensor_test(
         main = None,
         shard_count = None,
         size = None,
-        get_configurations = _get_configurations):
+        get_configurations = _get_configurations,
+        test_rule = py_strict_test):
     """Defines a set of per-platform DTensor test targets.
 
     Generates test targets named:
@@ -119,7 +119,6 @@ def dtensor_test(
 
         all_tests.append(config_name)
 
-        test_rule = py_strict_test
         python_version = "PY3"
         test_env = {}
         test_env.update(config["env"])
@@ -134,14 +133,8 @@ def dtensor_test(
             args = config["flags"] + args,
             deps = config["deps"] + deps,
             tags = config["tags"] + tags,
-            malloc = "//third_party/tcmalloc:tcmalloc_or_debug",
             python_version = python_version,
             shard_count = config["shard_count"],
             size = size,
         )
     native.test_suite(name = name, tests = all_tests, tags = ["-manual"])
-
-register_extension_info(
-    extension = dtensor_test,
-    label_regex_for_dep = "{extension_name}_cpu",
-)

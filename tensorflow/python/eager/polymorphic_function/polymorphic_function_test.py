@@ -335,13 +335,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       functions = ops.get_default_graph().as_graph_def().library.function
       # Verify that we created only one function
       self.assertLen(functions, 1)
-      # Verify that eval() reads the current values.
+      # Verify that self.evaluate() reads the current values.
       a.initializer.run()
       b.initializer.run()
-      self.assertEqual(r1.eval(), 2)
+      self.assertEqual(self.evaluate(r1), 2)
 
-      a.assign_add([1]).eval()
-      self.assertEqual(r1.eval(), 3)
+      self.evaluate(a.assign_add([1]))
+      self.assertEqual(self.evaluate(r1), 3)
 
   def testImplementsAttributeWorksOnConstants(self):
     with context.graph_mode(), self.cached_session():
@@ -353,10 +353,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       functions = ops.get_default_graph().as_graph_def().library.function
       self.assertLen(functions, 1)
       self.assertLen(functions[0].signature.input_arg, 2)
-      # Verify that eval() reads the current values.
+      # Verify that self.evaluate() reads the current values.
       a.initializer.run()
-      self.assertEqual(r1.eval(), 3)
-      self.assertEqual(r2.eval(), 3)
+      self.assertEqual(self.evaluate(r1), 3)
+      self.assertEqual(self.evaluate(r2), 3)
 
   def testImplementsAttributeSpecializes(self):
     with context.graph_mode(), self.cached_session():
@@ -371,10 +371,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       self.assertLen(functions[0].signature.input_arg, 2)
       self.assertLen(functions[1].signature.input_arg, 2)
-      # Verify that eval() reads the current values.
+      # Verify that self.evaluate() reads the current values.
       a.initializer.run()
-      numpy.testing.assert_equal(r1.eval(), [3.])
-      numpy.testing.assert_equal(r2.eval(), [3., 3.])
+      numpy.testing.assert_equal(self.evaluate(r1), [3.])
+      numpy.testing.assert_equal(self.evaluate(r2), [3., 3.])
 
   def testImplementsWorksWithTensorSpec(self):
     v = polymorphic_function.function(
@@ -1627,13 +1627,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with ops.colocate_with(y):
       self.assertIn(compat.as_bytes('GPU:0'), self.evaluate(foo()))
 
-  def testVariablesAreTracked(self):
+  @parameterized.parameters([(True), (False)])
+  def testVariablesAreTracked(self, reduce_retracing):
     v = resource_variable_ops.ResourceVariable(1.0)
 
     def foo(x):
       return v * x
 
-    defined = polymorphic_function.function(foo)
+    defined = polymorphic_function.function(
+        foo, reduce_retracing=reduce_retracing)
 
     x = constant_op.constant([1.0])
     self.assertEqual(1., self.evaluate(defined(x)))
@@ -1670,10 +1672,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined(array_ops.ones([2, 1]))
 
     # Wrong number of arguments.
-    with self.assertRaisesRegex(TypeError, 'specifies 1 .* got 2'):
+    with self.assertRaisesRegex(TypeError, 'too many positional arguments'):
       defined(array_ops.ones([2]), array_ops.ones([2]))
-    with self.assertRaisesRegex(ValueError,
-                                'Structure of Python function inputs.*'):
+    with self.assertRaisesRegex(TypeError, 'missing a required argument'):
       defined()
 
     with self.assertRaisesRegex(ValueError,
@@ -1880,9 +1881,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertLen(internal_captures, 1)
       self.assertEqual(internal_captures[0].op.type, op_type)
 
-  def testVariableAliasIdInStructuredInputSignature(self):
+  @parameterized.parameters([(True), (False)])
+  def testVariableAliasIdInStructuredInputSignature(self, reduce_retracing):
 
-    @polymorphic_function.function
+    @polymorphic_function.function(reduce_retracing=reduce_retracing)
     def foo(v1, v2):
       return v1 + v2
 
@@ -1921,9 +1923,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def _total_function_cache_def_func(self, defined):
     return defined._list_all_concrete_functions()  # pylint: disable=protected-access
 
-  def testVariableRetracingOnDtypeChanges(self):
+  @parameterized.parameters([(True), (False)])
+  def testVariableRetracingOnDtypeChanges(self, reduce_retracing):
 
-    @polymorphic_function.function
+    @polymorphic_function.function(reduce_retracing=reduce_retracing)
     def defined(a, b):
       return a + b
 
@@ -2172,6 +2175,32 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       f(ragged_factory_ops.constant([[1, 2], [], [3, 4, 5]]))
       f(ragged_factory_ops.constant([[[1, 2], [3]], [[4, 5, 6]]]))
       self.assertEqual(trace_count[0], 3)
+
+  def testCompositeTensorsWithReducedRetracing(self):
+    inp = ragged_factory_ops.constant([[1, 2], [3]])
+
+    @polymorphic_function.function(reduce_retracing=True)
+    def f(x):
+      return x
+
+    output = f(inp)
+    self.assertTrue(math_ops.reduce_all(math_ops.equal(inp, output)))
+
+  def testMultipleInputsWithReducedRetracing(self):
+    tensor1 = ragged_factory_ops.constant([[1, 2], [3]])
+    tensor2 = ragged_factory_ops.constant([[[1, 2], [3]], [[4, 5, 6]]])
+    variable1 = variables.Variable(1.0)
+    variable2 = variables.Variable(2.0)
+
+    @polymorphic_function.function(reduce_retracing=True)
+    def f(a, b, c, d):
+      return [a, b, c, d]
+
+    output = f(tensor1, tensor2, variable1, variable2)
+    self.assertTrue(math_ops.reduce_all(math_ops.equal(tensor1, output[0])))
+    self.assertTrue(math_ops.reduce_all(math_ops.equal(tensor2, output[1])))
+    self.assertTrue(math_ops.reduce_all(math_ops.equal(variable1, output[2])))
+    self.assertTrue(math_ops.reduce_all(math_ops.equal(variable2, output[3])))
 
   def test_concrete_function_shape_mismatch(self):
 
@@ -2457,7 +2486,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           testcase_name='ExtraPositionalArg',
           conc_args=lambda: (1, 2),
           call_args=lambda: (1, 2, 3),
-          error=r'func\(x, y\) takes 2 .* got 3'),
+          error=r'too many positional arguments'),
       dict(
           testcase_name='MissingKeywordOnlyArg',
           conc_args=lambda: (1, 2),
@@ -2469,7 +2498,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           conc_args=lambda: (1, 2),
           call_args=lambda: (1, 2),
           call_kwargs=lambda: {'c': constant_op.constant(1.0)},
-          error=r'func\(x, y\) got unexpected keyword arguments: c'),
+          error=r'got an unexpected keyword argument'),
       dict(
           testcase_name='ExpectedRaggedGotNest',
           conc_args=lambda: (ragged_factory_ops.constant([[1, 2], [3]]),),
@@ -2534,7 +2563,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           conc_args=lambda: (1, 2),
           call_args=lambda: (1, 2),
           call_kwargs=lambda: {'x': 3},
-          error=r"func\(x, y\) got two values for 'x'"),
+          error=r'multiple values for argument'),
   ])
   # pylint: enable=g-long-lambda
   @test_util.run_in_graph_and_eager_modes
@@ -2763,7 +2792,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     c5_summary = 'func2(x=8, y)'
     self.assertEqual(c5.pretty_printed_signature(verbose=False), c5_summary)
 
-  def testPrettyPrintedExplicitSignatureWithKeywordArg(self):  # b/159639913
+  def testPrettyPrintedExplicitSignatureWithKeywordArg(self):
 
     @polymorphic_function.function(
         input_signature=[tensor_spec.TensorSpec(None)])
@@ -2771,9 +2800,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return a + b
 
     concrete_fn = fn.get_concrete_function()
-    self.assertEqual(concrete_fn.pretty_printed_signature(False), 'fn(a)')
+    self.assertEqual(concrete_fn.pretty_printed_signature(False), 'fn(a, b=1)')
     self.assertEqual(
-        concrete_fn.pretty_printed_signature(True), 'fn(a)\n'
+        concrete_fn.pretty_printed_signature(True), 'fn(a, b=1)\n'
         '  Args:\n'
         '    a: float32 Tensor, shape=<unknown>\n'
         '  Returns:\n'
@@ -2859,7 +2888,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           return x + y
 
     foo = Foo()
-    with self.assertRaisesRegex(TypeError, 'got two values'):
+    with self.assertRaisesRegex(TypeError, 'multiple values for argument'):
       foo.add1(2, x=3)  # pylint: disable=redundant-keyword-arg,no-value-for-parameter
 
   def testWithExtraWrapperMissingArgs(self):
@@ -2889,25 +2918,28 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           return x + y
 
     foo = Foo()
-    with self.assertRaisesRegex(
-        TypeError, 'missing a required argument: \'y\''):
+    with self.assertRaisesRegex(TypeError,
+                                'missing a required argument: \'y\''):
       foo.add1(2)  # pylint: disable=no-value-for-parameter
 
-    with self.assertRaisesRegex(TypeError, 'missing 1 required argument: x'):
+    with self.assertRaisesRegex(TypeError,
+                                'missing a required argument: \'x\''):
       foo.add1(y=2)  # pylint: disable=no-value-for-parameter
 
-    with self.assertRaisesRegex(
-        TypeError, 'missing a required argument: \'y\''):
+    with self.assertRaisesRegex(TypeError,
+                                'missing a required argument: \'y\''):
       foo.add2(2)  # pylint: disable=no-value-for-parameter
 
-    with self.assertRaisesRegex(TypeError, 'missing 1 required argument: x'):
+    with self.assertRaisesRegex(TypeError,
+                                'missing a required argument: \'x\''):
       foo.add2(y=2)  # pylint: disable=no-value-for-parameter
 
-    with self.assertRaisesRegex(
-        TypeError, 'missing a required argument: \'y\''):
+    with self.assertRaisesRegex(TypeError,
+                                'missing a required argument: \'y\''):
       foo.add3(2)  # pylint: disable=no-value-for-parameter
 
-    with self.assertRaisesRegex(TypeError, 'missing 1 required argument: x'):
+    with self.assertRaisesRegex(TypeError,
+                                'missing a required argument: \'x\''):
       foo.add3(y=2)  # pylint: disable=no-value-for-parameter
 
   def testMissingArgsTfFunctionedMethod(self):
@@ -2923,8 +2955,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     a_instance = A()
     tf_method_pos = polymorphic_function.function(a_instance.func)
-    with self.assertRaisesRegex(
-        TypeError, '.* missing 1 required argument: position_arg1'):
+    with self.assertRaisesRegex(TypeError, 'missing a required argument'):
       tf_method_pos(position_arg2='foo')
 
     # tf.function-decorated instance methods need to be tested because of
@@ -2932,8 +2963,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     tf_func_decorated_method = polymorphic_function.function(
         a_instance.decorated_method)
     tf_func_decorated_method(position_arg1='foo', position_arg2='bar')
-    with self.assertRaisesRegex(
-        TypeError, '.* missing 1 required argument: position_arg1'):
+    with self.assertRaisesRegex(TypeError, 'missing a required argument'):
       tf_func_decorated_method(position_arg2='bar')
 
   def testMissingArgsTfFunctionedObject(self):
@@ -2949,8 +2979,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # the special inspect results.
     tf_func_obj = polymorphic_function.function(a_instance)
     tf_func_obj(position_arg1=1, position_arg2=2)
-    with self.assertRaisesRegex(
-        TypeError, '.* missing 1 required argument: position_arg1'):
+    with self.assertRaisesRegex(TypeError, 'missing a required argument'):
       tf_func_obj(position_arg2='bar')
 
   def testMissingArgsTfFunctionedFunctions(self):
@@ -2966,19 +2995,16 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     tf_func_pos = polymorphic_function.function(func_pos)
     with self.assertRaisesRegex(
-        TypeError, '.* missing 1 required argument: position_arg1'):
+        TypeError, 'missing a required argument'):
       tf_func_pos(position_arg2='foo')
 
     tf_func_with_default = polymorphic_function.function(func_with_default)
     tf_func_with_default(position_arg='bar')
-    with self.assertRaisesRegex(TypeError,
-                                '.* missing 1 required argument: position_arg'):
+    with self.assertRaisesRegex(TypeError, 'missing a required argument'):
       tf_func_with_default(named_arg='foo')
 
     tf_func_pos_3args = polymorphic_function.function(func_pos_3args)
-    with self.assertRaisesRegex(
-        TypeError,
-        '.* missing required arguments: position_arg1, position_arg3'):
+    with self.assertRaisesRegex(TypeError, 'missing a required argument'):
       tf_func_pos_3args(position_arg2='foo')
 
   def testShapeInferencePropagateConstNestedStack(self):
@@ -3508,7 +3534,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     tf_func_dec = polymorphic_function.function(
         input_signature=(tensor_spec.TensorSpec([], dtypes.int32),))
     at_declare_error_msg = 'TensorSpecs are still required.*arg2.*arg3'
-    at_call_error_msg = 'specifies 1 positional arguments, but got 3.'
+    at_call_error_msg = 'too many positional arguments'
 
     with self.assertRaisesRegex(TypeError, at_call_error_msg):
       tf_func_dec(m.f1)(1, 2, 3)
@@ -3531,7 +3557,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     tf_func_dec = polymorphic_function.function(
         input_signature=(tensor_spec.TensorSpec([], dtypes.int32),))
     at_dec_error_msg = 'TensorSpecs are still required.*arg2.*arg3'
-    at_call_error_msg = 'specifies 1 positional arguments, but got 3'
+    at_call_error_msg = 'too many positional arguments'
     # pylint: disable=unused-argument
     def f1(arg1, arg2, arg3):
       pass
@@ -3572,7 +3598,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     tf_func_dec = polymorphic_function.function(
         input_signature=(tensor_spec.TensorSpec([], dtypes.int32),))
     at_dec_error_msg = 'TensorSpecs are still required.*arg2.*arg3'
-    at_call_error_msg = 'specifies 1 positional arguments, but got 3.'
+    at_call_error_msg = 'too many positional arguments'
     with self.assertRaisesRegex(TypeError, at_call_error_msg):
       tf_func_dec(lambda ar1, arg2, arg3: None)(1, 2, 3)
 
@@ -3613,12 +3639,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                                 'TensorSpecs are still required.*arg3'):
       tf_func_dec(functools.partial(f, 1))(2, 3)
 
-    with self.assertRaisesRegex(TypeError,
-                                'specifies 1 positional arguments, but got 3.'):
+    with self.assertRaisesRegex(TypeError, 'too many positional argument'):
       tf_func_dec(functools.partial(f, arg4=5))(1, 2, 3)
 
-    with self.assertRaisesRegex(TypeError,
-                                'specifies 1 positional arguments, but got 2.'):
+    with self.assertRaisesRegex(TypeError, 'too many positional argument'):
       tf_func_dec(functools.partial(f, 1, arg4=5))(2, 3)
 
     self.assertAllEqual(tf_func_dec(functools.partial(f, 1, 2, arg4=5))(3),
@@ -4785,7 +4809,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     @polymorphic_function.function
     def f():
       func = lambda: x
-      return ops.get_default_graph()._maybe_create_capture_placeholder(func)
+      # TODO(b/263520817): Remove access to private attribute.
+      return ops.get_default_graph(
+          )._function_captures._create_capture_placeholder(func)
 
     x = {
         'tensor': constant_op.constant(0),
@@ -4807,32 +4833,14 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     @polymorphic_function.function
     def f():
       func = lambda: x
-      return ops.get_default_graph()._maybe_create_capture_placeholder(func)
+      # TODO(b/263520817): Remove access to private attribute.
+      return ops.get_default_graph(
+          )._function_captures._create_capture_placeholder(func)
 
     # Set is not supported
     x = set([1, 2])
     with self.assertRaises(NotImplementedError):
       f()
-
-  # TODO(panzf): remove this test after exposing manual API, as the integration
-  # testcase can be turned on at that time.
-  def test_inner_nested_tf_function_raise_error(self):
-
-    @polymorphic_function.function
-    def tf_f():
-
-      @polymorphic_function.function
-      def tf_g():
-        cx = ops.get_default_graph()._experimental_capture_side_input_by_ref(  # pylint: disable=protected-access
-            'lambda: x', lambda: x)
-        return cx
-
-      return tf_g()
-
-    x = constant_op.constant(0)  # pylint: disable=unused-variable
-    with self.assertRaisesRegex(NotImplementedError,
-                                'Manual side input usage for inner nested'):
-      tf_f()
 
   @parameterized.parameters(
       (1, int, 2, int, 2),
@@ -4862,6 +4870,31 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
       return 2 * a
 
     self.assertAllEqual(f(1), array_ops.constant(2))
+
+  def testGraphRemoveFunction(self):
+    @polymorphic_function.function
+    def g(x):
+      return x + 1
+
+    @polymorphic_function.function
+    def f(x):
+      return g(x)
+
+    graph = f.get_concrete_function(constant_op.constant(1)).graph
+    graph_def = graph.as_graph_def()
+    func_name = graph_def.library.function[0].signature.name
+
+    self.assertLen(graph_def.library.function, 1)
+    self.assertTrue(graph._is_function(func_name))
+
+    graph._remove_function(func_name)
+    updated_graph_def = graph.as_graph_def()
+
+    self.assertEmpty(updated_graph_def.library.function)
+    self.assertFalse(graph._is_function(func_name))
+
+    with self.assertRaisesRegex(ValueError, 'not found'):
+      graph._remove_function(func_name)
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

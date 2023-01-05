@@ -102,6 +102,8 @@ Comparison::Order DefaultOrdering(PrimitiveType type) {
     case U32:
     case U64:
       return Comparison::Order::kTotal;
+    case F8E5M2:
+    case F8E4M3FN:
     case BF16:
     case F16:
     case F32:
@@ -255,6 +257,8 @@ Comparison::Type Comparison::DefaultComparisonType(PrimitiveType type) {
     case U32:
     case U64:
       return Type::kUnsigned;
+    case F8E5M2:
+    case F8E4M3FN:
     case F16:
     case F32:
     case BF16:

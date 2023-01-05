@@ -55,8 +55,8 @@ inline void TransposeConv(
   const int output_width = output_shape.Dims(2);
   const int32_t input_offset = params.input_offset;
   const int32_t output_offset = params.output_offset;
-  const int32_t output_activation_min = std::numeric_limits<int8_t>::min();
-  const int32_t output_activation_max = std::numeric_limits<int8_t>::max();
+  const int32_t output_activation_min = params.quantized_activation_min;
+  const int32_t output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
   const int num_elements = output_shape.FlatSize();
@@ -153,8 +153,8 @@ inline void TransposeConv(
   const int filter_width = filter_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
-  const int32_t output_activation_min = std::numeric_limits<int16_t>::min();
-  const int32_t output_activation_max = std::numeric_limits<int16_t>::max();
+  const int32_t output_activation_min = params.quantized_activation_min;
+  const int32_t output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
 
   const int num_elements = output_shape.FlatSize();

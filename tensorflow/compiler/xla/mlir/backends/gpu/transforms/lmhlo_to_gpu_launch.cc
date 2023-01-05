@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <iterator>
 #include <memory>
 #include <numeric>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -78,6 +80,13 @@ class ConvertLmhloToGpuLaunchPass
  private:
   ThunkSequence* thunk_sequence_;
 };
+
+// XLA some times (ab)uses custom calls to represent operations for which we do
+// not want to define a separate `HloOpcode`. These operations emitted as device
+// kernels (similar to fusions), and we detect such custom calls by name, and
+// handle them similar to how we handle fusions.
+static std::array<std::string_view, 3> kCustomCallIntrinsics = {
+    "SliceToDynamic", "PadToStatic", "__triton"};
 
 //===-----------------------------------------------------------------------===/
 
@@ -316,10 +325,12 @@ static void LowerThunkToGpuOp(Operation* op, PatternRewriter& rewriter,
   rewriter.setInsertionPoint(op);
   auto grid_size = make_kernel_dim3(launch_dims.block_counts());
   auto block_size = make_kernel_dim3(launch_dims.thread_counts_per_block());
+  auto shmem_size = rewriter.create<arith::ConstantOp>(
+      loc, rewriter.getI32IntegerAttr(
+               kernel_thunk->launch_dimensions().SharedMemBytes()));
 
   rewriter.create<LaunchFuncOp>(loc, kernel_func, grid_size, block_size,
-                                /*shared_memory_size_bytes=*/nullptr,
-                                kernel_args);
+                                shmem_size, kernel_args);
 }
 
 // An overload set for defining predicates for operations that should
@@ -331,8 +342,9 @@ static bool HasGpuEmitter(OpTy) {
 
 // Select custom calls that have corresponding GPU emitters.
 static bool HasGpuEmitter(lmhlo::CustomCallOp custom_call) {
-  llvm::StringRef target = custom_call.getCallTargetName();
-  return target == "SliceToDynamic" || target == "PadToStatic";
+  return llvm::any_of(kCustomCallIntrinsics, [&](std::string_view name) {
+    return custom_call.getCallTargetName().equals(name);
+  });
 }
 
 LogicalResult KernelOpsPattern::matchAndRewrite(

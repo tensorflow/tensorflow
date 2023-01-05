@@ -61,9 +61,6 @@ pfor_ops = LazyLoader(
     "pfor_ops", globals(),
     "tensorflow.python.ops.parallel_for.control_flow_ops")
 
-function = LazyLoader("function", globals(),
-                      "tensorflow.python.eager.function")
-
 _op_attr_type_cache = {}
 
 

@@ -65,7 +65,8 @@ Status KernelThunk::Initialize(const GpuExecutable& executable,
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<se::KernelBase> kernel,
         CreateKernel(kernel_name_, args_.size(), executable.text(),
-                     executable.binary(), executor));
+                     executable.binary(), executor,
+                     launch_dimensions_.SharedMemBytes()));
 
     kernel_cache_.emplace(executor, std::move(kernel));
   }

@@ -74,7 +74,8 @@ TEST(ExecuteNodeTest, ExecuteNodeArgs) {
   auto ctx = new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      &device_mgr, false, nullptr, nullptr);
+      &device_mgr, false, nullptr, nullptr, nullptr,
+      /*run_eager_op_as_function=*/true);
 
   // Set a RemoteMgr to the EagerContext.
   auto remote_mgr = std::make_unique<eager::RemoteMgr>(

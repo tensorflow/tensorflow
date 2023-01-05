@@ -497,8 +497,8 @@ int MovePreservedParallelExecuteChildren(
     int old_idx = child_idx >= cluster_idx ? child_idx + 1 : child_idx;
     int new_idx = child_idx >= cluster_idx ? child_idx + num_cores_per_replica
                                            : child_idx;
-    new_parallel_execute->getRegions()[new_idx]->takeBody(
-        *old_parallel_execute.getRegions()[old_idx]);
+    new_parallel_execute->getRegions()[new_idx].takeBody(
+        old_parallel_execute.getRegions()[old_idx]);
   }
 
   return cluster_idx;
@@ -529,9 +529,9 @@ LogicalResult AddToParallelExecuteOp(
   concatenated_output_types.reserve(num_results_pre_cluster +
                                     cluster_result_types.size() *
                                         num_cores_per_replica);
-  for (auto* region : old_parallel_execute.getRegions()) {
-    if (!isa<tf_device::ClusterFuncOp>(region->front().front())) {
-      for (Type t : region->front().front().getResultTypes())
+  for (mlir::Region& region : old_parallel_execute.getRegions()) {
+    if (!isa<tf_device::ClusterFuncOp>(region.front().front())) {
+      for (Type t : region.front().front().getResultTypes())
         concatenated_output_types.emplace_back(t);
     }
   }
@@ -683,8 +683,8 @@ LogicalResult CheckParallelExecuteConstainsValidNonClusterProcess(
   int num_pre_cluster_regions = 0;
   int num_post_cluster_regions = 0;
   int num_cluster_regions = 0;
-  for (auto* region : parallel_execute.getRegions()) {
-    if (isa<tf_device::LaunchFuncOp>(region->front().front())) {
+  for (mlir::Region& region : parallel_execute.getRegions()) {
+    if (isa<tf_device::LaunchFuncOp>(region.front().front())) {
       if (num_cluster_regions == 0) {
         num_pre_cluster_regions++;
       } else {
@@ -705,9 +705,9 @@ LogicalResult CheckParallelExecuteConstainsValidNonClusterProcess(
 
 int GetNumResultsPreCluster(tf_device::ParallelExecuteOp parallel_execute) {
   int num_results_pre_cluster = 0;
-  for (auto region : parallel_execute.getRegions()) {
-    if (isa<tf_device::LaunchOp>(region->front().front())) {
-      num_results_pre_cluster = region->front().front().getResultTypes().size();
+  for (mlir::Region& region : parallel_execute.getRegions()) {
+    if (isa<tf_device::LaunchOp>(region.front().front())) {
+      num_results_pre_cluster = region.front().front().getResultTypes().size();
     }
   }
   return num_results_pre_cluster;

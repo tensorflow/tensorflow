@@ -24,6 +24,7 @@ from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
+from tensorflow.python.eager import tape
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -461,7 +462,7 @@ class DistributedVariableTraceType(trace.TraceType):
   def most_specific_common_supertype(self, others):
     return self if all(self == other for other in others) else None
 
-  def _placeholder_value(self, placeholder_context):
+  def placeholder_value(self, placeholder_context=None):
     return self.distributed_variable
 
   def __hash__(self) -> int:
@@ -997,28 +998,6 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
       return ops.convert_to_tensor(
           self._get(), dtype=dtype, name=name, as_ref=as_ref)
 
-  def _map_resources(self, save_options):
-    """For implementing `Trackable`."""
-    # Initialize for self._primary first, so that obj_map[self._primary] and
-    # resource_map[self._primary.handle] contain mapped values.
-    obj_map, resource_map = self._primary._map_resources(save_options)  # pylint:disable=protected-access
-    for v in [v for v in self._values if v != self._primary]:
-
-      if (save_options.experimental_variable_policy  # pylint:disable=protected-access
-          ._expand_distributed_variables()):
-        v_obj_map, v_resource_map = v._map_resources(save_options)  # pylint:disable=protected-access
-        obj_map.update(v_obj_map)
-        resource_map.update(v_resource_map)
-      else:
-        obj_map[v] = obj_map[self._primary]
-        resource_map[v.handle] = resource_map[self._primary.handle]
-    obj_map[self] = obj_map[self._primary]
-    resource_map[self] = resource_map[self._primary.handle]
-    if self._packed_var is not None:
-      resource_map[self._packed_var.packed_handle] = resource_map[
-          self._primary.handle]
-    return obj_map, resource_map
-
   def _export_to_saved_model_graph(self,
                                    object_map=None,
                                    tensor_map=None,
@@ -1083,7 +1062,13 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
 
   def __tf_experimental_restore_capture__(
       self, concrete_function, internal_capture):
-    concrete_function.graph.capture_distributed_variable(self, internal_capture)
+    graph = concrete_function.graph
+    # Add given distributed variable to captures with given placeholder.
+    graph.replace_capture(self, internal_capture)
+    tape.record_operation(
+        "captured_value", [internal_capture], [self],
+        backward_function=lambda x: [x],
+        forward_function=lambda x: [x])
     return self
 
 

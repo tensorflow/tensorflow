@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_OP_METRICS_TO_RECORD_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_OP_METRICS_TO_RECORD_H_
 
+#include <cstdint>
 #include <vector>
 
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -34,15 +35,24 @@ inline double GigaFlopsPerSecondPerCore(const OpMetrics& metrics) {
   return SafeDivide(metrics.flops(), PicoToNano(metrics.time_ps()));
 }
 
+enum MemorySpace {
+  kHbm = 1,
+  kAllMemories = UINT_MAX,
+};
+
+// Return BW for memory_space.  If invert_memory_space is true, returns BW
+// for all other memory spaces except the specified memory_space.
 inline double GigaBytesPerSecondPerCore(
     const OpMetrics& metrics, uint64_t memory_space,
-    OpMetrics::MemoryAccessed::OperationType op_type) {
+    OpMetrics::MemoryAccessed::OperationType operation_type) {
   uint64_t bytes = 0;
-  if (memory_space == -1) {
+  if (memory_space == MemorySpace::kAllMemories) {
     bytes = metrics.bytes_accessed();
   } else {
     for (const auto& breakdown : metrics.memory_accessed_breakdown()) {
-      if (breakdown.memory_space() == memory_space) {
+      if ((breakdown.memory_space() == memory_space) &&
+          ((breakdown.operation_type() == operation_type) ||
+           (operation_type == OpMetrics::MemoryAccessed::UNKNOWN))) {
         bytes += breakdown.bytes_accessed();
       }
     }
@@ -120,7 +130,7 @@ inline void SetRooflineMetrics(const OpMetrics& metrics,
   using ::tensorflow::profiler::PicoToNano;
   record->set_measured_flop_rate(GigaFlopsPerSecondPerCore(metrics));
   record->set_measured_memory_bw(GigaBytesPerSecondPerCore(
-      metrics, -1, OpMetrics::MemoryAccessed::UNKNOWN));
+      metrics, MemorySpace::kAllMemories, OpMetrics::MemoryAccessed::UNKNOWN));
   record->set_operational_intensity(
       SafeDivide(metrics.flops(), metrics.bytes_accessed()));
   record->set_bound_by((metrics.bytes_accessed() != 0)

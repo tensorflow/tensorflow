@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -89,7 +90,9 @@ Layout::Layout(const Layout& other)
       memory_space_(other.memory_space_),
       physical_shape_(other.physical_shape_ != nullptr
                           ? std::make_unique<Shape>(*other.physical_shape_)
-                          : nullptr) {}
+                          : nullptr),
+      dynamic_shape_metadata_prefix_in_bytes_(
+          other.dynamic_shape_metadata_prefix_in_bytes_) {}
 
 Layout::Layout(Layout&& other) = default;
 
@@ -110,6 +113,8 @@ Layout& Layout::operator=(const Layout& other) {
     } else {
       physical_shape_ = nullptr;
     }
+    dynamic_shape_metadata_prefix_in_bytes_ =
+        other.dynamic_shape_metadata_prefix_in_bytes_;
   }
   return *this;
 }
@@ -140,6 +145,8 @@ Layout& Layout::operator=(Layout&& other) = default;
   if (proto.has_physical_shape()) {
     *layout.mutable_physical_shape() = Shape(proto.physical_shape());
   }
+  layout.set_dynamic_shape_metadata_prefix_in_bytes(
+      proto.dynamic_shape_metadata_prefix_in_bytes());
   return layout;
 }
 
@@ -167,6 +174,8 @@ LayoutProto Layout::ToProto() const {
   if (has_physical_shape()) {
     *proto.mutable_physical_shape() = physical_shape_->ToProto();
   }
+  proto.set_dynamic_shape_metadata_prefix_in_bytes(
+      dynamic_shape_metadata_prefix_in_bytes_);
   return proto;
 }
 
@@ -213,17 +222,25 @@ std::string Layout::ToString() const {
   }
 
   if (index_primitive_type() != PRIMITIVE_TYPE_INVALID) {
-    absl::StrAppend(
-        &colon_string, "#(",
-        primitive_util::LowercasePrimitiveTypeName(index_primitive_type()),
-        ")");
+    if (primitive_util::IsIntegralType(index_primitive_type())) {
+      absl::StrAppend(
+          &colon_string, "#(",
+          primitive_util::LowercasePrimitiveTypeName(index_primitive_type()),
+          ")");
+    } else {
+      absl::StrAppend(&colon_string, "#(invalid)");
+    }
   }
 
   if (pointer_primitive_type() != PRIMITIVE_TYPE_INVALID) {
-    absl::StrAppend(
-        &colon_string, "*(",
-        primitive_util::LowercasePrimitiveTypeName(pointer_primitive_type()),
-        ")");
+    if (primitive_util::IsIntegralType(pointer_primitive_type())) {
+      absl::StrAppend(
+          &colon_string, "*(",
+          primitive_util::LowercasePrimitiveTypeName(pointer_primitive_type()),
+          ")");
+    } else {
+      absl::StrAppend(&colon_string, "*(invalid)");
+    }
   }
 
   if (memory_space() != 0) {

@@ -1,191 +1,257 @@
-diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/dialect/CMakeLists.txt
---- stablehlo/stablehlo/dialect/CMakeLists.txt
-+++ stablehlo/stablehlo/dialect/CMakeLists.txt
-@@ -106,6 +106,7 @@
-   LINK_LIBS PUBLIC
-   MLIRInferTypeOpInterface
-   MLIRIR
-+  StablehloAssemblyFormat
-   StablehloBase
- )
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -65,22 +65,6 @@
+ // Utils for shape functions.
+ //===----------------------------------------------------------------------===//
  
-diff --ruN a/stablehlo/stablehlo/reference/Tensor.cpp b/stablehlo/stablehlo/reference/Tensor.cpp
---- stablehlo/stablehlo/reference/Tensor.cpp
-+++ stablehlo/stablehlo/reference/Tensor.cpp
-@@ -368,24 +368,25 @@
+-// WindowDimension described how the kernel window moves across the base area
+-// in a particular dimension.
+-// Describes the windowing in an operation such as convolution.
+-// The window is moved across a base area and for each position of the
+-// window a computation is performed. The field below describes the
+-// window and the movement of the window across a base area.
+-struct WindowDimension {
+-  int64_t size = 0;
+-  int64_t stride = 1;
+-  int64_t paddingLow = 0;
+-  int64_t paddingHigh = 0;
+-  int64_t windowDilation = 1;
+-  int64_t baseDilation = 1;
+-  bool windowReversal = false;
+-};
+-
+ // Checks if the vector `nums` has duplicates.
+ const auto hasDuplicates = [](const ArrayRef<int64_t> nums) {
+   llvm::SmallDenseSet<int64_t> set(nums.begin(), nums.end());
+@@ -107,7 +91,7 @@
+ // type. If 'ignoreFpPrecision' is True, then allow floats with different
+ // precisions while checking element-types.
+ bool compatibleShapeAndElementType(Type type1, Type type2,
+-                                   bool ignoreFpPrecision = false) {
++                                   bool ignoreFpPrecision) {
+   if (failed(verifyCompatibleShape(type1, type2))) return false;
+   return tensorsHaveSameElType(type1.cast<ShapedType>(),
+                                type2.cast<ShapedType>(), ignoreFpPrecision);
+@@ -785,6 +769,17 @@
+   return success();
+ }
  
-     // For both f16 and bf16 floating-point types, we use uint16_t as their
-     // storage type because there are no buitin types for those.
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint16_t>(floatValues));
-+    return Tensor(
-+        type,
-+        HeapAsmResourceBlob::allocateAndCopyInferAlign<uint16_t>(floatValues));
-   }
++// Checks if the precision config has a valid size, if provided.
++LogicalResult verifyPrecisionConfig(Optional<Location> loc,
++                                    Optional<ArrayAttr> maybeArrayAttr) {
++  if (!maybeArrayAttr.has_value()) return success();
++  auto arrayAttr = maybeArrayAttr.value();
++  return !arrayAttr || arrayAttr.size() == 2 || arrayAttr.empty()
++             ? success()
++             : emitOptionalError(
++                   loc, "expects precision config to be null or of size 2.");
++}
++
+ // Verifies the following properties:
+ //  P1. The input, kernel, and output spatial-dimentions are valid.
+ //  P2. Given,
+@@ -805,14 +800,16 @@
+ //          dim(lhs, f) / fgc = dim(rhs, i)
+ //        * dim(rhs, o) (or dim(output, f')) % bgc == 0 and
+ //          dim(rhs, o) (or dim(output, f')) % fgc == 0
++//  P3. Precision config is null, of size 0 or of size 2.
+ LogicalResult verifyConvolutionAttributes(
+-    Value lhs, Value rhs, int64_t inputBatchDimension,
+-    int64_t inputFeatureDimension, ArrayRef<int64_t> inputSpatialDimensions,
++    Optional<Location> location, Value lhs, Value rhs,
++    int64_t inputBatchDimension, int64_t inputFeatureDimension,
++    ArrayRef<int64_t> inputSpatialDimensions,
+     int64_t kernelInputFeatureDimension, int64_t kernelOutputFeatureDimension,
+     ArrayRef<int64_t> kernelSpatialDimensions, int64_t outputBatchDimension,
+     int64_t outputFeatureDimension, ArrayRef<int64_t> outputSpatialDimensions,
+     int64_t featureGroupCount, int64_t batchGroupCount,
+-    Optional<Location> location) {
++    Optional<ArrayAttr> precisionConfig) {
+   // P1.
+   if (failed(isSpatialDimensionsValid(
+           lhs, inputBatchDimension, inputFeatureDimension,
+@@ -892,18 +889,11 @@
+                              "batch_group_count. Got batch_group_count = ",
+                              batchGroupCount, ".");
  
-   if (elemType.isF32()) {
-     auto floatValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APFloat>(),
-         [&](APFloat value) -> float { return value.convertToFloat(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<float>(floatValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<float>(
-+                            floatValues));
-   }
+-  return success();
+-}
+-
+-// Checks if the precision config has a valid size, if provided.
+-LogicalResult verifyPrecisionConfig(Optional<Location> loc,
+-                                    Optional<ArrayAttr> maybeArrayAttr) {
+-  if (!maybeArrayAttr.has_value()) return success();
+-  auto arrayAttr = maybeArrayAttr.value();
+-  return !arrayAttr || arrayAttr.size() == 2 || arrayAttr.empty()
+-             ? success()
+-             : emitOptionalError(
+-                   loc, "expects precision config to be null or of size 2.");
++  // P3.
++  if (failed(verifyPrecisionConfig(location, precisionConfig)))
++    return failure();
++
++  return success();
+ }
  
-   if (elemType.isF64()) {
-     auto floatValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APFloat>(),
-         [&](APFloat value) -> double { return value.convertToDouble(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<double>(floatValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<double>(
-+                            floatValues));
-   }
+ LogicalResult inferDotShape(RankedTensorType lhs, RankedTensorType rhs,
+@@ -2804,7 +2794,6 @@
+  *  P3. Verify and collect the window atributes.
+  *  P4. Verify precision_config attribute.
+  *  P5. Verify the return shape.
+- *      TODO(b/232574102): Verify the element-type of return-value.
+  */
+ LogicalResult verifyConvolutionOp(
+     Optional<Location> location, Value lhs, Value rhs,
+@@ -2839,11 +2828,11 @@
  
-   // Handle signed integer types.
-@@ -393,32 +394,32 @@
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> int8_t { return value.getSExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<int8_t>(intValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<int8_t>(
-+                            intValues));
-   }
+   // P2.
+   if (failed(verifyConvolutionAttributes(
+-          lhs, rhs, inputBatchDimension, inputFeatureDimension,
++          location, lhs, rhs, inputBatchDimension, inputFeatureDimension,
+           inputSpatialDimensions, kernelInputFeatureDimension,
+           kernelOutputFeatureDimension, kernelSpatialDimensions,
+           outputBatchDimension, outputFeatureDimension, outputSpatialDimensions,
+-          featureGroupCount, batchGroupCount, location)))
++          featureGroupCount, batchGroupCount, precisionConfig)))
+     return failure();
  
-   if (elemType.isSignlessInteger(16)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> int16_t { return value.getSExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<int16_t>(intValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<int16_t>(
-+                            intValues));
-   }
+   if ((size_t)numDims != inputSpatialDimensions.size() + 2)
+@@ -2878,11 +2867,7 @@
+       *rhsDilationOrErr, *windowReversalOrErr, location);
+   if (failed(windowOrErr)) return failure();
  
-   if (elemType.isSignlessInteger(32)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> int32_t { return value.getSExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<int32_t>(intValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<int32_t>(
-+                            intValues));
-   }
+-  // P3.
+-  if (failed(verifyPrecisionConfig(location, precisionConfig)))
+-    return failure();
+-
+-  // P5.
++  // P4.
+   SmallVector<int64_t> outputDimensions(lhsType.getShape().size(),
+                                         ShapedType::kDynamic);
  
-   if (elemType.isSignlessInteger(64)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> int64_t { return value.getSExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<int64_t>(intValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<int64_t>(
-+                            intValues));
-   }
+@@ -2920,7 +2905,8 @@
+ }
  
-   // Handle unsigned integer types.
-@@ -426,32 +427,35 @@
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> uint8_t { return value.getZExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint8_t>(intValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<uint8_t>(
-+                            intValues));
-   }
+ LogicalResult verifyDotOp(Optional<Location> location, Value lhs, Value rhs,
+-                          Optional<ArrayAttr> precisionConfig, Value result) {
++                          Optional<ArrayAttr> /*precisionConfig*/,
++                          Value result) {
+   auto lhsType = lhs.getType().dyn_cast<RankedTensorType>();
+   auto rhsType = rhs.getType().dyn_cast<RankedTensorType>();
+   auto resultType = result.getType().dyn_cast<RankedTensorType>();
+@@ -2937,7 +2923,7 @@
+         location, "inferred shape '", dimSizesToString(inferredShape), "' ",
+         "is incompatible with return type of operation ", resultType, "");
  
-   if (elemType.isUnsignedInteger(16)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> uint16_t { return value.getZExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint16_t>(intValues));
-+    return Tensor(
-+        type,
-+        HeapAsmResourceBlob::allocateAndCopyInferAlign<uint16_t>(intValues));
-   }
+-  return verifyPrecisionConfig(location, precisionConfig);
++  return success();
+ }
  
-   if (elemType.isUnsignedInteger(32)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> uint32_t { return value.getZExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint32_t>(intValues));
-+    return Tensor(
-+        type,
-+        HeapAsmResourceBlob::allocateAndCopyInferAlign<uint32_t>(intValues));
-   }
+ LogicalResult verifyDotGeneralOp(Optional<Location> location, Value lhs,
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/dialect/TypeInference.h
+--- stablehlo/stablehlo/dialect/TypeInference.h
++++ stablehlo/stablehlo/dialect/TypeInference.h
+@@ -39,6 +39,83 @@
+                          ArrayRef<int64_t> collapsedSliceDims,
+                          ArrayRef<int64_t> startIndexMap,
+                          int64_t indexVectorDim, SmallVectorImpl<Value>& shape);
++
++// TODO(zhouxin) Remove these utils when all type inference code are integrated
++// And move `WindowDimension` to `TypeInference.cpp`
++
++bool compatibleShapeAndElementType(Type type1, Type type2,
++                                   bool ignoreFpPrecision = false);
++
++FailureOr<SmallVector<int64_t>> convert1DAttribute(
++    Optional<DenseIntElementsAttr> optionalAttr, Optional<Location> loc,
++    StringRef attrName);
++
++FailureOr<SmallVector<std::pair<int64_t, int64_t>>> convertPaddingAttribute(
++    Optional<DenseIntElementsAttr> optionalAttr, Optional<Location> loc);
++
++// Convert a 1D dense bool attribute to a list of values.
++FailureOr<SmallVector<bool>> convertWindowReversalAttribute(
++    Optional<DenseElementsAttr> optionalAttr, Optional<Location> loc,
++    StringRef attrName);
++
++// WindowDimension described how the kernel window moves across the base area
++// in a particular dimension.
++// Describes the windowing in an operation such as convolution.
++// The window is moved across a base area and for each position of the
++// window a computation is performed. The field below describes the
++// window and the movement of the window across a base area.
++struct WindowDimension {
++  int64_t size = 0;
++  int64_t stride = 1;
++  int64_t paddingLow = 0;
++  int64_t paddingHigh = 0;
++  int64_t windowDilation = 1;
++  int64_t baseDilation = 1;
++  bool windowReversal = false;
++};
++
++FailureOr<SmallVector<WindowDimension>>
++verifyWindowAttributesAndInferWindowDimensions(
++    ArrayRef<int64_t> windowDimensions, ArrayRef<int64_t> windowStrides,
++    ArrayRef<std::pair<int64_t, int64_t>> padding,
++    ArrayRef<int64_t> lhsDilation, ArrayRef<int64_t> rhsDilation,
++    ArrayRef<bool> windowReversal, Optional<Location> loc);
++
++SmallVector<int64_t> inferWindowOutputShape(
++    const ArrayRef<int64_t> baseShape, const ArrayRef<WindowDimension> window);
++
++unsigned potentiallyComplexBitwidth(Type type);
++
++LogicalResult verifyReducerShape(Optional<Location> loc, Block& block,
++                                 ArrayRef<TensorType> inputArgTypes,
++                                 ArrayRef<TensorType> initValueTypes,
++                                 int64_t numInputs,
++                                 ArrayRef<int64_t> allowedDimensions,
++                                 bool allInputsUnranked);
++
++// Verifies replica groups attached to collective communication operations.
++// P1. 'replicaGroups' must be a 2-D tensor.
++// P2. replicaGroups' cannot be empty.
++// P3. If `allGroupsMustHaveSameSize` is true, then each group is of the same
++//     size.
++// P4. All values in `replica_groups` are unique and covers all the values in
++//     the interval [0, N-1], where N is the total number of replica ids.
++// P5. replica group size must be equal to 'expectedGroupSize'.
++LogicalResult verifyReplicaGroups(Optional<Location> location,
++                                  DenseIntElementsAttr replicaGroups,
++                                  bool allGroupsMustHaveSameSize,
++                                  bool useGlobalDeviceIds,
++                                  Optional<size_t> expectedGroupSize);
++
++LogicalResult verifyConvolutionAttributes(
++    Optional<Location> location, Value lhs, Value rhs,
++    int64_t inputBatchDimension, int64_t inputFeatureDimension,
++    ArrayRef<int64_t> inputSpatialDimensions,
++    int64_t kernelInputFeatureDimension, int64_t kernelOutputFeatureDimension,
++    ArrayRef<int64_t> kernelSpatialDimensions, int64_t outputBatchDimension,
++    int64_t outputFeatureDimension, ArrayRef<int64_t> outputSpatialDimensions,
++    int64_t featureGroupCount, int64_t batchGroupCount,
++    Optional<ArrayAttr> precisionConfig);
  
-   if (elemType.isUnsignedInteger(64)) {
-     auto intValues = llvm::to_vector(llvm::map_range(
-         attr.getValues<APInt>(),
-         [&](APInt value) -> uint64_t { return value.getZExtValue(); }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint64_t>(intValues));
-+    return Tensor(
-+        type,
-+        HeapAsmResourceBlob::allocateAndCopyInferAlign<uint64_t>(intValues));
-   }
+ //===----------------------------------------------------------------------===//
+ // Shape functions for ops.
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
+@@ -1485,14 +1485,6 @@
+ // CHECK-LABEL: func @dot_precision_config
+ func.func @dot_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -> tensor<2x2xi32> {
+   %0 = "stablehlo.dot"(%arg0, %arg1) {precision_config = [#stablehlo<precision HIGH>, #stablehlo<precision HIGHEST>]} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+-  func.return %0: tensor<2x2xi32>
+-}
+-
+-// -----
+-
+-func.func @dot_precision_invalid_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -> tensor<2x2xi32> {
+-  // expected-error@+1 {{expects precision config to be null or of size 2.}}
+-  %0 = "stablehlo.dot"(%arg0, %arg1) {precision_config = [#stablehlo<precision HIGH>]} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+   func.return %0: tensor<2x2xi32>
+ }
  
-   // Handle boolean type.
-@@ -459,8 +463,8 @@
-     auto boolValues = llvm::to_vector(
-         llvm::map_range(attr.getValues<bool>(),
-                         [&](bool value) -> uint8_t { return value ? 1 : 0; }));
--    return Tensor(type,
--                  HeapAsmResourceBlob::allocateAndCopy<uint8_t>(boolValues));
-+    return Tensor(type, HeapAsmResourceBlob::allocateAndCopyInferAlign<uint8_t>(
-+                            boolValues));
-   }
- 
-   // Handle complex types.
-@@ -473,9 +477,10 @@
-             return std::complex<float>(value.real().convertToFloat(),
-                                        value.imag().convertToFloat());
-           }));
--      return Tensor(type,
--                    HeapAsmResourceBlob::allocateAndCopy<std::complex<float>>(
--                        complexValues));
-+      return Tensor(
-+          type,
-+          HeapAsmResourceBlob::allocateAndCopyInferAlign<std::complex<float>>(
-+              complexValues));
-     }
-     if (complexElemTy.isF64()) {
-       auto complexValues = llvm::to_vector(llvm::map_range(
-@@ -484,9 +489,10 @@
-             return std::complex<double>(value.real().convertToDouble(),
-                                         value.imag().convertToDouble());
-           }));
--      return Tensor(type,
--                    HeapAsmResourceBlob::allocateAndCopy<std::complex<double>>(
--                        complexValues));
-+      return Tensor(
-+          type,
-+          HeapAsmResourceBlob::allocateAndCopyInferAlign<std::complex<double>>(
-+              complexValues));
-     }
-   }
- 
-diff --ruN a/stablehlo/stablehlo/tests/CMakeLists.txt b/stablehlo/stablehlo/tests/CMakeLists.txt
---- stablehlo/stablehlo/tests/CMakeLists.txt
-+++ stablehlo/stablehlo/tests/CMakeLists.txt
-@@ -53,4 +53,5 @@
-   MLIRShapeDialect
-   MLIRSupport
-   MLIRTransformUtils
-+  StablehloAssemblyFormat
- )
-diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests/TestUtils.cpp
---- stablehlo/stablehlo/tests/TestUtils.cpp
-+++ stablehlo/stablehlo/tests/TestUtils.cpp
-@@ -36,7 +36,6 @@
- #include "mlir/Support/TypeID.h"
- #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
- #include "stablehlo/dialect/AssemblyFormat.h"
--#include "stablehlo/dialect/Base.h"
- 
- namespace mlir {
- namespace hlo {
 

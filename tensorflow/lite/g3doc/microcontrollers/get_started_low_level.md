@@ -18,7 +18,7 @@ The end-to-end workflow involves the following steps:
 
 1.  [Train a model](#train_a_model) (in Python): A jupyter notebook to train,
     convert and optimize a model for on-device use.
-2.  [Run inference](#run_inference) (in C++ 11): An end-to-end unit test that
+2.  [Run inference](#run_inference) (in C++ 17): An end-to-end unit test that
     runs inference on the model using the [C++ library](library.md).
 
 ## Get a supported device

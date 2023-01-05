@@ -109,18 +109,8 @@ void TfLiteInterpreterOptionsSetNumThreads(TfLiteInterpreterOptions* options,
 }
 
 void TfLiteInterpreterOptionsAddDelegate(TfLiteInterpreterOptions* options,
-                                         TfLiteDelegate* delegate) {
+                                         TfLiteOpaqueDelegate* delegate) {
   options->delegates.push_back(delegate);
-}
-
-void TfLiteInterpreterOptionsAddOpaqueDelegate(
-    TfLiteInterpreterOptions* options,
-    TfLiteOpaqueDelegateStruct* opaque_delegate) {
-  // The following cast is safe only because this code is part of the TF Lite
-  // runtime implementation.  Apps using TF Lite should not rely on
-  // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
-  TfLiteDelegate* delegate = reinterpret_cast<TfLiteDelegate*>(opaque_delegate);
-  TfLiteInterpreterOptionsAddDelegate(options, delegate);
 }
 
 void TfLiteInterpreterOptionsSetErrorReporter(
@@ -146,6 +136,7 @@ TfLiteStatus TfLiteInterpreterOptionsEnableCancellation(
 static void InitTfLiteRegistration(
     TfLiteRegistration* registration,
     TfLiteRegistrationExternal* registration_external) {
+  registration->builtin_code = registration_external->builtin_code;
   registration->custom_name = registration_external->custom_name;
   registration->version = registration_external->version;
   registration->registration_external = registration_external;
@@ -476,6 +467,13 @@ TfLiteInterpreter* InterpreterCreateWithOpResolver(
                                               : tflite::DefaultErrorReporter();
   tflite::InterpreterBuilder builder(model->impl->GetModel(), *op_resolver,
                                      error_reporter);
+
+  if (optional_options && optional_options->telemetry_profiler) {
+    std::unique_ptr<tflite::telemetry::TelemetryProfiler> profiler;
+    profiler.reset(tflite::telemetry::MakeTfLiteTelemetryProfiler(
+        optional_options->telemetry_profiler));
+    builder.SetTelemetryProfiler(std::move(profiler));
+  }
 
   std::unique_ptr<tflite::Interpreter> interpreter;
   if (builder(&interpreter) != kTfLiteOk) {

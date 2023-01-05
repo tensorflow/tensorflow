@@ -432,7 +432,7 @@ struct MergeAssumingOpsPass
     RewritePatternSet patterns(ctx);
     mhlo::populateMergeAssumingOpsPatterns(ctx, &patterns);
     GreedyRewriteConfig config;
-    config.maxIterations = GreedyRewriteConfig::kNoIterationLimit;
+    config.maxIterations = GreedyRewriteConfig::kNoLimit;
     if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
                                             config))) {
       return signalPassFailure();

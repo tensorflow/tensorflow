@@ -322,4 +322,12 @@ def DTensorInferShapesForRestoreV2Op
   ];
 }
 
+def DTensorXlaSpmdIntegration
+    : Pass<"dtensor-xla-spmd-integration", "mlir::ModuleOp"> {
+  let summary = "Converts all Layout operations into equivalent XLA Sharding attributes for inputs, outputs, and operations in the graph. All existing layouts must be on a XLA Mesh, and are deleted after this pass.";
+  let constructor = "CreateDTensorXlaSpmdIntegration()";
+  let dependentDialects = [
+  ];
+}
+
 #endif // TF_DTENSOR_PASSES
