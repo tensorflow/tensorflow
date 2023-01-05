@@ -188,3 +188,61 @@ func.func @do_not_simplify_transpose(%input: tensor<1x1xf32>,
 
 // CHECK:         %[[TRANSPOSE:.*]] = linalg.transpose
 // CHECK:         return %[[TRANSPOSE]]
+
+// -----
+
+func.func @perfectly_tiled_reverse_1d(%input: tensor<8xf32>,
+    %init: tensor<8xf32>) -> tensor<8xf32> {
+  %res = thlo.reverse
+         ins(%input: tensor<8xf32>)
+         outs(%init: tensor<8xf32>)
+         reverse_dimensions = [0]
+  func.return %res : tensor<8xf32>
+}
+
+// CHECK-LABEL: func @perfectly_tiled_reverse_1d(
+//  CHECK-SAME: %[[ARG0:.*]]: tensor<8xf32>, %[[ARG1:.*]]: tensor<8xf32>
+//       CHECK:   %[[READ:.*]] = vector.transfer_read %[[ARG0]]
+//       CHECK:   %[[SHUFFLE:.*]] = vector.shuffle %[[READ]]
+//       CHECK:   %[[WRITE:.*]] = vector.transfer_write %[[SHUFFLE]], %[[ARG1]]
+//       CHECK:   return %[[WRITE]]
+
+// -----
+
+func.func @perfectly_tiled_reverse_2d(%input: tensor<1x8xf32>,
+    %init: tensor<1x8xf32>) -> tensor<1x8xf32> {
+  %res = thlo.reverse
+         ins(%input: tensor<1x8xf32>)
+         outs(%init: tensor<1x8xf32>)
+         reverse_dimensions = [1]
+  func.return %res : tensor<1x8xf32>
+}
+
+// CHECK-LABEL: func @perfectly_tiled_reverse_2d(
+//  CHECK-SAME: %[[ARG0:.*]]: tensor<1x8xf32>, %[[ARG1:.*]]: tensor<1x8xf32>
+//       CHECK:   %[[READ:.*]] = vector.transfer_read %[[ARG0]]
+//  CHECK-SAME:   : tensor<1x8xf32>, vector<8xf32>
+//       CHECK:   %[[SHUFFLE:.*]] = vector.shuffle %[[READ]]
+//       CHECK:   %[[WRITE:.*]] = vector.transfer_write %[[SHUFFLE]], %[[ARG1]]
+//  CHECK-SAME:   : vector<8xf32>, tensor<1x8xf32>
+//       CHECK:   return %[[WRITE]]
+
+// -----
+
+func.func @perfectly_tiled_reverse_4d(%input: tensor<1x1x1x8xf32>,
+    %init: tensor<1x1x1x8xf32>) -> tensor<1x1x1x8xf32> {
+  %res = thlo.reverse
+         ins(%input: tensor<1x1x1x8xf32>)
+         outs(%init: tensor<1x1x1x8xf32>)
+         reverse_dimensions = [3]
+  func.return %res : tensor<1x1x1x8xf32>
+}
+
+// CHECK-LABEL: func @perfectly_tiled_reverse_4d(
+//  CHECK-SAME: %[[ARG0:.*]]: tensor<1x1x1x8xf32>, %[[ARG1:.*]]: tensor<1x1x1x8xf32>
+//       CHECK:   %[[READ:.*]] = vector.transfer_read %[[ARG0]]
+//  CHECK-SAME:   : tensor<1x1x1x8xf32>, vector<8xf32>
+//       CHECK:   %[[SHUFFLE:.*]] = vector.shuffle %[[READ]]
+//       CHECK:   %[[WRITE:.*]] = vector.transfer_write %[[SHUFFLE]], %[[ARG1]]
+//  CHECK-SAME:   : vector<8xf32>, tensor<1x1x1x8xf32>
+//       CHECK:   return %[[WRITE]]
