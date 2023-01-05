@@ -896,15 +896,17 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
 
   MklMatMulParams params("dnnl_gemm", a_dims, b_dims, c_dims, a_strides,
                          b_strides, c_strides);
+  auto st = ExecuteSingleThreadedGemm(m, n, k, sizeof(T));
+  MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
   MklMatMulPrimitive<T, T, T>* matmul_prim =
       MklMatMulPrimitiveFactory<T, T, T, T>::Get(params, 0);
 
   UserScratchPad<unsigned char> scratch_pad;
   scratch_pad.AllocateSPTensor(matmul_prim, ctx);
   // Execute matmul primitive.
-  auto st = ExecuteSingleThreadedGemm(m, n, k, sizeof(T));
+
   std::shared_ptr<stream> cpu_stream;
-  MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
+
   cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
   matmul_prim->Execute(cpu_stream, a, b, c, scratch_pad.Get());
 }

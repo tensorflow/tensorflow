@@ -431,6 +431,7 @@ class MklConvCustomBackpropInputOp
                           (MklPrimitiveFactory<T>::IsLegacyPlatform() ||
                            IsConv1x1StrideNot1(fwd_filter_dims, strides));
 
+      MklDnnThreadPool eigen_tp(context);
       MklConvBwdInputPrimitive<T>* conv_bwd_input =
           MklConvBwdInputPrimitiveFactory<T>::Get(convBwdInputDims,
                                                   do_not_cache);
@@ -483,7 +484,7 @@ class MklConvCustomBackpropInputOp
       }
 
       std::shared_ptr<stream> bwd_cpu_stream;
-      MklDnnThreadPool eigen_tp(context);
+
       bwd_cpu_stream.reset(
           CreateStream(&eigen_tp, conv_bwd_input->GetEngine()));
       // Execute conv bwd input primitive.

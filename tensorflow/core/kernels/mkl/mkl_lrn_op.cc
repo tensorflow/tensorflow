@@ -145,6 +145,7 @@ class MklLRNOp : public OpKernel {
       // Create LRN primitive descriptor.
       // Tensorflow's normalization semantics is across channels.
       // MKL-DNN also supports normalization within channel.
+      MklDnnThreadPool eigen_tp(context);
       auto lrn_desc = lrn_forward::desc(
           prop_kind::forward, dnnl::algorithm::lrn_across_channels,
           src_dnn_data.GetUsrMemDesc(), kernel_size, new_alpha, beta_, bias_);
@@ -167,7 +168,7 @@ class MklLRNOp : public OpKernel {
       src_dnn_data.CheckReorderToOpMem(lrn_prim_desc.src_desc(), cpu_engine_);
 
       std::vector<primitive> net;
-      MklDnnThreadPool eigen_tp(context);
+
       fwd_stream_.reset(CreateStream(&eigen_tp, cpu_engine_));
       net.push_back(lrn_forward(lrn_prim_desc));
       std::vector<std::unordered_map<int, memory>> net_args;

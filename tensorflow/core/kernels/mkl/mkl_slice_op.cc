@@ -456,11 +456,12 @@ class MklSliceOp : public OpKernel {
       // Step 3 - create reorder primitive.
       MklSliceParams sliceParams(&src.GetOpMem(), output.GetUsrMem(),
                                  begin_dims, size_dims);
+      MklDnnThreadPool eigen_tp(context);
       MklSlicePrimitive<T>* reorder_prim =
           MklSlicePrimitiveFactory<T>::Get(sliceParams);
       // Execute slice reorder.
       std::shared_ptr<stream> slice_stream;
-      MklDnnThreadPool eigen_tp(context);
+
       slice_stream.reset(CreateStream(&eigen_tp, reorder_prim->GetEngine()));
       reorder_prim->Execute(sliceParams, slice_stream);
     } catch (dnnl::error& e) {
