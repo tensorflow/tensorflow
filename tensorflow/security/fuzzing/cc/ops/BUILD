@@ -69,7 +69,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_shared_test(
+tf_cc_test(
     name = "string_to_number_fuzz",
     srcs = ["string_to_number_fuzz.cc"],
     tags = ["no_oss"],
@@ -80,6 +80,5 @@ tf_cc_shared_test(
         "//tensorflow/security/fuzzing/cc:fuzz_session",
         "@com_google_fuzztest//fuzztest",
         "@com_google_fuzztest//fuzztest:fuzztest_gtest_main",
-        "@com_google_googletest//:gtest_main",
     ],
 )
