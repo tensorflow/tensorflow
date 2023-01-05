@@ -127,9 +127,6 @@ class TracingCompiler:
     # create different functions for each instance.
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._jit_compile = jit_compile
-    # Flag for preventing recreating placeholders. Set to False when reduced
-    # retracing is True and input_signature is None
-    self._create_placeholders = True
 
   def __call__(self, *args, **kwargs):
     """Calls a graph function specialized to the inputs."""
@@ -297,7 +294,7 @@ class TracingCompiler:
             autograph_options=self._autograph_options,
             arg_names=arg_names,
             capture_by_value=self._capture_by_value,
-            create_placeholders=self._create_placeholders),
+            create_placeholders=False),
         self._function_attributes,
         spec=self.function_spec,
         # Tell the ConcreteFunction to clean up its graph once it goes out of
@@ -364,22 +361,23 @@ class TracingCompiler:
           func_graph = func_graph_module.FuncGraph(
               self._name, capture_by_value=self._capture_by_value)
           if self.input_signature is None and self._reduce_retracing:
-            self._create_placeholders = False
-            general_func_type = self._function_cache.generalize(
+            target_func_type = self._function_cache.generalize(
                 current_func_context, lookup_func_type)
-            handledata_mapping = lookup_func_context.get_handledata_mapping()
-            placeholder_mapping = lookup_func_context.get_placeholder_mapping()
-            placeholder_context = trace_type.InternalPlaceholderContext(
-                func_graph, placeholder_mapping, handledata_mapping)
-            with func_graph.as_default():
-              placeholder_bound_args = general_func_type.placeholder_arguments(
-                  placeholder_context)
-            if self.function_spec.is_method:
-              # TODO(fmuham): canonicalize_function_inputs removes self arg.
-              args = placeholder_bound_args.args[1:]
-            else:
-              args = placeholder_bound_args.args
-            kwargs = placeholder_bound_args.kwargs
+          else:
+            target_func_type = lookup_func_type
+          handledata_mapping = lookup_func_context.get_handledata_mapping()
+          placeholder_mapping = lookup_func_context.get_placeholder_mapping()
+          placeholder_context = trace_type.InternalPlaceholderContext(
+              func_graph, placeholder_mapping, handledata_mapping)
+          with func_graph.as_default():
+            placeholder_bound_args = target_func_type.placeholder_arguments(
+                placeholder_context)
+          if self.function_spec.is_method:
+            # TODO(fmuham): canonicalize_function_inputs removes self arg.
+            args = placeholder_bound_args.args[1:]
+          else:
+            args = placeholder_bound_args.args
+          kwargs = placeholder_bound_args.kwargs
 
           concrete_function = self._create_concrete_function(
               args, kwargs, func_graph)
@@ -393,12 +391,8 @@ class TracingCompiler:
 
           # Create a cache_key with args and captures
           traced_func_deletion_observer = lookup_func_context.deletion_observer
-          if self.input_signature is None and self._reduce_retracing:
-            traced_func_type = _insert_capture_type(
-                general_func_type, captures, lookup_func_context)
-          else:
-            traced_func_type = _insert_capture_type(
-                lookup_func_type, captures, lookup_func_context)
+          traced_func_type = _insert_capture_type(
+              target_func_type, captures, lookup_func_context)
 
           self._function_cache.add(current_func_context, traced_func_type,
                                    traced_func_deletion_observer,

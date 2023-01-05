@@ -1238,6 +1238,16 @@ def func_graph_from_py_func(name,
       func_outputs = nest.map_structure(
           convert, func_outputs, expand_composites=True)
 
+      # flatten and unflatten func_args and func_kwargs to maintain parity
+      # from flattening which sorts by key
+      func_args = nest.pack_sequence_as(
+          func_args,
+          nest.flatten(func_args, expand_composites=True),
+          expand_composites=True)
+      func_kwargs = nest.pack_sequence_as(
+          func_kwargs,
+          nest.flatten(func_kwargs, expand_composites=True),
+          expand_composites=True)
       check_func_mutation(func_args_before, func_kwargs_before, func_args,
                           func_kwargs, original_func)
     finally:
