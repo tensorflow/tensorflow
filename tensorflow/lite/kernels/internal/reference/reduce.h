@@ -426,8 +426,8 @@ inline bool QuantizedMeanOrSumExtraArgs(
     bool keep_dims, int* temp_index, int* resolved_axis, U* temp_sum,
     bool compute_sum) {
   return QuantizedMeanOrSum<T, U>(
-      input_data, input_zero_point, input_scale, input_dims, input_num_dims,
-      output_data, output_zero_point, output_scale, output_dims,
+      input_data, input_zero_point, input_dims, input_num_dims, output_data,
+      output_multiplier, output_shift, output_zero_point, output_dims,
       output_num_dims, axis, num_axis_dimensions, keep_dims, temp_index,
       resolved_axis, temp_sum, compute_sum);
 }
