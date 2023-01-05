@@ -20,41 +20,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 
 namespace tensorflow {
 namespace quantization {
-
-// Runs quantization on a model trained with quantization-aware training (QAT).
-// Returns serialized ExportedModel.
-std::string QuantizeQatModel(absl::string_view saved_model_path,
-                             const std::vector<std::string>& signature_keys,
-                             const std::unordered_set<std::string>& tags,
-                             absl::string_view quant_opts_serialized);
-
-// Runs dynamic range post-training quantization (PTQ). Returns serialized
-// ExportedModel.
-std::string QuantizePtqDynamicRange(
-    absl::string_view saved_model_path,
-    const std::vector<std::string>& signature_keys,
-    const std::unordered_set<std::string>& tags,
-    absl::string_view quant_opts_serialized);
-
-// Runs the pre-calibration step of post-training quantization (PTQ). Returns
-// serialized ExportedModel.
-std::string QuantizePtqModelPreCalibration(
-    absl::string_view saved_model_path,
-    const std::vector<std::string>& signature_keys,
-    const std::unordered_set<std::string>& tags,
-    absl::string_view quant_opts_serialized);
-
-// Runs the post-calibration step of post-training quantization (PTQ). Returns
-// serialized ExportedModel.
-std::string QuantizePtqModelPostCalibration(
-    absl::string_view saved_model_path,
-    const std::vector<std::string>& signature_keys,
-    const std::unordered_set<std::string>& tags,
-    absl::string_view quant_opts_serialized);
 
 void ClearCollectedInformationFromCalibrator();
 

@@ -112,6 +112,7 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:status_casters",
     ],
 )
 

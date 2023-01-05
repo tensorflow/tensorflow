@@ -686,13 +686,13 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'use_kernel': [True, False]
       }]))
   @test_util.run_in_graph_and_eager_modes
-  def test_qat_einsum_model(
-      self, equation: str, shape_unknown: bool,
-      activation_fn: Optional[ops.Operation], has_bias: bool, use_kernel: bool):
+  def test_qat_einsum_model(self, equation: str, shape_unknown: bool,
+                            activation_fn: Optional[ops.Operation],
+                            has_bias: bool, use_kernel: bool):
     comma_pos = equation.find(',')
     arrow_pos = equation.find('->')
     x_labels = equation[0:comma_pos]
-    y_labels = equation[comma_pos+1:arrow_pos]
+    y_labels = equation[comma_pos + 1:arrow_pos]
 
     label_to_size = {'a': 2, 'b': 3, 'c': 4, 'd': 5, 'e': 6}
     x_shape = [label_to_size.get(x_label) for x_label in x_labels]
@@ -2794,7 +2794,11 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     tags = {tag_constants.SERVING}
     data_gen = self._create_data_generator(
         input_key='input', shape=input_placeholder.shape)
-    with self.assertRaisesRegex(ValueError, 'Failed to import SavedModel'):
+
+    # StatusNotOk error. `Exception` is used here because importing
+    # `StatusNotOk` may break the open-sourced version of TensorFlow.
+    with self.assertRaisesRegex(Exception,
+                                'Failed to import SavedModel') as raises:
       quantize_model.quantize(
           self._input_saved_model_path,
           signature_keys,
@@ -2802,6 +2806,8 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           self._output_saved_model_path,
           quantization_options,
           representative_dataset=data_gen)
+
+    self.assertEqual(raises.exception.__class__.__name__, 'StatusNotOk')
 
   @parameterized.named_parameters(
       ('quantize', True, 0),
