@@ -938,7 +938,7 @@ func.func @convolution(%arg0: tensor<2x2x3x4xf32>, %arg1: tensor<3x5x5x3xf32>) -
 
 func.func @conv_invalid_precision_config(%arg0: tensor<3x2xf16>,
     %arg1: tensor<2x2xf16>) -> tuple<tensor<3x2xf16>> {
-  // expected-error@+1{{expects precision config to be null or of size 2.}}
+  // expected-error@+1 {{expects precision config to be empty or have <= 2 elements}}
   %0 = mhlo.convolution(%arg0, %arg1)
          dim_numbers = [b, f]x[i, o]->[b, f],
          window = {stride = [], pad = [], lhs_dilate = [], rhs_dilate = [],

@@ -33,7 +33,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
    if (failed(verifyCompatibleShape(type1, type2))) return false;
    return tensorsHaveSameElType(type1.cast<ShapedType>(),
                                 type2.cast<ShapedType>(), ignoreFpPrecision);
-@@ -785,6 +769,17 @@
+@@ -785,6 +769,19 @@
    return success();
  }
  
@@ -42,16 +42,18 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
 +                                    Optional<ArrayAttr> maybeArrayAttr) {
 +  if (!maybeArrayAttr.has_value()) return success();
 +  auto arrayAttr = maybeArrayAttr.value();
-+  return !arrayAttr || arrayAttr.size() == 2 || arrayAttr.empty()
++  if (!arrayAttr) return success();
++  return arrayAttr.size() <= 2
 +             ? success()
-+             : emitOptionalError(
-+                   loc, "expects precision config to be null or of size 2.");
++             : emitOptionalError(loc,
++                                 "expects precision config to be empty or have "
++                                 "<= 2 elements.");
 +}
 +
  // Verifies the following properties:
  //  P1. The input, kernel, and output spatial-dimentions are valid.
  //  P2. Given,
-@@ -805,14 +800,16 @@
+@@ -805,14 +802,16 @@
  //          dim(lhs, f) / fgc = dim(rhs, i)
  //        * dim(rhs, o) (or dim(output, f')) % bgc == 0 and
  //          dim(rhs, o) (or dim(output, f')) % fgc == 0
@@ -71,7 +73,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
    // P1.
    if (failed(isSpatialDimensionsValid(
            lhs, inputBatchDimension, inputFeatureDimension,
-@@ -892,18 +889,11 @@
+@@ -892,18 +891,11 @@
                               "batch_group_count. Got batch_group_count = ",
                               batchGroupCount, ".");
  
@@ -95,7 +97,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
  }
  
  LogicalResult inferDotShape(RankedTensorType lhs, RankedTensorType rhs,
-@@ -2804,7 +2794,6 @@
+@@ -2804,7 +2796,6 @@
   *  P3. Verify and collect the window atributes.
   *  P4. Verify precision_config attribute.
   *  P5. Verify the return shape.
@@ -103,7 +105,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
   */
  LogicalResult verifyConvolutionOp(
      Optional<Location> location, Value lhs, Value rhs,
-@@ -2839,11 +2828,11 @@
+@@ -2839,11 +2830,11 @@
  
    // P2.
    if (failed(verifyConvolutionAttributes(
@@ -117,7 +119,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
      return failure();
  
    if ((size_t)numDims != inputSpatialDimensions.size() + 2)
-@@ -2878,11 +2867,7 @@
+@@ -2878,11 +2869,7 @@
        *rhsDilationOrErr, *windowReversalOrErr, location);
    if (failed(windowOrErr)) return failure();
  
@@ -130,7 +132,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
    SmallVector<int64_t> outputDimensions(lhsType.getShape().size(),
                                          ShapedType::kDynamic);
  
-@@ -2920,7 +2905,8 @@
+@@ -2920,7 +2907,8 @@
  }
  
  LogicalResult verifyDotOp(Optional<Location> location, Value lhs, Value rhs,
@@ -140,7 +142,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
    auto lhsType = lhs.getType().dyn_cast<RankedTensorType>();
    auto rhsType = rhs.getType().dyn_cast<RankedTensorType>();
    auto resultType = result.getType().dyn_cast<RankedTensorType>();
-@@ -2937,7 +2923,7 @@
+@@ -2937,7 +2925,7 @@
          location, "inferred shape '", dimSizesToString(inferredShape), "' ",
          "is incompatible with return type of operation ", resultType, "");
  
@@ -239,19 +241,64 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/d
 diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
 --- stablehlo/stablehlo/tests/ops_stablehlo.mlir
 +++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
-@@ -1485,14 +1485,6 @@
- // CHECK-LABEL: func @dot_precision_config
- func.func @dot_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -> tensor<2x2xi32> {
-   %0 = "stablehlo.dot"(%arg0, %arg1) {precision_config = [#stablehlo<precision HIGH>, #stablehlo<precision HIGHEST>]} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+@@ -1490,14 +1490,6 @@
+ 
+ // -----
+ 
+-func.func @dot_precision_invalid_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -> tensor<2x2xi32> {
+-  // expected-error@+1 {{expects precision config to be null or of size 2.}}
+-  %0 = "stablehlo.dot"(%arg0, %arg1) {precision_config = [#stablehlo<precision HIGH>]} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
 -  func.return %0: tensor<2x2xi32>
 -}
 -
 -// -----
 -
--func.func @dot_precision_invalid_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -> tensor<2x2xi32> {
--  // expected-error@+1 {{expects precision config to be null or of size 2.}}
--  %0 = "stablehlo.dot"(%arg0, %arg1) {precision_config = [#stablehlo<precision HIGH>]} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
-   func.return %0: tensor<2x2xi32>
- }
+ func.func @dot_bad_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -> tensor<2x2xi32> {
+   // expected-error@+1 {{'precision_config' failed to satisfy constraint}}
+   %0 = "stablehlo.dot"(%arg0, %arg1) {precision_config = ["FOO", #stablehlo<precision HIGHEST>]} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+@@ -3332,8 +3324,7 @@
  
+ // -----
+ 
+-func.func @dot_general_invalid_precision_config(%arg0: tensor<2x3x4xf32>, %arg1: tensor<2x3x5xf32>) -> tensor<2x4x5xf32> {
+-  // expected-error@+1 {{expects precision config to be null or of size 2}}
++func.func @dot_general_one_element_precision_config(%arg0: tensor<2x3x4xf32>, %arg1: tensor<2x3x5xf32>) -> tensor<2x4x5xf32> {
+   %0 = "stablehlo.dot_general"(%arg0, %arg1) {
+     dot_dimension_numbers = #stablehlo.dot<
+       lhs_batching_dimensions = [0],
+@@ -3342,6 +3333,22 @@
+       rhs_contracting_dimensions = [1]
+     >,
+     precision_config = [#stablehlo<precision DEFAULT>]
++  } : (tensor<2x3x4xf32>, tensor<2x3x5xf32>) -> tensor<2x4x5xf32>
++  func.return %0 : tensor<2x4x5xf32>
++}
++
++// -----
++
++func.func @dot_general_three_element_precision_config(%arg0: tensor<2x3x4xf32>, %arg1: tensor<2x3x5xf32>) -> tensor<2x4x5xf32> {
++  // expected-error@+1 {{expects precision config to be empty or have <= 2 elements}}
++  %0 = "stablehlo.dot_general"(%arg0, %arg1) {
++    dot_dimension_numbers = #stablehlo.dot<
++      lhs_batching_dimensions = [0],
++      rhs_batching_dimensions = [0],
++      lhs_contracting_dimensions = [1],
++      rhs_contracting_dimensions = [1]
++    >,
++    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
+   } : (tensor<2x3x4xf32>, tensor<2x3x5xf32>) -> tensor<2x4x5xf32>
+   func.return %0 : tensor<2x4x5xf32>
+ }
+diff --ruN a/stablehlo/stablehlo/tests/verify_conv.mlir b/stablehlo/stablehlo/tests/verify_conv.mlir
+--- stablehlo/stablehlo/tests/verify_conv.mlir
++++ stablehlo/stablehlo/tests/verify_conv.mlir
+@@ -963,7 +963,7 @@
+ 
+ func.func @conv_invalid_precision_config(%arg0: tensor<3x2xf16>,
+     %arg1: tensor<2x2xf16>) -> tuple<tensor<3x2xf16>> {
+-  // expected-error@+1{{expects precision config to be null or of size 2.}}
++  // expected-error@+1 {{expects precision config to be empty or have <= 2 elements}}
+   %0 = stablehlo.convolution(%arg0, %arg1)
+          dim_numbers = [b, f]x[i, o]->[b, f],
+          window = {stride = [], pad = [], lhs_dilate = [], rhs_dilate = [],
 
