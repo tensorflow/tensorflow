@@ -63,6 +63,12 @@ tf_proto_library(
     protodeps = [":hlo_profile_printer_data"],
 )
 
+tf_proto_library(
+    name = "metrics_proto",
+    srcs = ["metrics.proto"],
+    cc_api_version = 2,
+)
+
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",
@@ -1238,7 +1244,7 @@ cc_library(
 
 cc_library(
     name = "gpu_plugin_impl",
-    compatible_with = [],
+    compatible_with = get_compatible_with_portable(),
     deps = if_gpu_is_configured([
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
@@ -1373,10 +1379,9 @@ cc_library(
         ":computation_placer",
         ":executable",
         ":hlo_module_config",
-        ":logical_buffer",
         ":metrics_hook_interface",
+        ":metrics_proto_cc",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/ir:hlo_module_group",
@@ -4828,12 +4833,12 @@ cc_library(
         ":buffer_value",
         ":call_graph",
         ":flatten_call_graph",
-        ":hlo_dataflow_analysis",
         ":hlo_dce",
         ":hlo_memory_scheduler",
         ":hlo_ordering",
         ":hlo_query",
-        ":hlo_value",
+        ":logical_buffer",
+        ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -6981,7 +6986,11 @@ xla_cc_test(
 cc_library(
     name = "metrics_hook_interface",
     hdrs = ["metrics_hook_interface.h"],
-    deps = ["@com_google_absl//absl/strings"],
+    deps = [
+        ":metrics_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
 )
 
 xla_cc_test(

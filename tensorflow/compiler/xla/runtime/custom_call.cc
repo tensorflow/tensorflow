@@ -97,6 +97,17 @@ void PopulateCustomCallTypeIdNames(TypeIDNameRegistry& r) {
   r.Register<Tagged<TensorRef<int64_t>>>("__type_id_tensor_int64_t");
   r.Register<Tagged<TensorRef<float>>>("__type_id_tensor_float");
   r.Register<Tagged<TensorRef<double>>>("__type_id_tensor_double");
+
+  r.Register<Tagged<tsl::AsyncValueRef<bool>>>("__type_id_async_bool");
+  r.Register<Tagged<tsl::AsyncValueRef<int8_t>>>("__type_id_async_int8");
+  r.Register<Tagged<tsl::AsyncValueRef<int16_t>>>("__type_id_async_int16");
+  r.Register<Tagged<tsl::AsyncValueRef<int32_t>>>("__type_id_async_int32");
+  r.Register<Tagged<tsl::AsyncValueRef<int64_t>>>("__type_id_async_int64");
+  r.Register<Tagged<tsl::AsyncValueRef<float>>>("__type_id_async_float");
+  r.Register<Tagged<tsl::AsyncValueRef<double>>>("__type_id_async_double");
+  r.Register<Tagged<tsl::AsyncValueRef<xla::runtime::MemrefView>>>(
+      "__type_id_async_memref");
+  r.Register<Tagged<tsl::AsyncValueRef<tsl::Chain>>>("__type_id_async_chain");
 }
 
 }  // namespace runtime
@@ -116,3 +127,13 @@ XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(absl::Span<const int32_t>);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(absl::Span<const int64_t>);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(absl::Span<const float>);
 XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(absl::Span<const double>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(tsl::AsyncValueRef<bool>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(tsl::AsyncValueRef<int8_t>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(tsl::AsyncValueRef<int16_t>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(tsl::AsyncValueRef<int32_t>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(tsl::AsyncValueRef<int64_t>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(tsl::AsyncValueRef<float>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(tsl::AsyncValueRef<double>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(
+    tsl::AsyncValueRef<xla::runtime::MemrefView>);
+XLA_RUNTIME_DEFINE_EXPLICIT_TYPE_ID(tsl::AsyncValueRef<tsl::Chain>);

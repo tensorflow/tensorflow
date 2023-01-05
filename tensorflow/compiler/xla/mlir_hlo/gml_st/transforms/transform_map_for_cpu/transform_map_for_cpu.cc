@@ -40,14 +40,13 @@ namespace {
 static constexpr llvm::StringRef kMapTransformedLabel =
     "__map_transformed_label__";
 
-template <typename OpType>
-struct TileMapPattern : public OpRewritePattern<OpType> {
+struct TileMapPattern : public OpRewritePattern<linalg::MapOp> {
   TileMapPattern(MLIRContext *context, int64_t innerDimTileSize,
                  PatternBenefit benefit = 1)
-      : OpRewritePattern<OpType>(context, benefit),
+      : OpRewritePattern<linalg::MapOp>(context, benefit),
         innerDimTileSize(innerDimTileSize) {}
 
-  LogicalResult matchAndRewrite(OpType op,
+  LogicalResult matchAndRewrite(linalg::MapOp op,
                                 PatternRewriter &rewriter) const override {
     if (hasLabel(op, kMapTransformedLabel)) return failure();
 
@@ -56,7 +55,7 @@ struct TileMapPattern : public OpRewritePattern<OpType> {
           op, "has already been tiled by another pass.");
 
     auto fuseFilterFn = [](Operation *op) {
-      return isa<linalg::BroadcastOp, OpType>(op);
+      return isa<linalg::BroadcastOp, linalg::MapOp>(op);
     };
 
     // Find there another linalg.map where this op can be fused.
@@ -84,9 +83,10 @@ struct TileMapPattern : public OpRewritePattern<OpType> {
 
  private:
   // Find the root of the fusion cluster.
-  OpType findRootMap(OpType op,
-                     llvm::function_ref<bool(Operation *)> fuseFilterFn) const {
-    OpType rootMap = op;
+  linalg::MapOp findRootMap(
+      linalg::MapOp op,
+      llvm::function_ref<bool(Operation *)> fuseFilterFn) const {
+    linalg::MapOp rootMap = op;
 
     Operation *curOp = op;
     while (fuseFilterFn(curOp)) {
@@ -95,7 +95,7 @@ struct TileMapPattern : public OpRewritePattern<OpType> {
       if (users.size() != 1) break;
       curOp = users[0];
 
-      if (auto curMap = dyn_cast<OpType>(curOp)) rootMap = curMap;
+      if (auto curMap = dyn_cast<linalg::MapOp>(curOp)) rootMap = curMap;
     }
     return rootMap;
   }
@@ -105,12 +105,7 @@ struct TileMapPattern : public OpRewritePattern<OpType> {
       llvm::function_ref<bool(Operation *)> fuseFilterFn) const {
     mlir::gml_st::TilingOptions opts;
     opts.tileSizeComputationFn = [&](OpBuilder &b, Operation *op) {
-      assert(isa<linalg::MapOp>(op) ||
-             isa<linalg::FillOp>(op) &&
-                 " only linalg.map or linalg.fill expected");
-      auto numLoops = isa<linalg::MapOp>(op)
-                          ? cast<linalg::MapOp>(op).getNumLoops()
-                          : cast<linalg::FillOp>(op).getNumLoops();
+      auto numLoops = cast<linalg::MapOp>(op).getNumLoops();
       SmallVector<Value> tiles(
           numLoops, b.create<arith::ConstantIndexOp>(op->getLoc(), 1));
       if (!tiles.empty())
@@ -170,17 +165,13 @@ struct TransformMapForCpuPass
     MLIRContext *context = &getContext();
 
     RewritePatternSet patterns(context);
-    patterns.add<TileMapPattern<linalg::MapOp>, TileMapPattern<linalg::FillOp>>(
-        context, tileSize);
+    patterns.add<TileMapPattern>(context, tileSize);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
       return signalPassFailure();
     }
 
-    f.walk([](Operation *op) {
-      if (isa<linalg::MapOp, linalg::FillOp>(op))
-        removeLabel(op, kMapTransformedLabel);
-    });
+    f.walk([](linalg::MapOp op) { removeLabel(op, kMapTransformedLabel); });
   }
 };
 

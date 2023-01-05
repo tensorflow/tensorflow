@@ -50740,6 +50740,48 @@ func TPUPartitionedInput(scope *Scope, inputs []tf.Output, optional ...TPUPartit
 	return op.Output(0)
 }
 
+// TPUPartitionedInputV2Attr is an optional argument to TPUPartitionedInputV2.
+type TPUPartitionedInputV2Attr func(optionalAttr)
+
+// TPUPartitionedInputV2IsPacked sets the optional is_packed attribute to value.
+//
+// value: Indicates whether the input is a packed resource.
+// If not specified, defaults to false
+func TPUPartitionedInputV2IsPacked(value bool) TPUPartitionedInputV2Attr {
+	return func(m optionalAttr) {
+		m["is_packed"] = value
+	}
+}
+
+// An op that groups a list of partitioned inputs together. Supports ND sharding.
+//
+// Arguments:
+//
+//	inputs: A list of partitioned inputs which must have the same shape.
+//	partition_dims: A list of integers describing how each dimension is partitioned. Emptiness
+//
+// indicates the inputs are replicated.
+//
+// Returns A handle which represents the full shape of partitioned tensors.
+func TPUPartitionedInputV2(scope *Scope, inputs []tf.Output, partition_dims []int64, optional ...TPUPartitionedInputV2Attr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"partition_dims": partition_dims}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "TPUPartitionedInputV2",
+		Input: []tf.Input{
+			tf.OutputList(inputs),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // TPUPartitionedOutputAttr is an optional argument to TPUPartitionedOutput.
 type TPUPartitionedOutputAttr func(optionalAttr)
 
@@ -50785,6 +50827,44 @@ func TPUPartitionedOutput(scope *Scope, inputs tf.Output, num_splits int64, opti
 	var err error
 	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
 		scope.UpdateErr("TPUPartitionedOutput", err)
+		return
+	}
+	return output
+}
+
+// An op that demultiplexes a tensor to be sharded by XLA to a list of partitioned
+//
+// outputs outside the XLA computation. Supports ND sharding.
+//
+// Arguments:
+//
+//	inputs: A tensor which represents the full shape of partitioned tensors.
+//
+//	partition_dims: A list of integers describing how each dimension is partitioned. Emptiness
+//
+// indicates the inputs are replicated.
+//
+// Returns A list of partitioned outputs which have the same shape.
+func TPUPartitionedOutputV2(scope *Scope, inputs tf.Output, num_splits int64, partition_dims []int64) (output []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_splits": num_splits, "partition_dims": partition_dims}
+	opspec := tf.OpSpec{
+		Type: "TPUPartitionedOutputV2",
+		Input: []tf.Input{
+			inputs,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
+		scope.UpdateErr("TPUPartitionedOutputV2", err)
 		return
 	}
 	return output

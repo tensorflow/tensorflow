@@ -51,6 +51,8 @@ class PrimitiveType(enum.IntEnum):
   U16: PrimitiveType
   U32: PrimitiveType
   U64: PrimitiveType
+  F8_E4M3FN: PrimitiveType
+  F8_E5M2: PrimitiveType
   BF16: PrimitiveType
   F16: PrimitiveType
   F32: PrimitiveType
@@ -62,6 +64,8 @@ class PrimitiveType(enum.IntEnum):
   TOKEN: PrimitiveType
 
 def bfloat16_dtype() -> Type[Any]: ...
+def float8_e4m3fn_dtype() -> Type[Any]: ...
+def float8_e5m2_dtype() -> Type[Any]: ...
 
 # === BEGIN xla_compiler.cc
 
@@ -213,7 +217,10 @@ class DeviceAssignment:
   def serialize(self) -> bytes: ...
 
 class CompileOptions:
+  @staticmethod
+  def ParseFromString(s: bytes) -> CompileOptions: ...
   def __init__(self) -> None: ...
+  def SerializeAsString(self) -> bytes: ...
   argument_layouts: Optional[List[Shape]]
   parameter_is_tupled_arguments: bool
   executable_build_options: ExecutableBuildOptions
@@ -659,7 +666,7 @@ class OpShardingSharding(XLACompatibleSharding):
 class PjitFunction:
   def __call__(self, *args, **kwargs) -> Any: ...
 
-def pjit(function_name: str, cache_miss: Callable, static_argnums: Sequence[int]) -> PjitFunction: ...
+def pjit(function_name: str, cache_miss: Callable, static_argnums: Sequence[int], static_argnames: Sequence[str]) -> PjitFunction: ...
 
 class HloPassInterface:
   @property

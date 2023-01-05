@@ -284,7 +284,7 @@ Status DataServiceDispatcherImpl::RestoreSplitProviders(
 
 Status DataServiceDispatcherImpl::FindTasksToDelete(
     const absl::flat_hash_set<int64_t>& current_tasks,
-    const std::vector<std::shared_ptr<const Task>> assigned_tasks,
+    const std::vector<std::shared_ptr<const Task>>& assigned_tasks,
     WorkerHeartbeatResponse* response) {
   absl::flat_hash_set<int64_t> assigned_ids;
   for (const auto& assigned : assigned_tasks) {

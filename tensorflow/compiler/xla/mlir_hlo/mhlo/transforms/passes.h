@@ -124,6 +124,14 @@ std::unique_ptr<OperationPass<func::FuncOp>> createMergeAssumingOpsPass();
 // Iteratively reifies all shape computations in the function.
 std::unique_ptr<OperationPass<func::FuncOp>> createShapeReificationPass();
 
+/// Creates a pass to analyze shapes and to use that information for
+/// shape-related optimizations.
+std::unique_ptr<OperationPass<func::FuncOp>>
+createSymbolicShapeOptimizationPass();
+
+// Pass to simplify shape ops.
+std::unique_ptr<OperationPass<func::FuncOp>> createShapeSimplification();
+
 // Fuse shape constraints and merge all assuming regions.
 std::unique_ptr<OperationPass<func::FuncOp>> createConstraintFusionPass();
 

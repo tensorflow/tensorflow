@@ -108,6 +108,7 @@ cc_library(
         ":kernel_launch",
         ":memcpy",
         ":memset",
+        ":send_recv",
         ":support",
         ":tracing",
         "//tensorflow/compiler/xla:xla_proto_cc",
@@ -275,6 +276,24 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "send_recv",
+    srcs = ["send_recv.cc"],
+    hdrs = ["send_recv.h"],
+    deps = [
+        ":support",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:custom_call_encoding",
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:executable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
     ],
 )
 

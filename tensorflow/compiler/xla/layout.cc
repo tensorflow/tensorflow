@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -221,17 +222,25 @@ std::string Layout::ToString() const {
   }
 
   if (index_primitive_type() != PRIMITIVE_TYPE_INVALID) {
-    absl::StrAppend(
-        &colon_string, "#(",
-        primitive_util::LowercasePrimitiveTypeName(index_primitive_type()),
-        ")");
+    if (primitive_util::IsIntegralType(index_primitive_type())) {
+      absl::StrAppend(
+          &colon_string, "#(",
+          primitive_util::LowercasePrimitiveTypeName(index_primitive_type()),
+          ")");
+    } else {
+      absl::StrAppend(&colon_string, "#(invalid)");
+    }
   }
 
   if (pointer_primitive_type() != PRIMITIVE_TYPE_INVALID) {
-    absl::StrAppend(
-        &colon_string, "*(",
-        primitive_util::LowercasePrimitiveTypeName(pointer_primitive_type()),
-        ")");
+    if (primitive_util::IsIntegralType(pointer_primitive_type())) {
+      absl::StrAppend(
+          &colon_string, "*(",
+          primitive_util::LowercasePrimitiveTypeName(pointer_primitive_type()),
+          ")");
+    } else {
+      absl::StrAppend(&colon_string, "*(invalid)");
+    }
   }
 
   if (memory_space() != 0) {

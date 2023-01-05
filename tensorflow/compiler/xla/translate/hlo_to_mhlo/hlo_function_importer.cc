@@ -71,6 +71,7 @@ namespace {
 
 constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
 constexpr char kShardingAttr[] = "mhlo.sharding";
+constexpr char kParameterReplicationAttr[] = "mhlo.parameter_replication";
 
 // Note: This sanitization function causes an irreversible many-to-one mapping
 // and any solution to mitigate this would cause issues with the reverse
@@ -389,12 +390,26 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
   function.setVisibility(visibility);
 
   for (auto& entry : llvm::enumerate(computation.parameter_instructions())) {
-    HloInstruction* parameter = entry.value();
+    HloParameterInstruction* parameter =
+        Cast<HloParameterInstruction>(entry.value());
     if (parameter->has_sharding()) {
       function.setArgAttr(
           entry.index(), kShardingAttr,
           builder_->getStringAttr(
               parameter->sharding().ToProto().SerializeAsString()));
+    }
+    if (parameter->parameter_replicated_at_leaf_buffers().has_value()) {
+      bool nontrival = false;
+      llvm::SmallVector<bool> replicated_at_leaf_buffers;
+      for (auto b : parameter->parameter_replicated_at_leaf_buffers().value()) {
+        replicated_at_leaf_buffers.push_back(b);
+        nontrival = nontrival || b;
+      }
+      if (nontrival) {
+        function.setArgAttr(
+            entry.index(), kParameterReplicationAttr,
+            builder_->getBoolArrayAttr(replicated_at_leaf_buffers));
+      }
     }
   }
   if (computation.root_instruction()->has_sharding()) {

@@ -101,8 +101,7 @@ absl::Status Embedder::ValidateInputs() {
     int width, height, components;
     decode_jpeg_kernel::JpegHeader header{0};
     auto status = decode_jpeg_kernel::ReadJpegHeader(
-        {jpeg_image_data.data(), static_cast<int>(jpeg_image_data.size())},
-        &header);
+        {jpeg_image_data.data(), jpeg_image_data.size()}, &header);
     VALIDATE(status.code == kTfLiteOk,
              "Failed to decompress jpeg data at index %d: %s", jpeg_number,
              status.error_message.c_str());

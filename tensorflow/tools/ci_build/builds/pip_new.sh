@@ -523,6 +523,7 @@ run_test_with_bazel() {
 
   if [[ "${IS_OSS_SERIAL}" == "1" ]]; then
     remove_test_filter_tag -no_oss
+    remove_test_filter_tag -oss_serial
     add_test_filter_tag oss_serial
   else
     add_test_filter_tag -oss_serial

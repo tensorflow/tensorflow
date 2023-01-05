@@ -87,7 +87,10 @@ TEST(ConvertXPlaneToOpStats, GpuPerfEnv) {
                                                    options, &op_stats));
   const PerfEnv& perf_env = op_stats.perf_env();
   EXPECT_NEAR(141, perf_env.peak_tera_flops_per_second(), kMaxError);
-  EXPECT_NEAR(900, perf_env.peak_hbm_bw_giga_bytes_per_second(), kMaxError);
+  EXPECT_NEAR(
+      900,
+      perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_HBM_RW),
+      kMaxError);
   EXPECT_NEAR(156.67, perf_env.ridge_point(), kMaxError);
 }
 
@@ -368,8 +371,13 @@ TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
                                                    options, &op_stats));
   const PerfEnv& perf_env = op_stats.perf_env();
   EXPECT_NEAR(141, perf_env.peak_tera_flops_per_second(), kMaxError);
-  EXPECT_NEAR(1000, perf_env.peak_bw_giga_bytes_per_second(), kMaxError);
-  EXPECT_NEAR(900, perf_env.peak_hbm_bw_giga_bytes_per_second(), kMaxError);
+  EXPECT_NEAR(
+      1000, perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_ALL),
+      kMaxError);
+  EXPECT_NEAR(
+      900,
+      perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_HBM_RW),
+      kMaxError);
   EXPECT_NEAR(156.67, perf_env.ridge_point(), kMaxError);
 }
 

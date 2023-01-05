@@ -205,12 +205,7 @@ LogicalResult FillAttributesForUniformQuantizedConvolutionOp(
   }
 
   if (op->getParentOfType<func::FuncOp>().getName().contains("depthwise_")) {
-    // TODO(b/240931497): Remove below after prepare_quantize fix for
-    // static range uniform_quantization.
-    if (quantization_method ==
-        tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE) {
-      feature_group_cnt = input_shape.getDimSize(3);
-    }
+    feature_group_cnt = input_shape.getDimSize(3);
   }
 
   attrs.push_back(rewriter.getNamedAttr(

@@ -52,8 +52,8 @@ jobs:
           git config --global user.email "jenkins@tensorflow.org"
           git fetch origin master
           git cherry-pick ${{ github.event.inputs.git_commit }}
-          echo ::set-output name=SHORTSHA::$(git log -1 ${{ github.event.inputs.git_commit }} --format="%h")
-          echo ::set-output name=TITLE::$(git log -1 ${{ github.event.inputs.git_commit }} --format="%s")
+          echo "SHORTSHA=$(git log -1 ${{ github.event.inputs.git_commit }} --format="%h")" >> "$GITHUB_OUTPUT"
+          echo "TITLE=$(git log -1 ${{ github.event.inputs.git_commit }} --format="%s")" >> "$GITHUB_OUTPUT"
     - name: Create Pull Request with changes
       uses: peter-evans/create-pull-request@2b011faafdcbc9ceb11414d64d0573f37c774b04 # v4.2.3
       with:

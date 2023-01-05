@@ -36,6 +36,8 @@ except ImportError:
   custom_call_for_test = None
 
 bfloat16 = xla_client.bfloat16
+float8_e4m3fn = xla_client.float8_e4m3fn
+float8_e5m2 = xla_client.float8_e5m2
 ops = xla_client.ops
 
 FLAGS = flags.FLAGS
@@ -62,6 +64,10 @@ def TestFactory(xla_backend,
     float_dtypes = [np.float32]
     complex_dtypes = [np.complex64]
     standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
+  # TODO(zhangqiaorjc): test fp8 types when XLA support is complete.
+  # standard_dtypes is only used for BufferProtocolTest so we only test fp8
+  # round trip tests.
+  standard_dtypes += [float8_e4m3fn, float8_e5m2]
   dlpack_dtypes = int_dtypes + float_dtypes + [np.bool_] + complex_dtypes
 
   class ComputationTest(parameterized.TestCase):
@@ -725,6 +731,10 @@ def TestFactory(xla_backend,
     def testStandardTypes(self):
       for dtype in standard_dtypes:
         if dtype == bfloat16 or dtype == np.complex128:
+          continue
+        # NV FP8 not supported on TPU.
+        if (dtype in [float8_e4m3fn, float8_e5m2] and
+            self.backend.platform == "tpu"):
           continue
         arr = self.backend.buffer_from_pyval(np.array([0, 1], dtype))
         arr = np.asarray(arr)
@@ -2517,6 +2527,37 @@ def TestFactory(xla_backend,
       actual, = xla_client.execute_with_python_values(deserialized, (),
                                                       self.backend)
       self.assertTrue(np.all(actual == expected))
+
+    def testCompileOptionsSerialization(self):
+      options = xla_client.CompileOptions()
+      executable_build_options = options.executable_build_options
+      options.num_replicas = 3
+      options.num_partitions = 2
+      options.profile_version = 1337
+      options.compile_portable_executable = True
+      executable_build_options.num_replicas = 3
+      executable_build_options.num_partitions = 2
+      executable_build_options.debug_options.xla_cpu_enable_fast_math = True
+      executable_build_options.debug_options.xla_test_all_input_layouts = True
+
+      b = options.SerializeAsString()
+      restored = xla_client.CompileOptions.ParseFromString(b)
+
+      for name in ("num_replicas", "num_partitions", "profile_version",
+                   "compile_portable_executable"):
+        self.assertEqual(getattr(options, name), getattr(restored, name),
+                         msg=name)
+
+      for name in ("num_replicas", "num_partitions"):
+        self.assertEqual(getattr(options.executable_build_options, name),
+                         getattr(restored.executable_build_options, name),
+                         msg=name)
+
+      for name in ("xla_cpu_enable_fast_math", "xla_test_all_input_layouts"):
+        self.assertEqual(
+            getattr(options.executable_build_options.debug_options, name),
+            getattr(restored.executable_build_options.debug_options, name),
+            msg=name)
 
   tests.append(ClientTest)
 

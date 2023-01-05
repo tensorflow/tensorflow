@@ -1036,8 +1036,14 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
     return object_identity.Reference(self)
 
   def __tf_tracing_type__(self, signature_context):
-    return tensor_spec.TensorSpec(
+    spec = tensor_spec.TensorSpec(
         self.shape, self.dtype).__tf_tracing_type__(signature_context)
+    # TODO(b/263894631): Store handle data in the TensorSpec itself. Once
+    # implemented, the following section under the if condition can be removed.
+    if self.dtype == dtypes.resource or self.dtype == dtypes.variant:
+      handle_data = get_handle_data(self)
+      signature_context.add_handledata(id(spec), handle_data)
+    return spec
 
 
 # TODO(agarwal): consider getting rid of this.
@@ -7398,6 +7404,13 @@ def get_resource_handle_data(graph_op):
 
   return cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData.FromString(
       compat.as_bytes(handle_data))
+
+
+def get_handle_data(source_t):
+  """Obtains HandleData from a tensor."""
+  if isinstance(source_t, EagerTensor):
+    return source_t._handle_data  # pylint: disable=protected-access
+  return get_resource_handle_data(source_t)
 
 
 def _copy_handle_data_to_arg_def(tensor, arg_def):

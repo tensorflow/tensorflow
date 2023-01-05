@@ -133,15 +133,6 @@ void Interpreter::AddProfiler(Profiler* profiler) {
   SetSubgraphProfiler();
 }
 
-void Interpreter::AddProfiler(std::unique_ptr<Profiler> profiler) {
-  if (profiler == nullptr) return;
-  if (root_profiler_ == nullptr) {
-    root_profiler_ = std::make_unique<profiling::RootProfiler>();
-  }
-  root_profiler_->AddProfiler(std::move(profiler));
-  SetSubgraphProfiler();
-}
-
 Profiler* Interpreter::GetProfiler() {
   return primary_subgraph().GetProfiler();
 }

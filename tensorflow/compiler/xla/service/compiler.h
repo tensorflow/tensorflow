@@ -389,7 +389,8 @@ class Compiler {
 
   // Returns a MetricsHookInterface object used to instrument Compiler's
   // compilation stages.
-  virtual std::unique_ptr<MetricsHookInterface> CreateMetricsHook() const;
+  virtual std::unique_ptr<MetricsHookInterface> CreateMetricsHook(
+      absl::string_view filename_prefix) const;
 
  private:
   // Mutex that guards the platform-compiler map.

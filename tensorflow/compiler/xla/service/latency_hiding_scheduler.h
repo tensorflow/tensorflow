@@ -339,9 +339,8 @@ class BufferInfoTracker {
       const HloBuffer* value, const HloInstruction* first_definition,
       const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes) {
     return ValueInfo{
-        .value = value,
-        .first_definition = first_definition,
-        .buffer_size = shape_size_bytes(value->values()[0]->shape())};
+        /*value=*/value, /*first_definition=*/first_definition,
+        /*buffer_size=*/shape_size_bytes(value->values()[0]->shape())};
   }
   const ValueInfo& GetBufferInfo(HloBuffer::Id id) const {
     return buffer_infos_[id];

@@ -33,6 +33,7 @@ reorders = {
     'tf.data.experimental.SparseTensorStructure': ['dtype', 'shape'],
     'tf.data.experimental.TensorArrayStructure': ['dtype', 'element_shape', 'dynamic_size', 'infer_shape'],
     'tf.data.experimental.TensorStructure': ['dtype', 'shape'],
+    'tf.debugging.assert_all_finite': ['t', 'msg', 'name', 'x', 'message'],
     'tf.decode_csv': ['records', 'record_defaults', 'field_delim', 'use_quote_delim', 'name', 'na_value', 'select_cols'],
     'tf.depth_to_space': ['input', 'block_size', 'name', 'data_format'],
     'tf.estimator.BaselineClassifier': ['model_dir', 'n_classes', 'weight_column', 'label_vocabulary', 'optimizer', 'config', 'loss_reduction'],
@@ -44,6 +45,7 @@ reorders = {
     'tf.estimator.LinearClassifier': ['feature_columns', 'model_dir', 'n_classes', 'weight_column', 'label_vocabulary', 'optimizer', 'config', 'partitioner', 'warm_start_from', 'loss_reduction', 'sparse_combiner'],
     'tf.estimator.LinearRegressor': ['feature_columns', 'model_dir', 'label_dimension', 'weight_column', 'optimizer', 'config', 'partitioner', 'warm_start_from', 'loss_reduction', 'sparse_combiner'],
     'tf.feature_column.categorical_column_with_vocabulary_file': ['key', 'vocabulary_file', 'vocabulary_size', 'num_oov_buckets', 'default_value', 'dtype'],
+    'tf.gather_nd': ['params', 'indices', 'name', 'batch_dims'],
     'tf.gradients': ['ys', 'xs', 'grad_ys', 'name', 'colocate_gradients_with_ops', 'gate_gradients', 'aggregation_method', 'stop_gradients', 'unconnected_gradients'],
     'tf.hessians': ['ys', 'xs', 'name', 'colocate_gradients_with_ops', 'gate_gradients', 'aggregation_method'],
     'tf.image.sample_distorted_bounding_box': ['image_size', 'bounding_boxes', 'seed', 'seed2', 'min_object_covered', 'aspect_ratio_range', 'area_range', 'max_attempts', 'use_image_if_no_bounding_boxes', 'name'],
@@ -54,6 +56,7 @@ reorders = {
     'tf.io.serialize_many_sparse': ['sp_input', 'name', 'out_type'],
     'tf.io.serialize_sparse': ['sp_input', 'name', 'out_type'],
     'tf.linalg.norm': ['tensor', 'ord', 'axis', 'keepdims', 'name', 'keep_dims'],
+    'tf.manip.gather_nd': ['params', 'indices', 'name', 'batch_dims'],
     'tf.math.argmax': ['input', 'axis', 'name', 'dimension', 'output_type'],
     'tf.math.argmin': ['input', 'axis', 'name', 'dimension', 'output_type'],
     'tf.math.confusion_matrix': ['labels', 'predictions', 'num_classes', 'dtype', 'name', 'weights'],
@@ -140,5 +143,6 @@ reorders = {
     'tf.transpose': ['a', 'perm', 'name', 'conjugate'],
     'tf.tuple': ['tensors', 'name', 'control_inputs'],
     'tf.uniform_unit_scaling_initializer': ['factor', 'seed', 'dtype'],
+    'tf.verify_tensor_all_finite': ['t', 'msg', 'name', 'x', 'message'],
     'tf.while_loop': ['cond', 'body', 'loop_vars', 'shape_invariants', 'parallel_iterations', 'back_prop', 'swap_memory', 'name', 'maximum_iterations', 'return_same_structure']
 }

@@ -427,6 +427,22 @@ func.func @test_reduce_sum(%arg0: tensor<13x21x3xf32>) -> tensor<21x3xf32> {
   func.return %0 : tensor<21x3xf32>
 }
 
+// CHECK-LABEL: test_reduce_sum_nonzero_axis
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<10x20x30x40x50xf32>
+// CHECK: %[[VAL_1:.*]] = "tosa.const"() {value = dense<[0, 1, 2, 4, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
+// CHECK: %[[VAL_2:.*]] = "tosa.transpose"(%[[VAL_0]], %[[VAL_1]]) : (tensor<10x20x30x40x50xf32>, tensor<5xi32>) -> tensor<10x20x30x50x40xf32>
+// CHECK: %[[VAL_3:.*]] = "tosa.reshape"(%[[VAL_2]]) {new_shape = [300000, 40]} : (tensor<10x20x30x50x40xf32>) -> tensor<300000x40xf32>
+// CHECK: %[[VAL_4:.*]] = "tosa.reduce_sum"(%[[VAL_3]]) {axis = 1 : i64} : (tensor<300000x40xf32>) -> tensor<300000x1xf32>
+// CHECK: %[[VAL_5:.*]] = "tosa.reshape"(%[[VAL_4]]) {new_shape = [10, 20, 30, 50]} : (tensor<300000x1xf32>) -> tensor<10x20x30x50xf32>
+// CHECK: return %[[VAL_5]] : tensor<10x20x30x50xf32>
+func.func @test_reduce_sum_nonzero_axis(%arg0: tensor<10x20x30x40x50xf32> {tf._user_specified_name = "inp_list"}) -> tensor<10x20x30x50xf32> {
+  %cst = arith.constant dense<3> : tensor<i32>
+  %0 = "tfl.sum"(%arg0, %cst) {device = "", keep_dims = false} : (tensor<10x20x30x40x50xf32>, tensor<i32>) -> tensor<10x20x30x50xf32>
+  func.return %0 : tensor<10x20x30x50xf32>
+}
+
+// -----
+
 // -----
 
 // CHECK-LABEL: test_reduce_sum_5D
@@ -1451,6 +1467,20 @@ func.func @test_space_to_depth(%arg0: tensor<1x32x32x8xf32>) -> tensor<1x16x16x3
 func.func @test_depth_to_space(%arg0: tensor<1x32x32x8xf32>) -> tensor<1x64x64x2xf32> {
   %0 = "tfl.depth_to_space"(%arg0)  {block_size = 2 : i32}  : (tensor<1x32x32x8xf32>) -> tensor<1x64x64x2xf32>
   func.return %0 : tensor<1x64x64x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @test_bucketize
+// CHECK-DAG: %[[VAL_0:.*]] = "tosa.const"() {value = dense<{{\[\[\[}}0.000000e+00, 3.000000e+00, 8.000000e+00, 1.100000e+01]]]> : tensor<1x1x4xf32>}
+// CHECK: %[[VAL_1:.*]] = "tosa.reshape"(%arg0) {new_shape = [2, 5, 1]}
+// CHECK: %[[VAL_2:.*]] = "tosa.greater_equal"(%[[VAL_1]], %[[VAL_0]])
+// CHECK: %[[VAL_3:.*]] = "tosa.cast"(%[[VAL_2]]) : (tensor<2x5x4xi1>) -> tensor<2x5x4xi32>
+// CHECK: %[[VAL_4:.*]] = "tosa.reduce_sum"(%[[VAL_3]]) {axis = 2 : i64}
+// CHECK: %[[VAL_5:.*]] = "tosa.reshape"(%[[VAL_4]]) {new_shape = [2, 5]}
+func.func @test_bucketize(%arg0: tensor<2x5xf32>) -> tensor<2x5xi32> {
+  %0 = "tfl.bucketize"(%arg0) {boundaries = [0.000000e+00 : f32, 3.000000e+00 : f32, 8.000000e+00 : f32, 1.100000e+01 : f32]} : (tensor<2x5xf32>) -> tensor<2x5xi32>
+  func.return %0 : tensor<2x5xi32>
 }
 
 // -----

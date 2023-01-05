@@ -31,7 +31,6 @@ def raise_exception():
 
 class SmartCondTest(test_util.TensorFlowTestCase):
 
-  @test_util.run_deprecated_v1
   def testTrue(self):
     with ops.Graph().as_default():
       with session.Session():
@@ -39,9 +38,8 @@ class SmartCondTest(test_util.TensorFlowTestCase):
         y = constant_op.constant(5)
         z = smart_cond.smart_cond(True, lambda: math_ops.multiply(x, 16),
                                   lambda: math_ops.multiply(y, 5))
-        self.assertEqual(z.eval(), 32)
+        self.assertEqual(self.evaluate(z), 32)
 
-  @test_util.run_deprecated_v1
   def testFalse(self):
     with ops.Graph().as_default():
       with session.Session():
@@ -49,7 +47,7 @@ class SmartCondTest(test_util.TensorFlowTestCase):
         y = constant_op.constant(3)
         z = smart_cond.smart_cond(False, lambda: math_ops.multiply(x, 16),
                                   lambda: math_ops.multiply(y, 3))
-        self.assertEqual(z.eval(), 9)
+        self.assertEqual(self.evaluate(z), 9)
 
   def testUnknown(self):
     with ops.Graph().as_default():
@@ -77,7 +75,7 @@ class SmartCondTest(test_util.TensorFlowTestCase):
         x = array_ops.placeholder_with_default(1, shape=())
         y = smart_cond.smart_cond(x > 0, lambda: constant_op.constant(1),
                                   lambda: constant_op.constant(2))
-        self.assertEqual(y.eval(), 1)
+        self.assertEqual(self.evaluate(y), 1)
         self.assertEqual(y.eval(feed_dict={x: -1}), 2)
 
   def testMissingArg1(self):

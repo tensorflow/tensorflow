@@ -161,8 +161,8 @@ class TraceType(metaclass=abc.ABCMeta):
   def placeholder_value(self, placeholder_context=None) -> Any:
     """Creates a placeholder for tracing.
 
-    Often it is more useful to trace with a placeholder value than an actual
-    one. For example, a placeholder value can represent multiple different
+    tf.funcion traces with the placeholder value rather than the actual value.
+    For example, a placeholder value can represent multiple different
     actual values. This means that the trace generated with that placeholder
     value is more general and reusable which saves expensive retracing.
 
@@ -188,7 +188,7 @@ class TraceType(metaclass=abc.ABCMeta):
     ```python
     @tf.function
     def foo(x):
-      # Here `x` can be the placeholder value
+      # Here `x` is be the placeholder value
       ...
 
     foo(x) # Here `x` is the actual value

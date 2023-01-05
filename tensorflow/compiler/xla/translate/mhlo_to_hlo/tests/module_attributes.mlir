@@ -154,3 +154,27 @@ module attributes {
    func.return
  }
 }
+
+// -----
+
+module attributes { mhlo.spmd_output_sharding = "\08\03\1A\02\01\02\22\02\00\01", mhlo.spmd_parameters_shardings = ["\08\03\1A\02\01\02\22\02\00\01"]} {
+  func.func @main(%arg0: tensor<16x16xf32>) -> tensor<16x16xf32> {
+    %0 = "mhlo.custom_call"(%arg0) {backend_config = "", call_target_name = "Sharding", mhlo.sharding = "\08\03\1A\02\01\02\22\02\00\01"} : (tensor<16x16xf32>) -> tensor<16x16xf32>
+    func.return %0 : tensor<16x16xf32>
+  }
+}
+
+// CHECK: spmd_output_sharding {
+// CHECK:   type: OTHER
+// CHECK:   tile_assignment_dimensions: 1
+// CHECK:   tile_assignment_dimensions: 2
+// CHECK:   tile_assignment_devices: 0
+// CHECK:   tile_assignment_devices: 1
+// CHECK: }
+// CHECK: spmd_parameters_shardings {
+// CHECK:   type: OTHER
+// CHECK:   tile_assignment_dimensions: 1
+// CHECK:   tile_assignment_dimensions: 2
+// CHECK:   tile_assignment_devices: 0
+// CHECK:   tile_assignment_devices: 1
+// CHECK: }

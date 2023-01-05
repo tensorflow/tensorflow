@@ -21,14 +21,14 @@ limitations under the License.
 #include "lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "mhlo/IR/register.h"
 #include "mhlo/transforms/passes.h"
-#include "mlir-hlo/Transforms/gpu_passes.h"
-#include "mlir-hlo/Transforms/passes.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "stablehlo/dialect/Register.h"
 #include "thlo/IR/thlo_ops.h"
 #include "thlo/transforms/passes.h"
+#include "transforms/gpu_passes.h"
+#include "transforms/passes.h"
 
 using namespace mlir;
 

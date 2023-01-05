@@ -5938,21 +5938,6 @@ func.func @cumprod(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 }
 
 //===----------------------------------------------------------------------===//
-// Qr op legalization
-//===----------------------------------------------------------------------===//
-
-// CHECK:  func @qr([[VAL_0:%.*]]: tensor<500x100x75xf32>) -> (tensor<500x100x75xf32>, tensor<500x75x75xf32>)
-func.func @qr(%arg0: tensor<500x100x75xf32>) -> (tensor<500x100x75xf32>, tensor<500x75x75xf32>) {
-  // The tf.Qr lowering is a full algorithm that is not effective to verify with
-  // FileCheck. Just verify that it converted.
-  // TODO(laurenzo): Move this out of the mainline tf2xla conversion as it is
-  // really only applicable to certain legacy uses.
-  // CHECK-NOT: "tf.Qr"
-  %0:2 = "tf.Qr"(%arg0) {full_matrices = false} : (tensor<500x100x75xf32>) -> (tensor<500x100x75xf32>, tensor<500x75x75xf32>)
-  func.return %0#0, %0#1 : tensor<500x100x75xf32>, tensor<500x75x75xf32>
-}
-
-//===----------------------------------------------------------------------===//
 // tf.UniformQuantizedDotHybrid legalization
 //===----------------------------------------------------------------------===//
 
@@ -6072,6 +6057,156 @@ func.func @uniform_quantized_convolution_hybrid_explicit(%input: tensor<1x2x2x3x
     rhs_quantization_max_val = 127 : i64
   } : (tensor<1x2x2x3xf32>, tensor<2x3x3x2x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
+}
+
+//===----------------------------------------------------------------------===//
+// tf.UniformQuantize and tf.UniformDequantize legalization
+//===----------------------------------------------------------------------===//
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantize_and_dequantize
+func.func @uniform_quantize_and_dequantize(%arg0 : tensor<*xf32>) -> tensor<*xf32> {
+  %scales = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
+  %zps = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: %[[QUANTIZE:.*]] = mhlo.uniform_quantize %arg0 : (tensor<*xf32>) -> tensor<*x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  // CHECK: %[[DEQUANTIZE:.*]] = mhlo.uniform_dequantize %[[QUANTIZE]] : (tensor<*x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<*xf32>
+  // CHECK: return %[[DEQUANTIZE]] : tensor<*xf32>
+
+  %0 = "tf.UniformQuantize"(%arg0, %scales, %zps) {
+    quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
+  } : (tensor<*xf32>, tensor<f32>, tensor<i32>) -> tensor<*x!tf_type.qint8>
+  %1 = "tf.UniformDequantize"(%0, %scales, %zps) {
+    quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
+  } : (tensor<*x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+  func.return %1 : tensor<*xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantize_and_dequantize_per_axis
+func.func @uniform_quantize_and_dequantize_per_axis(%arg0 : tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %scales = "tf.Const"() { value = dense<[1.0, 2.0]> : tensor<2xf32> } : () -> tensor<2xf32>
+  %zps = "tf.Const"() { value = dense<[3, 4]> : tensor<2xi32> } : () -> tensor<2xi32>
+
+  // CHECK: %[[QUANTIZE:.*]] = mhlo.uniform_quantize %arg0 : (tensor<2x2xf32>) -> tensor<2x2x!quant.uniform<i8:f32:0, {1.000000e+00:3,2.000000e+00:4}>>
+  // CHECK: %[[DEQUANTIZE:.*]] = mhlo.uniform_dequantize %[[QUANTIZE]] : (tensor<2x2x!quant.uniform<i8:f32:0, {1.000000e+00:3,2.000000e+00:4}>>) -> tensor<2x2xf32>
+  // CHECK: return %[[DEQUANTIZE]] : tensor<2x2xf32>
+
+  %0 = "tf.UniformQuantize"(%arg0, %scales, %zps) {
+    quantization_axis = 0 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
+  } : (tensor<2x2xf32>, tensor<2xf32>, tensor<2xi32>) -> tensor<2x2x!tf_type.qint8>
+  %1 = "tf.UniformDequantize"(%0, %scales, %zps) {
+    quantization_axis = 0 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
+  } : (tensor<2x2x!tf_type.qint8>, tensor<2xf32>, tensor<2xi32>) -> tensor<2x2xf32>
+  func.return %1 : tensor<2x2xf32>
+}
+
+//===----------------------------------------------------------------------===//
+// tf.UniformRequantize legalization
+//===----------------------------------------------------------------------===//
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantize_requantize_and_dequantize
+func.func @uniform_quantize_requantize_and_dequantize(%arg0 : tensor<*xf32>) -> tensor<*xf32> {
+  %scales_0 = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
+  %zps_0 = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+  %scales_1 = "tf.Const"() { value = dense<2.0> : tensor<f32> } : () -> tensor<f32>
+  %zps_1 = "tf.Const"() { value = dense<5> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: %[[QUANTIZE:.*]] = mhlo.uniform_quantize %arg0 : (tensor<*xf32>) -> tensor<*x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  // CHECK: %[[REQUANTIZE:.*]] = mhlo.uniform_quantize %[[QUANTIZE]] : (tensor<*x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<*x!quant.uniform<i8:f32, 2.000000e+00:5>>
+  // CHECK: %[[DEQUANTIZE:.*]] = mhlo.uniform_dequantize %[[REQUANTIZE]] : (tensor<*x!quant.uniform<i8:f32, 2.000000e+00:5>>) -> tensor<*xf32>
+  // CHECK: return %[[DEQUANTIZE]] : tensor<*xf32>
+
+  %0 = "tf.UniformQuantize"(%arg0, %scales_0, %zps_0) {
+    quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
+  } : (tensor<*xf32>, tensor<f32>, tensor<i32>) -> tensor<*x!tf_type.qint8>
+  %1 = "tf.UniformRequantize"(%0, %scales_0, %zps_0, %scales_1, %zps_1) {
+    input_quantization_axis = -1 : i64, input_quantization_min_val = -128 : i64, input_quantization_max_val = 127 : i64,
+    output_quantization_axis = -1 : i64, output_quantization_min_val = -128 : i64, output_quantization_max_val = 127 : i64
+  } : (tensor<*x!tf_type.qint8>, tensor<f32>, tensor<i32>, tensor<f32>, tensor<i32>) -> tensor<*x!tf_type.qint8>
+  %2 = "tf.UniformDequantize"(%1, %scales_1, %zps_1) {
+    quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
+  } : (tensor<*x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+  func.return %2 : tensor<*xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantize_requantize_and_dequantize_per_axis
+func.func @uniform_quantize_requantize_and_dequantize_per_axis(%arg0 : tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %scales_0 = "tf.Const"() { value = dense<[1.0, 2.0]> : tensor<2xf32> } : () -> tensor<2xf32>
+  %zps_0 = "tf.Const"() { value = dense<[3, 4]> : tensor<2xi32> } : () -> tensor<2xi32>
+  %scales_1 = "tf.Const"() { value = dense<[3.0, 4.0]> : tensor<2xf32> } : () -> tensor<2xf32>
+  %zps_1 = "tf.Const"() { value = dense<[5, 6]> : tensor<2xi32> } : () -> tensor<2xi32>
+
+  // CHECK: %[[QUANTIZE:.*]] = mhlo.uniform_quantize %arg0 : (tensor<2x2xf32>) -> tensor<2x2x!quant.uniform<i8:f32:0, {1.000000e+00:3,2.000000e+00:4}>>
+  // CHECK: %[[REQUANTIZE:.*]] = mhlo.uniform_quantize %[[QUANTIZE]] : (tensor<2x2x!quant.uniform<i8:f32:0, {1.000000e+00:3,2.000000e+00:4}>>) -> tensor<2x2x!quant.uniform<i8:f32:0, {3.000000e+00:5,4.000000e+00:6}>>
+  // CHECK: %[[DEQUANTIZE:.*]] = mhlo.uniform_dequantize %[[REQUANTIZE]] : (tensor<2x2x!quant.uniform<i8:f32:0, {3.000000e+00:5,4.000000e+00:6}>>) -> tensor<2x2xf32>
+  // CHECK: return %[[DEQUANTIZE]] : tensor<2x2xf32>
+
+  %0 = "tf.UniformQuantize"(%arg0, %scales_0, %zps_0) {
+    quantization_axis = 0 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
+  } : (tensor<2x2xf32>, tensor<2xf32>, tensor<2xi32>) -> tensor<2x2x!tf_type.qint8>
+  %1 = "tf.UniformRequantize"(%0, %scales_0, %zps_0, %scales_1, %zps_1) {
+    input_quantization_axis = 0 : i64, input_quantization_min_val = -128 : i64, input_quantization_max_val = 127 : i64,
+    output_quantization_axis = 0 : i64, output_quantization_min_val = -128 : i64, output_quantization_max_val = 127 : i64
+  } : (tensor<2x2x!tf_type.qint8>, tensor<2xf32>, tensor<2xi32>, tensor<2xf32>, tensor<2xi32>) -> tensor<2x2x!tf_type.qint8>
+  %2 = "tf.UniformDequantize"(%1, %scales_1, %zps_1) {
+    quantization_axis = 0 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
+  } : (tensor<2x2x!tf_type.qint8>, tensor<2xf32>, tensor<2xi32>) -> tensor<2x2xf32>
+  func.return %2 : tensor<2x2xf32>
+}
+
+//===----------------------------------------------------------------------===//
+// tf.UniformQuantizedDot legalization
+//===----------------------------------------------------------------------===//
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantized_dot
+func.func @uniform_quantized_dot(%input: tensor<*xf32>) -> () {
+  %input_scales = "tf.Const"() { value = dense<2.0> : tensor<f32> } : () -> tensor<f32>
+  %input_zps = "tf.Const"() { value = dense<4> : tensor<i32> } : () -> tensor<i32>
+
+  %weight = "tf.Const"() { value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F51494E54382074656E736F725F7368617065207B2064696D207B2073697A653A2032207D2064696D207B2073697A653A2032207D207D2074656E736F725F636F6E74656E743A20225C3030315C3030325C3030335C30303422"> : tensor<2x2x!tf_type.qint8> } : () -> tensor<2x2x!tf_type.qint8>
+  %weight_scales = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
+  %weight_zps = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+
+  %output_scales = "tf.Const"() { value = dense<3.0> : tensor<f32> } : () -> tensor<f32>
+  %output_zps = "tf.Const"() { value = dense<5> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK-DAG: %[[LHS:.*]] = mhlo.uniform_quantize %arg0 : (tensor<*xf32>) -> tensor<*x!quant.uniform<i8:f32, 2.000000e+00:4>>
+  // CHECK-DAG: %[[RHS:.*]] = mhlo.constant()
+  // CHECK-SAME{LITERAL}: {value = dense<[[1, 2], [3, 4]]> : tensor<2x2xi8>} : () -> tensor<2x2x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  // CHECK: "mhlo.dot"(%[[LHS]], %[[RHS]]) : (tensor<*x!quant.uniform<i8:f32, 2.000000e+00:4>>, tensor<2x2x!quant.uniform<i8:f32, 1.000000e+00:3>>)
+  // CHECK-SAME: -> tensor<*x!quant.uniform<i32:f32, 3.000000e+00:5>>
+
+  %0 = "tf.UniformQuantize"(%input, %input_scales, %input_zps) {
+    quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
+  } : (tensor<*xf32>, tensor<f32>, tensor<i32>) -> tensor<*x!tf_type.qint8>
+  %1 = "tf.UniformQuantizedDot"(
+    %0, %weight,
+    %input_scales, %input_zps,
+    %weight_scales, %weight_zps,
+    %output_scales, %output_zps) {
+      lhs_quantization_axis = -1 : i64,
+      lhs_quantization_min_val = -128 : i64,
+      lhs_quantization_max_val = 127 : i64,
+      rhs_quantization_axis = -1 : i64,
+      rhs_quantization_min_val = -128 : i64,
+      rhs_quantization_max_val = 127 : i64,
+      output_quantization_axis = -1 : i64,
+      output_quantization_min_val = -2147483648 : i64,
+      output_quantization_max_val = 2147483647 : i64} : (
+        tensor<*x!tf_type.qint8>, tensor<2x2x!tf_type.qint8>,
+        tensor<f32>, tensor<i32>,
+        tensor<f32>, tensor<i32>,
+        tensor<f32>, tensor<i32>) -> tensor<*x!tf_type.qint32>
+  func.return
 }
 
 //===----------------------------------------------------------------------===//

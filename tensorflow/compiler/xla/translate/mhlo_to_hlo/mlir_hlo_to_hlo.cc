@@ -52,12 +52,14 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/lib/quantize.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/hlo/ir/dynamic_parameter_binding.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/mlir/utils/error_util.h"
@@ -90,6 +92,7 @@ constexpr char kPaddingArgIndicesAttr[] = "padding_arg_indices";
 constexpr char kShardingAttr[] = "mhlo.sharding";
 constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
 constexpr char kReplicationAttr[] = "mhlo.is_same_data_across_replicas";
+constexpr char kParameterReplicationAttr[] = "mhlo.parameter_replication";
 
 // Array attribute. Same shape as infeed result, but contains a
 // minor_to_major array for every tensor.
@@ -2796,6 +2799,16 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
     computation.mutable_proto()->mutable_computations(0)->set_execution_thread(
         execution_thread.str());
   }
+  for (int i = 0; i < f.getNumArguments(); ++i)
+    if (auto pr =
+            f.getArgAttrOfType<mlir::ArrayAttr>(i, kParameterReplicationAttr))
+      for (auto b : pr.getValue())
+        computation.mutable_proto()
+            ->mutable_computations(0)
+            ->mutable_instructions(i)
+            ->mutable_parameter_replication()
+            ->add_replicated_at_leaf_buffers(
+                b.cast<mlir::BoolAttr>().getValue());
   lowered_computation_[f] = std::move(computation);
   return success();
 }
@@ -3045,6 +3058,28 @@ xla::Status ConvertRegionToComputation(mlir::Region* region,
 xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
                                 bool use_tuple_args, bool return_tuple,
                                 MlirToHloConversionOptions options) {
+  // To support the ongoing migration of XLA's compiler interface from MHLO
+  // to StableHLO, we've inserted this fallback to provide support for backends
+  // which are converting incoming ModuleOps directly to HLO.
+  // xla::MlirToXlaComputation is a better API for this purpose because it
+  // supports not just MHLO, but also CHLO and StableHLO, but we will
+  // temporarily support StableHLO to MHLO lowering here as well to ensure
+  // a smooth migration.
+  // TODO(b/263811577): Remove this functionality once we have reasonable
+  // confidence that everyone has migrated from calling ConvertMlirHloToHlo
+  // directly.
+  bool hasStablehloOps = false;
+  module.walk([&](Operation* op) {
+    hasStablehloOps |= isa<stablehlo::StablehloDialect>(op->getDialect());
+    return hasStablehloOps ? WalkResult::interrupt() : WalkResult::advance();
+  });
+  if (hasStablehloOps) {
+    mlir::PassManager pm(module->getContext());
+    pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+    if (failed(pm.run(module)))
+      return tsl::errors::Internal("Unable to convert StableHLO to MHLO");
+  }
+
   TF_RETURN_IF_ERROR(PrepareForExport(module));
   mlir::BaseScopedDiagnosticHandler diag_handler(module.getContext());
   xla::XlaBuilder module_builder("main");
@@ -3077,6 +3112,19 @@ xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
           "mhlo.use_auto_spmd_partitioning")) {
     hlo_module.set_use_auto_spmd_partitioning(
         use_auto_spmd_partitioning.getValue());
+  }
+  if (auto spmd_output_sharding = module->getAttrOfType<mlir::StringAttr>(
+          "mhlo.spmd_output_sharding")) {
+    *hlo_module.mutable_spmd_output_sharding() =
+        *CreateOpShardingFromStringRef(spmd_output_sharding.getValue());
+  }
+  if (auto spmd_parameters_sharding = module->getAttrOfType<mlir::ArrayAttr>(
+          "mhlo.spmd_parameters_shardings")) {
+    for (const auto& sharding : spmd_parameters_sharding.getValue()) {
+      *hlo_module.add_spmd_parameters_shardings() =
+          *CreateOpShardingFromStringRef(
+              sharding.cast<mlir::StringAttr>().getValue());
+    }
   }
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
   return ::tsl::OkStatus();

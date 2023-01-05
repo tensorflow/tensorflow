@@ -170,7 +170,10 @@ def VectorizePerfectlyTiledLoopsPass :
     Pass<"vectorize-perfectly-tiled-loops", "mlir::func::FuncOp"> {
   let summary = "Pass to vectorize gml_st.for loops that are tiled perfectly.";
   let constructor = "::mlir::gml_st::createVectorizePerfectlyTiledLoopsPass()";
-  let dependentDialects = ["::mlir::vector::VectorDialect"];
+  let dependentDialects = [
+    "::mlir::vector::VectorDialect",
+    "::mlir::tensor::TensorDialect"
+  ];
 }
 
 def VectorizeCopyPass :
@@ -178,6 +181,14 @@ def VectorizeCopyPass :
   let summary = "Pass to vectorize `memref.copy`.";
   let constructor = "::mlir::gml_st::createVectorizeCopyPass()";
   let dependentDialects = ["::mlir::vector::VectorDialect"];
+}
+
+def SimplifyDeadCopyPass :
+    Pass<"simplify-dead-copy", "mlir::func::FuncOp"> {
+  let summary = "Pass to simplify dead `memref.copy`.";
+  let constructor = "::mlir::gml_st::createSimplifyDeadCopyPass()";
+  let dependentDialects = ["::mlir::vector::VectorDialect",
+                           "::mlir::memref::MemRefDialect"];
 }
 
 def LowerVectorContractPass :

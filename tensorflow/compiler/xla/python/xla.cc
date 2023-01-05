@@ -84,6 +84,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/distributed_runtime/preemption/preemption_sync_manager.h"
 #include "tensorflow/tsl/python/lib/core/bfloat16.h"
+#include "tensorflow/tsl/python/lib/core/float8.h"
 
 // TODO(phawkins): remove host_id properties after JAX is update to avoid them.
 
@@ -105,6 +106,8 @@ bool IsOptimizedBuild() {
 PYBIND11_MODULE(xla_extension, m) {
   tsl::ImportNumpy();
   CHECK(tsl::RegisterNumpyBfloat16());
+  CHECK(tsl::RegisterNumpyFloat8e4m3fn());
+  CHECK(tsl::RegisterNumpyFloat8e5m2());
 
   // Exceptions
   py::register_exception<XlaRuntimeError>(m, "XlaRuntimeError",
@@ -123,6 +126,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("U32", U32)
       .value("U64", U64)
       .value("F16", F16)
+      .value("F8E4M3FN", F8E4M3FN)
+      .value("F8E5M2", F8E5M2)
       .value("BF16", BF16)
       .value("F32", F32)
       .value("F64", F64)
@@ -133,6 +138,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("TOKEN", TOKEN);
 
   m.def("bfloat16_dtype", []() { return py::handle(tsl::Bfloat16Dtype()); });
+  m.def("float8_e4m3fn_dtype",
+        []() { return py::handle(tsl::Float8e4m3fnDtype()); });
+  m.def("float8_e5m2_dtype",
+        []() { return py::handle(tsl::Float8e5m2Dtype()); });
 
   // Must be before PyClient.compile.
   BuildXlaCompilerSubmodule(m);

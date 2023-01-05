@@ -23,6 +23,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+constexpr const char kCheckpointsDirectoryName[] = "checkpoints";
 constexpr const char kCommittedChunksDirectoryName[] = "committed_chunks";
 constexpr const char kUncommittedChunksDirectoryName[] = "uncommitted_chunks";
 
@@ -32,6 +33,12 @@ std::string StreamDirectory(const std::string& snapshot_path,
                             int64_t stream_id) {
   return tsl::io::JoinPath(snapshot_path, "streams",
                            absl::StrCat("stream_", stream_id));
+}
+
+std::string CheckpointsDirectory(const std::string& snapshot_path,
+                                 int64_t stream_id) {
+  return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_id),
+                           kCheckpointsDirectoryName);
 }
 
 std::string CommittedChunksDirectory(const std::string& snapshot_path) {

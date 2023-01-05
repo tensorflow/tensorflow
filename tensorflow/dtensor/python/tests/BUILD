@@ -1,12 +1,18 @@
 load("//tensorflow:pytype.default.bzl", "pytype_library")
+load("//tensorflow:tensorflow.bzl", "if_google")
 load(
     "//tensorflow/dtensor:build_defs.bzl",
+    "GPU_2DEVS_BACKEND",
+    "PATHWAYS",
     "TPU_V3_DONUT_BACKEND",
     "dtensor_test",
 )
 
 # File used by internal tests.
-exports_files(["spmd_test.py"])
+exports_files([
+    "spmd_test.py",
+    "collective_test.py",
+])
 
 pytype_library(
     name = "test_util",
@@ -63,6 +69,69 @@ dtensor_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:for_generated_wrappers",
+    ],
+)
+
+dtensor_test(
+    name = "collective_test",
+    srcs = ["collective_test.py"],
+    additional_backends = [
+        TPU_V3_DONUT_BACKEND,
+        GPU_2DEVS_BACKEND,
+        PATHWAYS,
+    ],
+    disable = [PATHWAYS],
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:dtensor_device",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:numpy_util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_gen",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+dtensor_test(
+    name = "collective_combine_all_reduce_test",
+    srcs = [":collective_test.py"],
+    args = if_google(
+        [
+            "--vmodule=dtensor_graph_to_mlir_pass=4",
+        ],
+        [],
+    ),
+    env = {
+        "DTENSOR_ENABLE_COMBINE_ALL_REDUCES_OPTIMIZATION": "1",
+    },
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:dtensor_device",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:numpy_util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_gen",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

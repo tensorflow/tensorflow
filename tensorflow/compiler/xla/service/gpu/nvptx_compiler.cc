@@ -143,7 +143,9 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, device_allocator, gpu_target_config));
 
   HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
-  post_pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
+  GemmAlgorithmPicker::DeviceConfig device_config{stream_exec,
+                                                  device_allocator};
+  post_pipeline.AddPass<GemmAlgorithmPicker>(device_config);
 
   // Transform TriangularSolve ops into custom-calls, so we can add temp
   // memory.

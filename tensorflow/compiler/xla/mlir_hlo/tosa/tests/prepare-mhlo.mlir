@@ -37,7 +37,7 @@ func.func @dot_general_to_dot_matrix_matrix(%arg0: tensor<2x3xf32>, %arg1: tenso
 // -----
 
 // CHECK-LABEL: func @dot_general_to_dot_batch_dimensions
-func.func @dot_general_to_dot_batch_dimensions(%arg0: tensor<2x2x3xf32>, %arg1: tensor<2x1x2xf32>) -> tensor<3x2x1xf32> {
+func.func @dot_general_to_dot_batch_dimensions(%arg0: tensor<2x2x3xf32>, %arg1: tensor<2x1x2xf32>) -> tensor<2x3x1xf32> {
   // CHECK: mhlo.dot_general
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
@@ -47,6 +47,6 @@ func.func @dot_general_to_dot_batch_dimensions(%arg0: tensor<2x2x3xf32>, %arg1: 
       rhs_contracting_dimensions = [2]
     >,
     precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
-  } : (tensor<2x2x3xf32>, tensor<2x1x2xf32>) -> tensor<3x2x1xf32>
-  func.return %0 : tensor<3x2x1xf32>
+  } : (tensor<2x2x3xf32>, tensor<2x1x2xf32>) -> tensor<2x3x1xf32>
+  func.return %0 : tensor<2x3x1xf32>
 }

@@ -3219,9 +3219,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
     same = (a == b)
 
-    if (a.dtype in [
-        np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype
-    ]):
+    if dtypes.as_dtype(a.dtype).is_floating:
       same = np.logical_or(same, np.logical_and(np.isnan(a), np.isnan(b)))
     msgs = [msg]
     if not np.all(same):

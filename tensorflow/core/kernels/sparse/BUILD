@@ -107,6 +107,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
         "//third_party/eigen3",
     ],
 )

@@ -111,6 +111,15 @@ func.func @complex_type_not_complex(%arg0: tensor<1xf64>) -> () {
 
 // -----
 
+func.func @dense_array_nested(%arg0: tensor<1x2xf64>) -> () {
+  // expected-error @+2 {{custom op 'stablehlo.transpose' expected integer value}}
+  // expected-error @+1 {{expected ']'}}
+  %0 = stablehlo.transpose %arg0, dims = [1, [0]] : tensor<1xf64>
+  func.return
+}
+
+// -----
+
 func.func @select_type_wrong_type(%arg0: tensor<2x3xi1>, %arg1: tensor<2x3xi32>) -> () {
   // expected-error @+1 {{custom op 'mhlo.select' expected functional type or list of two types}}
   %0 = mhlo.select %arg0, %arg1, %arg1 : tensor<2x3xi1>

@@ -76,6 +76,7 @@ struct SnapshotWriterParams {
 //       - checkpoints
 //         - checkpoint_<local_split_index>_<chunk_index>
 //
+// This class is thread-safe.
 // TODO(b/258691666): Support chunking, checkpointing, and fault tolerance.
 class SnapshotStreamWriter {
  public:
@@ -99,8 +100,8 @@ class SnapshotStreamWriter {
   // task has been cancelled.
   Status WriteSnapshotFn();
 
-  // Creates a directory to store uncommitted chunks.
-  Status CreateChunksDirectory();
+  // Creates directories to store uncommitted chunks and checkpoints.
+  Status InitializeDirectories();
 
   // Returns true until the snapshot stream writer is finished, which may be due
   // to reaching the end of its iterator, encountering an error, or being
@@ -123,26 +124,45 @@ class SnapshotStreamWriter {
   // Writes the next record to the current chunk.
   Status WriteRecord(snapshot_util::TFRecordWriter& writer);
 
-  // Returns the status of the writer:
-  // - If the snapshotting is successful, returns an OK status.
-  // - If any error happens during the snapshot write, returns the error status.
-  // - If the writer is cancelled, returns a Cancelled status.
-  Status status() const;
+  // Returns true if the writer should write an iterator checkpoint.
+  bool ShouldSave() const;
+
+  // Saves an iterator checkpoint.
+  Status Save();
+
+  // Restores from the last checkpoint.
+  Status Restore();
+
+  // Returns the index of the last checkpointed chunk.
+  StatusOr<int64_t> LastCheckpointIndex() const;
+
+  // Synchronizes the checkpoint with the committed chunks. This will commit
+  // uncommitted chunk files written before the checkpoint and delete chunk
+  // files written after the checkpoint.
+  Status SyncCheckpointWithChunks();
+
+  // Returns the path of the checkpoint for `chunk_index`.
+  std::string CheckpointPath(int64_t chunk_index) const;
 
   const SnapshotWriterParams params_;
 
-  mutable mutex mu_;
-  std::unique_ptr<TaskIterator> iterator_ TF_GUARDED_BY(mu_);
+  // The dataset iterator that produces the dataset elements.
+  std::unique_ptr<TaskIterator> iterator_;
 
   // Index of the current chunk.
-  int64_t chunk_index_ TF_GUARDED_BY(mu_) = 0;
+  int64_t chunk_index_ = 0;
   // Size of the current chunk.
-  int64_t chunk_size_bytes_ TF_GUARDED_BY(mu_) = 0;
+  int64_t chunk_size_bytes_ = 0;
 
   // True if the dataset is exhausted.
-  bool end_of_sequence_ TF_GUARDED_BY(mu_) = false;
-  // Status of the writer. See the comment of `status()` for a detailed
-  // description.
+  bool end_of_sequence_ = false;
+
+  mutable mutex mu_;
+
+  // Status of the writer:
+  // - If the snapshotting is successful, it is an OK status.
+  // - If any error happens during the snapshot write, it is the error status.
+  // - If the writer is cancelled, it is a Cancelled status.
   Status status_ TF_GUARDED_BY(mu_);
 
   std::unique_ptr<Thread> snapshot_thread_;

@@ -107,6 +107,12 @@ void CombinePerfEnv(const PerfEnv& src, PerfEnv* dst) {
   dst->set_peak_tera_flops_per_second(src.peak_tera_flops_per_second());
   dst->set_peak_hbm_bw_giga_bytes_per_second(
       src.peak_hbm_bw_giga_bytes_per_second());
+  if (src.peak_bws_giga_bytes_per_second_size() > 0) {
+    dst->add_peak_bws_giga_bytes_per_second(
+        src.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_ALL));
+    dst->add_peak_bws_giga_bytes_per_second(
+        src.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_HBM_RW));
+  }
   dst->set_ridge_point(src.ridge_point());
 }
 

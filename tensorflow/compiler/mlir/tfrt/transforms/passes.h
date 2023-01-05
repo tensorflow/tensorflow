@@ -76,6 +76,11 @@ CreateOptimizeTfForTfrtPass();
 
 class CoreRTConverter;
 
+// Create a pass that sink in the var handle op to the callee function when
+// proper.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateSinkInInvariantOpsPass();
+
 // Create a pass that rewrites tf_saved_model dialect's ops according to TFRT's
 // requirements.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
@@ -190,6 +195,12 @@ struct TfrtPipelineOptions
       *this, "hoist-invariant-ops",
       llvm::cl::desc("If true, invariant ops in savedmodels will be hoisted "
                      "out to run during loading."),
+      llvm::cl::init(false)};
+
+  Option<bool> sink_in_invariant_ops{
+      *this, "sink-in-invariant-ops",
+      llvm::cl::desc("If true, sink the selected invariant ops in to the "
+                     "nested functions to facilitate invariant ops hoisting."),
       llvm::cl::init(false)};
 
   Option<uint64_t> cost_threshold{

@@ -31,13 +31,13 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tensorflow/core/tfrt/tpu/tpu_resources.h"  // NOLINT(unused-includes): For tfrt::tpu::TpuModelResource
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tfrt/cpp_tests/test_util.h""  // from @tf_runtime
-#include "tfrt/host_context/value.h"  // from @tf_runtime
 #include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -70,18 +70,16 @@ TEST_F(GraphExecutorTest, Vanilla) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   GraphExecutor::Options options(runtime.get());
-  auto statusor_fallback_state = tensorflow::tfrt_stub::FallbackState::Create(
-      CreateDefaultSessionOptions(options), graph_def.library());
-  ASSERT_TRUE(statusor_fallback_state.ok());
-  tensorflow::tfrt_stub::FallbackState* fallback_state =
-      statusor_fallback_state.value().get();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create(
+          CreateDefaultSessionOptions(options), graph_def.library()))
   auto tpu_model_resource = std::make_unique<tfrt::tpu::TpuModelResource>();
-
-  auto status_or_graph_executor = GraphExecutor::Create(
-      std::move(options), *fallback_state, tpu_model_resource.get(), graph_def,
-      GetKernelRegistry());
-  ASSERT_TRUE(status_or_graph_executor.ok());
-  GraphExecutor* graph_executor = status_or_graph_executor.value().get();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_executor,
+      GraphExecutor::Create(std::move(options), *fallback_state,
+                            tpu_model_resource.get(), graph_def,
+                            GetKernelRegistry()));
 
   // Set input 'x' to [[1, 1, 1]]
   std::vector<std::pair<std::string, tensorflow::Tensor>> inputs;
@@ -168,7 +166,6 @@ TEST_F(GraphExecutorTest, DisableCompilation) {
       tensorflow::tfrt_stub::FallbackState::Create(
           CreateDefaultSessionOptions(options), graph_def.library()));
   tfrt::tpu::TpuModelResource tpu_model_resource;
-
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_executor,
       GraphExecutor::Create(std::move(options), *fallback_state,

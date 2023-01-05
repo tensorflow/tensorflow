@@ -97,6 +97,9 @@ createVectorizePerfectlyTiledLoopsPass();
 /// Pass to vectorize `memref.copy`.
 std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass();
 
+/// Pass to eliminate dead `memref.copy`.
+std::unique_ptr<OperationPass<func::FuncOp>> createSimplifyDeadCopyPass();
+
 /// Pass to lower vector.contract.
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorContractPass();
 

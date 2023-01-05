@@ -156,6 +156,24 @@ BlockArgument InsertFilePrefixArgument(func::FuncOp func_op,
   return func_op.getArgument(insert_idx);
 }
 
+// Creates a 1D string array constant for "tensor_names" input of `RestoreV2`
+// op. The `ConstOp` will be created at `builder`'s current insertion point.
+TF::ConstOp CreateTensorNamesConst(const ArrayRef<std::string> tensor_names,
+                                   OpBuilder& builder) {
+  const auto loc = NameLoc::get(builder.getStringAttr("tensor_names"));
+  return Create1DStringConst(tensor_names, loc, builder);
+}
+
+// Creates a 1D string array constant for "shape_and_slices" input of
+// `RestoreV2` op. The `ConstOp` will be created at `builder`'s current
+// insertion point. It will be filled with `size` empty strings.
+TF::ConstOp CreateShapeAndSlicesConst(const int size, OpBuilder& builder) {
+  const SmallVector<std::string> shape_and_slices_values(size, /*Value=*/"");
+
+  const auto loc = NameLoc::get(builder.getStringAttr("shape_and_slices"));
+  return Create1DStringConst(shape_and_slices_values, loc, builder);
+}
+
 // Creates a `tf.RestoreV2Op` that loads the variable values from the checkpoint
 // file. The loaded tensors will be used to initialize `tf.VarHandleOp`s via
 // `tf.AssignVariableOp`s.
@@ -177,20 +195,15 @@ void CreateRestoreV2Op(std::vector<TF::VarHandleOp>& target_var_handle_ops,
   const BlockArgument filename_arg =
       InsertFilePrefixArgument(session_init_func, builder);
 
-  const auto tensor_names_loc =
-      NameLoc::get(builder.getStringAttr("tensor_names"));
-  auto tensor_names_const_op =
-      Create1DStringConst(tensor_names, tensor_names_loc, builder);
-
-  const auto shape_and_slices_loc =
-      NameLoc::get(builder.getStringAttr("shape_and_slices"));
-  auto shape_and_slices = Create1DStringConst(
-      /*str_values=*/{""}, shape_and_slices_loc, builder);
+  TF::ConstOp tensor_names_const =
+      CreateTensorNamesConst(tensor_names, builder);
+  TF::ConstOp shape_and_slices_const =
+      CreateShapeAndSlicesConst(tensor_names.size(), builder);
 
   auto restore_op = builder.create<TF::RestoreV2Op>(
       session_init_func.getLoc(),
       /*tensors=*/tensor_types,
-      /*prefix=*/filename_arg, tensor_names_const_op, shape_and_slices);
+      /*prefix=*/filename_arg, tensor_names_const, shape_and_slices_const);
 
   for (auto [idx, restore_result] : llvm::enumerate(restore_op.getResults())) {
     builder.create<TF::AssignVariableOp>(

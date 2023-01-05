@@ -112,6 +112,7 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:status_casters",
     ],
 )
 
@@ -124,12 +125,16 @@ pytype_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:variables",
         "//tensorflow/python/client:session",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/types",
         "@absl_py//absl/logging",
     ],
 )

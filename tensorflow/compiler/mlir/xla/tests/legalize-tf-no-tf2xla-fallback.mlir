@@ -5774,21 +5774,6 @@ func.func @cumprod(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 }
 
 //===----------------------------------------------------------------------===//
-// Qr op legalization
-//===----------------------------------------------------------------------===//
-
-// CHECK:  func @qr([[VAL_0:%.*]]: tensor<500x100x75xf32>) -> (tensor<500x100x75xf32>, tensor<500x75x75xf32>)
-func.func @qr(%arg0: tensor<500x100x75xf32>) -> (tensor<500x100x75xf32>, tensor<500x75x75xf32>) {
-  // The tf.Qr lowering is a full algorithm that is not effective to verify with
-  // FileCheck. Just verify that it converted.
-  // TODO(laurenzo): Move this out of the mainline tf2xla conversion as it is
-  // really only applicable to certain legacy uses.
-  // CHECK-NOT: "tf.Qr"
-  %0:2 = "tf.Qr"(%arg0) {full_matrices = false} : (tensor<500x100x75xf32>) -> (tensor<500x100x75xf32>, tensor<500x75x75xf32>)
-  func.return %0#0, %0#1 : tensor<500x100x75xf32>, tensor<500x75x75xf32>
-}
-
-//===----------------------------------------------------------------------===//
 // tf.Softplus legalization
 //===----------------------------------------------------------------------===//
 
