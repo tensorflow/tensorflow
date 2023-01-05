@@ -217,7 +217,8 @@ bool CUDABlas::Init() {
   cublasStatus_t ret = cublasCreate(&blas_);
   if (ret != CUBLAS_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to create cublas handle: " << ToString(ret);
-    if (ret == CUBLAS_STATUS_NOT_INITIALIZED) {
+    if (ret == CUBLAS_STATUS_NOT_INITIALIZED ||
+        ret == CUBLAS_STATUS_ALLOC_FAILED) {
       LOG(ERROR) << kCublasNotInitializedExplanation;
     }
     return false;
