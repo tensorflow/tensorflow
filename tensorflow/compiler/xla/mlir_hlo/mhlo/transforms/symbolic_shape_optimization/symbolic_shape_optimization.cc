@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/analysis/shape_component_analysis.h"
-#include "mlir-hlo/Transforms/passes.h"
+#include "mhlo/transforms/passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -39,9 +39,10 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
+namespace mhlo {
 
 #define GEN_PASS_DEF_SYMBOLICSHAPEOPTIMIZATION
-#include "mlir-hlo/Transforms/passes.h.inc"
+#include "mhlo/transforms/mhlo_passes.h.inc"
 
 using ShapeOrValueInfo = ShapeComponentAnalysis::ShapeOrValueInfo;
 using Symbol = ShapeComponentAnalysis::Symbol;
@@ -913,4 +914,5 @@ createSymbolicShapeOptimizationPass() {
   return std::make_unique<SymbolicShapeOptimizationPass>();
 }
 
+}  // end namespace mhlo
 }  // end namespace mlir

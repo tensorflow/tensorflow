@@ -15,16 +15,16 @@ limitations under the License.
 
 #include "analysis/userange_analysis.h"
 #include "lhlo/IR/lhlo_ops.h"
-#include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Bufferization/Transforms/BufferUtils.h"
 #include "mlir/Interfaces/CopyOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
+#include "transforms/passes.h"
 
 namespace mlir {
 
 #define GEN_PASS_DEF_COPYREMOVAL
-#include "mlir-hlo/Transforms/passes.h.inc"
+#include "transforms/passes.h.inc"
 
 namespace {
 

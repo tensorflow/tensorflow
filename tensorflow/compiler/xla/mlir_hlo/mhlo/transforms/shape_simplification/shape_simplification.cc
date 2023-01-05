@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "llvm/ADT/Optional.h"
 #include "mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Transforms/passes.h"
+#include "mhlo/transforms/passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
@@ -31,9 +31,10 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
+namespace mhlo {
 
 #define GEN_PASS_DEF_SHAPESIMPLIFICATION
-#include "mlir-hlo/Transforms/passes.h.inc"
+#include "mhlo/transforms/mhlo_passes.h.inc"
 
 namespace {
 
@@ -251,4 +252,5 @@ std::unique_ptr<OperationPass<func::FuncOp>> createShapeSimplification() {
   return std::make_unique<ShapeSimplification>();
 }
 
+}  // namespace mhlo
 }  // namespace mlir

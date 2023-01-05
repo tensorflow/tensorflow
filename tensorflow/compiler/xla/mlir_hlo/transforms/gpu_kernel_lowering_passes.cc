@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir-hlo/Transforms/gpu_passes.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
@@ -34,12 +33,13 @@ limitations under the License.
 #include "mlir/Dialect/Vector/Transforms/VectorRewritePatterns.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "transforms/gpu_passes.h"
 
 namespace mlir {
 
 #define GEN_PASS_DEF_GPUKERNELTONVVMPASS
 #define GEN_PASS_DEF_GPUKERNELTOROCDLPASS
-#include "mlir-hlo/Transforms/gpu_passes.h.inc"
+#include "transforms/gpu_passes.h.inc"
 
 namespace {
 

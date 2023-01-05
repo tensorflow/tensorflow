@@ -20,16 +20,16 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
-#include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
 #include "mlir/IR/Value.h"
+#include "transforms/passes.h"
 
 namespace mlir {
 
 #define GEN_PASS_DEF_UNROLLLOOPSPASS
-#include "mlir-hlo/Transforms/passes.h.inc"
+#include "transforms/passes.h.inc"
 
 namespace {
 class UnrollLoopsPass : public impl::UnrollLoopsPassBase<UnrollLoopsPass> {

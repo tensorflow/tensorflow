@@ -23,7 +23,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir-hlo/Transforms/passes.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -43,11 +42,12 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "transforms/passes.h"
 
 namespace mlir {
 
 #define GEN_PASS_DEF_PROPAGATESTATICSHAPESTOKERNELPASS
-#include "mlir-hlo/Transforms/passes.h.inc"
+#include "transforms/passes.h.inc"
 
 namespace {
 

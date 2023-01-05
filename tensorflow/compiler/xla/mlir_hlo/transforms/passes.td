@@ -29,11 +29,6 @@ def BufferReuse : Pass<"buffer-reuse", "func::FuncOp"> {
   let constructor = "createBufferReusePass()";
 }
 
-def SymbolicShapeOptimization : Pass<"symbolic-shape-optimization", "func::FuncOp"> {
-  let summary = "Analyzes shapes and performs shape-related optimizations";
-  let constructor = "createSymbolicShapeOptimizationPass()";
-}
-
 def CopyRemoval : Pass<"copy-removal", "func::FuncOp"> {
   let summary = "Removes redundant operations that implement a "
                 "CopyOpInterface, if the intersection of the useranges from"
@@ -119,12 +114,6 @@ def LowerIndexCastPass
     "tensor::TensorDialect"
   ];
   let constructor = "createLowerIndexCastPass()";
-}
-
-def ShapeSimplification
-    : Pass<"shape-simplification", "mlir::func::FuncOp"> {
-  let summary = "Simplify shape ops";
-  let constructor = "createShapeSimplification()";
 }
 
 def OneShotBufferize : Pass<"hlo-one-shot-bufferize", "ModuleOp"> {

@@ -19,8 +19,6 @@ limitations under the License.
 
 #include "gml_st/transforms/passes.h"
 #include "mhlo/transforms/passes.h"
-#include "mlir-hlo/Transforms/gpu_passes.h"
-#include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
@@ -33,6 +31,8 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
+#include "transforms/gpu_passes.h"
+#include "transforms/passes.h"
 
 using namespace mlir;
 using ::mlir::func::FuncOp;

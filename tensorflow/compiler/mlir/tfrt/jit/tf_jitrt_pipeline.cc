@@ -36,8 +36,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/transforms.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/transforms/passes.h"
 
 // -------------------------------------------------------------------------- //
 // Custom passes that are missing upstream.
@@ -141,7 +141,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
 
   // Analyze shapes and try to simplify the IR early.
-  pm.addNestedPass<FuncOp>(mlir::createSymbolicShapeOptimizationPass());
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createSymbolicShapeOptimizationPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
@@ -156,7 +156,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(mlir::mhlo::createGroupReductionDimensionsPass());
 
   // Also, try to simplify reshape operations.
-  pm.addNestedPass<FuncOp>(mlir::createSymbolicShapeOptimizationPass());
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createSymbolicShapeOptimizationPass());
 
   // Transform HLO operations to Linalg and Standard.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeControlFlowPass());
@@ -175,7 +175,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
 
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
   // use linalg inputs instead of outputs for memref.dim operations).
-  pm.addNestedPass<FuncOp>(mlir::createShapeSimplification());
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createShapeSimplification());
   pm.addNestedPass<FuncOp>(mlir::createShapeToShapeLowering());
   pm.addPass(mlir::createConvertShapeToStandardPass());
   pm.addNestedPass<FuncOp>(mlir::createConvertShapeConstraintsPass());

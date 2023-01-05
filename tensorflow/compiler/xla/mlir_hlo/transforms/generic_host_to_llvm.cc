@@ -15,7 +15,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"
@@ -35,11 +34,12 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
+#include "transforms/passes.h"
 
 namespace mlir {
 
 #define GEN_PASS_DEF_GENERICHOSTTOLLVMPASS
-#include "mlir-hlo/Transforms/passes.h.inc"
+#include "transforms/passes.h.inc"
 
 namespace {
 

@@ -23,17 +23,17 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Value.h"
+#include "transforms/passes.h"
 
 namespace mlir {
 
 #define GEN_PASS_DEF_UNBUFFERIZEPASS
-#include "mlir-hlo/Transforms/passes.h.inc"
+#include "transforms/passes.h.inc"
 
 using ::mlir::func::FuncOp;
 

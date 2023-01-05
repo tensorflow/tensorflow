@@ -48,15 +48,10 @@ using BufferizePatternsCallback = std::function<void(
 #define GEN_PASS_DECL_FINALBUFFERIZEPASS
 #define GEN_PASS_DECL_PROPAGATESTATICSHAPESTOKERNELPASS
 #define GEN_PASS_DECL_TILELOOPSPASS
-#include "mlir-hlo/Transforms/passes.h.inc"
+#include "transforms/passes.h.inc"
 
 /// Creates a pass that reuses buffers which are already allocated.
 std::unique_ptr<OperationPass<func::FuncOp>> createBufferReusePass();
-
-/// Creates a pass to analyze shapes and to use that information for
-/// shape-related optimizations.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createSymbolicShapeOptimizationPass();
 
 /// Creates a pass that merges smaller buffer into bigger buffer to optimize
 /// memory consumption.
@@ -79,9 +74,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createMemoryCountPass();
 
 // Pass to lower index cast on tensors to tensor dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerIndexCastPass();
-
-// Pass to simplify shape ops.
-std::unique_ptr<OperationPass<func::FuncOp>> createShapeSimplification();
 
 // Pass to tranform compute computations (hlo and linalg) on values to their
 // corresponding counterparts on buffers. Also bufferizes function signatures.
@@ -125,7 +117,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createAllocToArgPass();
 std::unique_ptr<Pass> createUnrollLoopsPass();
 
 #define GEN_PASS_REGISTRATION
-#include "mlir-hlo/Transforms/passes.h.inc"
+#include "transforms/passes.h.inc"
 
 }  // namespace hlo
 }  // namespace mlir

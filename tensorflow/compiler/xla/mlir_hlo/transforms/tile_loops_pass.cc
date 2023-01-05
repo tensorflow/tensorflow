@@ -23,7 +23,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
-#include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -34,18 +33,19 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "transforms/passes.h"
 
 namespace mlir {
 
 #define GEN_PASS_DEF_TILELOOPSPASS
-#include "mlir-hlo/Transforms/passes.h.inc"
+#include "transforms/passes.h.inc"
 
 using ::mlir::scf::ParallelOp;
 
 namespace {
 
 // This is the implementation of the TileLoops pass declared in
-//  include/mlir-hlo/Transforms/passes.td
+//  include/transforms/passes.td
 class TileLoopsPass : public impl::TileLoopsPassBase<TileLoopsPass> {
  public:
   // Creates a TileLoopsPass with tiles sizes provided through `tile_sizes`

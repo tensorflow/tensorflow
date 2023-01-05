@@ -28,7 +28,7 @@ class GPUModuleOp;
 }  // namespace gpu
 
 #define GEN_PASS_DECL
-#include "mlir-hlo/Transforms/gpu_passes.h.inc"
+#include "transforms/gpu_passes.h.inc"
 
 // Create a pass which lowers a subset of lmhlo.fusion ops to gpu.launch_func
 // plus a gpu.module containing the kernel.
@@ -64,7 +64,7 @@ void createHloToTritonPipeline(OpPassManager& pm,
                                ArrayRef<int64_t> blockTileDim);
 
 #define GEN_PASS_REGISTRATION
-#include "mlir-hlo/Transforms/gpu_passes.h.inc"
+#include "transforms/gpu_passes.h.inc"
 
 }  // namespace mlir
 

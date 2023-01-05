@@ -30,8 +30,6 @@ limitations under the License.
 #include "mhlo/interfaces/bufferizable_op_interface_impl.h"
 #include "mhlo/transforms/rewriters.h"
 #include "mhlo/utils/type_conversion.h"
-#include "mlir-hlo/Transforms/passes.h"
-#include "mlir-hlo/Transforms/rewriters.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Transforms/BufferizableOpInterfaceImpl.h"
@@ -75,13 +73,15 @@ limitations under the License.
 #include "stablehlo/dialect/ChloOps.h"
 #include "thlo/IR/thlo_ops.h"
 #include "thlo/interfaces/bufferizable_op_interface_impl.h"
+#include "transforms/passes.h"
+#include "transforms/rewriters.h"
 
 namespace mlir {
 
 #define GEN_PASS_DEF_COMPUTEOPANDFUNCBUFFERIZEPASS
 #define GEN_PASS_DEF_FINALBUFFERIZEPASS
 #define GEN_PASS_DEF_ONESHOTBUFFERIZE
-#include "mlir-hlo/Transforms/passes.h.inc"
+#include "transforms/passes.h.inc"
 
 namespace {
 

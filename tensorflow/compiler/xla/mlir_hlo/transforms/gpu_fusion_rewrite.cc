@@ -23,7 +23,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Transforms/gpu_passes.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
@@ -38,11 +37,12 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/RegionUtils.h"
+#include "transforms/gpu_passes.h"
 
 namespace mlir {
 
 #define GEN_PASS_DEF_GPUFUSIONREWRITEPASS
-#include "mlir-hlo/Transforms/gpu_passes.h.inc"
+#include "transforms/gpu_passes.h.inc"
 
 // Name of the 'gpu.launch_func' attribute which specifies the written operands.
 static constexpr llvm::StringLiteral kWrittenOperandsAttrName("lmhlo.written");

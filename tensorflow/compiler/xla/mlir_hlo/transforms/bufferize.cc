@@ -16,7 +16,6 @@ limitations under the License.
 #include <optional>
 
 // This file implements logic for translating mixed IR to buffer form.
-#include "mlir-hlo/Transforms/rewriters.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "stablehlo/dialect/ChloOps.h"
+#include "transforms/rewriters.h"
 
 namespace mlir {
 namespace {

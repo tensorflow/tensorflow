@@ -20,22 +20,22 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
-#include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
+#include "transforms/passes.h"
 
 using ::mlir::scf::ParallelOp;
 
 namespace mlir {
 
 #define GEN_PASS_DEF_COLLAPSEPARALLELLOOPSTO1DPASS
-#include "mlir-hlo/Transforms/passes.h.inc"
+#include "transforms/passes.h.inc"
 
 namespace {
 
 // This is the implementation of the CollapseParallelLoopsTo1D pass declared in
-//  include/mlir-hlo/Transforms/passes.td
+//  include/transforms/passes.td
 struct CollapseParallelLoopsTo1D
     : public impl::CollapseParallelLoopsTo1DPassBase<
           CollapseParallelLoopsTo1D> {

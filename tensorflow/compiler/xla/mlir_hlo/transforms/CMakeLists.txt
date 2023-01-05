@@ -14,6 +14,14 @@
 # limitations under the License.
 #
 
+set(LLVM_TARGET_DEFINITIONS passes.td)
+mlir_tablegen(passes.h.inc -gen-pass-decls -name LMHLOTransforms)
+add_public_tablegen_target(LMHLOTransformsPassIncGen)
+
+set(LLVM_TARGET_DEFINITIONS gpu_passes.td)
+mlir_tablegen(gpu_passes.h.inc -gen-pass-decls -name LMHLOGPUTransforms)
+add_public_tablegen_target(LMHLOGPUTransformsPassIncGen)
+
 add_mlir_library(MLIRBufferTransforms
   alloc_to_arg_pass.cc
   buffer_packing.cc
@@ -26,8 +34,6 @@ add_mlir_library(MLIRBufferTransforms
   generic_host_to_llvm.cc
   lower_index_cast_pass.cc
   propagate_static_shapes_to_kernel.cc
-  shape_simplification.cc
-  symbolic_shape_optimization.cc
   tile_loops_pass.cc
   unbufferize_pass.cc
   unroll_loops.cc
