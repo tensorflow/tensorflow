@@ -46,8 +46,8 @@
 // CHECK:         %[[VAL_34:.*]] = getelementptr inbounds i8, ptr %[[VAL_35:.*]], i64 128
 // CHECK:         %[[VAL_36:.*]] = getelementptr inbounds i8, ptr %[[VAL_35]], i64 0
 // CHECK:         %[[VAL_37:.*]] = getelementptr inbounds i8, ptr %[[VAL_38:.*]], i64 0
-// CHECK:         %[[VAL_39:.*]] = call i32 @llvm.amdgcn.workgroup.id.x(), !range !4
-// CHECK:         %[[VAL_40:.*]] = call i32 @llvm.amdgcn.workitem.id.x(), !range !5
+// CHECK:         %[[VAL_39:.*]] = call i32 @llvm.amdgcn.workgroup.id.x(), !range !{{[0-9]}}
+// CHECK:         %[[VAL_40:.*]] = call i32 @llvm.amdgcn.workitem.id.x(), !range !{{[0-9]}}
 // CHECK:         %[[VAL_41:.*]] = mul nuw nsw i32 %[[VAL_39]], 6
 // CHECK:         %[[VAL_42:.*]] = add nuw nsw i32 %[[VAL_41]], %[[VAL_40]]
 // CHECK:         %[[VAL_43:.*]] = icmp ult i32 %[[VAL_42]], 6
@@ -61,7 +61,7 @@
 // CHECK:         ret void
 // CHECK:       scatter.in_bounds-true:                           ; preds = %[[VAL_51]]
 // CHECK:         %[[VAL_52:.*]] = getelementptr inbounds [2 x i32], ptr %[[VAL_34]], i32 0, i32 %[[VAL_46]]
-// CHECK:         %[[VAL_53:.*]] = load i32, ptr %[[VAL_52]], align 4, !invariant.load !6
+// CHECK:         %[[VAL_53:.*]] = load i32, ptr %[[VAL_52]], align 4, !invariant.load !{{[0-9]}}
 // CHECK:         %[[VAL_54:.*]] = add i32 0, %[[VAL_53]]
 // CHECK:         %[[VAL_55:.*]] = icmp ult i32 %[[VAL_53]], 3
 // CHECK:         %[[VAL_56:.*]] = and i1 true, %[[VAL_55]]
@@ -71,7 +71,7 @@
 // CHECK:       scatter.in_bounds-true2:                          ; preds = %[[VAL_48]]
 // CHECK:         %[[VAL_58:.*]] = getelementptr inbounds [3 x [3 x i32]], ptr %[[VAL_37]], i32 0, i32 %[[VAL_54]], i32 %[[VAL_45]]
 // CHECK:         %[[VAL_59:.*]] = getelementptr inbounds i32, ptr %[[VAL_36]], i32 %[[VAL_42]]
-// CHECK:         %[[VAL_60:.*]] = load i32, ptr %[[VAL_59]], align 4, !invariant.load !6
+// CHECK:         %[[VAL_60:.*]] = load i32, ptr %[[VAL_59]], align 4, !invariant.load !{{[0-9]}}
 // CHECK:         store i32 %[[VAL_60]], ptr addrspace(5) %[[VAL_33]], align 4
 // CHECK:         %[[VAL_61:.*]] = load i32, ptr addrspace(5) %[[VAL_33]], align 4
 // CHECK:         store atomic i32 %[[VAL_61]], ptr %[[VAL_58]] unordered, align 4
