@@ -41,8 +41,6 @@ exports_files([
     "split_utils.h",
     "stats_utils.cc",
     "stats_utils.h",
-    "tfdataz_metrics.h",
-    "tfdataz_metrics.cc",
     "unbounded_thread_pool.cc",
     "unbounded_thread_pool.h",
     "utils.cc",
@@ -216,13 +214,10 @@ tf_cc_test(
 cc_library(
     name = "metric_utils",
     srcs = ["metric_utils.cc"],
-    hdrs = [
-        "metric_utils.h",
-    ],
+    hdrs = ["metric_utils.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     visibility = ["//visibility:public"],
     deps = [
-        ":tfdataz_metrics",
         "//tensorflow/core:framework",
         "//tensorflow/core/data:utils",
         "//tensorflow/core/platform:env",
@@ -246,37 +241,6 @@ tf_cc_test(
         "//tensorflow/core/lib/monitoring:test_utils",
         "//tensorflow/core/platform:env",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/time",
-    ],
-)
-
-cc_library(
-    name = "tfdataz_metrics",
-    srcs = ["tfdataz_metrics.cc"],
-    hdrs = ["tfdataz_metrics.h"],
-    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:thread_annotations",
-        "@com_google_absl//absl/time",
-    ],
-)
-
-tf_cc_test(
-    name = "tfdataz_metrics_test",
-    size = "small",
-    srcs = ["tfdataz_metrics_test.cc"],
-    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
-    deps = [
-        ":tfdataz_metrics",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/util:fake_clock_env",
         "@com_google_absl//absl/time",
     ],
 )

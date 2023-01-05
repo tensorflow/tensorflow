@@ -39,9 +39,7 @@ uint64_t safe_sub(uint64_t x, uint64_t y) { return x >= y ? x - y : 0; }
 
 IteratorMetricsCollector::IteratorMetricsCollector(
     const std::string& device_type, const Env& env)
-    : device_type_(device_type),
-      env_(env),
-      tf_dataz_metrics_collector_(device_type, env) {}
+    : device_type_(device_type), env_(env) {}
 
 absl::Time IteratorMetricsCollector::RecordStart() {
   const uint64_t start_time_us = env_.NowMicros();
@@ -74,10 +72,7 @@ void IteratorMetricsCollector::RecordStop(absl::Time start_time,
   }
 
   const uint64_t end_time_us = env_.NowMicros();
-  const int64_t latency_micros =
-      safe_sub(end_time_us, absl::ToUnixMicros(start_time));
-  AddLatencySample(latency_micros);
-  tf_dataz_metrics_collector_.RecordGetNextLatency(latency_micros);
+  AddLatencySample(safe_sub(end_time_us, absl::ToUnixMicros(start_time)));
   IncrementThroughput(GetTotalBytes(output));
   mutex_lock l(mu_);
   metrics::RecordTFDataIteratorLifetime(safe_sub(end_time_us, end_time_us_));
