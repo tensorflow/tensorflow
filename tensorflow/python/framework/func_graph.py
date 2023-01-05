@@ -46,7 +46,6 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.util import compat
-from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
@@ -938,14 +937,8 @@ class FuncGraph(ops.Graph):
     return capture[1]
 
   def clear_captures(self):
-    # TODO(b/115366440): Delete this method when a custom OrderedDict is added.
-    # Clearing captures using clear() leaves some cycles around.
-    while self._captures:
-      self._captures.popitem()
-    memory.dismantle_ordered_dict(self._captures)
-    while self._deferred_captures:
-      self._deferred_captures.popitem()
-    memory.dismantle_ordered_dict(self._deferred_captures)
+    self._captures.clear()
+    self._deferred_captures.clear()
 
   def capture_eager_tensor(self, tensor, name):
     capture = self._captures.get(id(tensor))
