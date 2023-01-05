@@ -3104,10 +3104,12 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
   normalize(input_width, output_width, scale_x_n, scale_x_d, offset_x,
             border_x);
 
-  ArrayAttr scale =
-      rewriter.getI64ArrayAttr({scale_y_n, scale_y_d, scale_x_n, scale_x_d});
-  ArrayAttr offset = rewriter.getI64ArrayAttr({offset_y, offset_x});
-  ArrayAttr border = rewriter.getI64ArrayAttr({border_y, border_x});
+  DenseI64ArrayAttr scale = rewriter.getDenseI64ArrayAttr(
+      {scale_y_n, scale_y_d, scale_x_n, scale_x_d});
+  DenseI64ArrayAttr offset =
+      rewriter.getDenseI64ArrayAttr({offset_y, offset_x});
+  DenseI64ArrayAttr border =
+      rewriter.getDenseI64ArrayAttr({border_y, border_x});
 
   StringAttr resize_mode = rewriter.getStringAttr(mode);
 
@@ -3551,27 +3553,27 @@ llvm::Optional<Value> convertTFConv2DCommon(
     return llvm::None;
   }
 
-  ArrayAttr stride;
-  ArrayAttr dilation;
-  ArrayAttr pad;
+  DenseI64ArrayAttr stride;
+  DenseI64ArrayAttr dilation;
+  DenseI64ArrayAttr pad;
   {
     if (!strides_attr) {
-      stride = rewriter.getI64ArrayAttr({1, 1});
+      stride = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
       int64_t stride_h = strides_attr[1].cast<IntegerAttr>().getInt();
       int64_t stride_w = strides_attr[2].cast<IntegerAttr>().getInt();
-      stride = rewriter.getI64ArrayAttr({stride_h, stride_w});
+      stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
     }
   }
   {
     if (!dilations_attr) {
-      dilation = rewriter.getI64ArrayAttr({1, 1});
+      dilation = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
       int64_t dilation_h = dilations_attr[1].cast<IntegerAttr>().getInt();
       int64_t dilation_w = dilations_attr[2].cast<IntegerAttr>().getInt();
-      dilation = rewriter.getI64ArrayAttr({dilation_h, dilation_w});
+      dilation = rewriter.getDenseI64ArrayAttr({dilation_h, dilation_w});
     }
   }
   {
@@ -3633,12 +3635,12 @@ llvm::Optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
     return llvm::None;
   }
 
-  ArrayAttr strides_attr = rewriter.getI64ArrayAttr(strides);
-  ArrayAttr dilations_attr = rewriter.getI64ArrayAttr(dilations);
+  DenseI64ArrayAttr strides_attr = rewriter.getDenseI64ArrayAttr(strides);
+  DenseI64ArrayAttr dilations_attr = rewriter.getDenseI64ArrayAttr(dilations);
   RankedTensorType input_type = input.getType().cast<RankedTensorType>();
   RankedTensorType filter_type = filter.getType().cast<RankedTensorType>();
 
-  ArrayAttr pads_attr;
+  DenseI64ArrayAttr pads_attr;
   if (!getPaddingValuesFromPadType(tf_pad, data_format_tf, 0, input_type,
                                    filter_type, strides_attr, dilations_attr,
                                    rewriter, pads_attr)) {
