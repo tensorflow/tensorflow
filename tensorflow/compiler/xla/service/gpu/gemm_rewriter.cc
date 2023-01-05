@@ -969,7 +969,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     TF_RETURN_IF_ERROR(gemm->set_backend_config(config));
 
-    if (slice_or_bitcast) {
+    if (slice_or_bitcast != nullptr) {
       gemm = slice_or_bitcast->parent()->AddInstruction(
           slice_or_bitcast->CloneWithNewOperands(slice_or_bitcast->shape(),
                                                  {gemm}));
