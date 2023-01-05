@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <utility>
@@ -412,7 +413,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   llvm::DenseSet<OperationName> supported_ops;
   PatternApplicator(std::move(patterns))
       .walkAllPatterns([&](const Pattern& pattern) {
-        Optional<OperationName> root_kind = pattern.getRootKind();
+        std::optional<OperationName> root_kind = pattern.getRootKind();
         if (root_kind.has_value()) supported_ops.insert(root_kind.value());
       });
   AddSupportedFunctionalOps(module.getContext(), &supported_ops);

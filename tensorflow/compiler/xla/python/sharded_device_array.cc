@@ -22,12 +22,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#ifdef JAX_ENABLE_IFRT
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_array.h"
-#endif
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
@@ -83,30 +81,17 @@ void ShardedDeviceArray::Delete() {
   if (is_deleted_) {
     return;
   }
-#ifdef JAX_ENABLE_IFRT
   auto array = ifrt_array();
   if (!array.ok()) {
     return;
   }
   ifrt_array_ = std::nullopt;
-#else
-  // We can't inline this expression into the for loop! Here, .value()
-  // returns an rvalue reference to the Span embedded in the StatusOr.
-  // Binding the reference would extend the lifetime of the Span itself,
-  // but not of the StatusOr, causing stack-use-after-scope errors. Also see
-  // https://en.cppreference.com/w/cpp/language/range-for#Temporary_range_expression
-  auto buffers = pjrt_buffers().value();
-  for (xla::PjRtBuffer* pjrt_buffer : buffers) {
-    pjrt_buffer->Delete();
-  }
-#endif
   device_buffers_ = std::nullopt;
   cpp_device_buffers_ = std::nullopt;
   npy_value_ = std::nullopt;
   is_deleted_ = true;
 }
 
-#ifdef JAX_ENABLE_IFRT
 xla::StatusOr<xla::ifrt::Array*> ShardedDeviceArray::ifrt_array() {
   if (ifrt_array_.has_value()) {
     return ifrt_array_->get();
@@ -144,7 +129,6 @@ xla::StatusOr<xla::ifrt::Array*> ShardedDeviceArray::ifrt_array() {
   ifrt_array_ = std::move(ifrt_array);
   return ifrt_array_->get();
 }
-#endif
 
 xla::StatusOr<absl::Span<xla::PjRtBuffer* const>>
 ShardedDeviceArray::pjrt_buffers() {
@@ -152,7 +136,6 @@ ShardedDeviceArray::pjrt_buffers() {
     return absl::MakeConstSpan(*cpp_device_buffers_);
   }
 
-#ifdef JAX_ENABLE_IFRT
   TF_ASSIGN_OR_RETURN(auto* ifrt_array, ifrt_array());
   auto* pjrt_array =
       llvm::dyn_cast_or_null<xla::ifrt::PjRtCompatibleArray>(ifrt_array);
@@ -166,22 +149,6 @@ ShardedDeviceArray::pjrt_buffers() {
   for (const auto& pjrt_buffer : pjrt_array->pjrt_buffers()) {
     cpp_device_buffers.push_back(pjrt_buffer.get());
   }
-#else
-  if (!device_buffers_.has_value()) {
-    return xla::InvalidArgument("ShardedDeviceArray has been deleted.");
-  }
-  const int num_devices = device_buffers_->size();
-  std::vector<xla::PjRtBuffer*> cpp_device_buffers;
-  cpp_device_buffers.reserve(num_devices);
-  int i = 0;
-  for (auto& handle : device_buffers_.value()) {
-    // Note that invariants guarantee the cast should never fail.
-    TF_ASSIGN_OR_RETURN(xla::PyBuffer * pybuffer,
-                        xla::PyBuffer::AsPyBuffer(handle));
-    cpp_device_buffers.push_back(pybuffer->pjrt_buffer());
-    i += 1;
-  }
-#endif
   cpp_device_buffers_ = std::move(cpp_device_buffers);
   return absl::MakeConstSpan(cpp_device_buffers_.value());
 }

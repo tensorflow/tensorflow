@@ -5,6 +5,7 @@ load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additiona
 
 visibility = [
     "//tensorflow:__subpackages__",
+    "//tensorflow/dtensor:dtensor-internal",
 ]
 
 package(

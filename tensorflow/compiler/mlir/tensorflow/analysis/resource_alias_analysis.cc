@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <initializer_list>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -71,11 +72,12 @@ class BacktrackAnalysisInfo {
 
   // Returns the argument index of the region to which the given result number
   // can backtracked to. Such results will be called "function passthrough". If
-  // the result cannot be backtracked to a region argument, returns llvm::None.
+  // the result cannot be backtracked to a region argument, returns
+  // std::nullopt.
   llvm::Optional<int> GetArg(int result_index) const {
     if (auto arg = GetValue(result_index).dyn_cast<BlockArgument>())
       if (arg.getParentBlock() == &region_->front()) return arg.getArgNumber();
-    return llvm::None;
+    return std::nullopt;
   }
 
  private:
@@ -137,10 +139,10 @@ class BacktrackAnalysis {
   }
 
   // Returns the backtrack analysis for the given region if it exists.
-  // If the region has not yet been analyzed, returns llvm::None.
+  // If the region has not yet been analyzed, returns std::nullopt.
   Optional<const InfoT*> GetAnalysisIfExists(Region& region) const {
     auto it = info_map_.find(&region);
-    if (it == info_map_.end()) return llvm::None;
+    if (it == info_map_.end()) return std::nullopt;
     return &it->second;
   }
 

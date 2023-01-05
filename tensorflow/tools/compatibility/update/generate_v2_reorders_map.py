@@ -99,8 +99,9 @@ def collect_function_arg_names(function_names):
 
   visitor = public_api.PublicAPIVisitor(visit)
   visitor.do_not_descend_map['tf'].append('contrib')
-  visitor.do_not_descend_map['tf.compat'] = ['v1', 'v2']
-  traverse.traverse(tf, visitor)
+  visitor.private_map['tf.compat'] = ['v1', 'v2']
+  traverse.traverse(tf.compat.v1, visitor)
+  traverse.traverse(tf.compat.v1.estimator, visitor)
 
   return function_to_args
 

@@ -140,10 +140,10 @@ StatusOr<std::vector<int64_t>> ComputeTileAssignmentDevices(
   }
 
   // Shape of transposed mesh based on the ordering of layout's sharding specs.
-  std::vector<int64_t> transposed_mesh_shape;
-  transposed_mesh_shape.reserve(layout_shard_specs.size());
-  for (const std::string& shard_spec : layout_shard_specs) {
-    transposed_mesh_shape.push_back(mesh_spec_to_info[shard_spec].size);
+  std::vector<int64_t> mesh_shape;
+  mesh_shape.reserve(layout_shard_specs.size());
+  for (const MeshDimension& mesh_dim : mesh_dims) {
+    mesh_shape.push_back(mesh_dim.size);
   }
 
   // Compute the new minor to major ordering based on the ordering of layout
@@ -175,17 +175,16 @@ StatusOr<std::vector<int64_t>> ComputeTileAssignmentDevices(
     DeviceLocation dev_loc;
 
     int offset = device;
-    int64 i = transposed_mesh_shape.size() - 1;
+    int64 i = mesh_shape.size() - 1;
     while (i >= 0) {
-      dev_loc.insert(dev_loc.begin(), offset % transposed_mesh_shape[i]);
-      offset /= transposed_mesh_shape[i];
+      dev_loc.insert(dev_loc.begin(), offset % mesh_shape[i]);
+      offset /= mesh_shape[i];
       --i;
     }
 
-    TF_ASSIGN_OR_RETURN(
-        int64_t linear_index,
-        DeviceLocationToLinearIndex(transposed_mesh_shape, dev_loc,
-                                    minor_to_major_ordering));
+    TF_ASSIGN_OR_RETURN(int64_t linear_index,
+                        DeviceLocationToLinearIndex(mesh_shape, dev_loc,
+                                                    minor_to_major_ordering));
     permutation_map[linear_index] = device;
   }
 

@@ -117,6 +117,26 @@ TEST(LayoutToXLAShardingTest, FullyShardedLayout2D) {
   EXPECT_THAT(op_sharding.tile_assignment_devices(), ElementsAre(0, 1, 2, 3));
 }
 
+TEST(LayoutToXLAShardingTest, FullyShardedLayout2DAsymmetricMesh) {
+  std::string layout_str =
+      "sharding_specs:y,x, "
+      "mesh:|x=2,y=4|0,1,2,3,4,5,6,7|0,1,2,3,4,5,6,7|/job:localhost/task:0/"
+      "device:CPU:0,/job:localhost/task:0/device:CPU:1,/job:localhost/task:0/"
+      "device:CPU:2,/job:localhost/task:0/device:CPU:3,/job:localhost/task:0/"
+      "device:CPU:4,/job:localhost/task:0/device:CPU:5,/job:localhost/task:0/"
+      "device:CPU:6,/job:localhost/task:0/device:CPU:7";
+
+  ::xla::OpSharding op_sharding =
+      ConvertLayoutToXlaOpSharding(Layout::FromString(layout_str).value())
+          .value();
+
+  EXPECT_EQ(::xla::OpSharding::OTHER, op_sharding.type());
+  EXPECT_FALSE(op_sharding.replicate_on_last_tile_dim());
+  EXPECT_THAT(op_sharding.tile_assignment_dimensions(), ElementsAre(4, 2));
+  EXPECT_THAT(op_sharding.tile_assignment_devices(),
+              ElementsAre(0, 4, 1, 5, 2, 6, 3, 7));
+}
+
 TEST(LayoutToXLAShardingTest, FullyShardedPermutedLayout2D) {
   std::string layout_str =
       "sharding_specs:y,x, "

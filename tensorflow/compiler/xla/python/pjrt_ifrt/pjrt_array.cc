@@ -88,7 +88,7 @@ StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
   }
 }
 
-StatusOr<tsl::RCReference<Array>> PjRtArray::Create(
+StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DType dtype, Shape shape,
     std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers) {
   if (pjrt_buffers.empty()) {
@@ -98,29 +98,22 @@ StatusOr<tsl::RCReference<Array>> PjRtArray::Create(
     return InvalidArgument("device and buffer counts mismatch: %d vs. %d",
                            sharding->devices().size(), pjrt_buffers.size());
   }
-  return tsl::RCReference<Array>(tsl::MakeRef<PjRtArray>(
-      static_cast<PjRtCompatibleClient*>(client), dtype, std::move(shape),
-      std::move(sharding), std::move(pjrt_buffers)));
+  return tsl::MakeRef<PjRtArray>(client, dtype, std::move(shape),
+                                 std::move(sharding), std::move(pjrt_buffers));
 }
 
-StatusOr<tsl::RCReference<Array>> PjRtArray::Create(
+StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer) {
   TF_ASSIGN_OR_RETURN(auto dtype,
                       ToDType(pjrt_buffer->on_device_shape().element_type()));
   Shape shape(pjrt_buffer->on_device_shape().dimensions());
   auto sharding = SingleDeviceSharding::Create(pjrt_buffer->device());
-  return tsl::RCReference<Array>(tsl::MakeRef<PjRtArray>(
-      static_cast<PjRtCompatibleClient*>(client), dtype, std::move(shape),
-      std::move(sharding), PjRtBuffers({std::move(pjrt_buffer)})));
+  return tsl::MakeRef<PjRtArray>(client, dtype, std::move(shape),
+                                 std::move(sharding),
+                                 PjRtBuffers({std::move(pjrt_buffer)}));
 }
 
-StatusOr<tsl::RCReference<Array>> PjRtArray::Create(
-    PjRtCompatibleClient* client, std::unique_ptr<PjRtBuffer> pjrt_buffer) {
-  return PjRtArray::Create(client,
-                           std::shared_ptr<PjRtBuffer>(pjrt_buffer.release()));
-}
-
-StatusOr<tsl::RCReference<Array>> PjRtArray::Create(
+StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, Shape shape, PjRtBuffers pjrt_buffers) {
   TF_ASSIGN_OR_RETURN(
       auto dtype, xla::ifrt::ToDType(

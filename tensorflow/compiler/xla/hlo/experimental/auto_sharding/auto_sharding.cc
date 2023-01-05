@@ -53,6 +53,9 @@ limitations under the License.
 #include "tensorflow/tsl/platform/status.h"
 #include "ortools/linear_solver/linear_solver.h"
 #include "ortools/linear_solver/linear_solver.pb.h"
+#ifdef PLATFORM_GOOGLE
+#include "util/task/status.pb.h"
+#endif
 
 using MPConstraint = operations_research::MPConstraint;
 using MPSolver = operations_research::MPSolver;
@@ -1975,7 +1978,7 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
   CHECK(solver);
   solver->MutableObjective()->SetMinimization();
   std::string solver_parameter_str;
-#if !defined(__APPLE__)
+#ifdef PLATFORM_GOOGLE
   if (solver->ProblemType() ==
       operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
     // Set random_seed, interleave_search and share_binary_clauses for
@@ -2183,15 +2186,15 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
   auto status = solver->Solve();
   if (status == operations_research::MPSolver::INFEASIBLE) {
     LOG(ERROR) << "MPSolver could not find any feasible solution.";
-    /*
-    // TODO (zhuohan): Move this part of code to a non-open sourced position.
-    //   Need to include "util/task/status.pb.h"
+#ifdef PLATFORM_GOOGLE
     operations_research::MPModelRequest model_request;
     solver->ExportModelToProto(model_request.mutable_model());
-    if (solver_type == "SAT") {
+    if (solver->ProblemType() ==
+        operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
       model_request.set_solver_type(
           operations_research::MPModelRequest::SAT_INTEGER_PROGRAMMING);
-    } else if (solver_type == "SCIP") {
+    } else if (solver->ProblemType() ==
+               operations_research::MPSolver::SCIP_MIXED_INTEGER_PROGRAMMING) {
       model_request.set_solver_type(
           operations_research::MPModelRequest::SCIP_MIXED_INTEGER_PROGRAMMING);
     }
@@ -2207,7 +2210,7 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
           << " - "
           << model_request.model().general_constraint(index).DebugString();
     }
-    */
+#endif
 
     return tsl::errors::Internal(
         "MPSolver could not find any feasible solution.");

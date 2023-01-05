@@ -44,13 +44,18 @@ void populateFusionPatterns(MLIRContext *ctx,
                             function_ref<LogicalResult(MaterializeOp)> filterFn,
                             RewritePatternSet *patterns);
 
+struct FusionCluster {
+  DenseSet<Operation *> operations;
+  Operation *root;
+};
+
 // Find a cluster of operations that can be tiled and fused together around
 // the root op. We want to fuse output of the fusion op with elementwise ops. In
 // general case a cluster is a tree that can have multiple leaf-node ops,
 // e.g. map(op, map(op)).
 // First element of the cluster is always the root for tiling.
 template <class FusionOpTy>
-SmallVector<Operation *> findMapFusionCluster(FusionOpTy op) {
+FusionCluster findMapFusionCluster(FusionOpTy op) {
   // Find the root operation in the chain of elementwise ops. Current approach
   // doesn't work well if maps don't form a chain.
   Operation *rootOp = op;
@@ -65,7 +70,7 @@ SmallVector<Operation *> findMapFusionCluster(FusionOpTy op) {
 
   // Run a graph search to find all linalg.map and that can be fused in
   // the root op.
-  SmallVector<Operation *> resultOps;
+  DenseSet<Operation *> resultOps;
   SmallVector<Operation *> remainingProducers{rootOp};
 
   while (!remainingProducers.empty()) {
@@ -76,14 +81,14 @@ SmallVector<Operation *> findMapFusionCluster(FusionOpTy op) {
       for (auto *u : fusionOp->getUsers())
         // Do not fuse fusionOp that is used by another fusionOp.
         if (isa<FusionOpTy>(u)) continue;
-      resultOps.push_back(curOp);
+      resultOps.insert(curOp);
     } else if (auto mapOp = dyn_cast<linalg::MapOp>(curOp)) {
-      resultOps.push_back(curOp);
+      resultOps.insert(curOp);
       for (auto *operand : mapOp.getDpsInputOperands())
         remainingProducers.push_back(operand->get().getDefiningOp());
     }
   }
-  return resultOps;
+  return {resultOps, rootOp};
 }
 
 template <class FusionOpTy>

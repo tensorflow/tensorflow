@@ -52,6 +52,9 @@ namespace quant {
 
 namespace {
 
+using QuantMethod =
+    tensorflow::quantization::QuantizationMethod::ExperimentalMethod;
+
 // Applies prepare quantization on the model in TF dialect. This pass runs
 // before the quantization pass and propagate the quantization parameters
 // across ops. This step is necessary for post-training quantization and also
@@ -73,10 +76,11 @@ class PrepareQuantizePass
     quant_specs_.inference_type = tensorflow::DT_QINT8;
   }
 
-  explicit PrepareQuantizePass(QuantizationMethod quantization_method) {
+  explicit PrepareQuantizePass(QuantMethod quantization_method) {
     quant_specs_.inference_type = tensorflow::DT_QINT8;
     enable_post_training_quantize_ =
-        (quantization_method == QuantizationMethod::kPostTrainingQuantization);
+        (quantization_method ==
+         tensorflow::quantization::QuantizationMethod::STATIC_RANGE);
   }
 
   PrepareQuantizePass(const PrepareQuantizePass& other) {
@@ -415,7 +419,7 @@ void PrepareQuantizePass::runOnOperation() {
 
 // Creates an instance of the TensorFlow dialect PrepareQuantize pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
-    QuantizationMethod quantization_method) {
+    QuantMethod quantization_method) {
   return std::make_unique<PrepareQuantizePass>(quantization_method);
 }
 

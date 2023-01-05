@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/runtime/diagnostics.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
+#include "tensorflow/compiler/xla/runtime/ffi/ffi_abi.h"
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
 #include "tensorflow/compiler/xla/runtime/map_by_type.h"
 #include "tensorflow/compiler/xla/runtime/state.h"
@@ -139,14 +140,12 @@ class CustomCall {
   }
 
   template <typename T>
-  ABSL_ATTRIBUTE_ALWAYS_INLINE static bool Isa(RuntimeChecks checks,
-                                               TypeID type_id) {
+  static bool Isa(RuntimeChecks checks, TypeID type_id) {
     return !CheckTypes(checks) || type_id == TypeID::get<Tagged<T>>();
   }
 
   template <typename T, typename U, typename... Ts>
-  ABSL_ATTRIBUTE_ALWAYS_INLINE static bool Isa(RuntimeChecks checks,
-                                               TypeID type_id) {
+  static bool Isa(RuntimeChecks checks, TypeID type_id) {
     return !CheckTypes(checks) || type_id == TypeID::get<Tagged<T>>() ||
            Isa<U, Ts...>(checks, type_id);
   }
@@ -394,34 +393,6 @@ template <typename T, CustomCall::RuntimeChecks>
 struct CustomCallRetDecoding;
 
 //===----------------------------------------------------------------------===//
-// C structures corresponding to the `rt-to-llvm` pass LLVM structs encoding
-// various types of arguments/attributes.
-//===----------------------------------------------------------------------===//
-
-namespace internal {
-struct EncodedMemref {
-  uint8_t dtype;
-  uint8_t rank;
-  void* data;
-  int64_t dims[];
-};
-
-template <typename T>
-struct EncodedArray {
-  int64_t size;
-  const T* data;
-};
-
-template <typename T>
-struct EncodedDenseElements {
-  struct EncodedArray<T> payload;
-  int64_t rank;
-  int64_t shape[];
-};
-
-}  // namespace internal
-
-//===----------------------------------------------------------------------===//
 // Helpers for decoding opaque arguments and attributes memory.
 //===----------------------------------------------------------------------===//
 
@@ -443,7 +414,7 @@ struct DecodedAttr {
 // A convenience wrapper around opaque arguments memory.
 class DecodedArgs {
  public:
-  ABSL_ATTRIBUTE_ALWAYS_INLINE explicit DecodedArgs(void** args) {
+  explicit DecodedArgs(void** args) {
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(args, sizeof(void*));
     size_ = *reinterpret_cast<int64_t*>(args[0]);
     if (size_) {
@@ -473,8 +444,7 @@ class DecodedArgs {
 // A convenience wrapper around opaque attributes memory.
 class DecodedAttrs {
  public:
-  ABSL_ATTRIBUTE_ALWAYS_INLINE explicit DecodedAttrs(void** attrs)
-      : encoded_(attrs + 1) {
+  explicit DecodedAttrs(void** attrs) : encoded_(attrs + 1) {
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(attrs, sizeof(void*));
     size_ = *reinterpret_cast<int64_t*>(attrs[0]);
     ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(encoded_, 3 * size_ * sizeof(void*));
@@ -751,7 +721,7 @@ struct DecodingContext {
 };
 
 template <typename T, CustomCall::RuntimeChecks checks>
-ABSL_ATTRIBUTE_ALWAYS_INLINE FailureOr<T*> DecodeUserData(
+ABSL_ATTRIBUTE_ALWAYS_INLINE inline FailureOr<T*> DecodeUserData(
     const CustomCall::UserData* user_data) {
   if (!CustomCall::CheckUserData(checks)) return user_data->get<T>();
 
@@ -766,7 +736,7 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE FailureOr<T*> DecodeUserData(
 }
 
 template <typename T, CustomCall::RuntimeChecks checks>
-ABSL_ATTRIBUTE_ALWAYS_INLINE FailureOr<T> DecodeAttr(
+ABSL_ATTRIBUTE_ALWAYS_INLINE inline FailureOr<T> DecodeAttr(
     DecodingOffsets& offsets, absl::Span<const std::string> attrs_names,
     absl::Span<const size_t> attrs_idx, internal::DecodedAttrs attrs) {
   // Find decoded attribute corresponding for the given attribute index.
@@ -1286,7 +1256,8 @@ XLA_RUNTIME_REGISTER_EIGEN_FP_ARG_DECODING(Eigen::half, uint16_t);
                                                                             \
       auto* src = reinterpret_cast<PTR*>(value);                            \
       ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(value, sizeof(PTR));              \
-      return (T){*src};                                                     \
+      T ref{*src};                                                          \
+      return std::move(ref);                                                \
     }                                                                       \
   }
 
@@ -1498,6 +1469,9 @@ XLA_RUNTIME_REGISTER_SCALAR_ATTR_DECODING(double);
 
 // A type tag to represent empty arrays of unknown element type.
 struct EmptyArray {};
+
+// A type tag to represent dictionary attributes.
+struct Dictionary {};
 
 // Both EncodedArray and 1-D EncodedDenseElements can be decoded as an
 // absl::Span. Pointers to both EncodedArray and 1-D EncodedDenseElements
@@ -1717,6 +1691,7 @@ XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(xla::runtime::StridedMemrefView);
 XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(xla::runtime::MemrefView);
 XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(xla::runtime::FlatMemrefView);
 XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(xla::runtime::EmptyArray);
+XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(xla::runtime::Dictionary);
 XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(int32_t);
 XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(int64_t);
 XLA_RUNTIME_DECLARE_EXPLICIT_TYPE_ID(float);

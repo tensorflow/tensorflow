@@ -45,6 +45,12 @@ constexpr llvm::StringRef kPerfectlyTiledLoopLabel =
 bool isZero(Value v);
 bool isOne(Value v);
 
+template <typename ShapedTy>
+bool hasSingleElement(ShapedTy type) {
+  return type.hasStaticShape() && type.getNumElements() == 1;
+}
+bool hasSingleElementOperandsAndResults(Operation *op);
+
 /// Hoist vector.transfer_read/vector.transfer_write pairs out of immediately
 /// enclosing gml_st::ForOp iteratively, if the following conditions are true:
 ///   1. The two ops access the same tensor with the same indices.
@@ -87,7 +93,7 @@ bool isOne(Value v);
 void hoistRedundantVectorTransfersOnTensor(func::FuncOp func);
 
 /// Returns true if `candidate`'s offsets are all 0s and strides are all 1s.
-bool isIdentityTileOp(TileOp candidate);
+bool isIdentitySlice(ValueRange offsets, ValueRange strides);
 
 /// Returns true if `lhs` and `rhs` are of same static shape.
 bool haveSameStaticShape(Value lhs, Value rhs);
@@ -113,46 +119,6 @@ bool hasLabel(Operation *op, StringRef name);
 
 // Checks if `op` has the matching label attribute.
 bool hasMatchingLabel(Operation *op, StringRef label);
-
-struct GmlStCPUPipelineOptions
-    : public mlir::PassPipelineOptions<GmlStCPUPipelineOptions> {
-  Option<bool> vectorize{*this, "vectorize",
-                         llvm::cl::desc("Enable tiling for vectorization."),
-                         llvm::cl::init(false)};
-
-  Option<int64_t> vectorSize{*this, "vector-size",
-                             llvm::cl::desc("Vector size for a 1D reduction."),
-                             llvm::cl::init(8)};
-
-  Option<int64_t> reduction1DTileSize{
-      *this, "reduction-1d-tile-size",
-      llvm::cl::desc("Tile size for a 1D reduction."), llvm::cl::init(32)};
-
-  ListOption<int64_t> reduction2DTileSizes{
-      *this, "reduction-2d-tile-sizes",
-      llvm::cl::desc("Tile sizes for a 2D reduction."),
-      llvm::cl::list_init<int64_t>({4, 4}), llvm::cl::ZeroOrMore};
-
-  ListOption<int64_t> matmulTileSizes{
-      *this, "matmul-tile-sizes",
-      llvm::cl::desc("Tile sizes for `linalg.matmul`."),
-      llvm::cl::list_init<int64_t>({4, 4, 4}), llvm::cl::ZeroOrMore};
-
-  Option<bool> lowerToMmt4d{
-      *this, "lower-to-mmt4d",
-      llvm::cl::desc("Enable the specific code generation (packing) for matmul "
-                     "operations."),
-      llvm::cl::init(false)};
-};
-
-// Make GmlStCPUPipelineOptions hashable.
-inline ::llvm::hash_code hashValue(const GmlStCPUPipelineOptions &opts) {
-  return ::llvm::hash_value(static_cast<bool>(opts.vectorize));
-}
-
-// Adds tiling-fusion-vectorization passes for tHLO/Linalg ops mix.
-void addTileableOpsTransformationsForCPU(
-    OpPassManager &pm, const GmlStCPUPipelineOptions &options);
 
 }  // namespace gml_st
 }  // namespace mlir

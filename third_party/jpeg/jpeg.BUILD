@@ -2,6 +2,7 @@
 #   libjpeg-turbo is a drop in replacement for jpeglib optimized with SIMD.
 
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
 
 licenses(["notice"])  # custom notice-style license, see LICENSE.md
 
@@ -126,6 +127,7 @@ cc_library(
     copts = libjpegturbo_copts,
     visibility = ["//visibility:public"],
     deps = select({
+        ":nosimd": [":simd_none"],
         ":k8": [":simd_x86_64"],
         ":armeabi-v7a": [":simd_armv7a"],
         ":arm64-v8a": [":simd_armv8a"],
@@ -757,8 +759,19 @@ genrule(
           "EOF",
 )
 
+string_flag(
+    name = "noasm",
+    build_setting_default = "no",
+)
+
+config_setting(
+    name = "nosimd",
+    flag_values = {":noasm": "yes"},
+)
+
 config_setting(
     name = "k8",
+    flag_values = {":noasm": "no"},
     values = {"cpu": "k8"},
 )
 
@@ -769,20 +782,24 @@ config_setting(
 
 config_setting(
     name = "armeabi-v7a",
+    flag_values = {":noasm": "no"},
     values = {"cpu": "armeabi-v7a"},
 )
 
 config_setting(
     name = "arm64-v8a",
+    flag_values = {":noasm": "no"},
     values = {"cpu": "arm64-v8a"},
 )
 
 config_setting(
     name = "windows",
+    flag_values = {":noasm": "no"},
     values = {"cpu": "x64_windows"},
 )
 
 config_setting(
     name = "linux_ppc64le",
+    flag_values = {":noasm": "no"},
     values = {"cpu": "ppc"},
 )

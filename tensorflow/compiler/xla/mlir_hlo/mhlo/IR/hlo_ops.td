@@ -2491,7 +2491,7 @@ def MHLO_DynamicReshapeOp: MHLO_ShapedInterfaceOp<"dynamic_reshape", [Pure]> {
 
 def MHLO_ScatterOp: MHLO_Op<"scatter",
       [SameVariadicOperandSize, RecursiveMemoryEffects,
-      DeclareOpInterfaceMethods<InferTypeOpInterface>]> { 
+      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Scatter operator";
   let description = [{
     Generates a result which is the value of the input array `operand`,

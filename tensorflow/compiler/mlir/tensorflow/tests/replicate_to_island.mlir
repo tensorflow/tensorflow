@@ -1,4 +1,4 @@
-// RUN: tf-opt -split-input-file -verify-diagnostics %s -tf-replicate-to-island | FileCheck %s
+// RUN: tf-opt -split-input-file -verify-diagnostics %s -tf-replicate-to-island=legacy-graph-export=false  | FileCheck %s
 
 // Tests per replica island has same control operands as island holding
 // replicate.
@@ -138,7 +138,7 @@ func.func @unused_replica(%arg0: tensor<i1>) {
 
 // CHECK: {{%.*}}, [[REPLICA_0_CONTROL:%.*]] = tf_executor.island
 // CHECK: [[REPLICA_1_OUTPUT:%.*]], {{%.*}} = tf_executor.island
-// CHECK: tf_executor.fetch [[REPLICA_1_OUTPUT]], [[REPLICA_0_CONTROL]]
+// CHECK: tf_executor.fetch [[REPLICA_1_OUTPUT]] :
 
 
 // Tests replicate results are remapped correctly.
@@ -158,9 +158,11 @@ func.func @replicate_result(%arg0: tensor<i1>, %arg1: tensor<i1>) {
   func.return
 }
 
-// CHECK: %[[REPLICA_0:.*]]:2, %{{.*}} = tf_executor.island
-// CHECK: %[[REPLICA_1:.*]]:2, %{{.*}} = tf_executor.island
-// CHECK: tf_executor.fetch %[[REPLICA_0]]#0, %[[REPLICA_1]]#0, %[[REPLICA_0]]#1, %[[REPLICA_1]]#1
+// CHECK-DAG: %[[REPLICA_OPA_1:.*]], %{{.*}} = tf_executor.island wraps "tf.opA"(%arg0)
+// CHECK-DAG: %[[REPLICA_OPB_1:.*]], %{{.*}} = tf_executor.island wraps "tf.opB"(%arg0)
+// CHECK-DAG: %[[REPLICA_OPA_2:.*]], %{{.*}} = tf_executor.island wraps "tf.opA"(%arg1)
+// CHECK-DAG: %[[REPLICA_OPB_2:.*]], %{{.*}} = tf_executor.island wraps "tf.opB"(%arg1)
+// CHECK: tf_executor.fetch %[[REPLICA_OPA_1]], %[[REPLICA_OPA_2]], %[[REPLICA_OPB_1]], %[[REPLICA_OPB_2]]
 
 
 // Tests replicate results are remapped correctly with packed inputs.
@@ -181,13 +183,11 @@ func.func @replicate_with_packed_input(%arg0: tensor<i1>, %arg1: tensor<i1>) {
   func.return
 }
 
-// CHECK: %[[REPLICA_0:.*]]:2, %{{.*}} = tf_executor.island
-// CHECK: "tf.opA"(%arg0)
-// CHECK: "tf.opB"(%arg1)
-// CHECK: %[[REPLICA_1:.*]]:2, %{{.*}} = tf_executor.island
-// CHECK: "tf.opA"(%arg0)
-// CHECK: "tf.opB"(%arg1)
-// CHECK: tf_executor.fetch %[[REPLICA_0]]#0, %[[REPLICA_1]]#0
+// CHECK-DAG: %[[REPLICA_OPA_1:.*]], %{{.*}} = tf_executor.island wraps "tf.opA"(%arg0)
+// CHECK-DAG: %[[REPLICA_OPB_1:.*]], %{{.*}} = tf_executor.island wraps "tf.opB"(%arg1)
+// CHECK-DAG: %[[REPLICA_OPA_2:.*]], %{{.*}} = tf_executor.island wraps "tf.opA"(%arg0)
+// CHECK-DAG: %[[REPLICA_OPB_2:.*]], %{{.*}} = tf_executor.island wraps "tf.opB"(%arg1)
+// CHECK: tf_executor.fetch %[[REPLICA_OPA_1]], %[[REPLICA_OPA_2]], %[[REPLICA_OPB_1]], %[[REPLICA_OPB_2]]
 
 
 // Tests replica id is added correctly.

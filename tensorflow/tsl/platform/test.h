@@ -40,7 +40,7 @@ limitations under the License.
 // better error messages, more maintainable tests and more test coverage.
 #if !defined(PLATFORM_GOOGLE) && !defined(PLATFORM_GOOGLE_ANDROID) && \
     !defined(PLATFORM_CHROMIUMOS)
-#include <gmock/gmock-generated-matchers.h>  // IWYU pragma: export
+#include <gmock/gmock-actions.h>
 #include <gmock/gmock-matchers.h>            // IWYU pragma: export
 #include <gmock/gmock-more-matchers.h>       // IWYU pragma: export
 #endif

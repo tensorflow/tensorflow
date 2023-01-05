@@ -2,6 +2,8 @@
 
 ## Description
 
+TODO(b/250876587): update the documentation.
+
 This Android Delegate Performance Benchmark app is a simple wrapper around the
 TensorFlow Lite
 [benchmark tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark)

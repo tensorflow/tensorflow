@@ -317,7 +317,8 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
       call->setAttr(b.getStringAttr(name), attr);
     };
 
-    auto set_xi64 = [&](StringRef name, Optional<DenseIntElementsAttr> attr) {
+    auto set_xi64 = [&](StringRef name,
+                        std::optional<DenseIntElementsAttr> attr) {
       SmallVector<int64_t> values;
       if (attr.has_value())
         values = llvm::to_vector(attr->getValues<int64_t>());
@@ -326,7 +327,7 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
 
     // Convert `BoolElementsAttr` to i64 before passing to the runtime.
     // TODO(ezhulenev): Allow passing boolean tensors to the XLA custom calls.
-    auto set_xi1 = [&](StringRef name, Optional<DenseElementsAttr> attr) {
+    auto set_xi1 = [&](StringRef name, std::optional<DenseElementsAttr> attr) {
       SmallVector<int64_t> values;
       if (attr.has_value())
         values.assign(attr->getValues<bool>().begin(),

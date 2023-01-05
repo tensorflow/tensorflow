@@ -1697,17 +1697,18 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(y[0], [2.0, 3.0])
       self.assertAllEqual(y[1], 2.0)
 
+  @parameterized.parameters([(True), (False)])
   @test_util.assert_no_new_pyobjects_executing_eagerly
-  def testRecomputeGradWithNestedFunctionAndWhileLoop(self):
+  def testRecomputeGradWithNestedFunctionAndWhileLoop(self, reduce_retracing):
 
     @custom_gradient.recompute_grad
-    @def_function.function
+    @def_function.function(reduce_retracing=reduce_retracing)
     def outer(x):
 
-      @def_function.function
+      @def_function.function(reduce_retracing=reduce_retracing)
       def middle(y):
 
-        @def_function.function
+        @def_function.function(reduce_retracing=reduce_retracing)
         def inner(z):
           return z + 1
 

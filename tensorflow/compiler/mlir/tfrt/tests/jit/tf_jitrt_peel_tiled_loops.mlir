@@ -251,26 +251,28 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?x
   %2 = gml_st.parallel (%arg2, %arg3) = (%c0, %c0) to (%dim_1, %dim_3) step (%c8, %c4) {
     %3 = affine.min affine_map<(d0)[s0] -> (-d0 + s0, 8)>(%arg2)[%dim_1]
     %4 = affine.min affine_map<(d0)[s0] -> (-d0 + s0, 4)>(%arg3)[%dim_3]
-    %5 = gml_st.tile [%arg2, 0] [%3, %dim_2] [1, 1] : !gml_st.tile<?x?>
-    %6 = gml_st.materialize %arg0[%5] : tensor<?x?xf32>[!gml_st.tile<?x?>] to tensor<?x?xf32>
-    %7 = gml_st.tile [0, %arg3] [%dim_2, %4] [1, 1] : !gml_st.tile<?x?>
-    %8 = gml_st.materialize %arg1[%7] : tensor<?x?xf32>[!gml_st.tile<?x?>] to tensor<?x?xf32>
-    %9 = gml_st.tile [%arg2, %arg3] [%3, %4] [1, 1] : !gml_st.tile<?x?>
-    %10 = gml_st.materialize %1[%9] : tensor<?x?xf32>[!gml_st.tile<?x?>] to tensor<?x?xf32>
+    %6 = gml_st.materialize %arg0[%arg2, 0] [%3, %dim_2] [1, 1]
+      : tensor<?x?xf32> to tensor<?x?xf32>
+    %8 = gml_st.materialize %arg1[0, %arg3] [%dim_2, %4] [1, 1]
+      : tensor<?x?xf32> to tensor<?x?xf32>
+    %10 = gml_st.materialize %1[%arg2, %arg3] [%3, %4] [1, 1]
+      : tensor<?x?xf32> to tensor<?x?xf32>
     %dim_4 = tensor.dim %6, %c0 : tensor<?x?xf32>
     %dim_5 = tensor.dim %6, %c1 : tensor<?x?xf32>
     %dim_6 = tensor.dim %8, %c1 : tensor<?x?xf32>
     %11 = gml_st.for (%arg4) = (%c0) to (%dim_5) step (%c2) outs (%arg5 = %10: tensor<?x?xf32>) {
       %12 = affine.min affine_map<(d0)[s0] -> (-d0 + s0, 2)>(%arg4)[%dim_5]
-      %13 = gml_st.tile [0, %arg4] [%dim_4, %12] [1, 1] : !gml_st.tile<?x?>
-      %14 = gml_st.materialize %6[%13] : tensor<?x?xf32>[!gml_st.tile<?x?>] to tensor<?x?xf32>
-      %15 = gml_st.tile [%arg4, 0] [%12, %dim_6] [1, 1] : !gml_st.tile<?x?>
-      %16 = gml_st.materialize %8[%15] : tensor<?x?xf32>[!gml_st.tile<?x?>] to tensor<?x?xf32>
-      %17 = gml_st.tile [0, 0] [%dim_4, %dim_6] [1, 1] : !gml_st.tile<?x?>
-      %18 = gml_st.materialize %arg5[%17] : tensor<?x?xf32>[!gml_st.tile<?x?>] to tensor<?x?xf32>
+      %14 = gml_st.materialize %6[0, %arg4] [%dim_4, %12] [1, 1]
+        : tensor<?x?xf32> to tensor<?x?xf32>
+      %16 = gml_st.materialize %8[%arg4, 0] [%12, %dim_6] [1, 1]
+        : tensor<?x?xf32> to tensor<?x?xf32>
+      %18 = gml_st.materialize %arg5[0, 0] [%dim_4, %dim_6] [1, 1]
+        : tensor<?x?xf32> to tensor<?x?xf32>
       %19 = linalg.matmul ins(%14, %16 : tensor<?x?xf32>, tensor<?x?xf32>) outs(%18 : tensor<?x?xf32>) -> tensor<?x?xf32>
+      %17 = gml_st.tile [0, 0] [%dim_4, %dim_6] [1, 1] : !gml_st.tile<?x?>
       gml_st.set_yield %19 into %arg5[%17] : tensor<?x?xf32> into tensor<?x?xf32>[!gml_st.tile<?x?>]
     } : tensor<?x?xf32>
+    %9 = gml_st.tile [%arg2, %arg3] [%3, %4] [1, 1] : !gml_st.tile<?x?>
     gml_st.set_yield %11 into %1[%9] : tensor<?x?xf32> into tensor<?x?xf32>[!gml_st.tile<?x?>]
   } : tensor<?x?xf32>
   return %2 : tensor<?x?xf32>
@@ -297,11 +299,13 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?x
 // CHECK:            %[[MAIN_PAR_MAIN_FOR:.*]] = gml_st.for (
 // CHECK-SAME:           %[[MAIN_PAR_MAIN_FOR_K:.*]]) = (%[[C0]])
 // CHECK:              %[[MAIN_PAR_MAIN_FOR_MATMUL:.*]] = linalg.matmul ins({{.*}})
+// CHECK-NEXT:         gml_st.tile
 // CHECK-NEXT:         gml_st.set_yield %[[MAIN_PAR_MAIN_FOR_MATMUL]] {{.*}} : tensor<8x4xf32> into tensor<8x4xf32>[!gml_st.tile<8x4>]
 
 // CHECK:            %[[MAIN_PAR_REM_FOR:.*]] = gml_st.for (
 // CHECK-SAME:           outs ({{.*}} = %[[MAIN_PAR_MAIN_FOR]]
 // CHECK:              %[[MAIN_PAR_REM_FOR_MATMUL:.*]] = linalg.matmul ins({{.*}})
+// CHECK-NEXT:         gml_st.tile
 // CHECK-NEXT:         gml_st.set_yield %[[MAIN_PAR_REM_FOR_MATMUL]] {{.*}} : tensor<8x4xf32> into tensor<8x4xf32>[!gml_st.tile<8x4>]
 
 // CHECK:            gml_st.set_yield %[[MAIN_PAR_REM_FOR]]
@@ -311,11 +315,13 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?x
 
 // CHECK:            %[[REM_PAR_RHS_COL_MAIN_FOR:.*]] = gml_st.for (
 // CHECK:              %[[REM_PAR_RHS_COL_MAIN_FOR_MATMUL:.*]] = linalg.matmul ins({{.*}})
+// CHECK-NEXT:         gml_st.tile
 // CHECK-NEXT:         gml_st.set_yield %[[REM_PAR_RHS_COL_MAIN_FOR_MATMUL]]
 
 // CHECK:            %[[REM_PAR_RHS_COL_REM_FOR:.*]] = gml_st.for (
 // CHECK-SAME:           outs ({{.*}} = %[[REM_PAR_RHS_COL_MAIN_FOR]]
 // CHECK:              %[[REM_PAR_RHS_COL_REM_FOR_MATMUL:.*]] = linalg.matmul ins({{.*}})
+// CHECK-NEXT:         gml_st.tile
 // CHECK-NEXT:         gml_st.set_yield %[[REM_PAR_RHS_COL_REM_FOR_MATMUL]]
 
 // CHECK:            gml_st.set_yield %[[REM_PAR_RHS_COL_REM_FOR]]
@@ -325,11 +331,13 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?x
 
 // CHECK:            %[[REM_PAR_LHS_ROW_MAIN_FOR:.*]] = gml_st.for (
 // CHECK:              %[[REM_PAR_LHS_ROW_MAIN_FOR_MATMUL:.*]] = linalg.matmul ins({{.*}})
+// CHECK-NEXT:         gml_st.tile
 // CHECK-NEXT:         gml_st.set_yield %[[REM_PAR_LHS_ROW_MAIN_FOR_MATMUL]]
 
 // CHECK:            %[[REM_PAR_LHS_ROW_REM_FOR:.*]] = gml_st.for (
 // CHECK-SAME:           outs ({{.*}} = %[[REM_PAR_LHS_ROW_MAIN_FOR]]:
 // CHECK:              %[[REM_PAR_LHS_ROW_REM_FOR_MATMUL:.*]] = linalg.matmul ins({{.*}})
+// CHECK-NEXT:         gml_st.tile
 // CHECK-NEXT:         gml_st.set_yield %[[REM_PAR_LHS_ROW_REM_FOR_MATMUL]]
 
 // CHECK:            gml_st.set_yield %[[REM_PAR_LHS_ROW_REM_FOR]]

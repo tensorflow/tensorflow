@@ -62,6 +62,26 @@ bool GpuSupportsHalfMatMulAndConv() {
 #endif
 }
 
+// Returns whether oneDNN should be enabled or disabled by default.
+//   - Linux: Enabled by default for CPUs with neural network features.
+//   - Windows: Disabled by default.
+inline bool DefaultOneDnnPolicy() {
+#if !defined(INTEL_MKL)
+  return false;
+#elif defined(PLATFORM_GOOGLE)
+  return true;
+#elif defined(__linux__)
+  return port::TestCPUFeature(port::CPUFeature::AVX512_VNNI) ||
+         port::TestCPUFeature(port::CPUFeature::AVX512_BF16) ||
+         port::TestCPUFeature(port::CPUFeature::AVX_VNNI) ||
+         port::TestCPUFeature(port::CPUFeature::AMX_TILE) ||
+         port::TestCPUFeature(port::CPUFeature::AMX_INT8) ||
+         port::TestCPUFeature(port::CPUFeature::AMX_BF16);
+#else
+  return false;
+#endif  // !defined(INTEL_MKL)
+}
+
 bool IsMklEnabled() {
 #ifndef INTEL_MKL
   return false;
@@ -76,21 +96,7 @@ bool IsMklEnabled() {
   });
   return (!oneDNN_disabled);
 #else
-  // Linux: Turn oneDNN on by default for CPUs with neural network features.
-  // Windows: oneDNN is off by default.
-  // No need to guard for other platforms here because INTEL_MKL is only defined
-  // for non-mobile Linux or Windows.
-  static bool oneDNN_enabled =
-#ifdef __linux__
-      port::TestCPUFeature(port::CPUFeature::AVX512_VNNI) ||
-      port::TestCPUFeature(port::CPUFeature::AVX512_BF16) ||
-      port::TestCPUFeature(port::CPUFeature::AVX_VNNI) ||
-      port::TestCPUFeature(port::CPUFeature::AMX_TILE) ||
-      port::TestCPUFeature(port::CPUFeature::AMX_INT8) ||
-      port::TestCPUFeature(port::CPUFeature::AMX_BF16);
-#else
-      false;
-#endif  // __linux__
+  static bool oneDNN_enabled = DefaultOneDnnPolicy();
   absl::call_once(once, [&] {
     auto status = ReadBoolFromEnvVar("TF_ENABLE_ONEDNN_OPTS", oneDNN_enabled,
                                      &oneDNN_enabled);
@@ -116,4 +122,5 @@ bool IsMklEnabled() {
   return oneDNN_enabled;
 #endif  // ENABLE_MKL
 }
-}  // end namespace tensorflow
+
+}  // namespace tensorflow

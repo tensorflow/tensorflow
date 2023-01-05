@@ -125,7 +125,7 @@ mlir::NamedAttrList GetAllAttributesFromOperation(mlir::Operation* op) {
 // operation is `DTensorLayout` op, then we use input of DTensorLayout op
 // instead for correct constant matching.
 mlir::LogicalResult InferShapeOfTFOpWithCustomOperandConstantFn(
-    llvm::Optional<mlir::Location> location, mlir::Operation* op,
+    std::optional<mlir::Location> location, mlir::Operation* op,
     int64_t graph_version,
     llvm::SmallVectorImpl<mlir::ShapedTypeComponents>& inferred_return_shapes) {
   if (auto type_op = llvm::dyn_cast<mlir::InferTypeOpInterface>(op)) {

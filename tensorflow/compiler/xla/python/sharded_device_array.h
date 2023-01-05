@@ -243,10 +243,8 @@ class ShardedDeviceArray {
   void Delete();
   const ShardingSpec& GetShardingSpec() const { return sharding_spec_; }
 
-#ifdef JAX_ENABLE_IFRT
   // Returns an error status iff the object has been deleted.
   xla::StatusOr<xla::ifrt::Array*> ifrt_array();
-#endif
 
   // Returns an error status iff the object has been deleted.
   xla::StatusOr<absl::Span<xla::PjRtBuffer* const>> pjrt_buffers();
@@ -340,9 +338,7 @@ class ShardedDeviceArray {
   std::optional<pybind11::object> npy_value_ = std::nullopt;
   std::optional<pybind11::object> one_replica_buffer_indices_ = std::nullopt;
 
-#ifdef JAX_ENABLE_IFRT
   std::optional<tsl::RCReference<xla::ifrt::Array>> ifrt_array_ = std::nullopt;
-#endif
 
   // The device_buffers as a C++ object. As this is what we consume from C++
   // and this is also what we generate from C++, cache the result so that

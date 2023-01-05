@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/tsl/platform/float8.h"
 
 namespace mlir {
 namespace tfg {
@@ -405,6 +406,25 @@ void ConvertBfloat16ElementsAttr(const DenseElementsAttr attr,
   }
 }
 
+template <typename T>
+void ConvertFloat8ElementsAttr(const DenseElementsAttr attr,
+                               std::string* output) {
+  // Float8 values are stored as bit representations in int, requiring a
+  // bit_cast.
+  if (attr.isSplat()) {
+    uint8_t bits = Eigen::numext::bit_cast<uint8_t>(attr.getSplatValue<T>());
+    // Only +0 has a 0 bit representation.
+    if (bits != 0) {
+      output->push_back(bits);
+    }
+  } else {
+    output->reserve(attr.getNumElements());
+    for (const T value : attr.getValues<T>()) {
+      output->push_back(Eigen::numext::bit_cast<uint8_t>(value));
+    }
+  }
+}
+
 Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
   auto type = attr.getType();
   auto shape = type.getShape();
@@ -442,6 +462,14 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
     case tensorflow::DT_FLOAT:
       ConvertFloatElementsAttr(dense_attr, output->mutable_float_val(),
                                output->mutable_tensor_content());
+      break;
+    case tensorflow::DT_FLOAT8_E5M2:
+      ConvertFloat8ElementsAttr<tsl::float8_e5m2>(dense_attr,
+                                                  output->mutable_float8_val());
+      break;
+    case tensorflow::DT_FLOAT8_E4M3FN:
+      ConvertFloat8ElementsAttr<tsl::float8_e4m3fn>(
+          dense_attr, output->mutable_float8_val());
       break;
     case tensorflow::DT_QUINT8:
     case tensorflow::DT_INT8:

@@ -116,6 +116,9 @@ bool MatchesSoftmaxPattern(HloInstruction* instr) {
 
                    int64_t rank = instr->shape().rank();
                    return instr->IsElementwiseBinary() &&
+                          // We rely on L1 cache for performance, and there are
+                          // 256 elements in L1 cache per warp.
+                          instr->shape().dimensions().back() <= 256 &&
                           // If the product of the first dimensions is 1, it
                           // currently crashes the pipeline. Also, we expect
                           // that the performance is not so good if the

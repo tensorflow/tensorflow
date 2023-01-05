@@ -814,6 +814,10 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                     &xla::OpSharding::replicate_on_last_tile_dim,
                     &xla::OpSharding::set_replicate_on_last_tile_dim)
       .def("__repr__", &xla::OpSharding::DebugString)
+      .def("ParseFromString",
+           [](OpSharding& sharding, const std::string& s) {
+             sharding.ParseFromString(s);
+           })
       .def("SerializeToString",
            [](const OpSharding& sharding) {
              return py::bytes(sharding.SerializeAsString());

@@ -2474,10 +2474,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       if (Eigen::numext::isnan(operand)) {
         return static_cast<ResultT>(0);
       }
-      if (operand >= std::numeric_limits<ResultT>::max()) {
+      if (operand >= static_cast<Fp>(std::numeric_limits<ResultT>::max())) {
         return std::numeric_limits<ResultT>::max();
       }
-      if (operand <= std::numeric_limits<ResultT>::min()) {
+      if (operand <= static_cast<Fp>(std::numeric_limits<ResultT>::min())) {
         return std::numeric_limits<ResultT>::min();
       }
 
@@ -2488,7 +2488,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
       // Removes the integral piece to obtain the fractional piece.
       Fp fractional = operand - static_cast<Fp>(truncated);
-      if (fractional == 0) {
+      if (fractional == Fp{0}) {
         // No rounding necessary.
         return is_negative ? -truncated : truncated;
       }

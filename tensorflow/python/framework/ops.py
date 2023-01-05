@@ -6173,22 +6173,22 @@ def enable_eager_execution(config=None, device_policy=None,
       be picked automatically. The value picked may change between TensorFlow
       releases.
       Valid values:
-      - tf.contrib.eager.DEVICE_PLACEMENT_EXPLICIT: raises an error if the
+      - DEVICE_PLACEMENT_EXPLICIT: raises an error if the
         placement is not correct.
-      - tf.contrib.eager.DEVICE_PLACEMENT_WARN: copies the tensors which are not
+      - DEVICE_PLACEMENT_WARN: copies the tensors which are not
         on the right device but logs a warning.
-      - tf.contrib.eager.DEVICE_PLACEMENT_SILENT: silently copies the tensors.
+      - DEVICE_PLACEMENT_SILENT: silently copies the tensors.
         Note that this may hide performance problems as there is no notification
         provided when operations are blocked on the tensor being copied between
         devices.
-      - tf.contrib.eager.DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies
+      - DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies
         int32 tensors, raising errors on the other ones.
     execution_mode: (Optional.) Policy controlling how operations dispatched are
       actually executed. When set to None, an appropriate value will be picked
       automatically. The value picked may change between TensorFlow releases.
       Valid values:
-      - tf.contrib.eager.SYNC: executes each operation synchronously.
-      - tf.contrib.eager.ASYNC: executes each operation asynchronously. These
+      - SYNC: executes each operation synchronously.
+      - ASYNC: executes each operation asynchronously. These
         operations may return "non-ready" handles.
 
   Raises:
@@ -6256,13 +6256,9 @@ def enable_eager_execution_internal(config=None,
                            context.DEVICE_PLACEMENT_WARN,
                            context.DEVICE_PLACEMENT_SILENT,
                            context.DEVICE_PLACEMENT_SILENT_FOR_INT32):
-    raise ValueError(
-        "device_policy must be one of None, tf.contrib.eager.DEVICE_PLACEMENT_*"
-    )
+    raise ValueError("device_policy must be one of None, DEVICE_PLACEMENT_*")
   if execution_mode not in (None, context.SYNC, context.ASYNC):
-    raise ValueError(
-        "execution_mode must be one of None, tf.contrib.eager.SYNC, "
-        "tf.contrib.eager.ASYNC")
+    raise ValueError("execution_mode must be one of None, SYNC, " "ASYNC")
   if context.default_execution_mode == context.GRAPH_MODE:
     graph_mode_has_been_used = (
         _default_graph_stack._global_default_graph is not None)  # pylint: disable=protected-access
@@ -6309,7 +6305,6 @@ def eager_run(main=None, argv=None):
   ```python
   import tensorflow as tf
   # Import subject to future changes:
-  from tensorflow.contrib.eager.python import tfe
 
   def main(_):
     u = tf.constant(6.0)
@@ -6522,10 +6517,8 @@ class GraphKeys(object):
     and all `MODEL_VARIABLES` variables will be in `GLOBAL_VARIABLES`.
   * `LOCAL_VARIABLES`: the subset of `Variable` objects that are local to each
     machine. Usually used for temporarily variables, like counters.
-    Note: use `tf.contrib.framework.local_variable` to add to this collection.
   * `MODEL_VARIABLES`: the subset of `Variable` objects that are used in the
-    model for inference (feed forward). Note: use
-    `tf.contrib.framework.model_variable` to add to this collection.
+    model for inference (feed forward).
   * `TRAINABLE_VARIABLES`: the subset of `Variable` objects that will
     be trained by an optimizer. See
     `tf.compat.v1.trainable_variables`

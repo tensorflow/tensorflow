@@ -25,9 +25,7 @@ limitations under the License.
 
 #include "absl/synchronization/notification.h"
 #include "tensorflow/compiler/xla/pjrt/lru_cache.h"
-#ifdef JAX_ENABLE_IFRT
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
-#endif
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
@@ -108,29 +106,15 @@ class PjitFunction {
 
 // Prepares the input PjRtBuffers from the python arguments. This is equivalent
 // to shard_args() in pxla.py but for only a few supported cases.
-#ifdef JAX_ENABLE_IFRT
 xla::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
 PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
                   ParsedArgumentsAsBuffers& arguments,
                   const std::vector<bool>& kept_args) {
-#else
-xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
-    const xla::PyLoadedExecutable& executable,
-    ParsedArgumentsAsBuffers& arguments, const std::vector<bool>& kept_args) {
-#endif
   const auto& addressable_devices = executable.AddressableDevices();
   int num_args = arguments.flat_dynamic_args.size();
 
-#ifdef JAX_ENABLE_IFRT
   std::vector<tsl::RCReference<xla::ifrt::Array>> num_args_arrays;
   num_args_arrays.reserve(num_args);
-#else
-  std::vector<std::vector<xla::PjRtBuffer*>> num_computation_num_args_buffers(
-      addressable_devices.size());
-  for (int i = 0; i < addressable_devices.size(); ++i) {
-    num_computation_num_args_buffers[i].reserve(num_args);
-  }
-#endif
 
   for (int i = 0; i < num_args; ++i) {
     if (!kept_args[i]) {
@@ -159,7 +143,6 @@ xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
           addressable_devices.size(), py_array.num_shards());
     }
 
-#ifdef JAX_ENABLE_IFRT
     xla::ifrt::Array* ifrt_array = py_array.ifrt_array();
     // PyArray inputs should have already been checked in
     // `xla::PyArgSignatureOfValue()` called by
@@ -181,36 +164,11 @@ xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
     } else {
       num_args_arrays.push_back(tsl::FormRef(ifrt_array));
     }
-#else
-    if (cpp_sharding->num_devices() == 1) {
-      for (int j = 0; j < addressable_devices.size(); ++j) {
-        auto* to_device = addressable_devices[j].get();
-        xla::PjRtBuffer* buffer = py_array.pjrt_buffer(j);
-
-        if (buffer->device() == to_device) {
-          num_computation_num_args_buffers[j].push_back(buffer);
-        } else {
-          TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtBuffer> copied_buffer,
-                              buffer->CopyToDevice(to_device));
-          num_computation_num_args_buffers[j].push_back(copied_buffer.get());
-          arguments.keep_alive.push_back(std::move(copied_buffer));
-        }
-      }
-    } else {
-      for (int j = 0; j < addressable_devices.size(); ++j) {
-        num_computation_num_args_buffers[j].push_back(py_array.pjrt_buffer(j));
-      }
-    }
-#endif
 
     arguments.keep_alive_objects.push_back(arg);
   }
 
-#ifdef JAX_ENABLE_IFRT
   return num_args_arrays;
-#else
-  return num_computation_num_args_buffers;
-#endif
 }
 
 xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
@@ -335,7 +293,6 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
     return fallback_to_cache_miss();
   }
 
-#ifdef JAX_ENABLE_IFRT
   // A vector of [num_inputs].
   auto num_args_arrays = PrepareIfrtInputs(*cache_entry->executable, arguments,
                                            cache_entry->kept_var_bitvec);
@@ -376,57 +333,6 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
 
     outputs.push_back(std::move(py_array));
   }
-#else
-  // A vector of [num_devices, num_inputs].
-  auto num_computation_num_args_buffers = PreparePjRtInputs(
-      *cache_entry->executable, arguments, cache_entry->kept_var_bitvec);
-  if (!num_computation_num_args_buffers.ok()) {
-    VLOG(2) << "Failed to prepare PjRt inputs: "
-            << num_computation_num_args_buffers.status();
-    return fallback_to_cache_miss();
-  }
-  int num_computations = num_computation_num_args_buffers->size();
-
-  // A vector of [num_devices, num_outputs].
-  std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> output_buffers;
-  {
-    py::gil_scoped_release gil_release;
-    auto pjrt_executable = cache_entry->executable->pjrt_executable();
-    TF_ASSIGN_OR_RETURN(
-        output_buffers,
-        pjrt_executable->Execute(*num_computation_num_args_buffers,
-                                 cache_entry->executable->options()));
-  }
-
-  auto traceback = xla::Traceback::Get();
-  const auto& client = cache_entry->executable->client();
-
-  // Convert the PjRtBuffer objects to PyArray, and invert the order from
-  // [num_devices, num_args] to [num_args, num_devices].
-  int num_outputs = output_buffers[0].size();
-  absl::InlinedVector<py::object, 4> outputs;
-  outputs.reserve(num_outputs);
-  for (int i = 0; i < num_outputs; ++i) {
-    std::vector<std::shared_ptr<xla::PjRtBuffer>> pjrt_buffers;
-    pjrt_buffers.reserve(num_computations);
-
-    for (int j = 0; j < num_computations; ++j) {
-      pjrt_buffers.push_back(std::move(output_buffers[j][i]));
-    }
-
-    // Creating the PyArray result. In addition to the PjRtBuffers, the metadata
-    // like `aval` and `sharding` are retrieved from the cache for this
-    // function, which are produced by the python path in `cache_miss`.
-    xla::PyArray py_array(
-        cache_entry->out_avals[i], cache_entry->out_weak_types[i],
-        cache_entry->out_dtypes[i], cache_entry->out_shapes[i],
-        cache_entry->out_shardings[i], cache_entry->executable->client(),
-        traceback, std::move(pjrt_buffers),
-        /*committed=*/cache_entry->out_committed.at(i), /*skip_checks=*/true);
-
-    outputs.push_back(std::move(py_array));
-  }
-#endif
 
   py::object out = cache_entry->out_pytree_def.Unflatten(outputs);
 

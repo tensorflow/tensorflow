@@ -212,3 +212,39 @@ func.func @pad(%arg0: tensor<10x10xf32>) -> tensor<16x10xf32> {
 // PAD:            %[[MAP:.*]] = linalg.map ins(%arg0 {{.*}} outs(%[[EXTRACT]]
 // PAD:            %[[INSERT:.*]] = tensor.insert_slice %[[MAP]] into  %[[FILL]][0, 0] [10, 10]
 // PAD:            return %[[INSERT]]
+
+// -----
+
+func.func @matvec_static(%arg0: tensor<1x16xf32>, %arg1: tensor<16x64xf32>,
+                         %output: tensor<1x64xf32>) -> tensor<1x64xf32> {
+  %2 = linalg.matmul ins(%arg0, %arg1 : tensor<1x16xf32>, tensor<16x64xf32>)
+                     outs(%output : tensor<1x64xf32>) -> tensor<1x64xf32>
+  return %2 : tensor<1x64xf32>
+}
+
+// MMT4D-LABEL:    func @matvec_static(
+
+// MMT4D-NOT:        linalg.matmul
+// MMT4D:            gml_st.parallel {{.*}} = (%c0, %c0) to (%[[DIM0:.*]], %[[DIM1:.*]]) step (%c1, %c1)
+// MMT4D:              gml_st.parallel {{.*}} = (%c0, %c0) to (%c1, %c8) step (%c1, %c8)
+// MMT4D:                gml_st.for {{.*}} = (%c0) to (%[[DIM2:.*]]) step (%c1)
+// MMT4D:                  gml_st.for {{.*}} = (%c0) to (%c1) step (%c1) outs ({{.*}}tensor<1x1x1x8xf32>)
+// MMT4D:                    linalg.mmt4d
+
+// -----
+
+func.func @matmul_narrow_static(%arg0: tensor<2x16xf32>, %arg1: tensor<16x64xf32>,
+                         %output: tensor<2x64xf32>) -> tensor<2x64xf32> {
+  %2 = linalg.matmul ins(%arg0, %arg1 : tensor<2x16xf32>, tensor<16x64xf32>)
+                     outs(%output : tensor<2x64xf32>) -> tensor<2x64xf32>
+  return %2 : tensor<2x64xf32>
+}
+
+// MMT4D-LABEL:    func @matmul_narrow_static(
+
+// MMT4D-NOT:        linalg.matmul
+// MMT4D:            gml_st.parallel {{.*}} = (%c0, %c0) to (%[[DIM0:.*]], %[[DIM1:.*]]) step (%c1, %c1)
+// MMT4D:              gml_st.parallel {{.*}} = (%c0, %c0) to (%c2, %c8) step (%c2, %c8)
+// MMT4D:                gml_st.for {{.*}} = (%c0) to (%[[DIM2:.*]]) step (%c1)
+// MMT4D:                  gml_st.for {{.*}} = (%c0) to (%c1) step (%c1) outs ({{.*}}tensor<1x1x2x8xf32>)
+// MMT4D:                    linalg.mmt4d

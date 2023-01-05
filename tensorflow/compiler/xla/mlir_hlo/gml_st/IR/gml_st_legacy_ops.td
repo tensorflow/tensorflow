@@ -110,7 +110,7 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
   let builders = [
     OpBuilder<(ins "ValueRange":$lowerBounds, "ValueRange":$upperBounds,
       "ValueRange":$steps, "ValueRange":$inputs, "ValueRange":$outputs,
-      "ArrayAttr":$iteratorTypes, "Optional<ArrayAttr>":$distributionTypes,
+      "ArrayAttr":$iteratorTypes, "std::optional<ArrayAttr>":$distributionTypes,
       CArg<"function_ref<void (OpBuilder &, Location, /*ivs=*/ValueRange,"
         "/*inputs=*/ValueRange, /*outputs=*/ValueRange)>",
         "nullptr">:$bodyBuilderFn)>,

@@ -761,14 +761,9 @@ PjRtCApiExecutable::Execute(
 }
 
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-PjRtCApiExecutable::ExecuteSharded(
+PjRtCApiExecutable::ExecuteWithDevice(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options,
-    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
-  if (fill_future) {
-    return Unimplemented(
-        "PJRT C API does not support fill_future for ExecuteSharded");
-  }
+    const ExecuteOptions& options) {
   std::vector<std::vector<PjRtBuffer*>> argument_handles_vec = {
       {argument_handles.begin(), argument_handles.end()}};
 
@@ -795,28 +790,27 @@ PjRtCApiExecutable::ExecuteSharded(
 }
 
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+PjRtCApiExecutable::ExecuteSharded(
+    absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+    const ExecuteOptions& options,
+    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+  if (fill_future) {
+    return Unimplemented(
+        "PJRT C API does not support fill_future for ExecuteSharded");
+  }
+  return ExecuteWithDevice(argument_handles, device, options);
+}
+
+StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCApiExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
     std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
-  if (kPjRtCApiBypass) {
-    VLOG(1) << "PJRT C API BYPASS: ExecutePortable";
-    std::vector<PjRtBuffer*> wrapped_args =
-        PjRtCApiBuffer::GetWrappedVector(argument_handles);
-
-    TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> out,
-                        wrapped()->ExecutePortable(
-                            wrapped_args, PjRtCApiDevice::GetWrapped(device),
-                            options, returned_future, fill_future));
-
-    for (std::unique_ptr<PjRtBuffer>& buffer : out) {
-      buffer = std::make_unique<PjRtCApiBuffer>(
-          client_,
-          new PJRT_Buffer{std::move(buffer), client_->pjrt_c_client()});
-    }
-    return out;
+  if (fill_future) {
+    return Unimplemented(
+        "PJRT C API does not support fill_future for ExecutePortable");
   }
-  return Unimplemented("PJRT C API does not support ExecutePortable");
+  return ExecuteWithDevice(argument_handles, device, options);
 }
 
 PjRtLoadedExecutable* PjRtCApiExecutable::wrapped() const {

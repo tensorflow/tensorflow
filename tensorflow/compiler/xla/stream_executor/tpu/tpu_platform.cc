@@ -33,7 +33,7 @@ template <typename T>
 using StatusOr = ::stream_executor::port::StatusOr<T>;
 
 TpuPlatform::TpuPlatform() : name_("TPU") {
-  platform_ = tpu::ExecutorApiFn()->TpuPlatform_NewFn();
+  platform_ = stream_executor::tpu::ExecutorApiFn()->TpuPlatform_NewFn();
   CHECK(platform_ != nullptr);
 }
 
@@ -58,7 +58,7 @@ Status TpuPlatform::Initialize(
     i++;
   }
 
-  tpu::ExecutorApiFn()->TpuPlatform_InitializeFn(
+  stream_executor::tpu::ExecutorApiFn()->TpuPlatform_InitializeFn(
       platform_, options_size, options_key, options_value, status.c_status);
 
   free(options_key);
@@ -68,15 +68,17 @@ Status TpuPlatform::Initialize(
 }
 
 bool TpuPlatform::Initialized() const {
-  return tpu::ExecutorApiFn()->TpuPlatform_InitializedFn(platform_);
+  return stream_executor::tpu::ExecutorApiFn()->TpuPlatform_InitializedFn(
+      platform_);
 }
 
 TpuPlatform::~TpuPlatform() {
-  tpu::ExecutorApiFn()->TpuPlatform_FreeFn(platform_);
+  stream_executor::tpu::ExecutorApiFn()->TpuPlatform_FreeFn(platform_);
 }
 
 int TpuPlatform::VisibleDeviceCount() const {
-  return tpu::ExecutorApiFn()->TpuPlatform_VisibleDeviceCountFn(platform_);
+  return stream_executor::tpu::ExecutorApiFn()
+      ->TpuPlatform_VisibleDeviceCountFn(platform_);
 }
 
 StatusOr<::stream_executor::StreamExecutor*> TpuPlatform::GetExecutor(
@@ -88,16 +90,18 @@ StatusOr<::stream_executor::StreamExecutor*> TpuPlatform::GetExecutor(
 StatusOr<std::unique_ptr<::stream_executor::StreamExecutor>>
 TpuPlatform::GetUncachedExecutor(
     const ::stream_executor::StreamExecutorConfig& config) {
-  SE_StreamExecutorConfig* c_config =
-      tpu::ExecutorApiFn()->TpuStreamExecutorConfig_DefaultFn();
+  SE_StreamExecutorConfig* c_config = stream_executor::tpu::ExecutorApiFn()
+                                          ->TpuStreamExecutorConfig_DefaultFn();
 
-  tpu::ExecutorApiFn()->TpuStreamExecutorConfig_SetOrdinalFn(c_config,
-                                                             config.ordinal);
+  stream_executor::tpu::ExecutorApiFn()->TpuStreamExecutorConfig_SetOrdinalFn(
+      c_config, config.ordinal);
 
   StatusHelper status;
-  SE_StreamExecutor* executor = tpu::ExecutorApiFn()->TpuPlatform_GetExecutorFn(
-      platform_, c_config, status.c_status);
-  tpu::ExecutorApiFn()->TpuStreamExecutorConfig_FreeFn(c_config);
+  SE_StreamExecutor* executor =
+      stream_executor::tpu::ExecutorApiFn()->TpuPlatform_GetExecutorFn(
+          platform_, c_config, status.c_status);
+  stream_executor::tpu::ExecutorApiFn()->TpuStreamExecutorConfig_FreeFn(
+      c_config);
   if (!status.ok()) {
     return status.status();
   }
@@ -113,26 +117,30 @@ TpuPlatform::GetUncachedExecutor(
 const std::string& TpuPlatform::Name() const { return name_; }
 
 int64_t TpuPlatform::TpuMemoryLimit() {
-  return tpu::ExecutorApiFn()->TpuPlatform_TpuMemoryLimitFn(platform_);
+  return stream_executor::tpu::ExecutorApiFn()->TpuPlatform_TpuMemoryLimitFn(
+      platform_);
 }
 
 bool TpuPlatform::ShouldRegisterTpuDeviceToDeviceCopy() {
-  return tpu::ExecutorApiFn()
+  return stream_executor::tpu::ExecutorApiFn()
       ->TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopyFn(platform_);
 }
 
 const tensorflow::tpu::TpuTopologyPtr TpuPlatform::GetTopologyPtr() {
-  return tpu::ExecutorApiFn()->TpuPlatform_GetTopologyPtrFn(platform_);
+  return stream_executor::tpu::ExecutorApiFn()->TpuPlatform_GetTopologyPtrFn(
+      platform_);
 }
 
 const tensorflow::tpu::TpuHostLocationExternal TpuPlatform::GetTpuHostLocation()
     const {
   return tpu::TpuHostLocationExternal(
-      tpu::ExecutorApiFn()->TpuPlatform_GetHostLocationFn(platform_));
+      stream_executor::tpu::ExecutorApiFn()->TpuPlatform_GetHostLocationFn(
+          platform_));
 }
 
 TpuRuntimeVersion TpuPlatform::version() const {
-  return tpu::ExecutorApiFn()->TpuPlatform_GetRuntimeVersionFn(platform_);
+  return stream_executor::tpu::ExecutorApiFn()->TpuPlatform_GetRuntimeVersionFn(
+      platform_);
 }
 
 void TpuPlatform::InsertEvent(stream_executor::internal::EventInterface* key,
@@ -188,7 +196,8 @@ bool RegisterTpuPlatform() {
   // Silently bail if the underlying TPU C API isn't initialized. This is useful
   // for code that unconditionally calls RegisterTpuPlatform() but doesn't link
   // in the underlying TPU library when not running on TPU.
-  if (!tpu::IsStreamExecutorEnabled(tpu::ExecutorApiFn())) {
+  if (!stream_executor::tpu::IsStreamExecutorEnabled(
+          stream_executor::tpu::ExecutorApiFn())) {
     return true;
   }
   static bool tpu_platform_registered = false;

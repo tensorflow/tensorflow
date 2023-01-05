@@ -3235,8 +3235,13 @@ LogicalResult ConvertTFLCustomOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_custom_op = cast<TFL::CustomOp>(op);
   rewriter.replaceOpWithNewOp<tosa::CustomOp>(
-      op, op->getResultTypes(), tfl_custom_op.getCustomCode(), StringRef{},
-      StringRef{}, op->getOperands());
+      op, op->getResultTypes(), tfl_custom_op.getCustomCode(),
+      rewriter.getStringAttr("TFL"),
+      tfl_custom_op.getCustomOption()
+          .cast<mlir::TFL::ConstBytesAttr>()
+          .getValue()
+          .str(),
+      op->getOperands());
 
   return success();
 }
@@ -3620,6 +3625,12 @@ LogicalResult ConvertTFLArgMaxOp::matchAndRewrite(
     return failure();
 
   int32_t dim = dim_elems.getValues<APInt>()[0].getSExtValue();
+
+  if (dim < 0) {
+    auto input_type = cast<RankedTensorType>(arg_max_op.getInput().getType());
+    dim += input_type.getRank();
+  }
+
   CreateReplaceOpAndInfer<tosa::ArgMaxOp>(
       rewriter, op, arg_max_op.getType(), arg_max_op.getInput(),
       rewriter.getIntegerAttr(rewriter.getI64Type(), dim));

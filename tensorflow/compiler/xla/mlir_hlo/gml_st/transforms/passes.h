@@ -116,6 +116,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForTritonPass(
 /// Pass to fuse linalg on tensor operations.
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionOfTensorOpsPass();
 
+/// Pass to convert ops on tensors with 1 element to scalar ops.
+std::unique_ptr<OperationPass<func::FuncOp>> createScalarizationPass();
+
 /// Pass to transform a linalg.map op for CPU backend.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformMapForCpuPass(int64_t tileSize = 1);
@@ -132,6 +135,46 @@ createTransformTransposeForCpuPass(ArrayRef<int64_t> tileSizes = std::nullopt);
 /// Pass to transform a thlo.sort op for CPU backend.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformSortForCpuPass();
+
+struct GmlStCPUPipelineOptions
+    : public mlir::PassPipelineOptions<GmlStCPUPipelineOptions> {
+  Option<bool> vectorize{*this, "vectorize",
+                         llvm::cl::desc("Enable tiling for vectorization."),
+                         llvm::cl::init(false)};
+
+  Option<int64_t> vectorSize{*this, "vector-size",
+                             llvm::cl::desc("Vector size for a 1D reduction."),
+                             llvm::cl::init(8)};
+
+  Option<int64_t> reduction1DTileSize{
+      *this, "reduction-1d-tile-size",
+      llvm::cl::desc("Tile size for a 1D reduction."), llvm::cl::init(32)};
+
+  ListOption<int64_t> reduction2DTileSizes{
+      *this, "reduction-2d-tile-sizes",
+      llvm::cl::desc("Tile sizes for a 2D reduction."),
+      llvm::cl::list_init<int64_t>({4, 4}), llvm::cl::ZeroOrMore};
+
+  ListOption<int64_t> matmulTileSizes{
+      *this, "matmul-tile-sizes",
+      llvm::cl::desc("Tile sizes for `linalg.matmul`."),
+      llvm::cl::list_init<int64_t>({4, 4, 4}), llvm::cl::ZeroOrMore};
+
+  Option<bool> lowerToMmt4d{
+      *this, "lower-to-mmt4d",
+      llvm::cl::desc("Enable the specific code generation (packing) for matmul "
+                     "operations."),
+      llvm::cl::init(false)};
+};
+
+// Make GmlStCPUPipelineOptions hashable.
+inline ::llvm::hash_code hashValue(const GmlStCPUPipelineOptions &opts) {
+  return ::llvm::hash_value(static_cast<bool>(opts.vectorize));
+}
+
+// Adds tiling-fusion-vectorization passes for tHLO/Linalg ops mix.
+void addTileableOpsTransformationsForCPU(
+    OpPassManager &pm, const GmlStCPUPipelineOptions &options);
 
 #define GEN_PASS_REGISTRATION
 #include "gml_st/transforms/passes.h.inc"

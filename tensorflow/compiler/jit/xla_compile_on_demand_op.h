@@ -46,12 +46,15 @@ class XlaCompileOnDemandOp : public OpKernel {
   XlaCompiler::Argument CreateCompilerArgument(OpKernelContext* ctx, int64_t i);
   Status Compile(OpKernelContext* ctx,
                  const XlaCompiler::CompilationResult** result,
-                 XlaCompilationCache** cache,
+                 DeviceCompiler<xla::LocalExecutable, xla::LocalClient>**
+                     xla_device_compiler,
                  DeviceCompilationProfiler** profiler,
                  ResourceVarsSnapshot* variable_args,
                  xla::LocalExecutable** executable);
 
-  Status Run(OpKernelContext* ctx, XlaCompilationCache* cache,
+  Status Run(OpKernelContext* ctx,
+             DeviceCompiler<xla::LocalExecutable, xla::LocalClient>*
+                 xla_device_compiler,
              const XlaCompiler::CompilationResult* result,
              xla::LocalExecutable* executable,
              const ResourceVarsSnapshot& variable_args);

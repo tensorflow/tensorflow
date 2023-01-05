@@ -161,6 +161,23 @@ TEST_F(CudnnFusedConvRewriterTest, TestConvOnly) {
     })");
 }
 
+TEST_F(CudnnFusedConvRewriterTest, DontFuseReluWithDepthwiseConv) {
+  // max(0, conv(x, w));
+  TestNotMatchWithAllTypes(R"(
+    HloModule Test
+
+    ENTRY Test {
+      zero = TYPE[] constant(0)
+      zeros = TYPE[1,17,9,9] broadcast(zero), dimensions={}
+
+      input = TYPE[1,17,9,9] parameter(0)
+      filter = TYPE[3,3,1,17] parameter(1)
+
+      conv = TYPE[1,17,9,9] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=17
+      ROOT relu = TYPE[1,17,9,9] maximum(zeros, conv)
+    })");
+}
+
 TEST_F(CudnnFusedConvRewriterTest, TestBias) {
   // max(0, conv(x, w) + bias);
   TestMatchWithAllTypes(R"(
@@ -175,6 +192,26 @@ TEST_F(CudnnFusedConvRewriterTest, TestBias) {
       bias = TYPE[64] parameter(2)
 
       conv = TYPE[1,3,3,64] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, feature_group_count=1
+      broadcasted_bias = TYPE[1,3,3,64] broadcast(bias), dimensions={3}
+      add1 = TYPE[1,3,3,64] add(conv, broadcasted_bias)
+      ROOT relu = TYPE[1,3,3,64] maximum(zeros, add1)
+    })");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, DontFuseBiasWithDepthwiseConv) {
+  // conv(x, w) + bias;
+  TestNotMatchWithAllTypes(R"(
+    HloModule Test
+
+    ENTRY Test {
+      zero = TYPE[] constant(0)
+      zeros = TYPE[1,3,3,64] broadcast(zero), dimensions={}
+
+      input = TYPE[1,3,3,64] parameter(0)
+      filter = TYPE[3,3,1,64] parameter(1)
+      bias = TYPE[64] parameter(2)
+
+      conv = TYPE[1,3,3,64] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, feature_group_count=64
       broadcasted_bias = TYPE[1,3,3,64] broadcast(bias), dimensions={3}
       add1 = TYPE[1,3,3,64] add(conv, broadcasted_bias)
       ROOT relu = TYPE[1,3,3,64] maximum(zeros, add1)
@@ -209,6 +246,35 @@ TEST_F(CudnnFusedConvRewriterTest, TestElu) {
     })");
 }
 
+TEST_F(CudnnFusedConvRewriterTest, DontFuseEluWithDepthwiseConv) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Conv-Bias-Elu fusion is supported and recommended with "
+                    "the Nvidia Ampere+ GPUs.";
+  }
+
+  // sum = conv(x, w) + bias
+  // select(compare(sum, 0, GT), sum, exponential-minus-one(sum));
+  TestNotMatchWithAllTypes(R"(
+    HloModule Test
+
+    ENTRY Test {
+      zero = TYPE[] constant(0)
+      zeros = TYPE[1,3,3,64] broadcast(zero), dimensions={}
+
+      input = TYPE[1,3,3,64] parameter(0)
+      filter = TYPE[3,3,1,64] parameter(1)
+      bias = TYPE[64] parameter(2)
+
+      conv = TYPE[1,3,3,64] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, feature_group_count=64
+      broadcasted_bias = TYPE[1,3,3,64] broadcast(bias), dimensions={3}
+      sum = TYPE[1,3,3,64] add(conv, broadcasted_bias)
+      cmp = pred[1,3,3,64] compare(sum, zeros), direction=GT
+      expm1 = TYPE[1,3,3,64] exponential-minus-one(sum)
+      ROOT elu = TYPE[1,3,3,64] select(cmp, sum, expm1)
+    })");
+}
+
 TEST_F(CudnnFusedConvRewriterTest, TestSideInputOnly) {
   // max(0, conv(x, w) + side_input);
   TestMatchWithAllTypes(R"(
@@ -223,6 +289,25 @@ TEST_F(CudnnFusedConvRewriterTest, TestSideInputOnly) {
       side_input = TYPE[1,3,3,64] parameter(2)
 
       conv = TYPE[1,3,3,64] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, feature_group_count=1
+      add1 = TYPE[1,3,3,64] add(conv, side_input)
+      ROOT relu = TYPE[1,3,3,64] maximum(zeros, add1)
+    })");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, DontFuseSideInputWithDepthwiseConv) {
+  // max(0, conv(x, w) + side_input);
+  TestNotMatchWithAllTypes(R"(
+    HloModule Test
+
+    ENTRY Test {
+      zero = TYPE[] constant(0)
+      zeros = TYPE[1,3,3,64] broadcast(zero), dimensions={}
+
+      input = TYPE[1,3,3,64] parameter(0)
+      filter = TYPE[3,3,1,64] parameter(1)
+      side_input = TYPE[1,3,3,64] parameter(2)
+
+      conv = TYPE[1,3,3,64] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, feature_group_count=64
       add1 = TYPE[1,3,3,64] add(conv, side_input)
       ROOT relu = TYPE[1,3,3,64] maximum(zeros, add1)
     })");
@@ -270,6 +355,26 @@ TEST_F(CudnnFusedConvRewriterTest, TestScaledConv) {
     })");
 }
 
+TEST_F(CudnnFusedConvRewriterTest, DontFuseScaledDepthwiseConv) {
+  // max(0, 0.999994934 * conv(x, w));
+  TestNotMatchWithAllTypes(R"(
+    HloModule Test
+
+    ENTRY Test {
+      zero = TYPE[] constant(0)
+      zeros = TYPE[1,17,9,9] broadcast(zero), dimensions={}
+      alpha_conv_scalar = TYPE[] constant(0.999994934)
+
+      input = TYPE[1,17,9,9] parameter(0)
+      filter = TYPE[3,3,1,17] parameter(1)
+
+      conv = TYPE[1,17,9,9] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=17
+      alpha_conv = TYPE[1,17,9,9] broadcast(alpha_conv_scalar), dimensions={}
+      scaled_conv = TYPE[1,17,9,9] multiply(conv, alpha_conv)
+      ROOT relu = TYPE[1,17,9,9] maximum(zeros, scaled_conv)
+    })");
+}
+
 TEST_F(CudnnFusedConvRewriterTest, TestNoCrashOnInf) {
   EXPECT_TRUE(RunAndCompare(R"(
     HloModule Test
@@ -290,7 +395,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestNoCrashOnInf) {
                             ErrorSpec{0.01}));
 }
 
-TEST_F(CudnnFusedConvRewriterTest, TestScaledConvAndSideInput) {
+TEST_F(CudnnFusedConvRewriterTest, TestConvAndScaledSideInput) {
   // max(0, conv(x, w) + 0.899994934 * side_input);
   TestMatchWithAllTypes(R"(
     HloModule Test
@@ -306,6 +411,28 @@ TEST_F(CudnnFusedConvRewriterTest, TestScaledConvAndSideInput) {
       side_input = TYPE[1,3,3,64] parameter(2)
 
       conv = TYPE[1,3,3,64] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, feature_group_count=1
+      scaled_side_input = TYPE[1,3,3,64] multiply(side_input, alpha_side_input)
+      add1 = TYPE[1,3,3,64] add(conv, scaled_side_input)
+      ROOT relu = TYPE[1,3,3,64] maximum(zeros, add1)
+    })");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, DontFuseDepthwiseConvWithScaledSideInput) {
+  // max(0, conv(x, w) + 0.899994934 * side_input);
+  TestNotMatchWithAllTypes(R"(
+    HloModule Test
+
+    ENTRY Test {
+      zero = TYPE[] constant(0)
+      zeros = TYPE[1,3,3,64] broadcast(zero), dimensions={}
+      alpha_side_input_scalar = TYPE[] constant(0.899994934)
+      alpha_side_input = TYPE[1,3,3,64] broadcast(alpha_side_input_scalar), dimensions={}
+
+      input = TYPE[1,3,3,64] parameter(0)
+      filter = TYPE[3,3,1,64] parameter(1)
+      side_input = TYPE[1,3,3,64] parameter(2)
+
+      conv = TYPE[1,3,3,64] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, feature_group_count=64
       scaled_side_input = TYPE[1,3,3,64] multiply(side_input, alpha_side_input)
       add1 = TYPE[1,3,3,64] add(conv, scaled_side_input)
       ROOT relu = TYPE[1,3,3,64] maximum(zeros, add1)

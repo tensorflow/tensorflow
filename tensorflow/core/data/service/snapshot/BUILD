@@ -11,10 +11,31 @@ package(
 )
 
 cc_library(
+    name = "path_utils",
+    srcs = ["path_utils.cc"],
+    hdrs = ["path_utils.h"],
+    deps = [
+        "//tensorflow/tsl/platform:path",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "path_utils_test",
+    srcs = ["path_utils_test.cc"],
+    deps = [
+        ":path_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "snapshot_stream_writer",
     srcs = ["snapshot_stream_writer.cc"],
     hdrs = ["snapshot_stream_writer.h"],
     deps = [
+        ":path_utils",
         ":utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -26,6 +47,7 @@ cc_library(
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:thread_annotations",
         "@com_google_absl//absl/strings",
@@ -37,14 +59,17 @@ tf_cc_test(
     size = "small",
     srcs = ["snapshot_stream_writer_test.cc"],
     deps = [
+        ":path_utils",
         ":snapshot_stream_writer",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/data/service:task_runner",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/protobuf:protos_all_cc",

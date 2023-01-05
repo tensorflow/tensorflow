@@ -8514,5 +8514,31 @@ ENTRY %main.21 {
               op::Sharding("{devices=[8,1,1,1,1]0,1,2,3,4,5,6,7}"));
 }
 
+TEST_F(ShardingPropagationTest, OutfeedUser) {
+  const char* const hlo_string = R"(
+HloModule pjit
+
+ENTRY %main.21 {
+  p = f32[10,128]{1,0} parameter(0)
+  c = f32[10,128]{1,0} copy(p)
+  t = (f32[10,128]{1,0}) tuple(c)
+  a = token[] after-all()
+  ROOT of = token[] outfeed((f32[10,128]{1,0}) %t, token[] %a), outfeed_shape=(f32[10,128]{1,0}), sharding={{devices=[2,1]0,1}, {maximal device=0}}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "c"),
+              op::Sharding("{devices=[2,1]0,1}"));
+}
+
 }  // namespace
 }  // namespace xla

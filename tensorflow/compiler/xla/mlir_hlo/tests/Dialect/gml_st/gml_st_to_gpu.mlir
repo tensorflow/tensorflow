@@ -28,9 +28,10 @@ func.func @vectorized_tiling(%arg0: memref<2048xf32>) -> memref<2048xf32> {
     %transfer_read = vector.transfer_read %warp_arg[%c0], %c0f {"gml-st-distribution-label" = "warp", in_bounds = [true]} : memref<128xf32, strided<[1], offset: ?>>, vector<128xf32>
     %warp_out = memref.subview %block_out[%apply_ty] [128] [1] {"gml-st-distribution-label" = "warp"} : memref<1024xf32, strided<[1], offset: ?>> to memref<128xf32, strided<[1], offset: ?>>
     %apply_tx = affine.apply #map1(%tx)[%c0, %c4]
-    %tile = gml_st.tile [%apply_tx] [4] [1] : !gml_st.tile<4>
-    %materialized_tile = gml_st.materialize %transfer_read[%tile] : vector<128xf32>[!gml_st.tile<4>] to vector<4xf32>
+    %materialized_tile = gml_st.materialize %transfer_read[%apply_tx] [4] [1]
+      : vector<128xf32> to vector<4xf32>
     %result = math.absf %materialized_tile : vector<4xf32>
+    %tile = gml_st.tile [%apply_tx] [4] [1] : !gml_st.tile<4>
     %distribute = gml_st.distribute %result into[%tile] : vector<4xf32> into vector<128xf32>[!gml_st.tile<4>]
     vector.transfer_write %distribute, %warp_out[%c0] {"gml-st-distribution-label" = "warp", in_bounds = [true]} : vector<128xf32>, memref<128xf32, strided<[1], offset: ?>>
     gpu.terminator
@@ -65,9 +66,8 @@ func.func @materialize_scalar_of_transfer_read(
   %c0 = arith.constant 0 : index
   %vector = vector.transfer_read %in[%c0], %pad {in_bounds = [true]}
     : memref<32xf32>, vector<32xf32>
-  %tile = gml_st.tile [%idx] [1] [1] : !gml_st.tile<1>
-  %value = gml_st.materialize %vector[%tile]
-    : vector<32xf32>[!gml_st.tile<1>] to f32
+  %value = gml_st.materialize %vector[%idx] [1] [1]
+    : vector<32xf32> to f32
   return %value : f32
 }
 // CHECK-LABEL: @materialize_scalar_of_transfer_read(
