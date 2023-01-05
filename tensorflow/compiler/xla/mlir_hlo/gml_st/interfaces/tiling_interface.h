@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_H
-#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_H
+#ifndef MLIR_HLO_GML_ST_INTERFACES_TILING_INTERFACE_H
+#define MLIR_HLO_GML_ST_INTERFACES_TILING_INTERFACE_H
 
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/Operation.h"
@@ -46,4 +46,4 @@ Value materializePoint(OpBuilder &b, Location loc, Value valueToTile,
 }  // namespace gml_st
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_H
+#endif  // MLIR_HLO_GML_ST_INTERFACES_TILING_INTERFACE_H

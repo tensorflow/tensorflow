@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_LINALG_UTILS_H
-#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_LINALG_UTILS_H
+#ifndef MLIR_HLO_GML_ST_UTILS_LINALG_UTILS_H
+#define MLIR_HLO_GML_ST_UTILS_LINALG_UTILS_H
 
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 
