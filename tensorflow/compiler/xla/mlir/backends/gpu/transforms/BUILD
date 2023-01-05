@@ -4,7 +4,7 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )
 
@@ -53,6 +53,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
         "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:location_exporter",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",

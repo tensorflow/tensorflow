@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "gml_st/transforms/passes.h"
-#include "gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
@@ -26,8 +25,6 @@ namespace gml_st {
 void addTileableOpsTransformationsForCPU(
     OpPassManager& pm, const GmlStCPUPipelineOptions& options) {
   using func::FuncOp;
-
-  if (!options.vectorize) return;
 
   pm.addNestedPass<FuncOp>(createTransformScatterForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformReduceForCpuPass(
@@ -44,15 +41,9 @@ void addTileableOpsTransformationsForCPU(
 
   pm.addNestedPass<FuncOp>(createCollapseMaterializeOpsPass());
   pm.addNestedPass<FuncOp>(createVectorizePerfectlyTiledLoopsPass());
+  pm.addNestedPass<FuncOp>(createScalarizationPass());
   pm.addNestedPass<FuncOp>(createLowerVectorContractPass());
 }
-
-namespace {
-mlir::PassPipelineRegistration<GmlStCPUPipelineOptions>
-    gmlStTilingAndFusionTransformations(
-        "gml-st-cpu-pipeline", "Tiles, fuses, vectorizes tileable ops for CPU",
-        addTileableOpsTransformationsForCPU);
-}  // namespace
 
 }  // namespace gml_st
 }  // namespace mlir

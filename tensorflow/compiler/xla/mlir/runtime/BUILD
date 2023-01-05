@@ -37,7 +37,7 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_cpu",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:passes",
-        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
+        "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MemRefDialect",

@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/profiling/telemetry/profiler.h"
 #include "tensorflow/lite/profiling/telemetry/telemetry_status.h"
 
-namespace tflite {
+namespace tflite::telemetry {
 namespace {
 
 constexpr char kEventName[] = "event_name";
@@ -38,7 +38,8 @@ class MockTelemtryProfiler : public TelemetryProfiler {
                TelemetryStatusCode status),
               (override));
   MOCK_METHOD(void, ReportSettings,
-              (const char* setting_name, const TelemetrySettings& settings),
+              (const char* setting_name,
+               const TfLiteTelemetrySettings* settings),
               (override));
   MOCK_METHOD(uint32_t, ReportBeginOpInvokeEvent,
               (const char* op_name, int64_t op_idx, int64_t subgraph_idx),
@@ -94,9 +95,9 @@ TEST_F(TelemetryTest, TelemetryReportDelegateOpEvent) {
 
 TEST_F(TelemetryTest, TelemetryReportSettings) {
   EXPECT_CALL(profiler_, ReportSettings(kSettingName, testing::_));
+  TfLiteTelemetryInterpreterSettings settings{};
 
-  TelemetryReportSettings(&context_, kSettingName,
-                          TelemetryInterpreterSettings());
+  TelemetryReportSettings(&context_, kSettingName, &settings);
 }
 
 TEST_F(TelemetryTest, TelemetryReportDelegateSettings) {
@@ -108,4 +109,4 @@ TEST_F(TelemetryTest, TelemetryReportDelegateSettings) {
 }
 
 }  // namespace
-}  // namespace tflite
+}  // namespace tflite::telemetry

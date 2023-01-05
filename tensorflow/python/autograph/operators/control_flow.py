@@ -180,7 +180,7 @@ def _verify_loop_init_vars(init_vars,
 
     error_msg = None
     if val is None:
-      error_msg = "'{}' may not be None before the loop".format(name)
+      error_msg = "'{}' is not allowed to be None before the loop".format(name)
     elif isinstance(val, variables.Undefined):
       error_msg = "'{}' must be defined before the loop".format(name)
       if extra_message:

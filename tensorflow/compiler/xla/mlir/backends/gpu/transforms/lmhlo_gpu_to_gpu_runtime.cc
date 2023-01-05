@@ -53,6 +53,7 @@ using mlir::lmhlo_gpu::ConvBackwardInputOp;
 using mlir::lmhlo_gpu::ConvForwardFusedOp;
 using mlir::lmhlo_gpu::ConvForwardFusedSideInputOp;
 using mlir::lmhlo_gpu::ConvForwardOp;
+using mlir::lmhlo_gpu::CublasLtMatmulF8Op;
 using mlir::lmhlo_gpu::CublasLtMatmulOp;
 using mlir::lmhlo_gpu::GEMMOp;
 
@@ -206,6 +207,74 @@ class CublasLtMatmulOpLowering : public OpRewritePattern<CublasLtMatmulOp> {
   CustomCallDeclarations& custom_calls_;
 };
 
+// As above for FP8 Custom Calls.
+class CublasLtMatmulF8OpLowering : public OpRewritePattern<CublasLtMatmulF8Op> {
+ private:
+  static constexpr const char kCustomCallTarget[] =
+      "xla.gpu.cublas.lt.matmul.f8";
+
+ public:
+  CublasLtMatmulF8OpLowering(MLIRContext* ctx, UidGenerator& uid,
+                             CustomCallDeclarations& custom_calls)
+      : OpRewritePattern<CublasLtMatmulF8Op>(ctx),
+        uid_(uid),
+        custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(CublasLtMatmulF8Op op,
+                                PatternRewriter& rewriter) const override {
+    // Get the custom call target.
+    std::string matmul = kCustomCallTarget;
+
+    if (op.getNumOperands() == 9) {
+      matmul += ".d_amax";
+    } else if (op.getNumOperands() != 8) {
+      return op.emitOpError("unexpected number of operands for matmul");
+    }
+
+    // Get or create a custom call function declaration.
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    func::FuncOp callee = custom_calls_.GetOrCreate(b, matmul, op);
+
+    // Convert matmul to a function call.
+    auto call = rewriter.create<func::CallOp>(op.getLoc(), callee.getName(),
+                                              TypeRange(), op.getOperands());
+
+    // Assign a unique id to this instance of a matmul operation.
+    call->setAttr(b.getStringAttr("uid"), b.getI64IntegerAttr(uid_.uid()));
+
+    // Copy backend specific attributes.
+    call->setAttr(b.getStringAttr("algorithm"), op.getAlgorithmAttr());
+    call->setAttr(b.getStringAttr("alpha_imag"), op.getAlphaImagAttr());
+    call->setAttr(b.getStringAttr("alpha_real"), op.getAlphaRealAttr());
+    call->setAttr(b.getStringAttr("beta"), op.getBetaAttr());
+    call->setAttr(b.getStringAttr("dot_dims"), op.getDotDimensionNumbers());
+    call->setAttr(b.getStringAttr("epilogue"), op.getEpilogueAttr());
+
+    // TODO(ezhulenev): Today we can't pass an array of enum attributes to the
+    // custom call. Also we do not have a corresponding precision enum on the
+    // SE/XLA side, so we encode it as an i32 array (tensor).
+    if (auto precisions = op.getPrecisionConfig()) {
+      llvm::SmallVector<int32_t> values;
+      for (auto precision : *precisions) {
+        auto value = precision.cast<mhlo::PrecisionAttr>().getValue();
+        values.push_back(static_cast<int32_t>(value));
+      }
+      call->setAttr(b.getStringAttr("precision"), b.getI32TensorAttr(values));
+    } else {
+      call->setAttr(b.getStringAttr("precision"), b.getI32TensorAttr({0, 0}));
+    }
+
+    // Erase the original matmul operation.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+
+ private:
+  UidGenerator& uid_;
+  CustomCallDeclarations& custom_calls_;
+};
+
 //===----------------------------------------------------------------------===//
 
 template <typename Conv>
@@ -248,7 +317,8 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
       call->setAttr(b.getStringAttr(name), attr);
     };
 
-    auto set_xi64 = [&](StringRef name, Optional<DenseIntElementsAttr> attr) {
+    auto set_xi64 = [&](StringRef name,
+                        std::optional<DenseIntElementsAttr> attr) {
       SmallVector<int64_t> values;
       if (attr.has_value())
         values = llvm::to_vector(attr->getValues<int64_t>());
@@ -257,7 +327,7 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
 
     // Convert `BoolElementsAttr` to i64 before passing to the runtime.
     // TODO(ezhulenev): Allow passing boolean tensors to the XLA custom calls.
-    auto set_xi1 = [&](StringRef name, Optional<DenseElementsAttr> attr) {
+    auto set_xi1 = [&](StringRef name, std::optional<DenseElementsAttr> attr) {
       SmallVector<int64_t> values;
       if (attr.has_value())
         values.assign(attr->getValues<bool>().begin(),
@@ -398,8 +468,8 @@ void ConvertLmhloGpuToGpuRuntimePass::runOnOperation() {
 
   // Each unique Gemm/Matmul operation in the module will get assigned a uid.
   UidGenerator matmul_uid;
-  patterns.insert<GemmOpLowering, CublasLtMatmulOpLowering>(ctx, matmul_uid,
-                                                            custom_calls);
+  patterns.insert<GemmOpLowering, CublasLtMatmulOpLowering,
+                  CublasLtMatmulF8OpLowering>(ctx, matmul_uid, custom_calls);
 
   // Each unique Conv operation in the module will get assigned a uid.
   UidGenerator conv_uid;

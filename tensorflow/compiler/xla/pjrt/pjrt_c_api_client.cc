@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 // TODO(skyewm): remove when everything goes through C API
@@ -31,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/pjrt_api.h"
@@ -229,7 +231,7 @@ static StatusOr<std::unique_ptr<PjRtLoadedExecutable>> InitializeArgsAndCompile(
   PJRT_Program program;
   program.struct_size = PJRT_Program_STRUCT_SIZE;
   program.priv = nullptr;
-  program.code = code.c_str();
+  program.code = const_cast<char*>(code.c_str());
   program.code_size = code.size();
   program.format = format.c_str();
   program.format_size = format.size();
@@ -263,22 +265,56 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
 
 StatusOr<std::string> PjRtCApiClient::SerializeExecutable(
     const PjRtLoadedExecutable& executable) const {
-  if (kPjRtCApiBypass) {
-    VLOG(1) << "PJRT C API BYPASS: SerializeExecutable";
-    return wrapped_->SerializeExecutable(
-        *PjRtCApiExecutable::GetWrapped(&executable));
-  }
-  return Unimplemented("PJRT C API does not support SerializeExecutable");
+  auto c_api_exec =
+      tensorflow::down_cast<const PjRtCApiExecutable*>(&executable);
+  const PJRT_Executable* c_exec = c_api_exec->c_executable();
+
+  PJRT_Executable_Serialize_Args ser_args;
+  ser_args.struct_size = PJRT_Executable_Serialize_Args_STRUCT_SIZE;
+  ser_args.priv = nullptr;
+  ser_args.executable = c_exec;
+  ser_args.serialized_executable = nullptr;
+
+  const PJRT_Api* api = pjrt_c_api();
+
+  RETURN_STATUS_IF_ERROR(api->PJRT_Executable_Serialize(&ser_args), api);
+  PJRT_SerializedExecutable* c_serialized_exec = ser_args.serialized_executable;
+  std::unique_ptr<PJRT_SerializedExecutable,
+                  ::pjrt::PJRT_SerializedExecutableDeleter>
+      serialized_executable(c_serialized_exec,
+                            ::pjrt::MakeSerializedExecutableDeleter(api));
+
+  PJRT_SerializedExecutable_Data_Args data_args;
+  data_args.struct_size = PJRT_SerializedExecutable_Data_Args_STRUCT_SIZE;
+  data_args.priv = nullptr;
+  data_args.serialized_executable = c_serialized_exec;
+  data_args.data = nullptr;
+  data_args.data_size = 0;
+
+  RETURN_STATUS_IF_ERROR(api->PJRT_SerializedExecutable_Data(&data_args), api);
+
+  return std::string(data_args.data, data_args.data_size);
 }
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtCApiClient::DeserializeExecutable(absl::string_view serialized,
                                       std::optional<CompileOptions> options) {
-  if (kPjRtCApiBypass) {
-    VLOG(1) << "PJRT C API BYPASS: DeserializeExecutable";
-    return WrapExecutable(wrapped_->DeserializeExecutable(serialized, options));
-  }
-  return Unimplemented("PJRT C API does not support DeserializeExecutable");
+  PJRT_Executable_Deserialize_Args des_args;
+
+  des_args.struct_size = PJRT_Executable_Deserialize_Args_STRUCT_SIZE;
+  des_args.priv = nullptr;
+  des_args.client = c_client_.get();
+  des_args.serialized_executable = serialized.data();
+  des_args.serialized_executable_size = serialized.length();
+
+  const PJRT_Api* api = pjrt_c_api();
+
+  RETURN_STATUS_IF_ERROR(api->PJRT_Executable_Deserialize(&des_args), api);
+  PJRT_Executable* c_exec = des_args.deserialized_executable;
+  CHECK(c_exec != nullptr);
+  std::unique_ptr<PjRtLoadedExecutable> deserialized_executable =
+      std::make_unique<PjRtCApiExecutable>(this, c_exec);
+  return deserialized_executable;
 }
 
 StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
@@ -448,21 +484,33 @@ void PjRtCApiDevice::InitAttributes() {
     const auto& attribute = args.attributes[i];
     std::string attribute_name(attribute.name, attribute.name_size);
     switch (attribute.type) {
-      case PJRT_Device_Attribute::PJRT_Device_Attribute_kString: {
+      case PJRT_NamedValue::PJRT_NamedValue_kString: {
         std::string string_value(attribute.string_value, attribute.value_size);
         attributes_[attribute_name] = PjRtDeviceAttribute(string_value);
         break;
       }
-      case PJRT_Device_Attribute::PJRT_Device_Attribute_kInt64: {
+      case PJRT_NamedValue::PJRT_NamedValue_kInt64: {
         attributes_[attribute_name] =
             PjRtDeviceAttribute(attribute.int64_value);
         break;
       }
-      case PJRT_Device_Attribute::PJRT_Device_Attribute_kInt64List: {
+      case PJRT_NamedValue::PJRT_NamedValue_kInt64List: {
         const int64_t* array_ptr(attribute.int64_array_value);
         std::vector<int64_t> int64_array(array_ptr,
                                          array_ptr + attribute.value_size);
         attributes_[attribute_name] = PjRtDeviceAttribute(int64_array);
+        break;
+      }
+      // Do not allow other types (such as
+      // PJRT_NamedValue::PJRT_NamedValue_kFloat) since device attributes
+      // currently should not return other types. Also C API client currently
+      // does not support forward compatibility (such as if the underlying
+      // PJRT library is a newer version that returns types not supported by
+      // this client). Failing here to prevent undefined behavior.
+      default: {
+        LOG(FATAL) << "PJRT_Device_Attributes() returned attribute '"
+                   << attribute_name << "' with unsupported type "
+                   << attribute.type << " to PjRtCApiDevice::InitAttributes()";
         break;
       }
     }
@@ -557,6 +605,43 @@ void PjRtCApiExecutable::InitDevices() {
   }
 }
 
+StatusOr<std::vector<std::shared_ptr<HloModule>>>
+PjRtCApiExecutable::GetHloModules() const {
+  PJRT_Executable_OptimizedProgram_Args args;
+  args.struct_size = PJRT_Executable_OptimizedProgram_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = executable_.get();
+  PJRT_Program program;
+  program.struct_size = PJRT_Program_STRUCT_SIZE;
+  program.priv = nullptr;
+  program.code = nullptr;
+  args.program = &program;
+
+  const PJRT_Api* api = pjrt_c_api();
+  RETURN_STATUS_IF_ERROR(api->PJRT_Executable_OptimizedProgram(&args), api);
+
+  constexpr size_t TWO_GIBIBYTES = 2ull * 1024 * 1024 * 1024;
+  const size_t code_size = args.program->code_size;
+  CHECK(code_size < TWO_GIBIBYTES);
+  std::string code(code_size, ' ');
+  args.program->code = code.data();
+  RETURN_STATUS_IF_ERROR(api->PJRT_Executable_OptimizedProgram(&args), api);
+
+  absl::string_view program_format(program.format, program.format_size);
+  if (program_format != ::pjrt::kHloWithConfigFormat) {
+    return xla::InternalError(
+        "expected program format `hlo_with_config` but got %s", program_format);
+  }
+
+  HloModuleProtoWithConfig proto;
+  proto.ParseFromString(code);
+  std::vector<std::shared_ptr<HloModule>> out;
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      HloModule::CreateFromProtoWithConfig(proto));
+  out.push_back(std::move(module));
+  return out;
+}
+
 static std::vector<std::vector<PJRT_Buffer*>> Convert2DCppBuffersToCBuffers(
     absl::Span<const std::vector<PjRtBuffer*>> cpp_lists) {
   std::vector<std::vector<PJRT_Buffer*>> c_lists;
@@ -587,7 +672,6 @@ Convert2DCBuffersToCppBuffers(PJRT_Buffer*** c_lists, size_t outer_size,
   return ret;
 }
 
-
 xla::StatusOr<PJRT_Executable_Execute_Args>
 PjRtCApiExecutable::GetCommonExecuteArgs(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
@@ -595,7 +679,8 @@ PjRtCApiExecutable::GetCommonExecuteArgs(
     std::vector<std::vector<PJRT_Buffer*>>& c_argument_lists_storage,
     std::vector<PJRT_Buffer**>& c_arguments,
     std::vector<std::vector<PJRT_Buffer*>>& c_output_lists_storage,
-    std::vector<PJRT_Buffer**>& c_output_lists) {
+    std::vector<PJRT_Buffer**>& c_output_lists,
+    std::optional<std::vector<PJRT_Event*>>& device_complete_events) {
   PJRT_Executable_Execute_Args args;
   args.struct_size = PJRT_Executable_Execute_Args_STRUCT_SIZE;
   args.priv = nullptr;
@@ -606,7 +691,12 @@ PjRtCApiExecutable::GetCommonExecuteArgs(
   args.num_devices = argument_handles.size();
   CHECK_GT(args.num_devices, 0);
   args.num_args = argument_handles[0].size();
-
+  if (device_complete_events.has_value()) {
+    device_complete_events->resize(args.num_devices);
+    args.device_complete_events = device_complete_events->data();
+  } else {
+    args.device_complete_events = nullptr;
+  }
   // Populates `args.argument_lists` from `argument_handles`.
   c_argument_lists_storage = Convert2DCppBuffersToCBuffers(argument_handles);
   c_arguments.reserve(c_argument_lists_storage.size());
@@ -647,18 +737,18 @@ PjRtCApiExecutable::Execute(
   std::vector<PJRT_Buffer**> c_output_lists;
   PJRT_ExecuteOptions c_options;
   std::vector<PJRT_Buffer**> c_arguments;
+  std::optional<std::vector<PJRT_Event*>> device_complete_events;
+  if (returned_futures.has_value()) {
+    device_complete_events.emplace();
+  }
   TF_ASSIGN_OR_RETURN(
       PJRT_Executable_Execute_Args args,
       GetCommonExecuteArgs(argument_handles, options, c_options,
                            c_argument_lists_storage, c_arguments,
-                           c_output_lists_storage, c_output_lists));
+                           c_output_lists_storage, c_output_lists,
+                           device_complete_events));
 
   args.execute_device = nullptr;
-  args.device_complete_events = nullptr;
-  if (returned_futures.has_value()) {
-    std::vector<PJRT_Event*> c_events(args.num_devices);
-    args.device_complete_events = c_events.data();
-  }
 
   RETURN_STATUS_IF_ERROR(pjrt_c_api()->PJRT_Executable_Execute(&args),
                          pjrt_c_api());
@@ -677,14 +767,10 @@ PjRtCApiExecutable::Execute(
 }
 
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-PjRtCApiExecutable::ExecuteSharded(
+PjRtCApiExecutable::ExecuteWithSingleDevice(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
     std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
-  if (fill_future) {
-    return Unimplemented(
-        "PJRT C API does not support fill_future for ExecuteSharded");
-  }
   std::vector<std::vector<PjRtBuffer*>> argument_handles_vec = {
       {argument_handles.begin(), argument_handles.end()}};
 
@@ -693,11 +779,16 @@ PjRtCApiExecutable::ExecuteSharded(
   std::vector<PJRT_Buffer**> c_output_lists;
   PJRT_ExecuteOptions c_options;
   std::vector<PJRT_Buffer**> c_arguments;
+  std::optional<std::vector<PJRT_Event*>> device_complete_events;
+  if (fill_future) {
+    device_complete_events.emplace();
+  }
   TF_ASSIGN_OR_RETURN(
       PJRT_Executable_Execute_Args args,
       GetCommonExecuteArgs(argument_handles_vec, options, c_options,
                            c_argument_lists_storage, c_arguments,
-                           c_output_lists_storage, c_output_lists));
+                           c_output_lists_storage, c_output_lists,
+                           device_complete_events));
 
   args.execute_device =
       tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
@@ -705,9 +796,22 @@ PjRtCApiExecutable::ExecuteSharded(
   RETURN_STATUS_IF_ERROR(pjrt_c_api()->PJRT_Executable_Execute(&args),
                          pjrt_c_api());
 
+  if (fill_future) {
+    *returned_future = pjrt::ConvertCEventToCppFuture(
+        args.device_complete_events[0], pjrt_c_api());
+  }
   return std::move(Convert2DCBuffersToCppBuffers(
       args.output_lists, args.num_devices, c_output_lists_storage[0].size(),
       client_)[0]);
+}
+
+StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+PjRtCApiExecutable::ExecuteSharded(
+    absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+    const ExecuteOptions& options,
+    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+  return ExecuteWithSingleDevice(argument_handles, device, options,
+                                 returned_future, fill_future);
 }
 
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
@@ -715,24 +819,8 @@ PjRtCApiExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
     std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
-  if (kPjRtCApiBypass) {
-    VLOG(1) << "PJRT C API BYPASS: ExecutePortable";
-    std::vector<PjRtBuffer*> wrapped_args =
-        PjRtCApiBuffer::GetWrappedVector(argument_handles);
-
-    TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> out,
-                        wrapped()->ExecutePortable(
-                            wrapped_args, PjRtCApiDevice::GetWrapped(device),
-                            options, returned_future, fill_future));
-
-    for (std::unique_ptr<PjRtBuffer>& buffer : out) {
-      buffer = std::make_unique<PjRtCApiBuffer>(
-          client_,
-          new PJRT_Buffer{std::move(buffer), client_->pjrt_c_client()});
-    }
-    return out;
-  }
-  return Unimplemented("PJRT C API does not support ExecutePortable");
+  return ExecuteWithSingleDevice(argument_handles, device, options,
+                                 returned_future, fill_future);
 }
 
 PjRtLoadedExecutable* PjRtCApiExecutable::wrapped() const {
@@ -783,6 +871,57 @@ int64_t PjRtCApiExecutable::SizeOfGeneratedCodeInBytes() const {
   pjrt::LogFatalIfPjrtError(
       c_api->PJRT_Executable_SizeOfGeneratedCodeInBytes(&args), c_api);
   return args.size_in_bytes;
+}
+
+StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+PjRtCApiExecutable::GetCostAnalysis() const {
+  // Initialize function call args
+  PJRT_Executable_GetCostAnalysis_Args args;
+  args.struct_size = PJRT_Executable_GetCostAnalysis_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = executable_.get();
+
+  // Make PJRT C API call
+  const PJRT_Api* c_api = pjrt_c_api();
+  RETURN_STATUS_IF_ERROR(c_api->PJRT_Executable_GetCostAnalysis(&args), c_api);
+
+  // Copy returned properties to output map
+  absl::flat_hash_map<std::string, PjRtValueType> output_map;
+  for (auto i = 0; i < args.num_properties; ++i) {
+    switch (args.properties[i].type) {
+      case PJRT_NamedValue::PJRT_NamedValue_kFloat:
+        output_map[args.properties[i].name] = args.properties[i].float_value;
+        break;
+      case PJRT_NamedValue::PJRT_NamedValue_kInt64:
+        output_map[args.properties[i].name] = args.properties[i].int64_value;
+        break;
+      case PJRT_NamedValue::PJRT_NamedValue_kInt64List: {
+        PjRtValueType& output_value = output_map[args.properties[i].name];
+        std::vector<int64_t>& output_int64_list =
+            std::get<std::vector<int64_t>>(output_value);
+        output_int64_list.reserve(args.properties[i].value_size);
+        for (auto j = 0; j < args.properties[i].value_size; ++j) {
+          output_int64_list.push_back(args.properties[i].int64_array_value[j]);
+        }
+        break;
+      }
+      case PJRT_NamedValue::PJRT_NamedValue_kString:
+        output_map[args.properties[i].name] = args.properties[i].string_value;
+        break;
+      // C API client currently does not support forward compatibility (such as
+      // if the underlying PJRT library is a newer version that returns types
+      // not supported by this client). Failing here to prevent undefined
+      // behavior.
+      default:
+        LOG(FATAL) << "PJRT_Executable_GetCostAnalysis() returned attribute '"
+                   << args.properties[i].name << "' with unsupported type '"
+                   << args.properties[i].type
+                   << "' to PjRtCApiExecutable::GetCostAnalysis()";
+        break;
+    }
+  }
+
+  return output_map;
 }
 
 // ---------------------------------- Buffers ----------------------------------
@@ -1015,7 +1154,10 @@ PjRtFuture<Status> PjRtCApiBuffer::GetReadyFuture() {
 StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     absl::string_view device_type) {
 #if !defined(PLATFORM_GOOGLE) || defined(LIBTPU_STATIC)
-  TF_RETURN_IF_ERROR(tensorflow::tpu::FindAndLoadTpuLibrary());
+  if (absl::AsciiStrToLower(device_type) == "tpu") {
+    // TODO(b/261484192): handle device specific initialization.
+    TF_RETURN_IF_ERROR(tensorflow::tpu::FindAndLoadTpuLibrary());
+  }
 #endif
   TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api,
                       stream_executor::tpu::PjrtApi(device_type));

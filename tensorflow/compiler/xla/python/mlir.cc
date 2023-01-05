@@ -77,19 +77,26 @@ void EnablePrintBeforeAndAfter(mlir::PassManager& pm) {
   pm.enableIRPrinting(print_before, print_after);
 }
 
-// Converts an XlaComputation to an MHLO mlir::Module string. Exists for
+// Converts an XlaComputation to a StableHLO mlir::Module string. Exists for
 // backwards compatibility.
 // TODO(phawkins): port remaining users of XlaComputations to use mlir::Modules
 // instead and delete this function.
 StatusOr<std::string> PyXlaComputationToMlirModule(
     const XlaComputation& computation) {
   mlir::MLIRContext context;
+  if (VLOG_IS_ON(3)) context.disableMultithreading();
   mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   context.loadDialect<mlir::func::FuncDialect>();
   context.loadDialect<mlir::mhlo::MhloDialect>();
   TF_RETURN_IF_ERROR(ConvertHloToMlirHlo(*module, &computation.proto(),
                                          /*import_all_computations=*/true));
+  mlir::PassManager pm(&context);
+  if (VLOG_IS_ON(3)) EnablePrintBeforeAndAfter(pm);
+  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+  if (!mlir::succeeded(pm.run(*module))) {
+    return tsl::errors::InvalidArgument("MHLO => StableHLO failed");
+  }
   return PrintModule(*module);
 }
 
@@ -108,6 +115,13 @@ StatusOr<XlaComputation> PyMlirModuleToXlaComputation(std::string mlir_module,
 StatusOr<std::string> PyMhloToStablehlo(std::string mlir_module) {
   mlir::MLIRContext context;
   if (VLOG_IS_ON(3)) context.disableMultithreading();
+  // JAX can be customized in a way that involves operations from custom
+  // dialects showing up in JAX IR.
+  // `ParseModule` won't know about these dialects, but that's fine since we
+  // just want to convert MHLO ops to StableHLO ops here and leave everything
+  // else unchanged.
+  // In order to achieve that, we're allowing unregistered dialects here.
+  context.allowUnregisteredDialects(true);
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseModule(&context, mlir_module));
   mlir::PassManager pm(&context);
@@ -122,6 +136,9 @@ StatusOr<std::string> PyMhloToStablehlo(std::string mlir_module) {
 StatusOr<std::string> PyStablehloToMhlo(std::string mlir_module) {
   mlir::MLIRContext context;
   if (VLOG_IS_ON(3)) context.disableMultithreading();
+  // See PyMhloToStablehlo for an explanation of why we're allowing unregistered
+  // dialects here.
+  context.allowUnregisteredDialects(true);
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseModule(&context, mlir_module));
   mlir::PassManager pm(&context);

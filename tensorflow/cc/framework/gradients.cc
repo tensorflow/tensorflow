@@ -16,6 +16,11 @@ limitations under the License.
 #include "tensorflow/cc/framework/gradients.h"
 
 #include <deque>
+#include <map>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/cc/framework/grad_op_registry.h"
@@ -35,9 +40,7 @@ namespace tensorflow {
 namespace {
 
 struct OutputHash {
-  uint64 operator()(const Output& x) const {
-    return x.hash();
-  }
+  uint64 operator()(const Output& x) const { return x.hash(); }
 };
 
 struct OutputEq {
@@ -343,8 +346,8 @@ Status SymbolicGradientBuilder::Initialize() {
 Status SymbolicGradientBuilder::SumGradients(const Output& src, Output* grad) {
   auto iter = backprops_.find(src);
   if (iter == backprops_.end()) {
-    return errors::Internal(
-        "Unable to find backprop list for node.id ", src.node()->name());
+    return errors::Internal("Unable to find backprop list for node.id ",
+                            src.node()->name());
   }
   const auto& grads = iter->second;
   // Filter any backpropped 'NoGradient' Outputs from 'grads' (if needed).
@@ -378,8 +381,7 @@ bool SymbolicGradientBuilder::IsPrimitiveOpWithNoGrad(const string& opname) {
 }
 
 Status SymbolicGradientBuilder::CallGradFunction(
-    const Operation& op,
-    const std::vector<Output>& grad_inputs,
+    const Operation& op, const std::vector<Output>& grad_inputs,
     std::vector<Output>* grad_outputs) {
   ops::GradFunc grad_fn;
   TF_RETURN_IF_ERROR(registry_->Lookup(op.node()->type_string(), &grad_fn));
@@ -526,8 +528,8 @@ Status SymbolicGradientBuilder::AddGradients() {
       if (e->IsControlEdge()) continue;
       size_t dx_index = e->dst_input();
       if (dx_index >= dx.size()) {
-        return errors::Internal(
-            "Invalid gradient output index: ", dx_index, " size: ", dx.size());
+        return errors::Internal("Invalid gradient output index: ", dx_index,
+                                " size: ", dx.size());
       }
       TF_RETURN_IF_ERROR(
           BackpropAlongEdge(dx[dx_index], {e->src(), e->src_output()}));

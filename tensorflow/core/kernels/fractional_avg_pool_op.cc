@@ -322,7 +322,8 @@ class FractionalAvgPoolGradOp : public OpKernel {
     // Transform orig_input_tensor_shape into TensorShape
     TensorShape in_shape;
     for (auto i = 0; i < tensor_in_and_out_dims; ++i) {
-      in_shape.AddDim(orig_input_tensor_shape_flat(i));
+      OP_REQUIRES_OK(
+          context, in_shape.AddDimWithStatus(orig_input_tensor_shape_flat(i)));
     }
 
     // Create intermediate in_backprop.

@@ -16,7 +16,9 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -53,11 +55,11 @@ std::string SerializeExportedModel(const ExportedModel& exported_model,
 }  // namespace
 
 std::string QuantizeQatModel(const absl::string_view saved_model_path,
-                             const absl::string_view exported_names_str,
-                             const absl::string_view tags,
+                             const std::vector<std::string>& signature_keys,
+                             const std::unordered_set<std::string>& tags,
                              const absl::string_view quant_opts_serialized) {
   const absl::StatusOr<ExportedModel> exported_model =
-      internal::QuantizeQatModel(saved_model_path, exported_names_str, tags,
+      internal::QuantizeQatModel(saved_model_path, signature_keys, tags,
                                  quant_opts_serialized);
   if (!exported_model.ok()) {
     throw py::value_error(absl::StrFormat("Failed to quantize QAT model: %s",
@@ -69,11 +71,12 @@ std::string QuantizeQatModel(const absl::string_view saved_model_path,
 
 std::string QuantizePtqDynamicRange(
     const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags,
+    const std::vector<std::string>& signature_keys,
+    const std::unordered_set<std::string>& tags,
     const absl::string_view quant_opts_serialized) {
   const absl::StatusOr<ExportedModel> exported_model =
-      internal::QuantizePtqDynamicRange(saved_model_path, exported_names_str,
-                                        tags, quant_opts_serialized);
+      internal::QuantizePtqDynamicRange(saved_model_path, signature_keys, tags,
+                                        quant_opts_serialized);
   if (!exported_model.ok()) {
     throw py::value_error(
         absl::StrFormat("Failed to apply post-training dynamic range "
@@ -86,11 +89,12 @@ std::string QuantizePtqDynamicRange(
 
 std::string QuantizePtqModelPreCalibration(
     const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags,
+    const std::vector<std::string>& signature_keys,
+    const std::unordered_set<std::string>& tags,
     const absl::string_view quant_opts_serialized) {
   const absl::StatusOr<ExportedModel> exported_model =
-      internal::QuantizePtqModelPreCalibration(
-          saved_model_path, exported_names_str, tags, quant_opts_serialized);
+      internal::QuantizePtqModelPreCalibration(saved_model_path, signature_keys,
+                                               tags, quant_opts_serialized);
   if (!exported_model.ok()) {
     throw py::value_error(absl::StrFormat(
         "Failed to quantize PTQ model at the precalibration stage: %s",
@@ -102,11 +106,12 @@ std::string QuantizePtqModelPreCalibration(
 
 std::string QuantizePtqModelPostCalibration(
     const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags,
+    const std::vector<std::string>& signature_keys,
+    const std::unordered_set<std::string>& tags,
     const absl::string_view quant_opts_serialized) {
   const absl::StatusOr<ExportedModel> exported_model =
       internal::QuantizePtqModelPostCalibration(
-          saved_model_path, exported_names_str, tags, quant_opts_serialized);
+          saved_model_path, signature_keys, tags, quant_opts_serialized);
   if (!exported_model.ok()) {
     throw py::value_error(absl::StrFormat(
         "Failed to quantize PTQ model at the postcalibration stage: %s",

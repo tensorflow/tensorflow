@@ -479,6 +479,18 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
           return EmitF32ToBF16(EmitIntegralToFloating(operand_value, from_type,
                                                       F32, module_, b_));
         }
+        if (to_type == F8E5M2) {
+          return EmitF16ToF8e5m2(
+              EmitIntegralToFloating(operand_value, from_type, F16, module_,
+                                     b_),
+              b_);
+        }
+        if (to_type == F8E4M3FN) {
+          return EmitF16ToF8e4m3fn(
+              EmitIntegralToFloating(operand_value, from_type, F16, module_,
+                                     b_),
+              b_);
+        }
         return EmitIntegralToFloating(operand_value, from_type, to_type,
                                       module_, b_);
       }
@@ -1067,9 +1079,6 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
     case HloOpcode::kRsqrt: {
       return EmitComplexRsqrt(op, component_type, operand_value);
     }
-    case HloOpcode::kCbrt: {
-      return EmitComplexCbrt(op, component_type, operand_value);
-    }
     case HloOpcode::kNegate:
       return EmitComposeComplex(op, FNeg(EmitExtractReal(operand_value)),
                                 FNeg(EmitExtractImag(operand_value)));
@@ -1525,19 +1534,6 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexRsqrt(
   }
 
   return EmitComposeComplex(op, real_part, imag_part);
-}
-
-//
-// Using EmitComplexPower with c=1.0/3.0 and d=0
-StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexCbrt(
-    const HloInstruction* op, PrimitiveType prim_type,
-    llvm::Value* operand_value) {
-  auto type = llvm_ir::PrimitiveTypeToIrType(prim_type, module_);
-  auto third = llvm::ConstantFP::get(type, 1.0 / 3.0);
-  auto zero = llvm::ConstantFP::get(type, 0);
-  llvm::Value* a = EmitExtractReal(operand_value);
-  llvm::Value* b = EmitExtractImag(operand_value);
-  return EmitComplexPower(op, a, b, third, zero);
 }
 
 // (a+bi)^(c+di) =

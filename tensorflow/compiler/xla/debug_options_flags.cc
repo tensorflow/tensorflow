@@ -98,7 +98,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_shape_checks(DebugOptions::RUNTIME);
   opts.set_xla_cpu_enable_mlir_lowering(false);
   opts.set_xla_gpu_enable_mlir_lowering(true);
-  opts.set_xla_gpu_enable_softmax_fusion(false);
+  opts.set_xla_gpu_enable_softmax_fusion(true);
   opts.set_xla_gpu_normalize_layouts(true);
   opts.set_xla_gpu_simplify_all_fp_conversions(true);
   opts.set_xla_dump_latency_hiding_schedule(false);
@@ -716,6 +716,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_async_all_reduce),
       debug_options->xla_gpu_enable_async_all_reduce(),
       "Converts synchronous all-reduce ops into asynchronous."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_async_collective_permute",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_async_collective_permute),
+      debug_options->xla_gpu_enable_async_collective_permute(),
+      "Converts synchronous collective-permute ops into asynchronous."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_all_reduce_combine_threshold_bytes",
       int64_setter_for(

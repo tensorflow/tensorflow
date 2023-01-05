@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/io_feed.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memcpy.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memset.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/send_recv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/tracing.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
@@ -89,6 +90,7 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
   RegisterMemcpyCustomCalls(registry);
   RegisterIoFeedCustomCalls(registry);
   RegisterMemsetCustomCalls(registry);
+  RegisterSendRecvCustomCalls(registry);
 
 #if GOOGLE_CUDA
   // Graph launch kernels depend on Cuda Graph API.
@@ -110,6 +112,7 @@ void RegisterXlaGpuTypeIdNames(TypeIDNameRegistry& registry) {
 
   RegisterTracingTypeIdNames(registry);
   RegisterConvTypeIdNames(registry);
+  RegisterSendRecvTypeIdNames(registry);
 
 #if GOOGLE_CUDA
   registry.Register<Tagged<se::cuda::BlasLt::Epilogue>>(
@@ -121,6 +124,7 @@ void RegisterXlaGpuAttrEncoding(CustomCallAttrEncodingSet& encoding) {
   PopulateConvAttrEncoding(encoding);
   PopulateFftAttrEncoding(encoding);
   PopulateDotDimsAttrEncoding(encoding);
+  PopulateSendRecvAttrEncoding(encoding);
 
 #if GOOGLE_CUDA
   PopulateCublasLtMatmulAttrEncoding(encoding);
@@ -190,10 +194,8 @@ GpuRuntimeExecutable::Create(std::unique_ptr<GpuRuntimeProgram> program) {
         runtime::CreateDefaultXlaGpuRuntimeCompilationPipeline(passes, copts);
       };
 
-  // TODO(b/241296710): LLVM optimizations interact badly with the memory
-  // loads and stores pattern generated in very large XLA programs, and can
-  // take minutes to run. Currently we do not expect any expensive code
-  // running on the host, so we can safely disable optimization passes.
+  // Do not run expensive optimization passes because we do not expect any
+  // non-trivial host code in XLA:GPU host executables.
   opts.compiler.jit_code_opt_level = llvm::CodeGenOpt::None;
 
   // Instantiate new JitExecutable from the MLIR source.
@@ -300,6 +302,10 @@ Status GpuRuntimeExecutable::Execute(
     const std::vector<uint8_t>& binary,
     const BufferAllocations& buffer_allocations,
     const BufferAllocation* temp_alloc) {
+  // We pass a pointer to the executable through UserData, so that we can
+  // get access to other exported functions from custom call handlers.
+  runtime::Executable& executable = this->executable();
+
   // Pack buffer allocations as executable arguments. It is guaranteed that
   // the compiled function will make a copy of all arguments and will write all
   // results after the call to `Execute` completes, so it is safe to keep them
@@ -308,6 +314,23 @@ Status GpuRuntimeExecutable::Execute(
 
   llvm::SmallVector<void*, 16> ptrs;  // storage for device address pointers
   InitializeCallFrame(call_frame, buffer_allocations, buffer_sizes_, ptrs);
+
+  // Check that initialized call frame is compatible with the executable
+  // entry point signature, otherwise compiled executable can read memory out of
+  // arguments bounds and crash with a segfault.
+  const runtime::FunctionType& signature = executable.signature();
+  if (signature.num_operands() != buffer_allocations.size())
+    return InternalError("Expected %d arguments but got %d buffer allocations",
+                         signature.num_operands(), buffer_allocations.size());
+
+  for (unsigned i = 0; i < executable.signature().num_operands(); ++i) {
+    auto* memref = llvm::dyn_cast<runtime::MemrefType>(signature.operand(i));
+    if (!memref) return InvalidArgument("Expected memref as %d-th argument", i);
+
+    if (memref->rank() != 1 || memref->sizes()[0] != buffer_sizes_[i])
+      return InvalidArgument("Expected a buffer of size %d but got %d",
+                             memref->sizes()[0], buffer_sizes_[i]);
+  }
 
   // XLA Runtime executables do not return any values.
   runtime::NoResultConverter converter;
@@ -329,10 +352,6 @@ Status GpuRuntimeExecutable::Execute(
   se::DeviceMemoryBase temp_buffer;
   if (temp_alloc)
     temp_buffer = buffer_allocations.GetDeviceAddress(temp_alloc->index());
-
-  // We pass a pointer to the executable through UserData, so that we can
-  // get access to other exported functions from custom call handlers.
-  runtime::Executable& executable = this->executable();
 
   // Take snapshots of every state required by custom calls.
   StreamExecutorKernels::Snapshot kernels = gpu_kernels_(executor)->snapshot();

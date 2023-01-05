@@ -71,5 +71,24 @@ string TensorFlowSrcRoot() {
   return "tensorflow";
 }
 
+// Returns the path to XLA in the directory containing data
+// dependencies.
+string XlaSrcRoot() {
+  // 'bazel test' sets TEST_SRCDIR, and also TEST_WORKSPACE if a new
+  // enough version of bazel is used.
+  const char* env = getenv("TEST_SRCDIR");
+  const char* workspace = getenv("TEST_WORKSPACE");
+  const char* xla_path = "tensorflow/compiler/xla";
+  if (env && env[0] != '\0') {
+    if (workspace && workspace[0] != '\0') {
+      return io::JoinPath(env, workspace, xla_path);
+    }
+    return io::JoinPath(env, xla_path);
+  }
+  LOG(WARNING) << "TEST_SRCDIR environment variable not set: "
+               << "using $PWD/xla as XlaSrcRoot() for tests.";
+  return io::JoinPath(env, xla_path);
+}
+
 }  // namespace testing
 }  // namespace tsl

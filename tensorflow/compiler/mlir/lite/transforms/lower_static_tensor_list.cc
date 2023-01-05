@@ -22,12 +22,12 @@ limitations under the License.
 
 #include <climits>
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
@@ -1150,7 +1150,7 @@ llvm::SmallSet<int, 4> GetTensorListResultsIndex(func::FuncOp func) {
 
   for (const auto &result_and_idx :
        llvm::enumerate(func.getFunctionType().getResults())) {
-    if (IsTensorListType(result_and_idx.value(), llvm::None)) {
+    if (IsTensorListType(result_and_idx.value(), std::nullopt)) {
       set.insert(result_and_idx.index());
     }
   }

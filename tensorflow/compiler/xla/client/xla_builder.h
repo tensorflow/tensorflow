@@ -111,10 +111,11 @@ struct XlaBuilderFriend {
   static XlaOp BuildCopyDone(XlaBuilder* builder, const XlaOp operand,
                              const Shape& shape);
 
-  static XlaOp BuildFusion(XlaBuilder* builder,
-                           absl::Span<const XlaOp> operands,
-                           absl::string_view fusion_kind,
-                           const XlaComputation& fused_computation);
+  static XlaOp BuildFusion(
+      XlaBuilder* builder, absl::Span<const XlaOp> operands,
+      absl::string_view fusion_kind, const XlaComputation& fused_computation,
+      absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+          output_operand_aliasing = {});
 
   static XlaOp BuildBitcast(XlaBuilder* builder, XlaOp operand,
                             const Shape& shape);
@@ -283,7 +284,8 @@ class XlaBuilder {
   // As a result they are set on the computation builder and all the
   // instructions generated via the computation builder will have the same
   // frontend attributes attached to them.
-  void SetFrontendAttributes(const FrontendAttributes& frontend_attributes) {
+  virtual void SetFrontendAttributes(
+      const FrontendAttributes& frontend_attributes) {
     frontend_attributes_ = frontend_attributes;
   }
 

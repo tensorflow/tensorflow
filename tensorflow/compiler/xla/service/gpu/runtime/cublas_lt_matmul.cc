@@ -41,8 +41,6 @@ limitations under the License.1
 namespace xla {
 #if GOOGLE_CUDA
 
-using llvm::ArrayRef;
-
 using xla::runtime::CustomCall;
 using xla::runtime::CustomCallAttrEncodingSet;
 using xla::runtime::EnumAttrEncoding;
@@ -85,9 +83,14 @@ static absl::Status CublasLtMatmulImpl(
     State<cublas_lt::MatmulPlan> matmul_plan, StridedMemrefView a,
     StridedMemrefView b, StridedMemrefView c, StridedMemrefView d,
     std::optional<StridedMemrefView> bias, std::optional<StridedMemrefView> aux,
-    int64_t algorithm, double alpha_real, double alpha_imag, double beta,
+    std::optional<StridedMemrefView> a_scale,
+    std::optional<StridedMemrefView> b_scale,
+    std::optional<StridedMemrefView> c_scale,
+    std::optional<StridedMemrefView> d_scale,
+    std::optional<StridedMemrefView> d_amax, int64_t algorithm,
+    double alpha_real, double alpha_imag, double beta,
     DotDimensionNumbers dot_dims, se::cuda::BlasLt::Epilogue epilogue,
-    ArrayRef<int32_t> precision) {
+    absl::Span<const int32_t> precision) {
   VLOG(3) << "Running CublasLtMatmul";
   se::Stream* stream = run_options->stream();
 
@@ -116,12 +119,27 @@ static absl::Status CublasLtMatmulImpl(
   se::DeviceMemoryBase aux_data;
   if (aux.has_value()) aux_data = GetDeviceAddress(*aux);
 
+  se::DeviceMemoryBase a_scale_data;
+  if (a_scale.has_value()) a_scale_data = GetDeviceAddress(*a_scale);
+  se::DeviceMemoryBase b_scale_data;
+  if (b_scale.has_value()) b_scale_data = GetDeviceAddress(*b_scale);
+  se::DeviceMemoryBase c_scale_data;
+  if (c_scale.has_value()) c_scale_data = GetDeviceAddress(*c_scale);
+  se::DeviceMemoryBase d_scale_data;
+  if (d_scale.has_value()) d_scale_data = GetDeviceAddress(*d_scale);
+  se::DeviceMemoryBase d_amax_data;
+  if (d_amax.has_value()) d_amax_data = GetDeviceAddress(*d_amax);
+
   se::OwningScratchAllocator<> scratch_allocator(
       stream->parent()->device_ordinal(), stream->parent()->GetAllocator());
 
-  return ToAbslStatus((*plan)->ExecuteOnStream(
-      stream, a_data, b_data, c_data, d_data, bias_data, aux_data,
-      (*algos)[algorithm], scratch_allocator));
+  auto st = (*plan)->ExecuteOnStream(
+      stream, a_data, b_data, c_data, d_data, bias_data, aux_data, a_scale_data,
+      b_scale_data, c_scale_data, d_scale_data, d_amax_data,
+      (*algos)[algorithm], scratch_allocator);
+  if (!st.ok()) return ToAbslStatus(st);
+
+  return absl::OkStatus();
 }
 
 //===----------------------------------------------------------------------===//
@@ -137,7 +155,7 @@ auto BindMatmulAttributes(runtime::CustomCallBinding<Ts...> binding) {
       .template Attr<double>("beta")
       .template Attr<DotDimensionNumbers>("dot_dims")
       .template Attr<se::cuda::BlasLt::Epilogue>("epilogue")
-      .template Attr<ArrayRef<int32_t>>("precision");
+      .template Attr<absl::Span<const int32_t>>("precision");
 }
 
 auto CublasLtMatmulCall(const char* name) {
@@ -154,30 +172,79 @@ auto CublasLtMatmulCall(const char* name) {
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
     CublasLtMatmul, FunctionWrapper<CublasLtMatmulImpl>(), checks,
-    BindMatmulAttributes(CublasLtMatmulCall("xla.gpu.cublas.lt.matmul")
-                             .Value(std::optional<StridedMemrefView>())  // bias
-                             .Value(std::optional<StridedMemrefView>())  // aux
-                         ));
+    BindMatmulAttributes(
+        CublasLtMatmulCall("xla.gpu.cublas.lt.matmul")
+            .Value(std::optional<StridedMemrefView>())  // bias
+            .Value(std::optional<StridedMemrefView>())  // aux
+            .Value(std::optional<StridedMemrefView>())  // a_scale
+            .Value(std::optional<StridedMemrefView>())  // b_scale
+            .Value(std::optional<StridedMemrefView>())  // c_scale
+            .Value(std::optional<StridedMemrefView>())  // d_scale
+            .Value(std::optional<StridedMemrefView>())  // d_amax
+        ));
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
     CublasLtMatmulBias, FunctionWrapper<CublasLtMatmulImpl>(), checks,
-    BindMatmulAttributes(CublasLtMatmulCall("xla.gpu.cublas.lt.matmul.bias")
-                             .Arg<StridedMemrefView>()                   // bias
-                             .Value(std::optional<StridedMemrefView>())  // aux
-                         ));
+    BindMatmulAttributes(
+        CublasLtMatmulCall("xla.gpu.cublas.lt.matmul.bias")
+            .Arg<StridedMemrefView>()                   // bias
+            .Value(std::optional<StridedMemrefView>())  // aux
+            .Value(std::optional<StridedMemrefView>())  // a_scale
+            .Value(std::optional<StridedMemrefView>())  // b_scale
+            .Value(std::optional<StridedMemrefView>())  // c_scale
+            .Value(std::optional<StridedMemrefView>())  // d_scale
+            .Value(std::optional<StridedMemrefView>())  // d_amax
+        ));
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
     CublasLtMatmulAux, FunctionWrapper<CublasLtMatmulImpl>(), checks,
-    BindMatmulAttributes(CublasLtMatmulCall("xla.gpu.cublas.lt.matmul.aux")
-                             .Value(std::optional<StridedMemrefView>())  // bias
-                             .Arg<StridedMemrefView>()                   // aux
-                         ));
+    BindMatmulAttributes(
+        CublasLtMatmulCall("xla.gpu.cublas.lt.matmul.aux")
+            .Value(std::optional<StridedMemrefView>())  // bias
+            .Arg<StridedMemrefView>()                   // aux
+            .Value(std::optional<StridedMemrefView>())  // a_scale
+            .Value(std::optional<StridedMemrefView>())  // b_scale
+            .Value(std::optional<StridedMemrefView>())  // c_scale
+            .Value(std::optional<StridedMemrefView>())  // d_scale
+            .Value(std::optional<StridedMemrefView>())  // d_amax
+        ));
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
     CublasLtMatmulBiasAux, FunctionWrapper<CublasLtMatmulImpl>(), checks,
-    BindMatmulAttributes(CublasLtMatmulCall("xla.gpu.cublas.lt.matmul.bias.aux")
-                             .Arg<StridedMemrefView>()  // bias
-                             .Arg<StridedMemrefView>()  // aux
+    BindMatmulAttributes(
+        CublasLtMatmulCall("xla.gpu.cublas.lt.matmul.bias.aux")
+            .Arg<StridedMemrefView>()                   // bias
+            .Arg<StridedMemrefView>()                   // aux
+            .Value(std::optional<StridedMemrefView>())  // a_scale
+            .Value(std::optional<StridedMemrefView>())  // b_scale
+            .Value(std::optional<StridedMemrefView>())  // c_scale
+            .Value(std::optional<StridedMemrefView>())  // d_scale
+            .Value(std::optional<StridedMemrefView>())  // d_amax
+        ));
+
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    CublasLtMatmulF8, FunctionWrapper<CublasLtMatmulImpl>(), checks,
+    BindMatmulAttributes(
+        CublasLtMatmulCall("xla.gpu.cublas.lt.matmul.f8")
+            .Value(std::optional<StridedMemrefView>())  // bias
+            .Value(std::optional<StridedMemrefView>())  // aux
+            .Arg<StridedMemrefView>()                   // a_scale
+            .Arg<StridedMemrefView>()                   // b_scale
+            .Arg<StridedMemrefView>()                   // c_scale
+            .Arg<StridedMemrefView>()                   // d_scale
+            .Value(std::optional<StridedMemrefView>())  // d_amax
+        ));
+
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    CublasLtMatmulF8DAmax, FunctionWrapper<CublasLtMatmulImpl>(), checks,
+    BindMatmulAttributes(CublasLtMatmulCall("xla.gpu.cublas.lt.matmul.f8.damax")
+                             .Value(std::optional<StridedMemrefView>())  // bias
+                             .Value(std::optional<StridedMemrefView>())  // aux
+                             .Arg<StridedMemrefView>()  // a_scale
+                             .Arg<StridedMemrefView>()  // b_scale
+                             .Arg<StridedMemrefView>()  // c_scale
+                             .Arg<StridedMemrefView>()  // d_scale
+                             .Arg<StridedMemrefView>()  // d_amax
                          ));
 
 void RegisterMatmulCustomCalls(runtime::DirectCustomCallRegistry& registry) {
@@ -185,6 +252,9 @@ void RegisterMatmulCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.gpu.cublas.lt.matmul.bias", CublasLtMatmulBias);
   registry.Register("xla.gpu.cublas.lt.matmul.aux", CublasLtMatmulAux);
   registry.Register("xla.gpu.cublas.lt.matmul.bias.aux", CublasLtMatmulBiasAux);
+  registry.Register("xla.gpu.cublas.lt.matmul.f8", CublasLtMatmulF8);
+  registry.Register("xla.gpu.cublas.lt.matmul.f8.d_amax",
+                    CublasLtMatmulF8DAmax);
 }
 
 }  // namespace gpu

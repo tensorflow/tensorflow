@@ -494,8 +494,10 @@ message LiteralProto {
   bytes bf16s = 13;
   bytes u16s = 16;
   bytes s16s = 17;
+  bytes f8e5m2s = 19;
+  bytes f8e4m3fns = 20;
   repeated int64 sparse_indices = 14;
-  // Next = 19
+  // Next = 21
 }
 
 message WindowDimension {

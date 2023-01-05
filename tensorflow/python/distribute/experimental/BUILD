@@ -21,6 +21,7 @@ py_library(
         "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
+        "//tensorflow/python/distribute/failure_handling:preemption_watcher",
     ],
 )
 

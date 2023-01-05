@@ -139,8 +139,8 @@ OpResolverLazyDelegateProxy::createXNNPackDelegate(TfLiteContext* context) {
 
 OpResolver::TfLiteOpaqueDelegatePtr
 OpResolverLazyDelegateProxy::createXNNPackOpaqueDelegate(int num_threads) {
-  TfLiteOpaqueDelegateStruct* delegate = nullptr;
-  void (*delegate_deleter)(TfLiteOpaqueDelegateStruct*) = nullptr;
+  TfLiteOpaqueDelegate* delegate = nullptr;
+  void (*delegate_deleter)(TfLiteOpaqueDelegate*) = nullptr;
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
   // Construct a FlatBuffer containing
   //   TFLiteSettings {

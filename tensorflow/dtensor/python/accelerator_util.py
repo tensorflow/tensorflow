@@ -149,6 +149,8 @@ def initialize_accelerator_system(
       The default value is `localhost` in local mode, and
       `worker` when in the multi-client mode. All DTensor clients within the
       same multi-client cluster share the same job name.
+  - `DTENSOR_USE_PARALLEL_EXECUTOR`: string, with its value being `pw` to
+      specify that the backend is Pathways, and TensorFlow otherwise.
 
   Args:
     device_type: Type of accelerator to use, can be CPU, GPU, or TPU. If None,

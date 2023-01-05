@@ -33,8 +33,7 @@ Value materializeSlice(OpBuilder &b, Location loc, Value valueToTile,
     return b.create<tensor::ExtractSliceOp>(loc, valueToTile, offsets, sizes,
                                             strides);
   }
-  Value tile = b.create<TileOp>(loc, offsets, sizes, strides);
-  return b.create<MaterializeOp>(loc, valueToTile, tile);
+  return b.create<MaterializeOp>(loc, valueToTile, offsets, sizes, strides);
 }
 
 Value materializeSlice(OpBuilder &b, Location loc, Value valueToTile,
@@ -74,9 +73,8 @@ Value materializePoint(OpBuilder &b, Location loc, Value valueToTile,
     return b.create<tensor::ExtractOp>(loc, slice,
                                        SmallVector<Value>(rank, zero));
   }
-  Value tile = b.create<TileOp>(loc, offsets, sizes, strides);
   return b.create<MaterializeOp>(loc, tensorType.getElementType(), valueToTile,
-                                 tile);
+                                 offsets, sizes, strides);
 }
 
 }  // namespace gml_st

@@ -28,9 +28,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
@@ -341,9 +339,8 @@ class BufferInfoTracker {
       const HloBuffer* value, const HloInstruction* first_definition,
       const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes) {
     return ValueInfo{
-        .value = value,
-        .first_definition = first_definition,
-        .buffer_size = shape_size_bytes(value->values()[0]->shape())};
+        /*value=*/value, /*first_definition=*/first_definition,
+        /*buffer_size=*/shape_size_bytes(value->values()[0]->shape())};
   }
   const ValueInfo& GetBufferInfo(HloBuffer::Id id) const {
     return buffer_infos_[id];

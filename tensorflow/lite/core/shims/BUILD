@@ -1,6 +1,7 @@
 # Description: this package contains shim library targets that forward
 # to the TF Lite C and C++ API targets.  See README.md.
 
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
@@ -16,11 +17,25 @@ exports_files(
     srcs = [
         "c/c_api.h",
         "c/c_api_experimental.h",
+        "c/c_api_opaque.h",
     ],
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "@mediapipe//mediapipe/tasks:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
+)
+
+# Any target that depends on this one, directly or indirectly,
+# will have -DTFLITE_USE_OPAQUE_DELEGATE passed to the C/C++ compiler.
+cc_library(
+    name = "tflite_use_opaque_delegate",
+    compatible_with = get_compatible_with_portable(),
+    defines = [
+        "TFLITE_USE_OPAQUE_DELEGATE",
+    ],
+    visibility = [
+        "//visibility:public",
     ],
 )
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -109,7 +110,7 @@ mlir::mhlo::ConvDimensionNumbersAttr ConvertConvDimensionNumbers(
       arrayref(dnums.output_spatial_dimensions()));
 }
 
-mlir::ArrayAttr ConvertCustomCallOutputOperandAliasing(
+mlir::ArrayAttr ConvertOutputOperandAliasing(
     const std::vector<std::pair<xla::ShapeIndex,
                                 std::pair<int64_t, xla::ShapeIndex>>>& aliaInfo,
     mlir::Builder* builder) {
@@ -124,6 +125,24 @@ mlir::ArrayAttr ConvertCustomCallOutputOperandAliasing(
     attrs.push_back(attr);
   }
   return builder->getArrayAttr(attrs);
+}
+
+mlir::ArrayAttr ConvertDynamicParameterBindings(
+    const DynamicParameterBinding dpb, mlir::Builder* builder) {
+  llvm::SmallVector<mlir::Attribute, 4> bindings;
+  (void)dpb.ForEachBinding(
+      [&](const DynamicParameterBinding::DynamicParameter& source,
+          const DynamicParameterBinding::DynamicDimension& target) {
+        llvm::SmallVector<int64_t, 4> dpis;
+        for (auto dpi : source.parameter_index) dpis.push_back(dpi);
+        llvm::SmallVector<int64_t, 4> tpis;
+        for (auto tpi : target.parameter_index) tpis.push_back(tpi);
+        bindings.push_back(mlir::mhlo::DynamicParameterBindingAttr::get(
+            builder->getContext(), source.parameter_num, dpis,
+            target.parameter_num, tpis, target.dimension));
+        return OkStatus();
+      });
+  return mlir::ArrayAttr::get(builder->getContext(), bindings);
 }
 
 mlir::ArrayAttr ConvertCrossProgramPrefetches(

@@ -43,10 +43,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 109
+_version = 115
 
 # Version number for MLIR:Python components.
-mlir_api_version = 39
+mlir_api_version = 42
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -98,7 +98,7 @@ def make_gpu_client(distributed_client=None, node_id=0, platform_name=None,
 
 
 def make_tfrt_tpu_c_api_client():
-  return _xla.get_tfrt_tpu_c_api_client()
+  return _xla.get_c_api_client('tpu')
 
 
 def _use_pjrt_c_api() -> bool:
@@ -204,6 +204,8 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
 PrimitiveType = _xla.PrimitiveType
 
 bfloat16 = _xla.bfloat16_dtype()
+float8_e4m3fn = _xla.float8_e4m3fn_dtype()
+float8_e5m2 = _xla.float8_e5m2_dtype()
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.PRED: np.dtype('bool'),
@@ -215,6 +217,8 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.U16: np.dtype('uint16'),
     PrimitiveType.U32: np.dtype('uint32'),
     PrimitiveType.U64: np.dtype('uint64'),
+    PrimitiveType.F8E4M3FN: np.dtype(float8_e4m3fn),
+    PrimitiveType.F8E5M2: np.dtype(float8_e5m2),
     PrimitiveType.BF16: np.dtype(bfloat16),
     PrimitiveType.F16: np.dtype('float16'),
     PrimitiveType.F32: np.dtype('float32'),

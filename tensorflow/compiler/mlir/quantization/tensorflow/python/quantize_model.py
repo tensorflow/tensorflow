@@ -481,8 +481,8 @@ def _run_graph_for_calibration(
 
 def _run_static_range_qat(
     saved_model_path: str, signature_def_keys: Sequence[str],
-    tags: Collection[str],
-    quant_opts: quant_opts_pb2.QuantizationOptions) -> graph_pb2.GraphDef:
+    tags: Collection[str], quant_opts: quant_opts_pb2.QuantizationOptions
+) -> exported_model_pb2.ExportedModel:
   """Runs static-range quantization for a Quantization-Aware Trained model.
 
   Runs the quantization for a model trained using QAT.
@@ -495,19 +495,20 @@ def _run_static_range_qat(
     quant_opts: Quantization options.
 
   Returns:
-    The static-range quantized graph.
+    exported_model: Contains the GraphDef and extra metadata required for saving
+      the quantized graph to SavedModel.
   """
   logging.info('Running static-range quantization for QAT model.')
   exported_model_serialized = (
       quantize_model_wrapper.quantize_qat_model(saved_model_path,
-                                                ','.join(signature_def_keys),
-                                                ','.join(tags),
+                                                list(signature_def_keys),
+                                                set(tags),
                                                 quant_opts.SerializeToString()))
 
   exported_model = exported_model_pb2.ExportedModel.FromString(
       exported_model_serialized)
 
-  return exported_model.graph_def
+  return exported_model
 
 
 def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
@@ -546,7 +547,7 @@ def _run_static_range_ptq(
     quant_opts: quant_opts_pb2.QuantizationOptions,
     representative_dataset: repr_dataset.RepresentativeDatasetOrMapping,
     signature_def_map: _SignatureDefMap,
-) -> Tuple[graph_pb2.GraphDef, _SignatureDefMap, str]:
+) -> Tuple[exported_model_pb2.ExportedModel, _SignatureDefMap]:
   """Runs static-range Post-Training Quantization.
 
   Runs static-range PTQ for the model. Runs the calibration step with
@@ -569,17 +570,15 @@ def _run_static_range_ptq(
     ValueError if the graph doesn't contain a valid signature.
 
   Returns:
-    (graph_def, signature_def_map, init_op_name) where graph_def is the
-    quantized graph and
-    the signature_def_map contains the SignatureDefs, possibly modified
-    according to the quantized graph to match the original signature defs.
-    init_op_name is the name of the initializer op, which is fetched once to
-    initialize resources (e.g. hash tables) when a SavedModel is loaded.
+    exported_model: Contains the GraphDef and extra metadata required for saving
+      the quantized graph to SavedModel.
+    signature_def_map: Contains the SignatureDefs, possibly modified
+      according to the quantized graph to match the original signature defs.
   """
   logging.info('Running post-training quantization pre-calibration step.')
   exported_model_serialized = (
       quantize_model_wrapper.quantize_ptq_model_pre_calibration(
-          saved_model_path, ','.join(signature_def_keys), ','.join(tags),
+          saved_model_path, list(signature_def_keys), set(tags),
           quant_opts.SerializeToString()))
 
   exported_model = exported_model_pb2.ExportedModel.FromString(
@@ -593,7 +592,10 @@ def _run_static_range_ptq(
 
   float_model_dir = tempfile.mkdtemp()
   save_model.save_model_v1(graph_def, float_model_dir, signature_def_map, tags,
-                           exported_model.init_node_name)
+                           exported_model.init_node_name,
+                           exported_model.restore_node_name,
+                           exported_model.checkpoint_dir,
+                           exported_model.variable_shared_names)
 
   # Uses the representative dataset to collect statistics for calibration.
   # Handles the graph mode execution separately in case TF2 is disabled or
@@ -605,19 +607,21 @@ def _run_static_range_ptq(
 
   calibrated_model_dir = tempfile.mkdtemp()
   save_model.save_model_v1(graph_def, calibrated_model_dir, signature_def_map,
-                           tags, exported_model.init_node_name)
+                           tags, exported_model.init_node_name,
+                           exported_model.restore_node_name,
+                           exported_model.checkpoint_dir,
+                           exported_model.variable_shared_names)
 
   logging.info('Running post-training quantization post-calibration step.')
   exported_model_serialized = (
       quantize_model_wrapper.quantize_ptq_model_post_calibration(
-          calibrated_model_dir, ','.join(signature_def_keys), ','.join(tags),
+          calibrated_model_dir, list(signature_def_keys), set(tags),
           quant_opts.SerializeToString()))
 
   exported_model = exported_model_pb2.ExportedModel.FromString(
       exported_model_serialized)
 
-  return (exported_model.graph_def, signature_def_map,
-          exported_model.init_node_name)
+  return exported_model, signature_def_map,
 
 
 def _static_range_quantize(
@@ -682,20 +686,22 @@ def _static_range_quantize(
         'The flag is ignored.')
 
   if is_qat_saved_model:
-    init_node_name: Optional[str] = None
-    graph_def = _run_static_range_qat(saved_model_path, signature_keys, tags,
-                                      quantization_options)
+    exported_model = _run_static_range_qat(saved_model_path, signature_keys,
+                                           tags, quantization_options)
   else:
-    graph_def, signature_def_map, init_node_name = _run_static_range_ptq(
+    exported_model, signature_def_map = _run_static_range_ptq(
         saved_model_path, signature_keys, tags, quantization_options,
         representative_dataset, signature_def_map)
 
   save_model.save_model_v1(
-      graph_def,
+      exported_model.graph_def,
       output_directory,
       signature_def_map,
       tags,
-      init_op_name=init_node_name)
+      init_op_name=exported_model.init_node_name,
+      restore_op_name=exported_model.restore_node_name,
+      checkpoint_dir=exported_model.checkpoint_dir,
+      variable_shared_names=exported_model.variable_shared_names)
 
   return saved_model_load(output_directory)
 
@@ -708,6 +714,8 @@ def _dynamic_range_quantize(
     quantization_options: quant_opts_pb2.QuantizationOptions,
 ) -> autotrackable.AutoTrackable:
   """Quantizes the given SavedModel via post-training dynamic range quantization.
+
+  Weight-only quantization also uses this path.
 
   Args:
     saved_model_path: Path to the saved model.
@@ -726,12 +734,17 @@ def _dynamic_range_quantize(
   Raises:
     ValueError: when the model is QAT model.
   """
+  if (quantization_options.quantization_method.experimental_method ==
+      _ExperimentalMethod.WEIGHT_ONLY):
+    mode_str = 'weight-only quantization'
+  else:
+    mode_str = 'dynamic-range quantization'
   if _is_qat_saved_model(saved_model_path):
     raise ValueError(
         'The models trained with quantization-aware training (QAT) is not '
-        'supported for dynamic range quantization.')
+        'supported for %s.' % mode_str)
 
-  logging.info('Running post-training dynamic-range quantization on model: %s',
+  logging.info('Running post-training %s on model: %s', mode_str,
                saved_model_path)
   logging.info('Using SignatureDef keys: %s', signature_keys)
   logging.info('Using tags: %s', tags)
@@ -753,7 +766,7 @@ def _dynamic_range_quantize(
   # Apply post-training dynamic range quantization to the model.
   exported_model_serialized = (
       quantize_model_wrapper.quantize_ptq_dynamic_range(
-          saved_model_path, ','.join(signature_keys), ','.join(tags),
+          saved_model_path, list(signature_keys), set(tags),
           quantization_options.SerializeToString()))
 
   exported_model = exported_model_pb2.ExportedModel.FromString(
@@ -822,6 +835,11 @@ def _populate_quantization_options_default_values(
     raise ValueError(
         'Currently, per-channel quantization is supported for Uniform '
         'Quantized opset only.')
+
+  if (quantization_options.quantization_method.experimental_method
+      == _ExperimentalMethod.WEIGHT_ONLY and
+      quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED):
+    raise ValueError('Uniform quantized opset does not support weight-only.')
 
 
 def quantize(
@@ -892,7 +910,8 @@ def quantize(
       return _static_range_quantize(saved_model_path, signature_keys, tags,
                                     output_directory, quantization_options,
                                     representative_dataset)
-    elif method.experimental_method == _ExperimentalMethod.DYNAMIC_RANGE:
+    elif (method.experimental_method == _ExperimentalMethod.DYNAMIC_RANGE or
+          method.experimental_method == _ExperimentalMethod.WEIGHT_ONLY):
       return _dynamic_range_quantize(saved_model_path, signature_keys, tags,
                                      output_directory, quantization_options)
     else:

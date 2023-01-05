@@ -158,11 +158,8 @@ class PjRtCApiClient : public PjRtClient {
   StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
-  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() override {
-    if (kPjRtCApiBypass) {
-      VLOG(1) << "PJRT C API BYPASS: GetHloCostAnalysis";
-      return wrapped_->GetHloCostAnalysis();
-    }
+  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+      const override {
     return Unimplemented("PJRT C API does not support GetHloCostAnalysis");
   }
 
@@ -178,6 +175,7 @@ class PjRtCApiClient : public PjRtClient {
   StatusOr<std::string> SerializeExecutable(
       const PjRtLoadedExecutable& executable) const override;
 
+  // `PjRtCApiClient::DeserializeExecutable()` ignores `CompileOptions` arg
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
       absl::string_view serialized,
       std::optional<CompileOptions> options) override;
@@ -439,6 +437,9 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
 
+  StatusOr<absl::flat_hash_map<std::string, PjRtValueType>> GetCostAnalysis()
+      const override;
+
   const DeviceAssignment& device_assignment() const override {
     if (kPjRtCApiBypass) {
       VLOG(1) << "PJRT C API BYPASS: device_assignment";
@@ -462,13 +463,7 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
   }
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
-      const override {
-    if (kPjRtCApiBypass) {
-      VLOG(1) << "PJRT C API BYPASS: GetHloModules";
-      return wrapped()->GetHloModules();
-    }
-    return Unimplemented("PJRT C API does not support GetHloModules");
-  }
+      const override;
 
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
@@ -488,14 +483,6 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
       std::optional<PjRtFuture<Status>>& returned_future,
       bool fill_future) override;
 
-  xla::StatusOr<PJRT_Executable_Execute_Args> GetCommonExecuteArgs(
-      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
-      const ExecuteOptions& options, PJRT_ExecuteOptions& c_options,
-      std::vector<std::vector<PJRT_Buffer*>>& c_argument_lists_storage,
-      std::vector<PJRT_Buffer**>& c_arguments,
-      std::vector<std::vector<PJRT_Buffer*>>& c_output_lists_storage,
-      std::vector<PJRT_Buffer**>& c_output_lists);
-
   void Delete() override;
   bool IsDeleted() override;
 
@@ -508,8 +495,26 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
   }
 
   const PJRT_Api* pjrt_c_api() const { return client_->pjrt_c_api(); }
+  const PJRT_Executable* c_executable() const { return executable_.get(); }
 
  private:
+  // Gets common Execute_Args between Execute, ExecuteSharded and
+  // ExecutePortable. device_complete_events in the return is set if the input
+  // device_complete_events has value.
+  xla::StatusOr<PJRT_Executable_Execute_Args> GetCommonExecuteArgs(
+      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
+      const ExecuteOptions& options, PJRT_ExecuteOptions& c_options,
+      std::vector<std::vector<PJRT_Buffer*>>& c_argument_lists_storage,
+      std::vector<PJRT_Buffer**>& c_arguments,
+      std::vector<std::vector<PJRT_Buffer*>>& c_output_lists_storage,
+      std::vector<PJRT_Buffer**>& c_output_lists,
+      std::optional<std::vector<PJRT_Event*>>& device_complete_events);
+
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteWithSingleDevice(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options,
+      std::optional<PjRtFuture<Status>>& returned_future, bool fill_future);
+
   PjRtCApiClient* client_;
   std::unique_ptr<PJRT_Executable, pjrt::PJRT_ExecutableDeleter> executable_;
   std::vector<PjRtDevice*> addressable_devices_;

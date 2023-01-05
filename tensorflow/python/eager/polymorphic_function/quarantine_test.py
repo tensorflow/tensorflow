@@ -737,13 +737,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     x = constant_op.constant(1.0)
     with self.assertRaisesRegex(
-        TypeError, 'got keyword argument `training` '
-        'that was not included in input_signature'):
-      foo(x, training=True)
-
-    with self.assertRaisesRegex(
-        TypeError, 'got keyword argument `training` '
-        'that was not included in input_signature'):
+        TypeError, 'Parameter .* was expected to be of type .* but is .*'):
       foo(x, training=False)
 
     self.assertAllEqual(x.numpy(), foo(x).numpy())
@@ -883,7 +877,9 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     save(mod, '/tmp/kwonlyf', defined.get_concrete_function(*signature))
     loaded = load('/tmp/kwonlyf')
     result = loaded.signatures['serving_default'](
-        a=array_ops.constant(1), b=array_ops.constant(2))
+        a=array_ops.constant(1),
+        b=array_ops.constant(2),
+        d=array_ops.constant(5))
     self.assertEqual(result['output_0'].numpy(), 11)
 
   def testInputSignatureWithKeywordOnlyArgsNoDefaults(self):

@@ -234,7 +234,7 @@ class MIOpenSupport : public dnn::DnnSupport {
                      dnn::ProfileResult* output_profile_result) override;
 
   bool GetConvolveAlgorithms(
-      CudaComputeCapability cuda_compute_capability,
+      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   port::Status GetConvolveRunners(
@@ -273,11 +273,11 @@ class MIOpenSupport : public dnn::DnnSupport {
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   bool GetConvolveBackwardDataAlgorithms(
-      CudaComputeCapability cuda_compute_capability,
+      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   bool GetConvolveBackwardFilterAlgorithms(
-      CudaComputeCapability cuda_compute_capability,
+      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   bool DoBatchNormalizationForward(

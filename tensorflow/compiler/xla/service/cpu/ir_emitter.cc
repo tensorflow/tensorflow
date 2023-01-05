@@ -2601,7 +2601,8 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
   Br(header_bb);
 
   // Adds the exit block to the function and sets the insert point there.
-  compute_function_->function()->getBasicBlockList().push_back(exit_bb);
+  llvm::Function* llvm_fn = compute_function_->function();
+  llvm_fn->insert(llvm_fn->end(), exit_bb);
   b_.SetInsertPoint(exit_bb);
 
   return OkStatus();

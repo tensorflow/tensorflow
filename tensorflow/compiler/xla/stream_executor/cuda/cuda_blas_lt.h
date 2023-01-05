@@ -148,16 +148,21 @@ class BlasLt {
       const MatmulPlan& plan, const MatmulPreference& preference,
       size_t max_algorithm_count = 128);
 
-  template <typename AB, typename CD, typename Scale>
+  template <typename A, typename B, typename C, typename D, typename Scale>
   port::Status DoMatmul(Stream* stream, const MatmulPlan& plan,
                         const HostOrDeviceScalar<Scale>& alpha,
-                        const DeviceMemory<AB>& a, const DeviceMemory<AB>& b,
+                        const DeviceMemory<A>& a, const DeviceMemory<B>& b,
                         const HostOrDeviceScalar<Scale>& beta,
-                        const DeviceMemory<CD>& c, DeviceMemory<CD>& d,
+                        const DeviceMemory<C>& c, DeviceMemory<D>& d,
                         const MatmulAlgorithm& algorithm,
                         ScratchAllocator& scratch_allocator,
-                        const DeviceMemory<CD>& bias = {},
+                        const DeviceMemory<C>& bias = {},
                         const DeviceMemoryBase& aux = DeviceMemory<uint8_t>{},
+                        const DeviceMemory<Scale>& a_scale = {},
+                        const DeviceMemory<Scale>& b_scale = {},
+                        const DeviceMemory<Scale>& c_scale = {},
+                        const DeviceMemory<Scale>& d_scale = {},
+                        const DeviceMemory<Scale>& d_amax = {},
                         blas::ProfileResult* profile_result = nullptr) {
     if (AsCudaDataType(blas::ToDataType<Scale>::value) !=
         plan.op_desc.scale_type()) {
@@ -175,35 +180,52 @@ class BlasLt {
       return port::InvalidArgumentError("wrong location for beta");
     }
 
-    if (AsCudaDataType(blas::ToDataType<AB>::value) != plan.a_desc.type()) {
+    if (AsCudaDataType(blas::ToDataType<A>::value) != plan.a_desc.type()) {
       return port::InvalidArgumentError("mismatched A matrix types");
     }
 
-    if (AsCudaDataType(blas::ToDataType<AB>::value) != plan.b_desc.type()) {
+    if (AsCudaDataType(blas::ToDataType<B>::value) != plan.b_desc.type()) {
       return port::InvalidArgumentError("mismatched B matrix types");
     }
 
-    if (AsCudaDataType(blas::ToDataType<CD>::value) != plan.c_desc.type()) {
+    if (AsCudaDataType(blas::ToDataType<C>::value) != plan.c_desc.type()) {
       return port::InvalidArgumentError("mismatched C matrix types");
     }
 
-    if (AsCudaDataType(blas::ToDataType<CD>::value) != plan.d_desc.type()) {
+    if (AsCudaDataType(blas::ToDataType<D>::value) != plan.d_desc.type()) {
       return port::InvalidArgumentError("mismatched D matrix types");
     }
 
     return DoMatmul(stream, plan, alpha.opaque(), a, b, beta.opaque(), c, d,
-                    algorithm, scratch_allocator, bias, aux, profile_result);
+                    algorithm, scratch_allocator, bias, aux, a_scale, b_scale,
+                    c_scale, d_scale, d_amax, profile_result);
+  }
+
+  template <typename A, typename B, typename C, typename D, typename Scale>
+  port::Status DoMatmul(Stream* stream, const MatmulPlan& plan,
+                        const HostOrDeviceScalar<Scale>& alpha,
+                        const DeviceMemory<A>& a, const DeviceMemory<B>& b,
+                        const HostOrDeviceScalar<Scale>& beta,
+                        const DeviceMemory<C>& c, DeviceMemory<D>& d,
+                        const MatmulAlgorithm& algorithm,
+                        ScratchAllocator& scratch_allocator,
+                        const DeviceMemory<C>& bias = {},
+                        const DeviceMemoryBase& aux = DeviceMemory<uint8_t>{},
+                        blas::ProfileResult* profile_result = nullptr) {
+    return DoMatmul(stream, plan, alpha, a, b, beta, c, d, algorithm,
+                    scratch_allocator, bias, aux, {}, {}, {}, {}, {},
+                    profile_result);
   }
 
  private:
-  port::Status DoMatmul(Stream* stream, const MatmulPlan& plan,
-                        const void* alpha, DeviceMemoryBase a,
-                        DeviceMemoryBase b, const void* beta,
-                        DeviceMemoryBase c, DeviceMemoryBase d,
-                        const MatmulAlgorithm& algorithm,
-                        ScratchAllocator& scratch_allocator,
-                        DeviceMemoryBase bias, DeviceMemoryBase aux,
-                        blas::ProfileResult* profile_result);
+  port::Status DoMatmul(
+      Stream* stream, const MatmulPlan& plan, const void* alpha,
+      DeviceMemoryBase a, DeviceMemoryBase b, const void* beta,
+      DeviceMemoryBase c, DeviceMemoryBase d, const MatmulAlgorithm& algorithm,
+      ScratchAllocator& scratch_allocator, DeviceMemoryBase bias,
+      DeviceMemoryBase aux, DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
+      DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
+      DeviceMemoryBase d_amax, blas::ProfileResult* profile_result);
 
   gpu::GpuExecutor* parent_;
 

@@ -413,6 +413,30 @@ Status GetFuncAttr(const EagerOperation* op, const EagerContext& ctx,
   return status;
 }
 
+// Checks if `op` is a function and contains TPU replication ops.  If `op` does,
+// then `has_tpu_replication` is set to true.  Other `has_tpu_replication` is
+// set to false.
+Status HasTPUReplication(const EagerOperation& op, const EagerContext& ctx,
+                         bool* has_tpu_replication) {
+  *has_tpu_replication = false;
+  if (!op.is_function()) {
+    return OkStatus();
+  }
+
+  const FunctionDef* function_def =
+      ctx.pflr()->GetFunctionLibraryDefinition()->Find(op.Name());
+  if (function_def == nullptr) {
+    return errors::NotFound("Failed to find function '", op.Name(), "'");
+  }
+  for (const NodeDef& node : function_def->node_def()) {
+    if (node.op() == "TPUReplicateMetadata") {
+      *has_tpu_replication = true;
+      return OkStatus();
+    }
+  }
+  return OkStatus();
+}
+
 Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
                           bool* compile_with_xla) {
   if (!op->is_function()) {
@@ -1117,25 +1141,34 @@ Status GetOrCreateKernelAndDevice(
   if (kernel == nullptr) {
     VLOG(2) << "Creating new kernel for " << op->Name() << " on device "
             << DeviceNameOrUnspecified(absl::get<Device*>(op->Device()));
+
     bool run_function_with_flr = false;
-    bool function_outputs_on_op_device = false;
     absl::optional<string> xla_compile_device_type;
     if (op->is_function()) {
       bool compile_with_xla;
+      // By default we should run functions with FunctionLibraryRuntime.
+      run_function_with_flr = true;
+      // TODO(b/222338429): We can remove checking this once all accelerator
+      // jit_compile runs through flr.
+      bool has_tpu_replication = false;
       TF_RETURN_IF_ERROR(MustCompileWithXLA(op, ctx, &compile_with_xla));
-      if (compile_with_xla) {
+      TF_RETURN_IF_ERROR(HasTPUReplication(*op, ctx, &has_tpu_replication));
+
+      if (compile_with_xla && !has_tpu_replication) {
         if (ctx.JitCompileRewrite()) {
           xla_compile_device_type = op->GetDeviceParsedName().type;
-          run_function_with_flr = true;
         } else {
           // Note that it is not ideal, but currently correct, to set this
           // attribute after computing the kernel cache key above.
           // Note: If the attribute is already set to true, this is a noop.
+          run_function_with_flr = false;
           op->MutableAttrs()->Set(kXlaMustCompileAttr, true);
         }
-      } else {
-        run_function_with_flr = true;
       }
+    }
+
+    bool function_outputs_on_op_device = false;
+    if (op->is_function()) {
       GetFuncAttr(op, ctx, kOutputsOnOpDevice, &function_outputs_on_op_device)
           .IgnoreError();
     }

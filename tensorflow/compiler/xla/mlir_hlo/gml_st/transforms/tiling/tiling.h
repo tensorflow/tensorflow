@@ -26,7 +26,7 @@ namespace mlir {
 namespace gml_st {
 
 struct TilingResult {
-  Operation *tiledOp = nullptr;
+  SmallVector<Operation *> tiledOps;
   Operation *loop = nullptr;
 };
 

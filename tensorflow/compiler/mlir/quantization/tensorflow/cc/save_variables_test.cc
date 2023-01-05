@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/save_variables.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
@@ -41,7 +42,9 @@ namespace {
 
 using ::tensorflow::test::AsTensor;
 using ::tensorflow::test::ExpectEqual;
+using ::testing::IsEmpty;
 using ::testing::Not;
+using ::testing::UnorderedElementsAre;
 using ::tsl::testing::IsOk;
 
 // This fixture simply wraps the Env and MLIRContext.
@@ -102,8 +105,10 @@ TEST_F(SaveVariablesToCheckpointTest, VariableSavedToCheckpoint) {
                                         &undeleted_dirs));
   };
 
-  EXPECT_TRUE(
-      SaveVariablesToCheckpoint(*checkpoint_prefix, *module_op_ref).ok());
+  const absl::StatusOr<std::vector<std::string>> variable_shared_names =
+      SaveVariablesToCheckpoint(*checkpoint_prefix, *module_op_ref);
+  EXPECT_TRUE(variable_shared_names.ok());
+  EXPECT_THAT(*variable_shared_names, UnorderedElementsAre("var_0"));
 
   // Verify the saved variable.
   BundleReader bundle_reader(env_, *checkpoint_prefix);
@@ -147,8 +152,10 @@ TEST_F(SaveVariablesToCheckpointTest, MultipleVariablesSavedToCheckpoint) {
                                         &undeleted_dirs));
   };
 
-  EXPECT_TRUE(
-      SaveVariablesToCheckpoint(*checkpoint_prefix, *module_op_ref).ok());
+  const absl::StatusOr<std::vector<std::string>> variable_shared_names =
+      SaveVariablesToCheckpoint(*checkpoint_prefix, *module_op_ref);
+  EXPECT_TRUE(variable_shared_names.ok());
+  EXPECT_THAT(*variable_shared_names, UnorderedElementsAre("var_0", "var_1"));
 
   // Verify that both variables are saved correctly.
   BundleReader bundle_reader(env_, *checkpoint_prefix);
@@ -184,8 +191,10 @@ TEST_F(SaveVariablesToCheckpointTest,
                                         &undeleted_dirs));
   };
 
-  EXPECT_TRUE(
-      SaveVariablesToCheckpoint(*checkpoint_prefix, *module_op_ref).ok());
+  const absl::StatusOr<std::vector<std::string>> variable_shared_names =
+      SaveVariablesToCheckpoint(*checkpoint_prefix, *module_op_ref);
+  EXPECT_TRUE(variable_shared_names.ok());
+  EXPECT_THAT(*variable_shared_names, IsEmpty());
 
   // Verify that the checkpoint doesn't exist.
   BundleReader bundle_reader(env_, *checkpoint_prefix);
@@ -249,8 +258,10 @@ TEST_F(SaveVariablesToCheckpointTest,
                                         &undeleted_dirs));
   };
 
-  EXPECT_TRUE(
-      SaveVariablesToCheckpoint(*checkpoint_prefix, *module_op_ref).ok());
+  const absl::StatusOr<std::vector<std::string>> variable_shared_names =
+      SaveVariablesToCheckpoint(*checkpoint_prefix, *module_op_ref);
+  EXPECT_TRUE(variable_shared_names.ok());
+  EXPECT_THAT(*variable_shared_names, IsEmpty());
 
   // Verify that the checkpoint doesn't exist.
   BundleReader bundle_reader(env_, *checkpoint_prefix);
@@ -287,14 +298,86 @@ TEST_F(SaveVariablesToCheckpointTest, MutableVariablesNotSaved) {
                                         &undeleted_dirs));
   };
 
-  EXPECT_TRUE(
-      SaveVariablesToCheckpoint(*checkpoint_prefix, *module_op_ref).ok());
+  const absl::StatusOr<std::vector<std::string>> variable_shared_names =
+      SaveVariablesToCheckpoint(*checkpoint_prefix, *module_op_ref);
+  EXPECT_TRUE(variable_shared_names.ok());
+  EXPECT_THAT(*variable_shared_names, IsEmpty());
 
   BundleReader bundle_reader(env_, *checkpoint_prefix);
-  EXPECT_THAT(bundle_reader.status(), IsOk());
+  EXPECT_THAT(bundle_reader.status(), Not(IsOk()));
+}
 
-  // Verify that the variable is not saved.
-  EXPECT_FALSE(bundle_reader.Contains("var_0"));
+TEST_F(SaveVariablesToCheckpointTest,
+       VariableNotSavedWhenNonVarHandleOpOperandForAssignVariableOp) {
+  constexpr absl::string_view kModuleCode = R"mlir(
+    module attributes {tf_saved_model.semantics} {
+      "tf_saved_model.session_initializer"() {initializers = [@init_func_restore_op]} : () -> ()
+
+      func.func @init_func_restore_op() -> () attributes {tf_saved_model.exported_names = ["init"], tf_saved_model.initializer_type = "restore_op"} {
+        %cst = "tf.Const"() {device = "", value = dense<[1.0, 2.0]> : tensor<2xf32>} : () -> tensor<2xf32>
+        %var_handle = "tf.VarHandleOp"() {container = "", device = "/device:CPU:0", shared_name = "var_0"} : () -> tensor<!tf_type.resource<tensor<2xf32>>>
+        %var_handle_cast = "tf.Cast"(%var_handle) : (tensor<!tf_type.resource<tensor<2xf32>>>) -> tensor<!tf_type.resource>
+        "tf.AssignVariableOp"(%var_handle_cast, %cst) : (tensor<!tf_type.resource>, tensor<2xf32>) -> ()
+        return
+      }
+    }
+  )mlir";
+
+  mlir::OwningOpRef<mlir::ModuleOp> module_op_ref =
+      ParseModuleOpString(kModuleCode);
+
+  const absl::StatusOr<std::string> checkpoint_prefix = MakeTempDir();
+  EXPECT_TRUE(checkpoint_prefix.ok());
+
+  const absl::Cleanup checkpoint_prefix_cleanup = [this, &checkpoint_prefix]() {
+    int64_t undeleted_files, undeleted_dirs;
+    TF_CHECK_OK(env_->DeleteRecursively(*checkpoint_prefix, &undeleted_files,
+                                        &undeleted_dirs));
+  };
+
+  const absl::StatusOr<std::vector<std::string>> variable_shared_names =
+      SaveVariablesToCheckpoint(*checkpoint_prefix, *module_op_ref);
+  EXPECT_TRUE(variable_shared_names.ok());
+  EXPECT_THAT(*variable_shared_names, IsEmpty());
+
+  BundleReader bundle_reader(env_, *checkpoint_prefix);
+  EXPECT_THAT(bundle_reader.status(), Not(IsOk()));
+}
+
+TEST_F(SaveVariablesToCheckpointTest, FailsWhenDuplicateSharedName) {
+  // Saving variables fails when there are duplicate shared_names ("var_0").
+  constexpr absl::string_view kModuleCode = R"mlir(
+    module attributes {tf_saved_model.semantics} {
+      "tf_saved_model.session_initializer"() {initializers = [@init_func_restore_op]} : () -> ()
+
+      func.func @init_func_restore_op() -> () attributes {tf_saved_model.exported_names = ["restore"], tf_saved_model.initializer_type = "restore_op"} {
+        %cst = "tf.Const"() {device = "", value = dense<[1.0, 2.0]> : tensor<2xf32>} : () -> tensor<2xf32>
+        %0 = "tf.VarHandleOp"() {container = "", device = "/device:CPU:0", shared_name = "var_0"} : () -> tensor<!tf_type.resource<tensor<2xf32>>>
+        "tf.AssignVariableOp"(%0, %cst) : (tensor<!tf_type.resource<tensor<2xf32>>>, tensor<2xf32>) -> ()
+
+        %cst_0 = "tf.Const"() {device = "", value = dense<[3, 4, 5, 6]> : tensor<4xi32>} : () -> tensor<4xi32>
+        %1 = "tf.VarHandleOp"() {container = "", device = "/device:CPU:0", shared_name = "var_0"} : () -> tensor<!tf_type.resource<tensor<4xi32>>>
+        "tf.AssignVariableOp"(%1, %cst_0) : (tensor<!tf_type.resource<tensor<4xi32>>>, tensor<4xi32>) -> ()
+
+        return
+      }
+    }
+  )mlir";
+
+  mlir::OwningOpRef<mlir::ModuleOp> module_op_ref =
+      ParseModuleOpString(kModuleCode);
+
+  const absl::StatusOr<std::string> checkpoint_prefix = MakeTempDir();
+  EXPECT_TRUE(checkpoint_prefix.ok());
+
+  const absl::Cleanup checkpoint_prefix_cleanup = [this, &checkpoint_prefix]() {
+    int64_t undeleted_files, undeleted_dirs;
+    TF_CHECK_OK(env_->DeleteRecursively(*checkpoint_prefix, &undeleted_files,
+                                        &undeleted_dirs));
+  };
+
+  EXPECT_FALSE(
+      SaveVariablesToCheckpoint(*checkpoint_prefix, *module_op_ref).ok());
 }
 
 }  // namespace

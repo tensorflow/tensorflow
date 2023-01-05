@@ -491,6 +491,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
@@ -536,6 +537,7 @@ cc_library(
         "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:ViewLikeInterface",
+        "@stablehlo//:stablehlo_type_inference",
     ],
 )
 
@@ -1053,6 +1055,7 @@ cc_library(
         ":map_stablehlo_to_hlo_op",
         ":mlir_hlo",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
@@ -1103,10 +1106,9 @@ cc_library(
 cc_library(
     name = "transforms_passes",
     srcs = [
+        "analysis/test_userange_analysis.cc",
         "include/mlir-hlo/Transforms/passes.h.inc",
         "include/mlir-hlo/Transforms/rewriters.h",
-        "lib/Analysis/test_shape_component_analysis.cc",
-        "lib/Analysis/test_userange_analysis.cc",
         "lib/Transforms/alloc_to_arg_pass.cc",
         "lib/Transforms/buffer_packing.cc",
         "lib/Transforms/buffer_reuse.cc",
@@ -1118,12 +1120,12 @@ cc_library(
         "lib/Transforms/generic_host_to_llvm.cc",
         "lib/Transforms/lower_index_cast_pass.cc",
         "lib/Transforms/propagate_static_shapes_to_kernel.cc",
-        "lib/Transforms/scalarization.cc",
         "lib/Transforms/shape_simplification.cc",
         "lib/Transforms/symbolic_shape_optimization.cc",
         "lib/Transforms/tile_loops_pass.cc",
         "lib/Transforms/unbufferize_pass.cc",
         "lib/Transforms/unroll_loops.cc",
+        "mhlo/analysis/test_shape_component_analysis.cc",
     ],
     hdrs = ["include/mlir-hlo/Transforms/passes.h"],
     deps = [
@@ -1200,6 +1202,7 @@ cc_library(
         "lib/Transforms/gpu_fusion_rewrite.cc",
         "lib/Transforms/gpu_kernel_lowering_passes.cc",
         "lib/Transforms/hlo_to_gpu_pipeline.cc",
+        "lib/Transforms/hlo_to_triton_pipeline.cc",
     ],
     hdrs = ["include/mlir-hlo/Transforms/gpu_passes.h"],
     deps = [
@@ -1330,9 +1333,12 @@ gentbl_cc_library(
 
 cc_library(
     name = "userange_analysis",
-    srcs = ["lib/Analysis/userange_analysis.cc"],
-    hdrs = ["include/mlir-hlo/Analysis/userange_analysis.h"],
-    includes = ["include"],
+    srcs = ["analysis/userange_analysis.cc"],
+    hdrs = ["analysis/userange_analysis.h"],
+    includes = [
+        ".",
+        "include",
+    ],
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
@@ -1344,9 +1350,12 @@ cc_library(
 
 cc_library(
     name = "shape_component_analysis",
-    srcs = ["lib/Analysis/shape_component_analysis.cc"],
-    hdrs = ["include/mlir-hlo/Analysis/shape_component_analysis.h"],
-    includes = ["include"],
+    srcs = ["mhlo/analysis/shape_component_analysis.cc"],
+    hdrs = ["mhlo/analysis/shape_component_analysis.h"],
+    includes = [
+        ".",
+        "include",
+    ],
     deps = [
         ":mlir_hlo",
         "@llvm-project//llvm:Support",
@@ -1371,6 +1380,7 @@ cc_library(
         "gml_st/transforms/lower_vector_contract/lower_vector_contract.cc",
         "gml_st/transforms/passes.h.inc",
         "gml_st/transforms/peeling/peeling.cc",
+        "gml_st/transforms/scalarization/scalarization.cc",
         "gml_st/transforms/tiling/tiling.cc",
         "gml_st/transforms/tiling_cwise/tiling_cwise.cc",
         "gml_st/transforms/tiling_gpu_warp/tiling_gpu_warp.cc",
@@ -1425,6 +1435,7 @@ cc_library(
         "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:LinalgUtils",
+        "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
@@ -1436,6 +1447,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TensorInferTypeOpInterfaceImpl",
+        "@llvm-project//mlir:TensorTilingInterfaceImpl",
         "@llvm-project//mlir:TensorTransforms",
         "@llvm-project//mlir:TensorUtils",
         "@llvm-project//mlir:TransformUtils",
@@ -1704,9 +1716,7 @@ cc_library(
     name = "tiling_interface_impl",
     srcs = ["gml_st/interfaces/tiling_interface_impl.cc"],
     hdrs = ["gml_st/interfaces/tiling_interface_impl.h"],
-    includes = [
-        "include",
-    ],
+    includes = ["include"],
     strip_include_prefix = ".",
     deps = [
         ":gml_st",
@@ -1715,6 +1725,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:ArithUtils",
         "@llvm-project//mlir:DestinationStyleOpInterface",
         "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:IR",

@@ -43,12 +43,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
-        "//tensorflow/compiler/xla/service/gpu:nccl_utils",
-        "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:executor_cache",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -110,6 +108,7 @@ cc_library(
         ":kernel_launch",
         ":memcpy",
         ":memset",
+        ":send_recv",
         ":support",
         ":tracing",
         "//tensorflow/compiler/xla:xla_proto_cc",
@@ -277,6 +276,24 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "send_recv",
+    srcs = ["send_recv.cc"],
+    hdrs = ["send_recv.h"],
+    deps = [
+        ":support",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:custom_call_encoding",
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:executable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
     ],
 )
 

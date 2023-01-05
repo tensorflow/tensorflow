@@ -71,6 +71,7 @@ namespace {
 
 constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
 constexpr char kShardingAttr[] = "mhlo.sharding";
+constexpr char kParameterReplicationAttr[] = "mhlo.parameter_replication";
 
 // Note: This sanitization function causes an irreversible many-to-one mapping
 // and any solution to mitigate this would cause issues with the reverse
@@ -389,12 +390,26 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
   function.setVisibility(visibility);
 
   for (auto& entry : llvm::enumerate(computation.parameter_instructions())) {
-    HloInstruction* parameter = entry.value();
+    HloParameterInstruction* parameter =
+        Cast<HloParameterInstruction>(entry.value());
     if (parameter->has_sharding()) {
       function.setArgAttr(
           entry.index(), kShardingAttr,
           builder_->getStringAttr(
               parameter->sharding().ToProto().SerializeAsString()));
+    }
+    if (parameter->parameter_replicated_at_leaf_buffers().has_value()) {
+      bool nontrival = false;
+      llvm::SmallVector<bool> replicated_at_leaf_buffers;
+      for (auto b : parameter->parameter_replicated_at_leaf_buffers().value()) {
+        replicated_at_leaf_buffers.push_back(b);
+        nontrival = nontrival || b;
+      }
+      if (nontrival) {
+        function.setArgAttr(
+            entry.index(), kParameterReplicationAttr,
+            builder_->getBoolArrayAttr(replicated_at_leaf_buffers));
+      }
     }
   }
   if (computation.root_instruction()->has_sharding()) {
@@ -892,9 +907,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "api_version", mlir::mhlo::CustomCallApiVersionAttr::get(
                              builder_->getContext(), mlir_api_version)));
       attributes.push_back(builder_->getNamedAttr(
-          "custom_call_output_operand_aliasing",
-          ConvertCustomCallOutputOperandAliasing(
-              instruction->custom_call_output_operand_aliasing(), builder_)));
+          "output_operand_aliases",
+          ConvertOutputOperandAliasing(instruction->output_operand_aliasing(),
+                                       builder_)));
       return func_builder
           ->create<mlir::mhlo::CustomCallOp>(loc, result_type, operands,
                                              attributes)
@@ -1160,9 +1175,14 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(builder_->getNamedAttr(
           "is_host_transfer",
           builder_->getBoolAttr(send_op->is_host_transfer())));
-      if (send_op->channel_id().has_value())
-        attributes.push_back(
-            ConvertChannelHandle(send_op->channel_id().value()));
+      if (send_op->channel_id().has_value()) {
+        xla::ChannelHandle channel_handle;
+        channel_handle.set_handle(send_op->channel_id().value());
+        channel_handle.set_type(send_op->is_host_transfer()
+                                    ? xla::ChannelHandle::DEVICE_TO_HOST
+                                    : xla::ChannelHandle::DEVICE_TO_DEVICE);
+        attributes.push_back(ConvertChannelHandle(channel_handle));
+      }
       return ImportOldStyleAsyncStart<mlir::mhlo::SendOp>(
           attributes, operands, loc, async_bundled_tuple, func_builder, "send_",
           [](auto) { return OkStatus(); });
@@ -1189,9 +1209,14 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(builder_->getNamedAttr(
           "is_host_transfer",
           builder_->getBoolAttr(recv_op->is_host_transfer())));
-      if (recv_op->channel_id().has_value())
-        attributes.push_back(
-            ConvertChannelHandle(recv_op->channel_id().value()));
+      if (recv_op->channel_id().has_value()) {
+        xla::ChannelHandle channel_handle;
+        channel_handle.set_handle(recv_op->channel_id().value());
+        channel_handle.set_type(recv_op->is_host_transfer()
+                                    ? xla::ChannelHandle::HOST_TO_DEVICE
+                                    : xla::ChannelHandle::DEVICE_TO_DEVICE);
+        attributes.push_back(ConvertChannelHandle(channel_handle));
+      }
       return ImportOldStyleAsyncStart<mlir::mhlo::RecvOp>(
           attributes, operands, loc, async_bundled_tuple, func_builder, "recv_",
           [](auto) { return OkStatus(); });
@@ -1334,7 +1359,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto all_reduce_op = func_builder->create<mlir::mhlo::AllReduceOp>(
           loc, result_type, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*all_reduce->to_apply(),
-                                        &all_reduce_op.getComputation()));
+                                        &all_reduce_op.getComputation(),
+                                        /*flatten_region_arg_tuple=*/true));
       return all_reduce_op.getOperation();
     }
     case HloOpcode::kAllReduceStart: {
@@ -1877,10 +1903,15 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
 
       auto fusion_kind = mlir::mhlo::symbolizeFusionKind(
           xla::ToString(instruction->fusion_kind()));
+      attributes.push_back(builder_->getNamedAttr(
+          "fusion_kind", mlir::mhlo::FusionKindAttr::get(
+                             func_builder->getContext(), fusion_kind.value())));
+      attributes.push_back(builder_->getNamedAttr(
+          "output_operand_aliasing",
+          ConvertOutputOperandAliasing(instruction->output_operand_aliasing(),
+                                       builder_)));
       auto fusion = func_builder->create<mlir::mhlo::FusionOp>(
-          loc, flattened_ret_types, flattened_operands,
-          mlir::mhlo::FusionKindAttr::get(func_builder->getContext(),
-                                          fusion_kind.value()));
+          loc, flattened_ret_types, flattened_operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(
           *instruction->fused_instructions_computation(),
           &fusion.getFusedComputation(), /*flatten_region_arg_tuple=*/true));

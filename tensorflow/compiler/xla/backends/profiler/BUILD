@@ -16,7 +16,7 @@ tsl_gpu_library(
     cuda_deps = [
         "//tensorflow/compiler/xla/backends/profiler/gpu:device_tracer",
     ],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//tensorflow/compiler/xla:internal"],
     deps = [
         "//tensorflow/compiler/xla/backends/profiler/cpu:host_tracer",
         "//tensorflow/compiler/xla/backends/profiler/cpu:metadata_collector",

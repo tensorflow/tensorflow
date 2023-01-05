@@ -235,5 +235,60 @@ TEST_F(GpuHloScheduleTest, AsyncAllReduce) {
   EXPECT_TRUE(order.ExecutesBefore(all_reduce_done, add4));
 }
 
+TEST_F(GpuHloScheduleTest, AsyncCollectivePermute) {
+  std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
+
+  HloComputation::Builder builder("entry_computation");
+  HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, f32_2x2_, /*name=*/"x"));
+  HloInstruction* y = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, f32_2x2_, /*name=*/"y"));
+  HloInstruction* z = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/2, f32_2x2_, /*name=*/"z"));
+  HloInstruction* add0 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, x, y));
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add0, y));
+  HloInstruction* add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add1, z));
+
+  Shape u32_scalar = ShapeUtil::MakeShape(U32, {});
+
+  Shape collective_permute_start_shape =
+      ShapeUtil::MakeTupleShape({f32_2x2_, f32_2x2_, u32_scalar, u32_scalar});
+  HloInstruction* collective_permute_start =
+      builder.AddInstruction(HloInstruction::CreateCollectivePermuteStart(
+          collective_permute_start_shape, add0,
+          /*source_target_pairs=*/{{0, 1}}, /*channel_id=*/std::nullopt));
+  // In addition, add control_dependency: add1->nonblocking_call.
+  TF_CHECK_OK(add1->AddControlDependencyTo(collective_permute_start));
+  // Blocking call, which only add4 depends on.
+  HloInstruction* collective_permute_done = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32_2x2_, HloOpcode::kCollectivePermuteDone,
+                                  collective_permute_start));
+  HloInstruction* add3 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add1, add2));
+  HloInstruction* add4 = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32_2x2_, HloOpcode::kAdd, add3, collective_permute_done));
+
+  module->AddEntryComputation(builder.Build(add4));
+
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+  VLOG(2) << order.ToString();
+
+  // Order constrained by data dependency.
+  EXPECT_TRUE(order.ExecutesBefore(add0, collective_permute_start));
+  // Order constrained by control dependency.
+  EXPECT_TRUE(order.ExecutesBefore(add1, collective_permute_start));
+  // Test that all_reduce_start is scheduled before add2.
+  EXPECT_TRUE(order.ExecutesBefore(collective_permute_start, add2));
+  EXPECT_TRUE(order.ExecutesBefore(collective_permute_start, add3));
+  EXPECT_TRUE(order.ExecutesBefore(collective_permute_start, add4));
+
+  // Test that all_reduce_done is scheduled after add3.
+  EXPECT_TRUE(order.ExecutesBefore(add3, collective_permute_done));
+  EXPECT_TRUE(order.ExecutesBefore(collective_permute_done, add4));
+}
+
 }  // namespace gpu
 }  // namespace xla

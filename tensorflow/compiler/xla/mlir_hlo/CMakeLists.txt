@@ -154,13 +154,14 @@ endif()
 
 set(MLIR_HLO_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(MLIR_HLO_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
-set(MLIR_HLO_MAIN_INCLUDE_DIR ${MLIR_HLO_SOURCE_DIR}/include )
+set(MLIR_HLO_MAIN_INCLUDE_DIR ${MLIR_HLO_SOURCE_DIR}/include)
 set(MLIR_HLO_GEN_INCLUDE_DIR ${MLIR_HLO_BINARY_DIR}/include)
 set(MLIR_HLO_TOOLS_DIR ${MLIR_HLO_BINARY_DIR}/bin)
 set(MLIR_HLO_LIB_DIR ${MLIR_HLO_BINARY_DIR}/lib)
 
 add_custom_target(check-mlir-hlo)
 
+add_subdirectory(analysis)
 add_subdirectory(bindings)
 add_subdirectory(gml_st)
 add_subdirectory(include/mlir-hlo)

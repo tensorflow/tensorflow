@@ -62,7 +62,7 @@ StatusOr<xla::Shape> TpuShapeRepresentation(
   ApiConverter::StackHelper<XLA_Shape> se_shape(xla_shape);
   ApiConverter::StackHelper<XLA_Shape> tpu_shape;
   StatusHelper status;
-  tpu::ExecutorApiFn()->XlaShapeToTpuShapeRepresentationFn(
+  stream_executor::tpu::ExecutorApiFn()->XlaShapeToTpuShapeRepresentationFn(
       &se_shape.value, type, use_fast_memory, &tpu_shape.value,
       status.c_status);
   if (!status.status().ok()) {
@@ -93,7 +93,7 @@ Status TpuPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
   StatusHelper status;
   ApiConverter::StackHelper<XLA_Shape> se_shape(on_device_shape);
   ApiConverter::StackHelper<XLA_Shape> tpu_shape;
-  tpu::ExecutorApiFn()->XlaShapeToTpuPaddedShapeFn(
+  stream_executor::tpu::ExecutorApiFn()->XlaShapeToTpuPaddedShapeFn(
       &se_shape.value, &tpu_shape.value, status.c_status);
   if (!status.ok()) {
     return status.status();

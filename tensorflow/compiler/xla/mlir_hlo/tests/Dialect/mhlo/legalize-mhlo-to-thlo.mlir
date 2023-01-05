@@ -273,3 +273,39 @@ func.func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 // CHECK-NEXT:    %[[RESULT:.*]] = tensor.from_elements %[[CMPRESULT]] : tensor<i1>
 // CHECK-NEXT:    %[[EXTRACTED_RESULT:.*]] = tensor.extract %[[RESULT]][] : tensor<i1>
 // CHECK-NEXT:    thlo.yield %[[EXTRACTED_RESULT]] : i1
+
+func.func @reverse_static(%input: tensor<100xf32>)
+  -> tensor<100xf32> {
+  %res = "mhlo.reverse"(%input) {dimensions = dense<[0]> : tensor<1xi64>} :
+    (tensor<100xf32>) -> tensor<100xf32>
+  func.return %res : tensor<100xf32>
+}
+
+// CHECK-LABEL: func @reverse_static
+//  CHECK-SAME: (%[[ARG0:.*]]: tensor<100xf32>) -> tensor<100xf32>
+//       CHECK:   %[[EMPTY:.*]] = tensor.empty
+//       CHECK:   %[[REVERSED:.*]] = thlo.reverse
+//  CHECK-SAME:     ins(%[[ARG0]]
+//  CHECK-SAME:     outs(%[[EMPTY]]
+//  CHECK-SAME:     reverse_dimensions = [0]
+//  CHECK-NEXT:   return %[[REVERSED]]
+
+func.func @reverse_dynamic(%input: tensor<?x?xf32>)
+  -> tensor<?x?xf32> {
+  %res = "mhlo.reverse"(%input) {dimensions = dense<[0, 1]> : tensor<2xi64>} :
+    (tensor<?x?xf32>) -> tensor<?x?xf32>
+  func.return %res : tensor<?x?xf32>
+}
+
+// CHECK-LABEL: func @reverse_dynamic
+//  CHECK-SAME: (%[[ARG0:.*]]: tensor<?x?xf32>) -> tensor<?x?xf32>
+//       CHECK:   %[[C0:.*]] = arith.constant
+//       CHECK:   %[[DIM0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
+//       CHECK:   %[[C1:.*]] = arith.constant
+//       CHECK:   %[[DIM1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
+//       CHECK:   %[[EMPTY:.*]] = tensor.empty(%[[DIM0]],  %[[DIM1]])
+//       CHECK:   %[[REVERSED:.*]] = thlo.reverse
+//  CHECK-SAME:     ins(%[[ARG0]]
+//  CHECK-SAME:     outs(%[[EMPTY]]
+//  CHECK-SAME:     reverse_dimensions = [0, 1]
+//  CHECK-NEXT:   return %[[REVERSED]]

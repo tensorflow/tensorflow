@@ -30,7 +30,6 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
@@ -329,15 +328,17 @@ OpFoldResult PackOp::fold(ArrayRef<Attribute> operands) {
 
   // Returns a value if the `value` is defined by a ConstOp with a single
   // integer element in it and has an expected rank.
-  auto get_const_int = [](Value value, int expected_rank) -> Optional<int64_t> {
+  auto get_const_int = [](Value value,
+                          int expected_rank) -> std::optional<int64_t> {
     auto const_op = dyn_cast_or_null<ConstOp>(value.getDefiningOp());
-    if (!const_op) return None;
+    if (!const_op) return std::nullopt;
 
     auto value_attr = const_op.getValue().dyn_cast<DenseIntElementsAttr>();
-    if (!value_attr || value_attr.getNumElements() != 1) return None;
+    if (!value_attr || value_attr.getNumElements() != 1) return std::nullopt;
 
     auto value_ty = value_attr.getType();
-    if (!value_ty.hasRank() || value_ty.getRank() != expected_rank) return None;
+    if (!value_ty.hasRank() || value_ty.getRank() != expected_rank)
+      return std::nullopt;
 
     auto splat = value_attr.getSplatValue<IntegerAttr>();
     return splat.getValue().getSExtValue();
@@ -1576,8 +1577,9 @@ LogicalResult SparseSoftmaxCrossEntropyWithLogitsOp::verify() {
 // Writes the split dimension's index (adjusted with input rank) via `dim_index`
 // if it's a constant.
 template <class Op>
-LogicalResult VerifySplitInputAndSplitDim(Op op, Optional<int64_t> *dim_index) {
-  *dim_index = llvm::None;
+LogicalResult VerifySplitInputAndSplitDim(Op op,
+                                          std::optional<int64_t> *dim_index) {
+  *dim_index = std::nullopt;
 
   Value split_dim = op.getSplitDim();
   if (auto split_dim_type = split_dim.getType().dyn_cast<RankedTensorType>())
@@ -1614,7 +1616,7 @@ LogicalResult VerifySplitInputAndSplitDim(Op op, Optional<int64_t> *dim_index) {
 
 LogicalResult SplitOp::verify() {
   SplitOp op = *this;
-  Optional<int64_t> dim_index;
+  std::optional<int64_t> dim_index;
   if (failed(VerifySplitInputAndSplitDim(op, &dim_index))) return failure();
   if (!dim_index) return success();
 
@@ -1647,7 +1649,7 @@ LogicalResult SplitVOp::verify() {
     return op.emitOpError("split sizes should be a 1D tensor of ")
            << op.getNumResults() << " elements";
 
-  Optional<int64_t> dim_index = 0;
+  std::optional<int64_t> dim_index = 0;
   if (failed(VerifySplitInputAndSplitDim(op, &dim_index))) return failure();
   if (!dim_index) return success();
 
@@ -1662,7 +1664,7 @@ LogicalResult SplitVOp::verify() {
     return success();
 
   int64_t total_dim_size = 0;  // Total dimension size assigned to splits
-  llvm::Optional<int64_t> dynamic_dim_index;
+  std::optional<int64_t> dynamic_dim_index;
 
   SmallVector<int64_t, 4> split_sizes;
   split_sizes.reserve(
@@ -2652,7 +2654,7 @@ void ToBoolOp::getCanonicalizationPatterns(RewritePatternSet &results,
 }
 
 LogicalResult ToBoolOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   inferredReturnTypes.push_back(
@@ -3401,8 +3403,8 @@ void XdivyOp::getCanonicalizationPatterns(RewritePatternSet &results,
 //===----------------------------------------------------------------------===//
 
 LogicalResult XlaBroadcastHelperOp::inferReturnTypeComponents(
-    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
-    DictionaryAttr attributes, RegionRange regions,
+    MLIRContext *context, std::optional<Location> location,
+    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   XlaBroadcastHelperOpAdaptor op(operands.getValues(), attributes);
   Value lhs = op.getLhs();
@@ -3539,8 +3541,8 @@ LogicalResult XlaConvV2Op::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypeComponents(
-    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
-    DictionaryAttr attributes, RegionRange regions,
+    MLIRContext *context, std::optional<Location> location,
+    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   XlaSetDynamicDimensionSizeOpAdaptor op(operands.getValues(), attributes);
 
@@ -3905,9 +3907,9 @@ LogicalResult SetStaticDimensionBoundsOp::verify() {
 
 namespace {
 
-template <typename UniformQuantizedHybridOp>
-LogicalResult VerifyScalesAndZeroPoints(UniformQuantizedHybridOp op,
-                                        Value scales, Value zero_points,
+template <typename UniformQuantizedOp>
+LogicalResult VerifyScalesAndZeroPoints(UniformQuantizedOp op, Value scales,
+                                        Value zero_points,
                                         int32_t quantization_axis) {
   ShapedType scales_type = scales.getType().cast<ShapedType>();
   ShapedType zero_points_type = zero_points.getType().cast<ShapedType>();
@@ -3915,20 +3917,20 @@ LogicalResult VerifyScalesAndZeroPoints(UniformQuantizedHybridOp op,
   if (quantization_axis == -1) {
     if (scales_type.hasRank() && scales_type.getRank() != 0) {
       return op.emitOpError(
-          "If quantization_axis is -1, scales must have 0 rank.");
+          "quantization_axis is -1, scales must have 0 rank.");
     }
     if (zero_points_type.hasRank() && zero_points_type.getRank() != 0) {
       return op.emitOpError(
-          "If quantization_axis is -1, zero_points must have 0 rank.");
+          "quantization_axis is -1, zero_points must have 0 rank.");
     }
   } else {
     if (scales_type.hasRank() && scales_type.getRank() != 1) {
       return op.emitOpError(
-          "If quantization_axis is not -1, scales must have 1 rank.");
+          "quantization_axis is not -1, scales must have 1 rank.");
     }
     if (zero_points_type.hasRank() && zero_points_type.getRank() != 1) {
       return op.emitOpError(
-          "If quantization_axis is not -1, zero_points must have 1 rank.");
+          "quantization_axis is not -1, zero_points must have 1 rank.");
     }
     if (scales_type.hasStaticShape() && zero_points_type.hasStaticShape() &&
         scales_type.getNumElements() != zero_points_type.getNumElements()) {
@@ -3962,6 +3964,73 @@ LogicalResult UniformQuantizedConvolutionHybridOp::verify() {
   UniformQuantizedConvolutionHybridOp op = *this;
   return VerifyScalesAndZeroPoints(op, op.getRhsScales(), op.getRhsZeroPoints(),
                                    op.getRhsQuantizationAxis());
+}
+
+//===----------------------------------------------------------------------===//
+// UniformQuantizeOp
+//===----------------------------------------------------------------------===//
+//
+
+LogicalResult UniformQuantizeOp::verify() {
+  UniformQuantizeOp op = *this;
+  return VerifyScalesAndZeroPoints(op, op.getScales(), op.getZeroPoints(),
+                                   op.getQuantizationAxis());
+}
+
+//===----------------------------------------------------------------------===//
+// UniformRequantizeOp
+//===----------------------------------------------------------------------===//
+//
+
+LogicalResult UniformRequantizeOp::verify() {
+  UniformRequantizeOp op = *this;
+  auto verify_input_params = VerifyScalesAndZeroPoints(
+      op, op.getInputScales(), op.getInputZeroPoints(),
+      op.getInputQuantizationAxis());
+  if (failed(verify_input_params)) {
+    return failure();
+  }
+  return VerifyScalesAndZeroPoints(op, op.getOutputScales(),
+                                   op.getOutputZeroPoints(),
+                                   op.getOutputQuantizationAxis());
+}
+
+//===----------------------------------------------------------------------===//
+// UniformDequantizeOp
+//===----------------------------------------------------------------------===//
+//
+
+LogicalResult UniformDequantizeOp::verify() {
+  UniformDequantizeOp op = *this;
+  return VerifyScalesAndZeroPoints(op, op.getScales(), op.getZeroPoints(),
+                                   op.getQuantizationAxis());
+}
+
+//===----------------------------------------------------------------------===//
+// UniformQuantizedDotOp
+//===----------------------------------------------------------------------===//
+//
+
+LogicalResult UniformQuantizedDotOp::verify() {
+  UniformQuantizedDotOp op = *this;
+
+  auto verify_lhs_params =
+      VerifyScalesAndZeroPoints(op, op.getLhsScales(), op.getLhsZeroPoints(),
+                                op.getLhsQuantizationAxis());
+  if (failed(verify_lhs_params)) {
+    return failure();
+  }
+
+  auto verify_rhs_params =
+      VerifyScalesAndZeroPoints(op, op.getRhsScales(), op.getRhsZeroPoints(),
+                                op.getRhsQuantizationAxis());
+  if (failed(verify_rhs_params)) {
+    return failure();
+  }
+
+  return VerifyScalesAndZeroPoints(op, op.getOutputScales(),
+                                   op.getOutputZeroPoints(),
+                                   op.getOutputQuantizationAxis());
 }
 
 }  // namespace TF

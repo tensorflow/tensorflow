@@ -50,6 +50,22 @@ class InterpreterTests: XCTestCase {
     XCTAssertNil(interpreter.delegates)
   }
 
+  func testInit_WithData_ValidModelPath() {
+    XCTAssertNoThrow(
+      try Interpreter(modelData: try Data(contentsOf: URL(fileURLWithPath: AddModel.path))))
+  }
+
+  func testInitWithDataWithOptions() throws {
+    var options = Interpreter.Options()
+    options.threadCount = 2
+    let interpreter = try Interpreter(
+      modelData: try Data(contentsOf: URL(fileURLWithPath: AddQuantizedModel.path)),
+      options: options
+    )
+    XCTAssertNotNil(interpreter.options)
+    XCTAssertNil(interpreter.delegates)
+  }
+
   func testInputTensorCount() {
     XCTAssertEqual(interpreter.inputTensorCount, AddModel.inputTensorCount)
   }

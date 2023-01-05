@@ -171,7 +171,7 @@ static Status CreateHloXlaPipeline(
     return tsl::errors::Internal("Failed to set up detensorize pass.");
   }
   pm.addNestedPass<mlir::func::FuncOp>(std::move(detensorize));
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createScalarizationPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::gml_st::createScalarizationPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createEmptyTensorToAllocTensorPass());
 

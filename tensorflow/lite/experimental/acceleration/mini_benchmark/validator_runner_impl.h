@@ -67,8 +67,15 @@ class ValidatorRunnerImpl {
       std::unique_ptr<std::vector<flatbuffers::FlatBufferBuilder>>
           tflite_settings);
 
-  std::vector<const BenchmarkEvent*> GetSuccessfulResults();
+  // Returns the unmodified successful BenchmarkEvent from storage. If a
+  // BenchmarkEvent is considered pass with the BenchmarkResultEvaluator, but
+  // its result.ok is set to false, the BenchmarkEvent will be returned as-is.
+  std::vector<const BenchmarkEvent*> GetSuccessfulResultsFromStorage();
   int GetNumCompletedResults();
+
+  // Returns the completed BenchmarkEvent. BenchmarkResult::ok() will be set to
+  // the result from BenchmarkResultEvaluator.
+  std::vector<flatbuffers::FlatBufferBuilder> GetCompletedResults();
 
  private:
   class NnapiHelper {

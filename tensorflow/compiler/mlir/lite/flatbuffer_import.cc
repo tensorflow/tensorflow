@@ -70,6 +70,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/size_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -853,10 +854,8 @@ StatusOr<Operation*> ConvertOp(
 
       mlir::SmallVector<mlir::Attribute, 4> shape;
       for (auto s : new_shape) {
-        // TODO(b/259719789): clean up dynamic shape check (e.g. into a
-        // discrete function) once bug is completely fixed.
-        shape.push_back(builder.getI32IntegerAttr(
-            mlir::ShapedType::isDynamic(s) ? -1 : static_cast<int32_t>(s)));
+        shape.push_back(
+            builder.getI32IntegerAttr(mlir::TFL::ConvertToTfliteSize(s)));
       }
       auto output_shape = DenseElementsAttr::get(shape_type, shape);
       auto shape_op = builder.create<tfl::ConstOp>(loc, output_shape);
@@ -913,12 +912,8 @@ StatusOr<Operation*> ConvertOp(
         int32_t dim_size = 0;
         for (const auto& dim :
              llvm::enumerate(shape_attr.getValues<llvm::APInt>())) {
-          const int64_t size = dim.value().getSExtValue();
-          // TODO(b/259719789): clean up dynamic shape check (e.g. into a
-          // discrete function) once bug is completely fixed.
           shape.push_back(builder.getI32IntegerAttr(
-              mlir::ShapedType::isDynamic(size) ? -1
-                                                : static_cast<int32_t>(size)));
+              mlir::TFL::ConvertToTfliteSize(dim.value().getSExtValue())));
           ++dim_size;
         }
         auto shape_type = tensorflow::GetTypeFromTFTensorShape(

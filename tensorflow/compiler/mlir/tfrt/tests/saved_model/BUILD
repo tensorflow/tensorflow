@@ -10,6 +10,7 @@ tf_cc_test(
     srcs = ["saved_model_test.cc"],
     data = [
         "testdata/test.mlir",
+        "testdata/xla_launch.mlir",
     ],
     tags = ["no_oss"],
     deps = [

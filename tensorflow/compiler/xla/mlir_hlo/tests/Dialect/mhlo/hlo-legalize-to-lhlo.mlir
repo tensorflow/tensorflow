@@ -619,7 +619,8 @@ func.func @transpose(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // CHECK-LABEL: func @custom_call
 // CHECK-SAME:([[ARG0:%.*]]: memref<2x2xf32>, [[ARG1:%.*]]: memref<2x3xf32>)
 func.func @custom_call(%arg0: tensor<2x2xf32>, %arg1: tensor<2x3xf32>) -> tensor<4x4xf16> {
-  // CHECK: "lmhlo.custom_call"([[ARG0]], [[ARG1]], %{{.*}}) {backend_config = "", call_target_name = "foo", has_side_effect = false, operand_segment_sizes = array<i32: 2, 1>}
+  // CHECK: "lmhlo.custom_call"([[ARG0]], [[ARG1]], %{{.*}}) ({
+  // CHECK-NEXT: }) {backend_config = "", call_target_name = "foo", has_side_effect = false, operand_segment_sizes = array<i32: 2, 1>}
   %result = "mhlo.custom_call"(%arg0, %arg1)
               {backend_config = "", call_target_name = "foo", has_side_effect = false}
               : (tensor<2x2xf32>, tensor<2x3xf32>) -> tensor<4x4xf16>
@@ -631,7 +632,8 @@ func.func @custom_call(%arg0: tensor<2x2xf32>, %arg1: tensor<2x3xf32>) -> tensor
 // CHECK-LABEL: func @custom_call_multiout
 // CHECK-SAME:([[ARG0:%.*]]: memref<2x2xf32>, [[ARG1:%.*]]: memref<2x3xf32>)
 func.func @custom_call_multiout(%arg0: tensor<2x2xf32>, %arg1: tensor<2x3xf32>) -> tensor<4x4xf16> {
-  // CHECK: "lmhlo.custom_call"([[ARG0]], [[ARG1]], %{{.*}}, %{{.*}}) {backend_config = "", call_target_name = "foo", has_side_effect = false, operand_segment_sizes = array<i32: 2, 2>}
+  // CHECK: "lmhlo.custom_call"([[ARG0]], [[ARG1]], %{{.*}}, %{{.*}}) ({
+  // CHECK-NEXT: }) {backend_config = "", call_target_name = "foo", has_side_effect = false, operand_segment_sizes = array<i32: 2, 2>}
   %temp:2 = "mhlo.custom_call"(%arg0, %arg1)
                    {backend_config = "", call_target_name = "foo", has_side_effect = false}
                    : (tensor<2x2xf32>, tensor<2x3xf32>) -> (tensor<4x4xf16>, tensor<4x4xf16>)

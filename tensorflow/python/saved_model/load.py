@@ -44,6 +44,7 @@ from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import load_options
 from tensorflow.python.saved_model import load_v1_in_v2
 from tensorflow.python.saved_model import loader_impl
+from tensorflow.python.saved_model import path_helpers
 from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
@@ -514,7 +515,7 @@ class Loader(object):
 
   def _restore_checkpoint(self):
     """Load state from checkpoint into the deserialized objects."""
-    variables_path = saved_model_utils.get_variables_path(self._export_dir)
+    variables_path = path_helpers.get_variables_path(self._export_dir)
     # TODO(b/205010730): Clean use of private methods of TrackableSaver.
     # pylint: disable=protected-access
     saver = checkpoint.TrackableSaver(graph_view.ObjectGraphView(self.get(0)))
