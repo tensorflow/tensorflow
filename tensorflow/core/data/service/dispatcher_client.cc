@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
+#include "tensorflow/core/data/snapshot.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/errors.h"
@@ -110,6 +111,25 @@ Status DataServiceDispatcherClient::GetSplit(int64_t iteration_id,
     if (!split.FromProto(resp.split())) {
       return errors::Internal("Failed to parse split tensor proto");
     }
+  }
+  return OkStatus();
+}
+
+Status DataServiceDispatcherClient::Snapshot(
+    const DatasetDef& dataset, const std::string& directory,
+    const experimental::DistributedSnapshotMetadata& metadata) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+
+  SnapshotRequest req;
+  *req.mutable_dataset() = dataset;
+  req.set_directory(directory);
+  *req.mutable_metadata() = metadata;
+
+  SnapshotResponse resp;
+  grpc::ClientContext client_ctx;
+  grpc::Status status = stub_->Snapshot(&client_ctx, req, &resp);
+  if (!status.ok()) {
+    return grpc_util::WrapError("Failed to snapshot", status);
   }
   return OkStatus();
 }

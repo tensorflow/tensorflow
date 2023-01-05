@@ -3,6 +3,7 @@ syntax = "proto3";
 package tensorflow.data;
 
 import "tensorflow/core/data/service/common.proto";
+import "tensorflow/core/data/snapshot.proto";
 import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/protobuf/data_service.proto";
 
@@ -24,10 +25,17 @@ message WorkerHeartbeatRequest {
   repeated int64 current_tasks = 2;
 }
 
-// Next tag: 3
+// Next tag: 4
 message WorkerHeartbeatResponse {
   repeated TaskDef new_tasks = 1;
   repeated int64 tasks_to_delete = 2;
+
+  message Snapshot {
+    // The directory at which the snapshot is being materialized.
+    string directory = 1;
+  }
+  // Snapshots to process.
+  repeated Snapshot snapshots = 3;
 }
 
 // Next tag: 3
@@ -220,6 +228,21 @@ message GetWorkersResponse {
   repeated WorkerInfo workers = 1;
 }
 
+// Next tag: 4
+message SnapshotRequest {
+  // The dataset to snapshot.
+  DatasetDef dataset = 1;
+
+  // The directory to which to materialize the snapshot.
+  string directory = 2;
+
+  // The metadata for the snapshot.
+  experimental.DistributedSnapshotMetadata metadata = 3;
+}
+
+// Next tag: 1
+message SnapshotResponse {}
+
 service DispatcherService {
   // Performs a periodic worker heartbeat.
   rpc WorkerHeartbeat(WorkerHeartbeatRequest) returns (WorkerHeartbeatResponse);
@@ -274,4 +297,7 @@ service DispatcherService {
   // Returns the config of a data service cluster.
   rpc GetDataServiceConfig(GetDataServiceConfigRequest)
       returns (GetDataServiceConfigResponse);
+
+  // Initiates the process of materializing a dataset's output to disk.
+  rpc Snapshot(SnapshotRequest) returns (SnapshotResponse);
 }

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/snapshot.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -952,8 +953,33 @@ Status WriteMetadataFile(Env* env, const string& dir,
   return env->RenameFile(tmp_filename, metadata_filename);
 }
 
+Status WriteMetadataFile(
+    Env* env, const string& dir,
+    const experimental::DistributedSnapshotMetadata* metadata) {
+  string metadata_filename = io::JoinPath(dir, kMetadataFilename);
+  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(dir));
+  std::string tmp_filename =
+      absl::StrCat(metadata_filename, "-tmp-", random::New64());
+  TF_RETURN_IF_ERROR(WriteBinaryProto(env, tmp_filename, *metadata));
+  return env->RenameFile(tmp_filename, metadata_filename);
+}
+
 Status ReadMetadataFile(Env* env, const string& dir,
                         experimental::SnapshotMetadataRecord* metadata,
+                        bool* file_exists) {
+  string metadata_filename = io::JoinPath(dir, kMetadataFilename);
+  Status s = env->FileExists(metadata_filename);
+  *file_exists = s.ok();
+
+  if (*file_exists) {
+    return ReadBinaryProto(env, metadata_filename, metadata);
+  } else {
+    return OkStatus();
+  }
+}
+
+Status ReadMetadataFile(Env* env, const string& dir,
+                        experimental::DistributedSnapshotMetadata* metadata,
                         bool* file_exists) {
   string metadata_filename = io::JoinPath(dir, kMetadataFilename);
   Status s = env->FileExists(metadata_filename);

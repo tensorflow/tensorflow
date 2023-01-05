@@ -148,6 +148,13 @@ Status FinishTask(int64_t task_id, DispatcherState& state) {
   return state.Apply(update);
 }
 
+Status Snapshot(const std::string& directory, DispatcherState& state) {
+  Update update;
+  SnapshotUpdate* snapshot = update.mutable_snapshot();
+  snapshot->set_directory(directory);
+  return state.Apply(update);
+}
+
 }  // namespace
 
 TEST(DispatcherState, RegisterDataset) {
@@ -690,6 +697,15 @@ TEST(DispatcherState, ListActiveClients) {
   TF_EXPECT_OK(
       AcquireIterationClientId(iteration_id, iteration_client_id_3, state));
   EXPECT_THAT(state.ListActiveClientIds(), UnorderedElementsAre(6, 8));
+}
+
+TEST(DispatcherState, ListSnapshotDirectories) {
+  DispatcherState state;
+  absl::flat_hash_set<std::string> snapshot_directories = {"p1", "p2"};
+  for (const auto& snapshot_directory : snapshot_directories) {
+    TF_EXPECT_OK(Snapshot(snapshot_directory, state));
+  }
+  EXPECT_EQ(state.ListSnapshotDirectories(), snapshot_directories);
 }
 
 }  // namespace data

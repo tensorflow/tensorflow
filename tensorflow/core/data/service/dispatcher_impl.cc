@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/validate_utils.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
+#include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -363,6 +364,9 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
       FindTasksToDelete(current_tasks, assigned_tasks, response));
   TF_RETURN_IF_ERROR(
       FindNewTasks(worker_address, current_tasks, assigned_tasks, response));
+  for (const auto& snapshot_directory : state_.ListSnapshotDirectories()) {
+    response->add_snapshots()->set_directory(snapshot_directory);
+  }
 
   VLOG(4) << "Finished worker heartbeat for worker at address "
           << request->worker_address();
@@ -1036,6 +1040,27 @@ Status DataServiceDispatcherImpl::GetWorkers(const GetWorkersRequest* request,
   }
   VLOG(3) << "Returning list of " << response->workers_size()
           << " workers from GetWorkers";
+  return OkStatus();
+}
+
+Status DataServiceDispatcherImpl::Snapshot(const SnapshotRequest* request,
+                                           SnapshotResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
+  mutex_lock l(mu_);
+
+  if (state_.ListSnapshotDirectories().contains(request->directory())) {
+    return errors::InvalidArgument("a snapshot at \"", request->directory(),
+                                   "\" is already started or completed");
+  }
+
+  TF_RETURN_IF_ERROR(snapshot_util::WriteMetadataFile(
+      env_, request->directory(), &request->metadata()));
+
+  Update update;
+  SnapshotUpdate* snapshot = update.mutable_snapshot();
+  snapshot->set_directory(request->directory());
+  TF_RETURN_IF_ERROR(Apply(update));
+
   return OkStatus();
 }
 

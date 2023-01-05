@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/data/snapshot.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
@@ -49,6 +50,10 @@ DatasetDef RangeDatasetWithShardHint(int64_t range);
 // Returns a test dataset representing
 // tf.data.Dataset.range(100000000).repeat().
 DatasetDef InfiniteDataset();
+
+// Returns a distributed snapshot metadata for a dummy dataset.
+experimental::DistributedSnapshotMetadata
+CreateDummyDistributedSnapshotMetadata();
 
 // Returns a test dataset representing
 // tf.data.Dataset.from_tensor_slices(["filenames"]).interleave(

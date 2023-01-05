@@ -173,6 +173,7 @@ class DataServiceDispatcherImpl {
                          ClientHeartbeatResponse* response);
   Status GetWorkers(const GetWorkersRequest* request,
                     GetWorkersResponse* response);
+  Status Snapshot(const SnapshotRequest* request, SnapshotResponse* response);
 
   // Exports the dispatcher state for debugging.
   DispatcherStateExport ExportState() const;
