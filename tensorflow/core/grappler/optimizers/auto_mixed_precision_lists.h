@@ -379,10 +379,7 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "MatMul",
                                      "BatchMatMul",
                                      "BatchMatMulV2",
-#ifndef DNNL_AARCH64_USE_ACL
-                                     "Einsum"
-#endif  // DNNL_AARCH64_USE_ACL
-    };
+                                     "Einsum"};
 
     UpdateList("ALLOWLIST", &list);
     // For backwards compatibility, keeping the original env variable here.
