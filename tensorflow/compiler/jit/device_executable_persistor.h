@@ -244,11 +244,6 @@ DeviceExecutablePersistor<ExecutableType, ClientType>::SerializeEntry(
     const XlaCompiler::CompilationResult& compilation_result,
     const ExecutableType& executable,
     DeviceCompilerClient<ExecutableType, ClientType>* compiler_client) const {
-  if (executable.executable() == nullptr) {
-    return errors::FailedPrecondition(
-        "Executable not found for cache entry to serialize.");
-  }
-
   XlaSerializedCacheEntry serialized_entry;
   const xla::HloModuleProto& hlo_module =
       compilation_result.computation->proto();

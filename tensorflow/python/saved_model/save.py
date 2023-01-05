@@ -38,6 +38,7 @@ from tensorflow.python.checkpoint import util as checkpoint_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
+from tensorflow.python.eager.polymorphic_function import saved_model_exported_concrete
 from tensorflow.python.eager.polymorphic_function import saved_model_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation
@@ -53,6 +54,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import function_serialization
+from tensorflow.python.saved_model import path_helpers
 from tensorflow.python.saved_model import pywrap_saved_model
 from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import revived_types
@@ -835,7 +837,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
       return object_map[function](*args)
     # Registered saver/restore functions do not appear in `object_map`, because
     # they are not in the object graph.
-    return saved_model_utils.ExportedConcreteFunction(
+    return saved_model_exported_concrete.ExportedConcreteFunction(
         function, tensor_map)(*args)
 
   for obj in object_map.values():
@@ -1045,7 +1047,7 @@ def _export_debug_info(exported_graph, export_dir):
       exported_operations)
   file_io.atomic_write_string_to_file(
       file_io.join(
-          utils_impl.get_or_create_debug_dir(export_dir),
+          path_helpers.get_or_create_debug_dir(export_dir),
           constants.DEBUG_INFO_FILENAME_PB),
       graph_debug_info.SerializeToString(deterministic=True))
 
@@ -1278,11 +1280,11 @@ def save_and_return_nodes(obj,
   # Write the checkpoint, copy assets into the assets directory, and write out
   # the SavedModel proto itself.
   if not experimental_skip_checkpoint:
-    utils_impl.get_or_create_variables_dir(export_dir)
+    path_helpers.get_or_create_variables_dir(export_dir)
     ckpt_options = checkpoint_options.CheckpointOptions(
         experimental_io_device=options.experimental_io_device)
     object_saver.save(
-        utils_impl.get_variables_path(export_dir), options=ckpt_options)
+        path_helpers.get_variables_path(export_dir), options=ckpt_options)
   builder_impl.copy_assets_to_destination_dir(asset_info.asset_filename_map,
                                               export_dir)
   # Note that this needs to be the last file operation when saving the

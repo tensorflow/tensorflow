@@ -32,6 +32,7 @@ from tensorflow.python.eager import forwardprop_util
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.eager.polymorphic_function import function_spec
+from tensorflow.python.eager.polymorphic_function import saved_model_exported_concrete
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
@@ -62,10 +63,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_inspect
 
-saved_model_utils = lazy_loader.LazyLoader(
-    "saved_model_utils", globals(),
-    "tensorflow.python.eager.polymorphic_function.saved_model_utils"
-)
 
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
@@ -2297,7 +2294,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
           (f"Unable to save function {self.name} for the following reason(s):\n"
            + "\n".join(self.graph.saving_errors)))
     self.add_to_graph()
-    object_map[self] = saved_model_utils.ExportedConcreteFunction(
+    object_map[self] = saved_model_exported_concrete.ExportedConcreteFunction(
         self, tensor_map)
     return []
 

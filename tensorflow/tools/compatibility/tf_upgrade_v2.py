@@ -254,6 +254,10 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
             "t": "x",
             "msg": "message",
         },
+        "tf.verify_tensor_all_finite": {
+            "t": "x",
+            "msg": "message",
+        },
         "tf.sparse.add": {
             "thresh": "threshold",
         },
@@ -669,6 +673,8 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.data.experimental.SparseTensorStructure",
         "tf.data.experimental.RaggedTensorStructure",
         "tf.data.experimental.TensorArrayStructure",
+        "tf.debugging.assert_all_finite",
+        "tf.gather_nd",
     }
 
     # Manual mapping of function names to be reordered to their list of argument
@@ -902,6 +908,13 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "Please use model.save(path, save_format='tf') "
         "(or alternatively tf.keras.models.save_model), and "
         "tf.keras.models.load_model(path) instead.")
+
+    saved_model_load_warning = (
+        ast_edits.WARNING,
+        "tf.saved_model.load works differently in 2.0 compared to 1.0. See "
+        "migration information in the documentation of "
+        "tf.compat.v1.saved_model.load."
+        "\nThe calls have been converted to compat.v1.")
 
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
@@ -1259,6 +1272,8 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.summary.scalar": summary_api_comment,
         "tf.summary.tensor_summary": summary_api_comment,
         "tf.summary.text": summary_api_comment,
+        "tf.saved_model.load": saved_model_load_warning,
+        "tf.saved_model.loader.load": saved_model_load_warning,
     }
     all_renames_v2.add_contrib_direct_import_support(self.function_warnings)
 

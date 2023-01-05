@@ -18,7 +18,7 @@ package(
 py_library(
     name = "checkpoint_lib",
     deps = [
-        ":checkpoint",
+        ":checkpoint_core",
         ":checkpoint_management",
         ":checkpoint_options",
         ":functional_saver",
@@ -29,7 +29,23 @@ py_library(
 )
 
 py_library(
+    name = "async_checkpoint_helper",
+    srcs = ["async_checkpoint_helper.py"],
+    srcs_version = "PY3",
+    deps = ["//tensorflow/python/tpu:tpu_embedding_v2"],
+)
+
+py_library(
     name = "checkpoint",
+    srcs_version = "PY3",
+    deps = [
+        ":async_checkpoint_helper",
+        ":checkpoint_core",
+    ],
+)
+
+py_library(
+    name = "checkpoint_core",
     srcs = [
         "checkpoint.py",
     ],
@@ -64,7 +80,7 @@ py_library(
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/saved_model:utils",
+        "//tensorflow/python/saved_model:path_helpers",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:data_structures",

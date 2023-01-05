@@ -1015,6 +1015,7 @@ py_library(
         ":tensor_util",
         ":type_spec",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/capture:capture_container",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:handle_data_util",
         "//tensorflow/python:resource_variable_ops",

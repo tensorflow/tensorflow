@@ -3160,7 +3160,7 @@ def MHLO_BitcastOp : MHLO_Op<"bitcast", [Pure]> {
 }
 
 def MHLO_ReducePrecisionOp :
-    MHLO_Op<"reduce_precision", [HLO_CompatibleOperandsAndResultType]> {
+    MHLO_Op<"reduce_precision", [HLO_CompatibleOperandsAndResultType, Pure]> {
   let summary = "Reduce precision operator";
   let description = [{
     Models the effect of converting floating - point values to a lower -

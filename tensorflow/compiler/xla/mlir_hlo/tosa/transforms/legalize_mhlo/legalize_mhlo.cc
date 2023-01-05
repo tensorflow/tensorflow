@@ -123,8 +123,8 @@ struct ConvertMhloDotOp : public OpRewritePattern<mhlo::DotOp> {
       if (rhsType.getRank() == 1) {
         // Reshape rhs to [1, N, 1].
         rhsReshape = {1, rhsShape[0], 1};
-        // MatMul shape is [1, 1, N].
-        matMulShape = {1, 1, lhsShape[0]};
+        // MatMul shape is [1, 1, 1].
+        matMulShape = {1, 1, 1};
       } else if (rhsType.getRank() == 2) {
         // Reshape rhs to [1, N, K].
         rhsReshape = {1, rhsShape[0], rhsShape[1]};
@@ -318,22 +318,25 @@ struct ConvertMhloReduceOp : public OpRewritePattern<mhlo::ReduceOp> {
       return rewriter.notifyMatchFailure(op, "body required to contain 2 ops");
     }
 
-    auto operands = op.getInputs().front();
-    ShapedType inputType = operands.getType().cast<ShapedType>();
-    uint64_t dimension = op.getDimensions().getValues<uint64_t>().begin()[0];
+    auto operand = op.getInputs().front();
+    ShapedType inputType = operand.getType().cast<ShapedType>();
     Operation& innerOp = bodyBlock.front();
-    Value reduceOpResult;
+    uint64_t dimension = op.getDimensions().getValues<uint64_t>().begin()[0];
+    SmallVector<int64_t> innerShape(inputType.getShape());
+    innerShape[dimension] = 1;
+    Type innerTy = inputType.clone(innerShape);
 
+    Value reduceOpResult;
     if (isa<mhlo::AddOp>(innerOp)) {
       reduceOpResult =
           rewriter
-              .create<tosa::ReduceSumOp>(op->getLoc(), inputType, operands,
+              .create<tosa::ReduceSumOp>(op->getLoc(), innerTy, operand,
                                          rewriter.getI64IntegerAttr(dimension))
               .getResult();
     } else if (isa<mhlo::MaxOp>(innerOp)) {
       reduceOpResult =
           rewriter
-              .create<tosa::ReduceMaxOp>(op->getLoc(), inputType, operands,
+              .create<tosa::ReduceMaxOp>(op->getLoc(), innerTy, operand,
                                          rewriter.getI64IntegerAttr(dimension))
               .getResult();
     } else {
@@ -344,7 +347,6 @@ struct ConvertMhloReduceOp : public OpRewritePattern<mhlo::ReduceOp> {
 
     // TOSA reduce ops do not remove the dimension being reduced, so reshape
     // the reduced output and remove the reduction dimension.
-    ArrayRef<int64_t> innerShape = inputType.getShape();
     llvm::SmallVector<int64_t, 2> outputShape;
     int outputShapeLength = innerShape.size() - 1;
     outputShape.resize(outputShapeLength);
@@ -356,11 +358,9 @@ struct ConvertMhloReduceOp : public OpRewritePattern<mhlo::ReduceOp> {
       }
     }
 
-    rewriter
-        .replaceOpWithNewOp<tosa::ReshapeOp>(
-            op, op.getResultTypes().front(), reduceOpResult,
-            rewriter.getI64ArrayAttr(outputShape))
-        .getResult();
+    rewriter.replaceOpWithNewOp<tosa::ReshapeOp>(
+        op, op.getResultTypes().front(), reduceOpResult,
+        rewriter.getI64ArrayAttr(outputShape));
 
     return success();
   }

@@ -100,8 +100,8 @@ class SnapshotStreamWriter {
   // task has been cancelled.
   Status WriteSnapshotFn();
 
-  // Creates a directory to store uncommitted chunks.
-  Status CreateChunksDirectory();
+  // Creates directories to store uncommitted chunks and checkpoints.
+  Status InitializeDirectories();
 
   // Returns true until the snapshot stream writer is finished, which may be due
   // to reaching the end of its iterator, encountering an error, or being
@@ -123,6 +123,26 @@ class SnapshotStreamWriter {
 
   // Writes the next record to the current chunk.
   Status WriteRecord(snapshot_util::TFRecordWriter& writer);
+
+  // Returns true if the writer should write an iterator checkpoint.
+  bool ShouldSave() const;
+
+  // Saves an iterator checkpoint.
+  Status Save();
+
+  // Restores from the last checkpoint.
+  Status Restore();
+
+  // Returns the index of the last checkpointed chunk.
+  StatusOr<int64_t> LastCheckpointIndex() const;
+
+  // Synchronizes the checkpoint with the committed chunks. This will commit
+  // uncommitted chunk files written before the checkpoint and delete chunk
+  // files written after the checkpoint.
+  Status SyncCheckpointWithChunks();
+
+  // Returns the path of the checkpoint for `chunk_index`.
+  std::string CheckpointPath(int64_t chunk_index) const;
 
   const SnapshotWriterParams params_;
 

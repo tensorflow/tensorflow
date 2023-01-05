@@ -227,7 +227,7 @@ class DataServiceDispatcherImpl {
   // response.
   Status FindTasksToDelete(
       const absl::flat_hash_set<int64_t>& current_tasks,
-      const std::vector<std::shared_ptr<const DispatcherState::Task>>
+      const std::vector<std::shared_ptr<const DispatcherState::Task>>&
           assigned_tasks,
       WorkerHeartbeatResponse* response);
   // Finds new tasks that should be assigned to a worker and adds them to

@@ -84,6 +84,10 @@ class Literal(trace.TraceType, serialization.Serializable):
                      type(self.value).__name__)
 
   def placeholder_value(self, placeholder_context=None) -> Any:
+    # TODO(b/263505796): Remove this check when a range's placeholder output
+    # is expected to be a range and not a list.
+    if isinstance(self.value, range):
+      return list(self.value)
     return self.value
 
   def __eq__(self, other) -> bool:

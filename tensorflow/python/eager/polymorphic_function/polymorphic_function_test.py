@@ -335,13 +335,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       functions = ops.get_default_graph().as_graph_def().library.function
       # Verify that we created only one function
       self.assertLen(functions, 1)
-      # Verify that eval() reads the current values.
+      # Verify that self.evaluate() reads the current values.
       a.initializer.run()
       b.initializer.run()
-      self.assertEqual(r1.eval(), 2)
+      self.assertEqual(self.evaluate(r1), 2)
 
-      a.assign_add([1]).eval()
-      self.assertEqual(r1.eval(), 3)
+      self.evaluate(a.assign_add([1]))
+      self.assertEqual(self.evaluate(r1), 3)
 
   def testImplementsAttributeWorksOnConstants(self):
     with context.graph_mode(), self.cached_session():
@@ -353,10 +353,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       functions = ops.get_default_graph().as_graph_def().library.function
       self.assertLen(functions, 1)
       self.assertLen(functions[0].signature.input_arg, 2)
-      # Verify that eval() reads the current values.
+      # Verify that self.evaluate() reads the current values.
       a.initializer.run()
-      self.assertEqual(r1.eval(), 3)
-      self.assertEqual(r2.eval(), 3)
+      self.assertEqual(self.evaluate(r1), 3)
+      self.assertEqual(self.evaluate(r2), 3)
 
   def testImplementsAttributeSpecializes(self):
     with context.graph_mode(), self.cached_session():
@@ -371,10 +371,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       self.assertLen(functions[0].signature.input_arg, 2)
       self.assertLen(functions[1].signature.input_arg, 2)
-      # Verify that eval() reads the current values.
+      # Verify that self.evaluate() reads the current values.
       a.initializer.run()
-      numpy.testing.assert_equal(r1.eval(), [3.])
-      numpy.testing.assert_equal(r2.eval(), [3., 3.])
+      numpy.testing.assert_equal(self.evaluate(r1), [3.])
+      numpy.testing.assert_equal(self.evaluate(r2), [3., 3.])
 
   def testImplementsWorksWithTensorSpec(self):
     v = polymorphic_function.function(
@@ -4809,7 +4809,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     @polymorphic_function.function
     def f():
       func = lambda: x
-      return ops.get_default_graph()._maybe_create_capture_placeholder(func)
+      # TODO(b/263520817): Remove access to private attribute.
+      return ops.get_default_graph(
+          )._function_captures._create_capture_placeholder(func)
 
     x = {
         'tensor': constant_op.constant(0),
@@ -4831,7 +4833,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     @polymorphic_function.function
     def f():
       func = lambda: x
-      return ops.get_default_graph()._maybe_create_capture_placeholder(func)
+      # TODO(b/263520817): Remove access to private attribute.
+      return ops.get_default_graph(
+          )._function_captures._create_capture_placeholder(func)
 
     # Set is not supported
     x = set([1, 2])

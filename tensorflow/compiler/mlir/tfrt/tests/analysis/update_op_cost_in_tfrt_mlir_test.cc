@@ -67,7 +67,7 @@ TEST(CostUpdateTest, Basic) {
   for (auto& [op_key, cost] : expected_op_cost_map) {
     cost = rand_r(&seed) % 1000;
   }
-  auto cost_recorder = tensorflow::tfrt_stub::CostRecorder(/*host=*/nullptr);
+  tensorflow::tfrt_stub::CostRecorder cost_recorder;
   for (const auto& [op_key, cost] : expected_op_cost_map) {
     cost_recorder.RecordCostNanosecond(op_key, cost);
   }
