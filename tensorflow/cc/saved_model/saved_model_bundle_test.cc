@@ -399,6 +399,8 @@ TEST_F(LoaderTest, UpdateFingerprintMetrics) {
   TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
                               {kSavedModelTagServe}, &bundle));
 
+  EXPECT_EQ(metrics::SavedModelReadPath().value(), export_dir);
+
   EXPECT_EQ(metrics::SavedModelReadFingerprint().value(),
             kV2ModuleSavedModelChecksum);
 }
