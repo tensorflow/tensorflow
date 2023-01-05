@@ -27,10 +27,6 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/tfrt/fallback/op_cost_map.pb.h"
 
-namespace tfrt {
-class HostContext;
-}  // namespace tfrt
-
 namespace tensorflow {
 namespace tfrt_stub {
 
