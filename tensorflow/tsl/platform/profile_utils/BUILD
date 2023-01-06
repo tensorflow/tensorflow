@@ -1,17 +1,18 @@
 # Description:
 # profile_utils targets.
 
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_copts",  # @unused
+    "//tensorflow/tsl:tsl.bzl",
+    "tsl_copts",
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/platform:__subpackages__",
@@ -53,7 +54,7 @@ cc_library(
     hdrs = [
         "cpu_utils.h",
     ],
-    copts = tf_copts(),
+    copts = tsl_copts(),
     deps = [
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",

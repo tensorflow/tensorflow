@@ -32,16 +32,16 @@ namespace {
 bool IsFlexDelegate(Operation *op) {
   // Unwrap from any ControlNodeOps or CustomTfOp.
   if (auto control_node = dyn_cast<mlir::TFL::ControlNodeOp>(*op)) {
-    return IsFlexDelegate(&control_node.body().front().front());
+    return IsFlexDelegate(&control_node.getBody().front().front());
   }
   if (auto custom_tf_op = dyn_cast<mlir::TFL::CustomTfOp>(*op)) {
-    return IsFlexDelegate(&custom_tf_op.body().front().front());
+    return IsFlexDelegate(&custom_tf_op.getBody().front().front());
   }
 
   // Our MLIR might be the result of a conversion from a previously generated
   // flatbuffer file.
   if (auto custom_op = dyn_cast<mlir::TFL::CustomOp>(*op)) {
-    return custom_op.custom_code().startswith("Flex");
+    return custom_op.getCustomCode().startswith("Flex");
   }
 
   // We never see TFL::IfOps in the IR -- it is flatbuffer_export that rewrites

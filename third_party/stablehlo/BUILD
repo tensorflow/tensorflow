@@ -267,6 +267,260 @@ cc_library(
 )
 
 cc_library(
+    name = "version",
+    srcs = [
+        "stablehlo/dialect/Version.cpp",
+    ],
+    hdrs = [
+        "stablehlo/dialect/Version.h",
+    ],
+    includes = ["."],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+gentbl_cc_library(
+    name = "vhlo_attr_interfaces_inc_gen",
+    tbl_outs = [
+        (
+            ["-gen-attr-interface-decls"],
+            "stablehlo/dialect/VhloAttrInterfaces.h.inc",
+        ),
+        (
+            ["-gen-attr-interface-defs"],
+            "stablehlo/dialect/VhloAttrInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "stablehlo/dialect/VhloOps.td",
+    deps = [
+        ":vhlo_ops_td_files",
+    ],
+)
+
+gentbl_cc_library(
+    name = "vhlo_attrs_inc_gen",
+    tbl_outs = [
+        (
+            ["-gen-attrdef-decls"],
+            "stablehlo/dialect/VhloAttrs.h.inc",
+        ),
+        (
+            ["-gen-attrdef-defs"],
+            "stablehlo/dialect/VhloAttrs.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "stablehlo/dialect/VhloOps.td",
+    deps = [
+        ":vhlo_ops_td_files",
+    ],
+)
+
+gentbl_cc_library(
+    name = "vhlo_enums_inc_gen",
+    tbl_outs = [
+        (
+            ["-gen-enum-decls"],
+            "stablehlo/dialect/VhloEnums.h.inc",
+        ),
+        (
+            ["-gen-enum-defs"],
+            "stablehlo/dialect/VhloEnums.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "stablehlo/dialect/VhloOps.td",
+    deps = [
+        ":vhlo_ops_td_files",
+    ],
+)
+
+gentbl_cc_library(
+    name = "vhlo_op_interfaces_inc_gen",
+    tbl_outs = [
+        (
+            ["-gen-op-interface-decls"],
+            "stablehlo/dialect/VhloOpInterfaces.h.inc",
+        ),
+        (
+            ["-gen-op-interface-defs"],
+            "stablehlo/dialect/VhloOpInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "stablehlo/dialect/VhloOps.td",
+    deps = [
+        ":vhlo_ops_td_files",
+    ],
+)
+
+cc_library(
+    name = "vhlo_ops",
+    srcs = [
+        "stablehlo/dialect/VhloBytecode.cpp",
+        "stablehlo/dialect/VhloOps.cpp",
+    ],
+    hdrs = [
+        "stablehlo/dialect/VhloBytecode.h",
+        "stablehlo/dialect/VhloOps.h",
+    ],
+    includes = ["."],
+    deps = [
+        ":base",
+        ":stablehlo_assembly_format",
+        ":version",
+        ":vhlo_attr_interfaces_inc_gen",
+        ":vhlo_attrs_inc_gen",
+        ":vhlo_enums_inc_gen",
+        ":vhlo_op_interfaces_inc_gen",
+        ":vhlo_ops_inc_gen",
+        ":vhlo_type_interfaces_inc_gen",
+        ":vhlo_types_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+gentbl_cc_library(
+    name = "vhlo_ops_inc_gen",
+    tbl_outs = [
+        (
+            ["-gen-op-decls"],
+            "stablehlo/dialect/VhloOps.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "stablehlo/dialect/VhloOps.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "stablehlo/dialect/VhloOps.td",
+    deps = [
+        ":vhlo_ops_td_files",
+    ],
+)
+
+td_library(
+    name = "vhlo_ops_td_files",
+    srcs = [
+        "stablehlo/dialect/VhloAttrs.td",
+        "stablehlo/dialect/VhloBase.td",
+        "stablehlo/dialect/VhloEnums.td",
+        "stablehlo/dialect/VhloOps.td",
+        "stablehlo/dialect/VhloTypes.td",
+    ],
+    includes = ["."],
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+        "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:ShapeOpsTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "vhlo_type_interfaces_inc_gen",
+    tbl_outs = [
+        (
+            ["-gen-type-interface-decls"],
+            "stablehlo/dialect/VhloTypeInterfaces.h.inc",
+        ),
+        (
+            ["-gen-type-interface-defs"],
+            "stablehlo/dialect/VhloTypeInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "stablehlo/dialect/VhloOps.td",
+    deps = [
+        ":vhlo_ops_td_files",
+    ],
+)
+
+gentbl_cc_library(
+    name = "vhlo_types_inc_gen",
+    tbl_outs = [
+        (
+            ["-gen-typedef-decls"],
+            "stablehlo/dialect/VhloTypeDefs.h.inc",
+        ),
+        (
+            ["-gen-typedef-defs"],
+            "stablehlo/dialect/VhloTypeDefs.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "stablehlo/dialect/VhloOps.td",
+    deps = [
+        ":vhlo_ops_td_files",
+    ],
+)
+
+gentbl_cc_library(
+    name = "stablehlo_pass_inc_gen",
+    strip_include_prefix = ".",
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+            ],
+            "stablehlo/transforms/Passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "stablehlo/transforms/Passes.td",
+    deps = ["@llvm-project//mlir:PassBaseTdFiles"],
+)
+
+cc_library(
+    name = "stablehlo_passes",
+    srcs = [
+        "stablehlo/transforms/LegalizeStablehloToVhlo.cpp",
+        "stablehlo/transforms/LegalizeVhloToStablehlo.cpp",
+        "stablehlo/transforms/VhloToVersion.cpp",
+    ],
+    hdrs = [
+        "stablehlo/transforms/MapStablehloToVhlo.h",
+        "stablehlo/transforms/Passes.h",
+    ],
+    includes = ["."],
+    deps = [
+        ":stablehlo_ops",
+        ":stablehlo_ops_inc_gen",
+        ":stablehlo_pass_inc_gen",
+        ":stablehlo_type_conversion",
+        ":version",
+        ":vhlo_ops",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "stablehlo_type_conversion",
+    srcs = ["stablehlo/transforms/TypeConversion.cpp"],
+    hdrs = ["stablehlo/transforms/TypeConversion.h"],
+    includes = ["."],
+    deps = [
+        ":stablehlo_ops",
+        ":vhlo_ops",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncTransforms",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "reference_element",
     srcs = [
         "stablehlo/reference/Element.cpp",
@@ -276,9 +530,22 @@ cc_library(
     ],
     includes = ["."],
     deps = [
+        ":reference_errors",
+        ":reference_types",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "reference_errors",
+    hdrs = [
+        "stablehlo/reference/Errors.h",
+    ],
+    deps = [
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -292,6 +559,7 @@ cc_library(
     ],
     includes = ["."],
     deps = [
+        ":reference_errors",
         ":reference_ops",
         ":reference_tensor",
         ":stablehlo_ops",
@@ -313,8 +581,11 @@ cc_library(
     includes = ["."],
     deps = [
         ":reference_element",
+        ":reference_errors",
         ":reference_tensor",
+        ":reference_types",
         ":stablehlo_ops",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -331,9 +602,9 @@ cc_library(
     includes = ["."],
     deps = [
         ":reference_element",
+        ":reference_errors",
         ":reference_types",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -364,7 +635,26 @@ cc_library(
     deps = [
         ":chlo_ops",
         ":stablehlo_ops",
+        ":vhlo_ops",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:SparseTensorDialect",
+    ],
+)
+
+cc_library(
+    name = "stablehlo_assembly_format",
+    srcs = [
+        "stablehlo/dialect/AssemblyFormat.cpp",
+    ],
+    hdrs = [
+        "stablehlo/dialect/AssemblyFormat.h",
+    ],
+    includes = ["."],
+    deps = [
+        ":base",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -535,9 +825,11 @@ cc_library(
     includes = ["."],
     deps = [
         ":base",
+        ":stablehlo_assembly_format",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -555,6 +847,7 @@ cc_library(
     includes = ["."],
     deps = [
         ":base",
+        ":stablehlo_assembly_format",
         ":stablehlo_attrs_inc_gen",
         ":stablehlo_enums_inc_gen",
         ":stablehlo_ops_inc_gen",
@@ -598,6 +891,7 @@ cc_binary(
     ],
     deps = [
         ":register",
+        ":stablehlo_passes",
         ":test_utils",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
@@ -643,6 +937,7 @@ cc_library(
     ],
     includes = ["."],
     deps = [
+        ":stablehlo_assembly_format",
         ":test_utils_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",

@@ -101,6 +101,37 @@ TEST(SavedModelTest, CompileToBEF) {
   TF_ASSERT_OK(ConvertTfMlirToBef(options, module.get(), &bef_buffer));
 }
 
+TEST(SavedModelTest, ConvertTfMlirToBefWithXlaFuncExport) {
+  std::string saved_model_mlir_path = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/compiler/mlir/tfrt/tests/saved_model/testdata/"
+      "xla_launch.mlir");
+
+  mlir::DialectRegistry registry;
+  mlir::RegisterAllTensorFlowDialects(registry);
+  mlir::MLIRContext context(registry);
+  auto module =
+      mlir::parseSourceFile<mlir::ModuleOp>(saved_model_mlir_path, &context);
+  ASSERT_TRUE(module);
+
+  tfrt::BefBuffer bef_buffer;
+  TfrtCompileOptions options;
+  options.device_target = TfrtDeviceInfraTarget::kGpu;
+  options.use_bridge_for_gpu = true;
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<tfrt_stub::FallbackState> fallback_state,
+      tfrt_stub::FallbackState::Create(SessionOptions(), FunctionDefLibrary()));
+  TF_ASSERT_OK(ConvertTfMlirToBef(options, module.get(), &bef_buffer,
+                                  fallback_state.get()));
+
+  // The module contains an XLA function, as well as a while body and a while
+  // condition within the XLA function.
+  EXPECT_EQ(fallback_state->process_function_library_runtime()
+                .GetFunctionLibraryDefinition()
+                ->num_functions(),
+            3);
+}
+
 // TODO(b/162442824): Add a SavedModel test that covers the error pass.
 
 }  // namespace

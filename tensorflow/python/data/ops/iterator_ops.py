@@ -17,6 +17,7 @@ import abc
 import threading
 import warnings
 
+from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import nest
@@ -94,6 +95,7 @@ def _device_stack_is_empty():
   return not bool(device_stack)
 
 
+@saveable_compat.legacy_saveable_name("ITERATOR")
 @tf_export(v1=["data.Iterator"])
 class Iterator(trackable.Trackable):
   """Represents the state of iterating through a `Dataset`."""
@@ -533,12 +535,16 @@ class Iterator(trackable.Trackable):
 
     return self._element_spec
 
-  def _gather_saveables_for_checkpoint(self):
+  def _serialize_to_tensors(self):
+    serialized_iterator = gen_dataset_ops.serialize_iterator(
+        self._iterator_resource,
+        options_lib.ExternalStatePolicy.FAIL.value)
+    return {"_STATE": serialized_iterator}
 
-    def _saveable_factory(name):
-      return _IteratorSaveable(self._iterator_resource, name)
-
-    return {"ITERATOR": _saveable_factory}
+  def _restore_from_tensors(self, restored_tensors):
+    with ops.colocate_with(self._iterator_resource):
+      return [gen_dataset_ops.deserialize_iterator(
+          self._iterator_resource, restored_tensors["_STATE"])]
 
 
 _uid_counter = 0
@@ -653,6 +659,7 @@ class IteratorBase(
     raise NotImplementedError("Iterator.get_next_as_optional()")
 
 
+@saveable_compat.legacy_saveable_name("ITERATOR")
 class OwnedIterator(IteratorBase):
   """An iterator producing tf.Tensor objects from a tf.data.Dataset.
 
@@ -850,26 +857,26 @@ class OwnedIterator(IteratorBase):
               output_shapes=structure.get_flat_tensor_shapes(
                   self.element_spec)), self.element_spec)
 
-  def _gather_saveables_for_checkpoint(self):
+  def _serialize_to_tensors(self):
+    serialized_iterator = None
+    if (self._dataset and
+        self._dataset.options().experimental_external_state_policy):
+      serialized_iterator = gen_dataset_ops.serialize_iterator(
+          self._iterator_resource,
+          self._dataset.options().experimental_external_state_policy.value)
+    else:
+      serialized_iterator = gen_dataset_ops.serialize_iterator(
+          self._iterator_resource,
+          options_lib.ExternalStatePolicy.FAIL.value)
+    return {"_STATE": serialized_iterator}
 
-    def _saveable_factory(name):
-      """Returns a SaveableObject for serialization/deserialization."""
-      policy = None
-      if self._dataset:
-        policy = self._dataset.options().experimental_external_state_policy
-      if policy:
-        return _IteratorSaveable(
-            self._iterator_resource,
-            name,
-            external_state_policy=policy)
-      else:
-        return _IteratorSaveable(self._iterator_resource, name)
+  def _restore_from_tensors(self, restored_tensors):
+    with ops.colocate_with(self._iterator_resource):
+      return [gen_dataset_ops.deserialize_iterator(
+          self._iterator_resource, restored_tensors["_STATE"])]
 
-    return {"ITERATOR": _saveable_factory}
-
-  def __tf_tracing_type__(self, signature_context):
-    return signature_context.make_reference_type(self._type_spec,
-                                                 self._iterator_resource._id)  # pylint:disable=protected-access
+  def __tf_tracing_type__(self, _):
+    return self._type_spec
 
 
 @tf_export("data.IteratorSpec", v1=[])
@@ -922,11 +929,6 @@ class IteratorSpec(type_spec.TypeSpec):
   @staticmethod
   def from_value(value):
     return IteratorSpec(value.element_spec)  # pylint: disable=protected-access
-
-  def __tf_tracing_type__(self, signature_context):
-    # TODO(b/202772221): Validate and enforce this assumption of uniqueness per
-    # spec instance.
-    return signature_context.make_reference_type(self, id(self))
 
 
 # TODO(b/71645805): Expose trackable stateful objects from dataset.

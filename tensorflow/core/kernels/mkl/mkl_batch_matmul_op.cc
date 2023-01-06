@@ -148,6 +148,9 @@ class BatchMatMulMkl : public OpKernel {
 
     Trhs* weight_data = const_cast<Trhs*>(rhs.flat<Trhs>().data());
 
+// TODO(Arm, Intel): Reach agreement on whether this block should be deleted.
+// https://github.com/tensorflow/tensorflow/pull/57987#discussion_r993731524
+#ifdef DNNL_AARCH64_USE_ACL
     memory::format_tag weight_format;
     switch (params->b_dims.size()) {
       case 2:
@@ -185,6 +188,8 @@ class BatchMatMulMkl : public OpKernel {
             reinterpret_cast<Trhs*>(weights_mkl.GetOpMem().get_data_handle());
       }
     }
+#endif  // DNNL_AARCH64_USE_ACL
+
     UserScratchPad<unsigned char> scratch_pad;
     scratch_pad.AllocateSPTensor(matmul_prim, ctx);
     // Execute matmul primitive.

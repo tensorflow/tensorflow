@@ -925,6 +925,173 @@ class MklRemapperSwishTest : public GrapplerTest {
 TEST_F(MklRemapperSwishTest, F32) { RunTest<DT_FLOAT>(); }
 TEST_F(MklRemapperSwishTest, BF16) { RunTest<DT_BFLOAT16>(); }
 
+class MklRemapperConv2dBiasAddSwishTest : public GrapplerTest {
+ protected:
+  template <DataType DTYPE>
+  void RunTest() {
+    using ::tensorflow::ops::Placeholder;
+
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    auto input_shape = Placeholder::Shape({1, 32, 32, 3});
+    auto filter_shape = Placeholder::Shape({16, 1, 1, 3});
+    auto bias_shape = Placeholder::Shape({3});
+
+    auto input = Placeholder(s.WithOpName("input"), DTYPE, input_shape);
+    auto filter = Placeholder(s.WithOpName("filter"), DTYPE, filter_shape);
+    auto bias = Placeholder(s.WithOpName("bias"), DTYPE, bias_shape);
+
+    std::vector<int> strides = {1, 1, 1, 1};
+    auto conv =
+        ops::Conv2D(s.WithOpName("conv2d"), input, filter, strides, "SAME");
+    auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), conv, bias);
+
+    ops::Identity fetch = [&]() -> ops::Identity {
+      auto activate = s.WithOpName("activation");
+      auto fetch = s.WithOpName("fetch");
+      auto sigmoid = ops::Sigmoid(s.WithOpName("sigmoid"), bias_add);
+      return ops::Identity(fetch, ops::Mul(activate, bias_add, sigmoid));
+    }();
+
+    auto input_t = GenerateTensorWithSetRandom<DTYPE>({1, 32, 32, 3});
+    auto filter_t = GenerateTensorWithSetRandom<DTYPE>({16, 1, 1, 3});
+    auto bias_t = GenerateTensorWithSetRandom<DTYPE>({3});
+
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"input", input_t}, {"filter", filter_t}, {"bias", bias_t}};
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device("/device:CPU:0");
+    }
+
+    Remapper optimizer(RewriterConfig::ON);
+    GraphDef output;
+    TF_CHECK_OK(optimizer.Optimize(nullptr, item, &output));
+
+    int found = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() != "bias_add" && node.name() != "activation") continue;
+
+      EXPECT_EQ(node.op(), "_FusedConv2D");
+      ASSERT_EQ(node.input_size(), 3);
+      EXPECT_EQ(node.input(0), "input");
+      EXPECT_EQ(node.input(1), "filter");
+      EXPECT_EQ(node.attr().at("num_args").i(), 1);
+      EXPECT_EQ(node.input(2), "bias");
+      const auto fused_ops = node.attr().at("fused_ops").list().s();
+      EXPECT_EQ(node.name(), "activation");
+      ASSERT_EQ(fused_ops.size(), 2);
+      EXPECT_EQ(fused_ops[0], "BiasAdd");
+      EXPECT_EQ(fused_ops[1], "_MklSwish");
+      found++;
+    }
+    EXPECT_EQ(found, 1);
+
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_expected.size(), 1);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 1);
+    float atol = 1e-6, rtol = 1e-4;
+    if (DTYPE == DT_BFLOAT16) {
+      atol = 1e-2;
+      rtol = 1e-2;
+    }
+    test::ExpectClose(tensors[0], tensors_expected[0], atol, rtol);
+  }
+};
+
+TEST_F(MklRemapperConv2dBiasAddSwishTest, F32) { RunTest<DT_FLOAT>(); }
+TEST_F(MklRemapperConv2dBiasAddSwishTest, BF16) { RunTest<DT_BFLOAT16>(); }
+
+class MklRemapperConv2dFusedBatchNormSwishTest : public GrapplerTest {
+ protected:
+  template <DataType DTYPE>
+  void RunTest() {
+    using ::tensorflow::ops::Placeholder;
+
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    auto input_shape = Placeholder::Shape({1, 32, 32, 3});
+    auto filter_shape = Placeholder::Shape({16, 1, 1, 3});
+    auto bn_param_shape = Placeholder::Shape({3});
+
+    auto input = Placeholder(s.WithOpName("input"), DTYPE, input_shape);
+    auto filter = Placeholder(s.WithOpName("filter"), DTYPE, filter_shape);
+    auto scale = Placeholder(s.WithOpName("scale"), DT_FLOAT);
+    auto offset = Placeholder(s.WithOpName("offset"), DT_FLOAT);
+    auto mean = Placeholder(s.WithOpName("mean"), DT_FLOAT);
+    auto var = Placeholder(s.WithOpName("var"), DT_FLOAT);
+    float epsilon = 0.1f;
+
+    std::vector<int> strides = {1, 1, 1, 1};
+    auto conv =
+        ops::Conv2D(s.WithOpName("conv2d"), input, filter, strides, "SAME");
+    auto fbn = ops::FusedBatchNormV3(
+        s.WithOpName("fused_batch_norm"), conv, scale, offset, mean, var,
+        ops::FusedBatchNormV3::IsTraining(false).Epsilon(epsilon).DataFormat(
+            "NHWC"));
+    ops::Identity fetch = [&]() -> ops::Identity {
+      auto activate = s.WithOpName("activation");
+      auto fetch = s.WithOpName("fetch");
+      auto sigmoid = ops::Sigmoid(s.WithOpName("sigmoid"), fbn.y);
+      return ops::Identity(fetch, ops::Mul(activate, fbn.y, sigmoid));
+    }();
+
+    auto input_t = GenerateTensorWithSetRandom<DTYPE>({1, 32, 32, 3});
+    auto filter_t = GenerateTensorWithSetRandom<DTYPE>({16, 1, 1, 3});
+    auto scale_t = GenerateTensorWithSetRandom<DT_FLOAT>({3});
+    auto offset_t = GenerateTensorWithSetRandom<DT_FLOAT>({3});
+    auto mean_t = GenerateTensorWithSetRandom<DT_FLOAT>({3});
+    auto var_t = GenerateTensorWithSetRandom<DT_FLOAT>({3});
+
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"input", input_t},   {"filter", filter_t}, {"scale", scale_t},
+                 {"offset", offset_t}, {"mean", mean_t},     {"var", var_t}};
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device("/device:CPU:0");
+    }
+
+    Remapper optimizer(RewriterConfig::ON);
+    GraphDef output;
+    TF_CHECK_OK(optimizer.Optimize(nullptr, item, &output));
+
+    int found = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() != "activation") continue;
+
+      EXPECT_EQ(node.op(), "_FusedConv2D");
+      ASSERT_EQ(node.input_size(), 6);
+      EXPECT_EQ(node.input(0), "input");
+      EXPECT_EQ(node.input(1), "filter");
+      EXPECT_EQ(node.attr().at("num_args").i(), 4);
+      EXPECT_EQ(node.input(2), "scale");
+      EXPECT_EQ(node.input(3), "offset");
+      EXPECT_EQ(node.input(4), "mean");
+      EXPECT_EQ(node.input(5), "var");
+      const auto fused_ops = node.attr().at("fused_ops").list().s();
+      EXPECT_EQ(node.name(), "activation");
+      ASSERT_EQ(fused_ops.size(), 2);
+      EXPECT_EQ(fused_ops[0], "FusedBatchNorm");
+      EXPECT_EQ(fused_ops[1], "_MklSwish");
+      found++;
+    }
+    EXPECT_EQ(found, 1);
+
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_expected.size(), 1);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 1);
+    test::ExpectClose(tensors[0], tensors_expected[0], 1e-6, 1e-4);
+  }
+};
+
+TEST_F(MklRemapperConv2dFusedBatchNormSwishTest, F32) { RunTest<DT_FLOAT>(); }
+
 }  // namespace grappler
 }  // namespace tensorflow
 #endif  // INTEL_MKL && ENABLE_MKL

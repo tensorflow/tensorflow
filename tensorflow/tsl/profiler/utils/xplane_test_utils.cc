@@ -19,8 +19,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/profiler/utils/xplane_builder.h"
 #include "tensorflow/tsl/profiler/utils/xplane_schema.h"
 #include "tensorflow/tsl/profiler/utils/xplane_utils.h"
@@ -53,6 +53,7 @@ XPlane* GetOrCreateHostXPlane(XSpace* space) {
 XPlane* GetOrCreateTpuXPlane(XSpace* space, int32_t device_ordinal,
                              absl::string_view device_type,
                              double peak_tera_flops_per_second,
+                             double peak_bw_giga_bytes_per_second,
                              double peak_hbm_bw_gigabytes_per_second) {
   std::string name = TpuPlaneName(device_ordinal);
   XPlane* xplane = FindOrAddMutablePlaneWithName(space, name);
@@ -63,6 +64,9 @@ XPlane* GetOrCreateTpuXPlane(XSpace* space, int32_t device_ordinal,
   builder.AddStatValue(
       *builder.GetOrCreateStatMetadata("peak_teraflops_per_second"),
       peak_tera_flops_per_second);
+  builder.AddStatValue(
+      *builder.GetOrCreateStatMetadata("peak_bw_gigabytes_per_second"),
+      peak_bw_giga_bytes_per_second);
   builder.AddStatValue(
       *builder.GetOrCreateStatMetadata("peak_hbm_bw_gigabytes_per_second"),
       peak_hbm_bw_gigabytes_per_second);

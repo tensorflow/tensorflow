@@ -39,6 +39,9 @@ class MockSupertypes2With3(trace.TraceType):
     else:
       return None
 
+  def placeholder_value(self, placeholder_context=None):
+    raise NotImplementedError
+
   def __eq__(self, other) -> bool:
     return isinstance(other, type(self)) and self._object == other._object
 
@@ -275,31 +278,6 @@ class DefaultTypesTest(test.TestCase):
 
     self.assertEqual(dict_a, dict_c)
     self.assertNotEqual(dict_a, dict_b)
-
-  def testReferenceSubtype(self):
-    original = default_types.Reference(Mock2AsTopType(3), 1)
-    clone = default_types.Reference(Mock2AsTopType(3), 1)
-    different_id = default_types.Reference(Mock2AsTopType(3), 2)
-    supertype = default_types.Reference(Mock2AsTopType(2), 1)
-    different_type = default_types.Literal(1)
-
-    self.assertEqual(original, clone)
-    self.assertFalse(original.is_subtype_of(different_id))
-    self.assertTrue(original.is_subtype_of(supertype))
-    self.assertFalse(supertype.is_subtype_of(original))
-    self.assertFalse(original.is_subtype_of(different_type))
-
-  def testReferenceSupertype(self):
-    original = default_types.Reference(Mock2AsTopType(3), 1)
-    clone = default_types.Reference(Mock2AsTopType(3), 1)
-    different_id = default_types.Reference(Mock2AsTopType(3), 2)
-    supertype = default_types.Reference(Mock2AsTopType(2), 1)
-    different_type = default_types.Literal(1)
-
-    self.assertEqual(supertype.most_specific_common_supertype([]), supertype)
-    self.assertEqual(original.most_specific_common_supertype([clone]), original)
-    self.assertIsNone(original.most_specific_common_supertype([different_id]))
-    self.assertIsNone(original.most_specific_common_supertype([different_type]))
 
 
 if __name__ == '__main__':

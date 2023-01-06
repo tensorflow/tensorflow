@@ -4,6 +4,7 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "replace_with_portable_tf_lib_when_required")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -26,7 +27,7 @@ cc_library(
         "@flatbuffers",
         "//tensorflow/core:protos_all_cc_impl",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -48,7 +49,8 @@ cc_test(
         "//tensorflow/core/platform:errors",
         "//tensorflow/lite:framework_lib",
         "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",

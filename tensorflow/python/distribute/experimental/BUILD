@@ -1,4 +1,10 @@
+load(
+    "//tensorflow/dtensor:build_defs.bzl",
+    "dtensor_test",
+)
+
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -15,5 +21,40 @@ py_library(
         "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
+        "//tensorflow/python/distribute/failure_handling:preemption_watcher",
+    ],
+)
+
+py_library(
+    name = "mirrored_strategy",
+    srcs = ["mirrored_strategy.py"],
+    deps = [
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:config",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:mesh_util",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/framework:ops",
+    ],
+)
+
+dtensor_test(
+    name = "mirrored_strategy_test",
+    srcs = ["mirrored_strategy_test.py"],
+    tags = ["no_pip"],
+    deps = [
+        ":mirrored_strategy",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:mesh_util",
+        "//tensorflow/dtensor/python:tpu_util",
+        "//tensorflow/dtensor/python/tests:test_util",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:constant_op",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

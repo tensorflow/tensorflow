@@ -5,9 +5,11 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 default_visibility = [
     "//tensorflow/dtensor:dtensor-internal",
+    "//third_party/py/jax_tpu_embedding:__subpackages__",
 ]
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = default_visibility,
     licenses = ["notice"],
 )
@@ -41,12 +43,9 @@ pytype_strict_library(
     srcs = ["api.py"],
     srcs_version = "PY3",
     deps = [
-        ":config",
         ":dtensor_device",
         ":gen_dtensor_ops",
         ":layout",
-        "//tensorflow/python:config",
-        "//tensorflow/python:device",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:tf_export",
@@ -58,7 +57,9 @@ pytype_strict_library(
     srcs = ["config.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:device",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -76,10 +77,9 @@ pytype_strict_library(
     name = "layout",
     srcs = ["layout.py"],
     deps = [
-        ":gen_dtensor_ops",
+        ":config",
         "//tensorflow/dtensor/proto:layout_proto_py_pb2",
         "//tensorflow/python:_pywrap_dtensor_device",
-        "//tensorflow/python:config",
         "//tensorflow/python:device",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/util:tf_export",
@@ -134,6 +134,20 @@ pytype_strict_library(
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/util:tf_export",
+    ],
+)
+
+pytype_strict_library(
+    name = "numpy_util",
+    srcs = ["numpy_util.py"],
+    deps = [
+        ":api",
+        ":layout",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/types",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -237,11 +251,9 @@ pytype_strict_library(
         "//tensorflow/python/eager:function",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:tfrt_utils",
         "//tensorflow/python/tpu:topology",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
-        "@absl_py//absl/flags",
         "@absl_py//absl/logging",
     ],
 )

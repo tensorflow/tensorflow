@@ -33,7 +33,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/delegates/serialization.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
@@ -53,9 +53,9 @@ limitations under the License.
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/delegates/nnapi/quant_lstm_sup.h"
 #include "tensorflow/lite/delegates/utils.h"
@@ -2313,6 +2313,13 @@ bool NNAPIDelegateKernel::Validate(
       } else {
         ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
       }
+      const int input0_rank =
+          context->tensors[node->inputs->data[0]].dims->size;
+      const int input1_rank =
+          context->tensors[node->inputs->data[1]].dims->size;
+      Expect(input0_rank <= 4 && input1_rank <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "Input rank must be <= 4", &val_ctx);
     } break;
     case kTfLiteBuiltinArgMax:
     case kTfLiteBuiltinArgMin: {
@@ -2372,6 +2379,13 @@ bool NNAPIDelegateKernel::Validate(
       } else {
         ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
       }
+      const int input0_rank =
+          context->tensors[node->inputs->data[0]].dims->size;
+      const int input1_rank =
+          context->tensors[node->inputs->data[1]].dims->size;
+      Expect(input0_rank <= 4 && input1_rank <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "Input rank must be <= 4", &val_ctx);
     } break;
     case kTfLiteBuiltinAveragePool2d: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
@@ -2804,6 +2818,13 @@ bool NNAPIDelegateKernel::Validate(
       Expect(context->tensors[node->inputs->data[0]].type == kTfLiteFloat32,
              NNAPIValidationFailureType::kUnsupportedInputType,
              "NNAPI only support float div.", &val_ctx);
+      const int input0_rank =
+          context->tensors[node->inputs->data[0]].dims->size;
+      const int input1_rank =
+          context->tensors[node->inputs->data[1]].dims->size;
+      Expect(input0_rank <= 4 && input1_rank <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "Input rank must be <= 4", &val_ctx);
     } break;
     case kTfLiteBuiltinPad:
     case kTfLiteBuiltinPadv2: {
@@ -3075,6 +3096,9 @@ bool NNAPIDelegateKernel::Validate(
              NNAPIValidationFailureType::kUnsupportedOutputType,
              "NNAPI does not support generating a scalar as output for MEAN.",
              &val_ctx);
+      Expect(context->tensors[node->inputs->data[0]].dims->size <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandValue,
+             "NNAPI does not support mean of a tensor with rank > 4", &val_ctx);
     } break;
     case kTfLiteBuiltinEmbeddingLookup: {
       ExpectOpVersion(version, 1, &val_ctx);
@@ -4485,25 +4509,28 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
       return kTfLiteError;
     }
 
-    if (nnapi_->SL_ANeuralNetworksDiagnostic_registerCallbacks != nullptr) {
-      nnapi_->SL_ANeuralNetworksDiagnostic_registerCallbacks(
-          [](const void* nnapi,
-             const ANeuralNetworksDiagnosticCompilationInfo* info) {
-            return LogCompilationInfoOnce(static_cast<const NnApi*>(nnapi),
+    if (!delegate_options.disable_debugging_diagnostics_callbacks) {
+      if (nnapi_->SL_ANeuralNetworksDiagnostic_registerCallbacks != nullptr) {
+        nnapi_->SL_ANeuralNetworksDiagnostic_registerCallbacks(
+            [](const void* nnapi,
+               const ANeuralNetworksDiagnosticCompilationInfo* info) {
+              return LogCompilationInfoOnce(static_cast<const NnApi*>(nnapi),
+                                            info);
+            },
+            [](const void* nnapi,
+               const ANeuralNetworksDiagnosticExecutionInfo* info) {
+              return LogExecutionInfoOnce(static_cast<const NnApi*>(nnapi),
                                           info);
-          },
-          [](const void* nnapi,
-             const ANeuralNetworksDiagnosticExecutionInfo* info) {
-            return LogExecutionInfoOnce(static_cast<const NnApi*>(nnapi), info);
-          },
-          const_cast<NnApi*>(nnapi_));
-      TFLITE_LOG_PROD(TFLITE_LOG_INFO,
-                      "Registered diagnostics callbacks in NNAPI SL driver"
-                      "SL_ANeuralNetworksDiagnostic_registerCallbacks.");
-    } else {
-      TFLITE_LOG_PROD(TFLITE_LOG_WARNING,
-                      "NNAPI SL driver did not implement "
-                      "SL_ANeuralNetworksDiagnostic_registerCallbacks!");
+            },
+            const_cast<NnApi*>(nnapi_));
+        TFLITE_LOG_PROD(TFLITE_LOG_INFO,
+                        "Registered diagnostics callbacks in NNAPI SL driver"
+                        "SL_ANeuralNetworksDiagnostic_registerCallbacks.");
+      } else {
+        TFLITE_LOG_PROD(TFLITE_LOG_WARNING,
+                        "NNAPI SL driver did not implement "
+                        "SL_ANeuralNetworksDiagnostic_registerCallbacks!");
+      }
     }
   }
 
@@ -6412,6 +6439,8 @@ void StatefulNnApiDelegate::StatefulNnApiDelegateConstructorImpl(
   delegate_data_.vendor_plugin = options.vendor_plugin;
   delegate_data_.max_execution_cache_size = options.max_execution_cache_size;
   delegate_data_.tensor_max_size_hints = options.tensor_max_size_hints;
+  delegate_data_.disable_debugging_diagnostics_callbacks =
+      options.disable_debugging_diagnostics_callbacks;
 
   TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                        "Created TensorFlow Lite delegate for NNAPI.");
@@ -6484,6 +6513,8 @@ const StatefulNnApiDelegate::Options StatefulNnApiDelegate::GetOptions(
   options.vendor_plugin = delegate_data->vendor_plugin;
   options.max_execution_cache_size = delegate_data->max_execution_cache_size;
   options.tensor_max_size_hints = delegate_data->tensor_max_size_hints;
+  options.disable_debugging_diagnostics_callbacks =
+      delegate_data->disable_debugging_diagnostics_callbacks;
   return options;
 }
 

@@ -45,7 +45,15 @@ REGISTER_OP("CopyToMesh")
     .Input("input: T")
     .Output("output: T")
     .Attr("layout: string")
-    .Attr("source_layout: string = ''")
+    .Attr("T: type")
+    .SetShapeFn(UnchangedShape);
+
+// Gradient of CopyToMesh.
+REGISTER_OP("CopyToMeshGrad")
+    .Input("input: T")
+    .Input("forward_input: T")  // To infer the output mesh.
+    .Output("output: T")
+    .Attr("reference_layout: string = ''")  // To infer the sharding spec.
     .Attr("T: type")
     .SetShapeFn(UnchangedShape);
 

@@ -739,7 +739,8 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
                                     before, ", ", after, " not less than ",
                                     resized_shape.dim_size(d)));
       }
-      padded_shape.AddDim(before + resized_shape.dim_size(d) + after);
+      OP_REQUIRES_OK(context, padded_shape.AddDimWithStatus(
+                                  before + resized_shape.dim_size(d) + after));
     }
 
     OP_REQUIRES(
@@ -830,8 +831,10 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    GetWindowedOutputSize(padded_cols, filter_cols, stride_cols,
                                          padding_, &out_cols, &pad_cols));
-    TensorShape out_shape =
-        ShapeFromFormat(FORMAT_NHWC, batch, out_rows, out_cols, out_depth);
+    TensorShape out_shape;
+    OP_REQUIRES_OK(context,
+                   ShapeFromFormatWithStatus(FORMAT_NHWC, batch, out_rows,
+                                             out_cols, out_depth, &out_shape));
     OP_REQUIRES(context, (out_shape.num_elements() > 0),
                 errors::InvalidArgument("Output tensor can't be empty"));
 

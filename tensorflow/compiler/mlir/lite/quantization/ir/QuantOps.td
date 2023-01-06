@@ -57,7 +57,7 @@ class quantfork_Op<string mnemonic, list<Trait> traits> :
 // (where the operand and result type are not quantized) at all points where
 // it is legal to use a quantized representation (but is not known to be
 // acceptable).
-def quantfork_QuantizeCastOp : quantfork_Op<"qcast", [NoSideEffect]> {
+def quantfork_QuantizeCastOp : quantfork_Op<"qcast", [Pure]> {
   let arguments = (ins quant_RealValueType:$arg);
   let results = (outs quant_RealValueType);
 }
@@ -72,7 +72,7 @@ def quantfork_QuantizeCastOp : quantfork_Op<"qcast", [NoSideEffect]> {
 // Especially early in transformation, it is common to have dcasts on
 // all operands to ops that must operate with the expressed type (typically
 // math ops prior to lowering to target-specific, quantized kernels).
-def quantfork_DequantizeCastOp : quantfork_Op<"dcast", [NoSideEffect]> {
+def quantfork_DequantizeCastOp : quantfork_Op<"dcast", [Pure]> {
   let arguments = (ins quant_RealValueType:$arg);
   let results = (outs quant_RealValueType);
 }
@@ -88,7 +88,7 @@ def quantfork_DequantizeCastOp : quantfork_Op<"dcast", [NoSideEffect]> {
 //   i8 -> !quant<"uniform[i8:f32]{1.0}">
 //   tensor<4xi8> -> tensor<4x!quant<"uniform[i8:f32]{1.0}">>
 //   vector<4xi8> -> vector<4x!quant<"uniform[i8:f32]{1.0}">>
-def quantfork_StorageCastOp : quantfork_Op<"scast", [NoSideEffect]> {
+def quantfork_StorageCastOp : quantfork_Op<"scast", [Pure]> {
   let arguments = (ins quant_RealOrStorageValueType:$arg);
   let results = (outs quant_RealOrStorageValueType);
   let hasFolder = 1;
@@ -99,7 +99,7 @@ def quantfork_StorageCastOp : quantfork_Op<"scast", [NoSideEffect]> {
 // and outputs. Some quantization specifications can be undetermined and
 // derived from other ports by the target specification of the kernel.
 def quantfork_QuantizeRegionOp : quantfork_Op<"region", [
-    NoSideEffect,
+    Pure,
     IsolatedFromAbove,
     SingleBlockImplicitTerminator<"ReturnOp">]> {
   let summary = [{
@@ -129,7 +129,7 @@ def quantfork_ReturnOp : quantfork_Op<"return", [Terminator]> {
 //===----------------------------------------------------------------------===//
 
 def quantfork_ConstFakeQuant : quantfork_Op<"const_fake_quant",
-                                    [SameOperandsAndResultType, NoSideEffect]> {
+                                    [SameOperandsAndResultType, Pure]> {
   let summary = [{
     Simulates the effect of uniform quantization with const range.
   }];
@@ -159,7 +159,7 @@ def quantfork_ConstFakeQuant : quantfork_Op<"const_fake_quant",
 }
 
 def quantfork_ConstFakeQuantPerAxis : quantfork_Op<"const_fake_quant_per_axis",
-                                    [SameOperandsAndResultType, NoSideEffect]> {
+                                    [SameOperandsAndResultType, Pure]> {
   let summary = [{
     Simulates the effect of per axis uniform quantization with const range.
   }];

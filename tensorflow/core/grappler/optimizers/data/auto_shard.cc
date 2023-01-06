@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/auto_shard.h"
 
+#include <array>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
@@ -73,7 +75,8 @@ constexpr char kOutputShapes[] = "output_shapes";
 constexpr char kOutputTypes[] = "output_types";
 
 // clang-format off
-constexpr std::array<const char*, 5> kReaderDatasetOps = {
+constexpr std::array<const char*, 6> kReaderDatasetOps = {
+    "ArrayRecordDataset",
     "FixedLengthRecordDataset",
     "RecordIODataset",
     "SSTableDataset",

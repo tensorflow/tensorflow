@@ -34,10 +34,10 @@ namespace {
 #endif
 
 xla::Status CreateXlaStatus(::TpuStatus* status) {
-  if (status->code == tensorflow::error::OK) {
+  if (status->code == tsl::error::OK) {
     return ::tsl::OkStatus();
   } else {
-    return xla::Status(tensorflow::error::Code(status->code),
+    return xla::Status(tsl::error::Code(status->code),
                        absl::StrFormat("%s", status->msg));
   }
 }

@@ -185,7 +185,15 @@ StreamExecutor::~StreamExecutor() {
 }
 
 port::Status StreamExecutor::Init(DeviceOptions device_options) {
-  return implementation_->Init(device_ordinal_, std::move(device_options));
+  TF_RETURN_IF_ERROR(
+      implementation_->Init(device_ordinal_, std::move(device_options)));
+
+  // By contract, implementation_ can return nullopt and we'll just use the
+  // Platform's name.
+  device_description_str_ =
+      implementation_->MakeDeviceDescriptionStr().value_or(platform_->Name());
+
+  return ::tsl::OkStatus();
 }
 
 port::Status StreamExecutor::Init() { return Init(DeviceOptions::Default()); }
@@ -269,7 +277,7 @@ bool StreamExecutor::SupportsDnn() const {
 }
 
 bool StreamExecutor::GetConvolveAlgorithms(
-    dnn::ConvolutionKind kind,
+    dnn::ConvolutionKind kind, dnn::DataType input_type,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
@@ -281,13 +289,16 @@ bool StreamExecutor::GetConvolveAlgorithms(
     case dnn::ConvolutionKind::FORWARD:
     case dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION:
       return dnn_support->GetConvolveAlgorithms(
-          GetDeviceDescription().cuda_compute_capability(), out_algorithms);
+          GetDeviceDescription().cuda_compute_capability(), input_type,
+          out_algorithms);
     case dnn::ConvolutionKind::BACKWARD_DATA:
       return dnn_support->GetConvolveBackwardDataAlgorithms(
-          GetDeviceDescription().cuda_compute_capability(), out_algorithms);
+          GetDeviceDescription().cuda_compute_capability(), input_type,
+          out_algorithms);
     case dnn::ConvolutionKind::BACKWARD_FILTER:
       return dnn_support->GetConvolveBackwardFilterAlgorithms(
-          GetDeviceDescription().cuda_compute_capability(), out_algorithms);
+          GetDeviceDescription().cuda_compute_capability(), input_type,
+          out_algorithms);
   }
 }
 

@@ -1576,6 +1576,17 @@ func.func @convert_dot_general(%arg0: tensor<3x2x6x5x1xf32>, %arg1: tensor<3x2x4
   func.return %0 : tensor<3x5x1x4xf32>
 }
 
+// CHECK-LABEL:   func @quantized_dot_general_not_converted
+// CHECK:           "mhlo.dot_general"
+func.func @quantized_dot_general_not_converted(%arg0: tensor<1x1x512xf32>, %arg1: tensor<512x512x!quant.uniform<i8:f32, 0.00285>>) -> tensor<1x1x512xf32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [0]
+    >} : (tensor<1x1x512xf32>, tensor<512x512x!quant.uniform<i8:f32, 0.00285>>) -> tensor<1x1x512xf32>
+  func.return %0 : tensor<1x1x512xf32>
+}
+
 // CHECK-LABEL:   func @convert_dot_general_repeated(
 // CHECK-SAME:                                       %[[VAL_0:.*]]: tensor<1x1x1024xf32>,
 // CHECK-SAME:                                       %[[VAL_1:.*]]: tensor<1024x1024xf32>) -> tensor<1x1x1024xf32> {
@@ -2386,6 +2397,23 @@ func.func @convert_floor_mod_int_cst(%arg0: tensor<192x8xi32>) -> tensor<192x8xi
   %6 = mhlo.add %2, %1 : tensor<192x8xi32>
   %7 = "mhlo.select"(%5, %6, %2) : (tensor<192x8xi1>, tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi32>
   func.return %7 : tensor<192x8xi32>
+}
+
+// CHECK-LABEL: func @convert_floor_mod_bfloat
+// CHECK: %[[RESULT:.*]] = "tf.FloorMod"(%arg0, %arg1) : (tensor<10x10xbf16>, tensor<10x10xbf16>) -> tensor<10x10xbf16>
+// CHECK: return %[[RESULT]]
+// CHECK: }
+func.func @convert_floor_mod_bfloat(%arg0: tensor<10x10xbf16>, %arg1: tensor<10x10xbf16>) -> tensor<10x10xbf16> {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<10x10xbf16>
+  %1 = mhlo.remainder %arg0, %arg1 : tensor<10x10xbf16>
+  %2 = mhlo.compare  NE, %1, %0,  FLOAT : (tensor<10x10xbf16>, tensor<10x10xbf16>) -> tensor<10x10xi1>
+  %3 = mhlo.compare  LT, %1, %0,  FLOAT : (tensor<10x10xbf16>, tensor<10x10xbf16>) -> tensor<10x10xi1>
+  %4 = mhlo.compare  LT, %arg1, %0,  FLOAT : (tensor<10x10xbf16>, tensor<10x10xbf16>) -> tensor<10x10xi1>
+  %5 = mhlo.compare  NE, %3, %4,  UNSIGNED : (tensor<10x10xi1>, tensor<10x10xi1>) -> tensor<10x10xi1>
+  %6 = mhlo.and %5, %2 : tensor<10x10xi1>
+  %7 = mhlo.add %1, %arg1 : tensor<10x10xbf16>
+  %8 = mhlo.select %6, %7, %1 : tensor<10x10xi1>, tensor<10x10xbf16>
+  return %8 : tensor<10x10xbf16>
 }
 
 // CHECK-LABEL: func @convert_floor_div

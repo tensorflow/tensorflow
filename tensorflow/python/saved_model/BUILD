@@ -3,8 +3,10 @@
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.bzl", "VERSION", "tf_python_pybind_static_deps")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # TODO(drpng): change that to //third_party/tensorflow:internal
     # when we have migrated all users.
     default_visibility = ["//visibility:public"],
@@ -68,6 +70,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":constants",
+        ":path_helpers",
         ":pywrap_saved_model",
         ":signature_def_utils",
         ":utils",
@@ -76,8 +79,8 @@ py_strict_library(
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:saver",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -91,6 +94,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":constants",
+        ":path_helpers",
         ":pywrap_saved_model",
         ":signature_def_utils",
         ":utils",
@@ -193,6 +197,17 @@ tf_py_test(
 )
 
 py_strict_library(
+    name = "path_helpers",
+    srcs = ["path_helpers.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":constants",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_strict_library(
     name = "utils",
     srcs = [
         "utils.py",
@@ -286,6 +301,7 @@ py_strict_library(
         ":function_serialization",
         ":revived_types",
         ":signature_constants",
+        "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/python:composite_tensor",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
@@ -295,6 +311,7 @@ py_strict_library(
         "//tensorflow/python/eager:function",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_decorator",
         "@absl_py//absl/logging",
     ],
 )
@@ -329,6 +346,7 @@ py_strict_library(
     deps = [
         ":builder",
         ":function_serialization",
+        ":path_helpers",
         ":pywrap_saved_model",
         ":revived_types",
         ":save_context",
@@ -359,10 +377,12 @@ py_strict_library(
         "//tensorflow/python/checkpoint:graph_view",
         "//tensorflow/python/checkpoint:save_util_v1",
         "//tensorflow/python/checkpoint:saveable_compat",
+        "//tensorflow/python/checkpoint:tensor_callable",
         "//tensorflow/python/checkpoint:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager/polymorphic_function:saved_model_exported_concrete",
         "//tensorflow/python/eager/polymorphic_function:saved_model_utils",
         "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/trackable:asset",
@@ -399,11 +419,15 @@ py_library(
         "load.py",
     ],
     srcs_version = "PY3",
+    tags = [
+        "ignore_for_dep=third_party.py.keras.optimizers.optimizer_v2",
+    ],
     deps = [
         ":function_deserialization",
         ":load_options",
         ":load_v1_in_v2",
         ":loader",
+        ":path_helpers",
         ":pywrap_saved_model",
         ":revived_types",
         ":utils",
@@ -428,6 +452,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager/polymorphic_function:saved_model_utils",
+        "//tensorflow/python/framework:config",
         "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:autotrackable",
@@ -451,10 +476,8 @@ py_strict_library(
         ":loader",
         ":pywrap_saved_model",
         ":signature_serialization",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:composite_tensor",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:func_graph",
         "//tensorflow/python:platform",
@@ -522,6 +545,18 @@ tf_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "load_optimizer_test",
+    srcs = ["load_optimizer_test.py"],
+    data = ["//tensorflow/cc/saved_model:saved_model_test_files"],
+    tags = ["no_oss"],  # Due to the usage of keras component.
+    deps = [
+        ":load",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -703,7 +738,13 @@ tf_python_pybind_extension(
         "pywrap_saved_model_fingerprinting.h",
         "pywrap_saved_model_metrics.h",
     ],
+    dynamic_deps = ["//tensorflow/python:_pywrap_tensorflow_internal.so"] + select({
+        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+        "//tensorflow:windows": [],
+    }),
     features = ["-layering_check"],
+    static_deps = tf_python_pybind_static_deps(),
     visibility = ["//tensorflow/python/training:__subpackages__"],
     deps = [
         ":pywrap_saved_model_headers",
@@ -760,6 +801,7 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         ":save",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",

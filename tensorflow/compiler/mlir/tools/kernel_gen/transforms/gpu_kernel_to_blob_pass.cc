@@ -19,11 +19,12 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
@@ -142,7 +143,6 @@ class GpuKernelToBlobPass
 
     // Compile and collect requested cubin and PTX images.
     std::vector<tensorflow::se::CubinOrPTXImage> images;
-    TF_ASSIGN_OR_RETURN(std::string libdevice_dir, GetLibdeviceDir(config));
     auto gpu_asm_opts =
         xla::gpu::PtxOptsFromDebugOptions(config.debug_options());
     for (const std::string& arch_str : architectures_) {
@@ -164,7 +164,7 @@ class GpuKernelToBlobPass
           xla::gpu::nvptx::CompileToPtx(
               llvm_module_copy.get(),
               tensorflow::se::CudaComputeCapability{cc_major, cc_minor}, config,
-              libdevice_dir, enable_fusion));
+              enable_fusion));
       if (print_ptx_) {
         llvm::dbgs() << "Generated PTX code for module '"
                      << gpu_module.getName() << "' on architecture sm_" << arch
@@ -236,21 +236,6 @@ class GpuKernelToBlobPass
     return std::pair<bool, int>(is_compute_profile, arch);
   }
 
-  tensorflow::StatusOr<std::string> GetLibdeviceDir(
-      const xla::HloModuleConfig& hlo_module_config) {
-    for (const std::string& cuda_root : tsl::CandidateCudaRoots(
-             hlo_module_config.debug_options().xla_gpu_cuda_data_dir())) {
-      std::string libdevice_dir =
-          tensorflow::io::JoinPath(cuda_root, "nvvm", "libdevice");
-      VLOG(2) << "Looking for libdevice at " << libdevice_dir;
-      if (tsl::Env::Default()->IsDirectory(libdevice_dir).ok()) {
-        VLOG(2) << "Found libdevice dir " << libdevice_dir;
-        return libdevice_dir;
-      }
-    }
-    return tensorflow::errors::Internal(
-        "Can't find libdevice directory ${CUDA_DIR}/nvvm/libdevice");
-  }
   bool enable_ftz_;
 };
 

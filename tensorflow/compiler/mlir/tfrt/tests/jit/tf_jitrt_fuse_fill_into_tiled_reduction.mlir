@@ -18,9 +18,10 @@ func.func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> te
   %3 = tensor.dim %lhs, %c0 : tensor<?x?xf32>
   %4 = tensor.dim %lhs, %c1 : tensor<?x?xf32>
   %5 = gml_st.loop (%i, %j) = (%c0, %c0) to (%3, %4) step (%c4, %c2)
-      ins (%lhs_ = %lhs: tensor<?x?xf32>, %rhs_ = %rhs: tensor<?x?xf32>)
-      outs (%fill_ = %fill: tensor<?xf32>)
-      iterators["parallel", "reduction"] {
+         ins (%lhs_ = %lhs: tensor<?x?xf32>, %rhs_ = %rhs: tensor<?x?xf32>)
+         outs (%fill_ = %fill: tensor<?xf32>)
+         iterators[#gml_st.iterator_type<parallel>,
+                   #gml_st.iterator_type<reduction>] {
     %6 = affine.min #map0(%i)[%3]
     %7 = affine.min #map1(%j)[%4]
     %8 = tensor.extract_slice %lhs_[%i, %j] [%6, %7] [1, 1]
@@ -113,7 +114,8 @@ module  {
     %2 = gml_st.loop (%i, %j) = (%c0, %c0) to (%c8, %c16) step (%c4, %c2)
            ins (%in_ = %in: tensor<8x16xf32>)
            outs (%fill_ = %fill: tensor<8xf32>)
-           iterators["parallel", "reduction"] {
+           iterators[#gml_st.iterator_type<parallel>,
+                     #gml_st.iterator_type<reduction>] {
       %3 = tensor.extract_slice %in_[%i, %j] [4, 2] [1, 1]
         : tensor<8x16xf32> to tensor<4x2xf32>
       %4 = tensor.extract_slice %fill_[%i] [4] [1]
@@ -157,7 +159,8 @@ module  {
     %5 = gml_st.loop (%i, %j) = (%c0, %c0) to (%3, %4) step (%c4, %c4)
         ins (%in_ = %in: tensor<?x?xf32>)
         outs (%fill_ = %fill: tensor<?xf32>)
-        iterators["reduction", "parallel"] {
+        iterators[#gml_st.iterator_type<reduction>,
+                  #gml_st.iterator_type<parallel>] {
       %6 = affine.min #map0(%i)[%3]
       %7 = affine.min #map0(%j)[%4]
       %8 = tensor.extract_slice %in_[%i, %j] [%6, %7] [1, 1]

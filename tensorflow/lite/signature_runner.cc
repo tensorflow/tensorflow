@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/signature_runner.h"
 
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 
 namespace tflite {
 
@@ -71,6 +71,11 @@ TfLiteStatus SignatureRunner::ResizeInputTensorStrict(
 }
 
 TfLiteStatus SignatureRunner::Invoke() {
+  // "Resets" cancellation flag so cancellation happens before this invoke will
+  // not take effect.
+  if (subgraph_->continue_invocation_)
+    (void)subgraph_->continue_invocation_->test_and_set();
+
   TF_LITE_ENSURE_STATUS(subgraph_->Invoke());
 
   // Makes sure output tensors are readable.

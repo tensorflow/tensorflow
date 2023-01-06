@@ -44,19 +44,10 @@ else:
 class Delegate:
   """Python wrapper class to manage TfLiteDelegate objects.
 
-  The shared library is expected to have two functions:
-    TfLiteDelegate* tflite_plugin_create_delegate(
-        char**, char**, size_t, void (*report_error)(const char *))
-    void tflite_plugin_destroy_delegate(TfLiteDelegate*)
-
-  The first one creates a delegate object. It may return NULL to indicate an
-  error (with a suitable error message reported by calling report_error()).
-  The second one destroys delegate object and must be called for every
-  created delegate object. Passing NULL as argument value is allowed, i.e.
-
-    tflite_plugin_destroy_delegate(tflite_plugin_create_delegate(...))
-
-  always works.
+  The shared library is expected to have two functions,
+  tflite_plugin_create_delegate and tflite_plugin_destroy_delegate,
+  which should implement the API specified in
+  tensorflow/lite/delegates/external/external_delegate_interface.h.
   """
 
   def __init__(self, library, options=None):
@@ -85,6 +76,7 @@ class Delegate:
         ctypes.POINTER(ctypes.c_char_p), ctypes.c_int,
         ctypes.CFUNCTYPE(None, ctypes.c_char_p)
     ]
+    # The return type is really 'TfLiteDelegate*', but 'void*' is close enough.
     self._library.tflite_plugin_create_delegate.restype = ctypes.c_void_p
 
     # Convert the options from a dictionary to lists of char pointers.
@@ -289,7 +281,8 @@ class SignatureRunner:
     """
     result = {}
     for input_name, tensor_index in self._inputs.items():
-      result[input_name] = self._interpreter._get_tensor_details(tensor_index)  # pylint: disable=protected-access
+      result[input_name] = self._interpreter._get_tensor_details(  # pylint: disable=protected-access
+          tensor_index, self._subgraph_index)
     return result
 
   def get_output_details(self):
@@ -302,7 +295,8 @@ class SignatureRunner:
     """
     result = {}
     for output_name, tensor_index in self._outputs:
-      result[output_name] = self._interpreter._get_tensor_details(tensor_index)  # pylint: disable=protected-access
+      result[output_name] = self._interpreter._get_tensor_details(  # pylint: disable=protected-access
+          tensor_index, self._subgraph_index)
     return result
 
 
@@ -565,11 +559,12 @@ class Interpreter:
 
     return details
 
-  def _get_tensor_details(self, tensor_index):
+  def _get_tensor_details(self, tensor_index, subgraph_index):
     """Gets tensor details.
 
     Args:
       tensor_index: Tensor index of tensor to query.
+      subgraph_index: Index of the subgraph.
 
     Returns:
       A dictionary containing the following fields of the tensor:
@@ -589,15 +584,18 @@ class Interpreter:
       ValueError: If tensor_index is invalid.
     """
     tensor_index = int(tensor_index)
-    tensor_name = self._interpreter.TensorName(tensor_index)
-    tensor_size = self._interpreter.TensorSize(tensor_index)
-    tensor_size_signature = self._interpreter.TensorSizeSignature(tensor_index)
-    tensor_type = self._interpreter.TensorType(tensor_index)
-    tensor_quantization = self._interpreter.TensorQuantization(tensor_index)
+    subgraph_index = int(subgraph_index)
+    tensor_name = self._interpreter.TensorName(tensor_index, subgraph_index)
+    tensor_size = self._interpreter.TensorSize(tensor_index, subgraph_index)
+    tensor_size_signature = self._interpreter.TensorSizeSignature(
+        tensor_index, subgraph_index)
+    tensor_type = self._interpreter.TensorType(tensor_index, subgraph_index)
+    tensor_quantization = self._interpreter.TensorQuantization(
+        tensor_index, subgraph_index)
     tensor_quantization_params = self._interpreter.TensorQuantizationParameters(
-        tensor_index)
+        tensor_index, subgraph_index)
     tensor_sparsity_params = self._interpreter.TensorSparsityParameters(
-        tensor_index)
+        tensor_index, subgraph_index)
 
     if not tensor_type:
       raise ValueError('Could not get tensor details')
@@ -641,9 +639,9 @@ class Interpreter:
       A list of dictionaries containing tensor information.
     """
     tensor_details = []
-    for idx in range(self._interpreter.NumTensors()):
+    for idx in range(self._interpreter.NumTensors(0)):
       try:
-        tensor_details.append(self._get_tensor_details(idx))
+        tensor_details.append(self._get_tensor_details(idx, subgraph_index=0))
       except ValueError:
         pass
     return tensor_details
@@ -675,7 +673,8 @@ class Interpreter:
         sparse tensor. This is empty if the tensor is dense.
     """
     return [
-        self._get_tensor_details(i) for i in self._interpreter.InputIndices()
+        self._get_tensor_details(i, subgraph_index=0)
+        for i in self._interpreter.InputIndices()
     ]
 
   def set_tensor(self, tensor_index, value):
@@ -734,7 +733,8 @@ class Interpreter:
       described for `get_input_details()`.
     """
     return [
-        self._get_tensor_details(i) for i in self._interpreter.OutputIndices()
+        self._get_tensor_details(i, subgraph_index=0)
+        for i in self._interpreter.OutputIndices()
     ]
 
   def get_signature_list(self):

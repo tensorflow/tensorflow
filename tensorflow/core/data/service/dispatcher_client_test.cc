@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/test_cluster.h"
@@ -31,14 +32,18 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
+using ::tensorflow::data::experimental::DistributedSnapshotMetadata;
+using ::tensorflow::data::testing::CreateDummyDistributedSnapshotMetadata;
 using ::tensorflow::data::testing::EqualsProto;
 using ::tensorflow::data::testing::InfiniteDataset;
+using ::tensorflow::data::testing::LocalTempFilename;
 using ::tensorflow::data::testing::RangeDataset;
 using ::tensorflow::testing::StatusIs;
 using ::testing::AllOf;
@@ -102,10 +107,56 @@ TEST_F(DispatcherClientTest, DatasetDoesNotExist) {
       StatusIs(error::NOT_FOUND, HasSubstr("Dataset id not-found not found")));
 }
 
+TEST_F(DispatcherClientTest, SnapshotAlreadyStarted) {
+  DistributedSnapshotMetadata metadata =
+      CreateDummyDistributedSnapshotMetadata();
+  std::string directory = LocalTempFilename();
+  TF_ASSERT_OK(
+      dispatcher_client_->Snapshot(RangeDataset(10), directory, metadata));
+  EXPECT_THAT(
+      dispatcher_client_->Snapshot(RangeDataset(10), directory, metadata),
+      StatusIs(error::INVALID_ARGUMENT, HasSubstr("already started")));
+}
+
 TEST_F(DispatcherClientTest, GetDataServiceConfig) {
   DataServiceConfig config;
   TF_ASSERT_OK(dispatcher_client_->GetDataServiceConfig(config));
   EXPECT_EQ(config.deployment_mode(), DEPLOYMENT_MODE_COLOCATED);
+}
+
+TEST_F(DispatcherClientTest, SnapshotMetadatasWritten) {
+  DistributedSnapshotMetadata metadata =
+      CreateDummyDistributedSnapshotMetadata();
+  absl::flat_hash_set<std::string> directories = {LocalTempFilename(),
+                                                  LocalTempFilename()};
+  for (const auto& directory : directories) {
+    TF_ASSERT_OK(
+        dispatcher_client_->Snapshot(RangeDataset(10), directory, metadata));
+  }
+  for (const auto& directory : directories) {
+    TF_ASSERT_OK(Env::Default()->FileExists(
+        io::JoinPath(directory, "snapshot.metadata")));
+  }
+}
+
+TEST_F(DispatcherClientTest, SnapshotsInHeartbeat) {
+  DistributedSnapshotMetadata metadata =
+      CreateDummyDistributedSnapshotMetadata();
+  absl::flat_hash_set<std::string> directories = {LocalTempFilename(),
+                                                  LocalTempFilename()};
+  for (const auto& directory : directories) {
+    TF_ASSERT_OK(
+        dispatcher_client_->Snapshot(RangeDataset(10), directory, metadata));
+  }
+  WorkerHeartbeatRequest worker_heartbeat_request;
+  worker_heartbeat_request.set_worker_address(test_cluster_->WorkerAddress(0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      WorkerHeartbeatResponse worker_heartbeat_response,
+      dispatcher_client_->WorkerHeartbeat(worker_heartbeat_request));
+  ASSERT_EQ(worker_heartbeat_response.snapshots_size(), directories.size());
+  for (const auto& snapshot : worker_heartbeat_response.snapshots()) {
+    ASSERT_TRUE(directories.count(snapshot.directory()));
+  }
 }
 
 TEST_F(DispatcherClientTest, RegisterDatasetWithExplicitId) {

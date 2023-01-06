@@ -18,7 +18,7 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -261,6 +261,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
   }
   if (GetTensorShape(output).FlatSize() == 0) {
+    if (output->type == kTfLiteString) {
+      // For safety, ensure that we write to the output tensor.
+      DynamicBuffer buffer;
+      buffer.WriteToTensor(output, /*new_shape=*/nullptr);
+    }
     return kTfLiteOk;
   }
 

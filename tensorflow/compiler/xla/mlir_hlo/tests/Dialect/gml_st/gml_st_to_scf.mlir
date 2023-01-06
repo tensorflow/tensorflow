@@ -89,7 +89,8 @@ func.func @loop_reduction(%A: memref<192x192xf32>,
   gml_st.loop (%i, %j) = (%c0, %c0) to (%c192, %c192) step (%c24, %c16)
       ins (%A_ = %A: memref<192x192xf32>, %B_ = %B:  memref<192x192xf32>)
       outs (%C_ = %C: memref<f32>)
-      iterators["reduction", "reduction"] {
+      iterators[#gml_st.iterator_type<reduction>,
+                #gml_st.iterator_type<reduction>] {
     linalg.fill ins(%cst : f32) outs(%A_ : memref<192x192xf32>)
     gml_st.yield
   }
@@ -147,7 +148,8 @@ func.func @loop_row_reduction(%A: memref<10x8xf32>,
   gml_st.loop (%i, %j) = (%c0, %c0) to (%c10, %c8) step (%c2, %c4)
       ins (%A_ = %A: memref<10x8xf32>)
       outs (%B_ = %B: memref<8xf32>)
-      iterators["reduction", "parallel"] {
+      iterators[#gml_st.iterator_type<reduction>,
+                #gml_st.iterator_type<parallel>] {
     %A_sub = memref.subview %A_[%i, %j][2, 4][1, 1]
       : memref<10x8xf32> to memref<2x4xf32, #strided_2d>
     %B_sub = memref.subview %B_[%j][4][1]
@@ -178,9 +180,9 @@ func.func @loop_row_reduction(%A: memref<10x8xf32>,
 // CHECK:     scf.parallel (%[[J:.*]]) = (%[[C0]]) to (%[[C8]]) step (%[[C4]])
 // CHECK-NEXT:  scf.for %[[I:.*]] = %[[C0]] to %[[C10]] step %[[C2]]
 // CHECK-NEXT:    memref.subview %arg{{[0-9]+}}[%[[I]], %[[J]]] [2, 4] [1, 1]
-// CHECK-SAME:      : memref<10x8xf32> to memref<2x4xf32, #map{{[0-9]+}}>
+// CHECK-SAME:      : memref<10x8xf32> to memref<2x4xf32, #map{{[0-9]*}}>
 // CHECK-NEXT:    memref.subview %arg{{[0-9]+}}[%[[J]]] [4] [1]
-// CHECK-SAME:      : memref<8xf32> to memref<4xf32, #map{{[0-9]+}}>
+// CHECK-SAME:      : memref<8xf32> to memref<4xf32, #map{{[0-9]*}}>
 
 // -----
 
@@ -199,7 +201,8 @@ func.func @loop_col_reduction(%A: memref<10x8xf32>,
   gml_st.loop (%i, %j) = (%c0, %c0) to (%c10, %c8) step (%c2, %c4)
       ins (%A_ = %A: memref<10x8xf32>)
       outs (%B_ = %B: memref<10xf32>)
-      iterators["parallel", "reduction"] {
+      iterators[#gml_st.iterator_type<parallel>,
+                #gml_st.iterator_type<reduction>] {
     %A_sub = memref.subview %A_[%i, %j][2, 4][1, 1]
       : memref<10x8xf32> to memref<2x4xf32, #strided_2d>
     %B_sub = memref.subview %B_[%i][2][1]
@@ -230,6 +233,33 @@ func.func @loop_col_reduction(%A: memref<10x8xf32>,
 // CHECK:     scf.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[C10]]) step (%[[C2]])
 // CHECK-NEXT:  scf.for %[[J:.*]] = %[[C0]] to %[[C8]] step %[[C4]]
 // CHECK-NEXT:    memref.subview %arg{{[0-9]+}}[%[[I]], %[[J]]] [2, 4] [1, 1]
-// CHECK-SAME:      : memref<10x8xf32> to memref<2x4xf32, #map{{[0-9]+}}>
+// CHECK-SAME:      : memref<10x8xf32> to memref<2x4xf32, #map{{[0-9]*}}>
 // CHECK-NEXT:    memref.subview %arg{{[0-9]+}}[%[[I]]] [2] [1]
-// CHECK-SAME:      : memref<10xf32> to memref<2xf32, #map{{[0-9]+}}>
+// CHECK-SAME:      : memref<10xf32> to memref<2xf32, #map{{[0-9]*}}>
+
+// -----
+
+func.func @for_with_result(%arg: vector<4xf32>) -> vector<4xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c10 = arith.constant 10 : index
+
+  %result = gml_st.for (%i) = (%c0) to (%c10) step (%c1)
+      outs (%out = %arg: vector<4xf32>) {
+    %sum = arith.addf %out, %out : vector<4xf32>
+    %tile = gml_st.tile [0] [4] [1] : !gml_st.tile<4>
+    gml_st.set_yield %sum into %out[%tile]
+        : vector<4xf32> into vector<4xf32>[!gml_st.tile<4>]
+  } : vector<4xf32>
+
+  func.return %result : vector<4xf32>
+}
+
+// CHECK-LABEL: @for_with_result(
+// CHECK-SAME:      %[[ARG:.*]]: vector<4xf32>)
+
+// CHECK:      %[[RESULT:.*]] = scf.for
+// CHECK-SAME:     iter_args(%[[OUT:.*]] = %[[ARG]])
+// CHECK-NEXT:   %[[SUM:.*]] = arith.addf %[[OUT]], %[[OUT]]
+// CHECK-NEXT:   scf.yield %[[SUM]]
+// CHECK:      return %[[RESULT]] : vector<4xf32>

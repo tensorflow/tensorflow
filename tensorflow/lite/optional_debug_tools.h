@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 /// \file
+///
 /// Optional debugging functionality.
 /// For small sized binaries, these are not needed.
 #ifndef TENSORFLOW_LITE_OPTIONAL_DEBUG_TOOLS_H_

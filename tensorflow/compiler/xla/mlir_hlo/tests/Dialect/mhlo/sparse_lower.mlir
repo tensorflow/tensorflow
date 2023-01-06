@@ -53,7 +53,7 @@ func.func @sparse_abs_eltwise(%arg0: tensor<10x20xf32, #CSR>)
 func.func @sparse_add_eltwise(%arg0: tensor<10x20xf32, #CSR>,
                               %arg1: tensor<10x20xf32, #DCSR>)
                                   -> tensor<10x20xf32, #CSR> {
-  %0 = mhlo.add (%arg0, %arg1) : (tensor<10x20xf32, #CSR>,
+  %0 = mhlo.add %arg0, %arg1 : (tensor<10x20xf32, #CSR>,
                                   tensor<10x20xf32, #DCSR>)
                                -> tensor<10x20xf32, #CSR>
   func.return %0 : tensor<10x20xf32, #CSR>
@@ -73,7 +73,7 @@ func.func @sparse_add_eltwise(%arg0: tensor<10x20xf32, #CSR>,
 func.func @sparse_mul_eltwise(%arg0: tensor<10x20xf32, #CSR>,
                               %arg1: tensor<10x20xf32, #DCSR>)
                                   -> tensor<10x20xf32, #CSR> {
-  %0 = mhlo.multiply (%arg0, %arg1) : (tensor<10x20xf32, #CSR>,
+  %0 = mhlo.multiply %arg0, %arg1 : (tensor<10x20xf32, #CSR>,
                                        tensor<10x20xf32, #DCSR>)
                                     -> tensor<10x20xf32, #CSR>
   func.return %0 : tensor<10x20xf32, #CSR>
@@ -120,16 +120,16 @@ func.func @sparse_mul_eltwise(%arg0: tensor<10x20xf32, #CSR>,
 // CHECK:         return %[[T9]] : tensor<10x20x30xf64, #{{.*}}>
 // CHECK:       }
 func.func @sparse_math(%arg0: tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST> {
-  %0 = mhlo.abs(%arg0) : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
-  %1 = mhlo.exponential_minus_one(%0) : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
-  %2 = mhlo.log_plus_one(%1) : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
-  %3 = mhlo.negate(%2) : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
-  %4 = mhlo.sign(%3) : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
-  %5 = mhlo.sine(%4) : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
-  %6 = mhlo.sqrt(%5) : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
-  %7 = mhlo.tanh(%6) : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
-  %8 = mhlo.ceil(%7) : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
-  %9 = mhlo.floor(%8) : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
+  %0 = mhlo.abs %arg0 : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
+  %1 = mhlo.exponential_minus_one %0 : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
+  %2 = mhlo.log_plus_one %1 : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
+  %3 = mhlo.negate %2 : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
+  %4 = mhlo.sign %3 : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
+  %5 = mhlo.sine %4 : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
+  %6 = mhlo.sqrt %5 : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
+  %7 = mhlo.tanh %6 : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
+  %8 = mhlo.ceil %7 : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
+  %9 = mhlo.floor %8 : (tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64, #ST>
   func.return %9 : tensor<10x20x30xf64, #ST>
 }
 
@@ -148,7 +148,7 @@ func.func @sparse_math(%arg0: tensor<10x20x30xf64, #ST>) -> tensor<10x20x30xf64,
 // CHECK:         return %[[T]] : tensor<100xi32>
 // CHECK:       }
 func.func @sparse_sign(%arg0: tensor<100xi32, #SV>) -> tensor<100xi32> {
-  %0 = mhlo.sign(%arg0) : (tensor<100xi32, #SV>) -> tensor<100xi32>
+  %0 = mhlo.sign %arg0 : (tensor<100xi32, #SV>) -> tensor<100xi32>
   func.return %0 : tensor<100xi32>
 }
 
@@ -169,7 +169,7 @@ func.func @sparse_sign(%arg0: tensor<100xi32, #SV>) -> tensor<100xi32> {
 // CHECK:         return %[[T]] : tensor<100xi64>
 // CHECK:       }
 func.func @sparse_int_abs(%arg0: tensor<100xi64, #SV>) -> tensor<100xi64> {
-  %0 = mhlo.abs(%arg0) : (tensor<100xi64, #SV>) -> tensor<100xi64>
+  %0 = mhlo.abs %arg0 : (tensor<100xi64, #SV>) -> tensor<100xi64>
   func.return %0 : tensor<100xi64>
 }
 
@@ -192,7 +192,7 @@ func.func @sparse_int_abs(%arg0: tensor<100xi64, #SV>) -> tensor<100xi64> {
 // CHECK:         return %[[T]] : tensor<16xcomplex<f32>, #{{.*}}>
 // CHECK:       }
 func.func @sparse_convert_complex(%arg0: tensor<16xcomplex<f64>, #SV>) -> tensor<16xcomplex<f32>, #SV> {
-  %0 = mhlo.convert(%arg0) : (tensor<16xcomplex<f64>, #SV>) -> tensor<16xcomplex<f32>, #SV>
+  %0 = mhlo.convert %arg0 : (tensor<16xcomplex<f64>, #SV>) -> tensor<16xcomplex<f32>, #SV>
   return %0 : tensor<16xcomplex<f32>, #SV>
 }
 
@@ -258,7 +258,7 @@ func.func @sparse_transpose(%arg0: tensor<100x200xf64, #CSR>)
 // CHECK:         return %[[VAL]] : tensor<2x3xi32, #{{.*}}>
 // CHECK:       }
 func.func @sparse_conv_eltwise(%arg0: tensor<2x3xf32, #CSR>) -> tensor<2x3xi32, #DCSR> {
-  %0 = mhlo.convert(%arg0) : (tensor<2x3xf32, #CSR>) -> tensor<2x3xi32, #DCSR>
+  %0 = mhlo.convert %arg0 : (tensor<2x3xf32, #CSR>) -> tensor<2x3xi32, #DCSR>
   return %0 : tensor<2x3xi32, #DCSR>
 }
 

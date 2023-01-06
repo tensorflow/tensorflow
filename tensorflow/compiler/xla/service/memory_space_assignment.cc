@@ -507,7 +507,8 @@ float MemorySpaceAssignmentCostAnalysis::GetAsyncCopyElapsed(
     const Shape& shape) const {
   int64_t size_in_bytes = cost_analysis_.GetShapeSize(shape);
   return static_cast<float>(size_in_bytes) /
-         options().async_copy_bandwidth_bytes_per_second;
+         (options().async_copy_bandwidth_bytes_per_second *
+          options().async_copy_bandwidth_scaling_factor);
 }
 
 int64_t MemorySpaceAssignmentCostAnalysis::GetScheduleEndTime() const {
@@ -1267,6 +1268,10 @@ bool AlternateMemoryBestFitHeap::IsUseAllowedInAlternateMemory(
     int64_t conditional_time = instruction_schedule.at(use.instruction);
     for (const AllocationValue::Use& other_use : value.uses()) {
       if (other_use.hlo_use.instruction != use.instruction) {
+        continue;
+      }
+      // Operand 0 is not passed into the computation.
+      if (other_use.hlo_use.operand_number == 0) {
         continue;
       }
       HloComputation* called_computation =
@@ -3416,7 +3421,7 @@ AlternateMemoryBestFitHeap::FindBestChunkCandidate(
     // Find a chunk that's as long living as possible.
     std::optional<Chunk> last_chunk_candidate;
     int64_t latest_matching_use = std::numeric_limits<int64_t>::min();
-    std::lower_bound(
+    (void)std::lower_bound(
         earliest_use_it, std::next(use_time_it), -1, [&](int64_t use, int64_t) {
           alternate_mem_interval->end = use;
           Chunk chunk_candidate = FindChunkCandidate(*alternate_mem_interval);

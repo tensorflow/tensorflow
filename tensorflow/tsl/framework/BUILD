@@ -4,8 +4,7 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
-load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
     "//tensorflow/tsl/platform:build_config_root.bzl",
     "if_static",
@@ -14,19 +13,17 @@ load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
+load(
+    "//tensorflow/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
+)
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
     licenses = ["notice"],
-)
-
-filegroup(
-    name = "framework_internal_impl_srcs",
-    srcs = [
-        "metrics.cc",
-    ],
 )
 
 # Files needed for core:framework_internal_impl.
@@ -38,7 +35,6 @@ filegroup(
         "cancellation.h",
         "device_type.h",
         "fixedpoint_types.h",
-        "metrics.h",
         "numeric_types.h",
         "tracking_allocator.h",
         "type_traits.h",
@@ -157,13 +153,13 @@ cc_library(
         "tracking_allocator.h",
     ],
     visibility = [
+        "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/core:__subpackages__",
         "//tensorflow/tsl:__subpackages__",
     ],
     deps = [
         ":numeric_types",
         ":type_traits",
-        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/tsl/lib/gtl:inlined_vector",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
@@ -173,6 +169,7 @@ cc_library(
         "//tensorflow/tsl/platform:stringprintf",
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -186,35 +183,28 @@ cc_library(
         "allocator_retry.cc",
         "allocator_retry.h",
         "bfc_allocator.cc",
-        # metric is provided by libtensorflow_framework right now, including the
-        # header here avoids to depend directly on the metric library, which
-        # would lead to duplicated symbols later. The migration to cc_shared_library
-        # should clean this all up.
-        "metrics.h",
     ],
     hdrs = ["bfc_allocator.h"],
     features = ["parse_headers"],
     visibility = ["//visibility:public"],
     deps = [
         ":allocator",
+        ":metrics",
         ":shared_counter",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/tsl/lib/core:bits",
-        "//tensorflow/tsl/lib/monitoring:counter",
-        "//tensorflow/tsl/lib/monitoring:gauge",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:numbers",
-        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:stacktrace",
         "//tensorflow/tsl/platform:str_util",
         "//tensorflow/tsl/platform:strcat",
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/tsl/profiler/lib:traceme",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "//tensorflow/tsl/protobuf:bfc_memory_map_proto_cc",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -300,16 +290,7 @@ cc_library(
     srcs = ["metrics.cc"],
     hdrs = ["metrics.h"],
     deps = [
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/tsl/lib/monitoring:counter",
-        "//tensorflow/tsl/lib/monitoring:gauge",
-        "//tensorflow/tsl/lib/monitoring:sampler",
-        "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:statusor",
-        "//tensorflow/tsl/platform:types",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -367,7 +348,7 @@ cc_library(
     ],
 )
 
-tf_cc_tests(
+tsl_cc_test(
     name = "cancellation_test",
     size = "small",
     srcs = ["cancellation_test.cc"],

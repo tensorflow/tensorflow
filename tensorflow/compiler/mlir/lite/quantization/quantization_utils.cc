@@ -50,8 +50,8 @@ namespace mlir {
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_interface.cc.inc"
 
 namespace quant {
-
 namespace {
+
 constexpr double kSmallestHalfRange = kNearZeroTolerance / 2;
 using QType = quant::QuantizedType;
 

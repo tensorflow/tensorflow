@@ -33,8 +33,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
-#include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_response_cache.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_tensor_coding.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
@@ -56,6 +54,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/grpc_call.h"
+#include "tensorflow/tsl/protobuf/rpc_options.pb.h"
 
 namespace tensorflow {
 
@@ -76,8 +77,8 @@ namespace {
   do {                                                                       \
     mutex_lock l(shutdown_mu_);                                              \
     if (!is_shutdown_) {                                                     \
-      Call<GrpcWorkerServiceThread, grpc::WorkerService::AsyncService,       \
-           method##Request, method##Response>::                              \
+      tsl::Call<GrpcWorkerServiceThread, grpc::WorkerService::AsyncService,  \
+                method##Request, method##Response>::                         \
           EnqueueRequestForMethod(                                           \
               worker_service_, cq_.get(),                                    \
               static_cast<int>(GrpcWorkerMethod::k##method),                 \
@@ -163,8 +164,8 @@ class GrpcWorkerServiceThread {
     bool ok;
 
     while (cq_->Next(&tag, &ok)) {
-      UntypedCall<GrpcWorkerServiceThread>::Tag* callback_tag =
-          static_cast<UntypedCall<GrpcWorkerServiceThread>::Tag*>(tag);
+      tsl::UntypedCall<GrpcWorkerServiceThread>::Tag* callback_tag =
+          static_cast<tsl::UntypedCall<GrpcWorkerServiceThread>::Tag*>(tag);
       CHECK(callback_tag);
       callback_tag->OnCompleted(this, ok);
     }
@@ -183,8 +184,8 @@ class GrpcWorkerServiceThread {
   // `ENQUEUE_REQUEST(Foo)`.
   template <class RequestMessage, class ResponseMessage>
   using WorkerCall =
-      Call<GrpcWorkerServiceThread, grpc::WorkerService::AsyncService,
-           RequestMessage, ResponseMessage>;
+      tsl::Call<GrpcWorkerServiceThread, grpc::WorkerService::AsyncService,
+                RequestMessage, ResponseMessage>;
 
   // Handle all non-cancellable simple methods with a standard wrapper.
   // The boolean `may_block_on_compute_pool` indicates whether or not the
@@ -343,8 +344,8 @@ class GrpcWorkerServiceThread {
   void EnqueueRecvTensorRequestRaw() {
     mutex_lock l(shutdown_mu_);
     if (!is_shutdown_) {
-      Call<GrpcWorkerServiceThread, grpc::WorkerService::AsyncService,
-           RecvTensorRequest, ::grpc::ByteBuffer>::
+      tsl::Call<GrpcWorkerServiceThread, grpc::WorkerService::AsyncService,
+                RecvTensorRequest, ::grpc::ByteBuffer>::
           EnqueueRequestForMethod(
               worker_service_, cq_.get(),
               static_cast<int>(GrpcWorkerMethod::kRecvTensor),
@@ -365,7 +366,7 @@ class GrpcWorkerServiceThread {
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcWorkerServiceThread);
 };
 
-class GrpcWorkerService : public AsyncServiceInterface {
+class GrpcWorkerService : public tsl::AsyncServiceInterface {
  public:
   GrpcWorkerService(GrpcWorker* worker, ::grpc::ServerBuilder* builder,
                     GrpcWorkerServiceOptions options)
@@ -535,6 +536,10 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
               AllocatorAttributes alloc_attrs;
               alloc_attrs.set_gpu_compatible(true);
               alloc_attrs.set_on_host(true);
+              profiler::ScopedMemoryDebugAnnotation op_annotation(
+                  "GrpcWorker::RecvTensorAsync::consumer_callback",
+                  request->step_id(), "dynamic", val.dtype(),
+                  [shape = val.shape()]() { return shape.DebugString(); });
               Allocator* alloc = src_dev->GetAllocator(alloc_attrs);
               Tensor* copy = new Tensor(alloc, val.dtype(), val.shape());
               CHECK(send_dev_context)
@@ -757,10 +762,10 @@ std::unique_ptr<GrpcWorker> NewGrpcWorker(WorkerEnv* env,
   return std::unique_ptr<GrpcWorker>(new GrpcWorker(env, config));
 }
 
-std::unique_ptr<AsyncServiceInterface> NewGrpcWorkerService(
+std::unique_ptr<tsl::AsyncServiceInterface> NewGrpcWorkerService(
     GrpcWorker* worker, ::grpc::ServerBuilder* builder,
     GrpcWorkerServiceOptions options) {
-  return std::unique_ptr<AsyncServiceInterface>(
+  return std::unique_ptr<tsl::AsyncServiceInterface>(
       new GrpcWorkerService(worker, builder, options));
 }
 

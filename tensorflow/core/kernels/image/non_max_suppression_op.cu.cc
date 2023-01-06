@@ -276,10 +276,10 @@ StatusOr<int> CountIf(OpKernelContext* context, const float* dev_array,
   size_t workspace_size = 0;
   auto cuda_stream = tensorflow::GetGpuStream(context);
   auto device = context->eigen_gpu_device();
-  gpuprim::DeviceSelect::If(nullptr, workspace_size,
-                            static_cast<float*>(nullptr),
-                            static_cast<float*>(nullptr),
-                            static_cast<int*>(nullptr), num_elements, op);
+  TF_RETURN_IF_CUDA_ERROR(gpuprim::DeviceSelect::If(
+      nullptr, workspace_size, static_cast<float*>(nullptr),
+      static_cast<float*>(nullptr), static_cast<int*>(nullptr), num_elements,
+      op));
 
   Tensor scratch_output;
   TF_RETURN_IF_ERROR(context->allocate_temp(
@@ -745,13 +745,14 @@ Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
   TF_RETURN_IF_CUDA_ERROR(cudaGetLastError());
   // do Cub::deviceSelect::flagged
   size_t flagged_buffer_size = 0;
-  gpuprim::DeviceSelect::Flagged(static_cast<void*>(nullptr),  // temp_storage
-                                 flagged_buffer_size,
-                                 static_cast<int*>(nullptr),   // input
-                                 static_cast<char*>(nullptr),  // selection flag
-                                 static_cast<int*>(nullptr),   // selected items
-                                 static_cast<int*>(nullptr),   // num_selected
-                                 num_boxes, device.stream());
+  TF_RETURN_IF_CUDA_ERROR(gpuprim::DeviceSelect::Flagged(
+      static_cast<void*>(nullptr),  // temp_storage
+      flagged_buffer_size,
+      static_cast<int*>(nullptr),   // input
+      static_cast<char*>(nullptr),  // selection flag
+      static_cast<int*>(nullptr),   // selected items
+      static_cast<int*>(nullptr),   // num_selected
+      num_boxes, device.stream()));
   Tensor cub_scratch;
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_INT8, TensorShape({(int64)flagged_buffer_size}),
@@ -760,19 +761,19 @@ Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
   TF_RETURN_IF_ERROR(context->allocate_temp(DataType::DT_INT32,
                                             TensorShape({1}), &d_num_selected));
 
-  gpuprim::DeviceSelect::Flagged(
+  TF_RETURN_IF_CUDA_ERROR(gpuprim::DeviceSelect::Flagged(
       (void*)cub_scratch.flat<int8>().data(),  // temp_storage
       flagged_buffer_size,
       d_indices.flat<int>().data(),  // input
       selected,                      // selection flag
       d_selected_indices,            // selected items
-      h_selected_count, num_boxes, device.stream());
+      h_selected_count, num_boxes, device.stream()));
   gpuEvent_t copy_done;
   TF_RETURN_IF_CUDA_ERROR(
       gpuEventCreateWithFlags(&copy_done, gpuEventDisableTiming));
   TF_RETURN_IF_CUDA_ERROR(gpuEventRecord(copy_done, device.stream()));
   TF_RETURN_IF_CUDA_ERROR(gpuEventSynchronize(copy_done));
-  gpuEventDestroy(copy_done);
+  TF_RETURN_IF_CUDA_ERROR(gpuEventDestroy(copy_done));
 
   *h_nkeep = *h_selected_count;
   return OkStatus();

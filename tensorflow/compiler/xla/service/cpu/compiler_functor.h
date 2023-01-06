@@ -64,15 +64,6 @@ class CompilerFunctor : public llvm::orc::IRCompileLayer::IRCompiler {
       llvm::Module& module) override;
 
  private:
-  // Populates the given pass manager with TargetLibraryInfo and
-  // TargetTransformInfo passes.
-  void AddTargetInfoPasses(llvm::legacy::PassManagerBase* passes) const;
-
-  // Populates the given pass managers based on the optimization level.
-  void AddOptimizationPasses(llvm::legacy::PassManagerBase* module_passes,
-                             llvm::legacy::FunctionPassManager* function_passes,
-                             unsigned opt_level, unsigned size_level) const;
-
   llvm::TargetMachine* target_machine_;
   const unsigned opt_level_;
   const bool optimize_for_size_;

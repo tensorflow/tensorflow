@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 
 namespace mlir {
 
@@ -59,22 +60,24 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFModulePass(
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFNoFallbackPass(
     bool allow_partial_conversion = false);
 
-/// Lowers from TF dialect to HLO dialect using tf2xla op kernels for the
-/// specified device type.
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTfWithTf2XlaPass(
-    llvm::StringRef device_type = "", bool prefer_tf2xla = false);
-
 /// Replaces types that do not exist in MHLO with equivalent types that do
 /// exist.
 std::unique_ptr<OperationPass<void>> CreateLegalizeTfTypesPass();
 
+/// Converter to be used along with the fallback Tf2Xla patterns below.
+class Tf2XlaTypeConverter : public TypeConverter {
+ public:
+  Tf2XlaTypeConverter();
+};
+
 /// Adds the TF to XLA via TF2XLA rewrite patterns to the pattern list.
 /// `prefer_tf2xla` means an op will be included iff it is not in
 /// `MlirLegalizedUnderPreferTf2XlaSet`. `!prefer_tf2xla` mean an op will be
-/// included iff it is in `IsOpAllowedTf2XlaFallback`.
+/// included if there is no native MLIR legalization for the op.
 void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
                                           RewritePatternSet& patterns,
                                           MLIRContext* ctx,
+                                          Tf2XlaTypeConverter& converter,
                                           bool prefer_tf2xla = false,
                                           bool is_module_pass = false);
 
@@ -83,8 +86,15 @@ void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
 void PopulateLegalizeTfPatterns(MLIRContext* context,
                                 RewritePatternSet* patterns);
 
+// Populates TF to MHLO legalization for some of the quantization ops.
+//
+// TODO(hinsu): Remove this once we combine quantized and non quantized op
+// legalization in the ODML conversion pipeline.
+void PopulateLegalizeTfQuantizationPatterns(MLIRContext* context,
+                                            RewritePatternSet* patterns);
+
 /// Checks whether the op is supported by the Tf2Xla fallback for legalization.
-bool IsOpAllowedTf2XlaFallback(Operation* op);
+bool HasTf2XlaFallback(Operation* op);
 
 /// Lowers from TF dialect's control flow to HLO dialect's control flow.
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFControlFlowPass();

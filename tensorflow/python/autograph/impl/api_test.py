@@ -41,7 +41,6 @@ from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import _errors_test_helper
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors as tf_errors
@@ -775,7 +774,7 @@ class ApiTest(test.TestCase):
     self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual(True, self.evaluate(x))
 
-  def test_converted_call_defun_object_method(self):
+  def test_converted_call_function_object_method(self):
 
     # pylint:disable=method-hidden
     class TestClass:
@@ -784,7 +783,7 @@ class ApiTest(test.TestCase):
         return 1
 
       def prepare(self):
-        self.method = function.defun(self.method)
+        self.method = def_function.function(self.method)
 
     # pylint:enable=method-hidden
 

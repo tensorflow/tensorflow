@@ -16,9 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/spmd/stateful_rng_spmd_partitioner.h"
 
 #include <memory>
+#include <utility>
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 
 namespace xla {
 namespace spmd {
@@ -50,10 +51,10 @@ StatefulRngSpmdPartitioner::CreateVisitor(
     HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
     const spmd::SPMDCollectiveOpsCreator& collective_ops_creator,
     int64_t* next_channel_id, spmd::SpmdLogger* logger,
-    spmd::SpmdPartitionerOptions options) {
+    spmd::SpmdPartitionerOptions options, const CallGraph& call_graph) {
   return std::make_unique<StatefulRngSpmdPartitioningVisitor>(
       computation, num_partitions, num_replicas, collective_ops_creator,
-      next_channel_id, logger, std::move(options), this);
+      next_channel_id, logger, std::move(options), this, call_graph);
 }
 
 Status StatefulRngSpmdPartitioner::PreprocessSharding(

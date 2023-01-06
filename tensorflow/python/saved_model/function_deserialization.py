@@ -155,7 +155,7 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto):
 
   return function_spec_lib.FunctionSpec(
       fullargspec=fullargspec,
-      is_method=False,
+      is_bound_method=False,
       input_signature=input_signature,
       jit_compile=jit_compile)
 

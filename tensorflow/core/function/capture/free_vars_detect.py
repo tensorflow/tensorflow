@@ -30,6 +30,8 @@ from tensorflow.python.autograph.pyct.static_analysis import activity
 
 FreeVar = collections.namedtuple("FreeVar", ["name", "is_function", "obj"])
 
+_fn_log_cache = dict()
+
 
 def _parse_and_analyze(func):
   """Parse and analyze Python Function code."""
@@ -48,12 +50,17 @@ def _parse_and_analyze(func):
 
 
 def _handle_wrap_partial_func(obj):
-  """Handle wrapped function and partial functions."""
-  while hasattr(obj, "__wrapped__"):
-    obj = obj.__wrapped__
-  if isinstance(obj, functools.partial) or isinstance(obj,
-                                                      functools.partialmethod):
-    obj = obj.func
+  """Processes wrapped function and partial functions recursively."""
+  modified = True
+  while modified:
+    modified = False
+    while hasattr(obj, "__wrapped__"):
+      obj = obj.__wrapped__
+      modified = True
+    if isinstance(obj, functools.partial) or isinstance(
+        obj, functools.partialmethod):
+      obj = obj.func
+      modified = True
   return obj
 
 
@@ -123,6 +130,10 @@ def _search_callable_free_vars(fn):
     node = _parse_and_analyze(fn)
   except ValueError:
     # When source code unavailable, return empty result
+    return []
+  except NotImplementedError:
+    # Autograph cannot handle multiple lambda functions with same line number
+    # and args name.
     return []
 
   scope = anno.getanno(node, anno.Static.SCOPE)
@@ -215,8 +226,6 @@ def _detect_function_free_vars(fn):
       fn, types.MethodType
   ), f"The input should be of Python function type. Got type: {type(fn)}."
 
-  fn = _handle_wrap_partial_func(fn)
-
   queue = collections.deque([fn])
   fn_map = dict()
 
@@ -249,10 +258,23 @@ def generate_free_var_logging(fn, fn_threshold=5, var_threshold=10):
     return None
   fn = _handle_wrap_partial_func(fn)
 
-  fn_vars_map = _detect_function_free_vars(fn)
+  if not (hasattr(fn, "__module__") and hasattr(fn, "__qualname__")):
+    return None
+  fn_key = (fn.__module__, fn.__qualname__)
+  # To prevent log spam, only generate logging once for each tf.function
+  if fn_key in _fn_log_cache:
+    return None
+
+  try:
+    fn_vars_map = _detect_function_free_vars(fn)
+  except Exception:  # pylint: disable=broad-except
+    # Only for logging purpose, do not raise errors to users
+    return None
+
   # If not free vars detected, return None
   if not fn_vars_map:
-    return None
+    _fn_log_cache[fn_key] = None
+    return _fn_log_cache[fn_key]
 
   logging_txt = []
   tf_fn_name = _make_callable_signature(fn)
@@ -269,8 +291,12 @@ def generate_free_var_logging(fn, fn_threshold=5, var_threshold=10):
 
   # Show the free vars info of the tf.function at the top
   fn_threshold -= 1
-  tf_fn_line = one_line_logging(tf_fn_name, fn_vars_map[tf_fn_name],
-                                var_threshold)
+  try:
+    tf_fn_line = one_line_logging(tf_fn_name, fn_vars_map[tf_fn_name],
+                                  var_threshold)
+  except Exception:  # pylint: disable=broad-except
+    # Only for logging purpose, do not raise error to users
+    return ""
 
   # Functions that are defined outside of tf.function
   outside_fn_lines = []
@@ -297,5 +323,7 @@ def generate_free_var_logging(fn, fn_threshold=5, var_threshold=10):
   logging_txt = [explanation_line, tf_fn_line] + outside_fn_lines
   if ellipsis_line:
     logging_txt.append(ellipsis_line)
+  logging_txt = "\n".join(logging_txt)
 
-  return "\n".join(logging_txt)
+  _fn_log_cache[fn_key] = logging_txt
+  return _fn_log_cache[fn_key]

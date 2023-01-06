@@ -139,18 +139,18 @@ class GatherOp : public OpKernel {
     int64_t inner_size = 1;
 
     for (int i = 0; i < batch_dims; ++i) {
-      result_shape.AddDim(params.dim_size(i));
+      OP_REQUIRES_OK(c, result_shape.AddDimWithStatus(params.dim_size(i)));
       batch_size *= params.dim_size(i);
     }
     for (int i = batch_dims; i < axis; ++i) {
-      result_shape.AddDim(params.dim_size(i));
+      OP_REQUIRES_OK(c, result_shape.AddDimWithStatus(params.dim_size(i)));
       outer_size *= params.dim_size(i);
     }
     for (int i = batch_dims; i < indices.dims(); ++i) {
-      result_shape.AddDim(indices.dim_size(i));
+      OP_REQUIRES_OK(c, result_shape.AddDimWithStatus(indices.dim_size(i)));
     }
     for (int i = axis + 1; i < params.dims(); ++i) {
-      result_shape.AddDim(params.dim_size(i));
+      OP_REQUIRES_OK(c, result_shape.AddDimWithStatus(params.dim_size(i)));
       inner_size *= params.dim_size(i);
     }
 
@@ -225,6 +225,7 @@ TF_CALL_qint16(REGISTER_GATHER_CPU);
 TF_CALL_int32(REGISTER_GATHER_GPU);
 TF_CALL_int64(REGISTER_GATHER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GATHER_GPU);
+TF_CALL_bfloat16(REGISTER_GATHER_GPU);
 
 #undef REGISTER_GATHER_GPU
 

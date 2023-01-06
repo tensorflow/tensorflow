@@ -1,11 +1,12 @@
 # Description:
 #   Host-platform specific StreamExecutor support code.
 
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "stream_executor_friends")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -112,7 +113,7 @@ cc_library(
     alwayslink = True,
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "host_stream_test",
     srcs = ["host_stream_test.cc"],
     deps = [

@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 
 namespace mlir {
 /// Create a pass to convert from the TFExecutor to the TF control dialect.
@@ -53,12 +53,15 @@ void AddQuantizationPasses(const mlir::quant::QuantizationSpecs& quant_specs,
                            mlir::OpPassManager& pass_manager) {
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreatePrepareQuantizePass(quant_specs));
+  if (quant_specs.enable_mlir_variable_quantization) {
+    pass_manager.addPass(mlir::TFL::CreatePrepareQuantizeVariablesPass());
+  }
   if (quant_specs.default_ranges.first.has_value() ||
       quant_specs.default_ranges.second.has_value()) {
     pass_manager.addNestedPass<mlir::func::FuncOp>(
         mlir::TFL::CreateDefaultQuantParamsPass(
-            quant_specs.default_ranges.first.getValueOr(0.0),
-            quant_specs.default_ranges.second.getValueOr(0.0),
+            quant_specs.default_ranges.first.value_or(0.0),
+            quant_specs.default_ranges.second.value_or(0.0),
             quant_specs.IsSignedInferenceType()));
   }
   pass_manager.addNestedPass<mlir::func::FuncOp>(
@@ -80,6 +83,9 @@ void AddDynamicRangeQuantizationPasses(
     mlir::OpPassManager& pass_manager) {
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreatePrepareDynamicRangeQuantizePass(quant_specs));
+  if (quant_specs.enable_mlir_variable_quantization) {
+    pass_manager.addPass(mlir::TFL::CreatePrepareQuantizeVariablesPass());
+  }
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateQuantizePass(quant_specs));
   bool emit_quant_adaptor_ops =

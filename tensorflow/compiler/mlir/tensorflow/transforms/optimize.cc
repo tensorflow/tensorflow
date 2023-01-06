@@ -50,20 +50,20 @@ class SimplifyBroadcastReshape : public OpRewritePattern<BroadcastToOp> {
   LogicalResult matchAndRewrite(BroadcastToOp op,
                                 PatternRewriter &rewriter) const override {
     // Only rewrite if the Broadcast has only one consumer.
-    if (!op.output().hasOneUse()) return failure();
+    if (!op.getOutput().hasOneUse()) return failure();
 
-    Operation *user = *op.output().getUsers().begin();
+    Operation *user = *op.getOutput().getUsers().begin();
 
     auto reshape_op = llvm::dyn_cast_or_null<ReshapeOp>(user);
     if (!reshape_op) return failure();
 
-    auto reshape_type = reshape_op.output().getType().cast<ShapedType>();
+    auto reshape_type = reshape_op.getOutput().getType().cast<ShapedType>();
 
     if (!reshape_type.hasStaticShape()) return failure();
     ArrayRef<int64_t> reshape_shape = reshape_type.getShape();
 
-    auto input_type = op.input().getType().cast<ShapedType>();
-    auto output_type = op.output().getType().cast<ShapedType>();
+    auto input_type = op.getInput().getType().cast<ShapedType>();
+    auto output_type = op.getOutput().getType().cast<ShapedType>();
 
     if (!input_type.hasRank() || !output_type.hasRank()) return failure();
 
@@ -120,11 +120,11 @@ class SimplifyBroadcastReshape : public OpRewritePattern<BroadcastToOp> {
     auto new_reshape_type = RankedTensorType::get(new_reshape_dims, el_ty);
     ReshapeOp new_reshape =
         rewriter.create<ReshapeOp>(new_reshape_shape.getLoc(), new_reshape_type,
-                                   op.input(), new_reshape_shape);
+                                   op.getInput(), new_reshape_shape);
     TF::ConstOp new_broadcast_shape =
         GetI64ConstantTensor(rewriter, reshape_shape, op.getLoc());
     rewriter.replaceOpWithNewOp<BroadcastToOp>(
-        reshape_op, reshape_op.output().getType(), new_reshape,
+        reshape_op, reshape_op.getOutput().getType(), new_reshape,
         new_broadcast_shape);
     return success();
   }
@@ -166,8 +166,7 @@ void CreateTFStandardPipeline(OpPassManager &pm,
   func_pm.addPass(tf_executor::CreateTFExecutorGraphPruningPass());
   func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
   func_pm.addPass(CreateMaterializePassthroughOpPass());
-  if (options.form_clusters)
-    func_pm.addPass(TFDevice::CreateClusterFormationPass());
+  if (options.form_clusters) pm.addPass(TFDevice::CreateClusterFormationPass());
 
   // Hopefully there is a single island left, or there wasn't any to begin with.
   // We now run the optimizer which operates mostly inside islands.

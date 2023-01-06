@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
@@ -30,6 +31,10 @@ absl::Status CreateQcomConvolutionFilter(cl_context context, int kernel_x,
 
 std::vector<std::string> GetUnsupportedExtensions() {
   return {"cl_qcom_accelerated_image_ops", "cl_qcom_recordable_queues"};
+}
+
+std::vector<std::pair<std::string, std::string>> GetClSpecificDefines() {
+  return {};
 }
 
 }  // namespace cl

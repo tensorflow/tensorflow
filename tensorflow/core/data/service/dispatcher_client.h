@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
-#include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -30,9 +29,9 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -64,6 +63,10 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   Status GetSplit(int64_t iteration_id, int64_t repetition,
                   int64_t split_provider_index, Tensor& split,
                   bool& end_of_splits);
+
+  // Initiates the process of materializing `dataset`'s output to `directory`.
+  Status Snapshot(const DatasetDef& dataset, const std::string& directory,
+                  const experimental::DistributedSnapshotMetadata& metadata);
 
   // Registers a dataset with the tf.data service, and stores the generated
   // dataset id in `dataset_id`.

@@ -56,7 +56,7 @@ class DistributedVariable(resource_variable_ops.BaseResourceVariable):
     else:
       self._packed_handle = None
     for v in variables:
-      v._distributed_container = weakref.ref(self)  # pylint: disable=protected-access
+      v.handle._distributed_container = weakref.ref(self)  # pylint: disable=protected-access
     self._device_to_handle = {v.device: v.handle for v in variables}
     self._primary_handle = variables[0].handle
     with ops.init_scope(), \

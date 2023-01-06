@@ -24,6 +24,28 @@ limitations under the License.
 namespace mlir {
 namespace tf_saved_model {
 
+// The name of the attribute indicating under what name an object is exported.
+inline constexpr StringRef kTfSavedModelExportedNamesAttr =
+    "tf_saved_model.exported_names";
+
+// The name of the attribute attached to input arguments or results of a
+// function to represent the path which one would use to index into a structured
+// value to reach a given tensor.
+inline constexpr StringRef kTfSavedModelIndexPathAttr =
+    "tf_saved_model.index_path";
+
+// Name of the attribute that inidicates the type of initializer. It should be
+// on a function and the function should exist in the initializers attribute of
+// the SessionInitializerOp.
+inline constexpr StringRef kTfSavedModelInitializerTypeAttr =
+    "tf_saved_model.initializer_type";
+
+// Indicates that the initializer corresponds to the restore op.
+inline constexpr StringRef kTfSavedModelInitializerRestoreType = "restore_op";
+
+// Indicates that the initializer corresponds to the init op.
+inline constexpr StringRef kTfSavedModelInitializerInitType = "init_op";
+
 class TensorFlowSavedModelDialect : public Dialect {
  public:
   explicit TensorFlowSavedModelDialect(MLIRContext *context);

@@ -134,8 +134,10 @@ std::string Reindent(absl::string_view original,
 
 template <typename FloatT>
 static void RoundTripNanPayload(FloatT value, std::string* result) {
+  static_assert(!std::is_same<FloatT, tsl::float8_e4m3fn>::value,
+                "RoundTripNanPayload does not support E4M3");
   const int kPayloadBits = NanPayloadBits<FloatT>();
-  if (std::isnan(value) && kPayloadBits > 0) {
+  if (Eigen::numext::isnan(value) && kPayloadBits > 0) {
     auto rep = absl::bit_cast<
         typename UnsignedIntegerTypeForSize<sizeof(FloatT)>::type>(value);
     auto payload = rep & NanPayloadBitMask<FloatT>();
@@ -152,6 +154,17 @@ static std::string GenericRoundTripFpToString(FloatT value) {
   int max_decimal_digits = std::numeric_limits<FloatT>::max_digits10;
   return absl::StrFormat("%.*g", max_decimal_digits,
                          static_cast<double>(value));
+}
+
+std::string RoundTripFpToString(tsl::float8_e5m2 value) {
+  std::string result = GenericRoundTripFpToString(value);
+  RoundTripNanPayload(value, &result);
+  return result;
+}
+
+std::string RoundTripFpToString(tsl::float8_e4m3fn value) {
+  std::string result = GenericRoundTripFpToString(value);
+  return result;
 }
 
 std::string RoundTripFpToString(bfloat16 value) {

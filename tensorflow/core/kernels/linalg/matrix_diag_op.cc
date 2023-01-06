@@ -127,14 +127,17 @@ class MatrixDiagPartOp : public OpKernel {
 
     TensorShape output_shape;
     for (int i = 0; i < rank - 2; ++i) {
-      output_shape.AddDim(input_shape.dim_size(i));
+      OP_REQUIRES_OK(context,
+                     output_shape.AddDimWithStatus(input_shape.dim_size(i)));
     }
     const Eigen::Index num_diags = upper_diag_index - lower_diag_index + 1;
-    if (num_diags > 1) output_shape.AddDim(num_diags);
+    if (num_diags > 1) {
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(num_diags));
+    }
     const int32_t max_diag_len =
         std::min(num_rows + std::min(upper_diag_index, 0),
                  num_cols - std::max(lower_diag_index, 0));
-    output_shape.AddDim(max_diag_len);
+    OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(max_diag_len));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
@@ -265,7 +268,7 @@ class MatrixDiagOp : public OpKernel {
     TensorShape output_shape = diagonal_shape;
     if (num_diags == 1) {  // Output has rank `rank+1`.
       output_shape.set_dim(diag_rank - 1, num_rows);
-      output_shape.AddDim(num_cols);
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(num_cols));
     } else {  // Output has rank `rank`.
       output_shape.set_dim(diag_rank - 2, num_rows);
       output_shape.set_dim(diag_rank - 1, num_cols);

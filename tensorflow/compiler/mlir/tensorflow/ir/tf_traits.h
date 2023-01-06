@@ -116,7 +116,7 @@ inline ShapedType MergeType(ShapedType a, ShapedType b) {
   for (int i = 0, e = rank; i != e; i++) {
     int64_t dim0 = a.getDimSize(i);
     int64_t dim1 = b.getDimSize(i);
-    dims[i] = (dim0 == ShapedType::kDynamicSize) ? dim1 : dim0;
+    dims[i] = (dim0 == ShapedType::kDynamic) ? dim1 : dim0;
   }
   return RankedTensorType::get(dims, a.getElementType());
 }
@@ -148,7 +148,7 @@ class SameOperandsAndResultTypeResolveRef
   }
 
   static LogicalResult inferReturnTypeComponentsFromOperands(
-      MLIRContext*, Optional<Location> location, ValueShapeRange operands,
+      MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
       DictionaryAttr attributes, RegionRange regions,
       SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
     if (operands.empty())
@@ -175,7 +175,7 @@ template <typename ConcreteType>
 class CannotDuplicate : public TraitBase<ConcreteType, CannotDuplicate> {
  public:
   static LogicalResult verifyTrait(Operation* op) {
-    if (MemoryEffectOpInterface::hasNoEffect(op))
+    if (isMemoryEffectFree(op))
       return op->emitError(
           "operations with no side effects cannot have CannotDuplicate trait");
     return success();

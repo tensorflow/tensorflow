@@ -330,7 +330,7 @@ module {
 // initialization is removed.
 module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {
   "tf_saved_model.session_initializer"() {initializers = [@Init]} : () -> ()
-  func.func @Init() attributes {tf_saved_model.exported_names = ["Init"]} {
+  func.func @Init() attributes {tf_saved_model.exported_names = ["Init"], tf_saved_model.initializer_type = "restore_op"} {
     // CHECK-NOT: "tf.VarHandleOp"
     %cst = "tf.Const"() { value = dense<1.0> : tensor<0xf32> } : () -> tensor<0xf32>
     %handle = "tf.VarHandleOp"() {container="", shared_name="var1", device = "/job:worker/replica:0/task:1/device:CPU:0"} : () -> tensor<!tf_type.resource<tensor<0xf32>>>

@@ -76,6 +76,21 @@ func.func @handles_partitioned_function_calls(%arg0: tensor<f32>, %arg1: tensor<
 
 // -----
 
+func.func private @f(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+  return %arg0 : tensor<f32>
+}
+
+// CHECK-LABEL: handles_tpu_partitioned_function_calls_with_device_ordinal
+func.func @handles_tpu_partitioned_function_calls_with_device_ordinal(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+  %0 = "tf.TPUOrdinalSelector"() {device = ""} : () -> tensor<?xi32>
+  // CHECK: [[ordinal:%[0-9]*]] = "tf.TPUOrdinalSelector"
+  // CHECK: TPUPartitionedCall"([[ordinal]])
+  %1 = "tf.TPUPartitionedCall"(%arg0, %arg1, %0) {f = @f} : (tensor<f32>, tensor<f32>, tensor<?xi32>) -> tensor<f32>
+  return %1 : tensor<f32>
+}
+
+// -----
+
 func.func private @f(%arg0: f32, %arg1: f32, %arg2: f32, %arg3: f32) -> f32 {
     %0 = "tf.Add2"(%arg0, %arg2) : (f32, f32) -> f32
     return %0 : f32

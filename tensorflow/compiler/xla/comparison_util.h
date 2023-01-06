@@ -201,7 +201,7 @@ class Comparison {
       //  -NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN
       // Reference:
       // https://www.tensorflow.org/xla/operation_semantics#element-wise_comparison_operations
-      using R = typename SignedIntegerTypeForSize<sizeof(T)>::type;
+      using R = SignedIntegerTypeForSizeType<sizeof(T)>;
       return GetComparator<R>()(ToSignMagnitude(a), ToSignMagnitude(b));
     }
     return GetComparator<T>()(a, b);

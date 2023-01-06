@@ -23,7 +23,10 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/tsl/platform/threadpool.h"
-#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
+#include "tfrt/concurrency/async_value.h"  // from @tf_runtime
+#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/concurrency/chain.h"  // from @tf_runtime
+#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
 namespace mlir {
 namespace runtime {
@@ -156,16 +159,16 @@ class AsyncRuntime {
   // ------------------------------------------------------------------------ //
 
   // Returns a pointer to the async value storage.
-  static void* GetStorage(Value* value);
+  static std::byte* GetStorage(Value* value);
 
   // Extracts async value that holds a chain owned by the value.
-  static tfrt::AsyncValue* GetAsyncValue(Value* value);
+  static tsl::AsyncValue* GetAsyncValue(Value* value);
 
   // Extracts async value that is owned by the token.
-  static tfrt::AsyncValue* GetAsyncValue(Token* token);
+  static tsl::AsyncValue* GetAsyncValue(Token* token);
 
   // Extracts async value that signals group completion.
-  static tfrt::AsyncValue* GetAsyncValue(Group* group);
+  static tsl::AsyncValue* GetAsyncValue(Group* group);
 
   // Reference counting operations for the runtime objects.
   static void AddRef(AsyncRuntimeObject* obj, unsigned count = 1);
@@ -176,17 +179,38 @@ class AsyncRuntime {
   static AsyncRuntimeObject* ToAsyncRuntimeObject(Value* value);
   static AsyncRuntimeObject* ToAsyncRuntimeObject(Group* group);
 
+  // Convert async value/token to async runtime object.
+  static Token* AsToken(tsl::AsyncValueRef<tsl::Chain> chain);
+
+  template <typename T>
+  static Value* AsValue(
+      tsl::AsyncValueRef<T> value, size_t size,
+      absl::FunctionRef<void(const T*, std::byte* storage)> write) {
+    Value* runtime_async_value =
+        AsyncRuntime::CreateValue(size, alignof(std::max_align_t));
+    value.AndThen([runtime_async_value, write](absl::StatusOr<T*> status_or) {
+      if (!status_or.ok()) {
+        AsyncRuntime::SetError(runtime_async_value);
+      } else {
+        auto* store = AsyncRuntime::GetStorage(runtime_async_value);
+        write(*status_or, store);
+        AsyncRuntime::SetAvailable(runtime_async_value);
+      }
+    });
+    return runtime_async_value;
+  }
+
   AsyncTaskRunner* runner() const { return runner_; }
 
  private:
   // Blocks the caller thread until awaitable async value becomes available.
-  static void Await(tfrt::AsyncValue* awaitable);
+  static void Await(tsl::AsyncValue* awaitable);
 
   AsyncTaskRunner* runner_;  // must outlive *this
 };
 
 // A base class for all Async dialect types reference counted at runtime.
-class AsyncRuntimeObject : public tfrt::ReferenceCounted<AsyncRuntimeObject> {
+class AsyncRuntimeObject : public tsl::ReferenceCounted<AsyncRuntimeObject> {
  public:
   using ReferenceCounted::ReferenceCounted;  // inherit constructors
   virtual ~AsyncRuntimeObject() = default;
@@ -211,16 +235,6 @@ template <typename F>
 /*static*/ void AsyncRuntime::AwaitGroup(Group* group, F&& f) {
   AsyncRuntime::GetAsyncValue(group)->AndThen(std::forward<F>(f));
 }
-
-// Runs async tasks by enqueing them into the host context work queue.
-class HostContextAsyncTaskRunner : public AsyncTaskRunner {
- public:
-  explicit HostContextAsyncTaskRunner(tfrt::HostContext* host) : host_(host) {}
-  void Schedule(Task task) override { EnqueueWork(host_, std::move(task)); }
-
- private:
-  tfrt::HostContext* host_;
-};
 
 //===-----------------------------------------------------------------------===/
 // AsyncTaskRunner implementation on top of the default ThreadPool.

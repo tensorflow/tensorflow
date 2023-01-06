@@ -63,7 +63,7 @@ struct DetensorizeLinalgOp : public OpConversionPattern<GenericOp> {
 
     mlir::SmallVector<Value, 3> inputs;
     bool found_zero_dim_tensor = false;
-    for (auto& en : llvm::enumerate(op.getInputOperands())) {
+    for (auto& en : llvm::enumerate(op.getDpsInputOperands())) {
       auto tensor_type =
           en.value()->get().getType().dyn_cast<RankedTensorType>();
       if (IsNotZeroRankTensor(tensor_type)) {
@@ -80,7 +80,7 @@ struct DetensorizeLinalgOp : public OpConversionPattern<GenericOp> {
 
     auto linalg_op = rewriter.create<GenericOp>(
         loc, op.getResultTypes(), inputs, op.getOutputs(),
-        rewriter.getAffineMapArrayAttr(indexing_maps), op.iterator_types(),
+        rewriter.getAffineMapArrayAttr(indexing_maps), op.getIteratorTypes(),
         mlir::StringAttr(), mlir::StringAttr());
     mlir::Region& region = linalg_op.getRegion();
     rewriter.inlineRegionBefore(op.getBodyRegion(), region, region.end());

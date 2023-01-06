@@ -69,6 +69,7 @@ import weakref
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.function.trace_type import default_types
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
 from tensorflow.python.eager import lift_to_graph
@@ -399,29 +400,32 @@ def run_functions_eagerly(run_eagerly):
 
   Calling `tf.config.run_functions_eagerly(True)` will make all
   invocations of `tf.function` run eagerly instead of running as a traced graph
-  function.
-
-  This can be useful for debugging.
+  function. This can be useful for debugging. As the code now runs line-by-line,
+  you can add arbitrary `print` messages or pdb breakpoints to monitor the
+  inputs/outputs of each Tensorflow operation. However, you should avoid using
+  this for actual production because it significantly slows down execution.
 
   >>> def my_func(a):
-  ...  print("Python side effect")
+  ...  print(f'a: {a}')
   ...  return a + a
   >>> a_fn = tf.function(my_func)
 
   >>> # A side effect the first time the function is traced
+  >>> # In tracing time, `a` is printed with shape and dtype only
   >>> a_fn(tf.constant(1))
-  Python side effect
+  a: Tensor("a:0", shape=(), dtype=int32)
   <tf.Tensor: shape=(), dtype=int32, numpy=2>
 
-  >>> # No further side effect, as the traced function is called
+  >>> # `print` is a python side effect, it won't execute as the traced function
+  >>> # is called
   >>> a_fn(tf.constant(2))
   <tf.Tensor: shape=(), dtype=int32, numpy=4>
 
   >>> # Now, switch to eager running
   >>> tf.config.run_functions_eagerly(True)
-  >>> # Side effect, as the function is called directly
+  >>> # The code now runs eagerly and the actual value of `a` is printed
   >>> a_fn(tf.constant(2))
-  Python side effect
+  a: 2
   <tf.Tensor: shape=(), dtype=int32, numpy=4>
 
   >>> # Turn this back off
@@ -573,7 +577,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     self._name = name
     self._key_for_call_stats = self._get_key_for_call_stats()
     self._omit_frequent_tracing_warning = False
-    ops._tf_function_api_guage.get_cell().set(True)  # pylint: disable=protected-access
+    ops._tf_function_api_gauge.get_cell().set(True)  # pylint: disable=protected-access
 
   @property
   def name(self):
@@ -1138,20 +1142,24 @@ class Function(core.GenericFunction, trackable.Trackable):
     Returns:
       A list of instances of `ConcreteFunction`.
     """
-    concrete_functions = self._list_all_concrete_functions()
     seen_signatures = []
-    for concrete_function in concrete_functions:
-      signature = concrete_function.structured_input_signature
-      flattened = nest.flatten(signature)
-      if any(
-          isinstance(arg, func_graph_module.UnknownArgument)
-          for arg in flattened):
-        logging.info("Unsupported signature for serialization: %s.", signature)
-        continue
-      equal_to_signature = functools.partial(
-          function_spec_lib.is_same_structure, signature, check_values=True)
-      if not any(equal_to_signature(s) for s in seen_signatures):
-        seen_signatures.append(signature)
+    if self.input_signature is not None:
+      seen_signatures.append((self.input_signature, {}))
+    else:
+      concrete_functions = self._list_all_concrete_functions()
+      for concrete_function in concrete_functions:
+        signature = concrete_function.structured_input_signature
+        flattened = nest.flatten(signature)
+        if any(
+            isinstance(arg, func_graph_module.UnknownArgument)
+            for arg in flattened):
+          logging.info("Unsupported signature for serialization: %s.",
+                       signature)
+          continue
+        equal_to_signature = functools.partial(
+            function_spec_lib.is_same_structure, signature, check_values=True)
+        if not any(equal_to_signature(s) for s in seen_signatures):
+          seen_signatures.append(signature)
 
     # Re-create concrete functions for these signatures. Re-creating ensures
     # that if the cache key has changed, the function will be traced again.
@@ -1215,6 +1223,9 @@ class Function(core.GenericFunction, trackable.Trackable):
     concrete = self._get_concrete_function_garbage_collected(*args, **kwargs)
     concrete._garbage_collector.release()  # pylint: disable=protected-access
     return concrete
+
+  def __tf_tracing_type__(self, signature_context):
+    return default_types.Weakref(weakref.ref(self))
 
   def __get__(self, instance, owner):
     """Makes it possible to decorate instance methods."""
