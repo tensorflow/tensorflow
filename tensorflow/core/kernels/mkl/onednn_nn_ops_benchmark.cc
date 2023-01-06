@@ -58,18 +58,6 @@ static void BM_Softmax(::testing::benchmark::State& state,
   state.SetLabel(label);
 }
 
-/*
- * The following trick for number of variadic macro arguments is taken from:
- * http://groups.google.com/group/comp.std.c/browse_thread/thread/77ee8c8f92e4a3fb/346fc464319b1ee5?pli=1
- * The macro PP_NARG returns the number of arguments that have been passed to
- * it.  Currrently, it is prepared to support upto 5 arguments. It is straight
- * forward to extend to a higher number of arguments.
- */
-#define PP_NARG(...) PP_NARG_(__VA_ARGS__, PP_RSEQ_N())
-#define PP_NARG_(...) PP_ARG_N(__VA_ARGS__)
-#define PP_ARG_N(_1, _2, _3, _4, _5, N, ...) N
-#define PP_RSEQ_N() 5, 4, 3, 2, 1, 0
-
 // For a tensor shape {a, b, c, d}, we want to produce a token a_b_c_d
 #define CONCAT_DIMS1(a) _##a
 #define CONCAT_DIMS2(a, b) _##a##_##b
@@ -83,43 +71,43 @@ static void BM_Softmax(::testing::benchmark::State& state,
 // expansion takes place before the expansion of BENCHMARK.
 #define WRAP_BENCHMARK(FUNC) BENCHMARK(FUNC)
 
-#define BM_oneDNN_Softmax(dtype, num_threads, label, ...)                    \
+#define BM_oneDNN_Softmax(dtype, num_threads, label, num_dims, ...)          \
   static void JOIN(BM_oneDNN_Softmax_##dtype##_intraop_##num_threads##_dims, \
-                   JOIN(CONCAT_DIMS, PP_NARG(__VA_ARGS__))(__VA_ARGS__))(    \
+                   JOIN(CONCAT_DIMS, num_dims)(__VA_ARGS__))(                \
       ::testing::benchmark::State & state) {                                 \
     BM_Softmax<dtype>(state, {__VA_ARGS__}, num_threads, label, true);       \
   }                                                                          \
   WRAP_BENCHMARK(                                                            \
       JOIN(BM_oneDNN_Softmax_##dtype##_intraop_##num_threads##_dims,         \
-           JOIN(CONCAT_DIMS, PP_NARG(__VA_ARGS__))(__VA_ARGS__)))            \
+           JOIN(CONCAT_DIMS, num_dims)(__VA_ARGS__)))                        \
       ->MeasureProcessCPUTime()
 
-#define BM_Eigen_Softmax(dtype, num_threads, label, ...)                       \
+#define BM_Eigen_Softmax(dtype, num_threads, label, num_dims, ...)             \
   static void JOIN(BM_Eigen_Softmax_##dtype##_intraop_##num_threads##_dims,    \
-                   JOIN(CONCAT_DIMS, PP_NARG(__VA_ARGS__))(__VA_ARGS__))(      \
+                   JOIN(CONCAT_DIMS, num_dims)(__VA_ARGS__))(                  \
       ::testing::benchmark::State & state) {                                   \
     BM_Softmax<dtype>(state, {__VA_ARGS__}, num_threads, label, false);        \
   }                                                                            \
   WRAP_BENCHMARK(JOIN(BM_Eigen_Softmax_##dtype##_intraop_##num_threads##_dims, \
-                      JOIN(CONCAT_DIMS, PP_NARG(__VA_ARGS__))(__VA_ARGS__)))   \
+                      JOIN(CONCAT_DIMS, num_dims)(__VA_ARGS__)))               \
       ->MeasureProcessCPUTime()
 
-#define BM_Softmax(dtype, num_threads, label, ...)           \
-  BM_oneDNN_Softmax(dtype, num_threads, label, __VA_ARGS__); \
-  BM_Eigen_Softmax(dtype, num_threads, label, __VA_ARGS__);
+#define BM_Softmax(dtype, num_threads, label, num_dims, ...)           \
+  BM_oneDNN_Softmax(dtype, num_threads, label, num_dims, __VA_ARGS__); \
+  BM_Eigen_Softmax(dtype, num_threads, label, num_dims, __VA_ARGS__);
 
-BM_Softmax(float, 4, "float32_BERT_batch_size_1", 1, 16, 384, 384);
-BM_Softmax(float, 4, "float32_BERT_batch_size_16", 16, 16, 384, 384);
-BM_Softmax(float, 1, "float32_ImageNet_batch_size_32", 32, 1008);
-BM_Softmax(float, 1, "float32_ImageNet_batch_size_128", 128, 1008);
-BM_Softmax(float, 4, "float32_ImageNet_batch_size_32", 32, 1008);
-BM_Softmax(float, 4, "float32_ImageNet_batch_size_128", 128, 1008);
-BM_Softmax(bfloat16, 4, "bfloat16_BERT_batch_size_1", 1, 16, 384, 384);
-BM_Softmax(bfloat16, 4, "bfloat16_BERT_batch_size_16", 16, 16, 384, 384);
-BM_Softmax(bfloat16, 1, "bfloat16_ImageNet_batch_size_32", 32, 1008);
-BM_Softmax(bfloat16, 1, "bfloat16_ImageNet_batch_size_128", 128, 1008);
-BM_Softmax(bfloat16, 4, "bfloat16_ImageNet_batch_size_32", 32, 1008);
-BM_Softmax(bfloat16, 4, "bfloat16_ImageNet_batch_size_128", 128, 1008);
+BM_Softmax(float, 4, "float32_BERT_batch_size_1", 4, 1, 16, 384, 384);
+BM_Softmax(float, 4, "float32_BERT_batch_size_16", 4, 16, 16, 384, 384);
+BM_Softmax(float, 1, "float32_ImageNet_batch_size_32", 2, 32, 1008);
+BM_Softmax(float, 1, "float32_ImageNet_batch_size_128", 2, 128, 1008);
+BM_Softmax(float, 4, "float32_ImageNet_batch_size_32", 2, 32, 1008);
+BM_Softmax(float, 4, "float32_ImageNet_batch_size_128", 2, 128, 1008);
+BM_Softmax(bfloat16, 4, "bfloat16_BERT_batch_size_1", 4, 1, 16, 384, 384);
+BM_Softmax(bfloat16, 4, "bfloat16_BERT_batch_size_16", 4, 16, 16, 384, 384);
+BM_Softmax(bfloat16, 1, "bfloat16_ImageNet_batch_size_32", 2, 32, 1008);
+BM_Softmax(bfloat16, 1, "bfloat16_ImageNet_batch_size_128", 2, 128, 1008);
+BM_Softmax(bfloat16, 4, "bfloat16_ImageNet_batch_size_32", 2, 32, 1008);
+BM_Softmax(bfloat16, 4, "bfloat16_ImageNet_batch_size_128", 2, 128, 1008);
 
 }  // namespace
 }  // namespace tensorflow
