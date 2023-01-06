@@ -38,9 +38,9 @@ struct SnapshotWriterParams {
   // for how the directory is structured.
   std::string snapshot_path;
 
-  // The ID of the stream. A stream is one shard of the snapshot processed by a
-  // worker.
-  int64_t stream_id = 0;
+  // The index of the snapshot stream. A stream is one shard of the snapshot
+  // processed by a worker.
+  int64_t stream_index = 0;
 
   // Compression method as defined in tsl/lib/io/compression.h.
   std::string compression;

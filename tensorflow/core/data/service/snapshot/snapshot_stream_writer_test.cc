@@ -112,9 +112,9 @@ Status ClearCommittedChunks(const std::string& snapshot_path) {
 }
 
 StatusOr<int64_t> NumCheckpoints(const std::string& snapshot_path,
-                                 int64_t stream_id) {
+                                 int64_t stream_index) {
   std::string checkpoints_directory =
-      CheckpointsDirectory(snapshot_path, stream_id);
+      CheckpointsDirectory(snapshot_path, stream_index);
   std::vector<std::string> checkpoint_filenames;
   TF_RETURN_IF_ERROR(Env::Default()->GetChildren(checkpoints_directory,
                                                  &checkpoint_filenames));
@@ -131,7 +131,7 @@ TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshot) {
 
   std::string compression = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
-  SnapshotWriterParams writer_params{snapshot_path, /*stream_id=*/0,
+  SnapshotWriterParams writer_params{snapshot_path, /*stream_index=*/0,
                                      compression, Env::Default()};
   SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
   TF_ASSERT_OK(snapshot_writer.Wait());
@@ -144,12 +144,13 @@ TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshot) {
           compression, range),
       IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 
-  EXPECT_THAT(ReadSnapshot<int64_t>(
-                  tsl::io::JoinPath(UncommittedChunksDirectory(snapshot_path,
-                                                               /*stream_id=*/0),
-                                    "chunk_0"),
-                  compression, range),
-              StatusIs(error::NOT_FOUND));
+  EXPECT_THAT(
+      ReadSnapshot<int64_t>(
+          tsl::io::JoinPath(UncommittedChunksDirectory(snapshot_path,
+                                                       /*stream_index=*/0),
+                            "chunk_0"),
+          compression, range),
+      StatusIs(error::NOT_FOUND));
 }
 
 TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshotChunks) {
@@ -159,7 +160,7 @@ TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshotChunks) {
 
   std::string compression = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
-  SnapshotWriterParams writer_params{snapshot_path, /*stream_id=*/0,
+  SnapshotWriterParams writer_params{snapshot_path, /*stream_index=*/0,
                                      compression, Env::Default(),
                                      /*max_chunk_size_bytes=*/1};
   SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
@@ -181,7 +182,7 @@ TEST_P(SnapshotStreamWriterParameterizedTest, SaveAndRestoreFromCheckpoints) {
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
   // Each writer only writes 1 chunk, then returns.
   SnapshotWriterParams writer_params{snapshot_path,
-                                     /*stream_id=*/0, compression,
+                                     /*stream_index=*/0, compression,
                                      Env::Default(),
                                      /*max_chunk_size_bytes=*/1};
 
@@ -234,7 +235,7 @@ TEST(SnapshotStreamWriterTest, SyncCheckpointsWithChunksByRenaming) {
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
   SnapshotWriterParams writer_params{
       snapshot_path,
-      /*stream_id=*/0, tsl::io::compression::kSnappy, Env::Default(),
+      /*stream_index=*/0, tsl::io::compression::kSnappy, Env::Default(),
       /*max_chunk_size_bytes=*/1};
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
@@ -249,7 +250,7 @@ TEST(SnapshotStreamWriterTest, SyncCheckpointsWithChunksByRenaming) {
   std::string committed_chunks_directory =
       CommittedChunksDirectory(snapshot_path);
   std::string uncommitted_chunks_directory =
-      UncommittedChunksDirectory(snapshot_path, /*stream_id=*/0);
+      UncommittedChunksDirectory(snapshot_path, /*stream_index=*/0);
   TF_ASSERT_OK(
       MoveChunks(committed_chunks_directory, uncommitted_chunks_directory));
 
@@ -283,7 +284,7 @@ TEST(SnapshotStreamWriterTest, SyncCheckpointsWithChunksByDeleting) {
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
   SnapshotWriterParams writer_params{
       snapshot_path,
-      /*stream_id=*/0, tsl::io::compression::kSnappy, Env::Default(),
+      /*stream_index=*/0, tsl::io::compression::kSnappy, Env::Default(),
       /*max_chunk_size_bytes=*/1};
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
@@ -298,7 +299,7 @@ TEST(SnapshotStreamWriterTest, SyncCheckpointsWithChunksByDeleting) {
   std::string committed_chunks_directory =
       CommittedChunksDirectory(snapshot_path);
   std::string uncommitted_chunks_directory =
-      UncommittedChunksDirectory(snapshot_path, /*stream_id=*/0);
+      UncommittedChunksDirectory(snapshot_path, /*stream_index=*/0);
   TF_ASSERT_OK(CopyChunks(committed_chunks_directory,
                           uncommitted_chunks_directory,
                           /*dst_file_suffix=*/"999"));
@@ -328,7 +329,7 @@ TEST(SnapshotStreamWriterTest, SyncCheckpointsWithChunks) {
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
   SnapshotWriterParams writer_params{
       snapshot_path,
-      /*stream_id=*/0, tsl::io::compression::kSnappy, Env::Default(),
+      /*stream_index=*/0, tsl::io::compression::kSnappy, Env::Default(),
       /*max_chunk_size_bytes=*/1};
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
@@ -340,7 +341,7 @@ TEST(SnapshotStreamWriterTest, SyncCheckpointsWithChunks) {
   std::string committed_chunks_directory =
       CommittedChunksDirectory(snapshot_path);
   std::string uncommitted_chunks_directory =
-      UncommittedChunksDirectory(snapshot_path, /*stream_id=*/0);
+      UncommittedChunksDirectory(snapshot_path, /*stream_index=*/0);
   TF_ASSERT_OK(CopyChunks(committed_chunks_directory,
                           uncommitted_chunks_directory,
                           /*dst_file_suffix=*/"999"));
@@ -365,7 +366,7 @@ TEST(SnapshotStreamWriterTest, EmptyDataset) {
                           TestIterator(testing::RangeDataset(0)));
 
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
-  SnapshotWriterParams writer_params{snapshot_path, /*stream_id=*/0,
+  SnapshotWriterParams writer_params{snapshot_path, /*stream_index=*/0,
                                      tsl::io::compression::kSnappy,
                                      Env::Default()};
   SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
@@ -384,7 +385,7 @@ TEST(SnapshotStreamWriterTest, Cancel) {
                           TestIterator(testing::RangeDataset(range)));
 
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
-  SnapshotWriterParams writer_params{snapshot_path, /*stream_id=*/0,
+  SnapshotWriterParams writer_params{snapshot_path, /*stream_index=*/0,
                                      tsl::io::compression::kSnappy,
                                      Env::Default()};
   SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));

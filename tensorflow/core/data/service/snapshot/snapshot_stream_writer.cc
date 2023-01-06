@@ -65,10 +65,10 @@ SnapshotStreamWriter::SnapshotStreamWriter(
     : params_(params),
       committed_chunks_directory_(
           CommittedChunksDirectory(params.snapshot_path)),
-      uncommitted_chunks_directory_(
-          UncommittedChunksDirectory(params.snapshot_path, params.stream_id)),
+      uncommitted_chunks_directory_(UncommittedChunksDirectory(
+          params.snapshot_path, params.stream_index)),
       checkpoints_directory_(
-          CheckpointsDirectory(params.snapshot_path, params.stream_id)),
+          CheckpointsDirectory(params.snapshot_path, params.stream_index)),
       iterator_(std::move(iterator)),
       snapshot_thread_(RunSnapshotThread()) {
   DCHECK_NE(iterator_, nullptr);

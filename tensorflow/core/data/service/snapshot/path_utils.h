@@ -23,33 +23,35 @@ namespace tensorflow {
 namespace data {
 
 // Returns the directory path for a worker writing one stream of the snapshot.
-std::string StreamDirectory(absl::string_view snapshot_path, int64_t stream_id);
+std::string StreamDirectory(absl::string_view snapshot_path,
+                            int64_t stream_index);
 
 // Returns the directory path for the assigned splits for a worker writing one
 // stream of a snapshot.
-std::string SplitsDirectory(absl::string_view snapshot_path, int64_t stream_id);
+std::string SplitsDirectory(absl::string_view snapshot_path,
+                            int64_t stream_index);
 
 // Returns the directory path for the assigned splits for one source, for a
 // worker writing one stream of a snapshot.
-std::string SourceDirectory(absl::string_view snapshot_path, int64_t stream_id,
-                            int64_t source_id);
+std::string SourceDirectory(absl::string_view snapshot_path,
+                            int64_t stream_index, int64_t source_id);
 
 // Returns the file path for an assigned split for a worker writing one stream
 // of a snapshot.
-std::string SplitPath(absl::string_view snapshot_path, int64_t stream_id,
+std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
                       int64_t source_id, int64_t local_index,
                       int64_t global_index);
 
 // Returns the directory path for snapshot checkpoints.
 std::string CheckpointsDirectory(absl::string_view snapshot_path,
-                                 int64_t stream_id);
+                                 int64_t stream_index);
 
 // Returns the directory path for committed chunks.
 std::string CommittedChunksDirectory(absl::string_view snapshot_path);
 
 // Returns the directory path for uncommitted chunks.
 std::string UncommittedChunksDirectory(absl::string_view snapshot_path,
-                                       int64_t stream_id);
+                                       int64_t stream_index);
 
 }  // namespace data
 }  // namespace tensorflow
