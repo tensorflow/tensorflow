@@ -22,17 +22,13 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/service/common.pb.h"
-#include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/journal.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/random.h"
-#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace data {
@@ -44,11 +40,11 @@ using IterationKey = DispatcherState::IterationKey;
 using Job = DispatcherState::Job;
 using Iteration = DispatcherState::Iteration;
 using Task = DispatcherState::Task;
-using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
+using ::tsl::testing::StatusIs;
 
 Status RegisterDataset(const std::string& dataset_id, uint64 fingerprint,
                        DispatcherState& state) {

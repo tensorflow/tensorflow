@@ -465,15 +465,12 @@ tf_cc_test(
     deps = [
         ":common_proto_cc",
         ":dispatcher_state",
-        ":journal",
         ":journal_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/tsl/platform:status_matchers",
         "@com_google_absl//absl/strings",
     ],
 )
