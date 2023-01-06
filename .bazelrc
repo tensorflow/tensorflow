@@ -699,7 +699,11 @@ build:tfrt --deleted_packages=tensorflow/compiler/mlir/tfrt,tensorflow/compiler/
 
 # TF Fuzztest config
 try-import fuzztest.bazelrc
+run:tf_fuzztest --config=fuzztest
+# Should aim to remove these
+build:tf_fuzztest --action_env=CC=clang
+build:tf_fuzztest --action_env=CXX=clang++
 build:tf_fuzztest --spawn_strategy=sandboxed
 build:tf_fuzztest --config=monolithic
 build:tf_fuzztest --@libjpeg_turbo//:noasm=yes
-run:tf_fuzztest --config=fuzztest
+
