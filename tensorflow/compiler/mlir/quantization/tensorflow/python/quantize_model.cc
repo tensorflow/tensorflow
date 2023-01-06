@@ -70,6 +70,9 @@ namespace {
 using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 
+// Suffix string for the module export step. Used for debugging.
+constexpr absl::string_view kExportStepSuffix = "_export";
+
 // Options when running passes for exporting an MLIR ModuleOp.
 struct ExportOptions {
   // If set to `true`, it runs `DuplicateShapeDeterminingConstantsPass` before
@@ -380,10 +383,10 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
     return checkpoint_dir.status();
   }
 
-  const auto export_opts =
-      ExportOptions{/*duplicate_shape_determining_constants=*/true,
-                    unfreeze_constants, *checkpoint_dir,
-                    /*debug_name=*/kTfQuantQatStepName};
+  const auto export_opts = ExportOptions{
+      /*duplicate_shape_determining_constants=*/true, unfreeze_constants,
+      *checkpoint_dir,
+      /*debug_name=*/absl::StrCat(kTfQuantQatStepName, kExportStepSuffix)};
 
   const absl::StatusOr<std::vector<std::string>> variable_shared_names =
       RunExportPasses(export_opts, context, *module_ref);
@@ -456,10 +459,11 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
   }
   // `duplicate_shape_determining_constants = false` because the
   // resulting graph of this step is not expected to be loaded on TPU.
-  const auto export_opts =
-      ExportOptions{/*duplicate_shape_determining_constants=*/false,
-                    unfreeze_constants, *checkpoint_dir,
-                    /*debug_name=*/kTfQuantPtqPreCalibrationStepName};
+  const auto export_opts = ExportOptions{
+      /*duplicate_shape_determining_constants=*/false, unfreeze_constants,
+      *checkpoint_dir,
+      /*debug_name=*/
+      absl::StrCat(kTfQuantPtqPreCalibrationStepName, kExportStepSuffix)};
 
   const absl::StatusOr<std::vector<std::string>> variable_shared_names =
       RunExportPasses(export_opts, context, *module_ref);
@@ -534,10 +538,11 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
   if (!checkpoint_dir.ok()) {
     return checkpoint_dir.status();
   }
-  const auto export_opts =
-      ExportOptions{/*duplicate_shape_determining_constants=*/true,
-                    unfreeze_constants, *checkpoint_dir,
-                    /*debug_name=*/kTfQuantPtqPostCalibrationStepName};
+  const auto export_opts = ExportOptions{
+      /*duplicate_shape_determining_constants=*/true, unfreeze_constants,
+      *checkpoint_dir,
+      /*debug_name=*/
+      absl::StrCat(kTfQuantPtqPostCalibrationStepName, kExportStepSuffix)};
 
   const absl::StatusOr<std::vector<std::string>> variable_shared_names =
       RunExportPasses(export_opts, context, *module_ref);
@@ -607,10 +612,11 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
   if (!checkpoint_dir.ok()) {
     return checkpoint_dir.status();
   }
-  const auto export_opts =
-      ExportOptions{/*duplicate_shape_determining_constants=*/true,
-                    unfreeze_constants, *checkpoint_dir,
-                    /*debug_name=*/kTfQuantPtqDynamicRangeStepName};
+  const auto export_opts = ExportOptions{
+      /*duplicate_shape_determining_constants=*/true, unfreeze_constants,
+      *checkpoint_dir,
+      /*debug_name=*/
+      absl::StrCat(kTfQuantPtqDynamicRangeStepName, kExportStepSuffix)};
   const absl::StatusOr<std::vector<std::string>> variable_shared_names =
       RunExportPasses(export_opts, context, *module_ref);
   if (!variable_shared_names.ok()) {
