@@ -138,12 +138,14 @@ TEST_F(DispatcherClientTest, GetDataServiceConfig) {
   EXPECT_EQ(config.deployment_mode(), DEPLOYMENT_MODE_COLOCATED);
 }
 
-TEST_F(DispatcherClientTest, SnapshotMetadatasWritten) {
+TEST_F(DispatcherClientTest, SnapshotMetadataAndDatasetDefWritten) {
   TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> directories,
                           StartDummySnapshots());
   for (const auto& directory : directories) {
     TF_ASSERT_OK(Env::Default()->FileExists(
         io::JoinPath(directory, "snapshot.metadata")));
+    TF_ASSERT_OK(Env::Default()->FileExists(
+        io::JoinPath(directory, "dataset_def.proto")));
   }
 }
 
