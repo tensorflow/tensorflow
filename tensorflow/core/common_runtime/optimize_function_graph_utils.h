@@ -56,8 +56,7 @@ Status PinArgsAndRets(const std::vector<string>& input_devices,
 StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
     const string& function_name, AttrSlice attrs,
     const FunctionLibraryRuntime::InstantiateOptions& options,
-    const std::shared_ptr<DeviceSet>& dev_set,
-    const FunctionLibraryDefinition* input_lib_def,
+    const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
     const std::vector<CompositeDevice*>& composite_devices, Device* cpu_device,
     Device* default_device, Env* env);
 

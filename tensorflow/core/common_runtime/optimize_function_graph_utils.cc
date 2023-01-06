@@ -15,10 +15,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/optimize_function_graph_utils.h"
 
 #include <algorithm>
-#include <unordered_map>
-#include <memory>
-#include <vector>
 #include <iterator>
+#include <memory>
+#include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function_body.h"
@@ -337,8 +337,7 @@ Status PinArgsAndRets(const std::vector<string>& input_devices,
 StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
     const string& function_name, AttrSlice attrs,
     const FunctionLibraryRuntime::InstantiateOptions& options,
-    const std::shared_ptr<DeviceSet>& dev_set,
-    const FunctionLibraryDefinition* input_lib_def,
+    const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
     const std::vector<CompositeDevice*>& composite_devices, Device* cpu_device,
     Device* default_device, Env* env) {
   const FunctionLibraryDefinition* lib_def =
@@ -386,7 +385,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   TF_RETURN_IF_ERROR(
       SetArgShape(options.input_resource_dtypes_and_shapes, arg_nodes));
   TF_RETURN_IF_ERROR(PinArgsAndRets(
-      options.input_devices, options.output_devices, *dev_set, arg_nodes,
+      options.input_devices, options.output_devices, dev_set, arg_nodes,
       ret_nodes, lib_def,
       options.config_proto.allow_soft_placement() ? default_device : nullptr));
 
@@ -412,7 +411,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   bool control_rets_updated = false;
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(FunctionOptimizationPassRegistry::Global().Run(
-        *dev_set, options.config_proto, &graph, &reachable_lib_def,
+        dev_set, options.config_proto, &graph, &reachable_lib_def,
         &control_ret_node_names, &control_rets_updated));
   }
 
@@ -436,7 +435,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   optimization_options.session_options = &session_options;
   optimization_options.graph = &graph;
   optimization_options.flib_def = &reachable_lib_def;
-  optimization_options.device_set = dev_set.get();
+  optimization_options.device_set = &dev_set;
   optimization_options.is_function_graph = true;
   optimization_options.composite_devices = &composite_devices;
   optimization_options.default_function_device = default_device;
@@ -456,7 +455,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   // exceptions/warnings in case where nested function call options are ignored.
   DumpGraph("Before calling Placer", graph.get());
   Placer placer(graph.get(), function_name, optimization_options.flib_def,
-                dev_set.get(), default_device,
+                &dev_set, default_device,
                 options.config_proto.allow_soft_placement(),
                 options.config_proto.log_device_placement());
   TF_RETURN_IF_ERROR(placer.Run(optimization_options));
@@ -471,7 +470,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
     DumpGraph("Before running graph optimization fn", graph.get());
     Status status = options.optimize_graph_fn(
         std::move(ret_node_names), std::move(control_ret_node_names),
-        &reachable_lib_def, *dev_set, cpu_device, &graph);
+        &reachable_lib_def, dev_set, cpu_device, &graph);
     if (!status.ok()) {
       LOG(WARNING) << "Ignoring multi-device function optimization failure: "
                    << status.ToString();
