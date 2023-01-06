@@ -1066,7 +1066,7 @@ def saturate_cast(value, dtype, name=None):
     out_real_dtype = dtype.real_dtype
     if in_dtype.min < out_real_dtype.min or in_dtype.max > out_real_dtype.max:
 
-      # Forward-compatibility required for Brella if output is real:
+      # Wrap changes to maintain TensorFlow's forward-compatibility window.
       if not dtype.is_complex and not tf_compat.forward_compatible(2023, 1, 16):
         # Old behavior using max/min.
         if in_dtype.min < dtype.min:
