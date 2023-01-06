@@ -430,6 +430,7 @@ class MatrixDiagTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testVectorBatch(self):
+    self._testVectorBatch(dtypes_lib.bfloat16.as_numpy_dtype)
     self._testVectorBatch(np.float32)
     self._testVectorBatch(np.float64)
     self._testVectorBatch(np.int32)
@@ -657,6 +658,7 @@ class MatrixSetDiagTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testSquareBatch(self):
+    self._testSquareBatch(dtypes_lib.bfloat16.as_numpy_dtype)
     self._testSquareBatch(np.float32)
     self._testSquareBatch(np.float64)
     self._testSquareBatch(np.int32)
@@ -842,6 +844,7 @@ class MatrixDiagPartTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testSquareBatch(self):
+    self._testSquareBatch(dtypes_lib.bfloat16.as_numpy_dtype)
     self._testSquareBatch(np.float32)
     self._testSquareBatch(np.float64)
     self._testSquareBatch(np.int32)
