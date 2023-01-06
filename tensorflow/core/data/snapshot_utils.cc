@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/data/name_utils.h"
-#include "tensorflow/core/data/snapshot.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"

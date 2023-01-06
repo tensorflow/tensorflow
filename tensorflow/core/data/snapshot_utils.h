@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SNAPSHOT_UTILS_H_
 #define TENSORFLOW_CORE_DATA_SNAPSHOT_UTILS_H_
 
-#include "tensorflow/core/data/snapshot.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
 
 namespace tensorflow {
 

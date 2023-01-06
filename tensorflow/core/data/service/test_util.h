@@ -21,12 +21,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/data/service/common.pb.h"
-#include "tensorflow/core/data/snapshot.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
 
 namespace tensorflow {
 namespace data {

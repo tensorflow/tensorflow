@@ -6,7 +6,6 @@ load(
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library",
     "tf_protos_all",
 )
 
@@ -16,14 +15,6 @@ package(
         "//tensorflow:internal",
     ],
     licenses = ["notice"],
-)
-
-tf_proto_library(
-    name = "snapshot_proto",
-    srcs = ["snapshot.proto"],
-    has_services = 1,
-    cc_api_version = 2,
-    create_java_proto = False,
 )
 
 # Export files for use on Android.
@@ -423,7 +414,6 @@ cc_library(
     hdrs = ["snapshot_utils.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        ":snapshot_proto_cc",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",

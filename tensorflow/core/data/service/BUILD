@@ -38,7 +38,6 @@ tf_proto_library(
     create_java_proto = False,
     protodeps = tf_additional_all_protos() + [
         ":common_proto",
-        "//tensorflow/core/data:snapshot_proto",
     ],
 )
 
@@ -343,7 +342,6 @@ cc_library(
         ":dispatcher_proto_cc",
         ":grpc_util",
         "@com_google_absl//absl/strings",
-        "//tensorflow/core/data:snapshot_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:protos_all_cc",
@@ -814,7 +812,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core/data:dataset_test_base",
-        "//tensorflow/core/data:snapshot_proto_cc",
         "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/framework:function_testlib",
         "//tensorflow/core/framework:graph_proto_cc",

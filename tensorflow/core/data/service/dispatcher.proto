@@ -3,9 +3,9 @@ syntax = "proto3";
 package tensorflow.data;
 
 import "tensorflow/core/data/service/common.proto";
-import "tensorflow/core/data/snapshot.proto";
 import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/protobuf/data_service.proto";
+import "tensorflow/core/protobuf/snapshot.proto";
 
 // Next tag: 3
 message TaskProgress {
