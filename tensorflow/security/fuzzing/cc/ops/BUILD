@@ -75,6 +75,7 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:bincount_op",
         "//tensorflow/core/kernels:array",
         "//tensorflow/security/fuzzing/cc:fuzz_session",
