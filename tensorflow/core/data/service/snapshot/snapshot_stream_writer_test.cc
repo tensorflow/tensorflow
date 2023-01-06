@@ -111,6 +111,16 @@ Status ClearCommittedChunks(const std::string& snapshot_path) {
   return OkStatus();
 }
 
+StatusOr<int64_t> NumCheckpoints(const std::string& snapshot_path,
+                                 int64_t stream_id) {
+  std::string checkpoints_directory =
+      CheckpointsDirectory(snapshot_path, stream_id);
+  std::vector<std::string> checkpoint_filenames;
+  TF_RETURN_IF_ERROR(Env::Default()->GetChildren(checkpoints_directory,
+                                                 &checkpoint_filenames));
+  return checkpoint_filenames.size();
+}
+
 using SnapshotStreamWriterParameterizedTest =
     ::testing::TestWithParam<std::string>;
 
@@ -196,6 +206,10 @@ TEST_P(SnapshotStreamWriterParameterizedTest, SaveAndRestoreFromCheckpoints) {
                                         absl::StrCat("chunk_", j))),
                   StatusIs(error::NOT_FOUND));
     }
+
+    // There should be only one checkpoint file. Outdated checkpoints are
+    // deleted when new checkpoints are written.
+    EXPECT_THAT(NumCheckpoints(snapshot_path, 0), IsOkAndHolds(1));
   }
 }
 

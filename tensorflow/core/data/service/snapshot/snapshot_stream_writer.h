@@ -130,6 +130,9 @@ class SnapshotStreamWriter {
   // Saves an iterator checkpoint.
   Status Save();
 
+  // After committing a checkpoint, deletes the previous checkpoints.
+  Status DeleteOutdatedCheckpoints();
+
   // Restores from the last checkpoint.
   Status Restore();
 

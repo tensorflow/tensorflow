@@ -94,6 +94,9 @@ std::unique_ptr<Thread> SnapshotStreamWriter::RunSnapshotThread() {
 }
 
 Status SnapshotStreamWriter::WriteSnapshotFn() TF_LOCKS_EXCLUDED(mu_) {
+  // TODO(b/258691097): Write the "LEASE" file periodically.
+  // TODO(b/258691097): When the snapshot is finished, write a "DONE" file and
+  // clean up checkpoints.
   TF_RETURN_IF_ERROR(InitializeDirectories());
   TF_RETURN_IF_ERROR(Restore());
   while (ShouldWriteChunk()) {
@@ -178,7 +181,6 @@ bool SnapshotStreamWriter::ShouldSave() const TF_LOCKS_EXCLUDED(mu_) {
 }
 
 Status SnapshotStreamWriter::Save() {
-  // TODO(b/258691097): Delete previous checkpoints.
   std::string uncommitted_checkpoint_path;
   if (!params_.env->LocalTempFilename(&uncommitted_checkpoint_path)) {
     return errors::Internal(
@@ -192,8 +194,25 @@ Status SnapshotStreamWriter::Save() {
   TF_ASSIGN_OR_RETURN(Tensor serialized, iterator_->Save());
   TF_RETURN_IF_ERROR(writer.WriteTensors({serialized}));
   TF_RETURN_IF_ERROR(writer.Close());
-  return params_.env->RenameFile(uncommitted_checkpoint_path,
-                                 committed_checkpoint_path);
+  TF_RETURN_IF_ERROR(params_.env->RenameFile(uncommitted_checkpoint_path,
+                                             committed_checkpoint_path));
+  return DeleteOutdatedCheckpoints();
+}
+
+Status SnapshotStreamWriter::DeleteOutdatedCheckpoints() {
+  std::vector<std::string> checkpoint_filenames;
+  TF_RETURN_IF_ERROR(
+      params_.env->GetChildren(checkpoints_directory_, &checkpoint_filenames));
+  for (const std::string& checkpoint_filename : checkpoint_filenames) {
+    std::string checkpoint_filepath =
+        tsl::io::JoinPath(checkpoints_directory_, checkpoint_filename);
+    TF_ASSIGN_OR_RETURN(int64_t checkpoint_index,
+                        GetFileIndex(checkpoint_filename, "checkpoint"));
+    if (checkpoint_index < chunk_index_) {
+      TF_RETURN_IF_ERROR(params_.env->DeleteFile(checkpoint_filepath));
+    }
+  }
+  return OkStatus();
 }
 
 Status SnapshotStreamWriter::Restore() {
