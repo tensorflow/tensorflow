@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python import tf2
 from tensorflow.python.client import session
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import constant_op
@@ -1916,21 +1917,32 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       if static_rank_from_dense_shape != 2 and static_rank_from_indices != 2:
         raise ValueError("rank(st_input) must be 2.")
 
-      row_splits, invalid_flag = sparse_ops.SparseIndicesToRaggedRowSplits(
-          validate_ragged_right=True, indices=st_input.indices,
-          dense_shape=st_input.dense_shape)
-      message = [
-        "SparseTensor is not right-ragged",
-        "SparseTensor.indices =", st_input.indices
-      ]
-      with ops.control_dependencies([
-          control_flow_ops.Assert(math_ops.equal(invalid_flag, False), message)
-          ]):
-        # Identity creates a dummy op for cases where there is no other op created here
-        # (to ensure the control_dependencies assert will be run in graph mode).
-        row_splits = array_ops.identity(row_splits)
-        row_splits = math_ops.cast(row_splits, row_splits_dtype)
-        return cls.from_row_splits(st_input.values, row_splits, validate=False)
+      if compat.forward_compatible(2023, 2, 28):
+        row_splits, invalid_flag = sparse_ops.SparseIndicesToRaggedRowSplits(
+            validate_ragged_right=True, indices=st_input.indices,
+            dense_shape=st_input.dense_shape)
+        message = [
+          "SparseTensor is not right-ragged",
+          "SparseTensor.indices =", st_input.indices
+        ]
+        with ops.control_dependencies([
+            control_flow_ops.Assert(math_ops.equal(invalid_flag, False), message)
+            ]):
+          # Identity creates a dummy op for cases where there is no other op created here
+          # (to ensure the control_dependencies assert will be run in graph mode).
+          row_splits = array_ops.identity(row_splits)
+          row_splits = math_ops.cast(row_splits, row_splits_dtype)
+          return cls.from_row_splits(st_input.values, row_splits, validate=False)
+
+      with ops.control_dependencies(
+          _assert_sparse_indices_are_ragged_right(st_input.indices)):
+        # Treat sparse row indices as segment ids to generate a splits tensor
+        # thta we can pair with the sparse tensor values.  (Ignore sparse column
+        # indices.)
+        segment_ids = math_ops.cast(st_input.indices[:, 0], row_splits_dtype)
+        num_segments = math_ops.cast(st_input.dense_shape[0], row_splits_dtype)
+        return cls.from_value_rowids(
+            st_input.values, segment_ids, num_segments, validate=False)
 
   def to_sparse(self, name=None):
     """Converts this `RaggedTensor` into a `tf.sparse.SparseTensor`.
