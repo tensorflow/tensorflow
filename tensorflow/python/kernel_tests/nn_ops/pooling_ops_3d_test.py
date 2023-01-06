@@ -48,14 +48,6 @@ def GetTestConfigs():
 @test_util.with_eager_op_as_function
 class PoolingTest(test.TestCase):
 
-  def _DtypesToTest(self, use_gpu):
-    if use_gpu:
-      return [dtypes.float32]
-    else:
-      # It is important that float32 comes before float16 here, as we will be
-      # using its gradients as reference for bf16 gradients.
-      return [dtypes.float32, dtypes.bfloat16]
-
   def _VerifyOneTest(self, pool_func, input_sizes, window, strides, padding,
                      data_format, data_type, expected, use_gpu):
     """Verifies the output values of the pooling function.
@@ -109,10 +101,8 @@ class PoolingTest(test.TestCase):
     for data_format, use_gpu in GetTestConfigs():
       self._VerifyOneTest(pool_func, input_sizes, window, strides, padding,
                           data_format, dtypes.float32, expected, use_gpu)
-      if use_gpu and test_util.is_gpu_available(cuda_only=True):
-        self._VerifyOneTest(pool_func, input_sizes, window, strides, padding,
-                            data_format, dtypes.bfloat16, expected, use_gpu)
-      elif not use_gpu:
+      # Don't test bfloat16 on GPU if there is no GPU available.
+      if (not use_gpu) or test_util.is_gpu_available(cuda_only=True):
         self._VerifyOneTest(pool_func, input_sizes, window, strides, padding,
                             data_format, dtypes.bfloat16, expected, use_gpu)
 
@@ -150,7 +140,7 @@ class PoolingTest(test.TestCase):
     with self.assertRaises(
         (errors.ResourceExhaustedError, errors.InvalidArgumentError)):
       use_gpu = test.is_gpu_available(cuda_only=True)
-      for dtype in self._DtypesToTest(use_gpu):
+      for dtype in [dtypes.float32, dtypes.bfloat16]:
         with self.cached_session():
           orig_input_shape = constant_op.constant(
               1879048192, shape=[5], dtype=dtypes.int32)
