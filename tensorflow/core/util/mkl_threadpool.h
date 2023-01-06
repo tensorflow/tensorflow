@@ -62,6 +62,17 @@ inline void balance211(T n, U team, U tid, T* n_start, T* n_end) {
   *n_end = *n_start + min_per_team + (tid < remainder);
 }
 
+inline void run_jobs(bool balance, int i, int n, int njobs,
+                     const std::function<void(int, int)>& fn) {
+  if (balance) {
+    int start, end;
+    balance211(n, njobs, i, &start, &end);
+    for (int j = start; j < end; j++) fn(j, n);
+  } else {
+    fn(i, n);
+  }
+}
+
 struct MklDnnThreadPool : public threadpool_iface {
   MklDnnThreadPool() = default;
 
@@ -92,43 +103,18 @@ struct MklDnnThreadPool : public threadpool_iface {
     int njobs = std::min(n, nthr);
     bool balance = (nthr < n);
 
-    if (ThreadPoolUseCallerThread() && nthr == port::NumSchedulableCPUs()) {
-      // schedule njobs-1 jobs to thread pool
-      for (int i = 0; i < njobs - 1; i++) {
-        eigen_interface_->ScheduleWithHint(
-            [balance, i, n, njobs, fn]() {
-              if (balance) {
-                int start, end;
-                balance211(n, njobs, i, &start, &end);
-                for (int j = start; j < end; j++) fn(j, n);
-              } else {
-                fn(i, n);
-              }
-            },
-            i, i + 1);
-      }
-      // run last job in caller thread
-      if (balance) {
-        int start, end;
-        balance211(n, njobs, njobs - 1, &start, &end);
-        for (int j = start; j < end; j++) fn(j, n);
-      } else {
-        fn(n - 1, n);
-      }
-    } else {
-      for (int i = 0; i < njobs; i++) {
-        eigen_interface_->ScheduleWithHint(
-            [balance, i, n, njobs, fn]() {
-              if (balance) {
-                int start, end;
-                balance211(n, njobs, i, &start, &end);
-                for (int j = start; j < end; j++) fn(j, n);
-              } else {
-                fn(i, n);
-              }
-            },
-            i, i + 1);
-      }
+    // If use_caller_thread, schedule njobs-1 jobs to thread pool and run last
+    // job directly.
+    const bool use_caller_thread =
+        ThreadPoolUseCallerThread() && nthr == port::NumSchedulableCPUs();
+    const int njobs_to_schedule = use_caller_thread ? njobs - 1 : njobs;
+    for (int i = 0; i < njobs_to_schedule; i++) {
+      eigen_interface_->ScheduleWithHint(
+          [balance, i, n, njobs, fn]() { run_jobs(balance, i, n, njobs, fn); },
+          i, i + 1);
+    }
+    if (use_caller_thread) {
+      run_jobs(balance, njobs - 1, n, njobs, fn);
     }
   }
   ~MklDnnThreadPool() {}
