@@ -239,12 +239,11 @@ class TFRecordReader : public Reader {
   TFRecordReader(const std::string& filename, const string& compression_type,
                  const DataTypeVector& dtypes);
 
+  Status Initialize(Env* env) override;
+
   Status ReadTensors(std::vector<Tensor>* read_tensors) override;
 
-  ~TFRecordReader() override {}
-
- protected:
-  Status Initialize(Env* env) override;
+  ~TFRecordReader() override = default;
 
  private:
   std::string filename_;

@@ -55,6 +55,19 @@ _AttrValType = Union[List[int], bool, str, None]
 class QuantizedModelTest(test.TestCase, parameterized.TestCase):
   """Base test class for TF-quant tests."""
 
+  def setUp(self) -> None:
+    super().setUp()
+
+    # Many test cases for quantization involve creating and saving the input
+    # model and saving the output quantized model. These two member
+    # attributes can be used to specify the paths for such models,
+    # respectively. These paths will be cleaned up after each test case.
+    self._input_saved_model_path = self.create_tempdir('input').full_path
+    self._output_saved_model_path = self.create_tempdir('output').full_path
+    # Extra output path occasionally used for comparing two different
+    # quantized models.
+    self._output_saved_model_path_2 = self.create_tempdir('output2').full_path
+
   def _is_quantized_function(self, func: function_pb2.FunctionDef) -> bool:
     """Determine whether a FunctionDef is quantized.
 
@@ -675,12 +688,13 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
 
     return ConvModel()
 
-  def _create_matmul_model(self,
-                           input_shape: Sequence[int],
-                           weight_shape: Sequence[int],
-                           saved_model_path: str,
-                           has_bias: bool = False,
-                           activation_fn: Optional[ops.Operation] = None) ->...:
+  def _create_matmul_model(
+      self,
+      input_shape: Sequence[int],
+      weight_shape: Sequence[int],
+      saved_model_path: str,
+      has_bias: bool = False,
+      activation_fn: Optional[ops.Operation] = None) -> module.Module:
 
     class MatmulModel(module.Module):
       """A simple model with a single matmul.
@@ -734,6 +748,75 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         model,
         saved_model_path,
         signatures=model.matmul.get_concrete_function(
+            tensor_spec.TensorSpec(
+                shape=input_shape, dtype=dtypes.float32, name='input_tensor')))
+    return model
+
+  def _create_einsum_model(
+      self,
+      saved_model_path: str,
+      equation: str,
+      input_shape: Sequence[int],
+      weight_shape: Sequence[int],
+      bias_shape: Optional[Sequence[int]] = None,
+      activation_fn: Optional[ops.Operation] = None) -> module.Module:
+
+    class EinsumModel(module.Module):
+      """A simple model with a single einsum.
+
+      Bias and activation function are optional.
+      """
+
+      def __init__(self,
+                   equation: str,
+                   weight_shape: Sequence[int],
+                   bias_shape: Optional[Sequence[int]] = None,
+                   activation_fn: Optional[ops.Operation] = None) -> None:
+        """Initializes a EinsumModel.
+
+        Args:
+          equation: a string describing the contraction.
+          weight_shape: Shape of the weight tensor.
+          bias_shape: Shape of the bias. This is not always 1D so Einsum ops
+            usually use Add op instead of BiasAdd.
+          activation_fn: The activation function to be used. No activation
+            function if None.
+        """
+        self.equation = equation
+        self.activation_fn = activation_fn
+        self.weight = np.random.uniform(low=-1.0, high=1.0, size=weight_shape)
+        self.bias = np.random.uniform(
+            low=-1.0, high=1.0,
+            size=bias_shape) if bias_shape is not None else None
+
+      @def_function.function
+      def einsum(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+        """Evaluates the Einstein summation convention.
+
+        Depending on self.has_bias and self.activation_fn, it may add a bias
+        term or go through the activaction function.
+
+        Args:
+          input_tensor: Input tensor to einsum with the weight.
+
+        Returns:
+          A map of: output key -> output result.
+        """
+        out = tensorflow.einsum(self.equation, input_tensor, self.weight)
+
+        if self.bias is not None:
+          out = out + self.bias
+
+        if self.activation_fn is not None:
+          out = self.activation_fn(out)
+
+        return {'output': out}
+
+    model = EinsumModel(equation, weight_shape, bias_shape, activation_fn)
+    saved_model_save.save(
+        model,
+        saved_model_path,
+        signatures=model.einsum.get_concrete_function(
             tensor_spec.TensorSpec(
                 shape=input_shape, dtype=dtypes.float32, name='input_tensor')))
     return model

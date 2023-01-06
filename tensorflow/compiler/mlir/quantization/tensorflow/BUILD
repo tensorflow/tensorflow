@@ -87,6 +87,7 @@ td_library(
         "passes/post_quantize.td",
         "passes/prepare_lifting.td",
         "passes/prepare_quantize.td",
+        "passes/preprocess_op.td",
         "passes/quantize_composite_functions.td",
         "passes/replace_cast_hacks_with_tf_xla_ops.td",
         "passes/tf_quant_ops.td",
@@ -220,6 +221,20 @@ gentbl_cc_library(
     deps = [":quant_td_files"],
 )
 
+gentbl_cc_library(
+    name = "preprocess_op_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/preprocess_op.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/preprocess_op.td",
+    deps = [":quant_td_files"],
+)
+
 cc_library(
     name = "tf_quant_ops",
     srcs = [
@@ -323,6 +338,8 @@ cc_library(
         "passes/prepare_quantize.cc",
         "passes/prepare_quantize.inc",
         "passes/prepare_quantize_drq.cc",
+        "passes/preprocess_op.cc",
+        "passes/preprocess_op.inc",
         "passes/quantize.cc",
         "passes/quantize_composite_functions.cc",
         "passes/quantize_composite_functions.inc",

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
@@ -37,19 +38,335 @@ namespace xla {
 // operations separately from transcendental operations.
 class HloCostAnalysis : public ConstDfsHloVisitor {
  public:
-  // Each HLO is associated to a vector of properties with the indices given
-  // below. Sub-classes can add further properties.
-  // MSVC 14.0 limitation requires the consts.
-  using Properties = absl::flat_hash_map<std::string, float>;
+  static inline constexpr absl::string_view kFlopsKey = "flops";
+  static inline constexpr absl::string_view kTranscendentalsKey =
+      "transcendentals";
+  static inline constexpr absl::string_view kBytesAccessedKey =
+      "bytes accessed";
+  static inline constexpr absl::string_view kOptimalSecondsKey =
+      "optimal_seconds";
+  static inline constexpr absl::string_view kUtilizationKey = "utilization";
+
+  // Keys reserved for use by subclasses.  These get the same special "fast
+  // path" treatment in Properties as the other keys above.
+  static inline constexpr absl::string_view kReserved0Key = "reserved0";
+  static inline constexpr absl::string_view kReserved1Key = "reserved1";
+
+  // A data structure like hash_map<string, float> for storing info about an HLO
+  // instruction or computation.
+  //
+  // Note that unlike a regular hashtable, there's no notion of an "unset" key.
+  // All keys are logically present, with value 0.
+  //
+  // This data structure *could* be simply map<string, float>, and indeed it
+  // was, once.  The problem is, XLA:GPU uses HloCostAnalysis during
+  // compilation.  This class is used *everywhere* within cost analysis, and the
+  // hashtable lookups added up to the majority (!) of its runtime.
+  //
+  // This is a bit silly, because the vast majority of the time, we're looking
+  // up a small, fixed set of keys.  So you might be tempted to convert
+  // Properties into a simple struct of floats.
+  //
+  // The problem with *that* is threefold.  (1) subclasses expect to be able to
+  // store arbitrary keys inside Properties.  This doesn't work if it's a
+  // struct.  (2) We expect to be able to store *and retrieve* values
+  // representing e.g. "the utilization of operand n at shape index i", and (3)
+  // the hashtable-ness of this class is part of XLA's public API and so is hard
+  // to change.
+  //
+  // So instead we end up with this Frankenstein's monster of a class.  It
+  // *acts* like a hashtable, but before falling back to the hashtable, it
+  // checks whether the string matches one of a list of "known keys".  If so, it
+  // returns that special value from the struct.
+  //
+  // Normally this would be much worse than just using a plain hashtable.  But
+  // we happen to know that you're almost always doing prop[kKnownKey], in which
+  // case operator[] can be inlined and the string comparison optimized away.
+  //
+  // Sorry for all this complexity, but this is the most impactful single
+  // optimization we were able make to GPU compilation time.
+  //
+  class Properties {
+   public:
+    Properties()
+        : flops_(0),
+          transcendentals_(0),
+          bytes_accessed_(0),
+          optimal_seconds_(0),
+          utilization_(0),
+          operand0_utilization_(0),
+          operand1_utilization_(0),
+          operand0_bytes_accessed_(0),
+          operand1_bytes_accessed_(0),
+          output_root_bytes_accessed_(0),
+          reserved0_(0),
+          reserved1_(0) {
+      DCHECK_EQ(kOperand0UtilizationKey, GetOperandUtilizationKey(0, {}));
+      DCHECK_EQ(kOperand1UtilizationKey, GetOperandUtilizationKey(1, {}));
+      DCHECK_EQ(kOperand0BytesAccessedKey, GetOperandBytesAccessedKey(0, {}));
+      DCHECK_EQ(kOperand1BytesAccessedKey, GetOperandBytesAccessedKey(1, {}));
+      DCHECK_EQ(kOutputRootBytesAccessedKey, GetOutputBytesAccessedKey({}));
+    }
+
+    float& operator[](absl::string_view property) {
+      if (property == kFlopsKey) {
+        return flops_;
+      }
+      if (property == kTranscendentalsKey) {
+        return transcendentals_;
+      }
+      if (property == kBytesAccessedKey) {
+        return bytes_accessed_;
+      }
+      if (property == kOptimalSecondsKey) {
+        return optimal_seconds_;
+      }
+      if (property == kUtilizationKey) {
+        return utilization_;
+      }
+      if (property == kOperand0UtilizationKey) {
+        return operand0_utilization_;
+      }
+      if (property == kOperand1UtilizationKey) {
+        return operand1_utilization_;
+      }
+      if (property == kOperand0BytesAccessedKey) {
+        return operand0_bytes_accessed_;
+      }
+      if (property == kOperand1BytesAccessedKey) {
+        return operand1_bytes_accessed_;
+      }
+      if (property == kOutputRootBytesAccessedKey) {
+        return output_root_bytes_accessed_;
+      }
+      if (property == kReserved0Key) {
+        return reserved0_;
+      }
+      if (property == kReserved1Key) {
+        return reserved1_;
+      }
+
+      auto it = named_props_.lazy_emplace(property, [&](const auto& ctor) {
+        ctor(std::string(property), 0.f);
+      });
+      return it->second;
+    }
+
+    float operator[](absl::string_view property) const {
+      if (property == kFlopsKey) {
+        return flops_;
+      }
+      if (property == kTranscendentalsKey) {
+        return transcendentals_;
+      }
+      if (property == kBytesAccessedKey) {
+        return bytes_accessed_;
+      }
+      if (property == kOptimalSecondsKey) {
+        return optimal_seconds_;
+      }
+      if (property == kUtilizationKey) {
+        return utilization_;
+      }
+      if (property == kOperand0UtilizationKey) {
+        return operand0_utilization_;
+      }
+      if (property == kOperand1UtilizationKey) {
+        return operand1_utilization_;
+      }
+      if (property == kOperand0BytesAccessedKey) {
+        return operand0_bytes_accessed_;
+      }
+      if (property == kOperand1BytesAccessedKey) {
+        return operand1_bytes_accessed_;
+      }
+      if (property == kOutputRootBytesAccessedKey) {
+        return output_root_bytes_accessed_;
+      }
+      if (property == kReserved0Key) {
+        return reserved0_;
+      }
+      if (property == kReserved1Key) {
+        return reserved1_;
+      }
+
+      auto it = named_props_.find(property);
+      if (it != named_props_.end()) {
+        return it->second;
+      }
+      return 0;
+    }
+
+    template <typename Fn>
+    void ForEach(Fn&& fn) const {
+      if (flops_ != 0) {
+        fn(kFlopsKey, flops_);
+      }
+      if (transcendentals_ != 0) {
+        fn(kTranscendentalsKey, transcendentals_);
+      }
+      if (bytes_accessed_ != 0) {
+        fn(kBytesAccessedKey, bytes_accessed_);
+      }
+      if (optimal_seconds_ != 0) {
+        fn(kOptimalSecondsKey, optimal_seconds_);
+      }
+      if (utilization_ != 0) {
+        fn(kUtilizationKey, utilization_);
+      }
+      if (operand0_utilization_ != 0) {
+        fn(kOperand0UtilizationKey, operand0_utilization_);
+      }
+      if (operand1_utilization_ != 0) {
+        fn(kOperand1UtilizationKey, operand1_utilization_);
+      }
+      if (operand0_bytes_accessed_ != 0) {
+        fn(kOperand0BytesAccessedKey, operand0_bytes_accessed_);
+      }
+      if (operand1_bytes_accessed_ != 0) {
+        fn(kOperand1BytesAccessedKey, operand1_bytes_accessed_);
+      }
+      if (output_root_bytes_accessed_ != 0) {
+        fn(kOutputRootBytesAccessedKey, output_root_bytes_accessed_);
+      }
+      if (reserved0_ != 0) {
+        fn(kReserved0Key, reserved0_);
+      }
+      if (reserved1_ != 0) {
+        fn(kReserved1Key, reserved1_);
+      }
+
+      for (const auto& [k, v] : named_props_) {
+        if (v != 0) {
+          fn(k, v);
+        }
+      }
+    }
+
+    // No getters/setters for simple properties like flops().  For these,
+    // props[kFlopsKey] gets optimized to `return flops_` just fine.
+
+    // Getters/setters for more complex properties like operand utilization,
+    // where we have a fastpath for e.g. operand 0/1 + shape_index {}.
+    float operand_utilization(int64_t operand,
+                              const ShapeIndex& shape_index = {}) {
+      if (operand == 0 && shape_index.empty()) {
+        return operand0_utilization_;
+      }
+      if (operand == 1 && shape_index.empty()) {
+        return operand1_utilization_;
+      }
+
+      auto it =
+          named_props_.find(GetOperandUtilizationKey(operand, shape_index));
+      if (it != named_props_.end()) {
+        return it->second;
+      }
+      return 0;
+    }
+    void set_operand_utilization(int64_t operand, float value) {
+      set_operand_utilization(operand, /*shape_index=*/{}, value);
+    }
+    void set_operand_utilization(int64_t operand, const ShapeIndex& shape_index,
+                                 float value) {
+      if (operand == 0 && shape_index.empty()) {
+        operand0_utilization_ = value;
+      } else if (operand == 1 && shape_index.empty()) {
+        operand1_utilization_ = value;
+      } else {
+        named_props_[GetOperandUtilizationKey(operand, shape_index)] = value;
+      }
+    }
+
+    float operand_bytes_accessed(int64_t operand,
+                                 const ShapeIndex& shape_index = {}) {
+      if (operand == 0 && shape_index.empty()) {
+        return operand0_bytes_accessed_;
+      }
+      if (operand == 1 && shape_index.empty()) {
+        return operand1_bytes_accessed_;
+      }
+
+      auto it =
+          named_props_.find(GetOperandBytesAccessedKey(operand, shape_index));
+      if (it != named_props_.end()) {
+        return it->second;
+      }
+      return 0;
+    }
+    void set_operand_bytes_accessed(int64_t operand, float value) {
+      set_operand_bytes_accessed(operand, /*shape_index=*/{}, value);
+    }
+    void set_operand_bytes_accessed(int64_t operand,
+                                    const ShapeIndex& shape_index,
+                                    float value) {
+      if (operand == 0 && shape_index.empty()) {
+        operand0_bytes_accessed_ = value;
+      } else if (operand == 1 && shape_index.empty()) {
+        operand1_bytes_accessed_ = value;
+      } else {
+        named_props_[GetOperandBytesAccessedKey(operand, shape_index)] = value;
+      }
+    }
+
+    float output_bytes_accessed(const ShapeIndex& shape_index = {}) {
+      if (shape_index.empty()) {
+        return output_root_bytes_accessed_;
+      }
+      auto it = named_props_.find(GetOutputBytesAccessedKey(shape_index));
+      if (it != named_props_.end()) {
+        return it->second;
+      }
+      return 0;
+    }
+    void set_output_bytes_accessed(float value) {
+      set_output_bytes_accessed({}, value);
+    }
+    void set_output_bytes_accessed(const ShapeIndex& shape_index, float value) {
+      if (shape_index.empty()) {
+        output_root_bytes_accessed_ = value;
+      } else {
+        named_props_[GetOutputBytesAccessedKey(shape_index)] = value;
+      }
+    }
+
+   private:
+    // These must match GetOperandUtilizationKey(0, {}) etc.
+    static inline constexpr absl::string_view kOperand0UtilizationKey =
+        "utilization operand 0 {}";
+    static inline constexpr absl::string_view kOperand1UtilizationKey =
+        "utilization operand 1 {}";
+    static inline constexpr absl::string_view kOperand0BytesAccessedKey =
+        "bytes accessed operand 0 {}";
+    static inline constexpr absl::string_view kOperand1BytesAccessedKey =
+        "bytes accessed operand 1 {}";
+    static inline constexpr absl::string_view kOutputRootBytesAccessedKey =
+        "bytes accessed output {}";
+
+    float flops_;
+    float transcendentals_;
+    float bytes_accessed_;
+    float optimal_seconds_;
+    float utilization_;
+
+    float operand0_utilization_;
+    float operand1_utilization_;
+
+    float operand0_bytes_accessed_;
+    float operand1_bytes_accessed_;
+
+    float output_root_bytes_accessed_;
+
+    // Fields reserved for use by subclasses.
+    float reserved0_;
+    float reserved1_;
+
+    absl::flat_hash_map<std::string, float> named_props_;
+  };
+
   // shape_size is a function which returns the size in bytes of the top-level
   // buffer of a shape.
   using ShapeSizeFunction = std::function<int64_t(const Shape&)>;
-
-  static constexpr const char kFlopsKey[] = "flops";
-  static constexpr const char kTranscendentalsKey[] = "transcendentals";
-  static constexpr const char kBytesAccessedKey[] = "bytes accessed";
-  static constexpr const char kOptimalSecondsKey[] = "optimal_seconds";
-  static constexpr const char kUtilizationKey[] = "utilization";
 
   // A struct to encapsulate hardware-related options. This includes the shape
   // size function, which is used to encode hardware-specific padding and per
@@ -81,8 +398,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
     }
 
     // Returns the specified per-second rate used by cost analysis.
-    const float per_second_rate(const std::string& key) const {
-      return GetProperty(key, per_second_rates);
+    float per_second_rate(const std::string& key) const {
+      return per_second_rates[key];
     }
   };
 
@@ -224,22 +541,20 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       std::optional<int64_t> memory_space = std::nullopt) const;
 
   const Properties& properties() const { return properties_sum_; }
-  const float property(const std::string& key) const {
-    return GetProperty(key, properties());
-  }
+  float property(absl::string_view key) { return properties_sum_[key]; }
 
   // Returns the specified per-second rate used by cost analysis.
-  const float per_second_rate(absl::string_view key) const {
-    return GetProperty(key, options_.per_second_rates);
+  float per_second_rate(absl::string_view key) const {
+    return options_.per_second_rates[key];
   }
 
   // Return the key that is used to index into Properties for the specified
   // input/output at the shape index.
   static std::string GetOperandBytesAccessedKey(int64_t operand_num,
-                                                ShapeIndex index = {});
+                                                const ShapeIndex& index = {});
   static std::string GetOperandUtilizationKey(int64_t operand_num,
-                                              ShapeIndex index = {});
-  static std::string GetOutputBytesAccessedKey(ShapeIndex index = {});
+                                              const ShapeIndex& index = {});
+  static std::string GetOutputBytesAccessedKey(const ShapeIndex& index = {});
 
   // Returns the estimated convolution flops.
   virtual int64_t GetConvolutionFlops(const HloInstruction* convolution);
@@ -277,17 +592,11 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // Utility function to handle all element-wise operations.
   Status HandleElementwiseOp(const HloInstruction* hlo_instruction);
 
-  // Returns the default value if the key is not present in the
-  // properties. Otherwise, returns the value that the key maps to from the
-  // properties parameter.
-  static float GetProperty(absl::string_view key, const Properties& properties,
-                           float default_value = 0.0f);
-
   // Returns 0.0f if the hlo is not present in hlo_to_properties or if the key
   // is not present in hlo_to_properties[hlo]. Otherwise, returns the value that
   // the key maps to in the properties of the given hlo.
   static float GetPropertyForHlo(const HloInstruction& hlo,
-                                 const std::string& key,
+                                 absl::string_view key,
                                  const HloToProperties& hlo_to_properties);
 
   // Traverses a fusion operand to find the actual bytes accessed by the fusion
@@ -297,19 +606,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // Traverses a fusion counting total utilization of every instruction inside.
   // Currently implemented non-trivially only in the GPU cost analysis.
   virtual Status FusionCalculateUtilizations(const HloInstruction* fusion);
-
-  // Set bytes accessed by the specified operand and shape index.
-  void SetOperandBytesAccessed(int64_t operand_num, float value);
-  void SetOperandBytesAccessed(int64_t operand_num, ShapeIndex index,
-                               float value);
-
-  void SetOperandUtilization(int64_t operand_num, float value);
-  void SetOperandUtilization(int64_t operand_num, ShapeIndex index,
-                             float value);
-
-  // Set bytes accessed by the output at the shape index.
-  void SetOutputBytesAccessed(float value);
-  void SetOutputBytesAccessed(ShapeIndex index, float value);
 
   HloToProperties hlo_properties_;
 

@@ -54,10 +54,10 @@ module attributes {tf_saved_model.semantics} {
 // CHECK-DAG: %[[VAR_HANDLE_1:.*]] = "tf.VarHandleOp"() {{.*shared_name = "var_1".*}} : () -> tensor<!tf_type.resource<tensor<4xi32>>>
 
 // CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() {{{.*value = dense<\["var_0", "var_1"\]> : tensor<2x!tf_type.string>.*}}}
-// CHECK-DAG: %[[CST_1:.*]] = "tf.Const"() {{{.*value = dense<""> : tensor<1x!tf_type.string>.*}}}
+// CHECK-DAG: %[[CST_1:.*]] = "tf.Const"() {{{.*value = dense<""> : tensor<2x!tf_type.string>.*}}}
 
 // Test that RestoreV2 op is created with 2 resulting values.
-// CHECK: %[[RESTORE:.*]]:2 = "tf.RestoreV2"(%[[ARG_0]], %[[CST_0]], %[[CST_1]]) : (tensor<!tf_type.string>, tensor<2x!tf_type.string>, tensor<1x!tf_type.string>) -> (tensor<2xf32>, tensor<4xi32>)
+// CHECK: %[[RESTORE:.*]]:2 = "tf.RestoreV2"(%[[ARG_0]], %[[CST_0]], %[[CST_1]]) : (tensor<!tf_type.string>, tensor<2x!tf_type.string>, tensor<2x!tf_type.string>) -> (tensor<2xf32>, tensor<4xi32>)
 
 // CHECK: "tf.AssignVariableOp"(%[[VAR_HANDLE_0]], %[[RESTORE]]#0) {validate_shape = false} : (tensor<!tf_type.resource<tensor<2xf32>>>, tensor<2xf32>) -> ()
 // CHECK: "tf.AssignVariableOp"(%[[VAR_HANDLE_1]], %[[RESTORE]]#1) {validate_shape = false} : (tensor<!tf_type.resource<tensor<4xi32>>>, tensor<4xi32>) -> ()
@@ -115,10 +115,10 @@ module attributes {tf_saved_model.semantics} {
 // CHECK-DAG: %[[VAR_HANDLE_1:.*]] = "tf.VarHandleOp"() {{.*shared_name = "var_1".*}} : () -> tensor<!tf_type.resource<tensor<2xf32>>>
 
 // CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() {{{.*value = dense<\["var_0", "var_1"\]> : tensor<2x!tf_type.string>.*}}}
-// CHECK-DAG: %[[CST_1:.*]] = "tf.Const"() {{{.*value = dense<""> : tensor<1x!tf_type.string>.*}}}
+// CHECK-DAG: %[[CST_1:.*]] = "tf.Const"() {{{.*value = dense<""> : tensor<2x!tf_type.string>.*}}}
 
 // Test that RestoreV2 op is created with 2 resulting values.
-// CHECK: %[[RESTORE:.*]]:2 = "tf.RestoreV2"(%[[ARG_0]], %[[CST_0]], %[[CST_1]]) : (tensor<!tf_type.string>, tensor<2x!tf_type.string>, tensor<1x!tf_type.string>) -> (tensor<2xf32>, tensor<2xf32>)
+// CHECK: %[[RESTORE:.*]]:2 = "tf.RestoreV2"(%[[ARG_0]], %[[CST_0]], %[[CST_1]]) : (tensor<!tf_type.string>, tensor<2x!tf_type.string>, tensor<2x!tf_type.string>) -> (tensor<2xf32>, tensor<2xf32>)
 
 // CHECK: "tf.AssignVariableOp"(%[[VAR_HANDLE_0]], %[[RESTORE]]#0) {validate_shape = false} : (tensor<!tf_type.resource<tensor<2xf32>>>, tensor<2xf32>) -> ()
 // CHECK: "tf.AssignVariableOp"(%[[VAR_HANDLE_1]], %[[RESTORE]]#1) {validate_shape = false} : (tensor<!tf_type.resource<tensor<2xf32>>>, tensor<2xf32>) -> ()

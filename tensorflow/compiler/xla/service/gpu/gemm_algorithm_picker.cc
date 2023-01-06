@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
@@ -400,8 +402,9 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
 }
 
 StatusOr<bool> RunOnInstruction(HloInstruction* instr,
-                                se::StreamExecutor* executor,
-                                se::DeviceMemoryAllocator* allocator) {
+                                GemmAlgorithmPicker::DeviceConfig config) {
+  se::StreamExecutor* executor = config.stream_exec;
+  se::DeviceMemoryAllocator* allocator = config.allocator;
   if (allocator == nullptr) {
     allocator = executor->GetAllocator();
   }
@@ -431,13 +434,61 @@ StatusOr<bool> RunOnInstruction(HloInstruction* instr,
   return updated_config.SerializeAsString() != gemm_config.SerializeAsString();
 }
 
-StatusOr<bool> RunOnComputation(HloComputation* computation,
-                                se::StreamExecutor* se,
-                                se::DeviceMemoryAllocator* allocator) {
+// Do Gemm Autotune without stream executor. Use results from autotune cache
+// only.
+StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
+                                GemmAlgorithmPicker::DevicelessConfig config) {
+  VLOG(3) << "Loading the autotune result of GemmThunk " << gemm->ToString();
+
+  auto key = std::make_tuple(
+      std::string(config.device_description_str),
+      gemm->ToString(
+          HloPrintOptions::Canonical().set_print_backend_config(true)));
+
+  // Load selected algorithm from the autotune cache.
+  std::optional<se::blas::AlgorithmType> algorithm;
+  {
+    absl::MutexLock lock(&autotune_cache_mu);
+    if (auto it = autotune_cache.find(key); it != autotune_cache.end()) {
+      VLOG(4) << "AOT autotuning cache hit, using algorithm: "
+              << (it->second.has_value() ? absl::StrCat(*(it->second))
+                                         : "<generic>");
+      algorithm = it->second;
+    }
+    VLOG(4) << "AOT autotuning cache miss";
+  }
+
+  se::CudaComputeCapability capability = config.cuda_compute_capability;
+  GemmBackendConfig gemm_config =
+      gemm->backend_config<GemmBackendConfig>().value();
+  GemmBackendConfig updated_config = gemm_config;
+  if (algorithm && !capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    updated_config.set_selected_algorithm(*algorithm);
+  }
+  TF_RETURN_IF_ERROR(gemm->set_backend_config(updated_config));
+  return updated_config.SerializeAsString() != gemm_config.SerializeAsString();
+}
+
+StatusOr<bool> RunOnComputation(
+    HloComputation* computation,
+    std::variant<GemmAlgorithmPicker::DeviceConfig,
+                 GemmAlgorithmPicker::DevicelessConfig>
+        config) {
   bool changed = false;
   for (HloInstruction* instr : computation->instructions()) {
     if (IsCublasGemm(*instr)) {
-      TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(instr, se, allocator));
+      bool result;
+      if (std::holds_alternative<GemmAlgorithmPicker::DeviceConfig>(config)) {
+        TF_ASSIGN_OR_RETURN(
+            result,
+            RunOnInstruction(
+                instr, std::get<GemmAlgorithmPicker::DeviceConfig>(config)));
+      } else {
+        TF_ASSIGN_OR_RETURN(
+            result, RunOnInstruction(
+                        instr, std::get<GemmAlgorithmPicker::DevicelessConfig>(
+                                   config)));
+      }
       changed |= result;
     }
   }
@@ -502,8 +553,7 @@ StatusOr<bool> GemmAlgorithmPicker::Run(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(
-        bool result, RunOnComputation(computation, stream_exec_, allocator_));
+    TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation, config_));
     changed |= result;
   }
   return changed;

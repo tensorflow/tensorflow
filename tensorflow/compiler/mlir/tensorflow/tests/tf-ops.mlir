@@ -4820,6 +4820,141 @@ func.func @testUniformQuantizedConvolutionHybrid(%lhs: tensor<*xf32>, %rhs: tens
   func.return %0 : tensor<*xf32>
 }
 
+// -----
+
+func.func @testUniformQuantize(%arg0: tensor<*xf32>, %scales: tensor<2xf32>, %zps: tensor<i32>) -> tensor<*x!tf_type.qint8> {
+  // expected-error @below {{'tf.UniformQuantize' op quantization_axis is -1, scales must have 0 rank.}}
+   %0 = "tf.UniformQuantize"(%arg0, %scales, %zps) {
+    quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
+  } : (tensor<*xf32>, tensor<2xf32>, tensor<i32>) -> tensor<*x!tf_type.qint8>
+  func.return %0 : tensor<*x!tf_type.qint8>
+}
+
+// -----
+
+func.func @testUniformRequantize(
+  %arg0: tensor<*x!tf_type.qint8>,
+  %scales_0: tensor<2xf32>, %zps_0: tensor<i32>,
+  %scales_1: tensor<f32>, %zps_1: tensor<i32>) -> tensor<*x!tf_type.qint8> {
+  // expected-error @below {{'tf.UniformRequantize' op quantization_axis is -1, scales must have 0 rank.}}
+  %0 = "tf.UniformRequantize"(%arg0, %scales_0, %zps_0, %scales_1, %zps_1) {
+    input_quantization_axis = -1 : i64, input_quantization_min_val = -2147483648 : i64, input_quantization_max_val = 2147483647 : i64,
+    output_quantization_axis = -1 : i64, output_quantization_min_val = -128 : i64, output_quantization_max_val = 127 : i64
+  } : (tensor<*x!tf_type.qint8>, tensor<2xf32>, tensor<i32>, tensor<f32>, tensor<i32>) -> tensor<*x!tf_type.qint8>
+  func.return %0 : tensor<*x!tf_type.qint8>
+}
+
+// -----
+
+func.func @testUniformRequantize(
+  %arg0: tensor<*x!tf_type.qint8>,
+  %scales_0: tensor<f32>, %zps_0: tensor<i32>,
+  %scales_1: tensor<2xf32>, %zps_1: tensor<i32>) -> tensor<*x!tf_type.qint8> {
+  // expected-error @below {{'tf.UniformRequantize' op quantization_axis is -1, scales must have 0 rank.}}
+  %0 = "tf.UniformRequantize"(%arg0, %scales_0, %zps_0, %scales_1, %zps_1) {
+    input_quantization_axis = -1 : i64, input_quantization_min_val = -2147483648 : i64, input_quantization_max_val = 2147483647 : i64,
+    output_quantization_axis = -1 : i64, output_quantization_min_val = -128 : i64, output_quantization_max_val = 127 : i64
+  } : (tensor<*x!tf_type.qint8>, tensor<f32>, tensor<i32>, tensor<2xf32>, tensor<i32>) -> tensor<*x!tf_type.qint8>
+  func.return %0 : tensor<*x!tf_type.qint8>
+}
+
+// -----
+
+func.func @testUniformDequantize(%arg0: tensor<*x!tf_type.qint8>, %scales: tensor<2xf32>, %zps: tensor<i32>) -> tensor<*xf32> {
+  // expected-error @below {{'tf.UniformDequantize' op quantization_axis is -1, scales must have 0 rank.}}
+   %0 = "tf.UniformDequantize"(%arg0, %scales, %zps) {
+    quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
+  } : (tensor<*x!tf_type.qint8>, tensor<2xf32>, tensor<i32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+func.func @testUniformQuantizedDot(
+  %input: tensor<*x!tf_type.qint8>, %weight: tensor<2x2x!tf_type.qint8>,
+  %input_scales: tensor<2xf32>, %input_zps: tensor<i32>,
+  %weight_scales: tensor<f32>, %weight_zps: tensor<i32>,
+  %output_scales: tensor<f32>, %output_zps: tensor<i32>) -> () {
+  // expected-error @below {{'tf.UniformQuantizedDot' op quantization_axis is -1, scales must have 0 rank.}}
+  %1 = "tf.UniformQuantizedDot"(
+    %input, %weight,
+    %input_scales, %input_zps,
+    %weight_scales, %weight_zps,
+    %output_scales, %output_zps) {
+      lhs_quantization_axis = -1 : i64,
+      lhs_quantization_min_val = -128 : i64,
+      lhs_quantization_max_val = 127 : i64,
+      rhs_quantization_axis = -1 : i64,
+      rhs_quantization_min_val = -128 : i64,
+      rhs_quantization_max_val = 127 : i64,
+      output_quantization_axis = -1 : i64,
+      output_quantization_min_val = -2147483648 : i64,
+      output_quantization_max_val = 2147483647 : i64} : (
+        tensor<*x!tf_type.qint8>, tensor<2x2x!tf_type.qint8>,
+        tensor<2xf32>, tensor<i32>,
+        tensor<f32>, tensor<i32>,
+        tensor<f32>, tensor<i32>) -> tensor<*x!tf_type.qint32>
+  func.return
+}
+
+// -----
+
+func.func @testUniformQuantizedDot(
+  %input: tensor<*x!tf_type.qint8>, %weight: tensor<2x2x!tf_type.qint8>,
+  %input_scales: tensor<f32>, %input_zps: tensor<i32>,
+  %weight_scales: tensor<2xf32>, %weight_zps: tensor<i32>,
+  %output_scales: tensor<f32>, %output_zps: tensor<i32>) -> () {
+  // expected-error @below {{'tf.UniformQuantizedDot' op quantization_axis is -1, scales must have 0 rank.}}
+  %1 = "tf.UniformQuantizedDot"(
+    %input, %weight,
+    %input_scales, %input_zps,
+    %weight_scales, %weight_zps,
+    %output_scales, %output_zps) {
+      lhs_quantization_axis = -1 : i64,
+      lhs_quantization_min_val = -128 : i64,
+      lhs_quantization_max_val = 127 : i64,
+      rhs_quantization_axis = -1 : i64,
+      rhs_quantization_min_val = -128 : i64,
+      rhs_quantization_max_val = 127 : i64,
+      output_quantization_axis = -1 : i64,
+      output_quantization_min_val = -2147483648 : i64,
+      output_quantization_max_val = 2147483647 : i64} : (
+        tensor<*x!tf_type.qint8>, tensor<2x2x!tf_type.qint8>,
+        tensor<f32>, tensor<i32>,
+        tensor<2xf32>, tensor<i32>,
+        tensor<f32>, tensor<i32>) -> tensor<*x!tf_type.qint32>
+  func.return
+}
+
+// -----
+
+func.func @testUniformQuantizedDot(
+  %input: tensor<*x!tf_type.qint8>, %weight: tensor<2x2x!tf_type.qint8>,
+  %input_scales: tensor<f32>, %input_zps: tensor<i32>,
+  %weight_scales: tensor<f32>, %weight_zps: tensor<i32>,
+  %output_scales: tensor<2xf32>, %output_zps: tensor<i32>) -> () {
+  // expected-error @below {{'tf.UniformQuantizedDot' op quantization_axis is -1, scales must have 0 rank.}}
+  %1 = "tf.UniformQuantizedDot"(
+    %input, %weight,
+    %input_scales, %input_zps,
+    %weight_scales, %weight_zps,
+    %output_scales, %output_zps) {
+      lhs_quantization_axis = -1 : i64,
+      lhs_quantization_min_val = -128 : i64,
+      lhs_quantization_max_val = 127 : i64,
+      rhs_quantization_axis = -1 : i64,
+      rhs_quantization_min_val = -128 : i64,
+      rhs_quantization_max_val = 127 : i64,
+      output_quantization_axis = -1 : i64,
+      output_quantization_min_val = -2147483648 : i64,
+      output_quantization_max_val = 2147483647 : i64} : (
+        tensor<*x!tf_type.qint8>, tensor<2x2x!tf_type.qint8>,
+        tensor<f32>, tensor<i32>,
+        tensor<f32>, tensor<i32>,
+        tensor<2xf32>, tensor<i32>) -> tensor<*x!tf_type.qint32>
+  func.return
+}
+
 // Following tests are for LegacyCall symbol use verifier.
 
 // -----

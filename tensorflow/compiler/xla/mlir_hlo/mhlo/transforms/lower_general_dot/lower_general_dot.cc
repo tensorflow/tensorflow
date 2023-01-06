@@ -223,16 +223,11 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
 
     ArrayAttr precisionConfig;
     if (op.getPrecisionConfig()) precisionConfig = *op.getPrecisionConfig();
-    SmallVector<Type, 1> results;
-    LogicalResult res =
-        DotOp::inferReturnTypes(rewriter.getContext(), std::nullopt, {lhs, rhs},
-                                op->getAttrDictionary(), {}, results);
-    (void)res;
-    assert(succeeded(res) && "invalid input to dot");
 
     ShapedType resultTy = op.getType().cast<ShapedType>();
-    ShapedType newTy =
-        results.front().cast<ShapedType>().clone(resultTy.getElementType());
+    ShapedType newTy = RankedTensorType::get(
+        {lhsShapeType.getShape()[0], rhsShapeType.getShape()[1]},
+        resultTy.getElementType());
     Value newDotOp =
         rewriter.create<DotOp>(op.getLoc(), newTy, lhs, rhs, precisionConfig);
     if (static_cast<int64_t>(lhsContractingDims.size()) ==

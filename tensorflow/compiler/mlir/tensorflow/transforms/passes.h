@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 
 namespace mlir {
 
@@ -259,6 +260,12 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateConstantOpDeviceAssignmentPass();
 
 // Populates the supplied passmanager with the passes required to export
 // to TensorFlow Graph.
+void AddGraphExportLoweringPassesV2(OpPassManager& pm);
+
+// Populates the supplied passmanager with the passes required to export
+// to TensorFlow Graph.
+// ***This is the legacy graph export pipeline, prefer
+// AddGraphExportLoweringPassesV2***.
 void AddGraphExportLoweringPasses(OpPassManager& pm);
 
 // Returns pass that verifies whether all functions in module are of single
@@ -356,7 +363,7 @@ CreateTFExecutorUpdateControlDependenciesPass();
 namespace TFDevice {
 // Creates a pass that forms clusters from instructions that are assigned to
 // same device.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateClusterFormationPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateClusterFormationPass();
 
 // Sinks `tf.Const` operations in the ClusterOp region using them. This is
 // performed in order to limit the number of values implicitly captured in this

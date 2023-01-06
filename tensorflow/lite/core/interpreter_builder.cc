@@ -770,6 +770,10 @@ TfLiteStatus InterpreterBuilder::operator()(
   (*interpreter)
       ->SetProfilerImpl(tflite::profiling::MaybeCreatePlatformProfiler());
 
+  if (telemetry_profiler_) {
+    (*interpreter)->AddProfiler(std::move(telemetry_profiler_));
+  }
+
   for (int subgraph_index = 0; subgraph_index < subgraphs->size();
        ++subgraph_index) {
     const tflite::SubGraph* subgraph = (*subgraphs)[subgraph_index];

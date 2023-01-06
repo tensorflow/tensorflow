@@ -1432,21 +1432,20 @@ LatencyHidingScheduler::LatencyHidingStatistics(
                                     memory_pressure_state->live_ids_at_bottom);
   }
   return LatencyHidingScheduler::SchedulerStatistics{
-      .computation = computation,
-      .all_gather_wasted_cycles =
-          wasted_time_per_collective[AsyncKind::kAllGather],
-      .all_reduce_wasted_cycles =
-          wasted_time_per_collective[AsyncKind::kAllReduce],
-      .collective_permute_wasted_cycles =
-          wasted_time_per_collective[AsyncKind::kCollectivePermute],
-      .send_wasted_cycles = wasted_time_per_collective[AsyncKind::kSend],
-      .recv_wasted_cycles = wasted_time_per_collective[AsyncKind::kRecv],
-      .total_cycles = current_time,
-      .memory_pressure_peak =
-          memory_pressure_state
-              ? mem_pressure_tracker.initial_memory_pressure() +
-                    memory_pressure_state->memory_peak
-              : 0};
+      /*computation=*/computation,
+      /*all_gather_wasted_cycles=*/
+      wasted_time_per_collective[AsyncKind::kAllGather],
+      /*all_reduce_wasted_cycles=*/
+      wasted_time_per_collective[AsyncKind::kAllReduce],
+      /*collective_permute_wasted_cycles=*/
+      wasted_time_per_collective[AsyncKind::kCollectivePermute],
+      /*send_wasted_cycles=*/wasted_time_per_collective[AsyncKind::kSend],
+      /*recv_wasted_cycles=*/wasted_time_per_collective[AsyncKind::kRecv],
+      /*total_cycles=*/current_time,
+      /*memory_pressure_peak=*/
+      memory_pressure_state ? mem_pressure_tracker.initial_memory_pressure() +
+                                  memory_pressure_state->memory_peak
+                            : 0};
 }
 
 // Prints a SchedulerStatistics object.

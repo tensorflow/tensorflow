@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/remapper.h"
 
+#include <algorithm>
+#include <map>
 #include <set>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -1119,6 +1124,191 @@ bool FindContractionWithBiasAndAddActivation(
   *matched = pattern;
 
   return true;
+}
+
+bool FindConv2DSwish(RemapperContext* ctx, int node_index,
+                     std::map<string, int>* matched_nodes_map,
+                     std::set<int>* remove_node_indices) {
+  using utils::MatchingDirection;
+  using utils::NodeStatus;
+  // clang-format off
+
+  //    Fuse Conv2D + BiasAdd/FusedBatchNorm + Sigmoid + Mul to _FuesdConv2D
+  //   From Graph                                To Graph
+  //   -----------                              ---------
+  //    Conv2D
+  //      !
+  //      V
+  //  BiasAdd / FusedBatchNorm/V2/V3
+  //      !
+  //      V
+  //  ---- ----
+  //  !       !                    ----->       _FusedConv2D
+  //  !       V
+  //  !    Sigmoid
+  //  !       !
+  //  ---   ---
+  //     !  !
+  //     V  V
+  //      Mul
+  //      !
+  //      V
+
+  utils::OpTypePattern conv2dbiasaddswish_pattern{
+    "Mul", "mulToswish", NodeStatus::kReplace,
+    {
+      { "Sigmoid", "sigmoid", NodeStatus::kRemove,
+        {
+          { "BiasAdd", "biasadd", NodeStatus::kRemove,
+            {
+              { "Conv2D", "conv", NodeStatus::kRemove},
+              { "*", "bias", NodeStatus::kRemain}
+            }
+          }
+        }
+      },
+      { "BiasAdd", "biasadd", NodeStatus::kRemove}
+    }
+  };
+
+  utils::OpTypePattern conv2dbatchnormswish_pattern{
+    "Mul", "mulToswish", NodeStatus::kReplace,
+    {
+      { "Sigmoid", "sigmoid", NodeStatus::kRemove,
+        {
+          { "FusedBatchNorm", "fusebatchnorm", NodeStatus::kRemove,
+            {
+              { "Conv2D", "conv", NodeStatus::kRemove},
+              { "*", "scale", NodeStatus::kRemain},
+              { "*", "offset", NodeStatus::kRemain},
+              { "*", "mean", NodeStatus::kRemain},
+              { "*", "var", NodeStatus::kRemain}
+            }
+          }
+        }
+      },
+      { "FusedBatchNorm", "fusebatchnorm", NodeStatus::kRemove}
+    }
+  };
+
+  utils::OpTypePattern conv2dbatchnormv2swish_pattern{
+    "Mul", "mulToswish", NodeStatus::kReplace,
+    {
+      { "Sigmoid", "sigmoid", NodeStatus::kRemove,
+        {
+          { "FusedBatchNormV2", "fusebatchnorm", NodeStatus::kRemove,
+            {
+              { "Conv2D", "conv", NodeStatus::kRemove},
+              { "*", "scale", NodeStatus::kRemain},
+              { "*", "offset", NodeStatus::kRemain},
+              { "*", "mean", NodeStatus::kRemain},
+              { "*", "var", NodeStatus::kRemain}
+            }
+          }
+        }
+      },
+      { "FusedBatchNormV2", "fusebatchnorm", NodeStatus::kRemove}
+    }
+  };
+
+  utils::OpTypePattern conv2dbatchnormv3swish_pattern{
+    "Mul", "mulToswish", NodeStatus::kReplace,
+    {
+      { "Sigmoid", "sigmoid", NodeStatus::kRemove,
+        {
+          { "FusedBatchNormV3", "fusebatchnorm", NodeStatus::kRemove,
+            {
+              { "Conv2D", "conv", NodeStatus::kRemove},
+              { "*", "scale", NodeStatus::kRemain},
+              { "*", "offset", NodeStatus::kRemain},
+              { "*", "mean", NodeStatus::kRemain},
+              { "*", "var", NodeStatus::kRemain}
+            }
+          }
+        }
+      },
+      { "FusedBatchNormV3", "fusebatchnorm", NodeStatus::kRemove}
+    }
+  };
+  // clang-format on
+  // check for data types
+  auto* mul_node_def = ctx->graph_view.GetNode(node_index)->node();
+  if (!HasDataType(mul_node_def, DT_FLOAT) &&
+      !HasDataType(mul_node_def, DT_BFLOAT16))
+    return false;
+
+  if (!NodeIsOnCpu(mul_node_def)) return false;
+  // Check first if the swish pattern is present
+  bool found_op_type_match = false;
+  bool is_biasadd_pattern = false;
+  utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
+      &(ctx->graph_view));
+  matched_nodes_map->clear();
+  remove_node_indices->clear();
+  found_op_type_match = graph_matcher.GetMatchedNodes(
+      conv2dbiasaddswish_pattern, {}, ctx->graph_view.GetNode(node_index),
+      matched_nodes_map, remove_node_indices);
+  is_biasadd_pattern = found_op_type_match;
+
+  // If Conv2D + BiasAdd + Sigmoid + Mul Not found , check for FusedBatchNorm
+  // pattern
+  if (!found_op_type_match) {
+    utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
+        &(ctx->graph_view));
+    matched_nodes_map->clear();
+    remove_node_indices->clear();
+    found_op_type_match = graph_matcher.GetMatchedNodes(
+        conv2dbatchnormswish_pattern, {}, ctx->graph_view.GetNode(node_index),
+        matched_nodes_map, remove_node_indices);
+  }
+
+  // if above fails check for FusedBatchNormV2 pattern
+  if (!found_op_type_match) {
+    utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
+        &(ctx->graph_view));
+    matched_nodes_map->clear();
+    remove_node_indices->clear();
+    found_op_type_match = graph_matcher.GetMatchedNodes(
+        conv2dbatchnormv2swish_pattern, {}, ctx->graph_view.GetNode(node_index),
+        matched_nodes_map, remove_node_indices);
+  }
+
+  // if above fails check for FusedBatchNormV3 pattern
+  if (!found_op_type_match) {
+    utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
+        &(ctx->graph_view));
+    matched_nodes_map->clear();
+    remove_node_indices->clear();
+    found_op_type_match = graph_matcher.GetMatchedNodes(
+        conv2dbatchnormv3swish_pattern, {}, ctx->graph_view.GetNode(node_index),
+        matched_nodes_map, remove_node_indices);
+  }
+
+  // Check if the Conv2d to be fused is CPU compatible
+  if (found_op_type_match) {
+    NodeDef* conv2d_node =
+        ctx->graph_view.GetNode(matched_nodes_map->at("conv"))->node();
+    if (!IsCpuCompatibleConv2D(*ctx, conv2d_node)) return false;
+    if (!is_biasadd_pattern) {
+      NodeDef* fusedbatchnorm_node =
+          ctx->graph_view.GetNode(matched_nodes_map->at("fusebatchnorm"))
+              ->node();
+      // Check if FusedBatchNorm node is in inference mode
+      bool is_training = true;
+      if (!TryGetNodeAttr(*fusedbatchnorm_node, kIsTraining, &is_training) ||
+          is_training)
+        return false;
+
+      if (fusedbatchnorm_node->op() != "FusedBatchNorm" &&
+          (!HasDataType(fusedbatchnorm_node, DT_FLOAT, "U") ||
+           (HasDataType(fusedbatchnorm_node, DT_FLOAT, "U") &&
+            !HasDataType(fusedbatchnorm_node, DT_FLOAT, "T")))) {
+        return false;
+      }
+    }
+  }
+
+  return found_op_type_match;
 }
 
 inline bool VerifyConstants(RemapperContext* ctx,
@@ -2695,6 +2885,58 @@ Status AddFusedContractionNode(
   return OkStatus();
 }
 
+Status FuseConv2DSwish(RemapperContext* ctx,
+                       const std::map<string, int>& matched_nodes_map,
+                       const std::set<int>& remove_node_indices,
+                       std::vector<bool>* invalidated_nodes,
+                       std::vector<bool>* nodes_to_delete) {
+  const NodeDef* mul =
+      ctx->graph_view.GetNode(matched_nodes_map.at("mulToswish"))->node();
+  const NodeDef* conv2d =
+      ctx->graph_view.GetNode(matched_nodes_map.at("conv"))->node();
+
+  NodeDef fused_op;
+  fused_op.set_name(mul->name());
+  fused_op.set_op(kFusedConv2D);
+  fused_op.set_device(mul->device());
+  fused_op.add_input(conv2d->input(0));
+  fused_op.add_input(conv2d->input(1));
+  // Check if the pattern has Conv2d + BiasAdd
+  if (matched_nodes_map.find("biasadd") != matched_nodes_map.end()) {
+    auto* bias_add_node =
+        ctx->graph_view.GetNode(matched_nodes_map.at("biasadd"))->node();
+    fused_op.add_input(bias_add_node->input(1));
+    SetFusedOpAttributes(&fused_op, {"BiasAdd", "_MklSwish"});
+  } else {
+    // pattern is conv2D + FuseBatchNorm/v2/v3
+    auto* fusebatchnorm_node =
+        ctx->graph_view.GetNode(matched_nodes_map.at("fusebatchnorm"))->node();
+    fused_op.add_input(fusebatchnorm_node->input(1));
+    fused_op.add_input(fusebatchnorm_node->input(2));
+    fused_op.add_input(fusebatchnorm_node->input(3));
+    fused_op.add_input(fusebatchnorm_node->input(4));
+    float epsilon;
+    TF_CHECK_OK(GetNodeAttr(*fusebatchnorm_node, "epsilon", &epsilon));
+    SetFusedOpAttributes(&fused_op, {"FusedBatchNorm", "_MklSwish"},
+                         /*num_args=*/4, /*epsilon=*/epsilon);
+  }
+  CopyConv2DAttributes(*conv2d, &fused_op);
+
+  utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
+  Status status;
+  mutation->AddNode(std::move(fused_op), &status);
+  TF_RETURN_IF_ERROR(status);
+  TF_RETURN_IF_ERROR(mutation->Apply());
+
+  (*invalidated_nodes)[matched_nodes_map.at("mulToswish")] = true;
+
+  for (const auto& node_index : remove_node_indices) {
+    (*nodes_to_delete)[node_index] = true;
+  }
+
+  return OkStatus();
+}
+
 Status AddFusedMatMulBiasAddAndGelu(
     RemapperContext* ctx, const std::map<string, int>& matched_nodes_map,
     const std::set<int>& remove_node_indices,
@@ -3691,6 +3933,17 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         continue;
       }
 
+      // Fuse Conv2d + BiasAdd/FusedBatchNorm + Swish.
+      std::map<string, int> fusedconv2dSwish_matched_nodes_map;
+      std::set<int> fusedconv2dSwish_remove_node_indices;
+      if (FindConv2DSwish(&ctx, i, &fusedconv2dSwish_matched_nodes_map,
+                          &fusedconv2dSwish_remove_node_indices)) {
+        TF_RETURN_IF_ERROR(
+            FuseConv2DSwish(&ctx, fusedconv2dSwish_matched_nodes_map,
+                            fusedconv2dSwish_remove_node_indices,
+                            &invalidated_nodes, &nodes_to_delete));
+        continue;
+      }
       // Remap Maximum(x, alpha * x) pattern, fuse them into the LeakyRelu(x).
       std::map<string, int> mulmax_matched_nodes_map;
       std::set<int> mulmax_remove_node_indices;

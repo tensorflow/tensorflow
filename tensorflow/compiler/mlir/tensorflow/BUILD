@@ -1351,6 +1351,8 @@ cc_library(
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_cc",
         "//tensorflow/core/tpu:tpu_embedding_optimization_parameters_utils",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -2455,13 +2457,21 @@ tf_cc_test(
     srcs = ["utils/dump_mlir_util_test.cc"],
     deps = [
         ":dump_mlir_util",
+        ":tensorflow",
+        ":tensorflow_passes",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:test",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -2559,6 +2569,8 @@ cc_library(
     hdrs = ["utils/attribute_utils.h"],
     deps = [
         "//tensorflow/compiler/tf2xla:tf2xla_defs",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
 )

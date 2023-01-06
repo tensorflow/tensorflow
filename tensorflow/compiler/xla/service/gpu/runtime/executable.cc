@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/io_feed.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memcpy.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memset.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/send_recv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/tracing.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
@@ -89,6 +90,7 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
   RegisterMemcpyCustomCalls(registry);
   RegisterIoFeedCustomCalls(registry);
   RegisterMemsetCustomCalls(registry);
+  RegisterSendRecvCustomCalls(registry);
 
 #if GOOGLE_CUDA
   // Graph launch kernels depend on Cuda Graph API.
@@ -110,6 +112,7 @@ void RegisterXlaGpuTypeIdNames(TypeIDNameRegistry& registry) {
 
   RegisterTracingTypeIdNames(registry);
   RegisterConvTypeIdNames(registry);
+  RegisterSendRecvTypeIdNames(registry);
 
 #if GOOGLE_CUDA
   registry.Register<Tagged<se::cuda::BlasLt::Epilogue>>(
@@ -121,6 +124,7 @@ void RegisterXlaGpuAttrEncoding(CustomCallAttrEncodingSet& encoding) {
   PopulateConvAttrEncoding(encoding);
   PopulateFftAttrEncoding(encoding);
   PopulateDotDimsAttrEncoding(encoding);
+  PopulateSendRecvAttrEncoding(encoding);
 
 #if GOOGLE_CUDA
   PopulateCublasLtMatmulAttrEncoding(encoding);

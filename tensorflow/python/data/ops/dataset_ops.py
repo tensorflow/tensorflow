@@ -53,6 +53,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import gen_io_ops
+from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
@@ -85,12 +86,6 @@ wrap_function = lazy_loader.LazyLoader(
 def_function = lazy_loader.LazyLoader(
     "def_function", globals(),
     "tensorflow.python.eager.def_function")
-# Loaded lazily due to a circular dependency
-# dataset_ops->parsing_ops->dataset_ops
-# TODO(varshaan): Use a regular import.
-parsing_ops = lazy_loader.LazyLoader(
-    "parsing_ops", globals(),
-    "tensorflow.python.ops.parsing_ops")
 # TODO(b/240947712): Clean up the circular dependencies.
 # Loaded lazily due to a circular dependency (dataset_ops ->
 # prefetch_op -> dataset_ops).
@@ -330,7 +325,7 @@ class DatasetV2(
       if node.name in asset_tracker:
         tensor_proto = node.attr["value"].tensor
         with context.eager_mode(), ops.device("CPU"):
-          node_value = parsing_ops.parse_tensor(
+          node_value = gen_parsing_ops.parse_tensor(
               tensor_proto.SerializeToString(), dtypes.string).numpy()
         asset_tracker[node.name] = ([
             self._track_trackable(asset.Asset(n),

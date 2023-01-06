@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -50,7 +51,7 @@ struct TileTransposePattern : public OpRewritePattern<linalg::TransposeOp> {
                                 PatternRewriter &rewriter) const override {
     if (hasLabel(op, kTransposeTransformedLabel)) return failure();
 
-    if (isa<gml_st::ParallelOp, gml_st::ForOp>(op->getParentOp()))
+    if (isa<LoopLikeOpInterface>(op->getParentOp()))
       return rewriter.notifyMatchFailure(
           op, "has already been tiled by another pass.");
 

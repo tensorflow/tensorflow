@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Async/IR/Async.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -27,7 +28,7 @@ int main(int argc, char **argv) {
 
   registry.insert<mlir::func::FuncDialect, mlir::memref::MemRefDialect,
                   mlir::math::MathDialect, xla::runtime::RuntimeDialect,
-                  xla::runtime::TestlibDialect>();
+                  mlir::async::AsyncDialect, xla::runtime::TestlibDialect>();
   xla::registerMathTransformsPasses();
   xla::registerMemrefTransformsPasses();
   xla::runtime::registerRuntimeTransformsPasses();

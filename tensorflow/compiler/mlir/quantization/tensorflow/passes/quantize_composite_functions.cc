@@ -1083,6 +1083,7 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   pm.enableVerifier(false);
 
   QuantizationSpecs quant_specs;
+  pm.addPass(CreatePreprocessOpPass(quant_specs, target_opset_));
   if (quantization_method_ ==
           tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE ||
       quantization_method_ ==
@@ -1117,7 +1118,7 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   }
 
   // Constant quantization is a lossy transformation, so they are applied only
-  // after all the other patterns have been aplied.
+  // after all the other patterns have been applied.
   RewritePatternSet patterns_2(ctx);
   populateWithGenerated(patterns_2);
   patterns_2.add<ReplaceQuantizePattern, ReplaceDequantizePattern>(

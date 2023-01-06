@@ -103,6 +103,7 @@ void AddSupportedOpsUsingDynamicPadder(
       OperationName(TF::DynamicPartitionOp::getOperationName(), context),
       OperationName(TF::WhereOp::getOperationName(), context),
       OperationName(TF::UniqueOp::getOperationName(), context),
+      OperationName(TF::XlaSetBoundOp::getOperationName(), context),
       OperationName(TF::XlaSetDynamicDimensionSizeOp::getOperationName(),
                     context),
   };

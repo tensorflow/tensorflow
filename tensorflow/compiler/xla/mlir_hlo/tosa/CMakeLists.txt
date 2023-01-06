@@ -12,18 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
-include_directories(${CMAKE_CURRENT_BINARY_DIR}/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 add_custom_target(check-mhlo-tosa)
 
-add_subdirectory(include/mhlo_tosa/Transforms)
-add_subdirectory(lib/Transforms)
 add_subdirectory(tests)
 
 add_mlir_pdll_library(MHLOTOSAPDLLPatternsIncGen
-  lib/Transforms/legalize_mhlo.pdll
-  include/mhlo_tosa/Transforms/legalize_mhlo.pdll.h.inc
+  transforms/legalize_mhlo/legalize_mhlo.pdll
+  transforms/legalize_mhlo/legalize_mhlo.pdll.h.inc
   )
 
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)

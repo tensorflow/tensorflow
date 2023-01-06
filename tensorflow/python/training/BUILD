@@ -122,7 +122,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":training_lib",
-        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_core",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:python_state",
         "//tensorflow/python/training/tracking:base",

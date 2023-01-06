@@ -269,6 +269,7 @@ py_library(
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/python/tools/api/generator:__pkg__",
+        "//tensorflow/tools/compatibility/update:__pkg__",
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
@@ -321,7 +322,13 @@ tf_pybind_cc_library_wrapper(
 tf_python_pybind_extension(
     name = "_pywrap_tfcompile",
     srcs = ["tfcompile_wrapper.cc"],
+    dynamic_deps = [":_pywrap_tensorflow_internal.so"] + select({
+        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+        "//tensorflow:windows": [],
+    }),
     features = ["-layering_check"],
+    static_deps = tf_python_pybind_static_deps(),
     deps = [
         ":tfcompile_headers_lib",
         "@pybind11",
@@ -367,11 +374,6 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_py_exception_registry",
     srcs = ["py_exception_registry_wrapper.cc"],
-    hdrs = [
-        "//tensorflow/c:headers",
-        "//tensorflow/c/eager:headers",
-        "//tensorflow/python/lib/core:py_exception_registry_hdr",
-    ],
     dynamic_deps = [":_pywrap_tensorflow_internal.so"] + select({
         "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
         "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
@@ -382,6 +384,7 @@ tf_python_pybind_extension(
         ":py_exception_registry",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
+        "//tensorflow/python/lib/core:py_exception_registry",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:fixed_array",
         "@pybind11",

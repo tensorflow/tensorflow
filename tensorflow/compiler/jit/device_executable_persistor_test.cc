@@ -271,8 +271,9 @@ TEST_F(DeviceExecutionPersistorTest, PersistExecutableEmpty) {
   xla::LocalExecutable empty_executable(
       nullptr, nullptr,
       GetExecutableBuildOptions(DefaultOptions(), compilation_result_add_, 0));
+  EXPECT_CALL(mock_client, SerializeExecutable(_))
+      .WillOnce(Return(errors::FailedPrecondition("Failed precondition.")));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable, BuildSampleExecutable());
   EXPECT_THAT(persistor.TryToPersistExecutable(
                   /*signature_hash=*/123, "signature_string", DefaultOptions(),
                   compilation_result_add_, empty_executable, &mock_client),

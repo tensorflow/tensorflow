@@ -31,13 +31,9 @@ func.func @map_unary(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
 // CHECK-SAME:     step (%[[C1]], %[[C8]]) {
 // CHECK-NEXT:   %[[INPUT_SLICE:.*]] = gml_st.materialize %[[INPUT]]
 // CHECK-NEXT:   %[[INIT_SLICE:.*]] = gml_st.materialize %[[INIT]]
-// CHECK-NEXT:   %[[MAPPED:.*]] = linalg.map
+// CHECK-NEXT:   %[[MAPPED:.*]] = linalg.map { math.absf }
 // CHECK-SAME:     ins(%[[INPUT_SLICE]] : tensor<1x?xf32>)
 // CHECK-SAME:     outs(%[[INIT_SLICE]] : tensor<1x?xf32>)
-// CHECK-NEXT:     (%[[IN_ELEM:.*]]: f32) {
-// CHECK-NEXT:       %[[RES_ELEM:.*]] = math.absf %[[IN_ELEM]] : f32
-// CHECK-NEXT:       linalg.yield %[[RES_ELEM]] : f32
-// CHECK-NEXT:     }
 // CHECK-NEXT:   %[[TILE:.*]] = gml_st.tile [%[[MAIN_I]], %[[MAIN_J]]]
 // CHECK-SAME:                          [1, %[[C8]]] [1, 1]
 // CHECK-NEXT:   gml_st.set_yield %[[MAPPED]] into %[[INIT]][%[[TILE]]]
@@ -53,13 +49,9 @@ func.func @map_unary(%input: tensor<?x?xf32>, %init: tensor<?x?xf32>)
 // CHECK:        %[[RESULT1:.*]] = gml_st.parallel (%[[I1:.*]], %[[J1:.*]]) =
 // CHECK-NEXT:     %[[INPUT_SLICE1:.*]] = gml_st.materialize %[[INPUT_SLICE]]
 // CHECK-NEXT:     %[[INIT_SLICE1:.*]] = gml_st.materialize %[[INIT_SLICE]]
-// CHECK-NEXT:     %[[MAPPED:.*]] = linalg.map
+// CHECK-NEXT:     %[[MAPPED:.*]] = linalg.map { math.absf }
 // CHECK-SAME:       ins(%[[INPUT_SLICE1]] : tensor<1x1xf32>)
 // CHECK-SAME:       outs(%[[INIT_SLICE1]] : tensor<1x1xf32>)
-// CHECK-NEXT:       (%[[IN_ELEM:.*]]: f32) {
-// CHECK-NEXT:         %[[RES_ELEM:.*]] = math.absf %[[IN_ELEM]] : f32
-// CHECK-NEXT:         linalg.yield %[[RES_ELEM]] : f32
-// CHECK-NEXT:       }
 // CHECK-NEXT:     %[[TILE1:.*]] = gml_st.tile [%[[I1]], %[[J1]]]
 // CHECK-SAME:                                 [1, 1] [1, 1]
 // CHECK-NEXT:     gml_st.set_yield %[[MAPPED]]
@@ -219,30 +211,3 @@ func.func @map_non_unique_users(%arg: tensor<?x?xf32>,
 // CHECK-NOT:        math.exp
 // CHECK:            arith.mulf
 // CHECK:            math.absf
-
-// -----
-
-func.func @fill() -> tensor<16x10xf32> {
-  %cst = arith.constant 0.000000e+00 : f32
-  %0 = tensor.empty() : tensor<16x10xf32>
-  %1 = linalg.fill ins(%cst : f32) outs(%0 : tensor<16x10xf32>) -> tensor<16x10xf32>
-  return %1 : tensor<16x10xf32>
-}
-
-// CHECK-LABEL: func.func @fill(
-
-// CHECK-DAG:   %[[C0:.*]] = arith.constant 0
-// CHECK-DAG:   %[[C1:.*]] = arith.constant 1
-// CHECK-DAG:   %[[C8:.*]] = arith.constant 8
-// CHECK-DAG:   %[[C10:.*]] = arith.constant 10
-// CHECK-DAG:   %[[C16:.*]] = arith.constant 16
-
-// CHECK:      gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]]) to
-// CHECK-SAME:     (%[[C16]], %[[C8]]) step (%[[C1]], %[[C8]]) {
-// CHECK:        linalg.fill
-// CHECK:        gml_st.set_yield
-
-// CHECK:      gml_st.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C8]]) to
-// CHECK-SAME:     (%[[C16]], %[[C10]]) step (%[[C1]], %[[C8]]) {
-// CHECK:        linalg.fill
-// CHECK:        gml_st.set_yield

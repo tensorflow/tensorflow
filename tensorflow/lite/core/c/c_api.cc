@@ -468,6 +468,13 @@ TfLiteInterpreter* InterpreterCreateWithOpResolver(
   tflite::InterpreterBuilder builder(model->impl->GetModel(), *op_resolver,
                                      error_reporter);
 
+  if (optional_options && optional_options->telemetry_profiler) {
+    std::unique_ptr<tflite::telemetry::TelemetryProfiler> profiler;
+    profiler.reset(tflite::telemetry::MakeTfLiteTelemetryProfiler(
+        optional_options->telemetry_profiler));
+    builder.SetTelemetryProfiler(std::move(profiler));
+  }
+
   std::unique_ptr<tflite::Interpreter> interpreter;
   if (builder(&interpreter) != kTfLiteOk) {
     return nullptr;

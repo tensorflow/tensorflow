@@ -1,6 +1,6 @@
 // RUN: mlir-hlo-opt %s -xla-cpu-transform-matmul="tile-sizes=8,4,2" | FileCheck %s --check-prefixes=CHECK,TRANSFORMED
 // RUN: mlir-hlo-opt %s -xla-cpu-transform-matmul="tile-sizes=8,4,2" | FileCheck %s --check-prefixes=MARKED
-// RUN: mlir-hlo-opt %s -xla-cpu-transform-matmul="lower-to-mmt4d=true" | FileCheck %s --check-prefixes=MMT4D,PAD
+// RUN: mlir-hlo-opt %s -xla-cpu-transform-matmul="lower-to-mmt4d=true" | FileCheck %s --check-prefixes=MMT4D
 
 #id_map = affine_map<(d0, d1) -> (d0, d1)>
 
@@ -191,27 +191,6 @@ func.func @matmul_fuse_output(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
 // CHECK:        linalg.map
 // CHECK:        linalg.map
 // CHECK:        gml_st.set_yield
-
-// -----
-
-func.func @pad(%arg0: tensor<10x10xf32>) -> tensor<16x10xf32> {
-  %cst = arith.constant 0.000000e+00 : f32
-  %padded = tensor.pad %arg0 low[0, 0] high[6, 0] {
-  ^bb0(%arg3: index, %arg4: index):
-    tensor.yield %cst : f32
-  } : tensor<10x10xf32> to tensor<16x10xf32>
-
-  return %padded : tensor<16x10xf32>
-}
-
-// PAD-LABEL:    func @pad(
-
-// PAD:            %[[EMPTY:.*]] = tensor.empty() : tensor<16x10xf32>
-// PAD:            %[[FILL:.*]] = linalg.fill {{.*}} outs(%[[EMPTY]]
-// PAD:            %[[EXTRACT:.*]] = tensor.extract_slice %[[FILL]][0, 0] [10, 10]
-// PAD:            %[[MAP:.*]] = linalg.map ins(%arg0 {{.*}} outs(%[[EXTRACT]]
-// PAD:            %[[INSERT:.*]] = tensor.insert_slice %[[MAP]] into  %[[FILL]][0, 0] [10, 10]
-// PAD:            return %[[INSERT]]
 
 // -----
 

@@ -1347,6 +1347,90 @@ def LHLO_SortOp: LHLO_Op<"sort", [SameVariadicOperandSize, SameOperandsShape]> {
 }
 
 //===----------------------------------------------------------------------===//
+// Point-to-point communication operations.
+//===----------------------------------------------------------------------===//
+
+def LHLO_SendOp : LHLO_Op<"send", []> {
+
+  let summary = "Send operator";
+
+  let description = [{
+    Sends the given operand data to a Recv instruction in another computation
+    that shares the same channel handle. Does not return any data. Send is an
+    asynchronous operation, and must be paired with a SendDone operation to
+    wait for the completion of the data transfer.
+
+    See https://www.tensorflow.org/xla/operation_semantics#send.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
+    MHLO_ChannelHandle:$channel_handle,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_host_transfer,
+    DefaultValuedOptionalAttr<DictionaryAttr, "{}">:$frontend_attributes
+  );
+
+  let results = (outs MHLO_Token:$token);
+}
+
+def LHLO_RecvOp : LHLO_Op<"recv", []> {
+
+  let summary = "Recv operator";
+
+  let description = [{
+    Receives data of the given shape from a Send instruction in another
+    computation that shares the same channel handle. Recv is an asynchronous
+    operation, and must be paired with a RecvDone operation to wait for the
+    completion of the data transfer.
+
+    See https://www.tensorflow.org/xla/operation_semantics#recv.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs,
+    MHLO_ChannelHandle:$channel_handle,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_host_transfer,
+    DefaultValuedOptionalAttr<DictionaryAttr, "{}">:$frontend_attributes
+  );
+
+  let results = (outs MHLO_Token:$token);
+}
+
+def LHLO_SendDoneOp : LHLO_Op<"send_done", []> {
+
+  let summary = "SendDone operator";
+
+  let description = [{
+    Waits for the completion of corresponding Send operation data transfer.
+
+    See https://www.tensorflow.org/xla/operation_semantics#send.
+  }];
+
+  let arguments = (ins
+    MHLO_Token:$token,
+    MHLO_ChannelHandle:$channel_handle,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_host_transfer
+  );
+}
+
+def LHLO_RecvDoneOp : LHLO_Op<"recv_done", []> {
+
+  let summary = "RecvDone operator";
+
+  let description = [{
+    Waits for the completion of corresponding Recv operation data transfer.
+
+    See https://www.tensorflow.org/xla/operation_semantics#recv.
+  }];
+
+  let arguments = (ins
+    MHLO_Token:$token,
+    MHLO_ChannelHandle:$channel_handle,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_host_transfer
+  );
+}
+
+//===----------------------------------------------------------------------===//
 // Late operations
 //===----------------------------------------------------------------------===//
 

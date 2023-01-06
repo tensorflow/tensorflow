@@ -373,7 +373,10 @@ void CollectivePermuteOp::build(OpBuilder& odsBuilder, OperationState& odsState,
 //===----------------------------------------------------------------------===//
 
 LogicalResult ReduceScatterOp::verify() {
-  if (failed(mlir::hlo::verifyReplicaGroups(*this, /*isUniformSized=*/true)))
+  if (failed(hlo::verifyReplicaGroups(getLoc(), getReplicaGroups(),
+                                      /*allGroupsMustHaveSameSize=*/true,
+                                      getUseGlobalDeviceIds(),
+                                      /*expectedGroupSize=*/std::nullopt)))
     return failure();
   auto operandType = getOperand().getType().cast<TensorType>();
   bool operandTypeRanked = operandType.isa<RankedTensorType>();
@@ -1004,50 +1007,10 @@ LogicalResult CholeskyOp::inferReturnTypeComponents(
 //===----------------------------------------------------------------------===//
 // DotOp
 //===----------------------------------------------------------------------===//
-namespace {
-bool dimCompatible(int64_t a, int64_t b) {
-  return hlo::isDynamicDimSize(a) || hlo::isDynamicDimSize(b) || a == b;
-}
 
-ShapedType inferDotReturnType(ShapedType lhs, ShapedType rhs) {
-  auto elementType = lhs.getElementType();
-  if (!lhs.hasRank() || !rhs.hasRank()) {
-    return UnrankedTensorType::get(elementType);
-  }
-
-  // vector dot vector
-  if (1 == lhs.getRank() && 1 == rhs.getRank() &&
-      dimCompatible(lhs.getDimSize(0), rhs.getDimSize(0))) {
-    return RankedTensorType::get({}, elementType);
-  }
-  // matrix dot vector
-  if (2 == lhs.getRank() && 1 == rhs.getRank() &&
-      dimCompatible(lhs.getDimSize(1), rhs.getDimSize(0))) {
-    return RankedTensorType::get({lhs.getDimSize(0)}, elementType);
-  }
-  // vector dot matrix
-  if (1 == lhs.getRank() && 2 == rhs.getRank() &&
-      dimCompatible(lhs.getDimSize(0), rhs.getDimSize(0))) {
-    return RankedTensorType::get({rhs.getDimSize(1)}, elementType);
-  }
-  // matrix dot matrix
-  if (2 == lhs.getRank() && 2 == rhs.getRank() &&
-      dimCompatible(lhs.getDimSize(1), rhs.getDimSize(0))) {
-    int64_t shape[2] = {lhs.getDimSize(0), rhs.getDimSize(1)};
-    return RankedTensorType::get(shape, elementType);
-  }
-  return {};
-}
-}  // namespace
-
-LogicalResult DotOp::inferReturnTypes(
-    MLIRContext*, Optional<Location>, ValueRange operands, DictionaryAttr,
-    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
-  DotOp::Adaptor op(operands);
-  auto lhsType = op.getLhs().getType().cast<ShapedType>();
-  auto rhsType = op.getRhs().getType().cast<ShapedType>();
-  inferredReturnTypes.push_back(inferDotReturnType(lhsType, rhsType));
-  return success();
+LogicalResult DotOp::verify() {
+  return hlo::verifyDotOp(getLoc(), getLhs(), getRhs(), getPrecisionConfig(),
+                          getResult());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1055,109 +1018,13 @@ LogicalResult DotOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult DotGeneralOp::verify() {
-  auto dimNumbers = this->getDotDimensionNumbers();
-
-  ArrayRef<int64_t> lhsBatchingDims = dimNumbers.getLhsBatchingDimensions();
-  ArrayRef<int64_t> rhsBatchingDims = dimNumbers.getRhsBatchingDimensions();
-  ArrayRef<int64_t> lhsContractingDims =
-      dimNumbers.getLhsContractingDimensions();
-  ArrayRef<int64_t> rhsContractingDims =
-      dimNumbers.getRhsContractingDimensions();
-
-  if (lhsBatchingDims.size() != rhsBatchingDims.size()) {
-    return emitOpError() << "lhs and rhs should have the same number of "
-                            "batching dimensions";
-  }
-  if (lhsContractingDims.size() != rhsContractingDims.size()) {
-    return emitOpError() << "lhs and rhs should have the same number of "
-                            "contracting dimensions";
-  }
-
-  llvm::SmallDenseSet<int64_t> dimSet;
-
-  auto checkDimsDistinct =
-      [this](ArrayRef<int64_t> batchingDims, ArrayRef<int64_t> contractingDims,
-             llvm::SmallDenseSet<int64_t>& dimSet, llvm::StringRef lhs,
-             llvm::StringRef rhs) -> LogicalResult {
-    auto dims = llvm::concat<const int64_t>(batchingDims, contractingDims);
-    for (auto dim : dims) {
-      auto [_, wasInserted] = dimSet.insert(dim);
-      if (!wasInserted) {
-        return emitOpError() << "has duplicated dimension from " << lhs
-                             << " and " << rhs << ": " << dim;
-      }
-    }
-    return success();
-  };
-
-  if (failed(checkDimsDistinct(lhsBatchingDims, lhsContractingDims, dimSet,
-                               "lhs_batching_dimensions",
-                               "lhs_contracting_dimensions"))) {
-    return failure();
-  }
-  dimSet.clear();
-  if (failed(checkDimsDistinct(rhsBatchingDims, rhsContractingDims, dimSet,
-                               "rhs_batching_dimensions",
-                               "rhs_contracting_dimensions"))) {
-    return failure();
-  }
-
-  auto checkDimsInRange = [this](int64_t rank, ArrayRef<int64_t> dims,
-                                 llvm::StringRef dimName) -> LogicalResult {
-    auto inRange = [&](int64_t i) -> bool { return 0 <= i && i < rank; };
-    const auto* dimsNotInRange =
-        std::find_if_not(dims.begin(), dims.end(), inRange);
-    if (dimsNotInRange != dims.end()) {
-      return emitOpError() << dimName << " value: " << *dimsNotInRange
-                           << " is out of range: "
-                           << "[0, " << rank << ")";
-    }
-    return success();
-  };
-
-  auto lhsType = this->getLhs().getType().dyn_cast<RankedTensorType>();
-  auto rhsType = this->getRhs().getType().dyn_cast<RankedTensorType>();
-
-  if (lhsType) {
-    if (failed(checkDimsInRange(lhsType.getRank(), lhsBatchingDims,
-                                "lhs_batching_dimensions")) ||
-        failed(checkDimsInRange(lhsType.getRank(), lhsContractingDims,
-                                "lhs_contracting_dimensions"))) {
-      return failure();
-    }
-  }
-  if (rhsType) {
-    if (failed(checkDimsInRange(rhsType.getRank(), rhsBatchingDims,
-                                "rhs_batching_dimensions")) ||
-        failed(checkDimsInRange(rhsType.getRank(), rhsContractingDims,
-                                "rhs_contracting_dimensions"))) {
-      return failure();
-    }
-  }
-
-  if (lhsType && rhsType) {
-    // Dimension sizes must be compatible for lhs/rhs.
-    auto lhsShape = lhsType.getShape();
-    auto rhsShape = rhsType.getShape();
-
-    for (auto [lhs, rhs] : llvm::zip(lhsBatchingDims, rhsBatchingDims)) {
-      if (hlo::isDynamicDimSize(lhsShape[lhs])) continue;
-      if (hlo::isDynamicDimSize(rhsShape[rhs])) continue;
-      if (lhsShape[lhs] != rhsShape[rhs]) {
-        return emitOpError() << "batching dimension sizes must match for "
-                                "lhs/rhs";
-      }
-    }
-    for (auto [lhs, rhs] : llvm::zip(lhsContractingDims, rhsContractingDims)) {
-      if (hlo::isDynamicDimSize(lhsShape[lhs])) continue;
-      if (hlo::isDynamicDimSize(rhsShape[rhs])) continue;
-      if (lhsShape[lhs] != rhsShape[rhs]) {
-        return emitOpError() << "contracting dimension sizes must match for "
-                                "lhs/rhs";
-      }
-    }
-  }
-  return success();
+  return hlo::verifyDotGeneralOp(
+      getLoc(), getLhs(), getRhs(),
+      getDotDimensionNumbersAttr().getLhsBatchingDimensions(),
+      getDotDimensionNumbersAttr().getRhsBatchingDimensions(),
+      getDotDimensionNumbersAttr().getLhsContractingDimensions(),
+      getDotDimensionNumbersAttr().getRhsContractingDimensions(),
+      getPrecisionConfig(), getResult());
 }
 
 namespace {
@@ -2206,179 +2073,6 @@ LogicalResult CollectivePermuteOp::verify() {
 //===----------------------------------------------------------------------===//
 
 namespace {
-// Checks:
-//  P1. Same sizes for input, kernel and output spatial_dims.
-//  P2. Spatial and non-spatial dimentions (for input,kernel, &output) should
-//      be unique and in range [0, num_dims), where num_dims = rank of input
-//      (lhs/rhs) tensors.
-//
-//  Note that the spatial + non-spatial dimensions may not cover all the
-//  dimensions in the range [0,num) because of the presence of 'unknown'
-//  dimensions (ref. cl/415132294).
-LogicalResult isSpatialDimensionsValid(ConvolutionOp op) {
-  auto inputSpatialDimensions =
-      op.getDimensionNumbers().getInputSpatialDimensions();
-  auto kernelSpatialDimensions =
-      op.getDimensionNumbers().getKernelSpatialDimensions();
-  auto outputSpatialDimensions =
-      op.getDimensionNumbers().getOutputSpatialDimensions();
-
-  // P1.
-  if ((inputSpatialDimensions.size() != kernelSpatialDimensions.size()) ||
-      (inputSpatialDimensions.size() != outputSpatialDimensions.size()))
-    return op.emitOpError() << "expects the same size for input, kernel and "
-                               "output spatial-dimensions, but got "
-                            << inputSpatialDimensions.size() << ", "
-                            << kernelSpatialDimensions.size() << ", and "
-                            << outputSpatialDimensions.size() << " resp.";
-
-  // P2.
-  SmallVector<int64_t> inputDnums(inputSpatialDimensions.size() + 2);
-  inputDnums[0] = op.getDimensionNumbers().getInputBatchDimension();
-  inputDnums[1] = op.getDimensionNumbers().getInputFeatureDimension();
-  std::copy(inputSpatialDimensions.begin(), inputSpatialDimensions.end(),
-            inputDnums.begin() + 2);
-
-  SmallVector<int64_t> windowDnums(kernelSpatialDimensions.size() + 2);
-  windowDnums[0] = op.getDimensionNumbers().getKernelInputFeatureDimension();
-  windowDnums[1] = op.getDimensionNumbers().getKernelOutputFeatureDimension();
-  std::copy(kernelSpatialDimensions.begin(), kernelSpatialDimensions.end(),
-            windowDnums.begin() + 2);
-
-  SmallVector<int64_t> outputDnums(outputSpatialDimensions.size() + 2);
-  outputDnums[0] = op.getDimensionNumbers().getOutputBatchDimension();
-  outputDnums[1] = op.getDimensionNumbers().getOutputFeatureDimension();
-  std::copy(outputSpatialDimensions.begin(), outputSpatialDimensions.end(),
-            outputDnums.begin() + 2);
-
-  auto numDims = op.getLhs().getType().cast<RankedTensorType>().getRank();
-  const auto inRange = [numDims](int64_t i) { return 0 <= i && i < numDims; };
-
-  if (!llvm::all_of(inputDnums, inRange) ||
-      !llvm::all_of(windowDnums, inRange) ||
-      !llvm::all_of(outputDnums, inRange))
-    return op.emitOpError() << "expects input, kernel, and output "
-                               "dimension-numbers to be in-range [0, "
-                            << numDims << ").";
-
-  if (hasDuplicates(inputDnums))
-    return op.emitOpError()
-           << "expects input dimension-numbers to be unique, got {"
-           << inputDnums << "}.";
-
-  if (hasDuplicates(windowDnums))
-    return op.emitOpError()
-           << "expects kernel dimension-numbers to be unique, got {"
-           << windowDnums << "}.";
-
-  if (hasDuplicates(outputDnums))
-    return op.emitOpError()
-           << "expects output dimension-numbers to be unique, got {"
-           << outputDnums << "}.";
-
-  return success();
-}
-
-// Verifies the following properties:
-//  P1. The input, kernel, and output spatial-dimentions are valid.
-//  P2. Given,
-//          input-dimensions: b * input-spatial-dims * f
-//          kernel-dimensions: kernel-spatial-dims * i * o
-//          output-dimensions: b' * out-spatial-dims * f'
-//            where b = input-batch-dims
-//            where f = input-feature-dims
-//            where i = kernel-input-feature-dims
-//            where o = kernel-output-feature-dims
-//            where b' = output-batch-dims
-//            where f' = output-feature-dims
-//      Check the following properties w.r.t feature_group_count (fgc) and
-//      batch_group_count (bgc).
-//        fgc > 0, bgc > 1 and !(fgc > 1 && bgc > 1)
-//        b % bgc == 0
-//        f % fgc == 0 and i = f / fgc
-//        o (or f') % bgc == 0 and o (or f') % fgc == 0
-LogicalResult verifyConvolutionAttributes(ConvolutionOp op) {
-  // P1.
-  if (failed(isSpatialDimensionsValid(op))) return failure();
-
-  // P2.
-  const int64_t featureGroupCount = op.getFeatureGroupCount();
-  const int64_t batchGroupCount = op.getBatchGroupCount();
-
-  if (featureGroupCount <= 0)
-    return op.emitOpError()
-           << "expects feature_group_count to be a positive number, got "
-           << featureGroupCount << ".";
-
-  if (batchGroupCount <= 0)
-    return op.emitOpError()
-           << "expects batch_group_count to be a positive number, got "
-           << batchGroupCount << ".";
-
-  if (batchGroupCount > 1 && featureGroupCount > 1)
-    return op.emitOpError()
-           << "expects batch_group_count and feature_group_count not to be "
-              "both greater than 1. Got "
-           << batchGroupCount << " and " << featureGroupCount << " resp.";
-
-  auto lhsType = op.getLhs().getType().cast<RankedTensorType>();
-  const int64_t inputFeatures =
-      lhsType.getShape()[op.getDimensionNumbers().getInputFeatureDimension()];
-  const int64_t inputBatch =
-      lhsType.getShape()[op.getDimensionNumbers().getInputBatchDimension()];
-
-  auto rhsType = op.getRhs().getType().cast<RankedTensorType>();
-  const int64_t kernelInputFeatures =
-      rhsType.getShape()[op.getDimensionNumbers()
-                             .getKernelInputFeatureDimension()];
-  const int64_t kernelOutputFeatures =
-      rhsType.getShape()[op.getDimensionNumbers()
-                             .getKernelOutputFeatureDimension()];
-
-  if (!hlo::isDynamicDimSize(kernelOutputFeatures)) {
-    if (kernelOutputFeatures % batchGroupCount != 0)
-      return op.emitOpError() << "expects output feature dimension size ("
-                              << kernelOutputFeatures
-                              << ") to be a multiple of "
-                                 "batch_group_count. Got batch_group_count = "
-                              << batchGroupCount << ".";
-
-    if (kernelOutputFeatures % featureGroupCount != 0)
-      return op.emitOpError()
-             << "expects kernel output feature dimension ("
-             << kernelOutputFeatures
-             << ") to be divisible by "
-                "feature_group_count. For feature_group_count = "
-             << featureGroupCount << ".";
-  }
-
-  if (!hlo::isDynamicDimSize(inputFeatures)) {
-    if (inputFeatures % featureGroupCount != 0)
-      return op.emitOpError()
-             << "expects input feature dimension (" << inputFeatures
-             << ") to be a multiple of "
-                "feature_group_count. Got feature_group_count = "
-             << featureGroupCount << ".";
-
-    if (!hlo::isDynamicDimSize(kernelInputFeatures) &&
-        inputFeatures / featureGroupCount != kernelInputFeatures)
-      return op.emitOpError()
-             << "expects input feature dimension (" << inputFeatures
-             << ") / "
-                "feature_group_count = kernel input feature dimension ("
-             << kernelInputFeatures
-             << "). Got feature_group_count = " << featureGroupCount << ".";
-  }
-
-  if (!hlo::isDynamicDimSize(inputBatch) && inputBatch % batchGroupCount != 0)
-    return op.emitOpError() << "expects input batch dimension (" << inputBatch
-                            << ") to be divisible by "
-                               "batch_group_count. Got batch_group_count = "
-                            << batchGroupCount << ".";
-
-  return success();
-}
-
 // Infer the return-shape of ConvolutionOp.
 // Precondition:
 //  1. Input args to ConvolutionOp 'op' are RankedTypes.
@@ -2389,6 +2083,8 @@ SmallVector<int64_t> inferConvolutionOpReturnShape(
   // output-shape. To do that we initilize the output dimensions with the shape
   // of the return-type and updates only the spatial + non-spatial dimensions.
   // Precondition 2 ensures that size of output-shape == size of input-shape.
+  // NOTE: This is a divergence from StableHLO which doesn't allow us to fully
+  // share ConvolutionOp's verification / shape inference logic with StableHLO.
   SmallVector<int64_t> outputDimensions =
       to_vector(op.getResult().getType().cast<ShapedType>().getShape());
 
@@ -2535,7 +2231,6 @@ void ConvolutionOp::getCanonicalizationPatterns(RewritePatternSet& results,
  *  P2. Verify the convolution atributes.
  *  P3. Verify and collect the window atributes.
  *  P4. Verify the return shape.
- *      TODO(b/232574102): Verify the element-type of return-value.
  */
 LogicalResult ConvolutionOp::verify() {
   auto lhsType = getLhs().getType().dyn_cast<RankedTensorType>();
@@ -2558,7 +2253,19 @@ LogicalResult ConvolutionOp::verify() {
            << lhsType << " and " << rhsType << ".";
 
   // P2.
-  if (failed(verifyConvolutionAttributes(*this))) return failure();
+  if (failed(hlo::verifyConvolutionAttributes(
+          getLoc(), getLhs(), getRhs(),
+          getDimensionNumbers().getInputBatchDimension(),
+          getDimensionNumbers().getInputFeatureDimension(),
+          getDimensionNumbers().getInputSpatialDimensions(),
+          getDimensionNumbers().getKernelInputFeatureDimension(),
+          getDimensionNumbers().getKernelOutputFeatureDimension(),
+          getDimensionNumbers().getKernelSpatialDimensions(),
+          getDimensionNumbers().getOutputBatchDimension(),
+          getDimensionNumbers().getOutputFeatureDimension(),
+          getDimensionNumbers().getOutputSpatialDimensions(),
+          getFeatureGroupCount(), getBatchGroupCount(), getPrecisionConfig())))
+    return failure();
 
   // P3.
   auto kernelSpatialDimensions =
@@ -2580,8 +2287,8 @@ LogicalResult ConvolutionOp::verify() {
       getLoc());
   if (failed(windowOrErr)) return failure();
 
+  // P4.
   auto actualReturnType = getResult().getType().cast<TensorType>();
-  auto actualReturnElementType = actualReturnType.getElementType();
   if (!actualReturnType.hasRank()) return success();
 
   auto actualReturnRankedType = actualReturnType.cast<RankedTensorType>();
@@ -2592,13 +2299,12 @@ LogicalResult ConvolutionOp::verify() {
                          << actualReturnRankedType.getRank() << ".";
 
   auto expectedReturnShape = inferConvolutionOpReturnShape(*this, *windowOrErr);
-  auto expectedReturnType =
-      RankedTensorType::get(expectedReturnShape, actualReturnElementType);
-  if (failed(verifyCompatibleShape(expectedReturnType, actualReturnRankedType)))
-    return emitOpError()
-           << "has shape mismatch between the expected return-type ("
-           << expectedReturnType << ") and actual return-type ("
-           << actualReturnRankedType << ").";
+  if (failed(verifyCompatibleShape(expectedReturnShape,
+                                   actualReturnRankedType.getShape())))
+    return emitOpError() << "inferred shape '"
+                         << hlo::dimSizesToString(expectedReturnShape) << "' "
+                         << "is incompatible with return type of operation "
+                         << actualReturnRankedType;
 
   return success();
 }
@@ -2945,25 +2651,55 @@ void AllToAllOp::build(OpBuilder& odsBuilder, OperationState& odsState,
 //===----------------------------------------------------------------------===//
 
 LogicalResult AllGatherOp::verify() {
-  // If operand and result are both ranked, then the size of the gather
-  // dimension in the result should be a multiple of the size of the gather
-  // dimension in the operand.
+  if (failed(hlo::verifyReplicaGroups(getLoc(), getReplicaGroups(),
+                                      /*allGroupsMustHaveSameSize=*/true,
+                                      getUseGlobalDeviceIds(),
+                                      /*expectedGroupSize=*/std::nullopt)))
+    return failure();
+
   auto operandType = getOperand().getType().dyn_cast<RankedTensorType>();
   auto resultType = getType().dyn_cast<RankedTensorType>();
-  uint64_t allGatherDimIndex = getAllGatherDim();
-  if (!operandType || !resultType ||
-      operandType.isDynamicDim(allGatherDimIndex) ||
-      resultType.isDynamicDim(allGatherDimIndex))
-    return success();
-  if (operandType.getDimSize(allGatherDimIndex) == 0)
-    return emitOpError() << "operand gather dimension cannot be zero.";
-  if ((resultType.getDimSize(allGatherDimIndex) %
-       operandType.getDimSize(allGatherDimIndex)) != 0)
-    return emitOpError()
-           << "result gather dimension has size "
-           << resultType.getDimSize(allGatherDimIndex)
-           << ", expected to be a multiple of operand gather dimension size "
-           << operandType.getDimSize(allGatherDimIndex);
+  int64_t allGatherDimIndex = getAllGatherDim();
+
+  if (allGatherDimIndex < 0)
+    return emitOpError() << "all_gather_dim cannot be negative";
+
+  if (operandType) {
+    if (allGatherDimIndex >= operandType.getRank())
+      return emitOpError() << "all_gather_dim must be a valid index of operand";
+
+    if (operandType.getDimSize(allGatherDimIndex) == 0)
+      return emitOpError()
+             << "dimension size of operand at 'all_gather_dim' cannot be zero";
+  }
+
+  if (operandType && resultType) {
+    if (resultType.getRank() != operandType.getRank())
+      return emitOpError() << "operand and return must have the same rank";
+
+    for (int64_t i = 0; i < operandType.getRank(); i++) {
+      if (i == allGatherDimIndex || operandType.isDynamicDim(i) ||
+          resultType.isDynamicDim(i))
+        continue;
+
+      if (resultType.getDimSize(i) != operandType.getDimSize(i))
+        return emitOpError() << "operand and result should have the same shape "
+                                "except for the "
+                                "dimension size at 'all_gather_dim'";
+    }
+
+    if (operandType.isDynamicDim(allGatherDimIndex) ||
+        resultType.isDynamicDim(allGatherDimIndex))
+      return success();
+
+    if ((resultType.getDimSize(allGatherDimIndex) %
+         operandType.getDimSize(allGatherDimIndex)) != 0)
+      return emitOpError()
+             << "result gather dimension has size "
+             << resultType.getDimSize(allGatherDimIndex)
+             << ", expected to be a multiple of operand gather dimension size "
+             << operandType.getDimSize(allGatherDimIndex);
+  }
 
   return success();
 }
@@ -2976,6 +2712,15 @@ void AllGatherOp::build(OpBuilder& odsBuilder, OperationState& odsState,
   AllGatherOp::build(odsBuilder, odsState, resultType, operand, allGatherDim,
                      replicaGroups, channelHandle,
                      /*use_global_device_ids=*/nullptr);
+}
+
+//===----------------------------------------------------------------------===//
+// AllReduceOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AllReduceOp::verify() {
+  return hlo::verifyAllReduceOp(getLoc(), getOperand(), getReplicaGroups(),
+                                getUseGlobalDeviceIds(), getComputation());
 }
 
 //===----------------------------------------------------------------------===//
@@ -5217,6 +4962,17 @@ LogicalResult OptimizationBarrierOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// ReturnOp
+//===----------------------------------------------------------------------===//
+LogicalResult ReturnOp::inferReturnTypes(
+    MLIRContext*, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  ReturnOp::Adaptor adaptor(operands, attributes);
+  return hlo::inferReturnOp(location, inferredReturnTypes);
+}
+
+//===----------------------------------------------------------------------===//
 // RngBitGeneratorOp
 //===----------------------------------------------------------------------===//
 
@@ -5296,28 +5052,6 @@ LogicalResult XlaRngGetAndUpdateStateOp::inferReturnTypes(
 // SelectOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult SelectOp::verify() {
-  // The operands 'on_true' and 'on_false' should have compatible types, i.e.,
-  //   (a) have the same element type, and
-  //   (b) have compatible shapes (i.e. the same shape and/or at least one
-  //       dynamic shape)
-  if (!hlo::compatibleShapeAndElementType(getOnTrue().getType(),
-                                          getOnFalse().getType()))
-    return emitOpError()
-           << "requires compatible types for non-predicate operands";
-
-  // The predicate, if not-scalar, should have the same shape as the remaining
-  // operands.
-  auto predTy = getPred().getType().dyn_cast<RankedTensorType>();
-  bool predMayBeScalar = !predTy || predTy.getRank() == 0;
-  if (predMayBeScalar) return success();
-
-  if (failed(verifyCompatibleShape(getPred().getType(), getOnTrue().getType())))
-    return emitOpError() << "requires the same shape for all operands";
-
-  return success();
-}
-
 OpFoldResult SelectOp::fold(ArrayRef<Attribute> operands) {
   if (getOnTrue() == getOnFalse()) {
     return getOnTrue();
@@ -5353,28 +5087,8 @@ LogicalResult SelectOp::inferReturnTypeComponents(
     DictionaryAttr attributes, RegionRange,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   SelectOp::Adaptor op(operands, attributes);
-  auto trueType = op.getOnTrue().getType().cast<TensorType>();
-  auto falseType = op.getOnFalse().getType().cast<TensorType>();
-
-  // The output shape should be the most general of the operand shapes at each
-  // dimension.
-  ShapedTypeComponents& outputType = inferredReturnShapes.emplace_back();
-  if (trueType == falseType || !trueType.hasRank()) {
-    outputType = ShapedTypeComponents(trueType.cast<ShapedType>());
-  } else if (!falseType.hasRank()) {
-    outputType = ShapedTypeComponents(falseType.cast<ShapedType>());
-  } else {
-    assert(trueType.getRank() == falseType.getRank());
-    llvm::SmallVector<int64_t, 4> dims;
-    dims.reserve(trueType.getRank());
-    for (auto dim : llvm::zip(trueType.getShape(), falseType.getShape())) {
-      dims.push_back(std::get<0>(dim) == std::get<1>(dim)
-                         ? std::get<0>(dim)
-                         : ShapedType::kDynamic);
-    }
-    outputType = ShapedTypeComponents(dims, trueType.getElementType());
-  }
-  return success();
+  return hlo::inferSelectOp(location, op.getPred(), op.getOnTrue(),
+                            op.getOnFalse(), inferredReturnShapes);
 }
 
 LogicalResult SelectOp::reifyReturnTypeShapes(
@@ -7951,6 +7665,8 @@ struct MhloHloDialectInterface : public hlo::HloDialectInterface {
     return TokenType::get(getDialect()->getContext());
   }
 
+  bool isTokenType(Type type) const override { return type.isa<TokenType>(); }
+
   Attribute createTypeExtensions(ArrayRef<int64_t> bounds) const override {
     return TypeExtensionsAttr::get(getDialect()->getContext(), bounds);
   }
@@ -8931,6 +8647,16 @@ Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
   return builder.create<mhlo::ConstantOp>(loc, type, elementsAttr);
 }
 
+int64_t getNumLeafBuffers(Type type) {
+  if (auto tuple = type.dyn_cast<TupleType>()) {
+    auto ans = 0;
+    for (auto type : tuple.getTypes()) ans += getNumLeafBuffers(type);
+    return ans;
+  } else {
+    return 1;
+  }
+}
+
 LogicalResult MhloDialect::verifyRegionArgAttribute(Operation* op,
                                                     unsigned /*regionIndex*/,
                                                     unsigned argIndex,
@@ -8939,6 +8665,27 @@ LogicalResult MhloDialect::verifyRegionArgAttribute(Operation* op,
     if (failed(
             verifyArgResultAliasAttr(attr.getName(), aliasAttr, argIndex, op)))
       return failure();
+  }
+  if (attr.getName() == "mhlo.parameter_replication") {
+    auto arrayAttr = attr.getValue().dyn_cast<ArrayAttr>();
+    if (!arrayAttr)
+      return op->emitOpError() << "parameter_replication: must be an array";
+    auto func = dyn_cast<mlir::FunctionOpInterface>(op);
+    if (!func) {
+      return op->emitOpError()
+             << "has parameter_replication but is not a function";
+    }
+    // parameter_replication = [] or [false] is equivalent to
+    // [false,...,false] and parameter_replication = [true] means
+    // [true,...,true]
+    if (arrayAttr.size() == 0 || arrayAttr.size() == 1) return success();
+    auto num_leaf_buffers =
+        getNumLeafBuffers(func.getArgumentTypes()[argIndex]);
+    if ((size_t)num_leaf_buffers != arrayAttr.size())
+      return op->emitOpError()
+             << "parameter_replication: arg " << argIndex << " has "
+             << num_leaf_buffers << " leaf_buffers, but parameter_replication"
+             << " expects " << arrayAttr.size();
   }
   return success();
 }
@@ -8984,6 +8731,24 @@ LogicalResult MhloDialect::verifyOperationAttribute(Operation* op,
       auto res = verifyDynamicParameterBinding(bindingAttr, module);
       if (failed(res)) return res;
     }
+  }
+  if (attr.getName() == "mhlo.spmd_parameters_sharding") {
+    auto arrayAttr = attr.getValue().dyn_cast<ArrayAttr>();
+    if (!arrayAttr)
+      return op->emitOpError() << "spmd_parameters_sharding: must be an array";
+    auto module = dyn_cast<ModuleOp>(op);
+    if (!module)
+      return op->emitOpError()
+             << "has spmd_paramters_sharding but is not a module";
+    // Check that the "main" function exists:
+    auto main = module.lookupSymbol<mlir::func::FuncOp>("main");
+    if (!main)
+      return module.emitOpError() << "spmd_parameters_sharding: main not found";
+    if (main.getNumArguments() != arrayAttr.size())
+      return module.emitOpError()
+             << "spmd_parameters_sharding: main has " << main.getNumArguments()
+             << " arguments, but spmd_parameters_sharding expects "
+             << arrayAttr.size();
   }
   return success();
 }

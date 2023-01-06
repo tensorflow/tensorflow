@@ -106,7 +106,6 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/util:env_var",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@tf_runtime//:hostcontext",
     ],
 )
 

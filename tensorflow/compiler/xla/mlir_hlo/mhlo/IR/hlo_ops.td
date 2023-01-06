@@ -1434,6 +1434,7 @@ def MHLO_AllReduceOp : MHLO_Op<"all_reduce",
       "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>];
 
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 def MHLO_ReduceScatterOp : MHLO_Op<"reduce_scatter",
@@ -2258,8 +2259,7 @@ def MHLO_CustomCallOp: MHLO_Op<"custom_call",
   }];
 }
 
-def MHLO_DotOp: MHLO_Op<"dot",
-    [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def MHLO_DotOp: MHLO_Op<"dot", [Pure]> {
   let summary = "Dot operator";
   let description = [{
     Performs dot products between vectors, vector/matrix and matrix/matrix
@@ -2276,12 +2276,7 @@ def MHLO_DotOp: MHLO_Op<"dot",
   // Dot op required custom exporter to pass the preferred element type
   // to Xla builder.
   let hasCustomHLOConverter = 1;
-
-  let extraClassDeclaration = [{
-    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return succeeded(mlir::verifyCompatibleShapes(l, r));
-    }
-  }];
+  let hasVerifier = 1;
 }
 
 def MHLO_DotGeneralOp: MHLO_ShapedInterfaceOp<"dot_general", [Pure]> {
@@ -2547,7 +2542,6 @@ def MHLO_SelectOp: MHLO_Op<"select", [Pure, HLO_BroadcastingElementwise,
   let results = (outs MHLO_Tensor:$result);
 
   let hasFolder = 1;
-  let hasVerifier = 1;
   let hasCanonicalizer = 1;
 
   let assemblyFormat = [{
@@ -2873,7 +2867,9 @@ def MHLO_ReduceWindowOp: MHLO_Op<"reduce_window", [
   }];
 }
 
-def MHLO_ReturnOp : MHLO_Op<"return", [Pure, Terminator]> {
+def MHLO_ReturnOp : MHLO_Op<"return",
+      [Pure, Terminator,
+      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
     The `hlo.return` operation terminates a region and returns values.
 
@@ -3164,7 +3160,7 @@ def MHLO_BitcastOp : MHLO_Op<"bitcast", [Pure]> {
 }
 
 def MHLO_ReducePrecisionOp :
-    MHLO_Op<"reduce_precision", [HLO_CompatibleOperandsAndResultType]> {
+    MHLO_Op<"reduce_precision", [HLO_CompatibleOperandsAndResultType, Pure]> {
   let summary = "Reduce precision operator";
   let description = [{
     Models the effect of converting floating - point values to a lower -

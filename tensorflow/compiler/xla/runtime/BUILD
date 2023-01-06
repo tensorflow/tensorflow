@@ -59,6 +59,18 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "async_runtime_test",
+    srcs = ["async_runtime_test.cc"],
+    deps = [
+        ":async_runtime",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@tf_runtime//:async_value",
+    ],
+)
+
 cc_library(
     name = "async_values_cache",
     hdrs = ["async_values_cache.h"],
@@ -90,6 +102,7 @@ cc_library(
     hdrs = ["custom_call.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        ":async_runtime",
         ":diagnostics",
         ":errors",
         ":logical_result",
@@ -104,6 +117,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@tf_runtime//:async_value",
     ],
 )
 

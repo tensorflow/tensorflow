@@ -337,5 +337,20 @@ static_assert(sizeof(AsyncRuntime) == 1 * sizeof(void*),
   Await(group->GetCompletionAsyncValue());
 }
 
+/*static*/ AsyncRuntime::Token* AsyncRuntime::AsToken(
+    tsl::AsyncValueRef<tsl::Chain> chain) {
+  AsyncRuntime::Token* token = CreateToken();
+
+  chain.AndThen([token](absl::StatusOr<tsl::Chain*> status_or) {
+    if (!status_or.ok()) {
+      SetError(token);
+    } else {
+      SetAvailable(token);
+    }
+  });
+
+  return token;
+}
+
 }  // namespace runtime
 }  // namespace xla

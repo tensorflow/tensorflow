@@ -52,7 +52,8 @@ void TestDecodeGif(Env* env, DecodeGifTestCase testcase) {
         w = width;
         h = height;
         c = channels;
-        return new uint8[frame_cnt * height * width * channels];
+        return new uint8[static_cast<int64_t>(frame_cnt) * height * width *
+                         channels];
       },
       &error_string));
   ASSERT_NE(imgdata, nullptr);
@@ -72,7 +73,8 @@ TEST(GifTest, Gif) {
        {testdata_path + "optimized.gif", 12, 20, 40, 3},
        {testdata_path + "red_black.gif", 1, 16, 16, 3},
        {testdata_path + "scan.gif", 12, 20, 40, 3},
-       {testdata_path + "squares.gif", 2, 16, 16, 3}});
+       {testdata_path + "squares.gif", 2, 16, 16, 3},
+       {testdata_path + "3g_multiframe.gif", 519, 1920, 1080, 3}});
 
   for (const auto& tc : testcases) {
     TestDecodeGif(env, tc);

@@ -33,7 +33,9 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
@@ -157,6 +159,7 @@ DECL_CONVERT_OP(SpaceToBatchNd);
 DECL_CONVERT_OP(BatchToSpaceNd);
 DECL_CONVERT_OP(SpaceToDepth);
 DECL_CONVERT_OP(DepthToSpace);
+DECL_CONVERT_OP(Bucketize);
 DECL_CONVERT_OP(Sin);
 DECL_CONVERT_OP(Cos);
 DECL_CONVERT_OP(Logistic);
@@ -2689,6 +2692,68 @@ LogicalResult ConvertTFLDepthToSpaceOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFLBucketizeOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_bucketize_op = cast<TFL::BucketizeOp>(op);
+  Location loc = op->getLoc();
+
+  Value input = tfl_bucketize_op.getInput();
+  auto boundaries_attr = tfl_bucketize_op.getBoundaries();
+  RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
+  if (!input_type) {
+    return rewriter.notifyMatchFailure(op, "input is not a ranked tensor");
+  }
+
+  // The lowering is done by broadcasting the input and boundaries together, and
+  // using GE comparison for each input against each boundary. Adding the
+  // results of the comparison for each input generates the bucket it belongs
+  // to, as the boundaries are sorted.
+  ShapedType output_type =
+      tfl_bucketize_op.getResult().getType().dyn_cast<ShapedType>();
+
+  auto input_shape = input_type.getShape();
+
+  SmallVector<APFloat> boundaries;
+  for (auto& boundary : boundaries_attr) {
+    boundaries.emplace_back(boundary.dyn_cast<FloatAttr>().getValue());
+  }
+  int64_t boundaries_size = boundaries.size();
+
+  // Add a dim at the end of input shape for broadcasting with the boundaries.
+  SmallVector<int64_t> broadcast_shape(input_shape.begin(), input_shape.end());
+  broadcast_shape.push_back(boundaries_size);
+  SmallVector<int64_t> new_input_shape(input_shape.begin(), input_shape.end());
+  new_input_shape.push_back(1);
+
+  auto boundaries_type =
+      RankedTensorType::get({boundaries_size}, rewriter.getF32Type());
+
+  auto boundaries_op = CreateOpAndInfer<tosa::ConstOp>(
+      rewriter, loc, boundaries_type,
+      DenseElementsAttr::get(boundaries_type, boundaries));
+
+  auto reshaped_input = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, loc, input_type.clone(new_input_shape), input,
+      rewriter.getI64ArrayAttr(new_input_shape));
+
+  auto ge = CreateOpAndInfer<tosa::GreaterEqualOp>(
+      rewriter, loc, UnrankedTensorType::get(rewriter.getIntegerType(1)),
+      reshaped_input, boundaries_op);
+
+  auto casted = CreateOpAndInfer<tosa::CastOp>(
+      rewriter, loc, UnrankedTensorType::get(rewriter.getIntegerType(32)), ge);
+
+  auto sum = CreateOpAndInfer<tosa::ReduceSumOp>(
+      rewriter, loc, output_type, casted,
+      rewriter.getI64IntegerAttr(input_type.getRank()));
+
+  CreateReplaceOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op, output_type, sum,
+      rewriter.getI64ArrayAttr(output_type.getShape()));
+
+  return success();
+}
+
 LogicalResult ConvertTFLStridedSliceOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_ss_op = cast<TFL::StridedSliceOp>(op);
@@ -3768,6 +3833,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLBatchToSpaceNd);
   DEF_PATTERN_INSERT(TFLSpaceToDepth);
   DEF_PATTERN_INSERT(TFLDepthToSpace);
+  DEF_PATTERN_INSERT(TFLBucketize);
   DEF_PATTERN_INSERT(TFLSin);
   DEF_PATTERN_INSERT(TFLCos);
   DEF_PATTERN_INSERT(TFLLogistic);

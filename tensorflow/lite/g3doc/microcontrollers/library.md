@@ -75,8 +75,8 @@ that contain all of the necessary source files, using a `Makefile`. The current
 supported environments are Keil, Make, and Mbed.
 
 To generate these projects with Make, clone the
-[TensorFlow repository](http://github.com/tensorflow/tensorflow) and run the
-following command:
+[TensorFlow/tflite-micro repository](https://github.com/tensorflow/tflite-micro)
+and run the following command:
 
 ```bash
 make -f tensorflow/lite/micro/tools/make/Makefile generate_projects

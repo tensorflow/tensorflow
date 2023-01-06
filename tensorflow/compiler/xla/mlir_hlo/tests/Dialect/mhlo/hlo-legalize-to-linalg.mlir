@@ -21,7 +21,6 @@ func.func @float_add(%lhs: tensor<2x2xf32>,
 
   // CHECK-PRIMITIVE: linalg.map
   // CHECK-PRIMITIVE: arith.addf
-  // CHECK-PRIMITIVE: linalg.yield
   %0 = "mhlo.add"(%lhs, %rhs) {someattr}
       : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   func.return %0 : tensor<2x2xf32>
@@ -41,7 +40,6 @@ func.func @float_add_dynamic_encoding(
 
   // CHECK-PRIMITIVE: linalg.map
   // CHECK-PRIMITIVE: arith.addf
-  // CHECK-PRIMITIVE: linalg.yield
   %0 = "mhlo.add"(%lhs, %rhs) {someattr}
       : (tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>,
          tensor<2x?xf32, #mhlo.type_extensions<bounds = [?, 2]>>)
@@ -305,11 +303,10 @@ func.func @float_abs(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK-SAME: {someattr}
   // CHECK: math.absf
-  // CHECK-PRIMITIVE: linalg.map
+  // CHECK-PRIMITIVE: linalg.map { math.absf }
   // CHECK-PRIMITIVE-SAME: ins(
   // CHECK-PRIMITIVE-SAME: outs(
   // CHECK-PRIMITIVE-SAME: {someattr}
-  // CHECK-PRIMITIVE: math.absf
   %0 = "mhlo.abs"(%arg0) {someattr} : (tensor<2x2xf32>) -> tensor<2x2xf32>
   func.return %0 : tensor<2x2xf32>
 }
@@ -880,12 +877,9 @@ func.func @select(%pred: tensor<2x2xi1>, %lhs: tensor<2x2xf32>,
 
 // CHECK-PRIMITIVE-LABEL: func @select
 // CHECK-PRIMITIVE: tensor.empty() : tensor<2x2xf32>
-// CHECK-PRIMITIVE: linalg.map
+// CHECK-PRIMITIVE: linalg.map { arith.select }
 // CHECK-PRIMITIVE-SAME: ins(
 // CHECK-PRIMITIVE-SAME: outs(
-// CHECK-PRIMITIVE-NEXT: (%[[PRED_IN:[a-zA-Z0-9]*]]: i1, %[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32) {
-// CHECK-PRIMITIVE-NEXT:   %[[RESULT:.*]] = arith.select %[[PRED_IN]], %[[LHS_IN]], %[[RHS_IN]] : f32
-// CHECK-PRIMITIVE-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
 

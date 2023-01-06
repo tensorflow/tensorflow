@@ -154,6 +154,9 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
         "//tensorflow/compiler/xla/runtime:compiler",
+        "@llvm-project//mlir:AsyncDialect",
+        "@llvm-project//mlir:AsyncToLLVM",
+        "@llvm-project//mlir:AsyncTransforms",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncToLLVM",
         "@llvm-project//mlir:IR",
@@ -192,11 +195,13 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:type_id",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:Support",
+        "@tf_runtime//:async_value",
     ],
 )
 
