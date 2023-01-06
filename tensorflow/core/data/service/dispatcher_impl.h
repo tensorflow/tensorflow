@@ -44,6 +44,54 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+// Structs for maintaining the in-memory state of `Snapshot`s. This state
+// mirrors that which is on-disk.
+struct SourceState {
+  SourceState() : next_local_split_index(0), done(false) {}
+  // A counter of all assigned splits for the source.
+  int64_t next_local_split_index;
+  // If true, there are no more splits to process for the source.
+  bool done;
+};
+
+struct StreamState {
+  explicit StreamState(absl::string_view worker_address, int64_t num_sources)
+      : worker_address(worker_address), sources(num_sources), done(false) {}
+  // The address of the worker processing the stream.
+  std::string worker_address;
+  // All sources whose splits have ever been assigned to be processed.
+  std::vector<SourceState> sources;
+  // Indices of all unfinished sources.
+  absl::flat_hash_set<int64_t> active_sources;
+  // If true, there are no more splits to process for the stream.
+  bool done;
+};
+
+struct SnapshotState {
+  enum class Mode {
+    // No streams are done.
+    kActive,
+    // Some streams are done, but not all.
+    kWindingDown,
+    // All streams are done.
+    kDone
+  };
+
+  SnapshotState() : next_global_split_index(0), mode(Mode::kActive) {}
+
+  // Split providers for each input of the dataset being materialized.
+  std::vector<std::unique_ptr<SplitProvider>> split_providers;
+  // All streams that have ever been assigned to be processed.
+  std::vector<StreamState> streams;
+  // Indices of all unfinished streams, keyed by worker address.
+  absl::flat_hash_map<std::string, int64_t> active_streams;
+  // A counter of all assigned splits for the snapshot.
+  int64_t next_global_split_index;
+  // If not `kActive`, at least one source of one stream has finished processing
+  // and no new streams are created or assigned.
+  Mode mode;
+};
+
 // A service which coordinates a pool of workers to serve dataset elements over
 // RPC.
 //
@@ -174,6 +222,8 @@ class DataServiceDispatcherImpl {
   Status GetWorkers(const GetWorkersRequest* request,
                     GetWorkersResponse* response);
   Status Snapshot(const SnapshotRequest* request, SnapshotResponse* response);
+  Status GetSnapshotSplit(const GetSnapshotSplitRequest* request,
+                          GetSnapshotSplitResponse* response);
 
   // Exports the dispatcher state for debugging.
   DispatcherStateExport ExportState() const;
@@ -189,6 +239,12 @@ class DataServiceDispatcherImpl {
   // `split_providers`.
   Status MakeSplitProviders(
       const std::string& dataset_id,
+      std::vector<std::unique_ptr<SplitProvider>>& split_providers)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Makes split providers for the specified `dataset_def`, and stores them in
+  // `split_providers`.
+  Status MakeSplitProviders(
+      const DatasetDef& dataset_def,
       std::vector<std::unique_ptr<SplitProvider>>& split_providers)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Registers a dataset with the given fingerprint, storing the new dataset's
@@ -251,8 +307,20 @@ class DataServiceDispatcherImpl {
       std::vector<std::shared_ptr<const DispatcherState::Task>>& tasks)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Creates a new task for an iteration. The created task may be either pending
-  // or active.
+  // Populates `response.snapshots` with information from `snapshots_`.
+  Status PopulateSnapshotInfo(absl::string_view worker_address,
+                              WorkerHeartbeatResponse* response)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Adds a new stream to `snapshots_state`.
+  Status CreateSnapshotStream(absl::string_view snapshot_directory,
+                              absl::string_view worker_address,
+                              SnapshotState& snapshot_state);
+  // Validates `request` against `snapshots_`.
+  Status ValidateGetSnapshotSplitRequest(const GetSnapshotSplitRequest& request)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Creates a new task for an iteration. The created task may be either
+  // pending or active.
   Status CreateTask(std::shared_ptr<const DispatcherState::Iteration> iteration,
                     const std::string& worker_address,
                     std::shared_ptr<const DispatcherState::Task>& task)
@@ -331,8 +399,8 @@ class DataServiceDispatcherImpl {
   absl::flat_hash_map<int64_t, std::vector<std::unique_ptr<SplitProvider>>>
       split_providers_ TF_GUARDED_BY(mu_);
   // Mapping from round robin iteration id to the round the iteration is
-  // currently on. This is based on the data provided by client heartbeats, and
-  // may be stale.
+  // currently on. This is based on the data provided by client heartbeats,
+  // and may be stale.
   absl::flat_hash_map<int64_t, int64_t> round_robin_rounds_ TF_GUARDED_BY(mu_);
   // Map from task id to a TaskRemover which determines when to remove the task.
   absl::flat_hash_map<int64_t, std::shared_ptr<TaskRemover>>
@@ -340,6 +408,10 @@ class DataServiceDispatcherImpl {
   // Map from client id to the time of the client's last heartbeat.
   absl::flat_hash_map<int64_t, absl::Time> latest_client_heartbeats_time_
       TF_GUARDED_BY(mu_);
+
+  // Map from snapshot directory to state mirroring that of the
+  // materialization.
+  absl::flat_hash_map<std::string, SnapshotState> snapshots_ TF_GUARDED_BY(mu_);
 
   std::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);

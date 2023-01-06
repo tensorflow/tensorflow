@@ -133,6 +133,32 @@ Status DataServiceDispatcherClient::Snapshot(
   return OkStatus();
 }
 
+Status DataServiceDispatcherClient::GetSnapshotSplit(
+    const std::string& directory, int64_t stream_index, int64_t source_index,
+    Tensor& split, bool& end_of_splits) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+
+  GetSnapshotSplitRequest req;
+  req.set_directory(directory);
+  req.set_stream_index(stream_index);
+  req.set_source_index(source_index);
+
+  GetSnapshotSplitResponse resp;
+  grpc::ClientContext client_ctx;
+  grpc::Status status = stub_->GetSnapshotSplit(&client_ctx, req, &resp);
+  if (!status.ok()) {
+    return grpc_util::WrapError("Failed to get snapshot split", status);
+  }
+  end_of_splits = resp.end_of_splits();
+  if (!end_of_splits) {
+    if (!split.FromProto(resp.split())) {
+      return errors::Internal("Failed to parse split tensor proto: ",
+                              resp.split().DebugString());
+    }
+  }
+  return OkStatus();
+}
+
 Status DataServiceDispatcherClient::RegisterDataset(
     const DatasetDef& dataset, const DataServiceMetadata& metadata,
     const std::optional<std::string>& requested_dataset_id,

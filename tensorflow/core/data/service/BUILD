@@ -409,6 +409,7 @@ cc_library(
         "//tensorflow/core/data:hash_utils",
         "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/data:standalone",
+        "//tensorflow/core/data/service/snapshot:path_utils",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:macros",
