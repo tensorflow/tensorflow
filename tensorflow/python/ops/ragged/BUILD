@@ -28,6 +28,7 @@ py_library(
         ":ragged_config",
         ":ragged_conversion_ops",
         ":ragged_dispatch",
+        ":ragged_embedding_ops",
         ":ragged_factory_ops",
         ":ragged_functional_ops",
         ":ragged_gather_ops",
@@ -150,6 +151,16 @@ py_library(
 )
 
 py_library(
+    name = "ragged_embedding_ops",
+    srcs = ["ragged_embedding_ops.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":ragged_tensor",
+        "//tensorflow/python:embedding_ops",
+    ],
+)
+
+py_library(
     name = "ragged_factory_ops",
     srcs = ["ragged_factory_ops.py"],
     srcs_version = "PY3",
@@ -260,6 +271,7 @@ py_library(
         ":ragged_config",  # fixdeps: keep
         ":ragged_conversion_ops",
         ":ragged_dispatch",
+        ":ragged_embedding_ops",
         ":ragged_factory_ops",
         ":ragged_functional_ops",
         ":ragged_gather_ops",

@@ -29,9 +29,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.ragged import ragged_functional_ops
-from tensorflow.python.ops.ragged import ragged_array_ops
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
@@ -324,11 +321,6 @@ def embedding_lookup(
   Raises:
     ValueError: If `params` is empty.
   """
-  if isinstance(ids, ragged_tensor.RaggedTensor):
-    return embedding_lookup_ragged(params, ids,
-                                   partition_strategy=partition_strategy,
-                                   max_norm=max_norm,
-                                   name=name)
 
   return _embedding_lookup_and_transform(
       params=params,
@@ -403,6 +395,7 @@ def embedding_lookup_v2(params, ids, max_norm=None, name=None):
     ValueError: If `params` is empty.
   """
   return embedding_lookup(params, ids, "div", name, max_norm=max_norm)
+
 
 @tf_export(v1=["nn.embedding_lookup_sparse"])
 @dispatch.add_dispatch_support
@@ -503,38 +496,27 @@ def embedding_lookup_sparse(params,
     params = list(params)  # Iterate to get the underlying Variables.
   if not isinstance(params, list):
     params = [params]
-  if not isinstance(sp_ids, sparse_tensor.SparseTensor) \
-            and not isinstance(sp_ids, ragged_tensor.RaggedTensor):
-    raise TypeError(f"sp_ids must be SparseTensor or RaggedTensor, \
-            got {type(sp_ids)}")
+  if not isinstance(sp_ids, sparse_tensor.SparseTensor):
+    raise TypeError(f"sp_ids must be SparseTensor, got {type(sp_ids)}")
   ignore_weights = sp_weights is None
   if not ignore_weights:
-    if type(sp_weights) is not type(sp_ids):
-      raise TypeError(f"sp_ids must be of the same type as sp_weights.")
-    if isinstance(sp_weights, sparse_tensor.SparseTensor):
-      sp_ids.values.get_shape().assert_is_compatible_with(
-          sp_weights.values.get_shape())
-      sp_ids.indices.get_shape().assert_is_compatible_with(
-          sp_weights.indices.get_shape())
-      sp_ids.dense_shape.get_shape().assert_is_compatible_with(
-          sp_weights.dense_shape.get_shape())
-    else:
-      sp_ids.values.get_shape().assert_is_compatible_with(
-          sp_weights.values.get_shape())
-      sp_ids.get_shape().assert_is_compatible_with(
-          sp_weights.get_shape())
+    if not isinstance(sp_weights, sparse_tensor.SparseTensor):
+      raise TypeError(f"sp_weights must be either None or SparseTensor,"
+                      f"got {type(sp_weights)}")
+    sp_ids.values.get_shape().assert_is_compatible_with(
+        sp_weights.values.get_shape())
+    sp_ids.indices.get_shape().assert_is_compatible_with(
+        sp_weights.indices.get_shape())
+    sp_ids.dense_shape.get_shape().assert_is_compatible_with(
+        sp_weights.dense_shape.get_shape())
     # TODO(yleon): Add enhanced node assertions to verify that sp_ids and
     # sp_weights have equal indices and shapes.
 
   with ops.name_scope(name, "embedding_lookup_sparse",
                       params + [sp_ids]) as name:
 
-    if isinstance(sp_ids, sparse_tensor.SparseTensor):
-      segment_ids = sp_ids.indices[:, 0]
-      ids = sp_ids.values
-    else:
-      segment_ids = sp_ids.value_rowids()
-      ids = sp_ids.flat_values
+    segment_ids = sp_ids.indices[:, 0]
+    ids = sp_ids.values
 
     if len(params) == 1 and max_norm is None and allow_dense_grads:
       idx = ids
@@ -544,72 +526,8 @@ def embedding_lookup_sparse(params,
       embeddings = embedding_lookup(
           params, ids, partition_strategy=partition_strategy, max_norm=max_norm)
 
-    if not ignore_weights:
-      if segment_ids.dtype != dtypes.int32:
-        segment_ids = math_ops.cast(segment_ids, dtypes.int32)
-
-      weights = sp_weights.values
-      embeddings = array_ops.gather(embeddings, idx)
-
-      original_dtype = embeddings.dtype
-      if embeddings.dtype in (dtypes.float16, dtypes.bfloat16):
-        # Cast low-precision embeddings to float32 during the computation to
-        # avoid numerical issues.
-        embeddings = math_ops.cast(embeddings, dtypes.float32)
-      if weights.dtype != embeddings.dtype:
-        weights = math_ops.cast(weights, embeddings.dtype)
-
-      # Reshape weights to allow broadcast
-      ones_shape = array_ops.expand_dims(array_ops.rank(embeddings) - 1, 0)
-      ones = array_ops.ones(ones_shape, dtype=dtypes.int32)
-      bcast_weights_shape = array_ops.concat([array_ops.shape(weights), ones],
-                                             0)
-
-      orig_weights_shape = weights.get_shape()
-      weights = array_ops.reshape(weights, bcast_weights_shape)
-
-      # Set the weight shape, since after reshaping to bcast_weights_shape,
-      # the shape becomes None.
-      if embeddings.get_shape().ndims is not None:
-        weights.set_shape(
-            orig_weights_shape.concatenate(
-                [1 for _ in range(embeddings.get_shape().ndims - 1)]))
-
-      embeddings *= weights
-
-      if combiner == "sum":
-        embeddings = math_ops.segment_sum(embeddings, segment_ids, name=name)
-      elif combiner == "mean":
-        embeddings = math_ops.segment_sum(embeddings, segment_ids)
-        weight_sum = math_ops.segment_sum(weights, segment_ids)
-        embeddings = math_ops.div_no_nan(embeddings, weight_sum, name=name)
-      elif combiner == "sqrtn":
-        embeddings = math_ops.segment_sum(embeddings, segment_ids)
-        weights_squared = math_ops.pow(weights, 2)
-        weight_sum = math_ops.segment_sum(weights_squared, segment_ids)
-        weight_sum_sqrt = math_ops.sqrt(weight_sum)
-        embeddings = math_ops.div_no_nan(embeddings, weight_sum_sqrt, name=name)
-      else:
-        assert False, "Unrecognized combiner"
-      if embeddings.dtype != original_dtype:
-        embeddings = math_ops.cast(embeddings, original_dtype)
-    else:
-      if segment_ids.dtype not in (dtypes.int32, dtypes.int64):
-        segment_ids = math_ops.cast(segment_ids, dtypes.int32)
-      assert idx is not None
-      if combiner == "sum":
-        embeddings = math_ops.sparse_segment_sum(
-            embeddings, idx, segment_ids, name=name)
-      elif combiner == "mean":
-        embeddings = math_ops.sparse_segment_mean(
-            embeddings, idx, segment_ids, name=name)
-      elif combiner == "sqrtn":
-        embeddings = math_ops.sparse_segment_sqrt_n(
-            embeddings, idx, segment_ids, name=name)
-      else:
-        assert False, "Unrecognized combiner"
-
-    return embeddings
+    return embedding_lookup_sparse_impl(embeddings, segment_ids, sp_weights,
+                                        idx, combiner, ignore_weights, name)
 
 
 @tf_export("nn.embedding_lookup_sparse", v1=[])
@@ -930,50 +848,34 @@ def safe_embedding_lookup_sparse(embedding_weights,
 
   with ops.name_scope(name, "embedding_lookup", embedding_weights +
                       [sparse_ids, sparse_weights]) as scope:
-    if isinstance(sparse_ids, sparse_tensor.SparseTensor):
-      # Reshape higher-rank sparse ids and weights to linear segment ids.
-      original_shape = sparse_ids.dense_shape
-      original_rank_dim = tensor_shape.dimension_value(
-          sparse_ids.dense_shape.get_shape()[0])
-      original_rank = (
-          array_ops.size(original_shape)
-          if original_rank_dim is None else original_rank_dim)
-      sparse_ids = sparse_ops.sparse_reshape(sparse_ids, [
-          math_ops.reduce_prod(
-              array_ops.slice(original_shape, [0], [original_rank - 1])),
-          array_ops.gather(original_shape, original_rank - 1)
-      ])
-      if sparse_weights is not None:
-        sparse_weights = sparse_tensor.SparseTensor(sparse_ids.indices,
-                                                    sparse_weights.values,
-                                                    sparse_ids.dense_shape)
+    # Reshape higher-rank sparse ids and weights to linear segment ids.
+    original_shape = sparse_ids.dense_shape
+    original_rank_dim = tensor_shape.dimension_value(
+        sparse_ids.dense_shape.get_shape()[0])
+    original_rank = (
+        array_ops.size(original_shape)
+        if original_rank_dim is None else original_rank_dim)
+    sparse_ids = sparse_ops.sparse_reshape(sparse_ids, [
+        math_ops.reduce_prod(
+            array_ops.slice(original_shape, [0], [original_rank - 1])),
+        array_ops.gather(original_shape, original_rank - 1)
+    ])
+    if sparse_weights is not None:
+      sparse_weights = sparse_tensor.SparseTensor(sparse_ids.indices,
+                                                  sparse_weights.values,
+                                                  sparse_ids.dense_shape)
 
-      # Prune invalid ids and weights.
-      sparse_ids, sparse_weights = \
-                            _prune_invalid_ids(sparse_ids, sparse_weights)
-      if combiner != "sum":
-        sparse_ids, sparse_weights = _prune_invalid_weights(
-            sparse_ids, sparse_weights)
+    # Prune invalid ids and weights.
+    sparse_ids, sparse_weights = _prune_invalid_ids(sparse_ids, sparse_weights)
+    if combiner != "sum":
+      sparse_ids, sparse_weights = _prune_invalid_weights(
+          sparse_ids, sparse_weights)
 
-      # Fill in dummy values for empty features, if necessary.
-      sparse_ids, is_row_empty = sparse_ops.sparse_fill_empty_rows(
+    # Fill in dummy values for empty features, if necessary.
+    sparse_ids, is_row_empty = sparse_ops.sparse_fill_empty_rows(
         sparse_ids, default_id or 0)
-      if sparse_weights is not None:
-        sparse_weights, _ = sparse_ops.sparse_fill_empty_rows(
-            sparse_weights, 1.0)
-
-    else:
-      # Prune invalid ids and weights.
-      sparse_ids, sparse_weights = _prune_invalid_ids_ragged(sparse_ids,
-                                                             sparse_weights)
-      if combiner != "sum":
-        sparse_ids, sparse_weights = _prune_invalid_weights_ragged(
-            sparse_ids, sparse_weights)
-      sparse_ids, is_row_empty = ragged_array_ops.fill_empty_rows(
-        sparse_ids, default_id or 0)
-      if sparse_weights is not None:
-        sparse_weights, _ = ragged_array_ops.fill_empty_rows(
-            sparse_weights, 1.0)
+    if sparse_weights is not None:
+      sparse_weights, _ = sparse_ops.sparse_fill_empty_rows(sparse_weights, 1.0)
 
     result = embedding_lookup_sparse(
         embedding_weights,
@@ -995,71 +897,96 @@ def safe_embedding_lookup_sparse(embedding_weights,
       result = array_ops.where(
           is_row_empty, array_ops.zeros_like(result), result, name=scope)
 
-    if isinstance(sparse_ids, sparse_tensor.SparseTensor):
-      # Reshape back from linear ids back into higher-dimensional dense result.
-      final_result = array_ops.reshape(
-          result,
-          array_ops.concat([
-              array_ops.slice(
-                  math_ops.cast(original_shape, dtypes.int32), [0],
-                  [original_rank - 1]),
-              array_ops.slice(array_ops.shape(result), [1], [-1])
-          ], 0))
-      final_result.set_shape(
-          tensor_shape.unknown_shape(
-              (tensor_shape.Dimension(original_rank_dim) - 1).value)
-                  .concatenate(
-                          result.get_shape()[1:]))
-      return final_result
+    # Reshape back from linear ids back into higher-dimensional dense result.
+    final_result = array_ops.reshape(
+        result,
+        array_ops.concat([
+            array_ops.slice(
+                math_ops.cast(original_shape, dtypes.int32), [0],
+                [original_rank - 1]),
+            array_ops.slice(array_ops.shape(result), [1], [-1])
+        ], 0))
+    final_result.set_shape(
+        tensor_shape.unknown_shape(
+            (tensor_shape.Dimension(original_rank_dim) - 1).value).concatenate(
+                        result.get_shape()[1:]))
+    return final_result
+
+
+def embedding_lookup_sparse_impl(embeddings,
+                          segment_ids,
+                          sp_weights,
+                          idx,
+                          combiner,
+                          ignore_weights,
+                          name):
+  """Implementation of sparse embedding aggregation."""
+  if not ignore_weights:
+    if segment_ids.dtype != dtypes.int32:
+      segment_ids = math_ops.cast(segment_ids, dtypes.int32)
+
+    weights = sp_weights.values
+    embeddings = array_ops.gather(embeddings, idx)
+
+    original_dtype = embeddings.dtype
+    if embeddings.dtype in (dtypes.float16, dtypes.bfloat16):
+      # Cast low-precision embeddings to float32 during the computation to
+      # avoid numerical issues.
+      embeddings = math_ops.cast(embeddings, dtypes.float32)
+    if weights.dtype != embeddings.dtype:
+      weights = math_ops.cast(weights, embeddings.dtype)
+
+    # Reshape weights to allow broadcast
+    ones_shape = array_ops.expand_dims(array_ops.rank(embeddings) - 1, 0)
+    ones = array_ops.ones(ones_shape, dtype=dtypes.int32)
+    bcast_weights_shape = array_ops.concat([array_ops.shape(weights), ones],
+                                            0)
+
+    orig_weights_shape = weights.get_shape()
+    weights = array_ops.reshape(weights, bcast_weights_shape)
+
+    # Set the weight shape, since after reshaping to bcast_weights_shape,
+    # the shape becomes None.
+    if embeddings.get_shape().ndims is not None:
+      weights.set_shape(
+          orig_weights_shape.concatenate(
+              [1 for _ in range(embeddings.get_shape().ndims - 1)]))
+
+    embeddings *= weights
+
+    if combiner == "sum":
+      embeddings = math_ops.segment_sum(embeddings, segment_ids, name=name)
+    elif combiner == "mean":
+      embeddings = math_ops.segment_sum(embeddings, segment_ids)
+      weight_sum = math_ops.segment_sum(weights, segment_ids)
+      embeddings = math_ops.div_no_nan(embeddings, weight_sum, name=name)
+    elif combiner == "sqrtn":
+      embeddings = math_ops.segment_sum(embeddings, segment_ids)
+      weights_squared = math_ops.pow(weights, 2)
+      weight_sum = math_ops.segment_sum(weights_squared, segment_ids)
+      weight_sum_sqrt = math_ops.sqrt(weight_sum)
+      embeddings = math_ops.div_no_nan(embeddings, weight_sum_sqrt, name=name)
     else:
-      # Higher-dimensional case not supported for RaggedTensor input.
-      return result
+      assert False, "Unrecognized combiner"
+    if embeddings.dtype != original_dtype:
+      embeddings = math_ops.cast(embeddings, original_dtype)
+  else:
+    if segment_ids.dtype not in (dtypes.int32, dtypes.int64):
+      segment_ids = math_ops.cast(segment_ids, dtypes.int32)
+    assert idx is not None
+    if combiner == "sum":
+      embeddings = math_ops.sparse_segment_sum(
+          embeddings, idx, segment_ids, name=name)
+    elif combiner == "mean":
+      embeddings = math_ops.sparse_segment_mean(
+          embeddings, idx, segment_ids, name=name)
+    elif combiner == "sqrtn":
+      embeddings = math_ops.sparse_segment_sqrt_n(
+          embeddings, idx, segment_ids, name=name)
+    else:
+      assert False, "Unrecognized combiner"
 
-
-def embedding_lookup_ragged(embedding_weights,
-                            ragged_ids,
-                            partition_strategy="mod",
-                            max_norm=None,
-                            name=None):
-  """Look up the ragged ids in a list of embedding tensors.
-
-  Args:
-    embedding_weights: A tensor representing the complete embedding tensor
-      having the shape [e1, ...eM]
-    ragged_ids: A 'RaggedTensor' with type 'int32' or 'int64' containing the ids
-      to be looked up in 'embedding_weights' of shape [r0, ..rN]. Values must be
-      in the range '[0, embedding_weights.shape[0]]'.
-    partition_strategy: A string specifying the partitioning strategy.
-    max_norm: If not `None`, each embedding is clipped if its l2-norm is larger
-      than this value.
-    name: A name for the operation (optional)
-
-  Returns:
-    A ragged tensor of shape [r0, r1, ...rN, e1, ...eM].
-
-  Raises:
-    ValueError: whether the embedding_weights is empty or the ragged_ids is
-    not a RaggedTensor.
-  """
-  if embedding_weights is None:
-    raise ValueError("The embedding weights must be specified.")
-  if isinstance(embedding_weights, (list, tuple)) and not embedding_weights:
-    raise ValueError("The embedding weights should not be empty.")
-  if ragged_ids.dtype != dtypes.int32 and ragged_ids.dtype != dtypes.int64:
-    raise ValueError("The values contained by the inputs have type "
-                     f"{str(ragged_ids.dtype)}"
-                     " and cannot be processed. All values"
-                     " should be indices, either of type `in32` or `int64`.")
-
-  with ops.name_scope(name, "embedding_lookup_ragged") as name:
-    looked_up_ragged = ragged_functional_ops.map_flat_values(
-        embedding_lookup,
-        params=embedding_weights,
-        ids=ragged_ids,
-        partition_strategy=partition_strategy,
-        max_norm=max_norm)
-
-    return looked_up_ragged
+  return embeddings
 
 
 def _prune_invalid_ids(sparse_ids, sparse_weights):
@@ -1069,59 +996,10 @@ def _prune_invalid_ids(sparse_ids, sparse_weights):
     is_id_valid = math_ops.logical_and(
         is_id_valid,
         array_ops.ones_like(sparse_weights.values, dtype=dtypes.bool))
-  if(isinstance(sparse_ids, sparse_tensor.SparseTensor)):
-    sparse_ids = sparse_ops.sparse_retain(sparse_ids, is_id_valid)
-    if sparse_weights is not None:
-      sparse_weights = sparse_ops.sparse_retain(sparse_weights, is_id_valid)
-  else:
-    nrows = sparse_ids.nrows()
-    pruned_values = array_ops.boolean_mask_v2(sparse_ids.values, is_id_valid)
-    pruned_value_rowids = array_ops.boolean_mask_v2(sparse_ids.value_rowids(),
-                                                    is_id_valid)
-    sparse_ids = ragged_tensor.RaggedTensor.from_value_rowids(
-                                                            pruned_values,
-                                                            pruned_value_rowids,
-                                                            nrows=nrows)
-    if sparse_weights is not None:
-      pruned_weights_values = array_ops.boolean_mask_v2(sparse_weights.values,
-                                                        is_id_valid)
-      pruned_weights_value_rowids = array_ops.boolean_mask_v2(
-                                                  sparse_weights.value_rowids(),
-                                                  is_id_valid)
-      sparse_weights = ragged_tensor.RaggedTensor.from_value_rowids(
-                                                    pruned_weights_values,
-                                                    pruned_weights_value_rowids,
-                                                    nrows=nrows)
-
+  sparse_ids = sparse_ops.sparse_retain(sparse_ids, is_id_valid)
+  if sparse_weights is not None:
+    sparse_weights = sparse_ops.sparse_retain(sparse_weights, is_id_valid)
   return sparse_ids, sparse_weights
-
-
-def _prune_invalid_ids_ragged(ids, weights):
-  """Prune invalid IDs (< 0) from the input ids and weights."""
-  is_id_valid = math_ops.greater_equal(ids.values, 0)
-  if weights is not None:
-    is_id_valid = math_ops.logical_and(
-        is_id_valid,
-        array_ops.ones_like(weights.values, dtype=dtypes.bool))
-  nrows = ids.nrows()
-  pruned_values = array_ops.boolean_mask_v2(ids.values, is_id_valid)
-  pruned_value_rowids = array_ops.boolean_mask_v2(ids.value_rowids(),
-                                                  is_id_valid)
-  ids = ragged_tensor.RaggedTensor.from_value_rowids(pruned_values,
-                                                     pruned_value_rowids,
-                                                     nrows=nrows)
-  if weights is not None:
-    pruned_weights_values = array_ops.boolean_mask_v2(weights.values,
-                                                      is_id_valid)
-    pruned_weights_value_rowids = array_ops.boolean_mask_v2(
-                                                        weights.value_rowids(),
-                                                        is_id_valid)
-    weights = ragged_tensor.RaggedTensor.from_value_rowids(
-                                                    pruned_weights_values,
-                                                    pruned_weights_value_rowids,
-                                                    nrows=nrows)
-
-  return ids, weights
 
 
 def _prune_invalid_weights(sparse_ids, sparse_weights):
@@ -1130,30 +1008,4 @@ def _prune_invalid_weights(sparse_ids, sparse_weights):
     is_weights_valid = math_ops.greater(sparse_weights.values, 0)
     sparse_ids = sparse_ops.sparse_retain(sparse_ids, is_weights_valid)
     sparse_weights = sparse_ops.sparse_retain(sparse_weights, is_weights_valid)
-
   return sparse_ids, sparse_weights
-
-
-def _prune_invalid_weights_ragged(ids, weights):
-  """Prune invalid weights (< 0) from the input ids and weights."""
-  if weights is not None:
-    is_weights_valid = math_ops.greater(weights.values, 0)
-    nrows = ids.nrows()
-    pruned_values = array_ops.boolean_mask_v2(ids.values, is_weights_valid)
-    pruned_value_rowids = array_ops.boolean_mask_v2(ids.value_rowids(),
-                                                    is_weights_valid)
-    ids = ragged_tensor.RaggedTensor.from_value_rowids(pruned_values,
-                                                       pruned_value_rowids,
-                                                       nrows=nrows)
-
-    pruned_weights_values = array_ops.boolean_mask_v2(weights.values,
-                                                      is_weights_valid)
-    pruned_weights_value_rowids = array_ops.boolean_mask_v2(
-                                                weights.value_rowids(),
-                                                is_weights_valid)
-    weights = ragged_tensor.RaggedTensor.from_value_rowids(
-                                                  pruned_weights_values,
-                                                  pruned_weights_value_rowids,
-                                                  nrows=nrows)
-
-  return ids, weights
