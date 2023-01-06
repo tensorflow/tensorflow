@@ -20,8 +20,8 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.distribute.cluster_resolver.tpu_cluster_resolver import TPUClusterResolver
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
 from tensorflow.python.eager import monitoring
+from tensorflow.python.eager.def_function import function
 from tensorflow.python.framework import device
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -97,7 +97,7 @@ def initialize_tpu_system(cluster_resolver=None):
     job = "{}/replica:0/task:0".format(cluster_resolver.get_job_name())
 
   if context.executing_eagerly():
-    @function.defun_with_attributes
+    @function
     def _tpu_init_fn():
       # In TF1, we usually close chips when compilation fails to clear the data
       # in infeed. In TF2, we don't need to do this because infeed is no longer
@@ -214,7 +214,7 @@ def shutdown_tpu_system(cluster_resolver=None):
       # avoid the output node match multiple devices error.
       job = "{}/replica:0/task:0".format(cluster_resolver.get_job_name())
 
-    @function.defun_with_attributes
+    @function
     def _tpu_shutdown_fn():
       tpu.shutdown_system(job=job)
 
