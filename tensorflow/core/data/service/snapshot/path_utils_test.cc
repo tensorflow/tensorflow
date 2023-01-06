@@ -27,6 +27,25 @@ TEST(PathUtilsTest, StreamDirectory) {
               MatchesRegex("/path/to/snapshot.streams.stream_0"));
 }
 
+TEST(PathUtilsTest, SplitsDirectory) {
+  EXPECT_THAT(SplitsDirectory("/path/to/snapshot", /*stream_id=*/0),
+              MatchesRegex("/path/to/snapshot.streams.stream_0.splits"));
+}
+
+TEST(PathUtilsTest, SourceDirectory) {
+  EXPECT_THAT(
+      SourceDirectory("/path/to/snapshot", /*stream_id=*/0, /*source_id=*/1),
+      MatchesRegex("/path/to/snapshot.streams.stream_0.splits.source_1"));
+}
+
+TEST(PathUtilsTest, SplitPath) {
+  EXPECT_THAT(
+      SplitPath("/path/to/snapshot", /*stream_id=*/0, /*source_id=*/1,
+                /*local_index=*/2, /*global_index=*/3),
+      MatchesRegex(
+          "/path/to/snapshot.streams.stream_0.splits.source_1.split_2_3"));
+}
+
 TEST(PathUtilsTest, CheckpointsDirectory) {
   EXPECT_THAT(CheckpointsDirectory("/path/to/snapshot", /*stream_id=*/0),
               MatchesRegex("/path/to/snapshot.streams.stream_0.checkpoints"));

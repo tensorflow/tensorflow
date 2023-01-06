@@ -36,6 +36,27 @@ std::string StreamDirectory(absl::string_view snapshot_path,
                            absl::StrCat("stream_", stream_id));
 }
 
+std::string SplitsDirectory(absl::string_view snapshot_path,
+                            int64_t stream_id) {
+  return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_id),
+                           absl::StrCat("splits"));
+}
+
+std::string SourceDirectory(absl::string_view snapshot_path, int64_t stream_id,
+                            int64_t source_id) {
+  return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_id),
+                           absl::StrCat("splits"),
+                           absl::StrCat("source_", source_id));
+}
+
+std::string SplitPath(absl::string_view snapshot_path, int64_t stream_id,
+                      int64_t source_id, int64_t local_index,
+                      int64_t global_index) {
+  return tsl::io::JoinPath(
+      SourceDirectory(snapshot_path, stream_id, source_id),
+      absl::StrCat("split_", local_index, "_", global_index));
+}
+
 std::string CheckpointsDirectory(absl::string_view snapshot_path,
                                  int64_t stream_id) {
   return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_id),

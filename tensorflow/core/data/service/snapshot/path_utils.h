@@ -25,6 +25,21 @@ namespace data {
 // Returns the directory path for a worker writing one stream of the snapshot.
 std::string StreamDirectory(absl::string_view snapshot_path, int64_t stream_id);
 
+// Returns the directory path for the assigned splits for a worker writing one
+// stream of a snapshot.
+std::string SplitsDirectory(absl::string_view snapshot_path, int64_t stream_id);
+
+// Returns the directory path for the assigned splits for one source, for a
+// worker writing one stream of a snapshot.
+std::string SourceDirectory(absl::string_view snapshot_path, int64_t stream_id,
+                            int64_t source_id);
+
+// Returns the file path for an assigned split for a worker writing one stream
+// of a snapshot.
+std::string SplitPath(absl::string_view snapshot_path, int64_t stream_id,
+                      int64_t source_id, int64_t local_index,
+                      int64_t global_index);
+
 // Returns the directory path for snapshot checkpoints.
 std::string CheckpointsDirectory(absl::string_view snapshot_path,
                                  int64_t stream_id);
