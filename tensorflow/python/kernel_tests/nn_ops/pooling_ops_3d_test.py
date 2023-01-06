@@ -139,7 +139,6 @@ class PoolingTest(test.TestCase):
   def testAvgPool3dGrad(self):
     with self.assertRaises(
         (errors.ResourceExhaustedError, errors.InvalidArgumentError)):
-      use_gpu = test.is_gpu_available(cuda_only=True)
       for dtype in [dtypes.float32, dtypes.bfloat16]:
         with self.cached_session():
           orig_input_shape = constant_op.constant(
