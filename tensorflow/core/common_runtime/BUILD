@@ -1,6 +1,7 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "if_google",
+    "if_zendnn",
     "if_libtpu",
     "if_oss",
     "tf_cc_test",
@@ -1235,6 +1236,25 @@ cc_library(
 )
 
 cc_library(
+    name = "zen_layout_pass",
+    srcs = ["zen_layout_pass.cc"],
+    hdrs = ["//tensorflow/core/graph:zen_graph_util_header"],
+    copts = tf_copts(),
+    deps = [
+        ":function",
+        ":optimization_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/base",
+        ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "mkl_cpu_allocator",
     srcs = ["mkl_cpu_allocator.cc"],
     hdrs = ["mkl_cpu_allocator.h"],
@@ -1892,7 +1912,7 @@ tf_cuda_library(
         ":step_stats_collector",
         ":threadpool_device",
         ":threadpool_device_factory",
-    ],
+    ] + if_zendnn([":zen_layout_pass"]),
 )
 
 tf_cuda_library(
