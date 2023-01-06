@@ -120,7 +120,8 @@ Status LowerTFToJITInvocation(mlir::ModuleOp module,
   pm.addNestedPass<FuncOp>(
       mlir::kernel_gen::transforms::CreateTFToJITInvocationPass(
           tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
-          index_64bit, jit_i64_indexed_for_large_tensors));
+          index_64bit,
+          /*cpu_codegen=*/false, jit_i64_indexed_for_large_tensors));
   pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
   pm.addNestedPass<FuncOp>(
       mlir::bufferization::createEmptyTensorToAllocTensorPass());
@@ -150,6 +151,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
         mlir::kernel_gen::transforms::CreateTFToJITInvocationPass(
             tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
             index_64bit,
+            /*cpu_codegen=*/false,
             /*jit_i64_indexed_for_large_tensors=*/true));
   }
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeTFNoFallbackPass(
