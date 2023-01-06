@@ -1123,13 +1123,11 @@ def func_graph_from_py_func(name,
     else:
       func_args, func_kwargs = args, kwargs
 
-    for arg in nest.flatten([func_args, func_kwargs], expand_composites=True):
-      if isinstance(arg, ops.Tensor) and arg.dtype == dtypes.resource:
-        func_graph._resource_tensor_inputs.add(arg)  # pylint: disable=protected-access
-      # TODO(b/209081027): Remove this after ResourceVariable subclasses
-      # CompositeTensor and we can expand ResourceVariable.
-      elif isinstance(arg, resource_variable_ops.ResourceVariable):
-        func_graph._resource_tensor_inputs.add(arg.handle)  # pylint: disable=protected-access
+    input_trace_types = trace_type.from_value([func_args, func_kwargs])
+    func_graph.inputs = input_trace_types._to_tensors([func_args, func_kwargs])  # pylint: disable=protected-access
+    for arg in func_graph.inputs:
+      if arg.dtype == dtypes.resource:
+        func_graph._resource_tensor_inputs.add(arg)  # pylint:disable=protected-access
 
     signature_context = trace_type.InternalTracingContext()
     # Convert all Tensors into TensorSpecs before saving the structured inputs.
@@ -1142,22 +1140,17 @@ def func_graph_from_py_func(name,
         convert_structure_to_signature(
             func_kwargs, signature_context=signature_context))
 
-    flat_func_args = nest.flatten(func_args, expand_composites=True)
-    flat_func_kwargs = nest.flatten(func_kwargs, expand_composites=True)
-    # Temporarily set inputs to allow graph building code to inspect
-    # them. Reassigned below.
-    func_graph.inputs = [
-        arg for arg in flat_func_args + flat_func_kwargs
-        if isinstance(arg, ops.Tensor)
-    ]
-
     # Note: `nest.flatten` sorts by keys, as does `_deterministic_dict_values`.
     # Variables to help check whether mutation happens in calling the function
     # Copy the recursive list, tuple and map structure, but not base objects
     func_args_before = nest.pack_sequence_as(
-        func_args, flat_func_args, expand_composites=True)
+        func_args,
+        nest.flatten(func_args, expand_composites=True),
+        expand_composites=True)
     func_kwargs_before = nest.pack_sequence_as(
-        func_kwargs, flat_func_kwargs, expand_composites=True)
+        func_kwargs,
+        nest.flatten(func_kwargs, expand_composites=True),
+        expand_composites=True)
 
     def convert(x):
       """Converts a function output to a Tensor."""
