@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/tsl/platform/path.h"
 
 namespace tensorflow {
@@ -29,23 +30,23 @@ constexpr const char kUncommittedChunksDirectoryName[] = "uncommitted_chunks";
 
 }  // namespace
 
-std::string StreamDirectory(const std::string& snapshot_path,
+std::string StreamDirectory(absl::string_view snapshot_path,
                             int64_t stream_id) {
   return tsl::io::JoinPath(snapshot_path, "streams",
                            absl::StrCat("stream_", stream_id));
 }
 
-std::string CheckpointsDirectory(const std::string& snapshot_path,
+std::string CheckpointsDirectory(absl::string_view snapshot_path,
                                  int64_t stream_id) {
   return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_id),
                            kCheckpointsDirectoryName);
 }
 
-std::string CommittedChunksDirectory(const std::string& snapshot_path) {
+std::string CommittedChunksDirectory(absl::string_view snapshot_path) {
   return tsl::io::JoinPath(snapshot_path, kCommittedChunksDirectoryName);
 }
 
-std::string UncommittedChunksDirectory(const std::string& snapshot_path,
+std::string UncommittedChunksDirectory(absl::string_view snapshot_path,
                                        int64_t stream_id) {
   return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_id),
                            kUncommittedChunksDirectoryName);

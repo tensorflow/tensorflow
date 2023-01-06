@@ -17,22 +17,23 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
+
 namespace tensorflow {
 namespace data {
 
 // Returns the directory path for a worker writing one stream of the snapshot.
-std::string StreamDirectory(const std::string& snapshot_path,
-                            int64_t stream_id);
+std::string StreamDirectory(absl::string_view snapshot_path, int64_t stream_id);
 
 // Returns the directory path for snapshot checkpoints.
-std::string CheckpointsDirectory(const std::string& snapshot_path,
+std::string CheckpointsDirectory(absl::string_view snapshot_path,
                                  int64_t stream_id);
 
 // Returns the directory path for committed chunks.
-std::string CommittedChunksDirectory(const std::string& snapshot_path);
+std::string CommittedChunksDirectory(absl::string_view snapshot_path);
 
 // Returns the directory path for uncommitted chunks.
-std::string UncommittedChunksDirectory(const std::string& snapshot_path,
+std::string UncommittedChunksDirectory(absl::string_view snapshot_path,
                                        int64_t stream_id);
 
 }  // namespace data
