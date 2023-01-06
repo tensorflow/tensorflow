@@ -42,14 +42,18 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-StatusOr<int64_t> GetCheckpointIndex(const std::string& checkpoint_name) {
-  // The checkpoint names end in "checkpoint_<chunk_index>".
-  static constexpr LazyRE2 kFilenameRe = {R"(checkpoint_(\d+)$)"};
-  int64_t chunk_index = 0;
-  if (!RE2::PartialMatch(checkpoint_name, *kFilenameRe, &chunk_index)) {
-    return errors::Internal("Invalid checkpoint name: ", checkpoint_name);
+// Extracts the index from `filename`. If `filename` is `prefix_<index>`, this
+// returns <index>. If `filename` does not start with `prefix`, returns an
+// internal error.
+StatusOr<int64_t> GetFileIndex(const std::string& filename,
+                               const std::string& prefix) {
+  RE2 kFilenameRe(absl::StrCat(prefix, R"(_(\d+)$)"));
+  int64_t index = 0;
+  if (!RE2::PartialMatch(filename, kFilenameRe, &index)) {
+    return errors::Internal("Failed to extract the index for file `", filename,
+                            "` with prefix `", prefix, "`.");
   }
-  return chunk_index;
+  return index;
 }
 
 }  // namespace
@@ -59,6 +63,12 @@ constexpr int64_t SnapshotWriterParams::kDefaultMaxChunkSizeBytes;
 SnapshotStreamWriter::SnapshotStreamWriter(
     const SnapshotWriterParams& params, std::unique_ptr<TaskIterator> iterator)
     : params_(params),
+      committed_chunks_directory_(
+          CommittedChunksDirectory(params.snapshot_path)),
+      uncommitted_chunks_directory_(
+          UncommittedChunksDirectory(params.snapshot_path, params.stream_id)),
+      checkpoints_directory_(
+          CheckpointsDirectory(params.snapshot_path, params.stream_id)),
       iterator_(std::move(iterator)),
       snapshot_thread_(RunSnapshotThread()) {
   DCHECK_NE(iterator_, nullptr);
@@ -94,10 +104,9 @@ Status SnapshotStreamWriter::WriteSnapshotFn() TF_LOCKS_EXCLUDED(mu_) {
 }
 
 Status SnapshotStreamWriter::InitializeDirectories() {
-  TF_RETURN_IF_ERROR(params_.env->RecursivelyCreateDir(
-      UncommittedChunksDirectory(params_.snapshot_path, params_.stream_id)));
-  TF_RETURN_IF_ERROR(params_.env->RecursivelyCreateDir(
-      CheckpointsDirectory(params_.snapshot_path, params_.stream_id)));
+  TF_RETURN_IF_ERROR(
+      params_.env->RecursivelyCreateDir(uncommitted_chunks_directory_));
+  TF_RETURN_IF_ERROR(params_.env->RecursivelyCreateDir(checkpoints_directory_));
   return OkStatus();
 }
 
@@ -118,15 +127,14 @@ Status SnapshotStreamWriter::WriteChunk() {
 }
 
 std::string SnapshotStreamWriter::GetChunkFilePath() const {
-  return tsl::io::JoinPath(
-      UncommittedChunksDirectory(params_.snapshot_path, params_.stream_id),
-      absl::StrCat("chunk_", chunk_index_));
+  return tsl::io::JoinPath(uncommitted_chunks_directory_,
+                           absl::StrCat("chunk_", chunk_index_));
 }
 
 Status SnapshotStreamWriter::CommitChunk(const std::string& chunk_file_path) {
   std::string chunk_basename(tsl::io::Basename(chunk_file_path));
-  std::string committed_chunk_filename = tsl::io::JoinPath(
-      CommittedChunksDirectory(params_.snapshot_path), chunk_basename);
+  std::string committed_chunk_filename =
+      tsl::io::JoinPath(committed_chunks_directory_, chunk_basename);
   // Writes the checkpoint before committing the chunk. If the worker fails in
   // between, the restarted worker will synchronize the checkpoint with the
   // committed chunks.
@@ -209,41 +217,59 @@ Status SnapshotStreamWriter::Restore() {
         " tensors from checkpoint file: ", checkpoint_path);
   }
   TF_RETURN_IF_ERROR(iterator_->Restore(serialized_tensors[0]));
-  TF_RETURN_IF_ERROR(SyncCheckpointWithChunks());
+  TF_RETURN_IF_ERROR(SyncCheckpointWithChunks(*checkpoint_index));
   chunk_index_ = *checkpoint_index + 1;
   return OkStatus();
 }
 
 StatusOr<int64_t> SnapshotStreamWriter::LastCheckpointIndex() const {
-  std::string checkpoints_directory =
-      CheckpointsDirectory(params_.snapshot_path, params_.stream_id);
   std::vector<std::string> checkpoint_names;
   TF_RETURN_IF_ERROR(
-      params_.env->GetChildren(checkpoints_directory, &checkpoint_names));
+      params_.env->GetChildren(checkpoints_directory_, &checkpoint_names));
   if (checkpoint_names.empty()) {
     return errors::NotFound("No checkpoint has been written in directory ",
-                            checkpoints_directory);
+                            checkpoints_directory_);
   }
 
   int64_t last_index = 0;
   for (const std::string& checkpoint_name : checkpoint_names) {
     TF_ASSIGN_OR_RETURN(int64_t checkpoint_index,
-                        GetCheckpointIndex(checkpoint_name));
+                        GetFileIndex(checkpoint_name, "checkpoint"));
     last_index = std::max(last_index, checkpoint_index);
   }
   return last_index;
 }
 
-Status SnapshotStreamWriter::SyncCheckpointWithChunks() {
-  // TODO(b/258691097): Commit uncommitted chunk files written before the
-  // checkpoint and delete chunk files written after the checkpoint.
+Status SnapshotStreamWriter::SyncCheckpointWithChunks(
+    int64_t checkpoint_index) {
+  // In case the worker fails after writing the checkpoint but before committing
+  // a chunk file, this will synchronize the checkpoint with the chunks. It will
+  // commit uncommitted chunk files written before the checkpoint and delete
+  // chunk files written after the checkpoint.
+  std::vector<std::string> uncommitted_chunks;
+  TF_RETURN_IF_ERROR(params_.env->GetChildren(uncommitted_chunks_directory_,
+                                              &uncommitted_chunks));
+
+  for (const std::string& uncommitted_chunk : uncommitted_chunks) {
+    std::string uncommitted_chunk_filename =
+        tsl::io::JoinPath(uncommitted_chunks_directory_, uncommitted_chunk);
+    std::string committed_chunk_filename =
+        tsl::io::JoinPath(committed_chunks_directory_, uncommitted_chunk);
+    TF_ASSIGN_OR_RETURN(int64_t chunk_index,
+                        GetFileIndex(uncommitted_chunk, "chunk"));
+    if (chunk_index <= checkpoint_index) {
+      TF_RETURN_IF_ERROR(params_.env->RenameFile(uncommitted_chunk_filename,
+                                                 committed_chunk_filename));
+    } else {
+      TF_RETURN_IF_ERROR(params_.env->DeleteFile(uncommitted_chunk_filename));
+    }
+  }
   return OkStatus();
 }
 
 std::string SnapshotStreamWriter::CheckpointPath(int64_t chunk_index) const {
-  return tsl::io::JoinPath(
-      CheckpointsDirectory(params_.snapshot_path, params_.stream_id),
-      absl::StrCat("checkpoint_", chunk_index));
+  return tsl::io::JoinPath(checkpoints_directory_,
+                           absl::StrCat("checkpoint_", chunk_index));
 }
 }  // namespace data
 }  // namespace tensorflow

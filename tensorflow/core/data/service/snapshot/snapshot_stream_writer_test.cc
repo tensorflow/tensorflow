@@ -205,6 +205,147 @@ INSTANTIATE_TEST_SUITE_P(Compression, SnapshotStreamWriterParameterizedTest,
                                                 tsl::io::compression::kSnappy,
                                                 tsl::io::compression::kZlib}));
 
+Status MoveChunks(const std::string& src_dir, const std::string& dst_dir) {
+  std::vector<std::string> src_files;
+  TF_RETURN_IF_ERROR(Env::Default()->GetChildren(src_dir, &src_files));
+  for (const std::string& src_file : src_files) {
+    std::string src_path = tsl::io::JoinPath(src_dir, src_file);
+    std::string dst_path = tsl::io::JoinPath(dst_dir, src_file);
+    TF_RETURN_IF_ERROR(Env::Default()->RenameFile(src_path, dst_path));
+  }
+  return OkStatus();
+}
+
+TEST(SnapshotStreamWriterTest, SyncCheckpointsWithChunksByRenaming) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
+  SnapshotWriterParams writer_params{
+      snapshot_path,
+      /*stream_id=*/0, tsl::io::compression::kSnappy, Env::Default(),
+      /*max_chunk_size_bytes=*/1};
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
+                          TestIterator(testing::RangeDataset(5)));
+  SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
+  TF_ASSERT_OK(snapshot_writer.Wait());
+
+  // This simulates the case where some chunks are not committed after the
+  // checkpoint is taken. It may happen due to worker failures before committing
+  // those chunks. When the writer is restored, the chunks will be synchronized
+  // with the checkpoint.
+  std::string committed_chunks_directory =
+      CommittedChunksDirectory(snapshot_path);
+  std::string uncommitted_chunks_directory =
+      UncommittedChunksDirectory(snapshot_path, /*stream_id=*/0);
+  TF_ASSERT_OK(
+      MoveChunks(committed_chunks_directory, uncommitted_chunks_directory));
+
+  TF_ASSERT_OK_AND_ASSIGN(iterator, TestIterator(testing::RangeDataset(10)));
+  SnapshotStreamWriter restarted_writer(writer_params, std::move(iterator));
+  TF_ASSERT_OK(restarted_writer.Wait());
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_THAT(
+        ReadSnapshot<int64_t>(tsl::io::JoinPath(committed_chunks_directory,
+                                                absl::StrCat("chunk_", i)),
+                              tsl::io::compression::kSnappy,
+                              /*num_elements=*/1),
+        IsOkAndHolds(ElementsAre(i)));
+  }
+}
+
+Status CopyChunks(const std::string& src_dir, const std::string& dst_dir,
+                  const std::string& dst_file_suffix) {
+  std::vector<std::string> src_files;
+  TF_RETURN_IF_ERROR(Env::Default()->GetChildren(src_dir, &src_files));
+  for (const std::string& src_file : src_files) {
+    std::string src_path = tsl::io::JoinPath(src_dir, src_file);
+    std::string dst_path =
+        absl::StrCat(tsl::io::JoinPath(dst_dir, src_file), dst_file_suffix);
+    TF_RETURN_IF_ERROR(Env::Default()->CopyFile(src_path, dst_path));
+  }
+  return OkStatus();
+}
+
+TEST(SnapshotStreamWriterTest, SyncCheckpointsWithChunksByDeleting) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
+  SnapshotWriterParams writer_params{
+      snapshot_path,
+      /*stream_id=*/0, tsl::io::compression::kSnappy, Env::Default(),
+      /*max_chunk_size_bytes=*/1};
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
+                          TestIterator(testing::RangeDataset(5)));
+  SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
+  TF_ASSERT_OK(snapshot_writer.Wait());
+
+  // This simulates the case where some chunks are written without corresponding
+  // checkpoints. This may happen if the worker fails if the chunk is partially
+  // written, before the checkpoint is taken. When the writer is restored, those
+  // chunks should be deleted.
+  std::string committed_chunks_directory =
+      CommittedChunksDirectory(snapshot_path);
+  std::string uncommitted_chunks_directory =
+      UncommittedChunksDirectory(snapshot_path, /*stream_id=*/0);
+  TF_ASSERT_OK(CopyChunks(committed_chunks_directory,
+                          uncommitted_chunks_directory,
+                          /*dst_file_suffix=*/"999"));
+
+  TF_ASSERT_OK_AND_ASSIGN(iterator, TestIterator(testing::RangeDataset(10)));
+  SnapshotStreamWriter restarted_writer(writer_params, std::move(iterator));
+  TF_ASSERT_OK(restarted_writer.Wait());
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_THAT(
+        ReadSnapshot<int64_t>(tsl::io::JoinPath(committed_chunks_directory,
+                                                absl::StrCat("chunk_", i)),
+                              tsl::io::compression::kSnappy,
+                              /*num_elements=*/1),
+        IsOkAndHolds(ElementsAre(i)));
+    EXPECT_THAT(
+        Env::Default()->FileExists(tsl::io::JoinPath(
+            committed_chunks_directory, absl::StrCat("chunk_", i, "999"))),
+        StatusIs(error::NOT_FOUND));
+    EXPECT_THAT(
+        Env::Default()->FileExists(tsl::io::JoinPath(
+            uncommitted_chunks_directory, absl::StrCat("chunk_", i, "999"))),
+        StatusIs(error::NOT_FOUND));
+  }
+}
+
+TEST(SnapshotStreamWriterTest, SyncCheckpointsWithChunks) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
+  SnapshotWriterParams writer_params{
+      snapshot_path,
+      /*stream_id=*/0, tsl::io::compression::kSnappy, Env::Default(),
+      /*max_chunk_size_bytes=*/1};
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
+                          TestIterator(testing::RangeDataset(5)));
+  SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
+  TF_ASSERT_OK(snapshot_writer.Wait());
+
+  // This test combines the previous two cases.
+  std::string committed_chunks_directory =
+      CommittedChunksDirectory(snapshot_path);
+  std::string uncommitted_chunks_directory =
+      UncommittedChunksDirectory(snapshot_path, /*stream_id=*/0);
+  TF_ASSERT_OK(CopyChunks(committed_chunks_directory,
+                          uncommitted_chunks_directory,
+                          /*dst_file_suffix=*/"999"));
+  TF_ASSERT_OK(
+      MoveChunks(committed_chunks_directory, uncommitted_chunks_directory));
+
+  TF_ASSERT_OK_AND_ASSIGN(iterator, TestIterator(testing::RangeDataset(10)));
+  SnapshotStreamWriter restarted_writer(writer_params, std::move(iterator));
+  TF_ASSERT_OK(restarted_writer.Wait());
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_THAT(
+        ReadSnapshot<int64_t>(tsl::io::JoinPath(committed_chunks_directory,
+                                                absl::StrCat("chunk_", i)),
+                              tsl::io::compression::kSnappy,
+                              /*num_elements=*/1),
+        IsOkAndHolds(ElementsAre(i)));
+  }
+}
+
 TEST(SnapshotStreamWriterTest, EmptyDataset) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
                           TestIterator(testing::RangeDataset(0)));
