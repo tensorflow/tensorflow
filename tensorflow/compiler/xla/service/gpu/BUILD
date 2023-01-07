@@ -288,6 +288,7 @@ cc_library(
         ":gpu_asm_opts_util",
         ":gpu_constants",
         ":gpu_conv_runner",
+        ":gpu_fused_mha_runner",
         ":gpu_executable",
         ":gpu_device_info",
         ":gpu_fusible",
@@ -584,6 +585,7 @@ cc_library(
         "replica_id_thunk.cc",
         "sequential_thunk.cc",
         "while_thunk.cc",
+        "fused_mha_thunk.cc",
     ],
     hdrs = [
         "conditional_thunk.h",
@@ -600,6 +602,7 @@ cc_library(
         "replica_id_thunk.h",
         "sequential_thunk.h",
         "while_thunk.h",
+        "fused_mha_thunk.h",
     ],
     deps = [
         ":backend_configs_cc",
@@ -611,6 +614,7 @@ cc_library(
         ":gpu_asm_opts_util",
         ":gpu_constants",
         ":gpu_conv_runner",
+        ":gpu_fused_mha_runner",
         ":gpu_executable_run_options",
         ":gpu_types",
         ":io_feed_manager",
@@ -1066,6 +1070,29 @@ cc_library(
     name = "gpu_conv_runner",
     srcs = ["gpu_conv_runner.cc"],
     hdrs = ["gpu_conv_runner.h"],
+    deps = [
+        ":backend_configs_cc",
+        ":cublas_cudnn",
+        ":stream_executor_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:dnn",
+        "//tensorflow/compiler/xla/stream_executor:lazy_op_runner",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "gpu_fused_mha_runner",
+    srcs = ["gpu_fused_mha_runner.cc"],
+    hdrs = ["gpu_fused_mha_runner.h"],
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
