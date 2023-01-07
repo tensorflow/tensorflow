@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 
 #include <memory>
+#include <string>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -318,15 +319,13 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
       /*filter_stack=*/!VLOG_IS_ON(1));
 
   if (enable_logging || VLOG_IS_ON(1)) {
-    tensorflow::DumpMlirOpToFile("standard_pipeline_before", module, "",
-                                 &bridge);
+    tensorflow::DumpMlirOpToFile(kStandardPipelineBefore, module, "", &bridge);
     if (VLOG_IS_ON(2)) EnableDetailedLogging(&bridge);
   }
   LogicalResult result = bridge.run(module);
   (void)result;
   if (enable_logging || VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("standard_pipeline_after", module, "",
-                                 &bridge);
+    tensorflow::DumpMlirOpToFile(kStandardPipelineAfter, module, "", &bridge);
   return diag_handler.ConsumeStatus();
 }
 

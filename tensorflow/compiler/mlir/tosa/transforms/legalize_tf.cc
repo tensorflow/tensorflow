@@ -517,29 +517,29 @@ LogicalResult ConvertTFAvgPoolOp::matchAndRewrite(
   auto tmpAttr = tf_avgpool_op.getDataFormatAttr();
   if (tmpAttr && tmpAttr.getValue().str() != "NHWC") return failure();
 
-  ArrayAttr pad;
-  ArrayAttr stride;
-  ArrayAttr kernel;
+  DenseI64ArrayAttr pad;
+  DenseI64ArrayAttr stride;
+  DenseI64ArrayAttr kernel;
   {
     auto tmpAttr = tf_avgpool_op.getStrides();
     if (!tmpAttr) {
-      stride = rewriter.getI64ArrayAttr({1, 1});
+      stride = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
       int64_t stride_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
       int64_t stride_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
-      stride = rewriter.getI64ArrayAttr({stride_h, stride_w});
+      stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
     }
   }
   {
     auto tmpAttr = tf_avgpool_op.getKsize();
     if (!tmpAttr) {
-      kernel = rewriter.getI64ArrayAttr({1, 1});
+      kernel = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
       int64_t kernel_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
       int64_t kernel_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
-      kernel = rewriter.getI64ArrayAttr({kernel_h, kernel_w});
+      kernel = rewriter.getDenseI64ArrayAttr({kernel_h, kernel_w});
     }
   }
   {
@@ -547,8 +547,8 @@ LogicalResult ConvertTFAvgPoolOp::matchAndRewrite(
     if (!GetPaddingFromString(tf_avgpool_op.getPadding().str(), &tf_pad).ok())
       return failure();
 
-    ArrayAttr dilation =
-        rewriter.getI64ArrayAttr({1, 1});  // Pooling has no non-unit dilation
+    DenseI64ArrayAttr dilation = rewriter.getDenseI64ArrayAttr(
+        {1, 1});  // Pooling has no non-unit dilation
 
     SmallVector<int64_t, 4> i64array;
 
@@ -587,29 +587,29 @@ LogicalResult ConvertTFMaxPoolOp::matchAndRewrite(
   auto tmpAttr = tf_maxpool_op.getDataFormatAttr();
   if (tmpAttr && tmpAttr.getValue().str() != "NHWC") return failure();
 
-  ArrayAttr pad;
-  ArrayAttr stride;
-  ArrayAttr kernel;
+  DenseI64ArrayAttr pad;
+  DenseI64ArrayAttr stride;
+  DenseI64ArrayAttr kernel;
   {
     auto tmpAttr = tf_maxpool_op.getStrides();
     if (!tmpAttr) {
-      stride = rewriter.getI64ArrayAttr({1, 1});
+      stride = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
       int64_t stride_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
       int64_t stride_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
-      stride = rewriter.getI64ArrayAttr({stride_h, stride_w});
+      stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
     }
   }
   {
     auto tmpAttr = tf_maxpool_op.getKsize();
     if (!tmpAttr) {
-      kernel = rewriter.getI64ArrayAttr({1, 1});
+      kernel = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
       int64_t kernel_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
       int64_t kernel_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
-      kernel = rewriter.getI64ArrayAttr({kernel_h, kernel_w});
+      kernel = rewriter.getDenseI64ArrayAttr({kernel_h, kernel_w});
     }
   }
   {
@@ -618,7 +618,7 @@ LogicalResult ConvertTFMaxPoolOp::matchAndRewrite(
       return failure();
 
     // Pooling has no non-unit dilation
-    ArrayAttr dilation = rewriter.getI64ArrayAttr({1, 1});
+    DenseI64ArrayAttr dilation = rewriter.getDenseI64ArrayAttr({1, 1});
 
     SmallVector<int64_t, 4> i64array;
 
@@ -912,29 +912,29 @@ LogicalResult ConvertTFDepthwiseConv2dNativeOp::matchAndRewrite(
   auto tmpAttr = tf_dwconv2d_op.getDataFormatAttr();
   if (tmpAttr && tmpAttr.getValue().str() != "NHWC") return failure();
 
-  ArrayAttr stride;
-  ArrayAttr dilation;
-  ArrayAttr pad;
+  DenseI64ArrayAttr stride;
+  DenseI64ArrayAttr dilation;
+  DenseI64ArrayAttr pad;
   {
     auto tmpAttr = tf_dwconv2d_op.getStrides();
     if (!tmpAttr) {
-      stride = rewriter.getI64ArrayAttr({1, 1});
+      stride = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
       int64_t stride_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
       int64_t stride_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
-      stride = rewriter.getI64ArrayAttr({stride_h, stride_w});
+      stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
     }
   }
   {
     auto tmpAttr = tf_dwconv2d_op.getDilations();
     if (!tmpAttr) {
-      dilation = rewriter.getI64ArrayAttr({1, 1});
+      dilation = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
       int64_t dilation_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
       int64_t dilation_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
-      dilation = rewriter.getI64ArrayAttr({dilation_h, dilation_w});
+      dilation = rewriter.getDenseI64ArrayAttr({dilation_h, dilation_w});
     }
   }
   {
@@ -1006,18 +1006,18 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
                                            filter_type.getElementType()),
       tf_conv_op.getFilter(), a1_filter_transpose_perm.value());
 
-  ArrayAttr stride;
-  ArrayAttr outpad;
-  ArrayAttr output_shape;
+  DenseI64ArrayAttr stride;
+  DenseI64ArrayAttr outpad;
+  DenseI64ArrayAttr output_shape;
   {
     auto tmpAttr = tf_conv_op.getStrides();
     if (!tmpAttr) {
-      stride = rewriter.getI64ArrayAttr({1, 1});
+      stride = rewriter.getDenseI64ArrayAttr({1, 1});
     } else {
       // Note: hardcoded to NHWC for now
       int64_t stride_h = tmpAttr[1].dyn_cast<IntegerAttr>().getInt();
       int64_t stride_w = tmpAttr[2].dyn_cast<IntegerAttr>().getInt();
-      stride = rewriter.getI64ArrayAttr({stride_h, stride_w});
+      stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
     }
   }
   {
@@ -1059,10 +1059,10 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
       for (int i = 0; i < output_shape_elems.getNumElements(); i++)
         shape_vec.push_back(
             output_shape_elems.getValues<IntegerAttr>()[i].getInt());
-      output_shape = rewriter.getI64ArrayAttr(shape_vec);
+      output_shape = rewriter.getDenseI64ArrayAttr(shape_vec);
     } else {
       // Use output tensor's shape otherwise.
-      output_shape = rewriter.getI64ArrayAttr(output_type.getShape());
+      output_shape = rewriter.getDenseI64ArrayAttr(output_type.getShape());
     }
   }
 

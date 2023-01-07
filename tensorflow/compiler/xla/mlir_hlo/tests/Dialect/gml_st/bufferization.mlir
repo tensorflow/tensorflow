@@ -290,3 +290,26 @@ func.func @matmul(%lhs: tensor<128x16xf32>,
 // CHECK-4:           memref.subview
 // CHECK-NOT:         alloc
 // CHECK:             linalg.matmul
+
+// -----
+
+func.func @materialize_out_of_place(%arg0: tensor<1xi32>) -> tensor<1xi32> {
+  %c0 = arith.constant 0 : index
+  %c42 = arith.constant 42 : i32
+
+  %0 = tensor.insert %c42 into %arg0[%c0] : tensor<1xi32>
+  %1 = gml_st.materialize %arg0[0][1][1] : tensor<1xi32> to i32
+  %2 = tensor.insert %1 into %0[%c0] : tensor<1xi32>
+
+  return %2 : tensor<1xi32>
+}
+
+// CHECK-LABEL: @materialize_out_of_place
+// CHECK-SAME:       %[[ARG0:.*]]: memref<1xi32>
+// CHECK-DAG:      %[[C42:.*]] = arith.constant 42
+// CHECK:          %[[ALLOC:.*]] = memref.alloc
+// CHECK:          memref.copy %{{.*}}, %[[ALLOC]]
+// CHECK:          memref.store %[[C42]], %[[ALLOC]]
+// CHECK:          %[[LOADED:.*]] = memref.load %[[ARG0]]
+// CHECK:          memref.store %[[LOADED]], %[[ALLOC]]
+// CHECK:          return %[[ALLOC]]

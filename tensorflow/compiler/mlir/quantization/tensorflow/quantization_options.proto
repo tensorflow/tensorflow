@@ -161,4 +161,9 @@ message QuantizationOptions {
   // not applied regardless of the op support. Currently, it is supported for
   // Uniform Quantized opset only.
   bool enable_per_channel_quantization = 7;
+
+  // Enables two inputs of an operation to be both tensors.
+  // Currently supports MatMul and BatchMatMul ops for XLA.
+  // TODO(b/263528090): Check the condition when this feature is beneficial.
+  bool enable_two_input_tensors = 8;
 }

@@ -1,6 +1,7 @@
 # Distributed snapshot library.
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -14,6 +15,7 @@ cc_library(
     name = "path_utils",
     srcs = ["path_utils.cc"],
     hdrs = ["path_utils.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/tsl/platform:path",
         "@com_google_absl//absl/strings",
@@ -43,11 +45,11 @@ cc_library(
         "//tensorflow/core/data/service:common_proto_cc",
         "//tensorflow/core/data/service:task_runner",
         "//tensorflow/core/data/service:worker_proto_cc",
-        "//tensorflow/core/lib/gtl:cleanup",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:regexp",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:thread_annotations",
         "@com_google_absl//absl/strings",
@@ -66,7 +68,10 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/data:snapshot_utils",
+        "//tensorflow/core/data:standalone",
+        "//tensorflow/core/data/service:common_proto_cc",
         "//tensorflow/core/data/service:task_runner",
+        "//tensorflow/core/data/service:test_util",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:path",

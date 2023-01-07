@@ -55,9 +55,9 @@ TEST(OptimizeFunctionGraphTest,
 
   std::vector<std::unique_ptr<Device>> devices;
   CreateCpuDeviceList(kDevicePrefix, 1, devices);
-  std::shared_ptr<DeviceSet> device_set = std::make_shared<DeviceSet>();
+  DeviceSet device_set;
   for (const auto& device : devices) {
-    device_set->AddDevice(device.get());
+    device_set.AddDevice(device.get());
   }
 
   // Try to optimize a function called "FindDevice" which does not exist in
@@ -86,9 +86,9 @@ TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphReturnsCorrectResult) {
 
   std::vector<std::unique_ptr<Device>> devices;
   CreateCpuDeviceList(kDevicePrefix, 3, devices);
-  std::shared_ptr<DeviceSet> device_set = std::make_shared<DeviceSet>();
+  DeviceSet device_set;
   for (const auto& device : devices) {
-    device_set->AddDevice(device.get());
+    device_set.AddDevice(device.get());
   }
 
   const StatusOr<OptimizedFunctionGraphInfo> aot_result =

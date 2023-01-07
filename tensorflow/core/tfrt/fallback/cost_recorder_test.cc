@@ -31,7 +31,7 @@ constexpr uint64_t kTestCost = 1234;
 constexpr uint64_t kTestAvgCost = 1851;
 
 TEST(CostRecorderTest, RecordCostTest) {
-  CostRecorder recorder = CostRecorder(nullptr);
+  CostRecorder recorder;
 
   recorder.RecordCostNanosecond(kTestOpKey, kTestCost);
   recorder.RecordCostNanosecond(kTestOpKey, kTestCost);
@@ -40,7 +40,7 @@ TEST(CostRecorderTest, RecordCostTest) {
 }
 
 TEST(CostRecorderTest, GetCostTest) {
-  CostRecorder recorder = CostRecorder(nullptr);
+  CostRecorder recorder;
 
   recorder.RecordCostNanosecond(kTestOpKey, kTestCost);
   recorder.RecordCostNanosecond(kTestOpKey, 2 * kTestCost);
@@ -50,7 +50,7 @@ TEST(CostRecorderTest, GetCostTest) {
 }
 
 TEST(CostRecorderTest, GetCostDefaultValueTest) {
-  CostRecorder recorder = CostRecorder(nullptr);
+  CostRecorder recorder;
   ASSERT_EQ(recorder.size(), 0);
 
   EXPECT_EQ(recorder.GetCostNanosecond(kTestOpKey),
@@ -58,7 +58,7 @@ TEST(CostRecorderTest, GetCostDefaultValueTest) {
 }
 
 TEST(CostRecorderTest, WriteToFileTest) {
-  CostRecorder recorder = CostRecorder(nullptr);
+  CostRecorder recorder;
   ASSERT_EQ(recorder.size(), 0);
 
   std::string measured_cost_path;
@@ -75,7 +75,7 @@ TEST(CostRecorderTest, WriteToFileTest) {
 }
 
 TEST(CostRecorderTest, ProtoRecordsTest) {
-  CostRecorder recorder = CostRecorder(nullptr);
+  CostRecorder recorder;
 
   // Records the cost of op.
   recorder.RecordCostNanosecond(kTestOpKey, kTestCost);

@@ -55,6 +55,19 @@ _AttrValType = Union[List[int], bool, str, None]
 class QuantizedModelTest(test.TestCase, parameterized.TestCase):
   """Base test class for TF-quant tests."""
 
+  def setUp(self) -> None:
+    super().setUp()
+
+    # Many test cases for quantization involve creating and saving the input
+    # model and saving the output quantized model. These two member
+    # attributes can be used to specify the paths for such models,
+    # respectively. These paths will be cleaned up after each test case.
+    self._input_saved_model_path = self.create_tempdir('input').full_path
+    self._output_saved_model_path = self.create_tempdir('output').full_path
+    # Extra output path occasionally used for comparing two different
+    # quantized models.
+    self._output_saved_model_path_2 = self.create_tempdir('output2').full_path
+
   def _is_quantized_function(self, func: function_pb2.FunctionDef) -> bool:
     """Determine whether a FunctionDef is quantized.
 
@@ -675,12 +688,13 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
 
     return ConvModel()
 
-  def _create_matmul_model(self,
-                           input_shape: Sequence[int],
-                           weight_shape: Sequence[int],
-                           saved_model_path: str,
-                           has_bias: bool = False,
-                           activation_fn: Optional[ops.Operation] = None) ->...:
+  def _create_matmul_model(
+      self,
+      input_shape: Sequence[int],
+      weight_shape: Sequence[int],
+      saved_model_path: str,
+      has_bias: bool = False,
+      activation_fn: Optional[ops.Operation] = None) -> module.Module:
 
     class MatmulModel(module.Module):
       """A simple model with a single matmul.

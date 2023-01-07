@@ -63,6 +63,8 @@ HANDLER(ClientHeartbeat);
 HANDLER(GetWorkers);
 HANDLER(GetDataServiceMetadata);
 HANDLER(GetDataServiceConfig);
+HANDLER(Snapshot);
+HANDLER(GetSnapshotSplit);
 #undef HANDLER
 
 }  // namespace data

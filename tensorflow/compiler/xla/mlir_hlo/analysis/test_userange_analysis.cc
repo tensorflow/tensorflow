@@ -22,7 +22,7 @@ limitations under the License.
 namespace mlir {
 
 #define GEN_PASS_DEF_TESTUSERANGE
-#include "mlir-hlo/Transforms/passes.h.inc"
+#include "transforms/passes.h.inc"
 
 namespace {
 

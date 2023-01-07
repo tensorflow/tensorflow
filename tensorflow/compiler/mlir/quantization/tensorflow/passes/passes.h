@@ -36,7 +36,8 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateConvertFakeQuantToQdqPass();
 
 // Lifts the quantizable spots as composite functions.
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateLiftQuantizableSpotsAsFunctionsPass(OpSet target_opset);
+CreateLiftQuantizableSpotsAsFunctionsPass(OpSet target_opset,
+                                          bool enable_two_input_tensors);
 
 // Apply graph optimizations such as fusing and constant folding to prepare
 // lifting.

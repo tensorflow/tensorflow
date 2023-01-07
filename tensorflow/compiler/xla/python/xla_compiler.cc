@@ -652,6 +652,16 @@ void BuildXlaCompilerSubmodule(py::module& m) {
             result.ParseFromString(t[0].cast<std::string>());
             return ValueOrThrow(CompileOptions::FromProto(result));
           }))
+      .def("SerializeAsString",
+           [](const CompileOptions& self) -> py::bytes {
+             return py::bytes(ValueOrThrow(self.ToProto()).SerializeAsString());
+           })
+      .def_static("ParseFromString",
+                  [](py::bytes s) {
+                    CompileOptionsProto result;
+                    result.ParseFromString(s);
+                    return ValueOrThrow(CompileOptions::FromProto(result));
+                  })
       .def_readwrite("argument_layouts", &CompileOptions::argument_layouts)
       .def_readwrite("parameter_is_tupled_arguments",
                      &CompileOptions::parameter_is_tupled_arguments)

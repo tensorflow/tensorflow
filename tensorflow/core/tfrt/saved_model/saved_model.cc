@@ -533,6 +533,9 @@ void UpdateCompileOptions(SavedModel::Options& options) {
   if (options.graph_execution_options.enable_tfrt_gpu) {
     options.graph_execution_options.compile_options.decompose_resource_ops =
         false;
+    // TODO(b/260915352): Remove this flag and use GPU bridge by default, and
+    // remove the obsolete TFRT GPU runtime as well.
+    options.graph_execution_options.compile_options.use_bridge_for_gpu = true;
   }
 }
 

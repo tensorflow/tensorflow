@@ -3128,7 +3128,7 @@ def tf_python_pybind_extension_opensource(
         name,
         srcs,
         module_name = None,
-        hdrs = [],
+        hdrs = [],  # TODO(b/264128506): Drop after migration to cc_shared_library.
         deps = [],
         dynamic_deps = [],
         static_deps = [],

@@ -178,6 +178,30 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
         'inner': Layout.inner_sharded
     }
 
+  @parameterized.named_parameters(
+      ('unsharded_unsharded', [layout_lib.UNSHARDED, layout_lib.UNSHARDED]),
+      ('x_unsharded', [_MESH_DIM_X, layout_lib.UNSHARDED]),
+      ('unsharded_x', [layout_lib.UNSHARDED, _MESH_DIM_X]),
+      ('x,y', [_MESH_DIM_X, _MESH_DIM_Y]),
+  )
+  @mock.patch.dict(
+      os.environ, {'DTENSOR_ENABLE_REPLICATED_SPMD_AS_DEFAULT_TF.MOD': '1'}
+  )
+  def testDefaultReplicatedSpmd(self, shard_specs):
+    x = stateless_random_ops.stateless_random_uniform(
+        shape=[4, 8], seed=[0, 1], dtype=dtypes.float32
+    )
+    y = constant_op.constant(7, dtype=dtypes.float32)
+
+    expected_result = math_ops.Mod(x=x, y=y)
+    expected_layout = Layout.replicated(self.mesh, rank=2)
+    dtensor_result = math_ops.Mod(
+        x=numpy_util.pack_numpy(x, layout=Layout(shard_specs, self.mesh)),
+        y=numpy_util.pack_numpy(y, layout=Layout([], self.mesh)),
+    )
+
+    self.assertDTensorEqual(expected_result, expected_layout, dtensor_result)
+
   @parameterized.product(
       shard_type=['replicated', 'batch_sharded'], full_matrices=[True, False])
   def testQR(self, shard_type, full_matrices):
@@ -210,15 +234,13 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     first_dim_sharded = self.first_dimension_sharded_layout
     second_dim_sharded = self.last_dimension_sharded_layout
 
-    @polymorphic_function.function
-    def uniform(shape, seed, layout):
-      return api.relayout(
-          stateless_random_ops.stateless_random_uniform(shape=shape, seed=seed),
-          layout=layout)
-
     with api.run_on(self.mesh):
-      m1 = uniform(layout=second_dim_sharded, shape=[a, b], seed=seed)
-      m2 = uniform(layout=first_dim_sharded, shape=[b, c], seed=seed)
+      m1 = numpy_util.stateless_random_uniform(
+          layout=second_dim_sharded, shape=[a, b], seed=seed
+      )
+      m2 = numpy_util.stateless_random_uniform(
+          layout=first_dim_sharded, shape=[b, c], seed=seed
+      )
 
     @polymorphic_function.function
     def func():

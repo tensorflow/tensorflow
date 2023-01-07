@@ -94,7 +94,7 @@ StatusOr<se::DeviceMemory<uint8_t>> ScratchAllocator::AllocateBytes(
     int64_t byte_size) {
   CHECK_GE(byte_size, 0) << "byte_size must be positive.";
   if (byte_size > GetMemoryLimitInBytes()) {
-    return se::port::Status(
+    return Status(
         se::port::error::RESOURCE_EXHAUSTED,
         absl::StrFormat(
             "Allocating %d bytes exceeds the memory limit of %d bytes.",

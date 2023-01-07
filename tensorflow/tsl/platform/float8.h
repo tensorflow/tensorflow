@@ -596,9 +596,9 @@ struct ConvertImpl<From, To, kSaturate, kTruncate,
 
   static EIGEN_DEVICE_FUNC inline To run(const From& from) {
     FromBits from_bits = Eigen::numext::bit_cast<FromBits>(from);
-    FromBits from_sign = from_bits & SetFromBit(kFromBits - 1);
+    const FromBits from_sign = from_bits & SetFromBit(kFromBits - 1);
+    const ToBits sign = from_sign >> (kFromBits - kToBits);
     from_bits ^= from_sign;  // Zeros sign bit to obtain absolute value.
-    ToBits sign = from_sign >> (kFromBits - kToBits);
 
     // Special values, preserving sign.
     if (Eigen::numext::isinf(from)) {
@@ -610,11 +610,12 @@ struct ConvertImpl<From, To, kSaturate, kTruncate,
     }
 
     // Adjust mantissa.
+    FromBits rounded_from_bits = from_bits;
     if constexpr (!kTruncate) {
-      from_bits = RoundBitsToNearestEven(from_bits, kDigitShift);
+      rounded_from_bits = RoundBitsToNearestEven(from_bits, kDigitShift);
     }
     // Zero-out tail bits.
-    from_bits &= ~(SetFromBit(kDigitShift) - 1);
+    rounded_from_bits &= ~(SetFromBit(kDigitShift) - 1);
 
     // Check for overflows.
     if constexpr (kExponentOffset > 0) {
@@ -623,7 +624,7 @@ struct ConvertImpl<From, To, kSaturate, kTruncate,
       constexpr ToBits kToHighest = Eigen::NumTraits<To>::highest().rep();
       constexpr FromBits kHighest = ToFromBits(kToHighest);
 
-      if (from_bits > kHighest) {
+      if (rounded_from_bits > kHighest) {
         ToBits bits =
             kSaturate ? kToHighest : Eigen::NumTraits<To>::infinity().rep();
         return Eigen::numext::bit_cast<To>(static_cast<ToBits>(bits | sign));
@@ -633,7 +634,7 @@ struct ConvertImpl<From, To, kSaturate, kTruncate,
     // Subnormals and zero.
     constexpr FromBits kLowestNormal =
         ToFromBits(std::numeric_limits<To>::min().rep());
-    if (from_bits < kLowestNormal) {
+    if (rounded_from_bits < kLowestNormal) {
       // Round and shift mantissa down.
       constexpr FromBits kMantissaMask = SetFromBit(kFromMantissaBits) - 1;
       int exponent = ((from_bits >> kFromMantissaBits) - kFromExponentBias);
@@ -642,25 +643,33 @@ struct ConvertImpl<From, To, kSaturate, kTruncate,
       // Insert the implicit leading 1 bit on the mantissa.  This assumes
       // the input is normalized.  If it is not, then the mantissa bits -
       // including the implicit one - will be shifted to zero.
-      from_bits = (SetFromBit(kFromMantissaBits) | (from_bits & kMantissaMask));
+      // NOTE: we need to round again from the original from_bits, otherwise
+      // the lower precision bits may already be lost.  There is an edge-case
+      // where rounding to a normalized value would normally round down,
+      // but for a subnormal, we need to round up.
+      rounded_from_bits =
+          (SetFromBit(kFromMantissaBits) | (from_bits & kMantissaMask));
       ToBits bits = 0;
       // To avoid UB, limit rounding and shifting to the full mantissa plus
       // leading 1.
       if (exponent_shift <= kFromMantissaBits + 1) {
         if constexpr (!kTruncate) {
-          from_bits = RoundBitsToNearestEven(from_bits, exponent_shift);
+          rounded_from_bits =
+              RoundBitsToNearestEven(rounded_from_bits, exponent_shift);
         }
-        bits = (from_bits >> exponent_shift);
+        bits = (rounded_from_bits >> exponent_shift);
       }
       // Insert sign and return.
       return Eigen::numext::bit_cast<To>(static_cast<ToBits>(bits | sign));
     }
 
     // Adjust exponent.
-    from_bits += static_cast<FromBits>(-kExponentOffset) << kFromMantissaBits;
+    rounded_from_bits += static_cast<FromBits>(-kExponentOffset)
+                         << kFromMantissaBits;
 
     // Shift bits and insert sign.
-    ToBits bits = static_cast<ToBits>((from_bits >> kDigitShift) | sign);
+    ToBits bits =
+        static_cast<ToBits>((rounded_from_bits >> kDigitShift) | sign);
     return Eigen::numext::bit_cast<To>(bits);
   }
 };

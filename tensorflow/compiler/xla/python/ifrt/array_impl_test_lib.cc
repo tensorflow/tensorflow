@@ -31,7 +31,7 @@ namespace {
 using ::testing::ElementsAreArray;
 using ::testing::SizeIs;
 
-TEST(ArrayImplTest, MakeArrayFromHostBuffer) {
+TEST(ArrayImplTest, MakeArrayFromHostBufferImmutableOnlyDuringCall) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
 
   DType dtype(DType::kF32);
@@ -51,6 +51,38 @@ TEST(ArrayImplTest, MakeArrayFromHostBuffer) {
   EXPECT_EQ(array->dtype(), dtype);
   EXPECT_EQ(array->shape(), shape);
   EXPECT_EQ(array->shared_ptr_sharding().get(), sharding.get());
+}
+
+TEST(ArrayImplTest, MakeArrayFromHostBufferCallsOnDoneCallback) {
+  // This test checks if the `on_done_with_host_buffer` callback is called as
+  // expected.
+  // It also establishes (indirectly) that the `MakeArrayFromHostBuffer` works
+  // correctly with the `kImmutableUntilTransferCompletes` semantics.
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  std::vector<float> data(6);
+  std::iota(data.begin(), data.end(), 0);
+  Device* device = client->addressable_devices().at(0);
+  auto sharding = SingleDeviceSharding::Create(device);
+
+  absl::Notification done_with_host_buffer;
+  auto on_done = [&]() { done_with_host_buffer.Notify(); };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto array,
+      client->MakeArrayFromHostBuffer(
+          data.data(), dtype, shape,
+          /*byte_strides=*/std::nullopt, sharding,
+          Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
+          std::move(on_done)));
+
+  EXPECT_EQ(array->dtype(), dtype);
+  EXPECT_EQ(array->shape(), shape);
+  EXPECT_EQ(array->shared_ptr_sharding().get(), sharding.get());
+
+  done_with_host_buffer.WaitForNotification();
 }
 
 TEST(ArrayImplTest, MakeArrayFromHostBufferAndCopyToHostBuffer) {

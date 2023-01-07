@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/pjit.h"
 
+#include <algorithm>
 #include <exception>
 #include <memory>
 #include <optional>
@@ -67,12 +68,19 @@ struct PjitCacheEntry {
 class PjitFunction {
  public:
   PjitFunction(std::string function_name, py::function cache_miss,
-               std::vector<int> static_argnums, int executables_cache_size)
+               std::vector<int> static_argnums,
+               std::vector<py::str> static_argnames, int executables_cache_size)
       : function_name_(std::move(function_name)),
         cache_miss_(std::move(cache_miss)),
         static_argnums_(std::move(static_argnums)),
+        static_argnames_(std::move(static_argnames)),
         lru_list_(std::make_unique<Cache::LRUList>(executables_cache_size)),
-        executables_(std::make_unique<Cache>(lru_list_.get())) {}
+        executables_(std::make_unique<Cache>(lru_list_.get())) {
+    std::sort(static_argnums_.begin(), static_argnums_.end());
+    for (py::str& s : static_argnames_) {
+      PyUnicode_InternInPlace(&s.ptr());
+    }
+  }
 
   PjitFunction(const PjitFunction&) = delete;
   PjitFunction& operator=(const PjitFunction&) = delete;
@@ -99,6 +107,7 @@ class PjitFunction {
   std::string function_name_;
   py::function cache_miss_;
   std::vector<int> static_argnums_;
+  std::vector<py::str> static_argnames_;
 
   std::unique_ptr<Cache::LRUList> lru_list_;
   std::unique_ptr<Cache> executables_;
@@ -201,9 +210,8 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
   absl::Span<PyObject* const> positional_args(args, num_positional_args);
   absl::Span<PyObject* const> keyword_args(args + num_positional_args,
                                            num_keyword_args);
-  auto status =
-      ParseArguments(positional_args, keyword_args, kwnames, static_argnums_,
-                     /*static_argnames=*/{}, arguments);
+  auto status = ParseArguments(positional_args, keyword_args, kwnames,
+                               static_argnums_, static_argnames_, arguments);
   if (!status.ok()) {
     VLOG(2) << "ParseArguments failed: " << status;
     return fallback_to_cache_miss();
@@ -601,13 +609,15 @@ PyObject* PjitFunction_tp_repr(PyObject* self) {
 
 py::object MakePjitFunction(std::string function_name, py::function cache_miss,
                             std::vector<int> static_argnums,
+                            std::vector<py::str> static_argnames,
                             int executables_cache_size) {
   py::object obj = py::reinterpret_steal<py::object>(PjitFunction_tp_new(
       reinterpret_cast<PyTypeObject*>(PjitFunction_Type), nullptr, nullptr));
   PjitFunctionObject* fn_obj = reinterpret_cast<PjitFunctionObject*>(obj.ptr());
   new (&fn_obj->fun)
       PjitFunction(std::move(function_name), std::move(cache_miss),
-                   std::move(static_argnums), executables_cache_size);
+                   std::move(static_argnums), std::move(static_argnames),
+                   executables_cache_size);
   return obj;
 }
 
@@ -655,9 +665,11 @@ void BuildPjitSubmodule(py::module& m) {
   cfun.attr("__module__") = m.attr("__name__");
 
   m.def("pjit", [](std::string function_name, py::function cache_miss,
-                   std::vector<int> static_argnums) {
+                   std::vector<int> static_argnums,
+                   std::vector<py::str> static_argnames) {
     return MakePjitFunction(std::move(function_name), std::move(cache_miss),
                             std::move(static_argnums),
+                            std::move(static_argnames),
                             /*executables_cache_size=*/4096);
   });
 }

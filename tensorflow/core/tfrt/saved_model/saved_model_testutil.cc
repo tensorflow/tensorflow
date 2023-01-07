@@ -175,6 +175,7 @@ SavedModel::Options DefaultTpuModelOptions(
   compile_options.enable_grappler = true;
   compile_options.device_target = device_target;
   compile_options.hoist_invariant_ops = true;
+  compile_options.sink_in_invariant_ops = true;
   compile_options.cost_threshold =
       1024;  // Servo currently uses 1024 as threshold for TPU models
 

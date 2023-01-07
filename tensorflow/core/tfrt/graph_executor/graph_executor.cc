@@ -124,8 +124,7 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
 
   // Create a request context builder.
   tfrt::RequestContextBuilder request_context_builder(
-      runtime.core_runtime()->GetHostContext(), resource_context, request_id,
-      run_options.enable_cost_measurement);
+      runtime.core_runtime()->GetHostContext(), resource_context, request_id);
   // Set up the request contexts in the builder.
   // Note: if the intra-op thread pool from the request queue is null, the
   // thread pool in `tensorflow::Device` will be used.

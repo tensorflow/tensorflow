@@ -30,7 +30,6 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import random_seed
 from tensorflow.python.data.util import structure
 from tensorflow.python.data.util import traverse
 from tensorflow.python.eager import context
@@ -92,6 +91,11 @@ def_function = lazy_loader.LazyLoader(
 prefetch_op = lazy_loader.LazyLoader(
     "prefetch_op", globals(),
     "tensorflow.python.data.ops.prefetch_op")
+# Loaded lazily due to a circular dependency (dataset_ops ->
+# shuffle_op -> dataset_ops).
+shuffle_op = lazy_loader.LazyLoader(
+    "shuffle_op", globals(),
+    "tensorflow.python.data.ops.shuffle_op")
 
 
 ops.NotDifferentiable("ReduceDataset")
@@ -1438,7 +1442,7 @@ class DatasetV2(
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-    return ShuffleDataset(
+    return shuffle_op._shuffle(  # pylint: disable=protected-access
         self, buffer_size, seed, reshuffle_each_iteration, name=name)
 
   def cache(self, filename="", name=None):
@@ -4792,6 +4796,7 @@ batch_op = lazy_loader.LazyLoader(
     "tensorflow.python.data.ops.batch_op")
 BatchDataset = batch_op._BatchDataset  # pylint: disable=protected-access
 PrefetchDataset = prefetch_op._PrefetchDataset  # pylint: disable=protected-access
+ShuffleDataset = shuffle_op._ShuffleDataset  # pylint: disable=protected-access
 
 
 # TODO(b/254291122): Remove.
@@ -4801,46 +4806,6 @@ repeat_op = lazy_loader.LazyLoader(
     "repeat_op", globals(),
     "tensorflow.python.data.ops.repeat_op")
 RepeatDataset = repeat_op._RepeatDataset  # pylint: disable=protected-access
-
-
-class ShuffleDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` that randomly shuffles the elements of its input."""
-
-  def __init__(self,
-               input_dataset,
-               buffer_size,
-               seed=None,
-               reshuffle_each_iteration=None,
-               name=None):
-    """See `Dataset.shuffle()` for details."""
-    self._input_dataset = input_dataset
-    self._buffer_size = ops.convert_to_tensor(
-        buffer_size, dtype=dtypes.int64, name="buffer_size")
-    self._seed, self._seed2 = random_seed.get_seed(seed)
-    if reshuffle_each_iteration is None:
-      reshuffle_each_iteration = True
-    self._reshuffle_each_iteration = reshuffle_each_iteration
-    self._name = name
-
-    if (tf2.enabled() and
-        (context.executing_eagerly() or ops.inside_function())):
-      variant_tensor = gen_dataset_ops.shuffle_dataset_v3(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          buffer_size=self._buffer_size,
-          seed=self._seed,
-          seed2=self._seed2,
-          seed_generator=gen_dataset_ops.dummy_seed_generator(),
-          reshuffle_each_iteration=self._reshuffle_each_iteration,
-          **self._common_args)
-    else:
-      variant_tensor = gen_dataset_ops.shuffle_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          buffer_size=self._buffer_size,
-          seed=self._seed,
-          seed2=self._seed2,
-          reshuffle_each_iteration=self._reshuffle_each_iteration,
-          **self._common_args)
-    super(ShuffleDataset, self).__init__(input_dataset, variant_tensor)
 
 
 class _OptionsDataset(UnaryUnchangedStructureDataset):

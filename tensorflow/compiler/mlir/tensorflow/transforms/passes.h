@@ -363,7 +363,7 @@ CreateTFExecutorUpdateControlDependenciesPass();
 namespace TFDevice {
 // Creates a pass that forms clusters from instructions that are assigned to
 // same device.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateClusterFormationPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateClusterFormationPass();
 
 // Sinks `tf.Const` operations in the ClusterOp region using them. This is
 // performed in order to limit the number of values implicitly captured in this

@@ -232,6 +232,17 @@ def ShapeReificationPass : Pass<"shape-reification", "func::FuncOp"> {
   let constructor = "createShapeReificationPass()";
 }
 
+def SymbolicShapeOptimization : Pass<"symbolic-shape-optimization", "func::FuncOp"> {
+  let summary = "Analyzes shapes and performs shape-related optimizations";
+  let constructor = "createSymbolicShapeOptimizationPass()";
+}
+
+def ShapeSimplification
+    : Pass<"shape-simplification", "mlir::func::FuncOp"> {
+  let summary = "Simplify shape ops";
+  let constructor = "createShapeSimplification()";
+}
+
 def ConstraintFusionPass : Pass<"constraint-fusion", "func::FuncOp"> {
   let summary = "Fuse shape constraints and merge all assuming regions.";
   let constructor = "createConstraintFusionPass()";

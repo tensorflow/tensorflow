@@ -632,7 +632,7 @@ CompiledFunction::CompiledFunction(py::function fun, py::function cache_miss,
       get_device_(std::move(get_device)),
       cache_(std::move(cache)) {
   std::sort(static_argnums_.begin(), static_argnums_.end());
-  for (py::str& s : static_argnames) {
+  for (py::str& s : static_argnames_) {
     PyUnicode_InternInPlace(&s.ptr());
   }
   executables_ = cache_->Lookup(fun_, donate_argnums);

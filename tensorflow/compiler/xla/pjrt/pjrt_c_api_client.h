@@ -498,17 +498,22 @@ class PjRtCApiExecutable : public PjRtLoadedExecutable {
   const PJRT_Executable* c_executable() const { return executable_.get(); }
 
  private:
+  // Gets common Execute_Args between Execute, ExecuteSharded and
+  // ExecutePortable. device_complete_events in the return is set if the input
+  // device_complete_events has value.
   xla::StatusOr<PJRT_Executable_Execute_Args> GetCommonExecuteArgs(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options, PJRT_ExecuteOptions& c_options,
       std::vector<std::vector<PJRT_Buffer*>>& c_argument_lists_storage,
       std::vector<PJRT_Buffer**>& c_arguments,
       std::vector<std::vector<PJRT_Buffer*>>& c_output_lists_storage,
-      std::vector<PJRT_Buffer**>& c_output_lists);
+      std::vector<PJRT_Buffer**>& c_output_lists,
+      std::optional<std::vector<PJRT_Event*>>& device_complete_events);
 
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteWithDevice(
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteWithSingleDevice(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options);
+      const ExecuteOptions& options,
+      std::optional<PjRtFuture<Status>>& returned_future, bool fill_future);
 
   PjRtCApiClient* client_;
   std::unique_ptr<PJRT_Executable, pjrt::PJRT_ExecutableDeleter> executable_;

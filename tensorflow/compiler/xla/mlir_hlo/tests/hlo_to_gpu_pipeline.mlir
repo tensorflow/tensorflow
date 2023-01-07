@@ -19,7 +19,7 @@ func.func @simple_op(%arg0: memref<2048xf32>, %arg1: memref<2048xf32>) {
   "lmhlo.terminator"() : () -> ()
 }
 // CHECK: gpu.module @[[MODULE]] attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>}
-// CHECK: llvm.func @[[KERNEL]]({{.*}}) attributes {gpu.kernel, nvvm.kernel}
+// CHECK: llvm.func @[[KERNEL]]({{.*}}) attributes {gpu.kernel, gpu.known_block_size = array<i32: 32, 8, 1>, gpu.known_grid_size = array<i32: 2, 1, 1>, nvvm.kernel}
 // CHECK: llvm.call @__nv_logf
 // Make sure we successfully unrolled the loop 4 times
 // CHECK: llvm.call @__nv_logf
@@ -48,7 +48,7 @@ func.func @fusion(%arg0: memref<2048xf32>, %arg1: memref<2048xf32>) {
   "lmhlo.terminator"() : () -> ()
 }
 // CHECK:     gpu.module @[[MODULE]]
-// CHECK:     llvm.func @[[KERNEL]]({{.*}}) attributes {gpu.kernel, nvvm.kernel}
+// CHECK:     llvm.func @[[KERNEL]]({{.*}}) attributes {gpu.kernel, gpu.known_block_size = array<i32: 32, 8, 1>, gpu.known_grid_size = array<i32: 2, 1, 1>, nvvm.kernel}
 // CHECK:     %[[ABS:.*]] = llvm.call @__nv_fabsf
 // CHECK-NOT: llvm.return
 // CHECK:     %[[ADD:.*]] = llvm.fadd %[[ABS]], %[[ABS]]
@@ -78,7 +78,7 @@ func.func @imperfect_tiling(%arg0: memref<2051xf32>, %arg1: memref<2051xf32>) {
   "lmhlo.terminator"() : () -> ()
 }
 // CHECK: gpu.module @[[MODULE]] attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>}
-// CHECK: llvm.func @[[KERNEL]]({{.*}}) attributes {gpu.kernel, nvvm.kernel}
+// CHECK: llvm.func @[[KERNEL]]({{.*}}) attributes {gpu.kernel, gpu.known_block_size = array<i32: 32, 8, 1>, gpu.known_grid_size = array<i32: 3, 1, 1>, nvvm.kernel}
 // CHECK: llvm.call @__nv_logf
 // Make sure we successfully unrolled the loop 4 times:
 // CHECK: llvm.call @__nv_logf

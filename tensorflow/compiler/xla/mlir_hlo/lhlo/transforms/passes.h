@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_LHLO_TRANSFORMS_PASSES_H
-#define MLIR_HLO_DIALECT_LHLO_TRANSFORMS_PASSES_H
+#ifndef MLIR_HLO_LHLO_TRANSFORMS_PASSES_H
+#define MLIR_HLO_LHLO_TRANSFORMS_PASSES_H
 
 #include <memory>
 
@@ -74,4 +74,4 @@ std::unique_ptr<OperationPass<func::FuncOp>> createInputInlineFusionPass();
 }  // namespace lmhlo
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_LHLO_TRANSFORMS_PASSES_H
+#endif  // MLIR_HLO_LHLO_TRANSFORMS_PASSES_H

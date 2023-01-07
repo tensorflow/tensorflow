@@ -391,6 +391,7 @@ cc_library(
         "transforms/remove_device_attribute.cc",
         "transforms/remove_tf_if_const_args.cc",
         "transforms/reorder_assert.cc",
+        "transforms/sink_in_invariant_ops.cc",
         "transforms/tf_to_tfrt.cc",
         "transforms/tpu_passes.h",
     ],
@@ -820,5 +821,15 @@ cc_library(
         "@tf_runtime//:basic_kernels_opdefs",
         "@tf_runtime//:core_runtime_opdefs",
         "@tf_runtime//:support",
+    ],
+)
+
+cc_library(
+    name = "transforms/update_op_cost_in_tfrt_mlir",
+    srcs = ["transforms/update_op_cost_in_tfrt_mlir.cc"],
+    hdrs = ["transforms/update_op_cost_in_tfrt_mlir.h"],
+    deps = [
+        "//tensorflow/core/tfrt/fallback:cost_recorder",
+        "@llvm-project//mlir:IR",
     ],
 )

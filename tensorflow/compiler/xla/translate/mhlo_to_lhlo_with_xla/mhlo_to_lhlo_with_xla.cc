@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -402,6 +403,14 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitRngGetAndUpdateStateOp(instr);
     case HloOpcode::kWhile:
       return EmitWhileOp(instr);
+    case HloOpcode::kSend:
+      return EmitSendOp(instr);
+    case HloOpcode::kSendDone:
+      return EmitSendDoneOp(instr);
+    case HloOpcode::kRecv:
+      return EmitRecvOp(instr);
+    case HloOpcode::kRecvDone:
+      return EmitRecvDoneOp(instr);
 
     case HloOpcode::kAbs:
     case HloOpcode::kAdd:
@@ -1359,14 +1368,14 @@ LhloDialectEmitter::EmitAllReduceStartOp(const HloInstruction* instr) {
       &all_reduce_start_op.getComputation(), &builder_));
 
   auto [_, was_inserted] =
-      async_tokens_.insert({instr, all_reduce_start_op.getToken()});
+      ret_tokens_.insert({instr, all_reduce_start_op.getToken()});
   TF_RET_CHECK(was_inserted) << "all-reduce-start already lowered";
   return all_reduce_start_op;
 }
 
 tsl::StatusOr<lmhlo_gpu::AllReduceDoneOp>
 LhloDialectEmitter::EmitAllReduceDoneOp(const HloInstruction* instr) {
-  auto token = async_tokens_.extract(instr->operand(0));
+  auto token = ret_tokens_.extract(instr->operand(0));
   TF_RET_CHECK(token) << "didn't find all-reduce-start token";
   return builder_.create<lmhlo_gpu::AllReduceDoneOp>(
       getLocation(instr), /*resultTypes=*/llvm::None, token.mapped());
@@ -1427,14 +1436,14 @@ LhloDialectEmitter::EmitCollectivePermuteStartOp(const HloInstruction* instr) {
                             source_target_pairs_attr.getValue());
 
   auto [_, was_inserted] =
-      async_tokens_.insert({instr, permute_start_op.getToken()});
+      ret_tokens_.insert({instr, permute_start_op.getToken()});
   TF_RET_CHECK(was_inserted) << "collective-permute-start already lowered";
   return permute_start_op;
 }
 
 tsl::StatusOr<lmhlo_gpu::CollectivePermuteDoneOp>
 LhloDialectEmitter::EmitCollectivePermuteDoneOp(const HloInstruction* instr) {
-  auto token = async_tokens_.extract(instr->operand(0));
+  auto token = ret_tokens_.extract(instr->operand(0));
   TF_RET_CHECK(token) << "didn't find collective-permute-start token";
   return builder_.create<lmhlo_gpu::CollectivePermuteDoneOp>(
       getLocation(instr), /*resultTypes=*/llvm::None, token.mapped());
@@ -1602,6 +1611,96 @@ tsl::StatusOr<lmhlo::WhileOp> LhloDialectEmitter::EmitWhileOp(
                                          &while_op.getBody()));
 
   return while_op;
+}
+
+// TODO(b/264291989): Use enum to define the host transfer type (channel type).
+template <typename Instr, typename OpTy>
+static void CopyChannelAttrs(OpBuilder& b, Instr* instr, OpTy op,
+                             int host_transfer_type) {
+  op.setIsHostTransferAttr(b.getBoolAttr(instr->is_host_transfer()));
+  op.setChannelHandleAttr(mlir::mhlo::ChannelHandleAttr::get(
+      b.getContext(), *instr->channel_id(),
+      instr->is_host_transfer() ? host_transfer_type : /*DEVICE_TO_DEVICE*/ 1));
+}
+
+template <typename Instr, typename OpTy>
+static void CopyFrontendAttrs(OpBuilder& b, Instr* instr, OpTy op) {
+  llvm::SmallVector<NamedAttribute> frontend_attrs;
+  for (auto& [name, value] : instr->frontend_attributes().map()) {
+    frontend_attrs.push_back(b.getNamedAttr(name, b.getStringAttr(value)));
+  }
+  op->setAttr(b.getStringAttr("frontend_attributes"),
+              b.getDictionaryAttr(frontend_attrs));
+}
+
+tsl::StatusOr<lmhlo::SendOp> LhloDialectEmitter::EmitSendOp(
+    const xla::HloInstruction* instr) {
+  llvm::SmallVector<Value, 2> operands;
+  TF_RETURN_IF_ERROR(GetOrCreateView(instr->operand(0), &operands));
+
+  auto token = mhlo::TokenType::get(builder_.getContext());
+  auto send_op = builder_.create<lmhlo::SendOp>(getLocation(instr),
+                                                TypeRange(token), operands);
+
+  // Set point-to-point op communication attributes.
+  auto* send = xla::Cast<xla::HloSendInstruction>(instr);
+  CopyChannelAttrs(builder_, send, send_op, /*host_transfer_type=*/2);
+  CopyFrontendAttrs(builder_, send, send_op);
+
+  auto [_, emplaced] = ret_tokens_.try_emplace(instr, send_op.getToken());
+  TF_RET_CHECK(emplaced) << "send already lowered";
+  return send_op;
+}
+
+tsl::StatusOr<lmhlo::SendDoneOp> LhloDialectEmitter::EmitSendDoneOp(
+    const xla::HloInstruction* instr) {
+  auto token = ret_tokens_.extract(instr->operand(0));
+  TF_RET_CHECK(token) << "didn't find send-done token";
+
+  auto send_done_op = builder_.create<lmhlo::SendDoneOp>(
+      getLocation(instr), /*resultTypes=*/llvm::None, token.mapped());
+
+  // Copy send-done attributes.
+  auto* send_done = xla::Cast<xla::HloSendDoneInstruction>(instr);
+  CopyChannelAttrs(builder_, send_done, send_done_op,
+                   /*host_transfer_type=*/2);
+
+  return send_done_op;
+}
+
+tsl::StatusOr<lmhlo::RecvOp> LhloDialectEmitter::EmitRecvOp(
+    const xla::HloInstruction* instr) {
+  llvm::SmallVector<Value, 2> operands;
+  TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands, {0}));
+
+  auto token = mhlo::TokenType::get(builder_.getContext());
+  auto recv_op = builder_.create<lmhlo::RecvOp>(getLocation(instr),
+                                                TypeRange(token), operands);
+
+  // Set point-to-point op communication attributes.
+  auto* recv = xla::Cast<xla::HloRecvInstruction>(instr);
+  CopyChannelAttrs(builder_, recv, recv_op, /*host_transfer_type=*/3);
+  CopyFrontendAttrs(builder_, recv, recv_op);
+
+  auto [_, emplaced] = ret_tokens_.try_emplace(instr, recv_op.getToken());
+  TF_RET_CHECK(emplaced) << "recv already lowered";
+  return recv_op;
+}
+
+tsl::StatusOr<lmhlo::RecvDoneOp> LhloDialectEmitter::EmitRecvDoneOp(
+    const xla::HloInstruction* instr) {
+  auto token = ret_tokens_.extract(instr->operand(0));
+  TF_RET_CHECK(token) << "didn't find recv-done token";
+
+  auto recv_done_op = builder_.create<lmhlo::RecvDoneOp>(
+      getLocation(instr), /*resultTypes=*/llvm::None, token.mapped());
+
+  // Copy recv-done attributes.
+  auto* recv_done = xla::Cast<xla::HloRecvDoneInstruction>(instr);
+  CopyChannelAttrs(builder_, recv_done, recv_done_op,
+                   /*host_transfer_type=*/3);
+
+  return recv_done_op;
 }
 
 tsl::StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(

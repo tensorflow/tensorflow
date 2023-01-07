@@ -144,7 +144,6 @@ cc_library(
     copts = tflite_copts_warnings(),
 )
 
-# TODO(b/128420794): Migrate clients to use :version directly.
 alias(
     name = "schema_fbs_version",
     actual = ":version",
@@ -1034,7 +1033,6 @@ cc_test(
         "testdata/multi_add.bin",
     ],
     tags = [
-        "no_windows",  # TODO(b/194459105): the test is flaky.
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
         "tflite_smoke_test",
@@ -1098,9 +1096,6 @@ cc_test(
     size = "small",
     srcs = ["optional_debug_tools_test.cc"],
     data = ["testdata/add.bin"],
-    tags = [
-        "nomsan",  # TODO(b/186359792)
-    ],
     deps = [
         ":framework",
         ":optional_debug_tools",

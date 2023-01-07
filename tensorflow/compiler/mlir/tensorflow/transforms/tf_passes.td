@@ -306,7 +306,7 @@ def UnrollBatchMatMulPass : Pass<"tf-unroll-batch-matmul", "mlir::func::FuncOp">
   let constructor = "TF::CreateUnrollBatchMatMulPassPass()";
 }
 
-def ClusterFormationPass : Pass<"tf-device-cluster-formation", "mlir::func::FuncOp"> {
+def ClusterFormationPass : Pass<"tf-device-cluster-formation", "mlir::ModuleOp"> {
   let summary = "Form clusters from instructions assigned to same device";
   let constructor = "TFDevice::CreateClusterFormationPass()";
   let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];

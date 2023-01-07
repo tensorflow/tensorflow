@@ -404,14 +404,13 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteSignatureRunnerCancel(
 TFL_CAPI_EXPORT extern void TfLiteSignatureRunnerDelete(
     TfLiteSignatureRunner* signature_runner);
 
-/// Sets the telemetry profiler to the interpreter.
+/// Registers the telemetry profiler to the interpreter.
 /// The interpreter takes the ownership of profiler, but the caller needs to
 /// own the underlying profiler->data and ensure it outlives the interpreter.
 ///
 /// WARNING: This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern void TfLiteInterpreterSetTelemetryProfiler(
-    const TfLiteInterpreter* interpreter,
-    TfLiteTelemetryProfilerStruct* profiler);
+TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetTelemetryProfiler(
+    TfLiteInterpreterOptions* options, TfLiteTelemetryProfilerStruct* profiler);
 
 #ifdef __cplusplus
 }  // extern "C"

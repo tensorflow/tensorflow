@@ -729,7 +729,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "slice_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["slice_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
@@ -1064,7 +1064,7 @@ tf_xla_py_test(
         "cpu",
         "cpu_ondemand",
     ],
-    enable_mlir_bridge = False,
+    enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 5,
     tags = [

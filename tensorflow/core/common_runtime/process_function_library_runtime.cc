@@ -559,7 +559,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   const uint64 optimization_start_time_usecs = Env::Default()->NowMicros();
   TF_ASSIGN_OR_RETURN(auto optimized_graph_info,
                       OptimizeFunctionGraph(
-                          function_name, attrs, options, dev_set, lib_def_,
+                          function_name, attrs, options, *dev_set, lib_def_,
                           composite_devices, cpu_device, default_device, env_));
 
   auto& graph = optimized_graph_info.function_graph;
