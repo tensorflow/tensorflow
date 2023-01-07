@@ -1922,6 +1922,7 @@ cc_library(
         ":cublas_cudnn",
         ":cublas_pad_for_gemms",
         ":cudnn_fused_conv_rewriter",
+        ":cudnn_fused_mha_rewriter",
         ":cudnn_pad_for_convolutions",
         ":cudnn_simplify_padding",
         ":cudnn_vectorize_convolutions",
@@ -2426,6 +2427,26 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "cudnn_fused_mha_rewriter",
+    srcs = ["cudnn_fused_mha_rewriter.cc"],
+    hdrs = ["cudnn_fused_mha_rewriter.h"],
+    deps = [
+        ":backend_configs_cc",
+        ":cublas_cudnn",
+        "//tensorflow/compiler/xla:comparison_util",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_creation_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:stream_executor_no_cuda",
     ],
 )
 
