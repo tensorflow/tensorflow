@@ -276,12 +276,12 @@ Stream::~Stream() {
   }
 }
 
-port::Status Stream::RefreshStatus() {
-  port::Status status = parent_->GetStatus(this);
+tsl::Status Stream::RefreshStatus() {
+  tsl::Status status = parent_->GetStatus(this);
   // We should not put the stream in an error state, just because the GetStatus
   // method is unimplemented.
-  if (status != port::Status(port::error::UNIMPLEMENTED,
-                             "GetStatus is not supported on this executor.")) {
+  if (status != tsl::Status(port::error::UNIMPLEMENTED,
+                            "GetStatus is not supported on this executor.")) {
     CheckStatus(status);
   }
   return status;
@@ -322,7 +322,7 @@ Stream &Stream::InitWithTimer(Timer *timer) {
 Stream &Stream::ThenRecordEvent(Event *event) {
   VLOG_CALL(PARAM(event));
 
-  port::Status status = parent_->RecordEvent(this, event);
+  tsl::Status status = parent_->RecordEvent(this, event);
   if (!status.ok()) {
     LOG(ERROR) << "Error recording event in stream: " << status.error_message()
                << "; not marking stream as bad, as the Event object may be "
@@ -1107,7 +1107,7 @@ Stream &Stream::ThenWaitFor(Event *event) {
   VLOG_CALL(PARAM(event));
 
   if (ok()) {
-    port::Status status = parent_->WaitForEvent(this, event);
+    tsl::Status status = parent_->WaitForEvent(this, event);
     if (!status.ok()) {
       LOG(ERROR) << "Error waiting for event in stream: "
                  << status.error_message()
@@ -2426,7 +2426,7 @@ Stream &Stream::ThenDoHostCallback(std::function<void()> callback) {
 }
 
 Stream &Stream::ThenDoHostCallbackWithStatus(
-    std::function<port::Status()> callback) {
+    std::function<tsl::Status()> callback) {
   VLOG_CALL(PARAM(callback));
 
   if (!ok()) {
@@ -2567,13 +2567,13 @@ Stream &Stream::ThenEnqueueOnBackgroundThread(
   });
 }
 
-port::Status Stream::BlockHostUntilDone() {
+tsl::Status Stream::BlockHostUntilDone() {
   VLOG_CALL();
 
   if (!ok()) {
     absl::MutexLock lock(&mu_);
     LOG(INFO) << status_.ToString();
-    port::Status status = port::Status(
+    tsl::Status status = tsl::Status(
         port::error::INTERNAL,
         "stream did not block host until done; was already in an error state");
     LOG(INFO) << DebugStreamPointers() << " " << status;
@@ -2582,7 +2582,7 @@ port::Status Stream::BlockHostUntilDone() {
 
   temporary_memory_manager_.DeallocateFinalizedTemporaries();
 
-  port::Status error = parent_->BlockHostUntilDone(this);
+  tsl::Status error = parent_->BlockHostUntilDone(this);
   CheckError(error.ok());
 
   RunAfterBlockHostUntilDoneCallbacks();
@@ -2606,7 +2606,7 @@ std::string Stream::DebugStreamPointers() const {
                       ",impl=", ToVlogString(implementation_.get()), "]");
 }
 
-void Stream::CheckStatus(port::Status status) {
+void Stream::CheckStatus(tsl::Status status) {
   if (status.ok()) {
     return;
   }

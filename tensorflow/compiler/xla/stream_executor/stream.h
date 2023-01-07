@@ -139,7 +139,7 @@ class Stream {
   // devices should also override AllowsSyncOnCompletion to return false.) For
   // these devices, this method can be used after work is finished to retrieve
   // execution status.
-  port::Status RefreshStatus() TF_LOCKS_EXCLUDED(mu_);
+  tsl::Status RefreshStatus() TF_LOCKS_EXCLUDED(mu_);
 
   // Initialize the stream. This must be performed before entraining any other
   // operations.
@@ -189,8 +189,8 @@ class Stream {
   // spit out helpful static_assert error traces with information as to the
   // argument number and types that were mismatched.
   template <typename... Params, typename... Args>
-  port::Status ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
-                          const TypedKernel<Params...> &kernel, Args... args);
+  tsl::Status ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
+                         const TypedKernel<Params...> &kernel, Args... args);
 
   // Record a "start" event for the interval timer at this point in the
   // stream's execution (relative to the previously and subsequently enqueued
@@ -364,7 +364,7 @@ class Stream {
       DeviceMemory<float> *output_data);
 
   template <typename InputType, typename OutputType>
-  port::Status ConvolveWithAlgorithm(
+  tsl::Status ConvolveWithAlgorithm(
       dnn::ConvolutionKind kind, const dnn::BatchDescriptor &input_descriptor,
       DeviceMemory<InputType> input_data,
       const dnn::FilterDescriptor &filter_descriptor,
@@ -395,7 +395,7 @@ class Stream {
 
   template <typename InputT, typename ScaleT, typename SideInputT,
             typename BiasT, typename OutputT>
-  port::Status FusedConvolveWithAlgorithm(
+  tsl::Status FusedConvolveWithAlgorithm(
       const dnn::BatchDescriptor &conv_input_descriptor,
       const DeviceMemory<InputT> &conv_input_data, ScaleT conv_input_scale,
       const dnn::FilterDescriptor &filter_descriptor,
@@ -496,13 +496,12 @@ class Stream {
                       DeviceMemory<float> *output_data);
 
   template <typename ElementType>
-  port::Status ThenPoolForward(
-      const dnn::PoolingDescriptor &pooling_dimensions,
-      const dnn::BatchDescriptor &input_dimensions,
-      const DeviceMemory<ElementType> &input_data,
-      const dnn::BatchDescriptor &output_dimensions,
-      DeviceMemory<ElementType> *output_data,
-      ScratchAllocator *workspace_allocator = nullptr) {
+  tsl::Status ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
+                              const dnn::BatchDescriptor &input_dimensions,
+                              const DeviceMemory<ElementType> &input_data,
+                              const dnn::BatchDescriptor &output_dimensions,
+                              DeviceMemory<ElementType> *output_data,
+                              ScratchAllocator *workspace_allocator = nullptr) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       return dnn->DoPoolForward(dnn::ToDataType<ElementType>::value, this,
                                 pooling_dimensions, input_dimensions,
@@ -513,7 +512,7 @@ class Stream {
   }
 
   template <typename ElementType>
-  port::Status ThenPoolBackward(
+  tsl::Status ThenPoolBackward(
       const dnn::PoolingDescriptor &pooling_dimensions,
       const dnn::BatchDescriptor &input_dimensions,
       const DeviceMemory<ElementType> &input_data,
@@ -782,12 +781,12 @@ class Stream {
                        DeviceMemory<double> *y, int incy);
 
   template <typename InputType>
-  port::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                            uint64_t m, uint64 n, uint64 k,
-                            const DeviceMemory<InputType> &a, int lda,
-                            const DeviceMemory<InputType> &b, int ldb,
-                            DeviceMemory<InputType> *c, int ldc,
-                            blas::ComputePrecision precision) {
+  tsl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                           uint64_t m, uint64 n, uint64 k,
+                           const DeviceMemory<InputType> &a, int lda,
+                           const DeviceMemory<InputType> &b, int ldb,
+                           DeviceMemory<InputType> *c, int ldc,
+                           blas::ComputePrecision precision) {
     InputType alpha{1.0};
     InputType beta{0.0};
     return ThenBlasGemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c,
@@ -796,22 +795,22 @@ class Stream {
 
   // TODO(parkers): Update all callers to pass kDefaultComputePrecision.
   template <typename InputType>
-  port::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                            uint64_t m, uint64 n, uint64 k,
-                            const DeviceMemory<InputType> &a, int lda,
-                            const DeviceMemory<InputType> &b, int ldb,
-                            DeviceMemory<InputType> *c, int ldc) {
+  tsl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                           uint64_t m, uint64 n, uint64 k,
+                           const DeviceMemory<InputType> &a, int lda,
+                           const DeviceMemory<InputType> &b, int ldb,
+                           DeviceMemory<InputType> *c, int ldc) {
     return ThenBlasGemm(transa, transb, m, n, k, a, lda, b, ldb, c, ldc,
                         blas::kDefaultComputePrecision);
   }
 
   template <typename InputType, typename ConstantType>
-  port::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                            uint64_t m, uint64 n, uint64 k, ConstantType alpha,
-                            const DeviceMemory<InputType> &a, int lda,
-                            const DeviceMemory<InputType> &b, int ldb,
-                            ConstantType beta, DeviceMemory<InputType> *c,
-                            int ldc, blas::ComputePrecision precision) {
+  tsl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                           uint64_t m, uint64 n, uint64 k, ConstantType alpha,
+                           const DeviceMemory<InputType> &a, int lda,
+                           const DeviceMemory<InputType> &b, int ldb,
+                           ConstantType beta, DeviceMemory<InputType> *c,
+                           int ldc, blas::ComputePrecision precision) {
     static_assert(
         detail::is_any_of<InputType, Eigen::half, Eigen::bfloat16, float,
                           double, std::complex<float>, std::complex<double>>(),
@@ -844,12 +843,12 @@ class Stream {
 
   // TODO(parkers): Update all callers to pass kDefaultComputePrecision.
   template <typename InputType, typename ConstantType>
-  port::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                            uint64_t m, uint64 n, uint64 k, ConstantType alpha,
-                            const DeviceMemory<InputType> &a, int lda,
-                            const DeviceMemory<InputType> &b, int ldb,
-                            ConstantType beta, DeviceMemory<InputType> *c,
-                            int ldc) {
+  tsl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                           uint64_t m, uint64 n, uint64 k, ConstantType alpha,
+                           const DeviceMemory<InputType> &a, int lda,
+                           const DeviceMemory<InputType> &b, int ldb,
+                           ConstantType beta, DeviceMemory<InputType> *c,
+                           int ldc) {
     return ThenBlasGemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c,
                         ldc, blas::kDefaultComputePrecision);
   }
@@ -893,7 +892,7 @@ class Stream {
       blas::ProfileResult *output_profile_result);
 
   template <typename InputType, typename OutputType>
-  port::Status ThenBlasGemmWithAlgorithm(
+  tsl::Status ThenBlasGemmWithAlgorithm(
       blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
       uint64_t k, const DeviceMemory<InputType> &a, int lda,
       const DeviceMemory<InputType> &b, int ldb, DeviceMemory<OutputType> *c,
@@ -909,7 +908,7 @@ class Stream {
   }
 
   template <typename InputType, typename OutputType, typename ConstantType>
-  port::Status ThenBlasGemmWithAlgorithm(
+  tsl::Status ThenBlasGemmWithAlgorithm(
       blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
       uint64_t k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
       const DeviceMemory<InputType> &b, int ldb, ConstantType beta,
@@ -934,7 +933,7 @@ class Stream {
     UpcastHalfToFloat<ConstantType>(&alpha_ptr, &beta_ptr, &alpha_storage,
                                     &beta_storage);
 
-    port::Status st = blas->DoBlasGemmWithAlgorithm(
+    tsl::Status st = blas->DoBlasGemmWithAlgorithm(
         this, transa, transb, m, n, k, alpha_ptr, a,
         blas::ToDataType<InputType>::value, lda, b,
         blas::ToDataType<InputType>::value, ldb, beta_ptr, c,
@@ -948,7 +947,7 @@ class Stream {
   }
 
   template <typename InputType, typename OutputType, typename ConstantType>
-  port::Status ThenBlasGemmStridedBatchedWithAlgorithm(
+  tsl::Status ThenBlasGemmStridedBatchedWithAlgorithm(
       blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
       uint64_t k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
       int64_t stride_a, const DeviceMemory<InputType> &b, int ldb,
@@ -971,7 +970,7 @@ class Stream {
     float alpha_storage, beta_storage;
     UpcastHalfToFloat<ConstantType>(&alpha_ptr, &beta_ptr, &alpha_storage,
                                     &beta_storage);
-    port::Status st = blas->DoBlasGemmStridedBatchedWithAlgorithm(
+    tsl::Status st = blas->DoBlasGemmStridedBatchedWithAlgorithm(
         this, transa, transb, m, n, k, alpha_ptr, a,
         blas::ToDataType<InputType>::value, lda, stride_a, b,
         blas::ToDataType<InputType>::value, ldb, stride_b, beta_ptr, c,
@@ -1069,7 +1068,7 @@ class Stream {
       int batch_count, ScratchAllocator *scratch_allocator);
 
   template <typename InputType, typename ConstantType>
-  port::Status ThenBlasGemmStridedBatched(
+  tsl::Status ThenBlasGemmStridedBatched(
       blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
       uint64_t k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
       int64_t stride_a, const DeviceMemory<InputType> &b, int ldb,
@@ -1440,7 +1439,7 @@ class Stream {
   //
   // Returns an OK status if the blocking was successful and the stream is ok().
   // Otherwise returns an error describing why the blocking failed.
-  port::Status BlockHostUntilDone() TF_LOCKS_EXCLUDED(mu_);
+  tsl::Status BlockHostUntilDone() TF_LOCKS_EXCLUDED(mu_);
 
   // Warning! This method interacts with internal threads in
   // sometimes-unpredictable ways and is intended for GPU-Executor-internal
@@ -1486,7 +1485,7 @@ class Stream {
   //
   // On certain platforms, ThenDoHostCallback is expected to have significant
   // negative effects on performance.
-  Stream &ThenDoHostCallbackWithStatus(std::function<port::Status()> callback);
+  Stream &ThenDoHostCallbackWithStatus(std::function<tsl::Status()> callback);
 
   // Runs the given callback after the next call to BlockHostUntilDone on this
   // stream (or after the Stream does BlockHostUntilDone in its destructor).
@@ -1525,7 +1524,7 @@ class Stream {
 
   // Checks whether types match before a call to extended BLAS version.
   template <typename ABType, typename CType, typename ScaleType>
-  port::Status CheckTypesForExtendedBlas(
+  tsl::Status CheckTypesForExtendedBlas(
       blas::ComputationType computation_type) {
     static_assert(
         detail::is_any_of<ABType, Eigen::half, Eigen::bfloat16, float, double,
@@ -1580,7 +1579,7 @@ class Stream {
   void CheckError(bool operation_retcode) TF_LOCKS_EXCLUDED(mu_);
 
   // Checks the status and logs the error message, if any.
-  void CheckStatus(port::Status status) TF_LOCKS_EXCLUDED(mu_);
+  void CheckStatus(tsl::Status status) TF_LOCKS_EXCLUDED(mu_);
 
   void SetError() { CheckError(false /* = operation_retcode */); }
 
@@ -1611,7 +1610,7 @@ class Stream {
   bool allocated_ ABSL_GUARDED_BY(mu_);
 
   // The last error (if any) of all method calls.
-  port::Status status_ ABSL_GUARDED_BY(mu_);
+  tsl::Status status_ ABSL_GUARDED_BY(mu_);
 
   // Sub-streams that are generated from this stream. Each element has a pointer
   // to sub-stream and a boolean value indicating if this substream is ready to
@@ -1659,10 +1658,10 @@ class Stream {
 // Inlines
 
 template <typename... Params, typename... Args>
-inline port::Status Stream::ThenLaunch(ThreadDim thread_dims,
-                                       BlockDim block_dims,
-                                       const TypedKernel<Params...> &kernel,
-                                       Args... args) {
+inline tsl::Status Stream::ThenLaunch(ThreadDim thread_dims,
+                                      BlockDim block_dims,
+                                      const TypedKernel<Params...> &kernel,
+                                      Args... args) {
   KernelInvocationChecker<std::tuple<Params...>,
                           std::tuple<Args...>>::CheckAllStaticAssert();
 

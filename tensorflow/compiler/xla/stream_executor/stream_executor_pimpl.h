@@ -84,8 +84,8 @@ class StreamExecutor {
 
   ~StreamExecutor();
 
-  port::Status Init();
-  port::Status Init(DeviceOptions device_options);
+  tsl::Status Init();
+  tsl::Status Init(DeviceOptions device_options);
 
   // Returns the platform that this StreamExecutor is acting upon.
   ABSL_DEPRECATED("Use platform() instead.")
@@ -119,7 +119,7 @@ class StreamExecutor {
   //
   // If an error occurs, or there is no kernel available for the StreamExecutor
   // platform, error status is returned.
-  port::Status GetKernel(const MultiKernelLoaderSpec& spec, KernelBase* kernel);
+  tsl::Status GetKernel(const MultiKernelLoaderSpec& spec, KernelBase* kernel);
 
   // Releases any state associated with the previously loaded kernel.
   void UnloadKernel(const KernelBase* kernel);
@@ -127,10 +127,10 @@ class StreamExecutor {
   // Loads a module for the platform this StreamExecutor is acting upon.
   //
   // `spec` describes the module to be loaded.  On success writes the handle for
-  // the loaded module to `module_handle` and returns Status::OK.
-  // Otherwise, returns the error which has occurred.
-  port::Status LoadModule(const MultiModuleLoaderSpec& spec,
-                          ModuleHandle* module_handle);
+  // the loaded module to `module_handle` and returns OkStatus().  Otherwise,
+  // returns the error which has occurred.
+  tsl::Status LoadModule(const MultiModuleLoaderSpec& spec,
+                         ModuleHandle* module_handle);
 
   // Unloads the module with handle `module_handle`.
   bool UnloadModule(ModuleHandle module_handle);
@@ -251,13 +251,13 @@ class StreamExecutor {
 
   // Blocks the caller while "size" bytes are zeroed out (in POD fashion) at the
   // given location in device memory.
-  port::Status SynchronousMemZero(DeviceMemoryBase* location,
-                                  uint64_t size) ABSL_MUST_USE_RESULT;
+  tsl::Status SynchronousMemZero(DeviceMemoryBase* location,
+                                 uint64_t size) ABSL_MUST_USE_RESULT;
 
   // Blocks the caller while "size" bytes are initialized to "value" (in POD
   // fashion) at the given location in device memory.
-  port::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
-                                 uint64_t size) ABSL_MUST_USE_RESULT;
+  tsl::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
+                                uint64_t size) ABSL_MUST_USE_RESULT;
 
   // [deprecated] Blocks the caller while a data segment of the given size is
   // copied from the host source to the device destination.
@@ -274,31 +274,30 @@ class StreamExecutor {
                          uint64_t size) ABSL_MUST_USE_RESULT;
 
   // Same as SynchronousMemcpy(DeviceMemoryBase*, ...) above.
-  port::Status SynchronousMemcpyH2D(const void* host_src, int64_t size,
-                                    DeviceMemoryBase* device_dst);
+  tsl::Status SynchronousMemcpyH2D(const void* host_src, int64_t size,
+                                   DeviceMemoryBase* device_dst);
 
   // Alternative interface for memcpying from host to device that takes an
   // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <class T>
-  port::Status SynchronousMemcpyH2D(
-      port::ArraySlice<T> host_src,  // non-absl ok
-      DeviceMemoryBase* device_dst) {
+  tsl::Status SynchronousMemcpyH2D(port::ArraySlice<T> host_src,  // non-absl ok
+                                   DeviceMemoryBase* device_dst) {
     auto host_size = host_src.size() * sizeof(T);
     CHECK(device_dst->size() == 0 || device_dst->size() >= host_size);
     return SynchronousMemcpyH2D(host_src.begin(), host_size, device_dst);
   }
 
   // Same as SynchronousMemcpy(void*, ...) above.
-  port::Status SynchronousMemcpyD2H(const DeviceMemoryBase& device_src,
-                                    int64_t size, void* host_dst);
+  tsl::Status SynchronousMemcpyD2H(const DeviceMemoryBase& device_src,
+                                   int64_t size, void* host_dst);
 
   // Alternative interface for memcpying from device to host that takes an
   // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <typename T>
-  port::Status SynchronousMemcpyD2H(const DeviceMemory<T>& device_src,
-                                    port::MutableArraySlice<T> host_dst) {
+  tsl::Status SynchronousMemcpyD2H(const DeviceMemory<T>& device_src,
+                                   port::MutableArraySlice<T> host_dst) {
     auto host_size = host_dst.size() * sizeof(T);
     CHECK(device_src.size() == 0 || host_size >= device_src.size());
     return SynchronousMemcpyD2H(device_src, host_size, host_dst.begin());
@@ -313,15 +312,15 @@ class StreamExecutor {
   // Enqueues an operation onto stream to zero out size bytes at the given
   // device memory location. Neither stream nor location may be null. Returns
   // whether the operation was successfully enqueued onto the stream.
-  port::Status MemZero(Stream* stream, DeviceMemoryBase* location,
-                       uint64_t size) ABSL_MUST_USE_RESULT;
+  tsl::Status MemZero(Stream* stream, DeviceMemoryBase* location,
+                      uint64_t size) ABSL_MUST_USE_RESULT;
 
   // Enqueues an operation onto stream to set 32-bit patterns starting at
   // location, for byte count given by size. size must be 32-bit quantified
   // (i.e. evently divisible by 4). Returns whether the operation was
   // successfully enqueued onto the stream.
-  port::Status Memset32(Stream* stream, DeviceMemoryBase* location,
-                        uint32_t pattern, uint64_t size);
+  tsl::Status Memset32(Stream* stream, DeviceMemoryBase* location,
+                       uint32_t pattern, uint64_t size);
 
   // Enables peer access from this StreamExecutor to memory
   // allocated by other, such that launched device code, memcpies, etc may
@@ -330,7 +329,7 @@ class StreamExecutor {
   // Both this StreamExecutor and other must be backed by the same platform (as
   // in
   // CUDA vs OpenCL) implementation.
-  port::Status EnablePeerAccessTo(StreamExecutor* other);
+  tsl::Status EnablePeerAccessTo(StreamExecutor* other);
 
   // Returns whether it's possible to enable peer access from this
   // StreamExecutor
@@ -385,7 +384,7 @@ class StreamExecutor {
                              std::vector<dnn::AlgorithmDesc>* out_algorithms);
 
   // Returns the supported algorithms / execution plans for a convolution.
-  port::Status GetConvolveRunners(
+  tsl::Status GetConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
@@ -397,7 +396,7 @@ class StreamExecutor {
       bool use_fallback, ScratchAllocator* scratch_allocator,
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans);
 
-  port::Status GetFusedConvolveRunners(
+  tsl::Status GetFusedConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType input_type, dnn::DataType bias_type,
       dnn::DataType output_type, double conv_input_scale,
@@ -410,7 +409,7 @@ class StreamExecutor {
       bool use_fallback, dnn::ActivationMode activation_mode,
       std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans);
 
-  port::Status GetFusedMatmulRunners(
+  tsl::Status GetFusedMatmulRunners(
       bool use_cudnn_frontend, dnn::DataType input_type,
       dnn::DataType bias_type, dnn::DataType output_type, Stream* stream,
       bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k,
@@ -500,9 +499,9 @@ class StreamExecutor {
   //
   // This is called by Stream::Launch() to delegate to the platform's launch
   // implementation in StreamExecutorInterface::Launch().
-  port::Status Launch(Stream* stream, const ThreadDim& thread_dims,
-                      const BlockDim& block_dims, const KernelBase& kernel,
-                      const KernelArgsArrayBase& args);
+  tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
+                     const BlockDim& block_dims, const KernelBase& kernel,
+                     const KernelArgsArrayBase& args);
 
   // Gets-or-creates (creates with memoization) a FftSupport datatype that can
   // be used to execute FFT routines on the current platform.
@@ -600,10 +599,10 @@ class StreamExecutor {
   // Causes the host code to synchronously wait for operations entrained onto
   // stream to complete. Effectively a join on the asynchronous device
   // operations enqueued on the stream before this program point.
-  port::Status BlockHostUntilDone(Stream* stream);
+  tsl::Status BlockHostUntilDone(Stream* stream);
 
   // Without blocking the device, retrieve the current stream status.
-  port::Status GetStatus(Stream* stream);
+  tsl::Status GetStatus(Stream* stream);
 
   // Finds and retrieves device memory for the symbol on the underlying
   // platform.
@@ -634,19 +633,19 @@ class StreamExecutor {
   // Entrains on a stream a user-specified function to be run on the host.
   // See Stream::ThenDoHostCallback for full details.
   // This is the preferred form for a callback that may return an error.
-  bool HostCallback(Stream* stream, std::function<port::Status()> callback);
+  bool HostCallback(Stream* stream, std::function<tsl::Status()> callback);
 
   // Performs platform-specific allocation and initialization of an event.
-  port::Status AllocateEvent(Event* event);
+  tsl::Status AllocateEvent(Event* event);
 
   // Performs platform-specific deallocation and cleanup of an event.
-  port::Status DeallocateEvent(Event* event);
+  tsl::Status DeallocateEvent(Event* event);
 
   // Inserts the specified event at the end of the specified stream.
-  port::Status RecordEvent(Stream* stream, Event* event);
+  tsl::Status RecordEvent(Stream* stream, Event* event);
 
   // Wait for the specified event at the end of the specified stream.
-  port::Status WaitForEvent(Stream* stream, Event* event);
+  tsl::Status WaitForEvent(Stream* stream, Event* event);
 
   // Requests the current status of the event from the underlying platform.
   Event::Status PollForEventStatus(Event* event);
