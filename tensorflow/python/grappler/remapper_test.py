@@ -158,10 +158,6 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
   @test_util.disable_xla('This test does not pass with XLA')
   def test_matmul_biasadd_activation_fusion(self, mode):
     """Test MatMul+BiasAdd+Gelu fusion."""
-
-
-
-
     self.maybe_skip_test(mode)
 
     def gelu_approximate(x):

@@ -1126,49 +1126,39 @@ inline bool VerifyConstants(RemapperContext* ctx,
                             std::map<string, float>* values_map) {
   using utils::MutableNodeView;
 
-  bool ret = false;
   for (auto it = values_map->begin(); it != values_map->end(); ++it) {
     int node_idx = nodes_map->at(it->first);
     MutableNodeView* node_view = ctx->graph_view.GetNode(node_idx);
     NodeDef* node_def = node_view->node();
+    Tensor const_tensor;
 
-    auto verify_constant = [](const NodeDef* node_def, const float second) {
-      Tensor const_tensor;
-      if (node_def != nullptr && node_def->op() == "Const" &&
-          const_tensor.FromProto(node_def->attr().at("value").tensor())) {
-        if (const_tensor.NumElements() == 1) {
-          DataType dtype = const_tensor.dtype();
-          float const_value;
-          if (dtype == DT_FLOAT) {
-            const_value = const_tensor.flat<float>()(0);
-          } else if (dtype == DT_BFLOAT16) {
-            const_value = const_tensor.flat<bfloat16>()(0);
-          } else if (dtype == DT_HALF) {
-            const_value = const_tensor.flat<Eigen::half>()(0);
-          } else {
-            return false;
-          }
-          if (std::abs(const_value - second) > 1e-2) return false;
-        } else {
-          return false;
-        }
-        return true;
-      }
-      return false;
-    };
-
+    // If node is a Cast, look for Const in fan-ins.
     if (node_def != nullptr && node_def->op() == "Cast") {
       const auto& regular_fanin_0 = node_view->GetRegularFanin(0);
       const auto* regular_node_view = regular_fanin_0.node_view();
-      const auto* const_node = regular_node_view->node();
-
-      ret = verify_constant(const_node, it->second);
-
-    } else {
-      ret = verify_constant(node_def, it->second);
+      node_def = regular_node_view->node();
     }
+
+    // Verify if the node is a constant.
+    if (node_def == nullptr || node_def->op() != "Const" ||
+        !const_tensor.FromProto(node_def->attr().at("value").tensor()) ||
+        const_tensor.NumElements() != 1) {
+      return false;
+    }
+    DataType dtype = const_tensor.dtype();
+    float const_value;
+    if (dtype == DT_FLOAT) {
+      const_value = const_tensor.flat<float>()(0);
+    } else if (dtype == DT_BFLOAT16) {
+      const_value = static_cast<float>(const_tensor.flat<bfloat16>()(0));
+    } else if (dtype == DT_HALF) {
+      const_value = static_cast<float>(const_tensor.flat<Eigen::half>()(0));
+    } else {
+      return false;
+    }
+    if (std::abs(const_value - it->second) > 1e-2) return false;
   }
-  return ret;
+  return true;
 }
 
 bool IsMatchedMatMulBiasAddAndGeluExact(
@@ -1179,6 +1169,53 @@ bool IsMatchedMatMulBiasAddAndGeluExact(
   using utils::MatchingDirection;
   using utils::NodeStatus;
   // clang-format off
+  // Pattern 1:
+  //    Const: 1/sqrt(2)        Const: 1    Const: 1/2
+  //                  \               \         \
+  //  * --> BiasAdd --> Mul --> Erf --> AddV2 --> Mul --> Mul
+  //        /       \____________________________________/
+  //  MatMul
+  static utils::OpTypePattern* gelu_exact_pattern = new utils::OpTypePattern
+    {"Mul", "output", NodeStatus::kReplace,
+      {
+        {"Mul", "erf_plus_one_times_one_half", NodeStatus::kRemove,
+          {
+            {"Add|AddV2", "erf_plus_one", NodeStatus::kRemove,
+              {
+                {"Erf", "erf", NodeStatus::kRemove,
+                  {
+                    {"Mul", "bias_add_x_sqrt_one_half",
+                     NodeStatus::kRemove,
+                      {
+                        {"BiasAdd", "bias_add", NodeStatus::kRemove},
+                        {"Cast|Const", "sqrt_one_half", NodeStatus::kRemain}
+                      }
+                    }  // Mul: "bias_add_x_sqrt_one_half"
+                  }
+                },  // Erf: "erf"
+                {"Cast|Const", "one", NodeStatus::kRemain}
+              }  // Add|AddV2: "erf_plus_one"
+            },
+            {"Cast|Const", "one_half", NodeStatus::kRemain}
+          }
+        },  // Mul: "erf_plus_one_times_one_half"
+        {"BiasAdd", "bias_add", NodeStatus::kRemove,
+          {
+            {"MatMul", "matmul", NodeStatus::kRemove},
+            {"*", "bias", NodeStatus::kRemain}
+          }
+        }  // BiasAdd: "bias_add"
+      }  // Mul: "output"
+    };
+
+  // Pattern 2:
+  //  Cast|Const: 1/sqrt(2)    Cast|Const: 1
+  //                  \               \
+  //  * --> BiasAdd --> Mul --> Erf --> Add|AddV2 --> Mul
+  //      /         \                                 /
+  // MatMul           ----------------------------> Mul
+  //                                                /
+  //                                  Cast|Const: 1/2
   static utils::OpTypePattern* gelu_exact_pattern2 = new utils::OpTypePattern
     {"Mul", "output", NodeStatus::kReplace,
       {
@@ -1186,17 +1223,17 @@ bool IsMatchedMatMulBiasAddAndGeluExact(
           {
             {"Erf", "erf", NodeStatus::kRemove,
               {
-                {"Mul", "bias_add_times_square_root_one_half", NodeStatus::kRemove,
+                {"Mul", "bias_add_x_sqrt_one_half", NodeStatus::kRemove,
                   {
                     {"BiasAdd", "bias_add", NodeStatus::kRemove},
-                    {"Cast|Const", "square_root_one_half", NodeStatus::kRemain}
+                    {"Cast|Const", "sqrt_one_half", NodeStatus::kRemain}
                   }
-                }
+                }  // Mul: "bias_add_x_sqrt_one_half"
               }
-            },
+            },  // Erf: "erf"
             {"Cast|Const", "one", NodeStatus::kRemain}
           }
-        },
+        },  // Add|AddV2: "erf_plus_one"
         {"Mul", "erf_plus_one_times_one_half", NodeStatus::kRemove,
           {
             {"BiasAdd", "bias_add", NodeStatus::kRemove,
@@ -1204,45 +1241,12 @@ bool IsMatchedMatMulBiasAddAndGeluExact(
                 {"MatMul", "matmul", NodeStatus::kRemove},
                 {"*", "bias", NodeStatus::kRemain}
               }
-            },
+            },  // BiasAdd: "bias_add"
             {"Cast|Const", "one_half", NodeStatus::kRemain}
           }
-        }
+        }  // Mul: "erf_plus_one_times_one_half"
       }
-    };
-
-  static utils::OpTypePattern* gelu_exact_pattern = new utils::OpTypePattern
-    {"Mul", "output", NodeStatus::kReplace,
-      {
-        {"Mul", "erf_plus_one_times_one_half", NodeStatus::kRemove,
-          {
-            {"AddV2", "erf_plus_one", NodeStatus::kRemove,
-              {
-                {"Erf", "erf", NodeStatus::kRemove,
-                  {
-                    {"Mul", "bias_add_times_square_root_one_half",
-                     NodeStatus::kRemove,
-                      {
-                        {"BiasAdd", "bias_add", NodeStatus::kRemove},
-                        {"Cast|Const", "square_root_one_half", NodeStatus::kRemain}
-                      }
-                    }
-                  }
-                },
-                {"Cast|Const", "one", NodeStatus::kRemain}
-              }
-            },
-            {"Cast|Const", "one_half", NodeStatus::kRemain}
-          }
-        },
-        {"BiasAdd", "bias_add", NodeStatus::kRemove,
-          {
-            {"MatMul", "matmul", NodeStatus::kRemove},
-            {"*", "bias", NodeStatus::kRemain}
-          }
-        }
-      }
-    };
+    };  // Mul: "output"
   // clang-format on
 
   utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
@@ -1372,7 +1376,7 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
     utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
         &(ctx->graph_view));
 
-  // Find GeluApproximate
+    // Find GeluApproximate
     matched_nodes_map->clear();
     remove_node_indices->clear();
     found_gelu_approximate = graph_matcher.GetMatchedNodes(
@@ -1423,7 +1427,7 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
 
     // Check if the matched constants have desired values.
     std::map<string, float> values_map = {
-        {"square_root_one_half", 0.707106}, {"one", 1.0}, {"one_half", 0.5}};
+        {"sqrt_one_half", 0.707106}, {"one", 1.0}, {"one_half", 0.5}};
     if (!VerifyConstants(ctx, matched_nodes_map, &values_map)) return false;
   } else if (found_gelu_approximate) {
     NodeDef* matmul_node =

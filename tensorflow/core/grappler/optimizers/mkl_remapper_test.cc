@@ -747,11 +747,10 @@ class FusedMatMulBiasAddAndGeluTest : public GrapplerTest {
   }
 };
 
-// Gelu has two implementations (1) exact and (2) approximate.
-// Gelu exact has 2 variations. Here gelu-exact both patterns are
-// tested for float32 and bfloat16. Gelu-approximate test is added in
-// tensorflow/python/grappler/remapper_test.py, since the pattern is changed by
-// other optimizers before the remapper optimizer.
+// Fused {MatMul + BiasAdd + Gelu-exact} has 2 subgraph patterns. We test both
+// patterns with float32 and bfloat16 data types here. Gelu-approximate test is
+// added in `tensorflow/python/grappler/remapper_test.py` since the pattern is
+// changed by other optimizers before the remapper optimizer.
 TEST_F(FusedMatMulBiasAddAndGeluTest, Float32GeluExact) {
   RunTest<DT_FLOAT, false>();
 }
