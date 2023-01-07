@@ -75,6 +75,7 @@ class Thunk {
     kSequential,
     kTriangularSolve,
     kWhile,
+    kFusedMHA
   };
 
   struct ThunkInfo {

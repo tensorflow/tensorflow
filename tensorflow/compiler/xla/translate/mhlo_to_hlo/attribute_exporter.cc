@@ -217,4 +217,40 @@ ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr) {
   return aliasInfo;
 }
 
+DotDimensionNumbers ConvertDotDimensionNumbers(
+    mlir::mhlo::DotDimensionNumbersAttr input) {
+  DotDimensionNumbers output;
+
+  for (auto v : input.getLhsBatchingDimensions()) {
+    output.add_lhs_batch_dimensions(v);
+  }
+
+  for (auto v : input.getRhsBatchingDimensions()) {
+    output.add_rhs_batch_dimensions(v);
+  }
+
+  for (auto v : input.getLhsContractingDimensions()) {
+    output.add_lhs_contracting_dimensions(v);
+  }
+
+  for (auto v : input.getRhsContractingDimensions()) {
+    output.add_rhs_contracting_dimensions(v);
+  }
+
+  return output;
+}
+
+StatusOr<std::vector<int64_t>> ConvertMlirArrayAttrToInt64Array(
+    const mlir::ArrayAttr& array) {
+  int rank = array.size();
+  std::vector<int64_t> converted_array(rank);
+  for (int i = 0; i < rank; i++) {
+    mlir::IntegerAttr attr = array[i].dyn_cast<mlir::IntegerAttr>();
+    if (!attr) {
+      return InternalError("Type Error: Expected layout integer attribute");
+    }
+    converted_array[i] = attr.getInt();
+  }
+  return converted_array;
+}
 }  // namespace xla

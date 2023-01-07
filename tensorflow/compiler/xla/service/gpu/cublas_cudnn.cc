@@ -51,6 +51,19 @@ const absl::string_view kCudnnConvBiasActivationForwardCallTarget =
 const absl::string_view kCudnnConvForwardCallTarget = "__cudnn$convForward";
 const absl::string_view kTriangularSolveCallTarget = "__cublas$triangularSolve";
 
+// fMHA call targets.
+const char* const kCudnnfMHADefaultCallTarget = "__cudnn$fhmaDefault";
+const char* const kCudnnfMHAScaleBiasMaskSoftmaxCallTarget =
+    "__cudnn$fhmaScaleBiasMaskSoftmax";
+const char* const kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget =
+    "__cudnn$fhmaScaleBiasMaskSoftmaxDropout";
+const char* const kCudnnfMHAScaleMaskSoftmaxCallTarget =
+    "__cudnn$fhmaScaleMaskSoftmax";
+const char* const kCudnnfMHAScaleMaskSoftmaxDropoutCallTarget =
+    "__cudnn$fhmaScaleMaskSoftmaxDropout";
+const char* const kCudnnfMHASoftmaxDropoutCallTarget =
+    "__cudnn$fhmaSoftmaxDropout";
+
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
   if (hlo.opcode() != HloOpcode::kCustomCall) {
     return false;
@@ -60,6 +73,19 @@ bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
          target == kCudnnConvBackwardInputCallTarget ||
          target == kCudnnConvBackwardFilterCallTarget ||
          target == kCudnnConvBiasActivationForwardCallTarget;
+}
+
+bool IsCustomCallTofMHA(const HloInstruction& hlo) {
+  if (hlo.opcode() != HloOpcode::kCustomCall) {
+    return false;
+  }
+  const auto& target = hlo.custom_call_target();
+  return target == kCudnnfMHADefaultCallTarget ||
+         target == kCudnnfMHAScaleBiasMaskSoftmaxCallTarget ||
+         target == kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget ||
+         target == kCudnnfMHAScaleMaskSoftmaxCallTarget ||
+         target == kCudnnfMHAScaleMaskSoftmaxDropoutCallTarget ||
+         target == kCudnnfMHASoftmaxDropoutCallTarget;
 }
 
 StatusOr<CudnnConvKind> GetCudnnConvKind(
@@ -90,6 +116,41 @@ std::string CudnnConvKindToString(CudnnConvKind kind) {
       return "backward_input";
     case CudnnConvKind::kForwardActivation:
       return "forward with activation";
+  }
+}
+
+StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(
+    const HloCustomCallInstruction* instr) {
+  absl::string_view target = instr->custom_call_target();
+  if (target == kCudnnfMHADefaultCallTarget) return CudnnfMHAKind::kDefault;
+  if (target == kCudnnfMHAScaleBiasMaskSoftmaxCallTarget)
+    return CudnnfMHAKind::kScaleBiasMaskSoftmax;
+  if (target == kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget)
+    return CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout;
+  if (target == kCudnnfMHAScaleMaskSoftmaxCallTarget)
+    return CudnnfMHAKind::kScaleMaskSoftmax;
+  if (target == kCudnnfMHAScaleMaskSoftmaxDropoutCallTarget)
+    return CudnnfMHAKind::kScaleMaskSoftmaxDropout;
+  if (target == kCudnnfMHASoftmaxDropoutCallTarget)
+    return CudnnfMHAKind::kSoftmaxDropout;
+
+  return InternalError("Unexpected call target: %s", target);
+}
+
+std::string CudnnfMHAKindToString(CudnnfMHAKind kind) {
+  switch (kind) {
+    case CudnnfMHAKind::kDefault:
+      return "fused_batched_matmuls";
+    case CudnnfMHAKind::kSoftmaxDropout:
+      return "fmha_softmax_with_dropout";
+    case CudnnfMHAKind::kScaleMaskSoftmax:
+      return "fmha_scaled_masked_softmax";
+    case CudnnfMHAKind::kScaleMaskSoftmaxDropout:
+      return "fmha_scaled_masked_softmax_with_dropout";
+    case CudnnfMHAKind::kScaleBiasMaskSoftmax:
+      return "fmha_scaled_bias_masked_softmax";
+    case CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout:
+      return "fmha_scaled_bias_masked_softmax_with_dropout";
   }
 }
 

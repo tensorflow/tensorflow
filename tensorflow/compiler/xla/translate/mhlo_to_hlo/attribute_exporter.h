@@ -57,5 +57,11 @@ StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
 
 StatusOr<std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
 ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr);
+
+DotDimensionNumbers ConvertDotDimensionNumbers(
+    mlir::mhlo::DotDimensionNumbersAttr input);
+
+StatusOr<std::vector<int64_t>> ConvertMlirArrayAttrToInt64Array(
+    const mlir::ArrayAttr& array);
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_ATTRIBUTE_EXPORTER_H_

@@ -90,6 +90,8 @@ Thunk::ExecuteParams::ExecuteParams(
       return "kTriangularSolve";
     case Thunk::kWhile:
       return "kWhile";
+    case Thunk::kFusedMHA:
+      return "kFusedMHA";
   }
 }
 
