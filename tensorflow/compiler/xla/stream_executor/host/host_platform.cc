@@ -75,7 +75,7 @@ HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
       config.ordinal);
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
-    return port::Status(
+    return tsl::Status(
         port::error::INTERNAL,
         absl::StrFormat(
             "failed initializing StreamExecutor for device ordinal %d: %s",
