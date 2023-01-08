@@ -35,6 +35,7 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -370,6 +371,8 @@ def map_fn(fn,
         "parallel.", 1)
     parallel_iterations = 1
 
+  # Explicitly read values of ResourceVariables.
+  elems = variable_utils.convert_variables_to_tensors(elems)
   # Flatten the input tensors, and get the TypeSpec for each one.
   elems_flat = nest.flatten(elems)
 

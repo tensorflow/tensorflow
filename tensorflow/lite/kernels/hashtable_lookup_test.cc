@@ -24,7 +24,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -113,7 +113,7 @@ TEST(HashtableLookupOpTest, Test2DInput) {
   m.SetHashtableKey({-11, 0, 1234});
   m.SetHashtableValue([](int i, int j) { return i + j / 10.0f; });
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
                                  2.0, 2.1,  // 2-nd item
@@ -136,7 +136,7 @@ TEST(HashtableLookupOpTest, Test1DInput) {
   m.SetHashtableKey({-11, 0, 1234});
   m.SetHashtableValue([](int i) { return i * i / 10.0f; });
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
                                  0.4,  // 2-nd item
@@ -159,7 +159,7 @@ TEST(HashtableLookupOpTest, TestString) {
   m.SetHashtableKey({-11, 0, 1234});
   m.SetHashtableValue({"Hello", "", "Hi"});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetStringOutput(), ElementsAreArray({
                                        "Hi",     // 2-nd item

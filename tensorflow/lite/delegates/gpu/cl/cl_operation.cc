@@ -56,9 +56,6 @@ std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
   result += "#define INIT_INT2v2(v0, v1) (int2)(v0, v1)\n";
   result += "#define INIT_INT4v4(v0, v1, v2, v3) (int4)(v0, v1, v2, v3)\n";
   result += "#define CONVERT_TO_INT4(value) convert_int4(value)\n";
-  result +=
-      "#define SELECT_BY_INDEX_FROM_FLT4(value, index) (FLT[4]){(value).x, "
-      "(value).y, (value).z, (value).w}[index]\n";
   switch (precision) {
     case CalculationsPrecision::F32:
       result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
@@ -118,13 +115,17 @@ std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
       result += "#define INIT_FLT4v4(v0, v1, v2, v3) (half4)(v0, v1, v2, v3)\n";
       break;
   }
+  result += "#define bool2 uchar2\n";
+  result += "#define bool3 uchar3\n";
+  result += "#define bool4 uchar4\n";
+
+  const auto cl_specific_defines = GetClSpecificDefines();
+  for (const auto& define : cl_specific_defines) {
+    result += "#define " + define.first + " " + define.second + "\n";
+  }
   return result;
 }
 }  // namespace
-
-absl::Status ClOperation::AddOperation(ClOperation* operation) {
-  return operation_->AddOperation(operation->operation_.get());
-}
 
 absl::Status ClOperation::UpdateParams() {
   for (int i = 0; i < operation_->GetSrcTensorsNames().size(); ++i) {
@@ -163,8 +164,7 @@ absl::Status ClOperation::SetDstTensor(int index, Tensor* tensor) {
 
 absl::Status ClOperation::Compile(const CreationContext& creation_context) {
   operation_->code_ =
-      GetCommonOpenCLDefines(operation_->GetDefinition().precision) +
-      operation_->code_;
+      GetCommonOpenCLDefines(operation_->GetPrecision()) + operation_->code_;
   RETURN_IF_ERROR(cl_args_.Init(
       creation_context.GetGpuInfo(),
       creation_context.context, &operation_->args_, &operation_->code_));

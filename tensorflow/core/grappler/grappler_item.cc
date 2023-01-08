@@ -184,7 +184,7 @@ Status GrapplerItem::AddDevice(const string& device) {
   }
 
   devices_.insert(DeviceNameUtils::ParsedNameToString(name));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GrapplerItem::AddDevices(const GrapplerItem& other) {
@@ -194,7 +194,7 @@ Status GrapplerItem::AddDevices(const GrapplerItem& other) {
     if (!added.ok()) invalid_devices.emplace_back(device);
   }
   return invalid_devices.empty()
-             ? Status::OK()
+             ? OkStatus()
              : errors::InvalidArgument("Skipped invalid devices: [",
                                        absl::StrJoin(invalid_devices, ", "),
                                        "]");
@@ -208,7 +208,7 @@ Status GrapplerItem::InferDevicesFromGraph() {
   }
   VLOG(2) << "Inferred device set: [" << absl::StrJoin(devices_, ", ") << "]";
   return invalid_devices.empty()
-             ? Status::OK()
+             ? OkStatus()
              : errors::InvalidArgument("Skipped invalid devices: [",
                                        absl::StrJoin(invalid_devices, ", "),
                                        "]");

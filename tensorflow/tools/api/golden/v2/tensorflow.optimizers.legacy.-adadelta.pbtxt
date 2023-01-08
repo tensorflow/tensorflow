@@ -1,0 +1,83 @@
+path: "tensorflow.optimizers.legacy.Adadelta"
+tf_class {
+  is_instance: "<class \'keras.optimizers.legacy.adadelta.Adadelta\'>"
+  is_instance: "<class \'keras.optimizers.legacy.optimizer_v2.OptimizerV2\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "clipnorm"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "clipvalue"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "global_clipnorm"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "iterations"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "weights"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'learning_rate\', \'rho\', \'epsilon\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'0.001\', \'0.95\', \'1e-07\', \'Adadelta\'], "
+  }
+  member_method {
+    name: "add_slot"
+    argspec: "args=[\'self\', \'var\', \'slot_name\', \'initializer\', \'shape\'], varargs=None, keywords=None, defaults=[\'zeros\', \'None\'], "
+  }
+  member_method {
+    name: "add_weight"
+    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'trainable\', \'synchronization\', \'aggregation\'], varargs=None, keywords=None, defaults=[\'None\', \'zeros\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregationV2.NONE\'], "
+  }
+  member_method {
+    name: "apply_gradients"
+    argspec: "args=[\'self\', \'grads_and_vars\', \'name\', \'experimental_aggregate_gradients\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
+  }
+  member_method {
+    name: "from_config"
+    argspec: "args=[\'cls\', \'config\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "get_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_gradients"
+    argspec: "args=[\'self\', \'loss\', \'params\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_slot"
+    argspec: "args=[\'self\', \'var\', \'slot_name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_slot_names"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_updates"
+    argspec: "args=[\'self\', \'loss\', \'params\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_weights"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "minimize"
+    argspec: "args=[\'self\', \'loss\', \'var_list\', \'grad_loss\', \'name\', \'tape\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "set_weights"
+    argspec: "args=[\'self\', \'weights\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "variables"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

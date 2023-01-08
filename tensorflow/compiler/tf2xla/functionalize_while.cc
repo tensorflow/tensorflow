@@ -103,7 +103,7 @@ Status CopySubgraph(const Graph& graph, const WhileLoopFrame* frame,
       output->AddEdge(src_copy, src_output, dst_copy, e->dst_input());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<Node*> BuildArgNode(Graph* graph, DataType type, int index) {
@@ -120,7 +120,7 @@ StatusOr<Node*> BuildArgNode(Graph* graph, DataType type, int index) {
 Status BuildLoopCondition(const Graph& graph, WhileLoopFrame* frame,
                           std::unique_ptr<Graph>* cond_output) {
   VLOG(2) << "Building loop condition for " << frame->name;
-  *cond_output = absl::make_unique<Graph>(graph.op_registry());
+  *cond_output = std::make_unique<Graph>(graph.op_registry());
   Graph* output = cond_output->get();
 
   // Map from nodes in the original graph to the condition graph.
@@ -157,7 +157,7 @@ Status BuildLoopBody(const Graph& graph, WhileLoopFrame* frame,
                      DataTypeVector* arg_types,
                      std::unique_ptr<Graph>* body_output) {
   VLOG(2) << "Building loop body for " << frame->name;
-  *body_output = absl::make_unique<Graph>(graph.op_registry());
+  *body_output = std::make_unique<Graph>(graph.op_registry());
   Graph* output = body_output->get();
 
   // Map from nodes in the original graph to the body graph.
@@ -206,7 +206,7 @@ Status BuildLoopBody(const Graph& graph, WhileLoopFrame* frame,
   TF_RETURN_IF_ERROR(CopySubgraph(graph, frame, std::move(next_iterations),
                                   squash_src_outputs, &node_map, output));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
@@ -216,7 +216,7 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
     VLOG(2) << "Skipping functionalization for frame " << frame->name
             << " because it has control flow nodes that are filtered out by "
                "the specified node filter.";
-    return Status::OK();
+    return OkStatus();
   }
   VLOG(2) << "Frame " << frame->name << " before: "
           << DumpGraphToFile("functionalize_before", *graph, library);
@@ -436,10 +436,7 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
   builder.Attr("cond", cond_name);
   builder.Attr("body", body_name);
   // Add some internal attributes which need to be propagated.
-  // TODO(b/160275126): attributes shouldn't be hard-coded here
-  for (const char* attr_name :
-       {kXlaFrontendAttributesAttrName, kXlaOutsideCompilationAttrName,
-        kTpuReplicateAttrName}) {
+  for (absl::string_view attr_name : kAttrsToPropagate) {
     string attr_val;
     if (GetNodeAttr(frame->loop_cond->def(), attr_name, &attr_val).ok()) {
       builder.Attr(attr_name, attr_val);
@@ -504,7 +501,7 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
   VLOG(2) << "Frame " << frame->name << " after: "
           << DumpGraphToFile("functionalize_after", *graph, library);
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -568,7 +565,7 @@ Status FunctionalizeWhileLoop(Graph* graph, FunctionLibraryDefinition* library,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

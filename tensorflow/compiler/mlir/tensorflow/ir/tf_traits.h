@@ -18,9 +18,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_TRAITS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_TRAITS_H_
 
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
@@ -100,6 +102,24 @@ inline LogicalResult verifySameOperandsAndResultElementTypeResolveRef(
   }
   return success();
 }
+
+inline ShapedType MergeType(ShapedType a, ShapedType b) {
+  if (!a.hasRank()) {
+    return b;
+  }
+  if (!b.hasRank()) {
+    return a;
+  }
+  int64_t rank = a.getRank();
+  SmallVector<int64_t, 4> dims;
+  dims.resize(rank);
+  for (int i = 0, e = rank; i != e; i++) {
+    int64_t dim0 = a.getDimSize(i);
+    int64_t dim1 = b.getDimSize(i);
+    dims[i] = (dim0 == ShapedType::kDynamic) ? dim1 : dim0;
+  }
+  return RankedTensorType::get(dims, a.getElementType());
+}
 }  // namespace detail
 
 // Verifies that op has the same operand and result element types (or type
@@ -126,6 +146,22 @@ class SameOperandsAndResultTypeResolveRef
     if (failed(impl::verifySameOperandsAndResultShape(op))) return failure();
     return detail::verifySameOperandsAndResultElementTypeResolveRef(op);
   }
+
+  static LogicalResult inferReturnTypeComponentsFromOperands(
+      MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+      DictionaryAttr attributes, RegionRange regions,
+      SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+    if (operands.empty())
+      return emitOptionalError(
+          location,
+          "Expected non-empty operands for [CompatibleOperandsAndResultType]");
+    auto result_ty = operands[0].getType().cast<ShapedType>();
+    for (auto ty : operands.getTypes()) {
+      result_ty = detail::MergeType(ty.cast<ShapedType>(), result_ty);
+    }
+    inferredReturnShapes.push_back(result_ty);
+    return success();
+  }
 };
 
 // Layout agnostic operations do not depend on the operands data layout (data
@@ -139,7 +175,7 @@ template <typename ConcreteType>
 class CannotDuplicate : public TraitBase<ConcreteType, CannotDuplicate> {
  public:
   static LogicalResult verifyTrait(Operation* op) {
-    if (MemoryEffectOpInterface::hasNoEffect(op))
+    if (isMemoryEffectFree(op))
       return op->emitError(
           "operations with no side effects cannot have CannotDuplicate trait");
     return success();
@@ -158,6 +194,99 @@ class CwiseBinary : public TraitBase<ConcreteType, CwiseBinary> {};
 // Coefficient-wise unary operation, for example tf.Sqrt operation.
 template <typename ConcreteType>
 class CwiseUnary : public TraitBase<ConcreteType, CwiseUnary> {};
+
+namespace detail {
+
+inline LogicalResult verifyIsIdempotent(Operation* op) {
+  // TODO(b/246518997): Add back check for no side effects on operation.
+  // Currently adding it would cause the shared library build
+  // to fail since there would be a dependency of IR on SideEffectInterfaces
+  // which is cyclical.
+  return success();
+}
+
+inline OpFoldResult foldIdempotent(Operation* op) {
+  if (op->getNumOperands() == 1) {
+    auto* argumentOp = op->getOperand(0).getDefiningOp();
+    if (argumentOp && op->getName() == argumentOp->getName()) {
+      // Replace the outer operation output with the inner operation.
+      return op->getOperand(0);
+    }
+  } else if (op->getOperand(0) == op->getOperand(1)) {
+    return op->getOperand(0);
+  }
+
+  return {};
+}
+
+inline LogicalResult verifyIsInvolution(Operation* op) {
+  // TODO(b/246518997): Add back check for no side effects on operation.
+  // Currently adding it would cause the shared library build
+  // to fail since there would be a dependency of IR on SideEffectInterfaces
+  // which is cyclical.
+  return success();
+}
+
+inline OpFoldResult foldInvolution(Operation* op) {
+  auto* argumentOp = op->getOperand(0).getDefiningOp();
+  if (argumentOp && op->getName() == argumentOp->getName()) {
+    // Replace the outer involutions output with inner's input.
+    return argumentOp->getOperand(0);
+  }
+
+  return {};
+}
+
+}  // namespace detail
+
+// This class adds property that the operation is idempotent.
+// This means a unary to unary operation "f" that satisfies f(f(x)) = f(x),
+// or a binary operation "g" that satisfies g(x, x) = x.
+template <typename ConcreteType>
+class IsIdempotent : public TraitBase<ConcreteType, IsIdempotent> {
+ public:
+  static LogicalResult verifyTrait(Operation* op) {
+    static_assert(ConcreteType::template hasTrait<OneResult>(),
+                  "expected operation to produce one result");
+    static_assert(ConcreteType::template hasTrait<OneOperand>() ||
+                      ConcreteType::template hasTrait<NOperands<2>::Impl>(),
+                  "expected operation to take one or two operands");
+    static_assert(
+        ConcreteType::template hasTrait<SameOperandsAndResultTypeResolveRef>(),
+        "expected operation to preserve type");
+    // Idempotent requires the operation to be side effect free as well
+    // but currently this check is under a FIXME and is not actually done.
+    return detail::verifyIsIdempotent(op);
+  }
+
+  static OpFoldResult foldTrait(Operation* op, ArrayRef<Attribute> operands) {
+    return detail::foldIdempotent(op);
+  }
+};
+
+/// This class adds property that the operation is an involution.
+/// This means a unary to unary operation "f" that satisfies f(f(x)) = x
+template <typename ConcreteType>
+class IsInvolution : public TraitBase<ConcreteType, IsInvolution> {
+ public:
+  static LogicalResult verifyTrait(Operation* op) {
+    static_assert(ConcreteType::template hasTrait<OneResult>(),
+                  "expected operation to produce one result");
+    static_assert(ConcreteType::template hasTrait<OneOperand>(),
+                  "expected operation to take one operand");
+    static_assert(
+        ConcreteType::template hasTrait<SameOperandsAndResultTypeResolveRef>(),
+        "expected operation to preserve type");
+    // TODO(b/246518997): Involution requires the operation to be side effect
+    // free as well but currently this check is under a FIXME and is not
+    // actually done.
+    return detail::verifyIsInvolution(op);
+  }
+
+  static OpFoldResult foldTrait(Operation* op, ArrayRef<Attribute> operands) {
+    return detail::foldInvolution(op);
+  }
+};
 
 // Indicates that any returned resource is unique.
 template <typename ConcreteType>

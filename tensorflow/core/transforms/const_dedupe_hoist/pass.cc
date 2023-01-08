@@ -32,21 +32,23 @@ limitations under the License.
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/utility.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/transforms/pass_detail.h"
 
 namespace mlir {
 namespace tfg {
-
 namespace {
 
+#define GEN_PASS_DEF_DEDUPEANDHOISTCONSTANT
+#include "tensorflow/core/transforms/passes.h.inc"
+
 struct DedupeAndHoistConstantPass
-    : DedupeAndHoistConstantBase<DedupeAndHoistConstantPass> {
+    : impl::DedupeAndHoistConstantBase<DedupeAndHoistConstantPass> {
   LogicalResult initialize(MLIRContext* context) override {
     dtype_id = StringAttr::get(context, "dtype");
     name_id = StringAttr::get(context, TFGraphDialect::getNameAttrKey());
     t_id = StringAttr::get(context, "T");
     tfg_const = StringAttr::get(context, "tfg.Const");
     value_id = StringAttr::get(context, "value");
+    mlir_context = context;
     return success();
   }
   void runOnOperation() override;
@@ -71,6 +73,7 @@ struct DedupeAndHoistConstantPass
   StringAttr tfg_const;
   StringAttr t_id;
   StringAttr value_id;
+  MLIRContext* mlir_context;
 };
 
 }  // namespace
@@ -142,7 +145,7 @@ void DedupeAndHoistConstantPass::PropagateEdges(Operation* op) {
 
 bool DedupeAndHoistConstantPass::RequiresIdentity(Operation* op) {
   for (Operation* user : op->getUsers())
-    if (function_table->MaybeCall(user)) return true;
+    if (function_table->MayBeCall(user)) return true;
   return false;
 }
 
@@ -157,16 +160,25 @@ Operation* DedupeAndHoistConstantPass::BuildIdentity(Operation* input,
   operands.insert(op_operands.begin(), op_operands.end());
   state.addOperands(operands.takeVector());
 
-  // All attributes except for value and dtype (which is remapped to I)
-  // TODO(jpienaar): Consider reducing name of the identity op.
+  // All attributes except for value, name, and dtype (which is remapped to I)
   auto attrs = llvm::to_vector(
       llvm::make_filter_range(input->getAttrs(), [&](NamedAttribute attr) {
-        return attr.getName() != value_id && attr.getName() != dtype_id;
+        return attr.getName() != value_id && attr.getName() != dtype_id &&
+               attr.getName() != name_id;
       }));
   state.addAttributes(attrs);
+
+  // Concat `const_dedupe_hoist` prefix with the const op name to avoid name
+  // collision.
+  // TODO(rdzhabarov): Improve name generation to avoid potential collisions.
+  if (auto const_name = input->getAttrOfType<StringAttr>(name_id)) {
+    state.addAttribute(
+        name_id, StringAttr::get(mlir_context, "const_dedupe_hoist/" +
+                                                   const_name.getValue()));
+  }
   // Map dtype to T attribute.
   state.addAttribute(t_id, input->getAttr(dtype_id));
-  return OpBuilder(input).createOperation(state);
+  return OpBuilder(input).create(state);
 }
 
 void DedupeAndHoistConstantPass::RunOnGraphOrFuncOp(Operation* op) {

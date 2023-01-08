@@ -14,15 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner.h"
 
+#include <fcntl.h>
+
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_validation_model.h"
@@ -92,20 +94,6 @@ class ValidatorRunnerTest : public ::testing::Test {
         g_tflite_acceleration_embedded_mobilenet_validation_model,
         g_tflite_acceleration_embedded_mobilenet_validation_model_len);
     ASSERT_TRUE(!model_path_.empty());
-
-#ifdef __ANDROID__
-    // We extract the test files here as that's the only way to get the right
-    // architecture when building tests for multiple architectures.
-    std::string entry_point_file = MiniBenchmarkTestHelper::DumpToTempFile(
-        "libvalidator_runner_entrypoint.so",
-        g_tflite_acceleration_embedded_validator_runner_entrypoint,
-        g_tflite_acceleration_embedded_validator_runner_entrypoint_len);
-    ASSERT_TRUE(!entry_point_file.empty());
-
-    void* module =
-        dlopen(entry_point_file.c_str(), RTLD_NOW | RTLD_LOCAL | RTLD_NODELETE);
-    EXPECT_TRUE(module) << dlerror();
-#endif  // __ANDROID__
   }
 
   void CheckConfigurations(bool use_path = true) {
@@ -117,24 +105,22 @@ class ValidatorRunnerTest : public ::testing::Test {
     auto status = RequestAndroidInfo(&android_info);
     ASSERT_TRUE(status.ok());
 
-    std::unique_ptr<ValidatorRunner> validator1, validator2;
-    std::string storage_path = ::testing::TempDir() + "/storage_path.fb";
-    (void)unlink(storage_path.c_str());
+    ValidatorRunnerOptions options;
+    options.data_directory_path = ::testing::TempDir();
+    options.storage_path = ::testing::TempDir() + "/storage_path.fb";
+    (void)unlink(options.storage_path.c_str());
     if (use_path) {
-      validator1 = std::make_unique<ValidatorRunner>(model_path_, storage_path,
-                                                     ::testing::TempDir());
-      validator2 = std::make_unique<ValidatorRunner>(model_path_, storage_path,
-                                                     ::testing::TempDir());
+      options.model_path = model_path_;
     } else {
-      int fd = open(model_path_.c_str(), O_RDONLY);
-      ASSERT_GE(fd, 0);
+      options.model_fd = open(model_path_.c_str(), O_RDONLY);
+      ASSERT_GE(options.model_fd, 0);
       struct stat stat_buf = {0};
-      ASSERT_EQ(fstat(fd, &stat_buf), 0);
-      validator1 = std::make_unique<ValidatorRunner>(
-          fd, 0, stat_buf.st_size, storage_path, ::testing::TempDir());
-      validator2 = std::make_unique<ValidatorRunner>(
-          fd, 0, stat_buf.st_size, storage_path, ::testing::TempDir());
+      ASSERT_EQ(fstat(options.model_fd, &stat_buf), 0);
+      options.model_size = stat_buf.st_size;
+      options.model_offset = 0;
     }
+    auto validator1 = std::make_unique<ValidatorRunner>(options);
+    auto validator2 = std::make_unique<ValidatorRunner>(options);
     ASSERT_EQ(validator1->Init(), kMinibenchmarkSuccess);
     ASSERT_EQ(validator2->Init(), kMinibenchmarkSuccess);
 
@@ -212,14 +198,17 @@ TEST_F(ValidatorRunnerTest, ShouldUseNnApiSl) {
 
   InitNnApiSlInvocationStatus();
 
-  std::string storage_path = ::testing::TempDir() + "/storage_path.fb";
-  (void)unlink(storage_path.c_str());
-
   std::unique_ptr<const NnApiSupportLibrary> nnapi_sl =
       LoadNnApiSupportLibrary();
   ASSERT_THAT(nnapi_sl.get(), ::testing::NotNull());
-  ValidatorRunner validator(model_path_, storage_path, ::testing::TempDir(),
-                            nnapi_sl->getFL5());
+
+  ValidatorRunnerOptions options;
+  options.model_path = model_path_;
+  options.storage_path = ::testing::TempDir() + "/storage_path.fb";
+  (void)unlink(options.storage_path.c_str());
+  options.data_directory_path = ::testing::TempDir();
+  options.nnapi_sl = nnapi_sl->getFL5();
+  ValidatorRunner validator(options);
 
   ASSERT_EQ(validator.Init(), kMinibenchmarkSuccess);
 
@@ -238,7 +227,15 @@ TEST_F(ValidatorRunnerTest, ShouldUseNnApiSl) {
   while (event_count < settings.size()) {
     events = validator.GetAndFlushEventsToLog();
     event_count += events.size();
+    // Duplicating the sleep(1) from CheckConfigurations() method above in this
+    // file. The validation is done in a separate process, this is likely needed
+    // to properly wait for the async process to finish.
+#ifndef _WIN32
+    sleep(1);
+#endif  // !_WIN32
   }
+  ASSERT_EQ(validator.TriggerMissingValidation(settings), 0);
+
   EXPECT_TRUE(WasNnApiSlInvoked());
 }
 
@@ -254,8 +251,13 @@ TEST_F(ValidatorRunnerTest, ShouldFailIfItCannotFindNnApiSlPath) {
   // Building an NNAPI SL structure with invalid handle.
   NnApiSLDriverImplFL5 wrong_handle_nnapi_sl{};
 
-  ValidatorRunner validator(model_path_, storage_path, ::testing::TempDir(),
-                            &wrong_handle_nnapi_sl);
+  ValidatorRunnerOptions options;
+  options.model_path = model_path_;
+  options.storage_path = ::testing::TempDir() + "/storage_path.fb";
+  (void)unlink(options.storage_path.c_str());
+  options.data_directory_path = ::testing::TempDir();
+  options.nnapi_sl = &wrong_handle_nnapi_sl;
+  ValidatorRunner validator(options);
 
   ASSERT_EQ(validator.Init(), kMiniBenchmarkCannotLoadSupportLibrary);
 }

@@ -46,7 +46,7 @@ ENTRY main {
   Status status = GatherExpander{GatherExpander::kEliminateAllGathers}
                       .Run(module.get())
                       .status();
-  EXPECT_EQ(status.code(), tensorflow::error::UNIMPLEMENTED);
+  EXPECT_EQ(status.code(), tsl::error::UNIMPLEMENTED);
 
   ASSERT_THAT(
       status.error_message(),

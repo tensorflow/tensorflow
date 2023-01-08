@@ -1,4 +1,4 @@
-builtin.func @test(%V__0: tensor<?xf32> { python_test_attrs.static_type = tensor<1xf32> }) -> tensor<?xf32> {
+func.func @test(%V__0: tensor<?xf32> { python_test_attrs.static_type = tensor<1xf32> }) -> tensor<?xf32> {
   %0 = "tf.Mod"(%V__0, %V__0) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   %1 = "tf.MulNoNan"(%V__0, %V__0) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   %2 = "tf.Acosh"(%1) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>) -> tensor<?xf32>
@@ -11,5 +11,5 @@ builtin.func @test(%V__0: tensor<?xf32> { python_test_attrs.static_type = tensor
   %9 = "tf.SquaredDifference"(%V__0, %8) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   %10 = "tf.Sign"(%9) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>) -> tensor<?xf32>
   %11 = "tf.Div"(%0, %10) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
-  return %11 : tensor<?xf32>
+  func.return %11 : tensor<?xf32>
 }

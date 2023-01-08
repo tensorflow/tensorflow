@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_REDUCE_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_REDUCE_H_
 
+#include <algorithm>
+
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
@@ -464,6 +466,22 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
     }
   }
   return true;
+}
+
+template <typename T, typename U>
+inline bool QuantizedMeanOrSumExtraArgs(
+    const T* input_data, int32_t input_zero_point, float input_scale,
+    const int* input_dims, const int input_num_dims, T* output_data,
+    float output_scale, int32_t output_multiplier, int output_shift,
+    int32_t output_zero_point, const int* output_dims,
+    const int output_num_dims, const int* axis, const int num_axis_dimensions,
+    bool keep_dims, int* temp_index, int* resolved_axis, U* temp_sum,
+    bool compute_sum) {
+  return QuantizedMeanOrSum<T, U>(
+      input_data, input_zero_point, input_scale, input_dims, input_num_dims,
+      output_data, output_zero_point, output_scale, output_dims,
+      output_num_dims, axis, num_axis_dimensions, keep_dims, temp_index,
+      resolved_axis, temp_sum, compute_sum);
 }
 
 template <typename T>

@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "TPUCompileSucceededAssert"
   input_arg {
     name: "compilation_status"

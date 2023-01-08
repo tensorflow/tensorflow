@@ -18,7 +18,7 @@ echo on
 @REM Set Environment Variables
 @REM
 IF NOT DEFINED PYTHON_DIRECTORY (
-  SET PYTHON_DIRECTORY=Python37
+  SET PYTHON_DIRECTORY=Python39
 )
 SET PY_EXE=C:\%PYTHON_DIRECTORY%\python.exe
 SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
@@ -44,11 +44,10 @@ SET PATH=%CUDA_TOOLKIT_PATH%\bin;%PATH%
 SET PATH=%CUDNN_INSTALL_PATH%\bin;%PATH%
 
 @REM
-@REM Setup Bazel
+@REM Setup Bazelisk
 @REM
-:: Download Bazel from github and make sure its found in PATH.
-SET BAZEL_VERSION=5.0.0
+:: Download Bazelisk from GitHub and make sure its found in PATH.
 md C:\tools\bazel\
-wget -q https://github.com/bazelbuild/bazel/releases/download/%BAZEL_VERSION%/bazel-%BAZEL_VERSION%-windows-x86_64.exe -O C:/tools/bazel/bazel.exe
+wget -q https://github.com/bazelbuild/bazelisk/releases/download/v1.11.0/bazelisk-windows-amd64.exe -O C:/tools/bazel/bazel.exe
 SET PATH=C:\tools\bazel;%PATH%
 bazel version

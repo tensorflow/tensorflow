@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
 
 namespace tensorflow {
 
@@ -101,6 +102,8 @@ class TFRecordWriter : public Writer {
   TFRecordWriter(const std::string& filename,
                  const std::string& compression_type);
 
+  Status Initialize(tensorflow::Env* env) override;
+
   Status WriteTensors(const std::vector<Tensor>& tensors) override;
 
   Status Sync() override;
@@ -108,9 +111,6 @@ class TFRecordWriter : public Writer {
   Status Close() override;
 
   ~TFRecordWriter() override;
-
- protected:
-  Status Initialize(tensorflow::Env* env) override;
 
  private:
   const std::string filename_;
@@ -240,12 +240,11 @@ class TFRecordReader : public Reader {
   TFRecordReader(const std::string& filename, const string& compression_type,
                  const DataTypeVector& dtypes);
 
+  Status Initialize(Env* env) override;
+
   Status ReadTensors(std::vector<Tensor>* read_tensors) override;
 
-  ~TFRecordReader() override {}
-
- protected:
-  Status Initialize(Env* env) override;
+  ~TFRecordReader() override = default;
 
  private:
   std::string filename_;
@@ -315,9 +314,24 @@ class CustomReader : public Reader {
 Status WriteMetadataFile(Env* env, const string& dir,
                          const experimental::SnapshotMetadataRecord* metadata);
 
+// Writes distributed snapshot metadata to the given directory. An error is
+// returned if `dir` is unable to be created or if `metadata` is unable to be
+// written.
+Status WriteMetadataFile(
+    Env* env, const string& dir,
+    const experimental::DistributedSnapshotMetadata* metadata);
+
 // Reads snapshot metadata from the given directory.
 Status ReadMetadataFile(Env* env, const string& dir,
                         experimental::SnapshotMetadataRecord* metadata,
+                        bool* file_exists);
+
+// Reads distributed snapshot metadata from the given directory. If the file
+// doesn't exist in `dir`, `file_exists` is set to true and an ok status is
+// returned. If the file exists in `dir` but is unable to be opened, an error
+// is returned.
+Status ReadMetadataFile(Env* env, const string& dir,
+                        experimental::DistributedSnapshotMetadata* metadata,
                         bool* file_exists);
 
 // Writes a dataset graph to the given directory.

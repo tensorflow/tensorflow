@@ -4,8 +4,8 @@
 # invalid because the `control_output` listed in its signature does not appear
 # in the function's `control_ret` map.
 
-# CHECK: INVALID_ARGUMENT: Signature control_output not found
-# CHECK: While importing FunctionDef: test
+# CHECK: INVALID_ARGUMENT: Control output 'const' was not found in 'control_ret'
+# CHECK: While importing function: test
 
 library {
   function {

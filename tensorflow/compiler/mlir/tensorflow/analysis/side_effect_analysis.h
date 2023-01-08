@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <utility>
 
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallSet.h"
@@ -32,6 +33,9 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 using ResourceId = int64_t;
+inline constexpr ResourceId kUnknownResourceId =
+    ResourceAliasAnalysis::Info::kUnknownResourceId;
+static_assert(kUnknownResourceId < 0, "kUnknownResourceId must be < 0");
 
 namespace detail {
 
@@ -57,7 +61,7 @@ class SideEffectAnalysisInfo {
   SideEffectAnalysisInfo() = default;
 
   // Constructs analysis info by analyzing the given function.
-  SideEffectAnalysisInfo(FuncOp func_op,
+  SideEffectAnalysisInfo(func::FuncOp func_op,
                          const OpSideEffectCollector& op_side_effect_collector,
                          const TF::ResourceAliasAnalysis::Info& alias_analysis)
       : op_side_effect_collector_(op_side_effect_collector),
@@ -79,16 +83,16 @@ class SideEffectAnalysisInfo {
   // Returns a vector of ops that are direct control predecessors of `op`,
   // sorted in program order. If `filter` is provided, only predecessors that
   // pass the filter (returning true) will be included.
+  const llvm::SmallVector<Operation*, 4>& DirectControlPredecessors(
+      Operation* op) const;
   llvm::SmallVector<Operation*, 4> DirectControlPredecessors(
-      Operation* op,
-      llvm::function_ref<bool(Operation*)> filter = nullptr) const;
+      Operation* op, llvm::function_ref<bool(Operation*)> filter) const;
 
-  // Returns a vector of ops that are direct control successors of `op`,
-  // sorted in program order. If `filter` is provided, only successors that
   // pass the filter (returning true) will be included.
+  const llvm::SmallVector<Operation*, 4>& DirectControlSuccessors(
+      Operation* op) const;
   llvm::SmallVector<Operation*, 4> DirectControlSuccessors(
-      Operation* op,
-      llvm::function_ref<bool(Operation*)> filter = nullptr) const;
+      Operation* op, llvm::function_ref<bool(Operation*)> filter) const;
 
   // Returns a vector of ops that are control sinks (i.e. side-effecting ops
   // with no control successors).
@@ -112,7 +116,7 @@ class SideEffectAnalysisInfo {
  private:
   // Runs the analysis and populates `sorted_control_predecessors_` and
   // `sorted_control_successors_` for `func_op`. Clears `control_predecessors_`.
-  void AnalyzeFunction(FuncOp func_op);
+  void AnalyzeFunction(func::FuncOp func_op);
 
   // Runs the analysis and populates `control_predecessors_` for `region`.
   void AnalyzeRegion(Region* region);
@@ -134,6 +138,12 @@ class SideEffectAnalysisInfo {
   bool IsUnknownAccessIndirectlyTrackedByResource(ResourceId resource,
                                                   bool read_only);
 
+  // Returns a set of resource IDs that have potential dependencies to
+  // `resource_id` (i.e., there are potential dependencies between the
+  // resources corresponding to the IDs).
+  llvm::SmallSet<ResourceId, 8> GetDependentIds(ResourceId resource_id,
+                                                bool is_fetch_op) const;
+
   // Maps from an op to its control predecessors.
   llvm::SmallDenseMap<Operation*, llvm::SmallPtrSet<Operation*, 4>, 8>
       control_predecessors_;
@@ -152,6 +162,9 @@ class SideEffectAnalysisInfo {
                       llvm::SmallVector<std::pair<ResourceId, bool>>>
       op_to_resource_ids_;
   llvm::SmallVector<std::pair<ResourceId, bool>> empty_resource_ids_;
+
+  // For predecessor / successor queries on ops we don't track.
+  llvm::SmallVector<Operation*, 4> empty_operation_set_;
 
   // Internal per-resource data structure for building the dependencies.
   struct PerResourceAccessInfo {

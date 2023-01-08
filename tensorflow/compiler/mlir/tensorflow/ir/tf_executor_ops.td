@@ -41,8 +41,6 @@ def TfExecutor_Dialect : Dialect {
     last returned value (exceptions are `tf_executor.NextIteration.graph`,
     `tf_executor.NextIteration.sink` and `tf_executor.fetch` which don’t return any
     value).
-
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }];
 
   let cppNamespace = "::mlir::tf_executor";
@@ -78,8 +76,7 @@ class TfExecutor_Op<string mnemonic, list<Trait> traits = []> :
     Op<TfExecutor_Dialect, mnemonic, traits> {
 
   let hasVerifier = 1;
-  let printer = [{ return ::mlir::tf_executor::Print(*this, p); }];
-  let parser = [{ return Parse$cppClass(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 def TfExecutor_GraphOp : TfExecutor_Op<"graph",
@@ -155,8 +152,7 @@ def TfExecutor_FetchOp : TfExecutor_Op<"fetch",
   let assemblyFormat = "($fetches^ `:` type($fetches))? attr-dict";
 
   let hasVerifier = 0;
-  let printer = ?;
-  let parser = ?;
+  let hasCustomAssemblyFormat = 0;
 }
 
 def TfExecutor_IslandOp : TfExecutor_Op<"island",
@@ -240,8 +236,7 @@ def TfExecutor_YieldOp : TfExecutor_Op<"yield",
   let assemblyFormat = "($fetches^ `:` type($fetches))? attr-dict";
 
   let hasVerifier = 0;
-  let printer = ?;
-  let parser = ?;
+  let hasCustomAssemblyFormat = 0;
 }
 
 def TfExecutor_SwitchOp : TfExecutor_Op<"Switch",
@@ -401,8 +396,8 @@ def TfExecutor_EnterOp : TfExecutor_Op<"Enter",
   let arguments = (ins
     AnyType:$data,
     StrAttr:$frame_name,
-    DefaultValuedAttr<BoolAttr, "false">:$is_constant,
-    DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_constant,
+    DefaultValuedOptionalAttr<I64Attr, "10">:$parallel_iterations,
     // Optional extra control inputs.
     Variadic<TfeControlType>:$controlInputs
   );
@@ -474,14 +469,12 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source",
 
   let extraClassDeclaration = [{
     NextIterationSinkOp GetSink() {
-      return cast<NextIterationSinkOp>(*token().user_begin());
+      return cast<NextIterationSinkOp>(*getToken().user_begin());
     }
   }];
 
   let assemblyFormat = "`:` type($output) attr-dict";
-
-  let printer = ?;
-  let parser = ?;
+  let hasCustomAssemblyFormat = 0;
 }
 
 
@@ -550,8 +543,7 @@ def TfExecutor_NextIterationSinkOp : TfExecutor_Op<"NextIteration.Sink",
 
   let assemblyFormat = " `[` $token `]` $input (`,` $controlInputs^)? `:` type($input) attr-dict";
 
-  let printer = ?;
-  let parser = ?;
+  let hasCustomAssemblyFormat = 0;
 }
 
 def TfExecutor_ExitOp : TfExecutor_Op<"Exit",
@@ -634,9 +626,7 @@ def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger",
    ];
 
   let assemblyFormat = "$controlInputs attr-dict";
-
-  let printer = ?;
-  let parser = ?;
+  let hasCustomAssemblyFormat = 0;
 }
 
 def TfExecutor_LoopCondOp : TfExecutor_Op<"LoopCond",

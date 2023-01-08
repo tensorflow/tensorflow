@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/profiling/profile_buffer.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -57,7 +58,7 @@ TEST(ProfileBufferTest, AddEvent) {
 
   buffer.EndEvent(event_handle);
   EXPECT_EQ(1, buffer.Size());
-  EXPECT_GE(event->end_timestamp_us, event->begin_timestamp_us);
+  EXPECT_GE(event->elapsed_time, 0);
 }
 
 TEST(ProfileBufferTest, EndEventWithMetadata) {
@@ -79,7 +80,7 @@ TEST(ProfileBufferTest, EndEventWithMetadata) {
   EXPECT_EQ(event->event_metadata, kEventMetadata1);
   EXPECT_EQ(event->extra_event_metadata, kEventMetadata2);
   EXPECT_EQ(1, buffer.Size());
-  EXPECT_GE(event->end_timestamp_us, event->begin_timestamp_us);
+  EXPECT_GE(event->elapsed_time, 0);
 }
 
 TEST(ProfileBufferTest, OverFlow) {
@@ -93,6 +94,26 @@ TEST(ProfileBufferTest, OverFlow) {
     EXPECT_EQ(expected_size, buffer.Size());
   }
   EXPECT_EQ(max_size, buffer.Size());
+  for (size_t j = 0; j < buffer.Size(); ++j) {
+    auto event = buffer.At(j);
+    EXPECT_EQ(eventNames[j % 4], event->tag);
+    EXPECT_EQ(ProfileEvent::EventType::DEFAULT, event->event_type);
+    EXPECT_EQ(j, event->event_metadata);
+  }
+}
+
+TEST(ProfileBufferTest, DynamicIncrease) {
+  const int max_initial_size = 4;
+  ProfileBuffer buffer{max_initial_size, true,
+                       true /*allow_dynamic_buffer_increase*/};
+  std::vector<std::string> eventNames = {"first", "second", "third", "fourth"};
+  for (int i = 0; i < 2 * max_initial_size; i++) {
+    buffer.BeginEvent(eventNames[i % 4].c_str(),
+                      ProfileEvent::EventType::DEFAULT, i, 0);
+    const size_t expected_size = i + 1;
+    EXPECT_EQ(expected_size, buffer.Size());
+  }
+  EXPECT_EQ(2 * max_initial_size, buffer.Size());
   for (size_t j = 0; j < buffer.Size(); ++j) {
     auto event = buffer.At(j);
     EXPECT_EQ(eventNames[j % 4], event->tag);

@@ -17,14 +17,15 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER5(BinaryOp, CPU, "Xdivy", functor::xdivy, float, Eigen::half, double,
-          complex64, complex128);
+REGISTER6(BinaryOp, CPU, "Xdivy", functor::xdivy, Eigen::half, bfloat16, float,
+          double, complex64, complex128);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER5(BinaryOp, GPU, "Xdivy", functor::xdivy, float, Eigen::half, double,
           complex64, complex128);
 #endif
+REGISTER(BinaryOp, GPU, "Xdivy", functor::xdivy, bfloat16);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

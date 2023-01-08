@@ -796,11 +796,14 @@ class TfInspectGetCallArgsTest(test.TestCase):
     decorated = tf_decorator.make_decorator(
         func,
         wrapper,
-        decorator_argspec=tf_inspect.ArgSpec(
+        decorator_argspec=tf_inspect.FullArgSpec(
             args=['a', 'b', 'c'],
             varargs=None,
-            keywords=None,
-            defaults=(3, 'hello')))
+            kwonlyargs={},
+            defaults=(3, 'hello'),
+            kwonlydefaults=None,
+            varkw=None,
+            annotations=None))
 
     self.assertEqual({
         'a': 4,

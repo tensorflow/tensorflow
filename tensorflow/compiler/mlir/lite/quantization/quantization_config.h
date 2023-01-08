@@ -92,6 +92,12 @@ struct QuantizationSpecs {
   // quantization.
   bool disable_infer_tensor_range = false;
 
+  // Whether use the unfrozen variable quantization in MLIR. Typically,
+  // variables are frozen for passing passes, but some variables aren't frozen.
+  // If it is true, QuantizeVariables pass will be added after the
+  // PrepareQuantizePass.
+  bool enable_mlir_variable_quantization = false;
+
   // The node type when the model is exported. Currently this is limited to
   // DT_FLOAT, DT_HALF, DT_QINT8, and DT_QUINT8. When DT_HALF is used, the
   // `weight_quantization` flag needs to set to true. When DT_QUINT8 is used,
@@ -111,6 +117,10 @@ struct QuantizationSpecs {
   // quantization aware training or calibration, for the remaining tensors.
   std::vector<std::pair<llvm::Optional<double>, llvm::Optional<double>>>
       input_ranges;
+
+  // Whether to disable setting the quantization parameters of the input nodes
+  // using input ranges.
+  bool disable_set_input_nodes_quantization_params = false;
 
   // The default ranges can be used when a tensor doesn't have quantization
   // parameters and couldn't be quantized. Used only for latency tests.
@@ -157,12 +167,17 @@ struct QuantizationSpecs {
   // quantization type.
   int64_t GetQuantizationTypeWidth() const {
     switch (inference_type) {
+      case tensorflow::DT_INT8:
+      case tensorflow::DT_UINT8:
       case tensorflow::DT_QINT8:
       case tensorflow::DT_QUINT8:
         return 8;
+      case tensorflow::DT_INT16:
+      case tensorflow::DT_UINT16:
       case tensorflow::DT_QINT16:
       case tensorflow::DT_QUINT16:
         return 16;
+      case tensorflow::DT_INT32:
       case tensorflow::DT_QINT32:
         return 32;
       default:

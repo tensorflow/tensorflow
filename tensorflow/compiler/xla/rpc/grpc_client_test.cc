@@ -18,6 +18,7 @@ limitations under the License.
 // Launches an RPC service in a subprocess and connects to it over a socket
 // using an RPCStub.
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/strings/str_format.h"
@@ -27,11 +28,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/rpc/grpc_stub.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/net.h"
-#include "tensorflow/core/platform/subprocess.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/net.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/subprocess.h"
+#include "tensorflow/tsl/platform/test.h"
 
 #if defined(PLATFORM_WINDOWS)
 // This is not used on windows, but we define it here to make the test simpler
@@ -45,17 +46,15 @@ namespace {
 class GRPCClientTestBase : public ::testing::Test {
  protected:
   GRPCClientTestBase() {
-    std::string test_srcdir = tensorflow::testing::TensorFlowSrcRoot();
-    std::string service_main_path = tensorflow::io::JoinPath(
-        test_srcdir, "compiler/xla/rpc/grpc_service_main_cpu");
-    int port = tensorflow::internal::PickUnusedPortOrDie();
+    std::string test_srcdir = tsl::testing::XlaSrcRoot();
+    std::string service_main_path =
+        tsl::io::JoinPath(test_srcdir, "rpc/grpc_service_main_cpu");
+    int port = tsl::internal::PickUnusedPortOrDie();
     subprocess_.SetProgram(
         service_main_path,
         {service_main_path, absl::StrFormat("--port=%d", port)});
-    subprocess_.SetChannelAction(tensorflow::CHAN_STDOUT,
-                                 tensorflow::ACTION_DUPPARENT);
-    subprocess_.SetChannelAction(tensorflow::CHAN_STDERR,
-                                 tensorflow::ACTION_DUPPARENT);
+    subprocess_.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_DUPPARENT);
+    subprocess_.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_DUPPARENT);
     CHECK(subprocess_.Start());
     LOG(INFO) << "Launched subprocess";
 
@@ -75,7 +74,7 @@ class GRPCClientTestBase : public ::testing::Test {
     subprocess_.Kill(SIGKILL);
   }
 
-  tensorflow::SubProcess subprocess_;
+  tsl::SubProcess subprocess_;
   std::unique_ptr<grpc::XlaService::Stub> xla_service_;
   std::unique_ptr<GRPCStub> stub_;
   std::unique_ptr<Client> client_;

@@ -19,6 +19,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
 
 #include "absl/types/optional.h"
 
@@ -59,9 +60,9 @@ QuantizedMultiplier QuantizeMultiplier(double double_multiplier) {
 }
 
 QuantizedRange CalculateQuantizedRange(double scale, int32_t zero_point,
-                                       absl::optional<double> rmin,
-                                       absl::optional<double> rmax,
-                                       int32_t qmin, int32_t qmax) {
+                                       std::optional<double> rmin,
+                                       std::optional<double> rmax, int32_t qmin,
+                                       int32_t qmax) {
   auto quantize = [scale, zero_point](float f) {
     return zero_point + static_cast<int32_t>(std::round(f / scale));
   };

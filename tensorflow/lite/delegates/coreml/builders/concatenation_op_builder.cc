@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/coreml/builders/concatenation_op_builder.h"
 
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include <memory>
+
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/delegates/coreml/builders/op_validator.h"
 
 namespace tflite {
@@ -24,7 +26,7 @@ namespace coreml {
 
 CoreML::Specification::NeuralNetworkLayer* ConcatenationOpBuilder::Build() {
   if (layer_ == nullptr) {
-    layer_.reset(new CoreML::Specification::NeuralNetworkLayer);
+    layer_ = std::make_unique<CoreML::Specification::NeuralNetworkLayer>();
   }
   layer_->set_name(DebugName());
   layer_->mutable_concat()->set_sequenceconcat(false);

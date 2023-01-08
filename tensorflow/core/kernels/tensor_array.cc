@@ -35,7 +35,7 @@ namespace tensor_array {
     functor::Add2Functor<Device, T> add_functor;                            \
     add_functor(ctx->template eigen_device<Device>(), sum->flat<T>(),       \
                 current->flat<T>(), add->flat<T>());                        \
-    return Status::OK();                                                    \
+    return OkStatus();                                                      \
   }
 
 #define TENSOR_ARRAY_WRITE_OR_ADD_CPU(T) TENSOR_ARRAY_WRITE_OR_ADD(CPUDevice, T)
@@ -46,6 +46,7 @@ TF_CALL_NUMBER_TYPES(TENSOR_ARRAY_WRITE_OR_ADD_CPU)
 
 #define TENSOR_ARRAY_WRITE_OR_ADD_GPU(T) TENSOR_ARRAY_WRITE_OR_ADD(GPUDevice, T)
 TF_CALL_GPU_NUMBER_TYPES(TENSOR_ARRAY_WRITE_OR_ADD_GPU);
+TF_CALL_bfloat16(TENSOR_ARRAY_WRITE_OR_ADD_GPU);
 TF_CALL_COMPLEX_TYPES(TENSOR_ARRAY_WRITE_OR_ADD_GPU);
 #undef TENSOR_ARRAY_WRITE_OR_ADD_GPU
 
@@ -58,7 +59,7 @@ TF_CALL_COMPLEX_TYPES(TENSOR_ARRAY_WRITE_OR_ADD_GPU);
   Status TensorSetZero<Device, T>(OpKernelContext * ctx, Tensor * value) {    \
     functor::SetZeroFunctor<Device, T> set_zero_functor;                      \
     set_zero_functor(ctx->template eigen_device<Device>(), value->flat<T>()); \
-    return Status::OK();                                                      \
+    return OkStatus();                                                        \
   }
 
 #define TENSOR_ARRAY_SET_ZERO_CPU(T) TENSOR_ARRAY_SET_ZERO(CPUDevice, T)
@@ -70,6 +71,7 @@ TF_CALL_bool(TENSOR_ARRAY_SET_ZERO_CPU);
 
 #define TENSOR_ARRAY_SET_ZERO_GPU(T) TENSOR_ARRAY_SET_ZERO(GPUDevice, T)
 TF_CALL_GPU_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_GPU);
+TF_CALL_bfloat16(TENSOR_ARRAY_SET_ZERO_GPU);
 TF_CALL_COMPLEX_TYPES(TENSOR_ARRAY_SET_ZERO_GPU);
 #undef TENSOR_ARRAY_SET_ZERO_GPU
 
@@ -111,7 +113,7 @@ Status TensorArray::CopyShapesFrom(TensorArray* rhs,
     tensors_[i].written = true;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

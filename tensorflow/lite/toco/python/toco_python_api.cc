@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <fstream>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -31,8 +32,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -292,7 +293,8 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
                             int input_data_type, int output_data_type,
                             bool enable_numeric_verify,
                             bool enable_whole_model_verify,
-                            PyObject* op_denylist, PyObject* node_denylist) {
+                            PyObject* op_denylist, PyObject* node_denylist,
+                            bool enable_variable_quantization) {
   using tflite::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
   Py_ssize_t length;
@@ -321,7 +323,7 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
     PyErr_Format(PyExc_ValueError, "Invalid model");
     return nullptr;
   }
-  auto tflite_model = absl::make_unique<tflite::ModelT>();
+  auto tflite_model = std::make_unique<tflite::ModelT>();
   model->GetModel()->UnPackTo(tflite_model.get(), nullptr);
 
   tflite::TensorType inference_tensor_type =
@@ -336,7 +338,8 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
       *tflite_model, input_type, output_type, inference_tensor_type, {},
       disable_per_channel, fully_quantize, &builder, error_reporter.get(),
       enable_numeric_verify, enable_whole_model_verify,
-      /*legacy_float_scale=*/true, denylisted_ops, denylisted_nodes);
+      /*legacy_float_scale=*/true, denylisted_ops, denylisted_nodes,
+      enable_variable_quantization);
 
   if (status != kTfLiteOk) {
     error_reporter->exception();
@@ -364,7 +367,7 @@ PyObject* MlirSparsifyModel(PyObject* data) {
     PyErr_Format(PyExc_ValueError, "Invalid model");
     return nullptr;
   }
-  auto tflite_model = absl::make_unique<tflite::ModelT>();
+  auto tflite_model = std::make_unique<tflite::ModelT>();
   model->GetModel()->UnPackTo(tflite_model.get(), nullptr);
 
   flatbuffers::FlatBufferBuilder builder;
@@ -415,7 +418,7 @@ PyObject* RegisterCustomOpdefs(PyObject* list) {
         [opdef](
             tensorflow::OpRegistrationData* op_reg_data) -> tensorflow::Status {
           *op_reg_data = tensorflow::OpRegistrationData(opdef);
-          return tensorflow::Status::OK();
+          return ::tensorflow::OkStatus();
         });
 
     // Register the corresponding fake op kernel.

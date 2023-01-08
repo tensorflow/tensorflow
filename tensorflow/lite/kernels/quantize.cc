@@ -17,7 +17,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
@@ -88,7 +88,7 @@ static inline void Requantize(const input_type* input_data, int32_t size,
 
 void ReportError(TfLiteContext* context, TfLiteType input_type,
                  TfLiteType output_type) {
-  context->ReportError(
+  TF_LITE_KERNEL_LOG(
       context, "Input type %s with Output type %s is not currently supported.",
       TfLiteTypeGetName(input_type), TfLiteTypeGetName(output_type));
 }

@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFTPU {
@@ -39,8 +38,11 @@ namespace {
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 constexpr char kTPUEmbeddingAttr[] = "_tpu_embedding_layer";
 
+#define GEN_PASS_DEF_TPUUPDATEEMBEDDINGENQUEUEOPINPUTSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TPUUpdateEmbeddingEnqueueOpInputsPass
-    : public TF::TPUUpdateEmbeddingEnqueueOpInputsPassBase<
+    : public impl::TPUUpdateEmbeddingEnqueueOpInputsPassBase<
           TPUUpdateEmbeddingEnqueueOpInputsPass> {
   void runOnOperation() override;
 };
@@ -63,7 +65,7 @@ LogicalResult ExtractEmbeddingAttribute(
 }
 
 LogicalResult FindTPUEmbeddingOps(
-    FuncOp func_op, llvm::StringMap<Operation*>* enqueue_op_map,
+    func::FuncOp func_op, llvm::StringMap<Operation*>* enqueue_op_map,
     llvm::StringMap<Operation*>* recv_activation_op_map,
     llvm::StringMap<Operation*>* send_gradient_op_map) {
   auto walk_result = func_op.walk([&](Operation* op) {
@@ -172,7 +174,7 @@ void TPUUpdateEmbeddingEnqueueOpInputsPass::runOnOperation() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUUpdateEmbeddingEnqueueOpInputsPass() {
   return std::make_unique<TPUUpdateEmbeddingEnqueueOpInputsPass>();
 }

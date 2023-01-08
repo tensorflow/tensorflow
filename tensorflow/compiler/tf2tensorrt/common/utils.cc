@@ -20,7 +20,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "third_party/tensorrt/NvInferPlugin.h"
+
 #endif
 
 namespace tensorflow {
@@ -58,6 +60,8 @@ namespace tensorrt {
 Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
                           const nvinfer1::ICudaEngine* cuda_engine,
                           int* binding_index) {
+  tensorflow::profiler::TraceMe activity(
+      "GetTrtBindingIndex", tensorflow::profiler::TraceMeLevel::kInfo);
   // If the engine has been built for K profiles, the first getNbBindings() / K
   // bindings are used by profile number 0, the following getNbBindings() / K
   // bindings are used by profile number 1 etc.
@@ -76,7 +80,7 @@ Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
   //                               profile_index * bindings_per_profile
   const int bindings_per_profile = cuda_engine->getNbBindings() / n_profiles;
   *binding_index = *binding_index + profile_index * bindings_per_profile;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetTrtBindingIndex(int network_input_index, int profile_index,
@@ -138,4 +142,94 @@ void MaybeInitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
 
 }  // namespace tensorrt
 }  // namespace tensorflow
+
+namespace nvinfer1 {
+std::ostream& operator<<(std::ostream& os,
+                         const nvinfer1::TensorFormat& format) {
+  os << "nvinfer1::TensorFormat::";
+  switch (format) {
+    case nvinfer1::TensorFormat::kLINEAR:
+      os << "kLINEAR";
+      break;
+
+    case nvinfer1::TensorFormat::kCHW2:
+      os << "kCHW2";
+      break;
+
+    case nvinfer1::TensorFormat::kHWC8:
+      os << "kHWC8";
+      break;
+
+    case nvinfer1::TensorFormat::kCHW4:
+      os << "kCHW4";
+      break;
+
+    case nvinfer1::TensorFormat::kCHW16:
+      os << "kCHW16";
+      break;
+
+    case nvinfer1::TensorFormat::kCHW32:
+      os << "kCHW32";
+      break;
+
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
+    case nvinfer1::TensorFormat::kDHWC8:
+      os << "kDHWC8";
+      break;
+
+    case nvinfer1::TensorFormat::kCDHW32:
+      os << "kCDHW32";
+      break;
+
+    case nvinfer1::TensorFormat::kHWC:
+      os << "kHWC";
+      break;
+
+    case nvinfer1::TensorFormat::kDLA_LINEAR:
+      os << "kDLA_LINEAR";
+      break;
+
+    case nvinfer1::TensorFormat::kDLA_HWC4:
+      os << "kDLA_HWC4";
+      break;
+
+    case nvinfer1::TensorFormat::kHWC16:
+      os << "kHWC16";
+      break;
+#endif
+
+    default:
+      os << "unknown format";
+  }
+  return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const nvinfer1::DataType& v) {
+  os << "nvinfer1::DataType::";
+  switch (v) {
+    case nvinfer1::DataType::kFLOAT:
+      os << "kFLOAT";
+      break;
+    case nvinfer1::DataType::kHALF:
+      os << "kHalf";
+      break;
+    case nvinfer1::DataType::kINT8:
+      os << "kINT8";
+      break;
+    case nvinfer1::DataType::kINT32:
+      os << "kINT32";
+      break;
+    case nvinfer1::DataType::kBOOL:
+      os << "kBOOL";
+      break;
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    case nvinfer1::DataType::kUINT8:
+      os << "kUINT8";
+      break;
+#endif
+  }
+  return os;
+}
+}  // namespace nvinfer1
+
 #endif

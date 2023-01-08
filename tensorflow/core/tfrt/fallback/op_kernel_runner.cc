@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 
+#include <string>
+
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
@@ -26,7 +28,7 @@ Status CheckOpDefCompatibility(const tensorflow::OpDef& op_def) {
       return tensorflow::errors::Internal(
           "TFRT kernel fallback error: Unsupported ref args in ",
           op_def.name());
-    return Status::OK();
+    return OkStatus();
   };
 
   for (const auto& arg_def : op_def.input_arg())
@@ -34,15 +36,15 @@ Status CheckOpDefCompatibility(const tensorflow::OpDef& op_def) {
   for (const auto& arg_def : op_def.output_arg())
     TF_RETURN_IF_ERROR(check_arg_def(arg_def));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Create a tensorflow::NodeDef from the tensorflow::OpDef and the attributes.
 StatusOr<tensorflow::NodeDef> BuildNodeDef(
-    const tensorflow::OpDef& op_def, int num_args,
+    const tensorflow::OpDef& op_def, absl::string_view node_name, int num_args,
     const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder) {
   tensorflow::NodeDef node_def;
-  node_def.set_name(op_def.name());
+  node_def.set_name(std::string(node_name));
   node_def.set_op(op_def.name());
   for (int i = 0; i < num_args; ++i) {
     node_def.add_input("dummy_input");
@@ -69,17 +71,18 @@ tensorflow::Status CreateOpKernel(
     std::unique_ptr<tensorflow::OpKernel>* result) {
   std::shared_ptr<const tensorflow::NodeProperties> props;
   TF_RETURN_IF_ERROR(tensorflow::NodeProperties::CreateFromNodeDef(
-      ndef, flr->GetFunctionLibraryDefinition(), &props));
+      std::move(ndef), flr->GetFunctionLibraryDefinition(), &props));
   tensorflow::OpKernel* k = nullptr;
   TF_RETURN_IF_ERROR(flr->CreateKernel(props, &k));
   result->reset(k);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
 
 StatusOr<OpKernelRunner> OpKernelRunner::Create(
-    absl::string_view op_name, absl::string_view device_name, int num_args,
+    absl::string_view op_name, absl::string_view node_name,
+    absl::string_view device_name, int num_args,
     const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
     const tensorflow::DeviceMgr& device_manager,
     const tensorflow::ProcessFunctionLibraryRuntime&
@@ -95,12 +98,12 @@ StatusOr<OpKernelRunner> OpKernelRunner::Create(
     device = device_manager.HostCPU();
   }
 
-  return Create(op_name, num_args, attr_builder,
+  return Create(op_name, node_name, num_args, attr_builder,
                 process_function_library_runtime, device);
 }
 
 StatusOr<OpKernelRunner> OpKernelRunner::Create(
-    absl::string_view op_name, int num_args,
+    absl::string_view op_name, absl::string_view node_name, int num_args,
     const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
     const tensorflow::ProcessFunctionLibraryRuntime&
         process_function_library_runtime,
@@ -113,7 +116,7 @@ StatusOr<OpKernelRunner> OpKernelRunner::Create(
           << op_def->DebugString();
 
   TF_ASSIGN_OR_RETURN(auto node_def,
-                      BuildNodeDef(*op_def, num_args, attr_builder));
+                      BuildNodeDef(*op_def, node_name, num_args, attr_builder));
 
   VLOG(1) << "KernelFallbackExecuteCompat created NodeDef: "
           << node_def.DebugString();
@@ -155,16 +158,26 @@ OpKernelRunner::OpKernelRunner(
   }
 }
 
+void OpKernelRunner::Run(OpKernelContext* context) const {
+  DVLOG(1) << "KernelFallbackExecuteCompat Running Op: "
+           << op_kernel_->def().DebugString()
+           << ", on Device: " << context->device()->name();
+
+  static_cast<tensorflow::Device*>(context->device())
+      ->Compute(op_kernel_.get(), context);
+}
+
 void OpKernelRunner::RunAsync(OpKernelContext* context,
                               AsyncOpKernel::DoneCallback done_callback) const {
   DVLOG(1) << "KernelFallbackExecuteCompat Running Async Op: "
            << op_kernel_->def().DebugString()
-           << ", on Device: " << device_->name();
+           << ", on Device: " << context->device()->name();
 
   AsyncOpKernel* async = op_kernel_->AsAsync();
   DCHECK(async);
 
-  async->ComputeAsync(context, std::move(done_callback));
+  static_cast<tensorflow::Device*>(context->device())
+      ->ComputeAsync(async, context, std::move(done_callback));
 }
 
 }  // namespace tfrt_stub

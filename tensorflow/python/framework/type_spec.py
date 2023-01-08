@@ -15,14 +15,15 @@
 """Type specifications for TensorFlow APIs."""
 
 import abc
-import collections
 import functools
 import re
-from typing import List, Optional, Sequence, Any
+from typing import Any, List, Optional, Sequence, Type
 import warnings
 
 import numpy as np
 
+from tensorflow.core.function import trace_type
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
@@ -30,10 +31,12 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import trace
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs import doc_controls
 
 # Use LazyLoader to avoid circular dependencies.
 tensor_spec = LazyLoader(
@@ -41,10 +44,15 @@ tensor_spec = LazyLoader(
     "tensorflow.python.framework.tensor_spec")
 ops = LazyLoader("ops", globals(),
                  "tensorflow.python.framework.ops")
+# TODO(b/238903802): Remove this dependency.
+nested_structure_coder = LazyLoader(
+    "nested_structure_coder", globals(),
+    "tensorflow.python.saved_model.nested_structure_coder")
 
 
 @tf_export("TypeSpec", v1=["TypeSpec", "data.experimental.Structure"])
-class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
+class TypeSpec(
+    trace.TraceType, trace_type.Serializable, metaclass=abc.ABCMeta):
   """Specifies a TensorFlow value type.
 
   A `tf.TypeSpec` provides metadata describing an object accepted or returned
@@ -60,12 +68,13 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
 
   Example:
 
-  >>> spec = tf.RaggedTensorSpec(shape=[None, None], dtype=tf.int32)
+  >>> spec = tf.TensorSpec(shape=[None, None], dtype=tf.int32)
   >>> @tf.function(input_signature=[spec])
   ... def double(x):
   ...   return x * 2
-  >>> print(double(tf.ragged.constant([[1, 2], [3]])))
-  <tf.RaggedTensor [[2, 4], [6]]>
+  >>> double(tf.constant([[1, 2], [3, 4]]))
+  <tf.Tensor: shape=(2, 2), dtype=int32,
+      numpy=array([[2, 4], [6, 8]], dtype=int32)>
   """
   # === Subclassing ===
   #
@@ -114,6 +123,7 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
       return False
 
     is_subtype = True
+
     def check_attribute(attribute_self, attribute_other):
       nonlocal is_subtype
       if not is_subtype:
@@ -129,16 +139,14 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
 
     try:
       # TODO(b/217959193): Replace _serialize with parameter decomposition.
-      nest.map_structure(check_attribute, self._serialize(),
-                         other._serialize())  # pylint: disable=protected-access
+      nest.map_structure(check_attribute, self._serialize(), other._serialize())  # pylint: disable=protected-access
     except (ValueError, TypeError):
       return False
 
     return is_subtype
 
   def most_specific_common_supertype(
-      self,
-      others: Sequence[trace.TraceType]) -> Optional["TypeSpec"]:
+      self, others: Sequence[trace.TraceType]) -> Optional["TypeSpec"]:
     """Returns the most specific supertype TypeSpec  of `self` and `others`.
 
     Implements the tf.types.experimental.func.TraceType interface.
@@ -155,6 +163,7 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
       return None
 
     has_supertype = True
+
     def make_supertype_attribute(attribute_self, *attribute_others):
       nonlocal has_supertype
       if not has_supertype:
@@ -184,9 +193,68 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
 
     return self._deserialize(serialized_supertype) if has_supertype else None
 
-  # TODO(b/202447704): Reduce internal usages.
+  @classmethod
+  def experimental_type_proto(cls) -> Type[struct_pb2.TypeSpecProto]:
+    """Returns the type of proto associated with TypeSpec serialization.
+
+    Do NOT override for custom non-TF types.
+    """
+    return struct_pb2.TypeSpecProto
+
+  @classmethod
+  def experimental_from_proto(cls,
+                              proto: struct_pb2.TypeSpecProto) -> "TypeSpec":
+    """Returns a TypeSpec instance based on the serialized proto.
+
+    Do NOT override for custom non-TF types.
+
+    Args:
+      proto: Proto generated using 'experimental_as_proto'.
+    """
+    return nested_structure_coder.decode_proto(
+        struct_pb2.StructuredValue(type_spec_value=proto))
+
+  def experimental_as_proto(self) -> struct_pb2.TypeSpecProto:
+    """Returns a proto representation of the TypeSpec instance.
+
+    Do NOT override for custom non-TF types.
+    """
+    return nested_structure_coder.encode_structure(self).type_spec_value
+
+  @doc_controls.do_not_doc_inheritable
+  def placeholder_value(self, placeholder_context):
+    """Value used for tracing a function signature with this TraceType.
+
+    WARNING: Do not override.
+
+    Args:
+      placeholder_context: A class container for context information when
+        creating a placeholder value.
+
+    Returns:
+      A `CompositeTensor` placeholder whose components are recursively composed
+        of placeholders themselves.
+    """
+    component_placeholders = nest.map_structure(
+        lambda x: x.placeholder_value(placeholder_context),
+        self._component_specs)
+    return self._from_components(component_placeholders)
+
+  def _to_tensors(self, value):
+    assert value._type_spec == self  # pylint: disable=protected-access
+    return [arg for arg in nest.flatten(value, expand_composites=True)
+            if isinstance(arg, ops.Tensor)]
+
+  # TODO(b/225058047): Reconsider semantics.
   def is_compatible_with(self, spec_or_value):
-    """Returns true if `spec_or_value` is compatible with this TypeSpec."""
+    """Returns true if `spec_or_value` is compatible with this TypeSpec.
+
+    Prefer using "is_subtype_of" and "most_specific_common_supertype" wherever
+    possible.
+
+    Args:
+      spec_or_value: A TypeSpec or TypeSpec associated value to compare against.
+    """
     # === Subclassing ===
     # If not overridden by subclasses, the default behavior is to convert
     # `spec_or_value` to a `TypeSpec` (if it isn't already); and then to
@@ -201,9 +269,12 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
       return False
     return self.__is_compatible(self._serialize(), spec_or_value._serialize())  # pylint: disable=protected-access
 
-  # TODO(b/202447704): Deprecate.
+  @deprecation.deprecated(None, "Use most_specific_common_supertype instead.")
   def most_specific_compatible_type(self, other: "TypeSpec") -> "TypeSpec":
     """Returns the most specific TypeSpec compatible with `self` and `other`.
+
+    Deprecated. Please use `most_specific_common_supertype` instead.
+    Do not override this function.
 
     Args:
       other: A `TypeSpec`.
@@ -212,20 +283,13 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
       ValueError: If there is no TypeSpec that is compatible with both `self`
         and `other`.
     """
-    # === Subclassing ===
-    # If not overridden by a subclass, the default behavior is to raise a
-    # `ValueError` if `self` and `other` have different types, or if their type
-    # serializations differ by anything other than `TensorShape`s.  Otherwise,
-    # the two type serializations are combined (using
-    # `most_specific_compatible_shape` to combine `TensorShape`s), and the
-    # result is used to construct and return a new `TypeSpec`.
-    if type(self) is not type(other):
+    result = self.most_specific_common_supertype([other])
+    if result is None:
       raise ValueError("No TypeSpec is compatible with both %s and %s" %
                        (self, other))
-    merged = self.__most_specific_compatible_type_serialization(
-        self._serialize(), other._serialize())  # pylint: disable=protected-access
-    return self._deserialize(merged)
+    return result
 
+  # TODO(b/226395276): Delete after removing usages.
   def _with_tensor_ranks_only(self) -> "TypeSpec":
     """Returns a TypeSpec compatible with `self`, with tensor shapes relaxed.
 
@@ -250,6 +314,29 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
         return value
 
     return self._deserialize(nest.map_structure(relax, self._serialize()))
+
+  # TODO(b/206014848): Helper function to support logic that does not consider
+  # Tensor name. Will be removed once load-bearing usages of Tensor name are
+  # fixed.
+  def _without_tensor_names(self) -> "TypeSpec":
+    """Returns a TypeSpec compatible with `self`, with tensor names removed.
+
+    Returns:
+      A `TypeSpec` that is compatible with `self`, where the name of any
+      `TensorSpec` is set to `None`.
+    """
+
+    # === Subclassing ===
+    # If not overridden by a subclass, the default behavior is to serialize
+    # this TypeSpec, set the TensorSpecs' names to None, and deserialize the
+    # result.
+
+    def rename(value):
+      if isinstance(value, TypeSpec):
+        return value._without_tensor_names()  # pylint: disable=protected-access
+      return value
+
+    return self._deserialize(nest.map_structure(rename, self._serialize()))
 
   # === Component encoding for values ===
 
@@ -340,8 +427,8 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
     self.__check_tensor_list(tensor_list)
     return self._from_compatible_tensor_list(tensor_list)
 
-  def _from_compatible_tensor_list(
-      self, tensor_list: List["ops.Tensor"]) -> Any:
+  def _from_compatible_tensor_list(self,
+                                   tensor_list: List["ops.Tensor"]) -> Any:
     """Reconstructs a value from a compatible flat list of `tf.Tensor`.
 
     Args:
@@ -400,7 +487,7 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
     Returns:
       A `TypeSpec` of type `cls`.
     """
-    return cls(*serialization)
+    return cls(*serialization)  # pytype: disable=not-instantiable  # trace-all-classes
 
   # === Operators ===
 
@@ -438,14 +525,11 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
 
   # === Private Helper Methods ===
 
-  # TODO(b/216206374): Currently this usage is used to represent a Tensor
+  # TODO(b/154541175): Currently this usage is used to represent a Tensor
   # argument not a TensorSpec argument as it should be.
   def __tf_tracing_type__(self,
                           context: trace.TracingContext) -> trace.TraceType:
-    if context.include_tensor_ranks_only:
-      return self._with_tensor_ranks_only()
-    else:
-      return self
+    return self
 
   def __check_tensor_list(self, tensor_list):
     """Raises an exception if tensor_list incompatible w/ flat_tensor_specs."""
@@ -540,99 +624,7 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
       return a.is_compatible_with(b)
     return a == b
 
-  @staticmethod
-  def __most_specific_compatible_type_serialization(a, b):
-    """Helper for most_specific_compatible_type.
-
-    Combines two type serializations as follows:
-
-    * If they are both tuples of the same length, then recursively combine
-      the respective tuple elements.
-    * If they are both dicts with the same keys, then recursively combine
-      the respective dict elements.
-    * If they are both TypeSpecs, then combine using
-      TypeSpec.most_specific_compatible_type.
-    * If they are both TensorShapes, then combine using
-      TensorShape.most_specific_compatible_shape.
-    * If they are both TensorSpecs with the same dtype, then combine using
-      TensorShape.most_specific_compatible_shape to combine shapes.
-    * If they are equal, then return a.
-    * If none of the above, then raise a ValueError.
-
-    Args:
-      a: A serialized TypeSpec or nested component from a serialized TypeSpec.
-      b: A serialized TypeSpec or nested component from a serialized TypeSpec.
-
-    Returns:
-      A value with the same type and structure as `a` and `b`.
-
-    Raises:
-      ValueError: If `a` and `b` are incompatible.
-    """
-    if not TypeSpec.__same_types(a, b):
-      raise ValueError(
-          f"Encountered incompatible types while determining the most specific "
-          f"compatible type. "
-          f"The Python type structures of `a` and `b` are different. "
-          f"`a` : {a!r} `b` : {b!r}")
-    if nest.is_namedtuple(a):
-      assert a._fields == b._fields  # Implied by __same_types(a, b).
-      return type(a)(*[
-          TypeSpec.__most_specific_compatible_type_serialization(x, y)
-          for (x, y) in zip(a, b)
-      ])
-    if isinstance(a, (list, tuple)):
-      if len(a) != len(b):
-        raise ValueError(
-            f"Encountered incompatible types while determining the most specific "
-            f"compatible type. "
-            f"Type spec structure `a` has a length of {len(a)} and "
-            f"type spec structure `b` has a different length of {len(b)}."
-            f"`a` : {a!r} `b` : {b!r}")
-      return tuple(
-          TypeSpec.__most_specific_compatible_type_serialization(x, y)
-          for (x, y) in zip(a, b))
-    if isinstance(a, collections.OrderedDict):
-      a_keys, b_keys = a.keys(), b.keys()
-      if len(a) != len(b) or a_keys != b_keys:
-        raise ValueError(
-            f"Encountered incompatible types while determining the most specific "
-            f"compatible type. "
-            f"Type spec structure `a` has keys {a_keys} and "
-            f"type spec structure `b` has different keys {b_keys}."
-            f"`a` : {a!r} `b` : {b!r}")
-      return collections.OrderedDict([
-          (k,
-           TypeSpec.__most_specific_compatible_type_serialization(a[k], b[k]))
-          for k in a_keys
-      ])
-    if isinstance(a, dict):
-      a_keys, b_keys = sorted(a.keys()), sorted(b.keys())
-      if len(a) != len(b) or a_keys != b_keys:
-        raise ValueError(
-            f"Encountered incompatible types while determining the most specific "
-            f"compatible type. "
-            f"Type spec structure `a` has keys {a_keys} and "
-            f"type spec structure `b` has different keys {b_keys}."
-            f"`a` : {a!r} `b` : {b!r}")
-      return {
-          k: TypeSpec.__most_specific_compatible_type_serialization(a[k], b[k])
-          for k in a_keys
-      }
-    if isinstance(a, tensor_shape.TensorShape):
-      return a.most_specific_compatible_shape(b)
-    if isinstance(a, list):
-      raise AssertionError(
-          f"{type(a).__name__}._serialize() should not return list values.")
-    if isinstance(a, TypeSpec):
-      return a.most_specific_compatible_type(b)
-    if a != b:
-      raise ValueError(
-          f"Encountered incompatible types while determining the most specific "
-          f"compatible type. "
-          f"Type spec structure `a` and `b` are different. "
-          f"`a` : {a!r} `b` : {b!r}")
-    return a
+trace_type.register_serializable(TypeSpec)
 
 
 class TypeSpecBatchEncoder(object, metaclass=abc.ABCMeta):
@@ -707,8 +699,8 @@ class TypeSpecBatchEncoder(object, metaclass=abc.ABCMeta):
         were batched, then `spec` should be `s.batch(batch_size)`; or if encoded
         values with spec `s` were unbatched, then `spec` should be
         `s.unbatch()`.
-      encoded_value: A nest of values returned by `encode`; or a nest of
-        values that was formed by stacking, unstacking, or concatenating the
+      encoded_value: A nest of values returned by `encode`; or a nest of values
+        that was formed by stacking, unstacking, or concatenating the
         corresponding elements of values returned by `encode`.
 
     Returns:
@@ -804,6 +796,7 @@ class BatchableTypeSpec(TypeSpec, metaclass=abc.ABCMeta):
     """
     raise NotImplementedError(f"{type(self).__name__}._unbatch")
 
+# LINT.IfChange
   @property
   def _flat_tensor_specs(self) -> List[TypeSpec]:
     """A list of TensorSpecs compatible with self._to_tensor_list(v)."""
@@ -811,20 +804,20 @@ class BatchableTypeSpec(TypeSpec, metaclass=abc.ABCMeta):
         functools.partial(get_batchable_flat_tensor_specs, context_spec=self),
         self._component_specs)
     return nest.flatten(component_flat_tensor_specs)
+# LINT.ThenChange(//tensorflow/python/framework/type_utils.py:_specs_for_flat_tensors)
+# Note that _specs_for_flat_tensors in type_utils.py must correspond
+# _flat_tensor_specs in this class and any derived classes.
 
   def _to_tensor_list(
-      self,
-      value: composite_tensor.CompositeTensor) -> List["ops.Tensor"]:
+      self, value: composite_tensor.CompositeTensor) -> List["ops.Tensor"]:
     """Encodes `value` as a flat list of `ops.Tensor`."""
-    component_tensor_lists = nest.map_structure(
-        batchable_to_tensor_list,
-        self._component_specs,
-        self._to_components(value))
+    component_tensor_lists = nest.map_structure(batchable_to_tensor_list,
+                                                self._component_specs,
+                                                self._to_components(value))
     return nest.flatten(component_tensor_lists)
 
   def _to_batched_tensor_list(
-      self,
-      value: composite_tensor.CompositeTensor) -> List["ops.Tensor"]:
+      self, value: composite_tensor.CompositeTensor) -> List["ops.Tensor"]:
     """Encodes `value` as a flat list of `ops.Tensor` each with rank>0."""
     get_spec_tensor_list = lambda spec, v: (  # pylint: disable=g-long-lambda
         batchable_to_tensor_list(spec, v, minimum_rank=1)
@@ -839,18 +832,17 @@ class BatchableTypeSpec(TypeSpec, metaclass=abc.ABCMeta):
     return tensor_list
 
   def _from_compatible_tensor_list(
-      self, tensor_list: List["ops.Tensor"]
-  ) -> composite_tensor.CompositeTensor:
+      self,
+      tensor_list: List["ops.Tensor"]) -> composite_tensor.CompositeTensor:
     """Reconstructs a value from a compatible flat list of `ops.Tensor`."""
     flat_specs = nest.map_structure(
         functools.partial(get_batchable_flat_tensor_specs, context_spec=self),
         self._component_specs)
     nested_tensor_list = nest.pack_sequence_as(flat_specs, tensor_list)
-    components = nest.map_structure_up_to(
-        self._component_specs,
-        batchable_from_tensor_list,
-        self._component_specs,
-        nested_tensor_list)
+    components = nest.map_structure_up_to(self._component_specs,
+                                          batchable_from_tensor_list,
+                                          self._component_specs,
+                                          nested_tensor_list)
     return self._from_components(components)
 
 
@@ -860,8 +852,8 @@ def get_batchable_flat_tensor_specs(spec, context_spec=None):
     return [spec]
   elif hasattr(spec, "__batch_encoder__"):
     encoding_specs = nest.map_structure(
-        functools.partial(get_batchable_flat_tensor_specs,
-                          context_spec=context_spec),
+        functools.partial(
+            get_batchable_flat_tensor_specs, context_spec=context_spec),
         spec.__batch_encoder__.encoding_specs(spec))
     return nest.flatten(encoding_specs)
   else:
@@ -881,8 +873,7 @@ def batchable_to_tensor_list(spec, value, minimum_rank=0):
     encoded_specs = spec.__batch_encoder__.encoding_specs(spec)
     encoded_flats = nest.map_structure(
         functools.partial(batchable_to_tensor_list, minimum_rank=minimum_rank),
-        encoded_specs,
-        encoded_value)
+        encoded_specs, encoded_value)
     return nest.flatten(encoded_flats)
   else:
     return spec._to_tensor_list(value)  # pylint: disable=protected-access
@@ -898,11 +889,9 @@ def batchable_from_tensor_list(spec, tensor_list):
     flat_specs = nest.map_structure(get_batchable_flat_tensor_specs,
                                     encoded_specs)
     encoded_flats = nest.pack_sequence_as(flat_specs, tensor_list)
-    encoded_value = nest.map_structure_up_to(
-        encoded_specs,
-        batchable_from_tensor_list,
-        encoded_specs,
-        encoded_flats)
+    encoded_value = nest.map_structure_up_to(encoded_specs,
+                                             batchable_from_tensor_list,
+                                             encoded_specs, encoded_flats)
     return spec.__batch_encoder__.decode(spec, encoded_value)
   else:
     return spec._from_compatible_tensor_list(tensor_list)  # pylint: disable=protected-access
@@ -973,13 +962,9 @@ def _type_spec_from_value(value) -> TypeSpec:
   if isinstance(value, list) and value:
     subspecs = [_type_spec_from_value(v) for v in value]
     if isinstance(subspecs[0], BatchableTypeSpec):
-      merged_subspec = subspecs[0]
-      try:
-        for subspec in subspecs[1:]:
-          merged_subspec = merged_subspec.most_specific_compatible_type(subspec)
+      merged_subspec = subspecs[0].most_specific_common_supertype(subspecs[1:])
+      if merged_subspec is not None:
         return merged_subspec._batch(len(subspecs))  # pylint: disable=protected-access
-      except (ValueError, TypeError):
-        pass  # incompatible subspecs
 
   for entry in reversed(_TYPE_CONVERSION_FUNCTION_REGISTRY):
     type_object, converter_fn, allow_subclass = entry

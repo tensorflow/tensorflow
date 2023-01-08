@@ -23,10 +23,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -173,11 +173,6 @@ class HloRunnerInterface {
   virtual absl::string_view Name() const = 0;
 
   typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;
-
- protected:
-  // TODO(b/201558073): Move this function out of the runtime in the future.
-  void UpdateEntryComputationLayout(
-      HloModule* module, DeviceShapeRepresentationFn shape_representation_fn);
 };
 
 }  // namespace xla

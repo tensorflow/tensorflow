@@ -265,6 +265,18 @@ def _normalize_include_path(repository_ctx, path):
         return path[len(crosstool_folder) + 1:]
     return path
 
+def _is_compiler_option_supported(repository_ctx, cc, option):
+    """Checks that `option` is supported by the C compiler. Doesn't %-escape the option."""
+    result = repository_ctx.execute([
+        cc,
+        option,
+        "-o",
+        "/dev/null",
+        "-c",
+        str(repository_ctx.path("tools/cpp/empty.cc")),
+    ])
+    return result.stderr.find(option) == -1
+
 def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
     """Compute the list of default C or C++ include directories."""
     if lang_is_cpp:
@@ -291,6 +303,18 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
         inc_dirs = stderr[index1 + 1:]
     else:
         inc_dirs = stderr[index1 + 1:index2].strip()
+
+    print_resource_dir_supported = _is_compiler_option_supported(
+        repository_ctx,
+        cc,
+        "-print-resource-dir",
+    )
+
+    if print_resource_dir_supported:
+        resource_dir = repository_ctx.execute(
+            [cc, "-print-resource-dir"],
+        ).stdout.strip() + "/share"
+        inc_dirs += "\n" + resource_dir
 
     return [
         _normalize_include_path(repository_ctx, _cxx_inc_convert(p))
@@ -423,6 +447,11 @@ def compute_capabilities(repository_ctx):
     ).split(",")
 
     # Map old 'x.y' capabilities to 'compute_xy'.
+    if len(capabilities) > 0 and all([len(x.split(".")) == 2 for x in capabilities]):
+        # If all capabilities are in 'x.y' format, only include PTX for the
+        # highest capability.
+        cc_list = sorted([x.replace(".", "") for x in capabilities])
+        capabilities = ["sm_%s" % x for x in cc_list[:-1]] + ["compute_%s" % cc_list[-1]]
     for i, capability in enumerate(capabilities):
         parts = capability.split(".")
         if len(parts) != 2:
@@ -808,7 +837,7 @@ filegroup(name="cudnn-include")
     )
 
     # Create dummy files for the CUDA toolkit since they are still required by
-    # tensorflow/core/platform/default/build_config:cuda.
+    # tensorflow/tsl/platform/default/build_config:cuda.
     repository_ctx.file("cuda/cuda/include/cuda.h")
     repository_ctx.file("cuda/cuda/include/cublas.h")
     repository_ctx.file("cuda/cuda/include/cudnn.h")
@@ -828,7 +857,7 @@ filegroup(name="cudnn-include")
     repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cusparse", cpu_value))
 
     # Set up cuda_config.h, which is used by
-    # tensorflow/stream_executor/dso_loader.cc.
+    # tensorflow/compiler/xla/stream_executor/dso_loader.cc.
     _tpl(
         repository_ctx,
         "cuda:cuda_config.h",
@@ -928,7 +957,7 @@ def _tf_sysroot(repository_ctx):
     return get_host_environ(repository_ctx, _TF_SYSROOT, "")
 
 def _compute_cuda_extra_copts(repository_ctx, compute_capabilities):
-    copts = []
+    copts = ["--no-cuda-include-ptx=all"] if _use_cuda_clang(repository_ctx) else []
     for capability in compute_capabilities:
         if capability.startswith("compute_"):
             capability = capability.replace("compute_", "sm_")
@@ -1292,7 +1321,7 @@ def _create_local_cuda_repository(repository_ctx):
     )
 
     # Set up cuda_config.h, which is used by
-    # tensorflow/stream_executor/dso_loader.cc.
+    # tensorflow/compiler/xla/stream_executor/dso_loader.cc.
     repository_ctx.template(
         "cuda/cuda/cuda_config.h",
         tpl_paths["cuda:cuda_config.h"],

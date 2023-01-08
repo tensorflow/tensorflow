@@ -26,7 +26,8 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -35,17 +36,20 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 using mlir::PassRegistration;
 
 namespace mlir {
 namespace mhlo {
 namespace {
+
+#define GEN_PASS_DEF_LEGALIZETFCONTROLFLOW
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+
 class LegalizeTFControlFlow
-    : public LegalizeTFControlFlowBase<LegalizeTFControlFlow> {
+    : public impl::LegalizeTFControlFlowBase<LegalizeTFControlFlow> {
  public:
   void runOnOperation() override;
 };
@@ -83,8 +87,7 @@ void ReplaceBlockArgumentsWithImplicitOperands(
       arg.replaceAllUsesWith(implicit_operands[implicit_operand_index++]);
     }
 
-    region.front().eraseArguments(
-        llvm::to_vector(llvm::seq<unsigned>(0, region.getNumArguments())));
+    region.front().eraseArguments(0, region.getNumArguments());
   }
 }
 
@@ -95,21 +98,21 @@ void ReplaceBlockArgumentsWithImplicitOperands(
 // `tuple_arg` allows any branch that requires additional arguments to have
 // their values be tupled together. Similarly, `tuple_return` allows the results
 // of the if/while operation to be tupled together.
-void ImportXlaRegion(mlir::FuncOp func, Region* dest_region, Location loc,
+void ImportXlaRegion(mlir::func::FuncOp func, Region* dest_region, Location loc,
                      bool tuple_return = true, bool tuple_arg = true) {
   OpBuilder builder(dest_region);
 
   auto entry_block = builder.createBlock(dest_region);
-  CallOp result;
+  func::CallOp result;
   if (!tuple_arg) {
-    auto inputs = func.getType().getInputs();
+    auto inputs = func.getFunctionType().getInputs();
     auto args = entry_block->addArguments(
         inputs, SmallVector<Location>(inputs.size(), loc));
     ArrayRef<Value> callop_args(args.begin(), args.end());
-    result = builder.create<CallOp>(loc, func, callop_args);
+    result = builder.create<func::CallOp>(loc, func, callop_args);
   } else {
     auto tuple_arg = entry_block->addArgument(
-        builder.getTupleType(func.getType().getInputs()), loc);
+        builder.getTupleType(func.getFunctionType().getInputs()), loc);
     llvm::SmallVector<Value, 4> detupled_args;
     detupled_args.reserve(func.getNumArguments());
 
@@ -118,7 +121,7 @@ void ImportXlaRegion(mlir::FuncOp func, Region* dest_region, Location loc,
       detupled_args.push_back(extract);
     }
 
-    result = builder.create<CallOp>(loc, func, detupled_args);
+    result = builder.create<func::CallOp>(loc, func, detupled_args);
   }
 
   if (!tuple_return) {
@@ -127,79 +130,6 @@ void ImportXlaRegion(mlir::FuncOp func, Region* dest_region, Location loc,
     auto tuple_op = builder.create<TupleOp>(loc, result.getResults());
     builder.create<mhlo::ReturnOp>(loc, tuple_op.getResult());
   }
-}
-
-void LowerIf(TF::IfOp op) {
-  Location loc = op.getLoc();
-  OpBuilder builder(op);
-
-  SmallVector<Value, 3> inputs(op.input());
-
-  // Create the new `mhlo.if` op.
-  auto if_op = builder.create<mhlo::IfOp>(loc, op.getResultTypes(), op.cond());
-
-  // Import the regions for both the true and false cases. These regions
-  // must be updated to tuple the return results together and use the xla hlo
-  // return op.
-  ImportXlaRegion(op.then_function(), &if_op.true_branch(), loc,
-                  /*tuple_return=*/false, /*tuple_arg=*/false);
-  ImportXlaRegion(op.else_function(), &if_op.false_branch(), loc,
-                  /*tuple_return=*/false, /*tuple_arg=*/false);
-
-  // Replace the uses of block-arguments of the IfOp with the
-  // implicit_operands.
-  ReplaceBlockArgumentsWithImplicitOperands(if_op.getOperation(), inputs);
-
-  op->replaceAllUsesWith(if_op);
-  op.erase();
-}
-
-void LowerCase(TF::CaseOp op) {
-  Location loc = op.getLoc();
-  OpBuilder builder(op);
-
-  SmallVector<Value, 4> inputs(op.input());
-
-  // Create the new `mhlo.case` op.
-  auto case_op = builder.create<mhlo::CaseOp>(
-      loc, op.getResultTypes(), op.branch_index(), op.branches().size());
-
-  // Import the regions for all branches.
-  for (unsigned i = 0; i < op.num_branches(); ++i) {
-    mlir::FuncOp branch_func = op.branch_function(i);
-    ImportXlaRegion(branch_func, &case_op.branches()[i], loc,
-                    /*tuple_return=*/false, /*tuple_arg=*/false);
-  }
-
-  // Replace the uses of block-arguments of the IfOp with the
-  // implicit_operands.
-  ReplaceBlockArgumentsWithImplicitOperands(case_op.getOperation(), inputs);
-
-  op.replaceAllUsesWith(case_op);
-  op.erase();
-}
-
-void LowerWhile(TF::WhileOp op) {
-  Location loc = op.getLoc();
-  OpBuilder builder(op);
-
-  // XLA prefers tuple arguments for control flow due to XLA not supporting
-  // multiple return values.
-  SmallVector<Value, 3> inputs(op.input());
-  builder.setInsertionPoint(op);
-
-  // Create the new `mhlo.while` op with inputs.
-  auto while_op =
-      builder.create<mhlo::WhileOp>(loc, op.getResultTypes(), inputs);
-
-  // Import the regions for both the cond and body.
-  ImportXlaRegion(op.body_function(), &while_op.body(), loc,
-                  /*tuple_return=*/false, /*tuple_arg=*/false);
-  ImportXlaRegion(op.cond_function(), &while_op.cond(), loc,
-                  /*tuple_return=*/false, /*tuple_arg=*/false);
-
-  op->replaceAllUsesWith(while_op);
-  op.erase();
 }
 
 // Replaces all block arguments of a block with a single block arg of Tuple
@@ -310,19 +240,20 @@ void LowerIfRegion(TF::IfRegionOp op) {
   OpBuilder builder(op);
 
   builder.setInsertionPoint(op);
-  ReplaceTerminator(&op.then_branch().front(), /*extra_results=*/{}, &builder,
+  ReplaceTerminator(&op.getThenBranch().front(), /*extra_results=*/{}, &builder,
                     /*tuple_return=*/false);
 
   builder.setInsertionPoint(op);
-  ReplaceTerminator(&op.else_branch().front(), /*extra_results=*/{}, &builder,
+  ReplaceTerminator(&op.getElseBranch().front(), /*extra_results=*/{}, &builder,
                     /*tuple_return=*/false);
 
   // Create the new `mhlo.if` op and take ownership of regions from
   // `tf.IfRegion` op.
   builder.setInsertionPoint(op);
-  auto if_op = builder.create<mhlo::IfOp>(loc, op.getResultTypes(), op.cond());
-  if_op.true_branch().takeBody(op.then_branch());
-  if_op.false_branch().takeBody(op.else_branch());
+  auto if_op =
+      builder.create<mhlo::IfOp>(loc, op.getResultTypes(), op.getCond());
+  if_op.getTrueBranch().takeBody(op.getThenBranch());
+  if_op.getFalseBranch().takeBody(op.getElseBranch());
 
   // Replace all uses of `op` results with that of `mhlo.IfOp`.
   op->replaceAllUsesWith(if_op);
@@ -334,7 +265,7 @@ void LowerCaseRegion(TF::CaseRegionOp op) {
   Location loc = op.getLoc();
   OpBuilder builder(op);
 
-  for (Region& region : op.branches()) {
+  for (Region& region : op.getBranches()) {
     builder.setInsertionPoint(op);
     ReplaceTerminator(&region.front(), /*extra_results=*/{}, &builder,
                       /*tuple_return=*/false);
@@ -344,8 +275,8 @@ void LowerCaseRegion(TF::CaseRegionOp op) {
   // `tf.CaseRegion` op.
   builder.setInsertionPoint(op);
   auto case_op = builder.create<mhlo::CaseOp>(
-      loc, op.getResultTypes(), op.branch_index(), op.branches().size());
-  for (auto region : llvm::zip(case_op.branches(), op.branches()))
+      loc, op.getResultTypes(), op.getBranchIndex(), op.getBranches().size());
+  for (auto region : llvm::zip(case_op.getBranches(), op.getBranches()))
     std::get<0>(region).takeBody(std::get<1>(region));
 
   // Replace all uses of `op` results with that of `mhlo.CaseOp`.
@@ -357,7 +288,7 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
   Location loc = op.getLoc();
   OpBuilder builder(op);
 
-  SmallVector<Value, 3> inputs(op.input());
+  SmallVector<Value, 3> inputs(op.getInput());
   const int inputs_size = inputs.size();
   llvm::SetVector<Value> implicit_inputs;
   getUsedValuesDefinedAbove(op.getOperation()->getRegions(), implicit_inputs);
@@ -377,8 +308,8 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
 
   // Rewrite cond and associated block arguments and terminator. Ownership of
   // cond region is transfered over from `tf.WhileRegion` to `mhlo.while`.
-  Region& cond = while_op.cond();
-  cond.takeBody(op.cond());
+  Region& cond = while_op.getCond();
+  cond.takeBody(op.getCond());
   Block& cond_block = cond.front();
   builder.setInsertionPointToStart(&cond_block);
 
@@ -393,8 +324,8 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
 
   // Rewrite body and associated block arguments and terminator. Ownership of
   // body region is transfered over from `tf.WhileRegion` to `mhlo.while`.
-  Region& body = while_op.body();
-  body.takeBody(op.body());
+  Region& body = while_op.getBody();
+  body.takeBody(op.getBody());
   Block& body_block = body.front();
   builder.setInsertionPointToStart(&body_block);
   // Add args corresponding to 'implicit_inputs'.
@@ -419,24 +350,12 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
 
 void LegalizeTFControlFlow::runOnOperation() {
   getOperation().walk([&](Operation* op) {
-    if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
-      LowerWhile(while_op);
-      return;
-    }
     if (auto while_region_op = dyn_cast<TF::WhileRegionOp>(op)) {
       LowerWhileRegion(while_region_op);
       return;
     }
-    if (auto if_op = dyn_cast<TF::IfOp>(op)) {
-      LowerIf(if_op);
-      return;
-    }
     if (auto if_region_op = dyn_cast<TF::IfRegionOp>(op)) {
       LowerIfRegion(if_region_op);
-      return;
-    }
-    if (auto case_op = dyn_cast<TF::CaseOp>(op)) {
-      LowerCase(case_op);
       return;
     }
     if (auto case_region_op = dyn_cast<TF::CaseRegionOp>(op)) {

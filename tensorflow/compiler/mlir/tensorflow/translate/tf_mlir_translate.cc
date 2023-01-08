@@ -17,12 +17,13 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
@@ -223,7 +224,7 @@ SavedModelSignatureDefsToMlirImportLite(
     return status;
   }
 
-  absl::optional<absl::Span<const std::string>> optional_exported_names;
+  std::optional<absl::Span<const std::string>> optional_exported_names;
   if (!exported_names.empty()) optional_exported_names = exported_names;
 
   // TODO(b/186898924): debug info in the savedmodel should not be ignored and
@@ -257,9 +258,9 @@ GraphdefToSplattedMlirTranslateFunction(
     LOG(ERROR) << "Graph import failed: " << module_or.status();
     return module_or.status();
   }
-  auto& module = module_or.ValueOrDie();
+  auto& module = module_or.value();
   std::srand(0);
-  for (auto fn : module->getOps<mlir::FuncOp>()) {
+  for (auto fn : module->getOps<mlir::func::FuncOp>()) {
     for (auto& bb : fn) {
       for (auto& inst : bb) {
         auto attr_id = mlir::StringAttr::get(context, "value");

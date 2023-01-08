@@ -17,15 +17,9 @@ limitations under the License.
 
 #include <queue>
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 
 namespace xla {
 
@@ -34,10 +28,6 @@ TupleSimplifier::TupleSimplifier(bool exclude_entry_computation)
 
 StatusOr<bool> TupleSimplifier::RemoveWholeTuple(HloInstruction* tuple) {
   HloInstruction* top_tuple = nullptr;
-  if (tuple->parent()->root_instruction() == tuple &&
-      tuple->parent()->HasSideEffect()) {
-    return false;
-  }
   for (int64_t operand_number = 0; operand_number < tuple->operand_count();
        ++operand_number) {
     HloInstruction* operand = tuple->mutable_operand(operand_number);
@@ -63,17 +53,20 @@ StatusOr<bool> TupleSimplifier::RemoveWholeTuple(HloInstruction* tuple) {
   return changed;
 }
 
-StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
+StatusOr<bool> TupleSimplifier::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Initially add all GTE and Tuple instructions to the worklist.
   bool changed = false;
-  for (auto* computation : module->computations()) {
+  for (auto* computation : module->computations(execution_threads)) {
     if (exclude_entry_computation_ &&
         computation == module->entry_computation()) {
       continue;
     }
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() == HloOpcode::kTuple) {
-        TF_ASSIGN_OR_RETURN(changed, RemoveWholeTuple(instruction));
+        TF_ASSIGN_OR_RETURN(bool c, RemoveWholeTuple(instruction));
+        changed |= c;
       } else {
         auto ancestor = instruction->LatestNonGteAncestorAndIndex();
         if (ancestor.first == instruction) {
@@ -98,12 +91,13 @@ StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
         // if only a subset of tuple's elements are used, this transform
         // optimizes them one at a time, and after the last use is optimized,
         // the Tuple will also be deleted.
-        HloInstruction* replacement = nullptr;
-        if (ShapeUtil::Compatible(ancestor.first->shape(),
-                                  instruction->shape())) {
-          replacement = ancestor.first;
-        } else if (ancestor.first->opcode() == HloOpcode::kTuple) {
-          replacement = ancestor.first->mutable_operand(ancestor.second[0]);
+        HloInstruction* replacement = ancestor.first;
+        for (int i = 0; i < ancestor.second.size(); ++i) {
+          if (replacement->opcode() != HloOpcode::kTuple) {
+            replacement = nullptr;
+            break;
+          }
+          replacement = replacement->mutable_operand(ancestor.second[i]);
         }
 
         if (replacement) {

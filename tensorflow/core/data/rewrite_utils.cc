@@ -132,7 +132,7 @@ Status ApplyRewrites(OpKernelContext* ctx,
     RemoveFakeSinks(&function_def);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // anonymous namespace
 
@@ -246,7 +246,7 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
     });
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 std::unique_ptr<tensorflow::grappler::GrapplerItem> GetGrapplerItem(
@@ -334,6 +334,18 @@ StatusOr<std::string> GetDatasetNode(const GraphDef& graph_def) {
   for (const auto& node : graph_def.node()) {
     if (node.op() == "_Retval") {
       return node.input(0);
+    }
+  }
+  return errors::NotFound(
+      absl::Substitute("Dataset node for graph is not found:\n$0",
+                       graph_def.ShortDebugString()));
+}
+
+StatusOr<NodeDef> GetDatasetNodeDef(const GraphDef& graph_def) {
+  TF_ASSIGN_OR_RETURN(std::string dataset_node_name, GetDatasetNode(graph_def));
+  for (const auto& node : graph_def.node()) {
+    if (node.name() == dataset_node_name) {
+      return node;
     }
   }
   return errors::NotFound(

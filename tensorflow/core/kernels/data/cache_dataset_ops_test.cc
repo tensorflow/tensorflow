@@ -37,7 +37,7 @@ class CacheDatasetParams : public DatasetParams {
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         filename_(filename) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
                                    input_dataset_params.iterator_prefix());
@@ -51,14 +51,14 @@ class CacheDatasetParams : public DatasetParams {
 
   Status GetInputNames(std::vector<string>* input_names) const override {
     *input_names = {CacheDatasetOp::kInputDataset, CacheDatasetOp::kFileName};
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {{"output_types", output_dtypes_},
                     {"output_shapes", output_shapes_},
                     {"metadata", ""}};
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override { return CacheDatasetOp::kDatasetType; }
@@ -75,7 +75,7 @@ class CacheDatasetOpTest : public DatasetOpsTestBase {
     TF_RETURN_IF_ERROR(DatasetOpsTestBase::Initialize(dataset_params));
     auto params = static_cast<const CacheDatasetParams&>(dataset_params);
     cache_filename_ = params.filename();
-    return Status::OK();
+    return OkStatus();
   }
 
   ~CacheDatasetOpTest() override {

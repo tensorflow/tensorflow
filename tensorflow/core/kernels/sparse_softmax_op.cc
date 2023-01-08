@@ -126,6 +126,7 @@ class SparseSoftmaxOp : public OpKernel {
       Name("SparseSoftmax").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       SparseSoftmaxOp<CPUDevice, T>)
 
+REGISTER_KERNEL(Eigen::half);
 REGISTER_KERNEL(float);
 REGISTER_KERNEL(double);
 #undef REGISTER_KERNEL

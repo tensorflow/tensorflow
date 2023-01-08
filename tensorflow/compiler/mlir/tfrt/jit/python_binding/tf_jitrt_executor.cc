@@ -24,11 +24,14 @@ limitations under the License.
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/python_binding/conversion_utils.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
 #include "tensorflow/compiler/mlir/tfrt/python_tests/python_test_attrs_registration.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
-#include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
+#include "tfrt/jitrt/async_task_runner.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
+#include "tfrt/jitrt/results.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
@@ -45,7 +48,6 @@ using ::tfrt::AsyncValuePtr;
 using ::tfrt::CreateMallocAllocator;
 using ::tfrt::CreateMultiThreadedWorkQueue;
 using ::tfrt::DecodedDiagnostic;
-using ::tfrt::DType;
 using ::tfrt::GetDType;
 using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
@@ -53,169 +55,76 @@ using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
 using ::tfrt::StrCat;
 
-using ::tfrt::jitrt::CompilationOptions;
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
-using ::tfrt::jitrt::Executable;
 using ::tfrt::jitrt::HostContextAsyncTaskRunner;
-using ::tfrt::jitrt::JitExecutable;
-using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
+using ::tfrt::jitrt::RemainingResultsConverter;
 using ::tfrt::jitrt::ReturnStridedMemref;
-using ::tfrt::jitrt::ReturnValueConverter;
+
+using ::xla::runtime::Executable;
+using ::xla::runtime::JitExecutable;
+using ::xla::runtime::MemrefDesc;
 
 namespace tensorflow {
 
 TfJitRtExecutor::TfJitRtExecutor()
     : host_context_(
           [](const DecodedDiagnostic& diag) {
-            llvm::errs() << "Encountered runtime error: " << diag.message
+            llvm::errs() << "Encountered runtime error: " << diag.message()
                          << "\n";
           },
           CreateMallocAllocator(), CreateMultiThreadedWorkQueue(4, 4)) {}
 
-TfJitRtExecutor::Handle TfJitRtExecutor::Compile(const std::string& mlir_module,
-                                                 const std::string& entrypoint,
-                                                 Specialization specialization,
-                                                 bool vectorize,
-                                                 bool legalize_i1_tensors) {
+TfJitRtExecutor::Handle TfJitRtExecutor::Compile(
+    const std::string& mlir_module, const std::string& entrypoint,
+    Specialization specialization, bool vectorize, bool codegen_transpose,
+    bool legalize_i1_tensors, bool peel, bool enable_xla_cpu_transformations,
+    bool pack_matmul) {
   // Options for the default JitRt compilation pipeline (lowering to LLVM).
   CompilationPipelineOptions copts;
   copts.alignment = EIGEN_MAX_ALIGN_BYTES;
   copts.num_worker_threads = 4;
 
-  CompilationOptions opts;
-  opts.register_dialects = [](mlir::DialectRegistry& registry) {
-    mlir::RegisterAllTensorFlowDialects(registry);
-    RegisterDefaultJitRtDialects(registry);
-    // Needed to verify function argument attributes which are used to
-    // annotate dynamic shaped types with static type information.
-    mlir::tfrt::RegisterPythonTestAttrsDialect(registry);
-  };
-  opts.create_compilation_pipeline = [=](mlir::PassManager& pm) {
-    tensorflow::TfJitRtPipelineOptions opts;
-    opts.vectorize = vectorize;
-    opts.legalize_i1_tensors = legalize_i1_tensors;
-    tensorflow::CreateTfJitRtPipeline(pm, opts);
-    CreateDefaultJitRtCompilationPipeline(pm, copts);
-  };
-  opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
+  JitExecutable::Options opts;
+  opts.compiler.register_dialects =
+      [](xla::runtime::DialectRegistry& dialects) {
+        mlir::RegisterAllTensorFlowDialects(*dialects);
+        RegisterDefaultJitRtDialects(dialects);
+        // Needed to verify function argument attributes which are used to
+        // annotate dynamic shaped types with static type information.
+        mlir::tfrt::RegisterPythonTestAttrsDialect(*dialects);
+      };
+  opts.compiler.create_compilation_pipeline =
+      [=](xla::runtime::PassManager& passes) {
+        tensorflow::TfJitRtPipelineOptions opts;
+        opts.vectorize = vectorize;
+        opts.codegen_transpose = codegen_transpose;
+        opts.legalize_i1_tensors = legalize_i1_tensors;
+        opts.peel = peel;
+        opts.enable_xla_cpu_transformations = enable_xla_cpu_transformations;
+        opts.lower_to_mmt4d = pack_matmul;
+        tensorflow::CreateTfJitRtPipeline(*passes, opts);
+        CreateDefaultJitRtCompilationPipeline(passes, copts);
+      };
+  if (specialization != Specialization::kDisabled) {
+    opts.compiler.create_specialization_pipeline =
+        CreateJitRtSpecializationPipeline;
+  }
   opts.specialization = specialization;
-  opts.calling_convention = CompilationOptions::DefaultCallingConvention(
+  opts.compiler.calling_convention = xla::runtime::DefaultCallingConvention(
       mlir::bufferization::BufferizeTypeConverter());
 
   // Instantiate new JitExecutable from the MLIR source.
-  llvm::Expected<JitExecutable> jit_executable =
+  absl::StatusOr<JitExecutable> jit_executable =
       JitExecutable::Instantiate(mlir_module, entrypoint, opts);
-  if (auto err = jit_executable.takeError())
-    throw std::runtime_error(
-        StrCat("Failed to instantiate JitExecutable: ", err));
+  if (!jit_executable.ok())
+    throw std::runtime_error(StrCat("Failed to instantiate JitExecutable: ",
+                                    jit_executable.status().message()));
 
   Handle hdl = jit_executables_.size();
   jit_executables_.insert({hdl, std::move(*jit_executable)});
   return hdl;
-}
-
-// Returns Python buffer protocol's type string from TFRT's dtype.
-static const char* ToPythonStructFormat(DType dtype_kind) {
-  // Reference: https://docs.python.org/3/library/struct.html
-
-  switch (dtype_kind) {
-    case DType::Invalid:
-      throw std::runtime_error("Invalid dtype.");
-    case DType::Unsupported:
-      throw std::runtime_error("Unsupported dtype.");
-    case DType::UI8:
-      return "B";
-    case DType::UI16:
-      return "H";
-    case DType::UI32:
-      return "I";
-    case DType::UI64:
-      return "Q";
-    case DType::I1:
-      return "?";
-    case DType::I8:
-      return "b";
-    case DType::I16:
-      return "h";
-    case DType::I32:
-      return "i";
-    case DType::I64:
-      return "q";
-    case DType::F32:
-      return "f";
-    case DType::F64:
-      return "d";
-    case DType::Complex64:
-      throw std::runtime_error("Unimplemented.");
-    case DType::Complex128:
-      throw std::runtime_error("Unimplemented.");
-    case DType::F16:
-      throw std::runtime_error("Unimplemented.");
-    case DType::BF16:
-      throw std::runtime_error("Unimplemented.");
-    case DType::String:
-      throw std::runtime_error("Unimplemented.");
-    default:
-      throw std::runtime_error("Unimplemented.");
-  }
-}
-
-// Returns TFRT's dtype for the Python buffer protocol's type string.
-static DType FromPythonStructFormat(char dtype) {
-  // Reference: https://docs.python.org/3/library/struct.html
-  switch (dtype) {
-    case 'B':
-      return DType::UI8;
-    case 'H':
-      return DType::UI16;
-    case 'I':
-      return DType::UI32;
-    case 'Q':
-      return DType::UI64;
-    case '?':
-      return DType::I1;
-    case 'b':
-      return DType::I8;
-    case 'h':
-      return DType::I16;
-    case 'i':
-      return DType::I32;
-    case 'q':
-      return DType::I64;
-    case 'f':
-      return DType::F32;
-    case 'd':
-      return DType::F64;
-    default:
-      throw std::runtime_error("Unsupported python dtype.");
-  }
-}
-
-// Converts Python array to the Memref Descriptor.
-static void ConvertPyArrayMemrefDesc(const py::array& array,
-                                     MemrefDesc* memref) {
-  auto py_dtype = [](pybind11::dtype dtype) -> char {
-    // np.int64 array for some reason has `i` dtype, however according to the
-    // documentation it must be `q`.
-    if (dtype.kind() == 'i' && dtype.itemsize() == 8) return 'q';
-
-    return dtype.char_();
-  };
-
-  memref->dtype = DType(FromPythonStructFormat(py_dtype(array.dtype())));
-  memref->data = const_cast<void*>(array.data());
-  memref->offset = 0;
-
-  int rank = array.ndim();
-  memref->sizes.resize(rank);
-  memref->strides.resize(rank);
-
-  for (ssize_t d = 0; d < rank; ++d) {
-    memref->sizes[d] = array.shape(d);
-    memref->strides[d] = array.strides(d) / array.itemsize();
-  }
 }
 
 template <typename T, int rank>
@@ -241,8 +150,8 @@ static llvm::ArrayRef<int64_t> Strides(StridedMemRefType<T, 0>* memref) {
 namespace {
 struct PyBindingConversionContext {};
 
-using PyBindingReturnValueConverter =
-    ReturnValueConverter<PyBindingConversionContext>;
+using PyBindingResultConverter =
+    RemainingResultsConverter<PyBindingConversionContext>;
 }  // namespace
 
 template <typename T>
@@ -289,7 +198,7 @@ struct MemrefToPyArray {
 
 std::vector<py::array> TfJitRtExecutor::Execute(
     Handle handle, const std::vector<py::array>& arguments) {
-  // Verify that we have a compilatio result for the handle.
+  // Verify that we have a compilation result for the handle.
   auto it = jit_executables_.find(handle);
   if (it == jit_executables_.end())
     throw std::runtime_error(StrCat("Unknown jit executable handle: ", handle));
@@ -303,23 +212,24 @@ std::vector<py::array> TfJitRtExecutor::Execute(
   tfrt::ExecutionContext exec_ctx(std::move(*req_ctx));
 
   // Convert arguments to memrefs.
-  std::vector<MemrefDesc> memrefs(arguments.size());
+  std::vector<MemrefDesc> memrefs;
+  memrefs.reserve(arguments.size());
   for (int i = 0; i < arguments.size(); ++i)
-    ConvertPyArrayMemrefDesc(arguments[i], &memrefs[i]);
+    memrefs.emplace_back(ConvertPyArrayMemrefDesc(arguments[i]));
 
   // Get an executable that might be specialized to the operands.
-  llvm::Expected<AsyncValuePtr<Executable>> executable =
+  absl::StatusOr<AsyncValuePtr<Executable>> executable =
       jit_executable.GetExecutable(memrefs);
-  if (auto err = executable.takeError())
+  if (!executable.ok())
     throw std::runtime_error(
-        StrCat("Failed to get Executable: ", std::move(err)));
+        StrCat("Failed to get Executable: ", executable.status().message()));
 
   // Wait for the compilation completion.
   host_context_.Await({executable->CopyRef()});
 
   if (executable->IsError())
     throw std::runtime_error(
-        StrCat("Failed to get Executable: ", executable->GetError()));
+        StrCat("Failed to get Executable: ", executable->GetError().message()));
 
   // Prepare storage for returned values.
   unsigned num_results = (*executable)->num_results();
@@ -334,17 +244,18 @@ std::vector<py::array> TfJitRtExecutor::Execute(
 
   // Convert returned memrefs to python arrays.
   PyBindingConversionContext results_ctx;
-  PyBindingReturnValueConverter converter(results, results_ctx);
+  PyBindingResultConverter converter(results, results_ctx);
   converter.AddConversion(ReturnStridedMemref<MemrefToPyArray>);
-  if (auto err = (*executable)->Execute(memrefs, converter, opts))
-    throw std::runtime_error(StrCat("Unsupported argument: ", err));
+  if (auto st = (*executable)->Execute(memrefs, converter, opts); !st.ok())
+    throw std::runtime_error(StrCat("Unsupported argument: ", st.message()));
 
   // Pull Python arrays out of async values.
   std::vector<py::array> ret_values;
   ret_values.reserve(result_storage.size());
   for (auto& result : result_storage) {
     if (result->IsError())
-      throw std::runtime_error(StrCat("result error: ", result->GetError()));
+      throw std::runtime_error(
+          StrCat("result error: ", result->GetError().message()));
     py::array& result_array = result->get<py::array>();
     TF_ANNOTATE_MEMORY_IS_INITIALIZED(result_array.data(),
                                       result_array.nbytes());
@@ -379,7 +290,10 @@ PYBIND11_MODULE(_tf_jitrt_executor, m) {
            py::arg("mlir_module"), py::arg("entrypoint"),
            py::arg("specialization") =
                tensorflow::TfJitRtExecutor::Specialization::kEnabled,
-           py::arg("vectorize") = false, py::arg("legalize_i1_tensors") = false)
+           py::arg("vectorize") = false, py::arg("codegen_transpose") = false,
+           py::arg("legalize_i1_tensors") = false, py::arg("peel") = true,
+           py::arg("enable_xla_cpu_transformations") = false,
+           py::arg("pack_matmul") = false)
       .def("execute", &tensorflow::TfJitRtExecutor::Execute)
       .def("built_with", &tensorflow::TfJitRtExecutor::BuiltWith,
            py::arg("cpu_feature"));

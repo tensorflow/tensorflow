@@ -14,7 +14,7 @@
 # ==============================================================================
 
 """Operations for automatic batching and unbatching."""
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import gen_batch_ops
@@ -87,13 +87,15 @@ def batch_function(num_batch_threads,
 
     def decorated(*args):  # pylint: disable=missing-docstring
 
-      @function.defun(autograph=autograph)
+      @def_function.function(autograph=autograph)
       def computation(*computation_args):
         return fn(*computation_args)
 
-      computation = computation.get_concrete_function(
-          *[tensor_spec.TensorSpec(dtype=x.dtype, shape=x.shape, name=str(i))
-            for i, x in enumerate(args)])
+      computation = computation.get_concrete_function(*[
+          tensor_spec.TensorSpec(
+              dtype=x.dtype, shape=x.shape, name="batch_" + str(i))
+          for i, x in enumerate(args)
+      ])
 
       with ops.name_scope("batch") as name:
         for a in args:

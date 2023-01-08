@@ -16,8 +16,9 @@ limitations under the License.
 // This is the optimization pattern definition file for TensorFlow Lite.
 
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
-include "mlir/Dialect/StandardOps/IR/Ops.td"
+include "mlir/IR/PatternBase.td"
+include "mlir/Dialect/Arith/IR/ArithOps.td"
+include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/lite/utils/utils.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
@@ -53,7 +54,7 @@ class HasRank<int n> : Constraint<
 //===----------------------------------------------------------------------===//
 // Multi-pattern consisting of matching stand-alone convolution op followed by
 // activation op.
-multiclass FuseActFnIntoConvOpPat<Op ActFnOp, Attr ActFnAttr> {
+multiclass FuseActFnIntoConvOpPat<Op ActFnOp, ConstantStrAttr ActFnAttr> {
   def FuseActivationFuncWithConv#ActFnOp#ActFnAttr : Pat<
     (ActFnOp (TFL_Conv2DOp:$conv_out $input, $filter, $bias, $h_factor,
                  $w_factor, TFL_AF_None, $padding, $stride_h, $stride_w)),
@@ -69,7 +70,7 @@ multiclass FuseActFnIntoConvOpPat<Op ActFnOp, Attr ActFnAttr> {
     [(HasOneUse $conv_out)]>;
 }
 
-multiclass FuseActFnIntoPoolOpPat<Op ActFnOp, Attr ActFnAttr> {
+multiclass FuseActFnIntoPoolOpPat<Op ActFnOp, ConstantStrAttr ActFnAttr> {
   def FuseActivationFuncWithAvgPool#ActFnOp#ActFnAttr : Pat<
     (ActFnOp (TFL_AveragePool2DOp:$pool_out $input, $filter_height,
                   $filter_width, $padding, $stride_h, $stride_w, TFL_AF_None)),
@@ -91,8 +92,8 @@ multiclass FuseActFnIntoPoolOpPat<Op ActFnOp, Attr ActFnAttr> {
 foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
                      [TFL_Relu6Op, TFL_AF_Relu6],
                      [TFL_Relu1Op, TFL_AF_Relu1]] in {
-  defm : FuseActFnIntoConvOpPat<!cast<Op>(actFnPair[0]), !cast<Attr>(actFnPair[1])>;
-  defm : FuseActFnIntoPoolOpPat<!cast<Op>(actFnPair[0]), !cast<Attr>(actFnPair[1])>;
+  defm : FuseActFnIntoConvOpPat<!cast<Op>(actFnPair[0]), !cast<ConstantStrAttr>(actFnPair[1])>;
+  defm : FuseActFnIntoPoolOpPat<!cast<Op>(actFnPair[0]), !cast<ConstantStrAttr>(actFnPair[1])>;
 }
 
 class CanFuseConvOrDepthwiseConv<string is_depthwise> : Constraint<
@@ -128,25 +129,25 @@ multiclass FuseBinaryOpToPrecedingAffine<Op binaryOp> {
      (HasRank<1> $value),
      (HasOneUse $output)]>;
    def FuseBinaryOpWithTransposeConv#binaryOp : Pat<
-    (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $inputs,
+    (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $input,
                 (Arith_ConstantOp FloatElementsAttr:$bias), $padding,
-                $stride_h, $stride_w),
-              (Arith_ConstantOp FloatElementsAttr:$value), TFL_AF_None),
-    (TFL_TransposeConvOp $output_shape, $weights, $inputs,
+                $stride_h, $stride_w, TFL_AF_None),
+              (Arith_ConstantOp FloatElementsAttr:$value), $act_fn),
+    (TFL_TransposeConvOp $output_shape, $weights, $input,
       (binaryOp (Arith_ConstantOp $bias),
          (Arith_ConstantOp $value), TFL_AF_None),
-      $padding, $stride_h, $stride_w),
+      $padding, $stride_h, $stride_w, $act_fn),
     [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
      (HasOneUse $output)]>;
   // Fuse for TransposeConv with no bias
   def FuseBinaryOpWithTransposeConvNoneBias#binaryOp : Pat<
-    (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $inputs,
+    (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $input,
                 $bias, $padding,
-                $stride_h, $stride_w),
-              (Arith_ConstantOp FloatElementsAttr:$value), TFL_AF_None),
-    (TFL_TransposeConvOp $output_shape, $weights, $inputs,
+                $stride_h, $stride_w, TFL_AF_None),
+              (Arith_ConstantOp FloatElementsAttr:$value), $act_fn),
+    (TFL_TransposeConvOp $output_shape, $weights, $input,
       (Arith_ConstantOp $value),
-      $padding, $stride_h, $stride_w),
+      $padding, $stride_h, $stride_w, $act_fn),
     [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
      (IsNoneType $bias),
      (HasOneUse $output)]>;
@@ -208,8 +209,8 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
     (BinaryOp (TFL_TransposeConvOp:$output $output_shape,
                 (Arith_ConstantOp FloatElementsAttr:$weights), $input,
                 (Arith_ConstantOp FloatElementsAttr:$bias),
-                $padding, $stride_h, $stride_w),
-              (Arith_ConstantOp $value), TFL_AF_None),
+                $padding, $stride_h, $stride_w, TFL_AF_None),
+              (Arith_ConstantOp $value), $act_fn),
     (TFL_TransposeConvOp $output_shape,
       (BinaryOp (Arith_ConstantOp $weights),
         (Arith_ConstantOp (ExpandTo4DForConv $value)),
@@ -218,22 +219,22 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
       (BinaryOp (Arith_ConstantOp $bias),
         (Arith_ConstantOp $value),
         TFL_AF_None),
-      $padding, $stride_h, $stride_w),
+      $padding, $stride_h, $stride_w, $act_fn),
     [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
      (HasOneUse $output)]>;
   def FuseMulOrDivWithTransposeConvWithNoneBias#BinaryOp : Pat<
     (BinaryOp (TFL_TransposeConvOp:$output $output_shape,
                 (Arith_ConstantOp FloatElementsAttr:$weights), $input,
                 $bias,
-                $padding, $stride_h, $stride_w),
-              (Arith_ConstantOp $value), TFL_AF_None),
+                $padding, $stride_h, $stride_w, TFL_AF_None),
+              (Arith_ConstantOp $value), $act_fn),
     (TFL_TransposeConvOp $output_shape,
       (BinaryOp (Arith_ConstantOp $weights),
         (Arith_ConstantOp (ExpandTo4DForConv $value)),
         TFL_AF_None),
       $input,
       $bias,
-      $padding, $stride_h, $stride_w),
+      $padding, $stride_h, $stride_w, $act_fn),
     [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
      (IsNoneType $bias),
      (HasOneUse $output)]>;

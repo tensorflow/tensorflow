@@ -25,7 +25,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Create a speech fingerpring from spectrogram data.
+// Create a speech fingerprint from spectrogram data.
 class MfccOp : public OpKernel {
  public:
   explicit MfccOp(OpKernelConstruction* context) : OpKernel(context) {
@@ -60,10 +60,12 @@ class MfccOp : public OpKernel {
     mfcc.set_lower_frequency_limit(lower_frequency_limit_);
     mfcc.set_filterbank_channel_count(filterbank_channel_count_);
     mfcc.set_dct_coefficient_count(dct_coefficient_count_);
-    OP_REQUIRES(context, mfcc.Initialize(spectrogram_channels, sample_rate),
-                errors::InvalidArgument(
-                    "Mfcc initialization failed for channel count ",
-                    spectrogram_channels, " and sample rate ", sample_rate));
+    OP_REQUIRES(
+        context, mfcc.Initialize(spectrogram_channels, sample_rate),
+        errors::InvalidArgument("Mfcc initialization failed for channel count ",
+                                spectrogram_channels, ", sample rate ",
+                                sample_rate, " and filterbank_channel_count ",
+                                filterbank_channel_count_));
 
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context,

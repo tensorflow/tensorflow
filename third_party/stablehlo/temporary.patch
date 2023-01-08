@@ -1,0 +1,270 @@
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -65,21 +65,7 @@
+ // Utils for shape functions.
+ //===----------------------------------------------------------------------===//
+ 
+-// WindowDimension described how the kernel window moves across the base area
+-// in a particular dimension.
+-// Describes the windowing in an operation such as convolution.
+-// The window is moved across a base area and for each position of the
+-// window a computation is performed. The field below describes the
+-// window and the movement of the window across a base area.
+-struct WindowDimension {
+-  int64_t size = 0;
+-  int64_t stride = 1;
+-  int64_t paddingLow = 0;
+-  int64_t paddingHigh = 0;
+-  int64_t windowDilation = 1;
+-  int64_t baseDilation = 1;
+-  bool windowReversal = false;
+-};
++static constexpr int64_t kDynamicSizePrintValue = -1;
+ 
+ // Checks if the vector `nums` has duplicates.
+ const auto hasDuplicates = [](const ArrayRef<int64_t> nums) {
+@@ -785,6 +771,19 @@
+   return success();
+ }
+ 
++// Checks if the precision config has a valid size, if provided.
++LogicalResult verifyPrecisionConfig(Optional<Location> loc,
++                                    Optional<ArrayAttr> maybeArrayAttr) {
++  if (!maybeArrayAttr.has_value()) return success();
++  auto arrayAttr = maybeArrayAttr.value();
++  if (!arrayAttr) return success();
++  return arrayAttr.size() <= 2
++             ? success()
++             : emitOptionalError(loc,
++                                 "expects precision config to be empty or have "
++                                 "<= 2 elements.");
++}
++
+ // Verifies the following properties:
+ //  P1. The input, kernel, and output spatial-dimentions are valid.
+ //  P2. Given,
+@@ -805,14 +804,16 @@
+ //          dim(lhs, f) / fgc = dim(rhs, i)
+ //        * dim(rhs, o) (or dim(output, f')) % bgc == 0 and
+ //          dim(rhs, o) (or dim(output, f')) % fgc == 0
++//  P3. Precision config is null, of size 0 or of size 2.
+ LogicalResult verifyConvolutionAttributes(
+-    Value lhs, Value rhs, int64_t inputBatchDimension,
+-    int64_t inputFeatureDimension, ArrayRef<int64_t> inputSpatialDimensions,
++    Optional<Location> location, Value lhs, Value rhs,
++    int64_t inputBatchDimension, int64_t inputFeatureDimension,
++    ArrayRef<int64_t> inputSpatialDimensions,
+     int64_t kernelInputFeatureDimension, int64_t kernelOutputFeatureDimension,
+     ArrayRef<int64_t> kernelSpatialDimensions, int64_t outputBatchDimension,
+     int64_t outputFeatureDimension, ArrayRef<int64_t> outputSpatialDimensions,
+     int64_t featureGroupCount, int64_t batchGroupCount,
+-    Optional<Location> location) {
++    Optional<ArrayAttr> precisionConfig) {
+   // P1.
+   if (failed(isSpatialDimensionsValid(
+           lhs, inputBatchDimension, inputFeatureDimension,
+@@ -892,18 +893,11 @@
+                              "batch_group_count. Got batch_group_count = ",
+                              batchGroupCount, ".");
+ 
+-  return success();
+-}
+-
+-// Checks if the precision config has a valid size, if provided.
+-LogicalResult verifyPrecisionConfig(Optional<Location> loc,
+-                                    Optional<ArrayAttr> maybeArrayAttr) {
+-  if (!maybeArrayAttr.has_value()) return success();
+-  auto arrayAttr = maybeArrayAttr.value();
+-  return !arrayAttr || arrayAttr.size() == 2 || arrayAttr.empty()
+-             ? success()
+-             : emitOptionalError(
+-                   loc, "expects precision config to be null or of size 2.");
++  // P3.
++  if (failed(verifyPrecisionConfig(location, precisionConfig)))
++    return failure();
++
++  return success();
+ }
+ 
+ LogicalResult inferDotShape(RankedTensorType lhs, RankedTensorType rhs,
+@@ -1687,9 +1681,9 @@
+   int numSliceSizes = sliceSizes.getNumElements();
+   int numStartIndices = startIndices.size();
+   if (numStartIndices != numSliceSizes)
+-    return emitOptionalError(location, "has mismatched number of slice sizes (",
+-                             numSliceSizes, ") and number of start indices (",
+-                             numStartIndices, ")");
++    return emitOptionalError(
++        location, "op has mismatched number of slice sizes (", numSliceSizes,
++        ") and number of start indices (", numStartIndices, ")");
+   auto operandType = operand.getType().dyn_cast<RankedTensorType>();
+   if (!operandType) return failure();
+ 
+@@ -1930,7 +1924,9 @@
+   }
+ 
+   auto getSliceDim = [&sliceSizes](int64_t index) -> int64_t {
+-    return sliceSizes.getValues<int64_t>()[index];
++    return sliceSizes.getValues<int64_t>()[index] == kDynamicSizePrintValue
++               ? ShapedType::kDynamic
++               : sliceSizes.getValues<int64_t>()[index];
+   };
+ 
+   return inferGatherReturnTypeComponents(
+@@ -2804,7 +2800,6 @@
+  *  P3. Verify and collect the window atributes.
+  *  P4. Verify precision_config attribute.
+  *  P5. Verify the return shape.
+- *      TODO(b/232574102): Verify the element-type of return-value.
+  */
+ LogicalResult verifyConvolutionOp(
+     Optional<Location> location, Value lhs, Value rhs,
+@@ -2839,11 +2834,11 @@
+ 
+   // P2.
+   if (failed(verifyConvolutionAttributes(
+-          lhs, rhs, inputBatchDimension, inputFeatureDimension,
++          location, lhs, rhs, inputBatchDimension, inputFeatureDimension,
+           inputSpatialDimensions, kernelInputFeatureDimension,
+           kernelOutputFeatureDimension, kernelSpatialDimensions,
+           outputBatchDimension, outputFeatureDimension, outputSpatialDimensions,
+-          featureGroupCount, batchGroupCount, location)))
++          featureGroupCount, batchGroupCount, precisionConfig)))
+     return failure();
+ 
+   if ((size_t)numDims != inputSpatialDimensions.size() + 2)
+@@ -2878,11 +2873,7 @@
+       *rhsDilationOrErr, *windowReversalOrErr, location);
+   if (failed(windowOrErr)) return failure();
+ 
+-  // P3.
+-  if (failed(verifyPrecisionConfig(location, precisionConfig)))
+-    return failure();
+-
+-  // P5.
++  // P4.
+   SmallVector<int64_t> outputDimensions(lhsType.getShape().size(),
+                                         ShapedType::kDynamic);
+ 
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/dialect/TypeInference.h
+--- stablehlo/stablehlo/dialect/TypeInference.h
++++ stablehlo/stablehlo/dialect/TypeInference.h
+@@ -39,6 +39,53 @@
+                          ArrayRef<int64_t> collapsedSliceDims,
+                          ArrayRef<int64_t> startIndexMap,
+                          int64_t indexVectorDim, SmallVectorImpl<Value>& shape);
++
++// Convert a 1D dense bool attribute to a list of values.
++FailureOr<SmallVector<bool>> convertWindowReversalAttribute(
++    Optional<DenseElementsAttr> optionalAttr, Optional<Location> loc,
++    StringRef attrName);
++
++// WindowDimension described how the kernel window moves across the base area
++// in a particular dimension.
++// Describes the windowing in an operation such as convolution.
++// The window is moved across a base area and for each position of the
++// window a computation is performed. The field below describes the
++// window and the movement of the window across a base area.
++struct WindowDimension {
++  int64_t size = 0;
++  int64_t stride = 1;
++  int64_t paddingLow = 0;
++  int64_t paddingHigh = 0;
++  int64_t windowDilation = 1;
++  int64_t baseDilation = 1;
++  bool windowReversal = false;
++};
++
++FailureOr<SmallVector<WindowDimension>>
++verifyWindowAttributesAndInferWindowDimensions(
++    ArrayRef<int64_t> windowDimensions, ArrayRef<int64_t> windowStrides,
++    ArrayRef<std::pair<int64_t, int64_t>> padding,
++    ArrayRef<int64_t> lhsDilation, ArrayRef<int64_t> rhsDilation,
++    ArrayRef<bool> windowReversal, Optional<Location> loc);
++
++SmallVector<int64_t> inferWindowOutputShape(
++    const ArrayRef<int64_t> baseShape, const ArrayRef<WindowDimension> window);
++
++LogicalResult verifyReplicaGroups(Optional<Location> location,
++                                  DenseIntElementsAttr replicaGroups,
++                                  bool allGroupsMustHaveSameSize,
++                                  bool useGlobalDeviceIds,
++                                  Optional<size_t> expectedGroupSize);
++
++LogicalResult verifyConvolutionAttributes(
++    Optional<Location> location, Value lhs, Value rhs,
++    int64_t inputBatchDimension, int64_t inputFeatureDimension,
++    ArrayRef<int64_t> inputSpatialDimensions,
++    int64_t kernelInputFeatureDimension, int64_t kernelOutputFeatureDimension,
++    ArrayRef<int64_t> kernelSpatialDimensions, int64_t outputBatchDimension,
++    int64_t outputFeatureDimension, ArrayRef<int64_t> outputSpatialDimensions,
++    int64_t featureGroupCount, int64_t batchGroupCount,
++    Optional<ArrayAttr> precisionConfig);
+ 
+ //===----------------------------------------------------------------------===//
+ // Shape functions for ops.
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
+@@ -1490,14 +1490,6 @@
+ 
+ // -----
+ 
+-func.func @dot_precision_invalid_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -> tensor<2x2xi32> {
+-  // expected-error@+1 {{expects precision config to be null or of size 2.}}
+-  %0 = "stablehlo.dot"(%arg0, %arg1) {precision_config = [#stablehlo<precision HIGH>]} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+-  func.return %0: tensor<2x2xi32>
+-}
+-
+-// -----
+-
+ func.func @dot_bad_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -> tensor<2x2xi32> {
+   // expected-error@+1 {{'precision_config' failed to satisfy constraint}}
+   %0 = "stablehlo.dot"(%arg0, %arg1) {precision_config = ["FOO", #stablehlo<precision HIGHEST>]} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+@@ -3332,8 +3324,7 @@
+ 
+ // -----
+ 
+-func.func @dot_general_invalid_precision_config(%arg0: tensor<2x3x4xf32>, %arg1: tensor<2x3x5xf32>) -> tensor<2x4x5xf32> {
+-  // expected-error@+1 {{expects precision config to be null or of size 2}}
++func.func @dot_general_one_element_precision_config(%arg0: tensor<2x3x4xf32>, %arg1: tensor<2x3x5xf32>) -> tensor<2x4x5xf32> {
+   %0 = "stablehlo.dot_general"(%arg0, %arg1) {
+     dot_dimension_numbers = #stablehlo.dot<
+       lhs_batching_dimensions = [0],
+@@ -3342,6 +3333,22 @@
+       rhs_contracting_dimensions = [1]
+     >,
+     precision_config = [#stablehlo<precision DEFAULT>]
++  } : (tensor<2x3x4xf32>, tensor<2x3x5xf32>) -> tensor<2x4x5xf32>
++  func.return %0 : tensor<2x4x5xf32>
++}
++
++// -----
++
++func.func @dot_general_three_element_precision_config(%arg0: tensor<2x3x4xf32>, %arg1: tensor<2x3x5xf32>) -> tensor<2x4x5xf32> {
++  // expected-error@+1 {{expects precision config to be empty or have <= 2 elements}}
++  %0 = "stablehlo.dot_general"(%arg0, %arg1) {
++    dot_dimension_numbers = #stablehlo.dot<
++      lhs_batching_dimensions = [0],
++      rhs_batching_dimensions = [0],
++      lhs_contracting_dimensions = [1],
++      rhs_contracting_dimensions = [1]
++    >,
++    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
+   } : (tensor<2x3x4xf32>, tensor<2x3x5xf32>) -> tensor<2x4x5xf32>
+   func.return %0 : tensor<2x4x5xf32>
+ }
+diff --ruN a/stablehlo/stablehlo/tests/verify_conv.mlir b/stablehlo/stablehlo/tests/verify_conv.mlir
+--- stablehlo/stablehlo/tests/verify_conv.mlir
++++ stablehlo/stablehlo/tests/verify_conv.mlir
+@@ -963,7 +963,7 @@
+ 
+ func.func @conv_invalid_precision_config(%arg0: tensor<3x2xf16>,
+     %arg1: tensor<2x2xf16>) -> tuple<tensor<3x2xf16>> {
+-  // expected-error@+1{{expects precision config to be null or of size 2.}}
++  // expected-error@+1 {{expects precision config to be empty or have <= 2 elements}}
+   %0 = stablehlo.convolution(%arg0, %arg1)
+          dim_numbers = [b, f]x[i, o]->[b, f],
+          window = {stride = [], pad = [], lhs_dilate = [], rhs_dilate = [],
+

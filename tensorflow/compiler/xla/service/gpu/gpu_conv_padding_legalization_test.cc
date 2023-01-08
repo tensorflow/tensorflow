@@ -15,16 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -75,15 +75,17 @@ ENTRY %convolution (operand f64[2,2,2,3]{3,2,1,0}) -> (f64[2,2,4,4]{3,2,1,0}, u8
   ROOT %custom-call = (f64[2,2,4,4]{3,2,1,0}, u8[0]{0}) custom-call(f64[2,2,2,3]{3,2,1,0} %operand, f64[2,3,2,3]{3,2,1,0} %reverse), window={size=2x3 stride=2x2 pad=0_0x0_1}, dim_labels=bf01_01io->b01f, custom_call_target="__cudnn$convBackwardInput", backend_config="{\"algorithm\":\"0\",\"tensor_ops_enabled\":false,\"conv_result_scale\":1,\"activation_mode\":\"0\",\"side_input_scale\":0}"
 }
                                                )")
-                    .ValueOrDie();
-  ASSERT_TRUE(GpuConvPaddingLegalization().Run(module.get()).ValueOrDie());
+                    .value();
+  ASSERT_TRUE(GpuConvPaddingLegalization().Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root,
-              op::Tuple(op::Slice(op::GetTupleElement(
-                            op::CustomCall(kCudnnConvBackwardInputCallTarget, _,
-                                           op::Reverse(op::Constant())),
-                            0)),
-                        op::GetTupleElement()));
+  EXPECT_THAT(
+      root,
+      op::Tuple(
+          op::Slice(op::GetTupleElement(
+              op::CustomCall(std::string(kCudnnConvBackwardInputCallTarget), _,
+                             op::Reverse(op::Constant())),
+              0)),
+          op::GetTupleElement()));
   auto slice = root->operand(0);
   Shape expected_slice_shape = ShapeUtil::MakeShape(F64, {2, 2, 4, 4});
   EXPECT_TRUE(ShapeUtil::Equal(slice->shape(), expected_slice_shape));

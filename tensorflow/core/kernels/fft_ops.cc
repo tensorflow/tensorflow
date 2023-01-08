@@ -66,6 +66,10 @@ class FFTBase : public OpKernel {
 
       auto fft_length_as_vec = fft_length.vec<int32>();
       for (int i = 0; i < fft_rank; ++i) {
+        OP_REQUIRES(ctx, fft_length_as_vec(i) >= 0,
+                    errors::InvalidArgument(
+                        "fft_length[", i,
+                        "] must >= 0, but got: ", fft_length_as_vec(i)));
         fft_shape[i] = fft_length_as_vec(i);
         // Each input dimension must have length of at least fft_shape[i]. For
         // IRFFTs, the inner-most input dimension must have length of at least
@@ -220,7 +224,7 @@ class FFTCPU : public FFTBase {
     TensorShape temp_shape{input_dims[0]};
     for (int i = 1; i <= FFTRank; ++i) {
       input_slice_sizes[i] = fft_shape[i - 1];
-      temp_shape.AddDim(fft_shape[i - 1]);
+      OP_REQUIRES_OK(ctx, temp_shape.AddDimWithStatus(fft_shape[i - 1]));
     }
     OP_REQUIRES(ctx, temp_shape.num_elements() > 0,
                 errors::InvalidArgument("Obtained a FFT shape of 0 elements: ",
@@ -263,7 +267,7 @@ class FFTCPU : public FFTBase {
     for (auto i = 1; i <= FFTRank; i++) {
       input_slice_sizes[i] =
           i == FFTRank ? fft_shape[i - 1] / 2 + 1 : fft_shape[i - 1];
-      full_fft_shape.AddDim(fft_shape[i - 1]);
+      OP_REQUIRES_OK(ctx, full_fft_shape.AddDimWithStatus(fft_shape[i - 1]));
     }
     OP_REQUIRES(ctx, full_fft_shape.num_elements() > 0,
                 errors::InvalidArgument("Obtained a FFT shape of 0 elements: ",
@@ -478,6 +482,10 @@ class FFTGPUBase : public FFTBase {
             stream, fft_rank, fft_shape, input_embed, input_stride,
             input_distance, output_embed, output_stride, output_distance,
             kFftType, kInPlaceFft, batch_size, &scratch_allocator);
+    OP_REQUIRES(
+        ctx, plan != nullptr,
+        errors::Internal(
+            "Failed to create cuFFT batched plan with scratch allocator"));
 
     if (IsReal()) {
       if (IsForward()) {

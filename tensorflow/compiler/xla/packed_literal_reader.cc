@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/packed_literal_reader.h"
 
 #include <limits>
+#include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/base/casts.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -28,12 +28,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 
-PackedLiteralReader::PackedLiteralReader(tensorflow::RandomAccessFile* file)
+PackedLiteralReader::PackedLiteralReader(tsl::RandomAccessFile* file)
     : file_(file), offset_(0) {}
 
 PackedLiteralReader::~PackedLiteralReader() { delete file_; }

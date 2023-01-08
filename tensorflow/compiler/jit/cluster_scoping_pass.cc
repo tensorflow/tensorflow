@@ -51,13 +51,13 @@ class ClusterScopingPassImpl {
   size_t unique_scope_id_;
 };
 
-absl::optional<string> GetXlaInternalScope(Node* node) {
+std::optional<string> GetXlaInternalScope(Node* node) {
   string scope;
   if (GetNodeAttr(node->attrs(), kXlaInternalScopeAttr, &scope).ok()) {
     return scope;
   }
 
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 void SetXlaInternalScope(Node* node, StringPiece scope) {
@@ -86,8 +86,8 @@ void SetXlaInternalScope(Node* node, StringPiece scope) {
 //
 void AddOrAppendXlaInternalScope(Node* node, absl::string_view suffix) {
   string updated_scope;
-  absl::optional<string> cur_scope = GetXlaInternalScope(node);
-  if (cur_scope == absl::nullopt) {
+  std::optional<string> cur_scope = GetXlaInternalScope(node);
+  if (cur_scope == std::nullopt) {
     updated_scope = std::string(suffix);
   } else {
     updated_scope = absl::StrCat(cur_scope.value(), "&", suffix);
@@ -142,12 +142,12 @@ Status ClusterScopingPassImpl::ScopingForPipelineStages() {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ClusterScopingPassImpl::Run() {
   if (global_jit_level_ == OptimizerOptions::OFF) {
-    return Status::OK();
+    return OkStatus();
   }
 
   return ScopingForPipelineStages();

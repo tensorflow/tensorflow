@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
 
 #include <algorithm>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
@@ -138,7 +138,7 @@ bool ShouldTransform(const std::vector<HloInstruction*>& operations_on_slices) {
 // Returns a group of elementwise operations on slices that are similar to the
 // given operations_on_slices. See IsSimilarOperationOnSlices for what are
 // considered similar operation on slices.
-absl::optional<std::vector<HloInstruction*>> FindElementwiseOperationGroup(
+std::optional<std::vector<HloInstruction*>> FindElementwiseOperationGroup(
     const HloInstruction* operation_on_slices) {
   std::vector<HloInstruction*> operations;
   const HloInstruction* slice_source0 =
@@ -157,8 +157,8 @@ absl::optional<std::vector<HloInstruction*>> FindElementwiseOperationGroup(
     }
   }
 
-  return ShouldTransform(operations) ? absl::make_optional(operations)
-                                     : absl::nullopt;
+  return ShouldTransform(operations) ? std::make_optional(operations)
+                                     : std::nullopt;
 }
 
 // Generates a new elementwise operation using the slice_sources as operands,
@@ -187,7 +187,7 @@ Status SinkSlices(const std::vector<HloInstruction*>& slice_sources,
              << " to replace: " << user->ToString();
     TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(user_slice));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -238,10 +238,12 @@ Status SinkSlices(const std::vector<HloInstruction*>& slice_sources,
 // This pass currently doesn't transform non-elementwise instructions. We may
 // extend this pass to transform non-elementwise instructions, such as dot,
 // broadcast and reduce in the future.
-StatusOr<bool> SliceSinker::Run(HloModule* module) {
+StatusOr<bool> SliceSinker::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
-  for (HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       // When processing instruction A in this loop, we may transform A along
@@ -261,7 +263,7 @@ StatusOr<bool> SliceSinker::Run(HloModule* module) {
 
       // Try to find a group of elementwise operations that are similar to
       // the current instruction. This checks conditions (2)-(4).
-      absl::optional<std::vector<HloInstruction*>> similar_operations =
+      std::optional<std::vector<HloInstruction*>> similar_operations =
           FindElementwiseOperationGroup(instruction);
       if (!similar_operations.has_value()) {
         continue;

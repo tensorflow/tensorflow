@@ -244,7 +244,7 @@ class LstmOpTest : public ::testing::TestWithParam<bool> {
         lstm->SetInput(b * num_inputs, batch_start, batch_end);
       }
 
-      lstm->Invoke();
+      ASSERT_EQ(lstm->Invoke(), kTfLiteOk);
 
       std::vector<float> expected;
       ASSERT_EQ(num_batches, lstm_golden_output_[i].size());

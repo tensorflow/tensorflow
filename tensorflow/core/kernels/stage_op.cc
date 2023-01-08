@@ -82,7 +82,7 @@ class Buffer : public ResourceBase {
     // we should wake them all.
     non_empty_cond_var_.notify_all();
 
-    return Status::OK();
+    return OkStatus();
   }
 
   // Get tuple at front of the buffer
@@ -115,7 +115,7 @@ class Buffer : public ResourceBase {
       tuple->push_back(tensor);
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   // Buffer size
@@ -187,13 +187,13 @@ Status GetBuffer(OpKernelContext* ctx, const NodeDef& ndef, Buffer** buf) {
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "capacity", &capacity));
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "memory_limit", &memory_limit));
     *ret = new Buffer(capacity, memory_limit);
-    return Status::OK();
+    return OkStatus();
   };
 
   TF_RETURN_IF_ERROR(cinfo.Init(rm, ndef, true /* use name() */));
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<Buffer>(cinfo.container(), cinfo.name(),
                                                 buf, create_fn));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -258,6 +258,8 @@ class StagePeekOp : public OpKernel {
     core::ScopedUnref scope(buf);
     Buffer::Tuple tuple;
 
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
+                errors::InvalidArgument("index must be scalar"));
     std::size_t index = ctx->input(0).scalar<int>()();
 
     OP_REQUIRES_OK(ctx, buf->Peek(index, &tuple));

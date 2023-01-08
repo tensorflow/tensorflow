@@ -15,8 +15,10 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <algorithm>
+
 #include "ruy/profiler/instrumentation.h"  // from @ruy
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"
@@ -230,7 +232,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     EvalQuantizedSquaredDifference<int8_t>(context, node, data, input1, input2,
                                            output);
   } else {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context,
         "SquaredDifference only supports FLOAT32 and INT32 now, got %d.",
         output->type);

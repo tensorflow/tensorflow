@@ -9,7 +9,7 @@ licenses(["notice"])
 exports_files(["COPYING"])
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@org_tensorflow//third_party:common.bzl", "template_rule")
+load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 
 COMMON_INCLUDE_COPTS = [
     "-I.",
@@ -46,14 +46,14 @@ _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS.update({
     "#undef HWLOC_LINUX_SYS": "#define HWLOC_LINUX_SYS 1",
 })
 
-template_rule(
+expand_template(
     name = "include_hwloc_autogen_config_h",
-    src = "include/hwloc/autogen/config.h.in",
     out = "include/hwloc/autogen/config.h",
     substitutions = select({
-        "@org_tensorflow//tensorflow:linux_x86_64": _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS,
+        "@org_tensorflow//tensorflow/tsl:linux_x86_64": _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS,
         "//conditions:default": _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS,
     }),
+    template = "include/hwloc/autogen/config.h.in",
 )
 
 _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS = {
@@ -126,6 +126,7 @@ _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS = {
     "#undef HWLOC_HAVE_ATTRIBUTE_ALIGNED": "#define HWLOC_HAVE_ATTRIBUTE_ALIGNED 1",
     "#undef HWLOC_HAVE_ATTRIBUTE_ALWAYS_INLINE": "#define HWLOC_HAVE_ATTRIBUTE_ALWAYS_INLINE 1",
     "#undef HWLOC_HAVE_ATTRIBUTE_COLD": "#define HWLOC_HAVE_ATTRIBUTE_COLD 1",
+    "#undef HWLOC_HAVE_ATTRIBUTE_CONSTRUCTOR": "#define HWLOC_HAVE_ATTRIBUTE_CONSTRUCTOR 1",
     "#undef HWLOC_HAVE_ATTRIBUTE_CONST": "#define HWLOC_HAVE_ATTRIBUTE_CONST 1",
     "#undef HWLOC_HAVE_ATTRIBUTE_DEPRECATED": "#define HWLOC_HAVE_ATTRIBUTE_DEPRECATED 1",
     "#undef HWLOC_HAVE_ATTRIBUTE_FORMAT": "#define HWLOC_HAVE_ATTRIBUTE_FORMAT 1",
@@ -195,9 +196,9 @@ _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS = {
 }
 
 _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_CUDA_SUBS = {
-    "#undef HAVE_CUDA": "#undef HAVE_CUDA 1",
-    "#undef HAVE_CUDA_H": "#undef HAVE_CUDA_H 1",
-    "#undef HAVE_CUDA_RUNTIME_API_H": "#undef HAVE_CUDA_RUNTIME_API_H 1",
+    "#undef HAVE_CUDA_RUNTIME_API_H": "#define HAVE_CUDA_RUNTIME_API_H 1",
+    "#undef HAVE_CUDA_H": "#define HAVE_CUDA_H 1",
+    "#undef HAVE_CUDA": "#define HAVE_CUDA 1",
 }
 
 _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS = {
@@ -209,21 +210,21 @@ _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS.update(_INCLUDE_PRIVATE_HWLO
 
 _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_CUDA_SUBS.update(_INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS)
 
-template_rule(
+expand_template(
     name = "include_private_hwloc_autogen__config_h",
-    src = "include/private/autogen/config.h.in",
     out = "include/private/autogen/config.h",
     substitutions = if_cuda(
         _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_CUDA_SUBS,
         if_false = _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS,
     ),
+    template = "include/private/autogen/config.h.in",
 )
 
-template_rule(
+expand_template(
     name = "move_static_components_h",
-    src = "@org_tensorflow//third_party/hwloc:static-components.h",
     out = "hwloc/static-components.h",
-    substitutions = {},
+    substitutions = {"&hwloc_linuxio_component": "//&hwloc_linuxio_component"},
+    template = "@org_tensorflow//third_party/hwloc:static-components.h",
 )
 
 cc_library(
@@ -233,8 +234,10 @@ cc_library(
         "hwloc/bind.c",
         "hwloc/bitmap.c",
         "hwloc/components.c",
+        "hwloc/cpukinds.c",
         "hwloc/diff.c",
         "hwloc/distances.c",
+        "hwloc/memattrs.c",
         "hwloc/misc.c",
         "hwloc/pci-common.c",
         "hwloc/shmem.c",
@@ -256,21 +259,21 @@ cc_library(
         "include/private/private.h",
         "include/private/xml.h",
     ] + select({
-        "@org_tensorflow//tensorflow:linux_x86_64": [
+        "@org_tensorflow//tensorflow/tsl:linux_x86_64": [
             "hwloc/topology-linux.c",
             "include/hwloc/linux.h",
             "hwloc/topology-x86.c",
             "include/private/cpuid-x86.h",
         ],
-        "@org_tensorflow//tensorflow:linux_aarch64": [
+        "@org_tensorflow//tensorflow/tsl:linux_aarch64": [
             "hwloc/topology-linux.c",
             "include/hwloc/linux.h",
         ],
-        "@org_tensorflow//tensorflow:linux_ppc64le": [
+        "@org_tensorflow//tensorflow/tsl:linux_ppc64le": [
             "hwloc/topology-linux.c",
             "include/hwloc/linux.h",
         ],
-        "@org_tensorflow//tensorflow:freebsd": [
+        "@org_tensorflow//tensorflow/tsl:freebsd": [
             "hwloc/topology-freebsd.c",
             "hwloc/topology-x86.c",
             "include/private/cpuid-x86.h",
@@ -281,12 +284,14 @@ cc_library(
         "include/hwloc.h",
         "include/hwloc/autogen/config.h",
         "include/hwloc/bitmap.h",
+        "include/hwloc/cpukinds.h",
         "include/hwloc/deprecated.h",
         "include/hwloc/diff.h",
         "include/hwloc/distances.h",
         "include/hwloc/export.h",
         "include/hwloc/helper.h",
         "include/hwloc/inlines.h",
+        "include/hwloc/memattrs.h",
         "include/hwloc/rename.h",
     ],
     copts = COMMON_INCLUDE_COPTS + DISABLE_WARNINGS_COPTS + VAR_SETTINGS_COPTS,

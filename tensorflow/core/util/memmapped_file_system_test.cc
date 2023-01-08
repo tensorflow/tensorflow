@@ -63,7 +63,7 @@ Status CreateMemmappedFileSystemFile(const string& filename, bool corrupted,
     // Flush and close the file.
     TF_RETURN_IF_ERROR(writer.FlushAndClose());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 TEST(MemmappedFileSystemTest, SimpleTest) {
@@ -136,7 +136,7 @@ TEST(MemmappedFileSystemTest, Corrupted) {
   TF_ASSERT_OK(CreateMemmappedFileSystemFile(filename, true, &test_tensor));
   MemmappedFileSystem memmapped_env;
   ASSERT_NE(memmapped_env.InitializeFromFile(Env::Default(), filename),
-            Status::OK());
+            OkStatus());
 }
 
 TEST(MemmappedFileSystemTest, ProxyToDefault) {

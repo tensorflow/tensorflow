@@ -14,12 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
 
+#include <optional>
 #include <ostream>
 #include <string>
 #include <unordered_set>
 #include <utility>
 
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -32,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -41,7 +44,6 @@ limitations under the License.
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 using stream_executor::port::StatusOr;
 
@@ -185,10 +187,10 @@ Status RegisterCustomBuiltinOps(const std::vector<string> extra_tf_opdefs) {
     tensorflow::OpRegistry::Global()->Register(
         [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
           *op_reg_data = tensorflow::OpRegistrationData(opdef);
-          return Status::OK();
+          return OkStatus();
         });
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -233,7 +235,7 @@ Status PopulateQuantizationSpecs(
           DataType_Name(ConvertIODataTypeToDataType(toco_data_type)));
     }
     if (flag.shape().unknown_rank()) {
-      node_shapes->push_back(llvm::None);
+      node_shapes->push_back(std::nullopt);
     } else {
       node_shapes->push_back(std::vector<int>(flag.shape().dims().begin(),
                                               flag.shape().dims().end()));
@@ -247,8 +249,8 @@ Status PopulateQuantizationSpecs(
         node_mins->push_back(min_max.first);
         node_maxs->push_back(min_max.second);
       } else {
-        node_mins->push_back(llvm::None);
-        node_maxs->push_back(llvm::None);
+        node_mins->push_back(std::nullopt);
+        node_maxs->push_back(std::nullopt);
       }
     }
   }
@@ -305,10 +307,11 @@ Status PopulateQuantizationSpecs(
   if (toco_flags.has_default_ranges_max()) {
     quant_specs->default_ranges.second = toco_flags.default_ranges_max();
   }
-  if (toco_flags.enable_mlir_dynamic_range_quantizer()) {
-    quant_specs->enable_mlir_dynamic_range_quantizer = true;
-  }
-  return ::tensorflow::Status::OK();
+  quant_specs->enable_mlir_dynamic_range_quantizer =
+      toco_flags.enable_mlir_dynamic_range_quantizer();
+  quant_specs->enable_mlir_variable_quantization =
+      toco_flags.enable_mlir_variable_quantization();
+  return OkStatus();
 }
 
 // Dumps the op graph of the `module` to `filename` in DOT format.
@@ -324,7 +327,7 @@ Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
     return errors::Unknown("Failed to dump Op Graph from MLIR module.");
   }
   output->keep();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvertMLIRToTFLiteFlatBuffer(

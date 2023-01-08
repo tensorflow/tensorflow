@@ -5,11 +5,19 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Adafactor"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Adagrad"
     mtype: "<type \'type\'>"
   }
   member {
     name: "Adam"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "AdamW"
     mtype: "<type \'type\'>"
   }
   member {
@@ -41,16 +49,20 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "legacy"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "schedules"
     mtype: "<type \'module\'>"
   }
   member_method {
     name: "deserialize"
-    argspec: "args=[\'config\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'config\', \'custom_objects\'], varargs=None, keywords=kwargs, defaults=[\'None\'], "
   }
   member_method {
     name: "get"
-    argspec: "args=[\'identifier\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'identifier\'], varargs=None, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "serialize"

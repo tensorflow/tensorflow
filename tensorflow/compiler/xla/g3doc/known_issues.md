@@ -64,3 +64,23 @@ result).
 *Workaround*: use
 [the recommended RNGs](https://www.tensorflow.org/guide/random_numbers#stateless_rngs)
 such as `tf.random.stateless_uniform` or the `tf.random.Generator` directly.
+
+## Must-be-constant inputs which are functions of induction variables are not supported
+
+*Error Message*: `XLA compilation requires that operator arguments that
+represent shapes or dimensions be evaluated to concrete values at compile time.
+This error means that a shape or dimension argument could not be evaluated at
+compile time, usually because the value of the argument depends on a parameter
+to the computation, on a variable, or on a stateful operation such as a random
+number generator`.
+
+XLA requires certain values to be known at compile time, such as reduction axis
+of a reduce operation, or transposition dimensions. Consider the case when e.g.
+reduction axis is defined as a function of an induction variable of `tf.range`:
+resolving it statically is not possible without unrolling the entire loop, which
+might not be desired by the user.
+
+*Workaround*: Unroll loops, e.g. by converting `tf.range` into Python `range`.
+
+NOTE: The error message above is not unique to this issue, and can arise due to
+other limitations or bugs.

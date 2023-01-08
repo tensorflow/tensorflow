@@ -21,26 +21,26 @@ from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import signature_serialization
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
+from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import autotrackable
+from tensorflow.python.trackable import resource
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as tf_saver
-from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import nest
 
 # API label for SavedModel metrics.
 _LOAD_V1_V2_LABEL = "load_v1_in_v2"
 
 
-class _Initializer(tracking.CapturableResource):
+class _Initializer(resource.CapturableResource):
   """Represents an initialization operation restored from a SavedModel.
 
   Without this object re-export of imported 1.x SavedModels would omit the
@@ -60,8 +60,9 @@ class _Initializer(tracking.CapturableResource):
     self._init_fn = init_fn
 
   def _create_resource(self):
-    return array_ops.placeholder(
-        dtype=dtypes.resource, shape=[], name="unused_resource")
+    # Return a constant here so that when re-saved, the traced `create_resource`
+    # has valid returns.
+    return constant_op.constant(1.)
 
   def _initialize(self):
     return self._init_fn(*[path.asset_path for path in self._asset_paths])
@@ -234,7 +235,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
       # Add a dummy Tensor we know we can fetch to add control dependencies to.
       init_anchor = constant_op.constant(0., name="dummy_fetch")
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     if restore_from_saver is not None:
       root.restore = (
           lambda path: restore_from_saver(constant_op.constant(path)))
@@ -243,7 +244,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     for tensor_name, value in loader_impl.get_asset_tensors(
         self._export_dir, meta_graph_def).items():
       asset_feed_tensors.append(wrapped.graph.as_graph_element(tensor_name))
-      asset_paths.append(tracking.Asset(value))
+      asset_paths.append(asset.Asset(value))
     init_fn = wrapped.prune(
         feeds=asset_feed_tensors,
         fetches=[init_anchor, wrapped.graph.as_graph_element(init_op)])

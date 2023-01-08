@@ -22,6 +22,8 @@ from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import indexed_slices
@@ -40,6 +42,7 @@ from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import object_identity
+from tensorflow.python.util import variable_utils
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
@@ -476,6 +479,29 @@ def _GradientsHelper(ys,
   if context.executing_eagerly():
     raise RuntimeError("tf.gradients is not supported when eager execution "
                        "is enabled. Use tf.GradientTape instead.")
+  ys = variable_utils.convert_variables_to_tensors(_AsList(ys))
+  xs = [
+      x.handle if resource_variable_ops.is_resource_variable(x) else x
+      for x in _AsList(xs)
+  ]
+  if grad_ys is not None:
+    grad_ys = _AsList(grad_ys)
+
+  # Handle CompositeTensors.
+  if (any(isinstance(x, composite_tensor.CompositeTensor) for x in xs) or
+      any(isinstance(y, composite_tensor.CompositeTensor) for y in ys)):
+    flat_xs = composite_tensor_gradient.get_flat_tensors_for_gradients(xs)
+    flat_ys = composite_tensor_gradient.get_flat_tensors_for_gradients(ys)
+    flat_grad_ys = (
+        None if grad_ys is None else
+        composite_tensor_gradient.get_flat_tensors_for_gradients(grad_ys))
+    flat_grads = _GradientsHelper(flat_ys, flat_xs, flat_grad_ys, name,
+                                  colocate_gradients_with_ops, gate_gradients,
+                                  aggregation_method, stop_gradients,
+                                  unconnected_gradients, src_graph)
+    return composite_tensor_gradient.replace_flat_tensors_for_gradients(
+        xs, flat_grads)
+
   if src_graph is None:
     src_graph = ops.get_default_graph()
   try:
@@ -496,13 +522,9 @@ def _GradientsHelper(ys,
       assert isinstance(curr_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
       curr_graph = curr_graph._outer_graph  # pylint: disable=protected-access
 
-  ys = _AsList(ys)
-  xs = _AsList(xs)
   stop_gradients = [] if stop_gradients is None else _AsList(stop_gradients)
   if grad_ys is None:
     grad_ys = [None] * len(ys)
-  else:
-    grad_ys = _AsList(grad_ys)
 
   with ops.name_scope(
       name, "gradients",
@@ -511,10 +533,6 @@ def _GradientsHelper(ys,
     # cluster ops for compilation.
     gradient_uid = ops.get_default_graph().unique_name("uid")
     ys = ops.convert_n_to_tensor_or_indexed_slices(ys, name="y")
-    xs = [
-        x.handle if resource_variable_ops.is_resource_variable(x) else x
-        for x in xs
-    ]
     xs = ops.internal_convert_n_to_tensor_or_indexed_slices(
         xs, name="x", as_ref=True)
     xs_set = object_identity.ObjectIdentitySet(xs)
@@ -907,6 +925,20 @@ class AggregationMethod:
     the "AddN" op. This method of summing gradients may reduce
     performance, but it can improve memory utilization because the
     gradients can be released earlier.
+  * `EXPERIMENTAL_ACCUMULATE_N`: Same as `EXPERIMENTAL_TREE`.
+
+  Example usage when computing gradient:
+
+  >>> @tf.function
+  ... def example():
+  ...   x = tf.constant(1.0)
+  ...   y = x * 2.0
+  ...   z = y + y + y + y
+  ...   return tf.gradients(z, [x, y],
+  ...     aggregation_method=tf.AggregationMethod.EXPERIMENTAL_ACCUMULATE_N)
+  >>> example()
+  [<tf.Tensor: shape=(), dtype=float32, numpy=8.0>,
+   <tf.Tensor: shape=(), dtype=float32, numpy=4.0>]
 
   """
   ADD_N = 0

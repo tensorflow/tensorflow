@@ -30,12 +30,13 @@ REGISTER_OP("AllToAll")
     .Attr("concat_dimension: int")
     .Attr("split_dimension: int")
     .Attr("split_count: int")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
       ShapeHandle group_assignment = c->input(1);
       if (!c->RankKnown(input)) {
         c->set_output(0, c->UnknownShape());
-        return Status::OK();
+        return OkStatus();
       }
 
       int64_t rank = c->Rank(input);
@@ -72,6 +73,12 @@ REGISTER_OP("AllToAll")
                                        " is out of range of input rank ", rank);
       }
 
+      if (!c->ValueKnown(c->Dim(input, concat_dimension)) ||
+          !c->ValueKnown(c->Dim(input, split_dimension))) {
+        c->set_output(0, c->UnknownShape());
+        return OkStatus();
+      }
+
       std::vector<DimensionHandle> dims;
       dims.resize(rank);
 
@@ -92,7 +99,7 @@ REGISTER_OP("AllToAll")
       }
 
       c->set_output(0, c->MakeShape(dims));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CrossReplicaSum")
@@ -100,6 +107,7 @@ REGISTER_OP("CrossReplicaSum")
     .Input("group_assignment: int32")
     .Output("output: T")
     .Attr("T: {half, bfloat16, float, float64, int32, uint32}")
+    .SetIsStateful()
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("CollectivePermute")
@@ -107,5 +115,6 @@ REGISTER_OP("CollectivePermute")
     .Input("source_target_pairs: int32")
     .Output("output: T")
     .Attr("T: numbertype")
+    .SetIsStateful()
     .SetShapeFn(shape_inference::UnchangedShape);
 }  // namespace tensorflow

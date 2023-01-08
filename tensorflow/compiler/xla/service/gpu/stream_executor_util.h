@@ -23,11 +23,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/kernel_spec.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/protobuf/autotuning.pb.h"
-#include "tensorflow/stream_executor/kernel_spec.h"
+#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 // Helper functions for interacting with StreamExecutor.
 
@@ -58,8 +58,8 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
 // dimension, because only cudnn convolutions have this feature; it's not
 // applicable elsewhere.  We find it by finding a dimension in the
 // input/filter/output shape that is *not* in dnums.
-std::tuple<absl::optional<int64_t>, absl::optional<int64_t>,
-           absl::optional<int64_t>>
+std::tuple<std::optional<int64_t>, std::optional<int64_t>,
+           std::optional<int64_t>>
 FindVectorizedFeatureDims(const ConvolutionDimensionNumbers& dnums,
                           const Shape& input, const Shape& filter,
                           const Shape& output);
@@ -80,7 +80,8 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec);
 // the lifetime of the kernel.
 StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
     absl::string_view kernel_name, uint64_t num_args, absl::string_view ptx,
-    absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec);
+    absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec,
+    uint32_t shared_mem_bytes = 0);
 
 // Runs loaded kernel on the stream with the provided arguments.
 Status ExecuteKernelOnStream(const se::KernelBase& kernel,

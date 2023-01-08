@@ -17,9 +17,9 @@ limitations under the License.
 
 namespace xla {
 
-WorkerThread::WorkerThread(tensorflow::Env* env, const std::string& name) {
-  thread_.reset(env->StartThread(tensorflow::ThreadOptions(), name,
-                                 [this]() { WorkLoop(); }));
+WorkerThread::WorkerThread(tsl::Env* env, const std::string& name) {
+  thread_.reset(
+      env->StartThread(tsl::ThreadOptions(), name, [this]() { WorkLoop(); }));
 }
 
 WorkerThread::~WorkerThread() {

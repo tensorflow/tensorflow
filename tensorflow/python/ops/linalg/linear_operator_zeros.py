@@ -477,3 +477,12 @@ class LinearOperatorZeros(linear_operator.LinearOperator):
   def _composite_tensor_fields(self):
     return ("num_rows", "num_columns", "batch_shape", "dtype",
             "assert_proper_shapes")
+
+  def __getitem__(self, slices):
+    # Slice the batch shape and return a new LinearOperatorIdentity.
+    # Use a proxy shape and slice it. Use this as the new batch shape
+    new_batch_shape = array_ops.shape(
+        array_ops.ones(self._batch_shape_arg)[slices])
+    parameters = dict(self.parameters, batch_shape=new_batch_shape)
+    return LinearOperatorZeros(**parameters)
+

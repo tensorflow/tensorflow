@@ -15,15 +15,21 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_client.h"
 
+#include <string>
+
 #include "grpcpp/generic/generic_stub.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_state.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/error_payloads.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -31,7 +37,7 @@ namespace tensorflow {
 namespace eager {
 namespace {
 
-/*
+/* Retrieve the global env variable.
  * Setting environment variable "TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE" to
  * true will turn on asynchronous execution of remote op. It means that when
  * executing an op on a remote worker, client will not block on waiting
@@ -49,6 +55,12 @@ namespace {
  * When turning on this feature, you should explicitly wait for some result
  * from remote workers at the end of you python program. Otherwise, client may
  * shutdown remote workers without waiting all pending ops.
+ *
+ * Note that the caller could still disable streaming enqueue, even though
+ * EnableStreaminh() returns true, if the caller's executor is set to disable
+ * streaming enqueue when the executor was created. EnableStreaming() is
+ * determined based on the global env variable, which by default is turned on
+ * for the main executor.
  *
  * TODO(fishx): When exiting client, make sure all pending ops on remote workers
  * are finished.
@@ -176,12 +188,17 @@ class GrpcEagerClient : public EagerClient {
     }
   }
 
-  void StreamingEnqueueAsync(CallOptions* call_opts,
+  void StreamingEnqueueAsync(bool enable_streaming_enqueue,
+                             CallOptions* call_opts,
                              const EnqueueRequest* request,
                              EnqueueResponse* response,
                              StatusCallback done) override {
     StatusCallback done_wrapped = callback_wrapper(std::move(done));
-    if (EnableStreaming()) {
+    // Whether streaming enqueue is used is determined based on 2 factors:
+    // 1. The global env variable, as checked in EnableStreaming().
+    // 2. The flag set in the eager executor.
+    // Streaming enqueue is allowed only when the both are enabled.
+    if (EnableStreaming() && enable_streaming_enqueue) {
       mutex_lock l(mu_);
       auto it = enqueue_dispatchers_.find(request->context_id());
       if (it == enqueue_dispatchers_.end()) {
@@ -225,6 +242,23 @@ class GrpcEagerClient : public EagerClient {
     return [this, done = std::move(done)](const Status& status) {
       done(status);
       this->Unref();
+      if (TF_PREDICT_FALSE(!status.ok())) {
+        // Retrieve the location where the error was produced.
+        auto error_source_payload = status.GetPayload(kErrorSource);
+
+        if (error_source_payload.has_value()) {
+          tensorflow::core::platform::ErrorSourceProto error_source_proto;
+          error_source_proto.ParseFromString(
+              std::string(*error_source_payload));  // NOLINT
+          metrics::UpdateEagerClientErrorCounter(
+              error_source_proto.ErrorSource_Name(
+                  error_source_proto.error_source()),
+              error_name(status.code()));
+        } else {
+          metrics::UpdateEagerClientErrorCounter("unknown",
+                                                 error_name(status.code()));
+        }
+      }
     };
   }
 };
@@ -261,7 +295,7 @@ class GrpcEagerClientCache : public EagerClientCache {
 
     it->second->Ref();
     client->reset(it->second.get());
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

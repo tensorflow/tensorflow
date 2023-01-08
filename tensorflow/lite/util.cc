@@ -26,7 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -34,9 +34,9 @@ namespace tflite {
 namespace {
 
 TfLiteStatus UnresolvedOpInvoke(TfLiteContext* context, TfLiteNode* node) {
-  context->ReportError(context,
-                       "Encountered an unresolved custom op. Did you miss "
-                       "a custom op or delegate?");
+  TF_LITE_KERNEL_LOG(context,
+                     "Encountered an unresolved custom op. Did you miss "
+                     "a custom op or delegate?");
   return kTfLiteError;
 }
 
@@ -60,9 +60,9 @@ TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input) {
                                       input.data());
 }
 
-TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int rank, const int* dims) {
-  TfLiteIntArray* output = TfLiteIntArrayCreate(rank);
-  for (size_t i = 0; i < rank; i++) {
+TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int ndims, const int* dims) {
+  TfLiteIntArray* output = TfLiteIntArrayCreate(ndims);
+  for (size_t i = 0; i < ndims; i++) {
     output->data[i] = dims[i];
   }
   return output;
@@ -135,9 +135,15 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
     case kTfLiteFloat64:
       *bytes = sizeof(double);
       break;
+    case kTfLiteInt4:
+      // TODO(b/246647008): Multiplying this value by the number of elements
+      // does not yield the size of a tensor when 4-bit values are packed
+      // 2 to a byte.
+      *bytes = sizeof(int8_t);
+      break;
     default:
       if (context) {
-        context->ReportError(
+        TF_LITE_KERNEL_LOG(
             context,
             "Type %d is unsupported. Only float16, float32, float64, int8, "
             "int16, int32, int64, uint8, uint64, bool, complex64 and "
@@ -193,6 +199,35 @@ TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product) {
   if (TFLITE_EXPECT_FALSE((a | b) >> overflow_upper_half_bit_position != 0)) {
     if (a != 0 && *product / a != b) return kTfLiteError;
   }
+  return kTfLiteOk;
+}
+
+TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
+                           size_t* bytes, TfLiteContext context_) {
+  TF_LITE_ENSURE(&context_, bytes != nullptr);
+  // When 'dims_size' is 0, we simply assume it's a scalar. Therefore, we start
+  // 'count' as 1.
+  size_t count = 1;
+  for (int k = 0; k < dims_size; k++) {
+    size_t old_count = count;
+    TF_LITE_ENSURE_MSG(
+        &context_,
+        MultiplyAndCheckOverflow(old_count, dims[k], &count) == kTfLiteOk,
+        "BytesRequired number of elements overflowed.\n");
+  }
+  size_t type_size = 0;
+  TF_LITE_ENSURE_OK(&context_, GetSizeOfType(&context_, type, &type_size));
+  TF_LITE_ENSURE_MSG(
+      &context_, MultiplyAndCheckOverflow(type_size, count, bytes) == kTfLiteOk,
+      "BytesRequired number of bytes overflowed.\n");
+
+  // GetSizeOfType doesn't work for kTfLiteInt4 due to it having 2 values packed
+  // into 1 byte so the output of GetSizeOfType is the same as int8 aka 1 byte.
+  // Thus the required bytes must be divided by half after everything for int4.
+  if (type == kTfLiteInt4) {
+    *bytes = (*bytes + 1) / 2;
+  }
+
   return kTfLiteOk;
 }
 }  // namespace tflite

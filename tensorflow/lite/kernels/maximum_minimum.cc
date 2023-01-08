@@ -16,7 +16,7 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
@@ -183,9 +183,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TFLiteOperation<kernel_type, int16_t, OpType>(context, node, op_context);
       break;
     default:
-      context->ReportError(context,
-                           "Type %d is currently not supported by Maximum.",
-                           op_context.output->type);
+      TF_LITE_KERNEL_LOG(context,
+                         "Type %d is currently not supported by Maximum.",
+                         op_context.output->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

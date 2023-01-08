@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.cc.inc"
+#include <optional>
 
 namespace mlir {
 namespace TF {
@@ -36,7 +36,7 @@ llvm::Optional<GpuDeviceMetadata> RuntimeDevices::GetGpuDeviceMetadata(
   if (it != gpu_metadata_.end()) {
     return it->second;
   } else {
-    return llvm::None;
+    return std::nullopt;
   }
 }
 

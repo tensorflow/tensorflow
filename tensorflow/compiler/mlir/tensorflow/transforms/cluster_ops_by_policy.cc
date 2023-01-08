@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/cluster_ops_by_policy.h"
 
+#include <optional>
+
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -100,12 +102,12 @@ void ValuesConstraintSet::Walk(
 Optional<ValueConstraint> ValuesConstraintSet::GetConstraint(
     Value value) const {
   auto it = constraints_.find(value);
-  if (it == constraints_.end()) return None;
+  if (it == constraints_.end()) return std::nullopt;
   return it->getSecond();
 }
 
 bool ValuesConstraintSet::HasConstraint(Value value) const {
-  return GetConstraint(value).hasValue();
+  return GetConstraint(value).has_value();
 }
 
 void ValuesConstraintSet::MergeAll(const ValuesConstraintSet &other) {
@@ -386,10 +388,10 @@ static Optional<ValuesConstraintSet> CanBeClustered(
     const std::function<bool(Operation *op)> &filter) {
   // Check that op has no side effects. This guarantees that we will not
   // reorder side-effecting ops during cluster formation.
-  if (!MemoryEffectOpInterface::hasNoEffect(op)) return llvm::None;
+  if (!isMemoryEffectFree(op)) return std::nullopt;
 
   // Operation rejected by the custom filter.
-  if (filter && !filter(op)) return llvm::None;
+  if (filter && !filter(op)) return std::nullopt;
 
   // Initially we do not have any constraints on the operation results.
   ValuesConstraintSet result_constraints;
@@ -401,7 +403,7 @@ static Optional<ValuesConstraintSet> CanBeClustered(
       return operands_constraints.Resolve();
   }
 
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Compute initial clustering state based on the clustering polocy.
@@ -572,7 +574,7 @@ tf_device::ClusterOp CreateClusterOp(Cluster &cluster, StringAttr policy) {
 
   // Create block in cluster_op's region and move 'cluster.operations' into
   // it.
-  auto block = builder.createBlock(&cluster_op.body());
+  auto block = builder.createBlock(&cluster_op.getBody());
   auto block_end = block->end();
   for (auto op : cluster.operations) op->moveBefore(block, block_end);
 
@@ -705,18 +707,18 @@ void EmitValueConstraintsRemarks(const ValuesConstraintSet &constraints) {
   });
 }
 
-void EmitInputsConstraintsRemarks(FuncOp func,
+void EmitInputsConstraintsRemarks(func::FuncOp func,
                                   const ValuesConstraintSet &constraints) {
   constraints.Walk([&](Value value, ValueConstraint constraint) {
     if (auto arg = value.dyn_cast<BlockArgument>())
-      if (arg.getOwner() == &func.body().front())
+      if (arg.getOwner() == &func.getBody().front())
         func.emitRemark(llvm::formatv("input #{0} constrained to: {1}",
                                       arg.getArgNumber(), constraint));
   });
 }
 
 LogicalResult InferFunctionBodyValuesConstraints(
-    FuncOp func, ValuesConstraintSet &constraints) {
+    func::FuncOp func, ValuesConstraintSet &constraints) {
   for (unsigned i = 0; i < func.getNumResults(); ++i) {
     auto str = func.getResultAttrOfType<StringAttr>(i, "tf.constraint");
     if (!str) continue;
@@ -727,8 +729,8 @@ LogicalResult InferFunctionBodyValuesConstraints(
                                      .Case("value", ValueConstraint::kValue);
 
     // Propagate constraints through function return operations.
-    for (Block &block : func.body()) {
-      ReturnOp ret = dyn_cast<ReturnOp>(block.back());
+    for (Block &block : func.getBody()) {
+      func::ReturnOp ret = dyn_cast<func::ReturnOp>(block.back());
       if (ret) constraints.Insert(ret.getOperand(i), constraint);
     }
   }

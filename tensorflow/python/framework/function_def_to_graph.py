@@ -34,7 +34,8 @@ from tensorflow.python.ops import resource_variable_ops
 def function_def_to_graph(fdef,
                           structured_input_signature=None,
                           structured_outputs=None,
-                          input_shapes=None):
+                          input_shapes=None,
+                          propagate_device_spec=False):
   """Converts a FunctionDef to a FuncGraph (sub-class Graph).
 
   The returned FuncGraph's `name`, `inputs` and `outputs` fields will be set.
@@ -56,6 +57,8 @@ def function_def_to_graph(fdef,
       specified, its length must match length of `fdef.signature.input_arg`. If
       a shape is None, the corresponding input placeholder will have unknown
       shape.
+    propagate_device_spec: Optional. Whether to propagate assigned device
+      information when constructing a new Graph from a FunctionDef.
 
   Returns:
     A FuncGraph.
@@ -84,7 +87,8 @@ def function_def_to_graph(fdef,
 
   with func_graph.as_default():
     # Add all function nodes to the graph.
-    importer.import_graph_def_for_function(graph_def, name="")
+    importer.import_graph_def_for_function(
+        graph_def, name="", propagate_device_spec=propagate_device_spec)
 
     # Initialize fields specific to FuncGraph.
 
@@ -235,12 +239,13 @@ def function_def_to_graph_def(fdef, input_shapes=None):
       graph = graph.outer_graph
 
     if f is not None:
-      op_def = f.definition.signature
+      fdef = f.definition
+      op_def = fdef.signature
       if node_def.op not in copied_functions:
         # Since this function is referenced as an op type, we have no choice but
         # to copy it into the GraphDef if we want downstream tools to process
         # it.
-        graph_def.library.function.add().CopyFrom(f.definition)
+        graph_def.library.function.add().CopyFrom(fdef)
         copied_functions.add(node_def.op)
         if f.grad_func_name:
           grad_def = function_pb2.GradientDef()
@@ -302,9 +307,9 @@ def _get_num_args(arg_def, node_def):
 
 def _set_handle_data(func_graph, fdef):
   """Adds handle data for resource type inputs and outputs."""
-    # The shape of the handle itself is [], while the variable shape is
-    # saved in `handle_data`. Previously, the shape of the resource handle
-    # was set to `None`. Correct both shapes here.
+  # The shape of the handle itself is [], while the variable shape is
+  # saved in `handle_data`. Previously, the shape of the resource handle
+  # was set to `None`. Correct both shapes here.
   for tensor, arg_def in itertools.chain(
       zip(func_graph.inputs, fdef.signature.input_arg),
       zip(func_graph.outputs, fdef.signature.output_arg)):

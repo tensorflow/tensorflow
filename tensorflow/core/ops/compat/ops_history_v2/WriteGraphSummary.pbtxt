@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "WriteGraphSummary"
   input_arg {
     name: "writer"

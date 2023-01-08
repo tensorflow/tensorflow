@@ -28,14 +28,14 @@ namespace tensorflow {
 // For the graph, groups the RecvTPUEmbeddingActivations and
 // SendTPUEmbeddingGradients nodes by their _tpu_replicate attribute. For each
 // such group:
-// 1. Inserts a _RecvTPUEmbeddingDeduplicationData node into the graph.
+// 1. Inserts a XlaRecvTPUEmbeddingDeduplicationData node into the graph.
 // 2. Replaces the public RecvTPUEmbeddingActivations node (if present) with the
-//    internal _RecvTPUEmbeddingActivations node.
+//    internal XlaRecvTPUEmbeddingActivations node.
 // 3. Replaces the public SendTPUEmbeddingGradients node (if present) with the
-//    internal _SendTPUEmbeddingGradients node.
-// 4. Connects the outputs of the _RecvTPUEmbeddingDeduplicationData node with
-//    the inputs of the _RecvTPUEmbeddingActivations and
-//    _SendTPUEmbeddingGradients nodes.
+//    internal XlaSendTPUEmbeddingGradients node.
+// 4. Connects the outputs of the XlaRecvTPUEmbeddingDeduplicationData node with
+//    the inputs of the XlaRecvTPUEmbeddingActivations and
+//    XlaSendTPUEmbeddingGradients nodes.
 //
 // Iterates through the list of functions in the specified
 // GraphOptimizationPassOptions object. Performs the same steps 1-4 specified

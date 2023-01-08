@@ -16,25 +16,25 @@
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
 
 // CHECK-LABEL: non_max_suppression_v4
-func @non_max_suppression_v4(%arg0: tensor<3x4xf32>, %arg1: tensor<3xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<2xi32> {
+func.func @non_max_suppression_v4(%arg0: tensor<3x4xf32>, %arg1: tensor<3xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<2xi32> {
   %max_size = mhlo.constant dense<2> : tensor<i32>
   // NO_FALLBACK: tf.NonMaxSuppressionV4
   // SUPPORTED_FALLBACK_DEVICE-NOT: tf.NonMaxSuppressionV4
   // UNSPECIFIED_FALLBACK_DEVICE: tf.NonMaxSuppressionV4
   // UNSUPPORTED_FALLBACK_DEVICE:  tf.NonMaxSuppressionV4
   %0:2 = "tf.NonMaxSuppressionV4"(%arg0, %arg1, %max_size, %arg2, %arg3) {pad_to_max_output_size = true}: (tensor<3x4xf32>, tensor<3xf32>, tensor<i32>, tensor<f32>, tensor<f32>) -> (tensor<2xi32>, tensor<i32>)
-  return %0#0 : tensor<2xi32>
+  func.return %0#0 : tensor<2xi32>
 }
 
 // CHECK-LABEL: mirror_pad
-func @mirror_pad(%arg0: tensor<2x3xcomplex<f64>>) -> tensor<4x7xcomplex<f64>> {
+func.func @mirror_pad(%arg0: tensor<2x3xcomplex<f64>>) -> tensor<4x7xcomplex<f64>> {
   %0 = mhlo.constant dense<[[1, 1], [2, 2]]> : tensor<2x2xi32>
   // NO_FALLBACK: tf.MirrorPad
   // SUPPORTED_FALLBACK_DEVICE-NOT: tf.MirrorPad
   // UNSPECIFIED_FALLBACK_DEVICE: tf.MirrorPad
   // UNSUPPORTED_FALLBACK_DEVICE: tf.MirrorPad
   %1 = "tf.MirrorPad"(%arg0, %0) {mode = "SYMMETRIC"} : (tensor<2x3xcomplex<f64>>, tensor<2x2xi32>) -> tensor<4x7xcomplex<f64>>
-  return %1 : tensor<4x7xcomplex<f64>>
+  func.return %1 : tensor<4x7xcomplex<f64>>
 }
 
 // BatchMatMulV2 has native as well as fallback lowering patterns available.
@@ -44,7 +44,7 @@ func @mirror_pad(%arg0: tensor<2x3xcomplex<f64>>) -> tensor<4x7xcomplex<f64>> {
 // fallback lowering is preferred for static shaped operands when available.
 
 // CHECK-LABEL: batchmatmulv2
-func @batchmatmulv2(%arg0: tensor<1x4x2xf32>, %arg1: tensor<3x2x4xf32>) -> tensor<3x4x4xf32> {
+func.func @batchmatmulv2(%arg0: tensor<1x4x2xf32>, %arg1: tensor<3x2x4xf32>) -> tensor<3x4x4xf32> {
   // NO_FALLBACK: mhlo.dynamic_broadcast_in_dim
   // NO_FALLBACK: mhlo.dot_general
 
@@ -53,7 +53,7 @@ func @batchmatmulv2(%arg0: tensor<1x4x2xf32>, %arg1: tensor<3x2x4xf32>) -> tenso
   // SUPPORTED_FALLBACK_DEVICE: mhlo.transpose
 
   %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {T = f32, adj_x = false, adj_y = false, device = ""} : (tensor<1x4x2xf32>, tensor<3x2x4xf32>) -> tensor<3x4x4xf32>
-  return %0 : tensor<3x4x4xf32>
+  func.return %0 : tensor<3x4x4xf32>
 }
 
 }

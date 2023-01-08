@@ -14,6 +14,7 @@
 # ==============================================================================
 """Utils for make_zip tests."""
 import functools
+import io
 import itertools
 import operator
 import os
@@ -24,8 +25,7 @@ import traceback
 import zipfile
 
 import numpy as np
-from six import StringIO
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 
 from google.protobuf import text_format
 from tensorflow.lite.testing import _pywrap_string_util
@@ -75,10 +75,13 @@ MAP_TF_TO_NUMPY_TYPE = {
     tf.float32: np.float32,
     tf.float16: np.float16,
     tf.float64: np.float64,
+    tf.complex64: np.complex64,
+    tf.complex128: np.complex128,
     tf.int32: np.int32,
     tf.uint32: np.uint32,
     tf.uint8: np.uint8,
     tf.int8: np.int8,
+    tf.uint16: np.uint16,
     tf.int16: np.int16,
     tf.int64: np.int64,
     tf.bool: np.bool_,
@@ -86,7 +89,7 @@ MAP_TF_TO_NUMPY_TYPE = {
 }
 
 
-class ExtraConvertOptions(object):
+class ExtraConvertOptions:
   """Additional options for conversion, besides input, output, shape."""
 
   def __init__(self):
@@ -116,7 +119,8 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
     real = (max_value - min_value) * np.random.random_sample(shape) + min_value
     imag = (max_value - min_value) * np.random.random_sample(shape) + min_value
     value = real + imag * 1j
-  elif dtype in (tf.uint32, tf.int32, tf.uint8, tf.int8, tf.int64, tf.int16):
+  elif dtype in (tf.uint32, tf.int32, tf.uint8, tf.int8, tf.int64, tf.uint16,
+                 tf.int16):
     value = np.random.randint(min_value, max_value + 1, shape)
   elif dtype == tf.bool:
     value = np.random.choice([True, False], size=shape)
@@ -201,7 +205,7 @@ def write_examples(fp, examples):
       write_tensor(fp, name, value)
 
 
-class TextFormatWriter(object):
+class TextFormatWriter:
   """Utility class for writing ProtoBuf like messages."""
 
   def __init__(self, fp, name=None, parent=None):
@@ -328,7 +332,7 @@ def _get_tensor_info(tensors, default_name_prefix, normalize_func):
   for idx, tensor in enumerate(tensors):
     if not tensor.name:
       tensor.name = default_name_prefix + str(idx)
-    tensor_info = tf.saved_model.utils.build_tensor_info(tensor)
+    tensor_info = tf.compat.v1.saved_model.utils.build_tensor_info(tensor)
     tensor_name = normalize_func(tensor.name)
     tensor_info_map[tensor_name] = tensor_info
     tensor_names.append(tensor_name)
@@ -530,7 +534,7 @@ def make_zip_of_tests(options,
         # Build graph
         report["tf_log"] = ""
         report["tflite_converter_log"] = ""
-        tf.reset_default_graph()
+        tf.compat.v1.reset_default_graph()
 
         with tf.Graph().as_default():
           with tf.device("/cpu:0"):
@@ -542,7 +546,7 @@ def make_zip_of_tests(options,
               report["tf_log"] += traceback.format_exc()
               return None, report
 
-          sess = tf.Session()
+          sess = tf.compat.v1.Session()
           try:
             baseline_inputs, baseline_outputs = (
                 make_test_inputs(param_dict_real, sess, inputs, outputs))
@@ -570,14 +574,15 @@ def make_zip_of_tests(options,
           ]
 
           inference_signature = (
-              tf.saved_model.signature_def_utils.build_signature_def(
+              tf.compat.v1.saved_model.signature_def_utils.build_signature_def(
                   inputs=tensor_info_inputs,
                   outputs=tensor_info_outputs,
                   method_name="op_test"))
           saved_model_dir = tempfile.mkdtemp("op_test")
-          saved_model_tags = [tf.saved_model.tag_constants.SERVING]
+          saved_model_tags = [tf.saved_model.SERVING]
           signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-          builder = tf.saved_model.builder.SavedModelBuilder(saved_model_dir)
+          builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(
+              saved_model_dir)
           builder.add_meta_graph_and_variables(
               sess,
               saved_model_tags,
@@ -589,7 +594,7 @@ def make_zip_of_tests(options,
           # pylint: disable=g-long-ternary
           graph_def = freeze_graph(
               sess,
-              tf.global_variables() + inputs +
+              tf.compat.v1.global_variables() + inputs +
               outputs) if use_frozen_graph else sess.graph_def
 
         if "split_tflite_lstm_inputs" in param_dict_real:
@@ -625,12 +630,12 @@ def make_zip_of_tests(options,
               "outputs": baseline_output_map
           }
 
-          example_fp = StringIO()
+          example_fp = io.StringIO()
           write_examples(example_fp, [example])
           zipinfo = zipfile.ZipInfo(zip_path_label + ".inputs")
           archive.writestr(zipinfo, example_fp.getvalue(), zipfile.ZIP_DEFLATED)
 
-          example_fp2 = StringIO()
+          example_fp2 = io.StringIO()
           write_test_cases(example_fp2, zip_path_label + ".bin", [example])
           zipinfo = zipfile.ZipInfo(zip_path_label + "_tests.txt")
           archive.writestr(zipinfo, example_fp2.getvalue(),
@@ -661,7 +666,7 @@ def make_zip_of_tests(options,
       convert_report.append((param_dict, report))
 
   if not options.no_conversion_report:
-    report_io = StringIO()
+    report_io = io.StringIO()
     report_lib.make_report_table(report_io, zip_path, convert_report)
     if options.multi_gen_state:
       zipinfo = zipfile.ZipInfo("report_" + options.multi_gen_state.test_name +
@@ -686,9 +691,10 @@ def make_zip_of_tests(options,
   percent = 0
   if tf_success > 0:
     percent = float(converter_success) / float(tf_success) * 100.
-  tf.logging.info(("Archive %s Considered %d graphs, %d TF evaluated graphs "
-                   " and %d converted graphs (%.1f%%"), zip_path,
-                  total_conversions, tf_success, converter_success, percent)
+  tf.compat.v1.logging.info(
+      ("Archive %s Considered %d graphs, %d TF evaluated graphs "
+       " and %d converted graphs (%.1f%%"), zip_path, total_conversions,
+      tf_success, converter_success, percent)
 
   tf_failures = parameter_count - tf_success
 

@@ -180,7 +180,7 @@ class QuantizedLstmTest : public ::testing::Test,
         inputStep.insert(inputStep.end(), batchStart, batchEnd);
       }
       lstm->setInput(inputStep);
-      lstm->Invoke();
+      ASSERT_EQ(lstm->Invoke(), kTfLiteOk);
 
       const int outputSize = lstm->outputSize();
       std::vector<float> expected;

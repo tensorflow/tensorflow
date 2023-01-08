@@ -18,14 +18,14 @@ The end-to-end workflow involves the following steps:
 
 1.  [Train a model](#train_a_model) (in Python): A jupyter notebook to train,
     convert and optimize a model for on-device use.
-2.  [Run inference](#run_inference) (in C++ 11): An end-to-end unit test that
+2.  [Run inference](#run_inference) (in C++ 17): An end-to-end unit test that
     runs inference on the model using the [C++ library](library.md).
 
 ## Get a supported device
 
 The example application we'll be using has been tested on the following devices:
 
-*   [Arduino Nano 33 BLE Sense](https://store.arduino.cc/usa/nano-33-ble-sense-with-headers)
+*   [Arduino Nano 33 BLE Sense](https://store-usa.arduino.cc/products/arduino-nano-33-ble-sense-with-headers)
     (using Arduino IDE)
 *   [SparkFun Edge](https://www.sparkfun.com/products/15170) (building directly
     from source)
@@ -92,7 +92,7 @@ following header files:
 -   [`schema_generated.h`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/schema/schema_generated.h)
     contains the schema for the TensorFlow Lite
     [`FlatBuffer`](https://google.github.io/flatbuffers/) model file format.
--   [`version.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/version.h)
+-   [`version.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/version.h)
     provides versioning information for the TensorFlow Lite schema.
 
 ### 2. Include the model header

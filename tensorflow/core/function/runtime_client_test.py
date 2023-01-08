@@ -14,15 +14,17 @@
 # ==============================================================================
 """Tests for runtime_client."""
 
-from tensorflow.core.function import runtime_client
-
-from tensorflow.python.platform import test
 from google.protobuf import text_format
 from tensorflow.core.framework import function_pb2
+from tensorflow.core.function import runtime_client
+from tensorflow.core.function.testing import test_pass
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
 class RuntimeClientTest(test.TestCase):
@@ -165,7 +167,6 @@ class RuntimeClientTest(test.TestCase):
     @def_function.function
     def f():
       return 1
-    self.evaluate(f())
 
     cf = f.get_concrete_function()
 
@@ -179,6 +180,25 @@ class RuntimeClientTest(test.TestCase):
 
     self.assertAllEqual(self.evaluate(f()), 2)
 
+  def test_concrete_function_editing_via_mlir_pass(self):
+    if not tf2.enabled():
+      self.skipTest("TF2 test")
+
+    @def_function.function
+    def f(x, y):
+      return math_ops.add(x, y, name="x_plus_y")
+
+    one = constant_op.constant(1)
+    cf = f.get_concrete_function(one, one)
+
+    ctx = runtime_client.GlobalPythonEagerContext()
+    rt = runtime_client.Runtime(ctx)
+    rt.TransformFunction(cf.function_def.signature.name, "test-pass")
+
+    # 1 + 1 = 2. But the pass changes it to 1 * 1.
+    self.assertAllEqual(self.evaluate(f(one, one)), 1)
+
 
 if __name__ == "__main__":
+  test_pass.RegisterTestPass()
   test.main()

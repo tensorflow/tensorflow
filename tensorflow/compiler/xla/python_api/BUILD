@@ -2,7 +2,7 @@
 #   Python API for XLA.
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -14,7 +14,6 @@ py_library(
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto_py",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:platform",
         "//third_party/py/numpy",
     ],
 )

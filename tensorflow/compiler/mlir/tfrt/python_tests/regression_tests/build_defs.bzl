@@ -1,16 +1,19 @@
 """Generate regression test targets."""
 
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 _ALWAYS_EXCLUDE = ["*.disabled.mlir"]
 _default_test_file_exts = ["mlir"]
 
-def _run_regression_test(name, vectorize, data):
-    suffix = ".vectorized.test" if vectorize else ".test"
+def _run_regression_test(name, compare_with_tensorflow, vectorize, data):
+    suffix = ".test"
+    if vectorize:
+        suffix = ".vectorized" + suffix
     py_strict_test(
         name = name + suffix,
         srcs = ["compile_and_run_test.py"],
         args = [
+            "--compare_with_tensorflow=" + str(compare_with_tensorflow),
             "--input_data_seed=1",
             "--test_file_name=" + name,
             "--vectorize=" + str(vectorize),
@@ -27,6 +30,7 @@ def _run_regression_test(name, vectorize, data):
             "//third_party/py/mlir:ir",
             "//third_party/py/numpy",
             "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
+            "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tfrt_fallback",
             "//tensorflow/python:client_testlib",
             "//tensorflow/python/platform",
         ],
@@ -36,6 +40,7 @@ def regression_test(
         name,
         vectorize,
         exclude = [],
+        comparison_disabled = [],
         test_file_exts = _default_test_file_exts,
         data = []):
     """ Generate regression tests.
@@ -44,6 +49,7 @@ def regression_test(
       name: The name of the test suite.
       vectorize: Whether vectorization should be enabled.
       exclude: The file patterns which should be excluded.
+      comparison_disabled: The files for which comparison with tensorflow should be disabled.
       test_file_exts: The file extensions to be considered as tests.
       data: Any extra data dependencies that might be needed.
     """
@@ -58,6 +64,7 @@ def regression_test(
         curr_test = tests[i]
 
         _run_regression_test(
+            compare_with_tensorflow = curr_test not in comparison_disabled,
             name = curr_test,
             vectorize = vectorize,
             data = data + [curr_test],

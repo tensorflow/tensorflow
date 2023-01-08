@@ -16,6 +16,7 @@ limitations under the License.
 package org.tensorflow.lite;
 
 import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 import org.tensorflow.lite.InterpreterApi.Options.TfLiteRuntime;
@@ -156,7 +157,7 @@ public final class TensorFlowLite {
      * @param namespace: "org.tensorflow.lite" or "com.google.android.gms.tflite".
      * @param category: "application" or "system".
      */
-    public PossiblyAvailableRuntime(String namespace, String category) {
+    PossiblyAvailableRuntime(String namespace, String category) {
       InterpreterFactoryApi factory = null;
       Exception exception = null;
       try {
@@ -170,7 +171,13 @@ public final class TensorFlowLite {
           logger.warning(
               String.format("Failed to construct TF Lite runtime client from %s", namespace));
         }
-      } catch (Exception e) {
+      } catch (ClassNotFoundException
+          | IllegalAccessException
+          | IllegalArgumentException
+          | InstantiationException
+          | InvocationTargetException
+          | NoSuchMethodException
+          | SecurityException e) {
         logger.info(
             String.format("Didn't find %s TF Lite runtime client in %s", category, namespace));
         exception = e;
@@ -178,11 +185,15 @@ public final class TensorFlowLite {
       this.exception = exception;
       this.factory = factory;
     }
-    /** @return the InterpreterFactoryApi for this runtime, or null if this runtime wasn't found. */
+    /**
+     * @return the InterpreterFactoryApi for this runtime, or null if this runtime wasn't found.
+     */
     public InterpreterFactoryApi getFactory() {
       return factory;
     }
-    /** @return The exception that occurred when trying to find this runtime, if any, or null. */
+    /**
+     * @return The exception that occurred when trying to find this runtime, if any, or null.
+     */
     public Exception getException() {
       return exception;
     }
@@ -206,7 +217,8 @@ public final class TensorFlowLite {
   }
 
   // We log at most once for each different options.runtime value.
-  private static AtomicBoolean[] haveLogged = new AtomicBoolean[TfLiteRuntime.values().length];
+  private static final AtomicBoolean[] haveLogged =
+      new AtomicBoolean[TfLiteRuntime.values().length];
 
   static {
     for (int i = 0; i < TfLiteRuntime.values().length; i++) {
@@ -219,14 +231,13 @@ public final class TensorFlowLite {
   }
 
   /**
-   * Package-private method for finding the TF Lite runtime implementation.
+   * Internal method for finding the TF Lite runtime implementation.
    *
    * @param className Class name for method to mention in exception messages.
    * @param methodName Method name for method to mention in exception messages.
    */
-  static InterpreterFactoryApi getFactory(
+  private static InterpreterFactoryApi getFactory(
       TfLiteRuntime runtime, String className, String methodName) {
-    InterpreterFactoryApi factory;
     Exception exception = null;
     if (runtime == null) {
       runtime = TfLiteRuntime.FROM_APPLICATION_ONLY;
@@ -266,26 +277,30 @@ public final class TensorFlowLite {
       }
     }
     String message;
-    if (runtime == TfLiteRuntime.FROM_APPLICATION_ONLY) {
-      message =
-          String.format(
-              "You should declare a build dependency on org.tensorflow.lite:tensorflow-lite,"
-                  + " or call .%s with a value other than TfLiteRuntime.FROM_APPLICATION_ONLY"
-                  + " (see docs for %s#%s(TfLiteRuntime)).",
-              methodName, className, methodName);
-    } else if (runtime == TfLiteRuntime.FROM_SYSTEM_ONLY) {
-      message =
-          String.format(
-              "You should declare a build dependency on"
-                  + " com.google.android.gms:play-services-tflite-java,"
-                  + " or call .%s with a value other than TfLiteRuntime.FROM_SYSTEM_ONLY "
-                  + " (see docs for %s#%s).",
-              methodName, className, methodName);
-    } else {
-      message =
-          "You should declare a build dependency on"
-              + " org.tensorflow.lite:tensorflow-lite or"
-              + " com.google.android.gms:play-services-tflite-java";
+    switch (runtime) {
+      case FROM_APPLICATION_ONLY:
+        message =
+            String.format(
+                "You should declare a build dependency on org.tensorflow.lite:tensorflow-lite,"
+                    + " or call .%s with a value other than TfLiteRuntime.FROM_APPLICATION_ONLY"
+                    + " (see docs for %s#%s(TfLiteRuntime)).",
+                methodName, className, methodName);
+        break;
+      case FROM_SYSTEM_ONLY:
+        message =
+            String.format(
+                "You should declare a build dependency on"
+                    + " com.google.android.gms:play-services-tflite-java,"
+                    + " or call .%s with a value other than TfLiteRuntime.FROM_SYSTEM_ONLY "
+                    + " (see docs for %s#%s).",
+                methodName, className, methodName);
+        break;
+      default:
+        message =
+            "You should declare a build dependency on"
+                + " org.tensorflow.lite:tensorflow-lite or"
+                + " com.google.android.gms:play-services-tflite-java";
+        break;
     }
     throw new IllegalStateException(
         "Couldn't find TensorFlow Lite runtime's InterpreterFactoryImpl class --"

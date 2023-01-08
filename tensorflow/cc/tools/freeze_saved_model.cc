@@ -126,7 +126,7 @@ Status GetVariableNameToTensorMap(
     std::unordered_set<string> variable_names_set,
     std::unordered_map<string, Tensor>* variable_name_to_value_map) {
   if (variable_names_set.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
   std::vector<string> variable_names;
   variable_names.reserve(variable_names_set.size());
@@ -149,7 +149,7 @@ Status GetVariableNameToTensorMap(
   for (size_t i = 0; i < variable_names.size(); i++) {
     (*variable_name_to_value_map)[variable_names[i]] = outputs[i];
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Converts a Variable NodeDef into a Constant NodeDef.
@@ -222,7 +222,7 @@ Status FreezeGraphDef(const SavedModelBundle& saved_model_bundle,
   *frozen_graph_def->mutable_library() = graph_def.library();
   // If the graph is empty there is nothing left to do.
   if (graph_def.node_size() == 0) {
-    return Status::OK();
+    return OkStatus();
   }
   // name_to_node_map is needed to get the inputs from the NodeDef corresponding
   // the a string node name. These inputs are used when doing our backwards
@@ -270,7 +270,7 @@ Status FreezeGraphDef(const SavedModelBundle& saved_model_bundle,
     // If the node isn't a variable, just copy the node as-is.
     *frozen_graph_def->add_node() = node;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -282,7 +282,7 @@ Status FreezeSavedModel(const SavedModelBundle& saved_model_bundle,
   GetSignatureDefsInputsAndOutputs(saved_model_bundle, inputs, outputs);
   TF_RETURN_IF_ERROR(
       FreezeGraphDef(saved_model_bundle, *outputs, frozen_graph_def));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

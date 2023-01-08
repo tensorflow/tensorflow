@@ -32,11 +32,17 @@ limitations under the License.
 
 namespace tensorflow {
 
+bool ComputeInNhwcEnabled(DataType data_type, se::Stream* stream,
+                          bool use_4d_tensor = true);
+
 // Get the Dnn workspace limit from the environment variable, which is in MB.
 // Return the workspace memory limit in bytes. If no value is set, return the
 // default value.
 int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
                            int64_t default_value_in_bytes);
+
+// Call the Dnn workspace limit from TF_CUDNN_WORKSPACE_LIMIT_IN_MB or default.
+int64 GetDnnWorkspaceLimitOrDefault();
 
 // A class to provide scratch-space allocator for Stream-Executor Cudnn
 // callback. TensorFlow is responsible for releasing the temporary buffers after
@@ -51,14 +57,14 @@ class DnnScratchAllocator : public se::ScratchAllocator {
       int64_t byte_size) override {
     Tensor temporary_memory;
     if (byte_size < 0) {
-      return se::port::Status{se::port::error::INVALID_ARGUMENT,
-                              "Requested negative byte size!"};
+      return tsl::Status{se::port::error::INVALID_ARGUMENT,
+                         "Requested negative byte size!"};
     }
     if (byte_size > memory_limit_) {
-      return se::port::Status{se::port::error::UNAVAILABLE,
-                              absl::StrCat("Requested memory size (", byte_size,
-                                           ") exceeds the max memory limit (",
-                                           memory_limit_, ").")};
+      return tsl::Status{se::port::error::UNAVAILABLE,
+                         absl::StrCat("Requested memory size (", byte_size,
+                                      ") exceeds the max memory limit (",
+                                      memory_limit_, ").")};
     }
     AllocationAttributes allocation_attr;
     allocation_attr.retry_on_failure = false;
@@ -66,7 +72,7 @@ class DnnScratchAllocator : public se::ScratchAllocator {
         DT_UINT8, TensorShape({byte_size}), &temporary_memory,
         AllocatorAttributes(), allocation_attr));
     if (!allocation_status.ok()) {
-      return se::port::Status{
+      return tsl::Status{
           se::port::error::UNAVAILABLE,
           absl::StrCat("Failed to allocate the requested memory size (",
                        byte_size, ").")};
@@ -105,10 +111,10 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
     const se::dnn::BatchDescriptor& output_desc,
     const se::dnn::ConvolutionDescriptor& conv_desc,
     const se::dnn::ActivationMode activation_mode, double conv_input_scale,
-    double side_input_scale, se::DeviceMemory<T> input_ptr,
-    se::DeviceMemory<T> filter_ptr, se::DeviceMemory<T> output_ptr,
-    se::DeviceMemory<T> bias_ptr, se::DeviceMemory<T> side_input_ptr,
-    int64_t scratch_size);
+    double side_input_scale, double leakyrelu_alpha,
+    se::DeviceMemory<T> input_ptr, se::DeviceMemory<T> filter_ptr,
+    se::DeviceMemory<T> output_ptr, se::DeviceMemory<T> bias_ptr,
+    se::DeviceMemory<T> side_input_ptr, int64_t scratch_size);
 
 template <typename T>
 StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
@@ -138,7 +144,7 @@ AllocateScratchOrFallback(se::ScratchAllocator* scratch_allocator,
   if (workspace_size > 0) {
     auto scratch_or = scratch_allocator->AllocateBytes(workspace_size);
     if (scratch_or.ok()) {
-      scratch_memory = scratch_or.ValueOrDie();
+      scratch_memory = scratch_or.value();
     } else if ((selected_runner = no_scratch_fallback)) {
       if (selected_runner->GetWorkspaceSize() > 0) {
         return errors::Internal(
@@ -185,8 +191,9 @@ Status LaunchAutotunedConv(const AutotuneEntry<se::dnn::ConvOp>& autotune_entry,
                         AllocateScratchOrFallback<se::dnn::ConvOp::Signature>(
                             scratch_allocator, primary, no_scratch_fallback));
     auto& runner = *std::get<const se::dnn::ConvRunner*>(runner_and_scratch);
-    return runner(stream, in_ptr, filter_ptr, out_ptr,
-                  std::get<se::DeviceMemoryBase>(runner_and_scratch), nullptr);
+    return runner(stream, nullptr,
+                  std::get<se::DeviceMemoryBase>(runner_and_scratch), in_ptr,
+                  filter_ptr, out_ptr);
   } else {
     return stream->ConvolveWithAlgorithm(
         kind, input_desc, in_ptr, filter_desc, filter_ptr, output_desc, out_ptr,

@@ -120,7 +120,7 @@ Status ComputeSpansCore(OpKernelContext* context, const Kernel& kernel,
     }
     starts_vec(x) = span_start;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ComputeGradSpansCore(OpKernelContext* context, const Spans& spans,
@@ -180,7 +180,7 @@ Status ComputeGradSpansCore(OpKernelContext* context, const Spans& spans,
       grad_starts_vec(input_index) = 0;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Computes the spans for the passed kernel, for a input dimension of length
@@ -229,7 +229,7 @@ Status ComputeSpans(OpKernelContext* context,
       return errors::InvalidArgument(Printf("Unrecognized kernel type: %d",
                                             static_cast<int>(kernel_type)));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Computes the grad spans for the passed kernel.
@@ -323,11 +323,12 @@ class ScaleAndTranslateOp : public OpKernel {
     GetValues(context, 3, &row_translation, &col_translation);
 
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                0,
-                                TensorShape({input.dim_size(0), output_height,
-                                             output_width, input.dim_size(3)}),
-                                &output));
+    TensorShape output_shape;
+    OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(input.dim_size(0)));
+    OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(output_height));
+    OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(output_width));
+    OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(input.dim_size(3)));
+    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
     if (!context->status().ok()) return;
 
     // Return if the output is empty.

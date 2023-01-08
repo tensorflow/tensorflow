@@ -24,9 +24,8 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -36,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/core/platform/logging.h"
@@ -102,15 +102,17 @@ using RequantizeStates = SmallVector<RequantizeState>;
 //
 class QuantizationDriver {
  public:
-  explicit QuantizationDriver(FuncOp fn, bool is_signed,
+  explicit QuantizationDriver(func::FuncOp fn, bool is_signed,
                               bool disable_per_channel,
                               OpQuantSpecGetter op_quant_spec_getter,
+                              OpQuantScaleSpecGetter op_quant_scale_spec_getter,
                               bool infer_tensor_range, bool legacy_float_scale)
       : fn_(fn),
         builder_(fn.getBody()),
         is_signed_(is_signed),
         disable_per_channel_(disable_per_channel),
         op_quant_spec_getter_(op_quant_spec_getter),
+        op_quant_scale_spec_getter_(op_quant_scale_spec_getter),
         infer_tensor_range_(infer_tensor_range),
         legacy_float_scale_(legacy_float_scale) {}
 
@@ -169,6 +171,7 @@ class QuantizationDriver {
 
   // Returns all the related quantization constraints of the op.
   std::unique_ptr<OpQuantSpec> GetQuantSpec(Operation *op);
+  std::unique_ptr<OpQuantScaleSpec> GetQuantScaleSpec(Operation *op);
 
   // Whether Quantization parameters have been propagated to the results of this
   // op.
@@ -329,13 +332,16 @@ class QuantizationDriver {
       llvm::dbgs() << "\n\n\n" << current_op->getName() << "\n";
     }
     fn_.walk([&](Operation *op) {
-      if (op->hasTrait<OpTrait::IsTerminator>() || IsOpNotQuantizable(op) ||
-          llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp, ConstantOp,
-                    arith::ConstantOp>(op))
+      std::unique_ptr<OpQuantScaleSpec> scale_spec = GetQuantScaleSpec(op);
+      if (op->hasTrait<OpTrait::IsTerminator>() ||
+          (IsOpNotQuantizable(op) && !scale_spec->has_same_scale_requirement) ||
+          llvm::isa<quantfork::QuantizeCastOp, quantfork::DequantizeCastOp,
+                    func::ConstantOp, arith::ConstantOp>(op)) {
         return;
+      }
       if (current_op == op) llvm::dbgs() << "===>>>";
       llvm::dbgs() << op->getName() << " : (";
-      if (llvm::isa<FuncOp>(op)) {
+      if (llvm::isa<func::FuncOp>(op)) {
         for (auto &arg : fn_.getArguments()) {
           if (auto params = GetArgQuantState(arg).params) {
             params.print(llvm::dbgs());
@@ -369,7 +375,7 @@ class QuantizationDriver {
     });
   }
 
-  FuncOp fn_;
+  func::FuncOp fn_;
   OpBuilder builder_;
   bool is_signed_;
   bool disable_per_channel_;
@@ -409,6 +415,7 @@ class QuantizationDriver {
   llvm::SmallVector<BlockArgument, 4> args_;
 
   OpQuantSpecGetter op_quant_spec_getter_;
+  OpQuantScaleSpecGetter op_quant_scale_spec_getter_;
 
   // Infer output ranges for activation ops and constants. This is usually
   // required for post-training quantization.
@@ -422,6 +429,11 @@ class QuantizationDriver {
 
 std::unique_ptr<OpQuantSpec> QuantizationDriver::GetQuantSpec(Operation *op) {
   return op_quant_spec_getter_(op);
+}
+
+std::unique_ptr<OpQuantScaleSpec> QuantizationDriver::GetQuantScaleSpec(
+    Operation *op) {
+  return op_quant_scale_spec_getter_(op);
 }
 
 bool QuantizationDriver::IsQuantized(Operation *op) {
@@ -562,8 +574,9 @@ void QuantizationDriver::QuantizeValue(Value value, QuantParams params,
   Type new_type = params.castFromExpressedType(expressed_type);
   // This value isn't an expressed type (float), skip.
   if (!new_type) return;
-  auto quantize = builder_.create<quant::QuantizeCastOp>(loc, new_type, value);
-  auto dequantize = builder_.create<quant::DequantizeCastOp>(
+  auto quantize =
+      builder_.create<quantfork::QuantizeCastOp>(loc, new_type, value);
+  auto dequantize = builder_.create<quantfork::DequantizeCastOp>(
       loc, expressed_type, quantize.getResult());
 
   // This attribute is set to distinguish the quantize ops being added by the
@@ -597,7 +610,7 @@ void QuantizationDriver::RequantizeOpResult(Operation *op, int index,
   }
   if (pos == RequantizeState::ON_OUTPUT) {
     Operation *user = value.getUses().begin().getUser();
-    if (llvm::isa<quant::QuantizeCastOp>(user)) {
+    if (llvm::isa<quantfork::QuantizeCastOp>(user)) {
       // The requantize op is inserted between `quantize` and `dequantize` ops.
       value = user->getResult(0);
       builder_.setInsertionPointAfter(user);
@@ -612,7 +625,7 @@ void QuantizationDriver::RequantizeArg(BlockArgument arg,
   builder_.setInsertionPointToStart(arg.getOwner());
   if (value.hasOneUse()) {
     auto user = value.use_begin().getUser();
-    if (auto q = llvm::dyn_cast<quant::QuantizeCastOp>(user)) {
+    if (auto q = llvm::dyn_cast<quantfork::QuantizeCastOp>(user)) {
       value = q.getResult();
       builder_.setInsertionPoint(arg.getOwner(), ++Block::iterator(user));
     }
@@ -634,7 +647,7 @@ void QuantizationDriver::RequantizeValue(Value value, RequantizeStates *states,
     Type new_type = state.params.castFromExpressedType(expressed_type);
     if (!new_type) return;
     auto requantize_op =
-        builder_.create<quant::QuantizeCastOp>(loc, new_type, value);
+        builder_.create<quantfork::QuantizeCastOp>(loc, new_type, value);
     value.replaceAllUsesWith(requantize_op);
     requantize_op.getOperation()->replaceUsesOfWith(requantize_op, value);
     // This requantization was defined as required for the result value, so
@@ -647,7 +660,7 @@ void QuantizationDriver::RequantizeValue(Value value, RequantizeStates *states,
   if (!value.hasOneUse()) {
     return;
   }
-  auto dequant_op = llvm::dyn_cast_or_null<quant::DequantizeCastOp>(
+  auto dequant_op = llvm::dyn_cast_or_null<quantfork::DequantizeCastOp>(
       value.use_begin().getUser());
   if (!dequant_op) {
     return;
@@ -672,14 +685,14 @@ void QuantizationDriver::RequantizeValue(Value value, RequantizeStates *states,
     if (!new_type) continue;
 
     auto requantize_op =
-        builder_.create<quant::QuantizeCastOp>(loc, new_type, value);
+        builder_.create<quantfork::QuantizeCastOp>(loc, new_type, value);
 
     if (clobber_first) {
       dequant_op.setOperand(requantize_op.getResult());
       // All ops requiring this value already use the result of dequant.
       clobber_first = false;
     } else {
-      auto new_dequant_op = builder_.create<quant::DequantizeCastOp>(
+      auto new_dequant_op = builder_.create<quantfork::DequantizeCastOp>(
           loc, dequant_op.getResult().getType(), requantize_op.getResult());
       for (auto &op_index : state.users) {
         op_index.first->setOperand(op_index.second, new_dequant_op.getResult());
@@ -771,30 +784,29 @@ void QuantizationDriver::PreprocessConstantOps() {
     for (auto &use : value.getUses()) {
       uses.push_back({use.getOwner(), use.getOperandNumber()});
     }
-    for (auto indexed_use : llvm::enumerate(uses)) {
+    for (const auto &indexed_use : llvm::enumerate(uses)) {
       Operation *user = indexed_use.value().first;
       int operand_num = indexed_use.value().second;
 
-      auto spec = GetQuantSpec(user);
-      auto biases = spec->biases_params;
+      std::unique_ptr<OpQuantSpec> spec = GetQuantSpec(user);
+      std::unique_ptr<OpQuantScaleSpec> scale_spec = GetQuantScaleSpec(user);
+      BiasParamsMap biases = spec->biases_params;
 
       // The quantization parameters of a `weight` shouldn't be determined by
       // other values. So any constants which are not bias, an operand of an
       // op with same scale requirements, and haven't been quantized are
       // weights.
       if (biases.find(operand_num) == biases.end() &&
-          !llvm::dyn_cast<mlir::SameScalesOpInterface>(user) &&
-          !llvm::dyn_cast<quant::QuantizeCastOp>(user)) {
+          !scale_spec->has_same_scale_requirement &&
+          !llvm::dyn_cast<quantfork::QuantizeCastOp>(user)) {
         // Needs to scan the content of weights to get the quantization
         // parameters if there are no quantization parameters (FakeQuant ops).
         // For this case, the weight will not be duplicated.
         weights_.insert(cst);
-        auto affine_user =
-            llvm::dyn_cast<mlir::AffineQuantizedOpInterface>(user);
-        if (affine_user && affine_user.GetAffineOperandIndex() == operand_num &&
-            affine_user.RequiredNarrowRangeAffineOperand()) {
+        if (spec->coeff_op_quant_dim.find(operand_num) !=
+            spec->coeff_op_quant_dim.end()) {
           optimized_weights_.insert(
-              {cst, affine_user.GetQuantizationDimIndex()});
+              {cst, spec->coeff_op_quant_dim[operand_num]});
         }
       } else {
         // This is a bias or an operand of an op with same scale requirements,
@@ -818,7 +830,7 @@ void QuantizationDriver::SetupAllStates() {
     // If the argument is quantized, it should only has one user.
     if (arg.hasOneUse()) {
       auto user = value.use_begin().getUser();
-      if (auto q = llvm::dyn_cast<quant::QuantizeCastOp>(user)) {
+      if (auto q = llvm::dyn_cast<quantfork::QuantizeCastOp>(user)) {
         value = q.getResult();
       }
     }
@@ -826,7 +838,8 @@ void QuantizationDriver::SetupAllStates() {
   }
 
   fn_.walk([&](Operation *op) {
-    if (IsOpNotQuantizable(op)) {
+    std::unique_ptr<OpQuantScaleSpec> scale_spec = GetQuantScaleSpec(op);
+    if (IsOpNotQuantizable(op) && !scale_spec->has_same_scale_requirement) {
       return;
     }
     work_list_.push_back(op);
@@ -836,8 +849,8 @@ void QuantizationDriver::SetupAllStates() {
       if (auto *inst = operand.getDefiningOp()) {
         // If the operand comes from a tfl.dequantize op, we use the quantized
         // input of this tfl.dequantize op to set the state.
-        if (auto dq = llvm::dyn_cast<quant::DequantizeCastOp>(inst)) {
-          operand = dq.arg();
+        if (auto dq = llvm::dyn_cast<quantfork::DequantizeCastOp>(inst)) {
+          operand = dq.getArg();
         }
       }
       InitializeOperandState(op, i, operand);
@@ -850,7 +863,7 @@ void QuantizationDriver::SetupAllStates() {
       // create the state and mark it immutable.
       if (result.hasOneUse()) {
         auto user = result.use_begin().getUser();
-        if (auto q = llvm::dyn_cast<quant::QuantizeCastOp>(user)) {
+        if (auto q = llvm::dyn_cast<quantfork::QuantizeCastOp>(user)) {
           result = q.getResult();
         }
       }
@@ -899,7 +912,9 @@ bool QuantizationDriver::PropagateParams() {
       continue;
     }
 
-    if (llvm::isa<SameScalesOpInterface>(op)) {
+    std::unique_ptr<OpQuantScaleSpec> scale_spec = GetQuantScaleSpec(op);
+
+    if (scale_spec->has_same_scale_requirement) {
       auto params = GetQuantParamsForSameScaleConstraint(op);
       // The quantization parameters haven't been propagated to any operands
       // or results. Skip this node for now.
@@ -929,12 +944,12 @@ bool QuantizationDriver::PropagateParams() {
     }
 
     // TODO(fengliuai): make the bit width configurable.
-    auto restricted = llvm::dyn_cast<FixedOutputRangeInterface>(op);
-    if (restricted && infer_tensor_range_) {
+    if (scale_spec->has_fixed_output_range && infer_tensor_range_) {
       // Infer ranges from the activation ops. This is usually required for
       // the post-training quantization workflow.
       // TODO(fengliuai): different result can have different fixed range.
-      auto params = restricted.GetFixedOutputRange(is_signed_, /*bit_width=*/8);
+      auto params = scale_spec->fixed_output_range_func(is_signed_,
+                                                        /*bit_width=*/8);
       for (auto i = 0; i < op->getNumResults(); ++i) {
         // The range is null if the result has been quantized.
         if (params) {
@@ -1067,9 +1082,9 @@ bool QuantizationDriver::SetBiasParamsWithAdjustments(
             filter_param.getStorageTypeMax()),
         /*override=*/true);
   } else if (auto bias_params =
-                 params.dyn_cast<UniformQuantizedPerAxisType>()) {
+                 params.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
     auto filter_params =
-        filter_state.params.cast<UniformQuantizedPerAxisType>();
+        filter_state.params.cast<quant::UniformQuantizedPerAxisType>();
     std::vector<double> new_bias_scales = bias_params.getScales().vec();
     std::vector<double> new_filter_scales = filter_params.getScales().vec();
     bool needs_adjustment = false;
@@ -1086,7 +1101,7 @@ bool QuantizationDriver::SetBiasParamsWithAdjustments(
     }
     changed |= SetOperandParams(
         op, bias_index,
-        UniformQuantizedPerAxisType::getChecked(
+        quant::UniformQuantizedPerAxisType::getChecked(
             bias_op->getLoc(), params.getFlags(), params.getStorageType(),
             params.getExpressedType(), new_bias_scales,
             bias_params.getZeroPoints(), bias_params.getQuantizedDimension(),
@@ -1097,7 +1112,7 @@ bool QuantizationDriver::SetBiasParamsWithAdjustments(
         filter_index);
     changed |= SetOperandParams(
         op, filter_index,
-        UniformQuantizedPerAxisType::getChecked(
+        quant::UniformQuantizedPerAxisType::getChecked(
             filter_op->getLoc(), filter_params.getFlags(),
             filter_params.getStorageType(), filter_params.getExpressedType(),
             new_filter_scales, filter_params.getZeroPoints(),
@@ -1152,13 +1167,24 @@ void QuantizationDriver::Run() {
   }
 }
 
-void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
+void ApplyQuantizationParamsPropagation(mlir::func::FuncOp func, bool is_signed,
                                         bool disable_per_channel,
                                         OpQuantSpecGetter op_quant_spec_getter,
                                         bool infer_tensor_ranges,
                                         bool legacy_float_scale) {
+  ApplyQuantizationParamsPropagation(
+      func, is_signed, disable_per_channel, op_quant_spec_getter,
+      GetDefaultQuantScaleSpec, infer_tensor_ranges, legacy_float_scale);
+}
+
+void ApplyQuantizationParamsPropagation(
+    mlir::func::FuncOp func, bool is_signed, bool disable_per_channel,
+    OpQuantSpecGetter op_quant_spec_getter,
+    OpQuantScaleSpecGetter op_quant_scale_spec_getter, bool infer_tensor_ranges,
+    bool legacy_float_scale) {
   QuantizationDriver(func, is_signed, disable_per_channel, op_quant_spec_getter,
-                     infer_tensor_ranges, legacy_float_scale)
+                     op_quant_scale_spec_getter, infer_tensor_ranges,
+                     legacy_float_scale)
       .Run();
 }
 

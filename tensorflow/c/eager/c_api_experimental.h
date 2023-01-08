@@ -333,7 +333,16 @@ typedef struct TFE_Executor TFE_Executor;
 // Creates a new eager Executor. Nodes in one executor are guaranteed to be
 // executed in sequence. Assigning nodes to different executors allows executing
 // nodes in parallel.
-TF_CAPI_EXPORT extern TFE_Executor* TFE_NewExecutor(bool is_async);
+// in_flight_nodes_limit: when is_async is true, this value controls the
+// maximum number of in flight async nodes. Enqueuing of additional async ops
+// after the limit is reached blocks until some inflight nodes finishes.
+// The effect is bounding the memory held by inflight TensorHandles that are
+// referenced by the inflight nodes.
+// A recommended value has not been established.
+// A value of 0 removes the limit, which is the behavior of TensorFlow 2.11.
+// When is_async is false, the value is ignored.
+TF_CAPI_EXPORT extern TFE_Executor* TFE_NewExecutor(
+    bool is_async, bool enable_streaming_enqueue, int in_flight_nodes_limit);
 
 // Deletes the eager Executor without waiting for enqueued nodes. Please call
 // TFE_ExecutorWaitForAllPendingNodes before calling this API if you want to
@@ -509,6 +518,14 @@ typedef struct TFE_CustomDevice {
   TFE_TensorHandle* (*pack)(TFE_Context* context, TFE_TensorHandle** handles,
                             int num_handles, TF_Status* s,
                             void* device_info) = nullptr;
+
+  // Pins the op to `device` based on inputs to `op`. Returns true
+  // signifying to pin to the current custom device. Returns false
+  // to pin to the physical device.
+  //
+  // This function is guaranteed to be called only when all of the custom-device
+  // inputs are on this device.
+  bool (*shall_pin_to_this_device)(const TFE_Op* op, TF_Status* s) = nullptr;
 } TFE_CustomDevice;
 
 // Registers a custom device for use with eager execution.
@@ -547,6 +564,10 @@ TF_CAPI_EXPORT extern void TFE_RegisterCustomDevice(TFE_Context* ctx,
                                                     const char* device_name,
                                                     void* device_info,
                                                     TF_Status* status);
+
+// Returns whether `device_name` maps to a registered custom device.
+TF_CAPI_EXPORT extern bool TFE_IsCustomDevice(TFE_Context* ctx,
+                                              const char* device_name);
 
 // Struct to be filled in to define a custom device tensor handle. Fields are
 // required except where indicated.
@@ -637,6 +658,11 @@ TF_CAPI_EXPORT void TFE_ContextSetRunEagerOpAsFunction(TFE_Context* ctx,
                                                        unsigned char enable,
                                                        TF_Status* status);
 
+// Enables rewrite jit_compile functions.
+TF_CAPI_EXPORT void TFE_ContextSetJitCompileRewrite(TFE_Context* ctx,
+                                                    unsigned char enable,
+                                                    TF_Status* status);
+
 // Returns the device type of the operation that produced `h`.
 TF_CAPI_EXPORT extern const char* TFE_TensorHandleDeviceType(
     TFE_TensorHandle* h, TF_Status* status);
@@ -700,6 +726,16 @@ TF_CAPI_EXPORT extern void TFE_ReportErrorToCluster(TFE_Context* ctx,
                                                     int error_code,
                                                     const char* error_message,
                                                     TF_Status* status);
+
+// Get task states from the Coordination Service.
+TF_CAPI_EXPORT extern void TFE_GetTaskStates(TFE_Context* ctx,
+                                             const TF_Buffer& tasks,
+                                             void* states, TF_Status* status);
+
+TF_CAPI_EXPORT extern void TFE_WaitAtBarrier(TFE_Context* ctx,
+                                             const char* barrier_id,
+                                             int64_t barrier_timeout_in_ms,
+                                             TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

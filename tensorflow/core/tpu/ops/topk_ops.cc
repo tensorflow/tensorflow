@@ -32,7 +32,7 @@ REGISTER_OP("KthOrderStatistic")
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->Subshape(input, 0, -1, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TopKUnique")
@@ -51,7 +51,7 @@ REGISTER_OP("TopKUnique")
       TF_RETURN_IF_ERROR(c->ReplaceDim(input, 1, c->MakeDim(k), &s));
       c->set_output(0, s);
       c->set_output(1, s);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("MakeUnique")
@@ -61,7 +61,7 @@ REGISTER_OP("MakeUnique")
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input));
       c->set_output(0, input);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TopKWithUnique")
@@ -80,6 +80,6 @@ REGISTER_OP("TopKWithUnique")
       TF_RETURN_IF_ERROR(c->ReplaceDim(input, 1, c->MakeDim(k), &s));
       c->set_output(0, s);
       c->set_output(1, s);
-      return Status::OK();
+      return OkStatus();
     });
 }  // namespace tensorflow

@@ -15,21 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/collectives_schedule_linearizer.h"
 
-#include "tensorflow/compiler/xla/debug_options_flags.h"
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_runner.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
-#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -167,6 +160,45 @@ ENTRY entry {
               module->entry_computation()->GetInstructionWithName("c1")));
   InsertCollectivesSchedule(module.get());
   EXPECT_EQ(CountControlEdges(*module->entry_computation()), 2);
+}
+
+TEST_F(CollectivesScheduleLinearizerTest, AsyncOrdering) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT out = f32[] add(a, b)
+}
+
+ENTRY entry {
+  p0 = f32[100] parameter(0), parameter_replication={false}
+  p1 = f32[100] parameter(1), parameter_replication={false}
+  ars0 = f32[100] all-reduce-start(p0), replica_groups={}, to_apply=sum
+  ard0 = f32[100] all-reduce-done(ars0)
+  ars1 = f32[100] all-reduce-start(p1), replica_groups={}, to_apply=sum
+  ard1 = f32[100] all-reduce-done(ars1)
+  ROOT out = f32[100] add(ard0, ard1)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  InsertCollectivesSchedule(module.get());
+  EXPECT_EQ(CountControlEdges(*module->entry_computation()), 1);
+
+  const HloInstruction *root = module->entry_computation()->root_instruction();
+  const HloInstruction *ard0 = root->operand(0);
+  const HloInstruction *ard1 = root->operand(1);
+  EXPECT_EQ(ard0->opcode(), HloOpcode::kAllReduceDone);
+  EXPECT_EQ(ard1->opcode(), HloOpcode::kAllReduceDone);
+
+  const HloInstruction *ars1 = ard1->operand(0);
+  EXPECT_EQ(ars1->opcode(), HloOpcode::kAllReduceStart);
+
+  // verify control dependency is inserted from all-reduce-done to
+  // all-reduce-start.
+  EXPECT_TRUE(absl::c_linear_search(ars1->control_predecessors(), ard0));
 }
 
 }  // namespace

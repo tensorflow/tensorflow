@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_PATTERN_HELPER_H_
-#define TENSORFLOW_CORE_GRAPPLER_UTILS_PATTERN_HELPER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_PATTERN_UTILS_H_
+#define TENSORFLOW_CORE_GRAPPLER_UTILS_PATTERN_UTILS_H_
 
 #include "tensorflow/core/grappler/utils/graph_view.h"
 
@@ -226,8 +226,20 @@ class SubGraphMatcher {
   }
 };
 
+template <>
+bool SubGraphMatcher<MatchingDirection::kFollowInputs>::DoesOpTypePatternMatch(
+    const OpTypePattern& pattern, MutableNodeView* node_view,
+    NodeViewMatch* match);
+
+template <>
+bool SubGraphMatcher<MatchingDirection::kFollowInputs>::GetMatchedNodes(
+    const OpTypePattern& pattern,
+    const std::unordered_set<string>& nodes_to_preserve,
+    MutableNodeView* node_view, std::map<string, int>* matched_nodes_map,
+    std::set<int>* remove_node_indices);
+
 }  // namespace utils
 }  // namespace grappler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_GRAPPLER_UTILS_PATTERN_HELPER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_UTILS_PATTERN_UTILS_H_

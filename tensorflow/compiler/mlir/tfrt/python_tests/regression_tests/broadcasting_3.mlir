@@ -1,4 +1,4 @@
-builtin.func @test(%V__0: tensor<?x?x?xf32> { python_test_attrs.static_type = tensor<2x4x10xf32> }, %V__1: tensor<?xf32> { python_test_attrs.static_type = tensor<4xf32> }) -> tensor<?x?x?xf32> {
+func.func @test(%V__0: tensor<?x?x?xf32> { python_test_attrs.static_type = tensor<2x4x10xf32> }, %V__1: tensor<?xf32> { python_test_attrs.static_type = tensor<4xf32> }) -> tensor<?x?x?xf32> {
   %0 = "tf.Exp"(%V__0) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   %1 = "tf.LeakyRelu"(%V__0) {alpha = 0.1 : f32, device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   %2 = "tf.Pow"(%1, %V__0) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
@@ -22,5 +22,5 @@ builtin.func @test(%V__0: tensor<?x?x?xf32> { python_test_attrs.static_type = te
   %20 = "tf.Add"(%17, %19) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   %21 = "tf.Sub"(%16, %20) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   %22 = "tf.Square"(%21) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
-  return %22 : tensor<?x?x?xf32>
+  func.return %22 : tensor<?x?x?xf32>
 }

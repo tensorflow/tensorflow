@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/url.h"
 
+#include <string>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/regexp.h"
 

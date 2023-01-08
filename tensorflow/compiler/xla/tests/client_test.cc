@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -48,8 +48,8 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
 
       ExecutionOptions execution_options = execution_options_;
       *execution_options.mutable_shape_with_output_layout() =
-          ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
-                                         execute_layout)
+          ShapeUtil::MakeShapeWithDenseLayout(S32, /*dimensions=*/{2, 2},
+                                              execute_layout)
               .ToProto();
       TF_ASSERT_OK_AND_ASSIGN(
           std::unique_ptr<GlobalData> data,
@@ -81,10 +81,10 @@ XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
   // major.
   *execution_options.mutable_shape_with_output_layout() =
       ShapeUtil::MakeTupleShape(
-          {ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
-                                          /*minor_to_major=*/{0, 1}),
-           ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
-                                          /*minor_to_major=*/{1, 0})})
+          {ShapeUtil::MakeShapeWithDenseLayout(S32, /*dimensions=*/{2, 2},
+                                               /*minor_to_major=*/{0, 1}),
+           ShapeUtil::MakeShapeWithDenseLayout(S32, /*dimensions=*/{2, 2},
+                                               /*minor_to_major=*/{1, 0})})
           .ToProto();
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -100,12 +100,12 @@ XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
 
   EXPECT_TRUE(ShapeUtil::Equal(
       ShapeUtil::GetTupleElementShape(result.shape(), 0),
-      ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
-                                     /*minor_to_major=*/{0, 1})));
+      ShapeUtil::MakeShapeWithDenseLayout(S32, /*dimensions=*/{2, 2},
+                                          /*minor_to_major=*/{0, 1})));
   EXPECT_TRUE(ShapeUtil::Equal(
       ShapeUtil::GetTupleElementShape(result.shape(), 1),
-      ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
-                                     /*minor_to_major=*/{1, 0})));
+      ShapeUtil::MakeShapeWithDenseLayout(S32, /*dimensions=*/{2, 2},
+                                          /*minor_to_major=*/{1, 0})));
 }
 
 // Disabled for interpreter since ExecuteAsyncOnStream is not implemented on

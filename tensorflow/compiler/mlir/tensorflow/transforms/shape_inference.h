@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
@@ -41,7 +42,7 @@ FailureOr<bool> InferModuleShape(ModuleOp module, int64_t max_iterations = 10);
 // function being inferred.
 // Returns a failure() on error, otherwise returns true to indicate that it
 // reached convergence, false otherwise.
-FailureOr<bool> InferShapeForFunction(FuncOp func,
+FailureOr<bool> InferShapeForFunction(func::FuncOp func,
                                       ArrayRef<ArrayRef<int64_t>> arg_shapes,
                                       int64_t graph_version,
                                       int64_t max_iterations = 10);

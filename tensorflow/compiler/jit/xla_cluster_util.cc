@@ -41,7 +41,6 @@ limitations under the License.
 namespace tensorflow {
 
 const char* const kXlaClusterAttr = "_XlaCluster";
-const char* const kXlaOutsideCompilationAttr = "_XlaOutsideCompilation";
 const char* const kXlaCompileTimeConstantInputsAttr =
     "_XlaCompileTimeConstantInputs";
 
@@ -198,14 +197,14 @@ StatusOr<bool> CreateCycleDetectionGraph(const Graph* graph,
   return true;
 }
 
-absl::optional<absl::string_view> GetXlaClusterForNode(const Node& node) {
+std::optional<absl::string_view> GetXlaClusterForNode(const Node& node) {
   const AttrValue* attr_value = node.attrs().Find(kXlaClusterAttr);
   if (attr_value == nullptr) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   Status s = AttrValueHasType(*attr_value, "string");
   if (!s.ok()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return attr_value->s();
 }
@@ -362,7 +361,7 @@ XlaAutoClusteringSummary GetXlaAutoClusteringSummary(const Graph& graph) {
   absl::flat_hash_map<absl::string_view, int> unclustered_op_histogram;
 
   for (Node* n : graph.nodes()) {
-    absl::optional<absl::string_view> cluster_name = GetXlaClusterForNode(*n);
+    std::optional<absl::string_view> cluster_name = GetXlaClusterForNode(*n);
     if (cluster_name) {
       result.set_clustered_node_count(result.clustered_node_count() + 1);
       ClusterInfo* info = &cluster_name_to_info[*cluster_name];
@@ -558,7 +557,7 @@ Status GetNodesRelatedToRefVariablesInDirection(
 
   VLOG(2) << "# iterations = " << iterations;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Sorts control inputs of a graphdef so that they are deterministically

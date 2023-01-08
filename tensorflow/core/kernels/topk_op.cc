@@ -138,7 +138,7 @@ struct TopKFunctor<CPUDevice, T> {
         values(r, 0) = input(r, indices(r, 0));
       }
 
-      return Status::OK();
+      return OkStatus();
     }
 
     auto SortIndices = [&](int64_t start_batch, int64_t limit_batch) {
@@ -232,7 +232,7 @@ struct TopKFunctor<CPUDevice, T> {
     Shard(worker_threads.num_threads, worker_threads.workers, num_rows,
           final_cost, SortIndices);
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -264,6 +264,7 @@ namespace functor {
   extern template struct functor::TopKFunctor<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
+TF_CALL_bfloat16(DECLARE_GPU_SPEC);
 TF_CALL_INTEGRAL_TYPES(DECLARE_GPU_SPEC);
 
 #undef DECLARE_GPU_SPEC
@@ -281,6 +282,7 @@ TF_CALL_INTEGRAL_TYPES(DECLARE_GPU_SPEC);
                           TopK<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNELS);
+TF_CALL_bfloat16(REGISTER_KERNELS);
 TF_CALL_INTEGRAL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 

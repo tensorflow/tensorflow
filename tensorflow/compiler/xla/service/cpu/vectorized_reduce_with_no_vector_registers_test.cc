@@ -46,7 +46,7 @@ StatusOr<unsigned> GetTargetVectorRegisterByteSize(std::string triple) {
   std::unique_ptr<llvm::TargetMachine> target_machine =
       absl::WrapUnique(target->createTargetMachine(
           /*TT=*/triple, /*CPU=*/"", /*Features=*/"", llvm::TargetOptions{},
-          /*RM=*/llvm::None));
+          /*RM=*/std::nullopt));
   cpu::LLVMTargetMachineFeatures target_machine_features(target_machine.get());
   return target_machine_features.vector_register_byte_size(*function);
 }
@@ -71,7 +71,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(text));
   cpu::CpuCompiler cpu_compiler;
-  auto module_group = absl::make_unique<HloModuleGroup>("group");
+  auto module_group = std::make_unique<HloModuleGroup>("group");
   module_group->push_back(std::move(hlo_module));
 
   // Check that the GetTargetVectorRegisterByteSize is itself working.

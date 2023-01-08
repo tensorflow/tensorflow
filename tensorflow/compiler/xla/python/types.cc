@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/python/lib/core/bfloat16.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/python/lib/core/bfloat16.h"
+#include "tensorflow/tsl/python/lib/core/float8.h"
 
 namespace xla {
 
@@ -35,6 +38,8 @@ xla::StatusOr<PrimitiveType> DtypeToPrimitiveType(const py::dtype& np_type) {
           {{'u', 2}, U16},
           {{'u', 4}, U32},
           {{'u', 8}, U64},
+          {{'V', 1}, F8E4M3FN},
+          {{'f', 1}, F8E5M2},
           {{'V', 2}, BF16},  // array protocol code for raw data (void*)
           {{'f', 2}, F16},
           {{'f', 4}, F32},
@@ -70,8 +75,17 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
       return py::dtype::of<uint32_t>();
     case U64:
       return py::dtype::of<uint64_t>();
+    case F8E4M3FN: {
+      py::handle f8_e4m3fn(tsl::Float8e4m3fnDtype());
+      return py::dtype::from_args(
+          py::reinterpret_borrow<py::object>(f8_e4m3fn));
+    }
+    case F8E5M2: {
+      py::handle f8_e5m2(tsl::Float8e5m2Dtype());
+      return py::dtype::from_args(py::reinterpret_borrow<py::object>(f8_e5m2));
+    }
     case BF16: {
-      py::handle bfloat16(tensorflow::Bfloat16Dtype());
+      py::handle bfloat16(tsl::Bfloat16Dtype());
       return py::dtype::from_args(py::reinterpret_borrow<py::object>(bfloat16));
     }
     case F16:
@@ -104,7 +118,11 @@ const NumpyScalarTypes& GetNumpyScalarTypes() {
     dtypes->np_uint32 = py::object(numpy.attr("uint32"));
     dtypes->np_uint64 = py::object(numpy.attr("uint64"));
     dtypes->np_bfloat16 =
-        py::reinterpret_borrow<py::object>(tensorflow::Bfloat16Dtype());
+        py::reinterpret_borrow<py::object>(tsl::Bfloat16Dtype());
+    dtypes->np_float8_e4m3fn =
+        py::reinterpret_borrow<py::object>(tsl::Float8e4m3fnDtype());
+    dtypes->np_float8_e5m2 =
+        py::reinterpret_borrow<py::object>(tsl::Float8e5m2Dtype());
     dtypes->np_float16 = py::object(numpy.attr("float16"));
     dtypes->np_float32 = py::object(numpy.attr("float32"));
     dtypes->np_float64 = py::object(numpy.attr("float64"));
@@ -249,7 +267,7 @@ StatusOr<py::object> LiteralToPython(std::shared_ptr<xla::Literal> literal) {
     for (int i = 0; i < elems.size(); ++i) {
       TF_ASSIGN_OR_RETURN(
           arrays[i],
-          LiteralToPython(absl::make_unique<Literal>(std::move(elems[i]))));
+          LiteralToPython(std::make_unique<Literal>(std::move(elems[i]))));
     }
     py::tuple result(elems.size());
     for (int i = 0; i < elems.size(); ++i) {
@@ -315,17 +333,17 @@ pybind11::tuple SpanToTuple(absl::Span<int64_t const> xs) {
   return IntSpanToTupleHelper(xs);
 }
 
-absl::optional<CastToArrayResult> CastToArray(py::handle h) {
+std::optional<CastToArrayResult> CastToArray(py::handle h) {
   py::array array = py::array::ensure(
       h, py::array::c_style | py::detail::npy_api::NPY_ARRAY_ALIGNED_);
   if (!array) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   auto type_or_status = DtypeToPrimitiveType(array.dtype());
   if (!type_or_status.ok()) {
-    throw std::runtime_error(type_or_status.status().ToString());
+    throw xla::XlaRuntimeError(type_or_status.status());
   }
-  PrimitiveType type = type_or_status.ValueOrDie();
+  PrimitiveType type = type_or_status.value();
 
   absl::InlinedVector<int64_t, 4> dims(array.ndim());
   for (int i = 0; i < array.ndim(); ++i) {
@@ -333,7 +351,7 @@ absl::optional<CastToArrayResult> CastToArray(py::handle h) {
   }
   Shape shape = ShapeUtil::MakeShape(type, dims);
   if (array.size() * array.itemsize() != ShapeUtil::ByteSizeOf(shape)) {
-    throw std::runtime_error(absl::StrCat(
+    throw xla::XlaRuntimeError(absl::StrCat(
         "Size mismatch for buffer: ", array.size() * array.itemsize(), " vs. ",
         ShapeUtil::ByteSizeOf(shape)));
   }

@@ -18,6 +18,8 @@ limitations under the License.
 #include <stdint.h>
 #include <sys/types.h>
 
+#include <algorithm>
+
 #include "public/gemmlowp.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/legacy_types.h"
@@ -386,6 +388,10 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
   op_params.padding_values.height = pad_height;
   op_params.stride_width = stride_width;
   op_params.stride_height = stride_height;
+
+  GetActivationMinMax(FusedActivationFunctionType::kNone,
+                      &op_params.float_activation_min,
+                      &op_params.float_activation_max);
 
   TransposeConv(op_params, DimsToShape(input_dims), input_data,
                 DimsToShape(filter_dims), filter_data,

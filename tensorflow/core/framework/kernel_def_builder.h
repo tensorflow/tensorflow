@@ -63,7 +63,7 @@ class KernelDefBuilder {
   // Like TypeConstraint, but (a) gets the type from a template parameter
   // and (b) only supports a constraint to a single type.
   template <class T>
-  KernelDefBuilder& TypeConstraint(const char* attr_name);
+  KernelDefBuilder& TypeConstraint(const char* attr_name) TF_ATTRIBUTE_NOINLINE;
   // TODO(josh11b): Support other types of attr constraints as needed.
 
   // Specify that this kernel requires/provides an input/output arg

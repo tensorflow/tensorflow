@@ -49,11 +49,14 @@ void SinkNontupleRoot(HloComputation* computation) {
 
 }  // namespace
 
-StatusOr<bool> RootInstructionSinker::Run(HloModule* module) {
+StatusOr<bool> RootInstructionSinker::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_RET_CHECK(module->has_schedule());
 
   bool modified = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     HloInstructionSequence& sequence =
         module->schedule().GetOrCreateSequence(computation);
     if (computation->root_instruction() ==

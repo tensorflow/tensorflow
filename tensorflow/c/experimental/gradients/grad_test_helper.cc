@@ -127,7 +127,7 @@ Model BuildGradModel(Model forward, GradientRegistry registry) {
     for (auto temp_output : temp_outputs) {
       temp_output->Unref();
     }
-    return Status::OK();
+    return OkStatus();
   };
 }
 

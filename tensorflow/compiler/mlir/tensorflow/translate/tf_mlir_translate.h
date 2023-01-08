@@ -22,16 +22,17 @@ limitations under the License.
 #include "absl/base/macros.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
-using stream_executor::port::Status;
 using stream_executor::port::StatusOr;
+using tsl::Status;
 
 // TODO(antiagainst): Directly manipulating files in library functions is not
 // a good idea. We should pass in a string/stream here.

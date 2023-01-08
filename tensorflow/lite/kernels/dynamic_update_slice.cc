@@ -18,8 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -123,6 +123,11 @@ void DynamicUpdateSlice(const TfLiteTensor* input, const TfLiteTensor* update,
   // Copies input to output first.
   memcpy(output->data.raw, input->data.raw, input->bytes);
 
+  // Update tensor has no elements. Skip.
+  if (update_shape.FlatSize() == 0) {
+    return;
+  }
+
   std::vector<int> current_dim(input_dims, 0);
   // Overwrites update to output.
   do {
@@ -155,6 +160,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
       DynamicUpdateSlice<float>(operand, update, indice, output);
       break;
+    case kTfLiteBool:
+      DynamicUpdateSlice<bool>(operand, update, indice, output);
+      break;
     case kTfLiteInt8:
       DynamicUpdateSlice<int8_t>(operand, update, indice, output);
       break;
@@ -167,7 +175,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     default:
       TF_LITE_KERNEL_LOG(context,
                          "DynamicUpdateSlice only currently supports "
-                         "8-bit/32-bit/64-bit integer or "
+                         "1-bit/8-bit/32-bit/64-bit integer or "
                          "float type, got %d.",
                          operand->type);
       return kTfLiteError;

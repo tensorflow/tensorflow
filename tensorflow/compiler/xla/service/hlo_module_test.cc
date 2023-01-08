@@ -13,22 +13,49 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 
-#include "absl/memory/memory.h"
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
+#include "tensorflow/compiler/xla/service/test_compilation_environment.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/strings/proto_serialization.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
+
+// In order to use TestCompilationEnvironment* with CompilationEnvironments, we
+// must define ProcessNewEnv for them.
+template <>
+std::unique_ptr<test::TestCompilationEnvironment1>
+CompilationEnvironments::ProcessNewEnv(
+    std::unique_ptr<test::TestCompilationEnvironment1> env) {
+  if (!env) {
+    env = std::make_unique<test::TestCompilationEnvironment1>();
+    env->set_some_flag(100);
+  }
+  return env;
+}
 
 namespace {
 
@@ -96,10 +123,20 @@ TEST_F(HloModuleTest, CloneTest) {
       module->AddEmbeddedComputation(CreateCallComputation({computation1}));
   module->AddEntryComputation(
       CreateCallComputation({computation2, computation3}));
+  // Add a compilation environment to module
+  auto env = std::make_unique<test::TestCompilationEnvironment1>();
+  env->set_some_flag(10);
+  module->comp_envs().AddEnv(std::move(env));
 
   auto post_order = module->MakeComputationPostOrder();
   auto cloned_module = module->Clone("copy");
   auto post_order_copied = cloned_module->MakeComputationPostOrder();
+
+  // Make sure module's CompilationEnvironments were copied to cloned_module
+  EXPECT_EQ(cloned_module->comp_envs()
+                .GetEnv<test::TestCompilationEnvironment1>()
+                .some_flag(),
+            10);
 
   EXPECT_EQ(post_order.size(), post_order_copied.size());
   for (auto origin = post_order.begin(), copied = post_order_copied.begin();
@@ -151,6 +188,106 @@ TEST_F(HloModuleTest, CloneHasFusion) {
   }
 }
 
+TEST_F(HloModuleTest, CloneCustomCallComputationToApply) {
+  const char* const hlo_string = R"(
+HloModule a_module
+
+add_s32 {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY entry () -> s32[] {
+  %c1 = s32[] constant(1)
+  %c2 = s32[] constant(2)
+  ROOT %custom-call =
+    s32[] custom-call(s32[] %c1, %c2),
+    custom_call_target="foo",
+    backend_config="this string is opaque",
+    to_apply=add_s32
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  std::unique_ptr<HloModule> cloned_module = module->Clone();
+  HloComputation* cloned_computation =
+      cloned_module->GetComputationWithName("add_s32.clone");
+  HloInstruction* cloned_custom_call =
+      cloned_module->entry_computation()->GetInstructionWithName("custom-call");
+
+  EXPECT_TRUE(cloned_computation->IsCustomCallComputation());
+  EXPECT_EQ(cloned_computation->CustomCallInstruction(), cloned_custom_call);
+}
+
+TEST_F(HloModuleTest, CloneCustomCallComputationCalledComputations) {
+  const char* const hlo_string = R"(
+HloModule a_module
+
+add_s32_0 {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+add_s32_1 {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY entry () -> s32[] {
+  %c1 = s32[] constant(1)
+  %c2 = s32[] constant(2)
+  ROOT %custom-call =
+    s32[] custom-call(s32[] %c1, %c2),
+    custom_call_target="foo",
+    backend_config="this string is opaque",
+    called_computations={%add_s32_0, %add_s32_1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  std::unique_ptr<HloModule> cloned_module = module->Clone();
+  HloComputation* cloned_computation_0 =
+      cloned_module->GetComputationWithName("add_s32_0.clone");
+  HloComputation* cloned_computation_1 =
+      cloned_module->GetComputationWithName("add_s32_1.clone");
+  HloInstruction* cloned_custom_call =
+      cloned_module->entry_computation()->GetInstructionWithName("custom-call");
+
+  EXPECT_TRUE(cloned_computation_0->IsCustomCallComputation());
+  EXPECT_EQ(cloned_computation_0->CustomCallInstruction(), cloned_custom_call);
+  EXPECT_TRUE(cloned_computation_1->IsCustomCallComputation());
+  EXPECT_EQ(cloned_computation_1->CustomCallInstruction(), cloned_custom_call);
+}
+
+TEST_F(HloModuleTest, CloneFusionComputation) {
+  const char* const hlo_string = R"(
+HloModule a_module
+
+fused_computation () -> s32[] {
+  ROOT %result = s32[] parameter(0)
+}
+
+ENTRY main {
+  %c = s32[] constant(1)
+  ROOT %fusion = s32[] fusion(%c), kind=kLoop, calls=fused_computation
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  std::unique_ptr<HloModule> cloned_module = module->Clone();
+  HloComputation* cloned_computation =
+      cloned_module->GetComputationWithName("fused_computation.clone");
+  HloInstruction* cloned_fusion_instr =
+      cloned_module->entry_computation()->GetInstructionWithName("fusion");
+
+  EXPECT_TRUE(cloned_computation->IsFusionComputation());
+  EXPECT_EQ(cloned_computation->FusionInstruction(), cloned_fusion_instr);
+}
+
 TEST_F(HloModuleTest, DiamondComputationsPostOrder) {
   // Create a module with a diamond call graph of computations.
   auto module = CreateNewVerifiedModule();
@@ -181,14 +318,16 @@ TEST_F(HloModuleTest, LargeConstantToString) {
   module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(
-      "HloModule LargeConstantToString\n\nENTRY %Constant () -> f32[16] {\n  "
-      "ROOT %constant = f32[16]{0} constant({...})\n}\n\n",
+      "HloModule LargeConstantToString, "
+      "entry_computation_layout={()->f32[16]{0}}\n\nENTRY %Constant () -> "
+      "f32[16] {\n  ROOT %constant = f32[16]{0} constant({...})\n}\n\n",
       module->ToString(HloPrintOptions().set_print_large_constants(false)));
 
   EXPECT_EQ(
-      "HloModule LargeConstantToString\n\nENTRY %Constant () -> f32[16] {\n  "
-      "ROOT %constant = f32[16]{0} constant({42, 42, 42, 42, 42, 42, 42, 42, "
-      "42, 42, 42, 42, 42, 42, 42, 42})\n}\n\n",
+      "HloModule LargeConstantToString, "
+      "entry_computation_layout={()->f32[16]{0}}\n\nENTRY %Constant () -> "
+      "f32[16] {\n  ROOT %constant = f32[16]{0} constant({42, 42, 42, 42, 42, "
+      "42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42})\n}\n\n",
       module->ToString(HloPrintOptions().set_print_large_constants(true)));
 }
 
@@ -309,7 +448,8 @@ ENTRY ReduceR3ToR2.v3 {
   EXPECT_NE(module->unique_id(), module_copy->unique_id());
 
   // Verify that the computations and instructions all have the same unique id.
-  auto computation_copy_it = module_copy->computations().begin();
+  auto computation_copy = module_copy->computations();
+  auto computation_copy_it = computation_copy.begin();
   for (const HloComputation* computation_orig : module->computations()) {
     const HloComputation* computation_copy = *computation_copy_it++;
     EXPECT_EQ(computation_orig->unique_id(), computation_copy->unique_id())
@@ -340,6 +480,45 @@ ENTRY ReduceR3ToR2.v3 {
       EXPECT_GT(next_id, instruction->unique_id());
     }
   }
+}
+
+TEST_F(HloModuleTest, VerifyReplaceComputationsWithReduceScatter) {
+  const std::string text = R"(
+  HloModule reduce-scatter
+  %sum (a: f32[], b: f32[]) -> f32[] {
+    %a = f32[] parameter(0)
+    %b = f32[] parameter(1)
+    ROOT %add = f32[] add(f32[] a, f32[] b)
+  }
+  ENTRY main {
+    %param = f32[16,8,128]{2,1,0} parameter(0)
+    ROOT %rs = f32[4,8,128]{2,1,0} reduce-scatter(f32[16,8,128]{2,1,0} %param), replica_groups={}, to_apply=%sum, dimensions={0}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
+
+  // Create a replacement computation
+  HloComputation* new_comp;
+  {
+    auto b = HloComputation::Builder("Fused");
+    auto p0 =
+        b.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "p0"));
+    auto p1 =
+        b.AddInstruction(HloInstruction::CreateParameter(1, r0f32_, "p1"));
+    b.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(F32, {}), HloOpcode::kMultiply, p0, p1));
+    new_comp = module->AddEmbeddedComputation(b.Build());
+  }
+
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* root = entry->root_instruction();
+  EXPECT_EQ(root->to_apply()->root_instruction()->opcode(), HloOpcode::kAdd);
+
+  absl::flat_hash_map<HloComputation*, HloComputation*> replacement;
+  replacement[root->to_apply()] = new_comp;
+  module->ReplaceComputations(replacement);
+
+  EXPECT_EQ(root->to_apply(), new_comp);
 }
 
 TEST_F(HloModuleTest, VerifyReplaceComputationsWithSortOp) {
@@ -399,8 +578,9 @@ TEST_F(HloModuleTest, OneComputationAllAllowed) {
   auto computation = module->AddEntryComputation(CreateConstantComputation());
 
   absl::flat_hash_set<HloComputation*> allowList = {computation};
-  EXPECT_THAT(module->MakeComputationPostOrder(allowList),
-              ::testing::ElementsAre(computation));
+  EXPECT_THAT(
+      module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList),
+      ::testing::ElementsAre(computation));
 }
 
 TEST_F(HloModuleTest, OneComputationAllFiltered) {
@@ -409,9 +589,10 @@ TEST_F(HloModuleTest, OneComputationAllFiltered) {
   module->AddEntryComputation(CreateConstantComputation());
 
   absl::flat_hash_set<HloComputation*> allowList = {};
-  module->MakeComputationPostOrder(allowList);
-  EXPECT_THAT(module->MakeComputationPostOrder(allowList),
-              ::testing::IsEmpty());
+  module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList);
+  EXPECT_THAT(
+      module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList),
+      ::testing::IsEmpty());
 }
 
 TEST_F(HloModuleTest, DiamondComputationsPostOrderAllAllowed) {
@@ -428,7 +609,8 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrderAllAllowed) {
 
   absl::flat_hash_set<HloComputation*> allowList = {computation1, computation2,
                                                     computation3, computation4};
-  auto post_order = module->MakeComputationPostOrder(allowList);
+  auto post_order =
+      module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList);
   EXPECT_THAT(post_order,
               ::testing::UnorderedElementsAre(computation1, computation2,
                                               computation3, computation4));
@@ -449,7 +631,8 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrderMiddleFiltered) {
       CreateCallComputation({computation2, computation3}));
 
   absl::flat_hash_set<HloComputation*> allowList = {computation1, computation4};
-  auto post_order = module->MakeComputationPostOrder(allowList);
+  auto post_order =
+      module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList);
   EXPECT_THAT(post_order,
               ::testing::UnorderedElementsAre(computation1, computation4));
 }
@@ -467,9 +650,248 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrderAllFiltered) {
       CreateCallComputation({computation2, computation3}));
 
   absl::flat_hash_set<HloComputation*> allowList = {};
-  auto post_order = module->MakeComputationPostOrder(allowList);
-  EXPECT_THAT(module->MakeComputationPostOrder(allowList),
-              ::testing::IsEmpty());
+  auto post_order =
+      module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList);
+  EXPECT_THAT(
+      module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList),
+      ::testing::IsEmpty());
+}
+
+TEST_F(HloModuleTest, TwoComputationsFilterexecution_threads) {
+  // Create a module with two computations with different execution_threads and
+  // ensure thread name filtering can return proper computations.
+  HloComputation::Builder builder(TestName());
+  constexpr char kParallelThreadName[] = "parallel_thread";
+  // Create a call instruction containing a single binary operation.
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.1f)));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      r0f32_, HloOpcode::kAdd, constant1, constant2));
+  auto module = CreateNewVerifiedModule();
+  auto* main_thread_computation = module->AddEntryComputation(builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* async_done,
+      main_thread_computation->CreateAsyncInstructions(
+          add, {ShapeUtil::MakeScalarShape(U32)}, kParallelThreadName));
+  auto* parallel_thread_computation = async_done->async_wrapped_computation();
+
+  EXPECT_THAT(
+      module->MakeComputationPostOrder({HloInstruction::kMainExecutionThread}),
+      ::testing::ElementsAre(main_thread_computation));
+  EXPECT_THAT(module->MakeComputationPostOrder(),
+              ::testing::ElementsAre(parallel_thread_computation,
+                                     main_thread_computation));
+  EXPECT_THAT(module->MakeComputationPostOrder({kParallelThreadName}),
+              ::testing::ElementsAre(parallel_thread_computation));
+  // Test that computations(execution_thread) return the expected values.
+  int num_all_computations = 0;
+  for ([[maybe_unused]] const HloComputation* comp :
+       module->computations(/*execution_threads=*/{})) {
+    ++num_all_computations;
+  }
+  EXPECT_EQ(num_all_computations, 2);
+  int num_main_computations = 0;
+  for (const HloComputation* comp :
+       module->computations({HloInstruction::kMainExecutionThread})) {
+    ++num_main_computations;
+    EXPECT_EQ(comp->execution_thread(), HloInstruction::kMainExecutionThread);
+  }
+  EXPECT_EQ(num_main_computations, 1);
+  int num_parallel_computations = 0;
+  for (const HloComputation* comp :
+       module->computations({kParallelThreadName})) {
+    ++num_parallel_computations;
+    EXPECT_EQ(comp->execution_thread(), kParallelThreadName);
+  }
+  EXPECT_EQ(num_parallel_computations, 1);
+}
+
+TEST_F(HloModuleTest, HloModuleWithConfigSerializationEquality) {
+  const std::string computation_text =
+      R"(HloModule ReduceR3ToR2_module
+
+add_F32.v3 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY ReduceR3ToR2.v3 {
+  input = f32[8,16,256]{2,1,0} parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[8,16]{1,0} reduce(input, constant), dimensions={2}, to_apply=add_F32.v3
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(computation_text));
+
+  TF_ASSERT_OK_AND_ASSIGN(xla::HloModuleProtoWithConfig proto,
+                          module->ToProtoWithConfig());
+  std::string serialized_module;
+  ASSERT_TRUE(tsl::SerializeToStringDeterministic(proto, &serialized_module));
+  std::string original_debug_str = proto.DebugString();
+  RecordProperty("serialized_module", original_debug_str);
+
+  // Verify that we can create a module from our parsed proto copy
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> reconstructed_module,
+                          HloModule::CreateFromProtoWithConfig(proto));
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::HloModuleProtoWithConfig reconstructed_module_proto,
+      reconstructed_module->ToProtoWithConfig());
+
+  // The two protos should be equivalent except for the `id` field
+  google::protobuf::util::MessageDifferencer diff;
+  diff.set_message_field_comparison(
+      google::protobuf::util::MessageDifferencer::EQUIVALENT);
+  auto module_descriptor = HloModuleProto::GetDescriptor();
+  auto unique_id_field = module_descriptor->FindFieldByName("id");
+  diff.IgnoreField(unique_id_field);
+  EXPECT_TRUE(diff.Compare(proto, reconstructed_module_proto));
+}
+
+static ShardableValueUpdatePairProto MakeShardPair(int offset) {
+  ShardableValueUpdatePairProto pear;
+  pear.set_input_parameter_number(offset + 1);
+  for (int64_t i = 0; i < 5; ++i) {
+    pear.add_parameter_shape_index(offset + i);
+  }
+  for (int64_t j = 0; j < 3; ++j) {
+    pear.add_output_shape_index(offset + j);
+  }
+  return pear;
+}
+
+static HloModuleConfigProto::BoolList MakeOneHotBoolList(unsigned num_vals,
+                                                         unsigned hot_idx) {
+  HloModuleConfigProto::BoolList list;
+  for (unsigned i = 0; i < num_vals; ++i) {
+    list.add_vals(i == hot_idx);
+  }
+  return list;
+}
+
+static StatusOr<HloModuleConfigProto> MakeTestModuleConfigProto() {
+  HloModuleConfigProto proto;
+  // entry_computation_layout_ is optional
+  proto.set_seed(0xdeadbeef);
+  proto.set_launch_id(0xfeed100);
+  proto.set_replica_count(3);
+  proto.set_num_partitions(2);
+  for (int x = 0; x < 6; ++x) {
+    proto.add_param_requires_broadcast_via_collectives(x & 1);
+  }
+  proto.set_use_spmd_partitioning(true);
+  proto.set_use_auto_spmd_partitioning(true);
+  for (unsigned x = 0; x < 4; ++x) {
+    proto.add_auto_spmd_partitioning_mesh_ids(10 - x);
+    proto.add_auto_spmd_partitioning_mesh_ids(x);
+  }
+  proto.set_deduplicate_hlo(true);
+  proto.set_intra_op_parallelism_threads(42);
+  proto.set_device_type("Google Test framework");
+  // debug options
+  *proto.mutable_debug_options() = DefaultDebugOptionsIgnoringFlags();
+  // static device assignment
+  {
+    DeviceAssignmentProto device_assignment_proto;
+    DeviceAssignment device_assignment(/*replica_count=*/3,
+                                       /*computation_count=*/2);
+    TF_RETURN_IF_ERROR(device_assignment.Serialize(&device_assignment_proto));
+    proto.mutable_static_device_assignment()->Swap(&device_assignment_proto);
+  }
+  // Shardable Value Update Pairs
+  for (int k = 0; k < 3; ++k) {
+    *proto.add_shardable_value_update_pairs() = MakeShardPair(k);
+  }
+  proto.set_alias_passthrough_params(true);
+  proto.set_content_aware_computation_sorting(true);
+  proto.set_fusion_config_collection(HloModuleConfigProto::PER_NODE);
+  // fusion config
+  for (int idx = 0; idx < 4; ++idx) {
+    bool reverse = (idx & 1) == 0;
+    *proto.add_fusion_config() =
+        MakeOneHotBoolList(6, (reverse) ? 6 - idx : idx);
+  }
+  // dot config
+  for (int idx = 0; idx < 4; ++idx) {
+    HloModuleConfigProto::Int64List int_list;
+    for (int x = 1; x <= 3; ++x) {
+      int_list.add_vals(x * x * idx);
+    }
+    proto.mutable_dot_config()->insert(
+        {absl::StrCat("Node", idx, "dot"), std::move(int_list)});
+  }
+
+  // layout config
+  for (int idx = 0; idx < 4; ++idx) {
+    HloModuleConfigProto::Int64ListList list_of_lists;
+    for (int x = 0; x < 4; ++x) {
+      HloModuleConfigProto::Int64List int_list;
+      for (int y = 0; y < 6; ++y) {
+        int_list.add_vals(y * x + idx + y + 1);
+      }
+      list_of_lists.add_lists()->Swap(&int_list);
+    }
+    proto.mutable_layout_config()->Add(std::move(list_of_lists));
+  }
+
+  // memory space assignment config
+  for (uint64_t mem_asgn = 42; mem_asgn < 50; ++mem_asgn) {
+    proto.add_memory_space_assignment_config(mem_asgn);
+  }
+
+  // phase ordering config
+  for (int n = 0; n < 4; ++n) {
+    *proto.add_phase_ordering_config() = MakeOneHotBoolList(4, n);
+  }
+  proto.set_phase_index(2);
+
+  // flag config
+  for (int idx = 1; idx <= 3; ++idx) {
+    proto.mutable_flag_config()->insert(
+        {absl::StrCat("Flag", idx), absl::StrCat("Value", idx)});
+  }
+  proto.set_allow_spmd_sharding_propagation_to_output(true);
+  for (int idx = 1; idx <= 3; ++idx) {
+    int64_t allowance = 35 * idx;
+    proto.mutable_analysis_allowance_map()->insert(
+        {absl::StrCat("Key", idx), allowance});
+  }
+  proto.set_matrix_unit_operand_precision(PrecisionConfig::HIGH);
+  return proto;
+}
+
+TEST_F(HloModuleTest, HloModuleConfigCreateFromProto) {
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfigProto input_proto,
+                          MakeTestModuleConfigProto());
+  TF_ASSERT_OK_AND_ASSIGN(auto good_config,
+                          HloModuleConfig::CreateFromProto(input_proto));
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfigProto output_proto,
+                          good_config->ToProto());
+
+  google::protobuf::util::MessageDifferencer diff;
+  diff.set_message_field_comparison(
+      google::protobuf::util::MessageDifferencer::EQUIVALENT);
+  EXPECT_TRUE(diff.Compare(input_proto, output_proto));
+}
+
+TEST_F(HloModuleTest, HloModuleConfigToProto) {
+  auto module = CreateNewVerifiedModule();
+  const HloModuleConfig& good_config = module->config();
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfigProto first_proto,
+                          good_config.ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModuleConfig> remade_config,
+                          HloModuleConfig::CreateFromProto(first_proto));
+  ASSERT_NE(remade_config, nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfigProto second_proto,
+                          remade_config->ToProto());
+
+  google::protobuf::util::MessageDifferencer diff;
+  diff.set_message_field_comparison(
+      google::protobuf::util::MessageDifferencer::EQUIVALENT);
+  EXPECT_TRUE(diff.Compare(first_proto, second_proto));
 }
 
 }  // namespace

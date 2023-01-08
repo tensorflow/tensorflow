@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "MergeV2Checkpoints"
   input_arg {
     name: "checkpoint_prefixes"
@@ -31,6 +31,32 @@ op {
     type: "bool"
     default_value {
       b: true
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "MergeV2Checkpoints"
+  input_arg {
+    name: "checkpoint_prefixes"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "destination_prefix"
+    type: DT_STRING
+  }
+  attr {
+    name: "delete_old_dirs"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "allow_missing_files"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
   is_stateful: true

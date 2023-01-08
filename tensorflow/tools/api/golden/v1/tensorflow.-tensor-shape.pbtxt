@@ -2,6 +2,7 @@ path: "tensorflow.TensorShape"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.tensor_shape.TensorShape\'>"
   is_instance: "<class \'tensorflow.python.types.trace.TraceType\'>"
+  is_instance: "<class \'tensorflow.core.function.trace_type.serialization.Serializable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "dims"
@@ -48,6 +49,18 @@ tf_class {
     argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "experimental_as_proto"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_from_proto"
+    argspec: "args=[\'cls\', \'proto\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_type_proto"
+    argspec: "args=[\'cls\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "is_compatible_with"
     argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
   }
@@ -74,6 +87,10 @@ tf_class {
   member_method {
     name: "num_elements"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "placeholder_value"
+    argspec: "args=[\'self\', \'placeholder_context\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "with_rank"

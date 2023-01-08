@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/stream_executor/executor_cache.h"
-#include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/executor_cache.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
 
 namespace stream_executor {
 
@@ -33,15 +33,14 @@ typedef void (*SEInitPluginFn)(SE_PlatformRegistrationParams* const,
 
 // Registers StreamExecutor platform. `device_type` and `platform_name` are
 // output parameters.
-port::Status InitStreamExecutorPlugin(void* dso_handle,
-                                      std::string* device_type,
-                                      std::string* platform_name);
+tsl::Status InitStreamExecutorPlugin(void* dso_handle, std::string* device_type,
+                                     std::string* platform_name);
 
 // Allow registering a StreamExecutor plugin using a function (used for
 // testing).
-port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
-                                      std::string* device_type,
-                                      std::string* platform_name);
+tsl::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
+                                     std::string* device_type,
+                                     std::string* platform_name);
 
 // This file implements core stream executor base classes in terms of
 // the C API defined in stream_executor.h. A class "CSomething" represents a
@@ -70,6 +69,7 @@ class CPlatform : public Platform {
     return visible_device_count;
   }
   bool UseBfcAllocator() const { return platform_.use_bfc_allocator; }
+  bool ForceMemoryGrowth() const { return platform_.force_memory_growth; }
   port::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;
   port::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
@@ -109,10 +109,10 @@ class CStream : public internal::StreamInterface {
         stream_handle_(nullptr) {}
   ~CStream() override { Destroy(); }
 
-  port::Status Create() {
+  tsl::Status Create() {
     tensorflow::TF_StatusPtr c_status(TF_NewStatus());
     stream_executor_->create_stream(device_, &stream_handle_, c_status.get());
-    port::Status s = tensorflow::StatusFromTF_Status(c_status.get());
+    tsl::Status s = tensorflow::StatusFromTF_Status(c_status.get());
     return s;
   }
 
@@ -139,13 +139,13 @@ class CEvent : public internal::EventInterface {
         event_handle_(nullptr) {}
   ~CEvent() override { Destroy(); }
 
-  port::Status Create() {
+  tsl::Status Create() {
     tensorflow::TF_StatusPtr c_status(TF_NewStatus());
     stream_executor_->create_event(device_, &event_handle_, c_status.get());
     return tensorflow::StatusFromTF_Status(c_status.get());
   }
 
-  port::Status Record(SP_Stream stream_handle) {
+  tsl::Status Record(SP_Stream stream_handle) {
     tensorflow::TF_StatusPtr c_status(TF_NewStatus());
     stream_executor_->record_event(device_, stream_handle, event_handle_,
                                    c_status.get());
@@ -177,7 +177,7 @@ class CTimer : public internal::TimerInterface {
         timer_fns_(timer_fns) {}
   ~CTimer() override { Destroy(); }
 
-  port::Status Create() {
+  tsl::Status Create() {
     tensorflow::TF_StatusPtr c_status(TF_NewStatus());
     stream_executor_->create_timer(device_, &timer_handle_, c_status.get());
     return tensorflow::StatusFromTF_Status(c_status.get());

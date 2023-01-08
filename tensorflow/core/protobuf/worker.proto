@@ -26,7 +26,6 @@ import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 import "tensorflow/core/protobuf/config.proto";
-import "tensorflow/core/protobuf/coordination_config.proto";
 import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/protobuf/error_codes.proto";
 import "tensorflow/core/protobuf/named_tensor.proto";

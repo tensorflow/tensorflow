@@ -42,11 +42,10 @@ Status CompileTFFunctionToHlo(
     const std::vector<TensorShape>& arg_shapes,
     const GuaranteedConsts& guaranteed_constants, const NameAttrList& function,
     const tpu::TPUCompileMetadataProto& metadata,
-    std::function<Status(ResourceMgr*)> populate_resource_manager_fn,
     xla::CompileOnlyClient* client,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
-    XlaCompiler::CompilationResult* compilation_result);
+    bool use_tuple_args, XlaCompiler::CompilationResult* compilation_result);
 
 // Gets information regarding how input arguments are sharded across multiple
 // cores.

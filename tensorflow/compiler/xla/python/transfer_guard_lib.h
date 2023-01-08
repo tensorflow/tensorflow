@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TRANSFER_GUARD_LIB_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_TRANSFER_GUARD_LIB_H_
 
+#include <optional>
 #include <string>
 
-#include "absl/types/optional.h"
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/status.h"
 
@@ -47,15 +47,15 @@ enum class TransferGuardLevel {
 // - a global flag value,
 //   e.g., associated to --jax_transfer_guard_device_to_host
 //   which defaults to TransferGuardLevel::kAllow.
-// - possibly a thread-local value, which initially is absl::nullopt and
+// - possibly a thread-local value, which initially is std::nullopt and
 //   overrides the global value if set. The thread-local state is used to
 //   implement context managers that locally override the global state.
 //
 // Explicit device_put/device_get contexts are tracked by context managers.
 struct TransferGuardState {
-  absl::optional<TransferGuardLevel> host_to_device;
-  absl::optional<TransferGuardLevel> device_to_device;
-  absl::optional<TransferGuardLevel> device_to_host;
+  std::optional<TransferGuardLevel> host_to_device;
+  std::optional<TransferGuardLevel> device_to_device;
+  std::optional<TransferGuardLevel> device_to_host;
   bool explicit_device_put = false;
   bool explicit_device_get = false;
 };

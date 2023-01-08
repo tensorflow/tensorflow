@@ -15,6 +15,7 @@ limitations under the License.
 #include <ctype.h>
 
 #include <iostream>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -95,6 +96,8 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteHashtableSizeParams",
                                       "TfLiteConv3DTransposeParams",
                                       "TfLiteVarHandleParams",
+                                      "TfLiteUnsortedSegmentSumParams",
+                                      "TfLiteUnsortedSegmentMinParams",
                                       nullptr};
 }  // namespace
 
@@ -200,6 +203,7 @@ class OpOptionData {
     op_to_option_["LOGISTIC"] = "";
     op_to_option_["RELU"] = "";
     op_to_option_["RELU_N1_TO_1"] = "";
+    op_to_option_["RELU_0_TO_1"] = "";
     op_to_option_["RELU6"] = "";
     op_to_option_["ROUND"] = "";
     op_to_option_["TANH"] = "";
@@ -316,7 +320,7 @@ void GenerateImportForReshapeOp(FILE* fp) {
           "    const auto* params = reinterpret_cast<const "
           "TfLiteReshapeParams*>(builtin_op_data);\n"
           "    flatbuffers::Offset<void> union_type;\n"
-          "    if (node.inputs->size > 1 && (params->num_dimensions <= 0 || "
+          "    if (node_inputs_size > 1 && (params->num_dimensions <= 0 || "
           "params->num_dimensions > TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT))"
           " {\n"
           "      union_type = CreateReshapeOptions(*fbb).Union();\n"

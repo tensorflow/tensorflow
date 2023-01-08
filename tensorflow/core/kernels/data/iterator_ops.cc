@@ -14,53 +14,42 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/iterator_ops.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
-#include "absl/memory/memory.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "absl/time/time.h"
+#include "tensorflow/core/activity_watcher/activity.h"
+#include "tensorflow/core/activity_watcher/activity_utils.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
-#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
-#include "tensorflow/core/common_runtime/threadpool_device.h"
-#include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/finalization_utils.h"
-#include "tensorflow/core/data/root_dataset.h"
+#include "tensorflow/core/data/metric_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
-#include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
-#include "tensorflow/core/framework/resource_op_kernel.h"
-#include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/kernels/data/optional_ops.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/resource.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
-#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 namespace data {
@@ -76,8 +65,11 @@ const char kIteratorVariantTypeName[] = "tensorflow::Iterator";
 const char kOutputShapes[] = "output_shapes";
 const char kOutputTypes[] = "output_types";
 
-// Safely subtracts x from y avoiding underflow.
-inline uint64 safe_sub(uint64 x, uint64 y) { return x >= y ? x - y : 0; }
+bool SymbolicCheckpointEnabled(const Options& options) {
+  return options.optional_symbolic_checkpoint_case() ==
+             Options::kSymbolicCheckpoint &&
+         options.symbolic_checkpoint();
+}
 
 }  // namespace
 
@@ -91,17 +83,14 @@ IteratorResource::IteratorResource(
     std::unique_ptr<FunctionLibraryDefinition> flib_def,
     std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
     FunctionLibraryRuntime* flr)
-    : unbounded_thread_pool_(env, "tf_data_iterator_resource"),
+    : metrics_collector_(flr->device()->device_type(), *env),
+      unbounded_thread_pool_(env, "tf_data_iterator_resource"),
       device_mgr_(std::move(device_mgr)),
       iterator_state_(std::make_shared<State>(std::move(flib_def),
                                               std::move(pflr), flr,
                                               /*iterator=*/nullptr)),
       output_dtypes_(output_dtypes),
-      output_shapes_(output_shapes),
-      // We do not collect iterator resource metrics for non-CPU devices. This
-      // is a heuristic to avoid collecting metrics for device-side iterators
-      // created by the multi-device iterator mechanism.
-      collect_metrics_(flr->device()->device_type() == DEVICE_CPU) {
+      output_shapes_(output_shapes) {
   VLOG(2) << "creating iterator resource";
 }
 
@@ -117,78 +106,65 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
     tf_shared_lock l(mu_);
     captured_state = iterator_state_;
   }
-  if (!captured_state->iterator()) {
+  auto iterator = captured_state->iterator();
+  if (!iterator) {
     return errors::FailedPrecondition(
         "GetNext() failed because the iterator has not been initialized. "
         "Ensure that you have run the initializer operation for this iterator "
         "before getting the next element.");
   }
+  auto* dataset = captured_state->dataset();
   IteratorContext::Params params(ctx);
+  params.cancellation_manager = captured_state->cancellation_manager();
   params.flr = captured_state->flr();
   params.function_handle_cache = captured_state->function_handle_cache();
   params.resource_mgr = captured_state->resource_mgr();
+  params.symbolic_checkpoint = SymbolicCheckpointEnabled(dataset->options());
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
-  params.cancellation_manager = captured_state->cancellation_manager();
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),
       [cm = params.cancellation_manager]() { cm->StartCancel(); },
       &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
-  const uint64 start_time_us = ctx->env()->NowMicros();
-  if (collect_metrics_) {
-    mutex_lock l(mu_);
-    if (get_next_end_time_us_ == 0) {
-      // We initialize `get_next_end_time_us_` to the start time of the first
-      // request to make it possible to use the delta between
-      // `get_next_end_time_us_` and subsequent `GetNext()` end time to
-      // incrementally collect the duration of the iterator's lifetime.
-      get_next_end_time_us_ = start_time_us;
-    }
-    uint64 gap_time_us = 0;
-    if (num_get_next_calls_ == 0) {
-      get_next_start_time_us_ = start_time_us;
-      gap_time_us = safe_sub(start_time_us, get_next_end_time_us_);
-    }
-    metrics::RecordTFDataIteratorGap(gap_time_us);
-    num_get_next_calls_++;
-  }
-  auto iterator_ = captured_state->iterator();
-  auto status = iterator_->GetNext(IteratorContext(std::move(params)),
-                                   out_tensors, end_of_sequence);
-  if (collect_metrics_) {
-    const uint64 end_time_us = ctx->env()->NowMicros();
-    AddLatencySample(safe_sub(end_time_us, start_time_us));
-    IncrementThroughput(GetTotalBytes(*out_tensors));
-    mutex_lock l(mu_);
-    metrics::RecordTFDataIteratorLifetime(
-        safe_sub(end_time_us, get_next_end_time_us_));
-    get_next_end_time_us_ = std::max(get_next_end_time_us_, end_time_us);
-    num_get_next_calls_--;
-    if (num_get_next_calls_ == 0) {
-      metrics::RecordTFDataIteratorBusy(
-          safe_sub(get_next_end_time_us_, get_next_start_time_us_));
-    }
-  }
+  IteratorContext iter_ctx(std::move(params));
+  const absl::Time start_time = metrics_collector_.RecordStart();
+  auto status = iterator->GetNext(&iter_ctx, out_tensors, end_of_sequence);
+  metrics_collector_.RecordStop(start_time, *out_tensors);
+  captured_state->MergeCheckpoint(iter_ctx.checkpoint());
   return status;
 }
 
-Status IteratorResource::Save(SerializationContext* ctx,
+Status IteratorResource::Save(OpKernelContext* ctx,
+                              ExternalStatePolicy external_state_policy,
                               IteratorStateWriter* writer) {
   std::shared_ptr<State> captured_state;
   {
     tf_shared_lock l(mu_);
     captured_state = iterator_state_;
   }
-  auto iterator_ = captured_state->iterator();
-  if (iterator_) {
-    return iterator_->Save(ctx, writer);
+  auto iterator = captured_state->iterator();
+  if (!iterator) {
+    return errors::FailedPrecondition(
+        "Save() failed because the iterator has not been initialized. Ensure "
+        "that you have run the initializer operation for this iterator before "
+        "saving it.");
   }
-  return errors::FailedPrecondition(
-      "Save() failed because the iterator has not been initialized. Ensure "
-      "that you have run the initializer operation for this iterator before "
-      "saving it.");
+  auto* dataset = captured_state->dataset();
+  if (SymbolicCheckpointEnabled(dataset->options())) {
+    const auto& checkpoint = captured_state->checkpoint();
+    if (!checkpoint.GetStatus().ok()) {
+      return checkpoint.GetStatus();
+    }
+    TF_RETURN_IF_ERROR(checkpoint.Save(writer));
+    return OkStatus();
+  }
+  SerializationContext::Params params(ctx);
+  params.external_state_policy = external_state_policy;
+  params.symbolic_checkpoint = SymbolicCheckpointEnabled(dataset->options());
+  SerializationContext serialization_ctx(params);
+  return iterator->Save(&serialization_ctx, writer);
 }
 
 Status IteratorResource::Restore(OpKernelContext* ctx,
@@ -198,14 +174,14 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
   const DatasetBase* input_dataset;
   {
     tf_shared_lock l(mu_);
-    if (!iterator_state_->iterator()) {
+    auto iterator = iterator_state_->iterator();
+    if (!iterator) {
       return errors::FailedPrecondition(
           "Restore() failed because the iterator has not been initialized. "
           "Ensure that you have run the initializer operation for this "
           "iterator before restoring it.");
     }
-    auto iterator_ = iterator_state_->iterator();
-    dataset = iterator_->dataset();
+    dataset = iterator->dataset();
     // Hang onto a reference until we've created the new iterator, which will
     // then hold its own reference to keep the dataset alive.
     dataset->Ref();
@@ -217,27 +193,30 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
   }
   core::ScopedUnref scoped_unref(dataset);
   IteratorContext::Params params(ctx);
+  params.cancellation_manager = new_state->cancellation_manager();
   params.flr = new_state->flr();
   params.function_handle_cache = new_state->function_handle_cache();
   params.resource_mgr = new_state->resource_mgr();
+  params.symbolic_checkpoint =
+      SymbolicCheckpointEnabled(input_dataset->options());
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
-  params.cancellation_manager = new_state->cancellation_manager();
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),
       [cm = params.cancellation_manager]() { cm->StartCancel(); },
       &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
+  IteratorContext iter_ctx(IteratorContext(std::move(params)));
   std::unique_ptr<IteratorBase> iterator_base;
   TF_RETURN_IF_ERROR(dataset->MakeIteratorFromCheckpoint(
-      IteratorContext(std::move(params)), "Iterator", reader, &iterator_base));
+      &iter_ctx, "Iterator", reader, &iterator_base));
   new_state->DowncastAndSetIteratorAndDataset(std::move(iterator_base),
                                               input_dataset);
-
+  new_state->MergeCheckpoint(iter_ctx.checkpoint());
   mutex_lock l(mu_);
   std::swap(iterator_state_, new_state);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
@@ -253,28 +232,29 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
 
   // Create new iterator.
   IteratorContext::Params params(ctx);
+  params.cancellation_manager = new_state->cancellation_manager();
   params.flr = new_state->flr();
   params.function_handle_cache = new_state->function_handle_cache();
   params.resource_mgr = new_state->resource_mgr();
+  params.symbolic_checkpoint = SymbolicCheckpointEnabled(dataset->options());
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
-  params.cancellation_manager = new_state->cancellation_manager();
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),
       [cm = params.cancellation_manager]() { cm->StartCancel(); },
       &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
-
+  IteratorContext iter_ctx(IteratorContext(std::move(params)));
   std::unique_ptr<IteratorBase> iterator;
   if (ctx->function_library()->device()->device_type() == DEVICE_CPU) {
     DatasetBase* finalized_dataset;
     TF_ASSIGN_OR_RETURN(finalized_dataset, GetFinalizedDataset(ctx, dataset));
-    TF_RETURN_IF_ERROR(finalized_dataset->MakeIterator(
-        IteratorContext(std::move(params)),
-        /*parent=*/nullptr, "Iterator", &iterator));
+    TF_RETURN_IF_ERROR(finalized_dataset->MakeIterator(&iter_ctx,
+                                                       /*parent=*/nullptr,
+                                                       "Iterator", &iterator));
   } else {
-    TF_RETURN_IF_ERROR(dataset->MakeIterator(IteratorContext(std::move(params)),
+    TF_RETURN_IF_ERROR(dataset->MakeIterator(&iter_ctx,
                                              /*parent=*/nullptr, "Iterator",
                                              &iterator));
   }
@@ -282,92 +262,29 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
       VerifyTypesMatch(output_dtypes_, iterator->output_dtypes()));
   TF_RETURN_IF_ERROR(
       VerifyShapesCompatible(output_shapes_, iterator->output_shapes()));
-
   new_state->DowncastAndSetIteratorAndDataset(std::move(iterator), dataset);
-
+  new_state->MergeCheckpoint(iter_ctx.checkpoint());
   mutex_lock l(mu_);
   std::swap(iterator_state_, new_state);
-  return Status::OK();
+  return OkStatus();
+}
+
+void IteratorResource::State::DowncastAndSetIteratorAndDataset(
+    std::unique_ptr<IteratorBase> it, const DatasetBase* dataset) {
+  iterator_.reset(static_cast<DatasetBaseIterator*>(it.release()));
+  if (dataset) {
+    dataset->Ref();
+    dataset_.reset(const_cast<DatasetBase*>(dataset));
+  }
+}
+
+void IteratorResource::State::MergeCheckpoint(const MemoryCheckpoint& other) {
+  if (SymbolicCheckpointEnabled(dataset_->options())) {
+    checkpoint_.Merge(other);
+  }
 }
 
 namespace {
-
-// Wrapper for encoding/decoding the iterator state stored in a Variant tensor.
-// The get() method returns an VariantTensorData object which contains all the
-// state needed to restore a single iterator.
-//
-// Usage example:
-//
-// Encoding:
-//
-//   Tensor t(DT_VARIANT, TensorShape({}));
-//   t->scalar<Variant>()() = IteratorStateVariant();
-//
-// Encode() sets the type_name of the VariantTensorData object to
-// IteratorStateVariant::TypeName().
-//
-// Decoding:
-//
-//   Variant v = <VariantTensorDataProto object>;
-//   DecodeUnaryVariant(&v);
-//   IteratorStateVariant* wrapper = v.get<IteratorStateVariant>();
-//   IteratorStateReader reader({wrapper->GetData()});
-//   iterator_resource->Restore(ctx, &reader);
-//
-// The type_name of the VariantTensorData object to be decoded must
-// match IteratorStateVariant::TypeName().
-class IteratorStateVariant {
- public:
-  IteratorStateVariant() : data_(nullptr) {}
-  IteratorStateVariant(const IteratorStateVariant& other) : data_(nullptr) {
-    if (other.data_) {
-      Decode(*other.data_);
-    }
-  }
-  IteratorStateVariant& operator=(IteratorStateVariant&& other) = default;
-  IteratorStateVariant& operator=(const IteratorStateVariant& other) = delete;
-
-  // Initializes `this` from a VariantTensorData object.
-  Status InitializeFromVariantData(std::unique_ptr<VariantTensorData> d) {
-    data_ = std::move(d);
-    return Status::OK();
-  }
-
-  string TypeName() const { return kIteratorVariantTypeName; }
-  void Encode(VariantTensorData* data) const { *data = *data_; }
-  bool Decode(VariantTensorData data) {
-    if (data.type_name() != TypeName()) {
-      return false;
-    }
-    auto tensor_data = absl::make_unique<VariantTensorData>();
-    std::swap(*tensor_data, data);
-    data_ = std::move(tensor_data);
-    return true;
-  }
-
-  // Returns a borrowed pointer to the underlying VariantTensorData.
-  const VariantTensorData* GetData() const { return data_.get(); }
-
-  string DebugString() const {
-    if (data_) {
-      return strings::StrCat("IteratorStateVariant<", data_->DebugString(),
-                             ">");
-    } else {
-      return strings::StrCat("IteratorStateVariant<empty>");
-    }
-  }
-
- private:
-  std::unique_ptr<VariantTensorData> data_;
-};
-
-// Register the reader class in the global variant decode_fn registry
-// so that a Variant containing a serialized representation of iterator state
-// can be decoded using DecodeUnaryVariant. If we don't do this we will need
-// to manually decode the returned Variant using MaybeDecodeAndCopy in
-// DeserializeIteratorOp which is not recommended.
-REGISTER_UNARY_VARIANT_DECODE_FUNCTION(IteratorStateVariant,
-                                       kIteratorVariantTypeName);
 
 // A helper class that uses a list of IteratorStateVariant objects to represent
 // the state for an iterator resource. It exposes methods that help with
@@ -385,14 +302,16 @@ REGISTER_UNARY_VARIANT_DECODE_FUNCTION(IteratorStateVariant,
 //   iterator_resource->Restore(ctx, reader);
 class IteratorVariantSerializer {
  public:
-  IteratorVariantSerializer() {}
+  IteratorVariantSerializer() = default;
 
   // Calls `Save` on the iterator_resource to build up the list of
   // IteratorStateVariant objects.
-  Status InitializeFromIterator(SerializationContext* serialization_ctx,
+  Status InitializeFromIterator(OpKernelContext* ctx,
+                                ExternalStatePolicy external_state_policy,
                                 IteratorResource* iterator_resource) {
     VariantTensorDataWriter writer;
-    TF_RETURN_IF_ERROR(iterator_resource->Save(serialization_ctx, &writer));
+    TF_RETURN_IF_ERROR(
+        iterator_resource->Save(ctx, external_state_policy, &writer));
     std::vector<std::unique_ptr<VariantTensorData>> data;
     writer.ReleaseData(&data);
     variants_.clear();
@@ -404,7 +323,7 @@ class IteratorVariantSerializer {
     }
     num_tensors_ = variants_.size();
     can_serialize_ = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Initializes `this` from `serialized_t` while restoring the iterator state.
@@ -423,9 +342,9 @@ class IteratorVariantSerializer {
       }
       data.push_back(w->GetData());
     }
-    reader_ = absl::make_unique<VariantTensorDataReader>(data);
+    reader_ = std::make_unique<VariantTensorDataReader>(data);
     num_tensors_ = data.size();
-    return Status::OK();
+    return OkStatus();
   }
 
   int64_t NumTensors() { return num_tensors_; }
@@ -445,7 +364,7 @@ class IteratorVariantSerializer {
       }
       serialized->vec<Variant>()(i) = variants_[i];
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Returns an IteratorStateReader to restore iterator state. Expects that
@@ -522,7 +441,7 @@ void IteratorHandleOp::Compute(OpKernelContext* context)
                     context->env(), output_dtypes_, output_shapes_,
                     std::move(device_mgr), std::move(flib_def), std::move(pflr),
                     flr);
-                return Status::OK();
+                return OkStatus();
               }));
 
       Status s = VerifyResource(resource);
@@ -545,7 +464,7 @@ Status IteratorHandleOp::VerifyResource(IteratorResource* resource) {
       VerifyTypesMatch(output_dtypes_, resource->output_dtypes()));
   TF_RETURN_IF_ERROR(
       VerifyShapesCompatible(output_shapes_, resource->output_shapes()));
-  return Status::OK();
+  return OkStatus();
 }
 
 FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
@@ -558,13 +477,13 @@ FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
   // in that device's resource manager.
 
   *device_mgr =
-      absl::make_unique<StaticDeviceMgr>(RenamedDevice::NewRenamedDevice(
+      std::make_unique<StaticDeviceMgr>(RenamedDevice::NewRenamedDevice(
           ctx->device()->name(), down_cast<Device*>(ctx->device()),
           false /* owns_underlying */, false /* isolate_session_state */));
-  *flib_def = absl::make_unique<FunctionLibraryDefinition>(
+  *flib_def = std::make_unique<FunctionLibraryDefinition>(
       *ctx->function_library()->GetFunctionLibraryDefinition());
   const auto* config = ctx->function_library()->config_proto();
-  *pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
+  *pflr = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr->get(), ctx->env(),
       /*config=*/config, graph_def_version_, flib_def->get(),
       config->graph_options().optimizer_options());
@@ -604,7 +523,7 @@ Status AnonymousIteratorHandleOp::CreateResource(
   *resource = new IteratorResource(ctx->env(), output_dtypes_, output_shapes_,
                                    std::move(device_mgr), std::move(flib_def),
                                    std::move(pflr), lib);
-  return Status::OK();
+  return OkStatus();
 }
 
 HybridAsyncOpKernel::HybridAsyncOpKernel(OpKernelConstruction* ctx,
@@ -652,6 +571,8 @@ class ToSingleElementOp : public AsyncOpKernel {
  public:
   explicit ToSingleElementOp(OpKernelConstruction* ctx)
       : AsyncOpKernel(ctx),
+        metrics_collector_(ctx->device()->attributes().device_type(),
+                           *ctx->env()),
         unbounded_threadpool_(ctx->env(), "tf_data_to_single_element") {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
@@ -678,6 +599,7 @@ class ToSingleElementOp : public AsyncOpKernel {
         profiler::kInfo);
     tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                    ctx->op_kernel().type_string());
+    metrics::RecordTFDataFetchOp("ToSingleElementOp");
     DatasetBase* dataset;
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
 
@@ -696,8 +618,10 @@ class ToSingleElementOp : public AsyncOpKernel {
     components.reserve(dataset->output_dtypes().size());
     bool end_of_sequence = false;
 
+    const absl::Time start_time = metrics_collector_.RecordStart();
     TF_RETURN_IF_ERROR(
         iterator->GetNext(&iter_ctx, &components, &end_of_sequence));
+    metrics_collector_.RecordStop(start_time, components);
 
     if (end_of_sequence) {
       return errors::InvalidArgument("Dataset was empty.");
@@ -714,9 +638,10 @@ class ToSingleElementOp : public AsyncOpKernel {
     if (!end_of_sequence) {
       return errors::InvalidArgument("Dataset had more than one element.");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
+  IteratorMetricsCollector metrics_collector_;
   UnboundedThreadPool unbounded_threadpool_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
@@ -824,7 +749,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
                       ctx->env(), output_dtypes_, output_shapes_,
                       /*device_mgr=*/nullptr, std::move(flib_def),
                       std::move(pflr), flr);
-                  return Status::OK();
+                  return OkStatus();
                 }));
 
     core::ScopedUnref unref_iterator(*iterator);
@@ -864,7 +789,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(return_values[0], &dataset));
     TF_RETURN_IF_ERROR((*iterator)->SetIteratorFromDataset(ctx, dataset));
     (*iterator)->Ref();
-    return Status::OK();
+    return OkStatus();
   }
 
   void ProduceOutput(OpKernelContext* ctx, const DoneCallback& done) {
@@ -924,6 +849,11 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   auto cleanup = gtl::MakeCleanup([ctx] {
     VLOG(3) << "IteratorGetNextOp exit. iter_id=" << ctx->frame_iter().iter_id;
   });
+  activity_watcher::ActivityScope activity_scope([ctx = ctx]() {
+    return activity_watcher::ActivityFromContext(
+        ctx, "IteratorGetNextOp::DoCompute",
+        activity_watcher::ActivityCategory::kDatasetOp);
+  });
   profiler::TraceMe traceme(
       [&] {
         return profiler::TraceMeEncode(
@@ -933,6 +863,7 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
       profiler::kInfo);
   tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                  ctx->op_kernel().type_string());
+  metrics::RecordTFDataFetchOp("IteratorGetNextOp");
   IteratorResource* iterator;
   TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
   core::ScopedUnref unref_iterator(iterator);
@@ -949,15 +880,20 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   for (int i = 0; i < components.size(); ++i) {
     ctx->set_output(i, components[i]);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
-  VLOG(3) << "IteratorGetNextAsOptionalOp exit. iter_id="
+  VLOG(3) << "IteratorGetNextAsOptionalOp enter. iter_id="
           << ctx->frame_iter().iter_id;
   auto cleanup = gtl::MakeCleanup([ctx] {
     VLOG(3) << "IteratorGetNextAsOptionalOp exit. iter_id="
             << ctx->frame_iter().iter_id;
+  });
+  activity_watcher::ActivityScope activity_scope([ctx = ctx]() {
+    return activity_watcher::ActivityFromContext(
+        ctx, "IteratorGetNextAsOptionalOp::DoCompute",
+        activity_watcher::ActivityCategory::kDatasetOp);
   });
   profiler::TraceMe traceme(
       [&] {
@@ -968,6 +904,7 @@ Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
       profiler::kInfo);
   tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                  ctx->op_kernel().type_string());
+  metrics::RecordTFDataFetchOp("IteratorGetNextAsOptionalOp");
   IteratorResource* iterator;
   TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
   core::ScopedUnref unref_iterator(iterator);
@@ -1074,11 +1011,10 @@ void IteratorFromStringHandleOp::Compute(OpKernelContext* ctx) {
 SerializeIteratorOp::SerializeIteratorOp(OpKernelConstruction* ctx)
     : OpKernel(ctx) {
   if (ctx->HasAttr(kExternalStatePolicy)) {
-    int64_t state_change_option;
+    int64_t external_state_policy;
     OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr(kExternalStatePolicy, &state_change_option));
-    external_state_policy_ =
-        SerializationContext::ExternalStatePolicy(state_change_option);
+                   ctx->GetAttr(kExternalStatePolicy, &external_state_policy));
+    external_state_policy_ = ExternalStatePolicy(external_state_policy);
   }
 }
 
@@ -1095,11 +1031,8 @@ void SerializeIteratorOp::Compute(OpKernelContext* ctx) {
       ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
   core::ScopedUnref unref_iterator(iterator_resource);
   IteratorVariantSerializer serializer;
-  SerializationContext::Params params(ctx);
-  params.external_state_policy = external_state_policy_;
-  SerializationContext serialization_ctx(params);
-  OP_REQUIRES_OK(ctx, serializer.InitializeFromIterator(&serialization_ctx,
-                                                        iterator_resource));
+  OP_REQUIRES_OK(ctx, serializer.InitializeFromIterator(
+                          ctx, external_state_policy_, iterator_resource));
   Tensor* serialized_t;
   OP_REQUIRES_OK(ctx,
                  ctx->allocate_output(0, TensorShape({serializer.NumTensors()}),
@@ -1212,6 +1145,5 @@ REGISTER_KERNEL_BUILDER(Name("DeserializeIterator").Device(DEVICE_CPU),
                         DeserializeIteratorOp);
 
 }  // namespace
-
 }  // namespace data
 }  // namespace tensorflow

@@ -269,3 +269,7 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
   @property
   def _composite_tensor_fields(self):
     return ("reflection_axis",)
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    return {"reflection_axis": 1}

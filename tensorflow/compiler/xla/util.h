@@ -20,6 +20,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_UTIL_H_
 
 #include <algorithm>
+#include <array>
+#include <functional>
 #include <limits>
 #include <string>
 #include <type_traits>
@@ -29,23 +31,16 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/hash/hash.h"
 #include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/lib/math/math_util.h"
+#include "tensorflow/tsl/platform/errors.h"  // IWYU pragma: keep
 
 namespace xla {
 
@@ -66,12 +61,13 @@ std::vector<int64_t> ToMixedRadix(int64_t n, absl::Span<const int64_t> bounds);
 // creation backtraces.
 Status WithLogBacktrace(const Status& status);
 
-// Ranks greater than 8 are very rare, so use InlinedVector<int64_t, 8> to store
-// the bounds and indices. And for the rare cases of ranks greater than 8,
+// Ranks greater than 6 are very rare, so use InlinedVector<int64_t, 6> to store
+// the bounds and indices. And for the rare cases of ranks greater than 6,
 // the InlinedVector will just behave like an std::vector<> and allocate the
 // memory to store its values.
-inline constexpr int InlineRank() { return 8; }
+inline constexpr int InlineRank() { return 6; }
 using DimensionVector = absl::InlinedVector<int64_t, InlineRank()>;
+using DimLevelTypeVector = absl::InlinedVector<DimLevelType, InlineRank()>;
 
 // RAII timer that logs with a given label the wall clock time duration in human
 // readable form. This differs from base's ElapsedTimer primarily in that it
@@ -141,17 +137,6 @@ class ScopedLoggingTimer {
   bool enabled_;
 };
 
-// Given a vector<T>, returns a Span<char> that points at its
-// internals.
-//
-// Warning: if the vector is updated its storage pointer may change, so use this
-// with caution (ideally in limited scopes with temporary lifetimes).
-template <typename T>
-absl::Span<uint8_t> MutableByteSlice(std::vector<T>* v) {
-  return absl::Span<uint8_t>(reinterpret_cast<uint8_t*>(v->data()),
-                             v->size() * sizeof(T));
-}
-
 // Turns an immutable slice of type T into an immutable slice of bytes with the
 // same byte size.
 template <typename T>
@@ -185,8 +170,8 @@ using to_underlying = std::to_underlying;
 #else
 // Helper function which implements C++23's std::to_underlying.
 template <typename T>
-constexpr absl::underlying_type_t<T> to_underlying(T value) noexcept {
-  return static_cast<absl::underlying_type_t<T>>(value);
+constexpr std::underlying_type_t<T> to_underlying(T value) noexcept {
+  return static_cast<std::underlying_type_t<T>>(value);
 }
 #endif
 
@@ -214,57 +199,57 @@ template <typename... Args>
 Status InvalidArgument(const absl::FormatSpec<Args...>& format,
                        const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::InvalidArgument(absl::StrFormat(format, args...)));
+      tsl::errors::InvalidArgument(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status Unimplemented(const absl::FormatSpec<Args...>& format,
                      const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Unimplemented(absl::StrFormat(format, args...)));
+      tsl::errors::Unimplemented(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status InternalError(const absl::FormatSpec<Args...>& format,
                      const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Internal(absl::StrFormat(format, args...)));
+      tsl::errors::Internal(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status FailedPrecondition(const absl::FormatSpec<Args...>& format,
                           const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::FailedPrecondition(absl::StrFormat(format, args...)));
+      tsl::errors::FailedPrecondition(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status Cancelled(const absl::FormatSpec<Args...>& format, const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Cancelled(absl::StrFormat(format, args...)));
+      tsl::errors::Cancelled(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status ResourceExhausted(const absl::FormatSpec<Args...>& format,
                          const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::ResourceExhausted(absl::StrFormat(format, args...)));
+      tsl::errors::ResourceExhausted(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status NotFound(const absl::FormatSpec<Args...>& format, const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::NotFound(absl::StrFormat(format, args...)));
+      tsl::errors::NotFound(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status Unavailable(const absl::FormatSpec<Args...>& format,
                    const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Unavailable(absl::StrFormat(format, args...)));
+      tsl::errors::Unavailable(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status Unknown(const absl::FormatSpec<Args...>& format, const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Unknown(absl::StrFormat(format, args...)));
+      tsl::errors::Unknown(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status Internal(const absl::FormatSpec<Args...>& format, const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Internal(absl::StrFormat(format, args...)));
+      tsl::errors::Internal(absl::StrFormat(format, args...)));
 }
 
 template <typename... Args>
@@ -341,8 +326,14 @@ std::string VectorString(const std::initializer_list<T>& c) {
   return VectorString<std::initializer_list<T>>(c);
 }
 
+// Returns a string which can losslessly round trip to a float8 E5M2.
+std::string RoundTripFpToString(tsl::float8_e5m2 value);
+
+// Returns a string which can losslessly round trip to a float8 E4M3.
+std::string RoundTripFpToString(tsl::float8_e4m3fn value);
+
 // Returns a string which can losslessly round trip to a bfloat.
-std::string RoundTripFpToString(tensorflow::bfloat16 value);
+std::string RoundTripFpToString(tsl::bfloat16 value);
 
 // Returns a string which can losslessly round trip to a fp16.
 std::string RoundTripFpToString(Eigen::half value);
@@ -369,14 +360,14 @@ bool HasInteriorPadding(const PaddingConfig& config);
 // namespace, as it is very commonly used.
 template <typename T>
 T FloorOfRatio(T dividend, T divisor) {
-  return tensorflow::MathUtil::FloorOfRatio<T>(dividend, divisor);
+  return tsl::MathUtil::FloorOfRatio<T>(dividend, divisor);
 }
 
 // Imports the templated CeilOfRatio math function from the TensorFlow
 // namespace, as it is very commonly used.
 template <typename T>
 T CeilOfRatio(T dividend, T divisor) {
-  return tensorflow::MathUtil::CeilOfRatio<T>(dividend, divisor);
+  return tsl::MathUtil::CeilOfRatio<T>(dividend, divisor);
 }
 
 // Rounds the value up to a multiple of the divisor by first calling CeilOfRatio
@@ -394,6 +385,22 @@ T RoundDownTo(T value, T divisor) {
   return FloorOfRatio(value, divisor) * divisor;
 }
 
+template <typename T>
+struct DivMod {
+  T quotient;
+  T modulo;
+};
+
+// Divide `dividend` by `divisor` such that the quotient is rounded towards
+// negative infinity. The remainder will have the same sign as `divisor`.
+template <typename T>
+DivMod<T> FloorDivMod(T dividend, T divisor) {
+  DivMod<T> div_mod;
+  div_mod.quotient = FloorOfRatio(dividend, divisor);
+  div_mod.modulo = dividend - div_mod.quotient * divisor;
+  return div_mod;
+}
+
 // Given a number of flops executed in an amount of time, produces a string that
 // represents the throughput;
 // e.g. HumanReadableNumFlops(1e9, 1e9) => 1.00GFLOP/s.
@@ -408,44 +415,13 @@ std::string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
 // severity, filename, and line number.
 void LogLines(int sev, absl::string_view text, const char* fname, int lineno);
 
-// Used on a function to trap bad calls: any call that matches the specified
-// condition will cause a compile-time error. This macro uses a clang-specific
-// "diagnose_if" attribute, as described at
-// https://clang.llvm.org/docs/AttributeReference.html#diagnose-if
-//
-// Example:
-//
-//   int compute_absolute_value(int c)
-//     XLA_DIAGNOSE_ERROR_IF(c >= 0, "'c' is already positive.");
-#if ABSL_HAVE_ATTRIBUTE(diagnose_if)
-#define XLA_DIAGNOSE_ERROR_IF(...) \
-  __attribute__((diagnose_if(__VA_ARGS__, "error")))
-#else
-#define XLA_DIAGNOSE_ERROR_IF(...)
-#endif
-
-constexpr bool IsRuntimeEvaluated() {
-#ifdef __cpp_lib_is_constant_evaluated
-  return !std::is_constant_evaluated();
-#elif ABSL_HAVE_BUILTIN(__builtin_is_constant_evaluated)
-  return !__builtin_is_constant_evaluated();
-#else
-  return false;
-#endif
-}
-
 // Returns a mask with "width" number of least significant bits set.
 template <typename T>
-constexpr inline T LsbMask(int width)
-    XLA_DIAGNOSE_ERROR_IF(width < 0 || width >= std::numeric_limits<T>::digits,
-                          "width must be between [0, sizeof(T)*8)") {
+constexpr inline T LsbMask(int width) {
   static_assert(std::is_unsigned<T>::value,
                 "T should be an unsigned integer type");
-  if (IsRuntimeEvaluated()) {
-    DCHECK_GE(width, 0) << "Unsupported width " << width;
-    DCHECK_LE(width, std::numeric_limits<T>::digits)
-        << "Unsupported width " << width;
-  }
+  ABSL_ASSERT(width >= 0);
+  ABSL_ASSERT(width <= std::numeric_limits<T>::digits);
   return width == 0
              ? 0
              : static_cast<T>(-1) >> (std::numeric_limits<T>::digits - width);
@@ -464,13 +440,23 @@ template <typename T>
 constexpr inline int Log2Ceiling(T x) {
   static_assert(std::is_unsigned<T>::value,
                 "T should be an unsigned integer type");
-  int bit_width = absl::bit_width(x);
-  return absl::popcount(x) <= 1 ? bit_width - 1 : bit_width;
+  return x == 0 ? -1 : absl::bit_width(x - 1);
 }
 
-// Returns the value with every bit except the lower 'width' bits set to zero.
+// Return the number of sign bits (i.e. the number of leading ones for negative
+// numbers and the number of leading zeros for non-negative numbers).
 template <typename T>
-constexpr inline T ClearUpperBits(T value, int width) {
+constexpr inline int CountLeadingSignBits(T x) {
+  static_assert(std::is_signed<T>::value, "T should be a signed integer type");
+  using UnsignedType = std::make_unsigned_t<T>;
+  return x < T{0} ? absl::countl_one<UnsignedType>(x)
+                  : absl::countl_zero<UnsignedType>(x);
+}
+
+// Returns `value` with the low `width` bits set and the remaining bits set to
+// zero.
+template <typename T>
+constexpr inline T KeepLowerBits(T value, int width) {
   return value & LsbMask<T>(width);
 }
 
@@ -479,13 +465,10 @@ constexpr inline T ClearUpperBits(T value, int width) {
 // Note: returns 1 when `exponent` is zero.
 // Precondition: `exponent` is non-negative.
 template <typename T>
-constexpr T IPow(T base, int exponent)
-    XLA_DIAGNOSE_ERROR_IF(exponent < 0, "exponent must be non-negative") {
-  if (IsRuntimeEvaluated()) {
-    // A negative `exponent` is indicative of a logic bug for integral `base`.
-    // We disallow it for floating-point types for symmetry.
-    DCHECK_GE(exponent, 0);
-  }
+constexpr T IPow(T base, int exponent) {
+  // A negative `exponent` is indicative of a logic bug for integral `base`.
+  // We disallow it for floating-point types for symmetry.
+  ABSL_ASSERT(exponent >= 0);
   // We use the right-to-left binary exponentiation algorithm.
   T result{1};
   while (exponent > 0) {
@@ -498,6 +481,8 @@ constexpr T IPow(T base, int exponent)
   return result;
 }
 
+// UnsignedIntegerTypeForSize<N> gets an unsigned integer with the given size in
+// bytes.
 template <size_t>
 struct UnsignedIntegerTypeForSize;
 
@@ -521,8 +506,27 @@ struct UnsignedIntegerTypeForSize<8> {
   using type = uint64_t;
 };
 
+template <size_t kBytes>
+using UnsignedIntegerTypeForSizeType =
+    typename UnsignedIntegerTypeForSize<kBytes>::type;
+
+template <size_t kBytes>
+using SignedIntegerTypeForSizeType =
+    std::make_signed_t<UnsignedIntegerTypeForSizeType<kBytes>>;
+
+// Returns the signed magnitude of T.
+template <typename T>
+SignedIntegerTypeForSizeType<sizeof(T)> ToSignMagnitude(T input) {
+  auto as_bits = absl::bit_cast<SignedIntegerTypeForSizeType<sizeof(T)>>(input);
+  auto sign_mask = absl::bit_cast<UnsignedIntegerTypeForSizeType<sizeof(T)>>(
+      tsl::MathUtil::Sign(as_bits));
+  return as_bits ^ (sign_mask >> 1);
+}
+
 template <typename T>
 constexpr int NanPayloadBits() {
+  static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
+                "E4M3FN does not have payload");
   // Floating point types with NaNs have payloads.
   if (!std::numeric_limits<T>::has_quiet_NaN) {
     return 0;
@@ -532,6 +536,8 @@ constexpr int NanPayloadBits() {
 
 template <typename T>
 constexpr uint64_t QuietNanWithoutPayload() {
+  static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
+                "E4M3FN does not have payload");
   if (const int bits = NanPayloadBits<T>()) {
     return uint64_t{1} << (bits - 1);
   }
@@ -540,6 +546,8 @@ constexpr uint64_t QuietNanWithoutPayload() {
 
 template <typename T>
 constexpr uint64_t NanPayloadBitMask() {
+  static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
+                "E4M3FN does not have payload");
   if (const int bits = NanPayloadBits<T>()) {
     return LsbMask<uint64_t>(bits);
   }
@@ -548,7 +556,9 @@ constexpr uint64_t NanPayloadBitMask() {
 
 template <typename T>
 T NanWithSignAndPayload(bool sign, uint64_t nan_payload) {
-  using RepT = typename UnsignedIntegerTypeForSize<sizeof(T)>::type;
+  static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
+                "E4M3FN does not have payload");
+  using RepT = UnsignedIntegerTypeForSizeType<sizeof(T)>;
   const T val = std::numeric_limits<T>::quiet_NaN();
   auto rep = absl::bit_cast<RepT>(val);
   rep &= LsbMask<RepT>(std::numeric_limits<RepT>::digits - 1);
@@ -648,7 +658,7 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
   auto it = std::find(container->begin(), container->end(), value);
   TF_RET_CHECK(it != container->end());
   container->erase(it);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Utility function which splits a double-precision float (F64) into a pair of
@@ -661,21 +671,28 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
 // range that is available in F32s (out of a total of 11 exponent bits in F64s).
 std::pair<float, float> SplitF64ToF32(double x);
 
+class HloInstruction;
+
+// A predicate over HLO instruction.
+using HloPredicate = std::function<bool(const HloInstruction*)>;
+
+using Vector3 = std::array<int64_t, 3>;
+
 }  // namespace xla
 
 #define XLA_LOG_LINES(SEV, STRING) \
   ::xla::LogLines(SEV, STRING, __FILE__, __LINE__)
 
-#define XLA_VLOG_LINES(LEVEL, STRING)                                 \
-  do {                                                                \
-    if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(::tensorflow::INFO, STRING); \
+#define XLA_VLOG_LINES(LEVEL, STRING)                          \
+  do {                                                         \
+    if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(::tsl::INFO, STRING); \
   } while (false);
 
 // Utility macro that performs the equivalent of what one would expect
 // LOG_LINES(FATAL, X) to do but can be used at the end of a function that
 // returns a value without getting a compiler warning that no value is returned.
-#define XLA_FATAL_LOG(X)                 \
-  XLA_LOG_LINES(::tensorflow::ERROR, X); \
+#define XLA_FATAL_LOG(X)          \
+  XLA_LOG_LINES(::tsl::ERROR, X); \
   LOG(FATAL) << "Aborting in " << __FUNCTION__ << " due to previous errors.";
 
 #endif  // TENSORFLOW_COMPILER_XLA_UTIL_H_

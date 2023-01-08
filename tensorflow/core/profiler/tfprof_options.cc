@@ -38,7 +38,7 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
   // The default is to use stdout.
   if (output_opt.empty()) {
     *output_type = kOutput[1];
-    return tensorflow::Status::OK();
+    return OkStatus();
   }
 
   std::set<string> output_types(kOutput,
@@ -117,7 +117,7 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
                           *output_type, *output_type, opt));
     }
   }
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 tensorflow::Status Options::FromProtoStr(const string& opts_proto_str,
@@ -167,7 +167,7 @@ tensorflow::Status Options::FromProtoStr(const string& opts_proto_str,
       opts_pb.account_displayed_op_only(),
       std::vector<string>(opts_pb.select().begin(), opts_pb.select().end()),
       output_type, output_options);
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 std::string Options::ToString() const {

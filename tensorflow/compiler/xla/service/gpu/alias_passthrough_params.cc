@@ -14,14 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
 namespace gpu {
 
-StatusOr<bool> AliasPassthroughParams::Run(HloModule* module) {
+StatusOr<bool> AliasPassthroughParams::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   if (module->entry_computation()->num_parameters() == 0 ||
       root->opcode() != HloOpcode::kTuple) {

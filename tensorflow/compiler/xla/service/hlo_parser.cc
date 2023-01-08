@@ -15,10 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 
+#include <cmath>
+#include <complex>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -27,8 +32,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
-#include "absl/strings/ascii.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -37,35 +41,36 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_domain_metadata.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
-#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_lexer.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_schedule.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/lib/gtl/map_util.h"
+#include "tensorflow/tsl/platform/float8.h"
 
 namespace xla {
 
 namespace {
 
-using absl::nullopt;
-using absl::optional;
 using absl::StrAppend;
 using absl::StrCat;
 using absl::StrFormat;
 using absl::StrJoin;
+using std::nullopt;
+using std::optional;
 
 // Creates and returns a schedule created using the order of the instructions in
 // the HloComputation::instructions() vectors in the module.
@@ -140,6 +145,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kReplicaId:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:
     case HloOpcode::kScatter:
     case HloOpcode::kSelect:
@@ -155,15 +161,16 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kSort:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
-    case HloOpcode::kTrace:
     case HloOpcode::kTranspose:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kTuple:
-    case HloOpcode::kTupleSelect:
     case HloOpcode::kWhile:
       return true;
     // Technically the following ops do not require an explicit result shape,
     // but we made it so that we always write the shapes explicitly.
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
     case HloOpcode::kAllGather:
     case HloOpcode::kAllGatherStart:
     case HloOpcode::kAllGatherDone:
@@ -201,6 +208,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kRng:
     case HloOpcode::kRngBitGenerator:
     case HloOpcode::kRngGetAndUpdateState:
+    case HloOpcode::kStochasticConvert:
       return false;
   }
 }
@@ -230,6 +238,52 @@ class HloParserImpl : public HloParser {
   StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly();
 
  private:
+  // Types of attributes.
+  enum class AttrTy {
+    kBool,
+    kInt64,
+    kInt32,
+    kFloat,
+    kString,
+    kLiteral,
+    kBracedInt64List,
+    kBracedInt64ListList,
+    kHloComputation,
+    kBracedHloComputationList,
+    kFftType,
+    kPaddingType,
+    kComparisonDirection,
+    kComparisonType,
+    kWindow,
+    kConvolutionDimensionNumbers,
+    kSharding,
+    kFrontendAttributes,
+    kParameterReplication,
+    kInstructionList,
+    kSliceRanges,
+    kPaddingConfig,
+    kMetadata,
+    kFusionKind,
+    kDistribution,
+    kDomain,
+    kPrecisionList,
+    kShape,
+    kShapeList,
+    kEnum,
+    kRandomAlgorithm,
+    kAliasing,
+    kComputationLayout,
+    kInstructionAliasing,
+    kCustomCallSchedule,
+    kCustomCallApiVersion,
+  };
+
+  struct AttrConfig {
+    bool required;     // whether it's required or optional
+    AttrTy attr_type;  // what type it is
+    void* result;      // where to store the parsed result.
+  };
+
   using InstrNameTable =
       absl::flat_hash_map<std::string, std::pair<HloInstruction*, LocTy>>;
 
@@ -267,6 +321,17 @@ class HloParserImpl : public HloParser {
   bool ParseTupleLiteral(Literal* literal, const Shape& shape);
   bool ParseNonTupleLiteral(Literal* literal, const Shape& shape);
   bool ParseDenseLiteral(Literal* literal, const Shape& shape);
+
+  // Parses and creates instruction given name, shape, opcode etc. This is
+  // refactored out from ParseInstructionRhs to allow recursion of wrapped
+  // async instructions to allow parsing for wrapped-op-specific attributes.
+  HloInstruction* CreateInstruction(
+      HloComputation::Builder* builder, absl::string_view name,
+      std::optional<Shape> shape, HloOpcode opcode,
+      std::optional<HloOpcode> async_wrapped_opcode,
+      absl::flat_hash_map<std::string, AttrConfig>& attrs,
+      bool allow_attributes,
+      std::vector<HloInstruction*>* preset_operands = nullptr);
 
   // Sets the sub-value of literal at the given linear index to the
   // given value. If the literal is dense, it must have the default layout.
@@ -311,51 +376,6 @@ class HloParserImpl : public HloParser {
   struct DomainData {
     std::unique_ptr<DomainMetadata> entry_metadata;
     std::unique_ptr<DomainMetadata> exit_metadata;
-  };
-
-  // Types of attributes.
-  enum class AttrTy {
-    kBool,
-    kInt64,
-    kInt32,
-    kFloat,
-    kString,
-    kLiteral,
-    kBracedInt64List,
-    kBracedInt64ListList,
-    kHloComputation,
-    kBracedHloComputationList,
-    kFftType,
-    kPaddingType,
-    kComparisonDirection,
-    kComparisonType,
-    kWindow,
-    kConvolutionDimensionNumbers,
-    kSharding,
-    kFrontendAttributes,
-    kParameterReplication,
-    kInstructionList,
-    kSliceRanges,
-    kPaddingConfig,
-    kMetadata,
-    kFusionKind,
-    kDistribution,
-    kDomain,
-    kPrecisionList,
-    kShape,
-    kShapeList,
-    kEnum,
-    kRandomAlgorithm,
-    kAliasing,
-    kInstructionAliasing,
-    kCustomCallSchedule,
-    kCustomCallApiVersion,
-  };
-
-  struct AttrConfig {
-    bool required;     // whether it's required or optional
-    AttrTy attr_type;  // what type it is
-    void* result;      // where to store the parsed result.
   };
 
   // attributes ::= (',' attribute)*
@@ -407,7 +427,7 @@ class HloParserImpl : public HloParser {
   bool CopyAttributeToProtoMessage(
       absl::flat_hash_set<std::string> non_proto_attrs,
       const absl::flat_hash_map<std::string, AttrConfig>& attrs,
-      tensorflow::protobuf::Message* message);
+      tsl::protobuf::Message* message);
 
   // Parses an attribute string into a protocol buffer `message`.
   // Since proto3 has no notion of mandatory fields, `required_attrs` gives the
@@ -416,7 +436,7 @@ class HloParserImpl : public HloParser {
   // but added to the HloInstruction.
   bool ParseAttributesAsProtoMessage(
       const absl::flat_hash_map<std::string, AttrConfig>& non_proto_attrs,
-      tensorflow::protobuf::Message* message);
+      tsl::protobuf::Message* message);
 
   // Parses a name and finds the corresponding hlo computation.
   bool ParseComputationName(HloComputation** value);
@@ -429,7 +449,7 @@ class HloParserImpl : public HloParser {
   bool ParsePaddingConfig(PaddingConfig* padding);
   bool ParseMetadata(OpMetadata* metadata);
   bool ParseSingleOrListMetadata(
-      tensorflow::protobuf::RepeatedPtrField<OpMetadata>* metadata);
+      tsl::protobuf::RepeatedPtrField<OpMetadata>* metadata);
   bool ParseOpShardingType(OpSharding::Type* type);
   bool ParseListShardingType(std::vector<OpSharding::Type>* types);
   bool ParseSharding(OpSharding* sharding);
@@ -459,7 +479,7 @@ class HloParserImpl : public HloParser {
   // 'parse_and_add_item' is an lambda to parse an element in the list and add
   // the parsed element to the result. It's supposed to capture the result.
   bool ParseList(const TokKind start, const TokKind end, const TokKind delim,
-                 const std::function<bool()>& parse_and_add_item);
+                 absl::FunctionRef<bool()> parse_and_add_item);
 
   bool ParseParamListToShape(Shape* shape, LocTy* shape_loc);
   bool ParseParamList();
@@ -472,10 +492,17 @@ class HloParserImpl : public HloParser {
   bool ParseLayout(Layout* layout);
   bool ParseLayoutIntAttribute(int64_t* attr_value,
                                absl::string_view attr_description);
+  bool ParseDimLevelTypes(
+      absl::InlinedVector<DimLevelType, InlineRank()>* dim_level_types,
+      absl::InlinedVector<bool, InlineRank()>* dim_unique,
+      absl::InlinedVector<bool, InlineRank()>* dim_ordered);
   bool ParseTiles(std::vector<Tile>* tiles);
-  bool ParseOpcode(HloOpcode* result);
+  bool ParsePhysicalShape(Shape* physical_shape);
+  bool ParseOpcode(HloOpcode* opcode,
+                   std::optional<HloOpcode>* async_wrapped_opcode);
   bool ParseFftType(FftType* result);
   bool ParsePaddingType(PaddingType* result);
+  bool ParsePrimitiveType(PrimitiveType* result);
   bool ParseComparisonDirection(ComparisonDirection* result);
   bool ParseComparisonType(Comparison::Type* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
@@ -487,6 +514,7 @@ class HloParserImpl : public HloParser {
   bool ParseComplex(std::complex<double>* result);
   bool ParseBool(bool* result);
   bool ParseToken(TokKind kind, const std::string& msg);
+  bool ParseUnsignedIntegerType(PrimitiveType* primitive_type);
 
   using AliasingData =
       absl::flat_hash_map<ShapeIndex, HloInputOutputAliasConfig::Alias>;
@@ -494,6 +522,9 @@ class HloParserImpl : public HloParser {
   // Parses the aliasing information from string `s`, returns `false` if it
   // fails.
   bool ParseAliasing(AliasingData* data);
+
+  // Parses the entry computation layout.
+  bool ParseComputationLayout(ComputationLayout* computation_layout);
 
   // Parses the per-instruction aliasing information from string `s`, returns
   // `false` if it fails.
@@ -627,7 +658,7 @@ Status HloParserImpl::Run(HloModule* module) {
           "Syntax error when trying to parse the text as a HloModule:\n%s",
           GetError());
     }
-    return Status::OK();
+    return OkStatus();
   }
   // This means that the text is a single HLO instruction.
   if (!ParseSingleInstruction(module)) {
@@ -636,7 +667,7 @@ Status HloParserImpl::Run(HloModule* module) {
         "HloInstruction:\n%s",
         GetError());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 std::pair<HloInstruction*, HloParserImpl::LocTy>*
@@ -644,7 +675,7 @@ HloParserImpl::FindInstruction(const std::string& name,
                                const optional<Shape>& shape) {
   std::pair<HloInstruction*, LocTy>* instr = nullptr;
   if (!name.empty()) {
-    instr = tensorflow::gtl::FindOrNull(current_name_table(), name);
+    instr = tsl::gtl::FindOrNull(current_name_table(), name);
   }
 
   // Potentially call the missing instruction hook.
@@ -758,6 +789,48 @@ bool HloParserImpl::ParseAliasing(AliasingData* data) {
   return true;
 }
 
+bool HloParserImpl::ParseComputationLayout(
+    ComputationLayout* computation_layout) {
+  if (!ParseToken(TokKind::kLbrace,
+                  "Expects '{' at the start of aliasing description")) {
+    return false;
+  }
+  if (!ParseToken(TokKind::kLparen, "Expects ( before parameter shape list")) {
+    return false;
+  }
+  while (lexer_.GetKind() != TokKind::kRparen) {
+    Shape param;
+    if (!ParseShape(&param)) {
+      return false;
+    }
+    computation_layout->add_parameter_layout(ShapeLayout(param));
+    if (lexer_.GetKind() == TokKind::kRparen) {
+      break;
+    }
+    if (!ParseToken(TokKind::kComma, "Expects , between parameter shapes")) {
+      return false;
+    }
+  }
+
+  if (!ParseToken(TokKind::kRparen,
+                  "Expects ) at end of parameter shape list")) {
+    return false;
+  }
+  if (!ParseToken(TokKind::kArrow, "Expects -> before result shape")) {
+    return false;
+  }
+  Shape result;
+  if (!ParseShape(&result)) {
+    return false;
+  }
+  *computation_layout->mutable_result_layout() = ShapeLayout(result);
+  if (!ParseToken(TokKind::kRbrace,
+                  "Expects '}' at the end of computation layouts")) {
+    return false;
+  }
+  return true;
+}
+
 bool HloParserImpl::ParseInstructionOutputOperandAliasing(
     std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>*
         aliasing_output_operand_pairs) {
@@ -823,7 +896,7 @@ bool HloParserImpl::ParseCustomCallSchedule(CustomCallSchedule* result) {
         StrFormat("expects custom-call schedule but sees: %s, error: %s", val,
                   status_or_result.status().error_message()));
   }
-  *result = status_or_result.ValueOrDie();
+  *result = status_or_result.value();
   lexer_.Lex();
   return true;
 }
@@ -840,7 +913,7 @@ bool HloParserImpl::ParseCustomCallApiVersion(CustomCallApiVersion* result) {
         StrFormat("expects custom-call API version but sees: %s, error: %s",
                   val, status_or_result.status().error_message()));
   }
-  *result = status_or_result.ValueOrDie();
+  *result = status_or_result.value();
   lexer_.Lex();
   return true;
 }
@@ -858,16 +931,20 @@ bool HloParserImpl::ParseHloModule(HloModule* module) {
     return false;
   }
 
-  absl::optional<bool> is_scheduled;
-  absl::optional<AliasingData> aliasing_data;
-  absl::optional<bool> alias_passthrough_params;
+  std::optional<bool> is_scheduled;
+  std::optional<AliasingData> aliasing_data;
+  std::optional<bool> alias_passthrough_params;
   absl::flat_hash_map<std::string, AttrConfig> attrs;
+  std::optional<ComputationLayout> entry_computation_layout;
 
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
   attrs["input_output_alias"] = {/*required=*/false, AttrTy::kAliasing,
                                  &aliasing_data};
   attrs["alias_passthrough_params"] = {/*required=*/false, AttrTy::kBool,
                                        &alias_passthrough_params};
+  attrs["entry_computation_layout"] = {/*required=*/false,
+                                       AttrTy::kComputationLayout,
+                                       &entry_computation_layout};
   if (!ParseAttributes(attrs)) {
     return false;
   }
@@ -879,9 +956,17 @@ bool HloParserImpl::ParseHloModule(HloModule* module) {
   if (is_scheduled.has_value() && *is_scheduled) {
     TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
   }
+  HloModuleConfig config = module->config();
+  bool default_config = true;
   if (alias_passthrough_params.has_value() && *alias_passthrough_params) {
-    HloModuleConfig config = module->config();
     config.set_alias_passthrough_params(true);
+    default_config = false;
+  }
+  if (entry_computation_layout.has_value()) {
+    *config.mutable_entry_computation_layout() = *entry_computation_layout;
+    default_config = false;
+  }
+  if (!default_config) {
     module->set_config(config);
   }
   if (aliasing_data) {
@@ -937,7 +1022,8 @@ bool HloParserImpl::ParseComputations(HloModule* module) {
   return true;
 }
 
-// computation ::= ('ENTRY')? name (param_list_to_shape)? instruction_list
+// computation ::= ('ENTRY')? name (param_list_to_shape)? instruction_list(,
+// 'execution_thread='execution_thread)?
 bool HloParserImpl::ParseComputation(HloComputation** entry_computation) {
   LocTy maybe_entry_loc = lexer_.GetLoc();
   const bool is_entry_computation = EatIfPresent(TokKind::kw_ENTRY);
@@ -970,7 +1056,14 @@ bool HloParserImpl::ParseComputation(HloComputation** entry_computation) {
             computation->root_instruction()->name(), ", ",
             ShapeUtil::HumanString(computation->root_instruction()->shape())));
   }
-
+  absl::flat_hash_map<std::string, AttrConfig> attrs;
+  optional<std::string> execution_thread = HloInstruction::kMainExecutionThread;
+  attrs["execution_thread"] = {/*required=*/false, AttrTy::kString,
+                               &execution_thread};
+  if (!ParseAttributes(attrs)) {
+    return false;
+  }
+  computation->SetExecutionThread(*execution_thread);
   if (is_entry_computation) {
     if (*entry_computation != nullptr) {
       return Error(maybe_entry_loc, "expects only one ENTRY");
@@ -1004,7 +1097,7 @@ bool HloParserImpl::ParseInstructionList(HloComputation** computation,
   HloInstruction* root = nullptr;
   if (!root_name.empty()) {
     std::pair<HloInstruction*, LocTy>* root_node =
-        tensorflow::gtl::FindOrNull(current_name_table(), root_name);
+        tsl::gtl::FindOrNull(current_name_table(), root_name);
 
     // This means some instruction was marked as ROOT but we didn't find it in
     // the pool, which should not happen.
@@ -1052,10 +1145,12 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                         bool allow_attributes) {
   Shape shape;
   HloOpcode opcode;
+  std::optional<HloOpcode> async_wrapped_opcode;
   std::vector<HloInstruction*> operands;
 
   const bool parse_shape = CanBeShape();
-  if ((parse_shape && !ParseShape(&shape)) || !ParseOpcode(&opcode)) {
+  if ((parse_shape && !ParseShape(&shape)) ||
+      !ParseOpcode(&opcode, &async_wrapped_opcode)) {
     return false;
   }
   if (!parse_shape && !CanInferShape(opcode)) {
@@ -1084,13 +1179,91 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
   optional<std::string> backend_config;
   attrs["backend_config"] = {/*required=*/false, AttrTy::kString,
                              &backend_config};
-  optional<std::vector<int64_t>> outer_dimension_partitions;
-  attrs["outer_dimension_partitions"] = {/*required=*/false,
-                                         AttrTy::kBracedInt64List,
-                                         &outer_dimension_partitions};
+
+  std::optional<Shape> maybe_shape;
+  if (parse_shape) {
+    maybe_shape = shape;
+  }
+  HloInstruction* instruction =
+      CreateInstruction(builder, name, maybe_shape, opcode,
+                        async_wrapped_opcode, attrs, allow_attributes);
+  if (instruction == nullptr) {
+    return false;
+  }
+
+  // Generate a unique name if the name is empty.  This is used for nested
+  // instructions (e.g. the `max` in add(max(x, y), z)).
+  //
+  // Otherwise, register the given name with the name uniquer.
+  if (name.empty()) {
+    name = name_uniquer_.GetUniqueName(
+        absl::StrCat(HloOpcodeString(instruction->opcode()), ".anon"));
+  } else {
+    name_uniquer_.GetUniqueName(name);
+  }
+
+  instruction->SetAndSanitizeName(name);
+  if (instruction->name() != name) {
+    return Error(name_loc,
+                 StrCat("illegal instruction name: ", name,
+                        "; suggest renaming to: ", instruction->name()));
+  }
+
+  // Add shared attributes like metadata to the instruction, if they were seen.
+  if (sharding) {
+    // TODO(b/257495070): Eliminate tuple sharding normalization in HLO parser.
+    // Allow existing HLO text with invalid sharding on tuple shapes by
+    // normalizing tuple sharding.
+    HloSharding hlo_sharding = HloSharding::FromProto(sharding.value()).value();
+    hlo_sharding = hlo_sharding.NormalizeTupleSharding(instruction->shape());
+    instruction->set_sharding(hlo_sharding);
+  }
+  if (parameter_replication) {
+    int leaf_count = ShapeUtil::GetLeafCount(instruction->shape());
+    const auto& replicated =
+        parameter_replication->replicated_at_leaf_buffers();
+    if (leaf_count != replicated.size()) {
+      return Error(lexer_.GetLoc(),
+                   StrCat("parameter has ", leaf_count,
+                          " leaf buffers, but parameter_replication has ",
+                          replicated.size(), " elements."));
+    }
+    instruction->set_parameter_replicated_at_leaf_buffers(replicated);
+  }
+  if (predecessors) {
+    for (auto* pre : *predecessors) {
+      Status status = pre->AddControlDependencyTo(instruction);
+      if (!status.ok()) {
+        return Error(name_loc, StrCat("error adding control dependency for: ",
+                                      name, " status: ", status.ToString()));
+      }
+    }
+  }
+  if (metadata) {
+    instruction->set_metadata(*metadata);
+  }
+  if (backend_config) {
+    instruction->set_raw_backend_config_string(std::move(*backend_config));
+  }
+  if (frontend_attributes) {
+    instruction->set_frontend_attributes(*frontend_attributes);
+  }
+  return AddInstruction(name, instruction, name_loc);
+}
+
+HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
+    HloComputation::Builder* builder, absl::string_view name,
+    std::optional<Shape> shape, HloOpcode opcode,
+    std::optional<HloOpcode> async_wrapped_opcode,
+    absl::flat_hash_map<std::string, AttrConfig>& attrs, bool allow_attributes,
+    std::vector<HloInstruction*>* preset_operands) {
+  std::vector<HloInstruction*> operands;
+  if (preset_operands) {
+    operands = *preset_operands;
+  }
   const auto maybe_infer_shape =
-      [&](const std::function<StatusOr<Shape>()>& infer, Shape* shape) {
-        if (parse_shape) {
+      [&](absl::FunctionRef<StatusOr<Shape>()> infer) {
+        if (shape.has_value()) {
           return true;
         }
         auto inferred = infer();
@@ -1099,61 +1272,60 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
               "failed to infer shape for opcode: %s, error: %s",
               HloOpcodeString(opcode), inferred.status().error_message()));
         }
-        *shape = std::move(inferred).ValueOrDie();
+        shape = std::move(inferred).value();
         return true;
       };
 
-  HloInstruction* instruction;
   switch (opcode) {
     case HloOpcode::kParameter: {
       int64_t parameter_number;
       if (!ParseToken(TokKind::kLparen,
                       "expects '(' before parameter number") ||
           !ParseInt64(&parameter_number)) {
-        return false;
+        return nullptr;
       }
       if (parameter_number < 0) {
         Error(lexer_.GetLoc(), "parameter number must be >= 0");
-        return false;
+        return nullptr;
       }
       if (!ParseToken(TokKind::kRparen, "expects ')' after parameter number") ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateParameter(parameter_number, shape, name));
-      break;
+      std::string param_name(name);
+      return builder->AddInstruction(HloInstruction::CreateParameter(
+          parameter_number, *shape, param_name));
     }
     case HloOpcode::kConstant: {
       Literal literal;
       if (!ParseToken(TokKind::kLparen,
                       "expects '(' before constant literal") ||
-          !ParseLiteral(&literal, shape) ||
+          !ParseLiteral(&literal, *shape) ||
           !ParseToken(TokKind::kRparen, "expects ')' after constant literal") ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      instruction = builder->AddInstruction(
+      return builder->AddInstruction(
           HloInstruction::CreateConstant(std::move(literal)));
-      break;
     }
     case HloOpcode::kIota: {
       optional<int64_t> iota_dimension;
       attrs["iota_dimension"] = {/*required=*/true, AttrTy::kInt64,
                                  &iota_dimension};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/0) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/0)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateIota(shape, *iota_dimension));
-      break;
+      return builder->AddInstruction(
+          HloInstruction::CreateIota(*shape, *iota_dimension));
     }
     // Unary ops.
     case HloOpcode::kAbs:
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kClz:
@@ -1180,20 +1352,18 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kTanh: {
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferUnaryOpShape(opcode, operands[0]);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferUnaryOpShape(opcode, operands[0]);
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateUnary(shape, opcode, operands[0]));
-      break;
+      return builder->AddInstruction(
+          HloInstruction::CreateUnary(*shape, opcode, operands[0]));
     }
     // Binary ops.
     case HloOpcode::kAdd:
@@ -1211,61 +1381,57 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kXor:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
-    case HloOpcode::kShiftRightLogical: {
-      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+    case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kStochasticConvert: {
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/2)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferBinaryOpShape(opcode, operands[0],
-                                                          operands[1]);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferBinaryOpShape(opcode, operands[0],
+                                                      operands[1]);
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateBinary(
-          shape, opcode, operands[0], operands[1]));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateBinary(
+          *shape, opcode, operands[0], operands[1]));
     }
     // Ternary ops.
     case HloOpcode::kClamp:
-    case HloOpcode::kSelect:
-    case HloOpcode::kTupleSelect: {
-      if (!ParseOperands(&operands, builder, /*expected_size=*/3) ||
+    case HloOpcode::kSelect: {
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/3)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferTernaryOpShape(
-                    opcode, operands[0], operands[1], operands[2]);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferTernaryOpShape(
+                opcode, operands[0], operands[1], operands[2]);
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateTernary(
-          shape, opcode, operands[0], operands[1], operands[2]));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateTernary(
+          *shape, opcode, operands[0], operands[1], operands[2]));
     }
     // Other supported ops.
     case HloOpcode::kConvert: {
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateConvert(shape, operands[0]));
-      break;
+      return builder->AddInstruction(
+          HloInstruction::CreateConvert(*shape, operands[0]));
     }
     case HloOpcode::kBitcastConvert: {
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateBitcastConvert(shape, operands[0]));
-      break;
+      return builder->AddInstruction(
+          HloInstruction::CreateBitcastConvert(*shape, operands[0]));
     }
     case HloOpcode::kAllGather:
     case HloOpcode::kAllGatherStart: {
@@ -1284,27 +1450,24 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                    &constrain_layout};
       attrs["use_global_device_ids"] = {/*required=*/false, AttrTy::kBool,
                                         &use_global_device_ids};
-      if (!ParseOperands(&operands, builder) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
       std::vector<ReplicaGroup> replica_groups;
       if (tmp_groups) {
         replica_groups = CreateReplicaGroups(*tmp_groups);
       }
       if (opcode == HloOpcode::kAllGather) {
-        instruction = builder->AddInstruction(HloInstruction::CreateAllGather(
-            shape, operands, dimensions->at(0), replica_groups,
+        return builder->AddInstruction(HloInstruction::CreateAllGather(
+            *shape, operands, dimensions->at(0), replica_groups,
             constrain_layout ? *constrain_layout : false, channel_id,
             use_global_device_ids ? *use_global_device_ids : false));
-      } else {
-        instruction =
-            builder->AddInstruction(HloInstruction::CreateAllGatherStart(
-                shape, operands, dimensions->at(0), replica_groups,
-                constrain_layout ? *constrain_layout : false, channel_id,
-                use_global_device_ids ? *use_global_device_ids : false));
       }
-      break;
+      return builder->AddInstruction(HloInstruction::CreateAllGatherStart(
+          *shape, operands, dimensions->at(0), replica_groups,
+          constrain_layout ? *constrain_layout : false, channel_id,
+          use_global_device_ids ? *use_global_device_ids : false));
     }
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
@@ -1329,34 +1492,30 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                                &dimensions};
       }
-      if (!ParseOperands(&operands, builder) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
       std::vector<ReplicaGroup> replica_groups;
       if (tmp_groups) {
         replica_groups = CreateReplicaGroups(*tmp_groups);
       }
       if (opcode == HloOpcode::kAllReduce) {
-        instruction = builder->AddInstruction(HloInstruction::CreateAllReduce(
-            shape, operands, *to_apply, replica_groups,
+        return builder->AddInstruction(HloInstruction::CreateAllReduce(
+            *shape, operands, *to_apply, replica_groups,
             constrain_layout ? *constrain_layout : false, channel_id,
             use_global_device_ids ? *use_global_device_ids : false));
       } else if (opcode == HloOpcode::kReduceScatter) {
-        instruction =
-            builder->AddInstruction(HloInstruction::CreateReduceScatter(
-                shape, operands, *to_apply, replica_groups,
-                constrain_layout ? *constrain_layout : false, channel_id,
-                use_global_device_ids ? *use_global_device_ids : false,
-                dimensions->at(0)));
-      } else {
-        instruction =
-            builder->AddInstruction(HloInstruction::CreateAllReduceStart(
-                shape, operands, *to_apply, replica_groups,
-                constrain_layout ? *constrain_layout : false, channel_id,
-                use_global_device_ids ? *use_global_device_ids : false));
+        return builder->AddInstruction(HloInstruction::CreateReduceScatter(
+            *shape, operands, *to_apply, replica_groups,
+            constrain_layout ? *constrain_layout : false, channel_id,
+            use_global_device_ids ? *use_global_device_ids : false,
+            dimensions->at(0)));
       }
-      break;
+      return builder->AddInstruction(HloInstruction::CreateAllReduceStart(
+          *shape, operands, *to_apply, replica_groups,
+          constrain_layout ? *constrain_layout : false, channel_id,
+          use_global_device_ids ? *use_global_device_ids : false));
     }
     case HloOpcode::kAllToAll: {
       optional<std::vector<std::vector<int64_t>>> tmp_groups;
@@ -1370,10 +1529,10 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<bool> constrain_layout;
       attrs["constrain_layout"] = {/*required=*/false, AttrTy::kBool,
                                    &constrain_layout};
-      if (!ParseOperands(&operands, builder) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes) ||
           (dimensions && dimensions->size() != 1)) {
-        return false;
+        return nullptr;
       }
       std::vector<ReplicaGroup> replica_groups;
       if (tmp_groups) {
@@ -1383,11 +1542,10 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       if (dimensions) {
         split_dimension = dimensions->at(0);
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateAllToAll(
-          shape, operands, replica_groups,
+      return builder->AddInstruction(HloInstruction::CreateAllToAll(
+          *shape, operands, replica_groups,
           constrain_layout ? *constrain_layout : false, channel_id,
           split_dimension));
-      break;
     }
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart: {
@@ -1399,63 +1557,152 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<std::vector<int64_t>>> slice_sizes;
       attrs["slice_sizes"] = {/*required=*/false, AttrTy::kBracedInt64ListList,
                               &slice_sizes};
-      if (!ParseOperands(&operands, builder) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
       std::vector<std::pair<int64_t, int64_t>> pairs(source_targets->size());
       for (int i = 0; i < pairs.size(); i++) {
         if ((*source_targets)[i].size() != 2) {
-          return TokenError(
-              "expects 'source_target_pairs=' to be a list of pairs");
+          TokenError("expects 'source_target_pairs=' to be a list of pairs");
+          return nullptr;
         }
         pairs[i].first = (*source_targets)[i][0];
         pairs[i].second = (*source_targets)[i][1];
       }
       if (!slice_sizes.has_value()) {
         if (operands.size() != 1) {
-          return TokenError(
+          TokenError(
               "CollectivePermute and CollectivePermuteStart must "
               "have exactly  one operand (input buffer) unless "
               "it performs dynamic-slice and in-place update.");
+          return nullptr;
         }
         if (opcode == HloOpcode::kCollectivePermute) {
-          instruction =
-              builder->AddInstruction(HloInstruction::CreateCollectivePermute(
-                  shape, operands[0], pairs, channel_id));
-        } else if (opcode == HloOpcode::kCollectivePermuteStart) {
-          instruction = builder->AddInstruction(
-              HloInstruction::CreateCollectivePermuteStart(shape, operands[0],
+          return builder->AddInstruction(
+              HloInstruction::CreateCollectivePermute(*shape, operands[0],
+                                                      pairs, channel_id));
+        }
+        if (opcode == HloOpcode::kCollectivePermuteStart) {
+          return builder->AddInstruction(
+              HloInstruction::CreateCollectivePermuteStart(*shape, operands[0],
                                                            pairs, channel_id));
-        } else {
-          LOG(FATAL) << "Expect opcode to be CollectivePermute or "
-                        "CollectivePermuteStart, but got "
-                     << HloOpcodeString(opcode);
         }
+        LOG(FATAL) << "Expect opcode to be CollectivePermute or "
+                      "CollectivePermuteStart, but got "
+                   << HloOpcodeString(opcode);
+      }
+      if (operands.size() != 4) {
+        TokenError(
+            "CollectivePermute and CollectivePermuteStart must "
+            "have exactly four operands for dynamic-slice and "
+            "in-place update.");
+        return nullptr;
+      }
+      if (opcode == HloOpcode::kCollectivePermute) {
+        return builder->AddInstruction(HloInstruction::CreateCollectivePermute(
+            *shape, operands[0], operands[1], operands[2], operands[3], pairs,
+            *slice_sizes, channel_id));
+      }
+      if (opcode == HloOpcode::kCollectivePermuteStart) {
+        return builder->AddInstruction(
+            HloInstruction::CreateCollectivePermuteStart(
+                *shape, operands[0], operands[1], operands[2], operands[3],
+                pairs, *slice_sizes, channel_id));
+      }
+      LOG(FATAL) << "Expect opcode to be CollectivePermute or "
+                    "CollectivePermuteStart, but got "
+                 << HloOpcodeString(opcode);
+    }
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone: {
+      std::optional<HloComputation*> async_computation;
+      if (!preset_operands && !ParseOperands(&operands, builder)) {
+        return nullptr;
+      }
+      auto is_async_shape_correct = [](const Shape& shape) {
+        return shape.IsTuple() && shape.tuple_shapes_size() >= 2 &&
+               shape.tuple_shapes(0).IsTuple();
+      };
+      optional<int64_t> async_group_id;
+      attrs["async_group_id"] = {/*required=*/false, AttrTy::kInt64,
+                                 &async_group_id};
+      optional<std::string> async_execution_thread =
+          HloInstruction::kMainExecutionThread;
+      attrs["async_execution_thread"] = {/*required=*/false, AttrTy::kString,
+                                         &async_execution_thread};
+      if (async_wrapped_opcode) {
+        std::vector<HloInstruction*> async_wrapped_operands;
+        std::vector<Shape> async_wrapped_operand_shapes;
+        Shape async_wrapped_root_shape;
+        if (opcode == HloOpcode::kAsyncStart) {
+          for (const HloInstruction* operand : operands) {
+            async_wrapped_operand_shapes.push_back(operand->shape());
+          }
+        } else {
+          if (operands.size() != 1 ||
+              !is_async_shape_correct(operands[0]->shape())) {
+            TokenError(
+                "AsyncUpdate and AsyncDone expect a single operand in the form "
+                "of "
+                "((async-operands), async-outputs, state).");
+            return nullptr;
+          }
+          async_wrapped_operand_shapes =
+              operands[0]->shape().tuple_shapes(0).tuple_shapes();
+        }
+
+        if (opcode == HloOpcode::kAsyncDone) {
+          async_wrapped_root_shape = *shape;
+        } else {
+          if (!is_async_shape_correct(*shape)) {
+            TokenError(
+                "AsyncStart and AsyncUpdate expect the op shape to be in the "
+                "form of "
+                "((async-operands), async-outputs, state).");
+            return nullptr;
+          }
+          async_wrapped_root_shape = shape->tuple_shapes(1);
+        }
+        HloComputation::Builder async_wrapped_builder("async_wrapped");
+        async_wrapped_operands.reserve(async_wrapped_operand_shapes.size());
+        for (int i = 0; i < async_wrapped_operand_shapes.size(); ++i) {
+          async_wrapped_operands.push_back(async_wrapped_builder.AddInstruction(
+              HloInstruction::CreateParameter(
+                  i, async_wrapped_operand_shapes.at(i), "async_param")));
+        }
+        HloInstruction* root =
+            CreateInstruction(&async_wrapped_builder, "async_op",
+                              async_wrapped_root_shape, *async_wrapped_opcode,
+                              /*async_wrapped_opcode=*/std::nullopt, attrs,
+                              allow_attributes, &async_wrapped_operands);
+        if (!root) {
+          return nullptr;
+        }
+        computations_.emplace_back(async_wrapped_builder.Build(root));
+        async_computation = computations_.back().get();
+
       } else {
-        if (operands.size() != 4) {
-          return TokenError(
-              "CollectivePermute and CollectivePermuteStart must "
-              "have exactly four operands for dynamic-slice and "
-              "in-place update.");
-        }
-        if (opcode == HloOpcode::kCollectivePermute) {
-          instruction =
-              builder->AddInstruction(HloInstruction::CreateCollectivePermute(
-                  shape, operands[0], operands[1], operands[2], operands[3],
-                  pairs, *slice_sizes, channel_id));
-        } else if (opcode == HloOpcode::kCollectivePermuteStart) {
-          instruction = builder->AddInstruction(
-              HloInstruction::CreateCollectivePermuteStart(
-                  shape, operands[0], operands[1], operands[2], operands[3],
-                  pairs, *slice_sizes, channel_id));
-        } else {
-          LOG(FATAL) << "Expect opcode to be CollectivePermute or "
-                        "CollectivePermuteStart, but got "
-                     << HloOpcodeString(opcode);
+        attrs["calls"] = {/*required=*/true, AttrTy::kHloComputation,
+                          &async_computation};
+        if (!ParseAttributes(attrs, allow_attributes)) {
+          return nullptr;
         }
       }
-      break;
+      if (opcode == HloOpcode::kAsyncStart) {
+        return builder->AddInstruction(HloInstruction::CreateAsyncStart(
+            *shape, operands, *async_computation, async_group_id,
+            *async_execution_thread));
+      }
+      if (opcode == HloOpcode::kAsyncUpdate) {
+        return builder->AddInstruction(HloInstruction::CreateAsyncUpdate(
+            *shape, operands[0], *async_computation, async_group_id,
+            *async_execution_thread));
+      }
+      return builder->AddInstruction(HloInstruction::CreateAsyncDone(
+          *shape, operands[0], *async_computation, async_group_id,
+          *async_execution_thread));
     }
     case HloOpcode::kCopyStart: {
       // If the is_cross_program_prefetch attribute is not present then default
@@ -1463,75 +1710,69 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<bool> is_cross_program_prefetch = false;
       attrs["is_cross_program_prefetch"] = {/*required=*/false, AttrTy::kBool,
                                             &is_cross_program_prefetch};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateCopyStart(
-          shape, operands[0], *is_cross_program_prefetch));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateCopyStart(
+          *shape, operands[0], *is_cross_program_prefetch));
     }
     case HloOpcode::kReplicaId: {
-      if (!ParseOperands(&operands, builder, /*expected_size=*/0) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/0)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateReplicaId());
-      break;
+      return builder->AddInstruction(HloInstruction::CreateReplicaId());
     }
     case HloOpcode::kPartitionId: {
-      if (!ParseOperands(&operands, builder, /*expected_size=*/0) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/0)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreatePartitionId());
-      break;
+      return builder->AddInstruction(HloInstruction::CreatePartitionId());
     }
     case HloOpcode::kDynamicReshape: {
-      if (!ParseOperands(&operands, builder) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateDynamicReshape(
-              shape, operands[0],
-              absl::Span<HloInstruction* const>(operands).subspan(1)));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateDynamicReshape(
+          *shape, operands[0],
+          absl::Span<HloInstruction* const>(operands).subspan(1)));
     }
     case HloOpcode::kReshape: {
       optional<int64_t> inferred_dimension;
       attrs["inferred_dimension"] = {/*required=*/false, AttrTy::kInt64,
                                      &inferred_dimension};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateReshape(
-          shape, operands[0], inferred_dimension.value_or(-1)));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateReshape(
+          *shape, operands[0], inferred_dimension.value_or(-1)));
     }
     case HloOpcode::kAfterAll: {
-      if (!ParseOperands(&operands, builder) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
       if (operands.empty()) {
-        instruction = builder->AddInstruction(HloInstruction::CreateToken());
-      } else {
-        instruction =
-            builder->AddInstruction(HloInstruction::CreateAfterAll(operands));
+        return builder->AddInstruction(HloInstruction::CreateToken());
       }
-      break;
+      return builder->AddInstruction(HloInstruction::CreateAfterAll(operands));
     }
     case HloOpcode::kAddDependency: {
-      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/2)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      instruction = builder->AddInstruction(
+      return builder->AddInstruction(
           HloInstruction::CreateAddDependency(operands[0], operands[1]));
-      break;
     }
     case HloOpcode::kSort: {
       optional<std::vector<int64_t>> dimensions;
@@ -1542,50 +1783,44 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<HloComputation*> to_apply;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
-      if (!ParseOperands(&operands, builder) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes) ||
           dimensions->size() != 1) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                absl::InlinedVector<const Shape*, 2> arg_shapes;
-                arg_shapes.reserve(operands.size());
-                for (auto* operand : operands) {
-                  arg_shapes.push_back(&operand->shape());
-                }
-                return ShapeInference::InferVariadicOpShape(opcode, arg_shapes);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            absl::InlinedVector<const Shape*, 2> arg_shapes;
+            arg_shapes.reserve(operands.size());
+            for (auto* operand : operands) {
+              arg_shapes.push_back(&operand->shape());
+            }
+            return ShapeInference::InferVariadicOpShape(opcode, arg_shapes);
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateSort(shape, dimensions->at(0), operands,
+      return builder->AddInstruction(
+          HloInstruction::CreateSort(*shape, dimensions->at(0), operands,
                                      to_apply.value(), is_stable.value()));
-      break;
     }
     case HloOpcode::kTuple: {
-      if (!ParseOperands(&operands, builder) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                absl::InlinedVector<const Shape*, 2> arg_shapes;
-                arg_shapes.reserve(operands.size());
-                for (auto* operand : operands) {
-                  arg_shapes.push_back(&operand->shape());
-                }
-                return ShapeInference::InferVariadicOpShape(opcode, arg_shapes);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            absl::InlinedVector<const Shape*, 2> arg_shapes;
+            arg_shapes.reserve(operands.size());
+            for (auto* operand : operands) {
+              arg_shapes.push_back(&operand->shape());
+            }
+            return ShapeInference::InferVariadicOpShape(opcode, arg_shapes);
+          })) {
+        return nullptr;
       }
       // HloInstruction::CreateTuple() infers the shape of the tuple from
       // operands and should not be used here.
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateVariadic(shape, HloOpcode::kTuple, operands));
-      break;
+      return builder->AddInstruction(
+          HloInstruction::CreateVariadic(*shape, HloOpcode::kTuple, operands));
     }
     case HloOpcode::kWhile: {
       optional<HloComputation*> condition;
@@ -1593,22 +1828,20 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["condition"] = {/*required=*/true, AttrTy::kHloComputation,
                             &condition};
       attrs["body"] = {/*required=*/true, AttrTy::kHloComputation, &body};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferWhileShape(
-                    condition.value()->ComputeProgramShape(),
-                    body.value()->ComputeProgramShape(), operands[0]->shape());
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferWhileShape(
+                condition.value()->ComputeProgramShape(),
+                body.value()->ComputeProgramShape(), operands[0]->shape());
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateWhile(
-          shape, *condition, *body, /*init=*/operands[0]));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateWhile(
+          *shape, *condition, *body, /*init=*/operands[0]));
     }
     case HloOpcode::kRecv: {
       optional<int64_t> channel_id;
@@ -1617,14 +1850,14 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
       attrs["is_host_transfer"] = {/*required=*/false, AttrTy::kBool,
                                    &is_host_transfer};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
       // If the is_host_transfer attribute is not present then default to false.
-      instruction = builder->AddInstruction(HloInstruction::CreateRecv(
-          shape.tuple_shapes(0), operands[0], *channel_id, *is_host_transfer));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateRecv(
+          shape->tuple_shapes(0), operands[0], *channel_id, *is_host_transfer));
     }
     case HloOpcode::kRecvDone: {
       optional<int64_t> channel_id;
@@ -1633,19 +1866,19 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
       attrs["is_host_transfer"] = {/*required=*/false, AttrTy::kBool,
                                    &is_host_transfer};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
       if (dynamic_cast<const HloChannelInstruction*>(operands[0]) == nullptr) {
-        return false;
+        return nullptr;
       }
       if (channel_id != operands[0]->channel_id()) {
-        return false;
+        return nullptr;
       }
-      instruction = builder->AddInstruction(
+      return builder->AddInstruction(
           HloInstruction::CreateRecvDone(operands[0], *is_host_transfer));
-      break;
     }
     case HloOpcode::kSend: {
       optional<int64_t> channel_id;
@@ -1654,13 +1887,13 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
       attrs["is_host_transfer"] = {/*required=*/false, AttrTy::kBool,
                                    &is_host_transfer};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/2)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateSend(
+      return builder->AddInstruction(HloInstruction::CreateSend(
           operands[0], operands[1], *channel_id, *is_host_transfer));
-      break;
     }
     case HloOpcode::kSendDone: {
       optional<int64_t> channel_id;
@@ -1669,63 +1902,58 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
       attrs["is_host_transfer"] = {/*required=*/false, AttrTy::kBool,
                                    &is_host_transfer};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
       if (dynamic_cast<const HloChannelInstruction*>(operands[0]) == nullptr) {
-        return false;
+        return nullptr;
       }
       if (channel_id != operands[0]->channel_id()) {
-        return false;
+        return nullptr;
       }
-      instruction = builder->AddInstruction(
+      return builder->AddInstruction(
           HloInstruction::CreateSendDone(operands[0], *is_host_transfer));
-      break;
     }
     case HloOpcode::kGetTupleElement: {
       optional<int64_t> index;
       attrs["index"] = {/*required=*/true, AttrTy::kInt64, &index};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeUtil::GetTupleElementShape(operands[0]->shape(),
-                                                       *index);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeUtil::GetTupleElementShape(operands[0]->shape(),
+                                                   *index);
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateGetTupleElement(shape, operands[0], *index));
-      break;
+      return builder->AddInstruction(
+          HloInstruction::CreateGetTupleElement(*shape, operands[0], *index));
     }
     case HloOpcode::kCall: {
       optional<HloComputation*> to_apply;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
-      if (!ParseOperands(&operands, builder) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                absl::InlinedVector<const Shape*, 2> arg_shapes;
-                arg_shapes.reserve(operands.size());
-                for (auto* operand : operands) {
-                  arg_shapes.push_back(&operand->shape());
-                }
-                return ShapeInference::InferCallShape(
-                    arg_shapes, to_apply.value()->ComputeProgramShape());
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            absl::InlinedVector<const Shape*, 2> arg_shapes;
+            arg_shapes.reserve(operands.size());
+            for (auto* operand : operands) {
+              arg_shapes.push_back(&operand->shape());
+            }
+            return ShapeInference::InferCallShape(
+                arg_shapes, to_apply.value()->ComputeProgramShape());
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateCall(shape, operands, *to_apply));
-      break;
+      return builder->AddInstruction(
+          HloInstruction::CreateCall(*shape, operands, *to_apply));
     }
     case HloOpcode::kReduceWindow: {
       optional<HloComputation*> reduce_computation;
@@ -1733,36 +1961,33 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &reduce_computation};
-      if (!ParseOperands(&operands, builder) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
       if (!window) {
         window.emplace();
       }
       if (operands.size() % 2) {
-        auto loc = lexer_.GetLoc();
-        return Error(loc, StrCat("expects an even number of operands, but has ",
-                                 operands.size(), " operands"));
+        TokenError(StrCat("expects an even number of operands, but has ",
+                          operands.size(), " operands"));
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferReduceWindowShape(
-                    operands[0]->shape(), operands[1]->shape(), *window,
-                    reduce_computation.value()->ComputeProgramShape());
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferReduceWindowShape(
+                operands[0]->shape(), operands[1]->shape(), *window,
+                reduce_computation.value()->ComputeProgramShape());
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateReduceWindow(
-          shape, /*operands=*/
+      return builder->AddInstruction(HloInstruction::CreateReduceWindow(
+          *shape, /*operands=*/
           absl::Span<HloInstruction* const>(operands).subspan(
               0, operands.size() / 2),
           /*init_values=*/
           absl::Span<HloInstruction* const>(operands).subspan(operands.size() /
                                                               2),
           *window, *reduce_computation));
-      break;
     }
     case HloOpcode::kConvolution: {
       optional<Window> window;
@@ -1779,9 +2004,10 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<PrecisionConfig::Precision>> operand_precision;
       attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
                                     &operand_precision};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/2)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
       if (!window) {
         window.emplace();
@@ -1800,21 +2026,18 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         precision_config.mutable_operand_precision()->Resize(
             operands.size(), PrecisionConfig::DEFAULT);
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferConvolveShape(
-                    operands[0]->shape(), operands[1]->shape(),
-                    *feature_group_count, *batch_group_count, *window, *dnums,
-                    /*preferred_element_type=*/absl::nullopt);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferConvolveShape(
+                operands[0]->shape(), operands[1]->shape(),
+                *feature_group_count, *batch_group_count, *window, *dnums,
+                /*preferred_element_type=*/std::nullopt);
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateConvolve(
-          shape, /*lhs=*/operands[0], /*rhs=*/operands[1],
+      return builder->AddInstruction(HloInstruction::CreateConvolve(
+          *shape, /*lhs=*/operands[0], /*rhs=*/operands[1],
           feature_group_count.value(), batch_group_count.value(), *window,
           *dnums, precision_config));
-      break;
     }
     case HloOpcode::kFft: {
       optional<FftType> fft_type;
@@ -1822,41 +2045,36 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["fft_type"] = {/*required=*/true, AttrTy::kFftType, &fft_type};
       attrs["fft_length"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &fft_length};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferFftShape(operands[0]->shape(),
-                                                     *fft_type, *fft_length);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferFftShape(operands[0]->shape(),
+                                                 *fft_type, *fft_length);
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateFft(
-          shape, operands[0], *fft_type, *fft_length));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateFft(
+          *shape, operands[0], *fft_type, *fft_length));
     }
     case HloOpcode::kTriangularSolve: {
       TriangularSolveOptions options;
-      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/2)) ||
           (allow_attributes && !ParseAttributesAsProtoMessage(
                                    /*non_proto_attrs=*/attrs, &options))) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferTriangularSolveShape(
-                    operands[0]->shape(), operands[1]->shape(), options);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferTriangularSolveShape(
+                operands[0]->shape(), operands[1]->shape(), options);
+          })) {
+        return nullptr;
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateTriangularSolve(
-              shape, operands[0], operands[1], options));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateTriangularSolve(
+          *shape, operands[0], operands[1], options));
     }
     case HloOpcode::kCompare: {
       optional<ComparisonDirection> direction;
@@ -1864,43 +2082,40 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["direction"] = {/*required=*/true, AttrTy::kComparisonDirection,
                             &direction};
       attrs["type"] = {/*required=*/false, AttrTy::kComparisonType, &type};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/2)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferBinaryOpShape(opcode, operands[0],
-                                                          operands[1]);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferBinaryOpShape(opcode, operands[0],
+                                                      operands[1]);
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateCompare(
-          shape, operands[0], operands[1], *direction, type));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateCompare(
+          *shape, operands[0], operands[1], *direction, type));
     }
     case HloOpcode::kCholesky: {
       CholeskyOptions options;
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           (allow_attributes && !ParseAttributesAsProtoMessage(
                                    /*non_proto_attrs=*/attrs, &options))) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferCholeskyShape(operands[0]->shape());
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferCholeskyShape(operands[0]->shape());
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateCholesky(shape, operands[0], options));
-      break;
+      return builder->AddInstruction(
+          HloInstruction::CreateCholesky(*shape, operands[0], options));
     }
     case HloOpcode::kBroadcast: {
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1)) {
-        return false;
+      if (!preset_operands &&
+          !ParseOperands(&operands, builder, /*expected_size=*/1)) {
+        return nullptr;
       }
 
       // The `dimensions` attr is optional if the broadcasted operand is a
@@ -1910,49 +2125,43 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["dimensions"] = {/*required=*/!operand_is_scalar,
                              AttrTy::kBracedInt64List, &broadcast_dimensions};
       if (!ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
       if (operand_is_scalar && !broadcast_dimensions.has_value()) {
         broadcast_dimensions.emplace();
       }
 
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferBroadcastShape(
-                    operands[0]->shape(), *broadcast_dimensions);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferBroadcastShape(operands[0]->shape(),
+                                                       *broadcast_dimensions);
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateBroadcast(
-          shape, operands[0], *broadcast_dimensions));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateBroadcast(
+          *shape, operands[0], *broadcast_dimensions));
     }
     case HloOpcode::kConcatenate: {
       optional<std::vector<int64_t>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions};
-      if (!ParseOperands(&operands, builder) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes) ||
           dimensions->size() != 1) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                absl::InlinedVector<const Shape*, 2> arg_shapes;
-                arg_shapes.reserve(operands.size());
-                for (auto* operand : operands) {
-                  arg_shapes.push_back(&operand->shape());
-                }
-                return ShapeInference::InferConcatOpShape(arg_shapes,
-                                                          dimensions->at(0));
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            absl::InlinedVector<const Shape*, 2> arg_shapes;
+            arg_shapes.reserve(operands.size());
+            for (auto* operand : operands) {
+              arg_shapes.push_back(&operand->shape());
+            }
+            return ShapeInference::InferConcatOpShape(arg_shapes,
+                                                      dimensions->at(0));
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateConcatenate(
-          shape, operands, dimensions->at(0)));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateConcatenate(
+          *shape, operands, dimensions->at(0)));
     }
     case HloOpcode::kMap: {
       optional<HloComputation*> to_apply;
@@ -1961,88 +2170,79 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<int64_t>> dimensions;
       attrs["dimensions"] = {/*required=*/false, AttrTy::kBracedInt64List,
                              &dimensions};
-      if (!ParseOperands(&operands, builder) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                absl::InlinedVector<const Shape*, 2> arg_shapes;
-                arg_shapes.reserve(operands.size());
-                for (auto* operand : operands) {
-                  arg_shapes.push_back(&operand->shape());
-                }
-                return ShapeInference::InferMapShape(
-                    arg_shapes, to_apply.value()->ComputeProgramShape(),
-                    *dimensions);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            absl::InlinedVector<const Shape*, 2> arg_shapes;
+            arg_shapes.reserve(operands.size());
+            for (auto* operand : operands) {
+              arg_shapes.push_back(&operand->shape());
+            }
+            return ShapeInference::InferMapShape(
+                arg_shapes, to_apply.value()->ComputeProgramShape(),
+                *dimensions);
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateMap(shape, operands, *to_apply));
-      break;
+      return builder->AddInstruction(
+          HloInstruction::CreateMap(*shape, operands, *to_apply));
     }
     case HloOpcode::kReduce: {
-      auto loc = lexer_.GetLoc();
-
       optional<HloComputation*> reduce_computation;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &reduce_computation};
       optional<std::vector<int64_t>> dimensions_to_reduce;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions_to_reduce};
-      if (!ParseOperands(&operands, builder) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
       if (operands.size() % 2) {
-        return Error(loc, StrCat("expects an even number of operands, but has ",
-                                 operands.size(), " operands"));
+        TokenError(StrCat("expects an even number of operands, but has ",
+                          operands.size(), " operands"));
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                absl::InlinedVector<const Shape*, 2> arg_shapes;
-                arg_shapes.reserve(operands.size());
-                for (auto* operand : operands) {
-                  arg_shapes.push_back(&operand->shape());
-                }
-                return ShapeInference::InferReduceShape(
-                    arg_shapes, *dimensions_to_reduce,
-                    reduce_computation.value()->ComputeProgramShape());
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            absl::InlinedVector<const Shape*, 2> arg_shapes;
+            arg_shapes.reserve(operands.size());
+            for (auto* operand : operands) {
+              arg_shapes.push_back(&operand->shape());
+            }
+            return ShapeInference::InferReduceShape(
+                arg_shapes, *dimensions_to_reduce,
+                reduce_computation.value()->ComputeProgramShape());
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateReduce(
-          shape, /*operands=*/
+      return builder->AddInstruction(HloInstruction::CreateReduce(
+          *shape, /*operands=*/
           absl::Span<HloInstruction* const>(operands).subspan(
               0, operands.size() / 2),
           /*init_values=*/
           absl::Span<HloInstruction* const>(operands).subspan(operands.size() /
                                                               2),
           *dimensions_to_reduce, *reduce_computation));
-      break;
     }
     case HloOpcode::kReverse: {
       optional<std::vector<int64_t>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferReverseShape(operands[0]->shape(),
-                                                         *dimensions);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferReverseShape(operands[0]->shape(),
+                                                     *dimensions);
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateReverse(shape, operands[0], *dimensions));
-      break;
+      return builder->AddInstruction(
+          HloInstruction::CreateReverse(*shape, operands[0], *dimensions));
     }
     case HloOpcode::kSelectAndScatter: {
       optional<HloComputation*> select;
@@ -2051,101 +2251,95 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["scatter"] = {/*required=*/true, AttrTy::kHloComputation, &scatter};
       optional<Window> window;
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/3) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/3)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
       if (!window) {
         window.emplace();
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferSelectAndScatterShape(
-                    operands[0]->shape(), select.value()->ComputeProgramShape(),
-                    *window, operands[1]->shape(), operands[2]->shape(),
-                    scatter.value()->ComputeProgramShape());
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferSelectAndScatterShape(
+                operands[0]->shape(), select.value()->ComputeProgramShape(),
+                *window, operands[1]->shape(), operands[2]->shape(),
+                scatter.value()->ComputeProgramShape());
+          })) {
+        return nullptr;
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateSelectAndScatter(
-              shape, /*operand=*/operands[0], *select, *window,
-              /*source=*/operands[1], /*init_value=*/operands[2], *scatter));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateSelectAndScatter(
+          *shape, /*operand=*/operands[0], *select, *window,
+          /*source=*/operands[1], /*init_value=*/operands[2], *scatter));
     }
     case HloOpcode::kSlice: {
       optional<SliceRanges> slice_ranges;
       attrs["slice"] = {/*required=*/true, AttrTy::kSliceRanges, &slice_ranges};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateSlice(
-          shape, operands[0], slice_ranges->starts, slice_ranges->limits,
+      return builder->AddInstruction(HloInstruction::CreateSlice(
+          *shape, operands[0], slice_ranges->starts, slice_ranges->limits,
           slice_ranges->strides));
-      break;
     }
     case HloOpcode::kDynamicSlice: {
       optional<std::vector<int64_t>> dynamic_slice_sizes;
       attrs["dynamic_slice_sizes"] = {
           /*required=*/true, AttrTy::kBracedInt64List, &dynamic_slice_sizes};
-      LocTy loc = lexer_.GetLoc();
-      if (!ParseOperands(&operands, builder) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
       if (operands.empty()) {
-        return Error(loc, "Expected at least one operand.");
+        TokenError("Expected at least one operand.");
+        return nullptr;
       }
       if (!(operands.size() == 2 && operands[1]->shape().rank() == 1) &&
           operands.size() != 1 + operands[0]->shape().rank()) {
-        return Error(loc, "Wrong number of operands.");
+        TokenError("Wrong number of operands.");
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateDynamicSlice(
-          shape, /*operand=*/operands[0],
+      return builder->AddInstruction(HloInstruction::CreateDynamicSlice(
+          *shape, /*operand=*/operands[0],
           /*start_indices=*/absl::MakeSpan(operands).subspan(1),
           *dynamic_slice_sizes));
-      break;
     }
     case HloOpcode::kDynamicUpdateSlice: {
-      LocTy loc = lexer_.GetLoc();
-      if (!ParseOperands(&operands, builder) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
       if (operands.size() < 2) {
-        return Error(loc, "Expected at least two operands.");
+        TokenError("Expected at least two operands.");
+        return nullptr;
       }
       if (!(operands.size() == 3 && operands[2]->shape().rank() == 1) &&
           operands.size() != 2 + operands[0]->shape().rank()) {
-        return Error(loc, "Wrong number of operands.");
+        TokenError("Wrong number of operands.");
+        return nullptr;
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-              shape, /*operand=*/operands[0], /*update=*/operands[1],
-              /*start_indices=*/absl::MakeSpan(operands).subspan(2)));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+          *shape, /*operand=*/operands[0], /*update=*/operands[1],
+          /*start_indices=*/absl::MakeSpan(operands).subspan(2)));
     }
     case HloOpcode::kTranspose: {
       optional<std::vector<int64_t>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferTransposeShape(operands[0]->shape(),
-                                                           *dimensions);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferTransposeShape(operands[0]->shape(),
+                                                       *dimensions);
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateTranspose(shape, operands[0], *dimensions));
-      break;
+      return builder->AddInstruction(
+          HloInstruction::CreateTranspose(*shape, operands[0], *dimensions));
     }
     case HloOpcode::kBatchNormTraining: {
       optional<float> epsilon;
@@ -2153,24 +2347,21 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<int64_t> feature_index;
       attrs["feature_index"] = {/*required=*/true, AttrTy::kInt64,
                                 &feature_index};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/3) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/3)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferBatchNormTrainingShape(
-                    operands[0]->shape(), operands[1]->shape(),
-                    operands[2]->shape(), *feature_index);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferBatchNormTrainingShape(
+                operands[0]->shape(), operands[1]->shape(),
+                operands[2]->shape(), *feature_index);
+          })) {
+        return nullptr;
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateBatchNormTraining(
-              shape, /*operand=*/operands[0], /*scale=*/operands[1],
-              /*offset=*/operands[2], *epsilon, *feature_index));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateBatchNormTraining(
+          *shape, /*operand=*/operands[0], /*scale=*/operands[1],
+          /*offset=*/operands[2], *epsilon, *feature_index));
     }
     case HloOpcode::kBatchNormInference: {
       optional<float> epsilon;
@@ -2178,26 +2369,23 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<int64_t> feature_index;
       attrs["feature_index"] = {/*required=*/true, AttrTy::kInt64,
                                 &feature_index};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/5) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/5)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferBatchNormInferenceShape(
-                    operands[0]->shape(), operands[1]->shape(),
-                    operands[2]->shape(), operands[3]->shape(),
-                    operands[4]->shape(), *feature_index);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferBatchNormInferenceShape(
+                operands[0]->shape(), operands[1]->shape(),
+                operands[2]->shape(), operands[3]->shape(),
+                operands[4]->shape(), *feature_index);
+          })) {
+        return nullptr;
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateBatchNormInference(
-              shape, /*operand=*/operands[0], /*scale=*/operands[1],
-              /*offset=*/operands[2], /*mean=*/operands[3],
-              /*variance=*/operands[4], *epsilon, *feature_index));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateBatchNormInference(
+          *shape, /*operand=*/operands[0], /*scale=*/operands[1],
+          /*offset=*/operands[2], /*mean=*/operands[3],
+          /*variance=*/operands[4], *epsilon, *feature_index));
     }
     case HloOpcode::kBatchNormGrad: {
       optional<float> epsilon;
@@ -2205,44 +2393,40 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<int64_t> feature_index;
       attrs["feature_index"] = {/*required=*/true, AttrTy::kInt64,
                                 &feature_index};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/5) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/5)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferBatchNormGradShape(
-                    operands[0]->shape(), operands[1]->shape(),
-                    operands[2]->shape(), operands[3]->shape(),
-                    operands[4]->shape(), *feature_index);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferBatchNormGradShape(
+                operands[0]->shape(), operands[1]->shape(),
+                operands[2]->shape(), operands[3]->shape(),
+                operands[4]->shape(), *feature_index);
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateBatchNormGrad(
-          shape, /*operand=*/operands[0], /*scale=*/operands[1],
+      return builder->AddInstruction(HloInstruction::CreateBatchNormGrad(
+          *shape, /*operand=*/operands[0], /*scale=*/operands[1],
           /*mean=*/operands[2], /*variance=*/operands[3],
           /*grad_output=*/operands[4], *epsilon, *feature_index));
-      break;
     }
     case HloOpcode::kPad: {
       optional<PaddingConfig> padding;
       attrs["padding"] = {/*required=*/true, AttrTy::kPaddingConfig, &padding};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/2)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferPadShape(
-                    operands[0]->shape(), operands[1]->shape(), *padding);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferPadShape(
+                operands[0]->shape(), operands[1]->shape(), *padding);
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreatePad(
-          shape, operands[0], /*padding_value=*/operands[1], *padding));
-      break;
+      return builder->AddInstruction(HloInstruction::CreatePad(
+          *shape, operands[0], /*padding_value=*/operands[1], *padding));
     }
     case HloOpcode::kFusion: {
       optional<HloComputation*> fusion_computation;
@@ -2250,34 +2434,45 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                         &fusion_computation};
       optional<HloInstruction::FusionKind> fusion_kind;
       attrs["kind"] = {/*required=*/true, AttrTy::kFusionKind, &fusion_kind};
-      if (!ParseOperands(&operands, builder) ||
+      optional<
+          std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
+          output_to_operand_aliasing;
+      attrs["output_to_operand_aliasing"] = {/*required=*/false,
+                                             AttrTy::kInstructionAliasing,
+                                             &output_to_operand_aliasing};
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateFusion(
-          shape, *fusion_kind, operands, *fusion_computation));
-      break;
+      auto instr = builder->AddInstruction(HloInstruction::CreateFusion(
+          *shape, *fusion_kind, operands, *fusion_computation));
+      auto fusion_instr = Cast<HloFusionInstruction>(instr);
+      if (output_to_operand_aliasing.has_value()) {
+        fusion_instr->set_output_to_operand_aliasing(
+            std::move(*output_to_operand_aliasing));
+      }
+      return instr;
     }
     case HloOpcode::kInfeed: {
       optional<std::string> config;
       attrs["infeed_config"] = {/*required=*/false, AttrTy::kString, &config};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
       // We need to know the infeed data shape to construct the infeed
       // instruction. This is the zero-th element of the tuple-shaped output of
       // the infeed instruction. ShapeUtil::GetTupleElementShape will check fail
       // if the shape is not a non-empty tuple, so add guard so an error message
       // can be emitted instead of a check fail
-      if (!shape.IsTuple() && !ShapeUtil::IsEmptyTuple(shape)) {
-        return Error(lexer_.GetLoc(),
-                     "infeed must have a non-empty tuple shape");
+      if (!shape->IsTuple() && !ShapeUtil::IsEmptyTuple(*shape)) {
+        TokenError("infeed must have a non-empty tuple shape");
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateInfeed(
-          ShapeUtil::GetTupleElementShape(shape, 0), operands[0],
+      return builder->AddInstruction(HloInstruction::CreateInfeed(
+          ShapeUtil::GetTupleElementShape(*shape, 0), operands[0],
           config ? *config : ""));
-      break;
     }
     case HloOpcode::kOutfeed: {
       optional<std::string> config;
@@ -2285,53 +2480,50 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["outfeed_config"] = {/*required=*/false, AttrTy::kString, &config};
       attrs["outfeed_shape"] = {/*required=*/false, AttrTy::kShape,
                                 &outfeed_shape};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/2)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
       HloInstruction* const outfeed_input = operands[0];
       HloInstruction* const outfeed_token = operands[1];
       const Shape shape =
           outfeed_shape.has_value() ? *outfeed_shape : outfeed_input->shape();
-      instruction = builder->AddInstruction(HloInstruction::CreateOutfeed(
+      return builder->AddInstruction(HloInstruction::CreateOutfeed(
           shape, outfeed_input, outfeed_token, config ? *config : ""));
-      break;
     }
     case HloOpcode::kRng: {
       optional<RandomDistribution> distribution;
       attrs["distribution"] = {/*required=*/true, AttrTy::kDistribution,
                                &distribution};
-      if (!ParseOperands(&operands, builder) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateRng(shape, *distribution, operands));
-      break;
+      return builder->AddInstruction(
+          HloInstruction::CreateRng(*shape, *distribution, operands));
     }
     case HloOpcode::kRngGetAndUpdateState: {
       optional<int64_t> delta;
       attrs["delta"] = {/*required=*/true, AttrTy::kInt64, &delta};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/0) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/0)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateRngGetAndUpdateState(shape, *delta));
-      break;
+      return builder->AddInstruction(
+          HloInstruction::CreateRngGetAndUpdateState(*shape, *delta));
     }
     case HloOpcode::kRngBitGenerator: {
       optional<RandomAlgorithm> algorithm;
       attrs["algorithm"] = {/*required=*/true, AttrTy::kRandomAlgorithm,
                             &algorithm};
-      if (!ParseOperands(&operands, builder) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateRngBitGenerator(
-              shape, operands[0], *algorithm));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateRngBitGenerator(
+          *shape, operands[0], *algorithm));
     }
     case HloOpcode::kReducePrecision: {
       optional<int64_t> exponent_bits;
@@ -2340,25 +2532,25 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                 &exponent_bits};
       attrs["mantissa_bits"] = {/*required=*/true, AttrTy::kInt64,
                                 &mantissa_bits};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateReducePrecision(
-              shape, operands[0], static_cast<int>(*exponent_bits),
-              static_cast<int>(*mantissa_bits)));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateReducePrecision(
+          *shape, operands[0], static_cast<int>(*exponent_bits),
+          static_cast<int>(*mantissa_bits)));
     }
     case HloOpcode::kConditional: {
       optional<HloComputation*> true_computation;
       optional<HloComputation*> false_computation;
       optional<std::vector<HloComputation*>> branch_computations;
-      if (!ParseOperands(&operands, builder)) {
-        return false;
+      if (!preset_operands && !ParseOperands(&operands, builder)) {
+        return nullptr;
       }
       if (!ShapeUtil::IsScalar(operands[0]->shape())) {
-        return Error(lexer_.GetLoc(), "The first operand must be a scalar");
+        TokenError("The first operand must be a scalar");
+        return nullptr;
       }
       const bool branch_index_is_bool =
           operands[0]->shape().element_type() == PRED;
@@ -2369,48 +2561,45 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
             /*required=*/true, AttrTy::kHloComputation, &false_computation};
       } else {
         if (operands[0]->shape().element_type() != S32) {
-          return Error(lexer_.GetLoc(),
-                       "The first operand must be a scalar of PRED or S32");
+          TokenError("The first operand must be a scalar of PRED or S32");
+          return nullptr;
         }
         attrs["branch_computations"] = {/*required=*/true,
                                         AttrTy::kBracedHloComputationList,
                                         &branch_computations};
       }
       if (!ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
       if (branch_index_is_bool) {
         branch_computations.emplace({*true_computation, *false_computation});
       }
       if (branch_computations->empty() ||
           operands.size() != branch_computations->size() + 1) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                absl::InlinedVector<ProgramShape, 2> branch_computation_shapes;
-                branch_computation_shapes.reserve(branch_computations->size());
-                for (auto* computation : *branch_computations) {
-                  branch_computation_shapes.push_back(
-                      computation->ComputeProgramShape());
-                }
-                absl::InlinedVector<Shape, 2> branch_operand_shapes;
-                branch_operand_shapes.reserve(operands.size() - 1);
-                for (int i = 1; i < operands.size(); ++i) {
-                  branch_operand_shapes.push_back(operands[i]->shape());
-                }
-                return ShapeInference::InferConditionalShape(
-                    operands[0]->shape(), branch_computation_shapes,
-                    branch_operand_shapes);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            absl::InlinedVector<ProgramShape, 2> branch_computation_shapes;
+            branch_computation_shapes.reserve(branch_computations->size());
+            for (auto* computation : *branch_computations) {
+              branch_computation_shapes.push_back(
+                  computation->ComputeProgramShape());
+            }
+            absl::InlinedVector<Shape, 2> branch_operand_shapes;
+            branch_operand_shapes.reserve(operands.size() - 1);
+            for (int i = 1; i < operands.size(); ++i) {
+              branch_operand_shapes.push_back(operands[i]->shape());
+            }
+            return ShapeInference::InferConditionalShape(
+                operands[0]->shape(), branch_computation_shapes,
+                branch_operand_shapes);
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateConditional(
-          shape, /*branch_index=*/operands[0],
+      return builder->AddInstruction(HloInstruction::CreateConditional(
+          *shape, /*branch_index=*/operands[0],
           absl::MakeSpan(*branch_computations),
           absl::MakeSpan(operands).subspan(1)));
-      break;
     }
     case HloOpcode::kCustomCall: {
       optional<std::string> custom_call_target;
@@ -2458,78 +2647,76 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<PrecisionConfig::Precision>> operand_precision;
       attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
                                     &operand_precision};
+      HloInstruction* instruction;
       if (called_computations.has_value() && to_apply.has_value()) {
-        return Error(lexer_.GetLoc(),
-                     "A single instruction can't have both to_apply and "
-                     "calls field");
+        TokenError(
+            "A single instruction can't have both to_apply and "
+            "calls field");
+        return nullptr;
       }
       attrs["schedule"] = {/*required=*/false, AttrTy::kCustomCallSchedule,
                            &custom_call_schedule};
       attrs["api_version"] = {/*required=*/false, AttrTy::kCustomCallApiVersion,
                               &api_version};
-      if (!ParseOperands(&operands, builder) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
 
       if (api_version.has_value() &&
           *api_version == CustomCallApiVersion::API_VERSION_UNSPECIFIED) {
-        return Error(lexer_.GetLoc(),
-                     StrCat("Invalid API version: ",
-                            CustomCallApiVersion_Name(*api_version)));
+        TokenError(StrCat("Invalid API version: ",
+                          CustomCallApiVersion_Name(*api_version)));
+        return nullptr;
       }
       if (operand_layout_constraints.has_value()) {
-        if (!LayoutUtil::HasLayout(shape)) {
-          return Error(lexer_.GetLoc(),
-                       "Layout must be set on layout-constrained custom call");
+        if (!LayoutUtil::HasLayout(*shape)) {
+          TokenError("Layout must be set on layout-constrained custom call");
+          return nullptr;
         }
         if (operands.size() != operand_layout_constraints->size()) {
-          return Error(lexer_.GetLoc(),
-                       StrCat("Expected ", operands.size(),
-                              " operand layout constraints, ",
-                              operand_layout_constraints->size(), " given"));
+          TokenError(StrCat("Expected ", operands.size(),
+                            " operand layout constraints, ",
+                            operand_layout_constraints->size(), " given"));
+          return nullptr;
         }
         for (int64_t i = 0; i < operands.size(); ++i) {
           const Shape& operand_shape_with_layout =
               (*operand_layout_constraints)[i];
           if (!LayoutUtil::HasLayout(operand_shape_with_layout)) {
-            return Error(lexer_.GetLoc(),
-                         StrCat("Operand layout constraint shape ",
-                                ShapeUtil::HumanStringWithLayout(
-                                    operand_shape_with_layout),
-                                " for operand ", i, " does not have a layout"));
+            TokenError(StrCat(
+                "Operand layout constraint shape ",
+                ShapeUtil::HumanStringWithLayout(operand_shape_with_layout),
+                " for operand ", i, " does not have a layout"));
+            return nullptr;
           }
           if (!ShapeUtil::Compatible(operand_shape_with_layout,
                                      operands[i]->shape())) {
-            return Error(
-                lexer_.GetLoc(),
-                StrCat(
-                    "Operand layout constraint shape ",
-                    ShapeUtil::HumanStringWithLayout(operand_shape_with_layout),
-                    " for operand ", i,
-                    " is not compatible with operand shape ",
-                    ShapeUtil::HumanStringWithLayout(operands[i]->shape())));
+            TokenError(StrCat(
+                "Operand layout constraint shape ",
+                ShapeUtil::HumanStringWithLayout(operand_shape_with_layout),
+                " for operand ", i, " is not compatible with operand shape ",
+                ShapeUtil::HumanStringWithLayout(operands[i]->shape())));
+            return nullptr;
           }
         }
         instruction = builder->AddInstruction(HloInstruction::CreateCustomCall(
-            shape, operands, *custom_call_target, *operand_layout_constraints,
-            backend_config ? *backend_config : ""));
+            *shape, operands, *custom_call_target, *operand_layout_constraints,
+            ""));
       } else {
         if (to_apply.has_value()) {
           instruction =
               builder->AddInstruction(HloInstruction::CreateCustomCall(
-                  shape, operands, *to_apply, *custom_call_target,
-                  backend_config ? *backend_config : ""));
+                  *shape, operands, *to_apply, *custom_call_target, ""));
         } else if (called_computations.has_value()) {
           instruction =
               builder->AddInstruction(HloInstruction::CreateCustomCall(
-                  shape, operands, *called_computations, *custom_call_target,
-                  backend_config ? *backend_config : ""));
+                  *shape, operands, *called_computations, *custom_call_target,
+                  ""));
         } else {
           instruction =
               builder->AddInstruction(HloInstruction::CreateCustomCall(
-                  shape, operands, *custom_call_target,
-                  backend_config ? *backend_config : ""));
+                  *shape, operands, *custom_call_target, ""));
         }
       }
       auto custom_call_instr = Cast<HloCustomCallInstruction>(instruction);
@@ -2574,7 +2761,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
             operands.size(), PrecisionConfig::DEFAULT);
       }
       *custom_call_instr->mutable_precision_config() = precision_config;
-      break;
+      return instruction;
     }
     case HloOpcode::kDot: {
       optional<std::vector<int64_t>> lhs_contracting_dims;
@@ -2593,9 +2780,10 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
                                     &operand_precision};
 
-      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/2)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
 
       DotDimensionNumbers dnum;
@@ -2624,18 +2812,15 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         precision_config.mutable_operand_precision()->Resize(
             operands.size(), PrecisionConfig::DEFAULT);
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferDotOpShape(
-                    operands[0]->shape(), operands[1]->shape(), dnum,
-                    /*preferred_element_type=*/absl::nullopt);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferDotOpShape(
+                operands[0]->shape(), operands[1]->shape(), dnum,
+                /*preferred_element_type=*/std::nullopt);
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateDot(
-          shape, operands[0], operands[1], dnum, precision_config));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateDot(
+          *shape, operands[0], operands[1], dnum, precision_config));
     }
     case HloOpcode::kGather: {
       optional<std::vector<int64_t>> offset_dims;
@@ -2657,9 +2842,10 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["indices_are_sorted"] = {/*required=*/false, AttrTy::kBool,
                                      &indices_are_sorted};
 
-      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/2)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
 
       GatherDimensionNumbers dim_numbers =
@@ -2668,19 +2854,16 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
               /*collapsed_slice_dims=*/*collapsed_slice_dims,
               /*start_index_map=*/*start_index_map,
               /*index_vector_dim=*/*index_vector_dim);
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferGatherShape(
-                    operands[0]->shape(), operands[1]->shape(), dim_numbers,
-                    *slice_sizes);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferGatherShape(operands[0]->shape(),
+                                                    operands[1]->shape(),
+                                                    dim_numbers, *slice_sizes);
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateGather(
-          shape, /*operand=*/operands[0], /*start_indices=*/operands[1],
+      return builder->AddInstruction(HloInstruction::CreateGather(
+          *shape, /*operand=*/operands[0], /*start_indices=*/operands[1],
           dim_numbers, *slice_sizes, indices_are_sorted.value()));
-      break;
     }
     case HloOpcode::kScatter: {
       optional<std::vector<int64_t>> update_window_dims;
@@ -2707,9 +2890,15 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["unique_indices"] = {/*required=*/false, AttrTy::kBool,
                                  &unique_indices};
 
-      if (!ParseOperands(&operands, builder, /*expected_size=*/3) ||
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
+      }
+
+      if (operands.size() % 2 == 0) {
+        TokenError(StrCat("expects an odd number of operands, but has ",
+                          operands.size(), " operands"));
+        return nullptr;
       }
 
       ScatterDimensionNumbers dim_numbers =
@@ -2719,147 +2908,80 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
               /*scatter_dims_to_operand_dims=*/*scatter_dims_to_operand_dims,
               /*index_vector_dim=*/*index_vector_dim);
 
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferScatterShape(
-                    operands[0]->shape(), operands[1]->shape(),
-                    operands[2]->shape(),
-                    update_computation.value()->ComputeProgramShape(),
-                    dim_numbers);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            absl::InlinedVector<const Shape*, 3> arg_shapes;
+            arg_shapes.reserve(operands.size());
+            for (auto* operand : operands) {
+              arg_shapes.push_back(&operand->shape());
+            }
+            return ShapeInference::InferScatterShape(
+                arg_shapes, update_computation.value()->ComputeProgramShape(),
+                dim_numbers);
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateScatter(
-          shape, /*operand=*/operands[0], /*scatter_indices=*/operands[1],
-          /*updates=*/operands[2], *update_computation, dim_numbers,
+      auto input_count = operands.size() / 2;
+      auto operand_span = absl::MakeConstSpan(operands);
+      return builder->AddInstruction(HloInstruction::CreateScatter(
+          *shape, operand_span.first(input_count), operands[input_count],
+          operand_span.last(input_count), *update_computation, dim_numbers,
           indices_are_sorted.value(), unique_indices.value()));
-      break;
     }
     case HloOpcode::kDomain: {
       DomainData domain;
       attrs["domain"] = {/*required=*/true, AttrTy::kDomain, &domain};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferUnaryOpShape(opcode, operands[0]);
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferUnaryOpShape(opcode, operands[0]);
+          })) {
+        return nullptr;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateDomain(
-          shape, operands[0], std::move(domain.exit_metadata),
+      return builder->AddInstruction(HloInstruction::CreateDomain(
+          *shape, operands[0], std::move(domain.exit_metadata),
           std::move(domain.entry_metadata)));
-      break;
     }
-    case HloOpcode::kTrace:
-      return TokenError(StrCat("parsing not yet implemented for op: ",
-                               HloOpcodeString(opcode)));
     case HloOpcode::kGetDimensionSize: {
       optional<std::vector<int64_t>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/1) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferGetDimensionSizeShape(
-                    operands[0]->shape(), dimensions->at(0));
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferGetDimensionSizeShape(
+                operands[0]->shape(), dimensions->at(0));
+          })) {
+        return nullptr;
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateGetDimensionSize(
-              shape, operands[0], (*dimensions)[0]));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateGetDimensionSize(
+          *shape, operands[0], (*dimensions)[0]));
     }
     case HloOpcode::kSetDimensionSize: {
       optional<std::vector<int64_t>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions};
-      if (!ParseOperands(&operands, builder, /*expected_size=*/2) ||
+      if ((!preset_operands &&
+           !ParseOperands(&operands, builder, /*expected_size=*/2)) ||
           !ParseAttributes(attrs, allow_attributes)) {
-        return false;
+        return nullptr;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferSetDimensionSizeShape(
-                    operands[0]->shape(), operands[1]->shape(),
-                    dimensions->at(0));
-              },
-              &shape)) {
-        return false;
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferSetDimensionSizeShape(
+                operands[0]->shape(), operands[1]->shape(), dimensions->at(0));
+          })) {
+        return nullptr;
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateSetDimensionSize(
-              shape, operands[0], operands[1], (*dimensions)[0]));
-      break;
+      return builder->AddInstruction(HloInstruction::CreateSetDimensionSize(
+          *shape, operands[0], operands[1], (*dimensions)[0]));
     }
   }
-
-  // Generate a unique name if the name is empty.  This is used for nested
-  // instructions (e.g. the `max` in add(max(x, y), z)).
-  //
-  // Otherwise, register the given name with the name uniquer.
-  if (name.empty()) {
-    name = name_uniquer_.GetUniqueName(
-        absl::StrCat(HloOpcodeString(instruction->opcode()), ".anon"));
-  } else {
-    name_uniquer_.GetUniqueName(name);
-  }
-
-  instruction->SetAndSanitizeName(name);
-  if (instruction->name() != name) {
-    return Error(name_loc,
-                 StrCat("illegal instruction name: ", name,
-                        "; suggest renaming to: ", instruction->name()));
-  }
-
-  // Add shared attributes like metadata to the instruction, if they were seen.
-  if (sharding) {
-    instruction->set_sharding(
-        HloSharding::FromProto(sharding.value()).ValueOrDie());
-  }
-  if (parameter_replication) {
-    int leaf_count = ShapeUtil::GetLeafCount(instruction->shape());
-    const auto& replicated =
-        parameter_replication->replicated_at_leaf_buffers();
-    if (leaf_count != replicated.size()) {
-      return Error(lexer_.GetLoc(),
-                   StrCat("parameter has ", leaf_count,
-                          " leaf buffers, but parameter_replication has ",
-                          replicated.size(), " elements."));
-    }
-    instruction->set_parameter_replicated_at_leaf_buffers(replicated);
-  }
-  if (predecessors) {
-    for (auto* pre : *predecessors) {
-      Status status = pre->AddControlDependencyTo(instruction);
-      if (!status.ok()) {
-        return Error(name_loc, StrCat("error adding control dependency for: ",
-                                      name, " status: ", status.ToString()));
-      }
-    }
-  }
-  if (metadata) {
-    instruction->set_metadata(*metadata);
-  }
-  if (backend_config) {
-    instruction->set_raw_backend_config_string(std::move(*backend_config));
-  }
-  if (outer_dimension_partitions) {
-    instruction->set_outer_dimension_partitions(*outer_dimension_partitions);
-  }
-  if (frontend_attributes) {
-    instruction->set_frontend_attributes(*frontend_attributes);
-  }
-  return AddInstruction(name, instruction, name_loc);
+  return nullptr;
 }  // NOLINT(readability/fn_size)
 
 // ::= '{' (single_sharding | tuple_sharding) '}'
@@ -3135,14 +3257,14 @@ bool HloParserImpl::ParseDomain(DomainData* domain) {
     return false;
   }
   if (*kind == ShardingMetadata::KindName()) {
-    auto entry_sharding_ptr = absl::make_unique<HloSharding>(
-        HloSharding::FromProto(*entry_sharding).ValueOrDie());
-    auto exit_sharding_ptr = absl::make_unique<HloSharding>(
-        HloSharding::FromProto(*exit_sharding).ValueOrDie());
+    auto entry_sharding_ptr = std::make_unique<HloSharding>(
+        HloSharding::FromProto(*entry_sharding).value());
+    auto exit_sharding_ptr = std::make_unique<HloSharding>(
+        HloSharding::FromProto(*exit_sharding).value());
     domain->entry_metadata =
-        absl::make_unique<ShardingMetadata>(std::move(entry_sharding_ptr));
+        std::make_unique<ShardingMetadata>(std::move(entry_sharding_ptr));
     domain->exit_metadata =
-        absl::make_unique<ShardingMetadata>(std::move(exit_sharding_ptr));
+        std::make_unique<ShardingMetadata>(std::move(exit_sharding_ptr));
   } else {
     return TokenError(StrCat("unsupported domain kind: ", *kind));
   }
@@ -3207,11 +3329,16 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, double value, int64_t index,
                                       Literal* literal) {
   const Shape& shape = literal->shape();
   switch (shape.element_type()) {
+    case F8E5M2:
+      return SetValueInLiteralHelper<tsl::float8_e5m2>(loc, value, index,
+                                                       literal);
+    case F8E4M3FN:
+      return SetValueInLiteralHelper<tsl::float8_e4m3fn>(loc, value, index,
+                                                         literal);
     case F16:
       return SetValueInLiteralHelper<Eigen::half>(loc, value, index, literal);
     case BF16:
-      return SetValueInLiteralHelper<tensorflow::bfloat16>(loc, value, index,
-                                                           literal);
+      return SetValueInLiteralHelper<tsl::bfloat16>(loc, value, index, literal);
     case F32:
       return SetValueInLiteralHelper<float>(loc, value, index, literal);
     case F64:
@@ -3350,22 +3477,34 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
       return true;
     }
     auto nan_payload = GetNanPayload(parsed_value_component);
-    if (nan_payload == QuietNanWithoutPayload<double>()) {
-      nan_payload = QuietNanWithoutPayload<LiteralNativeComponentT>();
+    if constexpr (std::is_same<LiteralNativeComponentT,
+                               tsl::float8_e4m3fn>::value) {
+      if (nan_payload != QuietNanWithoutPayload<double>()) {
+        return Error(
+            loc, StrCat("tries to set NaN payload 0x", absl::Hex(nan_payload),
+                        " to a literal in shape ",
+                        ShapeUtil::HumanString(literal->shape()),
+                        " at linear index ", index,
+                        ", but f8e4m3fn does not support payloads"));
+      }
+    } else {
+      if (nan_payload == QuietNanWithoutPayload<double>()) {
+        nan_payload = QuietNanWithoutPayload<LiteralNativeComponentT>();
+      }
+      const auto kLargestPayload = NanPayloadBitMask<LiteralNativeComponentT>();
+      if (nan_payload > kLargestPayload) {
+        return Error(
+            loc, StrCat("tries to set NaN payload 0x", absl::Hex(nan_payload),
+                        " to a literal in shape ",
+                        ShapeUtil::HumanString(literal->shape()),
+                        " at linear index ", index,
+                        ", but the NaN payload is out of range (0x",
+                        absl::Hex(kLargestPayload), ")"));
+      }
+      *literal_value_component = NanWithSignAndPayload<LiteralNativeComponentT>(
+          /*sign=*/std::signbit(static_cast<double>(parsed_value_component)),
+          /*nan_payload=*/nan_payload);
     }
-    const auto kLargestPayload = NanPayloadBitMask<LiteralNativeComponentT>();
-    if (nan_payload > kLargestPayload) {
-      return Error(
-          loc,
-          StrCat("tries to set NaN payload 0x", absl::Hex(nan_payload),
-                 " to a literal in shape ",
-                 ShapeUtil::HumanString(literal->shape()), " at linear index ",
-                 index, ", but the NaN payload is out of range (0x",
-                 absl::Hex(kLargestPayload), ")"));
-    }
-    *literal_value_component = NanWithSignAndPayload<LiteralNativeComponentT>(
-        /*sign=*/std::signbit(static_cast<double>(parsed_value_component)),
-        /*nan_payload=*/nan_payload);
     return true;
   };
   const ParsedElemComponentT parsed_real_value = GetReal(value);
@@ -3651,22 +3790,29 @@ struct MinMaxFiniteValue {
   static T min() { return std::numeric_limits<T>::lowest(); }
 };
 
-template <>
-struct MinMaxFiniteValue<Eigen::half> {
+template <typename T>
+struct MinMaxFiniteValueCustomFloat {
   static double max() {
     // Sadly this is not constexpr, so this forces `value` to be a method.
-    return static_cast<double>(Eigen::NumTraits<Eigen::half>::highest());
+    return static_cast<double>(Eigen::NumTraits<T>::highest());
   }
   static double min() { return -max(); }
 };
 
 template <>
-struct MinMaxFiniteValue<bfloat16> {
-  static double max() {
-    return static_cast<double>(Eigen::NumTraits<Eigen::bfloat16>::highest());
-  }
-  static double min() { return -max(); }
-};
+struct MinMaxFiniteValue<Eigen::half>
+    : MinMaxFiniteValueCustomFloat<Eigen::half> {};
+
+template <>
+struct MinMaxFiniteValue<bfloat16> : MinMaxFiniteValueCustomFloat<bfloat16> {};
+
+template <>
+struct MinMaxFiniteValue<tsl::float8_e5m2>
+    : MinMaxFiniteValueCustomFloat<tsl::float8_e5m2> {};
+
+template <>
+struct MinMaxFiniteValue<tsl::float8_e4m3fn>
+    : MinMaxFiniteValueCustomFloat<tsl::float8_e4m3fn> {};
 
 // MSVC's standard C++ library does not define isnan/isfinite for integer types.
 // To work around that we will need to provide our own.
@@ -4255,6 +4401,15 @@ bool HloParserImpl::ParseAttributeHelper(
             ->emplace(aliasing_data);
         return true;
       }
+      case AttrTy::kComputationLayout: {
+        ComputationLayout computation_layout(ShapeLayout(Shape{}));
+        if (!ParseComputationLayout(&computation_layout)) {
+          return false;
+        }
+        static_cast<optional<ComputationLayout>*>(attr_out_ptr)
+            ->emplace(computation_layout);
+        return true;
+      }
       case AttrTy::kInstructionAliasing: {
         std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
             aliasing_output_operand_pairs;
@@ -4306,16 +4461,16 @@ bool HloParserImpl::ParseAttributeHelper(
 bool HloParserImpl::CopyAttributeToProtoMessage(
     absl::flat_hash_set<std::string> non_proto_attrs,
     const absl::flat_hash_map<std::string, AttrConfig>& attrs,
-    tensorflow::protobuf::Message* message) {
-  const tensorflow::protobuf::Descriptor* descriptor = message->GetDescriptor();
-  const tensorflow::protobuf::Reflection* reflection = message->GetReflection();
+    tsl::protobuf::Message* message) {
+  const tsl::protobuf::Descriptor* descriptor = message->GetDescriptor();
+  const tsl::protobuf::Reflection* reflection = message->GetReflection();
 
   for (const auto& p : attrs) {
     const std::string& name = p.first;
     if (non_proto_attrs.find(name) != non_proto_attrs.end()) {
       continue;
     }
-    const tensorflow::protobuf::FieldDescriptor* fd =
+    const tsl::protobuf::FieldDescriptor* fd =
         descriptor->FindFieldByName(name);
     if (!fd) {
       std::string allowed_attrs = "Allowed attributes: ";
@@ -4334,18 +4489,18 @@ bool HloParserImpl::CopyAttributeToProtoMessage(
     CHECK(!fd->is_repeated());  // Repeated fields not implemented.
     bool success = [&] {
       switch (fd->type()) {
-        case tensorflow::protobuf::FieldDescriptor::TYPE_BOOL: {
+        case tsl::protobuf::FieldDescriptor::TYPE_BOOL: {
           auto attr_value = static_cast<optional<bool>*>(p.second.result);
           if (attr_value->has_value()) {
             reflection->SetBool(message, fd, **attr_value);
           }
           return true;
         }
-        case tensorflow::protobuf::FieldDescriptor::TYPE_ENUM: {
+        case tsl::protobuf::FieldDescriptor::TYPE_ENUM: {
           auto attr_value =
               static_cast<optional<std::string>*>(p.second.result);
           if (attr_value->has_value()) {
-            const tensorflow::protobuf::EnumValueDescriptor* evd =
+            const tsl::protobuf::EnumValueDescriptor* evd =
                 fd->enum_type()->FindValueByName(**attr_value);
             reflection->SetEnum(message, fd, evd);
           }
@@ -4367,8 +4522,8 @@ bool HloParserImpl::CopyAttributeToProtoMessage(
 // attributes ::= (',' attribute)*
 bool HloParserImpl::ParseAttributesAsProtoMessage(
     const absl::flat_hash_map<std::string, AttrConfig>& non_proto_attrs,
-    tensorflow::protobuf::Message* message) {
-  const tensorflow::protobuf::Descriptor* descriptor = message->GetDescriptor();
+    tsl::protobuf::Message* message) {
+  const tsl::protobuf::Descriptor* descriptor = message->GetDescriptor();
   absl::flat_hash_map<std::string, AttrConfig> attrs;
 
   // Storage for attributes.
@@ -4381,18 +4536,17 @@ bool HloParserImpl::ParseAttributesAsProtoMessage(
 
   // Populate the storage of expected attributes from the protobuf description.
   for (int field_idx = 0; field_idx < descriptor->field_count(); field_idx++) {
-    const tensorflow::protobuf::FieldDescriptor* fd =
-        descriptor->field(field_idx);
+    const tsl::protobuf::FieldDescriptor* fd = descriptor->field(field_idx);
     const std::string& field_name = fd->name();
     switch (fd->type()) {
-      case tensorflow::protobuf::FieldDescriptor::TYPE_BOOL: {
-        bool_params.emplace_back(absl::nullopt);
+      case tsl::protobuf::FieldDescriptor::TYPE_BOOL: {
+        bool_params.emplace_back(std::nullopt);
         attrs[field_name] = {/*is_required*/ false, AttrTy::kBool,
                              &bool_params.back()};
         break;
       }
-      case tensorflow::protobuf::FieldDescriptor::TYPE_ENUM: {
-        string_params.emplace_back(absl::nullopt);
+      case tsl::protobuf::FieldDescriptor::TYPE_ENUM: {
+        string_params.emplace_back(std::nullopt);
         attrs[field_name] = {/*is_required*/ false, AttrTy::kEnum,
                              &string_params.back()};
         break;
@@ -4430,7 +4584,7 @@ bool HloParserImpl::ParseComputationName(HloComputation** value) {
     return Error(loc, "expects computation name");
   }
   std::pair<HloComputation*, LocTy>* computation =
-      tensorflow::gtl::FindOrNull(computation_pool_, name);
+      tsl::gtl::FindOrNull(computation_pool_, name);
   if (computation == nullptr) {
     return Error(loc, StrCat("computation does not exist: ", name));
   }
@@ -4817,7 +4971,7 @@ bool HloParserImpl::ParseInt64ListList(
 
 bool HloParserImpl::ParseList(const TokKind start, const TokKind end,
                               const TokKind delim,
-                              const std::function<bool()>& parse_and_add_item) {
+                              absl::FunctionRef<bool()> parse_and_add_item) {
   if (!ParseToken(start, StrCat("expects a list starting with ",
                                 TokKindToString(start)))) {
     return false;
@@ -4898,6 +5052,67 @@ bool HloParserImpl::ParseDimensionSizes(std::vector<int64_t>* dimension_sizes,
                    parse_and_add_item);
 }
 
+// dim_level_types
+//   ::=  /* empty */
+//   ::= 'D' '(' dim_level_type_list ')'
+// dim_level_type_list
+//   ::= /* empty */
+//   ..= dim_level_type (',' dim_level_type)*
+// dim_level_type
+//   ::= 'D'
+//   ::= 'C'
+//   ::= 'S'
+bool HloParserImpl::ParseDimLevelTypes(
+    absl::InlinedVector<DimLevelType, InlineRank()>* dim_level_types,
+    absl::InlinedVector<bool, InlineRank()>* dim_unique,
+    absl::InlinedVector<bool, InlineRank()>* dim_ordered) {
+  auto parse_and_add_item = [&]() {
+    if (lexer_.GetKind() == TokKind::kIdent) {
+      bool dim_level_type_valid = false;
+      DimLevelType dim_level_type;
+      if (lexer_.GetStrVal() == "D") {
+        lexer_.Lex();
+        dim_level_type = DIM_DENSE;
+        dim_level_type_valid = true;
+      } else if (lexer_.GetStrVal() == "C") {
+        lexer_.Lex();
+        dim_level_type = DIM_COMPRESSED;
+        dim_level_type_valid = true;
+      } else if (lexer_.GetStrVal() == "S") {
+        lexer_.Lex();
+        dim_level_type = DIM_SINGLETON;
+        dim_level_type_valid = true;
+      }
+      if (dim_level_type_valid) {
+        bool new_dim_unique = true;
+        if (lexer_.GetKind() == TokKind::kPlus) {
+          new_dim_unique = false;
+          lexer_.Lex();
+        }
+        bool new_dim_ordered = true;
+        if (lexer_.GetKind() == TokKind::kTilde) {
+          new_dim_ordered = false;
+          lexer_.Lex();
+        }
+        if (!LayoutUtil::ValidateDimLevel(dim_level_type, new_dim_unique,
+                                          new_dim_ordered)) {
+          return Error(
+              lexer_.GetLoc(),
+              "invalid DimLevelType/unique/ordered combination in shape");
+        }
+        dim_level_types->push_back(dim_level_type);
+        dim_unique->push_back(new_dim_unique);
+        dim_ordered->push_back(new_dim_ordered);
+        return true;
+      }
+    }
+    return Error(lexer_.GetLoc(),
+                 "expected a DimLevelType abbreviation (D, C, or S)");
+  };
+  return ParseList(TokKind::kLparen, TokKind::kRparen, TokKind::kComma,
+                   parse_and_add_item);
+}
+
 // tiles
 //   ::= /*empty*/
 //   ::= 'T' '(' dim_list ')'
@@ -4929,6 +5144,44 @@ bool HloParserImpl::ParseTiles(std::vector<Tile>* tiles) {
   return true;
 }
 
+// physical_shape
+//   ::= /*empty*/
+//   ::= 'P' '(' shape ')'
+bool HloParserImpl::ParsePhysicalShape(Shape* physical_shape) {
+  if (!ParseToken(TokKind::kLparen,
+                  StrCat("expects physical shape to start with ",
+                         TokKindToString(TokKind::kLparen)))) {
+    return false;
+  }
+  ParseShape(physical_shape);
+  if (!ParseToken(TokKind::kRparen,
+                  StrCat("expects physical shape to end with ",
+                         TokKindToString(TokKind::kRparen)))) {
+    return false;
+  }
+  return true;
+}
+
+bool HloParserImpl::ParsePrimitiveType(PrimitiveType* result) {
+  if (lexer_.GetKind() != TokKind::kPrimitiveType) {
+    return TokenError(absl::StrCat("expected primitive type, saw ",
+                                   TokKindToString(lexer_.GetKind())));
+  }
+  *result = lexer_.GetPrimitiveTypeVal();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParserImpl::ParseUnsignedIntegerType(PrimitiveType* primitive_type) {
+  if (!ParsePrimitiveType(primitive_type)) {
+    return false;
+  }
+  if (!primitive_util::IsUnsignedIntegralType(*primitive_type)) {
+    return TokenError("expecting an unsigned integer type");
+  }
+  return true;
+}
+
 // int_attribute
 //   ::= /*empty*/
 //   ::= attr_token '(' attr_value ')'
@@ -4954,18 +5207,26 @@ bool HloParserImpl::ParseLayoutIntAttribute(
   return true;
 }
 
-// layout ::= '{' int64_list (':' tiles element_size_in_bits memory_space)? '}'
-// element_size_in_bits
-//   ::= /*empty*/
-//   ::= 'E' '(' int64_t ')'
+// layout
+//   ::= '{' int64_list
+//       (':' dim_level_types
+//            tiles
+//            memory_space
+//            physical_shape)?
+//       '}'
 // memory_space
 //   ::= /*empty*/
 //   ::= 'S' '(' int64_t ')'
 bool HloParserImpl::ParseLayout(Layout* layout) {
-  std::vector<int64_t> minor_to_major;
+  absl::InlinedVector<int64_t, InlineRank()> minor_to_major;
+  DimLevelTypeVector dim_level_types;
+  absl::InlinedVector<bool, InlineRank()> dim_unique;
+  absl::InlinedVector<bool, InlineRank()> dim_ordered;
   std::vector<Tile> tiles;
-  int64_t element_size_in_bits = 0;
+  PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID;
+  PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID;
   int64_t memory_space = 0;
+  std::optional<Shape> physical_shape;
 
   auto parse_and_add_item = [&]() {
     int64_t i;
@@ -4993,19 +5254,50 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
 
     if (lexer_.GetKind() == TokKind::kColon) {
       lexer_.Lex();
+
+      if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "D") {
+        lexer_.Lex();
+        ParseDimLevelTypes(&dim_level_types, &dim_unique, &dim_ordered);
+      }
+
       if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "T") {
         lexer_.Lex();
         ParseTiles(&tiles);
       }
 
-      if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "E") {
+      if (lexer_.GetKind() == TokKind::kOctothorp) {
         lexer_.Lex();
-        ParseLayoutIntAttribute(&element_size_in_bits, "element size in bits");
+        ParseToken(
+            TokKind::kLparen,
+            StrCat("expects ", TokKindToString(TokKind::kOctothorp),
+                   " to be followed by ", TokKindToString(TokKind::kLparen)));
+        ParseUnsignedIntegerType(&index_primitive_type);
+        ParseToken(TokKind::kRparen,
+                   StrCat("expects index primitive type to be followed by ",
+                          TokKindToString(TokKind::kRparen)));
+      }
+
+      if (lexer_.GetKind() == TokKind::kAsterisk) {
+        lexer_.Lex();
+        ParseToken(
+            TokKind::kLparen,
+            StrCat("expects ", TokKindToString(TokKind::kAsterisk),
+                   " to be followed by ", TokKindToString(TokKind::kLparen)));
+        ParseUnsignedIntegerType(&pointer_primitive_type);
+        ParseToken(TokKind::kRparen,
+                   StrCat("expects pointer primitive type to be followed by ",
+                          TokKindToString(TokKind::kRparen)));
       }
 
       if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "S") {
         lexer_.Lex();
         ParseLayoutIntAttribute(&memory_space, "memory space");
+      }
+
+      if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "P") {
+        lexer_.Lex();
+        physical_shape.emplace();
+        ParsePhysicalShape(&*physical_shape);
       }
     }
   }
@@ -5019,8 +5311,10 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
   for (int i = 0; i < tiles.size(); i++) {
     vec_tiles[i] = Tile(tiles[i]);
   }
-  *layout = LayoutUtil::MakeLayout(minor_to_major, vec_tiles,
-                                   element_size_in_bits, memory_space);
+  *layout = LayoutUtil::MakeLayout(minor_to_major, dim_level_types, dim_unique,
+                                   dim_ordered, vec_tiles, index_primitive_type,
+                                   pointer_primitive_type, memory_space,
+                                   std::move(physical_shape));
   return true;
 }
 
@@ -5047,12 +5341,10 @@ bool HloParserImpl::ParseShape(Shape* result) {
     return ParseToken(TokKind::kRparen, "expects ')' at the end of tuple.");
   }
 
-  if (lexer_.GetKind() != TokKind::kPrimitiveType) {
-    return TokenError(absl::StrCat("expected primitive type, saw ",
-                                   TokKindToString(lexer_.GetKind())));
+  PrimitiveType primitive_type;
+  if (!ParsePrimitiveType(&primitive_type)) {
+    return false;
   }
-  PrimitiveType primitive_type = lexer_.GetPrimitiveTypeVal();
-  lexer_.Lex();
 
   // Each element contains a dimension size and a bool indicating whether this
   // is a dynamic dimension.
@@ -5065,19 +5357,6 @@ bool HloParserImpl::ParseShape(Shape* result) {
   for (int i = 0; i < dimension_sizes.size(); ++i) {
     result->add_dimensions(dimension_sizes[i]);
     result->set_dynamic_dimension(i, dynamic_dimensions[i]);
-  }
-  if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "invalid") {
-    lexer_.Lex();
-    if (lexer_.GetKind() != TokKind::kLbrace) {
-      return false;
-    }
-    lexer_.Lex();
-    if (lexer_.GetKind() != TokKind::kRbrace) {
-      return false;
-    }
-    lexer_.Lex();
-    result->mutable_layout()->Clear();
-    return true;
   }
   LayoutUtil::SetToDefaultLayout(result);
   // We need to lookahead to see if a following open brace is the start of a
@@ -5097,11 +5376,30 @@ bool HloParserImpl::ParseShape(Shape* result) {
     if (!ParseLayout(&layout)) {
       return false;
     }
+    if (layout.dim_level_types_size() != 0 &&
+        layout.dim_level_types_size() != result->rank()) {
+      return Error(
+          lexer_.GetLoc(),
+          StrFormat("Dimensions size is %ld, but dim level types size is %ld.",
+                    result->rank(), layout.dim_level_types_size()));
+    }
     if (layout.minor_to_major_size() != result->rank()) {
       return Error(
           lexer_.GetLoc(),
           StrFormat("Dimensions size is %ld, but minor to major size is %ld.",
                     result->rank(), layout.minor_to_major_size()));
+    }
+    if (LayoutUtil::IsSparse(layout) && layout.tiles_size() > 0) {
+      return Error(lexer_.GetLoc(),
+                   StrFormat("Layout has tiles, but is for a sparse array: %s",
+                             layout.ToString()));
+    }
+    if (!LayoutUtil::IsSparse(layout) && layout.has_physical_shape()) {
+      return Error(
+          lexer_.GetLoc(),
+          StrFormat(
+              "Layout has physical shape, but is not for a sparse array: %s",
+              layout.ToString()));
     }
     *result->mutable_layout() = layout;
   }
@@ -5263,7 +5561,7 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
 
 // ::= single_metadata | ('{' [single_metadata (',' single_metadata)*] '}')
 bool HloParserImpl::ParseSingleOrListMetadata(
-    tensorflow::protobuf::RepeatedPtrField<OpMetadata>* metadata) {
+    tsl::protobuf::RepeatedPtrField<OpMetadata>* metadata) {
   if (lexer_.GetKind() == TokKind::kLbrace &&
       lexer_.LookAhead() == TokKind::kLbrace) {
     if (!ParseToken(TokKind::kLbrace, "expected '{' to start metadata list")) {
@@ -5324,7 +5622,8 @@ bool HloParserImpl::ParseListShardingType(
   return ParseToken(TokKind::kRbrace, "expected '}' to end sharding type list");
 }
 
-bool HloParserImpl::ParseOpcode(HloOpcode* result) {
+bool HloParserImpl::ParseOpcode(
+    HloOpcode* opcode, std::optional<HloOpcode>* async_wrapped_opcode) {
   VLOG(3) << "ParseOpcode";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects opcode");
@@ -5332,10 +5631,33 @@ bool HloParserImpl::ParseOpcode(HloOpcode* result) {
   std::string val = lexer_.GetStrVal();
   auto status_or_result = StringToHloOpcode(val);
   if (!status_or_result.ok()) {
-    return TokenError(StrFormat("expects opcode but sees: %s, error: %s", val,
-                                status_or_result.status().error_message()));
+    auto try_parsing_async_op = [&](absl::string_view suffix,
+                                    HloOpcode async_opcode) {
+      absl::string_view wrapped_opcode_view(val);
+      if (absl::ConsumeSuffix(&wrapped_opcode_view, suffix)) {
+        *opcode = async_opcode;
+        std::string wrapped_opcode(wrapped_opcode_view);
+        status_or_result = StringToHloOpcode(wrapped_opcode);
+        return true;
+      }
+      return false;
+    };
+    if (try_parsing_async_op("-start", HloOpcode::kAsyncStart) ||
+        try_parsing_async_op("-update", HloOpcode::kAsyncUpdate) ||
+        try_parsing_async_op("-done", HloOpcode::kAsyncDone)) {
+      if (!status_or_result.ok()) {
+        return TokenError(
+            StrFormat("expects async wrapped opcode but sees: %s, error: %s",
+                      val, status_or_result.status().error_message()));
+      }
+      *async_wrapped_opcode = status_or_result.value();
+    } else {
+      return TokenError(StrFormat("expects opcode but sees: %s, error: %s", val,
+                                  status_or_result.status().error_message()));
+    }
+  } else {
+    *opcode = status_or_result.value();
   }
-  *result = status_or_result.ValueOrDie();
   lexer_.Lex();
   return true;
 }
@@ -5377,7 +5699,7 @@ bool HloParserImpl::ParseComparisonDirection(ComparisonDirection* result) {
     return TokenError(
         StrFormat("expects comparison direction but sees: %s", val));
   }
-  *result = status_or_result.ValueOrDie();
+  *result = status_or_result.value();
   lexer_.Lex();
   return true;
 }
@@ -5392,7 +5714,7 @@ bool HloParserImpl::ParseComparisonType(Comparison::Type* result) {
   if (!status_or_result.ok()) {
     return TokenError(StrFormat("expects comparison type but sees: %s", val));
   }
-  *result = status_or_result.ValueOrDie();
+  *result = status_or_result.value();
   lexer_.Lex();
   return true;
 }
@@ -5409,7 +5731,7 @@ bool HloParserImpl::ParseFusionKind(HloInstruction::FusionKind* result) {
                                 val,
                                 status_or_result.status().error_message()));
   }
-  *result = status_or_result.ValueOrDie();
+  *result = status_or_result.value();
   lexer_.Lex();
   return true;
 }
@@ -5426,7 +5748,7 @@ bool HloParserImpl::ParseRandomDistribution(RandomDistribution* result) {
         StrFormat("expects random distribution but sees: %s, error: %s", val,
                   status_or_result.status().error_message()));
   }
-  *result = status_or_result.ValueOrDie();
+  *result = status_or_result.value();
   lexer_.Lex();
   return true;
 }
@@ -5443,7 +5765,7 @@ bool HloParserImpl::ParseRandomAlgorithm(RandomAlgorithm* result) {
         StrFormat("expects random algorithm but sees: %s, error: %s", val,
                   status_or_result.status().error_message()));
   }
-  *result = status_or_result.ValueOrDie();
+  *result = status_or_result.value();
   lexer_.Lex();
   return true;
 }
@@ -5460,7 +5782,7 @@ bool HloParserImpl::ParsePrecision(PrecisionConfig::Precision* result) {
                                 val,
                                 status_or_result.status().error_message()));
   }
-  *result = status_or_result.ValueOrDie();
+  *result = status_or_result.value();
   lexer_.Lex();
   return true;
 }
@@ -5712,7 +6034,7 @@ bool HloParserImpl::ParseSingleInstruction(HloModule* module) {
     HloInstruction* parameter = builder.AddInstruction(
         HloInstruction::CreateParameter(parameter_count++, shape, new_name));
     current_name_table()[new_name] = {parameter, lexer_.GetLoc()};
-    return tensorflow::gtl::FindOrNull(current_name_table(), new_name);
+    return tsl::gtl::FindOrNull(current_name_table(), new_name);
   };
 
   // Parse the instruction with the registered hook.
@@ -5755,7 +6077,7 @@ bool HloParserImpl::ParseSingleInstruction(HloModule* module) {
 
 StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
     absl::string_view str, const HloModuleConfig& config) {
-  auto module = absl::make_unique<HloModule>(/*name=*/"_", config);
+  auto module = std::make_unique<HloModule>(/*name=*/"_", config);
   HloParserImpl parser(str);
   TF_RETURN_IF_ERROR(parser.Run(module.get()));
   return std::move(module);
@@ -5810,7 +6132,7 @@ StatusOr<Shape> ParseShape(absl::string_view str) {
 
 std::unique_ptr<HloParser> HloParser::CreateHloParserForTests(
     absl::string_view str) {
-  return absl::make_unique<HloParserImpl>(str);
+  return std::make_unique<HloParserImpl>(str);
 }
 
 }  // namespace xla

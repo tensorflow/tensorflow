@@ -70,7 +70,7 @@ Status ExecutorFactory::GetFactory(const string& executor_type,
   }
 
   *out_factory = iter->second;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status NewExecutor(const string& executor_type,

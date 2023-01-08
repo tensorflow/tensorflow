@@ -1,10 +1,7 @@
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pybind_extension")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -25,7 +22,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:common",
@@ -48,6 +45,7 @@ cc_test(
     deps = [
         ":perception_ops",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/kernels:test_main",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/testing:util",
@@ -63,7 +61,6 @@ pybind_extension(
     hdrs = ["perception_ops.h"],
     additional_exported_symbols = ["PerceptionOpsRegisterer"],
     link_in_framework = True,
-    module_name = "pywrap_perception_ops",
     deps = [
         ":perception_ops",
         "//tensorflow/lite:mutable_op_resolver",

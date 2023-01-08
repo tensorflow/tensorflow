@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/segment/segment.h"
 
 #include <algorithm>
+#include <fstream>
 #include <map>
+#include <numeric>
 #include <queue>
 #include <tuple>
 #include <unordered_map>
@@ -35,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
@@ -402,7 +405,7 @@ string TensorPropertiesToString(
 // TODO(bixia): investigate the use of symbolic shape analysis to improve
 //   segmentation, such as by requiring the dynamic dimensions to have the same
 //   negative value.
-absl::optional<const TensorShapeProto*> FindLeadingShape(
+std::optional<const TensorShapeProto*> FindLeadingShape(
     absl::Span<const OpInfo::TensorProperties> properties) {
   DCHECK(!properties.empty());
   const TensorShapeProto* result;
@@ -451,7 +454,7 @@ absl::optional<const TensorShapeProto*> FindLeadingShape(
     if (max_batch_dim_value <= 1) {
       return result;
     } else {
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
 
@@ -531,7 +534,7 @@ bool OperationCanBeTranslatedToImplicitBatch(
     return false;
   }
 
-  absl::optional<const TensorShapeProto*> leading_shape =
+  std::optional<const TensorShapeProto*> leading_shape =
       FindLeadingShape(input_properties);
   return leading_shape.has_value() && leading_shape.value()->dim_size() >= 2;
 }
@@ -658,7 +661,7 @@ ClusterBatchSize GetClusterBatchSizeForNode(
 
   const std::vector<OpInfo::TensorProperties>& input_properties =
       graph_properties->GetInputProperties(node->name());
-  absl::optional<const TensorShapeProto*> optional_leading_shape =
+  std::optional<const TensorShapeProto*> optional_leading_shape =
       FindLeadingShape(GetInputsToDeterminateBatchSize(node, input_properties));
   DCHECK(optional_leading_shape.has_value());
   const TensorShapeProto* leading_shape = optional_leading_shape.value();
@@ -672,6 +675,8 @@ void AddSegmentForNode(const grappler::GraphProperties* graph_properties,
                        SimpleNode* node,
                        const DeviceNameUtils::ParsedName& device_name,
                        bool use_implicit_batch) {
+  tensorflow::profiler::TraceMe activity(
+      "AddSegmentForNode", tensorflow::profiler::TraceMeLevel::kInfo);
   ClusterProperty property(
       GetClusterBatchSizeForNode(graph_properties,
                                  node == nullptr ? nullptr : node->tf_node(),
@@ -682,13 +687,83 @@ void AddSegmentForNode(const grappler::GraphProperties* graph_properties,
 
 }  // namespace
 
+Status ExportNonConversionReportToCSV(
+    string filename,
+    std::map<string, std::map<string, int>>& nonconverted_ops_map,
+    string sep = "|") {
+  tensorflow::profiler::TraceMe activity(
+      "ExportNonConversionReportToCSV",
+      tensorflow::profiler::TraceMeLevel::kInfo);
+  std::fstream csv_file(filename, std::fstream::out | std::fstream::trunc);
+
+  if (!csv_file || !csv_file.good()) {
+    return errors::Internal("Failed to open output file: `", filename, "`");
+  }
+
+  LOG(WARNING) << "TF-TRT Non-Conversion Report saved at: `" << filename << "`";
+
+  csv_file << "OP Name" << sep << "Reason" << sep << "Count" << std::endl;
+
+  for (auto& op_details : nonconverted_ops_map) {
+    auto op_name = op_details.first;
+    auto op_data = op_details.second;
+
+    for (auto& reject_data : op_data) {
+      auto reason = reject_data.first;
+      auto count = reject_data.second;
+      csv_file << op_name << sep << reason << sep << count << std::endl;
+    }
+  }
+
+  csv_file.close();
+
+  if (csv_file.bad() || csv_file.fail()) {
+    return errors::Internal("Error closing the file `", filename,
+                            "`. The file might be corrupted.");
+  }
+
+  return OkStatus();
+}
+
 string GenerateNonConversionReport(
     std::map<string, std::map<string, int>>& nonconverted_ops_map) {
   // Fetch whether to print a detailed version of the TF-TRT conversion report.
-  bool show_detailed_conversion_report;
-  TF_CHECK_OK(ReadBoolFromEnvVar("TF_TRT_SHOW_DETAILED_REPORT",
-                                 /*default_value=*/false,
-                                 &show_detailed_conversion_report));
+  // TF_TRT_SHOW_DETAILED_REPORT triggers three possible behaviors:
+  // - If Number >= 1:      Print detailed non-conversion report on stdout.
+  //                        Usage: TF_TRT_SHOW_DETAILED_REPORT=1
+  // - If non empty string: Exports the non-conversion report in CSV format at
+  //                        the path defined by the environment variable.
+  //                        This will also print the detailed non-conversion
+  //                        report on stdout.
+  //                        Usage: TF_TRT_SHOW_DETAILED_REPORT=/path/to/file.csv
+  // - Else:                Print normal (undetailed) non-conversion report on
+  //                        stdout.
+  tensorflow::profiler::TraceMe activity(
+      "GenerateNonConversionReport", tensorflow::profiler::TraceMeLevel::kInfo);
+
+  string detailed_report_var;
+  TF_CHECK_OK(ReadStringFromEnvVar("TF_TRT_SHOW_DETAILED_REPORT",
+                                   /*default_value=*/"", &detailed_report_var));
+
+  bool show_detailed_conversion_report = false;
+
+  if (detailed_report_var != "") {
+    // Checking if `TF_TRT_SHOW_DETAILED_REPORT` env var is a string or a number
+    if (detailed_report_var.find_first_not_of("-0123456789") != string::npos) {
+      const Status status = ExportNonConversionReportToCSV(
+          detailed_report_var, nonconverted_ops_map);
+
+      if (!status.ok()) {
+        // Log the error in case of issue, however do not stop execution.
+        LOG(ERROR) << "Problem encountered while generating the TF-TRT "
+                   << "Non-Conversion Report in CSV Format:\n"
+                   << status.error_message();
+      }
+      show_detailed_conversion_report = true;
+    } else if (std::stoi(detailed_report_var) >= 1) {
+      show_detailed_conversion_report = true;
+    }
+  }
 
   string unsupported_op_report =
       StrCat("\n\n", string(80, '#'), "\n",
@@ -776,6 +851,8 @@ Status SegmentGraph(const Graph* tf_graph,
                     const std::function<bool(const Edge*)>& input_candidate_fn,
                     const std::function<bool(const Edge*)>& output_candidate_fn,
                     const SegmentOptions& options, SegmentVector* segments) {
+  tensorflow::profiler::TraceMe activity(
+      "SegmentGraph", tensorflow::profiler::TraceMeLevel::kInfo);
   if (!options.use_implicit_batch && !options.allow_dynamic_non_batch_dim) {
     return errors::Internal(
         "Explicit batch mode should allow dynamic non-batch dimensions");
@@ -841,7 +918,7 @@ Status SegmentGraph(const Graph* tf_graph,
       nonconverted_ops_map[node_op_type][string(reason)]++;
       node = nullptr;
     };
-    absl::optional<DeviceNameUtils::ParsedName> device_name =
+    std::optional<DeviceNameUtils::ParsedName> device_name =
         GetDeviceParsedName(node->tf_node());
     // GetDeviceParseName capitalizes the device type.
     if (!device_name.has_value() ||
@@ -950,7 +1027,7 @@ Status SegmentGraph(const Graph* tf_graph,
 
         const DeviceNameUtils::ParsedName& out_device_name =
             out_cluster->Property().DeviceName();
-        absl::optional<DeviceNameUtils::ParsedName> merged_device_name =
+        std::optional<DeviceNameUtils::ParsedName> merged_device_name =
             MergeIfCompatible(expected_device_name, out_device_name);
         if (!merged_device_name.has_value()) {
           VLOG(3) << "... ... incompatible device names "
@@ -1112,6 +1189,7 @@ Status SegmentGraph(const Graph* tf_graph,
 
   // --------------------------------- Step 3 ---------------------------------
   // Convert the segments into the expected return format
+  std::vector<int> effective_nodes_counts;
   for (const auto& itr : sg_map) {
     const string& segment_root = itr.first;
     // Return format does not require set comparator.
@@ -1141,9 +1219,83 @@ Status SegmentGraph(const Graph* tf_graph,
       continue;
     }
     segments->emplace_back(itr.second.property, segment_nodes);
+    effective_nodes_counts.push_back(num_effective_nodes);
   }
 
-  return Status::OK();
+  // --------------------------------- Step 4 ---------------------------------
+  // If the number of segments exceeds max_engines, prune the smallest ones.
+
+  int64_t max_trt_engine_ops;
+  TF_CHECK_OK(ReadInt64FromEnvVar("TF_TRT_MAX_ALLOWED_ENGINES",
+                                  /*default_value=*/20, &max_trt_engine_ops));
+
+  if (max_trt_engine_ops <= 0) {
+    LOG(WARNING) << "The environment variable TF_TRT_MAX_ALLOWED_ENGINES is "
+                 << "<= 0. TF-TRT did not limit the number of TensorRT engines "
+                 << "created.";
+
+  } else {
+    if (segments->size() > max_trt_engine_ops) {
+      LOG(WARNING) << "A total of " << segments->size() << " segments with at "
+                   << "least minimum_segment_size="
+                   << options.minimum_segment_size << " nodes have been found. "
+                   << "TF-TRT will only convert the " << max_trt_engine_ops
+                   << " largest segments. You can change this behavior by "
+                   << "modifying the environment variable "
+                   << "TF_TRT_MAX_ALLOWED_ENGINES=" << max_trt_engine_ops;
+
+      // Stable sort of the segment indices according to their effective sizes.
+      std::vector<int> indices(segments->size());
+      std::iota(indices.begin(), indices.end(), 0);
+
+      std::stable_sort(indices.begin(), indices.end(),
+                       [&effective_nodes_counts](int i1, int i2) {
+                         return effective_nodes_counts[i1] >
+                                effective_nodes_counts[i2];
+                       });
+
+      // Create a mask of segments to keep.
+      std::vector<bool> mask = std::vector<bool>(segments->size(), false);
+
+      for (int i = 0; i < max_trt_engine_ops; i++) {
+        mask[indices[i]] = true;
+      }
+
+      // Gather the masked elements at the start of the array, in place.
+      int j = 0;
+      VLOG(1) << "The following segments have been accepted by TF-TRT:";
+      for (int i = 0; i < segments->size(); i++) {
+        if (mask[i]) {
+          VLOG(1) << "[*] Segment " << i
+                  << " [node count: " << effective_nodes_counts[i]
+                  << "] accepted. Re-assigned "
+                  << "segment id=" << j;
+          segments->at(j) = segments->at(i);
+          j++;
+        }
+      }
+
+      VLOG(1) << "The following segments have been rejected by TF-TRT:";
+      for (int i = 0; i < segments->size(); i++) {
+        if (!mask[i]) {
+          VLOG(1) << "[*] Segment " << i
+                  << " [node count: " << effective_nodes_counts[i]
+                  << "] rejected.";
+        }
+      }
+
+      // Resize the array.
+      segments->resize(max_trt_engine_ops);
+    } else {
+      LOG(WARNING) << "The environment variable TF_TRT_MAX_ALLOWED_ENGINES="
+                   << max_trt_engine_ops << " has no effect since there are "
+                   << "only " << segments->size() << " TRT Engines with  at "
+                   << "least minimum_segment_size="
+                   << options.minimum_segment_size << " nodes.";
+    }
+  }
+
+  return OkStatus();
 }
 
 }  // namespace segment

@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_context.h"
 #include "tensorflow/core/common_runtime/shared_counter.h"
@@ -93,7 +92,7 @@ class PluggableDevice : public LocalDevice {
   StreamGroup* stream_;
   PluggableDeviceContext* device_context_;
   // TODO(penpornk): Investigate renaming `GpuDeviceInfo` to `DeviceInfo`.
-  GpuDeviceInfo* pluggable_device_info_ = nullptr;
+  DeviceBase::AcceleratorDeviceInfo* pluggable_device_info_ = nullptr;
   TfDeviceId tf_device_id_;
   const string platform_name_;
   const bool sync_every_op_ = false;

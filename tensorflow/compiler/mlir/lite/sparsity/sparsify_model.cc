@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/sparsity/sparsify_model.h"
 
+#include <string>
+
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -29,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 
 namespace mlir {
 namespace lite {
@@ -72,6 +76,18 @@ TfLiteStatus SparsifyModel(const tflite::ModelT& input_model,
   options.toco_flags.set_force_select_tf_ops(false);
   options.toco_flags.set_enable_select_tf_ops(true);
   options.toco_flags.set_allow_custom_ops(true);
+
+  // Copy metadata for Reduced Precision Support from input model if it exists
+  for (const auto& metadata : input_model.metadata) {
+    if (metadata->name != tflite::optimize::kTfLiteReducedPrecisionKey) {
+      continue;
+    }
+
+    const auto& data = input_model.buffers[metadata->buffer]->data;
+    options.metadata[metadata->name] = std::string(data.begin(), data.end());
+    break;
+  }
+
   if (!tflite::MlirToFlatBufferTranslateFunction(module.get(), options,
                                                  &result)) {
     error_reporter->Report("Failed to export MLIR to flatbuffer.");

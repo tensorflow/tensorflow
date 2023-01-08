@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_IR_BUILDER_MIXIN_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_IR_BUILDER_MIXIN_H_
 
+#include <optional>
+
 #include "llvm/IR/IRBuilder.h"
 
 namespace xla {
@@ -40,18 +42,8 @@ class IrBuilderMixin {
   }
 
   template <class... Args>
-  llvm::LoadInst* AlignedLoad(llvm::Type* type, Args&&... args) {
-    return mixin_builder()->CreateAlignedLoad(type,
-                                              std::forward<Args>(args)...);
-  }
-
-  template <class... Args>
-  llvm::LoadInst* AlignedLoad(llvm::Value* value, Args&&... args) {
-    // LLVM has deprecated CreateAlignedLoad without a type argument. Provide it
-    // for convenience.
-    return mixin_builder()->CreateAlignedLoad(
-        value->getType()->getPointerElementType(), value,
-        std::forward<Args>(args)...);
+  llvm::LoadInst* AlignedLoad(Args&&... args) {
+    return mixin_builder()->CreateAlignedLoad(std::forward<Args>(args)...);
   }
 
   template <class... Args>
@@ -90,14 +82,14 @@ class IrBuilderMixin {
   }
 
   llvm::CallInst* Call(llvm::FunctionCallee func_callee,
-                       llvm::ArrayRef<llvm::Value*> args = llvm::None,
+                       llvm::ArrayRef<llvm::Value*> args = std::nullopt,
                        const llvm::Twine& name = "",
                        llvm::MDNode* fp_math_tag = nullptr) {
     return mixin_builder()->CreateCall(func_callee, args, name, fp_math_tag);
   }
 
   llvm::CallInst* Call(llvm::FunctionType* func_type, llvm::Value* callee,
-                       llvm::ArrayRef<llvm::Value*> args = llvm::None,
+                       llvm::ArrayRef<llvm::Value*> args = std::nullopt,
                        const llvm::Twine& name = "",
                        llvm::MDNode* fp_math_tag = nullptr) {
     return mixin_builder()->CreateCall(func_type, callee, args, name,
@@ -125,10 +117,10 @@ class IrBuilderMixin {
     return mixin_builder()->CreateFMul(std::forward<Args>(args)...);
   }
 
-  llvm::Value* GEP(llvm::Value* ptr, llvm::ArrayRef<llvm::Value*> idx_list,
+  llvm::Value* GEP(llvm::Type* type, llvm::Value* ptr,
+                   llvm::ArrayRef<llvm::Value*> idx_list,
                    const llvm::Twine& name = "") {
-    return mixin_builder()->CreateGEP(ptr->getType()->getPointerElementType(),
-                                      ptr, idx_list, name);
+    return mixin_builder()->CreateGEP(type, ptr, idx_list, name);
   }
 
   template <class... Args>
@@ -151,11 +143,10 @@ class IrBuilderMixin {
     return mixin_builder()->CreateICmpULT(std::forward<Args>(args)...);
   }
 
-  llvm::Value* InBoundsGEP(llvm::Value* ptr,
+  llvm::Value* InBoundsGEP(llvm::Type* type, llvm::Value* ptr,
                            llvm::ArrayRef<llvm::Value*> idx_list,
                            const llvm::Twine& name = "") {
-    return mixin_builder()->CreateInBoundsGEP(
-        ptr->getType()->getPointerElementType(), ptr, idx_list, name);
+    return mixin_builder()->CreateInBoundsGEP(type, ptr, idx_list, name);
   }
 
   llvm::Value* ExtractValue(llvm::Value* agg, llvm::ArrayRef<unsigned> idxs,
@@ -175,17 +166,8 @@ class IrBuilderMixin {
   }
 
   template <class... Args>
-  llvm::LoadInst* Load(llvm::Type* type, Args&&... args) {
-    return mixin_builder()->CreateLoad(type, std::forward<Args>(args)...);
-  }
-
-  template <class... Args>
-  llvm::LoadInst* Load(llvm::Value* value, Args&&... args) {
-    // LLVM has deprecated CreateLoad without a type argument. Provide it for
-    // convenience.
-    return mixin_builder()->CreateLoad(
-        value->getType()->getPointerElementType(), value,
-        std::forward<Args>(args)...);
+  llvm::LoadInst* Load(Args&&... args) {
+    return mixin_builder()->CreateLoad(std::forward<Args>(args)...);
   }
 
   template <class... Args>

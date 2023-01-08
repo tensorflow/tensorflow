@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 
+#include <algorithm>
+
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 
 namespace mlir {
 namespace TFL {
@@ -98,7 +101,7 @@ bool TFIntListIsAllOnes(const Attribute attr) {
   });
 }
 
-bool IsBroadcastableElementsAttrs(mlir::Attribute a, mlir::Attribute b) {
+bool IsBroadcastableElementsAttrs(mlir::TypedAttr a, mlir::TypedAttr b) {
   // This would return false if we had unranked tensors (where they should
   // probably be considered as broadcastable), but given we are working with
   // attributes here that shouldn't be an issue,
@@ -114,7 +117,7 @@ bool IsDimensionsDegenerateExceptLastOne(ArrayRef<int64_t> elements_shape) {
   return true;
 }
 
-bool IsDimensionsDegenerateExceptLastOne(Attribute val) {
+bool IsDimensionsDegenerateExceptLastOne(TypedAttr val) {
   if (auto ranked_type = val.getType().dyn_cast<RankedTensorType>()) {
     return IsDimensionsDegenerateExceptLastOne(ranked_type.getShape());
   }

@@ -107,7 +107,7 @@ Status PermutationHelper(const Tensor& perm, const int dims,
       reinterpret_cast<const volatile Tperm*>(Vperm.data());
   *permutation = std::vector<int32>(perm_begin, perm_begin + dims);
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -155,7 +155,7 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
         errors::InvalidArgument(d, " is out of range [0 .. ", dims, ")"));
     bits[d] = true;
     const auto dim_size = input.dim_size(d);
-    shape.AddDim(dim_size);
+    OP_REQUIRES_OK(ctx, shape.AddDimWithStatus(dim_size));
     if (d != i) {
       is_identity = false;
     }

@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/tpu.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -79,7 +78,7 @@ Status TryFindKernelDef(const std::vector<DeviceType>& devices,
       if (kdef) {
         *kdef = kernel;
       }
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -96,7 +95,7 @@ Status IsNodeOutputPortHostFriendly(const GraphView& graph,
 
   // Make sure we are not a denylisted op.
   if (IsDenylisted(node)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Check to make sure we have the right properties (i.e., statically shaped).
@@ -113,10 +112,10 @@ Status IsNodeOutputPortHostFriendly(const GraphView& graph,
                  << " but output_properties.size()=" << output_properties.size()
                  << "\n"
                  << node.DebugString();
-    return Status::OK();
+    return OkStatus();
   }
   if (!IsTensorSmall(output_properties[port_id])) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // These nodes may be optimized away downstream (even if pinned to Host), we
@@ -127,17 +126,17 @@ Status IsNodeOutputPortHostFriendly(const GraphView& graph,
       TF_RETURN_IF_ERROR(IsNodeOutputPortHostFriendly(
           graph, properties, *fanin.node, fanin.port_id, &fanin_candidate));
       if (!fanin_candidate) {
-        return Status::OK();
+        return OkStatus();
       }
     }
     *is_candidate = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Check if op's device is on CPU.
   if (absl::StrContains(node.device(), DEVICE_CPU)) {
     *is_candidate = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Check if op's output port is pinned to HostMemory.
@@ -145,7 +144,7 @@ Status IsNodeOutputPortHostFriendly(const GraphView& graph,
   Status s = OpRegistry::Global()->LookUpOpDef(node.op(), &op);
   if (!s.ok()) {
     LOG(WARNING) << "Could not find OpDef for : " << node.op();
-    return Status::OK();
+    return OkStatus();
   }
 
   // Map the port_id to output_arg_id.
@@ -154,7 +153,7 @@ Status IsNodeOutputPortHostFriendly(const GraphView& graph,
     LOG(WARNING) << "Invalid port: " << port_id << "!\n"
                  << node.DebugString() << "\n"
                  << op->DebugString();
-    return Status::OK();
+    return OkStatus();
   }
 
   // Find the kernel.
@@ -163,7 +162,7 @@ Status IsNodeOutputPortHostFriendly(const GraphView& graph,
                        &kernel);
   if (!s.ok()) {
     LOG(INFO) << "Could not find KernelDef for: " << node.op();
-    return Status::OK();
+    return OkStatus();
   }
 
   // Check if the output_arg is pinned to Host.
@@ -174,7 +173,7 @@ Status IsNodeOutputPortHostFriendly(const GraphView& graph,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Checks if a node's input port is Host friendly.
@@ -226,18 +225,18 @@ Status IsNodeHostCandidate(const GraphView& graph, GraphProperties* properties,
   // Check if node already on CPU.
   if (absl::StrContains(node.device(), DEVICE_CPU)) {
     *is_candidate = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Skip these node types.
   if (IsDenylisted(node)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Check the node can be run on CPU.
   Status s = TryFindKernelDef({DEVICE_CPU}, node, nullptr);
   if (!s.ok()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Check all inputs are Host friendly.
@@ -247,7 +246,7 @@ Status IsNodeHostCandidate(const GraphView& graph, GraphProperties* properties,
     TF_RETURN_IF_ERROR(IsNodeOutputPortHostFriendly(
         graph, properties, *fanin.node, fanin.port_id, &fanin_candidate));
     if (!fanin_candidate) {
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -260,12 +259,12 @@ Status IsNodeHostCandidate(const GraphView& graph, GraphProperties* properties,
   }
   for (const auto& prop : properties->GetOutputProperties(node.name())) {
     if (!IsTensorSmall(prop)) {
-      return Status::OK();
+      return OkStatus();
     }
   }
 
   *is_candidate = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Tries to find a Host device from `devices`. Returns empty string if no
@@ -300,9 +299,9 @@ Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                     GraphDef* optimized_graph) {
   *optimized_graph = item.graph;
 
-  // Skip all TPU graphs.
-  if (IsTPUGraphDef(*optimized_graph)) {
-    return Status::OK();
+  // Skip Legacy TPU bridge graphs.
+  if (IsLegacyTPUBridgeGraphDef(*optimized_graph)) {
+    return OkStatus();
   }
 
   GraphProperties properties(item);
@@ -365,7 +364,7 @@ Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace grappler

@@ -142,6 +142,8 @@ TF_CALL_uint8(REGISTER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 // A special DEVICE_DEFAULT kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
@@ -157,7 +159,5 @@ REGISTER_KERNEL_BUILDER(Name("Unpack")
                             .HostMemory("output")
                             .TypeConstraint<int64_t>("T"),
                         UnpackOp<CPUDevice, int64>);
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow

@@ -28,8 +28,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/cpu/xfeed_manager.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 namespace cpu {
@@ -49,9 +47,13 @@ extern const char* const kEigenMatMulF64SymbolName;
 extern const char* const kEigenMatMulC64SymbolName;
 extern const char* const kEigenMatMulC128SymbolName;
 extern const char* const kEigenMatMulS32SymbolName;
+extern const char* const kEigenBatchMatMulF32SymbolName;
 extern const char* const kMKLConv2DF32SymbolName;
+extern const char* const kACLConv2DF32SymbolName;
 extern const char* const kMKLMatMulF32SymbolName;
 extern const char* const kMKLMatMulF64SymbolName;
+extern const char* const kACLMatMulF32SymbolName;
+extern const char* const kACLBatchMatMulF32SymbolName;
 extern const char* const kMKLSingleThreadedMatMulF32SymbolName;
 extern const char* const kMKLSingleThreadedMatMulF64SymbolName;
 extern const char* const kEigenConv2DF16SymbolName;
@@ -81,6 +83,7 @@ extern const char* const kKeyValueSortSymbolName;
 extern const char* const kTopKF32SymbolName;
 extern const char* const kAllReduceSymbolName;
 extern const char* const kCollectivePermuteSymbolName;
+extern const char* const kPartitionIdSymbolName;
 extern const char* const kReplicaIdSymbolName;
 extern const char* const kTracingStartSymbolName;
 extern const char* const kTracingEndSymbolName;
@@ -180,9 +183,9 @@ extern void __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
 extern void __xla_cpu_runtime_AllReduce(
     const xla::ExecutableRunOptions* run_options,
     const void* replica_groups_str, int32_t replica_groups_str_size,
-    int32_t channel_id_present, int64_t op_id, int32_t reduction_kind,
-    const void* shape_ptr, int32_t shape_length, int32_t num_buffers,
-    void** input_buffers, void** output_buffers);
+    int32_t channel_id_present, int32_t use_global_device_ids, int64_t op_id,
+    int32_t reduction_kind, const void* shape_ptr, int32_t shape_length,
+    int32_t num_buffers, void** input_buffers, void** output_buffers);
 
 extern void __xla_cpu_runtime_CollectivePermute(
     const xla::ExecutableRunOptions* run_options, int32_t channel_id_present,
@@ -195,6 +198,9 @@ extern void __xla_cpu_runtime_AllToAll(
     int32_t replica_groups_str_size, int32_t num_buffers, int64_t buffer_size,
     void** source_buffers, void** destination_buffers);
 
+// Write the partition ID into the output buffer.
+extern void __xla_cpu_runtime_PartitionId(
+    const xla::ExecutableRunOptions* run_options, void* output_buffer);
 // Write the replica ID into the output buffer.
 extern void __xla_cpu_runtime_ReplicaId(
     const xla::ExecutableRunOptions* run_options, void* output_buffer);

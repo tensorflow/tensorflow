@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -261,7 +263,7 @@ class TensorShapeBase : public TensorShapeRep {
   /// Same as `RemoveLastDims` but returns a `Status`.
   /// Use if unsure is `0 <= n <= dims()`, to prevent `CHECK`-crashes.
   Status RemoveLastDimsWithStatus(int64_t n) {
-    if (TF_PREDICT_FALSE(n < dims())) {
+    if (TF_PREDICT_FALSE(n > dims())) {
       return errors::Internal("Expected dimension index to be at most ", dims(),
                               " got ", n);
     }
@@ -308,6 +310,7 @@ class TensorShapeBase : public TensorShapeRep {
 
   /// Fill `*proto` from `*this`.
   void AsProto(TensorShapeProto* proto) const;
+  TensorShapeProto AsProto() const;
 
   /// For iterating through the dimensions.
   TensorShapeIter<Shape> begin() const;
@@ -372,6 +375,12 @@ class TensorShape : public TensorShapeBase<TensorShape> {
   static Status BuildTensorShape(const TensorShapeProto& proto,
                                  TensorShape* out) {
     return BuildTensorShapeBase(proto, out);
+  }
+
+  static StatusOr<TensorShape> BuildTensorShape(const TensorShapeProto& proto) {
+    TensorShape out;
+    TF_RETURN_IF_ERROR(BuildTensorShape(proto, &out));
+    return out;
   }
 
   /// Allow a TensorShape to be used as a PartialTensorShape without copying
@@ -543,6 +552,13 @@ class PartialTensorShape : public TensorShapeBase<PartialTensorShape> {
     return BuildTensorShapeBase(proto, out);
   }
 
+  static StatusOr<PartialTensorShape> BuildPartialTensorShape(
+      const TensorShapeProto& proto) {
+    PartialTensorShape out;
+    TF_RETURN_IF_ERROR(BuildTensorShapeBase(proto, &out));
+    return out;
+  }
+
   /// Add a dimension to the end ("inner-most"), returns a new
   /// PartialTensorShape.
   /// REQUIRES: `size >= -1`, where -1 means unknown
@@ -650,6 +666,7 @@ Status TensorShape::AsEigenDSizesWithStatus(
                             " dimensions");
   }
   *out = AsEigenDSizesCopy<NDIMS, IndexType>();
+  return OkStatus();
 }
 
 template <int NDIMS, typename IndexType>
@@ -662,11 +679,12 @@ template <int NDIMS, typename IndexType>
 Status TensorShape::AsEigenDSizesWithPaddingWithStatus(
     Eigen::DSizes<IndexType, NDIMS>* out) const {
   if (TF_PREDICT_FALSE(NDIMS < dims())) {
-    return errors::Internal("Asking for tensor of at least ", NDIMS,
+    return errors::Internal("Asking for tensor of at most ", NDIMS,
                             " dimensions from a tensor of ", dims(),
                             " dimensions");
   }
   *out = AsEigenDSizesCopyAndPad<NDIMS, IndexType>();
+  return OkStatus();
 }
 
 // ----------------------------------------------------------------------------

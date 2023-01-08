@@ -20,42 +20,12 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/lib/profiler_controller.h"
 
 namespace tensorflow {
 namespace profiler {
 
-// Decorator for xprof profiler plugins.
-//
-// Tracks that calls to the underlying profiler interface functions are made
-// in the expected order: Start, Stop and CollectData. Making the calls
-// in a different order causes them to be aborted.
-//
-// Calls made in the right order will be aborted if one of the calls to the
-// decorated profiler interface fails, and no more calls will be forwarded to
-// the decorated profiler.
-class ProfilerController : public ProfilerInterface {
- public:
-  explicit ProfilerController(std::unique_ptr<ProfilerInterface> profiler);
-  ~ProfilerController() override;
-
-  Status Start() override;
-
-  Status Stop() override;
-
-  Status CollectData(XSpace* space) override;
-
- private:
-  enum class ProfilerState {
-    kInit = 0,
-    kStart = 1,
-    kStop = 2,
-    kCollectData = 3,
-  };
-
-  ProfilerState state_ = ProfilerState::kInit;
-  std::unique_ptr<ProfilerInterface> profiler_;
-  Status status_;  // result of calls to profiler_
-};
+using tsl::profiler::ProfilerController;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

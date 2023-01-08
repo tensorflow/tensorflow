@@ -21,10 +21,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/op_expander_pass.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
@@ -91,7 +91,7 @@ StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
         absl::StrCat("p.", sort->operand_count(), ".rhs")));
     extra_parameter_ptrs.push_back(extra_parameters.back().get());
     sort->set_to_apply(sort->GetModule()->AddEmbeddedComputation(
-        comparator->CloneWithReplacements(std::move(replacements),
+        comparator->CloneWithReplacements(&replacements,
                                           extra_parameter_ptrs)));
 
     // Replace the original sort op.

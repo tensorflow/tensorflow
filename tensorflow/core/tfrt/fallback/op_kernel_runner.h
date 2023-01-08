@@ -40,30 +40,48 @@ namespace tfrt_stub {
 class OpKernelRunner {
  public:
   static StatusOr<OpKernelRunner> Create(
-      absl::string_view op_name, absl::string_view device_name, int num_args,
+      absl::string_view op_name, absl::string_view node_name,
+      absl::string_view device_name, int num_args,
       const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
       const tensorflow::DeviceMgr& device_manager,
       const tensorflow::ProcessFunctionLibraryRuntime&
           process_function_library_runtime);
 
+  ABSL_DEPRECATED("Please use the Create() method that takes node_name.")
   static StatusOr<OpKernelRunner> Create(
-      absl::string_view op_name, int num_args,
+      absl::string_view op_name, absl::string_view device_name, int num_args,
+      const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+      const tensorflow::DeviceMgr& device_manager,
+      const tensorflow::ProcessFunctionLibraryRuntime&
+          process_function_library_runtime) {
+    return Create(op_name, /*node_name=*/op_name, device_name, num_args,
+                  attr_builder, device_manager,
+                  process_function_library_runtime);
+  }
+
+  static StatusOr<OpKernelRunner> Create(
+      absl::string_view op_name, absl::string_view node_name, int num_args,
       const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
       const tensorflow::ProcessFunctionLibraryRuntime&
           process_function_library_runtime,
       tensorflow::Device* device);
 
+  ABSL_DEPRECATED("Please use the Create() method that takes node_name.")
+  static StatusOr<OpKernelRunner> Create(
+      absl::string_view op_name, int num_args,
+      const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+      const tensorflow::ProcessFunctionLibraryRuntime&
+          process_function_library_runtime,
+      tensorflow::Device* device) {
+    return Create(op_name, /*node_name=*/op_name, num_args, attr_builder,
+                  process_function_library_runtime, device);
+  }
+
   OpKernelRunner() = default;
 
   explicit operator bool() const { return op_kernel_ != nullptr; }
 
-  void Run(OpKernelContext* context) const {
-    DVLOG(1) << "KernelFallbackExecuteCompat Running Op: "
-             << op_kernel_->def().DebugString()
-             << ", on Device: " << device_->name();
-
-    op_kernel_->Compute(context);
-  }
+  void Run(OpKernelContext* context) const;
 
   void RunAsync(OpKernelContext* context,
                 AsyncOpKernel::DoneCallback done_callback) const;
@@ -127,7 +145,10 @@ struct OpKernelRunState {
     // `input_tf_tensors`, we need to change those pointers to the correct ones
     // after copying.
     params = p;
-    params.inputs = &input_tf_tensor_values;
+    params.inputs = input_tf_tensor_values;
+    // Clear eigen_gpu_device to ensure OpKernelContext constructor will make a
+    // new eigen GPU device.
+    params.eigen_gpu_device = nullptr;
   }
 
   OpKernelRunState(const OpKernelRunState& other) = delete;

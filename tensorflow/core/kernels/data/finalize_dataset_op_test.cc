@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/finalize_dataset_op.h"
 
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/kernels/data/options_dataset_op.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
@@ -31,21 +35,21 @@ class FinalizeDatasetParams : public DatasetParams {
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         has_captured_ref_(false) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
   }
 
   std::vector<Tensor> GetInputTensors() const override { return {}; }
 
   Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->emplace_back(FinalizeDatasetOp::kInputDataset);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {{FinalizeDatasetOp::kHasCapturedRef, has_captured_ref_},
                     {FinalizeDatasetOp::kOutputTypes, output_dtypes_},
                     {FinalizeDatasetOp::kOutputShapes, output_shapes_}};
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override { return "Finalize"; }
@@ -90,9 +94,9 @@ constexpr char kPrivateThreadPoolOptions[] = R"pb(
   optimization_options { apply_default_optimizations: false }
   threading_options { private_threadpool_size: 10 }
 )pb";
-constexpr char kModelOptions[] = R"proto(
+constexpr char kModelOptions[] = R"pb(
   optimization_options { apply_default_optimizations: false }
-)proto";
+)pb";
 constexpr char kOptimizationsDefaultOptions[] = R"pb(
   autotune_options { enabled: false }
   optimization_options { apply_default_optimizations: true }
@@ -203,7 +207,7 @@ FinalizeDatasetParams AllChainedDatasetsParams() {
   return FinalizeDatasetParams(AllChainedDatasetsOptionsParams(),
                                /*output_dtypes=*/{DT_INT64},
                                /*output_shapes=*/{PartialTensorShape({})},
-                               /*node_name=*/"ModelDataset/_9");
+                               /*node_name=*/"inject/prefetch_ModelDataset/_9");
 }
 
 TEST_F(FinalizeDatasetOpTest, NoOptimizationNodeName) {
@@ -284,9 +288,9 @@ TEST_F(FinalizeDatasetOpTest, AllChainedDatasetsNodeName) {
   std::vector<const DatasetBase*> inputs;
   Status s = dataset_->InputDatasets(&inputs);
   TF_ASSERT_OK(CheckDatasetNodeName(test_case_params.node_name()));
-  CheckDatasetPipelineTypeStrings({"ModelDataset", "PrivateThreadPoolDataset",
-                                   "MaxIntraOpParallelismDataset",
-                                   "OptionsDataset", "RangeDataset"});
+  CheckDatasetPipelineTypeStrings(
+      {"PrefetchDataset", "ModelDataset", "PrivateThreadPoolDataset",
+       "MaxIntraOpParallelismDataset", "OptionsDataset", "RangeDataset"});
 }
 
 }  // namespace

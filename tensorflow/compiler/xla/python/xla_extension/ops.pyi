@@ -58,6 +58,7 @@ class CustomCallSchedule(enum.IntEnum):
 class CustomCallApiVersion(enum.IntEnum):
   API_VERSION_ORIGINAL: int
   API_VERSION_STATUS_RETURNING: int
+  API_VERSION_STATUS_RETURNING_UNIFIED: int
 
 def AfterAll(builder: XlaBuilder, tokens: Sequence[XlaOp]) -> XlaOp: ...
 def AllGather(
@@ -75,6 +76,16 @@ def AllReduce(
     channel_id: Optional[ChannelHandle] = ...,
     shape_with_layout: Optional[_Layout] = ...) -> XlaOp: ...
 def ApproxTopK(
+    builder: XlaBuilder,
+    operands: Sequence[XlaOp],
+    init_values: Sequence[XlaOp],
+    top_k: int,
+    reduction_dim: int,
+    comparator: XlaComputation,
+    recall_target: Optional[float],
+    aggregate_to_topk: Optional[bool],
+    reduction_input_size_override: Optional[int]) -> XlaOp: ...
+def ApproxTopKFallback(
     builder: XlaBuilder,
     operands: Sequence[XlaOp],
     init_values: Sequence[XlaOp],
@@ -106,7 +117,8 @@ def AllToAll(
     concat_dimension: int,
     split_count: int,
     replica_groups: Sequence[_ReplicaGroup] = ...,
-    layout: Optional[_Layout] = ...) -> XlaOp: ...
+    layout: Optional[_Layout] = ...,
+    channel_id: Optional[ChannelHandle] = ...) -> XlaOp: ...
 def BitcastConvertType(operand: XlaOp,
                        new_element_type: PrimitiveType) -> XlaOp: ...
 def Broadcast(operand: XlaOp, sizes: Sequence[int]) -> XlaOp: ...
@@ -120,8 +132,9 @@ def Cholesky(a: XlaOp, lower: bool = ...) -> XlaOp: ...
 def Clamp(min: XlaOp, operand: XlaOp, max: XlaOp) -> XlaOp: ...
 def Collapse(operand: XlaOp, dimensions: Sequence[int]) -> XlaOp: ...
 def CollectivePermute(
-  operand: XlaOp,
-    source_target_pairs: Sequence[Tuple[int, int]]) -> XlaOp: ...
+    operand: XlaOp,
+    source_target_pairs: Sequence[Tuple[int, int]],
+    channel_id: Optional[ChannelHandle] = ...) -> XlaOp: ...
 def ConcatInDim(builder: XlaBuilder,
                 operands: Sequence[XlaOp],
                 dimension: int) -> XlaOp: ...
@@ -150,7 +163,8 @@ def ConvGeneralDilated(
     feature_group_count: int = ...,
     batch_group_count: int = ...,
     precision_config: Optional[PrecisionConfig_Precision] = ...,
-    preferred_element_type: Optional[PrimitiveType] = ...) -> XlaOp: ...
+    preferred_element_type: Optional[PrimitiveType] = ...,
+    window_reversal: Optional[Sequence[bool]] = ...) -> XlaOp: ...
 def ConvertElementType(
     operand: XlaOp,
     new_element_type: PrimitiveType) -> XlaOp: ...
@@ -262,7 +276,9 @@ def Parameter(
     shape: Shape,
     name: str = ...,
     replicated_at_leaf_buffers: Sequence[bool] = ...) -> XlaOp: ...
+def ProductOfElementaryHouseholderReflectors(a: XlaOp, taus: XlaOp) -> XlaOp: ...
 def QR(a: XlaOp, full_matrices: bool) -> Tuple[XlaOp, XlaOp]: ...
+def QrDecomposition(a: XlaOp) -> Tuple[XlaOp, XlaOp]: ...
 def Reduce(
     builder: XlaBuilder,
     operands: Sequence[XlaOp],
@@ -308,10 +324,20 @@ def RngBitGenerator(
     shape: Shape) -> XlaOp: ...
 def RngNormal(mu: XlaOp, sigma: XlaOp, shape: Shape) -> XlaOp: ...
 def RngUniform(a: XlaOp, b: XlaOp, shape: Shape) -> XlaOp: ...
+@overload
 def Scatter(
     input: XlaOp,
     scatter_indices: XlaOp,
     updates: XlaOp,
+    update_computation: XlaComputation,
+    dimension_numbers: _ScatterDimensionNumbers,
+    indices_are_sorted: bool = ...,
+    unique_indices: bool = ...) -> XlaOp: ...
+@overload
+def Scatter(
+    inputs: Sequence[XlaOp],
+    scatter_indices: XlaOp,
+    updates: Sequence[XlaOp],
     update_computation: XlaComputation,
     dimension_numbers: _ScatterDimensionNumbers,
     indices_are_sorted: bool = ...,

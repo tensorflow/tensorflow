@@ -790,7 +790,7 @@ TEST(InstantiateErrors, TypeList_Missing_Retval_Attr) {
       {{"y", "y:output"}});
   InstantiationResult result;
   HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
-           "type attr not found: out_types");
+           "type list attr not found: out_types");
 }
 
 TEST(InstantiateErrors, TypeList_Num_Retval_Mismatch) {

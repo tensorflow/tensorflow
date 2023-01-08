@@ -14,12 +14,18 @@
 # ==============================================================================
 
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
+)
+
+config_setting(
+    name = "tflite_debug_delegate",
+    define_values = {"tflite_debug_delegate": "true"},
 )
 
 cc_library(
@@ -31,6 +37,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
     ],
 )
@@ -44,6 +51,7 @@ cc_test(
         ":telemetry",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/profiling:profile_buffer",
         "@com_google_googletest//:gtest_main",
@@ -61,6 +69,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
     ],
 )
@@ -69,6 +78,7 @@ cc_library(
     name = "interpreter_utils",
     srcs = ["interpreter_utils.cc"],
     hdrs = ["interpreter_utils.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:framework",
@@ -83,6 +93,7 @@ cc_test(
     deps = [
         ":utils",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -102,6 +113,7 @@ cc_test(
         "//tensorflow/lite:util",
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -118,7 +130,8 @@ cc_test(
     name = "delegate_test",
     size = "small",
     srcs = ["delegate_test.cc"],
-    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
+    data = ["//tensorflow/lite:testdata/add.bin"],
+    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs.
     deps = [
         ":delegate_test_util",
         ":interpreter_utils",
@@ -128,7 +141,11 @@ cc_test(
         "//tensorflow/lite:string",
         "//tensorflow/lite:util",
         "//tensorflow/lite:version",
+        "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/experimental/remat:metadata_util",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -155,6 +172,7 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -176,6 +194,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
     ],
@@ -190,6 +209,7 @@ cc_test(
         ":serialization",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",
     ],
 )

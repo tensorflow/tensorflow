@@ -21,7 +21,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -65,7 +65,7 @@ TEST(RankOpTest, InputTypeFloat) {
   EXPECT_TRUE(model.GetOutputShape().empty());
 
   // Invoke is superfluous and shouldn't change the output.
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({5}));
   EXPECT_TRUE(model.GetOutputShape().empty());

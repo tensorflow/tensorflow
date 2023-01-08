@@ -23,6 +23,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/mkl/mkl_conv_ops.h"
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
+#ifdef DNNL_AARCH64_USE_ACL
+#include "tensorflow/core/platform/mutex.h"
+#endif
 
 using dnnl::convolution_backward_weights;
 using dnnl::memory;
@@ -88,6 +91,9 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
   void Execute(const T* src_data, const T* diff_filter_data,
                const T* diff_bias_data, const T* diff_dst_data,
                std::shared_ptr<stream> bwd_filter_stream) {
+#ifdef DNNL_AARCH64_USE_ACL
+    mutex_lock lock(primitive_execution_mu_);
+#endif
 #ifndef ENABLE_ONEDNN_OPENMP
     // TODO(intel-tf): Create a common function and avoid the duplicate code
     context_.src_mem->set_data_handle(
@@ -273,6 +279,10 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
   }
 
   struct ConvBwdFilterContext context_;
+
+#ifdef DNNL_AARCH64_USE_ACL
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T>
@@ -370,7 +380,17 @@ class MklConvCustomBackpropFilterOp
       // a correct way to get filter shape. These operator-specific calls
       // allow this class to handle this case.
       TensorShape src_tf_shape = MakeInputTfShape(context, src_tensor);
-      TensorShape filter_tf_shape = MakeFilterTfShape(context, filter_tensor);
+      const string& op_type = this->type_string();
+      if ((op_type.find("3D") != std::string::npos) &&
+          (op_type.find("V2") != std::string::npos)) {
+        OP_REQUIRES(context, TensorShapeUtils::IsVector(filter_tensor.shape()),
+                    errors::InvalidArgument(
+                        "filter_sizes shape must be rank 1 but is rank ",
+                        filter_tensor.shape().dims()));
+      }
+      TensorShape filter_tf_shape;
+      OP_REQUIRES_OK(
+          context, MakeFilterTfShape(context, filter_tensor, &filter_tf_shape));
       TensorShape diff_dst_tf_shape =
           GetTfShape(context, kDiffDstIdx, native_format);
 
@@ -646,15 +666,15 @@ class MklConvCustomBackpropFilterOp
   }
 
   // Get TensorFlow shape of filter tensor.
-  TensorShape MakeFilterTfShape(OpKernelContext* context,
-                                const Tensor& filter_tensor) {
-    TensorShape filter_tf_shape;
-    CHECK_EQ(TensorShapeUtils::IsVector(filter_tensor.shape()), true);
-    CHECK_EQ(TensorShapeUtils::MakeShape(filter_tensor.vec<int32>(),
-                                         &filter_tf_shape)
-                 .ok(),
-             true);
-    return filter_tf_shape;
+  Status MakeFilterTfShape(OpKernelContext* context,
+                           const Tensor& filter_tensor,
+                           TensorShape* filter_tf_shape) {
+    if (!TensorShapeUtils::IsVector(filter_tensor.shape())) {
+      return errors::InvalidArgument("filter_tensor must be a vecotr, got ",
+                                     filter_tensor.shape());
+    }
+    return TensorShapeUtils::MakeShape(filter_tensor.vec<int32>(),
+                                       filter_tf_shape);
   }
 
   // Get Tensorflow shape of output tensor (diff_filter),

@@ -40,7 +40,7 @@ class SimpleHashTableResource : public ::tensorflow::ResourceBase {
 
     mutex_lock l(mu_);
     table_[key_val] = value_val;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Find(const Tensor& key, Tensor* value, const Tensor& default_value) {
@@ -55,7 +55,7 @@ class SimpleHashTableResource : public ::tensorflow::ResourceBase {
     const K key_val = key.flat<K>()(0);
     auto value_val = value->flat<V>();
     value_val(0) = gtl::FindWithDefault(table_, key_val, default_val);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Remove(const Tensor& key) {
@@ -65,7 +65,7 @@ class SimpleHashTableResource : public ::tensorflow::ResourceBase {
     if (table_.erase(key_val) != 1) {
       return errors::NotFound("Key for remove not found: ", key_val);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Save all key, value pairs to tensor outputs to support SavedModel
@@ -85,7 +85,7 @@ class SimpleHashTableResource : public ::tensorflow::ResourceBase {
       keys_data(i) = it->first;
       values_data(i) = it->second;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Load all key, value pairs from tensor inputs to support SavedModel
@@ -98,7 +98,7 @@ class SimpleHashTableResource : public ::tensorflow::ResourceBase {
     for (int64_t i = 0; i < key_values.size(); ++i) {
       gtl::InsertOrUpdate(&table_, key_values(i), value_values(i));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Create a debug string with the content of the map if this is small,
@@ -163,7 +163,7 @@ Status GetResource(OpKernelContext* ctx,
   const ResourceHandle& handle = handle_tensor.scalar<ResourceHandle>()();
   typedef SimpleHashTableResource<K, V> resource_type;
   TF_ASSIGN_OR_RETURN(*resource, handle.GetResource<resource_type>());
-  return Status::OK();
+  return OkStatus();
 }
 
 template <class K, class V>

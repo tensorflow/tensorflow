@@ -15,8 +15,8 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -49,8 +49,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   if (input->type != kTfLiteInt32 && input->type != kTfLiteFloat32 &&
       input->type != kTfLiteUInt8 && input->type != kTfLiteInt8 &&
       input->type != kTfLiteInt16 && input->type != kTfLiteBool) {
-    context->ReportError(context, "Type '%s' is not supported by unpack.",
-                         TfLiteTypeGetName(input->type));
+    TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by unpack.",
+                       TfLiteTypeGetName(input->type));
     return kTfLiteError;
   }
 
@@ -128,8 +128,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     default: {
-      context->ReportError(context, "Type '%s' is not supported by unpack.",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by unpack.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
     }
   }

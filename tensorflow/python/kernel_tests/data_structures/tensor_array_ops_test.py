@@ -302,6 +302,7 @@ class TensorArrayTest(test.TestCase):
     self._testTensorArrayUnpackRead(dtypes.complex64)
     self._testTensorArrayUnpackRead(dtypes.complex128)
     self._testTensorArrayUnpackRead(dtypes.string)
+    self._testTensorArrayUnpackRead(dtypes.bfloat16)
 
   def testTensorArrayUnpackRead(self):
     self._testTensorArrayUnpackReadMaybeLegacy()
@@ -357,6 +358,7 @@ class TensorArrayTest(test.TestCase):
     self._testTensorArraySplitRead(dtypes.complex64)
     self._testTensorArraySplitRead(dtypes.complex128)
     self._testTensorArraySplitRead(dtypes.string)
+    self._testTensorArraySplitRead(dtypes.bfloat16)
 
   @test_util.disable_control_flow_v2("v2 does not support TensorArray.grad.")
   @test_util.run_v1_only("v2 does not support TensorArray.grad.")
@@ -1784,6 +1786,17 @@ class TensorArrayTest(test.TestCase):
       v0, v1 = sess.run([r0, r1], feed_dict={value: [-3, 100]})
       self.assertAllEqual(v0, -3)
       self.assertAllEqual(v1, 100)
+
+  @test_util.deprecated_graph_mode_only
+  def testTensorArrayScatterBfloat16GPU(self):
+    if not test.is_gpu_available():
+      return
+    with self.session(force_gpu=True) as sess:
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.bfloat16, tensor_array_name="foo", size=5)
+      ta = ta.scatter(
+          indices=[3, 4], value=array_ops.ones([2], dtype=dtypes.bfloat16))
+      self.assertAllEqual(ta.stack(), [0., 0., 0., 1., 1.])
 
   def testInferShapeFalseValid(self):
     ta = tensor_array_ops.TensorArray(

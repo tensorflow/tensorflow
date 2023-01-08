@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LOGICAL_BUFFER_ANALYSIS_H_
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
@@ -42,7 +42,7 @@ class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
   const std::vector<std::unique_ptr<LogicalBuffer>>& logical_buffers() const {
     return logical_buffers_;
   }
-  LogicalBuffer::Id num_logical_buffers() const { return next_buffer_id_; }
+  size_t num_logical_buffers() const { return logical_buffers_.size(); }
 
  private:
   explicit LogicalBufferAnalysis(const HloModule* module) : module_(module) {}
@@ -66,9 +66,9 @@ class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
   Status HandleCopyDone(HloInstruction* copy_done) override;
   Status HandleRecvDone(HloInstruction* recv_done) override;
   Status HandleSend(HloInstruction* send) override;
-  Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
+  Status HandleFusion(HloInstruction* fusion) override;
 
   // A map from the buffer ID to the logical buffer
   std::vector<std::unique_ptr<LogicalBuffer>> logical_buffers_;
@@ -78,9 +78,6 @@ class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
   absl::flat_hash_map<std::pair<const HloInstruction*, const ShapeIndex>,
                       LogicalBuffer*>
       output_buffers_;
-
-  // The ID of the next logical buffer created.
-  LogicalBuffer::Id next_buffer_id_ = 0;
 };
 
 }  // namespace xla

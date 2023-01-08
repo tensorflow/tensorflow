@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_weights.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -64,7 +66,7 @@ std::string TfLiteToMlir(absl::string_view tflite_op_name) {
 
 std::unique_ptr<tflite::ModelT> CreateMutableModelFromFile(
     const tflite::Model* input_model) {
-  auto copied_model = absl::make_unique<tflite::ModelT>();
+  auto copied_model = std::make_unique<tflite::ModelT>();
   input_model->UnPackTo(copied_model.get(), nullptr);
   return copied_model;
 }

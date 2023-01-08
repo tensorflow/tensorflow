@@ -48,7 +48,7 @@ FallbackState::FallbackState(const SessionOptions &session_options,
             Rendezvous::Factory{
                 [](const int64, const DeviceMgr *device_mgr, Rendezvous **r) {
                   *r = new IntraProcessRendezvous(device_mgr);
-                  return Status::OK();
+                  return OkStatus();
                 }}) {
   for (auto *d : device_manager_.ListDevices()) {
     device_set_.AddDevice(d);
@@ -73,6 +73,10 @@ FallbackState::CreateGraphExecutionState(GraphDef graph_def) const {
   TF_RETURN_IF_ERROR(GraphExecutionState::MakeForBaseGraph(
       std::move(graph_def), options, &execution_state));
   return execution_state;
+}
+
+Status FallbackState::AddFunctionDef(const FunctionDef &func_def) {
+  return func_lib_def_.AddFunctionDef(func_def);
 }
 
 }  // namespace tfrt_stub

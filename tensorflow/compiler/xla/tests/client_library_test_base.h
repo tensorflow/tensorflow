@@ -21,7 +21,6 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
@@ -34,13 +33,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/manifest_checking_test.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/bitmap.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/lib/core/bitmap.h"
+#include "tensorflow/tsl/platform/float8.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 
@@ -145,7 +145,7 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
   // As above, but uses a bitmap to hold the predicate vector to avoid
   // deficiencies of vector<bool>.
   void ComputeAndCompareR1(XlaBuilder* builder,
-                           const tensorflow::core::Bitmap& expected,
+                           const tsl::core::Bitmap& expected,
                            absl::Span<GlobalData* const> arguments);
 
   template <typename NativeT>
@@ -463,6 +463,8 @@ void ClientLibraryTestBase::ComputeAndCompareR0(
                     std::is_same<NativeT, double>::value ||
                     std::is_same<NativeT, bfloat16>::value ||
                     std::is_same<NativeT, half>::value ||
+                    std::is_same<NativeT, tsl::float8_e5m2>::value ||
+                    std::is_same<NativeT, tsl::float8_e4m3fn>::value ||
                     std::is_same<NativeT, complex64>::value ||
                     std::is_same<NativeT, complex128>::value,
                 "Float or complex type required when specifying an ErrorSpec");
@@ -488,6 +490,8 @@ void ClientLibraryTestBase::ComputeAndCompareR1(
                     std::is_same<NativeT, double>::value ||
                     std::is_same<NativeT, bfloat16>::value ||
                     std::is_same<NativeT, half>::value ||
+                    std::is_same<NativeT, tsl::float8_e5m2>::value ||
+                    std::is_same<NativeT, tsl::float8_e4m3fn>::value ||
                     std::is_same<NativeT, complex64>::value ||
                     std::is_same<NativeT, complex128>::value,
                 "Float or complex type required when specifying an ErrorSpec");
@@ -514,6 +518,8 @@ void ClientLibraryTestBase::ComputeAndCompareR2(
                     std::is_same<NativeT, double>::value ||
                     std::is_same<NativeT, bfloat16>::value ||
                     std::is_same<NativeT, half>::value ||
+                    std::is_same<NativeT, tsl::float8_e5m2>::value ||
+                    std::is_same<NativeT, tsl::float8_e4m3fn>::value ||
                     std::is_same<NativeT, complex64>::value ||
                     std::is_same<NativeT, complex128>::value,
                 "Float or complex type required when specifying an ErrorSpec");
@@ -541,6 +547,8 @@ void ClientLibraryTestBase::ComputeAndCompareR3(
                     std::is_same<NativeT, double>::value ||
                     std::is_same<NativeT, bfloat16>::value ||
                     std::is_same<NativeT, half>::value ||
+                    std::is_same<NativeT, tsl::float8_e5m2>::value ||
+                    std::is_same<NativeT, tsl::float8_e4m3fn>::value ||
                     std::is_same<NativeT, complex64>::value ||
                     std::is_same<NativeT, complex128>::value,
                 "Float or complex type required when specifying an ErrorSpec");
@@ -568,6 +576,8 @@ void ClientLibraryTestBase::ComputeAndCompareR4(
                     std::is_same<NativeT, double>::value ||
                     std::is_same<NativeT, bfloat16>::value ||
                     std::is_same<NativeT, half>::value ||
+                    std::is_same<NativeT, tsl::float8_e5m2>::value ||
+                    std::is_same<NativeT, tsl::float8_e4m3fn>::value ||
                     std::is_same<NativeT, complex64>::value ||
                     std::is_same<NativeT, complex128>::value,
                 "Float or complex type required when specifying an ErrorSpec");
@@ -594,6 +604,8 @@ void ClientLibraryTestBase::ComputeAndCompare(
                     std::is_same<NativeT, double>::value ||
                     std::is_same<NativeT, bfloat16>::value ||
                     std::is_same<NativeT, half>::value ||
+                    std::is_same<NativeT, tsl::float8_e5m2>::value ||
+                    std::is_same<NativeT, tsl::float8_e4m3fn>::value ||
                     std::is_same<NativeT, complex64>::value ||
                     std::is_same<NativeT, complex128>::value,
                 "Float or complex type required when specifying an ErrorSpec");
@@ -610,8 +622,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR0Parameter(
   if (use_bfloat16_ && literal.shape().element_type() == F32) {
     literal = LiteralUtil::ConvertF32ToBF16(literal);
   }
-  std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
 }
@@ -624,8 +635,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR1Parameter(
   if (use_bfloat16_ && literal.shape().element_type() == F32) {
     literal = LiteralUtil::ConvertF32ToBF16(literal);
   }
-  std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
 }
@@ -638,8 +648,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR2Parameter(
   if (use_bfloat16_ && literal.shape().element_type() == F32) {
     literal = LiteralUtil::ConvertF32ToBF16(literal);
   }
-  std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
 }
@@ -652,8 +661,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR3Parameter(
   if (use_bfloat16_ && literal.shape().element_type() == F32) {
     literal = LiteralUtil::ConvertF32ToBF16(literal);
   }
-  std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
 }
@@ -666,8 +674,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR4Parameter(
   if (use_bfloat16_ && literal.shape().element_type() == F32) {
     literal = LiteralUtil::ConvertF32ToBF16(literal);
   }
-  std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
 }
@@ -680,8 +687,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateParameter(
   if (use_bfloat16_ && literal.shape().element_type() == F32) {
     literal = LiteralUtil::ConvertF32ToBF16(literal);
   }
-  std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
 }
@@ -701,7 +707,7 @@ template <typename NativeT>
 std::unique_ptr<Array2D<NativeT>> ClientLibraryTestBase::CreatePseudorandomR2(
     const int rows, const int cols, NativeT min_value, NativeT max_value,
     uint32_t seed) {
-  auto result = absl::make_unique<Array2D<NativeT>>(rows, cols);
+  auto result = std::make_unique<Array2D<NativeT>>(rows, cols);
   PseudorandomGenerator<NativeT> generator(min_value, max_value, seed);
   for (int y = 0; y < rows; ++y) {
     for (int x = 0; x < cols; ++x) {

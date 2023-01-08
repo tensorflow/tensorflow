@@ -46,7 +46,7 @@ std::string ImportFunction(const std::string &functiondef_proto,
                            TF_Status *status);
 
 // This wrapper passes the graph_def taking names of input nodes, the shapes and
-// types of its inputs and the ouput nodes as parameters to MLIR.
+// types of its inputs and the output nodes as parameters to MLIR.
 std::string ImportGraphDef(const std::string &proto,
                            const std::string &pass_pipeline,
                            bool show_debug_info, absl::string_view(input_names),
@@ -102,6 +102,10 @@ std::string ExperimentalRunPassPipeline(const std::string &mlir_txt,
                                         const std::string &pass_pipeline,
                                         bool show_debug_info,
                                         TF_Status *status);
+
+// Writes the input textual MLIR as bytecode to output file.
+void ExperimentalWriteBytecode(const std::string &filename,
+                               const std::string &mlir_txt, TF_Status *status);
 
 }  // namespace tensorflow
 

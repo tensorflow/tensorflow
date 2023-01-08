@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/kernels/sparse_slice_grad_op.h"
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -21,7 +23,55 @@ limitations under the License.
 
 namespace tensorflow {
 
+typedef Eigen::ThreadPoolDevice CPUDevice;
+
+namespace functor {
+
 template <typename T>
+struct SparseSliceGradFunctor<CPUDevice, T> {
+  void operator()(OpKernelContext *ctx,
+                  typename TTypes<T>::ConstFlat backprop_val_grad,
+                  typename TTypes<int64_t>::ConstMatrix input_indices_mat,
+                  typename TTypes<int64_t>::ConstFlat input_start_flat,
+                  typename TTypes<int64_t>::ConstMatrix output_indices_mat,
+                  typename TTypes<T>::Flat val_grad) const {
+    const int64_t input_nnz = input_indices_mat.dimension(0);
+    const int num_dims = input_indices_mat.dimension(1);
+
+    T *val_grad_flat = val_grad.data();
+    const T *backprop_val_grad_flat = backprop_val_grad.data();
+    memset(val_grad_flat, 0, sizeof(T) * input_nnz);
+
+    // Fill gradients for position where indices of input and output are same.
+    int64_t j = 0;
+    for (int64_t i = 0; i < input_nnz && j < backprop_val_grad.dimension(0);
+         ++i) {
+      bool is_same = true;
+      for (int d = 0; d < num_dims; ++d) {
+        const int64_t a = input_indices_mat(i, d);
+        const int64_t b = output_indices_mat(j, d);
+        const int64_t offset = input_start_flat(d);
+        if (a != b + offset) {
+          is_same = false;
+          break;
+        }
+      }
+      if (is_same) {
+        val_grad_flat[i] = backprop_val_grad_flat[j];
+        ++j;
+      }
+    }
+    OP_REQUIRES(
+        ctx, backprop_val_grad.dimension(0) == j,
+        errors::Internal("Elements of backprop_val_grad aren't all propagated. "
+                         "Num elements:",
+                         backprop_val_grad.dimension(0), ", used: ", j));
+  }
+};
+
+}  // namespace functor
+
+template <typename Device, typename T>
 class SparseSliceGradOp : public OpKernel {
  public:
   explicit SparseSliceGradOp(OpKernelConstruction *ctx) : OpKernel(ctx) {}
@@ -81,45 +131,34 @@ class SparseSliceGradOp : public OpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output(0, TensorShape({input_nnz}), &val_grad));
 
-    T *val_grad_flat = val_grad->flat<T>().data();
-    const T *backprop_val_grad_flat = backprop_val_grad->flat<T>().data();
-    memset(val_grad_flat, 0, sizeof(T) * input_nnz);
+    if (input_nnz == 0) return;
 
-    // Fill gradients for position where indices of input and output are same.
-    const auto input_indices_mat = input_indices->matrix<int64_t>();
-    const auto output_indices_mat = output_indices->matrix<int64_t>();
-    const auto input_start_flat = input_start->flat<int64_t>();
-    int64_t j = 0;
-    for (int64_t i = 0; i < input_nnz && j < backprop_val_grad->NumElements();
-         ++i) {
-      bool is_same = true;
-      for (int d = 0; d < num_dims; ++d) {
-        const int64_t a = input_indices_mat(i, d);
-        const int64_t b = output_indices_mat(j, d);
-        const int64_t offset = input_start_flat(d);
-        if (a != b + offset) {
-          is_same = false;
-          break;
-        }
-      }
-      if (is_same) {
-        val_grad_flat[i] = backprop_val_grad_flat[j];
-        ++j;
-      }
-    }
-    OP_REQUIRES(
-        ctx, backprop_val_grad->NumElements() == j,
-        errors::Internal("Elements of backprop_val_grad aren't all propagated. "
-                         "Num elements:", backprop_val_grad->NumElements(),
-                         ", used: ", j));
+    functor::SparseSliceGradFunctor<Device, T>()(
+        ctx, backprop_val_grad->flat<T>(), input_indices->matrix<int64_t>(),
+        input_start->flat<int64_t>(), output_indices->matrix<int64_t>(),
+        val_grad->flat<T>());
   }
 };
 
 #define REGISTER_KERNELS(type)                                              \
   REGISTER_KERNEL_BUILDER(                                                  \
       Name("SparseSliceGrad").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      SparseSliceGradOp<type>)
+      SparseSliceGradOp<CPUDevice, type>)
 
 TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+typedef Eigen::GpuDevice GPUDevice;
+
+#define REGISTER_KERNELS(type)                                              \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("SparseSliceGrad").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+      SparseSliceGradOp<GPUDevice, type>)
+TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
+#undef REGISTER_KERNELS
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 }  // namespace tensorflow

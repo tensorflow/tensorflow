@@ -15,6 +15,7 @@
 """Tests for tensorflow.ops.argmax_op."""
 import functools
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -24,7 +25,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class ArgMaxTest(test.TestCase):
+class ArgMaxTest(test.TestCase, parameterized.TestCase):
 
   def _testArg(self,
                method,
@@ -91,10 +92,13 @@ class ArgMaxTest(test.TestCase):
       self._testBothArg(math_ops.argmax, x, axis, x.argmax(axis))
       self._testBothArg(math_ops.argmin, x, axis, x.argmin(axis))
 
-  def testFloat(self):
-    self._testBasic(np.float32)
-    self._testTieBreaking(np.float32)
-    self._testDim(np.float32)
+  @parameterized.parameters(np.float16, np.float32, np.float64, np.int16,
+                            np.int32, np.int64, np.bool_,
+                            dtypes.bfloat16.as_numpy_dtype)
+  def testTypes(self, dtype):
+    self._testBasic(dtype,)
+    self._testTieBreaking(dtype)
+    self._testDim(dtype)
 
   def testFloatInt32Output(self):
     x = np.asarray(100 * np.random.randn(200), dtype=np.float32)
@@ -112,31 +116,6 @@ class ArgMaxTest(test.TestCase):
       tf_ans = self.evaluate(ans)
       self.assertEqual(np.int32, tf_ans.dtype)
       self.assertAllEqual(tf_ans, expected_values)
-
-  def testDouble(self):
-    self._testBasic(np.float64)
-    self._testTieBreaking(np.float64)
-    self._testDim(np.float64)
-
-  def testInt16(self):
-    self._testBasic(np.int16)
-    self._testTieBreaking(np.int16)
-    self._testDim(np.int16)
-
-  def testInt32(self):
-    self._testBasic(np.int32)
-    self._testTieBreaking(np.int32)
-    self._testDim(np.int32)
-
-  def testInt64(self):
-    self._testBasic(np.int64)
-    self._testTieBreaking(np.int64)
-    self._testDim(np.int64)
-
-  def testBool(self):
-    self._testBasic(np.bool_)
-    self._testTieBreaking(np.bool_)
-    self._testDim(np.bool_)
 
   def testEmpty(self):
     with self.cached_session():

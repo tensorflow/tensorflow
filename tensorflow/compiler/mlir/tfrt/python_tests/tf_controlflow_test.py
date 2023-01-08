@@ -33,7 +33,7 @@ class TfControlflowTest(test.TestCase):
   def test_if(self):
     for specialize in specializations:
       mlir_function = """
-        func @test(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: tensor<?xf32>,
+        func.func @test(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: tensor<?xf32>,
                    %arg3: tensor<?xf32>) -> tensor<?xf32> {
           %0 = "tf.IfRegion"(%arg0) ({
               %1 = "tf.If"(%arg1, %arg2, %arg3)
@@ -45,19 +45,19 @@ class TfControlflowTest(test.TestCase):
                  -> tensor<?xf32>
               "tf.Yield"(%2) : (tensor<?xf32>) -> ()
             }) {is_stateless = false} : (tensor<i1>) -> tensor<?xf32>
-          return %0: tensor<?xf32>
+          func.return %0: tensor<?xf32>
         }
 
-        func @add(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+        func.func @add(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
           %0 = "tf.Add"(%arg0, %arg1): (tensor<?xf32>, tensor<?xf32>)
              -> tensor<?xf32>
-          return %0 : tensor<?xf32>
+          func.return %0 : tensor<?xf32>
         }
 
-        func @sub(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+        func.func @sub(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
           %0 = "tf.Sub"(%arg0, %arg1) : (tensor<?xf32>, tensor<?xf32>)
              -> tensor<?xf32>
-          return %0 : tensor<?xf32>
+          func.return %0 : tensor<?xf32>
         }"""
       compiled = jitrt.compile(mlir_function, 'test', specialize)
 
@@ -81,19 +81,19 @@ class TfControlflowTest(test.TestCase):
     for specialize in specializations:
       # Square input until one element is over 100.
       mlir_function = """
-        func @test(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+        func.func @test(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
           %0 = "tf.While"(%arg0)
              {body = @while_body, cond = @while_cond, is_stateless = true}
              : (tensor<?x?xf32>) -> (tensor<?x?xf32>)
-          return %0: tensor<?x?xf32>
+          func.return %0: tensor<?x?xf32>
         }
 
-        func @while_body(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+        func.func @while_body(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
           %0 = "tf.Square"(%arg0): (tensor<?x?xf32>) -> tensor<?x?xf32>
-          return %0: tensor<?x?xf32>
+          func.return %0: tensor<?x?xf32>
         }
 
-        func @while_cond(%arg0: tensor<?x?xf32>) -> tensor<i1> {
+        func.func @while_cond(%arg0: tensor<?x?xf32>) -> tensor<i1> {
           %cst = "tf.Const"() {value = dense<100.0> : tensor<f32>}
              : () -> tensor<f32>
           %less = "tf.Less"(%arg0, %cst) {T = f32}
@@ -102,7 +102,7 @@ class TfControlflowTest(test.TestCase):
              : () -> tensor<2xi32>
           %all = "tf.All"(%less, %dim_to_reduce) {keep_dims = false}
              : (tensor<?x?xi1>, tensor<2xi32>) -> tensor<i1>
-          return %all : tensor<i1>
+          func.return %all : tensor<i1>
         }"""
       compiled = jitrt.compile(mlir_function, 'test', specialize)
 

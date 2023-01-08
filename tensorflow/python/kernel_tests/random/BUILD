@@ -1,9 +1,9 @@
 # Tests of TensorFlow kernels written using the Python API.
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -191,7 +191,7 @@ cuda_py_test(
 
 tf_py_test(
     name = "random_shuffle_queue_test",
-    size = "small",
+    size = "medium",
     srcs = ["random_shuffle_queue_test.py"],
     tags = [
         "no_cuda_on_cpu_tap",  # TODO(b/171060960) flakyly broken assertions
@@ -224,6 +224,29 @@ cuda_py_test(
         "//tensorflow/python:stateless_random_ops",
         "//third_party/py/numpy",
     ],
+)
+
+cuda_py_test(
+    name = "stateful_random_ops_test",
+    size = "medium",
+    srcs = ["stateful_random_ops_test.py"],
+    python_version = "PY3",
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
+    deps = [
+        ":util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python:stateful_random_ops",
+        "//tensorflow/python/framework:config",
+    ],
+)
+
+tf_py_test(
+    name = "random_index_shuffle_test",
+    srcs = ["random_index_shuffle_test.py"],
+    shard_count = 10,
 )
 
 py_library(

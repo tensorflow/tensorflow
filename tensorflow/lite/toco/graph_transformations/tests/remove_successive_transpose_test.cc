@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -29,7 +30,7 @@ class RemoveSuccessiveTransposeTest : public Test {
  protected:
   RemoveSuccessiveTransposeTest() {}
 
-  void SetUp() override { model_.reset(new toco::Model); }
+  void SetUp() override { model_ = std::make_unique<toco::Model>(); }
 
   void CreateArray(const std::string& name, const std::vector<int>& shape) {
     toco::Array& array = model_->GetOrCreateArray(name);
