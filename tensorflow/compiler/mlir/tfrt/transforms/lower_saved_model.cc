@@ -168,10 +168,11 @@ void ReplaceHoistedValues(
   }
 }
 
-bool OnlyHasReadEffect(mlir::Operation *op) {
+bool OnlyHasReadOrNoEffect(mlir::Operation *op) {
   auto interface = llvm::dyn_cast<mlir::MemoryEffectOpInterface>(op);
   if (!interface) return false;
-  return interface.onlyHasEffect<mlir::MemoryEffects::Read>();
+  return interface.onlyHasEffect<mlir::MemoryEffects::Read>() ||
+         interface.hasNoEffect();
 }
 
 bool CanHoist(const llvm::DenseSet<mlir::TF::ResourceHandle> &read_only_vars,
@@ -335,7 +336,7 @@ void HoistInvariantOps(mlir::ModuleOp module) {
     const auto &vars = iter.second;
     if (std::all_of(vars.begin(), vars.end(), [](mlir::Operation *op) {
           for (auto *user : op->getUsers()) {
-            if (!OnlyHasReadEffect(user)) return false;
+            if (!OnlyHasReadOrNoEffect(user)) return false;
           }
           return true;
         })) {
