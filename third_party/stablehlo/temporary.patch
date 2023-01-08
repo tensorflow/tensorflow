@@ -1,7 +1,7 @@
 diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
 --- stablehlo/stablehlo/dialect/TypeInference.cpp
 +++ stablehlo/stablehlo/dialect/TypeInference.cpp
-@@ -65,22 +65,6 @@
+@@ -65,21 +65,7 @@
  // Utils for shape functions.
  //===----------------------------------------------------------------------===//
  
@@ -20,20 +20,11 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
 -  int64_t baseDilation = 1;
 -  bool windowReversal = false;
 -};
--
++static constexpr int64_t kDynamicSizePrintValue = -1;
+ 
  // Checks if the vector `nums` has duplicates.
  const auto hasDuplicates = [](const ArrayRef<int64_t> nums) {
-   llvm::SmallDenseSet<int64_t> set(nums.begin(), nums.end());
-@@ -107,7 +91,7 @@
- // type. If 'ignoreFpPrecision' is True, then allow floats with different
- // precisions while checking element-types.
- bool compatibleShapeAndElementType(Type type1, Type type2,
--                                   bool ignoreFpPrecision = false) {
-+                                   bool ignoreFpPrecision) {
-   if (failed(verifyCompatibleShape(type1, type2))) return false;
-   return tensorsHaveSameElType(type1.cast<ShapedType>(),
-                                type2.cast<ShapedType>(), ignoreFpPrecision);
-@@ -785,6 +769,19 @@
+@@ -785,6 +771,19 @@
    return success();
  }
  
@@ -53,7 +44,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
  // Verifies the following properties:
  //  P1. The input, kernel, and output spatial-dimentions are valid.
  //  P2. Given,
-@@ -805,14 +802,16 @@
+@@ -805,14 +804,16 @@
  //          dim(lhs, f) / fgc = dim(rhs, i)
  //        * dim(rhs, o) (or dim(output, f')) % bgc == 0 and
  //          dim(rhs, o) (or dim(output, f')) % fgc == 0
@@ -73,7 +64,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
    // P1.
    if (failed(isSpatialDimensionsValid(
            lhs, inputBatchDimension, inputFeatureDimension,
-@@ -892,18 +891,11 @@
+@@ -892,18 +893,11 @@
                               "batch_group_count. Got batch_group_count = ",
                               batchGroupCount, ".");
  
@@ -97,7 +88,31 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
  }
  
  LogicalResult inferDotShape(RankedTensorType lhs, RankedTensorType rhs,
-@@ -2804,7 +2796,6 @@
+@@ -1687,9 +1681,9 @@
+   int numSliceSizes = sliceSizes.getNumElements();
+   int numStartIndices = startIndices.size();
+   if (numStartIndices != numSliceSizes)
+-    return emitOptionalError(location, "has mismatched number of slice sizes (",
+-                             numSliceSizes, ") and number of start indices (",
+-                             numStartIndices, ")");
++    return emitOptionalError(
++        location, "op has mismatched number of slice sizes (", numSliceSizes,
++        ") and number of start indices (", numStartIndices, ")");
+   auto operandType = operand.getType().dyn_cast<RankedTensorType>();
+   if (!operandType) return failure();
+ 
+@@ -1930,7 +1924,9 @@
+   }
+ 
+   auto getSliceDim = [&sliceSizes](int64_t index) -> int64_t {
+-    return sliceSizes.getValues<int64_t>()[index];
++    return sliceSizes.getValues<int64_t>()[index] == kDynamicSizePrintValue
++               ? ShapedType::kDynamic
++               : sliceSizes.getValues<int64_t>()[index];
+   };
+ 
+   return inferGatherReturnTypeComponents(
+@@ -2804,7 +2800,6 @@
   *  P3. Verify and collect the window atributes.
   *  P4. Verify precision_config attribute.
   *  P5. Verify the return shape.
@@ -105,7 +120,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
   */
  LogicalResult verifyConvolutionOp(
      Optional<Location> location, Value lhs, Value rhs,
-@@ -2839,11 +2830,11 @@
+@@ -2839,11 +2834,11 @@
  
    // P2.
    if (failed(verifyConvolutionAttributes(
@@ -119,7 +134,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
      return failure();
  
    if ((size_t)numDims != inputSpatialDimensions.size() + 2)
-@@ -2878,11 +2869,7 @@
+@@ -2878,11 +2873,7 @@
        *rhsDilationOrErr, *windowReversalOrErr, location);
    if (failed(windowOrErr)) return failure();
  
@@ -132,7 +147,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
    SmallVector<int64_t> outputDimensions(lhsType.getShape().size(),
                                          ShapedType::kDynamic);
  
-@@ -2920,7 +2907,8 @@
+@@ -2920,7 +2911,8 @@
  }
  
  LogicalResult verifyDotOp(Optional<Location> location, Value lhs, Value rhs,
@@ -142,7 +157,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
    auto lhsType = lhs.getType().dyn_cast<RankedTensorType>();
    auto rhsType = rhs.getType().dyn_cast<RankedTensorType>();
    auto resultType = result.getType().dyn_cast<RankedTensorType>();
-@@ -2937,7 +2925,7 @@
+@@ -2937,7 +2929,7 @@
          location, "inferred shape '", dimSizesToString(inferredShape), "' ",
          "is incompatible with return type of operation ", resultType, "");
  
@@ -154,23 +169,10 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
 diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/dialect/TypeInference.h
 --- stablehlo/stablehlo/dialect/TypeInference.h
 +++ stablehlo/stablehlo/dialect/TypeInference.h
-@@ -39,6 +39,83 @@
+@@ -39,6 +39,53 @@
                           ArrayRef<int64_t> collapsedSliceDims,
                           ArrayRef<int64_t> startIndexMap,
                           int64_t indexVectorDim, SmallVectorImpl<Value>& shape);
-+
-+// TODO(zhouxin) Remove these utils when all type inference code are integrated
-+// And move `WindowDimension` to `TypeInference.cpp`
-+
-+bool compatibleShapeAndElementType(Type type1, Type type2,
-+                                   bool ignoreFpPrecision = false);
-+
-+FailureOr<SmallVector<int64_t>> convert1DAttribute(
-+    Optional<DenseIntElementsAttr> optionalAttr, Optional<Location> loc,
-+    StringRef attrName);
-+
-+FailureOr<SmallVector<std::pair<int64_t, int64_t>>> convertPaddingAttribute(
-+    Optional<DenseIntElementsAttr> optionalAttr, Optional<Location> loc);
 +
 +// Convert a 1D dense bool attribute to a list of values.
 +FailureOr<SmallVector<bool>> convertWindowReversalAttribute(
@@ -203,23 +205,6 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/d
 +SmallVector<int64_t> inferWindowOutputShape(
 +    const ArrayRef<int64_t> baseShape, const ArrayRef<WindowDimension> window);
 +
-+unsigned potentiallyComplexBitwidth(Type type);
-+
-+LogicalResult verifyReducerShape(Optional<Location> loc, Block& block,
-+                                 ArrayRef<TensorType> inputArgTypes,
-+                                 ArrayRef<TensorType> initValueTypes,
-+                                 int64_t numInputs,
-+                                 ArrayRef<int64_t> allowedDimensions,
-+                                 bool allInputsUnranked);
-+
-+// Verifies replica groups attached to collective communication operations.
-+// P1. 'replicaGroups' must be a 2-D tensor.
-+// P2. replicaGroups' cannot be empty.
-+// P3. If `allGroupsMustHaveSameSize` is true, then each group is of the same
-+//     size.
-+// P4. All values in `replica_groups` are unique and covers all the values in
-+//     the interval [0, N-1], where N is the total number of replica ids.
-+// P5. replica group size must be equal to 'expectedGroupSize'.
 +LogicalResult verifyReplicaGroups(Optional<Location> location,
 +                                  DenseIntElementsAttr replicaGroups,
 +                                  bool allGroupsMustHaveSameSize,
