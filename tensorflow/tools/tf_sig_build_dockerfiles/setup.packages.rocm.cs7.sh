@@ -24,4 +24,3 @@ yum clean all
 yum update -y
 PKG_LIST=$(sed -e '/^\s*#.*$/d' -e '/^\s*$/d' "$1" | sort -u)
 yum --enablerepo=extras install -y $PKG_LIST
-rm -rf /var/lib/apt/lists/*

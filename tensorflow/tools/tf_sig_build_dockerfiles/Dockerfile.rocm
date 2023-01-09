@@ -1,19 +1,20 @@
+# Last hash that uses dt-9
 ################################################################################
-FROM quay.io/pypa/manylinux2014_x86_64 as builder
+FROM quay.io/pypa/manylinux2014_x86_64:2021-07-31-381f36f as builder
 ################################################################################
 
 # Install dependencies
-COPY setup.packages.rocm.sh setup.packages.rocm.sh
-COPY builder.packages.rocm.txt builder.packages.rocm.txt
-RUN /setup.packages.rocm.sh /builder.packages.rocm.txt
+COPY setup.packages.rocm.cs7.sh setup.packages.rocm.cs7.sh
+COPY builder.packages.rocm.cs7.txt builder.packages.rocm.cs7.txt
+RUN /setup.packages.rocm.cs7.sh /builder.packages.rocm.cs7.txt
 
-# Install ROCM with devtoolset-10
+# Install ROCM
 ARG ROCM_VERSION
 ENV ROCM_PATH=/opt/rocm-${ROCM_VERSION}
-COPY setup.packages.rocm.sh /setup.packages.rocm.sh
-COPY setup.rocm.sh /setup.rocm.sh
-COPY devel.packages.rocm.txt /devel.packages.rocm.txt
-RUN /setup.rocm.sh $ROCM_VERSION
+COPY setup.packages.rocm.cs7.sh /setup.packages.rocm.cs7.sh
+COPY setup.rocm.cs7.sh /setup.rocm.cs7.sh
+COPY devel.packages.rocm.cs7.txt /devel.packages.rocm.cs7.txt
+RUN /setup.rocm.cs7.sh $ROCM_VERSION
 
 # Install various tools.
 # - bats: bash unit testing framework
