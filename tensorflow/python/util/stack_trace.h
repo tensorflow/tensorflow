@@ -68,7 +68,7 @@ class StackTrace final {
 #endif
     int i = 0;
 #if PY_VERSION_HEX >= 0x030B0000
-    for (; i < limit && frame != nullptr; PyFrame_GetBack(frame), ++i) {
+    for (; i < limit && frame != nullptr; frame = PyFrame_GetBack(frame), ++i) {
       PyCodeObject* code_obj = PyFrame_GetCode(frame);
 #else
     for (; i < limit && frame != nullptr; frame = frame->f_back, ++i) {
