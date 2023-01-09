@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 /// \file
+///
 /// Main abstraction controlling the tflite interpreter.
 /// See c/common.h for the API for defining operations (TfLiteRegistration).
 #ifndef TENSORFLOW_LITE_INTERPRETER_H_
 #define TENSORFLOW_LITE_INTERPRETER_H_
 
 /// For documentation, see
-/// third_party/tensorflow/lite/core/impl/interpreter.h.
+/// third_party/tensorflow/lite/core/interpreter.h.
 
 #include "tensorflow/lite/core/interpreter.h"  // IWYU pragma: export
 

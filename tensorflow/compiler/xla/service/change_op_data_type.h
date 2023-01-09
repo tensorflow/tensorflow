@@ -17,8 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CHANGE_OP_DATA_TYPE_H_
 
 #include <functional>
+#include <memory>
+#include <utility>
 
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -36,11 +37,30 @@ namespace xla {
 // have type `from_ty`.  It will not do the correct thing for ops like
 // dynamic-slice where only some of the arguments should be converted; it's up
 // to you to avoid matching such ops with `op_matcher`.
+//
+// The pass support multiple <from_ty, to_ty> pairs and will apply the transform
+// if all operands match one of the types in from_ty.
+//
+// It uses provided `cloner` to clone an instruction with shape and converted
+// operands. If the cloner is not provided, it will uses `CloneWithNewOperands`.
 class ChangeOpDataType : public HloModulePass {
  public:
+  using HloCloner = std::function<std::unique_ptr<HloInstruction>(
+      const HloInstruction*, const Shape&, absl::Span<HloInstruction* const>)>;
+  ChangeOpDataType(
+      absl::Span<std::pair<PrimitiveType, PrimitiveType> const> from_to_types,
+      HloPredicate op_matcher, HloCloner cloner = nullptr)
+      : op_matcher_(op_matcher), cloner_(cloner) {
+    for (const std::pair<PrimitiveType, PrimitiveType>& pair : from_to_types) {
+      to_type_map_[pair.first] = pair.second;
+    }
+  }
+
   ChangeOpDataType(PrimitiveType from_ty, PrimitiveType to_ty,
-                   std::function<bool(const HloInstruction*)> op_matcher)
-      : from_ty_(from_ty), to_ty_(to_ty), op_matcher_(op_matcher) {}
+                   HloPredicate op_matcher, HloCloner cloner = nullptr)
+      : op_matcher_(op_matcher), cloner_(cloner) {
+    to_type_map_[from_ty] = to_ty;
+  }
 
   absl::string_view name() const override { return "change-op-data-type"; }
   StatusOr<bool> Run(
@@ -48,9 +68,10 @@ class ChangeOpDataType : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  PrimitiveType from_ty_;
-  PrimitiveType to_ty_;
-  std::function<bool(const HloInstruction*)> op_matcher_;
+  // map with key = from_type and value = to_type.
+  absl::flat_hash_map<PrimitiveType, PrimitiveType> to_type_map_;
+  HloPredicate op_matcher_;
+  HloCloner cloner_;
 };
 
 }  // namespace xla

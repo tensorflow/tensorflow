@@ -31,12 +31,12 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/layout.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 
 namespace mlir {
 namespace mhlo {
@@ -48,8 +48,8 @@ static FailureOr<std::vector<int64_t>> GetTPUInfeedLayoutFromAPI(
   xla::Shape old_shape = xla::TypeToShape(t);
   XLA_Shape old_shape_c = {};
   XLA_Shape new_shape_c = {};
-  TfTpu_ExecutorApiFn *executor = tensorflow::tpu::ExecutorApiFn();
-  if (!tensorflow::tpu::IsInitialized(executor)) {
+  TfTpu_ExecutorApiFn *executor = stream_executor::tpu::ExecutorApiFn();
+  if (!stream_executor::tpu::IsInitialized(executor)) {
     return failure();
   }
   ApiConverter::ToC(old_shape, &old_shape_c);
@@ -72,7 +72,7 @@ FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
       if (t.isa<TokenType>()) continue;
       auto layout = GetTPUInfeedLayout({t}, rewriter);
       if (failed(layout)) return failure();
-      v.push_back(layout.getValue());
+      v.push_back(layout.value());
     }
     ArrayRef<Attribute> shape(v);
     return rewriter.getArrayAttr(shape);
@@ -85,7 +85,7 @@ FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
       if (t.isa<TokenType>()) continue;
       auto layout = GetTPUInfeedLayout({t}, rewriter);
       if (failed(layout)) return failure();
-      v.push_back(layout.getValue());
+      v.push_back(layout.value());
     }
     ArrayRef<Attribute> shape(v);
     return rewriter.getArrayAttr(shape);
@@ -94,7 +94,7 @@ FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
     auto layout = GetTPUInfeedLayoutFromAPI(t);
     std::vector<int64_t> minor_to_major;
     if (succeeded(layout)) {
-      minor_to_major = layout.getValue();
+      minor_to_major = layout.value();
     } else {
       /* If we're not running on a TPU node, we might not be able to
        * actually call the part of the TPU API that gives us layout.
@@ -151,7 +151,7 @@ class AdjustLayout
       auto layout = GetTPUInfeedLayout(result_types, builder);
       if (failed(layout)) return;
 
-      op->setAttr("layout", layout.getValue());
+      op->setAttr("layout", layout.value());
     }
   }
 

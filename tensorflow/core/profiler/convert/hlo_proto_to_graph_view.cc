@@ -21,10 +21,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
@@ -111,15 +111,15 @@ StatusOr<std::string> Plot(std::unique_ptr<HloModule> module,
   if (comp) {
     graph_handle =
         xla::RenderGraph(*comp, "", comp->parent()->config().debug_options(),
-                         format, nullptr, render_options);
+                         format, render_options);
   } else {
     graph_handle = xla::RenderNeighborhoodAround(*instr, graph_width, format,
                                                  render_options);
   }
   if (graph_handle.ok()) {
-    LOG(INFO) << graph_handle.value();
+    VLOG(1) << graph_handle.value();
   } else {
-    LOG(INFO) << "Unable to render graph: " << graph_handle.status();
+    LOG(ERROR) << "Unable to render graph: " << graph_handle.status();
   }
 
   return graph_handle;

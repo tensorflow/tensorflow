@@ -223,7 +223,14 @@ void RemoveUnusedArgumentsPass::runOnOperation() {
       op.getOperation()->getResult(from).replaceAllUsesWith(
           op.getOperation()->getOperand(to));
     }
-    op->eraseOperands(args_to_erase.lookup(func));
+    BitVector operands_to_erase(op->getNumOperands());
+    int args_start = op->getNumOperands()
+                         ? op.getArgOperands().getBase()->getOperandNumber()
+                         : 0;
+    operands_to_erase |= args_to_erase.lookup(func);
+    operands_to_erase <<= args_start;
+    op->eraseOperands(operands_to_erase);
+
     EraseResults(op, results_to_erase.lookup(func));
   });
 }

@@ -16,8 +16,10 @@
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
+from tensorflow.python.data.ops import prefetch_op
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
@@ -45,14 +47,14 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
             multi_device_iterator_resource))
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
-    @function.defun(autograph=False)  # Pure graph code.
+    @def_function.function(autograph=False)  # Pure graph code.
     def _init_func():
       return multi_device_iterator_string_handle
 
     init_func_concrete = _init_func.get_concrete_function()
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
-    @function.defun(autograph=False)  # Pure graph code.
+    @def_function.function(autograph=False)  # Pure graph code.
     def _remote_init_func():
       return functional_ops.remote_call(
           target=source_device,
@@ -64,7 +66,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
     self._init_captured_args = self._init_func.captured_inputs
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
-    @function.defun(
+    @def_function.function(
         input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
         autograph=False)  # Pure graph code.
     def _next_func(string_handle):
@@ -121,7 +123,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
         self._incarnation_id_index = i
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
-    @function.defun(
+    @def_function.function(
         input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
         autograph=False)  # Pure graph code.
     def _finalize_func(unused_string_handle):
@@ -130,7 +132,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
     finalize_func_concrete = _finalize_func.get_concrete_function()
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
-    @function.defun(
+    @def_function.function(
         input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
         autograph=False)  # Pure graph code.
     def _remote_finalize_func(string_handle):
@@ -210,7 +212,8 @@ def _create_device_dataset(prototype_ds, incarnation_id, prefetch_buffer_size,
   ds = _ReincarnatedPerDeviceGenerator(prototype_ds, incarnation_id)
   if prefetch_buffer_size > 0:
     if experimental_slack:
-      ds = dataset_ops.PrefetchDataset(ds, prefetch_buffer_size, slack_period=1)
+      ds = prefetch_op._PrefetchDataset(  # pylint: disable=protected-access
+          ds, prefetch_buffer_size, slack_period=1)
     else:
       ds = ds.prefetch(prefetch_buffer_size)
   return ds
@@ -239,6 +242,10 @@ class MultiDeviceIterator:
     """
     options = options_lib.Options()
     options.experimental_distribute.num_devices = len(devices)
+    # If `prefetch_buffer_size` is 0, we turn off the `inject_prefetch`
+    # optimization to prevent potentially introducing asynchrony.
+    if prefetch_buffer_size == 0:
+      options.experimental_optimization.inject_prefetch = False
     dataset = dataset.with_options(options)
     self._dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
     self._experimental_slack = dataset.options().experimental_slack
@@ -479,6 +486,10 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
             "not be specified.")
       options = options_lib.Options()
       options.experimental_distribute.num_devices = len(devices)
+      # If `prefetch_buffer_size` is 0, we turn off the `inject_prefetch`
+      # optimization to prevent potentially introducing asynchrony.
+      if prefetch_buffer_size == 0:
+        options.experimental_optimization.inject_prefetch = False
       dataset = dataset.with_options(options)
       dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
       self._element_spec = dataset.element_spec

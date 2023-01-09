@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdio>
 #include <iostream>
+#include <optional>
 #include <string>
 
 #include "llvm/ADT/StringRef.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -81,7 +83,7 @@ BiasAddOp GetBiasAdd(Value op) {
   for (auto &use : op.getUses()) {
     auto bias_add = dyn_cast_or_null<BiasAddOp>(use.getOwner());
     // If it's a BiasAdd, check that the conv op is the first input.
-    if (bias_add && bias_add.value() == op) return bias_add;
+    if (bias_add && bias_add.getValue() == op) return bias_add;
   }
   // No BiasAddOps found among uses.
   return BiasAddOp();
@@ -161,7 +163,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
 
     // If there is an activation, only fuse it if this is the only op to use the
     // result of the BiasAdd.
-    bool fuse_activation = activation && bias_add.output().hasOneUse();
+    bool fuse_activation = activation && bias_add.getOutput().hasOneUse();
     Type result_type;
 
     // Include info about the activation function if applicable.
@@ -180,7 +182,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     // with `bias` from the BiasAddOp appended.
     SmallVector<Value, 4> operands(contraction.operand_begin(),
                                    contraction.operand_end());
-    operands.push_back(bias_add.bias());
+    operands.push_back(bias_add.getBias());
 
     // The fused contraction has the same attributes as the original
     // contraction, with two additions: the list of ops which have been fused
@@ -196,13 +198,12 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
         NamedAttribute(StringAttr::get(context, "epsilon"), epsilon));
 
     if (std::is_same<FusedOpT, _FusedConv2DOp>::value) {
-      SmallVector<Attribute, 4> targs_values;
       // Here TArgs types do not include types of the first two parameters,
       // i.e. the convolution input and the filter. TArgs are parameters for
       // the extras like the bias etc.
-      for (int i = 0; i < operands.size() - 2; ++i) {
-        targs_values.push_back(TypeAttr::get(contraction.T()));
-      }
+      auto attr = TypeAttr::get(getElementTypeOrSelf(contraction.getType()));
+      SmallVector<Attribute, 4> targs_values(operands.size() - 2, attr);
+
       ArrayAttr targs_attr = ArrayAttr::get(context, targs_values);
       attrs.push_back(
           NamedAttribute(StringAttr::get(context, "TArgs"), targs_attr));
@@ -241,15 +242,15 @@ const char kDeviceGpu[] = "GPU";
 llvm::Optional<std::string> GetDevice(mlir::Operation *op) {
   mlir::StringAttr device = op->getAttrOfType<mlir::StringAttr>(kDeviceAttr);
   if (!device || device.getValue().empty()) {
-    return llvm::None;
+    return std::nullopt;
   }
   const std::string device_name = device.str();
   tensorflow::DeviceNameUtils::ParsedName parsed_name;
   if (!tensorflow::DeviceNameUtils::ParseFullName(device_name, &parsed_name)) {
-    return llvm::None;
+    return std::nullopt;
   }
   if (!parsed_name.has_type) {
-    return llvm::None;
+    return std::nullopt;
   }
   return parsed_name.type;
 }
@@ -273,18 +274,21 @@ class FuseConv2DBiasAdd
   bool AreFuseCompatible(Conv2DOp conv, BiasAddOp bias_add,
                          PatternRewriter &rewriter) const override {
     // Verify that the data formats match and are valid for fusion.
-    if (conv.data_format() != bias_add.data_format()) {
+    if (conv.getDataFormat() != bias_add.getDataFormat()) {
       (void)rewriter.notifyMatchFailure(conv, [&](Diagnostic &diag) {
         diag << "data format does not match Conv2D data format ("
-             << bias_add.data_format() << " vs " << conv.data_format() << ")";
+             << bias_add.getDataFormat() << " vs " << conv.getDataFormat()
+             << ")";
       });
       return false;
     }
+
     // Verify the data type is supported.
-    if (!conv.T().isF32() && !conv.T().isF64()) {
+    Type element_ty = getElementTypeOrSelf(conv.getType());
+    if (!element_ty.isF32() && !element_ty.isF64()) {
       (void)rewriter.notifyMatchFailure(conv, [&](Diagnostic &diag) {
         diag << "supported data types for _FusedConv2D are float and double, "
-             << " but got " << conv.T();
+             << " but got " << element_ty;
       });
       return false;
     }
@@ -297,7 +301,7 @@ class FuseConv2DBiasAdd
     if (IsGpuDevice(conv)) {
       auto activation = GetActivation(bias_add);
       if (!activation || activation->getName().stripDialect() != "Relu" ||
-          !bias_add.output().hasOneUse()) {
+          !bias_add.getOutput().hasOneUse()) {
         (void)rewriter.notifyMatchFailure(conv, [&](Diagnostic &diag) {
           diag << "GPU only supports Conv2D+BiasAdd+Relu fusion";
         });
@@ -318,10 +322,11 @@ class FuseMatMulBiasAdd
   bool AreFuseCompatible(MatMulOp matmul, BiasAddOp bias_add,
                          PatternRewriter &rewriter) const override {
     // FusedMatMul kernel supports limited set of data types.
-    if (!matmul.T().isF32() && !matmul.T().isBF16()) {
+    Type element_ty = getElementTypeOrSelf(matmul.getType());
+    if (!element_ty.isF32() && !element_ty.isBF16()) {
       (void)rewriter.notifyMatchFailure(matmul, [&](Diagnostic &diag) {
         diag << "supported data types for _FusedMatMul are float and bfloat16, "
-             << " but got " << matmul.T();
+             << " but got " << element_ty;
       });
       return false;
     }

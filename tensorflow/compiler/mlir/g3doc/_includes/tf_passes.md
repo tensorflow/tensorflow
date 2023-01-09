@@ -691,6 +691,53 @@ would be transformed into something like
   call @x_2(%c)
 with @x_1, @x_2 and @y_1 filled in.
 ### `-tf-guarantee-all-funcs-one-use`: Guarantee all FuncOp's have only a single use.
+### `-tf-hoist-loop-invariant`: Hoists loop invariant ops to the outside of the loop
+   Hoists loop invariant to the outside of the loop. The pass is similar to
+   LoopInvariantCodeMotion pass, but it also hoists ReadVariableOps,
+   if the variable is read only.
+
+   For example, the following pseudo MLIR code (types are left out for
+   brevity)
+   ```mlir
+     func.func @hoist_loop_invariant(%arg0, %arg1) {
+%var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
+       %results:2 = "tf.WhileRegion"(%arg0, %arg1) ({
+       ^bb0(%arg2, %arg3):
+         %0 = "tf.OpA"() {is_stateless = true}
+         "tf.Yield"(%0)
+       }, {
+       ^bb0(%arg2, %arg3):
+  %1 = "tf.ReadVariableOp"(%var)
+         %2 = "tf.OpB"(%1) {is_stateless = true}
+         %3 = "tf.OpC"(%arg2, %2) {is_stateless = true}
+         %4 = "tf.OpD"(%arg3, %2) {is_stateless = true}
+         "tf.Yield"(%3, %4)
+       }) {is_stateless = true}
+       return %results#0, %results#1
+     }
+   ```
+   would be transformed to
+   ```mlir
+    func.func @hoist_loop_invariant(%arg0, %arg1) {
+%var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
+%1 = "tf.ReadVariableOp"(%var)
+       %2 = "tf.OpB"(%1) {is_stateless = true}
+       %results:2 = "tf.WhileRegion"(%arg0, %arg1) ({
+       ^bb0(%arg2, %arg3):
+         %0 = "tf.OpA"() {is_stateless = true}
+         "tf.Yield"(%0)
+       }, {
+       ^bb0(%arg2, %arg3):
+         %3 = "tf.OpC"(%arg2, %2) {is_stateless = true}
+         %4 = "tf.OpD"(%arg3, %2) {is_stateless = true}
+         "tf.Yield"(%3, %4)
+       }) {is_stateless = true}
+       return %results#0, %results#1
+     }
+   ```
+   The `tf.ReadVariableOp` and `tf.OpB` can be hoisted to the outside of
+   the loop.
+
 ### `-tf-hoist-replicate-invariant-resource-writes`: Hoists writes to replicate invariant resource variables.
 This pass hoists replicate invariant resource variable writes outside
 tf_device.replicate op. These may have been inserted by other passes such as
@@ -834,6 +881,12 @@ Would be transformed to:
 -fold-transpose-in-ops : Whether to fold transposes in ops which can support folding.
 -direction             : Move transposes to the beginning or the end of the block where they are defined.
 ```
+### `-tf-name-anonymous-iterators`: Converts anonymous iterators to named iterators
+This converts AnonymousIterator ops to Iterator, thus giving them a name.
+For example, this will convert
+  %0 = "tf.AnonymousIteratorV3"() {...}
+to
+  %0 = "tf.Iterator"() {shared_name = "_iterator1", ...}
 ### `-tf-optimize`: Optimize TensorFlow module
 ### `-tf-order-by-dialect`: Reorders ops so ops of the same dialect are next to each other.
 Performs a reordering of ops so that
@@ -878,6 +931,11 @@ Would become the following ops (unimportant attribute, type are omitted):
   }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
 ```
 ### `-tf-parallel-execute-to-islands`: Lowers device parallel_execute to executor islands
+
+#### Options
+```
+-legacy-graph-export : Determines whether or not this pass should execute logic that is reserved for the legacy graph export pipeline to maintain expected invariants. In the case of this pass, that means manually propagating controls to lifted parallel execute regions to the graph fetch to ensure the ops execute.
+```
 ### `-tf-promote-resources-to-args`: Promote resources reads/writes to function inputs/outputs.
 This pass promotes resource accesses in function(s) (by default, the main)
 to input arguments and outputs of the function(s).
@@ -1059,6 +1117,11 @@ tf_device.replicate([%0, %1] as %ri: tensor<*x!tf_type.resource>) {n = 2 : i32} 
 }
 ```
 ### `-tf-replicate-to-island`: Lowers device replicate to executor islands
+
+#### Options
+```
+-legacy-graph-export : Determines whether or not this pass should execute logic that is reserved for the legacy graph export pipeline to maintain expected invariants. In the case of this pass, that means manually propagating controls to lifted parallel execute regions to the graph fetch to ensure the ops execute, as well as determining whether or not the islands created by this pass should be split after the replicated ops have been lifted.
+```
 ### `-tf-resource-device-inference`: Propagates the device attribute on resources from callers to callees.
 A pass that propagates device assignment of resources on a module. It
 performs in-function propagation, as well as cross-function propagation from
@@ -1180,6 +1243,10 @@ and each pop will be turned into
 
 The pass also works across control flow and functional calls.
 ### `-tf-strip-noinline-attribute`: Strip the tf._noinline attribute from top-level functions.
+### `-tf-strip-tf-attributes`: Removes TF specific attributes
+Removes attributes that are TF specific (start with "tf.") or that
+have a value from the TF dialect. Useful after legalizing TF graphs
+to other dialects, to remove any TF remnants.
 ### `-tf-tensor-array-ops-decomposition`: Decompose tensor array operations into local variable operations.
 A pass that converts tensor array operations to tensor operations and
 read/assign ops on local variables. A later resource lifting pass can further

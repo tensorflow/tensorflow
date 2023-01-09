@@ -17,6 +17,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -54,6 +55,20 @@ cc_library(
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "feature_util_test",
+    size = "small",
+    srcs = ["feature_util_test.cc"],
+    deps = [
+        ":example_protos_cc",
+        ":feature_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 # TODO(bmzhao): Refactor this target to use granular dependencies

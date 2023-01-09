@@ -54,28 +54,35 @@ const filter_action = async ({github, context, domain}) => {
 
   let assignees = [];
   const title = context.payload.pull_request && context.payload.pull_request.title;
+  const lowercased_title = (title || '').toLowerCase();
   const onednn_assignees = ['penpornk'];
-  if (title && title.toLowerCase().includes("onednn"))
-    assignees = onednn_assignees;
+  if (lowercased_title.includes('onednn')) assignees = onednn_assignees;
   const intel_windows_assignees = ['nitins17', 'learning-to-play'];
-  if (title && title.toLowerCase().includes('intel') &&
-      title.toLowerCase().includes('windows') && domain.includes('intel.com'))
+  if (lowercased_title.includes('intel') &&
+      lowercased_title.includes('windows') && domain.includes('intel.com'))
     assignees = intel_windows_assignees;
   const apple_silicon_assignees = ['penpornk', 'nitins17'];
-  if (title && title.toLowerCase().includes('apple') &&
-      title.toLowerCase().includes('silicon') && domain.includes('apple.com'))
+  if (lowercased_title.includes('apple') &&
+      lowercased_title.includes('silicon') && domain.includes('apple.com'))
     assignees = apple_silicon_assignees;
-  if (title && title.toLowerCase().includes('nvidia') &&
-      domain.includes('nvidia.com')) {
-    if (title.toLowerCase().includes('jax')) {
+  if (lowercased_title.includes('tf-trt') && domain.includes('nvidia.com')) {
+    assignees.push(
+        'DEKHTIARJonathan', 'meena-at-work', 'nluehr', 'pjannaty', 'poulsbo');
+  } else if (
+      lowercased_title.includes('nvidia') && domain.includes('nvidia.com')) {
+    if (lowercased_title.includes('jax')) {
       assignees.push('hawkinsp', 'yashk2810', 'skye');
     }
-    if (title.toLowerCase().includes('xla') ||
-        title.toLowerCase().includes('gpu')) {
-      assignees.push('cheshire', 'gcforster', 'reedwm', 'chsigg');
+    if (lowercased_title.includes('xla') || lowercased_title.includes('gpu')) {
+      assignees.push('cheshire', 'gcforster', 'reedwm', 'chsigg', 'xla-rotation');
     }
-    if (title.toLowerCase().includes('tf')) {
-      assignees.push('rohan100jain', 'bfontain', 'penpornk');
+    if (lowercased_title.includes('tf')) {
+      assignees.push('rohan100jain', 'bfontain');
+    }
+  }
+  if (lowercased_title.includes('linaro') && domain.includes('linaro.org')) {
+    if (lowercased_title.includes('arm_ci')) {
+      assignees.push('nitins17', 'penpornk');
     }
   }
 

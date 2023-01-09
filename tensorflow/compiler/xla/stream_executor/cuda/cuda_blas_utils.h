@@ -30,7 +30,7 @@ namespace stream_executor {
 namespace cuda {
 
 const char* ToString(cublasStatus_t status);
-port::Status ToStatus(cublasStatus_t status, const char* prefix = "cublasLt");
+tsl::Status ToStatus(cublasStatus_t status, const char* prefix = "cublasLt");
 cudaDataType_t AsCudaDataType(blas::DataType type);
 cublasComputeType_t AsCublasComputeType(blas::ComputationType type);
 cublasOperation_t AsCublasOperation(blas::Transpose trans);

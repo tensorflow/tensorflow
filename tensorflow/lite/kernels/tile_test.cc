@@ -256,6 +256,17 @@ TEST_P(TileTest, StringMatrix2) {
       /*multiply_type=*/TensorType_INT32, GetParam());
 }
 
+TEST_P(TileTest, StringMatrixEmptyInputElements) {
+  Check<std::string>(
+      /*input_shape=*/{0, 1, 1},
+      /*input_data=*/{},
+      /*multipliers_data=*/{2, 2, 2}, /*exp_output_shape=*/{0, 2, 2},
+      /*exp_output_data=*/
+      {},
+      /*input_type=*/TensorType_STRING,
+      /*multiply_type=*/TensorType_INT32, GetParam());
+}
+
 TEST(TileTest, TestEmptyInput) {
   TileOpDynamicModel m({2, 1, 3}, TensorType_INT32, TensorType_INT32);
   m.SetInput({11, 12, 13, 21, 22, 23});

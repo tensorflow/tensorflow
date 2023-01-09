@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_stats_to_op_profile.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/strings/match.h"
 #include "tensorflow/core/platform/logging.h"
@@ -62,10 +63,11 @@ void BuildOpProfileNodeTree(const OpStats& op_stats, bool group_by_program,
   const auto& perf_env = op_stats.perf_env();
   double max_gigaflops_per_second_per_core =
       TeraToGiga(perf_env.peak_tera_flops_per_second());
-  double max_gibibytes_per_second_per_core =
-      GigaToGibi(perf_env.peak_hbm_bw_giga_bytes_per_second());
-  builder.Finalize(max_gigaflops_per_second_per_core,
-                   max_gibibytes_per_second_per_core,
+  std::vector<double> peak_bws;
+  for (auto bw : perf_env.peak_bws_giga_bytes_per_second()) {
+    peak_bws.push_back(GigaToGibi(bw));
+  }
+  builder.Finalize(max_gigaflops_per_second_per_core, peak_bws,
                    TotalTimePs(metrics_db, exclude_idle_ops));
 }
 

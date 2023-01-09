@@ -200,5 +200,28 @@ class RepresentativeDatasetTest(test.TestCase):
     self.assertIsNone(repr_dataset.get_num_samples(LenRaisingError()))
 
 
+class RepresentativeDatasetSaverTest(test.TestCase):
+  """Test cases for RepresentativeDatasetSaver."""
+
+  def test_save_raises_error(self):
+    saver = repr_dataset.RepresentativeDatasetSaver()
+    repr_ds = {'serving_default': []}
+
+    with self.assertRaisesRegex(NotImplementedError,
+                                'Method "save" is not implemented.'):
+      saver.save(repr_ds)
+
+
+class RepresentativeDatasetLoaderTest(test.TestCase):
+  """Test cases for RepresentativeDatasetLoader."""
+
+  def test_load_raises_error(self):
+    loader = repr_dataset.RepresentativeDatasetLoader()
+
+    with self.assertRaisesRegex(NotImplementedError,
+                                'Method "load" is not implemented.'):
+      loader.load()
+
+
 if __name__ == '__main__':
   test.main()

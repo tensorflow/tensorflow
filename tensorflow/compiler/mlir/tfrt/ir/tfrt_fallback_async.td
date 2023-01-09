@@ -33,8 +33,6 @@ def FallbackAsync_Dialect : Dialect {
   }];
 
   let cppNamespace = "::tfrt::fallback_async";
-
-  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 class FallbackAsync_Op<string mnemonic, list<Trait> traits = []> :
@@ -96,7 +94,7 @@ def GetResourceOp : FallbackAsync_Op<"get_resource",
 }
 
 def ConstTensorProtoOp : FallbackAsync_Op<"const_tensor_proto",
-    [NoSideEffect, CoreRT_TypedAttributeTrait,
+    [Pure, CoreRT_TypedAttributeTrait,
      TFRT_CostFunctionInterface, TFRT_FixedCost<1>]> {
   let summary = "Create a tensorflow tensor from serialized tensor proto";
 
@@ -119,7 +117,7 @@ def ConstTensorProtoOp : FallbackAsync_Op<"const_tensor_proto",
 }
 
 def ConstDenseTensorOp : FallbackAsync_Op<"const_dense_tensor",
-    [ConstantLike, NoSideEffect, CoreRT_TypedAttributeTrait,
+    [ConstantLike, Pure, CoreRT_TypedAttributeTrait,
      TFRT_CostFunctionInterface, TFRT_FixedCost<1>]> {
   let summary = "Create a constant dense tensorflow tensor.";
 
@@ -145,7 +143,7 @@ def ConstDenseTensorOp : FallbackAsync_Op<"const_dense_tensor",
 
 // TODO(b/181257202): This should be `ConstantLike`.
 def ConstStringTensorOp : FallbackAsync_Op<"const_string_tensor",
-    [NoSideEffect, CoreRT_TypedAttributeTrait,
+    [Pure, CoreRT_TypedAttributeTrait,
      TFRT_CostFunctionInterface, TFRT_FixedCost<1>]> {
   let summary = "Create a constant string tensorflow tensor.";
   let description = [{
@@ -174,7 +172,7 @@ def ConstStringTensorOp : FallbackAsync_Op<"const_string_tensor",
 
 def FallbackTensorToCoreRTTensorHandleOp : FallbackAsync_Op<
                               "fallback_tensor_to_corert_tensorhandle",
-                              [NoSideEffect, CoreRT_TypedAttributeTrait,
+                              [Pure, CoreRT_TypedAttributeTrait,
                                TFRT_CostFunctionInterface, TFRT_FixedCost<1>]> {
   let summary = "Convert fallback tensor to corert tensorhandle";
 
@@ -202,7 +200,7 @@ def FallbackTensorToCoreRTTensorHandleOp : FallbackAsync_Op<
 
 def CoreRTTensorHandleToFallbackTensorOp : FallbackAsync_Op<
                               "corert_tensorhandle_to_fallback_tensor",
-                              [NoSideEffect, CoreRT_TypedAttributeTrait,
+                              [Pure, CoreRT_TypedAttributeTrait,
                                TFRT_CostFunctionInterface, TFRT_FixedCost<1>]> {
   let summary = "Convert corert tensorhandle to fallback tensor";
 
@@ -231,7 +229,7 @@ def CoreRTTensorHandleToFallbackTensorOp : FallbackAsync_Op<
 }
 
 def PredicateOp : FallbackAsync_Op<"predicate",
-    [NoSideEffect, CoreRT_TypedAttributeTrait,
+    [Pure, CoreRT_TypedAttributeTrait,
      TFRT_CostFunctionInterface, TFRT_FixedCost<1>]> {
   let summary = "Converts a fallback tensor to a bool";
 
@@ -267,7 +265,7 @@ def PredicateOp : FallbackAsync_Op<"predicate",
 }
 
 def CopyIfSmallOp : FallbackAsync_Op<"copy_if_small",
-    [NoSideEffect, CoreRT_TypedAttributeTrait,
+    [Pure, CoreRT_TypedAttributeTrait,
      TFRT_CostFunctionInterface, TFRT_FixedCost<1>]> {
   let summary = "Copy the CPU fallback tensor if it is small";
 
@@ -329,7 +327,7 @@ def CreateOp: FallbackAsync_Op<"createop", [CoreRT_TypedAttributeTrait]> {
 }
 
 def ExecuteOp : FallbackAsync_Op<"executeop",
-    [NoSideEffect, CoreRT_TypedAttributeTrait,
+    [Pure, CoreRT_TypedAttributeTrait,
      TFRT_CostFunctionInterface, TFRT_AttrCostTrait]> {
   let summary = "The Fallback ExecuteOp";
   let description = [{
@@ -438,14 +436,15 @@ def ExecuteOpSeq : FallbackAsync_Op<"executeop.seq",
   let hasCustomAssemblyFormat = 1;
 }
 
-def BatchFunctionOp : FallbackAsync_Op<"batch_function", [CoreRT_TypedAttributeTrait]> {
+def BatchFunctionOp : FallbackAsync_Op<"batch_function",
+    [Pure, CoreRT_TypedAttributeTrait]> {
   let summary = "Fallback ExecuteOp specialized for tf.BatchFunction.";
   let description = [{
     This kernel executes a variant tf.BatchFunction kernel that supports having
     the `f` attribute as a BEF function.
 
     Example:
-      %op_ch_out, %res = tfrt_fallback_async.atch_function(%op_ch_in) @f (%input, %captured_input) {
+      %res = tfrt_fallback_async.batch_function device("/CPU:0") @f(%input, %captured_input)  {
           num_batch_threads = 1,
           max_batch_size = 4,
           allowed_batch_sizes = [2 , 4],
@@ -462,15 +461,14 @@ def BatchFunctionOp : FallbackAsync_Op<"batch_function", [CoreRT_TypedAttributeT
   }];
 
   let arguments = (ins
-                   TFRT_ChainType:$in_op_chain,
-    Variadic<CoreRT_TensorHandleType>:$args,
+    Variadic<TFTensorType>:$args,
+    StrAttr:$device,
     SymbolRefAttr:$f,
     ArrayAttr:$op_attrs
   );
 
   let results = (outs
-    TFRT_ChainType:$out_op_chain,
-    Variadic<CoreRT_TensorHandleType>:$results
+    Variadic<TFTensorType>:$results
   );
 
   let hasVerifier = 1;
@@ -478,7 +476,7 @@ def BatchFunctionOp : FallbackAsync_Op<"batch_function", [CoreRT_TypedAttributeT
 }
 
 def ExecuteOpWithAllocator : FallbackAsync_Op<"executeop.allocator",
-    [NoSideEffect, CoreRT_TypedAttributeTrait, TFRT_CostFunctionInterface, TFRT_AttrCostTrait]> {
+    [Pure, CoreRT_TypedAttributeTrait, TFRT_CostFunctionInterface, TFRT_AttrCostTrait]> {
   let summary = "The Fallback ExecuteOp with custom allocator";
   let description = [{
     Similar to ExecuteOp but takes a custom allocator for allocating output tensors.

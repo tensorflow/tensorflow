@@ -18,10 +18,13 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/executable.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
@@ -29,9 +32,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -43,22 +47,29 @@ namespace gpu {
 // TODO(b/232263665): It should be shared between GPU and CPU.
 class GpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
  public:
-  GpuXlaRuntimeAotCompilationResult(HloModuleProto hlo,
-                                    const std::string& obj_file,
-                                    const std::string& mlir_module,
-                                    EntryFunctionAttributes entry_func_attrs,
-                                    const std::string& gpu_asm_text,
-                                    absl::Span<const uint8_t> gpu_binary) {
+  GpuXlaRuntimeAotCompilationResult(
+      HloModuleProto hlo, std::string_view obj_file,
+      std::string_view mlir_module, EntryFunctionAttributes entry_func_attrs,
+      std::string_view gpu_asm_text, absl::Span<const uint8_t> gpu_binary,
+      absl::Span<const GpuExecutable::ConstantInfo> constants = {}) {
     XlaRuntimeExecutableProto xla_runtime_executable;
     *xla_runtime_executable.mutable_hlo_module_proto() = hlo;
-    *xla_runtime_executable.mutable_entry_func_attrs() = entry_func_attrs;
-    xla_runtime_executable.set_obj_file(obj_file);
-    xla_runtime_executable.set_mlir_module(mlir_module);
+    xla_runtime_executable.set_obj_file(std::string(obj_file));
+    xla_runtime_executable.set_mlir_module(std::string(mlir_module));
     *xla_runtime_gpu_executable_.mutable_xla_runtime_executable() =
         xla_runtime_executable;
-    xla_runtime_gpu_executable_.set_gpu_asm_text(gpu_asm_text);
+
+    *xla_runtime_gpu_executable_.mutable_entry_func_attrs() = entry_func_attrs;
+    xla_runtime_gpu_executable_.set_gpu_asm_text(std::string(gpu_asm_text));
     xla_runtime_gpu_executable_.set_gpu_binary(gpu_binary.data(),
                                                gpu_binary.size());
+
+    for (const GpuExecutable::ConstantInfo& cst : constants) {
+      auto* cst_proto = xla_runtime_gpu_executable_.add_constants();
+      cst_proto->set_symbol_name(cst.symbol_name);
+      cst_proto->set_allocation_index(cst.allocation_index);
+      cst_proto->set_content(cst.content.data(), cst.content.size());
+    }
   }
 
   explicit GpuXlaRuntimeAotCompilationResult(
@@ -86,6 +97,18 @@ class GpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
   XlaRuntimeGpuExecutableProto xla_runtime_gpu_executable_;
 };
 
+struct GpuTargetConfig {
+  GpuTargetConfig() = default;
+  explicit GpuTargetConfig(const stream_executor::GpuTargetConfigProto& proto);
+
+  se::GpuTargetConfigProto ToProto() const;
+
+  GpuDeviceInfo gpu_device_info;
+  GpuVersion gpu_version;
+  std::string platform_name;
+  se::dnn::VersionInfo dnn_version_info;
+};
+
 // The GPU compiler generates efficient GPU executables.
 class GpuCompiler : public LLVMCompiler {
  public:
@@ -95,14 +118,31 @@ class GpuCompiler : public LLVMCompiler {
 
   using LLVMCompiler::Compile;
 
+  // An attached device is passed in via stream_exec. We get GPU configuration
+  // from the attached device. GemmAlgorithmPicker and GpuConvAlgorithmPicker
+  // can run on the attached device.
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
+
+  // Run HloPasses without an attached deivce. So GemmAlgorithmPicker and
+  // GpuConvAlgorithmPicker can not run.
+  StatusOr<std::unique_ptr<HloModule>> RunHloPassesWithoutDevice(
+      std::unique_ptr<HloModule> module, const CompileOptions& options,
+      const GpuTargetConfig& gpu_target_config);
 
   StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
       const HloModule* hlo_module) override;
 
   virtual GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) = 0;
+  GpuTargetConfig GetGpuTargetConfig(se::StreamExecutor* stream_exec) {
+    GpuTargetConfig gpu_target_config;
+    gpu_target_config.gpu_device_info = GetGpuDeviceInfo(stream_exec);
+    gpu_target_config.gpu_version = GetGpuVersion(stream_exec);
+    gpu_target_config.platform_name = stream_exec->platform()->Name();
+
+    return gpu_target_config;
+  }
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
@@ -114,7 +154,7 @@ class GpuCompiler : public LLVMCompiler {
 
   StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileToTargetBinary(
       const HloModuleConfig& module_config,
-      std::unique_ptr<llvm::Module> llvm_module,
+      std::unique_ptr<llvm::Module> llvm_module, GpuVersion gpu_version,
       se::StreamExecutor* stream_exec, const CompileOptions& options,
       const HloModule* debug_module);
 
@@ -135,15 +175,18 @@ class GpuCompiler : public LLVMCompiler {
  protected:
   virtual Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator);
+      se::DeviceMemoryAllocator* device_allocator,
+      const GpuTargetConfig& gpu_target_config);
 
  private:
+  // Stream_executor is null during AOT compilation.
   Status OptimizeHloModule(HloModule* hlo_module,
                            se::StreamExecutor* stream_exec,
-                           se::DeviceMemoryAllocator* device_allocator);
+                           se::DeviceMemoryAllocator* device_allocator,
+                           const GpuTargetConfig& gpu_target_config);
 
   virtual Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      HloModule* hlo_module, se::CudaComputeCapability cuda_compute_capability,
       se::DeviceMemoryAllocator* device_allocator) = 0;
 
   virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() {
@@ -157,14 +200,18 @@ class GpuCompiler : public LLVMCompiler {
   virtual StatusOr<std::pair<std::string, std::vector<uint8_t>>>
   CompileTargetBinary(const HloModuleConfig& module_config,
                       llvm::Module* llvm_module, GpuVersion gpu_version,
-                      se::StreamExecutor* stream_exec, bool relocatable,
-                      const HloModule* debug_module) = 0;
+                      bool relocatable, const HloModule* debug_module) = 0;
 
   Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
 
+  virtual StatusOr<bool> CanUseLinkModules(const HloModuleConfig& config) {
+    return false;
+  }
+
   virtual StatusOr<std::vector<uint8_t>> LinkModules(
       se::StreamExecutor* stream_exec,
-      std::vector<std::vector<uint8_t>> modules) {
+      std::vector<std::vector<uint8_t>> modules,
+      const DebugOptions& debug_options) {
     return Unimplemented("LinkModules is not implemented.");
   }
 

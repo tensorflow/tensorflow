@@ -4,6 +4,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_testonly = 1,
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
@@ -26,6 +27,8 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",

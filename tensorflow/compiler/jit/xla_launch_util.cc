@@ -16,11 +16,16 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 
 #include <memory>
+#include <optional>
+#include <set>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -96,6 +101,9 @@ VariableInfo::~VariableInfo() {
     if (lock_held()) {
       var()->mu()->unlock();
     }
+    if (shared_lock_held()) {
+      var()->mu()->unlock_shared();
+    }
 
     // Unref the variable so it can be released by ResourceManager.
     var()->Unref();
@@ -105,6 +113,15 @@ VariableInfo::~VariableInfo() {
 Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
                                   absl::Span<const Tensor* const> inputs,
                                   absl::Span<const int> variable_indices,
+                                  std::vector<VariableInfo>* result) {
+  return GetVariableInfosFromInputs(rm, dev, inputs, variable_indices, nullptr,
+                                    result);
+}
+
+Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
+                                  absl::Span<const Tensor* const> inputs,
+                                  absl::Span<const int> variable_indices,
+                                  const std::set<int>* variables_updated,
                                   std::vector<VariableInfo>* result) {
   result->clear();
   result->reserve(variable_indices.size());
@@ -128,8 +145,12 @@ Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
           *ptr = new Var(DT_INVALID);
           return OkStatus();
         }));
-    result->emplace_back(var_idx, handle.name(), variable,
-                         handle.definition_stack_trace());
+    VariableInfo& variable_info = result->emplace_back(
+        var_idx, handle.name(), variable, handle.definition_stack_trace());
+    if (variables_updated != nullptr &&
+        variables_updated->find(var_idx) == variables_updated->end()) {
+      variable_info.set_read_only();
+    }
   }
   return OkStatus();
 }
@@ -178,10 +199,17 @@ Status LockVariables(absl::Span<VariableInfo*> variables) {
       // TODO(b/128495870) Add support for passing aliased resource variables.
       return errors::Unimplemented("Duplicate variable passed to XLA cluster");
     }
-    VLOG(4) << "Acquiring lock for variable "
-            << reinterpret_cast<void*>(variable);
-    mu->lock();
-    variables[i]->set_lock_held();
+    if (variables[i]->read_only()) {
+      VLOG(4) << "Acquiring reader lock for variable "
+              << reinterpret_cast<void*>(variable);
+      mu->lock_shared();
+      variables[i]->set_shared_lock_held();
+    } else {
+      VLOG(4) << "Acquiring lock for variable "
+              << reinterpret_cast<void*>(variable);
+      mu->lock();
+      variables[i]->set_lock_held();
+    }
     prev = mu;
   }
   VLOG(4) << "Finished acquiring variable locks.";
@@ -204,9 +232,32 @@ Status SnapshotResourceVariables(OpKernelContext* ctx,
   for (int i = 0, end = variable_indices.size(); i < end; i++) {
     Var* var = variable_infos[i].var();
     (*result)[variable_indices[i]] =
-        var ? absl::make_optional(*var->tensor()) : std::nullopt;
+        var ? std::make_optional(*var->tensor()) : std::nullopt;
   }
   return OkStatus();
+}
+
+StatusOr<std::vector<int>> GetConstantInputIndicesFromContext(
+    OpKernelContext* ctx) {
+  std::vector<int> constant_input_indices;
+  TF_RETURN_IF_ERROR(GetCompileTimeConstInputs(
+      &ctx->op_kernel(), &constant_input_indices, ctx->function_library()));
+  if (!absl::c_all_of(constant_input_indices, [&](int idx) {
+        return ctx->input_memory_type(idx) == HOST_MEMORY;
+      })) {
+    return errors::Internal("Unexpected device placement for a constant input");
+  }
+  return constant_input_indices;
+}
+
+std::vector<int> GetResourceVariableIndicesFromContext(OpKernelContext* ctx) {
+  std::vector<int> out;
+  for (int64 i = 0; i < ctx->num_inputs(); i++) {
+    if (ctx->input(i).dtype() == DT_RESOURCE) {
+      out.push_back(i);
+    }
+  }
+  return out;
 }
 
 XlaComputationLaunchContext::XlaComputationLaunchContext(
@@ -375,19 +426,19 @@ static StatusOr<Tensor> GetOrCreateTensorForOutput(
 }
 
 // Sets output `output_num` for `ctx` provided it is known at a compile time.
-static Status SetOutputForConstant(
-    OpKernelContext* ctx, se::Stream* stream,
+Status SetOutputForConstant(
+    OpKernelContext* ctx, bool requires_copy_to_device,
     const XlaCompiler::CompilationResult* compilation_result, int output_num) {
   CHECK(compilation_result->outputs[output_num].is_constant);
   const Tensor& const_tensor =
       compilation_result->outputs[output_num].constant_value;
   Tensor* output_tensor;
-  if (stream && const_tensor.TotalBytes() > 0) {
+  if (requires_copy_to_device && const_tensor.TotalBytes() > 0) {
     // Copy host -> device. (Empty tensors don't have backing buffers.)
-    // Manually allocate memory using an XlaTensorBuffer so we can allocate
-    // as much memory as the device requires (as given by
-    // GetByteSizeRequirement). This avoids XlaTransferManager having to
-    // reallocate the device buffer later.
+    // Manually allocate memory so we can allocate as much memory as the device
+    // requires (as given by GetByteSizeRequirement). This avoids
+    // XlaTransferManager having to reallocate the device buffer later if
+    // XlaTransferManager is used.
     VLOG(1) << "Constant output tensor on device";
 
     TF_RETURN_IF_ERROR(
@@ -486,7 +537,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
   }
 
   std::shared_ptr<se::Event> definition_event;
-  if (use_multiple_streams_) {
+  if (use_multiple_streams_ && stream) {
     definition_event = std::make_shared<se::Event>(stream->parent());
     if (!definition_event->Init()) {
       return errors::Internal("Failed to initialize tensor definition event.");
@@ -544,8 +595,9 @@ Status XlaComputationLaunchContext::PopulateOutputs(
             << shape.DebugString() << " type " << DataTypeString(type);
 
     if (compilation_result->outputs[i].is_constant) {
-      TF_RETURN_IF_ERROR(
-          SetOutputForConstant(ctx, stream, compilation_result, i));
+      TF_RETURN_IF_ERROR(SetOutputForConstant(
+          ctx, /*requires_copy_to_device=*/stream != nullptr,
+          compilation_result, i));
     } else if (type == DT_RESOURCE) {
       int input_index =
           compilation_result->outputs[i].input_index - missing_ctx_input_prefix;
@@ -636,7 +688,7 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
 
   absl::flat_hash_map<int, const VariableInfo*> variable_info_lookup;
   for (const VariableInfo& info : variable_args) {
-    CHECK(!info.var() || info.lock_held())
+    CHECK(!info.var() || info.lock_held() || info.shared_lock_held())
         << "Need to hold the lock on resource variables "
            "before calling BuildXlaCompilerArguments";
     variable_info_lookup.emplace(info.index(), &info);

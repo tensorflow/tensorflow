@@ -19,12 +19,13 @@ limitations under the License.
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
+#include "tensorflow/tsl/framework/allocator.h"
 #include "tfrt/gpu/device/gpu_config.h"  // from @tf_runtime
 
 namespace tensorflow {
 
 tfrt::gpu::GpuAllocatorFactory CreateRuntimeFallbackGpuAllocatorFactory(
-    tensorflow::Allocator* tf_gpu_allocator);
+    tsl::Allocator* tf_gpu_allocator);
 
 }  // namespace tensorflow
 

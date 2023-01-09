@@ -31,7 +31,6 @@ from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cfg
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.autograph.pyct.static_analysis import annos
-from tensorflow.python.util import deprecation
 
 
 class Analyzer(cfg.GraphVisitor):
@@ -44,12 +43,6 @@ class Analyzer(cfg.GraphVisitor):
   def init_state(self, _):
     return set()
 
-  date = "2023-09-23"
-  instructions=("Lambda fuctions will be no more assumed to be used in the" \
-               "statement where they are used, or at least in the same block." \
-               "https://github.com/tensorflow/tensorflow/issues/56089")
-
-  @deprecation.deprecated(date, instructions, warn_once=True)
   def lamba_check(self, fn_ast_node):
     if isinstance(fn_ast_node, gast.Lambda):
       # Exception: lambda functions are assumed to be used only in the

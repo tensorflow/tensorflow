@@ -68,7 +68,7 @@ port::StatusOr<DeviceMemory<uint8_t>> RedzoneAllocator::AllocateBytes(
     int64_t byte_size) {
   CHECK_GE(byte_size, 0) << "byte_size must be positive.";
   if (byte_size > GetMemoryLimitInBytes()) {
-    return port::Status(
+    return tsl::Status(
         port::error::RESOURCE_EXHAUSTED,
         absl::StrFormat(
             "Allocating %d bytes exceeds the memory limit of %d bytes.",
@@ -216,7 +216,7 @@ static port::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
 // Run the redzone checker on the provided buffer redzone.
 //
 // Increment out_param if mismatch occurs.
-static port::Status RunRedzoneChecker(
+static tsl::Status RunRedzoneChecker(
     Stream* stream, const DeviceMemory<uint8_t>& redzone,
     uint8_t redzone_pattern, const DeviceMemory<uint64_t>& out_param,
     const ComparisonKernelT& comparison_kernel) {
@@ -238,9 +238,8 @@ static port::Status RunRedzoneChecker(
 // with a NaN pattern after a failed check.
 //
 // This function is blocking, since redzone failing is a rare event.
-static port::Status ReinitializeRedzone(Stream* stream,
-                                        DeviceMemoryBase redzone,
-                                        uint8_t redzone_pattern) {
+static tsl::Status ReinitializeRedzone(Stream* stream, DeviceMemoryBase redzone,
+                                       uint8_t redzone_pattern) {
   absl::FixedArray<uint8_t> redzone_array(redzone.size());
   redzone_array.fill(redzone_pattern);
   stream->ThenMemcpy(&redzone, redzone_array.data(), redzone.size());

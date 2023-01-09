@@ -42,10 +42,16 @@ void SleepForMicros(uint64_t micros) {
 #else
 
 uint64_t NowMicros() {
+#if defined(__APPLE__)
+  // Prefer using CLOCK_MONOTONIC_RAW for measuring duration and latency on
+  // macOS.
+  return clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW) / 1e3;
+#else
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
   return static_cast<uint64_t>(ts.tv_sec) * 1e6 +
          static_cast<uint64_t>(ts.tv_nsec) / 1e3;
+#endif  // __APPLE__
 }
 
 void SleepForMicros(uint64_t micros) {

@@ -726,6 +726,16 @@ TEST(OpVersionTest, VersioningTransposeConvOperatorTest) {
           kTfLiteInt32, kTfLiteInt8, kTfLiteInt8, none_type}),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  TfLiteTransposeConvParams transpose_conv_params = {};
+  transpose_conv_params.activation = kTfLiteActRelu;
+  fake_op_sig = {
+      .op = BuiltinOperator_TRANSPOSE_CONV,
+      .inputs = CreateOpSignatureTensorSpecs(std::vector<TfLiteType>{
+          kTfLiteInt32, kTfLiteInt8, kTfLiteInt8, none_type}),
+      .builtin_data = reinterpret_cast<void*>(&transpose_conv_params),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
 
 TEST(OpVersionTest, VersioningSVDFOperatorTest) {
@@ -884,6 +894,12 @@ TEST(OpVersionTest, VersioningDivTest) {
 TEST(OpVersionTEst, VersioningFillTest) {
   OpSignature fake_op_sig = {BuiltinOperator_FILL};
   fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
+      std::vector<TfLiteType>{kTfLiteInt32, kTfLiteFloat16});
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
+      std::vector<TfLiteType>{kTfLiteInt64, kTfLiteFloat16});
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
       std::vector<TfLiteType>{kTfLiteInt32, kTfLiteInt8});
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
   fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
@@ -1023,6 +1039,26 @@ TEST(OpVersionTest, VersioningAbsTest) {
       .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+  fake_op_sig = {};
+  fake_op_sig.op = BuiltinOperator_ABS;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
+}
+TEST(OpVersionTest, VersioningSignTest) {
+  // Default.
+  OpSignature fake_op_sig;
+  fake_op_sig.op = BuiltinOperator_SIGN;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  // int32 input is version 2.
+  fake_op_sig = {};
+  fake_op_sig.op = BuiltinOperator_SIGN;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
 TEST(OpVersionTest, VersioningBatchMatMulTest) {
   // Default.

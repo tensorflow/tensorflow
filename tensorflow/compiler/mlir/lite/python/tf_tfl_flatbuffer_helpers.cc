@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
 
+#include <optional>
 #include <ostream>
 #include <string>
 #include <unordered_set>
@@ -234,7 +235,7 @@ Status PopulateQuantizationSpecs(
           DataType_Name(ConvertIODataTypeToDataType(toco_data_type)));
     }
     if (flag.shape().unknown_rank()) {
-      node_shapes->push_back(llvm::None);
+      node_shapes->push_back(std::nullopt);
     } else {
       node_shapes->push_back(std::vector<int>(flag.shape().dims().begin(),
                                               flag.shape().dims().end()));
@@ -248,8 +249,8 @@ Status PopulateQuantizationSpecs(
         node_mins->push_back(min_max.first);
         node_maxs->push_back(min_max.second);
       } else {
-        node_mins->push_back(llvm::None);
-        node_maxs->push_back(llvm::None);
+        node_mins->push_back(std::nullopt);
+        node_maxs->push_back(std::nullopt);
       }
     }
   }
@@ -306,9 +307,10 @@ Status PopulateQuantizationSpecs(
   if (toco_flags.has_default_ranges_max()) {
     quant_specs->default_ranges.second = toco_flags.default_ranges_max();
   }
-  if (toco_flags.enable_mlir_dynamic_range_quantizer()) {
-    quant_specs->enable_mlir_dynamic_range_quantizer = true;
-  }
+  quant_specs->enable_mlir_dynamic_range_quantizer =
+      toco_flags.enable_mlir_dynamic_range_quantizer();
+  quant_specs->enable_mlir_variable_quantization =
+      toco_flags.enable_mlir_variable_quantization();
   return OkStatus();
 }
 

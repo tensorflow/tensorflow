@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/protobuf/autotuning.pb.h"
+#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 // Helper functions for interacting with StreamExecutor.
 
@@ -80,7 +80,8 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec);
 // the lifetime of the kernel.
 StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
     absl::string_view kernel_name, uint64_t num_args, absl::string_view ptx,
-    absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec);
+    absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec,
+    uint32_t shared_mem_bytes = 0);
 
 // Runs loaded kernel on the stream with the provided arguments.
 Status ExecuteKernelOnStream(const se::KernelBase& kernel,

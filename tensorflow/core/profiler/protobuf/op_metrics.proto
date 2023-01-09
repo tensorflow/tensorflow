@@ -2,6 +2,15 @@ syntax = "proto3";
 
 package tensorflow.profiler;
 
+// Types of memory bandwidth we track in the system.
+enum MemBwType {
+  // Aggregated BW across on-chip and off-chip memory.
+  MEM_BW_TYPE_ALL = 0;
+  // Off-chip hbm memory bw, read and write combined since it's a shared
+  // bus.
+  MEM_BW_TYPE_HBM_RW = 1;
+}
+
 // What the dimension represents, e.g. spatial, feature or batch.
 enum LayoutDimensionSemantics {
   UNKNOWN_SEMANTICS = 0;

@@ -71,7 +71,7 @@ template <typename ShapeContainerT>
 void SetTensorShapeProto(ShapeContainerT shape, TensorShapeProto* proto) {
   if (shape.hasRank()) {
     for (int64_t dim : shape.getShape()) {
-      proto->add_dim()->set_size(dim);
+      proto->add_dim()->set_size(mlir::ShapedType::isDynamic(dim) ? -1 : dim);
     }
   } else {
     proto->set_unknown_rank(true);

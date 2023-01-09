@@ -31,7 +31,8 @@ func.func @matmul_tensors(
 // CHECK-SAME: step (%[[C2]], %[[C3]], %[[C4]])
 // CHECK-SAME: ins (%[[A0:.*]] = %[[ARG_0]]: [[TY]], %[[A1:.*]] = %[[ARG_1]]: [[TY]])
 // CHECK-SAME: outs (%[[A2:.*]] = %[[ARG_2]]: [[TY]])
-// CHECK-SAME: iterators["parallel", "parallel", "reduction"]
+// CHECK-SAME: iterators[#gml_st.iterator_type<parallel>,
+// CHECK-SAME:   #gml_st.iterator_type<parallel>, #gml_st.iterator_type<reduction>]
 // CHECK-SAME: distribution["block_x", "block_y", "none"] {
 
 // CHECK: %[[SUB_ARG_0:.*]] = tensor.extract_slice %[[A0]][%[[I]], %[[K]]]
@@ -39,7 +40,7 @@ func.func @matmul_tensors(
 // CHECK: %[[SUB_ARG_2:.*]] = tensor.extract_slice %[[A2]][%[[I]], %[[J]]]
 
 // CHECK: %[[PROD:.*]] = linalg.matmul ins(%[[SUB_ARG_0]], %[[SUB_ARG_1]]
-// CHECK-SE: outs(%[[SUB_ARG_2]] : [[TY]]) -> [[TY]]
+// CHECK-SAME: outs(%[[SUB_ARG_2]] : [[TY]]) -> [[TY]]
 
 // CHECK: %[[O:.*]] = tensor.insert_slice %[[PROD]] into %[[A2]][%[[I]], %[[J]]]
 // CHECK: gml_st.yield %[[O]] : [[TY]]

@@ -507,7 +507,8 @@ float MemorySpaceAssignmentCostAnalysis::GetAsyncCopyElapsed(
     const Shape& shape) const {
   int64_t size_in_bytes = cost_analysis_.GetShapeSize(shape);
   return static_cast<float>(size_in_bytes) /
-         options().async_copy_bandwidth_bytes_per_second;
+         (options().async_copy_bandwidth_bytes_per_second *
+          options().async_copy_bandwidth_scaling_factor);
 }
 
 int64_t MemorySpaceAssignmentCostAnalysis::GetScheduleEndTime() const {
@@ -1267,6 +1268,10 @@ bool AlternateMemoryBestFitHeap::IsUseAllowedInAlternateMemory(
     int64_t conditional_time = instruction_schedule.at(use.instruction);
     for (const AllocationValue::Use& other_use : value.uses()) {
       if (other_use.hlo_use.instruction != use.instruction) {
+        continue;
+      }
+      // Operand 0 is not passed into the computation.
+      if (other_use.hlo_use.operand_number == 0) {
         continue;
       }
       HloComputation* called_computation =
@@ -2352,7 +2357,8 @@ AlternateMemoryBestFitHeap::RequiredMemoryAssignmentAt(const HloValue* buffer,
          required_assignment_it->second) {
       if (required_assignment.time == time) {
         // Sanity check that there is only one required at time.
-        CHECK(!required_assignment_at_time);
+        CHECK(!required_assignment_at_time)
+            << buffer->ToShortString() << " at time " << time;
         required_assignment_at_time = required_assignment;
       }
     }
@@ -2397,7 +2403,7 @@ void AlternateMemoryBestFitHeap::AddAliasedRequiredAssignment(
 void AlternateMemoryBestFitHeap::AddRequiredAssignment(
     const HloValue* value, const HloInstruction* instruction,
     MemorySpaceAssignment::MemorySpace memory_space, int64_t time,
-    AliasedOffset* offset) {
+    AliasedOffset* offset, bool add_to_pending) {
   // Check for existing required assignment at this time and make sure it is the
   // same as this if there is one.
   auto existing_required_assignment = RequiredMemoryAssignmentAt(value, time);
@@ -2415,7 +2421,9 @@ void AlternateMemoryBestFitHeap::AddRequiredAssignment(
             << (memory_space == MemorySpace::kDefault ? "def" : "alt");
     RequiredMemoryAssignment required_assignment{memory_space, time, offset};
     required_assignments_[value].push_back(required_assignment);
-    pending_required_assignments_.push_back({value, required_assignment});
+    if (add_to_pending) {
+      pending_required_assignments_.push_back({value, required_assignment});
+    }
   }
 }
 
@@ -2456,8 +2464,10 @@ void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
                       << " time = " << parameter_instruction_time << " space = "
                       << (memory_space == MemorySpace::kDefault ? "def"
                                                                 : "alt");
-              required_assignments_[value].push_back(
-                  {memory_space, /*time=*/parameter_instruction_time});
+              AddRequiredAssignment(value, parameter_instruction, memory_space,
+                                    parameter_instruction_time,
+                                    /*offset=*/nullptr,
+                                    /*add_to_pending=*/false);
             }
           }
         });
@@ -2479,8 +2489,9 @@ void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
                     << value->ToShortString()
                     << " time = " << root_instruction_time << " space = "
                     << (memory_space == MemorySpace::kDefault ? "def" : "alt");
-            required_assignments_[value].push_back(
-                {memory_space, /*time=*/root_instruction_time});
+            AddRequiredAssignment(value, root_instruction, memory_space,
+                                  root_instruction_time,
+                                  /*offset=*/nullptr, /*add_to_pending=*/false);
           }
         }
       });
@@ -2503,8 +2514,10 @@ void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
                       << value->ToShortString()
                       << " time = " << constant_instruction_time
                       << " space = def";
-              required_assignments_[value].push_back(
-                  {MemorySpace::kDefault, /*time=*/constant_instruction_time});
+              AddRequiredAssignment(value, instruction, MemorySpace::kDefault,
+                                    constant_instruction_time,
+                                    /*offset=*/nullptr,
+                                    /*add_to_pending=*/false);
             }
           }
         }
@@ -2881,6 +2894,18 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
   CHECK(prev_allocation_in_default_mem_it != allocation_sequence->rend());
   CHECK((*prev_allocation_in_default_mem_it)->memory_space() ==
         MemorySpace::kDefault);
+
+  // If the allocation value requires a contiguous allocation but has a memory
+  // space mismatch between the start and end required assignments, then we need
+  // to uncommit.
+  if (request.allocation_value->requires_contiguous_allocation() &&
+      required_memory_space_at_start.has_value() &&
+      required_memory_space_at_end.has_value() &&
+      required_memory_space_at_start != required_memory_space_at_end) {
+    VLOG(3) << "Allocation requires contiguous allocation but has memory space "
+               "mismatch.";
+    return result_mark(Result::kFailRequiresUncommit, allocation_result);
+  }
 
   // If the buffer must be in default memory at the end_time, don't prefetch.
   if (required_memory_space_at_end == MemorySpace::kDefault) {
@@ -3396,7 +3421,7 @@ AlternateMemoryBestFitHeap::FindBestChunkCandidate(
     // Find a chunk that's as long living as possible.
     std::optional<Chunk> last_chunk_candidate;
     int64_t latest_matching_use = std::numeric_limits<int64_t>::min();
-    std::lower_bound(
+    (void)std::lower_bound(
         earliest_use_it, std::next(use_time_it), -1, [&](int64_t use, int64_t) {
           alternate_mem_interval->end = use;
           Chunk chunk_candidate = FindChunkCandidate(*alternate_mem_interval);

@@ -23,6 +23,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/tsl/profiler/lib/scoped_annotation_stack.h"
+
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/profiler/backends/cpu/annotation_stack.h"
 #endif
@@ -30,57 +32,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-// ScopedAnnotation for clients that can't use RAII for managing the lifetime
-// of annotations. It provides an API similar to the `TraceMe::ActivityStart`
-// and `TraceMe::ActivityEnd`.
-//
-// Usage:
-//   int64_t id = ScopedAnnotationStack::ActivityStart("foo");
-//   foo();
-//   ScopedAnnotationStack::ActivityEnd(id);
-//
-// Prefer a regular `ScopedAnnotation`. The name of this class is a misnomer,
-// because it doesn't do any automatic destruction at the scope end, it's just
-// for the sake of consistency.
-class ScopedAnnotationStack {
-  static constexpr size_t kInvalidActivity = static_cast<size_t>(-1);
-
- public:
-  static int64_t ActivityStart(std::string name) {
-#if !defined(IS_MOBILE_PLATFORM)
-    if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
-      return AnnotationStack::PushAnnotation(std::move(name));
-    }
-#endif
-    return kInvalidActivity;
-  }
-
-  static int64_t ActivityStart(std::string_view name) {
-    return ActivityStart(std::string(name));
-  }
-
-  static int64_t ActivityStart(const char* name) {
-    return ActivityStart(std::string_view(name));
-  }
-
-  template <typename NameGeneratorT>
-  static int64_t ActivityStart(NameGeneratorT name_generator) {
-#if !defined(IS_MOBILE_PLATFORM)
-    if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
-      return AnnotationStack::PushAnnotation(name_generator());
-    }
-#endif
-    return kInvalidActivity;
-  }
-
-  static void ActivityEnd(int64_t activity_id) {
-#if !defined(IS_MOBILE_PLATFORM)
-    if (TF_PREDICT_FALSE(activity_id != kInvalidActivity)) {
-      AnnotationStack::PopAnnotation(activity_id);
-    }
-#endif
-  }
-};
+using tsl::profiler::ScopedAnnotationStack;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

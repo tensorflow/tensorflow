@@ -37,7 +37,7 @@ class FIFOQueueTest(xla_test.XLATestCase):
       enqueue_correct_op.run()
       with self.assertRaises(ValueError):
         q.enqueue(([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],))
-      self.assertEqual(1, q.size().eval())
+      self.assertEqual(1, self.evaluate(q.size()))
 
   def testMultipleDequeues(self):
     with self.session(), self.test_scope():
@@ -85,7 +85,7 @@ class FIFOQueueTest(xla_test.XLATestCase):
       # Dequeue every element using a single thread.
       results = []
       for _ in range(len(elems)):
-        results.append(dequeued_t.eval())
+        results.append(self.evaluate(dequeued_t))
       self.assertItemsEqual(elems, results)
 
   def testParallelDequeue(self):
@@ -175,7 +175,7 @@ class FIFOQueueTest(xla_test.XLATestCase):
   def testQueueSizeEmpty(self):
     with self.session(), self.test_scope():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
-      self.assertEqual([0], q.size().eval())
+      self.assertEqual([0], self.evaluate(q.size()))
 
   def testQueueSizeAfterEnqueueAndDequeue(self):
     with self.session(), self.test_scope():

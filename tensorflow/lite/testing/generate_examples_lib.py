@@ -30,7 +30,7 @@ import os
 import re
 import zipfile
 
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 
 # TODO(aselle): Disable GPU for now
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -79,7 +79,7 @@ from tensorflow.lite.testing.op_tests.exp import make_exp_tests
 from tensorflow.lite.testing.op_tests.expand_dims import make_expand_dims_tests
 from tensorflow.lite.testing.op_tests.expm1 import make_expm1_tests
 from tensorflow.lite.testing.op_tests.eye import make_eye_tests
-from tensorflow.lite.testing.op_tests.fill import make_fill_tests
+from tensorflow.lite.testing.op_tests.fill import make_fill_tests, make_fill_16_tests
 from tensorflow.lite.testing.op_tests.floor import make_floor_tests
 from tensorflow.lite.testing.op_tests.fully_connected import make_fully_connected_tests
 from tensorflow.lite.testing.op_tests.fused_batch_norm import make_fused_batch_norm_tests
@@ -156,6 +156,7 @@ from tensorflow.lite.testing.op_tests.segment_sum import make_segment_sum_tests
 from tensorflow.lite.testing.op_tests.shape import make_shape_tests
 from tensorflow.lite.testing.op_tests.shape_to_strided_slice import make_shape_to_strided_slice_tests
 from tensorflow.lite.testing.op_tests.sigmoid import make_sigmoid_tests
+from tensorflow.lite.testing.op_tests.sigmoid_grad import make_sigmoid_grad_tests
 from tensorflow.lite.testing.op_tests.sign import make_sign_tests
 from tensorflow.lite.testing.op_tests.slice import make_slice_tests
 from tensorflow.lite.testing.op_tests.softmax import make_softmax_tests

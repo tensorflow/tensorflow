@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -31,11 +32,12 @@ limitations under the License.
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -200,8 +202,8 @@ StatusOr<llvm::Value*> EmitReducePrecisionIR(
   return result;
 }
 
-StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value,
-                                     llvm::IRBuilder<>* b) {
+StatusOr<llvm::Value*> DefaultEmitF32ToBF16Impl(llvm::Value* f32_value,
+                                                llvm::IRBuilder<>* b) {
   TF_ASSIGN_OR_RETURN(
       auto reduced_precision,
       EmitReducePrecisionIR(
@@ -222,6 +224,188 @@ llvm::Value* EmitBF16ToF32(llvm::Value* bf16_value, llvm::IRBuilder<>* b) {
   return b->CreateBitCast(shifted, b->getFloatTy());
 }
 
+StatusOr<llvm::Value*> EmitF16ToF8e5m2(llvm::Value* f16_value,
+                                       llvm::IRBuilder<>* b) {
+  TF_ASSIGN_OR_RETURN(
+      llvm::Value * reduced_precision,
+      EmitReducePrecisionIR(
+          /*src_ty=*/F16, f16_value,
+          /*dest_exponent_bits=*/primitive_util::ExponentWidth(F8E5M2),
+          /*dest_mantissa_bits=*/primitive_util::SignificandWidth(F8E5M2) - 1,
+          /*quiet_nans=*/true, b));
+  llvm::Value* as_int16 = b->CreateBitCast(reduced_precision, b->getInt16Ty());
+  llvm::Value* shifted = b->CreateLShr(as_int16, 8);
+  llvm::Value* truncated = b->CreateTrunc(shifted, b->getInt8Ty());
+  return b->CreateBitCast(truncated, b->getInt8Ty());
+}
+
+llvm::Value* EmitF8e5m2ToF16(llvm::Value* f8_value, llvm::IRBuilder<>* b) {
+  llvm::Value* as_int8 = b->CreateBitCast(f8_value, b->getInt8Ty());
+  llvm::Value* as_int16 = b->CreateZExt(as_int8, b->getInt16Ty());
+  llvm::Value* shifted = b->CreateShl(as_int16, 8);
+  return b->CreateBitCast(shifted, b->getHalfTy());
+}
+
+llvm::Value* EmitF16ToF8e4m3fn(llvm::Value* f16_value, llvm::IRBuilder<>* b) {
+  using llvm::APInt;
+  using llvm::Value;
+
+  llvm::IntegerType* i8_type = b->getInt8Ty();
+  llvm::IntegerType* i16_type = b->getInt16Ty();
+  auto i8_const = [i8_type](int val) {
+    return llvm::ConstantInt::get(i8_type, val);
+  };
+  auto i16_const = [i16_type](int val) {
+    return llvm::ConstantInt::get(i16_type, val);
+  };
+
+  // Cast the input value to an integer for bitwise manipulation. Get the
+  // absolute value of the input value.
+  //   f16_as_int = bitcast(f16_value, int)
+  //   f16_abs_bits = f16_as_int & 0x7FFF
+  Value* f16_as_int = b->CreateBitCast(f16_value, i16_type);
+  llvm::Value* f16_abs_bits = b->CreateAnd(f16_as_int, i16_const(0x7FFF));
+
+  // Get the sign.
+  //   f8_sign = (f16_as_int & 0x8000) >> 8
+  Value* f16_sign = b->CreateAnd(f16_as_int, i16_const(0x8000));
+  f16_sign = b->CreateLShr(f16_sign, i16_const(8));
+  Value* f8_sign = b->CreateTrunc(f16_sign, i8_type);
+
+  // Truncate the mantissa to 3 bits. ReducePrecision cannot deal with
+  // f8E4M3FN's NaN representations, so don't use ReducePrecision to handle
+  // exponent reduction.
+  // TODO(b/259609697): ReducePrecision truncates denormal values. Do not do
+  // this for FP8.
+  StatusOr<Value*> f16_reduced_statusor = EmitReducePrecisionIR(
+      /*src_ty=*/F16, f16_value,
+      /*dest_exponent_bits=*/5,
+      /*dest_mantissa_bits=*/3,
+      /*quiet_nans=*/false, b);
+  CHECK(f16_reduced_statusor.ok());  // Crash OK
+  Value* f16_reduced = f16_reduced_statusor.value();
+  f16_reduced = b->CreateBitCast(f16_reduced, i16_type);
+
+  constexpr int exponent_bias_difference = 15 - 7;
+  constexpr int f16_mantissa_bits = 10;
+  constexpr int f8_mantissa_bits = 3;
+  constexpr int mantissa_bits_difference = f16_mantissa_bits - f8_mantissa_bits;
+
+  // Adjust the exponent by subtracting the difference in exponent bias.
+  //   f16_reduced -= (exponent_bias_difference << f16_mantissa_bits)
+  f16_reduced = b->CreateSub(
+      f16_reduced, i16_const(exponent_bias_difference << f16_mantissa_bits));
+
+  // Shift to convert to F8.
+  //   f8_bits = f16_reduced >> mantissa_bits_difference;
+  Value* f8_bits =
+      b->CreateLShr(f16_reduced, i16_const(mantissa_bits_difference));
+  f8_bits = b->CreateTrunc(f8_bits, i8_type);
+
+  // Bits of the lowest F16 value that gets converted to a normal F8 value.
+  // In binary: 0 01000 1110000000
+  constexpr int min_nonzero_value = 0x2380;
+  // Bits of the highest F16 value that gets converted to a finite F8 value.
+  // In binary: 0 10111 1101111111
+  constexpr int max_finite_value = 0x5F7F;
+
+  // If we're below the minimum F16 value or above the maximum F16 value,
+  // output zero or NaN respectively.
+  //   f8_bits = f16_abs_bits < min_nonzero_value ? 0 : f8_bits
+  //   f8_bits = f16_abs_bits > max_finite_value ? 0x7F : f8_bits
+  f8_bits = b->CreateSelect(
+      b->CreateICmpULT(f16_abs_bits, i16_const(min_nonzero_value)), i8_const(0),
+      f8_bits);
+  f8_bits = b->CreateSelect(
+      b->CreateICmpUGT(f16_abs_bits, i16_const(max_finite_value)),
+      i8_const(0x7F), f8_bits);
+
+  // Set the sign bit.
+  //   f8_bits |= f8_sign
+  f8_bits = b->CreateOr(f8_bits, f8_sign);
+  return f8_bits;
+}
+
+llvm::Value* EmitF8e4m3fnToF16(llvm::Value* f8_value, llvm::IRBuilder<>* b) {
+  using llvm::APInt;
+  using llvm::Value;
+
+  llvm::IntegerType* i8_type = b->getInt8Ty();
+  llvm::IntegerType* i16_type = b->getInt16Ty();
+  auto i8_const = [i8_type](int val) {
+    return llvm::ConstantInt::get(i8_type, val);
+  };
+  auto i16_const = [i16_type](int val) {
+    return llvm::ConstantInt::get(i16_type, val);
+  };
+
+  // Cast the input value to an integer for bitwise manipulation. Get the
+  // absolute value of the input value.
+  //   f8_as_int = bitcast(f16_value, int)
+  //   f8_abs_bits = f8_as_int & 0x7F
+  Value* f8_as_int = b->CreateBitCast(f8_value, i8_type);
+  Value* f8_abs_bits = b->CreateAnd(f8_as_int, i8_const(0x7F));
+
+  // We assume below that the value is neither NaN nor denormal. If it NaN or
+  // denormal, the output is set to NaN or zero at the end using a Select
+  // instruction
+  // TODO(b/259609697): Do not truncate denormal values to zero.
+
+  // Get the sign:
+  //   f16_sign = (f8_as_int & 0x80) << 8
+  Value* f8_sign = b->CreateAnd(f8_as_int, i8_const(0x80));
+  Value* f16_sign = b->CreateZExt(f8_sign, i16_type);
+  f16_sign = b->CreateShl(f16_sign, i16_const(8));
+
+  constexpr int exponent_bias_difference = 15 - 7;
+  constexpr int f16_mantissa_bits = 10;
+  constexpr int f8_mantissa_bits = 3;
+  constexpr int mantissa_bits_difference = f16_mantissa_bits - f8_mantissa_bits;
+  constexpr int f8_mantissa_mask = (1 << f8_mantissa_bits) - 1;
+
+  // Get the exponent:
+  //   f8_exponent = (f8_as_int & 0x78) >> f8_mantissa_bits
+  Value* f8_exponent_bits = b->CreateAnd(f8_as_int, i8_const(0x78));
+  Value* f8_exponent =
+      b->CreateLShr(f8_exponent_bits, i8_const(f8_mantissa_bits));
+
+  // Adjust the exponent by adding the difference in exponent bias:
+  //   f16_exponent = (f8_exopnent + exponent_bias_difference)
+  //                  << f16_mantissa_bits
+  Value* f16_exponent =
+      b->CreateAdd(f8_exponent, i8_const(exponent_bias_difference));
+  f16_exponent = b->CreateZExt(f16_exponent, i16_type);
+  f16_exponent = b->CreateShl(f16_exponent, i16_const(f16_mantissa_bits));
+
+  // Get the mantissa:
+  //   f16_mantissa = (f8_mantissa & f8_mantissa_mask)
+  //                  << mantissa_bits_difference
+  Value* f8_mantissa = b->CreateAnd(f8_as_int, i8_const(f8_mantissa_mask));
+  Value* f16_mantissa = b->CreateZExt(f8_mantissa, i16_type);
+  f16_mantissa =
+      b->CreateShl(f16_mantissa, i16_const(mantissa_bits_difference));
+
+  // Combine the exponent and mantissa:
+  //   f16_as_int = f16_exponent | f16_mantissa
+  Value* f16_as_int = b->CreateOr(f16_exponent, f16_mantissa);
+
+  // Set output to NaN if input is NaN
+  //   f16_as_int = f8_abs_bits == 0x7F ? 0x7E00 : f16_as_int
+  Value* is_nan = b->CreateICmpEQ(f8_abs_bits, i8_const(0x7F));
+  f16_as_int = b->CreateSelect(is_nan, i16_const(0x7E00), f16_as_int);
+
+  // Set output to zero if input is denormal
+  //   f16_as_int = f8_abs_bits <= f8_mantissa_mask ? 0 : f16_as_int
+  Value* is_denormal =
+      b->CreateICmpULE(f8_abs_bits, i8_const(f8_mantissa_mask));
+  f16_as_int = b->CreateSelect(is_denormal, i16_const(0x0), f16_as_int);
+
+  // Set the sign bit.
+  //   f8_bits |= f8_sign
+  f16_as_int = b->CreateOr(f16_as_int, f16_sign);
+  return b->CreateBitCast(f16_as_int, b->getHalfTy());
+}
+
 llvm::Value* EmitIntegralToFloating(llvm::Value* integer_value,
                                     PrimitiveType from_type,
                                     PrimitiveType to_type, llvm::Module* module,
@@ -238,6 +422,23 @@ llvm::Value* EmitIntegralToFloating(llvm::Value* integer_value,
 }
 
 }  // namespace
+
+/*static*/ bool ElementalIrEmitter::OpInvalidatesCache(
+    const HloInstruction* hlo) {
+  switch (hlo->opcode()) {
+    // This list of ops was created by inspecting the code. There is no
+    // guarantee that it is complete.
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kDot:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kPad:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceWindow:
+      return true;
+    default:
+      return false;
+  }
+}
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitUnaryOp(
     const HloInstruction* op, llvm::Value* operand_value) {
@@ -276,8 +477,19 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
       if (primitive_util::IsFloatingPointType(to_type)) {
         if (to_type == BF16) {
           return EmitF32ToBF16(EmitIntegralToFloating(operand_value, from_type,
-                                                      F32, module_, b_),
-                               b_);
+                                                      F32, module_, b_));
+        }
+        if (to_type == F8E5M2) {
+          return EmitF16ToF8e5m2(
+              EmitIntegralToFloating(operand_value, from_type, F16, module_,
+                                     b_),
+              b_);
+        }
+        if (to_type == F8E4M3FN) {
+          return EmitF16ToF8e4m3fn(
+              EmitIntegralToFloating(operand_value, from_type, F16, module_,
+                                     b_),
+              b_);
         }
         return EmitIntegralToFloating(operand_value, from_type, to_type,
                                       module_, b_);
@@ -389,6 +601,22 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
           return operand_value;
         }
       }
+      if (from_type == F8E5M2) {
+        TF_RET_CHECK(to_type != F8E5M2);
+        operand_value = EmitF8e5m2ToF16(operand_value, b_);
+        from_type = F16;
+        if (from_type == to_type) {
+          return operand_value;
+        }
+      }
+      if (from_type == F8E4M3FN) {
+        TF_RET_CHECK(to_type != F8E4M3FN);
+        operand_value = EmitF8e4m3fnToF16(operand_value, b_);
+        from_type = F16;
+        if (from_type == to_type) {
+          return operand_value;
+        }
+      }
       if (primitive_util::IsComplexType(to_type)) {
         PrimitiveType to_component_type =
             primitive_util::ComplexComponentType(to_type);
@@ -408,7 +636,23 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
           operand_value = b_->CreateFPCast(
               operand_value, llvm_ir::PrimitiveTypeToIrType(F32, module_));
         }
-        return EmitF32ToBF16(operand_value, b_);
+        return EmitF32ToBF16(operand_value);
+      }
+      if (to_type == F8E5M2) {
+        // Cast to F16 first. Casts to F8E5M2 must be from F16.
+        if (from_type != F16) {
+          operand_value = b_->CreateFPCast(
+              operand_value, llvm_ir::PrimitiveTypeToIrType(F16, module_));
+        }
+        return EmitF16ToF8e5m2(operand_value, b_);
+      }
+      if (to_type == F8E4M3FN) {
+        // Cast to F16 first. Casts to F8E4M3FN must be from F16.
+        if (from_type != F16) {
+          operand_value = b_->CreateFPCast(
+              operand_value, llvm_ir::PrimitiveTypeToIrType(F16, module_));
+        }
+        return EmitF16ToF8e4m3fn(operand_value, b_);
       }
       if (to_type == PRED) {
         return b_->CreateZExt(
@@ -523,13 +767,9 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
     // as TF and JAX default to FE_TONEAREST. Call llvm::Intrinsic::roundeven
     // instead once GPU emitter supports lowering LLVM.
     case HloOpcode::kRoundNearestEven:
-      return llvm_ir::EmitCallToIntrinsic(
-#if TENSORFLOW_USE_ROCM
-          llvm::Intrinsic::rint,
-#else
-          llvm::Intrinsic::nearbyint,
-#endif
-          {operand_value}, {operand_value->getType()}, b_);
+      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nearbyint,
+                                          {operand_value},
+                                          {operand_value->getType()}, b_);
     case HloOpcode::kSign: {
       auto type = operand_value->getType();
       auto zero = llvm::ConstantFP::get(type, 0.0);
@@ -838,9 +1078,6 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
     }
     case HloOpcode::kRsqrt: {
       return EmitComplexRsqrt(op, component_type, operand_value);
-    }
-    case HloOpcode::kCbrt: {
-      return EmitComplexCbrt(op, component_type, operand_value);
     }
     case HloOpcode::kNegate:
       return EmitComposeComplex(op, FNeg(EmitExtractReal(operand_value)),
@@ -1297,19 +1534,6 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexRsqrt(
   }
 
   return EmitComposeComplex(op, real_part, imag_part);
-}
-
-//
-// Using EmitComplexPower with c=1.0/3.0 and d=0
-StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexCbrt(
-    const HloInstruction* op, PrimitiveType prim_type,
-    llvm::Value* operand_value) {
-  auto type = llvm_ir::PrimitiveTypeToIrType(prim_type, module_);
-  auto third = llvm::ConstantFP::get(type, 1.0 / 3.0);
-  auto zero = llvm::ConstantFP::get(type, 0);
-  llvm::Value* a = EmitExtractReal(operand_value);
-  llvm::Value* b = EmitExtractImag(operand_value);
-  return EmitComplexPower(op, a, b, third, zero);
 }
 
 // (a+bi)^(c+di) =
@@ -2404,26 +2628,50 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   // shapes [A,B,C,T] and [D,T,E], the result has a shape [A,B,C,D,E].
   // Given an output index [a,b,c,d,e] in the result, we compute:
   //   sum(lhs[a,b,c,t]*rhs[d,t,e] for t in [0, T))
+  // Note that due to dot dimension numbers, the operands can have the
+  // dimensions in a different order, so when constructing the index for the
+  // operands, we need to take that into account. We can assume though that the
+  // non-contracting dimensions are in the same order as in the output.
 
-  std::vector<llvm::Value*> lhs_multi_index, rhs_multi_index;
-  for (int64_t i = 0; i < lhs_dims - 1; i++) {
-    lhs_multi_index.push_back(dot_result_index[i]);
+  std::vector<llvm::Value*> lhs_multi_index(lhs_dims, nullptr),
+      rhs_multi_index(rhs_dims, nullptr);
+  int64_t num_batch_dims = dim_numbers.lhs_batch_dimensions_size();
+  DCHECK_EQ(num_batch_dims, dim_numbers.rhs_batch_dimensions_size());
+
+  for (int64_t i = 0; i < num_batch_dims; ++i) {
+    lhs_multi_index[dim_numbers.lhs_batch_dimensions(i)] = dot_result_index[i];
+    rhs_multi_index[dim_numbers.rhs_batch_dimensions(i)] = dot_result_index[i];
   }
-  lhs_multi_index.insert(lhs_multi_index.begin() + lhs_contracting_dim,
-                         inner_loop->GetIndVarValue());
+  lhs_multi_index[lhs_contracting_dim] = inner_loop->GetIndVarValue();
+  rhs_multi_index[rhs_contracting_dim] = inner_loop->GetIndVarValue();
+  // There are lhs_dims - 1 - num_batch_dims non-contracting dimensions for the
+  // lhs operand. We can assume they have the same relative order as in the
+  // output.
+  for (int64_t i = num_batch_dims, j = 0; i < lhs_dims - 1; ++i, ++j) {
+    // Skip the positions which have already been filled with contracting
+    // dimension and batch dimensions.
+    while (j < lhs_dims && lhs_multi_index[j] != nullptr) {
+      ++j;
+    }
+    DCHECK_LT(j, lhs_dims);
+    lhs_multi_index[j] = dot_result_index[i];
+  }
   IrArray::Index lhs_index(lhs_multi_index, hlo->operand(0)->shape(),
                            index_type);
 
-  int64_t num_batch_dims = dim_numbers.rhs_batch_dimensions_size();
-  for (int64_t i = 0; i < num_batch_dims; i++) {
-    rhs_multi_index.push_back(
-        dot_result_index[dim_numbers.rhs_batch_dimensions(i)]);
+  // There are rhs_dims - 1 - num_batch_dims non-contracting dimensions for the
+  // rhs operand. We can assume they have the same relative order as in the
+  // output.
+  DCHECK_EQ(hlo->shape().rank(), lhs_dims + rhs_dims - 2 - num_batch_dims);
+  for (int64_t i = lhs_dims - 1, j = 0; i < hlo->shape().rank(); ++i, ++j) {
+    // Skip the positions which have already been filled with contracting
+    // dimension and batch dimensions.
+    while (j < rhs_dims && rhs_multi_index[j] != nullptr) {
+      ++j;
+    }
+    DCHECK_LT(j, rhs_dims);
+    rhs_multi_index[j] = dot_result_index[i];
   }
-  for (int64_t i = 0; i < rhs_dims - 1 - num_batch_dims; i++) {
-    rhs_multi_index.push_back(dot_result_index[lhs_dims - 1 + i]);
-  }
-  rhs_multi_index.insert(rhs_multi_index.begin() + rhs_contracting_dim,
-                         inner_loop->GetIndVarValue());
   IrArray::Index rhs_index(rhs_multi_index, hlo->operand(1)->shape(),
                            index_type);
 
@@ -2593,7 +2841,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
           llvm::Value* float_val =
               b_->CreateUIToFP(elem_index_linear, float_ir_type);
           if (component_element_type == BF16) {
-            TF_ASSIGN_OR_RETURN(iota_result, EmitF32ToBF16(float_val, b_));
+            TF_ASSIGN_OR_RETURN(iota_result, EmitF32ToBF16(float_val));
           } else {
             iota_result = float_val;
           }
@@ -2635,8 +2883,8 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                ShapeUtil::ElementsIn(hlo->operand(0)->shape()));
       return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
         const HloInstruction* operand = hlo->operand(0);
-        return operand_to_generator.at(operand)(
-            GetSourceIndexOfBitcast(index, hlo));
+        IrArray::Index operand_index = GetSourceIndexOfBitcast(index, hlo);
+        return operand_to_generator.at(operand)(operand_index);
       };
     case HloOpcode::kReshape:
       CHECK_EQ(ShapeUtil::ElementsIn(hlo->shape()),
@@ -2658,8 +2906,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         return operand_value;
       };
     case HloOpcode::kTranspose:
-      return [this, hlo,
-              &operand_to_generator](const IrArray::Index& target_index) {
+      return [hlo, &operand_to_generator](const IrArray::Index& target_index) {
         return operand_to_generator.at(hlo->operand(0))(
             target_index.SourceIndexOfTranspose(
                 hlo->shape(), hlo->operand(0)->shape(), hlo->dimensions()));
@@ -2736,6 +2983,11 @@ llvm::Value* ElementalIrEmitter::EmitExtractReal(llvm::Value* value) {
 
 llvm::Value* ElementalIrEmitter::EmitExtractImag(llvm::Value* value) {
   return ExtractValue(value, {1});
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitF32ToBF16(
+    llvm::Value* f32_value) {
+  return DefaultEmitF32ToBF16Impl(f32_value, b_);
 }
 
 llvm::Value* ElementalIrEmitter::EmitComposeComplex(const HloInstruction* op,

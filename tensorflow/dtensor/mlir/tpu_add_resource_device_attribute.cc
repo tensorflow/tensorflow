@@ -107,7 +107,7 @@ struct DTensorTpuAddResourceDeviceAttribute
             if (!read_variable_op) continue;
 
             AddPlaceholderDeviceAttributeToResource(
-                read_variable_op.resource().cast<mlir::BlockArgument>(),
+                read_variable_op.getResource().cast<mlir::BlockArgument>(),
                 tpu_execute);
           }
 
@@ -118,7 +118,7 @@ struct DTensorTpuAddResourceDeviceAttribute
 
             AddPlaceholderDeviceAttributeToResource(
                 llvm::cast<mlir::TF::AssignVariableOp>(assign_variable)
-                    .resource()
+                    .getResource()
                     .cast<mlir::BlockArgument>(),
                 tpu_execute);
           }

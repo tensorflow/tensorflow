@@ -83,16 +83,16 @@ class SideEffectAnalysisInfo {
   // Returns a vector of ops that are direct control predecessors of `op`,
   // sorted in program order. If `filter` is provided, only predecessors that
   // pass the filter (returning true) will be included.
+  const llvm::SmallVector<Operation*, 4>& DirectControlPredecessors(
+      Operation* op) const;
   llvm::SmallVector<Operation*, 4> DirectControlPredecessors(
-      Operation* op,
-      llvm::function_ref<bool(Operation*)> filter = nullptr) const;
+      Operation* op, llvm::function_ref<bool(Operation*)> filter) const;
 
-  // Returns a vector of ops that are direct control successors of `op`,
-  // sorted in program order. If `filter` is provided, only successors that
   // pass the filter (returning true) will be included.
+  const llvm::SmallVector<Operation*, 4>& DirectControlSuccessors(
+      Operation* op) const;
   llvm::SmallVector<Operation*, 4> DirectControlSuccessors(
-      Operation* op,
-      llvm::function_ref<bool(Operation*)> filter = nullptr) const;
+      Operation* op, llvm::function_ref<bool(Operation*)> filter) const;
 
   // Returns a vector of ops that are control sinks (i.e. side-effecting ops
   // with no control successors).
@@ -162,6 +162,9 @@ class SideEffectAnalysisInfo {
                       llvm::SmallVector<std::pair<ResourceId, bool>>>
       op_to_resource_ids_;
   llvm::SmallVector<std::pair<ResourceId, bool>> empty_resource_ids_;
+
+  // For predecessor / successor queries on ops we don't track.
+  llvm::SmallVector<Operation*, 4> empty_operation_set_;
 
   // Internal per-resource data structure for building the dependencies.
   struct PerResourceAccessInfo {

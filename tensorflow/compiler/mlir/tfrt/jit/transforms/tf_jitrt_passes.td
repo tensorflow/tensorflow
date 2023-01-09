@@ -118,26 +118,6 @@ def TileReduction : Pass<"tf-jitrt-tile-reduction", "mlir::func::FuncOp"> {
   ];
 }
 
-def TileMatmul : Pass<"tf-jitrt-tile-matmul", "mlir::func::FuncOp"> {
-  let summary = "Tile and fuse linalg.matmul on tensors.";
-  let constructor = "tensorflow::CreateTileMatmulPass()";
-  let dependentDialects = [
-    "mlir::gml_st::GmlStDialect",
-    "mlir::linalg::LinalgDialect",
-    "mlir::memref::MemRefDialect",
-    "mlir::scf::SCFDialect"
-  ];
-
-  let description = [{
-    Performs tiling for vectorization and fusion of linalg.matmul.
-  }];
-
-  let options = [
-    ListOption<"matmul_tile_sizes", "matmul-tile-sizes", "int64_t",
-               "Tile sizes for a `linalg.matmul`.">,
-  ];
-}
-
 def FuseFillIntoTiledReduction
     : Pass<"tf-jitrt-fuse-fill-into-tiled-reduction", "mlir::func::FuncOp"> {
   let summary = "Fuse `linalg.fill` into `linalg.tiled_loop` with a reduction.";
@@ -183,29 +163,6 @@ def JitRtLegalizeI1Types
   let dependentDialects = [
     "mlir::TF::TensorFlowDialect",
     "mlir::mhlo::MhloDialect",
-  ];
-}
-
-def SymbolicShapeOptimization
-    : Pass<"tf-jitrt-symbolic-shape-optimization", "mlir::func::FuncOp"> {
-  let summary = "Optimizes broadcasts based on the symbolic shapes";
-  let constructor = "tensorflow::CreateSymbolicShapeOptimizationPass()";
-  let description = [{
-    A simple pass that replaces shape constraints with const witnesses and
-    rewrites mhlo.broadcast_in_dim operations with linalg.generic broadcasts
-    using the symbolic shape attributes defined on the entrypoint function
-    arguments.
-  }];
-  let dependentDialects = [
-    "mlir::mhlo::MhloDialect",
-    "mlir::linalg::LinalgDialect"
-  ];
-
-  let options = [
-   Option<"optimize_only_constraints", "optimize-only-constraints",
-          "bool", /*default=*/"false",
-          "Optimize only shape constraints and do not touch broadcasts.">,
-
   ];
 }
 

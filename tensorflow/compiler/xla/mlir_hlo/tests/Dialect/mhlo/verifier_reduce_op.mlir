@@ -35,8 +35,8 @@ func.func @reduce_complex_type(%arg0: tensor<1x2xcomplex<f32>>, %arg1 : tensor<c
 
 // -----
 
-// CHECK-LABEL:    func @reduce_unranked
-func.func @reduce_unranked(%arg0: tensor<*xf32>, %arg1 : tensor<*xf32>)
+// CHECK-LABEL:    func @reduce_single_operand_unranked
+func.func @reduce_single_operand_unranked(%arg0: tensor<*xf32>, %arg1 : tensor<*xf32>)
     -> (tensor<*xf32>) {
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
 
@@ -77,6 +77,23 @@ func.func @reduce_unranked(%arg0: tensor<4x4xf32>, %arg1: tensor<4x4xf32>,
   func.return %0#0, %0#1 : tensor<*xf32>, tensor<*xf32>
 }
 
+// -----
+
+// CHECK-LABEL:    func @reduce_mix_rank_and_unranked
+func.func @reduce_mix_rank_and_unranked(%arg0: tensor<4x4xf32>, %arg1: tensor<*xf32>,
+    %arg2: tensor<4xf32>, %arg3: tensor<*xf32>) -> (tensor<4xf32>, tensor<*xf32>) {
+  %0:2 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
+
+  ^bb0(%arg4: tensor<4xf32>, %arg5: tensor<*xf32>, %arg6: tensor<4xf32>, %arg7: tensor<*xf32>):
+    %1 = "mhlo.add"(%arg4, %arg6) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+    %2 = "mhlo.add"(%arg5, %arg7) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    "mhlo.return"(%1, %2) : (tensor<4xf32>, tensor<*xf32>) -> ()
+
+  }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<4x4xf32>, tensor<*xf32>, tensor<4xf32>, tensor<*xf32>) -> (tensor<4xf32>, tensor<*xf32>)
+
+  func.return %0#0, %0#1 : tensor<4xf32>, tensor<*xf32>
+}
+
 // Next, we have the invalid testcases.
 
 // -----
@@ -84,7 +101,9 @@ func.func @reduce_unranked(%arg0: tensor<4x4xf32>, %arg1: tensor<4x4xf32>,
 func.func @reduce_odd_num_args(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
     %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<?xf32>, tensor<?xf32>) {
 
-  // expected-error@+1 {{'mhlo.reduce' op expects the size of operands to be even and >= 2}}
+  // As there are only 3 parameters of op, ODS takes in 1 for inputs and 1 for init_values
+  // by SameVariadicOperandSize, so the Reduction-region expect 1*2=2 parameters.
+  // expected-error@+1 {{Reduction-region must take 2 parameters, but takes 4 parameter(s)}}
   %0:2 = "mhlo.reduce"(%arg0, %arg1, %arg2) ({
 
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<f32>):
@@ -99,27 +118,10 @@ func.func @reduce_odd_num_args(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
 
 // -----
 
-func.func @reduce_zero_args(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
-    -> (tensor<?xf32>) {
-
-  // expected-error@+1 {{'mhlo.reduce' op expects the size of operands to be even and >= 2}}
-  %0 = "mhlo.reduce"() ({
-
-  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32> ):
-    %1 = "mhlo.add"(%arg2, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-    "mhlo.return"(%1) : (tensor<f32>) -> ()
-
-  }) {dimensions = dense<[1]> : tensor<1xi64>} : () -> tensor<?xf32>
-
-  func.return %0: tensor<?xf32>
-}
-
-// -----
-
 func.func @reduce_diferent_input_shapes(%arg0: tensor<?x?xf32>, %arg1: tensor<?xf32>,
     %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<?xf32>, tensor<?xf32>) {
 
-  // expected-error@+1 {{'mhlo.reduce' op expects all inputs to have compatible shapes. Shape at input-index 1 is not compatible with shape at input-index 0}}
+  // expected-error@+1 {{expects all inputs to have compatible shapes. Shape at input-index 1 is not compatible with shape at input-index 0}}
   %0:2 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
 
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<f32>):
@@ -137,7 +139,7 @@ func.func @reduce_diferent_input_shapes(%arg0: tensor<?x?xf32>, %arg1: tensor<?x
 func.func @reduce_diferent_input_shapes(%arg0: tensor<2x3xf32>, %arg1: tensor<3x2xf32>,
     %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<2xf32>, tensor<2xf32>) {
 
-  // expected-error@+1 {{'mhlo.reduce' op expects all inputs to have compatible shapes. Shape at input-index 1 is not compatible with shape at input-index 0}}
+  // expected-error@+1 {{expects all inputs to have compatible shapes. Shape at input-index 1 is not compatible with shape at input-index 0}}
   %0:2 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
 
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<f32>):
@@ -236,23 +238,6 @@ func.func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32
 
 // -----
 
-func.func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
-    -> (tensor<f32>) {
-
-  // expected-error@+1 {{Reduction-region here must produce tensor-typed result(s), but produces 'f32' instead}}
-  %0 = "mhlo.reduce"(%arg0, %arg1) ({
-
-  ^bb0(%arg2: f32, %arg3: f32 ):
-    %1 = "llvm.add"(%arg2, %arg3) : (f32, f32) -> f32
-    "mhlo.return"(%1) : (f32) -> ()
-
-  }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<f32>
-
-    func.return %0: tensor<f32>
-}
-
-// -----
-
 func.func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
     %arg2: tensor<f32>, %arg3: tensor<i32>) -> (tensor<?xf32>, tensor<?xi32>) {
 
@@ -316,7 +301,7 @@ func.func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32
 
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<i32>):
     %1 = "mhlo.add"(%arg4, %arg6) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-    %2 = "mhlo.max"(%arg4, %arg6) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    %2 = "mhlo.maximum"(%arg4, %arg6) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     "mhlo.return"(%1, %2) : (tensor<f32>, tensor<f32>) -> ()
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xi32>, tensor<f32>, tensor<f32>) -> (tensor<?xf32>, tensor<?xi32>)
@@ -352,7 +337,7 @@ func.func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32
 
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<f32>):
     %1 = "mhlo.add"(%arg4, %arg6) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-    %2 = "mhlo.max"(%arg4, %arg6) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    %2 = "mhlo.maximum"(%arg4, %arg6) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     "mhlo.return"(%1, %2) : (tensor<f32>, tensor<f32>) -> ()
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xi32>, tensor<f32>, tensor<f32>) -> (tensor<?xf32>, tensor<?xf32>)
@@ -396,10 +381,27 @@ func.func @verify_reducer_function(%arg0: tensor<8x5xf32>, %arg1 : tensor<4xf32>
 
 // -----
 
+// Verifies that dynamic input type is allowed with reducer function with static shapes.
+func.func @verify_dynamic_operand(%arg0: tensor<8x?xf32>, %arg1 : tensor<4xf32>)
+    -> (tensor<?xf32>) {
+
+  %0 = "mhlo.reduce"(%arg0, %arg1) ({
+
+  ^bb0(%arg2: tensor<4xf32>, %arg3: tensor<4xf32> ):
+    %1 = "mhlo.add"(%arg2, %arg3) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+    "mhlo.return"(%1) : (tensor<4xf32>) -> ()
+
+  }) {dimensions = dense<[0]> : tensor<1xi64>} : (tensor<8x?xf32>, tensor<4xf32>) -> tensor<?xf32>
+
+  func.return %0: tensor<?xf32>
+}
+
+// -----
+
 func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
     %arg2: tensor<f32>, %arg3: tensor<i32>) -> (tensor<?xf32>) {
 
-  // expected-error@+1 {{Unexpected number of reduce-op's returned values: 3 vs 2 (expected)}}
+  // expected-error@+1 {{inferred type(s) 'tensor<?xf32>', 'tensor<?xi32>' are incompatible with return type(s) of operation 'tensor<?xf32>', 'tensor<?xi32>', 'tensor<?xi32>'}}
   %0:3 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
 
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<i32>, %arg6: tensor<f32>, %arg7: tensor<i32>):
@@ -417,7 +419,7 @@ func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
 func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
     -> (tensor<?x?xi32>) {
 
-  // expected-error@+1 {{Unexpected number of reduce-op's returned values: 2 vs 1 (expected)}}
+  // expected-error@+1 {{'mhlo.reduce' op inferred type(s) 'tensor<?xf32>' are incompatible with return type(s) of operation 'tensor<?xf32>', 'tensor<?xf32>'}}
   %0:2 = "mhlo.reduce"(%arg0, %arg1) ({
 
   ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32> ):
@@ -434,7 +436,7 @@ func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
 func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
     %arg2: tensor<f32>, %arg3: tensor<i32>) -> (tensor<?xf32>) {
 
-  // expected-error@+1 {{Unexpected element-type for reduce-op's return value at index 1: 'f32' vs 'i32' (expected)}}
+  // expected-error@+1 {{'mhlo.reduce' op inferred type(s) 'tensor<?xf32>', 'tensor<?xi32>' are incompatible with return type(s) of operation 'tensor<?xf32>', 'tensor<?x?xf32>'}}
   %0:2 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
 
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<i32>, %arg6: tensor<f32>, %arg7: tensor<i32>):
@@ -452,7 +454,7 @@ func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
 func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
     -> (tensor<?xi32>) {
 
-  // expected-error@+1 {{Unexpected element-type for reduce-op's return value at index 0: 'i32' vs 'f32' (expected)}}
+  // expected-error@+1 {{'mhlo.reduce' op inferred type(s) 'tensor<?xf32>' are incompatible with return type(s) of operation 'tensor<?xi32>'}}
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
 
   ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32> ):
@@ -469,7 +471,7 @@ func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
 func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
     -> (tensor<?x?xi32>) {
 
-  // expected-error@+1 {{Unexpected type for reduce-op's return value at index 0: 'tensor<?x?xf32>' vs 'tensor<?xf32>' (expected)}}
+  // expected-error@+1 {{'mhlo.reduce' op inferred type(s) 'tensor<?xf32>' are incompatible with return type(s) of operation 'tensor<?x?xf32>'}}
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
 
   ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32> ):

@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/util/padding.h"
@@ -106,12 +107,13 @@ bool getPaddingValuesFromPadType(tensorflow::Padding tf_pad,
                                  tensorflow::TensorFormat data_format_tf,
                                  uint32_t first_filter_spatial_dim,
                                  ShapedType input_type, ShapedType filter_type,
-                                 ArrayAttr strides, ArrayAttr dilations,
+                                 DenseI64ArrayAttr strides,
+                                 DenseI64ArrayAttr dilations,
                                  PatternRewriter& rewriter,
-                                 ArrayAttr& explicit_pad);
+                                 DenseI64ArrayAttr& explicit_pad);
 
 // Calculates the TOSA padding values for explicit-padded TF operators.
-ArrayAttr getPaddingValuesFromExplicitPadAttr(
+DenseI64ArrayAttr getPaddingValuesFromExplicitPadAttr(
     ArrayAttr explicit_pad, tensorflow::TensorFormat data_format_tf,
     PatternRewriter& rewriter);
 
@@ -119,8 +121,8 @@ ArrayAttr getPaddingValuesFromExplicitPadAttr(
 bool getTransposeConv2dPaddingValues(
     tensorflow::Padding tf_pad, tensorflow::TensorFormat data_format_tf,
     uint32_t first_filter_spatial_dim, ShapedType input_type,
-    ShapedType filter_type, ShapedType output_type, ArrayAttr strides,
-    PatternRewriter& rewriter, ArrayAttr& explicit_pad);
+    ShapedType filter_type, ShapedType output_type, DenseI64ArrayAttr strides,
+    PatternRewriter& rewriter, DenseI64ArrayAttr& explicit_pad);
 
 // Templated function to create a constant op for given type and shape.
 // T: storage C type.
@@ -179,7 +181,11 @@ TosaOp CreateOpAndInfer(PatternRewriter& rewriter, Location loc, Type result_ty,
 
   // Compute the new type based on the joined version.
   auto newKnowledge = ValueKnowledge::join(currentKnowledge, inferredKnowledge);
-  auto new_ty = newKnowledge.getType();
+  Type new_ty =
+      newKnowledge.hasRank
+          ? Type{tensorflow::GetTypeFromTFTensorShape(
+                llvm::makeArrayRef(newKnowledge.sizes), newKnowledge.dtype)}
+          : Type{mlir::UnrankedTensorType::get(newKnowledge.dtype)};
   result.setType(new_ty);
   return op;
 }

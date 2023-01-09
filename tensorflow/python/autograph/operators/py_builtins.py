@@ -24,7 +24,6 @@ import numpy as np
 
 from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.autograph.utils import tensors
-from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
@@ -283,7 +282,7 @@ def _tf_tensor_len(s):
 
 
 def _tf_dataset_len(s):
-  l = cardinality.cardinality(s)
+  l = s.cardinality()
   msg = gen_string_ops.string_join([
       'len requires dataset with definitive cardinality, got ',
       gen_string_ops.as_string(l)
@@ -294,8 +293,8 @@ def _tf_dataset_len(s):
   with ops.control_dependencies([
       control_flow_ops.Assert(
           math_ops.logical_and(
-              math_ops.not_equal(l, cardinality.INFINITE),
-              math_ops.not_equal(l, cardinality.UNKNOWN)), [msg])
+              math_ops.not_equal(l, dataset_ops.INFINITE),
+              math_ops.not_equal(l, dataset_ops.UNKNOWN)), [msg])
   ]):
     l = array_ops.identity(l)
 

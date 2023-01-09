@@ -27,11 +27,11 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/tsl/lib/monitoring/metric_def.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/protobuf/histogram.pb.h"
 
 namespace tsl {
 namespace monitoring {
@@ -118,7 +118,6 @@ class Sampler {
 #include <utility>
 #include <vector>
 
-#include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/tsl/lib/histogram/histogram.h"
 #include "tensorflow/tsl/lib/monitoring/collection_registry.h"
 #include "tensorflow/tsl/lib/monitoring/metric_def.h"
@@ -126,6 +125,7 @@ class Sampler {
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tensorflow/tsl/protobuf/histogram.pb.h"
 
 namespace tsl {
 namespace monitoring {
@@ -258,6 +258,12 @@ class Sampler {
 
   Status status_;
 
+  using LabelArray = std::array<string, NumLabels>;
+  // we need a container here that guarantees pointer stability of the value,
+  // namely, the pointer of the value should remain valid even after more cells
+  // are inserted.
+  std::map<LabelArray, SamplerCell> cells_ TF_GUARDED_BY(mu_);
+
   // The metric definition. This will be used to identify the metric when we
   // register it for collection.
   const MetricDef<MetricKind::kCumulative, HistogramProto, NumLabels>
@@ -268,12 +274,6 @@ class Sampler {
 
   // Registration handle with the CollectionRegistry.
   std::unique_ptr<CollectionRegistry::RegistrationHandle> registration_handle_;
-
-  using LabelArray = std::array<string, NumLabels>;
-  // we need a container here that guarantees pointer stability of the value,
-  // namely, the pointer of the value should remain valid even after more cells
-  // are inserted.
-  std::map<LabelArray, SamplerCell> cells_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(Sampler);
 };

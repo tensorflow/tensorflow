@@ -22,8 +22,11 @@ limitations under the License.
 extern "C" {
 #endif
 
+// TODO(b/261916900): this will cause symbol collision when we wanna statically
+// link in multiple plugins. We may need to make the function name configurable,
+// or we could add external-only wrapper shims
 // Does not pass ownership of returned PJRT_Api* to caller.
-const PJRT_Api* GetTpuPjrtApi();
+const PJRT_Api* GetPjrtApi();
 
 #ifdef __cplusplus
 }

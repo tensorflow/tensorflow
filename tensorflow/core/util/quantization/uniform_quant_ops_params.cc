@@ -174,7 +174,7 @@ Status UniformQuantizedConvolutionParams::ValidateOrFillParamsAndValidateShape(
   }
   if (lhs_feature_count / feature_group_count_ != rhs_input_feature_count) {
     return InvalidArgument(
-        "lhs fetaure dimension size divided by feature_group_count must equal "
+        "lhs feature dimension size divided by feature_group_count must equal "
         "the rhs input feature dimension size, but ",
         lhs_feature_count, " / ", feature_group_count_,
         " != ", rhs_input_feature_count);
@@ -258,12 +258,16 @@ Status UniformQuantizedConvolutionParams::LoadFromAttrsInternal(
       context.GetAttr("feature_group_count", &feature_group_count_));
 
   TF_RETURN_IF_ERROR(context.GetAttr("padding", &padding_));
-  if (padding_ == "EXPLICIT") {
-    TF_RETURN_IF_ERROR(context.GetAttr("explicit_padding", &padding_list_));
-  } else if (padding_ != "SAME" && padding_ != "VALID") {
+  TF_RETURN_IF_ERROR(context.GetAttr("explicit_padding", &padding_list_));
+  if (padding_ != "EXPLICIT" && padding_ != "SAME" && padding_ != "VALID") {
     return InvalidArgument(
         "padding Attr must be one of [EXPLICIT | SAME | VALID], but given: ",
         padding_);
+  } else if (padding_ != "EXPLICIT" && !padding_list_.empty()) {
+    return InvalidArgument(
+        "If padding Attr is not 'EXPLICIT', explicit_padding Attr must be "
+        "empty. Given padding ",
+        padding_, " and explicit_padding of size ", padding_list_.size());
   }
 
   std::string dimension_numbers_str;

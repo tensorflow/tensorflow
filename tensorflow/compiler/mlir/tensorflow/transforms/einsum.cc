@@ -19,9 +19,11 @@ limitations under the License.
 #include <cctype>
 #include <climits>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -47,6 +49,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
@@ -99,7 +102,8 @@ TF::TransposeOp createTransposeOp(Value value, Location loc,
 TF::ReshapeOp createReshapeOp(Value value, ArrayRef<int64_t> shape,
                               Type element_type, Location loc,
                               PatternRewriter* rewriter) {
-  auto shape_tensor = createI64ConstantOp(shape, loc, rewriter);
+  auto shape_tensor = createI64ConstantOp(
+      tensorflow::ConvertMlirShapeToTF(shape), loc, rewriter);
   Type resultType = RankedTensorType::get(shape, element_type);
   return rewriter->create<TF::ReshapeOp>(loc, resultType, /*tensor=*/value,
                                          /*shape=*/shape_tensor);
@@ -208,11 +212,11 @@ llvm::Optional<llvm::SmallDenseMap<char, int64_t>> EquationToMap(
   for (int64_t i = 0; i < equation.size(); ++i) {
     if (!std::isalpha(equation[i])) {
       // Unsupported character in the equation.
-      return llvm::None;
+      return std::nullopt;
     }
     if (map.count(equation[i])) {
       // Duplicate character in the equation.
-      return llvm::None;
+      return std::nullopt;
     }
     map.try_emplace(equation[i], i);
   }
@@ -243,11 +247,11 @@ llvm::Optional<llvm::SetVector<char>> GetAvailableLabels(
       labels.remove(label);
       ++lhs_count;
     } else if (label == '.') {
-      if (!is_start_of_ellipsis(lhs, i)) return llvm::None;
+      if (!is_start_of_ellipsis(lhs, i)) return std::nullopt;
       i += 2;
     } else {
       // Unsupported character in the equation.
-      return llvm::None;
+      return std::nullopt;
     }
   }
   *lhs_named_label_count = lhs_count;
@@ -260,11 +264,11 @@ llvm::Optional<llvm::SetVector<char>> GetAvailableLabels(
       labels.remove(label);
       ++rhs_count;
     } else if (label == '.') {
-      if (!is_start_of_ellipsis(rhs, i)) return llvm::None;
+      if (!is_start_of_ellipsis(rhs, i)) return std::nullopt;
       i += 2;
     } else {
       // Unsupported character in the equation.
-      return llvm::None;
+      return std::nullopt;
     }
   }
 
@@ -347,38 +351,38 @@ llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
   llvm::StringRef lhs_rhs;
   llvm::StringRef out;
   std::tie(lhs_rhs, out) = equation.split("->");
-  if (lhs_rhs.empty() || out.empty()) return llvm::None;
+  if (lhs_rhs.empty() || out.empty()) return std::nullopt;
 
   llvm::StringRef lhs;
   llvm::StringRef rhs;
   std::tie(lhs, rhs) = lhs_rhs.split(',');
-  if (lhs.empty() || rhs.empty()) return llvm::None;
+  if (lhs.empty() || rhs.empty()) return std::nullopt;
 
   // Try to flatten the "..." if possible.
   int lhs_named_label, rhs_named_label;
   auto available_labels =
       GetAvailableLabels(lhs, rhs, &lhs_named_label, &rhs_named_label);
-  if (!available_labels.has_value()) return llvm::None;
+  if (!available_labels.has_value()) return std::nullopt;
 
   auto flattended_labels =
       FlattenEllipsis(lhs, lhs_named_label, rhs, rhs_named_label, out, lhs_ty,
-                      rhs_ty, available_labels.getValue());
+                      rhs_ty, available_labels.value());
 
   lhs = std::get<0>(flattended_labels);
   rhs = std::get<1>(flattended_labels);
   out = std::get<2>(flattended_labels);
 
   auto lhs_map_or = EquationToMap(lhs);
-  if (!lhs_map_or.has_value()) return llvm::None;
-  auto lhs_map = lhs_map_or.getValue();
+  if (!lhs_map_or.has_value()) return std::nullopt;
+  auto lhs_map = lhs_map_or.value();
 
   auto rhs_map_or = EquationToMap(rhs);
-  if (!rhs_map_or.has_value()) return llvm::None;
-  auto rhs_map = rhs_map_or.getValue();
+  if (!rhs_map_or.has_value()) return std::nullopt;
+  auto rhs_map = rhs_map_or.value();
 
   auto out_map_or = EquationToMap(out);
-  if (!out_map_or.has_value()) return llvm::None;
-  auto out_map = out_map_or.getValue();
+  if (!out_map_or.has_value()) return std::nullopt;
+  auto out_map = out_map_or.value();
 
   EinsumDimensionNumbers dnums;
   for (int64_t i = 0, e = lhs.size(); i < e; ++i) {
@@ -410,7 +414,7 @@ llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
     auto rhs_index = rhs_map.find(out[i]);
     if (lhs_index == lhs_map.end() && rhs_index == rhs_map.end()) {
       // out only isn't supported
-      return llvm::None;
+      return std::nullopt;
     }
   }
   return dnums;
@@ -487,7 +491,7 @@ inline int64_t ProdShapeWithIndexInTuple(
   int64_t prod_shape = 1;
   for (auto index_tuple : index_tuples) {
     const int64_t shape_i = shape[std::get<I>(index_tuple)];
-    if (shape_i == -1) return -1;
+    if (ShapedType::isDynamic(shape_i)) return ShapedType::kDynamic;
     prod_shape *= shape_i;
   }
   return prod_shape;
@@ -629,7 +633,7 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
                                    PatternRewriter& rewriter) {
   if (!dnums.lhs.empty() || !dnums.rhs.empty()) return failure();
 
-  auto inputs = op.inputs();
+  auto inputs = op.getInputs();
   if (inputs.size() != 2) return failure();
   Value lhs = inputs.front();
   Value rhs = inputs.back();
@@ -712,8 +716,9 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
   // dynamic dimension is always supported. If there are two or more dynamic
   // dimensions, it is supported if they only exist in a single component
   // among: L0,...,Ln R0,...,Rn or C0,...,Cn.
-  if (const auto dnums_or = GetEinsumDimensionNumbers(op.equation(), lhs, rhs))
-    return rewriteToBatchMatmul(op, dnums_or.getValue(), rewriter);
+  if (const auto dnums_or =
+          GetEinsumDimensionNumbers(op.getEquation(), lhs, rhs))
+    return rewriteToBatchMatmul(op, dnums_or.value(), rewriter);
   return rewriter.notifyMatchFailure(op, "unsupported einsum lowering");
 }
 

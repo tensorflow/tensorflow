@@ -1,24 +1,6 @@
-// RUN: mlir-hlo-opt %s -test-gml-st-bufferization -canonicalize -cse \
+// RUN: mlir-hlo-opt %s -empty-tensor-to-alloc-tensor \
+// RUN:   -test-gml-st-bufferization -canonicalize -cse \
 // RUN:   -split-input-file | FileCheck %s
-
-func.func @set_space(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
-  %c0 = arith.constant 0 : index
-  %c1 = arith.constant 1 : index
-
-  %dim_0 = tensor.dim %input, %c0 : tensor<?x?xf32>
-  %dim_1 = tensor.dim %input, %c1 : tensor<?x?xf32>
-
-  %space = gml_st.space [%dim_0, %dim_1] : !gml_st.tile<?x?>
-  %identity = gml_st.materialize %input[%space]
-    : tensor<?x?xf32>[!gml_st.tile<?x?>] to tensor<?x?xf32>
-
-  return %identity : tensor<?x?xf32>
-}
-// CHECK-LABEL: func @set_space(
-// CHECK-SAME:    %[[ARG:.*]]: memref<?x?xf32>)
-// CHECK-NEXT:  return %[[ARG]] : memref<?x?xf32>
-
-// -----
 
 func.func @set_tile(%input: tensor<?x?xf32>) -> tensor<2x4xf32> {
   %c0 = arith.constant 0 : index
@@ -27,12 +9,8 @@ func.func @set_tile(%input: tensor<?x?xf32>) -> tensor<2x4xf32> {
   %dim_0 = tensor.dim %input, %c0 : tensor<?x?xf32>
   %dim_1 = tensor.dim %input, %c1 : tensor<?x?xf32>
 
-  %space = gml_st.space [%dim_0, %dim_1] : !gml_st.tile<?x?>
-  %tile = gml_st.tile %space[0, 1][2, 4][1, 1]
-    : !gml_st.tile<?x?> to !gml_st.tile<2x4>
-
-  %slice = gml_st.materialize %input[%tile]
-    : tensor<?x?xf32>[!gml_st.tile<2x4>] to tensor<2x4xf32>
+  %slice = gml_st.materialize %input[0, 1][2, 4][1, 1]
+    : tensor<?x?xf32> to tensor<2x4xf32>
 
   return %slice : tensor<2x4xf32>
 }
@@ -54,22 +32,18 @@ func.func @parallel_with_tiles(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
   %dim_0 = tensor.dim %lhs, %c0 : tensor<?x?xf32>
   %dim_1 = tensor.dim %lhs, %c1 : tensor<?x?xf32>
 
-  %space = gml_st.space [%dim_0, %dim_1] : !gml_st.tile<?x?>
-
   %result = gml_st.parallel (%i, %j) = (%c0, %c0) to (%dim_0, %dim_1) step (%c4, %c1) {
     %7 = arith.addi %i, %c4 : index
     %8 = arith.cmpi sgt, %7, %dim_0 : index
     %9 = arith.subi %dim_0, %i : index
     %size_0 = arith.select %8, %9, %c4 : index
 
-    %tile = gml_st.tile %space [%i, %j] [%size_0, 1] [1, 1]
-      : !gml_st.tile<?x?> to !gml_st.tile<?x1>
-    %lhs_tile = gml_st.materialize %lhs[%tile]
-      : tensor<?x?xf32>[!gml_st.tile<?x1>] to tensor<?x1xf32>
-    %rhs_tile = gml_st.materialize %rhs[%tile]
-      : tensor<?x?xf32>[!gml_st.tile<?x1>] to tensor<?x1xf32>
-    %init_tile = gml_st.materialize %init[%tile]
-      : tensor<?x?xf32>[!gml_st.tile<?x1>] to tensor<?x1xf32>
+    %lhs_tile = gml_st.materialize %lhs[%i, %j] [%size_0, 1] [1, 1]
+      : tensor<?x?xf32> to tensor<?x1xf32>
+    %rhs_tile = gml_st.materialize %rhs[%i, %j] [%size_0, 1] [1, 1]
+      : tensor<?x?xf32> to tensor<?x1xf32>
+    %init_tile = gml_st.materialize %init[%i, %j] [%size_0, 1] [1, 1]
+      : tensor<?x?xf32> to tensor<?x1xf32>
     %sum = linalg.generic {
         indexing_maps = [#map, #map, #map],
         iterator_types = ["parallel", "parallel"]}
@@ -79,6 +53,7 @@ func.func @parallel_with_tiles(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
         %add = arith.addf %l, %r : f32
         linalg.yield %add : f32
       } -> tensor<?x1xf32>
+    %tile = gml_st.tile [%i, %j] [%size_0, 1] [1, 1] : !gml_st.tile<?x1>
     gml_st.set_yield %sum into %init[%tile]
       : tensor<?x1xf32> into tensor<?x?xf32>[!gml_st.tile<?x1>]
   } : tensor<?x?xf32>
@@ -116,19 +91,6 @@ func.func @parallel_with_tiles(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
 
 // -----
 
-func.func @materialize_scalar_from_space(%arg: tensor<1xi64>) -> i64  {
-  %space = gml_st.space [1] : !gml_st.tile<1>
-  %pt = gml_st.materialize %arg[%space] : tensor<1xi64>[!gml_st.tile<1>] to i64
-  return %pt : i64
-}
-// CHECK-LABEL: func @materialize_scalar_from_space(
-// CHECK-SAME:    %[[ARG:.*]]: memref<1xi64>)
-// CHECK-NEXT:  arith.constant 0
-// CHECK-NEXT:  %[[PT:.*]] = memref.load %[[ARG]]
-// CHECK-NEXT:  return %[[PT]] : i64
-
-// -----
-
 func.func @materialize_and_yield_with_constants(
     %in: tensor<8x2xf32>, %out: tensor<8x2xf32>) -> tensor<8x2xf32> {
   %c0 = arith.constant 0 : index
@@ -136,13 +98,11 @@ func.func @materialize_and_yield_with_constants(
   %c2 = arith.constant 2 : index
   %c8 = arith.constant 8 : index
 
-  %0 = gml_st.space [8, 2] : !gml_st.tile<8x2>
   %1 = gml_st.parallel (%i, %j) = (%c0, %c0) to (%c8, %c2) step (%c1, %c1) {
-    %2 = gml_st.tile %0 [%i, %j] [1, 1] [1, 1]
-      : !gml_st.tile<8x2> to !gml_st.tile<1x1>
-    %3 = gml_st.materialize %in[%2]
-      : tensor<8x2xf32>[!gml_st.tile<1x1>] to f32
+    %3 = gml_st.materialize %in[%i, %j] [1, 1] [1, 1]
+      : tensor<8x2xf32> to f32
     %4 = math.absf %3: f32
+    %2 = gml_st.tile [%i, %j] [1, 1] [1, 1] : !gml_st.tile<1x1>
     gml_st.set_yield %4 into %out[%2]
       : f32 into tensor<8x2xf32>[!gml_st.tile<1x1>]
   } : tensor<8x2xf32>
@@ -162,13 +122,12 @@ func.func @parallel_with_vector(%in: vector<8xf32>, %init : vector<8xf32>) -> ve
   %c0 = arith.constant 0 : index
   %c4 = arith.constant 4 : index
   %c8 = arith.constant 8 : index
-  %space = gml_st.space [8] : !gml_st.tile<8>
 
   %result = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4) {
-    %tile = gml_st.tile %space [%i] [4] [1] : !gml_st.tile<8> to !gml_st.tile<4>
-    %in_tile = gml_st.materialize %in[%tile]
-      : vector<8xf32>[!gml_st.tile<4>] to vector<4xf32>
+    %in_tile = gml_st.materialize %in[%i] [4] [1]
+      : vector<8xf32> to vector<4xf32>
     %neg = arith.negf %in_tile : vector<4xf32>
+    %tile = gml_st.tile [%i] [4] [1] : !gml_st.tile<4>
     gml_st.set_yield %neg into %init[%tile]
       : vector<4xf32> into vector<8xf32>[!gml_st.tile<4>]
   } : vector<8xf32>
@@ -192,27 +151,24 @@ func.func @nested_parallel_with_vector(%init : tensor<?x32xf32>)
   %c4 = arith.constant 4 : index
   %c32 = arith.constant 32 : index
   %dim_0 = tensor.dim %init, %c0 : tensor<?x32xf32>
-  %space = gml_st.space [%dim_0, 32] : !gml_st.tile<?x32>
 
   %result = gml_st.parallel (%i) = (%c0) to (%dim_0) step (%c1) {
-    %tile = gml_st.tile %space [%i, 0] [1, 32] [1, 1]
-      : !gml_st.tile<?x32> to !gml_st.tile<1x32>
-    %init_tile = gml_st.materialize %init[%tile]
-      : tensor<?x32xf32>[!gml_st.tile<1x32>] to tensor<1x32xf32>
+    %init_tile = gml_st.materialize %init[%i, 0] [1, 32] [1, 1]
+      : tensor<?x32xf32> to tensor<1x32xf32>
     %init_vec = vector.transfer_read %init_tile[%c0, %c0], %cst
       {in_bounds = [true, true]}: tensor<1x32xf32>, vector<1x32xf32>
 
     %result_vec = gml_st.parallel (%j) = (%c0) to (%c32) step (%c4) {
-      %vtile = gml_st.tile %tile [0, %j] [1, 4] [1, 1]
-        : !gml_st.tile<1x32> to !gml_st.tile<1x4>
-      %inner_tile = gml_st.materialize %init_vec[%vtile]
-        : vector<1x32xf32>[!gml_st.tile<1x4>] to vector<1x4xf32>
+      %inner_tile = gml_st.materialize %init_vec[0, %j] [1, 4] [1, 1]
+        : vector<1x32xf32> to vector<1x4xf32>
+      %vtile = gml_st.tile [0, %j] [1, 4] [1, 1] : !gml_st.tile<1x4>
       gml_st.set_yield %inner_tile into %init_vec[%vtile]
         : vector<1x4xf32> into vector<1x32xf32>[!gml_st.tile<1x4>]
     } : vector<1x32xf32>
 
     %result = vector.transfer_write %result_vec, %init_tile[%c0, %c0]
       {in_bounds = [true, true]} : vector<1x32xf32>, tensor<1x32xf32>
+    %tile = gml_st.tile [%i, 0] [1, 32] [1, 1] : !gml_st.tile<1x32>
     gml_st.set_yield %result into %init[%tile]
       : tensor<1x32xf32> into tensor<?x32xf32>[!gml_st.tile<1x32>]
   } : tensor<?x32xf32>
@@ -233,7 +189,7 @@ func.func @nested_parallel_with_vector(%init : tensor<?x32xf32>)
 // CHECK:             gml_st.set_yield
 // CHECK-SAME:          vector<1x4xf32> into vector<1x32xf32>[!gml_st.tile<1x4>]
 // CHECK:           vector.transfer_write %[[RESVEC]], %[[INITTILE]]
-// CHWECK-SAME:         vector<1x32xf32>, memref<1x32xf32
+// CHECK-SAME:         vector<1x32xf32>, memref<1x32xf32
 // CHECK:         return %[[INIT]] : memref<?x32xf32>
 
 
@@ -250,16 +206,13 @@ func.func @scalarized_reduction(%arg: tensor<1x?xf32>) -> tensor<1xf32> {
   %dim = tensor.dim %arg, %c1 : tensor<1x?xf32>
   %result = gml_st.for (%i) = (%c0) to (%dim) step (%c1)
       outs (%out = %fill: tensor<1xf32>) {
-    %space = gml_st.space [1, %dim] : !gml_st.tile<1x?>
-    %tile = gml_st.tile %space [0, %i] [1, 1] [1, 1]
-      : !gml_st.tile<1x?> to !gml_st.tile<1x1>
-    %elem = gml_st.materialize %arg[%tile]
-      : tensor<1x?xf32>[!gml_st.tile<1x1>] to f32
+    %elem = gml_st.materialize %arg[0, %i] [1, 1] [1, 1]
+      : tensor<1x?xf32> to f32
 
     %extracted = tensor.extract %out[%c0] : tensor<1xf32>
     %sum = arith.addf %extracted, %elem : f32
 
-    %tile1 = gml_st.space [1] : !gml_st.tile<1>
+    %tile1 = gml_st.tile [0] [1] [1] : !gml_st.tile<1>
     gml_st.set_yield %sum into %out[%tile1]
       : f32 into tensor<1xf32>[!gml_st.tile<1>]
   } : tensor<1xf32>
@@ -284,3 +237,79 @@ func.func @scalarized_reduction(%arg: tensor<1x?xf32>) -> tensor<1xf32> {
 // CHECK-NEXT:  }
 // CHECK:       return %[[ALLOC]] : memref<1xf32>
 
+// -----
+
+func.func @matmul(%lhs: tensor<128x16xf32>,
+                  %rhs: tensor<16x64xf32>,
+                  %out: tensor<128x64xf32>) -> tensor<128x64xf32> {
+  %c0 = arith.constant 0 : index
+  %c2 = arith.constant 2 : index
+  %c4 = arith.constant 4 : index
+  %c8 = arith.constant 8 : index
+  %c16 = arith.constant 16 : index
+  %c64 = arith.constant 64 : index
+  %c128 = arith.constant 128 : index
+  %matmul = gml_st.parallel (%i, %j)
+      = (%c0, %c0) to (%c128, %c64) step (%c8, %c4) {
+    %lhs_sub = gml_st.materialize %lhs[%i, 0] [8, 16] [1, 1]
+      : tensor<128x16xf32> to tensor<8x16xf32>
+    %rhs_sub = gml_st.materialize %rhs[0, %j] [16, 4] [1, 1]
+      : tensor<16x64xf32> to tensor<16x4xf32>
+    %out_sub = gml_st.materialize %out[%i, %j] [8, 4] [1, 1]
+      : tensor<128x64xf32> to tensor<8x4xf32>
+
+    %mat_sub = gml_st.for (%k) = (%c0) to (%c16) step (%c2)
+        outs (%out_sub_ = %out_sub: tensor<8x4xf32>) {
+      %lhs_sub2 = gml_st.materialize %lhs_sub[0, %k] [8, 2] [1, 1]
+        : tensor<8x16xf32> to tensor<8x2xf32>
+      %rhs_sub2 = gml_st.materialize %rhs_sub[%k, 0] [2, 4] [1, 1]
+        : tensor<16x4xf32> to tensor<2x4xf32>
+      %out_sub2 = gml_st.materialize %out_sub_[0, 0] [8, 4] [1, 1]
+        : tensor<8x4xf32> to tensor<8x4xf32>
+
+      %mat_sub2 = linalg.matmul
+        ins(%lhs_sub2, %rhs_sub2 : tensor<8x2xf32>, tensor<2x4xf32>)
+        outs(%out_sub2 : tensor<8x4xf32>) -> tensor<8x4xf32>
+
+      %out_tile2 = gml_st.tile [0, 0] [8, 4] [1, 1] : !gml_st.tile<8x4>
+      gml_st.set_yield %mat_sub2 into %out_sub_[%out_tile2]
+        : tensor<8x4xf32> into tensor<8x4xf32>[!gml_st.tile<8x4>]
+    } : tensor<8x4xf32>
+    %out_tile = gml_st.tile [%i, %j] [8, 4] [1, 1] : !gml_st.tile<8x4>
+    gml_st.set_yield %mat_sub into %out[%out_tile]
+      : tensor<8x4xf32> into tensor<128x64xf32>[!gml_st.tile<8x4>]
+  } : tensor<128x64xf32>
+  return %matmul : tensor<128x64xf32>
+}
+// CHECK-LABEL: func.func @matmul
+// CHECK-NOT:     alloc
+// CHECK:         gml_st.parallel
+// CHECK-3:         memref.subview
+// CHECK-NOT:       alloc
+// CHECK:           gml_st.for
+// CHECK-4:           memref.subview
+// CHECK-NOT:         alloc
+// CHECK:             linalg.matmul
+
+// -----
+
+func.func @materialize_out_of_place(%arg0: tensor<1xi32>) -> tensor<1xi32> {
+  %c0 = arith.constant 0 : index
+  %c42 = arith.constant 42 : i32
+
+  %0 = tensor.insert %c42 into %arg0[%c0] : tensor<1xi32>
+  %1 = gml_st.materialize %arg0[0][1][1] : tensor<1xi32> to i32
+  %2 = tensor.insert %1 into %0[%c0] : tensor<1xi32>
+
+  return %2 : tensor<1xi32>
+}
+
+// CHECK-LABEL: @materialize_out_of_place
+// CHECK-SAME:       %[[ARG0:.*]]: memref<1xi32>
+// CHECK-DAG:      %[[C42:.*]] = arith.constant 42
+// CHECK:          %[[ALLOC:.*]] = memref.alloc
+// CHECK:          memref.copy %{{.*}}, %[[ALLOC]]
+// CHECK:          memref.store %[[C42]], %[[ALLOC]]
+// CHECK:          %[[LOADED:.*]] = memref.load %[[ARG0]]
+// CHECK:          memref.store %[[LOADED]], %[[ALLOC]]
+// CHECK:          return %[[ALLOC]]

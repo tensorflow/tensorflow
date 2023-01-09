@@ -366,7 +366,7 @@ class QDQExplicitTest : public ::testing::Test,
     std::vector<const NodeDef*> outputs;
 
     GraphDef gdef;
-    scope->ToGraphDef(&gdef);
+    TF_RETURN_IF_ERROR(scope->ToGraphDef(&gdef));
 
     std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
     TF_RETURN_IF_ERROR(scope->ToGraph(graph.get()));

@@ -22,7 +22,6 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.eager import remote
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -286,14 +285,14 @@ class CondV2Test(test.TestCase):
     f()
 
   @test_util.run_v1_only("b/120545219")
-  def testDefunInCond(self):
+  def testFunctionInCond(self):
     with ops.Graph().as_default():
       x = constant_op.constant(1.0, name="x")
       y = constant_op.constant(2.0, name="y")
 
       def true_fn():
 
-        @function.defun
+        @def_function.function
         def fn():
           return x * y * 2.0
 
@@ -307,7 +306,7 @@ class CondV2Test(test.TestCase):
       self._testCond(true_fn, false_fn, [y])
 
   @test_util.run_deprecated_v1
-  def testNestedDefunInCond(self):
+  def testNestedFunctionInCond(self):
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
 
@@ -316,10 +315,10 @@ class CondV2Test(test.TestCase):
 
     def false_fn():
 
-      @function.defun
+      @def_function.function
       def fn():
 
-        @function.defun
+        @def_function.function
         def nested_fn():
           return x * y * 2.0
 
@@ -332,19 +331,19 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [y])
 
   @test_util.run_deprecated_v1
-  def testDoubleNestedDefunInCond(self):
+  def testDoubleNestedFunctionInCond(self):
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
 
     def true_fn():
 
-      @function.defun
+      @def_function.function
       def fn():
 
-        @function.defun
+        @def_function.function
         def nested_fn():
 
-          @function.defun
+          @def_function.function
           def nested_nested_fn():
             return x * y * 2.0
 
@@ -479,7 +478,7 @@ class CondV2Test(test.TestCase):
     run_test(False, False)
     run_test(False, True)
 
-  def testGradientFromInsideDefun(self):
+  def testGradientFromInsideFunction(self):
 
     def build_graph():
       pred_outer = array_ops.placeholder(dtypes.bool, name="pred_outer")
@@ -504,8 +503,8 @@ class CondV2Test(test.TestCase):
       cond_outer = cond_v2.cond_v2(
           pred_outer, true_fn, false_fn, name="outer_cond")
 
-      # Compute grads inside a Defun.
-      @function.defun
+      # Compute grads inside a tf function.
+      @def_function.function
       def nesting_fn():
         return gradients_impl.gradients(cond_outer, [x, y])
 
@@ -537,7 +536,7 @@ class CondV2Test(test.TestCase):
                 pred_inner: False
             }), [5., 0.])
 
-  def testGradientFromInsideNestedDefun(self):
+  def testGradientFromInsideNestedFunction(self):
 
     def build_graph():
       pred_outer = array_ops.placeholder(dtypes.bool, name="pred_outer")
@@ -562,11 +561,11 @@ class CondV2Test(test.TestCase):
       cond_outer = cond_v2.cond_v2(
           pred_outer, true_fn, false_fn, name="outer_cond")
 
-      # Compute grads inside a Defun.
-      @function.defun
+      # Compute grads inside a tf function.
+      @def_function.function
       def nesting_fn():
 
-        @function.defun
+        @def_function.function
         def inner_nesting_fn():
           return gradients_impl.gradients(cond_outer, [x, y])
 
@@ -600,7 +599,7 @@ class CondV2Test(test.TestCase):
                 pred_inner: False
             }), [5., 0.])
 
-  def testBuildCondAndGradientInsideDefun(self):
+  def testBuildCondAndGradientInsideFunction(self):
 
     def build_graph():
       pred_outer = array_ops.placeholder(dtypes.bool, name="pred_outer")
@@ -608,8 +607,8 @@ class CondV2Test(test.TestCase):
       x = constant_op.constant(1.0, name="x")
       y = constant_op.constant(2.0, name="y")
 
-      # Build cond and its gradient inside a Defun.
-      @function.defun
+      # Build cond and its gradient inside a tf function.
+      @def_function.function
       def fn():
 
         def true_fn():
@@ -1135,7 +1134,7 @@ class CondV2Test(test.TestCase):
     # run on GPUs (running on GPU requires a mixed CPU/GPU graph).
     with self.session(graph=ops.Graph(), use_gpu=False) as sess:
 
-      @function.defun
+      @def_function.function
       def _add_cond(x):
         return cond_v2.cond_v2(
             constant_op.constant(True, name="pred"),
@@ -1208,9 +1207,9 @@ class CondV2Test(test.TestCase):
         self.evaluate(output_t), [-5, -4, -3, -2, -1, 0, 1, 4, 9, 16])
 
   @test_util.enable_control_flow_v2
-  def testCondAndTensorArrayInDefun(self):
+  def testCondAndTensorArrayInFunction(self):
 
-    @function.defun
+    @def_function.function
     def f():
       x = math_ops.range(-5, 5)
       output = tensor_array_ops.TensorArray(dtype=dtypes.int32, size=x.shape[0])

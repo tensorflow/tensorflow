@@ -52,8 +52,8 @@ port::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
   return OwningDeviceMemory(DeviceMemoryBase(data, size), device_ordinal, this);
 }
 
-port::Status TfAllocatorAdapter::Deallocate(int device_ordinal,
-                                            DeviceMemoryBase mem) {
+tsl::Status TfAllocatorAdapter::Deallocate(int device_ordinal,
+                                           DeviceMemoryBase mem) {
   wrapped_->DeallocateRaw(mem.opaque());
   return ::tsl::OkStatus();
 }

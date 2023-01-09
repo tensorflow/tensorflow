@@ -32,15 +32,14 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  *
  * <p>For example, if a model takes only one input and returns only one output:
  *
- * <pre>{@code
+ * <pre> {@code
  * try (Interpreter interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
  *   interpreter.run(input, output);
- * }
- * }</pre>
+ * }}</pre>
  *
  * <p>If a model takes multiple inputs or outputs:
  *
- * <pre>{@code
+ * <pre> {@code
  * Object[] inputs = {input0, input1, ...};
  * Map<Integer, Object> map_of_indices_to_outputs = new HashMap<>();
  * FloatBuffer ith_output = FloatBuffer.allocateDirect(3 * 2 * 4);  // Float tensor, shape 3x2x4.
@@ -48,18 +47,16 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  * map_of_indices_to_outputs.put(i, ith_output);
  * try (Interpreter interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
  *   interpreter.runForMultipleInputsOutputs(inputs, map_of_indices_to_outputs);
- * }
- * }</pre>
+ * }}</pre>
  *
  * <p>If a model takes or produces string tensors:
  *
- * <pre>{@code
+ * <pre> {@code
  * String[] input = {"foo", "bar"};  // Input tensor shape is [2].
  * String[] output = new String[3][2];  // Output tensor shape is [3, 2].
  * try (Interpreter interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
  *   interpreter.runForMultipleInputsOutputs(input, output);
- * }
- * }</pre>
+ * }}</pre>
  *
  * <p>Orders of inputs and outputs are determined when converting TensorFlow model to TensorFlowLite
  * model with Toco, as are the default shapes of the inputs.

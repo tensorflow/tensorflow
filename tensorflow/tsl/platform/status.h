@@ -96,14 +96,6 @@ class Status {
   Status& operator=(Status&& s) noexcept;
 #endif  // SWIG
 
-  // Prefer using OkStatus().
-#ifndef SWIG
-  ABSL_DEPRECATED(
-      "Use `OkStatus()` (preferred) or `Status()` (which is backward "
-      "compatible with TF v2.9 and lower) instead.")
-#endif
-  static Status OK() { return Status(); }
-
   /// Returns true iff the status indicates success.
   bool ok() const { return (state_ == nullptr); }
 
@@ -361,8 +353,8 @@ inline tsl::string* TfCheckOpHelper(::tsl::Status v, const char* msg) {
   return TfCheckOpHelperOutOfLine(v, msg);
 }
 
-#define TF_DO_CHECK_OK(val, level)                         \
-  while (auto _result = ::tsl::TfCheckOpHelper(val, #val)) \
+#define TF_DO_CHECK_OK(val, level)                          \
+  while (auto* _result = ::tsl::TfCheckOpHelper(val, #val)) \
   LOG(level) << *(_result)
 
 #define TF_CHECK_OK(val) TF_DO_CHECK_OK(val, FATAL)

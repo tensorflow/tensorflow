@@ -48,10 +48,10 @@ RankedTensorType GetRankedTensorType(mlir::Value val) {
 
 mlir::LogicalResult DTensorLayout::verify() {
   DTensorLayout op = *this;
-  const auto& layout = op.layout();
+  const auto& layout = op.getLayout();
   if (layout.IsEmpty()) return mlir::success();
 
-  auto input_value = op.input();
+  auto input_value = op.getInput();
 
   RankedTensorType type = GetRankedTensorType(input_value);
 
@@ -86,8 +86,8 @@ mlir::LogicalResult DTensorLayout::verify() {
 
 mlir::LogicalResult DTensorAllGatherOp::verify() {
   DTensorAllGatherOp op = *this;
-  const tensorflow::dtensor::Layout input_layout = op.input_layout();
-  const tensorflow::dtensor::Layout output_layout = op.output_layout();
+  const tensorflow::dtensor::Layout input_layout = op.getInputLayout();
+  const tensorflow::dtensor::Layout output_layout = op.getOutputLayout();
 
   if (input_layout.rank() != output_layout.rank())
     return op.emitOpError()
@@ -107,7 +107,7 @@ mlir::LogicalResult DTensorAllGatherOp::verify() {
   }
 
   RankedTensorType input_type =
-      op.input().getType().dyn_cast<RankedTensorType>();
+      op.getInput().getType().dyn_cast<RankedTensorType>();
   if (!input_type) return mlir::success();
 
   if (input_type.getRank() != input_layout.rank())
@@ -116,7 +116,7 @@ mlir::LogicalResult DTensorAllGatherOp::verify() {
            << " is not equal to input rank " << input_type.getRank();
 
   RankedTensorType output_type =
-      op.output().getType().dyn_cast<RankedTensorType>();
+      op.getOutput().getType().dyn_cast<RankedTensorType>();
   if (!output_type) return mlir::success();
 
   if (output_type.getRank() != output_layout.rank())
@@ -142,8 +142,8 @@ mlir::LogicalResult DTensorAllGatherOp::verify() {
 
 mlir::LogicalResult DTensorAllScatterOp::verify() {
   DTensorAllScatterOp op = *this;
-  const tensorflow::dtensor::Layout input_layout = op.input_layout();
-  const tensorflow::dtensor::Layout output_layout = op.output_layout();
+  const tensorflow::dtensor::Layout input_layout = op.getInputLayout();
+  const tensorflow::dtensor::Layout output_layout = op.getOutputLayout();
 
   if (input_layout.rank() != output_layout.rank())
     return op.emitOpError()
@@ -163,7 +163,7 @@ mlir::LogicalResult DTensorAllScatterOp::verify() {
   }
 
   RankedTensorType input_type =
-      op.input().getType().dyn_cast<RankedTensorType>();
+      op.getInput().getType().dyn_cast<RankedTensorType>();
   if (!input_type) return mlir::success();
 
   if (input_type.getRank() != input_layout.rank())
@@ -172,7 +172,7 @@ mlir::LogicalResult DTensorAllScatterOp::verify() {
            << " is not equal to input rank " << input_type.getRank();
 
   RankedTensorType output_type =
-      op.output().getType().dyn_cast<RankedTensorType>();
+      op.getOutput().getType().dyn_cast<RankedTensorType>();
   if (!output_type) return mlir::success();
 
   if (output_type.getRank() != output_layout.rank())
@@ -197,7 +197,7 @@ mlir::LogicalResult DTensorAllScatterOp::verify() {
 }
 
 LogicalResult DTensorLayout::inferReturnTypes(
-    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    MLIRContext* context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   assert(operands.size() == 1);

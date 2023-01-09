@@ -47,8 +47,8 @@ HostExecutor::HostExecutor(const PluginConfig& plugin_config)
 
 HostExecutor::~HostExecutor() {}
 
-port::Status HostExecutor::Init(int device_ordinal,
-                                DeviceOptions device_options) {
+tsl::Status HostExecutor::Init(int device_ordinal,
+                               DeviceOptions device_options) {
   auto it =
       device_options.non_portable_tags.find("host_thread_stack_size_in_bytes");
   if (it != device_options.non_portable_tags.end()) {
@@ -86,14 +86,14 @@ void HostExecutor::Deallocate(DeviceMemoryBase* mem) {
   tsl::port::AlignedFree(mem->opaque());
 }
 
-port::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase* location,
-                                              uint64_t size) {
+tsl::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase* location,
+                                             uint64_t size) {
   memset(location->opaque(), 0, size);
   return ::tsl::OkStatus();
 }
 
-port::Status HostExecutor::SynchronousMemSet(DeviceMemoryBase* location,
-                                             int value, uint64_t size) {
+tsl::Status HostExecutor::SynchronousMemSet(DeviceMemoryBase* location,
+                                            int value, uint64_t size) {
   memset(location->opaque(), value, size);
   return ::tsl::OkStatus();
 }
@@ -132,8 +132,8 @@ bool HostExecutor::MemcpyDeviceToDevice(Stream* stream,
   return true;
 }
 
-port::Status HostExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
-                                   uint64_t size) {
+tsl::Status HostExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
+                                  uint64_t size) {
   void* gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
@@ -142,8 +142,8 @@ port::Status HostExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
   return ::tsl::OkStatus();
 }
 
-port::Status HostExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
-                                  uint8 pattern, uint64_t size) {
+tsl::Status HostExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
+                                 uint8 pattern, uint64_t size) {
   void* gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
@@ -152,8 +152,8 @@ port::Status HostExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
   return ::tsl::OkStatus();
 }
 
-port::Status HostExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
-                                    uint32_t pattern, uint64_t size) {
+tsl::Status HostExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
+                                   uint32_t pattern, uint64_t size) {
   void* gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
@@ -162,28 +162,28 @@ port::Status HostExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
   return ::tsl::OkStatus();
 }
 
-port::Status HostExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
-                                             const void* host_src,
-                                             uint64_t size) {
+tsl::Status HostExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
+                                            const void* host_src,
+                                            uint64_t size) {
   memcpy(gpu_dst->opaque(), host_src, size);
   return ::tsl::OkStatus();
 }
 
-port::Status HostExecutor::SynchronousMemcpy(void* host_dst,
-                                             const DeviceMemoryBase& gpu_src,
-                                             uint64_t size) {
+tsl::Status HostExecutor::SynchronousMemcpy(void* host_dst,
+                                            const DeviceMemoryBase& gpu_src,
+                                            uint64_t size) {
   memcpy(host_dst, gpu_src.opaque(), size);
   return ::tsl::OkStatus();
 }
 
-port::Status HostExecutor::SynchronousMemcpyDeviceToDevice(
+tsl::Status HostExecutor::SynchronousMemcpyDeviceToDevice(
     DeviceMemoryBase* gpu_dst, const DeviceMemoryBase& gpu_src, uint64_t size) {
   memcpy(gpu_dst->opaque(), gpu_src.opaque(), size);
   return ::tsl::OkStatus();
 }
 
 bool HostExecutor::HostCallback(Stream* stream,
-                                std::function<port::Status()> callback) {
+                                std::function<tsl::Status()> callback) {
   AsHostStream(stream)->EnqueueTaskWithStatus(callback);
   return true;
 }
@@ -223,15 +223,15 @@ static HostEvent* AsHostEvent(Event* event) {
   return static_cast<HostEvent*>(event->implementation());
 }
 
-port::Status HostExecutor::AllocateEvent(Event* /*event*/) {
+tsl::Status HostExecutor::AllocateEvent(Event* /*event*/) {
   return ::tsl::OkStatus();
 }
 
-port::Status HostExecutor::DeallocateEvent(Event* /*event*/) {
+tsl::Status HostExecutor::DeallocateEvent(Event* /*event*/) {
   return ::tsl::OkStatus();
 }
 
-port::Status HostExecutor::RecordEvent(Stream* stream, Event* event) {
+tsl::Status HostExecutor::RecordEvent(Stream* stream, Event* event) {
   std::shared_ptr<absl::Notification> notification =
       AsHostEvent(event)->notification();
   AsHostStream(stream)->EnqueueTask([notification]() {
@@ -241,7 +241,7 @@ port::Status HostExecutor::RecordEvent(Stream* stream, Event* event) {
   return ::tsl::OkStatus();
 }
 
-port::Status HostExecutor::WaitForEvent(Stream* stream, Event* event) {
+tsl::Status HostExecutor::WaitForEvent(Stream* stream, Event* event) {
   std::shared_ptr<absl::Notification> notification =
       AsHostEvent(event)->notification();
   AsHostStream(stream)->EnqueueTask(
@@ -265,7 +265,7 @@ bool HostExecutor::StopTimer(Stream* stream, Timer* timer) {
   return true;
 }
 
-port::Status HostExecutor::BlockHostUntilDone(Stream* stream) {
+tsl::Status HostExecutor::BlockHostUntilDone(Stream* stream) {
   return AsHostStream(stream)->BlockUntilDone();
 }
 

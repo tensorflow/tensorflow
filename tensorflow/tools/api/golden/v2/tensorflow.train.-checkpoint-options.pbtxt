@@ -3,6 +3,10 @@ tf_class {
   is_instance: "<class \'tensorflow.python.checkpoint.checkpoint_options.CheckpointOptions\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "enable_async"
+    mtype: "<type \'member_descriptor\'>"
+  }
+  member {
     name: "experimental_enable_async_checkpoint"
     mtype: "<type \'member_descriptor\'>"
   }
@@ -12,6 +16,6 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'experimental_io_device\', \'experimental_enable_async_checkpoint\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+    argspec: "args=[\'self\', \'experimental_io_device\', \'experimental_enable_async_checkpoint\', \'enable_async\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'False\'], "
   }
 }

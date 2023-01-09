@@ -1,14 +1,15 @@
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
+    "//tensorflow/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/core/lib/histogram:__pkg__",
         "//tensorflow/tsl/lib/monitoring:__pkg__",
@@ -21,12 +22,12 @@ cc_library(
     srcs = ["histogram.cc"],
     hdrs = ["histogram.h"],
     deps = [
-        "//tensorflow/core/framework:summary_proto_cc",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/protobuf:histogram_proto_cc",
     ],
     alwayslink = True,
 )
@@ -55,16 +56,16 @@ filegroup(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "histogram_test",
     srcs = [
         "histogram_test.cc",
     ],
     deps = [
         ":histogram",
-        "//tensorflow/core/framework:summary_proto_cc",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/protobuf:histogram_proto_cc",
     ],
 )

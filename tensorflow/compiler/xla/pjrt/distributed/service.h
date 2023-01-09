@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.grpc.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
-#include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/threadpool.h"
 
@@ -60,7 +60,7 @@ class DistributedRuntimeServiceImpl final
 
     // How long should we wait for all clients to call Shutdown() before giving
     // up and returning a failure?
-    absl::Duration shutdown_timeout = absl::Seconds(60);
+    absl::Duration shutdown_timeout = absl::Minutes(5);
   };
   explicit DistributedRuntimeServiceImpl(const Options& options);
   ~DistributedRuntimeServiceImpl() override;
@@ -172,9 +172,9 @@ class CoordinationServiceImpl {
 
  private:
   tsl::Env* env_ = nullptr;  // Not owned.
-  std::unique_ptr<tensorflow::CoordinationServiceInterface> coord_service_;
+  std::unique_ptr<tsl::CoordinationServiceInterface> coord_service_;
   std::unique_ptr<tsl::thread::ThreadPool> coord_compute_pool_;
-  std::unique_ptr<tensorflow::AsyncServiceInterface> coord_rpc_service_;
+  std::unique_ptr<tsl::AsyncServiceInterface> coord_rpc_service_;
   std::unique_ptr<tsl::Thread> coord_rpc_thread_;
 };
 

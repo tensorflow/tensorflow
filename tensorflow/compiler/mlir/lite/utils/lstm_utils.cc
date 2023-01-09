@@ -602,7 +602,7 @@ LogicalResult CreateEqualSizeSplitVOp(Value input, int axis, int splits,
   int size_of_splits;
   if (input_type.getRank() < axis || axis < 0) return failure();
   for (int i = 0; i < input_type.getRank(); ++i) {
-    int dim = input_type.getDimSize(i);
+    int64_t dim = input_type.getDimSize(i);
     if (i == axis) {
       if (dim % splits != 0) {
         return failure();
@@ -670,10 +670,10 @@ LogicalResult ConvertKerasLSTMLayer(mlir::func::FuncOp func_op,
                            func_op.getLoc());
   }
 
-  int batch = time_majored ? final_input_type.getDimSize(1)
-                           : final_input_type.getDimSize(0);
-  int time = time_majored ? final_input_type.getDimSize(0)
-                          : final_input_type.getDimSize(1);
+  int64_t batch = time_majored ? final_input_type.getDimSize(1)
+                               : final_input_type.getDimSize(0);
+  int64_t time = time_majored ? final_input_type.getDimSize(0)
+                              : final_input_type.getDimSize(1);
 
   // Setup correct weights.
   RankedTensorType weight_type =
@@ -686,7 +686,7 @@ LogicalResult ConvertKerasLSTMLayer(mlir::func::FuncOp func_op,
 
   RankedTensorType recurrent_kernel_type =
       recurrent_kernel.getType().cast<RankedTensorType>();
-  const int n_output = recurrent_kernel_type.getDimSize(0);
+  const int64_t n_output = recurrent_kernel_type.getDimSize(0);
 
   Value transpose_recurrent_kernel = Transpose2D(
       builder, recurrent_kernel, recurrent_kernel_type, func_op.getLoc());

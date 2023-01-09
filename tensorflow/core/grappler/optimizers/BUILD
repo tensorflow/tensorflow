@@ -8,8 +8,13 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
 )
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     features = ["-layering_check"],
     licenses = ["notice"],
 )
@@ -585,6 +590,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -1164,7 +1170,12 @@ cc_library(
         "//tensorflow/core/grappler/clusters:cluster",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-    ],
+    ] + if_static(
+        ["//tensorflow/core/platform:tensor_float_32_utils"],
+        ["//tensorflow/core/platform:tensor_float_32_hdr_lib"],
+    ) + if_rocm_is_configured([
+        "//tensorflow/core/platform:stream_executor",
+    ]),
 )
 
 tf_cuda_cc_test(

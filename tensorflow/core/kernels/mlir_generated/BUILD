@@ -18,6 +18,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/core/kernels:__subpackages__",
     ],
@@ -27,7 +28,7 @@ package(
 package_group(
     name = "friends",
     packages = [
-        "//third_party/car/...",
+        "//waymo/...",
     ],
 )
 
@@ -127,7 +128,6 @@ tf_kernel_library(
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
-        ":gpu_abs_kernels",
         ":gpu_acos_kernels",
         ":gpu_acosh_kernels",
         ":gpu_angle_kernels",
@@ -170,8 +170,14 @@ tf_kernel_library(
         ":gpu_tanh_kernels",
         "//third_party/eigen3",
     ]) + if_mlir_generated_experimental_kernels_enabled(
-        [":gpu_atanh_kernels_experimental"],
-        [":gpu_atanh_kernels"],
+        [
+            ":gpu_abs_kernels_experimental",
+            ":gpu_atanh_kernels_experimental",
+        ],
+        [
+            ":gpu_abs_kernels",
+            ":gpu_atanh_kernels",
+        ],
     ),
 )
 
@@ -602,6 +608,24 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_abs_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+    ],
+    jit_types = [
+        "i8",
+        "i16",
+    ],
+    op = "abs",
+    tile_size = "256",
+    types = [],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
     name = "gpu_acos_kernels",
     op = "acos",
     tile_size = "256",
@@ -691,16 +715,17 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_atanh_kernels_experimental",
-    jit_i64_indexed_for_large_tensors_types = ["f16"],
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
     op = "atanh",
     test_tags = [
         "noasan",  # TODO(b/248071004): JIT-compiled code will not be instrumented.
     ],
     tile_size = "256",
-    types = [
-        "f32",
-        "f64",
-    ],
+    types = [],
     unroll_factors = "4",
 )
 
@@ -1007,6 +1032,9 @@ gpu_kernel_library(
         "i8",
         "ui32",
         "ui64",
+        "f16",
+        "f32",
+        "f64",
     ],
     op = "truncate_div",
     tile_size = "1024",

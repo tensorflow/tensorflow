@@ -4,6 +4,7 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_linkopts")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -22,7 +23,6 @@ cc_binary(
     }),
     deps = [
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
 )

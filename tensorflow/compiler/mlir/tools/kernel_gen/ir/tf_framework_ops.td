@@ -40,7 +40,6 @@ def TFFramework_Dialect : Dialect {
   }];
 
   let useDefaultTypePrinterParser = 1;
-  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 def TFFramework_OpKernelContextType : DialectType<TFFramework_Dialect,
@@ -183,7 +182,7 @@ def TFFramework_IsValidMemRefOp : TFFramework_Op<"is_valid_memref", []> {
 // NullContextOp
 //===----------------------------------------------------------------------===//
 def TFFramework_NullContextOp : TFFramework_Op<"null_context",
-    [NoSideEffect]> {
+    [Pure]> {
   let summary = "Creates a fake TF context that will be lowered to nullptr";
   let description = [{Needed for testing}];
   let results = (outs TFFramework_OpKernelContextType:$result);
@@ -253,7 +252,7 @@ def TFFramework_JITCompileOp : TFFramework_Op<"jit_compile", [SingleBlock]> {
 //===----------------------------------------------------------------------===//
 
 def TFFramework_JITCompileYieldOp : TFFramework_Op<"jit_compile_yield", [
-    NoSideEffect, ReturnLike, Terminator, HasParent<"JITCompileOp">]> {
+    Pure, ReturnLike, Terminator, HasParent<"JITCompileOp">]> {
   let summary = "Yields the results in a `tf_framework.jit_compile` op's body";
   let description = [{
     See `tf_framework.jit_compile`.
@@ -322,15 +321,15 @@ def TFFramework_JITExecuteOp : TFFramework_Op<"jit_execute", [
   let arguments = (ins
     Optional<TFFramework_OpKernelContextType>:$ctx,
     TFFramework_JITCallableType:$callable,
-    Variadic<AnyTypeOf<[AnyRankedOrUnrankedMemRef, AnyTensor]>>:$operands
+    Variadic<AnyTypeOf<[AnyRankedOrUnrankedMemRef, AnyTensor]>>:$inputs
   );
   let results = (outs
     Res<AnyTypeOf<[AnyRankedOrUnrankedMemRef, AnyTensor]> , "",
         [MemAlloc<DefaultResource>]>:$result);
 
   let assemblyFormat = [{
-    (`ctx` `(` $ctx^ `)`)? $callable `(` $operands `)` attr-dict
-        `:` type($operands) `->` type($result)
+    (`ctx` `(` $ctx^ `)`)? $callable `(` $inputs `)` attr-dict
+        `:` type($inputs) `->` type($result)
   }];
 }
 

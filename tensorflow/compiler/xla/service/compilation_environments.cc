@@ -36,22 +36,13 @@ namespace xla {
 namespace {
 
 // A global singleton stats object for implementing CompilationEnvironments::{
-// DefaultEnvCreated(), DefaultEnvCreatedByCompilationEnvironments(),
-// EnvAdded()}.
+// DefaultEnvCreatedByCompilationEnvironments(), EnvAdded()}.
 class GlobalCompEnvStats {
  public:
   static GlobalCompEnvStats& GetSingleton() {
     static GlobalCompEnvStats* singleton = new GlobalCompEnvStats();
 
     return *singleton;
-  }
-
-  void DefaultEnvCreated(std::string_view env_type) ABSL_LOCKS_EXCLUDED(mu_) {
-    {
-      absl::MutexLock l(&mu_);
-      ++stats_[std::string(env_type)].default_env_created;
-    }
-    VLOG(1) << "New GlobalCompEnvStats value: " << ToString();
   }
 
   void DefaultEnvCreatedByCompilationEnvironments(std::string_view env_type)
@@ -86,13 +77,11 @@ class GlobalCompEnvStats {
   struct PerEnvStats {
     std::string ToString() const {
       return absl::StrCat(
-          "# default envs created: ", default_env_created, " ",
           "# default envs created by CompilationEnvironments: ",
           default_env_created_by_compilation_environments, " ",
           "# envs added to CompilationEnvironments: ", env_added);
     }
 
-    unsigned default_env_created = 0;
     unsigned default_env_created_by_compilation_environments = 0;
     unsigned env_added = 0;
   };
@@ -120,10 +109,6 @@ CompilationEnvironments& CompilationEnvironments::operator=(
     environments_.insert({descriptor_message_pair.first, std::move(env)});
   }
   return *this;
-}
-
-void CompilationEnvironments::DefaultEnvCreated(std::string_view env_type) {
-  GlobalCompEnvStats::GetSingleton().DefaultEnvCreated(env_type);
 }
 
 void CompilationEnvironments::DefaultEnvCreatedByCompilationEnvironments(

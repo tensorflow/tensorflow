@@ -5,6 +5,7 @@ load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 
 # CUDA toolkit version as tuple (e.g. '(11, 1)').
 _cuda_version = %{cuda_version}
+_cuda_clang = %{cuda_clang}
 
 def _gen_device_srcs_impl(ctx):
     ops = ["sum", "prod", "min", "max", "premulsum", "sumpostdiv"]
@@ -179,6 +180,12 @@ _device_link = rule(
 
 def _prune_relocatable_code_impl(ctx):
     """Clears __nv_relfatbin section containing relocatable device code."""
+
+    if _cuda_clang == "1":
+        # Clang is incompatible with nvprune due to a bug
+        # TODO(juanantoniomc): Remove this return when the fix is released.
+        # Fix: https://reviews.llvm.org/D135832
+        return ctx.attr.input[DefaultInfo]
 
     if _cuda_version < (11, 3):
         # -no-relocatable-elf not supported, return unpruned input.
@@ -360,8 +367,8 @@ def cuda_rdc_library(name, hdrs = None, copts = None, linkstatic = True, **kwarg
         out = dlink_cc,
         gpu_archs = cuda_gpu_architectures(),
         nvlink_args = select({
-            "@org_tensorflow//tensorflow:linux_x86_64": ["--cpu-arch=X86_64"],
-            "@org_tensorflow//tensorflow:linux_ppc64le": ["--cpu-arch=PPC64LE"],
+            "@org_tensorflow//tensorflow/tsl:linux_x86_64": ["--cpu-arch=X86_64"],
+            "@org_tensorflow//tensorflow/tsl:linux_ppc64le": ["--cpu-arch=PPC64LE"],
             "//conditions:default": [],
         }),
     )

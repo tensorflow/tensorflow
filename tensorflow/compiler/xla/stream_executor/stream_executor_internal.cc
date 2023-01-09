@@ -22,11 +22,11 @@ namespace internal {
 // It should make all existing code that uses a void() callback still work.
 bool StreamExecutorInterface::HostCallback(Stream* stream,
                                            std::function<void()> callback) {
-  return HostCallback(
-      stream, std::function<port::Status()>([callback]() -> port::Status {
-        callback();
-        return ::tsl::OkStatus();
-      }));
+  return HostCallback(stream,
+                      std::function<tsl::Status()>([callback]() -> tsl::Status {
+                        callback();
+                        return ::tsl::OkStatus();
+                      }));
 }
 
 }  // namespace internal

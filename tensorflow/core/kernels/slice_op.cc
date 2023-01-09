@@ -109,7 +109,7 @@ void SharedSliceValidation(OpKernelContext* context, const Tensor& input,
           errors::InvalidArgument("Expected size[", i, "] in [0, ",
                                   input.dim_size(i) - b, "], but ", "got ", s));
     }
-    output_shape->AddDim(s);
+    OP_REQUIRES_OK(context, output_shape->AddDimWithStatus(s));
     const bool take_all = (b == 0) && (s == input.dim_size(i));
     (*is_identity) &= take_all;
     (*slice_dim0) &= (i == 0) || take_all;

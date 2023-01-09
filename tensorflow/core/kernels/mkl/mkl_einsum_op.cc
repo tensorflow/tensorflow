@@ -278,9 +278,7 @@ class MklEinsum : public OpKernel {
                               .TypeConstraint<TYPE>("T")                      \
                               .Label(mkl_op_registry::kMklNameChangeOpLabel), \
                           MklEinsum<CPUDevice, TYPE>)
-#ifdef ENABLE_MKL
 TF_CALL_float(REGISTER_EINSUM_MKL);
 TF_CALL_bfloat16(REGISTER_EINSUM_MKL);
-#endif  // ENABLE_MKL
 }  // namespace tensorflow
 #endif  // INTEL_MKL

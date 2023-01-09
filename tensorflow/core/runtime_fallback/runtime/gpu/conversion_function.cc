@@ -31,6 +31,7 @@ limitations under the License.
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/gpu/tensor/dense_gpu_tensor.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/host_buffer.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime

@@ -45,7 +45,7 @@ bool SetTPUInfeedLayout(mlir::OwningOpRef<mlir::ModuleOp> &mlir_module) {
     // Do not append a UnitAttr for the "token" operand here to avoid
     // compilation failure when exporting the "layouts" attribute to a graph
     // node. Instead, add the UnitAttr during LegalizeTF pass.
-    op->setAttr("layouts", layout.getValue());
+    op->setAttr("layouts", layout.value());
 
     return mlir::WalkResult::advance();
   });

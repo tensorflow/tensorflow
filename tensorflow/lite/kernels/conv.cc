@@ -24,8 +24,8 @@ limitations under the License.
 #define TFLITE_WITH_MULTITHREADED_EIGEN
 #endif
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #if defined(TFLITE_WITH_MULTITHREADED_EIGEN)
 #include "tensorflow/lite/kernels/eigen_support.h"
@@ -596,6 +596,8 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
       const auto* affine_quantization =
           reinterpret_cast<TfLiteAffineQuantization*>(
               filter->quantization.params);
+      TF_LITE_ENSURE(context, affine_quantization);
+      TF_LITE_ENSURE(context, affine_quantization->scale);
       TF_LITE_ENSURE_EQ(
           context, affine_quantization->scale->size,
           filter->dims->data[affine_quantization->quantized_dimension]);

@@ -3,6 +3,7 @@ load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
     ],
@@ -13,6 +14,7 @@ cc_library(
     name = "grpc_eager_service",
     srcs = ["grpc_eager_service.h"],
     hdrs = ["grpc_eager_service.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core/protobuf:eager_service_cc_grpc_proto",
         "//tensorflow/compiler/xla/stream_executor/platform",
@@ -23,6 +25,7 @@ cc_library(
     name = "grpc_eager_client",
     srcs = ["grpc_eager_client.cc"],
     hdrs = ["grpc_eager_client.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":grpc_eager_service",
         "//tensorflow/core/platform:error_payloads",
@@ -44,17 +47,18 @@ cc_library(
     name = "grpc_eager_service_impl",
     srcs = ["grpc_eager_service_impl.cc"],
     hdrs = ["grpc_eager_service_impl.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":grpc_eager_service",
         "//tensorflow/core:framework",
         "//tensorflow/core:ptr_util",
         "//tensorflow/core/distributed_runtime/eager:eager_service_impl",
-        "//tensorflow/core/distributed_runtime/rpc:async_service_interface",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_call",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
         "//tensorflow/core/protobuf:eager_service_proto_cc",
+        "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_call",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -64,6 +68,7 @@ tf_cc_test(
     srcs = [
         "grpc_eager_client_test.cc",
     ],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":grpc_eager_client",
         "//tensorflow/c:tf_status_headers",

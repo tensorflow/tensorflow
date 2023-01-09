@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Analysis/DataFlow/ConstantPropagationAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -50,9 +51,11 @@ struct LocalizeVarHandlesPass
 void MaybeCreateVarHandleForOp(Operation* op, DataFlowSolver& solver) {
   Value resource;
   if (auto read = llvm::dyn_cast<TF::ReadVariableOp>(op)) {
-    resource = read.resource();
+    resource = read.getResource();
   } else if (auto write = llvm::dyn_cast<TF::AssignVariableOp>(op)) {
-    resource = write.resource();
+    resource = write.getResource();
+  } else if (auto next = llvm::dyn_cast<TF::IteratorGetNextOp>(op)) {
+    resource = next.getIterator();
   }
 
   if (llvm::dyn_cast_or_null<TF::VarHandleOp>(resource.getDefiningOp())) {
@@ -77,16 +80,31 @@ void MaybeCreateVarHandleForOp(Operation* op, DataFlowSolver& solver) {
     container = "";
     shared_name = global.getSymName();
   } else if (auto handle = llvm::dyn_cast<TF::VarHandleOp>(source)) {
-    container = handle.container();
-    shared_name = handle.shared_name();
+    container = handle.getContainer();
+    shared_name = handle.getSharedName();
+  } else if (auto it = llvm::dyn_cast<TF::IteratorOp>(source)) {
+    container = it.getContainer();
+    shared_name = it.getSharedName();
   } else {
     // Can't happen, as long as this file and resource_dataflow.cc are in sync.
     return;
   }
+
   OpBuilder builder(op);
-  auto vh = builder.create<TF::VarHandleOp>(op->getLoc(), resource.getType(),
-                                            container, shared_name);
-  op->setOperand(0, vh.resource());
+  Operation* resource_op = nullptr;
+  if (auto it = llvm::dyn_cast<TF::IteratorOp>(source)) {
+    // We can't use VarHandleOp for iterators since they don't have a shape.
+    // So use IteratorOp instead. (The latter is using LookupOrCreate for
+    // the resource, and we use it to just look up.
+    // See core/kernels/data/iterator_ops.cc.)
+    resource_op = builder.create<TF::IteratorOp>(
+        op->getLoc(), resource.getType(), shared_name, container,
+        it.getOutputTypes(), it.getOutputShapes());
+  } else {
+    resource_op = builder.create<TF::VarHandleOp>(
+        op->getLoc(), resource.getType(), container, shared_name);
+  }
+  op->setOperand(0, resource_op->getResult(0));
 }
 
 void LocalizeVarHandlesPass::runOnOperation() {
@@ -94,6 +112,7 @@ void LocalizeVarHandlesPass::runOnOperation() {
 
   DataFlowSolver solver;
   solver.load<dataflow::DeadCodeAnalysis>();
+  solver.load<dataflow::SparseConstantPropagation>();
   solver.load<TF::ResourceDataflowAnalysis>();
   if (failed(solver.initializeAndRun(module))) return signalPassFailure();
 
@@ -103,6 +122,8 @@ void LocalizeVarHandlesPass::runOnOperation() {
       [&](TF::ReadVariableOp op) { MaybeCreateVarHandleForOp(op, solver); });
   module.walk(
       [&](TF::AssignVariableOp op) { MaybeCreateVarHandleForOp(op, solver); });
+  module.walk(
+      [&](TF::IteratorGetNextOp op) { MaybeCreateVarHandleForOp(op, solver); });
 }
 
 }  // namespace

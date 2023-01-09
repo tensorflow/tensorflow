@@ -25,8 +25,9 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/profiling/telemetry/c/profiler.h"
 #include "tensorflow/lite/signature_runner.h"
 
 // Internal structures and subroutines used by the C API. These are likely to
@@ -108,6 +109,13 @@ struct TfLiteInterpreterOptions {
   // TfLiteRegistrationExternal objects owned by caller of
   // `TfLiteInterpreterOptionsAddRegistrationExternal` API.
   std::vector<TfLiteRegistrationExternal*> op_registrations;
+
+  // Determines whether to allow to cancel invocations with
+  // `Interpreter::Cancel` or `SignatureRunner::Cancel`.
+  bool enable_cancellation = false;
+
+  // If not nullptr, report telemetry metrics to profiler.
+  TfLiteTelemetryProfilerStruct* telemetry_profiler = nullptr;
 };
 
 struct TfLiteInterpreter {

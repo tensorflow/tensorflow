@@ -36,8 +36,8 @@ struct FetchMinMaxAttrs {
   using AttrType = FloatAttr;
   bool operator()(TFFakeQuantOp tf_op, AttrType &min_value,
                   AttrType &max_value) const {
-    min_value = tf_op.minAttr();
-    max_value = tf_op.maxAttr();
+    min_value = tf_op.getMinAttr();
+    max_value = tf_op.getMaxAttr();
     return true;  // Successfully matched and fetched.
   }
 };
@@ -47,7 +47,14 @@ struct FetchConstantMinMaxInputs {
   using AttrType = DenseFPElementsAttr;
   bool operator()(TFFakeQuantOp tf_op, AttrType &min_value,
                   AttrType &max_value) const {
-    Value min = tf_op.min(), max = tf_op.max();
+    Value min = tf_op.getMin(), max = tf_op.getMax();
+    if (auto min_id = min.getDefiningOp<TF::IdentityOp>()) {
+      min = min_id.getInput();
+    }
+    if (auto max_id = max.getDefiningOp<TF::IdentityOp>()) {
+      max = max_id.getInput();
+    }
+
     if (!matchPattern(min, m_Constant(&min_value))) {
       return false;
     }
@@ -91,7 +98,7 @@ class ConvertFakeQuantOpToQuantOps {
   using FetchAttrType = typename FetchMinMax::AttrType;
   LogicalResult matchAndRewrite(TFFakeQuantOp tf_op,
                                 OpBuilder &rewriter) const {
-    if (tf_op.num_bits() != 8) {
+    if (tf_op.getNumBits() != 8) {
       return failure();
     }
 
@@ -103,7 +110,7 @@ class ConvertFakeQuantOpToQuantOps {
       return failure();
     }
 
-    Value input = tf_op.inputs();
+    Value input = tf_op.getInputs();
     int quant_dim = -1;
     auto input_type = input.getType().template cast<ShapedType>();
     if (PerAxis) {
@@ -117,8 +124,8 @@ class ConvertFakeQuantOpToQuantOps {
     // Use the min/max from the operands and the num_bits and narrow_range
     // attribute to create the quantization parameter for the new quantize op.
     rewriter.setInsertionPointAfter(tf_op.getOperation());
-    IntegerAttr num_bits = rewriter.getI64IntegerAttr(tf_op.num_bits());
-    BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.narrow_range());
+    IntegerAttr num_bits = rewriter.getI64IntegerAttr(tf_op.getNumBits());
+    BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.getNarrowRange());
     Type res_type = tf_op.getType();
     TypeAttr qtype = quant::GetQuantizedTypeAttr(
         rewriter, input_type, min_value, max_value, quant_dim, num_bits,
@@ -135,7 +142,7 @@ class ConvertFakeQuantOpToQuantOps {
         tf_op.getLoc(), qtype.getValue(), input);
     auto dequantize = rewriter.create<quantfork::DequantizeCastOp>(
         tf_op.getLoc(), res_type, quantize.getResult());
-    tf_op.outputs().replaceAllUsesWith(dequantize);
+    tf_op.getOutputs().replaceAllUsesWith(dequantize);
 
     return success();
   }
