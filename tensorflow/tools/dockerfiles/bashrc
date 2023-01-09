@@ -33,14 +33,13 @@ _  /   /  __/  / / /(__  )/ /_/ /  /   _  __/   _  / / /_/ /_ |/ |/ /
 TF
 echo -e "\e[0;33m"
 
-# If /proc/self/uid_map 4294967295 mappings, we are in the initial user namespace, i.e. the host.
 # From https://man7.org/linux/man-pages/man7/user_namespaces.7.html:
 # "As the initial user namespace has no parent namespace, but, for consistency, the kernel provides 
 # dummy user and group ID mapping files for this namespace ID 0 in this namespace maps to a range 
 # starting at 0 in the (nonexistent) parent namespace, and the length of the range is the largest
 # 32-bit unsigned integer"
-# Otherwise we are in a non-initial user namespace.
-# https://github.com/kubernetes-sigs/kind/blob/main/images/base/files/usr/local/bin/entrypoint#L21-L28
+# So, if we mach 4294967295 we are root-less, otherwise we are in a non-initial user namespace.
+# See also: https://github.com/kubernetes-sigs/kind/blob/main/images/base/files/usr/local/bin/entrypoint#L21-L28
 userns=""
 if grep -Eqv "0[[:space:]]+0[[:space:]]+4294967295" /proc/self/uid_map; then
   userns="1"
