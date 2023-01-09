@@ -100,6 +100,8 @@ class GpuCudaMallocAsyncAllocator : public tsl::Allocator {
   }
 
  private:
+  void PrintAllocatorStatisticsNoLock();
+
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
   StreamExecutor* stream_exec_;  // Not owned.
 
