@@ -121,7 +121,10 @@ TfLiteStatus EvalFloat(
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
     const TfLiteLSTMParams* params, bool forward_sequence, bool time_major,
     int output_offset, TfLiteTensor* scratch_buffer, TfLiteTensor* output_state,
-    TfLiteTensor* cell_state, TfLiteTensor* output, CpuBackendContext* context);
+    TfLiteTensor* cell_state, TfLiteTensor* output,
+    bool recurrent_to_input_is_diag, bool recurrent_to_forget_is_diag,
+    bool recurrent_to_cell_is_diag, bool recurrent_to_output_is_diag,
+    CpuBackendContext* context);
 
 TfLiteStatus EvalHybrid(
     const TfLiteTensor* input, const TfLiteTensor* input_to_input_weights,

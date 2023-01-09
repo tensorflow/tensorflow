@@ -35,12 +35,14 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
                             const std::vector<std::vector<int>>& input_shapes,
                             const TensorType& weights_type = TensorType_FLOAT32,
                             bool is_layer_norm = false,
-                            bool asymmetric_quantize_inputs = false)
+                            bool asymmetric_quantize_inputs = false,
+                            bool diagonal_recurrent_weights = false)
       : n_batch_(n_batch),
         n_input_(n_input),
         n_cell_(n_cell),
         n_output_(n_output),
-        sequence_length_(sequence_length) {
+        sequence_length_(sequence_length),
+        diagonal_recurrent_weights_(diagonal_recurrent_weights) {
     input_ = AddInput(TensorType_FLOAT32);
 
     if (use_cifg) {
@@ -122,12 +124,13 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
 
     output_ = AddOutput(TensorType_FLOAT32);
 
-    SetBuiltinOp(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
-                 BuiltinOptions_UnidirectionalSequenceLSTMOptions,
-                 CreateUnidirectionalSequenceLSTMOptions(
-                     builder_, ActivationFunctionType_TANH, cell_clip,
-                     proj_clip, time_major, asymmetric_quantize_inputs)
-                     .Union());
+    SetBuiltinOp(
+        BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
+        BuiltinOptions_UnidirectionalSequenceLSTMOptions,
+        CreateUnidirectionalSequenceLSTMOptions(
+            builder_, ActivationFunctionType_TANH, cell_clip, proj_clip,
+            time_major, asymmetric_quantize_inputs, diagonal_recurrent_weights)
+            .Union());
     BuildInterpreter(input_shapes);
   }
 
@@ -267,6 +270,7 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
   int n_cell_;
   int n_output_;
   int sequence_length_;
+  bool diagonal_recurrent_weights_;
 
  private:
   int AddLayerNormCoeffsTensor(

@@ -1930,6 +1930,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           /*forward_sequence=*/true,
           /*time_major=*/true,
           /*output_offset=*/0, scratch_buffer, output_state, cell_state, output,
+          /*recurrent_to_input_is_diag=*/false,
+          /*recurrent_to_forget_is_diag=*/false,
+          /*recurrent_to_cell_is_diag=*/false,
+          /*recurrent_to_output_is_diag=*/false,
           CpuBackendContext::GetFromContext(context));
     }
     case kTfLiteUInt8:
