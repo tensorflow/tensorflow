@@ -1,4 +1,4 @@
-/* Copyright 2020-2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -2922,23 +2922,14 @@ LogicalResult ConvertTFLAtan2Op::matchAndRewrite(
   ShapedType output_ty =
       tfl_atan2_op.getResult().getType().dyn_cast<ShapedType>();
 
-  if (!input_y_ty || !input_x_ty || !output_ty) {
+  if (!input_y_ty || !input_x_ty) {
     return rewriter.notifyMatchFailure(
-        op, "ConvertTFLAtan2Op: input/output types not specified");
+        op, "ConvertTFLAtan2Op: ranked inputs required");
   }
 
   Type input_y_ety = input_y_ty.getElementType();
   Type input_x_ety = input_x_ty.getElementType();
   Type output_ety = output_ty.getElementType();
-
-  if (input_y_ety != input_x_ety) {
-    return rewriter.notifyMatchFailure(
-        op, "ConvertTFLAtan2Op: input element types must match");
-  }
-  if (input_y_ety != output_ety) {
-    return rewriter.notifyMatchFailure(
-        op, "ConvertTFLAtan2Op: input/output element type must match");
-  }
 
   bool op_is_fp = input_y_ty.getElementType().isF32();
   if (!op_is_fp) {
@@ -3001,6 +2992,8 @@ LogicalResult ConvertTFLAtan2Op::matchAndRewrite(
       CreateOpAndInfer<tosa::CastOp>(rewriter, loc, int16_ty, int_scaled);
 
   // 3. Compute a lookup table using the domain of [0, 1] for atan.
+  // Note: the implementation of std::atan2 may be different on
+  // different machines, so may result in varying numerical results.
   auto atan_func = [](double x) -> double { return std::atan(x); };
   Value table_const = getTosaConst16bitTable(rewriter, op, atan_func, 0.0, 1.0);
   auto table_result = CreateOpAndInfer<tosa::TableOp>(
