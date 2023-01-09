@@ -71,8 +71,11 @@ using gpusparseSpMMAlg_t = hipsparseSpMMAlg_t;
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/public/version.h"
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_utils.h"
 #include "tensorflow/compiler/xla/stream_executor/data_type.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_utils.h"
+#endif
 
 // Macro that specializes a sparse method for all 4 standard
 // numeric types.
