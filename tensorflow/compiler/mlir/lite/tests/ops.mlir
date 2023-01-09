@@ -679,8 +679,7 @@ func.func @testMaxPool2DWrongOperandStorageType(tensor<1x7x7x16x!quant.uniform<i
 // -----
 
 // CHECK-LABEL: testMaxPool3D
-func.func @testMaxPool3D(tensor<256x32x32x32x3xf32>) -> tensor<?xf32> {
-^bb0(%arg0: tensor<256x32x32x32x3xf32>):
+func.func @testMaxPool3D(%arg0: tensor<256x32x32x32x3xf32>) -> tensor<?xf32> {
   // CHECK: "tfl.max_pool_3d"(%arg0) {filter_depth = 1 : i32, filter_height = 1 : i32, filter_width = 1 : i32, fused_activation_function = "RELU6", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<256x32x32x32x3xf32>) -> tensor<?xf32>
   %0 = "tfl.max_pool_3d"(%arg0) {filter_depth = 1 : i32, filter_height = 1 : i32, filter_width = 1 : i32, fused_activation_function = "RELU6", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<256x32x32x32x3xf32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
@@ -689,8 +688,7 @@ func.func @testMaxPool3D(tensor<256x32x32x32x3xf32>) -> tensor<?xf32> {
 // -----
 
 // CHECK-LABEL: testMaxPool3DQuantized
-func.func @testMaxPool3DQuantized(tensor<256x32x32x32x3x!quant.uniform<i8:f32, 0.1:128>>) -> tensor<?x!quant.uniform<i8:f32, 0.1:128>> {
-^bb0(%arg0: tensor<256x32x32x32x3x!quant.uniform<i8:f32, 0.1:128>>):
+func.func @testMaxPool3DQuantized(%arg0: tensor<256x32x32x32x3x!quant.uniform<i8:f32, 0.1:128>>) -> tensor<?x!quant.uniform<i8:f32, 0.1:128>> {
   // CHECK: "tfl.max_pool_3d"(%arg0) {filter_depth = 1 : i32, filter_height = 1 : i32, filter_width = 1 : i32, fused_activation_function = "RELU6", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32}
   %0 = "tfl.max_pool_3d"(%arg0) {filter_depth = 1 : i32, filter_height = 1 : i32, filter_width = 1 : i32, fused_activation_function = "RELU6", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<256x32x32x32x3x!quant.uniform<i8:f32, 0.1:128>>) -> tensor<?x!quant.uniform<i8:f32, 0.1:128>>
   func.return %0 : tensor<?x!quant.uniform<i8:f32, 0.1:128>>
@@ -699,8 +697,7 @@ func.func @testMaxPool3DQuantized(tensor<256x32x32x32x3x!quant.uniform<i8:f32, 0
 // -----
 
 // test invalid MaxPool3D
-func.func @testMaxPool3DWrongOperandResultType(tensor<1x7x7x7x16xi32>) -> tensor<1x7x7x7x16xi32> {
-^bb0(%arg0: tensor<1x7x7x7x16xi32>):
+func.func @testMaxPool3DWrongOperandResultType(%arg0: tensor<1x7x7x7x16xi32>) -> tensor<1x7x7x7x16xi32> {
   // expected-error @+1 {{'tfl.max_pool_3d' op operand #0 must be tensor of 32-bit float or QI8 type or QI16 type values, but got 'tensor<1x7x7x7x16xi32>'}}
   %0 = "tfl.max_pool_3d"(%arg0) {filter_depth = 1 : i32, filter_height = 1 : i32, filter_width = 1 : i32, fused_activation_function = "RELU6", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x7x7x7x16xi32>) -> tensor<1x7x7x7x16xi32>
   func.return %0 : tensor<1x7x7x7x16xi32>
@@ -709,8 +706,7 @@ func.func @testMaxPool3DWrongOperandResultType(tensor<1x7x7x7x16xi32>) -> tensor
 // -----
 
 // CHECK-LABEL: testAveragePool3D
-func.func @testAveragePool3D(tensor<256x32x32x32x3xf32>) -> tensor<?xf32> {
-^bb0(%arg0: tensor<256x32x32x32x3xf32>):
+func.func @testAveragePool3D(%arg0: tensor<256x32x32x32x3xf32>) -> tensor<?xf32> {
   // CHECK: "tfl.average_pool_3d"(%arg0) {filter_depth = 1 : i32, filter_height = 1 : i32, filter_width = 1 : i32, fused_activation_function = "RELU6", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<256x32x32x32x3xf32>) -> tensor<?xf32>
   %0 = "tfl.average_pool_3d"(%arg0) {filter_depth = 1 : i32, filter_height = 1 : i32, filter_width = 1 : i32, fused_activation_function = "RELU6", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<256x32x32x32x3xf32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
@@ -719,8 +715,7 @@ func.func @testAveragePool3D(tensor<256x32x32x32x3xf32>) -> tensor<?xf32> {
 // -----
 
 // CHECK-LABEL: testAveragePool3DQuantized
-func.func @testAveragePool3DQuantized(tensor<256x32x32x32x3x!quant.uniform<i8:f32, 0.1:128>>) -> tensor<?x!quant.uniform<i8:f32, 0.1:128>> {
-^bb0(%arg0: tensor<256x32x32x32x3x!quant.uniform<i8:f32, 0.1:128>>):
+func.func @testAveragePool3DQuantized(%arg0: tensor<256x32x32x32x3x!quant.uniform<i8:f32, 0.1:128>>) -> tensor<?x!quant.uniform<i8:f32, 0.1:128>> {
   // CHECK: "tfl.average_pool_3d"(%arg0) {filter_depth = 1 : i32, filter_height = 1 : i32, filter_width = 1 : i32, fused_activation_function = "RELU6", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32}
   %0 = "tfl.average_pool_3d"(%arg0) {filter_depth = 1 : i32, filter_height = 1 : i32, filter_width = 1 : i32, fused_activation_function = "RELU6", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<256x32x32x32x3x!quant.uniform<i8:f32, 0.1:128>>) -> tensor<?x!quant.uniform<i8:f32, 0.1:128>>
   func.return %0 : tensor<?x!quant.uniform<i8:f32, 0.1:128>>
@@ -729,8 +724,7 @@ func.func @testAveragePool3DQuantized(tensor<256x32x32x32x3x!quant.uniform<i8:f3
 // -----
 
 // test invalid AveragePool3D
-func.func @testAveragePool3DWrongOperandResultType(tensor<1x7x7x7x16xi32>) -> tensor<1x7x7x7x16xi32> {
-^bb0(%arg0: tensor<1x7x7x7x16xi32>):
+func.func @testAveragePool3DWrongOperandResultType(%arg0: tensor<1x7x7x7x16xi32>) -> tensor<1x7x7x7x16xi32> {
   // expected-error @+1 {{'tfl.average_pool_3d' op operand #0 must be tensor of 32-bit float or QI8 type or QI16 type values, but got 'tensor<1x7x7x7x16xi32>'}}
   %0 = "tfl.average_pool_3d"(%arg0) {filter_depth = 1 : i32, filter_height = 1 : i32, filter_width = 1 : i32, fused_activation_function = "RELU6", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x7x7x7x16xi32>) -> tensor<1x7x7x7x16xi32>
   func.return %0 : tensor<1x7x7x7x16xi32>
