@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
-#include "tensorflow/core/util/determinism.h"
+#include "tensorflow/tsl/util/determinism.h"
 using tsl::OpDeterminismRequired;
 
 namespace stream_executor {
