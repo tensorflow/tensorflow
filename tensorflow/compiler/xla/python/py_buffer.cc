@@ -449,8 +449,14 @@ struct ExtraBufferInfo {
 int PyBuffer_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
   Status status = [&]() {
     TF_ASSIGN_OR_RETURN(PyBuffer * py_buffer, PyBuffer::AsPyBuffer(exporter));
-    PjRtBuffer& buffer = *py_buffer->pjrt_buffer();
+    PjRtBuffer* buffer_ptr;
+    try {
+      buffer_ptr = py_buffer->pjrt_buffer();
+    } catch (const XlaRuntimeError& e) {
+      return InvalidArgument("%s", e.what());
+    }
 
+    PjRtBuffer& buffer = *buffer_ptr;
     if (!buffer.IsOnCpu()) {
       return InvalidArgument(
           "Python buffer protocol is only defined for CPU buffers.");
