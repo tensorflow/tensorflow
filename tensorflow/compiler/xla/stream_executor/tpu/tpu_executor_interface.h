@@ -34,7 +34,6 @@ namespace tpu {
 class TpuExecutorInterface
     : public stream_executor::internal::StreamExecutorInterface {
  public:
-  using Status = stream_executor::port::Status;
   template <typename T>
   using StatusOr = stream_executor::port::StatusOr<T>;
 
@@ -60,9 +59,9 @@ class TpuExecutorInterface
     LOG(FATAL) << "Unimplemented.";
   }
 
-  virtual Status UnloadAllPrograms() { LOG(FATAL) << "Unimplemented."; }
+  virtual tsl::Status UnloadAllPrograms() { LOG(FATAL) << "Unimplemented."; }
 
-  virtual Status EnqueueCompactionOnStreamForHbm(
+  virtual tsl::Status EnqueueCompactionOnStreamForHbm(
       stream_executor::Stream* compaction_stream) {
     LOG(FATAL) << "Unimplemented.";
   }

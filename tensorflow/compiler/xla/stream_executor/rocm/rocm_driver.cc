@@ -287,7 +287,7 @@ string ROCMPointersToCanAccessString(hipDeviceptr_t from, hipDeviceptr_t to) {
 
 // Actually performs the work of ROCM initialization. Wrapped up in one-time
 // execution guard.
-static port::Status InternalInit() {
+static tsl::Status InternalInit() {
   hipError_t res = hipErrorNoDevice;
   if (FLAGS_gpuexec_rocm_driver_inject_init_error) {
     LOG(ERROR) << "injecting ROCM init error; initialization will fail";
@@ -301,35 +301,35 @@ static port::Status InternalInit() {
 
   LOG(ERROR) << "failed call to hipInit: " << ToString(res);
   Diagnostician::LogDiagnosticInformation();
-  return port::Status{port::error::ABORTED,
-                      absl::StrCat("failed call to hipInit: ", ToString(res))};
+  return tsl::Status{port::error::ABORTED,
+                     absl::StrCat("failed call to hipInit: ", ToString(res))};
 }
 
 }  // namespace
 
-/* static */ port::Status GpuDriver::Init() {
+/* static */ tsl::Status GpuDriver::Init() {
   // Cached return value from calling InternalInit(), as hipInit need only be
   // called once, but GpuDriver::Init may be called many times.
-  static port::Status* init_retval = [] {
-    return new port::Status(InternalInit());
+  static tsl::Status* init_retval = [] {
+    return new tsl::Status(InternalInit());
   }();
   return *init_retval;
 }
 
-/* static */ port::Status GpuDriver::GetDevice(int device_ordinal,
-                                               hipDevice_t* device) {
+/* static */ tsl::Status GpuDriver::GetDevice(int device_ordinal,
+                                              hipDevice_t* device) {
   hipError_t res = wrap::hipDeviceGet(device, device_ordinal);
   if (res == hipSuccess) {
     return tsl::OkStatus();
   }
 
-  return port::Status{
+  return tsl::Status{
       port::error::INTERNAL,
       absl::StrCat("failed call to hipDeviceGet: ", ToString(res))};
 }
 
-/* static */ port::Status GpuDriver::GetDeviceName(hipDevice_t device,
-                                                   string* device_name) {
+/* static */ tsl::Status GpuDriver::GetDeviceName(hipDevice_t device,
+                                                  string* device_name) {
   static const size_t kCharLimit = 64;
   absl::InlinedVector<char, 4> chars(kCharLimit);
   RETURN_IF_ROCM_ERROR(
@@ -347,7 +347,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   return true;
 }
 
-/* static */ port::Status GpuDriver::CreateContext(
+/* static */ tsl::Status GpuDriver::CreateContext(
     int device_ordinal, hipDevice_t device, const DeviceOptions& device_options,
     GpuContext** context) {
   // TODO(hanbinyoon): Create a real context, i.e., by calling hipCtxCreate().
@@ -366,13 +366,13 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   return nullptr;
 }
 
-/* static */ port::Status GpuDriver::FuncGetAttribute(
+/* static */ tsl::Status GpuDriver::FuncGetAttribute(
     hipDeviceAttribute_t attribute, hipFunction_t func, int* attribute_value) {
   // TODO(ROCm) properly implement this feature in HIP
   return tsl::OkStatus();
 }
 
-/* static */ port::Status GpuDriver::FuncSetCacheConfig(
+/* static */ tsl::Status GpuDriver::FuncSetCacheConfig(
     hipFunction_t function, hipFuncCache_t cache_config) {
   RETURN_IF_ROCM_ERROR(wrap::hipFuncSetCacheConfig(function, cache_config),
                        "Failed to set ROCM kernel cache config.");
@@ -388,7 +388,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return shared_mem_config;
 }
 
-/* static */ port::Status GpuDriver::ContextSetSharedMemConfig(
+/* static */ tsl::Status GpuDriver::ContextSetSharedMemConfig(
     GpuContext* context, hipSharedMemConfig shared_mem_config) {
   ScopedActivateContext activation{context};
   RETURN_IF_ROCM_ERROR(wrap::hipDeviceSetSharedMemConfig(shared_mem_config),
@@ -396,7 +396,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return tsl::OkStatus();
 }
 
-/* static */ port::Status GpuDriver::LaunchKernel(
+/* static */ tsl::Status GpuDriver::LaunchKernel(
     GpuContext* context, absl::string_view kernel_name, hipFunction_t function,
     unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
     unsigned int block_dim_x, unsigned int block_dim_y,
@@ -418,25 +418,25 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return tsl::OkStatus();
 }
 
-/* static */ port::Status GpuDriver::LoadPtx(GpuContext* context,
-                                             const char* ptx_contents,
-                                             hipModule_t* module) {
+/* static */ tsl::Status GpuDriver::LoadPtx(GpuContext* context,
+                                            const char* ptx_contents,
+                                            hipModule_t* module) {
   LOG(ERROR) << "Feature not supported on ROCm platform (LoadPtx)";
   return port::InternalError("Not Implemented");
 }
 
-/* static */ port::Status GpuDriver::LoadCubin(GpuContext* context,
-                                               const char* cubin_bytes,
-                                               hipModule_t* module) {
-  return port::Status{port::error::INTERNAL,
-                      "Feature not supported on ROCm platform (LoadCubin)"};
+/* static */ tsl::Status GpuDriver::LoadCubin(GpuContext* context,
+                                              const char* cubin_bytes,
+                                              hipModule_t* module) {
+  return tsl::Status{port::error::INTERNAL,
+                     "Feature not supported on ROCm platform (LoadCubin)"};
 }
 
-/* static */ port::Status GpuDriver::LoadHsaco(GpuContext* context,
-                                               const char* hsaco_contents,
-                                               hipModule_t* module) {
+/* static */ tsl::Status GpuDriver::LoadHsaco(GpuContext* context,
+                                              const char* hsaco_contents,
+                                              hipModule_t* module) {
   absl::Notification notification;
-  port::Status ret = tsl::OkStatus();
+  tsl::Status ret = tsl::OkStatus();
   GetDriverExecutor()->Schedule(
       [context, hsaco_contents, module, &ret, &notification]() {
         ScopedActivateContext activation{context};
@@ -458,7 +458,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return ret;
 }
 
-/* static */ port::Status GpuDriver::SynchronousMemsetUint8(
+/* static */ tsl::Status GpuDriver::SynchronousMemsetUint8(
     GpuContext* context, hipDeviceptr_t location, uint8 value, size_t size) {
   ScopedActivateContext activation{context};
   RETURN_IF_ROCM_ERROR(wrap::hipMemsetD8(location, value, size),
@@ -466,7 +466,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return tsl::OkStatus();
 }
 
-/* static */ port::Status GpuDriver::SynchronousMemsetUint32(
+/* static */ tsl::Status GpuDriver::SynchronousMemsetUint32(
     GpuContext* context, hipDeviceptr_t location, uint32 value,
     size_t uint32_count) {
   ScopedActivateContext activation{context};
@@ -476,7 +476,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return tsl::OkStatus();
 }
 
-/* static */ port::Status GpuDriver::AsynchronousMemsetUint8(
+/* static */ tsl::Status GpuDriver::AsynchronousMemsetUint8(
     GpuContext* context, hipDeviceptr_t location, uint8 value,
     size_t uint32_count, GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
@@ -486,7 +486,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return tsl::OkStatus();
 }
 
-/* static */ port::Status GpuDriver::AsynchronousMemsetUint32(
+/* static */ tsl::Status GpuDriver::AsynchronousMemsetUint32(
     GpuContext* context, hipDeviceptr_t location, uint32 value,
     size_t uint32_count, GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
@@ -693,11 +693,11 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return true;
 }
 
-/* static */ port::Status GpuDriver::DestroyEvent(GpuContext* context,
-                                                  GpuEventHandle* event) {
+/* static */ tsl::Status GpuDriver::DestroyEvent(GpuContext* context,
+                                                 GpuEventHandle* event) {
   if (*event == nullptr) {
-    return port::Status{port::error::INVALID_ARGUMENT,
-                        "input event cannot be null"};
+    return tsl::Status{port::error::INVALID_ARGUMENT,
+                       "input event cannot be null"};
   }
 
   ScopedActivateContext activated{context};
@@ -709,21 +709,21 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
       return tsl::OkStatus();
     case hipErrorDeinitialized:
     case hipErrorNotInitialized:
-      return port::Status{
+      return tsl::Status{
           port::error::FAILED_PRECONDITION,
           absl::StrFormat("error destroying ROCM event in device %d: %s",
                           context->device_ordinal(), ToString(res).c_str())};
     default:
-      return port::Status{
+      return tsl::Status{
           port::error::INTERNAL,
           absl::StrFormat("error destroying ROCM event in device %d: %s",
                           context->device_ordinal(), ToString(res).c_str())};
   }
 }
 
-/* static */ port::Status GpuDriver::RecordEvent(GpuContext* context,
-                                                 GpuEventHandle event,
-                                                 GpuStreamHandle stream) {
+/* static */ tsl::Status GpuDriver::RecordEvent(GpuContext* context,
+                                                GpuEventHandle event,
+                                                GpuStreamHandle stream) {
   ScopedActivateContext activated{context};
   hipError_t res = wrap::hipEventRecord(event, stream);
   switch (res) {
@@ -731,12 +731,12 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
       return tsl::OkStatus();
     case hipErrorDeinitialized:
     case hipErrorNotInitialized:
-      return port::Status{
+      return tsl::Status{
           port::error::FAILED_PRECONDITION,
           absl::StrFormat("error recording ROCM event on stream %p: %s", stream,
                           ToString(res).c_str())};
     default:
-      return port::Status{
+      return tsl::Status{
           port::error::INVALID_ARGUMENT,
           absl::StrFormat("error recording ROCM event on stream %p: %s", stream,
                           ToString(res).c_str())};
@@ -748,7 +748,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   ScopedActivateContext activated{context};
   hipError_t res = wrap::hipEventQuery(event);
   if (res != hipSuccess && res != hipErrorNotReady) {
-    return port::Status{
+    return tsl::Status{
         port::error::INTERNAL,
         absl::StrFormat("failed to query event: %s", ToString(res).c_str())};
   }
@@ -803,8 +803,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return true;
 }
 
-/* static */ port::Status GpuDriver::SynchronizeStream(GpuContext* context,
-                                                       GpuStreamHandle stream) {
+/* static */ tsl::Status GpuDriver::SynchronizeStream(GpuContext* context,
+                                                      GpuStreamHandle stream) {
   ScopedActivateContext activated{context};
   CHECK(stream != nullptr);
   RETURN_IF_ROCM_ERROR(wrap::hipStreamSynchronize(stream),
@@ -829,9 +829,10 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return false;
 }
 
-/* static */ port::Status GpuDriver::SynchronousMemcpyD2H(
-    GpuContext* context, void* host_dst, hipDeviceptr_t gpu_src,
-    uint64_t size) {
+/* static */ tsl::Status GpuDriver::SynchronousMemcpyD2H(GpuContext* context,
+                                                         void* host_dst,
+                                                         hipDeviceptr_t gpu_src,
+                                                         uint64_t size) {
   ScopedActivateContext activation{context};
   RETURN_IF_ROCM_ERROR(
       wrap::hipMemcpyDtoH(host_dst, gpu_src, size),
@@ -843,9 +844,10 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return tsl::OkStatus();
 }
 
-/* static */ port::Status GpuDriver::SynchronousMemcpyH2D(
-    GpuContext* context, hipDeviceptr_t gpu_dst, const void* host_src,
-    uint64_t size) {
+/* static */ tsl::Status GpuDriver::SynchronousMemcpyH2D(GpuContext* context,
+                                                         hipDeviceptr_t gpu_dst,
+                                                         const void* host_src,
+                                                         uint64_t size) {
   ScopedActivateContext activation{context};
   RETURN_IF_ROCM_ERROR(
       wrap::hipMemcpyHtoD(gpu_dst, const_cast<void*>(host_src), size),
@@ -857,9 +859,10 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return tsl::OkStatus();
 }
 
-/* static */ port::Status GpuDriver::SynchronousMemcpyD2D(
-    GpuContext* context, hipDeviceptr_t gpu_dst, hipDeviceptr_t gpu_src,
-    uint64_t size) {
+/* static */ tsl::Status GpuDriver::SynchronousMemcpyD2D(GpuContext* context,
+                                                         hipDeviceptr_t gpu_dst,
+                                                         hipDeviceptr_t gpu_src,
+                                                         uint64_t size) {
   ScopedActivateContext activation{context};
   RETURN_IF_ROCM_ERROR(
       wrap::hipMemcpyDtoD(gpu_dst, gpu_src, size),
@@ -941,9 +944,9 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return true;
 }
 
-/* static */ port::Status GpuDriver::InitEvent(GpuContext* context,
-                                               GpuEventHandle* event,
-                                               EventFlags flags) {
+/* static */ tsl::Status GpuDriver::InitEvent(GpuContext* context,
+                                              GpuEventHandle* event,
+                                              EventFlags flags) {
   int hipflags;
   switch (flags) {
     case EventFlags::kDefault:
@@ -962,10 +965,10 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   if (res == hipSuccess) {
     return tsl::OkStatus();
   } else if (res == hipErrorMemoryAllocation) {
-    return port::Status{port::error::RESOURCE_EXHAUSTED,
-                        "could not create ROCM event: out of device memory"};
+    return tsl::Status{port::error::RESOURCE_EXHAUSTED,
+                       "could not create ROCM event: out of device memory"};
   } else {
-    return port::Status{
+    return tsl::Status{
         port::error::FAILED_PRECONDITION,
         absl::StrCat("could not create ROCM event: ", ToString(res))};
   }
@@ -985,18 +988,19 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return device_count;
 }
 
-/* static */ port::Status GpuDriver::GetComputeCapability(int* cc_major,
-                                                          int* cc_minor,
-                                                          hipDevice_t device) {
-  return port::Status(
+/* static */ tsl::Status GpuDriver::GetComputeCapability(int* cc_major,
+                                                         int* cc_minor,
+                                                         hipDevice_t device) {
+  return tsl::Status(
       port::error::INTERNAL,
       absl::StrFormat("failed to get compute capability for device: %d "
                       "(unsupported API on AMD Gpus)",
                       device));
 }
 
-/* static */ port::Status GpuDriver::GetPointerAddressRange(
-    hipDeviceptr_t dptr, hipDeviceptr_t* base, size_t* size) {
+/* static */ tsl::Status GpuDriver::GetPointerAddressRange(hipDeviceptr_t dptr,
+                                                           hipDeviceptr_t* base,
+                                                           size_t* size) {
   hipError_t result = wrap::hipMemGetAddressRange(base, size, dptr);
   if (result == hipSuccess) {
     return tsl::OkStatus();
@@ -1004,13 +1008,13 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
     // We differentiate between "this pointer is unknown" (return here) and
     // "there was an internal error while performing this operation" (return
     // below).
-    return port::Status{port::error::NOT_FOUND,
-                        absl::StrFormat("not a device pointer %p; %s",
-                                        reinterpret_cast<void*>(dptr),
-                                        ToString(result).c_str())};
+    return tsl::Status{port::error::NOT_FOUND,
+                       absl::StrFormat("not a device pointer %p; %s",
+                                       reinterpret_cast<void*>(dptr),
+                                       ToString(result).c_str())};
   }
 
-  return port::Status{
+  return tsl::Status{
       port::error::INTERNAL,
       absl::StrFormat("failed to get pointer into for device pointer %p; %s",
                       reinterpret_cast<void*>(dptr), ToString(result).c_str())};
@@ -1027,13 +1031,13 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
       case hipMemoryTypeHost:
         return MemorySpace::kHost;
       default:
-        return port::Status{
+        return tsl::Status{
             port::error::INTERNAL,
             absl::StrCat("unknown memory space provided by ROCM API: ", value)};
     }
   }
 
-  return port::Status{
+  return tsl::Status{
       port::error::INTERNAL,
       absl::StrCat("failed to query device pointer for memory space: ",
                    ToString(result))};
@@ -1045,7 +1049,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   hipError_t result =
       wrap::hipPointerGetAttributes(&pointerAttributes, pointer);
   if (result != hipSuccess) {
-    return port::Status{
+    return tsl::Status{
         port::error::INTERNAL,
         absl::StrCat("failed to get device for pointer: ", ToString(result))};
   }
@@ -1053,7 +1057,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   hipDevice_t device;
   result = wrap::hipDeviceGet(&device, pointerAttributes.device);
   if (result != hipSuccess) {
-    return port::Status{
+    return tsl::Status{
         port::error::INTERNAL,
         absl::StrCat("failed to get device for pointer: ", ToString(result))};
   }
@@ -1061,8 +1065,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return device;
 }
 
-/* static */ port::Status GpuDriver::GetGpuISAVersion(int* version,
-                                                      hipDevice_t device) {
+/* static */ tsl::Status GpuDriver::GetGpuISAVersion(int* version,
+                                                     hipDevice_t device) {
   hipDeviceProp_t props;
   hipError_t result = wrap::hipGetDeviceProperties(&props, device);
   if (result == hipSuccess) {
@@ -1070,13 +1074,13 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
     return tsl::OkStatus();
   }
   *version = 0;
-  return port::Status{
+  return tsl::Status{
       port::error::INTERNAL,
       absl::StrFormat("failed to determine AMDGpu ISA version for device %d",
                       device)};
 }
 
-/* static */ port::Status GpuDriver::GetGpuGCNArchName(
+/* static */ tsl::Status GpuDriver::GetGpuGCNArchName(
     hipDevice_t device, std::string* gcnArchName) {
   hipDeviceProp_t props;
   hipError_t result = wrap::hipGetDeviceProperties(&props, device);
@@ -1085,7 +1089,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
     return tsl::OkStatus();
   }
   *gcnArchName = "";
-  return port::Status{
+  return tsl::Status{
       port::error::INTERNAL,
       absl::StrFormat("failed to determine AMDGpu GCN Arch Name for device %d",
                       device)};
@@ -1106,7 +1110,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
     VLOG(1) << "GCN arch name (stripped) " << gcnArchName;
     return ((gcnArchName == "908") || (gcnArchName == "909"));
   }
-  return port::Status{
+  return tsl::Status{
       port::error::INTERNAL,
       absl::StrFormat("failed to determine AMDGpu GCN Arch Name for device %d",
                       dev)};
@@ -1120,7 +1124,7 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   int value = -1;
   hipError_t result = wrap::hipDeviceGetAttribute(&value, attribute, device);
   if (result != hipSuccess) {
-    return port::Status{
+    return tsl::Status{
         port::error::NOT_FOUND,
         absl::StrCat("could not retrieve ROCM device attribute (", attribute,
                      "): ", ToString(result))};
@@ -1300,8 +1304,8 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   return can_access_peer;
 }
 
-/* static */ port::Status GpuDriver::EnablePeerAccess(GpuContext* from,
-                                                      GpuContext* to) {
+/* static */ tsl::Status GpuDriver::EnablePeerAccess(GpuContext* from,
+                                                     GpuContext* to) {
   if (from->device_ordinal() == to->device_ordinal()) {
     return tsl::OkStatus();  // A device can always access its own memory.
   }
@@ -1310,7 +1314,7 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   hipError_t result =
       wrap::hipDeviceEnablePeerAccess(to->device_ordinal(), 0 /* = flags */);
   if (result != hipSuccess && result != hipErrorPeerAccessAlreadyEnabled) {
-    return port::Status{
+    return tsl::Status{
         port::error::INTERNAL,
         absl::StrFormat("failed to enable peer access from %d to %d: %s",
                         from->device_ordinal(), to->device_ordinal(),
@@ -1329,7 +1333,7 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   hipError_t result = hipSuccess;
   // TODO(ROCm) implement this feature in HIP
   if (result != hipSuccess) {
-    return port::Status{
+    return tsl::Status{
         port::error::INTERNAL,
         absl::StrFormat("failed to calculate occupancy of kernel %p: %s",
                         kernel, ToString(result).c_str())};

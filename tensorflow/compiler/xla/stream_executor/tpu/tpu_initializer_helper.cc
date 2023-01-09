@@ -24,7 +24,9 @@ limitations under the License.
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <cstring>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -128,7 +130,7 @@ stream_executor::port::StatusOr<int64_t> FindLibtpuProcess() {
   return tsl::errors::NotFound("did not find which pid uses the libtpu.so");
 }
 
-stream_executor::port::Status TryAcquireTpuLock() {
+tsl::Status TryAcquireTpuLock() {
   static absl::Mutex* mu = new absl::Mutex();
   absl::MutexLock l(mu);
 
@@ -194,8 +196,8 @@ stream_executor::port::Status TryAcquireTpuLock() {
 #if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_library_init_fns.inc"
 
-stream_executor::port::Status InitializeTpuLibrary(void* library_handle) {
-  stream_executor::port::Status s = InitializeTpuStructFns(library_handle);
+tsl::Status InitializeTpuLibrary(void* library_handle) {
+  tsl::Status s = InitializeTpuStructFns(library_handle);
 
   // Retrieve arguments from environment if applicable
   std::pair<std::vector<std::string>, std::vector<const char*>> args =
@@ -257,7 +259,7 @@ void InitializeCreateGcsFileSystemFnPtr() {
 
 // TODO(b/261484192): refactor this function to align with supporting different
 // PJRT plugins.
-stream_executor::port::Status FindAndLoadTpuLibrary() {
+tsl::Status FindAndLoadTpuLibrary() {
   const char* env_value = getenv("TPU_LIBRARY_PATH");
   const char* libtpu_path =
       env_value && strlen(env_value) > 0 ? env_value : "libtpu.so";
@@ -278,7 +280,7 @@ stream_executor::port::Status FindAndLoadTpuLibrary() {
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_library_init_fns.inc"
 
-stream_executor::port::Status InitializeTpuLibrary() {
+tsl::Status InitializeTpuLibrary() {
   // Retrieve arguments from environment if applicable
   std::pair<std::vector<std::string>, std::vector<const char*>> args =
       GetLibTpuInitArguments();
@@ -290,7 +292,7 @@ stream_executor::port::Status InitializeTpuLibrary() {
   return ::tsl::OkStatus();
 }
 
-stream_executor::port::Status FindAndLoadTpuLibrary() {
+tsl::Status FindAndLoadTpuLibrary() {
   // We can open the shared library which means we are in a TPU environment.
   // Try to acquire exclusive access.
   TF_RETURN_IF_ERROR(TryAcquireTpuLock());
@@ -299,7 +301,7 @@ stream_executor::port::Status FindAndLoadTpuLibrary() {
 }
 
 #else   // PLATFORM_GOOGLE
-stream_executor::port::Status InitializeTpuLibrary(void* library_handle) {
+tsl::Status InitializeTpuLibrary(void* library_handle) {
   return tsl::errors::Unimplemented(
       "You must statically link in a TPU library.");
 }

@@ -59,31 +59,31 @@ string DriverVersionStatusToString(port::StatusOr<DriverVersion> version) {
 port::StatusOr<DriverVersion> StringToDriverVersion(const string& value) {
   std::vector<string> pieces = absl::StrSplit(value, '.');
   if (pieces.size() != 2 && pieces.size() != 3) {
-    return port::Status{port::error::INVALID_ARGUMENT,
-                        absl::StrFormat("expected %%d.%%d or %%d.%%d.%%d form "
-                                        "for driver version; got \"%s\"",
-                                        value.c_str())};
+    return tsl::Status{port::error::INVALID_ARGUMENT,
+                       absl::StrFormat("expected %%d.%%d or %%d.%%d.%%d form "
+                                       "for driver version; got \"%s\"",
+                                       value.c_str())};
   }
 
   int major;
   int minor;
   int patch = 0;
   if (!port::safe_strto32(pieces[0], &major)) {
-    return port::Status{
+    return tsl::Status{
         port::error::INVALID_ARGUMENT,
         absl::StrFormat("could not parse major version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[0].c_str(), value.c_str())};
   }
   if (!port::safe_strto32(pieces[1], &minor)) {
-    return port::Status{
+    return tsl::Status{
         port::error::INVALID_ARGUMENT,
         absl::StrFormat("could not parse minor version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[1].c_str(), value.c_str())};
   }
   if (pieces.size() == 3 && !port::safe_strto32(pieces[2], &patch)) {
-    return port::Status{
+    return tsl::Status{
         port::error::INVALID_ARGUMENT,
         absl::StrFormat("could not parse patch version number \"%s\" as an "
                         "integer from string \"%s\"",
@@ -154,7 +154,7 @@ void Diagnostician::LogDiagnosticInformation() {
 // Iterates through loaded DSOs with DlIteratePhdrCallback to find the
 // driver-interfacing DSO version number. Returns it as a string.
 port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
-  port::StatusOr<DriverVersion> result{port::Status{
+  port::StatusOr<DriverVersion> result{tsl::Status{
       port::error::NOT_FOUND,
       "was unable to find librocm.so DSO loaded into this program"}};
 
@@ -198,7 +198,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
   static const char* kDriverFilePrelude = "Kernel Module  ";
   size_t offset = driver_version_file_contents.find(kDriverFilePrelude);
   if (offset == string::npos) {
-    return port::Status{
+    return tsl::Status{
         port::error::NOT_FOUND,
         absl::StrCat("could not find kernel module information in "
                      "driver version file contents: \"",
@@ -231,8 +231,8 @@ void Diagnostician::WarnOnDsoKernelMismatch(
 }
 
 port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
-  auto status = port::Status{port::error::UNIMPLEMENTED,
-                             "kernel reported driver version not implemented"};
+  auto status = tsl::Status{port::error::UNIMPLEMENTED,
+                            "kernel reported driver version not implemented"};
   return status;
 }
 

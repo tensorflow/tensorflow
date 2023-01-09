@@ -609,7 +609,7 @@ MIOpenSupport::MIOpenSupport(GpuExecutor* parent) : parent_(parent) {
   if (enable_pooling_cache) m_pooling_cache_allowed = true;
 }
 
-port::Status MIOpenSupport::Init() {
+tsl::Status MIOpenSupport::Init() {
   ScopedActivateExecutorContext context(parent_);
   miopenHandle_t miopen_handle = nullptr;
   auto status = wrap::miopenCreateWithStream(
@@ -633,9 +633,9 @@ port::Status MIOpenSupport::Init() {
     }
   }
 
-  return port::Status{port::error::INTERNAL,
-                      absl::StrCat("miopen library could not create a handle: ",
-                                   ToString(status))};
+  return tsl::Status{port::error::INTERNAL,
+                     absl::StrCat("miopen library could not create a handle: ",
+                                  ToString(status))};
 }
 
 port::StatusOr<perftools::gputools::dnn::VersionInfo>
@@ -1750,7 +1750,7 @@ class MixinBase<void> {};
 #define RETURN_IF_MIOPEN_ERROR(STATUS, ...)                              \
   if (!SE_PREDICT_TRUE((STATUS) == miopenStatusSuccess)) {               \
     string error_msg = absl::StrCat(ToString(STATUS), " ", __VA_ARGS__); \
-    SetFailure(port::Status(port::error::UNKNOWN, error_msg));           \
+    SetFailure(::tsl::Status(port::error::UNKNOWN, error_msg));          \
     LOG(ERROR) << error_msg;                                             \
     return;                                                              \
   }
@@ -1759,11 +1759,11 @@ template <typename Base>
 class MIOpenDescriptorCommon : public MixinBase<Base> {
  public:
   bool ok() const { return status_.ok(); }
-  port::Status Status() const { return status_; }
+  tsl::Status Status() const { return status_; }
 
  protected:
-  void SetFailure(const port::Status& status) { status_.Update(status); }
-  port::Status status_;
+  void SetFailure(const tsl::Status& status) { status_.Update(status); }
+  tsl::Status status_;
 };
 
 class MIOpenRnnParamsDescriptor : public MIOpenDescriptorCommon<void> {
@@ -1797,7 +1797,7 @@ class MIOpenRnnParamsDescriptor : public MIOpenDescriptorCommon<void> {
   int64_t params_size_in_bytes_;
   ParamsRegions weights_;
   ParamsRegions biases_;
-  port::Status status_;
+  tsl::Status status_;
   SE_DISALLOW_COPY_AND_ASSIGN(MIOpenRnnParamsDescriptor);
 };
 
@@ -1878,7 +1878,7 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
   miopenRNNDirectionMode_t direction_mode_;
   miopenRNNMode_t rnn_mode_;
   miopenDataType_t data_type_;
-  port::Status status_;
+  tsl::Status status_;
   // no dropout in MIOpen.
   // std::unique_ptr<miopenDropoutDescriptor> miopen_dropout_desc_;
   std::unique_ptr<MIOpenRnnParamsDescriptor> miopen_params_desc_;
@@ -1916,7 +1916,7 @@ class MIOpenRnnSequenceTensorDescriptor
       string error_msg =
           absl::StrCat("sequence length must be positive: ", seq_length);
       LOG(ERROR) << error_msg;
-      SetFailure(port::Status(port::error::UNKNOWN, error_msg));
+      SetFailure(tsl::Status(port::error::UNKNOWN, error_msg));
       return;
     }
     auto status = wrap::miopenCreateTensorDescriptor(&handle);
@@ -1953,7 +1953,7 @@ class MIOpenRnnSequenceTensorDescriptor
   int data_size_;
   miopenDataType_t data_type_;
   std::vector<miopenTensorDescriptor_t> handles_;
-  port::Status status_;
+  tsl::Status status_;
   SE_DISALLOW_COPY_AND_ASSIGN(MIOpenRnnSequenceTensorDescriptor);
 };
 
@@ -1996,7 +1996,7 @@ class MIOpenRnnStateTensorDescriptor
   int num_layers_;
   int batch_size_;
   int data_size_;
-  port::Status status_;
+  tsl::Status status_;
   miopenDataType_t data_type_;
   SE_DISALLOW_COPY_AND_ASSIGN(MIOpenRnnStateTensorDescriptor);
 };
@@ -2431,7 +2431,7 @@ class MIOpenCTCLossDescriptor {
   SE_DISALLOW_COPY_AND_ASSIGN(MIOpenCTCLossDescriptor);
 };
 
-port::Status MIOpenSupport::DoPrepareForCtcLoss(
+tsl::Status MIOpenSupport::DoPrepareForCtcLoss(
     Stream* stream, dnn::DataType element_type,
     const dnn::RnnStateTensorDescriptor& probs_desc,
     const dnn::RnnStateTensorDescriptor& grads_desc,
@@ -2495,7 +2495,7 @@ port::Status MIOpenSupport::DoPrepareForCtcLoss(
   return tsl::OkStatus();
 }
 
-port::Status MIOpenSupport::DoCtcLossImpl(
+tsl::Status MIOpenSupport::DoCtcLossImpl(
     Stream* stream, const MIOpenRnnStateTensorDescriptor& probs_desc,
     const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
     absl::Span<const int> labels_lengths_data,
@@ -2525,7 +2525,7 @@ port::Status MIOpenSupport::DoCtcLossImpl(
   return tsl::OkStatus();
 }
 
-port::Status MIOpenSupport::DoCtcLoss(
+tsl::Status MIOpenSupport::DoCtcLoss(
     Stream* stream, dnn::DataType element_type,
     const dnn::RnnStateTensorDescriptor& probs_desc,
     const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
@@ -2536,9 +2536,9 @@ port::Status MIOpenSupport::DoCtcLoss(
     int ctc_loss_algo_id) {
   // Current MIOPen CTC Loss only supports the float datatype
   if (element_type != dnn::DataType::kFloat) {
-    return port::Status(port::error::INVALID_ARGUMENT,
-                        "MIOpenCTCLossDescriptor is supported only when the "
-                        "DataType is float");
+    return tsl::Status(port::error::INVALID_ARGUMENT,
+                       "MIOpenCTCLossDescriptor is supported only when the "
+                       "DataType is float");
   }
 
   MIOpenCTCLossDescriptor miopen_ctc_loss_desc(ToMIOpenDataType(element_type));
@@ -2566,13 +2566,13 @@ MIOpenSupport::createRnnDescriptor(
   // ROCM TODO: batch_size is used in dynamic persistent RNN algorithm and is
   // not supported by MIOpen now.
   if (use_padded_io) {
-    return port::Status(port::error::INVALID_ARGUMENT,
-                        "ROCm MIOpen only supports packed input output.");
+    return tsl::Status(port::error::INVALID_ARGUMENT,
+                       "ROCm MIOpen only supports packed input output.");
   }
 
   bool use_projection = cell_size != 0 && hidden_size < cell_size;
   if (use_projection) {
-    return port::Status(
+    return tsl::Status(
         port::error::INVALID_ARGUMENT,
         "ROCm MIOpen does not support RNN ProjectionLayers yet.");
   }
@@ -2890,7 +2890,7 @@ void MIOpenDeallocatorCallback(void* ctx, void* mem) {
   // reclaim the memory
 }
 
-port::Status MIOpenSupport::DoPrepareForConvolution(
+tsl::Status MIOpenSupport::DoPrepareForConvolution(
     dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
     const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
     const dnn::FilterDescriptor& filter_descriptor,
@@ -2968,11 +2968,11 @@ class RocmConvRunner : public dnn::ConvRunner {
     return {{algo_id_, false, workspace_size_}};
   }
 
-  port::Status operator()(Stream* stream, dnn::ProfileResult* profile_result,
-                          DeviceMemoryBase scratch_memory,
-                          DeviceMemoryBase input_data,
-                          DeviceMemoryBase filter_data,
-                          DeviceMemoryBase output_data) const override {
+  tsl::Status operator()(Stream* stream, dnn::ProfileResult* profile_result,
+                         DeviceMemoryBase scratch_memory,
+                         DeviceMemoryBase input_data,
+                         DeviceMemoryBase filter_data,
+                         DeviceMemoryBase output_data) const override {
     auto miopen = miopen_->GetHandle(parent_, stream);
     // Alpha is the scaling factor for input.
     float alpha = 1.0;
@@ -2985,14 +2985,14 @@ class RocmConvRunner : public dnn::ConvRunner {
     if (is_profiling) {
       timer.reset(new GpuTimer(parent_));
       if (!timer->Init()) {
-        return port::Status(port::error::INTERNAL, "Failed to init timer");
+        return tsl::Status(port::error::INTERNAL, "Failed to init timer");
       }
       // The start and stop of the timer should be as close to the MIOpen call
       // as possible. It is still possible for other threads to issue workload
       // on to this stream. So it could take multiple profiling measurements.
       if (!timer->Start(AsGpuStream(stream))) {
         timer->Destroy();
-        return port::Status(port::error::INTERNAL, "Failed to start timer");
+        return tsl::Status(port::error::INTERNAL, "Failed to start timer");
       }
     }
 
@@ -3064,7 +3064,7 @@ class RocmConvRunner : public dnn::ConvRunner {
     if (is_profiling) {
       if (!timer->Stop(AsGpuStream(stream))) {
         timer->Destroy();
-        return port::Status(port::error::INTERNAL, "Failed to stop timer");
+        return tsl::Status(port::error::INTERNAL, "Failed to stop timer");
       }
       if (status == miopenStatusSuccess) {
         dnn::AlgorithmDesc algotype(algo_id_, false);
@@ -3098,7 +3098,7 @@ class RocmConvRunner : public dnn::ConvRunner {
   ScopedConvolutionDescriptor conv_desc_;
 };
 
-port::Status MIOpenSupport::DoConvolve(
+tsl::Status MIOpenSupport::DoConvolve(
     dnn::ConvolutionKind kind, dnn::DataType element_type,
     dnn::DataType output_type, Stream* stream,
     const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
@@ -3133,7 +3133,7 @@ bool MIOpenSupport::GetConvolveAlgorithms(
   return true;
 }
 
-port::Status MIOpenSupport::GetConvolveRunners(
+tsl::Status MIOpenSupport::GetConvolveRunners(
     bool use_cudnn_frontend, dnn::ConvolutionKind kind,
     dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
     const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
@@ -3155,7 +3155,7 @@ port::Status MIOpenSupport::GetConvolveRunners(
           kind, input_type, stream, input_descriptor, input_data,
           filter_descriptor, filter_data, output_descriptor, output_data,
           convolution_descriptor, scratch_allocator, &profile_results)) {
-    return port::Status(
+    return tsl::Status(
         port::error::UNKNOWN,
         "GetConvolveRunners: GetMIOpenConvolveAlgorithms failed");
   }
@@ -3782,7 +3782,7 @@ bool MIOpenSupport::DoBatchNormalizationBackwardImpl(
   return true;
 }
 
-port::Status MIOpenSupport::DoFusedConvolve(
+tsl::Status MIOpenSupport::DoFusedConvolve(
     Stream* stream, dnn::DataType input_type, dnn::DataType side_input_type,
     dnn::DataType bias_type, dnn::DataType output_type,
     const dnn::BatchDescriptor& conv_input_descriptor,
@@ -4005,15 +4005,15 @@ bool MIOpenSupport::DoActivate(Stream* stream,
   return false;
 }
 
-port::Status MIOpenSupport::DoPoolForward(
+tsl::Status MIOpenSupport::DoPoolForward(
     dnn::DataType element_type, Stream* stream,
     const dnn::PoolingDescriptor& pooling_dimensions,
     const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
     const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
     ScratchAllocator* workspace_allocator) {
   if (element_type == dnn::DataType::kDouble) {
-    return port::Status(port::error::INVALID_ARGUMENT,
-                        "MIOpen does not support pooling for double type yet");
+    return tsl::Status(port::error::INVALID_ARGUMENT,
+                       "MIOpen does not support pooling for double type yet");
   }
 
   auto miopen = miopen_->GetHandle(parent_, stream);
@@ -4163,7 +4163,7 @@ void PoolingWorkspaceCache::trim(hipStream_t hip_stream) {
   }
 }
 
-port::Status MIOpenSupport::DoPoolBackward(
+tsl::Status MIOpenSupport::DoPoolBackward(
     dnn::DataType element_type, Stream* stream,
     const dnn::PoolingDescriptor& pooling_dimensions,
     const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
@@ -4171,8 +4171,8 @@ port::Status MIOpenSupport::DoPoolBackward(
     DeviceMemoryBase input_diff_data, DeviceMemoryBase output_diff_data,
     ScratchAllocator* workspace_allocator) {
   if (element_type == dnn::DataType::kDouble) {
-    return port::Status(port::error::INVALID_ARGUMENT,
-                        "MIOpen does not support pooling for double type yet");
+    return tsl::Status(port::error::INVALID_ARGUMENT,
+                       "MIOpen does not support pooling for double type yet");
   }
 
   auto miopen = miopen_->GetHandle(parent_, stream);
@@ -4444,7 +4444,7 @@ bool MIOpenSupport::DoDepthConcatenate(
     const auto& dimensions = input_dimensions[i];
     tmp.resize(dimensions.ElementCount());
     stream->ThenMemcpyD2H<float>(*input_data[i], absl::MakeSpan(tmp));
-    port::Status block_status = stream->BlockHostUntilDone();
+    tsl::Status block_status = stream->BlockHostUntilDone();
     if (!block_status.ok()) {
       LOG(ERROR) << "BlockHostUntilDone failed: " << block_status;
       return false;
@@ -5012,7 +5012,7 @@ void initialize_miopen() {
       rocm::kROCmPlatformId, PluginKind::kDnn, gpu::kMIOpenPlugin);
 
   if (!miopenAlreadyRegistered) {
-    port::Status status =
+    tsl::Status status =
         PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
             rocm::kROCmPlatformId, gpu::kMIOpenPlugin, "MIOpen",
             [](internal::StreamExecutorInterface* parent) -> dnn::DnnSupport* {

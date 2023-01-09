@@ -78,7 +78,7 @@ class MIOpenSupport : public dnn::DnnSupport {
  public:
   explicit MIOpenSupport(GpuExecutor* parent);
 
-  port::Status Init() override;
+  tsl::Status Init() override;
   port::StatusOr<perftools::gputools::dnn::VersionInfo> GetVersion() override;
 
   port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
@@ -237,7 +237,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
-  port::Status GetConvolveRunners(
+  tsl::Status GetConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
@@ -336,7 +336,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<uint8>* reserve_space_data,
       ScratchAllocator* workspace_allocator) override;
 
-  port::Status DoConvolve(
+  tsl::Status DoConvolve(
       dnn::ConvolutionKind kind, dnn::DataType element_type,
       dnn::DataType output_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
@@ -348,7 +348,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
       dnn::ProfileResult* output_profile_result) override;
 
-  port::Status DoFusedConvolve(
+  tsl::Status DoFusedConvolve(
       Stream* stream, dnn::DataType input_type, dnn::DataType side_input_type,
       dnn::DataType bias_type, dnn::DataType output_type,
       const dnn::BatchDescriptor& conv_input_descriptor,
@@ -439,23 +439,23 @@ class MIOpenSupport : public dnn::DnnSupport {
                   const DeviceMemory<float>& input_data,
                   DeviceMemory<float>* output_data, uint64_t options) override;
 
-  port::Status DoPoolForward(dnn::DataType element_type, Stream* stream,
+  tsl::Status DoPoolForward(dnn::DataType element_type, Stream* stream,
+                            const dnn::PoolingDescriptor& pooling_dimensions,
+                            const dnn::BatchDescriptor& input_dimensions,
+                            DeviceMemoryBase input_data,
+                            const dnn::BatchDescriptor& output_dimensions,
+                            DeviceMemoryBase output_data,
+                            ScratchAllocator* workspace_allocator) override;
+
+  tsl::Status DoPoolBackward(dnn::DataType element_type, Stream* stream,
                              const dnn::PoolingDescriptor& pooling_dimensions,
                              const dnn::BatchDescriptor& input_dimensions,
                              DeviceMemoryBase input_data,
                              const dnn::BatchDescriptor& output_dimensions,
                              DeviceMemoryBase output_data,
+                             DeviceMemoryBase input_diff_data,
+                             DeviceMemoryBase output_diff_data,
                              ScratchAllocator* workspace_allocator) override;
-
-  port::Status DoPoolBackward(dnn::DataType element_type, Stream* stream,
-                              const dnn::PoolingDescriptor& pooling_dimensions,
-                              const dnn::BatchDescriptor& input_dimensions,
-                              DeviceMemoryBase input_data,
-                              const dnn::BatchDescriptor& output_dimensions,
-                              DeviceMemoryBase output_data,
-                              DeviceMemoryBase input_diff_data,
-                              DeviceMemoryBase output_diff_data,
-                              ScratchAllocator* workspace_allocator) override;
 
   bool DoNormalizeWithDimensions(
       Stream* stream, const dnn::NormalizeDescriptor& normalize_descriptor,
@@ -608,17 +608,17 @@ class MIOpenSupport : public dnn::DnnSupport {
 
   GpuExecutor* GetParentExecutor() { return parent_; }
 
-  port::Status DoCtcLoss(Stream* stream, dnn::DataType element_type,
-                         const dnn::RnnStateTensorDescriptor& probs_desc,
-                         const DeviceMemoryBase probs_data,
-                         absl::Span<const int> labels_data,
-                         absl::Span<const int> labels_lengths_data,
-                         absl::Span<const int> input_lengths_data,
-                         DeviceMemoryBase costs_data,
-                         const dnn::RnnStateTensorDescriptor& grads_desc,
-                         DeviceMemoryBase grads_data,
-                         DeviceMemory<uint8> scratch_memory,
-                         int ctc_loss_algo_id) override;
+  tsl::Status DoCtcLoss(Stream* stream, dnn::DataType element_type,
+                        const dnn::RnnStateTensorDescriptor& probs_desc,
+                        const DeviceMemoryBase probs_data,
+                        absl::Span<const int> labels_data,
+                        absl::Span<const int> labels_lengths_data,
+                        absl::Span<const int> input_lengths_data,
+                        DeviceMemoryBase costs_data,
+                        const dnn::RnnStateTensorDescriptor& grads_desc,
+                        DeviceMemoryBase grads_data,
+                        DeviceMemory<uint8> scratch_memory,
+                        int ctc_loss_algo_id) override;
 
  private:
   GpuExecutor* parent_;  // Parent executor object. Not owned.
@@ -758,7 +758,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<U>* offset_backprop_data,
       dnn::ProfileResult* output_profile_result);
 
-  port::Status DoPrepareForConvolution(
+  tsl::Status DoPrepareForConvolution(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
       const dnn::FilterDescriptor& filter_descriptor,
@@ -770,7 +770,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       ScratchAllocator* scratch_allocator, dnn::AlgorithmDesc* algorithm_desc,
       DeviceMemory<uint8>* scratch_memory) override;
 
-  port::Status DoCtcLossImpl(
+  tsl::Status DoCtcLossImpl(
       Stream* stream, const MIOpenRnnStateTensorDescriptor& probs_desc,
       const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
       absl::Span<const int> labels_lengths_data,
@@ -779,7 +779,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemoryBase grads_data, const MIOpenCTCLossDescriptor& ctc_loss_desc,
       DeviceMemory<uint8> scratch_memory, int ctc_loss_algo_id);
 
-  port::Status DoPrepareForCtcLoss(
+  tsl::Status DoPrepareForCtcLoss(
       Stream* stream, dnn::DataType element_type,
       const dnn::RnnStateTensorDescriptor& probs_desc,
       const dnn::RnnStateTensorDescriptor& grads_desc,
