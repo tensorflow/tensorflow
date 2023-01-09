@@ -17,6 +17,7 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 add_custom_target(check-mhlo-tosa)
 
+add_subdirectory(transforms)
 add_subdirectory(tests)
 
 add_mlir_pdll_library(MHLOTOSAPDLLPatternsIncGen
@@ -39,6 +40,7 @@ set(LIBS
         )
 add_llvm_executable(mhlo-tosa-opt mhlo_tosa_opt.cc
 )
+add_dependencies(mhlo-tosa-opt MHLOTOSATransformsPassIncGen)
 llvm_update_compile_flags(mhlo-tosa-opt)
 target_link_libraries(mhlo-tosa-opt PRIVATE ${LIBS})
 
