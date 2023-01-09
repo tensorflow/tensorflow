@@ -164,7 +164,7 @@ func.func @testRsqrtQuant(%arg0: tensor<1x80x1x!quant.uniform<i8:f32, 0.04835843
 }
 
 // CHECK-LABEL: testRsqrtQuantWithQI16
-func @testRsqrtQuantWithQI16(%arg0: tensor<1x80x1x!quant.uniform<i16:f32, 0.048358432948589325:0>>) -> tensor<1x80x1x!quant.uniform<i16:f32, 0.0066055487841367722:0>> {
+func.func @testRsqrtQuantWithQI16(%arg0: tensor<1x80x1x!quant.uniform<i16:f32, 0.048358432948589325:0>>) -> tensor<1x80x1x!quant.uniform<i16:f32, 0.0066055487841367722:0>> {
   %0 = "tfl.rsqrt"(%arg0) : (tensor<1x80x1x!quant.uniform<i16:f32, 0.048358432948589325:0>>) -> tensor<1x80x1x!quant.uniform<i16:f32, 0.0066055487841367722:0>>
   return %0 : tensor<1x80x1x!quant.uniform<i16:f32, 0.0066055487841367722:0>>
 }
