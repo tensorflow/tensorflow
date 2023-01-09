@@ -93,8 +93,6 @@ inline auto AnyShape(const std::vector<int>& rank) {
                             .WithSize(rank.size());
 }
 
-// Used by GFT to map a known domain (vector<T>) to an unknown
-// domain (Tensor of datatype). T and datatype should match/be compatible.
 template <typename T>
 inline auto AnyTensor(const std::vector<std::vector<int>>& ts) {
   std::vector<int64_t> shape;
@@ -123,6 +121,23 @@ auto GenerateShape(const int rank) {
 template <typename T = uint8_t>
 auto GenerateTensor(const int rank = -1) {
   return fuzztest::FlatMap(AnyTensor<T>, GenerateShape(rank));
+}
+
+// Used by GFT to map a known domain (vector<T>) to an unknown
+// domain (Tensor of datatype). T and datatype should match/be compatible.
+template <typename T = uint8_t>
+inline auto AnyTensor() {
+  return fuzztest::Map(
+      [](auto v) {
+        Tensor tensor(DataTypeToEnum<T>::v(),
+                      TensorShape({static_cast<int64_t>(v.size())}));
+        auto flat_tensor = tensor.flat<T>();
+        for (int i = 0; i < v.size(); ++i) {
+          flat_tensor(i) = v[i];
+        }
+        return tensor;
+      },
+      fuzztest::Arbitrary<std::vector<T>>());
 }
 
 // Create a TensorFlow session using a specific GraphDef created
