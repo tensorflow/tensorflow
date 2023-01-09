@@ -321,6 +321,9 @@ message DebugOptions {
   // Whether to dump llvm ir when compiling to ptx.
   bool xla_gpu_dump_llvmir = 155;
 
+  // Whether to dump mlir using pretty print form.
+  bool xla_dump_enable_mlir_pretty_form = 184;
+
   // Denylist for cuDNN convolutions.
   string xla_gpu_algorithm_denylist_path = 128;
 
