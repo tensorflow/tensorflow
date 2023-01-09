@@ -7,11 +7,19 @@ package(
 )
 
 py_library(
+    name = "attributes",
+    srcs = ["attributes.py"],
+    srcs_version = "PY3",
+    deps = [],
+)
+
+py_library(
     name = "monomorphic_function",
     srcs = ["monomorphic_function.py"],
     srcs_version = "PY3",
     visibility = ["//tensorflow/python/eager:__pkg__"],
     deps = [
+        ":attributes",
         ":function_context",
         ":function_spec",
         ":saved_model_exported_concrete",
@@ -42,6 +50,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow/python/eager:__pkg__"],
     deps = [
+        ":attributes",
         ":monomorphic_function",
         "//tensorflow/core/function/capture:capture_container",
     ],
@@ -53,6 +62,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":attributes",
         ":function_spec",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",

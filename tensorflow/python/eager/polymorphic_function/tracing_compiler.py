@@ -25,6 +25,7 @@ from tensorflow.core.function.capture import capture_container
 from tensorflow.core.function.polymorphism import function_cache
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.python.eager import monitoring
+from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
 from tensorflow.python.eager.polymorphic_function import function_context
 from tensorflow.python.eager.polymorphic_function import function_spec
 from tensorflow.python.eager.polymorphic_function import monomorphic_function
@@ -107,7 +108,7 @@ class TracingCompiler:
         argspec has keyword arguments.
     """
     self._python_function = python_function
-    pure_function = attributes and monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME in attributes
+    pure_function = attributes and attributes_lib.IMPLEMENTS in attributes
     self._function_spec = function_spec.FunctionSpec.from_function_and_signature(
         python_function, input_signature, is_pure=pure_function)
     self._name = name
@@ -115,7 +116,14 @@ class TracingCompiler:
     self._autograph_options = autograph_options
     self._reduce_retracing = reduce_retracing
     self._function_cache = function_cache.FunctionCache()
+
     self._function_attributes = attributes or {}
+    for attribute in self._function_attributes:
+      if attribute not in attributes_lib.TRACING_COMPILER_ALLOWLIST:
+        raise ValueError(
+            f"TracingCompiler does not support `{attribute}` as an attribute."
+        )
+
     self._capture_by_value = capture_by_value
     self.tracing_count = 0
     # Maintein a dict of all captures: identifier -> lambda function. It's used

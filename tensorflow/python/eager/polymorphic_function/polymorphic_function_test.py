@@ -37,7 +37,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import lift_to_graph
-from tensorflow.python.eager.polymorphic_function import monomorphic_function
+from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.framework import composite_tensor
@@ -288,12 +288,12 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         name = f.signature.name
         if 'forward' in name or 'backward' in name:
           not_present += 1
-          self.assertNotIn(monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME,
+          self.assertNotIn(attributes_lib.IMPLEMENTS,
                            f.attr, f)
         else:
           present += 1
           self.assertEqual(
-              f.attr[monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME].s,
+              f.attr[attributes_lib.IMPLEMENTS].s,
               'func'.encode('ascii'), f)
       self.assertEqual(not_present, 2, fdefs)
       self.assertEqual(present, 1, fdefs)
@@ -404,11 +404,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         name = f.signature.name
         if 'forward' in name or 'backward' in name:
           not_present += 1
-          self.assertNotIn(monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME,
+          self.assertNotIn(attributes_lib.IMPLEMENTS,
                            f.attr, f)
         else:
           present += 1
-          attr_value = f.attr[monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME]
+          attr_value = f.attr[attributes_lib.IMPLEMENTS]
           self.assertIsNotNone(attr_value.func, f)
           self.assertEqual(attr_value.func.name, 'embedding_matmul')
           name_attrs = attr_value.func.attr

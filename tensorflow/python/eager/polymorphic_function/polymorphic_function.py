@@ -74,8 +74,8 @@ from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import monitoring
+from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
 from tensorflow.python.eager.polymorphic_function import function_spec as function_spec_lib
-from tensorflow.python.eager.polymorphic_function import monomorphic_function
 from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import errors
@@ -656,10 +656,10 @@ class Function(core.GenericFunction, trackable.Trackable):
         wrapped_fn))
 
   def _create_implements_attribute(self):
-    """Creates the attribute value corresponding to IMPLEMENTS_ATTRIBUTE_NAME."""
+    """Creates the attribute value corresponding to attribute_lib.IMPLEMENTS."""
     attributes = {}
     if isinstance(self._implements, str):
-      # First check if the IMPLEMENTS_ATTRIBUTE_NAME is specified as a
+      # First check if the attribute_lib.IMPLEMENTS is specified as a
       # NameAttrList. This is used when apart from the function name being
       # implemented, a list of attributes is also being specified.
       # The attributes are specified as key-value pairs in the NameAttrList
@@ -671,10 +671,9 @@ class Function(core.GenericFunction, trackable.Trackable):
         nameattrlist = attr_value_pb2.NameAttrList()
         _text_format.Merge(self._implements, nameattrlist)
         attr_value.func.CopyFrom(nameattrlist)
-        attributes[monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME] = attr_value
+        attributes[attributes_lib.IMPLEMENTS] = attr_value
       except (_text_format.ParseError, DecodeError):
-        attributes[
-            monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME] = self._implements
+        attributes[attributes_lib.IMPLEMENTS] = self._implements
     return attributes
 
   def _compiler(self, fn):
@@ -686,12 +685,13 @@ class Function(core.GenericFunction, trackable.Trackable):
 
     share = self._shared_rendezvous
     if share is not None:
-      attributes[monomorphic_function.SHARED_RENDEZVOUS_ATTRIBUTE_NAME] = share
+      attributes[attributes_lib.SHARED_RENDEZVOUS] = share
 
     if self._jit_compile is not None:
-      attributes.update(_XlaMustCompile=bool(self._jit_compile))
+      attributes[attributes_lib.XLA_COMPILE] = bool(self._jit_compile)
       if self._jit_compile:
-        attributes.update(_noinline=True)
+        attributes[attributes_lib.NO_INLINE] = True
+
     if not attributes:
       attributes = None
 
