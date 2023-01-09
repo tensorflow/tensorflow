@@ -1226,7 +1226,7 @@ tensorflow::Status ContextInterface::RunMetadataRecordFunction(
   mutex_lock l(run_metadata_mu_);
   auto* function_graphs = run_metadata_->add_function_graphs();
   *function_graphs->mutable_pre_optimization_graph() = def;
-  // TODO(b/b/171600738): Figure out a way to record the right post optimization
+  // TODO(b/171600738): Figure out a way to record the right post optimization
   // graph and partition graph.
   *function_graphs->mutable_post_optimization_graph() = def;
   *function_graphs->add_partition_graphs() = def;
