@@ -125,8 +125,12 @@ PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
       ifrt_array_(std::move(ifrt_array)),
       traceback_(std::move(traceback)) {
   CHECK(PyGILState_Check());
-  next_ = client_->buffers_[ifrt_array_->sharding().devices().front()->id()];
-  client_->buffers_[ifrt_array_->sharding().devices().front()->id()] = this;
+  const int device_id = ifrt_array_->sharding().devices().front()->id();
+  if (device_id >= client_->buffers_.size()) {
+    client_->buffers_.resize(device_id + 1);
+  }
+  next_ = client_->buffers_[device_id];
+  client_->buffers_[device_id] = this;
   prev_ = nullptr;
   if (next_) {
     next_->prev_ = this;
@@ -135,8 +139,9 @@ PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
 
 PyBuffer::~PyBuffer() {
   CHECK(PyGILState_Check());
-  if (client_->buffers_[device()->id()] == this) {
-    client_->buffers_[device()->id()] = next_;
+  const int device_id = ifrt_array_->sharding().devices().front()->id();
+  if (client_->buffers_[device_id] == this) {
+    client_->buffers_[device_id] = next_;
   }
   if (prev_) {
     prev_->next_ = next_;
