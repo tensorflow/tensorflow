@@ -941,23 +941,21 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# copybara:uncomment_begin(configurable API loading)
-# bool_flag(
-#     name = "enable_api_indexable",
-#     build_setting_default = False,
-# )
-#
-# config_setting(
-#     name = "api_indexable_flag",
-#     flag_values = {":enable_api_indexable": "True"},
-# )
-#
-# selects.config_setting_group(
-#     name = "api_indexable",
-#     match_any = [":api_indexable_flag"] + ADDITIONAL_API_INDEXABLE_SETTINGS,
-#     visibility = ["//visibility:public"],
-# )
-# copybara:uncomment_end
+bool_flag(
+    name = "enable_api_indexable",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "api_indexable_flag",
+    flag_values = {":enable_api_indexable": "True"},
+)
+
+selects.config_setting_group(
+    name = "api_indexable",
+    match_any = [":api_indexable_flag"] + ADDITIONAL_API_INDEXABLE_SETTINGS,
+    visibility = ["//visibility:public"],
+)
 
 # DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
 # Instead, please use public APIs or public build rules TF provides.
