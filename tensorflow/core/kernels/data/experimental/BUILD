@@ -248,6 +248,22 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "distributed_save_op",
+    srcs = ["distributed_save_op.cc"],
+    hdrs = ["distributed_save_op.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/data:serialization_utils",
+        "//tensorflow/core/data/service:common_proto_cc",
+        "//tensorflow/core/data/service:dispatcher_client",
+        "//tensorflow/core/data/service:grpc_util",
+        "//tensorflow/core/data/service:py_utils",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+tf_kernel_library(
     name = "data_service_ops",
     srcs = ["data_service_ops.cc"],
     hdrs = ["data_service_ops.h"],
@@ -896,6 +912,7 @@ tf_kernel_library(
     deps = [
         ":data_service_dataset_op",
         ":data_service_ops",
+        ":distributed_save_op",
     ],
 )
 

@@ -120,21 +120,17 @@ LogicalResult peelLoop(RewriterBase &b, LoopTy loopOp, int64_t idx,
   return success();
 }
 
-template <typename OpTy, bool IsMin>
+template <typename OpTy>
 void rewriteAffineOpAfterPeeling(RewriterBase &rewriter, Operation *mainLoop,
                                  Operation *remainderLoop, Value mainIv,
                                  Value remainderIv, Value ub, Value step) {
   mainLoop->walk([&](OpTy affineOp) {
-    AffineMap map = affineOp.getAffineMap();
-    (void)scf::rewritePeeledMinMaxOp(rewriter, affineOp, map,
-                                     affineOp.getOperands(), IsMin, mainIv, ub,
-                                     step, /*insideLoop=*/true);
+    (void)scf::rewritePeeledMinMaxOp(rewriter, affineOp, mainIv, ub, step,
+                                     /*insideLoop=*/true);
   });
   remainderLoop->walk([&](OpTy affineOp) {
-    AffineMap map = affineOp.getAffineMap();
-    (void)scf::rewritePeeledMinMaxOp(rewriter, affineOp, map,
-                                     affineOp.getOperands(), IsMin, remainderIv,
-                                     ub, step, /*insideLoop=*/false);
+    (void)scf::rewritePeeledMinMaxOp(rewriter, affineOp, remainderIv, ub, step,
+                                     /*insideLoop=*/false);
   });
 }
 
@@ -155,10 +151,10 @@ FailureOr<LoopTy> peelAndCanonicalizeGmlStLoopImpl(RewriterBase &rewriter,
   Value mainIv = loopOp.getInductionVars()[idx], step = loopOp.getStep()[idx],
         remainderIv = remainderLoop.getInductionVars()[idx];
 
-  rewriteAffineOpAfterPeeling<AffineMinOp, /*IsMin=*/true>(
-      rewriter, loopOp, remainderLoop, mainIv, remainderIv, ub, step);
-  rewriteAffineOpAfterPeeling<AffineMaxOp, /*IsMin=*/false>(
-      rewriter, loopOp, remainderLoop, mainIv, remainderIv, ub, step);
+  rewriteAffineOpAfterPeeling<AffineMinOp>(rewriter, loopOp, remainderLoop,
+                                           mainIv, remainderIv, ub, step);
+  rewriteAffineOpAfterPeeling<AffineMaxOp>(rewriter, loopOp, remainderLoop,
+                                           mainIv, remainderIv, ub, step);
 
   return remainderLoop;
 }

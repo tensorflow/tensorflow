@@ -53,7 +53,7 @@ class CudnnSupport : public dnn::DnnSupport {
  public:
   explicit CudnnSupport(GpuExecutor* parent);
 
-  port::Status Init() override;
+  tsl::Status Init() override;
   port::StatusOr<perftools::gputools::dnn::VersionInfo> GetVersion() override;
 
   port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
@@ -219,7 +219,7 @@ class CudnnSupport : public dnn::DnnSupport {
       CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
-  port::Status GetConvolveRunners(
+  tsl::Status GetConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
@@ -240,7 +240,7 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor) override;
 
-  port::Status GetFusedConvolveRunners(
+  tsl::Status GetFusedConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType input_type, dnn::DataType bias_type,
       dnn::DataType output_type, double conv_scale, double side_input_scale,
@@ -254,7 +254,7 @@ class CudnnSupport : public dnn::DnnSupport {
       std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans)
       override;
 
-  port::Status GetFusedMatmulRunners(
+  tsl::Status GetFusedMatmulRunners(
       bool use_cudnn_frontend, dnn::DataType input_type,
       dnn::DataType bias_type, dnn::DataType output_type, Stream* stream,
       bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k,
@@ -373,7 +373,7 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<uint8_t>* reserve_space_data,
       ScratchAllocator* workspace_allocator) override;
 
-  port::Status DoConvolve(
+  tsl::Status DoConvolve(
       dnn::ConvolutionKind kind, dnn::DataType element_type,
       dnn::DataType output_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
@@ -385,7 +385,7 @@ class CudnnSupport : public dnn::DnnSupport {
       dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8_t> scratch_memory,
       dnn::ProfileResult* output_profile_result) override;
 
-  port::Status DoFusedConvolve(
+  tsl::Status DoFusedConvolve(
       Stream* stream, dnn::DataType input_type, dnn::DataType side_input_type,
       dnn::DataType bias_type, dnn::DataType output_type,
       const dnn::BatchDescriptor& conv_input_descriptor,
@@ -476,23 +476,23 @@ class CudnnSupport : public dnn::DnnSupport {
                   const DeviceMemory<float>& input_data,
                   DeviceMemory<float>* output_data, uint64_t options) override;
 
-  port::Status DoPoolForward(dnn::DataType element_type, Stream* stream,
+  tsl::Status DoPoolForward(dnn::DataType element_type, Stream* stream,
+                            const dnn::PoolingDescriptor& pooling_dimensions,
+                            const dnn::BatchDescriptor& input_dimensions,
+                            DeviceMemoryBase input_data,
+                            const dnn::BatchDescriptor& output_dimensions,
+                            DeviceMemoryBase output_data,
+                            ScratchAllocator* workspace_allocator) override;
+
+  tsl::Status DoPoolBackward(dnn::DataType element_type, Stream* stream,
                              const dnn::PoolingDescriptor& pooling_dimensions,
                              const dnn::BatchDescriptor& input_dimensions,
                              DeviceMemoryBase input_data,
                              const dnn::BatchDescriptor& output_dimensions,
                              DeviceMemoryBase output_data,
+                             DeviceMemoryBase input_diff_data,
+                             DeviceMemoryBase output_diff_data,
                              ScratchAllocator* workspace_allocator) override;
-
-  port::Status DoPoolBackward(dnn::DataType element_type, Stream* stream,
-                              const dnn::PoolingDescriptor& pooling_dimensions,
-                              const dnn::BatchDescriptor& input_dimensions,
-                              DeviceMemoryBase input_data,
-                              const dnn::BatchDescriptor& output_dimensions,
-                              DeviceMemoryBase output_data,
-                              DeviceMemoryBase input_diff_data,
-                              DeviceMemoryBase output_diff_data,
-                              ScratchAllocator* workspace_allocator) override;
 
   bool DoNormalizeWithDimensions(
       Stream* stream, const dnn::NormalizeDescriptor& normalize_descriptor,
@@ -547,17 +547,17 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::BatchDescriptor* output_batch_descriptor);
 
-  port::Status DoCtcLoss(Stream* stream, dnn::DataType element_type,
-                         const dnn::RnnStateTensorDescriptor& probs_desc,
-                         const DeviceMemoryBase probs_data,
-                         absl::Span<const int> labels_data,
-                         absl::Span<const int> labels_lengths_data,
-                         absl::Span<const int> input_lengths_data,
-                         DeviceMemoryBase costs_data,
-                         const dnn::RnnStateTensorDescriptor& grads_desc,
-                         DeviceMemoryBase grads_data,
-                         DeviceMemory<uint8_t> scratch_memory,
-                         int ctc_loss_algo_id) override;
+  tsl::Status DoCtcLoss(Stream* stream, dnn::DataType element_type,
+                        const dnn::RnnStateTensorDescriptor& probs_desc,
+                        const DeviceMemoryBase probs_data,
+                        absl::Span<const int> labels_data,
+                        absl::Span<const int> labels_lengths_data,
+                        absl::Span<const int> input_lengths_data,
+                        DeviceMemoryBase costs_data,
+                        const dnn::RnnStateTensorDescriptor& grads_desc,
+                        DeviceMemoryBase grads_data,
+                        DeviceMemory<uint8_t> scratch_memory,
+                        int ctc_loss_algo_id) override;
 
   bool DoTransformTensor(Stream* stream, const dnn::BatchDescriptor& input_desc,
                          dnn::DataType input_type,
@@ -575,7 +575,7 @@ class CudnnSupport : public dnn::DnnSupport {
   std::unique_ptr<class CudnnAccess> cudnn_;
 
   template <class T, class U>
-  port::Status DoBatchNormalizationForwardImpl(
+  tsl::Status DoBatchNormalizationForwardImpl(
       Stream* stream, dnn::DataType input_data_type,
       dnn::DataType scale_data_type, const DeviceMemory<T>& x,
       const DeviceMemory<U>& scale, const DeviceMemory<U>& offset,
@@ -591,7 +591,7 @@ class CudnnSupport : public dnn::DnnSupport {
       ScratchAllocator* workspace_allocator);
 
   template <class T, class U>
-  port::Status DoBatchNormalizationBackwardImpl(
+  tsl::Status DoBatchNormalizationBackwardImpl(
       Stream* stream, int cudnn_input_type, int cudnn_scale_type,
       const DeviceMemory<T>& y_backprop, const DeviceMemory<T>& x,
       const DeviceMemory<U>& scale, const DeviceMemory<U>& offset,
@@ -605,7 +605,7 @@ class CudnnSupport : public dnn::DnnSupport {
       ScratchAllocator* workspace_allocator);
 
   template <class T>
-  port::Status DoRnnForwardImpl(
+  tsl::Status DoRnnForwardImpl(
       Stream* stream, const CudnnRnnDescriptor& rnn_desc,
       const CudnnRnnSequenceTensorDescriptor& input_desc,
       const DeviceMemory<T>& input_data,
@@ -625,7 +625,7 @@ class CudnnSupport : public dnn::DnnSupport {
       dnn::ProfileResult* output_profile_result);
 
   template <class T>
-  port::Status DoRnnBackwardImpl(
+  tsl::Status DoRnnBackwardImpl(
       Stream* stream, const CudnnRnnDescriptor& rnn_desc,
       const CudnnRnnSequenceTensorDescriptor& input_desc,
       const DeviceMemory<T>& input_data,
@@ -651,7 +651,7 @@ class CudnnSupport : public dnn::DnnSupport {
       ScratchAllocator* workspace_allocator,
       dnn::ProfileResult* output_profile_result);
 
-  port::Status DoCtcLossImpl(
+  tsl::Status DoCtcLossImpl(
       Stream* stream, const CudnnRnnStateTensorDescriptor& probs_desc,
       const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
       absl::Span<const int> labels_lengths_data,
@@ -661,7 +661,7 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<uint8_t> scratch_memory, int ctc_loss_algo_id);
 
  private:
-  port::Status DoPrepareForConvolution(
+  tsl::Status DoPrepareForConvolution(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
       const dnn::FilterDescriptor& filter_descriptor,
@@ -673,7 +673,7 @@ class CudnnSupport : public dnn::DnnSupport {
       ScratchAllocator* scratch_allocator, dnn::AlgorithmDesc* algorithm_desc,
       DeviceMemory<uint8_t>* scratch_memory) override;
 
-  port::Status DoPrepareForCtcLoss(
+  tsl::Status DoPrepareForCtcLoss(
       Stream* stream, dnn::DataType element_type,
       const dnn::RnnStateTensorDescriptor& probs_desc,
       const dnn::RnnStateTensorDescriptor& grads_desc,

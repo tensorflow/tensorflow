@@ -3176,6 +3176,31 @@ void LogOp::getCanonicalizationPatterns(RewritePatternSet& results,
 }
 
 //===----------------------------------------------------------------------===//
+// LogicalAndOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult LogicalAndOp::fold(ArrayRef<Attribute> operands) {
+  // TODO(b/264429950): Expand this to work for broadcastable shapes and other
+  // conditions (e.g. one operand is always True).
+  auto result_type = getType();
+
+  for (const auto& operand : operands) {
+    auto splat_attr = operand.dyn_cast_or_null<SplatElementsAttr>();
+    if (!splat_attr) continue;
+
+    if (splat_attr.getType() != result_type) continue;
+
+    // We can only fold away constant Falses.
+    auto splat_value = splat_attr.getSplatValue<BoolAttr>().getValue();
+    if (splat_value) continue;
+
+    return operand;
+  }
+
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // LogicalNotOp
 //===----------------------------------------------------------------------===//
 

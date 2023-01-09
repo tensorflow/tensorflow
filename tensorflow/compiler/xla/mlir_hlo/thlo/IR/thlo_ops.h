@@ -15,8 +15,8 @@ limitations under the License.
 
 // This file defines the operations used in the THLO dialect.
 
-#ifndef MLIR_HLO_DIALECT_THLO_IR_THLO_OPS_H
-#define MLIR_HLO_DIALECT_THLO_IR_THLO_OPS_H
+#ifndef MLIR_HLO_THLO_IR_THLO_OPS_H
+#define MLIR_HLO_THLO_IR_THLO_OPS_H
 
 #include "gml_st/interfaces/tiling_interface.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
@@ -34,4 +34,4 @@ limitations under the License.
 #define GET_OP_CLASSES
 #include "thlo/IR/thlo_ops.h.inc"
 
-#endif  // MLIR_HLO_DIALECT_THLO_IR_THLO_OPS_H
+#endif  // MLIR_HLO_THLO_IR_THLO_OPS_H

@@ -809,14 +809,18 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM: {
+      auto unidirectional_sequence_lstm_params =
+          reinterpret_cast<TfLiteUnidirectionalSequenceLSTMParams*>(
+              op_sig.builtin_data);
+      if (unidirectional_sequence_lstm_params &&
+          unidirectional_sequence_lstm_params->diagonal_recurrent_tensors) {
+        return 4;
+      }
       // If the input tensor is float and a weight is int8, this is a version
       // 2 hybrid operation.
       if (op_sig.inputs.at(0).type == kTfLiteFloat32 &&
           op_sig.inputs.at(2).type == kTfLiteInt8 &&
           op_sig.outputs.at(0).type == kTfLiteFloat32) {
-        auto unidirectional_sequence_lstm_params =
-            reinterpret_cast<TfLiteUnidirectionalSequenceLSTMParams*>(
-                op_sig.builtin_data);
         if (unidirectional_sequence_lstm_params &&
             unidirectional_sequence_lstm_params->asymmetric_quantize_inputs) {
           return 3;

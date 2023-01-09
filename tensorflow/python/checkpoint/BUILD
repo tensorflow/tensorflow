@@ -347,6 +347,7 @@ py_library(
     srcs = ["checkpoint_options.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:util",
         "//tensorflow/python/util:tf_export",
     ],
 )

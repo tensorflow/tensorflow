@@ -49,7 +49,7 @@ class TfAllocatorAdapter : public DeviceMemoryAllocator {
                                               bool retry_on_failure,
                                               int64_t memory_space) override;
 
-  port::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override;
+  tsl::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override;
 
   // The Tensorflow BFC allocator used on GPU allows host-side deallocation
   // before GPU execution takes place. Tensorflow uses the ordering of the main
@@ -98,7 +98,7 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
         device_ordinal, size, retry_on_failure, memory_space);
   }
 
-  port::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override {
+  tsl::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override {
     CHECK_LT(device_ordinal, per_device_allocators_.size());
     return per_device_allocators_[device_ordinal]->Deallocate(device_ordinal,
                                                               mem);

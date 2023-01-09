@@ -240,6 +240,11 @@ class TypeSpec(
         self._component_specs)
     return self._from_components(component_placeholders)
 
+  def _to_tensors(self, value):
+    assert value._type_spec == self  # pylint: disable=protected-access
+    return [arg for arg in nest.flatten(value, expand_composites=True)
+            if isinstance(arg, ops.Tensor)]
+
   # TODO(b/225058047): Reconsider semantics.
   def is_compatible_with(self, spec_or_value):
     """Returns true if `spec_or_value` is compatible with this TypeSpec.

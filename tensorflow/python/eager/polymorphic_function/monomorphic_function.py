@@ -58,7 +58,6 @@ from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader
-from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_inspect
@@ -2317,7 +2316,7 @@ class ConcreteFunctionGarbageCollector:
     self._func_graph = None
 
   def __del__(self):
-    if func_graph_module is None or memory is None or self._func_graph is None:
+    if func_graph_module is None or self._func_graph is None:
       return
     try:
       func_graph_module.dismantle_func_graph(self._func_graph)

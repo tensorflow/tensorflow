@@ -546,14 +546,11 @@ struct HeapSimulatorStats {
 
 Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
                                  const int64_t memory_color,
-                                 int64_t heap_simulator_trace_id,
                                  HeapSimulatorStats* stats) {
-  // If heap simulator trace id is not explicitly set by user, the profiler will
-  // try to infer the heap simulator trace id from <memory_color>.
-  if (heap_simulator_trace_id == -1) {
-    heap_simulator_trace_id = wrapper.GetHeapSimulatorTraceId(memory_color);
-  }
-  // If still unable to get a valid heap simulator trace id, skip heap simulator
+  int64_t heap_simulator_trace_id =
+      wrapper.GetHeapSimulatorTraceId(memory_color);
+
+  // If unable to get a valid heap simulator trace id, skip heap simulator
   // trace and process the rest of the buffers.
   if (heap_simulator_trace_id < 0 ||
       heap_simulator_trace_id >= wrapper.GetHloProto()
@@ -771,13 +768,13 @@ void GeneratePreprocessResult(const HloProtoBufferWrapper& wrapper,
 
 absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
     const HloProto& hlo_proto, int64_t small_buffer_size,
-    int64_t heap_simulator_trace_id, int64_t memory_color) {
+    int64_t memory_color) {
   HloProtoBufferWrapper wrapper(hlo_proto);
 
   // Process heap simulator trace.
   HeapSimulatorStats simulator_stats(wrapper);
-  auto status = ProcessHeapSimulatorTrace(
-      wrapper, memory_color, heap_simulator_trace_id, &simulator_stats);
+  auto status =
+      ProcessHeapSimulatorTrace(wrapper, memory_color, &simulator_stats);
   if (!status.ok()) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Failed to process heap simulator trace: ", status.error_message()));

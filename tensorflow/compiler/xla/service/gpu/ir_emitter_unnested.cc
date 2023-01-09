@@ -3456,10 +3456,9 @@ static llvm::Value* GetStartOffsetX(const TilingScheme& tiling_scheme,
 // }
 static void EmitXTileLoop(
     const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
-    const TilingScheme& tiling_scheme, bool check_x_tile_bounds,
-    llvm::Value* start_offset_x, llvm::Value* y_loc,
-    IrEmitterUnnested::ValueVector2 tile_dimensions,
-    const IrArray::Index& source_idx, llvm::IRBuilder<>* b,
+    const IrArray::Index& tile_origin_index, const TilingScheme& tiling_scheme,
+    bool check_x_tile_bounds, llvm::Value* start_offset_x, llvm::Value* y_loc,
+    IrEmitterUnnested::ValueVector2 tile_dimensions, llvm::IRBuilder<>* b,
     const IrEmitterUnnested::EmitElementFunction* emit_elem_function) {
   llvm::Type* index_ty = tile_dimensions[1]->getType();
   KernelSupportLibrary ksl(b, llvm_ir::UnrollMode::kDefaultUnroll);
@@ -3467,7 +3466,6 @@ static void EmitXTileLoop(
     return llvm::ConstantInt::get(index_ty, val);
   };
 
-  IrArray::Index source_idx_x_base = source_idx.AddOffsetToDim(y_loc, kDimY, b);
   int64_t vector_size = tiling_scheme.GetVectorSize();
   int64_t stride_x = tiling_scheme.GetIndexingOrder() == kLinearIndexingX
                          ? 1
@@ -3485,10 +3483,9 @@ static void EmitXTileLoop(
               b->CreateAdd(b->CreateMul(x, constant(stride_x * vector_size)),
                            constant(i)),
               start_offset_x, "x_loc");
-          IrArray::Index source_idx_x = source_idx_x_base.AddOffsetToDim(
-              b->CreateAdd(b->CreateMul(x, constant(stride_x * vector_size)),
-                           constant(i)),
-              kDimX, b);
+          IrArray::Index source_idx_x =
+              tile_origin_index.AddOffsetToDim(y_loc, kDimY, b)
+                  .AddOffsetToDim(x_loc, kDimX, b);
           auto emit_element = [&] {
             return (*emit_elem_function)(thread_id_info, source_idx_x, y_loc,
                                          x_loc, linear_index);
@@ -3516,8 +3513,6 @@ void IrEmitterUnnested::EmitTile(
       GetStartOffsetX(tiling_scheme, thread_id_info.thread_id_x, index_ty, &b_);
 
   KernelSupportLibrary ksl(&b_, llvm_ir::UnrollMode::kDefaultUnroll);
-  IrArray::Index source_idx =
-      tile_origin_index.AddOffsetToDim(start_offset_x, kDimX, &b_);
 
   ksl.For(
       "y_in_tile",
@@ -3526,10 +3521,9 @@ void IrEmitterUnnested::EmitTile(
       tile_dimensions[0],
       /*step=*/num_threads_y, [&](llvm::Value* y_loc) {
         auto unroll_inner_tile_loop = [&](bool check_x_tile_bounds) {
-          return EmitXTileLoop(thread_id_info, tiling_scheme,
+          return EmitXTileLoop(thread_id_info, tile_origin_index, tiling_scheme,
                                check_x_tile_bounds, start_offset_x, y_loc,
-                               tile_dimensions, source_idx, &b_,
-                               &emit_elem_function);
+                               tile_dimensions, &b_, &emit_elem_function);
         };
 
         // Only take this path when we unroll in a way vectorizable by

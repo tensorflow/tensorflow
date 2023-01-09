@@ -25,23 +25,24 @@ limitations under the License.
 namespace stream_executor {
 namespace port {
 
+// TODO(jlebar): This is being removed in favor of tsl::Status.
 using Status = tsl::Status;  // TENSORFLOW_STATUS_OK
 
 #define SE_CHECK_OK(val) TF_CHECK_OK(val)
-#define SE_ASSERT_OK(val) ASSERT_EQ(::stream_executor::port::Status(), (val))
+#define SE_ASSERT_OK(val) ASSERT_EQ(::tsl::Status(), (val))
 
 // Define some canonical error helpers.
-inline Status UnimplementedError(absl::string_view message) {
-  return Status(error::UNIMPLEMENTED, message);
+inline tsl::Status UnimplementedError(absl::string_view message) {
+  return tsl::Status(error::UNIMPLEMENTED, message);
 }
-inline Status InvalidArgumentError(absl::string_view message) {
-  return Status(error::INVALID_ARGUMENT, message);
+inline tsl::Status InvalidArgumentError(absl::string_view message) {
+  return tsl::Status(error::INVALID_ARGUMENT, message);
 }
-inline Status InternalError(absl::string_view message) {
-  return Status(error::INTERNAL, message);
+inline tsl::Status InternalError(absl::string_view message) {
+  return tsl::Status(error::INTERNAL, message);
 }
-inline Status FailedPreconditionError(absl::string_view message) {
-  return Status(error::FAILED_PRECONDITION, message);
+inline tsl::Status FailedPreconditionError(absl::string_view message) {
+  return tsl::Status(error::FAILED_PRECONDITION, message);
 }
 
 }  // namespace port

@@ -128,12 +128,12 @@ Status AddVariableUpdatesToCores(
     std::vector<std::vector<xla::Shape>>* per_core_output_shapes,
     std::vector<std::vector<std::pair<int, bool>>>* per_core_variable_indices);
 
-se::port::Status ComputeOutputShapesForEachCore(
+tsl::Status ComputeOutputShapesForEachCore(
     const tpu::TPUCompileMetadataProto& metadata,
     const XlaCompiler::CompilationResult& compilation_result,
     std::vector<std::vector<xla::Shape>>* per_core_output_shapes);
 
-se::port::Status CreateHloModules(
+tsl::Status CreateHloModules(
     const TPUCompileMetadataProto& metadata,
     const XlaCompiler::CompilationResult& compilation_result,
     const absl::optional<xla::DeviceAssignment>& device_assignment,
@@ -144,10 +144,10 @@ se::port::StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
     const TPUCompileMetadataProto& metadata,
     const std::vector<TensorShape>& arg_shapes);
 
-se::port::Status CompileOpMetadataFromContext(OpKernelConstruction* ctx,
-                                              TPUCompileMetadataProto* metadata,
-                                              NameAttrList* function_name,
-                                              std::string* mlir_module);
+tsl::Status CompileOpMetadataFromContext(OpKernelConstruction* ctx,
+                                         TPUCompileMetadataProto* metadata,
+                                         NameAttrList* function_name,
+                                         std::string* mlir_module);
 
 // Computes shapes for each argument. Uses both the static shape from the
 // metadata, and the dynamic shapes where the static shape is not

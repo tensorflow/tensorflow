@@ -3,6 +3,8 @@ load("//tensorflow/tsl:tsl.bzl", "if_nccl")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
+load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
+load("//tensorflow/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -67,6 +69,21 @@ cc_library(
         ":nccl_id_store_rocm",
         "@local_config_rocm//rocm:rocm_headers",
     ]),
+)
+
+xla_cc_test(
+    name = "se_gpu_pjrt_client_test",
+    srcs = if_gpu_is_configured(["se_gpu_pjrt_client_test.cc"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    tags = ["requires-gpu-nvidia"],
+    deps = [
+        ":se_gpu_pjrt_client",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/tsl/platform:test_main",
+    ],
 )
 
 # We actually wish we could write if_cuda(if_nccl(...)) in :gpu_device,

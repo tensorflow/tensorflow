@@ -890,9 +890,9 @@ class OpRunner<void(Args...)> {
   virtual port::StatusOr<AlgorithmDesc> ToAlgorithmDesc() const = 0;
 
   // Launch the operation, with the signature determined by `Sig`.
-  virtual port::Status operator()(Stream*, ProfileResult*,
-                                  DeviceMemoryBase scratch_memory,
-                                  Args... args) const = 0;
+  virtual tsl::Status operator()(Stream*, ProfileResult*,
+                                 DeviceMemoryBase scratch_memory,
+                                 Args... args) const = 0;
 };
 
 using ConvSignature = void(DeviceMemoryBase /* input_data */,
@@ -1132,7 +1132,7 @@ class VersionInfo {
 //   functions are actually implemented by both backends, the rest are
 //   actually backend-specific. The massive interface creates extra mental
 //   burden.
-// * Poor error handling: the API should return Status objects.
+// * Poor error handling: the API should return tsl::Status objects.
 //
 // PrepareForConvolution is an example for how new APIs should be written.
 class DnnSupport {
@@ -1140,7 +1140,7 @@ class DnnSupport {
   DnnSupport() {}
   virtual ~DnnSupport() {}
 
-  virtual port::Status Init() = 0;
+  virtual tsl::Status Init() = 0;
 
   // Gets the version of the backing library, as a VersionInfo object.
   virtual port::StatusOr<VersionInfo> GetVersion() {
@@ -1356,7 +1356,7 @@ class DnnSupport {
   //   that if the inverse of the filter is applied to the output in VALID mode
   //   the result is the same size as the input - this requires even more
   //   padding of the input.
-  virtual port::Status DoFusedConvolve(
+  virtual tsl::Status DoFusedConvolve(
       Stream* stream, DataType input_type, DataType side_input_type,
       DataType bias_type, DataType output_type,
       const dnn::BatchDescriptor& conv_input_descriptor,
@@ -1376,7 +1376,7 @@ class DnnSupport {
   }
 
   template <typename ElementType, typename OutputType>
-  port::Status PrepareForConvolution(
+  tsl::Status PrepareForConvolution(
       ConvolutionKind kind, Stream* stream,
       const BatchDescriptor& batch_descriptor,
       DeviceMemory<ElementType> input_data,
@@ -1429,7 +1429,7 @@ class DnnSupport {
   //   that if the inverse of the filter is applied to the output in VALID mode
   //   the result is the same size as the input - this requires even more
   //   padding of the input.
-  virtual port::Status DoConvolve(
+  virtual tsl::Status DoConvolve(
       ConvolutionKind kind, DataType element_type, DataType output_type,
       Stream* stream, const BatchDescriptor& input_descriptor,
       DeviceMemoryBase input_data, const FilterDescriptor& filter_descriptor,
@@ -1445,7 +1445,7 @@ class DnnSupport {
       CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
       std::vector<AlgorithmDesc>* out_algorithms);
 
-  virtual port::Status GetConvolveRunners(
+  virtual tsl::Status GetConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
@@ -1466,7 +1466,7 @@ class DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor);
 
-  virtual port::Status GetFusedConvolveRunners(
+  virtual tsl::Status GetFusedConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType element_type, dnn::DataType bias_type,
       dnn::DataType output_type, double conv_input_scale,
@@ -1479,7 +1479,7 @@ class DnnSupport {
       bool use_fallback, dnn::ActivationMode activation_mode,
       std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans);
 
-  virtual port::Status GetFusedMatmulRunners(
+  virtual tsl::Status GetFusedMatmulRunners(
       bool use_cudnn_frontend, dnn::DataType element_type,
       dnn::DataType bias_type, dnn::DataType output_type, Stream* stream,
       bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k,
@@ -1689,7 +1689,7 @@ class DnnSupport {
   // the input. The output width and height can be different.
   //
   // See PoolingDescriptor for how to configure the pooling operation.
-  virtual port::Status DoPoolForward(
+  virtual tsl::Status DoPoolForward(
       DataType element_type, Stream* stream,
       const dnn::PoolingDescriptor& pooling_dimensions,
       const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
@@ -1697,7 +1697,7 @@ class DnnSupport {
       DeviceMemoryBase output_data, ScratchAllocator* workspace_allocator) = 0;
 
   // Performs differentiation of the pooling operation.
-  virtual port::Status DoPoolBackward(
+  virtual tsl::Status DoPoolBackward(
       DataType element_type, Stream* stream,
       const dnn::PoolingDescriptor& pooling_dimensions,
       const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
@@ -2111,8 +2111,8 @@ class DnnSupport {
                       const dnn::AlgorithmConfig& algorithm_config,
                       float dropout, uint64_t seed,
                       ScratchAllocator* state_allocator, bool use_padded_io) {
-    return port::Status(port::error::UNIMPLEMENTED,
-                        "createRnnDescriptor is unimplemented");
+    return tsl::Status(port::error::UNIMPLEMENTED,
+                       "createRnnDescriptor is unimplemented");
   }
 
   // Create a RNN sequence descriptor that specifies either the input or output
@@ -2127,8 +2127,8 @@ class DnnSupport {
   virtual port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size, dnn::DataType data_type) {
-    return port::Status(port::error::UNIMPLEMENTED,
-                        "createRnnSequenceTensorDescriptor is unimplemented");
+    return tsl::Status(port::error::UNIMPLEMENTED,
+                       "createRnnSequenceTensorDescriptor is unimplemented");
   }
 
   virtual port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
@@ -2136,8 +2136,8 @@ class DnnSupport {
                                     int data_size,
                                     const absl::Span<const int>& seq_lengths,
                                     bool time_major, dnn::DataType data_type) {
-    return port::Status(port::error::UNIMPLEMENTED,
-                        "createRnnSequenceTensorDescriptor is unimplemented");
+    return tsl::Status(port::error::UNIMPLEMENTED,
+                       "createRnnSequenceTensorDescriptor is unimplemented");
   }
 
   // Create an RNN state descriptor that specifies the input or hidden state.
@@ -2145,8 +2145,8 @@ class DnnSupport {
   virtual port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
   createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type) {
-    return port::Status(port::error::UNIMPLEMENTED,
-                        "createRnnStateTensorDescriptor is unimplemented");
+    return tsl::Status(port::error::UNIMPLEMENTED,
+                       "createRnnStateTensorDescriptor is unimplemented");
   }
 
   // Enqueue a forward operation of the RNN model onto the stream.
@@ -2372,16 +2372,16 @@ class DnnSupport {
   }
 
   template <typename ElementType>
-  port::Status PrepareForCtcLoss(Stream* stream,
-                                 const RnnStateTensorDescriptor& probs_desc,
-                                 DeviceMemory<ElementType> probs_data,
-                                 const RnnStateTensorDescriptor& grads_desc,
-                                 absl::Span<const int> labels_data,
-                                 absl::Span<const int> labels_lengths_data,
-                                 absl::Span<const int> input_lengths_data,
-                                 ScratchAllocator* workspace_allocator,
-                                 DeviceMemory<uint8_t>* scratch_memory,
-                                 int* ctc_loss_algo_id) {
+  tsl::Status PrepareForCtcLoss(Stream* stream,
+                                const RnnStateTensorDescriptor& probs_desc,
+                                DeviceMemory<ElementType> probs_data,
+                                const RnnStateTensorDescriptor& grads_desc,
+                                absl::Span<const int> labels_data,
+                                absl::Span<const int> labels_lengths_data,
+                                absl::Span<const int> input_lengths_data,
+                                ScratchAllocator* workspace_allocator,
+                                DeviceMemory<uint8_t>* scratch_memory,
+                                int* ctc_loss_algo_id) {
     return DoPrepareForCtcLoss(
         stream, ToDataType<ElementType>::value, probs_desc, grads_desc,
         labels_data, labels_lengths_data, input_lengths_data,
@@ -2409,7 +2409,7 @@ class DnnSupport {
   //    workspace memory used by this operation. The caller is responsible for
   //    keeping the memory alive long enough for this operation, and recylces
   //    afterwards.
-  virtual port::Status DoCtcLoss(
+  virtual tsl::Status DoCtcLoss(
       Stream* stream, dnn::DataType element_type,
       const RnnStateTensorDescriptor& probs_desc,
       const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
@@ -2681,10 +2681,10 @@ class DnnSupport {
 
  protected:
   // Returns whether status is 'ok', and potentially logs the error.
-  static bool IsStatusOk(const port::Status& status, bool report_error);
+  static bool IsStatusOk(const tsl::Status& status, bool report_error);
 
  private:
-  virtual port::Status DoPrepareForConvolution(
+  virtual tsl::Status DoPrepareForConvolution(
       ConvolutionKind kind, DataType element_type, Stream* stream,
       const BatchDescriptor& batch_descriptor, DeviceMemoryBase input_data,
       const FilterDescriptor& filter_descriptor, DeviceMemoryBase filter_data,
@@ -2698,7 +2698,7 @@ class DnnSupport {
     return ::tsl::OkStatus();
   }
 
-  virtual port::Status DoPrepareForCtcLoss(
+  virtual tsl::Status DoPrepareForCtcLoss(
       Stream* stream, DataType element_type,
       const RnnStateTensorDescriptor& probs_desc,
       const RnnStateTensorDescriptor& grads_desc,

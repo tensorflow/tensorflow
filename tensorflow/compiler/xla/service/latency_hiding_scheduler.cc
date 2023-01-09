@@ -1321,6 +1321,7 @@ void DefaultSchedulerCore::DumpLatencyHidingSchedule(
     instr_msg->set_start_timestamp_cycles(start_time);
     instr_msg->set_end_timestamp_cycles(end_time);
   }
+  *proto.mutable_hlo_module() = computation->parent()->ToProto();
 
   const std::string fn = absl::StrFormat("%s.schedule", computation->name());
   DumpProtobufToFile(proto, debug_options, fn);

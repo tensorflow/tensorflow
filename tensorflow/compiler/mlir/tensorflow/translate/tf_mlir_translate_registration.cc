@@ -34,8 +34,8 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 
 namespace mlir {
-using stream_executor::port::Status;
 using stream_executor::port::StatusOr;
+using tsl::Status;
 
 namespace {
 inline absl::string_view StringRefToView(llvm::StringRef ref) {

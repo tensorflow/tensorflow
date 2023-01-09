@@ -1665,6 +1665,7 @@ tf_cuda_cc_test(
     srcs = ["conv_ops_test.cc"],
     tags = [
         "no_cuda_asan",  # TODO(b/171342275): re-enable.
+        "no_mac_arm64",
         "requires-gpu-sm70",
     ],
     deps = [
@@ -7477,6 +7478,7 @@ cc_binary(
     linkstatic = 1,
     tags = [
         "manual",
+        "no_mac_arm64",
         "notap",
     ],
     deps = [

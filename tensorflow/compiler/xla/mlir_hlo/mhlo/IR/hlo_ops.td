@@ -1432,6 +1432,7 @@ def MHLO_AllReduceOp : MHLO_Op<"all_reduce",
       "::mlir::Type":$result_type, "::mlir::Value":$operand,
       "::mlir::DenseIntElementsAttr":$replica_groups,
       "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>];
+  let hasVerifier = 1;
 
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
@@ -1556,7 +1557,6 @@ def MHLO_GetTupleElementOp: MHLO_Op<"get_tuple_element", [Pure,
   let results = (outs MHLO_TensorOrTokenOrTuple);
 
   let hasFolder = 1;
-  let hasVerifier = 1;
 
   let assemblyFormat = [{
     $operand `[` $index `]` attr-dict `:` functional-type(operands, results)
@@ -1581,7 +1581,6 @@ def MHLO_TupleOp : MHLO_Op<"tuple", [Pure,
   let results = (outs MHLO_Tuple:$result);
 
   let hasCanonicalizer = 1;
-  let hasVerifier = 1;
 
   let assemblyFormat = [{
     $val attr-dict `:` custom<TupleOpType>(type($val), type($result))
@@ -1671,7 +1670,6 @@ def MHLO_DynamicSliceOp: MHLO_Op<"dynamic_slice",
 
   let results = (outs MHLO_Tensor:$result);
   let hasCanonicalizer = 1;
-  let hasVerifier = 1;
 }
 
 def MHLO_DynamicUpdateSliceOp: MHLO_Op<"dynamic_update_slice",
@@ -1865,7 +1863,6 @@ def MHLO_BroadcastOp : MHLO_ShapedInterfaceOp<"broadcast",
   let results = (outs MHLO_Tensor);
 
   let hasFolder = 1;
-  let hasVerifier = 1;
 }
 
 def MHLO_BroadcastInDimOp : MHLO_Op<"broadcast_in_dim",
@@ -2005,8 +2002,6 @@ def MHLO_ClampOp : MHLO_ShapedInterfaceOp<"clamp", [Pure,
     MHLO_Tensor:$max
   );
   let results = (outs MHLO_Tensor:$result);
-
-  let hasVerifier = 1;
 
   let assemblyFormat = [{
     $min `,` $operand `,` $max attr-dict

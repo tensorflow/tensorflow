@@ -56,6 +56,7 @@ from tensorflow.python.trackable import base
 from tensorflow.python.trackable import data_structures
 from tensorflow.python.trackable import resource
 from tensorflow.python.trackable import trackable_utils
+from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -531,6 +532,8 @@ class Loader(object):
     ckpt = load_status._checkpoint
 
     if not context.executing_eagerly():
+      reader = py_checkpoint_reader.NewCheckpointReader(variables_path)
+
       # When running in eager mode, the `restore` call above has already run and
       # restored the state of trackables, and calling `position.restore_ops()`
       # would re-run the restore. In graph mode, that will return a cached list
@@ -548,7 +551,7 @@ class Loader(object):
               f"not supported in graph mode. The loaded object {obj} uses the "
               f"saver registered with the name {registered_saver}.")
 
-        restore_ops = position.restore_ops()
+        restore_ops = position.restore_ops(reader)
         if restore_ops:
           if resource_variable_ops.is_resource_variable(obj):
             if len(restore_ops) == 1:

@@ -3045,7 +3045,10 @@ cuda_py_test(
     main = "ops/nn_batchnorm_test.py",
     python_version = "PY3",
     shard_count = 4,
-    tags = ["no_windows"],
+    tags = [
+        "no_mac_arm64",
+        "no_windows",
+    ],
     deps = [
         ":array_ops",
         ":client_testlib",

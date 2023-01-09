@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -49,6 +50,10 @@ DatasetDef RangeDatasetWithShardHint(int64_t range);
 // Returns a test dataset representing
 // tf.data.Dataset.range(100000000).repeat().
 DatasetDef InfiniteDataset();
+
+// Returns a distributed snapshot metadata for a dummy dataset.
+experimental::DistributedSnapshotMetadata
+CreateDummyDistributedSnapshotMetadata();
 
 // Returns a test dataset representing
 // tf.data.Dataset.from_tensor_slices(["filenames"]).interleave(

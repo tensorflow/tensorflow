@@ -408,7 +408,7 @@ class OutfeedLowering : public OpRewritePattern<xla_cpu::OutfeedOp> {
     ImplicitLocOpBuilder b(op->getLoc(), rewriter);
 
     // By default all operands are passed to the custom call handler.
-    llvm::SmallVector<Value> operands = op->getOperands();
+    llvm::SmallVector<Value> operands = EnsureFlatMemrefs(op->getOperands(), b);
 
     // Create a custom call function declaration.
     func::FuncOp callee =

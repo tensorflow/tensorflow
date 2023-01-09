@@ -72,6 +72,18 @@ py_library(
 )
 
 py_library(
+    name = "distributed_save_op",
+    srcs = [
+        "distributed_save_op.py",
+    ],
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/util",
+    ],
+)
+
+py_library(
     name = "distribute",
     srcs = [
         "distribute.py",
@@ -426,6 +438,7 @@ py_library(
         ":counter",
         ":data_service_ops",
         ":distribute",
+        ":distributed_save_op",
         ":enumerate_ops",
         ":error_ops",
         ":from_list",

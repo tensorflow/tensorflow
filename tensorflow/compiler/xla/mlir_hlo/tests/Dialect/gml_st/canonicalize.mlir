@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -canonicalize -split-input-file | FileCheck %s
+// RUN: mlir-hlo-opt %s -canonicalize="test-convergence" -split-input-file | FileCheck %s
 
 #map = affine_map<(d0)[s0, s1] -> (d0 * s1 + s0)>
 

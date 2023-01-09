@@ -266,9 +266,6 @@ class _CheckpointRestoreCoordinator:
     self.all_python_objects = object_identity.ObjectIdentityWeakSet()
     self.save_path_tensor = save_path_tensor
     self.save_path_string = save_path
-    self.reader = reader
-    if self.reader is None:
-      self.reader = py_checkpoint_reader.NewCheckpointReader(save_path)
     self.dtype_map = reader.get_variable_to_dtype_map()
     self.shape_map = reader.get_variable_to_shape_map()
     # A NewCheckpointReader for the most recent checkpoint, for streaming Python
@@ -324,10 +321,13 @@ class _CheckpointRestoreCoordinator:
     if self.new_restore_ops_callback:
       self.new_restore_ops_callback(new_ops)  # pylint: disable=not-callable
 
-  def restore_saveables(self,
-                        tensor_saveables,
-                        python_positions,
-                        registered_savers=None):
+  def restore_saveables(
+      self,
+      tensor_saveables,
+      python_positions,
+      registered_savers=None,
+      reader=None,
+  ):
     """Run or build restore operations for SaveableObjects.
 
     Args:
@@ -335,16 +335,20 @@ class _CheckpointRestoreCoordinator:
       python_positions: List of CheckpointPositions bound to `PythonState`
         objects which must be restored eagerly.
       registered_savers: a dict mapping saver names-> object name -> Trackable.
+      reader: A `CheckpointReader`. If None, a new instance will be created.
 
     Returns:
       When graph building, a list of restore operations, either cached or newly
       created, to restore `tensor_saveables`.
     """
+    if reader is None:
+      reader = py_checkpoint_reader.NewCheckpointReader(self.save_path_string)
+
     restore_ops = []
     # Eagerly run restorations for Python state.
     for position in python_positions:
       key = position.object_proto.attributes[0].checkpoint_key
-      position.trackable.deserialize(self.reader.get_tensor(key))
+      position.trackable.deserialize(reader.get_tensor(key))
 
     # If we have new SaveableObjects, extract and cache restore ops.
     if tensor_saveables or registered_savers:
@@ -1445,7 +1449,8 @@ class TrackableSaver:
         options=options,
         saveables_cache=self._saveables_cache)
     restore_lib.CheckpointPosition(
-        checkpoint=checkpoint, proto_id=0).restore(self._graph_view.root)
+        checkpoint=checkpoint, proto_id=0).restore(self._graph_view.root,
+                                                   reader)
 
     # Attached dependencies are not attached to the root, so should be restored
     # separately.
@@ -1472,7 +1477,8 @@ class TrackableSaver:
           continue
 
         restore_lib.CheckpointPosition(
-            checkpoint=checkpoint, proto_id=proto_id).restore(ref.ref)
+            checkpoint=checkpoint,
+            proto_id=proto_id).restore(ref.ref, reader)
 
     load_status = CheckpointLoadStatus(
         checkpoint,

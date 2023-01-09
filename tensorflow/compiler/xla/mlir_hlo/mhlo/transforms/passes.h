@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSES_H
-#define MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSES_H
+#ifndef MLIR_HLO_MHLO_TRANSFORMS_PASSES_H
+#define MLIR_HLO_MHLO_TRANSFORMS_PASSES_H
 
 #include <memory>
 #include <string>
@@ -189,4 +189,4 @@ std::unique_ptr<Pass> createTestUnfuseBatchNormPass();
 }  // namespace mhlo
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSES_H
+#endif  // MLIR_HLO_MHLO_TRANSFORMS_PASSES_H
