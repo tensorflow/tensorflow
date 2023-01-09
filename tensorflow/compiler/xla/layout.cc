@@ -91,8 +91,8 @@ Layout::Layout(const Layout& other)
       physical_shape_(other.physical_shape_ != nullptr
                           ? std::make_unique<Shape>(*other.physical_shape_)
                           : nullptr),
-      dynamic_shape_metadata_prefix_in_bytes_(
-          other.dynamic_shape_metadata_prefix_in_bytes_) {}
+      dynamic_shape_metadata_prefix_bytes_(
+          other.dynamic_shape_metadata_prefix_bytes_) {}
 
 Layout::Layout(Layout&& other) = default;
 
@@ -113,8 +113,8 @@ Layout& Layout::operator=(const Layout& other) {
     } else {
       physical_shape_ = nullptr;
     }
-    dynamic_shape_metadata_prefix_in_bytes_ =
-        other.dynamic_shape_metadata_prefix_in_bytes_;
+    dynamic_shape_metadata_prefix_bytes_ =
+        other.dynamic_shape_metadata_prefix_bytes_;
   }
   return *this;
 }
@@ -145,8 +145,8 @@ Layout& Layout::operator=(Layout&& other) = default;
   if (proto.has_physical_shape()) {
     *layout.mutable_physical_shape() = Shape(proto.physical_shape());
   }
-  layout.set_dynamic_shape_metadata_prefix_in_bytes(
-      proto.dynamic_shape_metadata_prefix_in_bytes());
+  layout.set_dynamic_shape_metadata_prefix_bytes(
+      proto.dynamic_shape_metadata_prefix_bytes());
   return layout;
 }
 
@@ -174,8 +174,8 @@ LayoutProto Layout::ToProto() const {
   if (has_physical_shape()) {
     *proto.mutable_physical_shape() = physical_shape_->ToProto();
   }
-  proto.set_dynamic_shape_metadata_prefix_in_bytes(
-      dynamic_shape_metadata_prefix_in_bytes_);
+  proto.set_dynamic_shape_metadata_prefix_bytes(
+      dynamic_shape_metadata_prefix_bytes_);
   return proto;
 }
 
@@ -250,6 +250,11 @@ std::string Layout::ToString() const {
   if (has_physical_shape()) {
     absl::StrAppend(&colon_string, "P(",
                     physical_shape_->ToString(/*print_layout=*/true), ")");
+  }
+
+  if (dynamic_shape_metadata_prefix_bytes_ > 0) {
+    absl::StrAppend(&colon_string, "M(", dynamic_shape_metadata_prefix_bytes(),
+                    ")");
   }
 
   return absl::StrCat("{", absl::StrJoin(minor_to_major(), ","),

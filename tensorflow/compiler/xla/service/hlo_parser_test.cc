@@ -3917,6 +3917,18 @@ TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
 }
 
+TEST_F(HloParserTest, ParseShapeStringWithDynamicShapeMetadataPrefix) {
+  // Tile, element size, and memory space.
+  std::string shape_string = "f32[123,456]{1,0:T(16,128)M(1024)}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShapeWithDenseLayout(F32, {123, 456}, {1, 0},
+                                                       {Tile({16, 128})});
+  expected.mutable_layout()->set_dynamic_shape_metadata_prefix_bytes(1024);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+}
+
 TEST_F(HloParserTest, ParseOpaqueType) {
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape("opaque[]"));
   Shape expected = ShapeUtil::MakeOpaqueShape();
