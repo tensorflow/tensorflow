@@ -128,6 +128,12 @@ func.func @avgPool2D(%arg0: tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32> {
 }
 
 func.func @avgPool3D(%arg0: tensor<1x6x6x6x16xf32>) -> tensor<1x1x1x1x16xf32> {
+// CHECK-LABEL: func @avgPool3D
+// CHECK:  "tfl.average_pool_3d"(%arg0) {filter_depth = 2 : i32, filter_height = 3 : i32, filter_width = 6 : i32, fused_activation_function = "NONE", padding = "VALID", stride_d = 2 : i32, stride_h = 3 : i32, stride_w = 1 : i32} : (tensor<1x6x6x6x16xf32>) -> tensor<1x1x1x1x16xf32>
+// CHECK:  %1 = "tf.AvgPool3D"(%arg0)
+// CHECK:  %2 = "tf.AvgPool3D"(%arg0)
+// CHECK:  %3 = "tf.AvgPool3D"(%arg0)
+
   // OK
   %0 = "tf.AvgPool3D"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NDHWC", ksize = [1, 2, 3, 6, 1], padding = "VALID", strides = [1, 2, 3, 1, 1]} : (tensor<1x6x6x6x16xf32>) -> tensor<1x1x1x1x16xf32>
   // Unsupported data format
@@ -140,12 +146,6 @@ func.func @avgPool3D(%arg0: tensor<1x6x6x6x16xf32>) -> tensor<1x1x1x1x16xf32> {
   // Collapse into a single return
   %4 = "tf.AddN"(%0, %1, %2, %3) : (tensor<1x1x1x1x16xf32>, tensor<1x1x1x1x16xf32>, tensor<1x1x1x1x16xf32>, tensor<1x1x1x1x16xf32>) -> tensor<1x1x1x1x16xf32>
   func.return %4 : tensor<1x1x1x1x16xf32>
-
-// CHECK-LABEL: func @avgPool3D
-// CHECK:  "tfl.average_pool_3d"(%arg0) {filter_depth = 2 : i32, filter_height = 3 : i32, filter_width = 6 : i32, fused_activation_function = "NONE", padding = "VALID", stride_d = 2 : i32, stride_h = 3 : i32, stride_w = 1 : i32} : (tensor<1x6x6x6x16xf32>) -> tensor<1x1x1x1x16xf32>
-// CHECK:  %1 = "tf.AvgPool3D"(%arg0)
-// CHECK:  %2 = "tf.AvgPool3D"(%arg0)
-// CHECK:  %3 = "tf.AvgPool3D"(%arg0)
 }
 
 func.func @softmax(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
@@ -371,6 +371,12 @@ func.func @maxPool2D(%arg0: tensor<1x1x1x16xf32>) -> tensor<1x1x1x16xf32> {
 }
 
 func.func @maxPool3D(%arg0: tensor<1x1x1x1x16xf32>) -> tensor<1x1x1x1x16xf32> {
+// CHECK-LABEL: func @maxPool3D
+// CHECK:  "tfl.max_pool_3d"(%arg0) {filter_depth = 2 : i32, filter_height = 3 : i32, filter_width = 6 : i32, fused_activation_function = "NONE", padding = "VALID", stride_d = 2 : i32, stride_h = 3 : i32, stride_w = 1 : i32} : (tensor<1x1x1x1x16xf32>) -> tensor<1x1x1x1x16xf32>
+// CHECK:  %1 = "tf.MaxPool3D"(%arg0)
+// CHECK:  %2 = "tf.MaxPool3D"(%arg0)
+// CHECK:  %3 = "tf.MaxPool3D"(%arg0)
+
   // OK
   %0 = "tf.MaxPool3D"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NDHWC", ksize = [1, 2, 3, 6, 1], padding = "VALID", strides = [1, 2, 3, 1, 1]} : (tensor<1x1x1x1x16xf32>) -> tensor<1x1x1x1x16xf32>
 
@@ -386,12 +392,6 @@ func.func @maxPool3D(%arg0: tensor<1x1x1x1x16xf32>) -> tensor<1x1x1x1x16xf32> {
   // Collapse into a single return
   %4 = "tf.AddN"(%0, %1, %2, %3) : (tensor<1x1x1x1x16xf32>, tensor<1x1x1x1x16xf32>, tensor<1x1x1x1x16xf32>, tensor<1x1x1x1x16xf32>) -> tensor<1x1x1x1x16xf32>
   func.return %4 : tensor<1x1x1x1x16xf32>
-
-// CHECK-LABEL: func @maxPool3D
-// CHECK:  "tfl.max_pool_3d"(%arg0) {filter_depth = 2 : i32, filter_height = 3 : i32, filter_width = 6 : i32, fused_activation_function = "NONE", padding = "VALID", stride_d = 2 : i32, stride_h = 3 : i32, stride_w = 1 : i32} : (tensor<1x1x1x1x16xf32>) -> tensor<1x1x1x1x16xf32>
-// CHECK:  %1 = "tf.MaxPool3D"(%arg0)
-// CHECK:  %2 = "tf.MaxPool3D"(%arg0)
-// CHECK:  %3 = "tf.MaxPool3D"(%arg0)
 }
 
 func.func @abs(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
