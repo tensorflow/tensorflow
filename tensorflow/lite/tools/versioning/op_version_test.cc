@@ -1188,4 +1188,25 @@ TEST(OpVersionTest, VersioningGeluTest) {
   fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteUInt8);
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
+
+TEST(OpVersionTest, VersioningUnidirectionalLstmTest) {
+  TfLiteUnidirectionalSequenceLSTMParams params = {};
+  OpSignature fake_op_sig = {};
+  fake_op_sig.op = BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
+      std::vector<TfLiteType>{kTfLiteFloat32, kTfLiteFloat32, kTfLiteFloat32});
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32);
+  fake_op_sig.builtin_data = reinterpret_cast<void*>(&params);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
+      std::vector<TfLiteType>{kTfLiteFloat32, kTfLiteFloat32, kTfLiteInt8});
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  params.asymmetric_quantize_inputs = true;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  params.diagonal_recurrent_tensors = true;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+}
 }  // namespace tflite
