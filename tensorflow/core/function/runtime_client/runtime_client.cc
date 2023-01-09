@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/function/runtime_client.h"
+#include "tensorflow/core/function/runtime_client/runtime_client.h"
 
 #include <memory>
 #include <string>

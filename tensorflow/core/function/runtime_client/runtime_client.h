@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_FUNCTION_RUNTIME_CLIENT_H_
-#define TENSORFLOW_CORE_FUNCTION_RUNTIME_CLIENT_H_
+#ifndef TENSORFLOW_CORE_FUNCTION_RUNTIME_CLIENT_RUNTIME_CLIENT_H_
+#define TENSORFLOW_CORE_FUNCTION_RUNTIME_CLIENT_RUNTIME_CLIENT_H_
 
 #include <vector>
 
@@ -82,4 +82,4 @@ class Runtime {
 }  // namespace core
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_FUNCTION_RUNTIME_CLIENT_H_
+#endif  // TENSORFLOW_CORE_FUNCTION_RUNTIME_CLIENT_RUNTIME_CLIENT_H_

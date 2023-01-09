@@ -3417,7 +3417,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/data/service:py_utils",
-        "//tensorflow/core/function:runtime_client_cc",
+        "//tensorflow/core/function/runtime_client:runtime_client_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/grappler/clusters:cluster",
@@ -3536,7 +3536,7 @@ filegroup(
         "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe
         "//tensorflow/core/framework:attr_value_proto_cc",  # tf_text
         "//tensorflow/core/framework:op_def_proto_cc",  # tf_text
-        "//tensorflow/core/function:runtime_client_cc",  # runtime_client_pybind
+        "//tensorflow/core/function/runtime_client:runtime_client_cc",  # runtime_client_pybind
         "//tensorflow/core/grappler:devices",  # tf_cluster
         "//tensorflow/core/grappler:grappler_item",  # tf_item
         "//tensorflow/core/grappler:grappler_item_builder",  # tf_item

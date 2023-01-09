@@ -16,7 +16,7 @@
 
 from google.protobuf import text_format
 from tensorflow.core.framework import function_pb2
-from tensorflow.core.function import runtime_client
+from tensorflow.core.function.runtime_client import runtime_client
 from tensorflow.core.function.testing import test_pass
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
