@@ -24,7 +24,6 @@ from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.client import pywrap_tf_session
-from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
@@ -938,7 +937,7 @@ class _TapeGradientFunctions(object):
                 grad_ys=gradients_wrt_output_tangents,
                 src_graph=forward_wrapper.graph)
           dinputs = [
-              backprop.aggregate_indexed_slices_gradients((existing, new))
+              backprop_util.AggregateIndexedSlicesGradients((existing, new))
               for existing, new in zip(dinputs, gradients_wrt_inputs)
               if existing is not None or new is not None]
           dinputs.extend(gradients_wrt_inputs[len(dinputs):])
