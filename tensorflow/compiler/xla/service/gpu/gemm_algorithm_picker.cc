@@ -462,6 +462,9 @@ StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
   GemmBackendConfig gemm_config =
       gemm->backend_config<GemmBackendConfig>().value();
   GemmBackendConfig updated_config = gemm_config;
+
+  // We only set the 'algorithm' field on non-Ampere architectures, as for
+  // Ampere it's ignored in any case.
   if (algorithm && !capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
     updated_config.set_selected_algorithm(*algorithm);
   }
