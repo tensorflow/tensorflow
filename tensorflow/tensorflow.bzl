@@ -827,7 +827,6 @@ def tf_cc_shared_library_opensource(
         win_def_file = None,
         visibility = None):
     """Configures the shared object file for TensorFlow."""
-    data_extra = tf_binary_additional_data_deps() if framework_so != [] else []
     names = _get_shared_library_name_os_version_matrix(
         name,
         per_os_targets = per_os_targets,
@@ -851,7 +850,7 @@ def tf_cc_shared_library_opensource(
             name_os_full,
             additional_linker_inputs = additional_linker_inputs,
             copts = copts,
-            data = data + data_extra,
+            data = data,
             deps = deps + framework_so,
             dynamic_deps = dynamic_deps,
             exports_filter = exports_filter,
