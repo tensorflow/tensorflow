@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <gtest/gtest.h>
+
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/security/fuzzing/cc/fuzz_session.h"
 
 namespace tensorflow {
@@ -32,8 +32,8 @@ class FuzzBincount : public FuzzSession<Tensor, int32> {
         tensorflow::ops::Placeholder(scope.WithOpName("input2"), DT_INT32);
     auto op_node3 =
         tensorflow::ops::Placeholder(scope.WithOpName("input3"), DT_INT32);
-    tensorflow::ops::Bincount(scope.WithOpName("output"), 
-                              op_node1, op_node2, op_node3);
+    tensorflow::ops::Bincount(scope.WithOpName("output"), op_node1, op_node2,
+                              op_node3);
   }
   void FuzzImpl(const Tensor& data, const int32& nbins) final {
     Tensor size(DT_INT32, TensorShape({1}));
