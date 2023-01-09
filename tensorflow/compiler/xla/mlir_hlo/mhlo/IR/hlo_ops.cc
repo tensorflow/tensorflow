@@ -87,6 +87,9 @@ namespace mlir {
 #include "hlo_patterns.cc.inc"
 }  // namespace mlir
 
+using mlir::hlo::parseDimSizes;
+using mlir::hlo::printDimSizes;
+
 #include "mhlo/IR/hlo_ops_enums.cc.inc"
 #define GET_ATTRDEF_CLASSES
 #include "mhlo/IR/hlo_ops_attrs.cc.inc"
@@ -6442,35 +6445,26 @@ void MhloDialect::printAttribute(Attribute attr, DialectAsmPrinter& os) const {
 }
 
 /// Helpers for attributes parsing.
-static ParseResult parseDims(AsmParser& parser, SmallVector<int64_t>& dims) {
-  dims.clear();
-  return parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, [&] {
-    dims.emplace_back();
-    return parser.parseInteger(dims.back());
-  });
-}
-
-static ParseResult parseDimsWithMinimumElements(AsmParser& parser,
-                                                SmallVector<int64_t>& dims,
-                                                int minElements) {
-  if (failed(parseDims(parser, dims))) return failure();
-  if (static_cast<int64_t>(dims.size()) < minElements)
-    return parser.emitError(parser.getCurrentLocation())
-           << "expected at least " << minElements << " element(s), found "
-           << dims.size();
+static ParseResult parseDims(AsmParser& parser,
+                             SmallVector<int64_t>& dimSizes) {
+  dimSizes.clear();
+  auto failOrDims = parseDimSizes(parser);
+  if (failed(failOrDims)) {
+    return failure();
+  }
+  dimSizes = std::move(*failOrDims);
   return success();
 }
 
-FailureOr<SmallVector<int64_t>> parseIntArray(AsmParser& parser) {
-  SmallVector<int64_t> ints;
-  if (failed(parseDims(parser, ints))) return failure();
-  return ints;
-}
-
-void printIntArray(AsmPrinter& printer, ArrayRef<int64_t> ints) {
-  printer << '[';
-  llvm::interleaveComma(ints, printer);
-  printer << ']';
+static ParseResult parseDimsWithMinimumElements(AsmParser& parser,
+                                                SmallVector<int64_t>& dimSizes,
+                                                int minElements) {
+  if (failed(parseDims(parser, dimSizes))) return failure();
+  if (static_cast<int64_t>(dimSizes.size()) < minElements)
+    return parser.emitError(parser.getCurrentLocation())
+           << "expected at least " << minElements << " element(s), found "
+           << dimSizes.size();
+  return success();
 }
 
 /// Parse a custom attribute that resembles a struct of the form
@@ -6621,57 +6615,6 @@ Attribute GatherDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
   return GatherDimensionNumbersAttr::get(parser.getContext(), offsetDims,
                                          collapsedSliceDims, startIndexMap,
                                          indexVectorDim);
-}
-
-namespace {
-
-void printCommaSeparatedDynamicShapes(AsmPrinter& printer,
-                                      llvm::ArrayRef<int64_t> shape) {
-  printer << '[';
-  auto printIntOrQuestion = [&](int64_t value) {
-    if (ShapedType::isDynamic(value))
-      printer << '?';
-    else
-      printer << value;
-  };
-  llvm::interleaveComma(shape, printer, printIntOrQuestion);
-  printer << ']';
-}
-
-ParseResult parseCommaSeparatedDynamicShapes(AsmParser& parser,
-                                             SmallVectorImpl<int64_t>& shape) {
-  auto parseElt = [&]() -> ParseResult {
-    if (!parser.parseOptionalQuestion()) {
-      shape.push_back(ShapedType::kDynamic);
-      return success();
-    }
-    return parser.parseInteger(shape.emplace_back());
-  };
-  return parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, parseElt);
-}
-
-}  // namespace
-
-void TypeExtensionsAttr::print(AsmPrinter& printer) const {
-  printer << "<bounds = ";
-  printCommaSeparatedDynamicShapes(printer, getBounds());
-  printer << ">";
-}
-
-Attribute TypeExtensionsAttr::parse(AsmParser& parser, mlir::Type) {
-  if (parser.parseLess() || parser.parseKeyword("bounds") ||
-      parser.parseEqual())
-    return {};
-
-  SmallVector<int64_t> resultBounds;
-  if (parseCommaSeparatedDynamicShapes(parser, resultBounds)) {
-    parser.emitError(parser.getCurrentLocation(),
-                     "failed to parse TypeExtensions parameter 'bounds' which "
-                     "is to be a `::llvm::ArrayRef<int64_t>`");
-    return {};
-  }
-  if (parser.parseGreater()) return {};
-  return TypeExtensionsAttr::get(parser.getContext(), resultBounds);
 }
 
 // Custom printer and parser for DotDimensionNumbersAttr.

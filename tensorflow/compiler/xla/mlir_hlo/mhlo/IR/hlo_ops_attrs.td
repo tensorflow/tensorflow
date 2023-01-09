@@ -21,8 +21,8 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/TensorEncoding.td"
 
 def MHLO_Dims : ArrayRefParameter<"int64_t", "Dimension"> {
-  let parser = "mlir::mhlo::parseIntArray($_parser)";
-  let printer = "mlir::mhlo::printIntArray($_printer, $_self)";
+  let parser = "parseDimSizes($_parser)";
+  let printer = "printDimSizes($_printer, $_self)";
 }
 
 def MHLO_ScatterDimensionNumbers : AttrDef<MHLO_Dialect, "ScatterDimensionNumbers"> {
@@ -277,7 +277,7 @@ def MHLO_TypeExtensions : AttrDef<MHLO_Dialect, "TypeExtensions", [
     See `HLO_BoundedAttrInterface` for documentation for `bounds`.
   }];
 
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = "`<` `bounds` `=` ` ` custom<DimSizes>($bounds) `>`";
 }
 
 // A layout attribute (1D tensor of index type)
