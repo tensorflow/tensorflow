@@ -2567,7 +2567,6 @@ Stream &Stream::ThenEnqueueOnBackgroundThread(
   });
 }
 
-<<<<<<< HEAD
 Stream& Stream::ThenFusedConvolutionBiasActivation(
     const dnn::BatchDescriptor& conv_input_descriptor,
     const DeviceMemory<float>& conv_input_data,
@@ -2788,10 +2787,7 @@ Stream& Stream::ThenFusedBatchNormActivationBackward(
   return *this;
 }
 
-port::Status Stream::BlockHostUntilDone() {
-=======
 tsl::Status Stream::BlockHostUntilDone() {
->>>>>>> upstream/master
   VLOG_CALL();
 
   if (!ok()) {
