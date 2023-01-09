@@ -215,12 +215,10 @@ py_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
-        ":constants",
         ":nested_structure_coder",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:composite_tensor",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:lib",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:util",
