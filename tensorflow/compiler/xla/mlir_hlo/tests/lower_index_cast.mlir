@@ -47,3 +47,14 @@ func.func @f(%arg0 : tensor<42x?xi32>) -> tensor<42x?xindex> {
   %0 = arith.index_cast %arg0 : tensor<42x?xi32> to tensor<42x?xindex>
   func.return %0 : tensor<42x?xindex>
 }
+
+// -----
+
+// CHECK-LABEL: func @index_castui
+func.func @index_castui(%arg0 : tensor<10xi32>) -> tensor<10xindex> {
+  // CHECK: tensor.generate {
+  // CHECK:   %[[C:.*]] = arith.index_castui
+  // CHECK:   tensor.yield %[[C]] : index
+  %0 = arith.index_castui %arg0 : tensor<10xi32> to tensor<10xindex>
+  func.return %0 : tensor<10xindex>
+}
