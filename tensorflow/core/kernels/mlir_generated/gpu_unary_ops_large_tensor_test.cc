@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
 #include <memory>
 #include <utility>
 
@@ -41,6 +42,15 @@ TEST_F(UnaryOpsLargeTensorTest, Abs) {
       "Abs", test::DefaultInputShapeExceedingInt32(),
       test::DefaultInput<float>(), std::abs,
       test::OpsTestConfig().ExpectStrictlyEqual().SuppressTolerance());
+}
+
+/// Test `tf.Atanh`.
+
+TEST_F(UnaryOpsLargeTensorTest, Atanh) {
+  Test<float, float, float, float>("Atanh",
+                                   test::DefaultInputShapeExceedingInt32(),
+                                   test::DefaultInput<float>(), std::atanh,
+                                   test::OpsTestConfig().ExpectStrictlyEqual());
 }
 
 }  // namespace
