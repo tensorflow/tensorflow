@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
 #include "tensorflow/compiler/xla/mlir/xla_cpu/ir/xla_cpu.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 
 namespace xla {
@@ -213,11 +214,15 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
     if (auto xla_shape = op->getAttrOfType<StringAttr>("xla_shape"))
       output_tuple = ParseShape(xla_shape.strref())->IsTuple();
 
+    // This is not equivalent to op.getApiVersionAttr() - that call returns null
+    // if the attribute is absent. getApiVersion returns the default.
+    Attribute api_version =
+        mhlo::CustomCallApiVersionAttr::get(getContext(), op.getApiVersion());
     llvm::SmallVector<NamedAttribute> custom_call_attrs = {
         {b.getStringAttr("num_results"),
          b.getI32IntegerAttr(static_cast<int32_t>(num_results))},
         {b.getStringAttr("output_tuple"), b.getBoolAttr(output_tuple)},
-        {b.getStringAttr("api_version"), op.getApiVersionAttr()},
+        {b.getStringAttr("api_version"), api_version},
         {b.getStringAttr("call_target_name"), op.getCallTargetNameAttr()}};
 
     // Call the runtime intrinsic with the original operands.

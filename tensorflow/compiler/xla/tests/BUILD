@@ -1690,6 +1690,7 @@ xla_test(
         ":hlo_test_base",
         ":literal_test_util",
         ":test_macros_header",
+        ":test_utils",
         ":xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -1702,7 +1703,6 @@ xla_test(
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/base:dynamic_annotations",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
 )
