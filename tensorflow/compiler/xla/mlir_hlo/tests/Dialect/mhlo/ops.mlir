@@ -1225,7 +1225,7 @@ func.func @comp_mismatch_return_shape(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>
 
 // -----
 
-func.func @collective_permute_duplicate_sources(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+func.func @collective_permute_invalid_sources(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
   // expected-error@+1 {{duplicate sources not allowed}}
   %0 = "mhlo.collective_permute"(%arg0) {
     source_target_pairs = dense<[[0, 1], [0, 2], [2, 3]]> : tensor<3x2xi64>
@@ -1235,7 +1235,7 @@ func.func @collective_permute_duplicate_sources(%arg0: tensor<128x32xf32>) -> te
 
 // -----
 
-func.func @collective_permute_duplicate_targets(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+func.func @collective_permute_invalid_destinations(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
   // expected-error@+1 {{duplicate targets not allowed}}
   %0 = "mhlo.collective_permute"(%arg0) {
     source_target_pairs = dense<[[0, 1], [1, 2], [2, 1]]> : tensor<3x2xi64>
@@ -1245,7 +1245,7 @@ func.func @collective_permute_duplicate_targets(%arg0: tensor<128x32xf32>) -> te
 
 // -----
 
-func.func @collective_permute_duplicate_sources(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+func.func @collective_permute_invalid_source_target_pairs(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
   // expected-error@+1 {{expect source_target_pairs attribute to be of rank 2, but got rank 1}}
   %0 = "mhlo.collective_permute"(%arg0) {
     source_target_pairs = dense<[0, 1]> : tensor<2xi64>
@@ -1255,10 +1255,20 @@ func.func @collective_permute_duplicate_sources(%arg0: tensor<128x32xf32>) -> te
 
 // -----
 
-func.func @collective_permute_duplicate_sources(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+func.func @collective_permute_invalid_source_target_pairs(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
   // expected-error@+1 {{expect source_target_pairs attribute of shape (N, 2), but got (2, 3)}}
   %0 = "mhlo.collective_permute"(%arg0) {
     source_target_pairs = dense<[[0, 1, 2], [3, 4, 5]]> : tensor<2x3xi64>
+  } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  func.return %0 : tensor<128x32xf32>
+}
+
+// -----
+
+func.func @collective_permute_invalid_source_target_pairs(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+  // expected-error@+1 {{replica ids in source_target_pairs must be >= 0}}
+  %0 = "mhlo.collective_permute"(%arg0) {
+    source_target_pairs = dense<[[0, 1], [-1, 0]]> : tensor<2x2xi64>
   } : (tensor<128x32xf32>) -> tensor<128x32xf32>
   func.return %0 : tensor<128x32xf32>
 }
