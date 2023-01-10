@@ -150,50 +150,6 @@ tsl::Status GpuExecutor::Init(int device_ordinal,
   return GpuDriver::GetComputeCapability(&cc_major_, &cc_minor_, device_);
 }
 
-std::optional<std::string> GpuExecutor::MakeDeviceDescriptionStr() const {
-  GpuDeviceHandle device;
-  auto status = GpuDriver::GetDevice(device_ordinal_, &device);
-  if (!status.ok()) {
-    return std::nullopt;
-  }
-
-  int cc_major = 0;
-  int cc_minor = 0;
-  GpuDriver::GetComputeCapability(&cc_major, &cc_minor, device).IgnoreError();
-
-  uint64_t device_memory_size = 0;
-  GpuDriver::GetDeviceTotalMemory(device, &device_memory_size);
-
-  auto value_or = [](const auto& status_or, auto default_val) {
-    if (status_or.ok()) return *status_or;
-    return default_val;
-  };
-
-  int core_count = value_or(GpuDriver::GetMultiprocessorCount(device), 0);
-  int sm_clock_khz = value_or(
-      GpuDriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_CLOCK_RATE, device), 0);
-  int mem_clock_khz =
-      value_or(GpuDriver::GetDeviceAttribute(
-                   CU_DEVICE_ATTRIBUTE_MEMORY_CLOCK_RATE, device),
-               0);
-  int l2_cache_bytes = value_or(
-      GpuDriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_L2_CACHE_SIZE, device),
-      0);
-
-  // It would be better to use the PCI device ID or some other truly unique
-  // identifier for the GPU model.  But getting this requires using NVML or
-  // other hacks, which we don't have access to in OSS TensorFlow.
-  //
-  // Alternatively you might be tempted to use GpuDriver::GetDeviceName as a
-  // unique identifier, but this is not stable across GPU VBIOS versions.
-  //
-  // For now, this identifier is good enough.
-  return absl::StrFormat(
-      "sm_%d.%d with %dB RAM, %d cores, %dKHz clock, %dKHz mem clock, %dB L2$",
-      cc_major, cc_minor, device_memory_size, core_count, sm_clock_khz,
-      mem_clock_khz, l2_cache_bytes);
-}
-
 bool GpuExecutor::FindOnDiskForComputeCapability(
     absl::string_view filename, absl::string_view canonical_suffix,
     std::string* found_filename) const {
@@ -1116,12 +1072,12 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
                              CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Z, device)
                              .value();
     builder.set_thread_dim_limit(thread_dim_limit);
-
-    int clock_rate =
-        GpuDriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_CLOCK_RATE, device)
-            .value();
-    builder.set_clock_rate_ghz(static_cast<float>(clock_rate) / 1e6);
   }
+
+  int sm_clock_khz =
+      GpuDriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_CLOCK_RATE, device)
+          .value();
+  builder.set_clock_rate_ghz(static_cast<float>(sm_clock_khz) / 1e6);
 
   {
     bool ecc_enabled = false;
@@ -1129,18 +1085,14 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
     builder.set_ecc_enabled(ecc_enabled);
   }
 
-  {
-    uint64_t device_memory_size = -1;
-    (void)GpuDriver::GetDeviceTotalMemory(device, &device_memory_size);
-    builder.set_device_memory_size(device_memory_size);
-  }
+  uint64_t device_memory_size = static_cast<uint64_t>(-1);
+  (void)GpuDriver::GetDeviceTotalMemory(device, &device_memory_size);
+  builder.set_device_memory_size(device_memory_size);
 
-  {
-    int64_t l2_cache_size =
-        GpuDriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_L2_CACHE_SIZE, device)
-            .value();
-    builder.set_l2_cache_size(l2_cache_size);
-  }
+  int64_t l2_cache_bytes =
+      GpuDriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_L2_CACHE_SIZE, device)
+          .value();
+  builder.set_l2_cache_size(l2_cache_bytes);
 
   port::StatusOr<int> mem_clock_khz = GpuDriver::GetDeviceAttribute(
       CU_DEVICE_ATTRIBUTE_MEMORY_CLOCK_RATE, device_ordinal);
@@ -1178,7 +1130,8 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
       GpuDriver::GetMaxSharedMemoryPerCore(device).value());
   builder.set_shared_memory_per_block(
       GpuDriver::GetMaxSharedMemoryPerBlock(device).value());
-  builder.set_core_count(GpuDriver::GetMultiprocessorCount(device).value());
+  int core_count = GpuDriver::GetMultiprocessorCount(device).value();
+  builder.set_core_count(core_count);
   builder.set_fpus_per_core(fpus_per_core(cc_major, cc_minor));
   builder.set_threads_per_core_limit(
       GpuDriver::GetMaxThreadsPerMultiprocessor(device).value());
@@ -1189,6 +1142,24 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
       GpuDriver::GetDeviceAttribute(
           CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_MULTIPROCESSOR, device)
           .value());
+
+  auto value_or = [](const auto& status_or, auto default_val) {
+    if (status_or.ok()) return *status_or;
+    return default_val;
+  };
+
+  // It would be better to use the PCI device ID or some other truly unique
+  // identifier for the GPU model.  But getting this requires using NVML or
+  // other hacks, which we don't have access to in OSS TensorFlow.
+  //
+  // Alternatively you might be tempted to use GpuDriver::GetDeviceName as a
+  // unique identifier, but this is not stable across GPU VBIOS versions.
+  //
+  // For now, this identifier is good enough.
+  builder.set_model_str(absl::StrFormat(
+      "sm_%d.%d with %dB RAM, %d cores, %dKHz clock, %dKHz mem clock, %dB L2$",
+      cc_major, cc_minor, device_memory_size, core_count, sm_clock_khz,
+      value_or(mem_clock_khz, 0), l2_cache_bytes));
 
   return builder.Build();
 }

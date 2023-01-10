@@ -51,10 +51,10 @@ class GemmAlgorithmPicker : public HloModulePass {
   };
 
   struct DevicelessConfig {
-    // The human-readable description of the device.
-    // It can be found by using stream_exec->device_description_str() when the
-    // stream executor is available.
-    std::string device_description_str;
+    // The human-readable description of the device.  It can be found by using
+    // stream_exec->GetDeviceDescription().model_str() when the stream executor
+    // is available.
+    std::string model_str;
 
     // A field to determine the architecture of the device. We only pick an
     // algorithm for non-Ampere architectures.

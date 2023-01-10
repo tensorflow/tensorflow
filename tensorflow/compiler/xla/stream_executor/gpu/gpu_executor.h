@@ -109,10 +109,9 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   tsl::Status Init(int device_ordinal, DeviceOptions device_options) override;
 
-  std::optional<std::string> MakeDeviceDescriptionStr() const override;
-
   tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
                         KernelBase* kernel) override;
+
   // (supported on CUDA only)
   void UnloadKernel(const KernelBase* kernel) override;
   tsl::Status LoadModule(const MultiModuleLoaderSpec& spec,

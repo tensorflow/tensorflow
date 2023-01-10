@@ -311,7 +311,7 @@ StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
 #endif
 
 using ConvCacheKey =
-    std::tuple<std::string /* stream_exec->device_description_str() */,
+    std::tuple<std::string /* stream_exec->GetDeviceDescription().model_str()*/,
                std::string /* conv->ToString(HloPrintOptions::Canonical()) */>;
 
 struct ConvCacheStats {
@@ -328,7 +328,7 @@ ConvCacheKey AutotuneCacheKeyfromInstruction(
     const HloCustomCallInstruction* conv, se::StreamExecutor* se) {
   auto options = HloPrintOptions::Canonical();
   options.set_print_backend_config(true);
-  return std::make_tuple(std::string(se->device_description_str()),
+  return std::make_tuple(se->GetDeviceDescription().model_str(),
                          conv->ToString(options));
 }
 
@@ -349,9 +349,9 @@ Status GpuConvAlgorithmPicker::WriteAutotuneResults(AutotuneResults* results) {
   absl::MutexLock lock(&autotune_cache_mu);
 
   for (const auto& [k, result] : autotune_cache) {
-    const auto& [device_description_str, hlo] = k;
+    const auto& [model_str, hlo] = k;
     auto& entry = *results->add_convs();
-    entry.set_device(device_description_str);
+    entry.set_device(model_str);
     entry.set_hlo(hlo);
     *entry.mutable_result() = result;
   }
