@@ -79,7 +79,7 @@ class BroadcastToOpTest : public ::testing::Test {};
 using DataTypes = ::testing::Types<float, uint8_t, int8_t, int16_t, int32_t>;
 TYPED_TEST_SUITE(BroadcastToOpTest, DataTypes);
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TYPED_TEST(BroadcastToOpTest, ShapeMustBe1D) {
   EXPECT_DEATH(
       BroadcastToOpModel<TypeParam>({2, 3, 4, 4}, {2, 2}, {2, 3, 4, 4}), "");

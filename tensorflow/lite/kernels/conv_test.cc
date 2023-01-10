@@ -1676,7 +1676,7 @@ class PerChannelQuantizedConvolutionOpModel
   }
 };
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST_P(ConvolutionOpTest, AsymmetricPerchannelQuantization) {
   EXPECT_DEATH(PerChannelQuantizedConvolutionOpModel m(
                    GetRegistration(),
