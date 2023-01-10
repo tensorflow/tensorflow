@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-TEST(Reshape, 4DShapeAsInput) {
+TEST(UnsignedQuantizedReshape, 4DShapeAsInput) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -45,10 +45,10 @@ TEST(Reshape, 4DShapeAsInput) {
       .InputShape(input_shape)
       .OutputShape(output_shape)
       .OutputShapeAsInput(true)
-      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+      .Test(TensorType_UINT8, xnnpack_delegate.get());
 }
 
-TEST(Reshape, 4DShapeAsParam) {
+TEST(UnsignedQuantizedReshape, 4DShapeAsParam) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -66,10 +66,10 @@ TEST(Reshape, 4DShapeAsParam) {
       .InputShape(input_shape)
       .OutputShape(output_shape)
       .OutputShapeAsInput(false)
-      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+      .Test(TensorType_UINT8, xnnpack_delegate.get());
 }
 
-TEST(Reshape, 3DShapeAsInput) {
+TEST(UnsignedQuantizedReshape, 3DShapeAsInput) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -87,10 +87,10 @@ TEST(Reshape, 3DShapeAsInput) {
       .InputShape(input_shape)
       .OutputShape(output_shape)
       .OutputShapeAsInput(true)
-      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+      .Test(TensorType_UINT8, xnnpack_delegate.get());
 }
 
-TEST(Reshape, 3DShapeAsParam) {
+TEST(UnsignedQuantizedReshape, 3DShapeAsParam) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -108,10 +108,10 @@ TEST(Reshape, 3DShapeAsParam) {
       .InputShape(input_shape)
       .OutputShape(output_shape)
       .OutputShapeAsInput(false)
-      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+      .Test(TensorType_UINT8, xnnpack_delegate.get());
 }
 
-TEST(Reshape, 2DShapeAsInput) {
+TEST(UnsignedQuantizedReshape, 2DShapeAsInput) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -128,10 +128,10 @@ TEST(Reshape, 2DShapeAsInput) {
       .InputShape(input_shape)
       .OutputShape(output_shape)
       .OutputShapeAsInput(true)
-      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+      .Test(TensorType_UINT8, xnnpack_delegate.get());
 }
 
-TEST(Reshape, 2DShapeAsParam) {
+TEST(UnsignedQuantizedReshape, 2DShapeAsParam) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -148,10 +148,10 @@ TEST(Reshape, 2DShapeAsParam) {
       .InputShape(input_shape)
       .OutputShape(output_shape)
       .OutputShapeAsInput(false)
-      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+      .Test(TensorType_UINT8, xnnpack_delegate.get());
 }
 
-TEST(Reshape, 1DShapeAsInput) {
+TEST(UnsignedQuantizedReshape, 1DShapeAsInput) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -166,10 +166,10 @@ TEST(Reshape, 1DShapeAsInput) {
       .InputShape(shape)
       .OutputShape(shape)
       .OutputShapeAsInput(true)
-      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+      .Test(TensorType_UINT8, xnnpack_delegate.get());
 }
 
-TEST(Reshape, 1DShapeAsParam) {
+TEST(UnsignedQuantizedReshape, 1DShapeAsParam) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -184,10 +184,10 @@ TEST(Reshape, 1DShapeAsParam) {
       .InputShape(shape)
       .OutputShape(shape)
       .OutputShapeAsInput(false)
-      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+      .Test(TensorType_UINT8, xnnpack_delegate.get());
 }
 
-TEST(Reshape, 0D) {
+TEST(UnsignedQuantizedReshape, 0D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -195,10 +195,10 @@ TEST(Reshape, 0D) {
   ReshapeTester()
       .InputShape(std::vector<int32_t>())
       .OutputShape(std::vector<int32_t>())
-      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+      .Test(TensorType_UINT8, xnnpack_delegate.get());
 }
 
-TEST(Reshape, MultiThreading) {
+TEST(UnsignedQuantizedReshape, MultiThreading) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.num_threads = 2;
@@ -219,7 +219,7 @@ TEST(Reshape, MultiThreading) {
       .InputShape(input_shape)
       .OutputShape(output_shape)
       .OutputShapeAsInput(true)
-      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+      .Test(TensorType_UINT8, xnnpack_delegate.get());
 }
 
 }  // namespace xnnpack
