@@ -98,16 +98,6 @@ bool isIdentitySlice(ValueRange offsets, ValueRange strides);
 /// Returns true if `lhs` and `rhs` are of same static shape.
 bool haveSameStaticShape(Value lhs, Value rhs);
 
-/// Perform standalone tiling of a single LinalgOp by `tileSizes`.
-/// An empty vector is interpreted as the identity permutation and the
-/// transformation returns early.
-///
-/// Return a struct containing the tiled loops in the specified order
-/// and the cloned op if successful, std::nullopt otherwise.
-FailureOr<linalg::TiledLinalgOp> tileLinalgOp(
-    RewriterBase &b, linalg::LinalgOp op,
-    const linalg::LinalgTilingOptions &options);
-
 // Sets the attribute to the `op` that indicates that the op was transformed.
 void setLabel(Operation *op, StringRef name);
 

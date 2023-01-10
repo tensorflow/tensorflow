@@ -175,21 +175,12 @@ PeelingResult peelAllLoopsImpl(LoopTy loop, mlir::PatternRewriter &rewriter) {
 }
 }  // namespace
 
-PeelingResult peelAllLoops(LoopOp loop, mlir::PatternRewriter &rewriter) {
-  return peelAllLoopsImpl<LoopOp>(loop, rewriter);
-}
-
 PeelingResult peelAllLoops(ForOp loop, mlir::PatternRewriter &rewriter) {
   return peelAllLoopsImpl<ForOp>(loop, rewriter);
 }
 
 PeelingResult peelAllLoops(ParallelOp loop, mlir::PatternRewriter &rewriter) {
   return peelAllLoopsImpl<ParallelOp>(loop, rewriter);
-}
-
-FailureOr<LoopOp> peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
-                                               LoopOp loopOp, int64_t idx) {
-  return peelAndCanonicalizeGmlStLoopImpl<LoopOp>(rewriter, loopOp, idx);
 }
 
 FailureOr<ForOp> peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,

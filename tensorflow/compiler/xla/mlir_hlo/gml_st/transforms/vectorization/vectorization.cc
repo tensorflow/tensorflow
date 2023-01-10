@@ -673,7 +673,7 @@ RewritePatternSet getDefaultVectorizationPatterns(MLIRContext *ctx) {
 
 bool isInsideGmlStLoop(Operation *op) {
   Operation *parent = op->getParentOp();
-  return isa<LoopOp>(parent) || isa<ParallelOp>(parent) || isa<ForOp>(parent);
+  return isa<ParallelOp>(parent) || isa<ForOp>(parent);
 }
 
 bool isFillTiledOrSmall(FillOp fill) {

@@ -115,8 +115,11 @@ SmallVector<Value> ExtractValuesToPrint(Operation* op) {
   if (auto linalg = dyn_cast<linalg::LinalgOp>(op)) {
     return linalg.getDpsInitOperands();
   }
-  if (auto loop = dyn_cast<gml_st::LoopOp>(op)) {
-    return loop.getOutputs();
+  if (auto loop = dyn_cast<gml_st::ForOp>(op)) {
+    return loop.getLoopLikeOpInits();
+  }
+  if (auto loop = dyn_cast<gml_st::ParallelOp>(op)) {
+    return loop.getLoopLikeOpInits();
   }
   if (auto loop = dyn_cast<scf::ForOp>(op)) {
     return loop.getIterOperands();

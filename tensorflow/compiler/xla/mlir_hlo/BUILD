@@ -1577,9 +1577,6 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "gml_st/IR/gml_st_ops.td",
-    td_srcs = [
-        "gml_st/IR/gml_st_legacy_ops.td",
-    ],
     deps = [":gml_st_ops_td_files"],
 )
 
