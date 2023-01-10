@@ -67,12 +67,15 @@ LogicalResult peelLoop(RewriterBase &b, LoopTy loopOp, int64_t idx,
   Value lb = loopOp.getLowerBound()[idx], ub = loopOp.getUpperBound()[idx],
         step = loopOp.getStep()[idx];
   auto ubInt = getConstantIntValue(ub);
+  auto stepInt = getConstantIntValue(step);
+  // No specialization necessary if step is greater than upper bound.
+  if (ubInt && stepInt && ubInt < stepInt) return failure();
 
   auto loc = loopOp.getLoc();
   AffineExpr exprLb, exprUb, exprStep;
   bindSymbols(b.getContext(), exprLb, exprUb, exprStep);
   // New upper bound: %ub - (%ub - %lb) mod %step
-  auto modMap = AffineMap::get(0, 3, {exprUb - ((exprUb - exprLb) % exprStep)});
+  auto modMap = AffineMap::get(0, 3, exprUb - ((exprUb - exprLb) % exprStep));
   SmallVector<Value> operands{lb, ub, step};
   canonicalizeMapAndOperands(&modMap, &operands);
   modMap = simplifyAffineMap(modMap);
