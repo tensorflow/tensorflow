@@ -533,7 +533,8 @@ def tf_gen_op_libs(
         sub_directory = "ops/",
         deps = None,
         is_external = True,
-        compatible_with = None):
+        compatible_with = None,
+        features = []):
     # Make library out of each op so it can also be used to generate wrappers
     # for various languages.
     if not deps:
@@ -542,6 +543,7 @@ def tf_gen_op_libs(
         cc_library(
             name = n + "_op_lib",
             copts = tf_copts(is_external = is_external),
+            features = features,
             srcs = [sub_directory + n + ".cc"],
             deps = deps + [clean_dep("//tensorflow/core:framework")],
             compatible_with = compatible_with,
