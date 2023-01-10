@@ -670,6 +670,7 @@ class FusedMatMulBiasAddAndGeluTest : public GrapplerTest {
     // Add Gelu approximate with smaller ops
     auto square_root_one_half_const =
         ops::Const(s.WithOpName("square_root_one_half_const"), {0.707106f}, {});
+    // For some cases, eg. BF16, there will be a Cast, Const -> Cast -> Mul
     auto square_root_one_half = ops::Cast(s.WithOpName("square_root_one_half"),
                                           square_root_one_half_const, DTYPE);
     auto bias_add_times_square_root_one_half =
@@ -679,11 +680,13 @@ class FusedMatMulBiasAddAndGeluTest : public GrapplerTest {
         ops::Erf(s.WithOpName("erf"), bias_add_times_square_root_one_half);
 
     auto one_const = ops::Const(s.WithOpName("one_const"), {1.0f}, {});
+    // For some cases, eg. BF16, there will be a Cast, Const -> Cast -> AddV2
     auto one = ops::Cast(s.WithOpName("one"), one_const, DTYPE);
     auto erf_plus_one = ops::AddV2(s.WithOpName("one_plus_erf"), erf, one);
 
     auto one_half_const =
         ops::Const(s.WithOpName("one_half_const"), {0.5f}, {});
+    // For some cases, eg. BF16, there will be a Cast, Const -> Cast -> Mul
     auto one_half = ops::Cast(s.WithOpName("one_half"), one_half_const, DTYPE);
 
     Output gelu;
