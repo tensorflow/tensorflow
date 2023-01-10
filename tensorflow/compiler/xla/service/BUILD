@@ -69,6 +69,12 @@ tf_proto_library(
     cc_api_version = 2,
 )
 
+xla_py_proto_library(
+    name = "metrics_pb2",
+    api_version = 2,
+    deps = [":metrics_proto"],
+)
+
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",

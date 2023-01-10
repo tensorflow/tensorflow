@@ -56,6 +56,7 @@ py_library(
         ":system_info_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
+        "@absl_py//absl/logging",
         "@six_archive//:six",
     ],
 )
