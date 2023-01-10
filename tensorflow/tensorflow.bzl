@@ -303,7 +303,7 @@ if_nccl = _if_nccl
 
 def if_zendnn(if_true, if_false = []):
     return select({
-        "//tensorflow:linux_x86_64": if_true,
+        clean_dep("//tensorflow:linux_x86_64"): if_true,
         "//conditions:default": if_false,
     })
 
@@ -1418,7 +1418,7 @@ def tf_gen_op_wrapper_py(
         out = op_reg_offset_out,
         # Feed an empty dep list if not indexing to skip unnecessary aspect propagation.
         deps = select({
-            "//tensorflow:api_indexable": deps,
+            clean_dep("//tensorflow:api_indexable"): deps,
             "//conditions:default": [],
         }),
         tf_binary_additional_srcs = tf_binary_additional_srcs(),
