@@ -22,6 +22,9 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+// Returns the directory path for the assigned streams of a snapshot.
+std::string StreamsDirectory(absl::string_view snapshot_path);
+
 // Returns the directory path for a worker writing one stream of the snapshot.
 std::string StreamDirectory(absl::string_view snapshot_path,
                             int64_t stream_index);

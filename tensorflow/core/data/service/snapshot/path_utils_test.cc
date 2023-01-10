@@ -22,6 +22,11 @@ namespace {
 
 using ::testing::MatchesRegex;
 
+TEST(PathUtilsTest, StreamsDirectory) {
+  EXPECT_THAT(StreamsDirectory("/path/to/snapshot"),
+              MatchesRegex("/path/to/snapshot.streams"));
+}
+
 TEST(PathUtilsTest, StreamDirectory) {
   EXPECT_THAT(StreamDirectory("/path/to/snapshot", /*stream_index=*/0),
               MatchesRegex("/path/to/snapshot.streams.stream_0"));

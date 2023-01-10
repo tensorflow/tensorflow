@@ -25,11 +25,17 @@ namespace data {
 namespace {
 
 constexpr const char kDoneFileName[] = "DONE";
+constexpr const char kStreamsDirectoryName[] = "streams";
+constexpr const char kSplitsDirectoryName[] = "splits";
 constexpr const char kCheckpointsDirectoryName[] = "checkpoints";
 constexpr const char kCommittedChunksDirectoryName[] = "committed_chunks";
 constexpr const char kUncommittedChunksDirectoryName[] = "uncommitted_chunks";
 
 }  // namespace
+
+std::string StreamsDirectory(absl::string_view snapshot_path) {
+  return tsl::io::JoinPath(snapshot_path, kStreamsDirectoryName);
+}
 
 std::string StreamDirectory(absl::string_view snapshot_path,
                             int64_t stream_index) {
@@ -40,7 +46,7 @@ std::string StreamDirectory(absl::string_view snapshot_path,
 std::string SplitsDirectory(absl::string_view snapshot_path,
                             int64_t stream_index) {
   return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_index),
-                           absl::StrCat("splits"));
+                           kSplitsDirectoryName);
 }
 
 std::string SourceDirectory(absl::string_view snapshot_path,
