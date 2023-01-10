@@ -529,3 +529,15 @@ tf_mkl_kernel_library(
         "//tensorflow/cc:scope",
     ],
 )
+
+tf_cc_test_mkl(
+    name = "onednn_nn_ops_benchmark",
+    size = "small",
+    srcs = ["onednn_nn_ops_benchmark.cc"],
+    linkstatic = 1,
+    deps = [
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/core/kernels:softmax_op",
+        "//tensorflow/core/kernels/mkl:mkl_softmax_op",
+    ] + MKL_TEST_DEPS,
+)
