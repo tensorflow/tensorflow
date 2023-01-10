@@ -79,9 +79,9 @@ class MIOpenSupport : public dnn::DnnSupport {
   explicit MIOpenSupport(GpuExecutor* parent);
 
   tsl::Status Init() override;
-  port::StatusOr<perftools::gputools::dnn::VersionInfo> GetVersion() override;
+  tsl::StatusOr<perftools::gputools::dnn::VersionInfo> GetVersion() override;
 
-  port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
+  tsl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
       int num_layers, int hidden_size, int input_size, int cell_size,
       int batch_size, dnn::RnnInputMode input_mode,
       dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
@@ -89,12 +89,12 @@ class MIOpenSupport : public dnn::DnnSupport {
       float dropout, uint64_t seed, ScratchAllocator* state_allocator,
       bool use_padded_io) override;
 
-  port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
                                     int data_size,
                                     dnn::DataType data_type) override;
 
-  port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
+  tsl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
   createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type) override;
 
@@ -250,7 +250,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_runners)
       override;
 
-  port::StatusOr<std::unique_ptr<const dnn::ConvRunner>> ConvolveRunnerFromDesc(
+  tsl::StatusOr<std::unique_ptr<const dnn::ConvRunner>> ConvolveRunnerFromDesc(
       Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
       dnn::ConvolutionKind kind, dnn::DataType input_type,
       dnn::DataType output_type, const dnn::BatchDescriptor& input_descriptor,

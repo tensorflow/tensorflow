@@ -33,7 +33,7 @@ const ::stream_executor::Platform::Id TpuPlatform::kId = GetTpuPlatformId();
 TpuPlatform* tpu_registered_platform = nullptr;
 
 template <typename T>
-using StatusOr = ::stream_executor::port::StatusOr<T>;
+using StatusOr = ::tsl::StatusOr<T>;
 
 TpuPlatform::TpuPlatform() : name_("TPU") {
   platform_ = stream_executor::tpu::ExecutorApiFn()->TpuPlatform_NewFn();

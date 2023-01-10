@@ -48,7 +48,7 @@ string DriverVersionToString(DriverVersion version) {
                          std::get<2>(version));
 }
 
-string DriverVersionStatusToString(port::StatusOr<DriverVersion> version) {
+string DriverVersionStatusToString(tsl::StatusOr<DriverVersion> version) {
   if (!version.ok()) {
     return version.status().ToString();
   }
@@ -56,7 +56,7 @@ string DriverVersionStatusToString(port::StatusOr<DriverVersion> version) {
   return DriverVersionToString(version.value());
 }
 
-port::StatusOr<DriverVersion> StringToDriverVersion(const string& value) {
+tsl::StatusOr<DriverVersion> StringToDriverVersion(const string& value) {
   std::vector<string> pieces = absl::StrSplit(value, '.');
   if (pieces.size() != 2 && pieces.size() != 3) {
     return tsl::Status{port::error::INVALID_ARGUMENT,
@@ -138,11 +138,11 @@ void Diagnostician::LogDiagnosticInformation() {
       closedir(dir);
     }
   }
-  port::StatusOr<DriverVersion> dso_version = FindDsoVersion();
+  tsl::StatusOr<DriverVersion> dso_version = FindDsoVersion();
   LOG(INFO) << "librocm reported version is: "
             << rocm::DriverVersionStatusToString(dso_version);
 
-  port::StatusOr<DriverVersion> kernel_version = FindKernelDriverVersion();
+  tsl::StatusOr<DriverVersion> kernel_version = FindKernelDriverVersion();
   LOG(INFO) << "kernel reported version is: "
             << rocm::DriverVersionStatusToString(kernel_version);
 
@@ -153,8 +153,8 @@ void Diagnostician::LogDiagnosticInformation() {
 
 // Iterates through loaded DSOs with DlIteratePhdrCallback to find the
 // driver-interfacing DSO version number. Returns it as a string.
-port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
-  port::StatusOr<DriverVersion> result{tsl::Status{
+tsl::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
+  tsl::StatusOr<DriverVersion> result{tsl::Status{
       port::error::NOT_FOUND,
       "was unable to find librocm.so DSO loaded into this program"}};
 
@@ -181,7 +181,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
       string dso_version = dot + strlen(so_suffix);
       // TODO(b/22689637): Eliminate the explicit namespace if possible.
       auto stripped_dso_version = absl::StripSuffix(dso_version, ".ld64");
-      auto result = static_cast<port::StatusOr<DriverVersion>*>(data);
+      auto result = static_cast<tsl::StatusOr<DriverVersion>*>(data);
       *result = rocm::StringToDriverVersion(string(stripped_dso_version));
       return 1;
     }
@@ -193,7 +193,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
   return result;
 }
 
-port::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
+tsl::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
     const string& driver_version_file_contents) {
   static const char* kDriverFilePrelude = "Kernel Module  ";
   size_t offset = driver_version_file_contents.find(kDriverFilePrelude);
@@ -215,8 +215,8 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
 }
 
 void Diagnostician::WarnOnDsoKernelMismatch(
-    port::StatusOr<DriverVersion> dso_version,
-    port::StatusOr<DriverVersion> kernel_version) {
+    tsl::StatusOr<DriverVersion> dso_version,
+    tsl::StatusOr<DriverVersion> kernel_version) {
   if (kernel_version.ok() && dso_version.ok() &&
       dso_version.value() == kernel_version.value()) {
     LOG(INFO) << "kernel version seems to match DSO: "
@@ -230,7 +230,7 @@ void Diagnostician::WarnOnDsoKernelMismatch(
   }
 }
 
-port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
+tsl::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   auto status = tsl::Status{port::error::UNIMPLEMENTED,
                             "kernel reported driver version not implemented"};
   return status;

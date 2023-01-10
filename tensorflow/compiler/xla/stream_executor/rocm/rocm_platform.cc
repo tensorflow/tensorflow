@@ -73,7 +73,7 @@ int ROCmPlatform::DeviceToBus(int device_ordinal) {
   return exec->GetDeviceDescription().numa_node() - min_numa_node_;
 }
 
-port::StatusOr<StreamExecutor*> ROCmPlatform::FirstExecutorForBus(
+tsl::StatusOr<StreamExecutor*> ROCmPlatform::FirstExecutorForBus(
     int bus_ordinal) {
   InspectNumaNodes();
   CHECK_LT(bus_ordinal, BusCount()) << "bus ordinal out of available range";
@@ -105,12 +105,12 @@ int ROCmPlatform::VisibleDeviceCount() const {
 
 const string& ROCmPlatform::Name() const { return name_; }
 
-port::StatusOr<std::unique_ptr<DeviceDescription>>
+tsl::StatusOr<std::unique_ptr<DeviceDescription>>
 ROCmPlatform::DescriptionForDevice(int ordinal) const {
   return GpuExecutor::CreateDeviceDescription(ordinal);
 }
 
-port::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
+tsl::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
   config.plugin_config = PluginConfig();
@@ -118,7 +118,7 @@ port::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
   return GetExecutor(config);
 }
 
-port::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDeviceWithPluginConfig(
+tsl::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDeviceWithPluginConfig(
     int device_ordinal, const PluginConfig& plugin_config) {
   StreamExecutorConfig config;
   config.ordinal = device_ordinal;
@@ -127,7 +127,7 @@ port::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDeviceWithPluginConfig(
   return GetExecutor(config);
 }
 
-port::StatusOr<StreamExecutor*> ROCmPlatform::GetExecutor(
+tsl::StatusOr<StreamExecutor*> ROCmPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   if (config.gpu_stream) {
     // If the GPU stream was provided, it's not possible to get-or-create a
@@ -139,7 +139,7 @@ port::StatusOr<StreamExecutor*> ROCmPlatform::GetExecutor(
       config, [&]() { return GetUncachedExecutor(config); });
 }
 
-port::StatusOr<std::unique_ptr<StreamExecutor>>
+tsl::StatusOr<std::unique_ptr<StreamExecutor>>
 ROCmPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = std::make_unique<StreamExecutor>(
       this, std::make_unique<GpuExecutor>(config.plugin_config),

@@ -40,7 +40,7 @@ namespace tensorflow {
 namespace tpu {
 
 template <typename T>
-using StatusOr = stream_executor::port::StatusOr<T>;
+using StatusOr = tsl::StatusOr<T>;
 
 TpuTransferManager::TpuTransferManager() {
   manager_ = stream_executor::tpu::ExecutorApiFn()->TpuTransferManager_NewFn();

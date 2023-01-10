@@ -110,7 +110,7 @@ bool IsTpuUsed(int64_t pid) {
 // permission to processes owned by another user.
 // TODO (shahrokhi) use tensorflow/core/platform/filesystem (GetChildren) for
 // this.
-stream_executor::port::StatusOr<int64_t> FindLibtpuProcess() {
+tsl::StatusOr<int64_t> FindLibtpuProcess() {
   DIR* proc = opendir("/proc");
 
   if (proc == nullptr) {

@@ -115,7 +115,7 @@ bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
   return UnloadGpuBinary(gpu_binary);
 }
 
-port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 GpuExecutor::CreateOrShareConstant(Stream* stream,
                                    const std::vector<uint8_t>& content) {
   return port::UnimplementedError("Not implemented for ROCm");
@@ -661,7 +661,7 @@ tsl::Status GpuExecutor::BlockHostUntilDone(Stream* stream) {
 
 blas::BlasSupport* GpuExecutor::CreateBlas() {
   PluginRegistry* registry = PluginRegistry::Instance();
-  port::StatusOr<PluginRegistry::BlasFactory> status =
+  tsl::StatusOr<PluginRegistry::BlasFactory> status =
       registry->GetFactory<PluginRegistry::BlasFactory>(rocm::kROCmPlatformId,
                                                         plugin_config_.blas());
   if (!status.ok()) {
@@ -675,7 +675,7 @@ blas::BlasSupport* GpuExecutor::CreateBlas() {
 
 dnn::DnnSupport* GpuExecutor::CreateDnn() {
   PluginRegistry* registry = PluginRegistry::Instance();
-  port::StatusOr<PluginRegistry::DnnFactory> status =
+  tsl::StatusOr<PluginRegistry::DnnFactory> status =
       registry->GetFactory<PluginRegistry::DnnFactory>(rocm::kROCmPlatformId,
                                                        plugin_config_.dnn());
   if (!status.ok()) {
@@ -689,7 +689,7 @@ dnn::DnnSupport* GpuExecutor::CreateDnn() {
 
 fft::FftSupport* GpuExecutor::CreateFft() {
   PluginRegistry* registry = PluginRegistry::Instance();
-  port::StatusOr<PluginRegistry::FftFactory> status =
+  tsl::StatusOr<PluginRegistry::FftFactory> status =
       registry->GetFactory<PluginRegistry::FftFactory>(rocm::kROCmPlatformId,
                                                        plugin_config_.fft());
   if (!status.ok()) {
@@ -703,7 +703,7 @@ fft::FftSupport* GpuExecutor::CreateFft() {
 
 rng::RngSupport* GpuExecutor::CreateRng() {
   PluginRegistry* registry = PluginRegistry::Instance();
-  port::StatusOr<PluginRegistry::RngFactory> status =
+  tsl::StatusOr<PluginRegistry::RngFactory> status =
       registry->GetFactory<PluginRegistry::RngFactory>(rocm::kROCmPlatformId,
                                                        plugin_config_.rng());
   if (!status.ok()) {
@@ -859,7 +859,7 @@ static int TryToReadNumaNode(const string& pci_bus_id, int device_ordinal) {
   return kUnknownNumaNode;
 }
 
-port::StatusOr<std::unique_ptr<DeviceDescription>>
+tsl::StatusOr<std::unique_ptr<DeviceDescription>>
 GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   GpuDeviceHandle device;
   auto status = GpuDriver::GetDevice(device_ordinal, &device);

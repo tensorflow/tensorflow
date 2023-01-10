@@ -42,7 +42,7 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
   static const ::stream_executor::Platform::Id kId;
 
   template <typename T>
-  using StatusOr = ::stream_executor::port::StatusOr<T>;
+  using StatusOr = ::tsl::StatusOr<T>;
 
   TpuPlatform();
 

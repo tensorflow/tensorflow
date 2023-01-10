@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 /*static*/
 StatusOr<std::unique_ptr<TpuNodeContext>> TpuNodeContext::Create(

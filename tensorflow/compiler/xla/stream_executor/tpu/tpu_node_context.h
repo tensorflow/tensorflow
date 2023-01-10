@@ -40,7 +40,7 @@ namespace tpu {
 class TpuNodeContext final {
  public:
   template <typename T>
-  using StatusOr = stream_executor::port::StatusOr<T>;
+  using StatusOr = tsl::StatusOr<T>;
 
   static StatusOr<std::unique_ptr<TpuNodeContext>> Create(int device_ordinal);
 

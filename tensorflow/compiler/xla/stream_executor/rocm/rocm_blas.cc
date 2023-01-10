@@ -425,7 +425,7 @@ tsl::Status ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
 
   switch (dtype) {
     case blas::DataType::kHalf: {
-      port::StatusOr<bool> maybe_hasXDLOPS = GpuDriver::GetMFMASupport();
+      tsl::StatusOr<bool> maybe_hasXDLOPS = GpuDriver::GetMFMASupport();
       if (maybe_hasXDLOPS.ok() && maybe_hasXDLOPS.value()) {
         VLOG(1) << "Using rocblas_gemm_ex";
         return DoBlasInternalStatus(

@@ -638,7 +638,7 @@ tsl::Status MIOpenSupport::Init() {
                                   ToString(status))};
 }
 
-port::StatusOr<perftools::gputools::dnn::VersionInfo>
+tsl::StatusOr<perftools::gputools::dnn::VersionInfo>
 MIOpenSupport::GetVersion() {
   // ROCM TODO: retrieve MIOpen version with its API
   return perftools::gputools::dnn::VersionInfo(1, 3, 0);
@@ -2555,7 +2555,7 @@ tsl::Status MIOpenSupport::DoCtcLoss(
                        scratch_memory, ctc_loss_algo_id);
 }
 
-port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
+tsl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
 MIOpenSupport::createRnnDescriptor(
     int num_layers, int hidden_size, int input_size, int cell_size,
     int batch_size, dnn::RnnInputMode input_mode,
@@ -2586,11 +2586,11 @@ MIOpenSupport::createRnnDescriptor(
   if (!rnn_desc->ok()) {
     return rnn_desc->Status();
   }
-  return port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>(
+  return tsl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>(
       std::move(rnn_desc));
 }
 
-port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
 MIOpenSupport::createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
                                                  int data_size,
                                                  dnn::DataType data_type) {
@@ -2600,11 +2600,11 @@ MIOpenSupport::createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
   if (!seq_desc->ok()) {
     return seq_desc->Status();
   }
-  return port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>(
+  return tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>(
       std::move(seq_desc));
 }
 
-port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
+tsl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
 MIOpenSupport::createRnnStateTensorDescriptor(int num_layer, int batch_size,
                                               int data_size,
                                               dnn::DataType data_type) {
@@ -2614,7 +2614,7 @@ MIOpenSupport::createRnnStateTensorDescriptor(int num_layer, int batch_size,
   if (!state_desc->ok()) {
     return state_desc->Status();
   }
-  return port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>(
+  return tsl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>(
       std::move(state_desc));
 }
 
@@ -2964,7 +2964,7 @@ class RocmConvRunner : public dnn::ConvRunner {
 
   size_t GetWorkspaceSize() const override { return workspace_size_; }
 
-  port::StatusOr<AlgorithmDesc> ToAlgorithmDesc() const override {
+  tsl::StatusOr<AlgorithmDesc> ToAlgorithmDesc() const override {
     return {{algo_id_, false, workspace_size_}};
   }
 
@@ -3172,7 +3172,7 @@ tsl::Status MIOpenSupport::GetConvolveRunners(
   return tsl::OkStatus();
 }
 
-port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
+tsl::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
 MIOpenSupport::ConvolveRunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
     dnn::ConvolutionKind kind, dnn::DataType input_type,

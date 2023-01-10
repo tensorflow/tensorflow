@@ -379,7 +379,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   return tsl::OkStatus();
 }
 
-/* static */ port::StatusOr<hipSharedMemConfig>
+/* static */ tsl::StatusOr<hipSharedMemConfig>
 GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   hipSharedMemConfig shared_mem_config;
   ScopedActivateContext activation{context};
@@ -743,7 +743,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   }
 }
 
-/* static */ port::StatusOr<hipError_t> GpuDriver::QueryEvent(
+/* static */ tsl::StatusOr<hipError_t> GpuDriver::QueryEvent(
     GpuContext* context, GpuEventHandle event) {
   ScopedActivateContext activated{context};
   hipError_t res = wrap::hipEventQuery(event);
@@ -1020,7 +1020,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                       reinterpret_cast<void*>(dptr), ToString(result).c_str())};
 }
 
-/* static */ port::StatusOr<MemorySpace> GpuDriver::GetPointerMemorySpace(
+/* static */ tsl::StatusOr<MemorySpace> GpuDriver::GetPointerMemorySpace(
     hipDeviceptr_t pointer) {
   unsigned int value;
   hipError_t result = hipSuccess;
@@ -1043,7 +1043,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                    ToString(result))};
 }
 
-/* static */ port::StatusOr<hipDevice_t> GpuDriver::GetPointerDevice(
+/* static */ tsl::StatusOr<hipDevice_t> GpuDriver::GetPointerDevice(
     hipDeviceptr_t pointer) {
   hipPointerAttribute_t pointerAttributes;
   hipError_t result =
@@ -1095,7 +1095,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                       device)};
 }
 
-/* static */ port::StatusOr<bool> GpuDriver::GetMFMASupport() {
+/* static */ tsl::StatusOr<bool> GpuDriver::GetMFMASupport() {
   hipDeviceProp_t props;
   int dev = 0;
   hipError_t result = hipGetDevice(&dev);
@@ -1119,8 +1119,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 // Helper function that turns the integer output of hipDeviceGetAttribute to
 // type T and wraps it in a StatusOr.
 template <typename T>
-static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
-                                            hipDeviceAttribute_t attribute) {
+static tsl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
+                                           hipDeviceAttribute_t attribute) {
   int value = -1;
   hipError_t result = wrap::hipDeviceGetAttribute(&value, attribute, device);
   if (result != hipSuccess) {
@@ -1133,42 +1133,42 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   return converted;
 }
 
-/* static */ port::StatusOr<int> GpuDriver::GetMultiprocessorCount(
+/* static */ tsl::StatusOr<int> GpuDriver::GetMultiprocessorCount(
     hipDevice_t device) {
   return GetSimpleAttribute<int>(device, hipDeviceAttributeMultiprocessorCount);
 }
 
-/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerCore(
+/* static */ tsl::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerCore(
     hipDevice_t device) {
   return GetSimpleAttribute<int64_t>(
       device, hipDeviceAttributeMaxSharedMemoryPerMultiprocessor);
 }
 
-/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerBlock(
+/* static */ tsl::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerBlock(
     hipDevice_t device) {
   return GetSimpleAttribute<int64_t>(device,
                                      hipDeviceAttributeMaxSharedMemoryPerBlock);
 }
 
-/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerMultiprocessor(
+/* static */ tsl::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerMultiprocessor(
     hipDevice_t device) {
   return GetSimpleAttribute<int64_t>(
       device, hipDeviceAttributeMaxThreadsPerMultiProcessor);
 }
 
-/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerBlock(
+/* static */ tsl::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerBlock(
     hipDevice_t device) {
   return GetSimpleAttribute<int64_t>(device,
                                      hipDeviceAttributeMaxThreadsPerBlock);
 }
 
-/* static */ port::StatusOr<int64_t> GpuDriver::GetMaxRegistersPerBlock(
+/* static */ tsl::StatusOr<int64_t> GpuDriver::GetMaxRegistersPerBlock(
     hipDevice_t device) {
   return GetSimpleAttribute<int64_t>(device,
                                      hipDeviceAttributeMaxRegistersPerBlock);
 }
 
-/* static */ port::StatusOr<int64_t> GpuDriver::GetThreadsPerWarp(
+/* static */ tsl::StatusOr<int64_t> GpuDriver::GetThreadsPerWarp(
     hipDevice_t device) {
   return GetSimpleAttribute<int64_t>(device, hipDeviceAttributeWarpSize);
 }
@@ -1224,7 +1224,7 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   return true;
 }
 
-/* static */ port::StatusOr<int> GpuDriver::GetDeviceAttribute(
+/* static */ tsl::StatusOr<int> GpuDriver::GetDeviceAttribute(
     hipDeviceAttribute_t attribute, hipDevice_t device) {
   return GetSimpleAttribute<int>(device, attribute);
 }
@@ -1324,7 +1324,7 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   return tsl::OkStatus();
 }
 
-/* static */ port::StatusOr<int> GpuDriver::GetMaxOccupiedBlocksPerCore(
+/* static */ tsl::StatusOr<int> GpuDriver::GetMaxOccupiedBlocksPerCore(
     GpuContext* context, hipFunction_t kernel, int threads_per_block,
     size_t dynamic_shared_memory_bytes) {
   ScopedActivateContext activation{context};

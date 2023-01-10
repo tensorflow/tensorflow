@@ -35,7 +35,7 @@ class TpuExecutorInterface
     : public stream_executor::internal::StreamExecutorInterface {
  public:
   template <typename T>
-  using StatusOr = stream_executor::port::StatusOr<T>;
+  using StatusOr = tsl::StatusOr<T>;
 
   class TemporaryDeviceMemory {
    public:

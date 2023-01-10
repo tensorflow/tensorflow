@@ -36,7 +36,7 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
   ~TpuTransferManager() override;
 
   template <typename T>
-  using StatusOr = stream_executor::port::StatusOr<T>;
+  using StatusOr = tsl::StatusOr<T>;
 
   stream_executor::Platform::Id PlatformId() const override;
 

@@ -47,7 +47,7 @@ namespace tpu {
 class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
  public:
   template <typename T>
-  using StatusOr = ::stream_executor::port::StatusOr<T>;
+  using StatusOr = ::tsl::StatusOr<T>;
   using StatusCallback = std::function<void(const tsl::Status&)>;
   using Stream = ::stream_executor::Stream;
   using Event = ::stream_executor::Event;
