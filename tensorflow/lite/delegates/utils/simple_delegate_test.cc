@@ -19,9 +19,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/delegates/utils/dummy_delegate/dummy_delegate.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/builtin_op_kernels.h"
 
 namespace tflite {
 namespace {

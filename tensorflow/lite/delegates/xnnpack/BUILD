@@ -2311,6 +2311,7 @@ cc_test(
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_googletest//:gtest",
     ],

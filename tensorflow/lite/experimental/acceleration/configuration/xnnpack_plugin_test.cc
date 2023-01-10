@@ -19,9 +19,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "pthreadpool.h"  // from @pthreadpool
+#include "tensorflow/lite/core/experimental/acceleration/configuration/delegate_registry.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
 
 namespace tflite {
 

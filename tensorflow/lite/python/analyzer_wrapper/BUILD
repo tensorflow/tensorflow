@@ -23,8 +23,8 @@ cc_library(
     hdrs = ["model_analyzer.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/lite:model_builder",
         "//tensorflow/lite:version",
+        "//tensorflow/lite/core:model_builder",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
