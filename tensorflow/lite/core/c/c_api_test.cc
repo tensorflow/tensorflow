@@ -1293,9 +1293,18 @@ TEST(CApiSimple, OpaqueApiAccessors) {
           EXPECT_EQ(1, TfLiteOpaqueTensorDim(opaque_input_tensor, 0));
           EXPECT_EQ(3, TfLiteOpaqueTensorDim(opaque_input_tensor, 1));
 
-          EXPECT_EQ(2, TfLiteOpaqueTensorNumDimsSignature(opaque_input_tensor));
-          EXPECT_EQ(-1, TfLiteOpaqueTensorDimSignature(opaque_input_tensor, 0));
-          EXPECT_EQ(3, TfLiteOpaqueTensorDimSignature(opaque_input_tensor, 1));
+          int32_t num_dims = 0;
+          EXPECT_EQ(kTfLiteOk, TfLiteOpaqueTensorGetNumDimsSignature(
+                                   opaque_input_tensor, &num_dims));
+          EXPECT_EQ(2, num_dims);
+
+          int32_t dim_length = 0;
+          EXPECT_EQ(kTfLiteOk, TfLiteOpaqueTensorGetDimSignature(
+                                   opaque_input_tensor, 0, &dim_length));
+          EXPECT_EQ(-1, dim_length);
+          EXPECT_EQ(kTfLiteOk, TfLiteOpaqueTensorGetDimSignature(
+                                   opaque_input_tensor, 1, &dim_length));
+          EXPECT_EQ(3, dim_length);
 
           EXPECT_FALSE(TfLiteOpaqueTensorIsVariable(opaque_input_tensor));
           EXPECT_TRUE(
@@ -1319,9 +1328,11 @@ TEST(CApiSimple, OpaqueApiAccessors) {
                     TfLiteOpaqueTensorNumDims(
                         TfLiteOpaqueContextGetOpaqueTensor(opaque_context, 3)));
 
-          EXPECT_EQ(-1,
-                    TfLiteOpaqueTensorNumDimsSignature(
-                        TfLiteOpaqueContextGetOpaqueTensor(opaque_context, 3)));
+          EXPECT_EQ(kTfLiteOk,
+                    TfLiteOpaqueTensorGetNumDimsSignature(
+                        TfLiteOpaqueContextGetOpaqueTensor(opaque_context, 3),
+                        &num_dims));
+          EXPECT_EQ(-1, num_dims);
 
           // 1 node for ADD and 1 node for the delegate kernel.
           EXPECT_EQ(2, TfLiteOpaqueContextGetNumNodes(opaque_context));

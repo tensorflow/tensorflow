@@ -47,23 +47,26 @@ TFL_CAPI_EXPORT extern int32_t TfLiteOpaqueTensorNumDims(
 TFL_CAPI_EXPORT extern int32_t TfLiteOpaqueTensorDim(
     const TfLiteOpaqueTensor* opaque_tensor, int32_t dim_index);
 
-// Returns the number of dimensions that the tensor's signature has.
+// Loads into the provided 'num_dims' the number of dimensions that the tensor's
+// signature has. Returns 'kTfLiteOk' if 'num_dims' was successfully loaded. Any
+// other return code indicates an error and 'num_dims' won't be loaded.
 //
 // A tensor's dimension signature encodes shapes with unknown dimensions with
 // -1.  E.g. for a tensor with three dimensions, whose first dimension has an
-// unkowns size, and the second and third dimension have a size of 2, the
-// dimension signature is [-1,2,2], and 'TfLiteOpaqueTensorNumDimsSignature'
-// returns 3.
-//
-// If the 'opaque_tensor' does not have its dimensions signature property set,
-// which is for example the case when no unkown dimension is present, then -1 is
-// returned to indicate the absence of the dimension signature property.
-TFL_CAPI_EXPORT extern int32_t TfLiteOpaqueTensorNumDimsSignature(
-    const TfLiteOpaqueTensor* opaque_tensor);
+// unknown size, and the second and third dimension have a size of 2, the
+// dimension signature is [-1,2,2], and 'TfLiteOpaqueTensorGetNumDimsSignature'
+// loads 3 into 'num_dims'. If the tensor does not have its dimension signature
+// field set then 'num_dims' is set to -1.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOpaqueTensorGetNumDimsSignature(
+    const TfLiteOpaqueTensor* opaque_tensor, int32_t* num_dims);
 
-// Returns the length of the tensor in the "dim_index" signature dimension.
-TFL_CAPI_EXPORT extern int32_t TfLiteOpaqueTensorDimSignature(
-    const TfLiteOpaqueTensor* opaque_tensor, int32_t dim_index);
+// Loads into the provided 'dim_length' the length of the tensor in the
+// 'dim_index' signature dimension or -1 if that dimension has unknown length.
+// Returns 'kTfLiteOk' if 'dim_length' was successfully loaded. Any
+// other return code indicates an error and 'dim_length' won't be loaded.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOpaqueTensorGetDimSignature(
+    const TfLiteOpaqueTensor* opaque_tensor, int32_t dim_index,
+    int32_t* dim_length);
 
 // Returns 'non-zero' if the provided 'opaque_tensor' is a variable, and returns
 // zero otherwise.
