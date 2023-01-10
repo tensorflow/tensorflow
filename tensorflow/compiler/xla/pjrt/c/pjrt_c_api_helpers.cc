@@ -398,4 +398,16 @@ xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
   return tsl::OkStatus();
 }
 
+absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api) {
+  PJRT_Client_PlatformVersion_Args args;
+  args.struct_size = PJRT_Client_PlatformVersion_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.client = client;
+  LogFatalIfPjrtError(api->PJRT_Client_PlatformVersion(&args), api);
+
+  absl::string_view platform_version(args.platform_version,
+                                     args.platform_version_size);
+  return platform_version;
+}
+
 }  // namespace pjrt

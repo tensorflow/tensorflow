@@ -290,6 +290,8 @@ class PjRtCApiClient : public PjRtClient {
   std::vector<PjRtDevice*> addressable_devices_;
   absl::flat_hash_map<PJRT_Device*, PjRtCApiDevice*> c_to_cpp_device_map_;
 
+  const std::string platform_version_;
+
   // TODO(skyewm): this is a shim so we can run PjRtCApiClient code without the
   // C API being fully implemented. All methods using wrapped_ should either be
   // marked unimplemented or implemented in terms of the C API, at which point

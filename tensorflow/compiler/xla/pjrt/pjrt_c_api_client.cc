@@ -67,7 +67,13 @@ bool kPjRtCApiBypass = false;
 PjRtCApiClient::PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client)
     : c_api_(c_api),
       c_client_(std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter>(
-          c_client, ::pjrt::MakeClientDeleter(c_api))) {
+          c_client, ::pjrt::MakeClientDeleter(c_api))),
+      // Example platform version string:
+      //   PJRT C API
+      //   TFRT TPU v2
+      //   Built on Mar 4 2021 15:25:57 (1614900357) cl/360760169
+      platform_version_(absl::StrCat(
+          "PJRT C API\n", ::pjrt::GetPlatformVersion(c_client, c_api))) {
   wrapped_ = c_client_->client.get();
 
   InitDevices();
@@ -154,15 +160,7 @@ int PjRtCApiClient::process_index() const {
 }
 
 absl::string_view PjRtCApiClient::platform_version() const {
-  PJRT_Client_PlatformVersion_Args args;
-  args.struct_size = PJRT_Client_PlatformVersion_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  args.client = c_client_.get();
-  pjrt::LogFatalIfPjrtError(c_api_->PJRT_Client_PlatformVersion(&args), c_api_);
-
-  absl::string_view platform_version(args.platform_version,
-                                     args.platform_version_size);
-  return platform_version;
+  return platform_version_;
 }
 
 static DeviceAssignment CalculateDefaultAssignment(
