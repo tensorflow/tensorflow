@@ -174,6 +174,40 @@ int32_t GetCollectiveKeyBase(
   return key_base;
 }
 
+void CreateGroupAndInstanceKey(
+    mlir::OpBuilder& builder, const mlir::Location& loc,
+    const mlir::DenseIntElementsAttr& group_assignment, int32 key_base,
+    mlir::Value device_id, mlir::Value* group_key_scalar,
+    mlir::Value* instance_key_scalar) {
+  int32_t group_size;
+  llvm::SmallVector<int32, 4> device_id_to_group_key =
+      GetGroupKeyOffsets(group_assignment, &group_size);
+  // 21 bits + 11 bits allow roughly 2M all-reduces in one program and up to a
+  // full DF pod.
+  DCHECK_LT(key_base, 1L << 21) << "Reaching 2^21 all-reduces.";
+  for (int32_t& it : device_id_to_group_key) {
+    it += (key_base << 11);
+  }
+
+  // Create a scalar group key by slicing device_id_to_group_key with
+  // device_id.
+  auto group_key_loc = DT_LOC2(loc, "group_key");
+  auto group_key_slice = builder.create<mlir::TF::SliceOp>(
+      group_key_loc, EffectivelyScalarR1Type(builder.getIntegerType(32)),
+      /*input=*/IntConst(builder, loc, device_id_to_group_key),
+      /*begin=*/device_id,
+      /*size=*/IntConst(builder, loc, {1}));
+  auto group_key_reshape = builder.create<mlir::TF::ReshapeOp>(
+      group_key_loc, /*tensor=*/group_key_slice.getResult(),
+      /*shape=*/ops_util::GetR1Const({}, builder, loc));
+  *group_key_scalar = group_key_reshape.getResult();
+
+  // Generate a unique instance key for this collective.
+  *instance_key_scalar = ops_util::CreateScalarConst(
+      static_cast<int32>(tf_collective_instance_key_base++), builder,
+      DT_LOC2(loc, "instance_key"));
+}
+
 // Emit a host CollectiveReduce op for the given input.
 // `group_assignment` is used to generate an array of group keys.
 // `device_id` slices into that array to get the key for a device at runtime.
@@ -208,34 +242,11 @@ mlir::Operation* EmitCollectiveReduce(
         input);
     input = cast_to_int64.getResult();
   }
+
   mlir::Value group_key_scalar;
-  llvm::SmallVector<int32, 4> device_id_to_group_key =
-      GetGroupKeyOffsets(group_assignment, &group_size);
-  //
-  // 21 bits + 11 bits allow roughly 2M all-reduces in one program and up to a
-  // full DF pod.
-  DCHECK_LT(key_base, 1L << 21) << "Reaching 2^21 all-reduces.";
-  for (int32_t& it : device_id_to_group_key) {
-    it += (key_base << 11);
-  }
-
-  // Create a scalar group key by slicing device_id_to_group_key with
-  // device_id.
-  auto group_key_loc = DT_LOC2(loc, "group_key");
-  auto group_key_slice = builder.create<mlir::TF::SliceOp>(
-      group_key_loc, EffectivelyScalarR1Type(builder.getIntegerType(32)),
-      /*input=*/IntConst(builder, loc, device_id_to_group_key),
-      /*begin=*/device_id,
-      /*size=*/IntConst(builder, loc, {1}));
-  auto group_key_reshape = builder.create<mlir::TF::ReshapeOp>(
-      group_key_loc, /*tensor=*/group_key_slice.getResult(),
-      /*shape=*/ops_util::GetR1Const({}, builder, loc));
-  group_key_scalar = group_key_reshape.getResult();
-
-  // Generate a unique instance key for this collective.
-  mlir::Value instance_key_scalar = ops_util::CreateScalarConst(
-      static_cast<int32>(tf_collective_instance_key_base++), builder,
-      DT_LOC2(loc, "instance_key"));
+  mlir::Value instance_key_scalar;
+  CreateGroupAndInstanceKey(builder, loc, group_assignment, key_base, device_id,
+                            &group_key_scalar, &instance_key_scalar);
 
   const bool is_mean_op = reduce_op_str == kReduceOpMean;
   mlir::Value group_size_scalar = ops_util::CreateScalarConst(
@@ -288,11 +299,9 @@ mlir::Operation* EmitTransposeOp(mlir::OpBuilder& builder,
 mlir::Operation* EmitCollectiveReduceScatter(
     mlir::OpBuilder& builder, const mlir::Location& loc, mlir::Value input,
     mlir::Type output_type, const std::string& reduce_op_str,
-    const mlir::DenseIntElementsAttr& group_assignment,
-    int32 scatter_dimension, int32 key_base,
-    mlir::Value device_id, int32 host_group_size,
+    const mlir::DenseIntElementsAttr& group_assignment, int32 scatter_dimension,
+    int32 key_base, mlir::Value device_id, int32 host_group_size,
     const mlir::StringRef device_type) {
-  int32_t group_size;
   mlir::TensorType input_type = input.getType().dyn_cast<mlir::TensorType>();
 
   const bool need_int32_to_int64_upcast =
@@ -309,17 +318,20 @@ mlir::Operation* EmitCollectiveReduceScatter(
     }
     std::swap(perm_for_transpose[scatter_dimension], perm_for_transpose[0]);
     auto pre_transpose_op =
-      EmitTransposeOp(builder, loc, input, perm_for_transpose);
+        EmitTransposeOp(builder, loc, input, perm_for_transpose);
     input = pre_transpose_op->getResult(0);
     input_type = input.getType().dyn_cast<mlir::TensorType>();
     // Compute transposed output type for CollectiveReduceScatter
     auto output_shape = output_type.dyn_cast<mlir::TensorType>().getShape();
-    std::vector<int64> transposed_shape(output_shape.begin(), output_shape.end());
+    std::vector<int64> transposed_shape(output_shape.begin(),
+                                        output_shape.end());
     for (int i = 0; i < output_shape.size(); i++) {
       transposed_shape[i] = output_shape[perm_for_transpose[i]];
     }
     output_type = mlir::RankedTensorType::get(
-        transposed_shape, need_int32_to_int64_upcast ? builder.getIntegerType(64) : input_type.getElementType());
+        transposed_shape, need_int32_to_int64_upcast
+                              ? builder.getIntegerType(64)
+                              : input_type.getElementType());
   }
 
   if (need_int32_to_int64_upcast) {
@@ -334,45 +346,25 @@ mlir::Operation* EmitCollectiveReduceScatter(
         input);
     input = cast_to_int64.getResult();
   }
+
   mlir::Value group_key_scalar;
-  llvm::SmallVector<int32, 4> device_id_to_group_key =
-      GetGroupKeyOffsets(group_assignment, &group_size);
-  //
-  // 21 bits + 11 bits allow roughly 2M all-reduces in one program and up to a
-  // full DF pod.
-  DCHECK_LT(key_base, 1L << 21) << "Reaching 2^21 all-reduces.";
-  for (int32_t& it : device_id_to_group_key) {
-    it += (key_base << 11);
-  }
-
-  // Create a scalar group key by slicing device_id_to_group_key with
-  // device_id.
-  auto group_key_loc = DT_LOC2(loc, "group_key");
-  auto group_key_slice = builder.create<mlir::TF::SliceOp>(
-      group_key_loc, EffectivelyScalarR1Type(builder.getIntegerType(32)),
-      /*input=*/IntConst(builder, loc, device_id_to_group_key),
-      /*begin=*/device_id,
-      /*size=*/IntConst(builder, loc, {1}));
-  auto group_key_reshape = builder.create<mlir::TF::ReshapeOp>(
-      group_key_loc, /*tensor=*/group_key_slice.getResult(),
-      /*shape=*/ops_util::GetR1Const({}, builder, loc));
-  group_key_scalar = group_key_reshape.getResult();
-
-  // Generate a unique instance key for this collective.
-  mlir::Value instance_key_scalar = ops_util::CreateScalarConst(
-      static_cast<int32>(tf_collective_instance_key_base++), builder,
-      DT_LOC2(loc, "instance_key"));
+  mlir::Value instance_key_scalar;
+  CreateGroupAndInstanceKey(builder, loc, group_assignment, key_base, device_id,
+                            &group_key_scalar, &instance_key_scalar);
 
   const bool is_mean_op = reduce_op_str == kReduceOpMean;
   mlir::Value group_size_scalar = ops_util::CreateScalarConst(
       host_group_size, builder, DT_LOC2(loc, "group_size"));
-  auto collective_reduce_scatter = builder.create<mlir::TF::CollectiveReduceScatterV2Op>(
-      loc, output_type, input,
-      group_size_scalar, group_key_scalar, instance_key_scalar,
+  auto collective_reduce_scatter = builder.create<
+      mlir::TF::CollectiveReduceScatterV2Op>(
+      loc, output_type, input, group_size_scalar, group_key_scalar,
+      instance_key_scalar,
       /*ordering_token=*/mlir::ValueRange({}),
       /*merge_op=*/builder.getStringAttr(is_mean_op ? "Add" : reduce_op_str),
       /*final_op=*/builder.getStringAttr(is_mean_op ? "Div" : "Id"),
-      /*communication_hint=*/builder.getStringAttr("nccl"), // TODO(tmorris): this shouldn't be needed
+      /*communication_hint=*/builder.getStringAttr("nccl"),  // TODO(tmorris):
+                                                             // this shouldn't
+                                                             // be needed
       /*timeout_seconds=*/builder.getF32FloatAttr(0.),
       /*max_subdivs_per_device=*/builder.getI64IntegerAttr(16));
   SetSingleLayoutOnOp(collective_reduce_scatter, Layout::Empty());
@@ -381,13 +373,14 @@ mlir::Operation* EmitCollectiveReduceScatter(
   if (need_int32_to_int64_upcast) {
     prev_op = builder.create<mlir::TF::CastOp>(
         loc,
-        mlir::RankedTensorType::get(output_type.dyn_cast<mlir::TensorType>().getShape(),
-                                    builder.getIntegerType(32)),
+        mlir::RankedTensorType::get(
+            output_type.dyn_cast<mlir::TensorType>().getShape(),
+            builder.getIntegerType(32)),
         prev_op->getResult(0));
   }
   if (need_transpose) {
-    prev_op =
-        EmitTransposeOp(builder, loc, prev_op->getResult(0), perm_for_transpose);
+    prev_op = EmitTransposeOp(builder, loc, prev_op->getResult(0),
+                              perm_for_transpose);
   }
   return prev_op;
 }
@@ -412,37 +405,9 @@ mlir::Operation* EmitCollectiveGather(
       mlir::RankedTensorType::get(output_shape, input_type.getElementType());
 
   mlir::Value group_key_scalar;
-  llvm::SmallVector<int32, 4> device_id_to_group_key(num_devices);
-  device_id_to_group_key.resize(num_devices, kUninitializedGroupKey);
-  // 21 bits + 11 bits allow roughly 2M all-reduces in one program and up to a
-  // full DF pod.
-  DCHECK_LT(key_base, 1L << 21) << "Reaching 2^21 all-reduces/all-gathers.";
-  DCHECK_LE(num_devices, 1L << 11) << "Exceeding 2048 groups.";
-  for (const auto& it :
-       llvm::enumerate(group_assignment.getValues<llvm::APInt>())) {
-    int32 device_id = it.value().getSExtValue();
-    DCHECK_LE(0, device_id);
-    DCHECK_LT(device_id, num_devices);
-    DCHECK_EQ(device_id_to_group_key[device_id], kUninitializedGroupKey);
-    const int32 group_id = static_cast<int32>(it.index()) / group_size;
-    device_id_to_group_key[device_id] = (key_base << 11) ^ group_id;
-  }
-
-  // Create a scalar group key by slicing device_id_to_group_key with
-  // device_id.
-  auto group_key_slice = builder.create<mlir::TF::SliceOp>(
-      loc, EffectivelyScalarR1Type(builder.getIntegerType(32)),
-      /*input=*/IntConst(builder, loc, device_id_to_group_key),
-      /*begin=*/device_id,
-      /*size=*/IntConst(builder, loc, {1}));
-  auto group_key_reshape = builder.create<mlir::TF::ReshapeOp>(
-      loc, /*tensor=*/group_key_slice.getResult(),
-      /*shape=*/ops_util::GetR1Const({}, builder, loc));
-  group_key_scalar = group_key_reshape.getResult();
-
-  // Generate a unique instance key for this collective.
-  mlir::Value instance_key_scalar =
-      ops_util::CreateScalarConst(static_cast<int32>(key_base), builder, loc);
+  mlir::Value instance_key_scalar;
+  CreateGroupAndInstanceKey(builder, loc, group_assignment, key_base, device_id,
+                            &group_key_scalar, &instance_key_scalar);
 
   mlir::Value group_size_scalar =
       ops_util::CreateScalarConst(host_group_size, builder, loc);
@@ -637,14 +602,16 @@ mlir::LogicalResult LowerReduceScatterOp(
         {(*output_layout).mesh().min_global_device_id()}, builder, loc);
     mlir::Value relative_device_id =
         builder.create<mlir::TF::SubOp>(loc, device_id, start_device_id);
-    
+
     int32 group_size = group_assignment_attr.getType().getShape()[1];
-    const int32_t key_base = GetCollectiveKeyBase((*output_layout).mesh(), group_assignment_attr);
+    const int32_t key_base =
+        GetCollectiveKeyBase((*output_layout).mesh(), group_assignment_attr);
 
     mlir::Operation* collective_op = EmitCollectiveReduceScatter(
-        builder, loc, reduce_scatter.getInput(), reduce_scatter.getResult().getType(),
-        reduce_scatter.getReduceOp().str(),
-        group_assignment_attr, scatter_dim, key_base, relative_device_id,
+        builder, loc, reduce_scatter.getInput(),
+        reduce_scatter.getResult().getType(),
+        reduce_scatter.getReduceOp().str(), group_assignment_attr, scatter_dim,
+        key_base, relative_device_id,
         /*host_group_size=*/group_size, reduce_scatter.getDeviceType().str());
     SetSingleLayoutOnOp(collective_op, *output_layout);
     reduce_scatter.replaceAllUsesWith(collective_op);
