@@ -2626,27 +2626,6 @@ LogicalResult DynamicBroadcastInDimOp::reifyReturnTypeShapes(
 }
 
 //===----------------------------------------------------------------------===//
-// ClampOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult ClampOp::inferReturnTypeComponents(
-    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-  ClampOp::Adaptor adaptor(operands, attributes, regions);
-  return hlo::inferClampOp(location, adaptor.getMin(), adaptor.getOperand(),
-                           adaptor.getMax(), inferredReturnShapes);
-}
-
-LogicalResult ClampOp::reifyReturnTypeShapes(
-    OpBuilder& builder, ValueRange operands,
-    SmallVectorImpl<Value>& reifiedReturnShapes) {
-  // For `mhlo.clamp`, the first operand may be a scalar.
-  return hlo::deriveShapeFromOperand(&builder, getOperation(), operands[1],
-                                     &reifiedReturnShapes);
-}
-
-//===----------------------------------------------------------------------===//
 // ComplexOp
 //===----------------------------------------------------------------------===//
 
@@ -5242,6 +5221,57 @@ OpFoldResult XorOp::fold(ArrayRef<Attribute> operands) {
 
 #undef BINARY_FOLDER_INTERNAL
 #undef BINARY_FOLDER
+
+//===----------------------------------------------------------------------===//
+// ClampOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ClampOp::fold(ArrayRef<Attribute> operands) {
+  auto operand = operands[1].dyn_cast_or_null<ElementsAttr>();
+  auto min = operands[0].dyn_cast_or_null<ElementsAttr>();
+  auto max = operands[2].dyn_cast_or_null<ElementsAttr>();
+  if (!operand || !min || !max) {
+    return {};
+  }
+  if (min.getType().getRank() == 0) {
+    min = DenseElementsAttr::get(operand.getType(),
+                                 min.getValues<Attribute>()[0]);
+  }
+  if (max.getType().getRank() == 0) {
+    max = DenseElementsAttr::get(operand.getType(),
+                                 max.getValues<Attribute>()[0]);
+  }
+  Attribute result = {};
+  if (operand.getType().getElementType().isa<FloatType>()) {
+    result = BinaryFolder<ClampOp, FloatType, APFloat, Max<APFloat>>(
+        this, ArrayRef<Attribute>{min, operand});
+    result = BinaryFolder<ClampOp, FloatType, APFloat, Min<APFloat>>(
+        this, ArrayRef<Attribute>{max, result});
+  } else if (operand.getType().getElementType().isa<IntegerType>()) {
+    result = BinaryFolder<ClampOp, IntegerType, APInt, Max<APSInt>>(
+        this, ArrayRef<Attribute>{min, operand});
+    result = BinaryFolder<ClampOp, IntegerType, APInt, Min<APSInt>>(
+        this, ArrayRef<Attribute>{max, result});
+  }
+  return result;
+}
+
+LogicalResult ClampOp::inferReturnTypeComponents(
+    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  ClampOp::Adaptor adaptor(operands, attributes, regions);
+  return hlo::inferClampOp(location, adaptor.getMin(), adaptor.getOperand(),
+                           adaptor.getMax(), inferredReturnShapes);
+}
+
+LogicalResult ClampOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  // For `mhlo.clamp`, the first operand may be a scalar.
+  return hlo::deriveShapeFromOperand(&builder, getOperation(), operands[1],
+                                     &reifiedReturnShapes);
+}
 
 //===----------------------------------------------------------------------===//
 // SliceOp
