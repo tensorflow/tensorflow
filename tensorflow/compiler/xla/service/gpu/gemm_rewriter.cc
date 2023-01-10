@@ -497,18 +497,18 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // Attempt to elide conversion and addition of a matrix bias in bfloat16
     // into GEMM, including when bitcasting is applied to the result.
     if (Match(instr,
-              m::Convert(m::AddAnyOrder(
-                             m::Convert(m::AnyOf<HloInstruction>(
-                                 m::Bitcast(&optional_unary,
-                                            GemmOrCublasLtMatmul(&existing_gemm)
-                                                .WithOneUser()
-                                                .WithElementType(BF16))
-                                     .WithOneUser(),
-                                 GemmOrCublasLtMatmul(&existing_gemm)
-                                     .WithOneUser()
-                                     .WithElementType(BF16))),
-                             m::Convert(m::Op(&bias).WithElementType(BF16))
-                                 .WithOneUser()))
+              m::Convert(
+                  m::AddAnyOrder(m::Convert(m::AnyOf<HloInstruction>(
+                                     m::Bitcast(&optional_unary,
+                                                CublasLtMatmul(&existing_gemm)
+                                                    .WithOneUser()
+                                                    .WithElementType(BF16))
+                                         .WithOneUser(),
+                                     GemmOrCublasLtMatmul(&existing_gemm)
+                                         .WithOneUser()
+                                         .WithElementType(BF16))),
+                                 m::Convert(m::Op(&bias).WithElementType(BF16))
+                                     .WithOneUser()))
                   .WithElementType(BF16))) {
       return FuseMatrixBiasAdd(instr, bias, existing_gemm, optional_unary);
     }
