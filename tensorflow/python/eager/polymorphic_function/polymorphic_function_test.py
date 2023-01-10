@@ -3840,6 +3840,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                  constant_op.constant(3.),
                  constant_op.constant(4.)))
 
+  def testDuplicatedSanitizedNames(self):
+    @polymorphic_function.function
+    def foo(**kwargs):
+      return kwargs['a_b'] + kwargs['a/b']
+
+    error_message = 'Name collision after sanitization.'
+    with self.assertRaisesRegex(ValueError, error_message):
+      foo(**{'a_b': 1, 'a/b': 2})
+
   def testVariableCreatorScope(self):
     created_variables = []
     captured_variables = []
