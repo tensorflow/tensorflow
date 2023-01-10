@@ -205,8 +205,7 @@ message DebugOptions {
 
   ShapeChecks xla_gpu_shape_checks = 170;
 
-  // Enable MLIR-based lowering in XLA:CPU instead of LLVM emitters.
-  bool xla_cpu_enable_mlir_lowering = 171;
+  reserved 171;  // Was xla_cpu_enable_mlir_lowering
 
   // If true, use MLIR instead of IR emitter to generate device code for
   // supported lmhlo.fusion ops. See xla::gpu::RewriteFusionOps() for details.
