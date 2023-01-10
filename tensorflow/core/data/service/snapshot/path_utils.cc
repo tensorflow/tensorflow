@@ -25,6 +25,7 @@ namespace data {
 namespace {
 
 constexpr const char kDoneFileName[] = "DONE";
+constexpr const char kDatasetDefFileName[] = "dataset_def.proto";
 constexpr const char kStreamsDirectoryName[] = "streams";
 constexpr const char kSplitsDirectoryName[] = "splits";
 constexpr const char kCheckpointsDirectoryName[] = "checkpoints";
@@ -39,7 +40,7 @@ std::string StreamsDirectory(absl::string_view snapshot_path) {
 
 std::string StreamDirectory(absl::string_view snapshot_path,
                             int64_t stream_index) {
-  return tsl::io::JoinPath(snapshot_path, "streams",
+  return tsl::io::JoinPath(StreamsDirectory(snapshot_path),
                            absl::StrCat("stream_", stream_index));
 }
 
@@ -51,8 +52,7 @@ std::string SplitsDirectory(absl::string_view snapshot_path,
 
 std::string SourceDirectory(absl::string_view snapshot_path,
                             int64_t stream_index, int64_t source_id) {
-  return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_index),
-                           absl::StrCat("splits"),
+  return tsl::io::JoinPath(SplitsDirectory(snapshot_path, stream_index),
                            absl::StrCat("source_", source_id));
 }
 
@@ -62,6 +62,10 @@ std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
   return tsl::io::JoinPath(
       SourceDirectory(snapshot_path, stream_index, source_id),
       absl::StrCat("split_", local_index, "_", global_index));
+}
+
+std::string DatasetDefFilePath(absl::string_view snapshot_path_) {
+  return tsl::io::JoinPath(snapshot_path_, kDatasetDefFileName);
 }
 
 std::string StreamDoneFilePath(absl::string_view snapshot_path,

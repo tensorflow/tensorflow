@@ -1103,8 +1103,7 @@ Status DataServiceDispatcherImpl::Snapshot(const SnapshotRequest* request,
   TF_RETURN_IF_ERROR(snapshot_util::WriteMetadataFile(
       env_, request->directory(), &request->metadata()));
   TF_RETURN_IF_ERROR(WriteTextProto(
-      env_, io::JoinPath(request->directory(), "dataset_def.proto"),
-      request->dataset()));
+      env_, DatasetDefFilePath(request->directory()), request->dataset()));
 
   Update update;
   SnapshotUpdate* snapshot = update.mutable_snapshot();
