@@ -355,7 +355,8 @@ class TfLiteSubgraphExecute : public OpKernel {
         tensorflow::TensorShape shape;
         int num_dims = subgraph_output->dims->size;
         for (int i = 0; i < num_dims; ++i) {
-          shape.AddDim(subgraph_output->dims->data[i]);
+          OP_REQUIRES_OK(
+              ctx, shape.AddDimWithStatus(subgraph_output->dims->data[i]));
         }
         tensor = tensorflow::TensorCApi::MakeTensor(
             tflite::flex::GetTensorFlowDataType(subgraph_output->type), shape,
