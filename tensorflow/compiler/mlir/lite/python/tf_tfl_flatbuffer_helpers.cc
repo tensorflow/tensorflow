@@ -45,7 +45,7 @@ limitations under the License.
 #include "tensorflow/lite/toco/types.pb.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 namespace tensorflow {
 namespace internal {

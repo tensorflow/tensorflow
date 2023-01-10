@@ -40,7 +40,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 // MockSuccessPass reports errors but doesn't fail.
 class MockSuccessPass

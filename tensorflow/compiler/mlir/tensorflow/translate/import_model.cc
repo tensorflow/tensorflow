@@ -151,7 +151,7 @@ using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
 using ::mlir::tf_saved_model::SessionInitializerOp;
-using ::stream_executor::port::StatusOr;
+using ::tsl::StatusOr;
 
 namespace {
 
@@ -4260,10 +4260,9 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToMlir(
                                    tf_name_to_mlir_name);
 }
 
-stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-ConvertFunctionToMlir(const FunctionBody* fbody,
-                      const FunctionLibraryDefinition& flib_def,
-                      mlir::MLIRContext* context) {
+tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertFunctionToMlir(
+    const FunctionBody* fbody, const FunctionLibraryDefinition& flib_def,
+    mlir::MLIRContext* context) {
   tensorflow::GraphDebugInfo dummy_debug_info;
   tensorflow::GraphImportConfig specs;
   specs.graph_func_name = fbody->fdef.signature().name();
