@@ -102,7 +102,17 @@ class MatchMulSigmoid : public RewritePattern {
 // This enum class is used as a template parameter and meant for alias to tfg op
 // name.
 // TODO(intel-tf): Add more items as needed.
-enum class OpKind { Relu, Relu6, Elu, LeakyRelu, Tanh, Sigmoid };
+enum class OpKind {
+  Relu,
+  Relu6,
+  Elu,
+  LeakyRelu,
+  Tanh,
+  Sigmoid,
+  FusedBatchNorm,
+  FusedBatchNormV2,
+  FusedBatchNormV3
+};
 
 inline std::string GetTfgOpName(OpKind op_kind) {
   switch (op_kind) {
@@ -118,6 +128,12 @@ inline std::string GetTfgOpName(OpKind op_kind) {
       return "tfg.Tanh";
     case OpKind::Sigmoid:
       return "tfg.Sigmoid";
+    case OpKind::FusedBatchNorm:
+      return "tfg.FusedBatchNorm";
+    case OpKind::FusedBatchNormV2:
+      return "tfg.FusedBatchNormV2";
+    case OpKind::FusedBatchNormV3:
+      return "tfg.FusedBatchNormV3";
     default:
       return "tfg.NoOp";
   }
@@ -384,6 +400,266 @@ class BasePatternActivationRewriter : public BasePatternRewriter {
   }
 };
 
+static std::unique_ptr<OperationState>
+CreateContractionWithFusedBatchNormOpState(PatternRewriter &rewriter,
+                                           const OpPropertyHelper &helper,
+                                           Operation *contraction_op,
+                                           Operation *fusedbatchnorm_op,
+                                           Operation *activation_op,
+                                           FloatAttr epsilon_attr) {
+  // Get all operands for fused op
+  Value input = contraction_op->getOperand(0);
+  Value filter = contraction_op->getOperand(1);
+  Value scale = fusedbatchnorm_op->getOperand(1);
+  Value offset = fusedbatchnorm_op->getOperand(2);
+  Value mean = fusedbatchnorm_op->getOperand(3);
+  Value var = fusedbatchnorm_op->getOperand(4);
+
+  SmallVector<Value> operands;
+  operands.push_back(input);
+  operands.push_back(filter);
+  operands.push_back(scale);
+  operands.push_back(offset);
+  operands.push_back(mean);
+  operands.push_back(var);
+
+  // Currently only supported contraction is Conv2D
+  SmallVector<Location> fused_locs{contraction_op->getLoc(),
+                                   fusedbatchnorm_op->getLoc()};
+  auto state = std::make_unique<OperationState>(
+      rewriter.getFusedLoc(fused_locs), "tfg._FusedConv2D");
+
+  state->addOperands(operands);
+  state->addOperands(TFOp(contraction_op).getControlOperands());
+  state->addOperands(TFOp(fusedbatchnorm_op).getControlOperands());
+  TypeRange result_types = (activation_op != nullptr)
+                               ? activation_op->getResultTypes()
+                               : fusedbatchnorm_op->getResultTypes();
+
+  state->addTypes(result_types);
+  state->attributes = contraction_op->getAttrs();
+  llvm::SmallVector<StringRef> fused_ops({"FusedBatchNorm"});
+  auto leaky_relu_alpha = rewriter.getF32FloatAttr(0.2);
+  if (activation_op) {
+    auto activation = activation_op->getName().stripDialect();
+    fused_ops.push_back(activation);
+    if (helper.getDialect()->IsLeakyRelu(activation_op)) {
+      leaky_relu_alpha = activation_op->getAttrOfType<FloatAttr>("alpha");
+    }
+  }
+  state->attributes.set("fused_ops", rewriter.getStrArrayAttr(fused_ops));
+  state->attributes.set("num_args", rewriter.getI32IntegerAttr(4));
+  state->attributes.set("epsilon", epsilon_attr);
+  state->attributes.set("leakyrelu_alpha", leaky_relu_alpha);
+  return state;
+}
+
+// Fuse Conv with Batchnorm and activation
+template <OpKind fusedbatchnormoptype>
+class ContractionBatchNormRewiriter : public RemapperPatternBase {
+ public:
+  explicit ContractionBatchNormRewiriter(OpPropertyHelper &helper)
+      : RemapperPatternBase(GetTfgOpName(fusedbatchnormoptype), helper,
+                            PatternBenefit(1)) {}
+
+  // Constructor used by derived pattern rewritter class that may have
+  // different root operation name. Currently, pattern is
+  // matched from root op to its inputs.
+  explicit ContractionBatchNormRewiriter(StringRef op_name,
+                                         OpPropertyHelper &helper,
+                                         PatternBenefit benefit)
+      : RemapperPatternBase(op_name, helper, benefit) {}
+
+  bool matchPattern(Operation *op,
+                    ContractionWithFusedBatchnorm &pattern) const {
+    TFOp fusedbatchnorm_op_wrapper(op);
+
+    // Root of the pattern must be a fusedbatchnorm node.
+    if (!this->helper_.getDialect()->IsFusedBatchNorm(
+            fusedbatchnorm_op_wrapper))
+      return false;
+    // All FusedBatchNorm ops have at least 5 outputs
+    if (op->getNumResults() < 5) return false;
+
+    // Not allowing control flow
+    // Check that only 0th output is consumed by other nodes.
+    if (helper_.HasControlOperandsOrResultUsers(op) ||
+        !op->getResult(1).use_empty() ||  // batch_mean
+        !op->getResult(2).use_empty() ||  // batch_variance
+        !op->getResult(3).use_empty() ||  // reserve_space_1
+        !op->getResult(4).use_empty()) {  // reserve_space_2
+      return false;
+    }
+    // FusedBatchNormV3 has another output reserve_space_3
+    if ((op->getName().getStringRef().str() != "tfg.FusedBatchNormV3") &&
+        !op->getResult(5).use_empty()) {
+      return false;
+    }
+
+    // FusedBatchNormV2 and V3 have an extra type parameter.
+    // Conv2D + FusedBatchNormV2/V3 fusion is currently not supported for bf16.
+    if (op->getName().getStringRef().str() != "tfg.FusedBatchNorm") {
+      TypeAttr t_attr = op->getAttrOfType<TypeAttr>("T");
+      TypeAttr u_attr = op->getAttrOfType<TypeAttr>("U");
+      if (!t_attr || !u_attr) return false;
+
+      // TODO(intel-tf): enable the fusion for bf16
+      if (!u_attr.getValue().isa<Float32Type>() ||
+          t_attr.getValue().isa<BFloat16Type>()) {
+        return false;
+      }
+    }
+
+    auto epsilon_attr = op->getAttrOfType<FloatAttr>("epsilon");
+    if (!epsilon_attr) return false;
+
+    // Check that batch normalization is in inference mode.
+    auto training_attr = op->getAttrOfType<BoolAttr>("is_training");
+    if (!training_attr) return false;
+    auto is_training = training_attr.getValue();
+    if (is_training) return false;
+
+    // Convolution op
+    if (op->getNumOperands() < 1) return false;
+    Value conv_value = op->getOperand(0);
+    Operation *conv_op = conv_value.getDefiningOp();
+
+    // TODO(intel-tf): Add support for all contractions.
+    if (!this->helper_.getDialect()->IsConv2D(conv_op)) return false;
+
+    if (helper_.HasControlOperandsOrResultUsers(conv_op) ||
+        !helper_.IsCpuCompatible(conv_op) ||
+        !helper_.HasAtMostOneUserOfResult0(conv_op) ||
+        !helper_.HaveSameDataType(op, conv_op)) {
+      return false;
+    }
+
+    pattern.contraction = conv_op;
+    pattern.fusedbatchnorm = op;
+    pattern.epsilon = epsilon_attr;
+    return true;
+  }
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    ContractionWithFusedBatchnorm pattern;
+    // Match the contraction and FusedBatchNormPattern
+    if (!matchPattern(op, pattern)) return failure();
+
+    std::unique_ptr<OperationState> state =
+        CreateContractionWithFusedBatchNormOpState(
+            rewriter, helper_, pattern.contraction, pattern.fusedbatchnorm,
+            nullptr, pattern.epsilon);
+
+    Operation *fused_op = rewriter.create(*state);
+    TFOp(fused_op).setName(TFOp(op).nameAttr());
+    if (!TFOp(op).device().empty()) {
+      TFOp(fused_op).setRequestedDevice(TFOp(op).deviceAttr());
+    }
+
+    rewriter.replaceOp(op, fused_op->getResults());
+    return success();
+  }
+};
+
+// Fuse Conv with Batchnorm and activation
+template <OpKind fusedbatchnormoptype, OpKind activation>
+class ContractionBatchNormActivationRewriter
+    : public ContractionBatchNormRewiriter<fusedbatchnormoptype> {
+ public:
+  explicit ContractionBatchNormActivationRewriter(OpPropertyHelper &helper)
+      : ContractionBatchNormRewiriter<fusedbatchnormoptype>(
+            GetTfgOpName(activation), helper, PatternBenefit(1)) {}
+
+  bool matchPattern(Operation *op,
+                    ContractionWithFusedBatchnormAndActivation &pattern,
+                    ContractionWithFusedBatchnorm &base_pattern) const {
+    // Although template instantiation gurantees that only valid activation op
+    // sanity check is added.
+    if (this->helper_.getDialect()->IsNoOp(op)) return false;
+    if (this->helper_.HasControlOperandsOrResultUsers(op)) return false;
+    Operation *fusedBatchNorm_op = op->getOperand(0).getDefiningOp();
+    if (!this->helper_.getDialect()->IsFusedBatchNorm(fusedBatchNorm_op) ||
+        !this->helper_.HaveSameDataType(op, fusedBatchNorm_op)) {
+      return false;
+    }
+    bool is_match_base_pattern =
+        ContractionBatchNormRewiriter<fusedbatchnormoptype>::matchPattern(
+            fusedBatchNorm_op, base_pattern);
+    if (!is_match_base_pattern) return false;
+    // Additionally as we will replace fusedbatchnorm op, we make sure that
+    // first output of batchnorm has exactly one use
+    if (!fusedBatchNorm_op->getResult(0).hasOneUse()) return false;
+    // Tanh activation only supported when oneDNN is enabled
+    if (!this->helper_.IsOneDNNEnabled() &&
+        this->helper_.getDialect()->IsTanh(op)) {
+      return false;
+    }
+
+    // TODO(intel-tf) : Need to test and enable in Kernel Op
+    // before enabling this activation
+    if (this->helper_.getDialect()->IsSigmoid(op)) return false;
+
+    pattern.contraction = base_pattern.contraction;
+    pattern.fusedbatchnorm = base_pattern.fusedbatchnorm;
+    pattern.epsilon = base_pattern.epsilon;
+    pattern.activation = op;
+    return true;
+  }
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    ContractionWithFusedBatchnorm base_pattern;
+    ContractionWithFusedBatchnormAndActivation pattern;
+    // Match the contraction and FusedBatchNormPattern
+    bool is_match_pattern = matchPattern(op, pattern, base_pattern);
+    if (!is_match_pattern) return failure();
+
+    std::unique_ptr<OperationState> state =
+        CreateContractionWithFusedBatchNormOpState(
+            rewriter, this->helper_, pattern.contraction,
+            pattern.fusedbatchnorm, pattern.activation, pattern.epsilon);
+
+    Operation *fused_op = rewriter.create(*state);
+    TFOp(fused_op).setName(TFOp(op).nameAttr());
+    if (!TFOp(op).device().empty()) {
+      TFOp(fused_op).setRequestedDevice(TFOp(op).deviceAttr());
+    }
+
+    rewriter.replaceOp(op, fused_op->getResults());
+
+    return success();
+  }
+};
+
+template <template <OpKind> class PatternT, OpKind... fusedbatchnormop,
+          typename... Args>
+static void InsertConvFusedBatchnormPatterns(RewritePatternSet &patterns,
+                                             Args &&... args) {
+  patterns.insert<PatternT<fusedbatchnormop>...>(std::forward<Args>(args)...);
+}
+
+template <template <OpKind> class PatternT, OpKind... op_kinds,
+          typename... Args>
+static void InsertConvFusedBatchnormActivationPatterns(
+    RewritePatternSet &patterns, Args &&... args) {
+  patterns.insert<PatternT<op_kinds>...>(std::forward<Args>(args)...);
+}
+
+template <OpKind activation>
+using MatchConvBatchNormActivationRewriter =
+    ContractionBatchNormActivationRewriter<OpKind::FusedBatchNorm, activation>;
+
+template <OpKind activation>
+using MatchConvBatchNormV2ActivationRewriter =
+    ContractionBatchNormActivationRewriter<OpKind::FusedBatchNormV2,
+                                           activation>;
+
+template <OpKind activation>
+using MatchConvBatchNormV3ActivationRewriter =
+    ContractionBatchNormActivationRewriter<OpKind::FusedBatchNormV3,
+                                           activation>;
+
 template <template <OpKind> class PatternT, OpKind... op_kinds,
           typename... Args>
 static void InsertPatterns(RewritePatternSet &patterns, Args &&...args) {
@@ -439,6 +715,22 @@ class Remapper : public impl::RemapperBase<Remapper> {
     InsertPatterns<ContractionBiasAddActivationRewriter, OpKind::Relu,
                    OpKind::Relu6, OpKind::Elu, OpKind::LeakyRelu, OpKind::Tanh,
                    OpKind::Sigmoid>(patterns, helper_);
+
+    InsertConvFusedBatchnormPatterns<
+        ContractionBatchNormRewiriter, OpKind::FusedBatchNorm,
+        OpKind::FusedBatchNormV2, OpKind::FusedBatchNormV3>(patterns, helper_);
+    InsertConvFusedBatchnormActivationPatterns<
+        MatchConvBatchNormActivationRewriter, OpKind::Relu, OpKind::Relu6,
+        OpKind::Elu, OpKind::LeakyRelu, OpKind::Tanh, OpKind::Sigmoid>(patterns,
+                                                                       helper_);
+    InsertConvFusedBatchnormActivationPatterns<
+        MatchConvBatchNormV2ActivationRewriter, OpKind::Relu, OpKind::Relu6,
+        OpKind::Elu, OpKind::LeakyRelu, OpKind::Tanh, OpKind::Sigmoid>(patterns,
+                                                                       helper_);
+    InsertConvFusedBatchnormActivationPatterns<
+        MatchConvBatchNormV3ActivationRewriter, OpKind::Relu, OpKind::Relu6,
+        OpKind::Elu, OpKind::LeakyRelu, OpKind::Tanh, OpKind::Sigmoid>(patterns,
+                                                                       helper_);
   }
 
   void populateRemapperPDLLPatterns(RewritePatternSet &patterns) {
