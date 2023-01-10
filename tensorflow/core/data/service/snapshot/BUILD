@@ -77,6 +77,7 @@ tf_cc_test(
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/protobuf:protos_all_cc",
         "@com_google_absl//absl/strings",
     ],

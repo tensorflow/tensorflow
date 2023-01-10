@@ -124,6 +124,12 @@ class SnapshotStreamWriter {
   // Writes the next record to the current chunk.
   Status WriteRecord(snapshot_util::TFRecordWriter& writer);
 
+  // Writes a DONE file when the stream is finished. Writes an ERROR file if it
+  // failed.
+  Status FinalizeStream(const Status& status);
+  Status WriteDoneFile();
+  Status WriteErrorFile(const Status& status);
+
   // Returns true if the writer should write an iterator checkpoint.
   bool ShouldSave() const;
 
@@ -148,6 +154,7 @@ class SnapshotStreamWriter {
   std::string CheckpointPath(int64_t chunk_index) const;
 
   const SnapshotWriterParams params_;
+  const std::string stream_directory_;
   const std::string committed_chunks_directory_;
   const std::string uncommitted_chunks_directory_;
   const std::string checkpoints_directory_;

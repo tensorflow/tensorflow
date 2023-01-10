@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
@@ -44,6 +45,7 @@ namespace data {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::ValuesIn;
 using ::tsl::testing::IsOkAndHolds;
@@ -59,6 +61,34 @@ StatusOr<std::unique_ptr<StandaloneTaskIterator>> TestIterator(
   return std::make_unique<StandaloneTaskIterator>(std::move(dataset),
                                                   std::move(iterator));
 }
+
+template <class T>
+class ElementOrErrorIterator : public TaskIterator {
+ public:
+  explicit ElementOrErrorIterator(const std::vector<StatusOr<T>>& elements)
+      : elements_(elements) {}
+
+  Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override {
+    end_of_sequence = (next_ >= elements_.size());
+    if (end_of_sequence) {
+      return OkStatus();
+    }
+    const StatusOr<T>& next_element = elements_[next_++];
+    TF_RETURN_IF_ERROR(next_element.status());
+    element = {Tensor{*next_element}};
+    return OkStatus();
+  }
+
+  StatusOr<Tensor> Save() override { return Tensor(); }
+
+  Status Restore(const Tensor& saved_iterator) override { return OkStatus(); }
+
+  int64_t Cardinality() const override { return elements_.size(); }
+
+ private:
+  const std::vector<StatusOr<T>> elements_;
+  int64_t next_ = 0;
+};
 
 StatusOr<std::string> CreateSnapshotDirectory() {
   std::string snapshot_path;
@@ -98,6 +128,12 @@ StatusOr<std::vector<T>> ReadSnapshot(const std::string& snapshot_path,
     result.push_back(tensor.unaligned_flat<T>().data()[0]);
   }
   return result;
+}
+
+StatusOr<std::string> ReadStringFromFile(const std::string& filename) {
+  std::string data;
+  TF_RETURN_IF_ERROR(ReadFileToString(Env::Default(), filename, &data));
+  return data;
 }
 
 // Deletes the committed chunks but keeps the checkpoints.
@@ -174,6 +210,61 @@ TEST_P(SnapshotStreamWriterParameterizedTest, WriteSnapshotChunks) {
                     /*num_elements=*/1),
                 IsOkAndHolds(ElementsAre(i)));
   }
+}
+
+TEST_P(SnapshotStreamWriterParameterizedTest, WriteDoneFile) {
+  int64_t range = 10;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
+                          TestIterator(testing::RangeDataset(range)));
+
+  std::string compression = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
+  std::string done_file_path = tsl::io::JoinPath(
+      StreamDirectory(snapshot_path, /*stream_index=*/0), "DONE");
+  std::string error_file_path = tsl::io::JoinPath(
+      StreamDirectory(snapshot_path, /*stream_index=*/0), "ERROR");
+
+  EXPECT_THAT(Env::Default()->FileExists(done_file_path),
+              StatusIs(error::NOT_FOUND));
+  EXPECT_THAT(Env::Default()->FileExists(error_file_path),
+              StatusIs(error::NOT_FOUND));
+  SnapshotWriterParams writer_params{snapshot_path, /*stream_index=*/0,
+                                     compression, Env::Default(),
+                                     /*max_chunk_size_bytes=*/1};
+  SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
+  TF_ASSERT_OK(snapshot_writer.Wait());
+  TF_EXPECT_OK(Env::Default()->FileExists(done_file_path));
+  EXPECT_THAT(Env::Default()->FileExists(error_file_path),
+              StatusIs(error::NOT_FOUND));
+}
+
+TEST_P(SnapshotStreamWriterParameterizedTest, WriteErrorFile) {
+  auto error_iterator = std::make_unique<ElementOrErrorIterator<tstring>>(
+      std::vector<StatusOr<tstring>>{
+          tstring("First element"), errors::InvalidArgument("Invalid argument"),
+          tstring("Second element"), errors::Aborted("Aborted")});
+  std::string compression = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
+  std::string done_file_path = tsl::io::JoinPath(
+      StreamDirectory(snapshot_path, /*stream_index=*/0), "DONE");
+  std::string error_file_path = tsl::io::JoinPath(
+      StreamDirectory(snapshot_path, /*stream_index=*/0), "ERROR");
+
+  EXPECT_THAT(Env::Default()->FileExists(done_file_path),
+              StatusIs(error::NOT_FOUND));
+  EXPECT_THAT(Env::Default()->FileExists(error_file_path),
+              StatusIs(error::NOT_FOUND));
+  SnapshotWriterParams writer_params{snapshot_path, /*stream_index=*/0,
+                                     compression, Env::Default(),
+                                     /*max_chunk_size_bytes=*/1};
+  SnapshotStreamWriter snapshot_writer(writer_params,
+                                       std::move(error_iterator));
+  EXPECT_THAT(snapshot_writer.Wait(), StatusIs(error::INVALID_ARGUMENT));
+  EXPECT_THAT(Env::Default()->FileExists(done_file_path),
+              StatusIs(error::NOT_FOUND));
+  TF_EXPECT_OK(Env::Default()->FileExists(error_file_path));
+  EXPECT_THAT(ReadStringFromFile(error_file_path),
+              IsOkAndHolds(HasSubstr("Invalid argument")));
 }
 
 TEST_P(SnapshotStreamWriterParameterizedTest, SaveAndRestoreFromCheckpoints) {
