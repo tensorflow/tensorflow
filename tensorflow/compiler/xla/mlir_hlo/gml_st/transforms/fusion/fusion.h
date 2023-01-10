@@ -17,6 +17,8 @@ limitations under the License.
 #define MLIR_HLO_GML_ST_TRANSFORMS_FUSION_FUSION_H
 
 #include "gml_st/IR/gml_st_ops.h"
+#include "gml_st/transforms/peeling/peeling.h"
+#include "gml_st/transforms/tiling/tiling.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/IR/PatternMatch.h"
 
@@ -54,61 +56,22 @@ struct FusionCluster {
 // general case a cluster is a tree that can have multiple leaf-node ops,
 // e.g. map(op, map(op)).
 // First element of the cluster is always the root for tiling.
-template <class FusionOpTy>
-FusionCluster findMapFusionCluster(FusionOpTy op) {
-  // Find the root operation in the chain of elementwise ops. Current approach
-  // doesn't work well if maps don't form a chain.
-  Operation *rootOp = op;
-  while (true) {
-    auto users = llvm::to_vector(rootOp->getUsers());
+FusionCluster findMapFusionCluster(Operation *op);
 
-    if (users.size() != 1) break;
-    if (!isa<linalg::MapOp>(users[0])) break;
+// Fuses linalg.fill that is used in init argument of the op.
+LogicalResult fuseOutputFill(PatternRewriter &rewriter, Operation *op);
 
-    rootOp = users[0];
-  }
+// Tiles the op and fuses greedily according to the filter function.
+FailureOr<Operation *> tileAndFuseGreedily(
+    PatternRewriter &rewriter, Operation *op,
+    const mlir::gml_st::TilingOptions &opts, StringRef label,
+    llvm::function_ref<bool(Operation *)> fuseFilterFn);
 
-  // Run a graph search to find all linalg.map and that can be fused in
-  // the root op.
-  DenseSet<Operation *> resultOps;
-  SmallVector<Operation *> remainingProducers{rootOp};
-
-  while (!remainingProducers.empty()) {
-    Operation *curOp = remainingProducers.pop_back_val();
-    if (!curOp) continue;
-
-    if (auto fusionOp = dyn_cast<FusionOpTy>(curOp)) {
-      for (auto *u : fusionOp->getUsers())
-        // Do not fuse fusionOp that is used by another fusionOp.
-        if (isa<FusionOpTy>(u)) continue;
-      resultOps.insert(curOp);
-    } else if (auto mapOp = dyn_cast<linalg::MapOp>(curOp)) {
-      resultOps.insert(curOp);
-      for (auto *operand : mapOp.getDpsInputOperands())
-        remainingProducers.push_back(operand->get().getDefiningOp());
-    }
-  }
-  return {resultOps, rootOp};
-}
-
-template <class FusionOpTy>
-LogicalResult fuseOutputFill(PatternRewriter &rewriter, FusionOpTy op) {
-  // Fusion into the output.
-  Operation *definingOp = op.getDpsInitOperand(0)->get().getDefiningOp();
-
-  // linalg.fill has already been fused for another matmul.
-  if (isa<linalg::FillOp>(definingOp)) return success();
-
-  auto materialize = dyn_cast<MaterializeOp>(definingOp);
-  if (!materialize) {
-    return rewriter.notifyMatchFailure(
-        op, "has failed to 'materialize' output during 'linalg.fill' fusion.");
-  }
-  if (materialize.getSource().getDefiningOp<linalg::FillOp>()) {
-    if (failed(fuse(rewriter, materialize))) return failure();
-  }
-  return success();
-}
+// Tiles the op to 1 for all dimensions and fuses greedily according to the
+// filter function.
+LogicalResult tilePeeledOpsToScalars(
+    PatternRewriter &rewriter, const PeelingResult &peelingResult,
+    StringRef label, llvm::function_ref<bool(Operation *)> fuseFilterFn);
 
 }  // namespace gml_st
 }  // namespace mlir
