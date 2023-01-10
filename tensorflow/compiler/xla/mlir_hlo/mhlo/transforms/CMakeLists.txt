@@ -82,6 +82,7 @@ add_mlir_library(MhloPasses
 
   LINK_LIBS PUBLIC
   ChloOps
+  MhloAnalysis
   MhloDialect
   MhloScatterUtils
   MhloTypeConversion

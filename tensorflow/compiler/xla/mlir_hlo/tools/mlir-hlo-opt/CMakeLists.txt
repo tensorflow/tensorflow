@@ -25,7 +25,6 @@ set(LIBS
         GmlStPasses
         LmhloDialect
         LmhloGPUDialect
-        MhloAnalysis
         MhloRegisterDialects
         MhloTestAnalysis
         LmhloPasses
