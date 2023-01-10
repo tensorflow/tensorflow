@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/snapshot/utils.h"
 #include "tensorflow/core/data/service/worker.pb.h"
@@ -184,35 +185,15 @@ Status SnapshotStreamWriter::FinalizeStream(const Status& status) {
 }
 
 Status SnapshotStreamWriter::WriteDoneFile() {
-  std::string committed_done_file_path =
+  std::string done_file_path =
       StreamDoneFilePath(params_.snapshot_path, params_.stream_index);
-  std::string uncommitted_done_file_path;
-  if (!params_.env->LocalTempFilename(&uncommitted_done_file_path)) {
-    return errors::Internal("Failed to write DONE file at ",
-                            committed_done_file_path,
-                            " for distributed tf.data snapshot.");
-  }
-
-  TF_RETURN_IF_ERROR(
-      WriteStringToFile(params_.env, uncommitted_done_file_path, ""));
-  return params_.env->RenameFile(uncommitted_done_file_path,
-                                 committed_done_file_path);
+  return AtomicallyWriteStringToFile(done_file_path, "", params_.env);
 }
 
 Status SnapshotStreamWriter::WriteErrorFile(const Status& status) {
-  std::string committed_error_file_path =
-      tsl::io::JoinPath(stream_directory_, "ERROR");
-  std::string uncommitted_error_file_path;
-  if (!params_.env->LocalTempFilename(&uncommitted_error_file_path)) {
-    return errors::Internal("Failed to write ERROR file at ",
-                            committed_error_file_path,
-                            " for distributed tf.data snapshot.");
-  }
-
-  TF_RETURN_IF_ERROR(WriteStringToFile(params_.env, uncommitted_error_file_path,
-                                       status.ToString()));
-  return params_.env->RenameFile(uncommitted_error_file_path,
-                                 committed_error_file_path);
+  std::string error_file_path = tsl::io::JoinPath(stream_directory_, "ERROR");
+  return AtomicallyWriteStringToFile(error_file_path, status.ToString(),
+                                     params_.env);
 }
 
 void SnapshotStreamWriter::Cancel() TF_LOCKS_EXCLUDED(mu_) {
