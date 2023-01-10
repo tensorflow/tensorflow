@@ -53,15 +53,15 @@ bool XlaInterpreterExecutor::Memcpy(Stream *stream, void *host_dst,
                                     uint64_t size) {
   AsExecutorStream(stream)->EnqueueTask([this, host_dst, dev_src, size]() {
     // Ignore errors.
-    port::Status ok = SynchronousMemcpy(host_dst, dev_src, size);
+    tsl::Status ok = SynchronousMemcpy(host_dst, dev_src, size);
   });
-  port::Status status = AsExecutorStream(stream)->BlockUntilDone();
+  tsl::Status status = AsExecutorStream(stream)->BlockUntilDone();
   if (status.ok()) {
     return true;
   }
 
-  // TODO(b/199316985): Return 'Status' instead of 'bool', so we don't need to
-  // throw away error information here.
+  // TODO(b/199316985): Return 'tsl::Status' instead of 'bool', so we don't need
+  // to throw away error information here.
   LOG(WARNING) << "Memcpy: error on stream: " << status;
   return false;
 }
@@ -70,33 +70,34 @@ bool XlaInterpreterExecutor::Memcpy(Stream *stream, DeviceMemoryBase *dev_dst,
                                     const void *host_src, uint64_t size) {
   AsExecutorStream(stream)->EnqueueTask([this, dev_dst, host_src, size]() {
     // Ignore errors.
-    port::Status ok = SynchronousMemcpy(dev_dst, host_src, size);
+    tsl::Status ok = SynchronousMemcpy(dev_dst, host_src, size);
   });
-  port::Status status = AsExecutorStream(stream)->BlockUntilDone();
+  tsl::Status status = AsExecutorStream(stream)->BlockUntilDone();
   if (status.ok()) {
     return true;
   }
 
-  // TODO(b/199316985): Return 'Status' instead of 'bool', so we don't need to
-  // throw away error information here.
+  // TODO(b/199316985): Return 'tsl::Status' instead of 'bool', so we don't need
+  // to throw away error information here.
   LOG(WARNING) << "Memcpy: error on stream: " << status;
   return false;
 }
 
-port::Status XlaInterpreterExecutor::SynchronousMemcpy(
-    DeviceMemoryBase *dev_dst, const void *host_src, uint64_t size) {
+tsl::Status XlaInterpreterExecutor::SynchronousMemcpy(DeviceMemoryBase *dev_dst,
+                                                      const void *host_src,
+                                                      uint64_t size) {
   memcpy(dev_dst->opaque(), host_src, size);
   return ::tsl::OkStatus();
 }
 
-port::Status XlaInterpreterExecutor::SynchronousMemcpy(
+tsl::Status XlaInterpreterExecutor::SynchronousMemcpy(
     void *host_dst, const DeviceMemoryBase &dev_src, uint64_t size) {
   memcpy(host_dst, dev_src.opaque(), size);
   return ::tsl::OkStatus();
 }
 
 bool XlaInterpreterExecutor::HostCallback(
-    Stream *stream, std::function<port::Status()> callback) {
+    Stream *stream, std::function<tsl::Status()> callback) {
   AsExecutorStream(stream)->EnqueueTaskWithStatus(callback);
   return true;
 }
@@ -105,13 +106,13 @@ bool XlaInterpreterExecutor::CreateStreamDependency(Stream *dependent,
                                                     Stream *other) {
   AsExecutorStream(dependent)->EnqueueTask(
       [other]() { return other->BlockHostUntilDone(); });
-  port::Status status = AsExecutorStream(dependent)->BlockUntilDone();
+  tsl::Status status = AsExecutorStream(dependent)->BlockUntilDone();
   if (status.ok()) {
     return true;
   }
 
-  // TODO(b/199316985): Return 'Status' instead of 'bool', so we don't need to
-  // throw away error information here.
+  // TODO(b/199316985): Return 'tsl::Status' instead of 'bool', so we don't need
+  // to throw away error information here.
   LOG(WARNING) << "CreateStreamDependency: error on stream: " << status;
   return false;
 }
@@ -126,7 +127,7 @@ bool XlaInterpreterExecutor::StopTimer(Stream *stream, Timer *timer) {
   return true;
 }
 
-port::Status XlaInterpreterExecutor::BlockHostUntilDone(Stream *stream) {
+tsl::Status XlaInterpreterExecutor::BlockHostUntilDone(Stream *stream) {
   return AsExecutorStream(stream)->BlockUntilDone();
 }
 

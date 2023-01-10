@@ -46,7 +46,6 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.util import compat
-from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
@@ -938,14 +937,8 @@ class FuncGraph(ops.Graph):
     return capture[1]
 
   def clear_captures(self):
-    # TODO(b/115366440): Delete this method when a custom OrderedDict is added.
-    # Clearing captures using clear() leaves some cycles around.
-    while self._captures:
-      self._captures.popitem()
-    memory.dismantle_ordered_dict(self._captures)
-    while self._deferred_captures:
-      self._deferred_captures.popitem()
-    memory.dismantle_ordered_dict(self._deferred_captures)
+    self._captures.clear()
+    self._deferred_captures.clear()
 
   def capture_eager_tensor(self, tensor, name):
     capture = self._captures.get(id(tensor))
@@ -1121,28 +1114,20 @@ def func_graph_from_py_func(name,
     default_use_resource = current_scope.use_resource
     current_scope.set_use_resource(True)
 
-    placeholder_context = trace_type.InternalPlaceholderContext(func_graph)
-
     if signature is not None:
       args = signature
       kwargs = {}
 
     if create_placeholders:
-      # Get placeholders for args and kwargs
-      func_args = _get_defun_inputs_from_args(
-          args, arg_names, placeholder_context)
-      func_kwargs = _get_defun_inputs_from_kwargs(kwargs, placeholder_context)
+      func_args, func_kwargs = _create_placeholders(args, kwargs, arg_names)
     else:
-      func_args = args
-      func_kwargs = kwargs
+      func_args, func_kwargs = args, kwargs
 
-    for arg in nest.flatten([func_args, func_kwargs], expand_composites=True):
-      if isinstance(arg, ops.Tensor) and arg.dtype == dtypes.resource:
-        func_graph._resource_tensor_inputs.add(arg)  # pylint: disable=protected-access
-      # TODO(b/209081027): Remove this after ResourceVariable subclasses
-      # CompositeTensor and we can expand ResourceVariable.
-      elif isinstance(arg, resource_variable_ops.ResourceVariable):
-        func_graph._resource_tensor_inputs.add(arg.handle)  # pylint: disable=protected-access
+    input_trace_types = trace_type.from_value([func_args, func_kwargs])
+    func_graph.inputs = input_trace_types._to_tensors([func_args, func_kwargs])  # pylint: disable=protected-access
+    for arg in func_graph.inputs:
+      if arg.dtype == dtypes.resource:
+        func_graph._resource_tensor_inputs.add(arg)  # pylint:disable=protected-access
 
     signature_context = trace_type.InternalTracingContext()
     # Convert all Tensors into TensorSpecs before saving the structured inputs.
@@ -1155,22 +1140,17 @@ def func_graph_from_py_func(name,
         convert_structure_to_signature(
             func_kwargs, signature_context=signature_context))
 
-    flat_func_args = nest.flatten(func_args, expand_composites=True)
-    flat_func_kwargs = nest.flatten(func_kwargs, expand_composites=True)
-    # Temporarily set inputs to allow graph building code to inspect
-    # them. Reassigned below.
-    func_graph.inputs = [
-        arg for arg in flat_func_args + flat_func_kwargs
-        if isinstance(arg, ops.Tensor)
-    ]
-
     # Note: `nest.flatten` sorts by keys, as does `_deterministic_dict_values`.
     # Variables to help check whether mutation happens in calling the function
     # Copy the recursive list, tuple and map structure, but not base objects
     func_args_before = nest.pack_sequence_as(
-        func_args, flat_func_args, expand_composites=True)
+        func_args,
+        nest.flatten(func_args, expand_composites=True),
+        expand_composites=True)
     func_kwargs_before = nest.pack_sequence_as(
-        func_kwargs, flat_func_kwargs, expand_composites=True)
+        func_kwargs,
+        nest.flatten(func_kwargs, expand_composites=True),
+        expand_composites=True)
 
     def convert(x):
       """Converts a function output to a Tensor."""
@@ -1420,82 +1400,35 @@ def _create_substitute_placeholder(value, name=None, dtype=None, shape=None):
   return placeholder
 
 
-def _get_defun_inputs_from_args(args, names, placeholder_context):
-  """Maps Python function positional args to graph-construction inputs."""
-  return _get_defun_inputs(
-      args, names, placeholder_context, structured_args=args)
+def _create_placeholders(args, kwargs, arg_names=None):
+  """Create placeholders given positional args and keyword args."""
+  signature_context = trace_type.InternalTracingContext(
+      is_legacy_signature=True)
+  arg_trace_types = trace_type.from_value(tuple(args), signature_context)
+  kwarg_trace_types = trace_type.from_value(kwargs, signature_context)
 
+  handledata_mapping = signature_context.get_handledata_mapping()
+  placeholder_mapping = signature_context.get_placeholder_mapping()
+  placeholder_context = trace_type.InternalPlaceholderContext(
+      ops.get_default_graph(), handledata_mapping, placeholder_mapping)
 
-def _get_defun_inputs_from_kwargs(kwargs, placeholder_context):
-  """Maps Python function keyword args to graph-construction inputs."""
-  if kwargs:
-    names, args = zip(*sorted(kwargs.items()))
-  else:
-    names = []
-    args = []
-  return _get_defun_inputs(
-      args, names, placeholder_context, structured_args=kwargs)
+  if arg_names is None:
+    arg_names = [None] * len(arg_trace_types.components)
 
-
-def _get_defun_inputs(args, names, placeholder_context, structured_args):
-  """Maps python function args to graph-construction inputs.
-
-  Args:
-    args: A list of user-specified arguments. If `structured_args` is a list,
-      `args` is the same with `structured_args`. If `structured_args` is a dict,
-      `args` is the values of the dict.
-    names: A list of strings with user-specified argument names, same length as
-      `args`. May be `None`, in which case a generic name is used.
-    placeholder_context: Container with mapping and flags for generating
-      placeholders for `args` correctly.
-    structured_args: The original argument list or dictionary.
-
-  Returns:
-    Placeholders with the same structure as `structured_args`.
-  """
-  function_inputs = []
-  if names is None:
-    names = [None] * len(args)
-
-  for arg_value, name in zip(args, names):
+  # Create placeholders for trace type args and trace type kwargs
+  func_args = []
+  for name, trace_type_arg in zip(arg_names, arg_trace_types.components):
     placeholder_context.update_naming_scope(name)
-    if isinstance(arg_value, type_spec.TypeSpec):
-      function_inputs.append(arg_value.placeholder_value(placeholder_context))
-    else:
-      for val in composite_tensor_utils.flatten_with_variables_or_variable_specs(
-          arg_value):
-        function_inputs.append(_get_defun_input(val, placeholder_context))
-  return nest.pack_sequence_as(
-      structured_args,
-      nest.flatten(function_inputs, expand_composites=True),
-      expand_composites=True)
+    placeholder = trace_type_arg.placeholder_value(placeholder_context)
+    func_args.append(placeholder)
 
+  func_kwargs = {}
+  for name, trace_type_kwarg in zip(*sorted(kwarg_trace_types.mapping.items())):
+    placeholder_context.update_naming_scope(name)
+    placeholder = trace_type_kwarg.placeholder_value(placeholder_context)
+    func_kwargs[name] = placeholder
 
-def _get_defun_input(arg, placeholder_context):
-  """Maps a python function arg to a graph-construction input."""
-  func_graph = placeholder_context.context_graph
-  name = placeholder_context.naming_scope
-  if isinstance(arg, (tensor_spec.TensorSpec, ops.Tensor,
-                      resource_variable_ops.VariableSpec)):
-    input_arg = arg
-    if isinstance(arg, ops.Tensor):
-      input_arg = tensor_spec.TensorSpec.from_tensor(arg, name=name)
-    placeholder = input_arg.placeholder_value(placeholder_context)
-    if isinstance(arg, ops.Tensor):
-      handle_data_util.copy_handle_data(arg, placeholder)
-    return placeholder
-  # TODO(b/246437883): Investigate how to remove this branch.
-  elif isinstance(arg, resource_variable_ops.BaseResourceVariable):
-    # Capture arg variables to create placeholders for them. These will be
-    # removed as captures after the function is traced (since otherwise we'd
-    # just add it back with a new placeholder when the variable was referenced).
-    placeholder = func_graph.capture(arg.handle, name=name)
-    placeholder.op._set_attr(  # pylint: disable=protected-access
-        "_user_specified_name",
-        attr_value_pb2.AttrValue(s=compat.as_bytes(name)))
-    return arg
-  else:
-    return arg
+  return tuple(func_args), func_kwargs
 
 
 def dismantle_func_graph(func_graph):

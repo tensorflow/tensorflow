@@ -22,6 +22,7 @@ import weakref
 
 from tensorflow.core.function.trace_type import default_types_pb2
 from tensorflow.core.function.trace_type import serialization
+from tensorflow.core.function.trace_type import util
 from tensorflow.python.types import trace
 
 
@@ -90,6 +91,9 @@ class Literal(trace.TraceType, serialization.Serializable):
       return list(self.value)
     return self.value
 
+  def _to_tensors(self, value: Any):
+    return []
+
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
       return NotImplemented
@@ -123,6 +127,9 @@ class Weakref(trace.TraceType):
 
   def placeholder_value(self, placeholder_context=None) -> Any:
     return self._ref()
+
+  def _to_tensors(self, value: Any) -> Any:
+    return []
 
   def __eq__(self, other):
     if not isinstance(other, trace.TraceType):
@@ -199,6 +206,13 @@ class Tuple(trace.TraceType, serialization.Serializable):
     ]
     return tuple(components)
 
+  def _to_tensors(self, value) -> Any:
+    assert isinstance(value, tuple)
+    flattened_values = []
+    for comp_value, comp_type in zip(value, self.components):
+      flattened_values.extend(comp_type._to_tensors(comp_value))  # pylint: disable=protected-access
+    return flattened_values
+
   def __eq__(self, other: Any) -> bool:
     if not isinstance(other, trace.TraceType):
       return NotImplemented
@@ -257,6 +271,10 @@ class List(trace.TraceType, serialization.Serializable):
 
   def placeholder_value(self, placeholder_context) -> Any:
     return list(self.components_tuple.placeholder_value(placeholder_context))
+
+  def _to_tensors(self, value):
+    assert isinstance(value, list)
+    return self.components_tuple._to_tensors(tuple(value))  # pylint: disable=protected-access
 
   def __eq__(self, other: Any) -> bool:
     if not isinstance(other, trace.TraceType):
@@ -350,6 +368,15 @@ class NamedTuple(trace.TraceType, serialization.Serializable):
     ]
     return self._placeholder_type(*attribute_placeholders)
 
+  def _to_tensors(self, value: Any):
+    assert util.is_namedtuple(value)
+    flattened_values = []
+    for attribute_name, attribute_type in zip(
+        self.attribute_names, self.attributes.components):
+      attribute_value = getattr(value, attribute_name)
+      flattened_values.extend(attribute_type._to_tensors(attribute_value))  # pylint: disable=protected-access
+    return flattened_values
+
   def __hash__(self) -> int:
     return hash((self.type_name, self.attribute_names, self.attributes))
 
@@ -441,6 +468,16 @@ class Attrs(trace.TraceType):
         for attribute in self.named_attributes.attributes.components
     ]
     return self._placeholder_type(*attribute_placeholders)
+
+  def _to_tensors(self, value: Any):
+    assert util.is_attrs(value)
+    flattened_values = []
+    for attribute_name, attribute_type in zip(
+        self.named_attributes.attribute_names,
+        self.named_attributes.attributes.components):
+      attribute_value = getattr(value, attribute_name)
+      flattened_values.extend(attribute_type._to_tensors(attribute_value))  # pylint: disable=protected-access
+    return flattened_values
 
   def __hash__(self) -> int:
     return hash(self.named_attributes)
@@ -538,6 +575,14 @@ class Dict(trace.TraceType, serialization.Serializable):
     if self._placeholder_type is collections.defaultdict:
       return dict(attribute_placeholders)
     return self._placeholder_type(attribute_placeholders)
+
+  def _to_tensors(self, value: Any):
+    assert isinstance(value, collections.abc.Mapping)
+    flattened_values = []
+    for key in sorted(self.mapping.keys()):
+      comp_value, comp_type = value[key], self.mapping[key]
+      flattened_values.extend(comp_type._to_tensors(comp_value))  # pylint: disable=protected-access
+    return flattened_values
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):

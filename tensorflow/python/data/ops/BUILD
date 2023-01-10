@@ -52,6 +52,11 @@ py_library(
 )
 
 py_library(
+    name = "shuffle_op",
+    srcs = ["shuffle_op.py"],
+)
+
+py_library(
     name = "rebatch_op",
     srcs = ["rebatch_op.py"],
     deps = [
@@ -103,6 +108,7 @@ py_library(
         ":save_ops",
         ":scan_op",
         ":shard_op",
+        ":shuffle_op",
         ":skip_op",
         ":snapshot_op",
         ":sparse_batch_op",

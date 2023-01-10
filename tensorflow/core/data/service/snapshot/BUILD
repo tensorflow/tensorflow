@@ -1,6 +1,7 @@
 # Distributed snapshot library.
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -14,6 +15,7 @@ cc_library(
     name = "path_utils",
     srcs = ["path_utils.cc"],
     hdrs = ["path_utils.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/tsl/platform:path",
         "@com_google_absl//absl/strings",

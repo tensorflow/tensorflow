@@ -38,6 +38,10 @@ limitations under the License.
 
 namespace xla {
 namespace {
+using ::testing::IsEmpty;
+using ::testing::Pair;
+using ::testing::UnorderedElementsAre;
+
 constexpr absl::Duration kHeartbeatInterval = absl::Milliseconds(500);
 constexpr int kMaxMissingHeartbeats = 3;
 constexpr absl::Duration kBarrierTimeout = absl::Milliseconds(200);
@@ -716,6 +720,74 @@ TEST_P(ClientServerTest, WaitAtBarrier_FailWithSameBarrierId) {
   for (int i = 0; i < num_nodes; ++i) {
     EXPECT_EQ(statuses[i].code(), tsl::error::FAILED_PRECONDITION)
         << " node id: " << i;
+  }
+}
+
+TEST_P(ClientServerTest, KeyValueDirGet) {
+  StartService(/*num_nodes=*/1, GetParam().use_coordination_service);
+  auto client = GetClient(/*node_id=*/0, GetParam().use_coordination_service);
+  TF_ASSERT_OK(client->Connect());
+  TF_ASSERT_OK(client->KeyValueSet("test_dir/sub_dir/1", "1"));
+  TF_ASSERT_OK(client->KeyValueSet("test_dir/sub_dir/2", "2"));
+  TF_ASSERT_OK(client->KeyValueSet("test_dir/3", "3"));
+  TF_ASSERT_OK(client->KeyValueSet("test", "4"));  // Not in a directory.
+
+  auto results = client->KeyValueDirGet("test_dir/");
+
+  if (GetParam().use_coordination_service) {
+    TF_ASSERT_OK(results.status());
+    auto kvs = results.value();
+
+    EXPECT_THAT(kvs, UnorderedElementsAre(Pair("test_dir/sub_dir/1", "1"),
+                                          Pair("test_dir/sub_dir/2", "2"),
+                                          Pair("test_dir/3", "3")));
+  } else {
+    EXPECT_EQ(results.status().code(), tsl::error::UNIMPLEMENTED);
+  }
+}
+
+TEST_P(ClientServerTest, KeyValueDelete) {
+  StartService(/*num_nodes=*/1, GetParam().use_coordination_service);
+  auto client = GetClient(/*node_id=*/0, GetParam().use_coordination_service);
+  TF_ASSERT_OK(client->Connect());
+  TF_ASSERT_OK(client->KeyValueSet("to_be_deleted", "deleted"));
+  TF_ASSERT_OK(client->KeyValueSet("to_be_kept", "kept"));
+
+  auto results = client->KeyValueDelete("to_be_deleted");
+
+  if (GetParam().use_coordination_service) {
+    TF_EXPECT_OK(results);
+    auto deleted_kv =
+        client->BlockingKeyValueGet("to_be_deleted", absl::Milliseconds(200));
+    // We time out from attempting to retrieve a deleted key.
+    EXPECT_EQ(deleted_kv.status().code(), tsl::error::DEADLINE_EXCEEDED);
+    // Other key should still exist.
+    auto kept_kv =
+        client->BlockingKeyValueGet("to_be_kept", absl::Milliseconds(200));
+    TF_ASSERT_OK(kept_kv.status());
+    EXPECT_EQ(kept_kv.value(), "kept");
+  } else {
+    EXPECT_EQ(results.code(), tsl::error::UNIMPLEMENTED);
+  }
+}
+
+TEST_P(ClientServerTest, KeyValueDelete_Directory) {
+  StartService(/*num_nodes=*/1, GetParam().use_coordination_service);
+  auto client = GetClient(/*node_id=*/0, GetParam().use_coordination_service);
+  TF_ASSERT_OK(client->Connect());
+  TF_ASSERT_OK(client->KeyValueSet("test_dir/sub_dir/1", "1"));
+  TF_ASSERT_OK(client->KeyValueSet("test_dir/sub_dir/2", "2"));
+  TF_ASSERT_OK(client->KeyValueSet("test_dir/3", "3"));
+
+  auto results = client->KeyValueDelete("test_dir/");
+
+  if (GetParam().use_coordination_service) {
+    TF_EXPECT_OK(results);
+    auto kvs = client->KeyValueDirGet("test_dir/");
+    TF_ASSERT_OK(kvs.status());
+    EXPECT_THAT(kvs.value(), IsEmpty());
+  } else {
+    EXPECT_EQ(results.code(), tsl::error::UNIMPLEMENTED);
   }
 }
 

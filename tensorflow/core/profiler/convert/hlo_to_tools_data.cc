@@ -41,11 +41,8 @@ StatusOr<std::string> ConvertHloProtoToMemoryViewer(
   static constexpr int kSmallBufferSize = 16 * 1024;  // 16KB
   static constexpr int kMemorySpaceColor = 0;         // HBM
 
-  // heap_simulator_trace_id is set to -1. The profiler will get heap simulator
-  // trace based on memory space.
   auto result_or = ConvertHloProtoToPreprocessResult(
-      hlo_proto, kSmallBufferSize, /*heap_simulator_trace_id=*/-1,
-      kMemorySpaceColor);
+      hlo_proto, kSmallBufferSize, kMemorySpaceColor);
   if (!result_or.ok()) {
     return errors::Internal(
         "Failed to convert HLO proto to memory viewer result: ",

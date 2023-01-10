@@ -184,7 +184,7 @@ StreamExecutor::~StreamExecutor() {
   }
 }
 
-port::Status StreamExecutor::Init(DeviceOptions device_options) {
+tsl::Status StreamExecutor::Init(DeviceOptions device_options) {
   TF_RETURN_IF_ERROR(
       implementation_->Init(device_ordinal_, std::move(device_options)));
 
@@ -196,10 +196,10 @@ port::Status StreamExecutor::Init(DeviceOptions device_options) {
   return ::tsl::OkStatus();
 }
 
-port::Status StreamExecutor::Init() { return Init(DeviceOptions::Default()); }
+tsl::Status StreamExecutor::Init() { return Init(DeviceOptions::Default()); }
 
-port::Status StreamExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
-                                       KernelBase* kernel) {
+tsl::Status StreamExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
+                                      KernelBase* kernel) {
   return implementation_->GetKernel(spec, kernel);
 }
 
@@ -207,8 +207,8 @@ void StreamExecutor::UnloadKernel(const KernelBase* kernel) {
   implementation_->UnloadKernel(kernel);
 }
 
-port::Status StreamExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
-                                        ModuleHandle* module_handle) {
+tsl::Status StreamExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
+                                       ModuleHandle* module_handle) {
   return implementation_->LoadModule(spec, module_handle);
 }
 
@@ -242,7 +242,7 @@ bool StreamExecutor::CanEnablePeerAccessTo(StreamExecutor* other) {
   return implementation_->CanEnablePeerAccessTo(other->implementation_.get());
 }
 
-port::Status StreamExecutor::EnablePeerAccessTo(StreamExecutor* other) {
+tsl::Status StreamExecutor::EnablePeerAccessTo(StreamExecutor* other) {
   return implementation_->EnablePeerAccessTo(other->implementation_.get());
 }
 
@@ -302,7 +302,7 @@ bool StreamExecutor::GetConvolveAlgorithms(
   }
 }
 
-port::Status StreamExecutor::GetConvolveRunners(
+tsl::Status StreamExecutor::GetConvolveRunners(
     bool use_cudnn_frontend, dnn::ConvolutionKind kind,
     dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
     const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
@@ -323,7 +323,7 @@ port::Status StreamExecutor::GetConvolveRunners(
       scratch_allocator, out_exec_plans);
 }
 
-port::Status StreamExecutor::GetFusedConvolveRunners(
+tsl::Status StreamExecutor::GetFusedConvolveRunners(
     bool use_cudnn_frontend, dnn::ConvolutionKind kind,
     dnn::DataType input_type, dnn::DataType bias_type,
     dnn::DataType output_type, double conv_input_scale, double side_input_scale,
@@ -346,7 +346,7 @@ port::Status StreamExecutor::GetFusedConvolveRunners(
       convolution_descriptor, use_fallback, activation_mode, out_exec_plans);
 }
 
-port::Status StreamExecutor::GetFusedMatmulRunners(
+tsl::Status StreamExecutor::GetFusedMatmulRunners(
     bool use_cudnn_frontend, dnn::DataType input_type, dnn::DataType bias_type,
     dnn::DataType output_type, Stream* stream, bool trans_a, bool trans_b,
     uint64_t m, uint64_t n, uint64_t k, int64_t lda, int64_t ldb, int64_t ldc,
@@ -411,8 +411,8 @@ StreamExecutor::createRnnDescriptor(
     bool use_padded_io) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return port::Status(port::error::UNKNOWN,
-                        "Fail to find the dnn implementation.");
+    return tsl::Status(port::error::UNKNOWN,
+                       "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnDescriptor(
       num_layers, hidden_size, input_size, cell_size, batch_size, input_mode,
@@ -426,8 +426,8 @@ StreamExecutor::createRnnSequenceTensorDescriptor(int max_seq_length,
                                                   dnn::DataType data_type) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return port::Status(port::error::UNKNOWN,
-                        "Fail to find the dnn implementation.");
+    return tsl::Status(port::error::UNKNOWN,
+                       "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnSequenceTensorDescriptor(
       max_seq_length, batch_size, data_size, data_type);
@@ -440,8 +440,8 @@ StreamExecutor::createRnnSequenceTensorDescriptor(
     dnn::DataType data_type) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return port::Status(port::error::UNKNOWN,
-                        "Fail to find the dnn implementation.");
+    return tsl::Status(port::error::UNKNOWN,
+                       "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnSequenceTensorDescriptor(
       max_seq_length, batch_size, data_size, seq_lengths, time_major,
@@ -454,8 +454,8 @@ StreamExecutor::createRnnStateTensorDescriptor(int num_layer, int batch_size,
                                                dnn::DataType data_type) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
-    return port::Status(port::error::UNKNOWN,
-                        "Fail to find the dnn implementation.");
+    return tsl::Status(port::error::UNKNOWN,
+                       "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnStateTensorDescriptor(num_layer, batch_size,
                                                      data_size, data_type);
@@ -501,26 +501,25 @@ rng::RngSupport* StreamExecutor::AsRng() {
   return rng_.get();
 }
 
-port::Status StreamExecutor::Launch(Stream* stream,
-                                    const ThreadDim& thread_dims,
-                                    const BlockDim& block_dims,
-                                    const KernelBase& kernel,
-                                    const KernelArgsArrayBase& args) {
+tsl::Status StreamExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
+                                   const BlockDim& block_dims,
+                                   const KernelBase& kernel,
+                                   const KernelArgsArrayBase& args) {
   SubmitTrace(&TraceListener::LaunchSubmit, stream, thread_dims, block_dims,
               kernel, args);
 
   return implementation_->Launch(stream, thread_dims, block_dims, kernel, args);
 }
 
-port::Status StreamExecutor::BlockHostUntilDone(Stream* stream) {
-  port::Status result;
+tsl::Status StreamExecutor::BlockHostUntilDone(Stream* stream) {
+  tsl::Status result;
   SCOPED_TRACE(TraceListener::BlockHostUntilDone, &result, stream);
 
   result = implementation_->BlockHostUntilDone(stream);
   return result;
 }
 
-port::Status StreamExecutor::GetStatus(Stream* stream) {
+tsl::Status StreamExecutor::GetStatus(Stream* stream) {
   return implementation_->GetStatus(stream);
 }
 
@@ -552,7 +551,7 @@ port::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
     return DeviceMemoryBase(opaque, bytes);
   }
 
-  return port::Status(
+  return tsl::Status(
       port::error::NOT_FOUND,
       absl::StrCat("Check if module containing symbol ", symbol_name,
                    " is loaded (module_handle = ",
@@ -621,16 +620,16 @@ bool StreamExecutor::SynchronizeAllActivity() {
   return ok;
 }
 
-port::Status StreamExecutor::SynchronousMemZero(DeviceMemoryBase* location,
-                                                uint64_t size) {
+tsl::Status StreamExecutor::SynchronousMemZero(DeviceMemoryBase* location,
+                                               uint64_t size) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemZero(location=" << location
           << ", size=" << size << ")" << StackTraceIfVLOG10();
 
   return implementation_->SynchronousMemZero(location, size);
 }
 
-port::Status StreamExecutor::SynchronousMemSet(DeviceMemoryBase* location,
-                                               int value, uint64_t size) {
+tsl::Status StreamExecutor::SynchronousMemSet(DeviceMemoryBase* location,
+                                              int value, uint64_t size) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemSet(location=" << location
           << ", value=" << value << ", size=" << size << ")"
           << StackTraceIfVLOG10();
@@ -647,7 +646,7 @@ bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase* device_dst,
   // Tracing overloaded methods is very difficult due to issues with type
   // inference on template args. Since use of these overloaded methods is
   // discouraged anyway, this isn't a huge deal.
-  port::Status status =
+  tsl::Status status =
       implementation_->SynchronousMemcpy(device_dst, host_src, size);
   if (!status.ok()) {
     LOG(ERROR) << "synchronous memcpy: " << status;
@@ -662,7 +661,7 @@ bool StreamExecutor::SynchronousMemcpy(void* host_dst,
           << ", device_src=" << device_src.opaque() << ", size=" << size
           << ") D2H" << StackTraceIfVLOG10();
 
-  port::Status status =
+  tsl::Status status =
       implementation_->SynchronousMemcpy(host_dst, device_src, size);
   if (!status.ok()) {
     LOG(ERROR) << "synchronous memcpy: " << status;
@@ -677,7 +676,7 @@ bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase* device_dst,
           << device_dst->opaque() << ", device_src=" << device_src.opaque()
           << ", size=" << size << ") D2D" << StackTraceIfVLOG10();
 
-  port::Status status = implementation_->SynchronousMemcpyDeviceToDevice(
+  tsl::Status status = implementation_->SynchronousMemcpyDeviceToDevice(
       device_dst, device_src, size);
   if (!status.ok()) {
     LOG(ERROR) << "synchronous memcpy: " << status;
@@ -685,19 +684,19 @@ bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase* device_dst,
   return status.ok();
 }
 
-port::Status StreamExecutor::SynchronousMemcpyD2H(
+tsl::Status StreamExecutor::SynchronousMemcpyD2H(
     const DeviceMemoryBase& device_src, int64_t size, void* host_dst) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemcpyD2H(device_src="
           << device_src.opaque() << ", size=" << size
           << ", host_dst=" << host_dst << ")" << StackTraceIfVLOG10();
 
-  port::Status result;
+  tsl::Status result;
   SCOPED_TRACE(TraceListener::SynchronousMemcpyD2H, &result, device_src, size,
                host_dst);
 
   result = implementation_->SynchronousMemcpy(host_dst, device_src, size);
   if (!result.ok()) {
-    result = port::Status(
+    result = tsl::Status(
         port::error::INTERNAL,
         absl::StrFormat("failed to synchronously memcpy device-to-host: device "
                         "%p to host %p size %d: %s",
@@ -708,19 +707,20 @@ port::Status StreamExecutor::SynchronousMemcpyD2H(
   return result;
 }
 
-port::Status StreamExecutor::SynchronousMemcpyH2D(
-    const void* host_src, int64_t size, DeviceMemoryBase* device_dst) {
+tsl::Status StreamExecutor::SynchronousMemcpyH2D(const void* host_src,
+                                                 int64_t size,
+                                                 DeviceMemoryBase* device_dst) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemcpyH2D(host_src=" << host_src
           << ", size=" << size << ", device_dst=" << device_dst->opaque() << ")"
           << StackTraceIfVLOG10();
 
-  port::Status result;
+  tsl::Status result;
   SCOPED_TRACE(TraceListener::SynchronousMemcpyH2D, &result, host_src, size,
                device_dst);
 
   result = implementation_->SynchronousMemcpy(device_dst, host_src, size);
   if (!result.ok()) {
-    result = port::Status(
+    result = tsl::Status(
         port::error::INTERNAL,
         absl::StrFormat("failed to synchronously memcpy host-to-device: host "
                         "%p to device %p size %d: %s",
@@ -749,14 +749,13 @@ bool StreamExecutor::MemcpyDeviceToDevice(Stream* stream,
                                                size);
 }
 
-port::Status StreamExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
-                                     uint64_t size) {
+tsl::Status StreamExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
+                                    uint64_t size) {
   return implementation_->MemZero(stream, location, size);
 }
 
-port::Status StreamExecutor::Memset32(Stream* stream,
-                                      DeviceMemoryBase* location,
-                                      uint32_t pattern, uint64_t size) {
+tsl::Status StreamExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
+                                     uint32_t pattern, uint64_t size) {
   CHECK_EQ(0, size % 4)
       << "need 32-bit multiple size to fill with 32-bit pattern";
   return implementation_->Memset32(stream, location, pattern, size);
@@ -768,23 +767,23 @@ bool StreamExecutor::HostCallback(Stream* stream,
 }
 
 bool StreamExecutor::HostCallback(Stream* stream,
-                                  std::function<port::Status()> callback) {
+                                  std::function<tsl::Status()> callback) {
   return implementation_->HostCallback(stream, std::move(callback));
 }
 
-port::Status StreamExecutor::AllocateEvent(Event* event) {
+tsl::Status StreamExecutor::AllocateEvent(Event* event) {
   return implementation_->AllocateEvent(event);
 }
 
-port::Status StreamExecutor::DeallocateEvent(Event* event) {
+tsl::Status StreamExecutor::DeallocateEvent(Event* event) {
   return implementation_->DeallocateEvent(event);
 }
 
-port::Status StreamExecutor::RecordEvent(Stream* stream, Event* event) {
+tsl::Status StreamExecutor::RecordEvent(Stream* stream, Event* event) {
   return implementation_->RecordEvent(stream, event);
 }
 
-port::Status StreamExecutor::WaitForEvent(Stream* stream, Event* event) {
+tsl::Status StreamExecutor::WaitForEvent(Stream* stream, Event* event) {
   return implementation_->WaitForEvent(stream, event);
 }
 
@@ -956,8 +955,8 @@ port::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
   return OwningDeviceMemory(result, device_ordinal, this);
 }
 
-port::Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
-                                                       DeviceMemoryBase mem) {
+tsl::Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
+                                                      DeviceMemoryBase mem) {
   if (!mem.is_null()) {
     TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
                         GetStreamExecutor(device_ordinal));

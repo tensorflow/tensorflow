@@ -93,7 +93,7 @@ port::StatusOr<std::array<int32_t, 3>> Downsize64bArray(
 
 }  // namespace
 
-port::Status CUDAFftPlan::Initialize(
+tsl::Status CUDAFftPlan::Initialize(
     GpuExecutor *parent, Stream *stream, int rank, uint64_t *elem_count,
     uint64_t *input_embed, uint64 input_stride, uint64 input_distance,
     uint64_t *output_embed, uint64 output_stride, uint64 output_distance,
@@ -253,10 +253,10 @@ port::Status CUDAFftPlan::Initialize(
   return ::tsl::OkStatus();
 }
 
-port::Status CUDAFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
-                                     int rank, uint64_t *elem_count,
-                                     fft::Type type,
-                                     ScratchAllocator *scratch_allocator) {
+tsl::Status CUDAFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
+                                    int rank, uint64_t *elem_count,
+                                    fft::Type type,
+                                    ScratchAllocator *scratch_allocator) {
   return Initialize(parent_, stream, rank, elem_count,
                     /*input_embed=*/nullptr, /*input_stride=*/0,
                     /*input_distance=*/0,
@@ -264,7 +264,7 @@ port::Status CUDAFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
                     /*output_distance=*/0, type, 1, scratch_allocator);
 }
 
-port::Status CUDAFftPlan::UpdateScratchAllocator(
+tsl::Status CUDAFftPlan::UpdateScratchAllocator(
     Stream *stream, ScratchAllocator *scratch_allocator) {
   scratch_allocator_ = scratch_allocator;
 
@@ -316,8 +316,9 @@ std::unique_ptr<fft::Plan> CUDAFft::Create1dPlan(Stream *stream, uint64_t num_x,
                                                  bool in_place_fft) {
   std::unique_ptr<CUDAFftPlan> fft_plan_ptr{new CUDAFftPlan()};
   uint64_t elem_count[1] = {num_x};
-  port::Status status = fft_plan_ptr->Initialize(
-      parent_, stream, 1, elem_count, type, /*scratch_allocator=*/nullptr);
+  tsl::Status status =
+      fft_plan_ptr->Initialize(parent_, stream, 1, elem_count, type,
+                               /*scratch_allocator=*/nullptr);
   if (!status.ok()) {
     LOG(ERROR) << "Plan Parameters: num_x: " << num_x;
     LOG(ERROR) << "Failed to initialize cufft 1d plan: "
@@ -332,8 +333,8 @@ std::unique_ptr<fft::Plan> CUDAFft::Create1dPlanWithScratchAllocator(
     ScratchAllocator *scratch_allocator) {
   std::unique_ptr<CUDAFftPlan> fft_plan_ptr{new CUDAFftPlan()};
   uint64_t elem_count[1] = {num_x};
-  port::Status status = fft_plan_ptr->Initialize(parent_, stream, 1, elem_count,
-                                                 type, scratch_allocator);
+  tsl::Status status = fft_plan_ptr->Initialize(parent_, stream, 1, elem_count,
+                                                type, scratch_allocator);
   if (!status.ok()) {
     LOG(ERROR) << "Plan Parameters: num_x: " << num_x;
     LOG(ERROR)
@@ -349,8 +350,9 @@ std::unique_ptr<fft::Plan> CUDAFft::Create2dPlan(Stream *stream, uint64_t num_x,
                                                  bool in_place_fft) {
   std::unique_ptr<CUDAFftPlan> fft_plan_ptr{new CUDAFftPlan()};
   uint64_t elem_count[2] = {num_x, num_y};
-  port::Status status = fft_plan_ptr->Initialize(
-      parent_, stream, 1, elem_count, type, /*scratch_allocator=*/nullptr);
+  tsl::Status status =
+      fft_plan_ptr->Initialize(parent_, stream, 1, elem_count, type,
+                               /*scratch_allocator=*/nullptr);
   if (!status.ok()) {
     LOG(ERROR) << "Plan Parameters: num_x: " << num_x << " num_y: " << num_y;
     LOG(ERROR) << "Failed to initialize cufft 2d plan: "
@@ -365,8 +367,8 @@ std::unique_ptr<fft::Plan> CUDAFft::Create2dPlanWithScratchAllocator(
     bool in_place_fft, ScratchAllocator *scratch_allocator) {
   std::unique_ptr<CUDAFftPlan> fft_plan_ptr{new CUDAFftPlan()};
   uint64_t elem_count[2] = {num_x, num_y};
-  port::Status status = fft_plan_ptr->Initialize(parent_, stream, 2, elem_count,
-                                                 type, scratch_allocator);
+  tsl::Status status = fft_plan_ptr->Initialize(parent_, stream, 2, elem_count,
+                                                type, scratch_allocator);
   if (!status.ok()) {
     LOG(ERROR) << "Plan Parameters: num_x: " << num_x << " num_y: " << num_y;
     LOG(ERROR)
@@ -383,8 +385,9 @@ std::unique_ptr<fft::Plan> CUDAFft::Create3dPlan(Stream *stream, uint64_t num_x,
                                                  bool in_place_fft) {
   std::unique_ptr<CUDAFftPlan> fft_plan_ptr{new CUDAFftPlan()};
   uint64_t elem_count[3] = {num_x, num_y, num_z};
-  port::Status status = fft_plan_ptr->Initialize(
-      parent_, stream, 3, elem_count, type, /*scratch_allocator=*/nullptr);
+  tsl::Status status =
+      fft_plan_ptr->Initialize(parent_, stream, 3, elem_count, type,
+                               /*scratch_allocator=*/nullptr);
   if (!status.ok()) {
     LOG(ERROR) << "Plan Parameters: num_x: " << num_x << " num_y: " << num_y
                << " num_z: " << num_z;
@@ -400,8 +403,8 @@ std::unique_ptr<fft::Plan> CUDAFft::Create3dPlanWithScratchAllocator(
     bool in_place_fft, ScratchAllocator *scratch_allocator) {
   std::unique_ptr<CUDAFftPlan> fft_plan_ptr{new CUDAFftPlan()};
   uint64_t elem_count[3] = {num_x, num_y, num_z};
-  port::Status status = fft_plan_ptr->Initialize(parent_, stream, 3, elem_count,
-                                                 type, scratch_allocator);
+  tsl::Status status = fft_plan_ptr->Initialize(parent_, stream, 3, elem_count,
+                                                type, scratch_allocator);
   if (!status.ok()) {
     LOG(ERROR) << "Plan Parameters: num_x: " << num_x << " num_y: " << num_y
                << " num_z: " << num_z;
@@ -419,7 +422,7 @@ std::unique_ptr<fft::Plan> CUDAFft::CreateBatchedPlan(
     uint64_t output_stride, uint64 output_distance, fft::Type type,
     bool in_place_fft, int batch_count) {
   std::unique_ptr<CUDAFftPlan> fft_plan_ptr{new CUDAFftPlan()};
-  port::Status status = fft_plan_ptr->Initialize(
+  tsl::Status status = fft_plan_ptr->Initialize(
       parent_, stream, rank, elem_count, input_embed, input_stride,
       input_distance, output_embed, output_stride, output_distance, type,
       batch_count, /*scratch_allocator=*/nullptr);
@@ -447,7 +450,7 @@ std::unique_ptr<fft::Plan> CUDAFft::CreateBatchedPlanWithScratchAllocator(
     uint64_t output_stride, uint64 output_distance, fft::Type type,
     bool in_place_fft, int batch_count, ScratchAllocator *scratch_allocator) {
   std::unique_ptr<CUDAFftPlan> fft_plan_ptr{new CUDAFftPlan()};
-  port::Status status = fft_plan_ptr->Initialize(
+  tsl::Status status = fft_plan_ptr->Initialize(
       parent_, stream, rank, elem_count, input_embed, input_stride,
       input_distance, output_embed, output_stride, output_distance, type,
       batch_count, scratch_allocator);
@@ -472,7 +475,7 @@ std::unique_ptr<fft::Plan> CUDAFft::CreateBatchedPlanWithScratchAllocator(
 void CUDAFft::UpdatePlanWithScratchAllocator(
     Stream *stream, fft::Plan *plan, ScratchAllocator *scratch_allocator) {
   CUDAFftPlan *cuda_fft_plan = dynamic_cast<CUDAFftPlan *>(plan);
-  port::Status status =
+  tsl::Status status =
       cuda_fft_plan->UpdateScratchAllocator(stream, scratch_allocator);
   if (!status.ok()) {
     LOG(FATAL) << "Failed to update custom allocator for cufft plan: "
@@ -592,7 +595,7 @@ STREAM_EXECUTOR_CUDA_DEFINE_FFT(double, Z2Z, D2Z, Z2D)
 }  // namespace gpu
 
 void initialize_cufft() {
-  port::Status status =
+  tsl::Status status =
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
           cuda::kCudaPlatformId, gpu::kCuFftPlugin, "cuFFT",
           [](internal::StreamExecutorInterface *parent) -> fft::FftSupport * {

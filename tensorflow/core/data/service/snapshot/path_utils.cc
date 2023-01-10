@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/tsl/platform/path.h"
 
 namespace tensorflow {
@@ -29,25 +30,46 @@ constexpr const char kUncommittedChunksDirectoryName[] = "uncommitted_chunks";
 
 }  // namespace
 
-std::string StreamDirectory(const std::string& snapshot_path,
-                            int64_t stream_id) {
+std::string StreamDirectory(absl::string_view snapshot_path,
+                            int64_t stream_index) {
   return tsl::io::JoinPath(snapshot_path, "streams",
-                           absl::StrCat("stream_", stream_id));
+                           absl::StrCat("stream_", stream_index));
 }
 
-std::string CheckpointsDirectory(const std::string& snapshot_path,
-                                 int64_t stream_id) {
-  return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_id),
+std::string SplitsDirectory(absl::string_view snapshot_path,
+                            int64_t stream_index) {
+  return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_index),
+                           absl::StrCat("splits"));
+}
+
+std::string SourceDirectory(absl::string_view snapshot_path,
+                            int64_t stream_index, int64_t source_id) {
+  return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_index),
+                           absl::StrCat("splits"),
+                           absl::StrCat("source_", source_id));
+}
+
+std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
+                      int64_t source_id, int64_t local_index,
+                      int64_t global_index) {
+  return tsl::io::JoinPath(
+      SourceDirectory(snapshot_path, stream_index, source_id),
+      absl::StrCat("split_", local_index, "_", global_index));
+}
+
+std::string CheckpointsDirectory(absl::string_view snapshot_path,
+                                 int64_t stream_index) {
+  return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_index),
                            kCheckpointsDirectoryName);
 }
 
-std::string CommittedChunksDirectory(const std::string& snapshot_path) {
+std::string CommittedChunksDirectory(absl::string_view snapshot_path) {
   return tsl::io::JoinPath(snapshot_path, kCommittedChunksDirectoryName);
 }
 
-std::string UncommittedChunksDirectory(const std::string& snapshot_path,
-                                       int64_t stream_id) {
-  return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_id),
+std::string UncommittedChunksDirectory(absl::string_view snapshot_path,
+                                       int64_t stream_index) {
+  return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_index),
                            kUncommittedChunksDirectoryName);
 }
 }  // namespace data

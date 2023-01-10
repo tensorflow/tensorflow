@@ -16,9 +16,12 @@ limitations under the License.
 // This is the auto-generated operation definition file for TensorFlow.
 //
 // PLEASE DO NOT MANUALLY EDIT THIS FILE!
+// ONLY EXCEPTION: FIELDS THAT CANNOT BE GENERATED
 //
 // If you absolutely need to modify the generated fields of an op, move the op
-// definition to `tf_ops.td` and perform the modification there.
+// definition to `tf_ops.td` and perform the modification there. Generated
+// fields and the process to generate them are documented at:
+// mlir/tensorflow/dialectgen/README.md
 //
 // This file contains TensorFlow ops whose definitions are programmatically
 // generated from the TF op registration and the api-def-files in the following
@@ -8076,6 +8079,8 @@ def TF_LogicalAndOp : TF_Op<"LogicalAnd", [Commutative, Pure, ResultsBroadcastab
   let results = (outs
     TF_BoolTensor:$z
   );
+
+  let hasFolder = 1;
 }
 
 def TF_LogicalNotOp : TF_Op<"LogicalNot", [Pure, TF_Involution, TF_SameOperandsAndResultTypeResolveRef]> {

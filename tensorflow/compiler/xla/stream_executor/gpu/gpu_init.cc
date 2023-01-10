@@ -25,7 +25,7 @@ limitations under the License.
 
 namespace stream_executor {
 
-port::Status ValidateGPUMachineManager() {
+tsl::Status ValidateGPUMachineManager() {
   return MultiPlatformManager::PlatformWithName(GpuPlatformName()).status();
 }
 

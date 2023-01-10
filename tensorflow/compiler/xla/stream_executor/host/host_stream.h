@@ -41,7 +41,7 @@ class HostStream : public internal::StreamInterface {
   // stop the stream or block any other tasks from executing; rather, the stream
   // will remember the first error encountered and return it from
   // 'BlockUntilDone'.
-  bool EnqueueTaskWithStatus(std::function<port::Status()> task);
+  bool EnqueueTaskWithStatus(std::function<tsl::Status()> task);
   // Enqueue a task that doesn't report any status.
   bool EnqueueTask(std::function<void()> task);
 
@@ -50,16 +50,16 @@ class HostStream : public internal::StreamInterface {
 
   // Blocks until all tasks are done, returns the first error reported by a task
   // (if any) and clears the error status.
-  port::Status BlockUntilDone();
+  tsl::Status BlockUntilDone();
 
  private:
   bool WorkAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void WorkLoop();
 
   absl::Mutex mu_;
-  std::queue<std::function<port::Status()>> work_queue_ ABSL_GUARDED_BY(mu_);
+  std::queue<std::function<tsl::Status()>> work_queue_ ABSL_GUARDED_BY(mu_);
   std::unique_ptr<port::Thread> thread_;
-  port::Status status_;
+  tsl::Status status_;
 };
 
 }  // namespace host

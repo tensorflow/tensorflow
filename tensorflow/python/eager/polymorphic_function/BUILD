@@ -223,10 +223,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/framework:composite_tensor",
-        "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/util",
     ],
 )

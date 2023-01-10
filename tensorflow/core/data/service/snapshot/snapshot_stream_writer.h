@@ -38,9 +38,9 @@ struct SnapshotWriterParams {
   // for how the directory is structured.
   std::string snapshot_path;
 
-  // The ID of the stream. A stream is one shard of the snapshot processed by a
-  // worker.
-  int64_t stream_id = 0;
+  // The index of the snapshot stream. A stream is one shard of the snapshot
+  // processed by a worker.
+  int64_t stream_index = 0;
 
   // Compression method as defined in tsl/lib/io/compression.h.
   std::string compression;
@@ -130,21 +130,27 @@ class SnapshotStreamWriter {
   // Saves an iterator checkpoint.
   Status Save();
 
+  // After committing a checkpoint, deletes the previous checkpoints.
+  Status DeleteOutdatedCheckpoints();
+
   // Restores from the last checkpoint.
   Status Restore();
 
   // Returns the index of the last checkpointed chunk.
   StatusOr<int64_t> LastCheckpointIndex() const;
 
-  // Synchronizes the checkpoint with the committed chunks. This will commit
-  // uncommitted chunk files written before the checkpoint and delete chunk
-  // files written after the checkpoint.
-  Status SyncCheckpointWithChunks();
+  // Synchronizes the checkpoint with the committed chunks. This is called when
+  // the worker restores the snapshot in case the worker fails after writing the
+  // checkpoint but before committing a chunk file.
+  Status SyncCheckpointWithChunks(int64_t checkpoint_index);
 
   // Returns the path of the checkpoint for `chunk_index`.
   std::string CheckpointPath(int64_t chunk_index) const;
 
   const SnapshotWriterParams params_;
+  const std::string committed_chunks_directory_;
+  const std::string uncommitted_chunks_directory_;
+  const std::string checkpoints_directory_;
 
   // The dataset iterator that produces the dataset elements.
   std::unique_ptr<TaskIterator> iterator_;

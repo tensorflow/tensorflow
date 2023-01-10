@@ -818,4 +818,5 @@ message ScheduleProto {
   repeated Instruction instructions = 1;
   // Computation id (matches the id in HloComputationProto).
   int64 computation_id = 2;
+  HloModuleProto hlo_module = 3;
 }

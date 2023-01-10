@@ -141,7 +141,7 @@ class ScopedDeviceMemory {
   int device_ordinal() const { return device_ordinal_; }
 
   // Frees the existing memory, resets the wrapped memory to null.
-  port::Status Free();
+  tsl::Status Free();
 
  private:
   DeviceMemory<ElemT> wrapped_;       // Value we wrap with scoped-release.
@@ -210,7 +210,7 @@ class DeviceMemoryAllocator {
   // Must be a nop for null pointers. Should not be used.
   //
   // TODO(cheshire): Add deprecation notice.
-  virtual port::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) = 0;
+  virtual tsl::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) = 0;
 
   // Return the platform that the allocator allocates memory on.
   const Platform *platform() const { return platform_; }
@@ -251,7 +251,7 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
   // Pull in two-arg overload that sets retry_on_failure to true.
   using DeviceMemoryAllocator::Allocate;
 
-  port::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override;
+  tsl::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override;
 
   bool AllowsAsynchronousDeallocation() const override;
 
@@ -274,7 +274,7 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
 };
 
 template <typename ElemT>
-port::Status ScopedDeviceMemory<ElemT>::Free() {
+tsl::Status ScopedDeviceMemory<ElemT>::Free() {
   if (!wrapped_.is_null()) {
     CHECK(allocator_ != nullptr) << "Owning pointer in inconsistent state";
     TF_RETURN_IF_ERROR(allocator_->Deallocate(device_ordinal_, wrapped_));

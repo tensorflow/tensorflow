@@ -2153,10 +2153,10 @@ func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> attributes {execution_
 // CHECK:  HloModule
 func.func private @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
 // CHECK: %[[ARG0:.*]] = s32[2,2] parameter(0)
-// CHECK: ROOT %[[RESULT:.*]] = s32[2,2] all-to-all(s32[2,2] %[[ARG0]]), channel_id=1, replica_groups={{.}}{1,2},{0}}, dimensions={1}
+// CHECK: ROOT %[[RESULT:.*]] = s32[2,2] all-to-all(s32[2,2] %[[ARG0]]), channel_id=1, replica_groups={{.}}{1,2},{0,3}}, dimensions={1}
   %0 = "mhlo.all_to_all"(%arg0) {
     concat_dimension = 1 : i64,
-    replica_groups = dense<[[1, 2], [0, -1]]> : tensor<2x2xi64>,
+    replica_groups = dense<[[1, 2], [0, 3]]> : tensor<2x2xi64>,
     split_count = 2 : i64, split_dimension = 1 : i64,
     channel_handle = #mhlo.channel_handle<handle = 1, type = 1>
   } : (tensor<2x2xi32>) -> tensor<2x2xi32>

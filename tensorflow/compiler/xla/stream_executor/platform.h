@@ -135,7 +135,7 @@ class Platform {
   // return an error if unrecognized options are provided.  If using
   // MultiPlatformManager, this method will be called automatically by
   // InitializePlatformWithId/InitializePlatformWithName.
-  virtual port::Status Initialize(
+  virtual tsl::Status Initialize(
       const std::map<std::string, std::string>& platform_options);
 
   // Returns a populated DeviceDescription for the device at the given ordinal.
@@ -184,7 +184,7 @@ class Platform {
   // that have no reason to destroy device contexts.
   //
   // The platform must be reinitialized after this is called.
-  virtual port::Status ForceExecutorShutdown();
+  virtual tsl::Status ForceExecutorShutdown();
 
   // Registers a TraceListener to listen to all StreamExecutors for this
   // platform.
@@ -207,7 +207,7 @@ class Platform {
   // GetPeerAccessMap(). Note that calling this routine will force the creation
   // of a default-argument (see StreamExecutorConfig) StreamExecutor object for
   // each device ordinal in the system, should any not yet exist.
-  virtual port::Status EnablePeerAccess();
+  virtual tsl::Status EnablePeerAccess();
 
  protected:
   // SE_DISALLOW_COPY_AND_ASSIGN declares a constructor, which suppresses the

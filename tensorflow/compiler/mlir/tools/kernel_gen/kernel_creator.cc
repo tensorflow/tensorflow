@@ -120,7 +120,8 @@ Status LowerTFToJITInvocation(mlir::ModuleOp module,
   pm.addNestedPass<FuncOp>(
       mlir::kernel_gen::transforms::CreateTFToJITInvocationPass(
           tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
-          index_64bit, jit_i64_indexed_for_large_tensors));
+          index_64bit,
+          /*cpu_codegen=*/false, jit_i64_indexed_for_large_tensors));
   pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
   pm.addNestedPass<FuncOp>(
       mlir::bufferization::createEmptyTensorToAllocTensorPass());
@@ -150,6 +151,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
         mlir::kernel_gen::transforms::CreateTFToJITInvocationPass(
             tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
             index_64bit,
+            /*cpu_codegen=*/false,
             /*jit_i64_indexed_for_large_tensors=*/true));
   }
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeTFNoFallbackPass(
@@ -429,10 +431,20 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForTfCode(
     int64_t max_supported_rank, bool embed_memref_prints, bool print_ptx,
     bool print_llvmir, bool enable_ftz, bool index_64bit, bool jit_compile,
     bool jit_i64_indexed_for_large_tensors, bool apply_cl_options) {
+  if (jit_compile && jit_i64_indexed_for_large_tensors) {
+    return tensorflow::Status(
+        tensorflow::error::Code::INVALID_ARGUMENT,
+        "jit compilation for large tensors "
+        "(`jit_i64_indexed_for_large_tensors`) and unconditioned jit "
+        "compilation (`jit`) must not be requested together");
+  }
+
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       SetupContextAndParseModule(context, tf_code));
 
   if (jit_compile) {
+    assert(!jit_i64_indexed_for_large_tensors &&
+           "expect to have reported an error earlier");
     TF_RETURN_IF_ERROR(LowerTFToJITInvocation(
         module.get(), tile_sizes, unroll_factors, max_supported_rank,
         enable_ftz, index_64bit,

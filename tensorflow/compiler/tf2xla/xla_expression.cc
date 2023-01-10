@@ -133,9 +133,6 @@ StatusOr<Tensor> XlaExpression::ResolveDynamism(xla::Client* client) const {
           HumanString());
   }
 
-  if (!client)
-    return errors::InvalidArgument("client is required to resolve constant");
-
   TF_ASSIGN_OR_RETURN(TensorShape shape, GetShape());
 
   // The XLA layout is specified minor to major, and TensorFlow uses a major to

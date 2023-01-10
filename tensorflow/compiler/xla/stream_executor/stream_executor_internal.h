@@ -171,8 +171,8 @@ class StreamExecutorInterface {
   virtual StreamExecutorInterface* GetUnderlyingExecutor() { return this; }
 
   // See the StreamExecutor interface for comments on the same-named methods.
-  virtual port::Status Init(int device_ordinal,
-                            DeviceOptions device_options) = 0;
+  virtual tsl::Status Init(int device_ordinal,
+                           DeviceOptions device_options) = 0;
 
   // This value is cached by the wrapping StreamExecutor instance, so it's OK if
   // this function is slow.
@@ -182,22 +182,22 @@ class StreamExecutorInterface {
     return std::nullopt;
   }
 
-  virtual port::Status GetKernel(const MultiKernelLoaderSpec& spec,
-                                 KernelBase* kernel) {
+  virtual tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
+                                KernelBase* kernel) {
     return port::UnimplementedError("Not Implemented");
   }
   virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
-  virtual port::Status LoadModule(const MultiModuleLoaderSpec& spec,
-                                  ModuleHandle* module_handle) {
+  virtual tsl::Status LoadModule(const MultiModuleLoaderSpec& spec,
+                                 ModuleHandle* module_handle) {
     return port::UnimplementedError("Not Implemented");
   }
   virtual port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
   CreateOrShareConstant(Stream* stream, const std::vector<uint8_t>& content) {
     return port::UnimplementedError("Not Implemented");
   }
-  virtual port::Status Launch(Stream* stream, const ThreadDim& thread_dims,
-                              const BlockDim& block_dims, const KernelBase& k,
-                              const KernelArgsArrayBase& args) {
+  virtual tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
+                             const BlockDim& block_dims, const KernelBase& k,
+                             const KernelArgsArrayBase& args) {
     return port::UnimplementedError("Not Implemented");
   }
 
@@ -224,27 +224,27 @@ class StreamExecutorInterface {
   virtual bool HostMemoryRegister(void* mem, uint64_t size) = 0;
   virtual bool HostMemoryUnregister(void* mem) = 0;
   virtual bool SynchronizeAllActivity() = 0;
-  virtual port::Status SynchronousMemZero(DeviceMemoryBase* location,
-                                          uint64_t size) = 0;
-  virtual port::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
+  virtual tsl::Status SynchronousMemZero(DeviceMemoryBase* location,
                                          uint64_t size) = 0;
-  virtual port::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
-                                         const void* host_src,
-                                         uint64_t size) = 0;
-  virtual port::Status SynchronousMemcpy(void* host_dst,
-                                         const DeviceMemoryBase& gpu_src,
-                                         uint64_t size) = 0;
-  virtual port::Status SynchronousMemcpyDeviceToDevice(
+  virtual tsl::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
+                                        uint64_t size) = 0;
+  virtual tsl::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
+                                        const void* host_src,
+                                        uint64_t size) = 0;
+  virtual tsl::Status SynchronousMemcpy(void* host_dst,
+                                        const DeviceMemoryBase& gpu_src,
+                                        uint64_t size) = 0;
+  virtual tsl::Status SynchronousMemcpyDeviceToDevice(
       DeviceMemoryBase* gpu_dst, const DeviceMemoryBase& gpu_src,
       uint64_t size) = 0;
-  virtual port::Status MemZero(Stream* stream, DeviceMemoryBase* location,
-                               uint64_t size) = 0;
-  virtual port::Status Memset(Stream* stream, DeviceMemoryBase* location,
-                              uint8 pattern, uint64_t size) {
+  virtual tsl::Status MemZero(Stream* stream, DeviceMemoryBase* location,
+                              uint64_t size) = 0;
+  virtual tsl::Status Memset(Stream* stream, DeviceMemoryBase* location,
+                             uint8 pattern, uint64_t size) {
     return port::InternalError("Not implemented");
   }
-  virtual port::Status Memset32(Stream* stream, DeviceMemoryBase* location,
-                                uint32_t pattern, uint64_t size) = 0;
+  virtual tsl::Status Memset32(Stream* stream, DeviceMemoryBase* location,
+                               uint32_t pattern, uint64_t size) = 0;
   virtual bool Memcpy(Stream* stream, void* host_dst,
                       const DeviceMemoryBase& gpu_src, uint64_t size) = 0;
   virtual bool Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
@@ -254,11 +254,11 @@ class StreamExecutorInterface {
                                     uint64_t size) = 0;
   virtual bool HostCallback(Stream* stream, std::function<void()> callback);
   virtual bool HostCallback(Stream* stream,
-                            std::function<port::Status()> callback) = 0;
-  virtual port::Status AllocateEvent(Event* event) = 0;
-  virtual port::Status DeallocateEvent(Event* event) = 0;
-  virtual port::Status RecordEvent(Stream* stream, Event* event) = 0;
-  virtual port::Status WaitForEvent(Stream* stream, Event* event) = 0;
+                            std::function<tsl::Status()> callback) = 0;
+  virtual tsl::Status AllocateEvent(Event* event) = 0;
+  virtual tsl::Status DeallocateEvent(Event* event) = 0;
+  virtual tsl::Status RecordEvent(Stream* stream, Event* event) = 0;
+  virtual tsl::Status WaitForEvent(Stream* stream, Event* event) = 0;
   virtual Event::Status PollForEventStatus(Event* event) = 0;
   virtual bool AllocateStream(Stream* stream) = 0;
   virtual void DeallocateStream(Stream* stream) = 0;
@@ -267,13 +267,13 @@ class StreamExecutorInterface {
   virtual void DeallocateTimer(Timer* timer) = 0;
   virtual bool StartTimer(Stream* stream, Timer* timer) = 0;
   virtual bool StopTimer(Stream* stream, Timer* timer) = 0;
-  virtual port::Status BlockHostUntilDone(Stream* stream) = 0;
-  virtual port::Status GetStatus(Stream* stream) {
-    return port::Status(port::error::UNIMPLEMENTED,
-                        "GetStatus is not supported on this executor.");
+  virtual tsl::Status BlockHostUntilDone(Stream* stream) = 0;
+  virtual tsl::Status GetStatus(Stream* stream) {
+    return tsl::Status(port::error::UNIMPLEMENTED,
+                       "GetStatus is not supported on this executor.");
   }
   virtual int PlatformDeviceCount() = 0;
-  virtual port::Status EnablePeerAccessTo(StreamExecutorInterface* other) = 0;
+  virtual tsl::Status EnablePeerAccessTo(StreamExecutorInterface* other) = 0;
   virtual bool CanEnablePeerAccessTo(StreamExecutorInterface* other) = 0;
 
   virtual int64_t GetDeviceLoad() { return -1; }
@@ -396,7 +396,7 @@ class StreamExecutorInterface {
   // Clears the compilation cache from volatile memory. Returns OK if no
   // compilation cache exists or if clearing the compilation cache is
   // unsupported. Caches in non-volatile storage are unaffected.
-  virtual port::Status FlushCompilationCache() { return ::tsl::OkStatus(); }
+  virtual tsl::Status FlushCompilationCache() { return ::tsl::OkStatus(); }
 
   // Returns a stream allocated by this executor, or nullptr if not found.
   // Performs linear search over alive GPU streams.

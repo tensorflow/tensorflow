@@ -89,7 +89,8 @@ cuda_py_test(
     name = "batch_matmul_op_test",
     size = "medium",
     srcs = ["batch_matmul_op_test.py"],
-    tags = ["no_rocm"],
+    tags = ["no_rocm",
+	    "no_mac_arm64"],
     shard_count = 20,
     deps = [
         "//tensorflow/python:array_ops",
@@ -208,6 +209,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["cwise_ops_binary_test.py"],
     shard_count = 50,
+    tags = [
+        "no_rocm",  
+    ],
     # b/140155647: Error just outside of tolerance
     xla_enable_strict_auto_jit = False,
     deps = [
@@ -294,7 +298,8 @@ cuda_py_test(
     size = "medium",
     srcs = ["matmul_op_test.py"],
     shard_count = 20,
-    tags = ["no_rocm"],
+    tags = ["no_mac_arm64",
+	    "no_rocm"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -416,7 +421,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["tensordot_op_test.py"],
     shard_count = 20,
-    tags = ["no_rocm"],
+    tags = [
+        "no_mac_arm64",
+        "no_rocm",
+    ],
     xla_enable_strict_auto_jit = False,  # b/161856380
     deps = [
         "//tensorflow/python:array_ops",

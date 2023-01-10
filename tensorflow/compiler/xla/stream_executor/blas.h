@@ -330,13 +330,13 @@ class BlasSupport {
   //
   // Alpha/beta type matches `dtype`, unless `dtype` is `Eigen::half`, in that
   // case the expected alpha/beta type is `float`.
-  virtual port::Status DoBlasGemm(Stream *stream, blas::Transpose transa,
-                                  blas::Transpose transb, uint64_t m, uint64 n,
-                                  uint64_t k, DataType dtype, const void *alpha,
-                                  const DeviceMemoryBase &a, int lda,
-                                  const DeviceMemoryBase &b, int ldb,
-                                  const void *beta, DeviceMemoryBase *c,
-                                  int ldc, ComputePrecision precision) = 0;
+  virtual tsl::Status DoBlasGemm(Stream *stream, blas::Transpose transa,
+                                 blas::Transpose transb, uint64_t m, uint64 n,
+                                 uint64_t k, DataType dtype, const void *alpha,
+                                 const DeviceMemoryBase &a, int lda,
+                                 const DeviceMemoryBase &b, int ldb,
+                                 const void *beta, DeviceMemoryBase *c, int ldc,
+                                 ComputePrecision precision) = 0;
 
   virtual bool DoBlasGemmWithProfiling(
       Stream *stream, blas::Transpose transa, blas::Transpose transb,
@@ -387,7 +387,7 @@ class BlasSupport {
   // output_profile_result->is_valid().  This lets you use this function for
   // choosing the best algorithm among many (some of which may fail) without
   // creating a new Stream for each attempt.
-  virtual port::Status DoBlasGemmWithAlgorithm(
+  virtual tsl::Status DoBlasGemmWithAlgorithm(
       Stream *stream, blas::Transpose transa, blas::Transpose transb,
       uint64_t m, uint64_t n, uint64 k, const void *alpha,
       const DeviceMemoryBase &a, DataType type_a, int lda,
@@ -397,7 +397,7 @@ class BlasSupport {
       blas::ComputePrecision precision,
       ProfileResult *output_profile_result) = 0;
 
-  virtual port::Status DoBlasGemmStridedBatchedWithAlgorithm(
+  virtual tsl::Status DoBlasGemmStridedBatchedWithAlgorithm(
       Stream *stream, blas::Transpose transa, blas::Transpose transb,
       uint64_t m, uint64_t n, uint64 k, const void *alpha,
       const DeviceMemoryBase &a, DataType type_a, int lda, int64_t stride_a,
@@ -466,7 +466,7 @@ class BlasSupport {
       int batch_count, ScratchAllocator *scratch_allocator) = 0;
 
   // Batched gemm with strides instead of pointer arrays.
-  virtual port::Status DoBlasGemmStridedBatched(
+  virtual tsl::Status DoBlasGemmStridedBatched(
       Stream *stream, blas::Transpose transa, blas::Transpose transb,
       uint64_t m, uint64_t n, uint64 k, DataType dtype, const void *alpha,
       const DeviceMemoryBase &a, int lda, int64_t stride_a,
@@ -537,7 +537,7 @@ class BlasSupport {
                                  DeviceMemory<std::complex<double> *> *bs,
                                  int ldb, int batch_count) = 0;
 
-  virtual port::Status GetVersion(std::string *version) = 0;
+  virtual tsl::Status GetVersion(std::string *version) = 0;
 
  protected:
   BlasSupport() {}
@@ -641,7 +641,7 @@ class BlasSupport {
                   double alpha, const DeviceMemory<double> &a, int lda,        \
                   const DeviceMemory<double> &x, int incx, double beta,        \
                   DeviceMemory<double> *y, int incy) override;                 \
-  port::Status DoBlasGemm(                                                     \
+  tsl::Status DoBlasGemm(                                                      \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
       uint64_t m, uint64 n, uint64 k, blas::DataType dtype, const void *alpha, \
       const DeviceMemoryBase &a, int lda, const DeviceMemoryBase &b, int ldb,  \
@@ -683,7 +683,7 @@ class BlasSupport {
   bool GetBlasGemmAlgorithms(Stream *stream,                                   \
                              std::vector<blas::AlgorithmType> *out_algorithms) \
       override;                                                                \
-  port::Status DoBlasGemmWithAlgorithm(                                        \
+  tsl::Status DoBlasGemmWithAlgorithm(                                         \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
       uint64_t m, uint64 n, uint64 k, const void *alpha,                       \
       const DeviceMemoryBase &a, blas::DataType type_a, int lda,               \
@@ -736,14 +736,14 @@ class BlasSupport {
       std::complex<double> beta,                                               \
       const DeviceMemorySlice<std::complex<double>> &c, int ldc,               \
       int batch_count, ScratchAllocator *scratch_allocator) override;          \
-  port::Status DoBlasGemmStridedBatched(                                       \
+  tsl::Status DoBlasGemmStridedBatched(                                        \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
       uint64_t m, uint64 n, uint64 k, blas::DataType dtype, const void *alpha, \
       const DeviceMemoryBase &a, int lda, int64_t stride_a,                    \
       const DeviceMemoryBase &b, int ldb, int64_t stride_b, const void *beta,  \
       DeviceMemoryBase *c, int ldc, int64_t stride_c, int batch_count,         \
       blas::ComputePrecision precision) override;                              \
-  port::Status DoBlasGemmStridedBatchedWithAlgorithm(                          \
+  tsl::Status DoBlasGemmStridedBatchedWithAlgorithm(                           \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
       uint64_t m, uint64 n, uint64 k, const void *alpha,                       \
       const DeviceMemoryBase &a, blas::DataType type_a, int lda,               \
@@ -795,7 +795,7 @@ class BlasSupport {
                          const DeviceMemory<std::complex<double> *> &as,       \
                          int lda, DeviceMemory<std::complex<double> *> *bs,    \
                          int ldb, int batch_count) override;                   \
-  port::Status GetVersion(std::string *version) override;
+  tsl::Status GetVersion(std::string *version) override;
 
 }  // namespace blas
 }  // namespace stream_executor

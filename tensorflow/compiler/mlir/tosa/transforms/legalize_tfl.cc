@@ -1044,13 +1044,13 @@ LogicalResult ConvertTFLAveragePool2DOp::matchAndRewrite(
 
   // Kernels and strides are dimensionally ordered
   SmallVector<int64_t, 4> i64array({1, 1, 1, 1});
-  ArrayAttr kernel_size;
-  ArrayAttr stride;
-  ArrayAttr pad;
+  DenseI64ArrayAttr kernel_size;
+  DenseI64ArrayAttr stride;
+  DenseI64ArrayAttr pad;
   {
     int64_t kernel_h = tfl_avgpool_op.getFilterHeight();
     int64_t kernel_w = tfl_avgpool_op.getFilterWidth();
-    kernel_size = rewriter.getI64ArrayAttr({kernel_h, kernel_w});
+    kernel_size = rewriter.getDenseI64ArrayAttr({kernel_h, kernel_w});
     // i64array is formatted as NHWC now
     i64array[1] = kernel_h;
     i64array[2] = kernel_w;
@@ -1058,7 +1058,7 @@ LogicalResult ConvertTFLAveragePool2DOp::matchAndRewrite(
   {
     int64_t stride_h = tfl_avgpool_op.getStrideH();
     int64_t stride_w = tfl_avgpool_op.getStrideW();
-    stride = rewriter.getI64ArrayAttr({stride_h, stride_w});
+    stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
   }
   {
     tensorflow::Padding tf_pad;
@@ -1066,7 +1066,7 @@ LogicalResult ConvertTFLAveragePool2DOp::matchAndRewrite(
       return failure();
 
     // Pooling has no non-unit dilation
-    ArrayAttr dilation = rewriter.getI64ArrayAttr({1, 1});
+    DenseI64ArrayAttr dilation = rewriter.getDenseI64ArrayAttr({1, 1});
 
     RankedTensorType filter_type = RankedTensorType::get(
         llvm::makeArrayRef(i64array), rewriter.getIntegerType(64));
@@ -1121,13 +1121,13 @@ LogicalResult ConvertTFLMaxPool2DOp::matchAndRewrite(
 
   // Kernels and strides are dimensionally ordered
   SmallVector<int64_t, 4> i64array({1, 1, 1, 1});
-  ArrayAttr kernel_size;
-  ArrayAttr stride;
-  ArrayAttr pad;
+  DenseI64ArrayAttr kernel_size;
+  DenseI64ArrayAttr stride;
+  DenseI64ArrayAttr pad;
   {
     int64_t kernel_h = tfl_maxpool_op.getFilterHeight();
     int64_t kernel_w = tfl_maxpool_op.getFilterWidth();
-    kernel_size = rewriter.getI64ArrayAttr({kernel_h, kernel_w});
+    kernel_size = rewriter.getDenseI64ArrayAttr({kernel_h, kernel_w});
     // i64array is formatted as NHWC now
     i64array[1] = kernel_h;
     i64array[2] = kernel_w;
@@ -1135,7 +1135,7 @@ LogicalResult ConvertTFLMaxPool2DOp::matchAndRewrite(
   {
     int64_t stride_h = tfl_maxpool_op.getStrideH();
     int64_t stride_w = tfl_maxpool_op.getStrideW();
-    stride = rewriter.getI64ArrayAttr({stride_h, stride_w});
+    stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
   }
   {
     tensorflow::Padding tf_pad;
@@ -1143,7 +1143,7 @@ LogicalResult ConvertTFLMaxPool2DOp::matchAndRewrite(
       return failure();
 
     // Pooling has no non-unit dilation
-    ArrayAttr dilation = rewriter.getI64ArrayAttr({1, 1});
+    DenseI64ArrayAttr dilation = rewriter.getDenseI64ArrayAttr({1, 1});
 
     RankedTensorType filter_type =
         RankedTensorType::get(i64array, rewriter.getIntegerType(64));
@@ -1193,18 +1193,18 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
         "be all quantized or all floating-point");
   }
 
-  ArrayAttr pad;
-  ArrayAttr stride;
-  ArrayAttr dilation;
+  DenseI64ArrayAttr pad;
+  DenseI64ArrayAttr stride;
+  DenseI64ArrayAttr dilation;
   {
     int64_t stride_h = tfl_conv2d_op.getStrideH();
     int64_t stride_w = tfl_conv2d_op.getStrideW();
-    stride = rewriter.getI64ArrayAttr({stride_h, stride_w});
+    stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
   }
   {
     int64_t dilation_h = tfl_conv2d_op.getDilationHFactor();
     int64_t dilation_w = tfl_conv2d_op.getDilationWFactor();
-    dilation = rewriter.getI64ArrayAttr({dilation_h, dilation_w});
+    dilation = rewriter.getDenseI64ArrayAttr({dilation_h, dilation_w});
   }
   {
     tensorflow::Padding tf_pad;
@@ -1366,13 +1366,13 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
         "be all quantized or all floating-point");
   }
 
-  ArrayAttr stride;
-  ArrayAttr outpad;
-  ArrayAttr output_shape;
+  DenseI64ArrayAttr stride;
+  DenseI64ArrayAttr outpad;
+  DenseI64ArrayAttr output_shape;
   {
     int64_t stride_h = tfl_conv_op.getStrideH();
     int64_t stride_w = tfl_conv_op.getStrideW();
-    stride = rewriter.getI64ArrayAttr({stride_h, stride_w});
+    stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
   }
 
   {
@@ -1396,10 +1396,10 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
       for (int i = 0; i < output_shape_elems.getNumElements(); i++)
         shape_vec.push_back(
             output_shape_elems.getValues<APInt>()[i].getSExtValue());
-      output_shape = rewriter.getI64ArrayAttr(shape_vec);
+      output_shape = rewriter.getDenseI64ArrayAttr(shape_vec);
     } else if (output_type.hasRank()) {
       // Use output tensor's shape otherwise
-      output_shape = rewriter.getI64ArrayAttr(output_type.getShape());
+      output_shape = rewriter.getDenseI64ArrayAttr(output_type.getShape());
     } else {
       // TODO(suderman): Figure out rankless shape propagation.
       return failure();
@@ -1517,20 +1517,20 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
   // a3_transpose_conv2d = tosa.transpose_conv2d(input, a2_reshape, padding,
   // stride, dilation)
 
-  ArrayAttr pad;
-  ArrayAttr stride;
-  ArrayAttr dilation;
+  DenseI64ArrayAttr pad;
+  DenseI64ArrayAttr stride;
+  DenseI64ArrayAttr dilation;
   auto depth_multiplier = tfl_conv2d_op.getDepthMultiplierAttr();
 
   {
     int64_t stride_h = tfl_conv2d_op.getStrideH();
     int64_t stride_w = tfl_conv2d_op.getStrideW();
-    stride = rewriter.getI64ArrayAttr({stride_h, stride_w});
+    stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
   }
   {
     int64_t dilation_h = tfl_conv2d_op.getDilationHFactor();
     int64_t dilation_w = tfl_conv2d_op.getDilationWFactor();
-    dilation = rewriter.getI64ArrayAttr({dilation_h, dilation_w});
+    dilation = rewriter.getDenseI64ArrayAttr({dilation_h, dilation_w});
   }
   {
     tensorflow::Padding tf_pad;

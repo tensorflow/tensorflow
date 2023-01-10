@@ -195,6 +195,15 @@ class TraceType(metaclass=abc.ABCMeta):
     ```
     """
 
+  @doc_controls.do_not_doc_inheritable
+  def _to_tensors(self, value):
+    """Breaks down a value of this type into Tensors.
+
+    Args:
+      value: An input value belonging to this TraceType
+    """
+    raise NotImplementedError
+
   @abc.abstractmethod
   def __hash__(self) -> int:
     pass

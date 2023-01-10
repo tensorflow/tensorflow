@@ -166,7 +166,7 @@ class Object : public Handle {
         if (class_dict_maybe.type() == TaggedValue::DICT) {
           auto& dict = class_dict_maybe.dict();
           auto it = dict.find(key.value_);
-          if (it != value_.dict().end()) {
+          if (it != dict.end()) {
             return Cast<T>(Handle(it->second));
           }
         }

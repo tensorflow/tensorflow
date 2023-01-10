@@ -208,7 +208,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["conv_ops_3d_test.py"],
     shard_count = 30,
-    tags = ["no_cuda11"],
+    tags = [
+        "no_cuda11",
+        "no_mac_arm64",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -223,6 +226,7 @@ cuda_py_test(
     srcs = ["conv_ops_test.py"],
     shard_count = 4,
     tags = [
+        "no_mac_arm64",
         "optonly",  # times out
     ],
     deps = [

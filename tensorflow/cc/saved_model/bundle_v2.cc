@@ -122,6 +122,7 @@ Status SavedModelV2Bundle::Load(const std::string& export_dir,
   metrics::SavedModelReadApi(kCCLoadBundleV2Label).IncrementBy(1);
   SavedModel saved_model_proto;
   TF_RETURN_IF_ERROR(ReadSavedModelProto(export_dir, &saved_model_proto));
+  metrics::SavedModelReadPath().Set(export_dir);
 
   // Load MetaGraphDef.
   // In version 2 SavedModels, there is only one MetaGraphDef.

@@ -114,7 +114,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
              Register_UNIDIRECTIONAL_SEQUENCE_LSTM(), /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_PAD, Register_PAD(), /* min_version = */ 1,
              /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_PADV2, Register_PADV2(), /* min_version = */ 1,

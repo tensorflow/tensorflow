@@ -449,9 +449,10 @@ bool getPaddingValuesFromPadType(tensorflow::Padding tf_pad,
                                  tensorflow::TensorFormat data_format_tf,
                                  uint32_t first_filter_spatial_dim,
                                  ShapedType input_type, ShapedType filter_type,
-                                 ArrayAttr strides, ArrayAttr dilations,
+                                 DenseI64ArrayAttr strides,
+                                 DenseI64ArrayAttr dilations,
                                  PatternRewriter& rewriter,
-                                 ArrayAttr& explicit_padding) {
+                                 DenseI64ArrayAttr& explicit_padding) {
   assert(tf_pad != tensorflow::Padding::EXPLICIT);
   if (!input_type.hasRank() || !filter_type.getRank()) return false;
   // Only support NHWC for now.
@@ -479,8 +480,8 @@ bool getPaddingValuesFromPadType(tensorflow::Padding tf_pad,
     int64_t ifm_dim = i + dim_index_shift;
     int64_t filter_dim = first_filter_spatial_dim + i;
 
-    int64_t dim_dilation = dilations[i].template cast<IntegerAttr>().getInt();
-    int64_t dim_stride = strides[i].template cast<IntegerAttr>().getInt();
+    int64_t dim_dilation = dilations[i];
+    int64_t dim_stride = strides[i];
 
     int64_t ip_size = input_type.getDimSize(ifm_dim);
     int64_t f_size = filter_type.getDimSize(filter_dim);
@@ -499,7 +500,7 @@ bool getPaddingValuesFromPadType(tensorflow::Padding tf_pad,
     computed_paddings.push_back(pad_after);
   }
 
-  explicit_padding = rewriter.getI64ArrayAttr(computed_paddings);
+  explicit_padding = rewriter.getDenseI64ArrayAttr(computed_paddings);
   return true;
 }
 
@@ -513,7 +514,7 @@ bool getPaddingValuesFromPadType(tensorflow::Padding tf_pad,
 // The explicit padding array in TF holds 2 pad values for every
 // dimension, even those that are not the 2 spatial ones. Just extract the
 // 2x pad values for the XY dims.
-ArrayAttr getPaddingValuesFromExplicitPadAttr(
+DenseI64ArrayAttr getPaddingValuesFromExplicitPadAttr(
     ArrayAttr explicit_pad, tensorflow::TensorFormat data_format_tf,
     PatternRewriter& rewriter) {
   SmallVector<int64_t> computed_paddings;
@@ -522,22 +523,21 @@ ArrayAttr getPaddingValuesFromExplicitPadAttr(
   for (int i = 0; i < 2; i++) {  // Two spatial dimensions X&Y
     int64_t dim = GetTensorSpatialDimIndex(4, data_format_tf,
                                            i);  // 4D tensor, NHWC/NCHW format
-
     pad_before = explicit_pad[dim * 2].template cast<IntegerAttr>().getInt();
     pad_after = explicit_pad[dim * 2 + 1].template cast<IntegerAttr>().getInt();
     computed_paddings.push_back(pad_before);
     computed_paddings.push_back(pad_after);
   }
 
-  return rewriter.getI64ArrayAttr(computed_paddings);
+  return rewriter.getDenseI64ArrayAttr(computed_paddings);
 }
 
 // Calculates the TOSA padding values for transposeConv2d
 bool getTransposeConv2dPaddingValues(
     tensorflow::Padding tf_pad, tensorflow::TensorFormat data_format_tf,
     uint32_t first_filter_spatial_dim, ShapedType input_type,
-    ShapedType filter_type, ShapedType output_type, ArrayAttr strides,
-    PatternRewriter& rewriter, ArrayAttr& explicit_padding) {
+    ShapedType filter_type, ShapedType output_type, DenseI64ArrayAttr strides,
+    PatternRewriter& rewriter, DenseI64ArrayAttr& explicit_padding) {
   assert(tf_pad != tensorflow::Padding::EXPLICIT);
   if (!input_type.hasRank() || !filter_type.hasRank() || !output_type.hasRank())
     return false;
@@ -558,7 +558,7 @@ bool getTransposeConv2dPaddingValues(
     int64_t ifm_size = input_type.getDimSize(ifm_dim);
     int64_t filter_size = filter_type.getDimSize(filter_dim);
     int64_t ofm_size = output_type.getDimSize(ofm_dim);
-    int64_t dim_stride = strides[i].template cast<IntegerAttr>().getInt();
+    int64_t dim_stride = strides[i];
 
     // These dimensions need to be static to legalize.
     if (ShapedType::isDynamic(filter_size) || ShapedType::isDynamic(ifm_size) ||
@@ -576,7 +576,7 @@ bool getTransposeConv2dPaddingValues(
     computed_paddings.push_back(pad_after);
   }
 
-  explicit_padding = rewriter.getI64ArrayAttr(computed_paddings);
+  explicit_padding = rewriter.getDenseI64ArrayAttr(computed_paddings);
   return true;
 }
 

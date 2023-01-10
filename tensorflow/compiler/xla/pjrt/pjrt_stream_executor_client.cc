@@ -83,6 +83,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -1916,6 +1917,147 @@ PjRtStreamExecutorExecutable::MakeExecutionInputsAndWaitForEvents(
   return execution_inputs;
 }
 
+template <typename T>
+static const T* FindCallback(int channel_id, absl::Span<const T> callbacks) {
+  // TODO(ezhulenev): Can we use binary search here assuming that callbacks
+  // are sorted by channel id? Are they always sorted?
+  auto it = absl::c_find_if(callbacks, [&](const T& callback) {
+    return callback.channel_id == channel_id;
+  });
+  return it == callbacks.end() ? nullptr : &*it;
+}
+
+// Converts PjRt SendCallbacks to an XLA StreamExecutor send function.
+static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
+    int device_ordinal, const ExecuteOptions& options) {
+  // Check if we have callbacks registered for the given device ordinal.
+  if (device_ordinal >= options.send_callbacks.size()) {
+    return [=](int64_t channel_id, se::Stream*, const Shape&,
+               const se::DeviceMemoryBase&) {
+      return InvalidArgument(
+          "Failed to send a buffer to the channel_id=%d, there was no send "
+          "callbacks registered for the device_ordinal=%d",
+          channel_id, device_ordinal);
+    };
+  }
+
+  // SendCallbacks registered for a device ordinal. Can be empty.
+  absl::Span<const SendCallback> callbacks =
+      options.send_callbacks[device_ordinal];
+
+  return [callbacks](int64_t channel_id, se::Stream* stream, const Shape& shape,
+                     const se::DeviceMemoryBase& src) {
+    VLOG(3) << "Send " << src.size() << " bytes to channel #" << channel_id
+            << " (shape=" << shape.ToString() << ")";
+
+    const SendCallback* send = FindCallback(channel_id, callbacks);
+    if (!send) {
+      return InvalidArgument(
+          "Failed to send a buffer to the channel_id=%d, callback not found",
+          channel_id);
+    }
+
+    // Allocate chunk on the host for copying data from device.
+    PjRtChunk chunk = PjRtChunk::AllocateDefault(src.size());
+    stream->ThenMemcpy(chunk.data(), src, src.size());
+
+    // TODO(ezhulenev): Instead of blocking the host, we can submit memcpy
+    // operation on a stream, and block the host and call the callback in the
+    // SendDone operation. For the simplicity of the initial implementation
+    // we do it all in the send function.
+    auto status = stream->BlockHostUntilDone();
+    if (!status.ok()) return status;
+
+    // Pass chunk to the registered callback.
+    return send->callback({shape}, std::move(chunk),
+                          /*total_size_in_bytes=*/src.size(),
+                          /*done=*/true);
+  };
+}
+
+namespace {
+class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
+ public:
+  StreamExecutorCopyToDeviceStream(absl::Notification* done, se::Stream* stream,
+                                   se::DeviceMemoryBase* dst)
+      : CopyToDeviceStream(dst->size(), /*granule_bytes=*/1),
+        done_(done),
+        stream_(stream),
+        dst_(dst) {}
+
+  PjRtFuture<Status> AddChunk(PjRtChunk chunk) final {
+    int64_t offset = 0;
+    bool complete = false;
+
+    {  // Get the offset for submitting memcpy operation.
+      absl::MutexLock lock(&mu_);
+      offset = current_bytes_;
+      current_bytes_ += chunk.size();
+      complete = IsCompleteLocked();
+    }
+
+    stream_->ThenMemcpy(dst_, chunk.data(), chunk.size());
+
+    // Delete chunk once the memcpy operation completes. We do not need to block
+    // the host here because all subsequent compute operations will be submitted
+    // on the same stream.
+    auto* chunk_ptr = std::make_unique<PjRtChunk>(std::move(chunk)).release();
+    stream_->ThenDoHostCallback([chunk_ptr]() { delete chunk_ptr; });
+
+    if (complete) done_->Notify();
+    return PjRtFuture<Status>(OkStatus());
+  }
+
+ private:
+  absl::Notification* done_;
+  se::Stream* stream_;
+  se::DeviceMemoryBase* dst_;
+};
+}  // namespace
+
+static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
+    int device_ordinal, const ExecuteOptions& options) {
+  // Check if we have callbacks registered for the given device ordinal.
+  if (device_ordinal >= options.send_callbacks.size()) {
+    return [=](int64_t channel_id, se::Stream*, const Shape&,
+               se::DeviceMemoryBase*) {
+      return InvalidArgument(
+          "Failed to receive a buffer from the channel_id=%d, there was no "
+          "recv callbacks registered for the device_ordinal=%d",
+          channel_id, device_ordinal);
+    };
+  }
+
+  // RecvCallbacks registered for a device ordinal. Can be empty.
+  absl::Span<const RecvCallback> callbacks =
+      options.recv_callbacks[device_ordinal];
+
+  return [callbacks](int64_t channel_id, se::Stream* stream, const Shape& shape,
+                     se::DeviceMemoryBase* dst) {
+    VLOG(3) << "Recv from channel #" << channel_id
+            << " (shape=" << shape.ToString() << ")";
+
+    const RecvCallback* recv = FindCallback(channel_id, callbacks);
+    if (!recv) {
+      return InvalidArgument(
+          "Failed to recv a buffer from the channel_id=%d, callback not found",
+          channel_id);
+    }
+
+    // TODO(ezhulenev): Revisit `RecvDeviceMemoryFunction` API to make it
+    // non-blocking and signal copy to device stream completion via events.
+    absl::Notification done;
+    recv->callback({shape}, std::make_unique<StreamExecutorCopyToDeviceStream>(
+                                &done, stream, dst));
+
+    VLOG(3) << "Wait for the complection of recv callback: channel_id="
+            << channel_id;
+    done.WaitForNotification();
+
+    return OkStatus();
+  };
+}
+
 // Enqueues a computation onto the compute stream. Each buffer returned in
 // device_buffers has a usage hold added that must be dropped on error or
 // converted on success.
@@ -2020,6 +2162,13 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
           on_device_executable_parameter_shapes_[executable_idx],
           argument_handles, *device_buffers, events));
 
+  // Create a PjRt<->StreamExecutor adaptors to send/recv device memory as
+  // PjRt chunks via the user-provided callbacks.
+  SendDeviceMemoryFunction send_device_memory =
+      ConvertSendCallbacksToSendFunction(device_ordinal, options);
+  RecvDeviceMemoryFunction recv_device_memory =
+      ConvertRecvCallbacksToRecvFunction(device_ordinal, options);
+
   ExecutableRunOptions run_options;
   run_options.set_stream(device_state->compute_stream());
   run_options.set_host_to_device_stream(device_state->host_to_device_stream());
@@ -2031,6 +2180,8 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
   run_options.set_rng_seed(device_state->GetNewPrngSeed());
   run_options.set_gpu_executable_run_options(client_->gpu_run_options());
   run_options.set_launch_id(options.launch_id);
+  run_options.set_send_device_memory_function(&send_device_memory);
+  run_options.set_recv_device_memory_function(&recv_device_memory);
   if (run_options.launch_id() != 0) {
     VLOG(3) << "launch id for " << name() << ": " << run_options.launch_id();
   }

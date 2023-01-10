@@ -68,7 +68,7 @@ class DeviceIdUtil {
   }
 
   // Parse `visible_device_list` into a list of platform Device ids.
-  static port::Status ParseVisibleDeviceList(
+  static tsl::Status ParseVisibleDeviceList(
       const std::string& visible_device_list, const int visible_device_count,
       std::vector<tsl::PlatformDeviceId>* visible_device_order) {
     visible_device_order->clear();

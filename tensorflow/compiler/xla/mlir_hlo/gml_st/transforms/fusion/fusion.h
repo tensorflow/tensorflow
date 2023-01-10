@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_FUSION_H
-#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_FUSION_H
+#ifndef MLIR_HLO_GML_ST_TRANSFORMS_FUSION_FUSION_H
+#define MLIR_HLO_GML_ST_TRANSFORMS_FUSION_FUSION_H
 
 #include "gml_st/IR/gml_st_ops.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -113,4 +113,4 @@ LogicalResult fuseOutputFill(PatternRewriter &rewriter, FusionOpTy op) {
 }  // namespace gml_st
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_FUSION_H
+#endif  // MLIR_HLO_GML_ST_TRANSFORMS_FUSION_FUSION_H

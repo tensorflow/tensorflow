@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "absl/strings/numbers.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
@@ -29,6 +28,8 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+using absl::InvalidArgumentError;
 
 using xla::runtime::AggregateAttrDef;
 using xla::runtime::AggregateAttrEncoding;
@@ -92,58 +93,62 @@ void PopulateSendRecvAttrEncoding(CustomCallAttrEncodingSet& encoding) {
 // Send/Recv custom call implementation.
 //===----------------------------------------------------------------------===//
 
-static std::vector<float>* storage = new std::vector<float>(4);
-
-static absl::StatusOr<int32_t> GetRecvChannel(Dictionary frontend_attrs) {
-  auto str = frontend_attrs.get<std::string_view>("_xla_dcn_recv_channel");
-
-  int32_t recv_channel;
-  if (failed(str) || !absl::SimpleAtoi(*str, &recv_channel))
-    return absl::InternalError(
-        "Failed to get receive channel id from the frontend attributes");
-
-  return recv_channel;
-}
-
 static absl::Status SendImpl(const ServiceExecutableRunOptions* run_options,
                              StridedMemrefView arg, ChannelHandle channel,
                              bool is_host_transfer, Dictionary frontend_attrs) {
+  VLOG(3) << "Send buffer:"
+          << " channel=" << channel.handle
+          << " is_host_transfer=" << is_host_transfer;
+
   // For now we only support transfers between the device and the host.
   if (!is_host_transfer)
-    return absl::InvalidArgumentError(
+    return InvalidArgumentError(
         "Device to device communication operations are not supported");
 
-  // Get the corresponding receive channel id.
-  auto recv_channel = GetRecvChannel(frontend_attrs);
-  if (!recv_channel.ok()) return recv_channel.status();
+  // Send buffer to a handler registered with the run options.
+  if (auto* send = run_options->run_options().send_device_memory_function())
+    return ToAbslStatus((*send)(channel.handle, run_options->stream(),
+                                ToShape(arg), GetDeviceAddress(arg)));
 
-  VLOG(3) << "Send buffer to host: channel=" << channel.handle
-          << "; recv_channel=" << *recv_channel;
-
-  return absl::UnimplementedError("Send operation is not implemented");
+  return InvalidArgumentError("SendDeviceMemoryFunction is not available");
 }
 
 static absl::Status RecvImpl(const ServiceExecutableRunOptions* run_options,
                              StridedMemrefView arg, ChannelHandle channel,
                              bool is_host_transfer, Dictionary frontend_attrs) {
+  VLOG(3) << "Receive buffer:"
+          << " channel=" << channel.handle
+          << " is_host_transfer=" << is_host_transfer;
+
   // For now we only support transfers between the device and the host.
   if (!is_host_transfer)
-    return absl::InvalidArgumentError(
+    return InvalidArgumentError(
         "Device to device communication operations are not supported");
 
-  VLOG(3) << "Receive buffer from host: channel=" << channel.handle;
+  // Recv buffer from a handler registered with the run options.
+  if (auto* recv = run_options->run_options().recv_device_memory_function()) {
+    auto dst = GetDeviceAddress(arg);
+    return ToAbslStatus(
+        (*recv)(channel.handle, run_options->stream(), ToShape(arg), &dst));
+  }
 
-  return absl::UnimplementedError("Recv operation is not implemented");
+  return InvalidArgumentError("RecvDeviceMemoryFunction is not available");
 }
 
 static absl::Status SendDoneImpl(const ServiceExecutableRunOptions* run_options,
                                  ChannelHandle channel, bool is_host_transfer) {
-  return absl::UnimplementedError("SendDone operation is not implemented");
+  // TODO(ezhulenev): Currently `SendDeviceMemoryFunction` is a blocking
+  // function that completes data transfer operation. We have to make it
+  // non-blocking to be able to overlap compute with data transfer.
+  return absl::OkStatus();
 }
 
 static absl::Status RecvDoneImpl(const ServiceExecutableRunOptions* run_options,
                                  ChannelHandle channel, bool is_host_transfer) {
-  return absl::UnimplementedError("RecvDone operation is not implemented");
+  // TODO(ezhulenev): Currently `RecvDeviceMemoryFunction` is a blocking
+  // function that completes data transfer operation. We have to make it
+  // non-blocking to be able to overlap compute with data transfer.
+  return absl::OkStatus();
 }
 
 //===----------------------------------------------------------------------===//
