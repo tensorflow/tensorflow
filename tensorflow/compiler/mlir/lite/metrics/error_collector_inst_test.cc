@@ -109,7 +109,7 @@ TEST(ErrorCollectorTest, TessSuccessPass) {
       "tensorflow/compiler/mlir/lite/metrics/testdata/strided_slice.mlir");
   MLIRContext context;
   context.getOrLoadDialect<mlir::func::FuncDialect>();
-  context.allowUnregisteredDialects();
+  context.getOrLoadDialect<TF::TensorFlowDialect>();
   context.enableMultithreading();
 
   auto module = LoadModule(&context, input_file);
@@ -131,11 +131,11 @@ TEST(ErrorCollectorTest, TessFailurePass) {
   using tflite::metrics::ConverterErrorData;
   MLIRContext context;
   context.getOrLoadDialect<mlir::func::FuncDialect>();
+  context.getOrLoadDialect<TF::TensorFlowDialect>();
   const std::string input_file =
       "tensorflow/compiler/mlir/lite/metrics/testdata/strided_slice.mlir";
   auto input_file_id = StringAttr::get(&context, input_file);
 
-  context.allowUnregisteredDialects();
   context.enableMultithreading();
 
   auto module =
