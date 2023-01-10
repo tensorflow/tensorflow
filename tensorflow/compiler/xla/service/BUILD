@@ -3985,6 +3985,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_execution_profile_test",
     srcs = ["hlo_execution_profile_test.cc"],
+    tags = ["no_mac_arm64"],
     deps = [
         ":cpu_plugin",
         ":hlo_cost_analysis",
