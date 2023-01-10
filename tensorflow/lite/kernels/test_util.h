@@ -494,11 +494,19 @@ class SingleOpModel {
                                                    : params->scale->data[i];
       scales_inv[i] = 1.0f / scale;
     }
-    optimize::utils::SymmetricPerChannelQuantizeValues(
-        input_data.data(), scales_inv, shape, channel_index, &quantized_output);
 
-    PopulateTensor(index, /*offset=*/0, quantized_output.data(),
-                   quantized_output.data() + quantized_output.size());
+    optimize::utils::SymmetricPerChannelQuantizeValues(
+        input_data.data(), scales_inv, shape, channel_index, &quantized_output,
+        t->type);
+
+    if (t->type == kTfLiteInt4) {
+      PopulateTensor4bit(index, /*offset=*/0, quantized_output.data(),
+                         quantized_output.data() + quantized_output.size());
+
+    } else {
+      PopulateTensor(index, /*offset=*/0, quantized_output.data(),
+                     quantized_output.data() + quantized_output.size());
+    }
   }
 
   template <typename T>
@@ -756,12 +764,62 @@ class SingleOpModel {
     absl::c_copy(data, v + offset);
   }
 
+  void PackInt4ValuesDenselyInPlace(uint8_t* src_buffer, int buffer_size) {
+    for (int i = 0; i < buffer_size; ++i) {
+      if (i % 2 == 0) {
+        src_buffer[i / 2] = src_buffer[i] & 0x0F;
+      } else {
+        src_buffer[i / 2] |= src_buffer[i] << 4;
+      }
+    }
+    // the rest of the buffer should be empty since half of it is packed with
+    // the values
+    memset(src_buffer + (buffer_size + 1) / 2, 0, buffer_size / 2);
+  }
+
+  int ElementCount(TfLiteIntArray& dims) {
+    int result = 1;
+    for (int i = 0; i < dims.size; ++i) {
+      result *= dims.data[i];
+    }
+    return result;
+  }
+
+  // Partially populates the tensor, starting at the given offset.
+  void PopulateTensor4bit(int index, int offset, int8_t* begin, int8_t* end) {
+    auto data = absl::Span<int8_t>(begin, end - begin);
+    TfLiteTensor* tensor_ptr = interpreter_->tensor(index);
+    uint8_t* v = nullptr;
+    if (tensor_ptr) {
+      v = reinterpret_cast<uint8_t*>(tensor_ptr->data.data);
+    }
+
+    if (!v) {
+      auto* t = interpreter_->tensor(index);
+      CHECK(t) << "No tensor with index " << index << ".";
+      CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
+      LOG(FATAL) << "Unknown tensor error.";
+    }
+    absl::c_copy(data, v + offset);
+    PackInt4ValuesDenselyInPlace(v, ElementCount(*tensor_ptr->dims));
+    tensor_ptr->bytes = ((ElementCount(*tensor_ptr->dims) + 1) / 2);
+  }
+
   template <typename T>
-  std::pair<float, int32_t> QuantizationParams(float f_min, float f_max) {
+  std::pair<float, int32_t> QuantizationParams(
+      float f_min, float f_max, TfLiteType type = kTfLiteNoType) {
     int32_t zero_point = 0;
     float scale = 0;
-    const T qmin = std::numeric_limits<T>::min();
-    const T qmax = std::numeric_limits<T>::max();
+    T qmin;
+    T qmax;
+
+    if (type == kTfLiteInt4) {
+      qmin = -7;
+      qmax = 7;
+    } else {
+      qmin = std::numeric_limits<T>::min();
+      qmax = std::numeric_limits<T>::max();
+    }
     const float qmin_double = qmin;
     const float qmax_double = qmax;
     // 0 should always be a representable value. Let's assume that the initial
