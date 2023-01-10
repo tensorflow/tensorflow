@@ -209,6 +209,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["cwise_ops_binary_test.py"],
     shard_count = 50,
+    tags = [
+        "no_rocm",  
+    ],
     # b/140155647: Error just outside of tolerance
     xla_enable_strict_auto_jit = False,
     deps = [
