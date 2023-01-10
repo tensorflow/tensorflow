@@ -338,7 +338,7 @@ Status DataServiceDispatcherImpl::CreateSnapshotStream(
         snapshot_directory, snapshot_state.streams.size(), source_index)));
   }
   snapshot_state.streams.push_back(
-      StreamState(worker_address, snapshot_state.split_providers.size()));
+      StreamState(snapshot_state.split_providers.size(), worker_address));
   return OkStatus();
 }
 
@@ -347,8 +347,8 @@ Status DataServiceDispatcherImpl::PopulateSnapshotInfo(
   for (auto& [snapshot_directory, snapshot_state] : snapshots_) {
     WorkerHeartbeatResponse::Snapshot* snapshot = response->add_snapshots();
     snapshot->set_directory(snapshot_directory);
-    if (auto it = snapshot_state.active_streams.find(worker_address);
-        it != snapshot_state.active_streams.end()) {
+    if (auto it = snapshot_state.assigned_streams.find(worker_address);
+        it != snapshot_state.assigned_streams.end()) {
       snapshot->set_stream_index(it->second);
       continue;
     }
@@ -1082,6 +1082,14 @@ Status DataServiceDispatcherImpl::GetWorkers(const GetWorkersRequest* request,
   return OkStatus();
 }
 
+StatusOr<SnapshotState*> DataServiceDispatcherImpl::CreateSnapshotState(
+    const std::string& snapshot_directory, const DatasetDef& dataset_def) {
+  auto [it, ignore] = snapshots_.insert({snapshot_directory, SnapshotState()});
+  TF_RETURN_IF_ERROR(
+      MakeSplitProviders(dataset_def, it->second.split_providers));
+  return &it->second;
+}
+
 Status DataServiceDispatcherImpl::Snapshot(const SnapshotRequest* request,
                                            SnapshotResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
@@ -1103,8 +1111,8 @@ Status DataServiceDispatcherImpl::Snapshot(const SnapshotRequest* request,
   snapshot->set_directory(request->directory());
   TF_RETURN_IF_ERROR(Apply(update));
 
-  TF_RETURN_IF_ERROR(MakeSplitProviders(
-      request->dataset(), snapshots_[snapshot->directory()].split_providers));
+  TF_RETURN_IF_ERROR(
+      CreateSnapshotState(request->directory(), request->dataset()).status());
 
   return OkStatus();
 }
@@ -1130,7 +1138,7 @@ Status DataServiceDispatcherImpl::ValidateGetSnapshotSplitRequest(
                                    request.directory());
   }
   StreamState& stream_state = snapshot_state.streams[request.stream_index()];
-  if (stream_state.done) {
+  if (stream_state.mode == StreamState::Mode::kDone) {
     return errors::InvalidArgument("the dispatcher considers the stream ",
                                    absl::StrCat(request.stream_index()),
                                    "for the snapshot at ", request.directory(),
@@ -1180,10 +1188,10 @@ Status DataServiceDispatcherImpl::GetSnapshotSplit(
     source_state.done = true;
     stream_state.active_sources.erase(request->source_index());
     if (stream_state.active_sources.empty()) {
-      stream_state.done = true;
-      snapshot_state.active_streams.erase(stream_state.worker_address);
+      stream_state.mode = StreamState::Mode::kDone;
+      snapshot_state.assigned_streams.erase(stream_state.worker_address);
     }
-    snapshot_state.mode = snapshot_state.active_streams.empty()
+    snapshot_state.mode = snapshot_state.assigned_streams.empty()
                               ? SnapshotState::Mode::kDone
                               : SnapshotState::Mode::kWindingDown;
 
