@@ -1925,14 +1925,14 @@ class RaggedTensor(composite_tensor.CompositeTensor,
           "SparseTensor is not right-ragged",
           "SparseTensor.indices =", st_input.indices
         ]
-        with ops.control_dependencies([
-            control_flow_ops.Assert(math_ops.equal(invalid_flag, False), message)
-            ]):
+        with ops.control_dependencies([control_flow_ops.Assert(
+            math_ops.equal(invalid_flag, False), message)]):
           # Identity creates a dummy op for cases where there is no other op created here
           # (to ensure the control_dependencies assert will be run in graph mode).
           row_splits = array_ops.identity(row_splits)
           row_splits = math_ops.cast(row_splits, row_splits_dtype)
-          return cls.from_row_splits(st_input.values, row_splits, validate=False)
+          return cls.from_row_splits(
+              st_input.values, row_splits, validate=False)
 
       with ops.control_dependencies(
           _assert_sparse_indices_are_ragged_right(st_input.indices)):
