@@ -181,17 +181,17 @@ DataServiceDispatcherImpl::~DataServiceDispatcherImpl() {
   {
     mutex_lock l(mu_);
     cancelled_ = true;
-    iteration_gc_thread_cv_.notify_all();
+    maintenance_thread_cv_.notify_all();
   }
-  iteration_gc_thread_.reset();
+  maintenance_thread_.reset();
 }
 
 // TODO(b/250921378): Recover snapshots.
 Status DataServiceDispatcherImpl::Start() {
   mutex_lock l(mu_);
   if (config_.job_gc_timeout_ms() >= 0) {
-    iteration_gc_thread_ = absl::WrapUnique(env_->StartThread(
-        {}, "iteration-gc-thread", [&] { IterationGcThread(); }));
+    maintenance_thread_ = absl::WrapUnique(env_->StartThread(
+        {}, "maintenance-thread", [&] { MaintenanceThread(); }));
   }
   if (config_.work_dir().empty()) {
     if (config_.fault_tolerant_mode()) {
@@ -1296,13 +1296,13 @@ Status DataServiceDispatcherImpl::Apply(const Update& update)
   return state_.Apply(update);
 }
 
-void DataServiceDispatcherImpl::IterationGcThread() {
+void DataServiceDispatcherImpl::MaintenanceThread() {
   int64_t next_check_micros = 0;
   while (true) {
     mutex_lock l(mu_);
     while (!cancelled_ && env_->NowMicros() < next_check_micros) {
       int64_t remaining_micros = next_check_micros - env_->NowMicros();
-      iteration_gc_thread_cv_.wait_for(
+      maintenance_thread_cv_.wait_for(
           l, std::chrono::microseconds(remaining_micros));
     }
     if (cancelled_) {

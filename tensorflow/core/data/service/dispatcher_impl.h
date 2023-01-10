@@ -253,6 +253,10 @@ class DataServiceDispatcherImpl {
   DispatcherStateExport ExportState() const;
 
  private:
+  // A thread which periodically checks for iterations to clean up, clients to
+  // release, and snapshot streams to reassign.
+  void MaintenanceThread();
+
   // Restores split providers from the state in `iteration` and stores them in
   // `restored`.
   Status RestoreSplitProviders(
@@ -396,8 +400,6 @@ class DataServiceDispatcherImpl {
   // used when recovering state when the dispatcher starts.
   Status ApplyWithoutJournaling(const Update& update)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // A thread which periodically checks for iterations to clean up.
-  void IterationGcThread();
   // Releases iteration clients that haven't heartbeated recently.
   Status ReleaseMissingClients() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Scans for old iterations and marks them as finished.
@@ -446,9 +448,9 @@ class DataServiceDispatcherImpl {
   std::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);
   DispatcherState state_ TF_GUARDED_BY(mu_);
-  // Condition variable for waking up the iteration gc thread.
-  condition_variable iteration_gc_thread_cv_;
-  std::unique_ptr<Thread> iteration_gc_thread_;
+  // Condition variable for waking up the gc thread.
+  condition_variable maintenance_thread_cv_;
+  std::unique_ptr<Thread> maintenance_thread_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceDispatcherImpl);
 };
