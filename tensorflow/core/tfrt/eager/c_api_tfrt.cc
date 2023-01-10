@@ -1676,8 +1676,8 @@ tensorflow::Status OperationInterface::SetAttrShape(const char* attr_name,
     }
 
     // Set RankedShapeAttr.
-    offset = bef_attr_encoder_.EncodeRankedShapeAttr(
-        llvm::makeArrayRef(dims, num_dims));
+    offset =
+        bef_attr_encoder_.EncodeRankedShapeAttr(llvm::ArrayRef(dims, num_dims));
   }
   fallback_attrs_.Set(attr_name, proto);
 
@@ -1733,7 +1733,7 @@ static size_t SerializeTFETensorToDenseAttr(
   for (int i = 0; i < tensor->NumDims(); ++i) {
     shape.push_back(tensor->Dim(i));
   }
-  auto elements = llvm::makeArrayRef(
+  auto elements = llvm::ArrayRef(
       reinterpret_cast<const uint8_t*>(tensor->Data()), tensor->ByteSize());
   return encoder->EncodeDenseAttr(static_cast<DType>(element_type), shape,
                                   elements);

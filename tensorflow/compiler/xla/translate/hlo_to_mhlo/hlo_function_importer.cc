@@ -56,7 +56,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/statusor.h"
 
 using llvm::APInt;
-using llvm::makeArrayRef;
+using llvm::ArrayRef;
 using mlir::DenseIntElementsAttr;
 using mlir::NamedAttribute;
 using mlir::Operation;
@@ -1447,9 +1447,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       }
 
       auto reduce = func_builder->create<mlir::mhlo::ReduceOp>(
-          loc, return_types,
-          llvm::makeArrayRef(operands).take_front(num_inputs),
-          llvm::makeArrayRef(operands).drop_front(num_inputs),
+          loc, return_types, llvm::ArrayRef(operands).take_front(num_inputs),
+          llvm::ArrayRef(operands).drop_front(num_inputs),
           ConvertDimensions(instruction->dimensions()));
       TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->to_apply(),
                                         &reduce.getBody(),

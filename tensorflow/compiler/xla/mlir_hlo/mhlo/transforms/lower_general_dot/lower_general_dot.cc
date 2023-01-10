@@ -74,7 +74,7 @@ Value transposeReshape(Value arg, Location loc,
 
   auto transposePermutationAttr =
       DenseIntElementsAttr::get(transposePermutationType,
-                                llvm::makeArrayRef(transposePermutation))
+                                llvm::ArrayRef(transposePermutation))
           .cast<DenseIntElementsAttr>();
 
   // Compute the resulting shape.

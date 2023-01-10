@@ -3515,13 +3515,13 @@ void ReduceWindowOp::build(
   for (auto i : inputs) {
     auto iType = i.getType().cast<ShapedType>();
     blockArgTypes.push_back(iType.cloneWith(
-        llvm::makeArrayRef<int64_t>(std::nullopt), iType.getElementType()));
+        llvm::ArrayRef<int64_t>(std::nullopt), iType.getElementType()));
     locs.push_back(i.getLoc());
   }
   for (auto i : init_values) {
     auto iType = i.getType().cast<ShapedType>();
     blockArgTypes.push_back(iType.cloneWith(
-        llvm::makeArrayRef<int64_t>(std::nullopt), iType.getElementType()));
+        llvm::ArrayRef<int64_t>(std::nullopt), iType.getElementType()));
     locs.push_back(i.getLoc());
   }
 

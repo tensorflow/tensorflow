@@ -139,7 +139,7 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     // Create tensor<VECTOR_SIZExELEM_TYPE> with neutral elements for tile loop
     // init.
     Value emptyVector = rewriter.create<tensor::EmptyOp>(
-        loc, llvm::makeArrayRef({vectorSize}), elementType);
+        loc, llvm::ArrayRef({vectorSize}), elementType);
     Value filledVector =
         rewriter.create<linalg::FillOp>(loc, neutralValue, emptyVector)
             .getResult(0);

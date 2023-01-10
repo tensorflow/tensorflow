@@ -2342,7 +2342,7 @@ LogicalResult DynamicStitchOp::verify() {
     if (failed(mlir::verifyCompatibleShape(item_shape, *inferred_item_shape)))
       return op.emitOpError() << "has inconsistent shaped data and index "
                                  "pairs; inferred item shapes ["
-                              << llvm::makeArrayRef(*inferred_item_shape)
+                              << llvm::ArrayRef(*inferred_item_shape)
                               << "] and [" << item_shape << "] don't match";
     for (int i = 0, e = item_shape.size(); i < e; ++i) {
       int64_t& inferred_dim = (*inferred_item_shape)[i];

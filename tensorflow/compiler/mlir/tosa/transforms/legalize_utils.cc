@@ -277,8 +277,7 @@ Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
   auto const_type = tensorflow::GetTypeFromTFTensorShape({256}, element_qtype);
   auto storage_type = tensorflow::GetTypeFromTFTensorShape(
       {256}, element_qtype.getStorageType());
-  auto const_attr =
-      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(table));
+  auto const_attr = DenseElementsAttr::get(storage_type, llvm::ArrayRef(table));
 
   auto const_op =
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
@@ -320,8 +319,7 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
   auto const_type = tensorflow::GetTypeFromTFTensorShape({513}, element_qtype);
   auto storage_type = tensorflow::GetTypeFromTFTensorShape(
       {513}, element_qtype.getStorageType());
-  auto const_attr =
-      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(table));
+  auto const_attr = DenseElementsAttr::get(storage_type, llvm::ArrayRef(table));
 
   auto const_op =
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
@@ -372,13 +370,13 @@ void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
       {513}, element_qtype.getStorageType());
 
   auto first_const_attr =
-      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(first_table));
+      DenseElementsAttr::get(storage_type, llvm::ArrayRef(first_table));
   auto second_const_attr =
-      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(second_table));
+      DenseElementsAttr::get(storage_type, llvm::ArrayRef(second_table));
   auto third_const_attr =
-      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(third_table));
+      DenseElementsAttr::get(storage_type, llvm::ArrayRef(third_table));
   auto fourth_const_attr =
-      DenseElementsAttr::get(storage_type, llvm::makeArrayRef(fourth_table));
+      DenseElementsAttr::get(storage_type, llvm::ArrayRef(fourth_table));
 
   first_const =
       rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, first_const_attr)

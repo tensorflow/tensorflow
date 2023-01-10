@@ -153,8 +153,9 @@ class HloToLhloOpConverter : public BaseOpConversion<HloOpTy> {
     if (failed(convertResults(op, bufferArgs, rewriter))) return failure();
     rewriter.create<mhlo::HloToLhloOp<HloOpTy>>(op->getLoc(), std::nullopt,
                                                 bufferArgs, op->getAttrs());
-    rewriter.replaceOp(op, llvm::makeArrayRef(bufferArgs)
-                               .drop_front(adaptor.getOperands().size()));
+    rewriter.replaceOp(
+        op,
+        llvm::ArrayRef(bufferArgs).drop_front(adaptor.getOperands().size()));
     return success();
   }
 };

@@ -41,7 +41,7 @@ template <typename CppType>
     const ShapedType& type, const LiteralBase& literal) {
   auto data_span = literal.data<CppType>();
   return ::mlir::DenseElementsAttr::get(
-      type, llvm::makeArrayRef(data_span.data(), data_span.size()));
+      type, llvm::ArrayRef(data_span.data(), data_span.size()));
 }
 
 StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,

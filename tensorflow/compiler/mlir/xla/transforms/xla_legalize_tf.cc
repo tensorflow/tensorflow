@@ -199,7 +199,7 @@ FailureOr<mhlo::ConstantOp> CreateConstantOpForQint8Rhs(
   auto arr = t.flat<tensorflow::qint8>();
   auto dense_attr = mlir::DenseElementsAttr::get(
       GetSameShapeTensorType(new_rhs_type, rewriter.getIntegerType(8)),
-      llvm::makeArrayRef(arr.data(), arr.size()));
+      llvm::ArrayRef(arr.data(), arr.size()));
   return rewriter.create<mhlo::ConstantOp>(op.getLoc(), new_rhs_type,
                                            dense_attr);
 }

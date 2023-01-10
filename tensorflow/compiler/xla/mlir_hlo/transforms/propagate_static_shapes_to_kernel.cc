@@ -125,7 +125,7 @@ static void replaceStaticMemRefArguments(ArrayRef<BlockArgument> arguments,
   std::partial_sum(strides.rbegin(), strides.rend(), strides.rbegin(),
                    std::multiplies<int64_t>());
   strides.push_back(1);
-  replace(llvm::makeArrayRef(strides).drop_front(),
+  replace(llvm::ArrayRef(strides).drop_front(),
           arguments.drop_front(3 + memref.getRank()));
 }
 

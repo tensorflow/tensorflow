@@ -305,8 +305,8 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::CreateOpInFusion(
     std::vector<int64_t> dimensions(instr->dimensions().begin(),
                                     instr->dimensions().end());
     auto reduce_op = b.create<mhlo::ReduceOp>(
-        loc, llvm::makeArrayRef(loads).take_front(loads.size() / 2),
-        llvm::makeArrayRef(loads).drop_front(loads.size() / 2),
+        loc, llvm::ArrayRef(loads).take_front(loads.size() / 2),
+        llvm::ArrayRef(loads).drop_front(loads.size() / 2),
         GetI64DenseElementsAttr(dimensions));
 
     TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
@@ -1926,7 +1926,7 @@ tsl::Status LhloDialectEmitter::Initialize() {
                         builder_.getIndexAttr(alloc->parameter_number()));
       if (!alloc->param_shape_index().empty()) {
         arg_attr_list.set("lmhlo.param_shape_index",
-                          builder_.getI64TensorAttr(llvm::makeArrayRef(
+                          builder_.getI64TensorAttr(llvm::ArrayRef(
                               alloc->param_shape_index().begin(),
                               alloc->param_shape_index().end())));
       }
@@ -1949,7 +1949,7 @@ tsl::Status LhloDialectEmitter::Initialize() {
         continue;
       }
       arg_attr_list.set("lmhlo.output_index",
-                        builder_.getI64TensorAttr(llvm::makeArrayRef(
+                        builder_.getI64TensorAttr(llvm::ArrayRef(
                             shape_index.begin(), shape_index.end())));
       if (auto alias = computation_.parent()
                            ->input_output_alias_config()

@@ -285,10 +285,10 @@ bool CreateMainFunction(ModuleOp module_op) {
   for (auto func_op : module_op.getOps<func::FuncOp>()) {
     if (!ShouldIncludeInMainFunction(func_op)) continue;
 
-    llvm::ArrayRef<BlockArgument> new_args = llvm::makeArrayRef(
+    llvm::ArrayRef<BlockArgument> new_args = llvm::ArrayRef(
         main_func.getArguments().begin() + arg_idx, func_op.getNumArguments());
     arg_idx += func_op.getNumArguments();
-    llvm::ArrayRef<Type> new_types = llvm::makeArrayRef(
+    llvm::ArrayRef<Type> new_types = llvm::ArrayRef(
         result_types.begin() + result_idx, func_op.getNumResults());
     result_idx += func_op.getNumResults();
 

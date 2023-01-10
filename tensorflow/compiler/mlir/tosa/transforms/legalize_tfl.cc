@@ -1069,7 +1069,7 @@ LogicalResult ConvertTFLAveragePool2DOp::matchAndRewrite(
     DenseI64ArrayAttr dilation = rewriter.getDenseI64ArrayAttr({1, 1});
 
     RankedTensorType filter_type = RankedTensorType::get(
-        llvm::makeArrayRef(i64array), rewriter.getIntegerType(64));
+        llvm::ArrayRef(i64array), rewriter.getIntegerType(64));
 
     // TFLite doesn't support explicit padding
     if (!getPaddingValuesFromPadType(
@@ -1792,7 +1792,7 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
       new_bias_type =
           RankedTensorType::get(bias_shape, input_type.getElementType());
       bias_attr =
-          DenseElementsAttr::get(new_bias_type, llvm::makeArrayRef(bias_arr));
+          DenseElementsAttr::get(new_bias_type, llvm::ArrayRef(bias_arr));
     } else {
       SmallVector<int32_t> bias_arr(bias_shape[0]);
 
@@ -1810,7 +1810,7 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
                               : rewriter.getI32Type();
       new_bias_type = RankedTensorType::get(bias_shape, new_bias_ety);
       bias_attr =
-          DenseElementsAttr::get(new_bias_type, llvm::makeArrayRef(bias_arr));
+          DenseElementsAttr::get(new_bias_type, llvm::ArrayRef(bias_arr));
     }
     auto bias_op = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
                                                    new_bias_type, bias_attr);
@@ -1984,8 +1984,8 @@ LogicalResult ConvertTFLShapeOp::matchAndRewrite(
 
   RankedTensorType shape_type = RankedTensorType::get(
       {static_cast<int32_t>(shape_arr.size())}, rewriter.getIntegerType(32));
-  auto shape_attr = DenseI32ArrayAttr::get(rewriter.getContext(),
-                                           llvm::makeArrayRef(shape_arr));
+  auto shape_attr =
+      DenseI32ArrayAttr::get(rewriter.getContext(), llvm::ArrayRef(shape_arr));
   auto shape_const = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
                                                      shape_type, shape_attr);
 
@@ -2062,13 +2062,13 @@ LogicalResult ConvertTFLFillOp::matchAndRewrite(
   if (value_elem.getType().getElementType().isa<FloatType>()) {
     SmallVector<float> fill_arr(
         total_size, value_elem.getValues<APFloat>()[0].convertToFloat());
-    fill_attr = DenseF32ArrayAttr::get(rewriter.getContext(),
-                                       llvm::makeArrayRef(fill_arr));
+    fill_attr =
+        DenseF32ArrayAttr::get(rewriter.getContext(), llvm::ArrayRef(fill_arr));
   } else {
     SmallVector<int32_t> fill_arr(
         total_size, value_elem.getValues<APInt>()[0].getLimitedValue());
-    fill_attr = DenseI32ArrayAttr::get(rewriter.getContext(),
-                                       llvm::makeArrayRef(fill_arr));
+    fill_attr =
+        DenseI32ArrayAttr::get(rewriter.getContext(), llvm::ArrayRef(fill_arr));
   }
   auto fill_const_op = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
                                                        fill_type, fill_attr);
@@ -2949,8 +2949,7 @@ LogicalResult ConvertTFLSinOp::matchAndRewrite(
   auto table_ty =
       RankedTensorType::get({num_values}, rewriter.getIntegerType(16));
   Value table = rewriter.create<tosa::ConstOp>(
-      loc, table_ty,
-      DenseElementsAttr::get(table_ty, llvm::makeArrayRef(values)));
+      loc, table_ty, DenseElementsAttr::get(table_ty, llvm::ArrayRef(values)));
 
   auto table_result_ty = input_ty.clone(rewriter.getIntegerType(32));
   auto table_result = CreateOpAndInfer<tosa::TableOp>(
@@ -3626,7 +3625,7 @@ LogicalResult ConvertTFLSparseToDenseOp::matchAndRewrite(
   auto multiply_constant_type =
       RankedTensorType::get({result_rank}, indices_ety);
   auto multiply_constant_attr = DenseElementsAttr::get(
-      multiply_constant_type, llvm::makeArrayRef(multiply_constant_ints));
+      multiply_constant_type, llvm::ArrayRef(multiply_constant_ints));
   Value multiply_constant = CreateOpAndInfer<tosa::ConstOp>(
       rewriter, loc, multiply_constant_type, multiply_constant_attr);
 

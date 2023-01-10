@@ -58,7 +58,7 @@ LogicalResult BufferizeOp(Op op, RewriterBase &rewriter,
                       op.getOperation()->getAttrs());
   bufferization::replaceOpWithBufferizedValues(
       rewriter, op.getOperation(),
-      llvm::makeArrayRef(new_operands).drop_front(num_inputs));
+      llvm::ArrayRef(new_operands).drop_front(num_inputs));
   return success();
 }
 

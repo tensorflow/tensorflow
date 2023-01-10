@@ -150,7 +150,7 @@ void EmitOperationPrint(Operation* op, OpBuilder* b) {
   FlatSymbolRefAttr tf_func_ref =
       GetOrInsertLLVMFunction(kPrintStringFuncName, func_type, op, b);
   b->create<LLVM::CallOp>(loc, llvm::None, tf_func_ref,
-                          llvm::makeArrayRef({message_constant}));
+                          llvm::ArrayRef({message_constant}));
 }
 
 // The pass inserts printing on every mutation of memrefs.
