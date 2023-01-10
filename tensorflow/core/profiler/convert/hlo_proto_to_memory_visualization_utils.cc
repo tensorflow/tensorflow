@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/hlo_proto_to_memory_visualization_utils.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <list>
@@ -41,7 +42,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/protobuf/memory_viewer_preprocess.pb.h"
 
 namespace tensorflow {
@@ -77,9 +77,50 @@ int64_t ShapeUnpaddedSize(Shape shape) {
   return ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/sizeof(void*));
 }
 
+class BufferAllocationStruct {
+ public:
+  explicit BufferAllocationStruct(const BufferAllocationProto& proto)
+      : buffer_allocation_((proto)) {}
+  bool IsIndefinite() const {
+    return buffer_allocation_.is_thread_local() ||
+           buffer_allocation_.is_entry_computation_parameter() ||
+           buffer_allocation_.is_constant() ||
+           buffer_allocation_.maybe_live_out();
+  }
+  const BufferAllocationProto& proto() const { return buffer_allocation_; }
+  size_t size() const { return buffer_allocation_.size(); }
+  int64_t color() const { return buffer_allocation_.color(); }
+  int64_t index() const { return buffer_allocation_.index(); }
+  std::optional<int64_t> heap_simulator_trace_id() const {
+    return heap_simulator_trace_id_;
+  }
+  void set_heap_simulator_trace_id(int64_t id) {
+    heap_simulator_trace_id_ = id;
+  }
+
+  // Get buffer allocation category.
+  std::string category() const {
+    if (buffer_allocation_.is_entry_computation_parameter()) {
+      return "Parameter";
+    } else if (buffer_allocation_.maybe_live_out()) {
+      return "Output";
+    } else if (buffer_allocation_.is_thread_local()) {
+      return "Thread-local";
+    } else if (buffer_allocation_.is_constant()) {
+      return "Constant";
+    } else {
+      return "Temporary";
+    }
+  }
+
+ private:
+  const BufferAllocationProto& buffer_allocation_;
+  std::optional<int64_t> heap_simulator_trace_id_;
+};
+
 struct LogicalBufferStruct {
   LogicalBufferStruct(const LogicalBufferProto& p,
-                      const BufferAllocationProto& b,
+                      const BufferAllocationStruct& b,
                       const ::xla::HloInstructionProto& i, uint64_t offset)
       : proto(p), buffer_allocation(b), hlo_instruction(i), offset(offset) {
     // Get shape of logical buffer.
@@ -126,7 +167,7 @@ struct LogicalBufferStruct {
   }
 
   const LogicalBufferProto& proto;
-  const BufferAllocationProto& buffer_allocation;
+  const BufferAllocationStruct& buffer_allocation;
   const ::xla::HloInstructionProto& hlo_instruction;
   uint64_t offset;  // within the buffer allocation;
   // Span within the specific simulator trace.
@@ -158,11 +199,53 @@ class HloProtoBufferWrapper {
   // Get the raw HLO proto.
   const ::xla::HloProto& GetHloProto() const { return hlo_proto_; }
 
-  // Helper functions to get LogicalBuffer and BufferAllocation.
-  // We use map.at() directly in these function assuming the HLO proto is
-  // invalid.
+  const BufferAllocationStruct& GetBufferAllocation(
+      int64_t buffer_allocation_id) const {
+    return *id_to_buffer_allocation_.at(buffer_allocation_id);
+  }
+
+  std::vector<const BufferAllocationStruct*> GetBufferAllocations(
+      int64_t memory_color) const {
+    std::vector<const BufferAllocationStruct*> buffer_allocations;
+    for (const auto& iter : id_to_buffer_allocation_) {
+      if (iter.second->proto().color() != memory_color) continue;
+      buffer_allocations.push_back(iter.second.get());
+    }
+    return buffer_allocations;
+  }
+
   LogicalBufferStruct& GetLogicalBuffer(int64_t logical_buffer_id) const {
     return *id_to_logical_buffer_.at(logical_buffer_id);
+  }
+
+  // Get the logical buffers with indefinite lifetime (excluding thread_local).
+  std::vector<const LogicalBufferStruct*> LogicalBuffersWithIndefiniteLifetime(
+      int64_t memory_color) const {
+    std::vector<const LogicalBufferStruct*> indefinite_logical_buffers;
+
+    for (const auto& buffer_assignment : GetBufferAllocations(memory_color)) {
+      if (!buffer_assignment->IsIndefinite()) continue;
+      if (buffer_assignment->proto().is_thread_local()) continue;
+      // A indefinite buffer allocation will contain multiple logical buffers.
+      // None of them have a offset, and may have different size than the buffer
+      // allocation's size. In most cases, if not all cases, one of the logical
+      // buffer will have the size equal to buffer allocation's size. We will
+      // pick the biggest logical buffer.
+      const LogicalBufferStruct* best_logical_buffer = nullptr;
+      size_t best_size = 0;
+      for (const auto& assigned : buffer_assignment->proto().assigned()) {
+        const auto& logical_buffer_struct =
+            GetLogicalBuffer(assigned.logical_buffer_id());
+        if (logical_buffer_struct.size() > best_size) {
+          best_size = logical_buffer_struct.size();
+          best_logical_buffer = &logical_buffer_struct;
+        }
+      }
+      if (best_logical_buffer) {
+        indefinite_logical_buffers.push_back(best_logical_buffer);
+      }
+    }
+    return indefinite_logical_buffers;
   }
 
  private:
@@ -183,14 +266,32 @@ class HloProtoBufferWrapper {
 
     for (const auto& buffer_allocation :
          hlo_proto_.buffer_assignment().buffer_allocations()) {
+      auto& buffer_allocation_s =
+          id_to_buffer_allocation_[buffer_allocation.index()];
+      buffer_allocation_s =
+          std::make_unique<BufferAllocationStruct>(buffer_allocation);
       for (const auto& assigned : buffer_allocation.assigned()) {
         const auto id = assigned.logical_buffer_id();
         const auto* logical_buffer = id_to_logical_buffer_proto.at(id);
         const auto& instruction =
             *name_to_hlo_.at(logical_buffer->defined_at().instruction_name());
         id_to_logical_buffer_[id] = std::make_unique<LogicalBufferStruct>(
-            *logical_buffer, buffer_allocation, instruction, assigned.offset());
+            *logical_buffer, *buffer_allocation_s, instruction,
+            assigned.offset());
       }
+    }
+
+    const auto& heap_simulator_traces =
+        hlo_proto_.buffer_assignment().heap_simulator_traces();
+    for (int64_t i = 0; i < heap_simulator_traces.size(); i++) {
+      // The trace's buffer_allocation_index is not trustful, so we are trying
+      // to obtain the buffer allocation index ourselves.
+      if (heap_simulator_traces[i].events().empty()) continue;
+      int logical_buffer_id = heap_simulator_traces[i].events(0).buffer_id();
+      auto* logical_buffer = id_to_logical_buffer_[logical_buffer_id].get();
+      auto buffer_allocation_index = logical_buffer->buffer_allocation.index();
+      id_to_buffer_allocation_[buffer_allocation_index]
+          ->set_heap_simulator_trace_id(i);
     }
   }
 
@@ -222,31 +323,13 @@ class HloProtoBufferWrapper {
   // Tries to get heap simulator trace based on buffer_allocation_index.
   int64_t GetHeapSimulatorTraceIdFromBufferAllocationIndex(
       const int64_t memory_color) const {
-    absl::flat_hash_map<int64_t, const BufferAllocationProto*>
-        id_to_buffer_allocation;
-    for (const auto& buffer_allocation :
-         hlo_proto_.buffer_assignment().buffer_allocations()) {
-      id_to_buffer_allocation[buffer_allocation.index()] = &buffer_allocation;
-    }
-    for (int64_t i = 0;
-         i < hlo_proto_.buffer_assignment().heap_simulator_traces_size(); i++) {
-      int64_t buffer_allocation_index = hlo_proto_.buffer_assignment()
-                                            .heap_simulator_traces(i)
-                                            .buffer_allocation_index();
-      const auto iter = id_to_buffer_allocation.find(buffer_allocation_index);
-      if (buffer_allocation_index && iter != id_to_buffer_allocation.end()) {
-        // Find the heap simulator trace that corresponds to the HLO temporaries
-        // buffer allocation, where is_thread_local,
-        // is_entry_computation_parameter, is_constant, and maybe_live_out will
-        // all be false.
-        const auto* buffer_allocation = iter->second;
-        if (buffer_allocation->color() == memory_color &&
-            !buffer_allocation->is_thread_local() &&
-            !buffer_allocation->is_entry_computation_parameter() &&
-            !buffer_allocation->is_constant() &&
-            !buffer_allocation->maybe_live_out()) {
-          return i;
-        }
+    auto buffer_allocations = GetBufferAllocations(memory_color);
+    for (const auto* buffer_allocation : buffer_allocations) {
+      if (buffer_allocation->IsIndefinite()) continue;
+      // TODO(xprof): handle multiple temporary buffer allocations for the same
+      // color.
+      if (buffer_allocation->heap_simulator_trace_id()) {
+        return *buffer_allocation->heap_simulator_trace_id();
       }
     }
     return -1;
@@ -262,24 +345,14 @@ class HloProtoBufferWrapper {
   // A mapping from logical buffer ID to logical buffer.
   absl::flat_hash_map<int64_t, std::unique_ptr<LogicalBufferStruct>>
       id_to_logical_buffer_;
+
+  // A mapping from buffer allocation ID to BufferAllocationProto.
+  absl::flat_hash_map<int64_t, std::unique_ptr<BufferAllocationStruct>>
+      id_to_buffer_allocation_;
 };
 
 double BytesToMiB(int64_t bytes) {
   return static_cast<double>(bytes) / (1ULL << 20);
-}
-
-// Get buffer allocation property.
-std::string GetAllocationGroupName(
-    const BufferAllocationProto& buffer_allocation) {
-  if (buffer_allocation.is_entry_computation_parameter()) {
-    return "Parameter";
-  } else if (buffer_allocation.maybe_live_out()) {
-    return "Output";
-  } else if (buffer_allocation.is_thread_local()) {
-    return "Thread-local";
-  } else {
-    return "Temporary";
-  }
 }
 
 std::string ShapeDescription(const Shape& shape) {
@@ -311,8 +384,7 @@ HeapObject MakeHeapObject(const LogicalBufferStruct& logical_buffer,
       logical_buffer.unpadded_size());
   result.set_instruction_name(
       logical_buffer.GetInstructionNameWithShapeIndex());
-  result.set_group_name(
-      GetAllocationGroupName(logical_buffer.buffer_allocation));
+  result.set_group_name(logical_buffer.buffer_allocation.category());
   result.set_tf_op_name(hlo_instruction.metadata().op_name());
   result.set_shape_string(shape_string);
   result.set_op_code(hlo_instruction.opcode());
@@ -421,7 +493,7 @@ struct HeapSimulatorStats {
     unpadded_heap_size_bytes_timeline.push_back(unpadded_heap_size_bytes);
     const auto& logical_buffer = wrapper.GetLogicalBuffer(event.buffer_id());
     seen_logical_buffers.insert(&logical_buffer);
-    seen_buffer_allocations.insert(&logical_buffer.buffer_allocation);
+    seen_buffer_allocations.insert(&logical_buffer.buffer_allocation.proto());
   }
 
   // Update stats when memory usage increase.
@@ -489,28 +561,6 @@ struct HeapSimulatorStats {
             << absl::StrJoin(peak_logical_buffers, ", ") << "]";
 
     return OkStatus();
-  }
-
-  // Get the logical buffers with indefinite lifetime (buffers that do not
-  // appear in heap simulator trace, so the profiler does not know its exact
-  // lifetime span). They will be handled separately by
-  // ProcessIndefiniteLifetimeBuffers.
-  std::vector<const LogicalBufferStruct*> LogicalBuffersWithIndefiniteLifetime(
-      int64_t memory_color) const {
-    std::vector<const LogicalBufferStruct*> indefinite_logical_buffers;
-    for (const auto& logical_buffer :
-         wrapper.GetHloProto().buffer_assignment().logical_buffers()) {
-        const auto& logical_buffer_struct =
-            wrapper.GetLogicalBuffer(logical_buffer.id());
-        if (!seen_logical_buffers.contains(&logical_buffer_struct)) {
-        if (logical_buffer_struct.buffer_allocation.is_thread_local() ||
-            logical_buffer_struct.color() != memory_color) {
-          continue;
-        }
-        indefinite_logical_buffers.push_back(&logical_buffer_struct);
-        }
-    }
-    return indefinite_logical_buffers;
   }
 
   // Keep track of memory usage when iterating through heap simulator trace
@@ -661,24 +711,15 @@ struct PeakUsageSnapshot {
   const int64_t small_buffer_size;
 };
 
-void CreatePeakUsageSnapshot(const HeapSimulatorStats& simulator_stats,
+void CreatePeakUsageSnapshot(const HloProtoBufferWrapper& wrapper,
                              int64_t memory_color,
                              PeakUsageSnapshot* peak_snapshot) {
   // Add indefinite (global) buffers to peak usage snapshot.
-  absl::flat_hash_set<const BufferAllocationProto*> seen_buffer_allocations =
-      simulator_stats.seen_buffer_allocations;
   for (const auto* logical_buffer :
-       simulator_stats.LogicalBuffersWithIndefiniteLifetime(memory_color)) {
+       wrapper.LogicalBuffersWithIndefiniteLifetime(memory_color)) {
     const auto& buffer_allocation = logical_buffer->buffer_allocation;
-    if (seen_buffer_allocations.insert(&buffer_allocation).second) {
-      peak_snapshot->indefinite_memory_usage_bytes += buffer_allocation.size();
-      peak_snapshot->AddHeapObject(*logical_buffer);
-      if (buffer_allocation.size() < peak_snapshot->small_buffer_size) {
-        VLOG(1) << "Indefinite memory usage now: "
-                << peak_snapshot->indefinite_memory_usage_bytes << " bytes (+"
-                << buffer_allocation.size() << " bytes)";
-      }
-    }
+    peak_snapshot->indefinite_memory_usage_bytes += buffer_allocation.size();
+    peak_snapshot->AddHeapObject(*logical_buffer);
   }
 
   // Add temporary buffers (traced by heap simulator) to peak usage snapshot.
@@ -782,7 +823,7 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
 
   // Process buffers with indefinite lifetime.
   PeakUsageSnapshot peak_snapshot(wrapper, simulator_stats, small_buffer_size);
-  CreatePeakUsageSnapshot(simulator_stats, memory_color, &peak_snapshot);
+  CreatePeakUsageSnapshot(wrapper, memory_color, &peak_snapshot);
 
   PreprocessResult result;
   GeneratePreprocessResult(wrapper, simulator_stats, peak_snapshot, &result);
