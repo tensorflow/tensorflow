@@ -4654,6 +4654,9 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
 
     return DatasetSpec(common_element_spec, common_dataset_shape)
 
+  def _tf_data_normalize(self, t):
+    return t
+
   # TODO(b/220385675): Once _element_spec is guaranteed to be TypeSpec, the
   # following functions do not need to be overloaded: is_subtype_of,
   # most_specific_common_supertype, __hash__ and __eq__
