@@ -22,8 +22,8 @@ import tensorflow  # pylint: disable=unused-import
 
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
 from tensorflow.core.framework import function_pb2
+from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
-from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
@@ -90,9 +90,13 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     """
     return func.signature.name.startswith('composite_')
 
-  def _contains_op_with_name_and_attribute(self, nodes: Iterable[
-      node_def_pb2.NodeDef], op_name: str, attr_name: Union[str],
-                                           attr_val: _AttrValType) -> bool:
+  def _contains_op_with_name_and_attribute(
+      self,
+      nodes: Iterable[node_def_pb2.NodeDef],
+      op_name: str,
+      attr_name: str,
+      attr_val: _AttrValType,
+  ) -> bool:
     """Determine whether there is a node whose operation name matches `op_name`.
 
     If `attr_name` is given, additionally check if the `attr_val` matches with
@@ -114,42 +118,42 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         if node.op == op_name)
 
   def _contains_quantized_function_call(
-      self, meta_graphdef: meta_graph_pb2.MetaGraphDef) -> bool:
+      self, graphdef: graph_pb2.GraphDef
+  ) -> bool:
     """Determines if the graph def has quantized function call.
 
     Args:
-      meta_graphdef: A MetaGraphDef object.
+      graphdef: A GraphDef object.
 
     Returns:
       True if and only if the graph def contains a quantized function call.
     """
-    return any(
-        map(self._is_quantized_function,
-            meta_graphdef.graph_def.library.function))
+    return any(map(self._is_quantized_function, graphdef.library.function))
 
   def _contains_composite_function_call(
-      self, meta_graphdef: meta_graph_pb2.MetaGraphDef) -> bool:
+      self, graphdef: graph_pb2.GraphDef
+  ) -> bool:
     """Determines if the graph def has composite function call.
 
     Args:
-      meta_graphdef: A MetaGraphDef object.
+      graphdef: A GraphDef object.
 
     Returns:
       True if and only if the graph def contains a composite function call.
     """
-    return any(
-        map(self._is_composite_function,
-            meta_graphdef.graph_def.library.function))
+    return any(map(self._is_composite_function, graphdef.library.function))
 
-  def _contains_op(self,
-                   meta_graphdef: meta_graph_pb2.MetaGraphDef,
-                   op_name: str,
-                   attr_name: Union[str] = '',
-                   attr_val: _AttrValType = None) -> bool:
+  def _contains_op(
+      self,
+      graphdef: graph_pb2.GraphDef,
+      op_name: str,
+      attr_name: str = '',
+      attr_val: _AttrValType = None,
+  ) -> bool:
     """Determines if the graph def contains the given op.
 
     Args:
-      meta_graphdef: A MetaGraphDef object.
+      graphdef: A GraphDef object.
       op_name: Name of the operation to find within the graph.
       attr_name: Name of the attribute of the op to match.
       attr_val: Value of the attr_name to check.
@@ -161,14 +165,15 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     """
     # Check the main graph
     if self._contains_op_with_name_and_attribute(
-        nodes=meta_graphdef.graph_def.node,
+        nodes=graphdef.node,
         op_name=op_name,
         attr_name=attr_name,
-        attr_val=attr_val):
+        attr_val=attr_val,
+    ):
       return True
 
     # Check the graph genederated from user defined functions
-    for func in meta_graphdef.graph_def.library.function:
+    for func in graphdef.library.function:
       if self._contains_op_with_name_and_attribute(
           nodes=func.node_def,
           op_name=op_name,
@@ -176,6 +181,76 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
           attr_val=attr_val):
         return True
     return False
+
+  def _count_ops(
+      self,
+      graphdef: graph_pb2.GraphDef,
+      op_names: Collection[str],
+      attr_name: str = '',
+      attr_val: _AttrValType = None,
+  ) -> int:
+    """Returns the number of given ops in a graph def.
+
+    Args:
+      graphdef: A GraphDef object.
+      op_names: Names of the operations to find within the graph.
+      attr_name: Name of the attribute of the ops to match.
+      attr_val: Value of the attr_name to check.
+
+    Returns:
+      The number of occurrences of the given ops in a graph. The ops will be
+      counted only if the ops are named 'op_name' and has 'attr_val' if
+      'attr_name' is specified.
+    """
+    op_count = 0
+    for op_name in op_names:
+      # Check the main graph
+      op_count += self._count_op_with_name_and_attribute(
+          nodes=graphdef.node,
+          op_name=op_name,
+          attr_name=attr_name,
+          attr_val=attr_val,
+      )
+
+      # Check the graph genederated from user defined functions
+      for func in graphdef.library.function:
+        op_count += self._count_op_with_name_and_attribute(
+            nodes=func.node_def,
+            op_name=op_name,
+            attr_name=attr_name,
+            attr_val=attr_val,
+        )
+    return op_count
+
+  def _count_op_with_name_and_attribute(
+      self,
+      nodes: Iterable[node_def_pb2.NodeDef],
+      op_name: str,
+      attr_name: str,
+      attr_val: _AttrValType,
+  ) -> int:
+    """Determine the number of nodes whose operation name matches `op_name`.
+
+    If `attr_name` is given, additionally check if the `attr_val` matches with
+    the attribute value of the op.
+
+    Args:
+      nodes: Iterable of NodeDefs.
+      op_name: Name of the op to match.
+      attr_name: Name of the attribute of the op to match.
+      attr_val: Value of the attr_name to check.
+
+    Returns:
+      The number of occurrences of nodes whose name match `op_name` and
+      'attr_val' if 'attr_name' is given.
+    """
+    return len(
+        [
+            node.attr.get(attr_name) == attr_val
+            for node in nodes
+            if node.op == op_name
+        ]
+    )
 
   def _create_simple_tf1_conv_model(
       self,
