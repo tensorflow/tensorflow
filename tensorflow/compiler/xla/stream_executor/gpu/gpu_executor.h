@@ -121,7 +121,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   // Allocates and initializes a new constant on the device with the given
   // content. Or, if a device with identical content is already on-device,
   // returns a pointer to that buffer with shared ownership.
-  port::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
+  tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
       Stream* stream, const std::vector<uint8_t>& content) override;
 
   tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
@@ -250,12 +250,12 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   bool GetSymbol(const std::string& symbol_name, ModuleHandle module_handle,
                  void** mem, size_t* bytes) override;
 
-  port::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
+  tsl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override {
     return CreateDeviceDescription(device_ordinal_);
   }
 
-  static port::StatusOr<std::unique_ptr<DeviceDescription>>
+  static tsl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
 
   bool SupportsBlas() const override;

@@ -133,12 +133,12 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
-  port::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
+  tsl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override {
     return CreateDeviceDescription(0);
   }
 
-  static port::StatusOr<std::unique_ptr<DeviceDescription>>
+  static tsl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
 
   tsl::Status EnablePeerAccessTo(StreamExecutorInterface* other) override {

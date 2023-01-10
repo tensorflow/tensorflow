@@ -269,7 +269,7 @@ tsl::Status HostExecutor::BlockHostUntilDone(Stream* stream) {
   return AsHostStream(stream)->BlockUntilDone();
 }
 
-port::StatusOr<std::unique_ptr<DeviceDescription>>
+tsl::StatusOr<std::unique_ptr<DeviceDescription>>
 HostExecutor::CreateDeviceDescription(int device_ordinal) {
   internal::DeviceDescriptionBuilder builder;
 
@@ -298,7 +298,7 @@ bool HostExecutor::SupportsBlas() const {
 
 blas::BlasSupport* HostExecutor::CreateBlas() {
   PluginRegistry* registry = PluginRegistry::Instance();
-  port::StatusOr<PluginRegistry::BlasFactory> status =
+  tsl::StatusOr<PluginRegistry::BlasFactory> status =
       registry->GetFactory<PluginRegistry::BlasFactory>(kHostPlatformId,
                                                         plugin_config_.blas());
   if (!status.ok()) {
@@ -319,7 +319,7 @@ bool HostExecutor::SupportsFft() const {
 
 fft::FftSupport* HostExecutor::CreateFft() {
   PluginRegistry* registry = PluginRegistry::Instance();
-  port::StatusOr<PluginRegistry::FftFactory> status =
+  tsl::StatusOr<PluginRegistry::FftFactory> status =
       registry->GetFactory<PluginRegistry::FftFactory>(kHostPlatformId,
                                                        plugin_config_.fft());
   if (!status.ok()) {
@@ -340,7 +340,7 @@ bool HostExecutor::SupportsRng() const {
 
 rng::RngSupport* HostExecutor::CreateRng() {
   PluginRegistry* registry = PluginRegistry::Instance();
-  port::StatusOr<PluginRegistry::RngFactory> status =
+  tsl::StatusOr<PluginRegistry::RngFactory> status =
       registry->GetFactory<PluginRegistry::RngFactory>(kHostPlatformId,
                                                        plugin_config_.rng());
   if (!status.ok()) {

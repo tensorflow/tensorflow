@@ -1656,7 +1656,7 @@ class XlaBuilder {
   //
   // TODO(hinsu): Return const pointer within StatusOr and use
   // absl::implicit_cast at callsites. This requires implicit_cast support in
-  // stream_executor::port::StatusOr similar to absl::StatusOr.
+  // xla::StatusOr similar to absl::StatusOr.
   template <typename InstructionType>
   StatusOr<InstructionType> LookUpInstructionInternal(XlaOp op) const {
     TF_RETURN_IF_ERROR(CheckOpBuilder(op));

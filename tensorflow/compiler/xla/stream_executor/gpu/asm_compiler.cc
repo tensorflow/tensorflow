@@ -42,7 +42,7 @@ limitations under the License.
 
 namespace stream_executor {
 
-static port::StatusOr<absl::string_view> GetPtxasVersionString(
+static tsl::StatusOr<absl::string_view> GetPtxasVersionString(
     absl::string_view binary_path) {
   static absl::Mutex mu(absl::kConstInit);
   static auto* seen_binary_paths ABSL_GUARDED_BY(mu) =
@@ -75,9 +75,9 @@ static port::StatusOr<absl::string_view> GetPtxasVersionString(
   return absl::string_view(emplace_it.first->second);
 }
 
-port::StatusOr<std::array<int64_t, 3>> GetPtxasVersion(
+tsl::StatusOr<std::array<int64_t, 3>> GetPtxasVersion(
     absl::string_view ptxas_path) {
-  port::StatusOr<absl::string_view> ptxas_version =
+  tsl::StatusOr<absl::string_view> ptxas_version =
       GetPtxasVersionString(ptxas_path);
   if (!ptxas_version.ok()) {
     return tsl::errors::FailedPrecondition(
@@ -104,7 +104,7 @@ port::StatusOr<std::array<int64_t, 3>> GetPtxasVersion(
 //
 // Locks on entry.˝
 static void WarnIfBadPtxasVersion(absl::string_view ptxas_path) {
-  port::StatusOr<std::array<int64_t, 3>> version = GetPtxasVersion(ptxas_path);
+  tsl::StatusOr<std::array<int64_t, 3>> version = GetPtxasVersion(ptxas_path);
   if (!version.ok()) {
     LOG(WARNING) << "Couldn't get ptxas version : " << version.status();
     return;
@@ -119,10 +119,10 @@ static void WarnIfBadPtxasVersion(absl::string_view ptxas_path) {
   }
 }
 
-port::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
+tsl::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
     int device_ordinal, const char* ptx, GpuAsmOpts compilation_options) {
   using PtxCacheKey = std::tuple<int, std::string, GpuAsmOpts::PtxOptionsTuple>;
-  using PtxCompilerResult = port::StatusOr<std::vector<uint8_t>>;
+  using PtxCompilerResult = tsl::StatusOr<std::vector<uint8_t>>;
   static absl::Mutex ptx_cache_mutex(absl::kConstInit);
   static auto& ptx_cache ABSL_GUARDED_BY(ptx_cache_mutex) =
       *new absl::flat_hash_map<PtxCacheKey, PtxCompilerResult>();
@@ -151,9 +151,9 @@ port::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
   return absl::MakeSpan(compiled);
 }
 
-port::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int device_ordinal,
-                                                   const char* ptx_contents,
-                                                   GpuAsmOpts options) {
+tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int device_ordinal,
+                                                  const char* ptx_contents,
+                                                  GpuAsmOpts options) {
   gpu::GpuDeviceHandle handle;
   TF_RETURN_IF_ERROR(gpu::GpuDriver::GetDevice(device_ordinal, &handle));
   int cc_major;
@@ -244,15 +244,15 @@ static void AppendArgsFromOptions(GpuAsmOpts options,
               options.extra_flags.end());
 }
 
-port::StatusOr<std::array<int64_t, 3>> GetAsmCompilerVersion(
+tsl::StatusOr<std::array<int64_t, 3>> GetAsmCompilerVersion(
     const std::string& preferred_cuda_dir) {
   std::string ptxas_path = FindCudaExecutable("ptxas", preferred_cuda_dir);
   return GetPtxasVersion(ptxas_path);
 }
 
-port::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
-                                                   const char* ptx_contents,
-                                                   GpuAsmOpts options) {
+tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
+                                                  const char* ptx_contents,
+                                                  GpuAsmOpts options) {
   std::string ptxas_path =
       FindCudaExecutable("ptxas", options.preferred_cuda_dir);
 
@@ -339,7 +339,7 @@ port::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
   return cubin_vector;
 }
 
-port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
+tsl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
     std::vector<CubinOrPTXImage> images, GpuAsmOpts options) {
   std::string fatbinary_path =
       FindCudaExecutable("fatbinary", options.preferred_cuda_dir);
@@ -433,7 +433,7 @@ static std::string findRocmExecutable(const std::string& binary_relative_path,
   return binary_path;
 }
 
-port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
+tsl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
     std::vector<HsacoImage> images, const std::string rocm_root_dir) {
   std::string clang_offload_bundler_path =
       findRocmExecutable("llvm/bin/clang-offload-bundler", rocm_root_dir);
