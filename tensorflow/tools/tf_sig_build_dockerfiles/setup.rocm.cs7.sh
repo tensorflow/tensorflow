@@ -42,7 +42,7 @@ echo $ROCM_REPO
 echo $ROCM_PATH
 
 # install rocm
-/setup.packages.rocm.sh /devel.packages.rocm.txt
+/setup.packages.rocm.cs7.sh /devel.packages.rocm.cs7.txt
 
 # Ensure the ROCm target list is set up
 bash -c "echo -e 'gfx900\ngfx906\ngfx908\ngfx90a\ngfx1030' >> $ROCM_PATH/bin/target.lst"

@@ -300,19 +300,12 @@ Now you can continue on to any of:
 
     For ROCM:
 
-    Configure Tensorflow for ROCM
-    
-    ```
-    docker exec tf \
-    /tf/tensorflow/configure
-    ```
-
     Build the sources with Bazel:
 
     ```
     docker exec tf \
-    bazel build --config=opt --config=rocm \
-    --action_env TF_ROCM_GCC=1 \
+    bazel --bazelrc=/usertools/gpu.bazelrc \
+    build --config=rocm \
     tensorflow/tools/pip_package:build_pip_package --verbose_failures
 
     ```
