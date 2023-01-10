@@ -68,3 +68,35 @@ func.func @collective_permute(%arg0: memref<16x8xf32>, %arg1: memref<16x8xf32>) 
 //  CHECK-SAME:   source_target_pairs = dense<
 //       CHECK: func.func private @xla.cpu.collective_permute(
 //  CHECK-SAME:     attributes {rt.custom_call = "xla.cpu.collective_permute"}
+
+// -----
+
+func.func @rng_bit_generator_default(%state: memref<3xui64>,
+    %state_out: memref<3xui64>, %values_out: memref<10xui32>) {
+  "xla_cpu.rng_bit_generator"(%state, %state_out, %values_out)
+    {rng_algorithm = #mhlo.rng_algorithm<DEFAULT>
+  } : (memref<3xui64>, memref<3xui64>, memref<10xui32>) -> ()
+  return
+}
+
+// CHECK-LABEL: @rng_bit_generator_default
+//  CHECK-SAME:   %[[ARG0:.*]]: memref<3xui64>, %[[ARG1:.*]]: memref<3xui64>,
+//  CHECK-SAME:   %[[ARG2:.*]]: memref<10xui32>
+//       CHECK: call @xla.cpu.rng.philox(%[[ARG0]], %[[ARG1]], %[[ARG2]])
+//       CHECK: func.func private @xla.cpu.rng.philox(
+//  CHECK-SAME:     attributes {rt.custom_call = "xla.cpu.rng.philox"}
+
+// -----
+
+func.func @rng_bit_generator_three_fry(%state: memref<2xui64>,
+    %state_out: memref<2xui64>, %values_out: memref<10xui32>) {
+  "xla_cpu.rng_bit_generator"(%state, %state_out, %values_out)
+    {rng_algorithm = #mhlo.rng_algorithm<THREE_FRY>
+  } : (memref<2xui64>, memref<2xui64>, memref<10xui32>) -> ()
+  return
+}
+
+// CHECK-LABEL: @rng_bit_generator_three_fry
+//       CHECK: call @xla.cpu.rng.three_fry(
+//       CHECK: func.func private @xla.cpu.rng.three_fry(
+//  CHECK-SAME:     attributes {rt.custom_call = "xla.cpu.rng.three_fry"}

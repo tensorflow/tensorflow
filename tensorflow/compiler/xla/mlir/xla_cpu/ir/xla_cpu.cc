@@ -116,6 +116,12 @@ LogicalResult OutfeedOp::bufferize(
   return BufferizeOp(*this, rewriter, options, this->getNumOperands());
 }
 
+LogicalResult RngBitGeneratorOp::bufferize(
+    RewriterBase &rewriter,
+    const bufferization::BufferizationOptions &options) {
+  return BufferizeOp(*this, rewriter, options, 1);
+}
+
 LogicalResult AddDependencyOp::bufferize(
     RewriterBase &rewriter,
     const bufferization::BufferizationOptions &options) {

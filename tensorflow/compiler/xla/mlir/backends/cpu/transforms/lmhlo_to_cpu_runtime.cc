@@ -403,6 +403,36 @@ class FftLowering : public OpRewritePattern<xla_cpu::FftOp> {
 
 //===----------------------------------------------------------------------===//
 
+class RngBitGeneratorLowering
+    : public OpRewritePattern<xla_cpu::RngBitGeneratorOp> {
+ public:
+  RngBitGeneratorLowering(MLIRContext* ctx,
+                          CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(xla_cpu::RngBitGeneratorOp op,
+                                PatternRewriter& rewriter) const override {
+    auto algorithm =
+        op.getRngAlgorithmAttr().cast<mhlo::RngAlgorithmAttr>().getValue();
+    op->removeAttr("rng_algorithm");
+
+    CreateCallForDpsCollectiveOp(op.getOperation(), custom_calls_,
+                                 algorithm == mhlo::RngAlgorithm::THREE_FRY
+                                     ? kThreeFryTarget
+                                     : kPhiloxTarget,
+                                 rewriter);
+    return success();
+  }
+
+ private:
+  static constexpr const char kThreeFryTarget[] = "xla.cpu.rng.three_fry";
+  static constexpr const char kPhiloxTarget[] = "xla.cpu.rng.philox";
+
+  CustomCallDeclarations& custom_calls_;
+};
+
+//===----------------------------------------------------------------------===//
+
 class OutfeedLowering : public OpRewritePattern<xla_cpu::OutfeedOp> {
  public:
   OutfeedLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
@@ -461,9 +491,10 @@ void ConvertLmhloToCpuRuntimePass::runOnOperation() {
 
   // Convert lmhlo operations to XLA cpu runtime custom calls.
   RewritePatternSet patterns(ctx);
-  patterns.insert<InfeedOpLowering, OutfeedLowering, CustomCallOpLowering,
-                  AllReduceLowering, AllToAllLowering,
-                  CollectivePermuteLowering, FftLowering>(ctx, custom_calls);
+  patterns.insert<AllReduceLowering, AllToAllLowering,
+                  CollectivePermuteLowering, CustomCallOpLowering, FftLowering,
+                  InfeedOpLowering, OutfeedLowering, RngBitGeneratorLowering>(
+      ctx, custom_calls);
   patterns.insert<IdOpLowering<PartitionIdOp>>(ctx, "xla.cpu.partition_id",
                                                custom_calls);
   patterns.insert<IdOpLowering<ReplicaIdOp>>(ctx, "xla.cpu.replica_id",
