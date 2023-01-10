@@ -46,6 +46,11 @@ TEST(PathUtilsTest, SplitPath) {
           "/path/to/snapshot.streams.stream_0.splits.source_1.split_2_3"));
 }
 
+TEST(PathUtilsTest, StreamDoneFilePath) {
+  EXPECT_THAT(StreamDoneFilePath("/path/to/snapshot", /*stream_index=*/0),
+              MatchesRegex("/path/to/snapshot.streams.stream_0.DONE"));
+}
+
 TEST(PathUtilsTest, CheckpointsDirectory) {
   EXPECT_THAT(CheckpointsDirectory("/path/to/snapshot", /*stream_index=*/0),
               MatchesRegex("/path/to/snapshot.streams.stream_0.checkpoints"));

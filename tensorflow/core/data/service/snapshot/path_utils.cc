@@ -24,6 +24,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+constexpr const char kDoneFileName[] = "DONE";
 constexpr const char kCheckpointsDirectoryName[] = "checkpoints";
 constexpr const char kCommittedChunksDirectoryName[] = "committed_chunks";
 constexpr const char kUncommittedChunksDirectoryName[] = "uncommitted_chunks";
@@ -55,6 +56,12 @@ std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
   return tsl::io::JoinPath(
       SourceDirectory(snapshot_path, stream_index, source_id),
       absl::StrCat("split_", local_index, "_", global_index));
+}
+
+std::string StreamDoneFilePath(absl::string_view snapshot_path,
+                               int64_t stream_index) {
+  return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_index),
+                           kDoneFileName);
 }
 
 std::string CheckpointsDirectory(absl::string_view snapshot_path,

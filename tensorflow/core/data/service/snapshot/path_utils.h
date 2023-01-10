@@ -42,6 +42,10 @@ std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
                       int64_t source_id, int64_t local_index,
                       int64_t global_index);
 
+// Returns the path of the DONE file of a snapshot stream.
+std::string StreamDoneFilePath(absl::string_view snapshot_path,
+                               int64_t stream_index);
+
 // Returns the directory path for snapshot checkpoints.
 std::string CheckpointsDirectory(absl::string_view snapshot_path,
                                  int64_t stream_index);
