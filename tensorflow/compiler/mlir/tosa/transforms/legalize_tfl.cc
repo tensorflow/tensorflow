@@ -1573,7 +1573,7 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
       RankedTensorType::get(ArrayRef<int64_t>(a2_reshape_dims),
                             filter_type.getElementType()),
       a1_filter_transpose_op.getResult(),
-      rewriter.getI64ArrayAttr(a2_reshape_dims));
+      rewriter.getDenseI64ArrayAttr(a2_reshape_dims));
 
   Value unquantized_bias = tfl_conv2d_op.getBias();
   Type bias_ety =
@@ -1655,11 +1655,11 @@ LogicalResult ConvertTFLBatchMatMulOp::matchAndRewrite(
     lhs = CreateOpAndInfer<tosa::ReshapeOp>(
         rewriter, op->getLoc(),
         UnrankedTensorType::get(lhs_ty.getElementType()), lhs,
-        rewriter.getI64ArrayAttr(new_lhs_shape));
+        rewriter.getDenseI64ArrayAttr(new_lhs_shape));
     rhs = CreateOpAndInfer<tosa::ReshapeOp>(
         rewriter, op->getLoc(),
         UnrankedTensorType::get(rhs_ty.getElementType()), rhs,
-        rewriter.getI64ArrayAttr(new_rhs_shape));
+        rewriter.getDenseI64ArrayAttr(new_rhs_shape));
     lhs_ty = lhs.getType().cast<RankedTensorType>();
     rhs_ty = rhs.getType().cast<RankedTensorType>();
   }
@@ -1705,7 +1705,7 @@ LogicalResult ConvertTFLBatchMatMulOp::matchAndRewrite(
     matmul = CreateOpAndInfer<tosa::ReshapeOp>(
         rewriter, op->getLoc(),
         UnrankedTensorType::get(matmul_ty.getElementType()), matmul,
-        rewriter.getI64ArrayAttr(new_shape));
+        rewriter.getDenseI64ArrayAttr(new_shape));
   }
 
   if (lhs_is_qtype) {
@@ -1769,7 +1769,7 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
         RankedTensorType::get(shape_vals, input_type.getElementType());
     auto reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
         rewriter, op->getLoc(), reshape_type, tfl_fc_op.getInput(),
-        rewriter.getI64ArrayAttr(shape_vals));
+        rewriter.getDenseI64ArrayAttr(shape_vals));
 
     input_val = reshape_op.getResult();
   }
@@ -1843,7 +1843,7 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
     fc_output = CreateOpAndInfer<tosa::ReshapeOp>(
         rewriter, op->getLoc(),
         UnrankedTensorType::get(fc_type.getElementType()), fc_output,
-        rewriter.getI64ArrayAttr(output_type.getShape()));
+        rewriter.getDenseI64ArrayAttr(output_type.getShape()));
   }
 
   auto fused_activation_fn = tfl_fc_op.getFusedActivationFunctionAttr();
@@ -1922,10 +1922,10 @@ LogicalResult ConvertTFLReshapeOp::matchAndRewrite(
     auto e_ty = shape_ty.getElementType();
     Value dim = rewriter.createOrFold<tosa::SliceOp>(
         op->getLoc(), RankedTensorType::get({1}, e_ty), shape,
-        rewriter.getI64ArrayAttr({i}), rewriter.getI64ArrayAttr({1}));
+        rewriter.getDenseI64ArrayAttr({i}), rewriter.getDenseI64ArrayAttr({1}));
     dim = rewriter.createOrFold<tosa::ReshapeOp>(
         op->getLoc(), RankedTensorType::get({}, e_ty), dim,
-        rewriter.getI64ArrayAttr({}));
+        rewriter.getDenseI64ArrayAttr({}));
     shape_vals.push_back(dim);
   }
 
@@ -2333,8 +2333,8 @@ LogicalResult ConvertTFLSliceOp::matchAndRewrite(
   for (int i = 0; i < size_elems.getNumElements(); i++)
     size_vals.push_back(size_elems.getValues<APInt>()[i].getSExtValue());
 
-  ArrayAttr begin = rewriter.getI64ArrayAttr(begin_vals);
-  ArrayAttr size = rewriter.getI64ArrayAttr(size_vals);
+  DenseI64ArrayAttr begin = rewriter.getDenseI64ArrayAttr(begin_vals);
+  DenseI64ArrayAttr size = rewriter.getDenseI64ArrayAttr(size_vals);
 
   CreateReplaceOpAndInfer<tosa::SliceOp>(rewriter, op, output_type,
                                          tfl_slice_op.getInput(), begin, size);
@@ -2358,7 +2358,8 @@ LogicalResult ConvertTFLTileOp::matchAndRewrite(
     multiples_vals.push_back(
         multiples_elems.getValues<APInt>()[i].getSExtValue());
 
-  ArrayAttr multiples_attr = rewriter.getI64ArrayAttr(multiples_vals);
+  DenseI64ArrayAttr multiples_attr =
+      rewriter.getDenseI64ArrayAttr(multiples_vals);
   CreateReplaceOpAndInfer<tosa::TileOp>(rewriter, op, output_type,
                                         tfl_tile_op.getInput(), multiples_attr);
 
@@ -2734,7 +2735,7 @@ LogicalResult ConvertTFLBucketizeOp::matchAndRewrite(
 
   auto reshaped_input = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, loc, input_type.clone(new_input_shape), input,
-      rewriter.getI64ArrayAttr(new_input_shape));
+      rewriter.getDenseI64ArrayAttr(new_input_shape));
 
   auto ge = CreateOpAndInfer<tosa::GreaterEqualOp>(
       rewriter, loc, UnrankedTensorType::get(rewriter.getIntegerType(1)),
@@ -2749,7 +2750,7 @@ LogicalResult ConvertTFLBucketizeOp::matchAndRewrite(
 
   CreateReplaceOpAndInfer<tosa::ReshapeOp>(
       rewriter, op, output_type, sum,
-      rewriter.getI64ArrayAttr(output_type.getShape()));
+      rewriter.getDenseI64ArrayAttr(output_type.getShape()));
 
   return success();
 }
@@ -3638,12 +3639,12 @@ LogicalResult ConvertTFLSparseToDenseOp::matchAndRewrite(
 
   auto values_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, loc, UnrankedTensorType::get(result_ety), values,
-      rewriter.getI64ArrayAttr(
+      rewriter.getDenseI64ArrayAttr(
           tensorflow::ConvertMlirShapeToTF({1, values_ty.getDimSize(0), 1})));
 
   auto index_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, loc, UnrankedTensorType::get(indices_ety), reduce_op,
-      rewriter.getI64ArrayAttr(
+      rewriter.getDenseI64ArrayAttr(
           tensorflow::ConvertMlirShapeToTF({1, indices_ty.getDimSize(0)})));
 
   auto scatter = CreateOpAndInfer<tosa::ScatterOp>(
@@ -3652,7 +3653,7 @@ LogicalResult ConvertTFLSparseToDenseOp::matchAndRewrite(
 
   CreateReplaceOpAndInfer<tosa::ReshapeOp>(
       rewriter, op, result_ty, scatter,
-      rewriter.getI64ArrayAttr(
+      rewriter.getDenseI64ArrayAttr(
           tensorflow::ConvertMlirShapeToTF(result_ty.getShape())));
 
   return success();
