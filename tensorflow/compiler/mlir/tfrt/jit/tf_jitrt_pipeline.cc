@@ -68,36 +68,6 @@ struct AddTensorflowProducerVersion
   }
 };
 
-// Adds Linalg passes to perform fusion, tiling, peeling and vectorization.
-void AddLinalgTransformations(OpPassManager& pm,
-                              const TfJitRtPipelineOptions& options) {
-  pm.addNestedPass<FuncOp>(CreateFusionPass());
-
-  if (!options.vectorize) return;
-
-  pm.addNestedPass<FuncOp>(CreateDetensorizeLinalgPass());
-
-  pm.addNestedPass<FuncOp>(CreateTileReductionPass(
-      options.vector_size, options.reduction_1d_tile_size,
-      options.reduction_2d_tile_sizes));
-
-  if (options.vectorize && options.codegen_transpose)
-    pm.addNestedPass<FuncOp>(CreateTileTransposePass());
-  pm.addNestedPass<FuncOp>(CreateTileCWisePass(options.vector_size));
-  if (options.peel) {
-    pm.addNestedPass<FuncOp>(CreatePeelTiledLoopsPass());
-  }
-  pm.addNestedPass<FuncOp>(mlir::createCSEPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  if (options.fuse_fill) {
-    pm.addNestedPass<FuncOp>(CreateFuseFillIntoTiledReductionPass());
-  }
-  pm.addNestedPass<FuncOp>(CreateTileFillPass(options.vector_size));
-  pm.addNestedPass<FuncOp>(mlir::gml_st::createCollapseMaterializeOpsPass());
-  pm.addNestedPass<FuncOp>(mlir::gml_st::createVectorizeGmlStLoopsPass());
-  pm.addNestedPass<FuncOp>(mlir::gml_st::createLowerVectorContractPass());
-}
-
 void AddBufferizationPasses(OpPassManager& pm) {
   // Rewrite tensor.empty ops to bufferization.alloc_tensor ops.
   pm.addNestedPass<FuncOp>(
@@ -163,7 +133,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeSortPass());
   pm.addNestedPass<FuncOp>(xla::cpu::createLegalizeCollectiveOpsPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass(
-      /*enablePrimitiveOps=*/options.enable_xla_cpu_transformations));
+      /*enablePrimitiveOps=*/options.vectorize));
   pm.addPass(mlir::mhlo::createLegalizeToArithmeticPass());
   pm.addNestedPass<FuncOp>(
       mlir::mhlo::createLegalizeHloShapeOpsToStandardPass());
@@ -192,7 +162,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(mlir::createConvertComplexToStandardPass());
 
   // Add passes to perform fusion, tiling, peeling and vectorization.
-  if (options.enable_xla_cpu_transformations) {
+  if (options.vectorize) {
     mlir::gml_st::GmlStCPUPipelineOptions gml_st_opts;
     gml_st_opts.vectorize = options.vectorize;
     gml_st_opts.vectorSize = options.vector_size;
@@ -203,7 +173,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
 
     mlir::gml_st::addTileableOpsTransformationsForCPU(pm, gml_st_opts);
   } else {
-    AddLinalgTransformations(pm, options);
+    pm.addNestedPass<FuncOp>(CreateFusionPass());
   }
 
   // Inline everything, bufferization doesn't model ownership across calls.
