@@ -196,25 +196,31 @@ struct PackJITCompileOpPattern
     // Temporarily, build the module that would be JIT-compiled. This is only to
     // obtain the serialized code attribute.
     auto loc = op->getLoc();
-    OpBuilder tmp_module_builder(getContext(), rewriter.getListener());
-    auto jit_module = tmp_module_builder.create<ModuleOp>(loc);
-    tmp_module_builder.setInsertionPointToStart(
-        jit_module.SingleBlock::getBody());
-    auto jit_function = tmp_module_builder.create<func::FuncOp>(
-        loc, tf_framework::JITCompileFromStrOp::kJITEntryFunctionName,
-        tmp_module_builder.getFunctionType(body->getArgumentTypes(),
-                                           yield_op->getOperandTypes()));
-    jit_function->setAttr(tf_framework::TFFrameworkDialect::kTFEntryAttrName,
-                          tmp_module_builder.getUnitAttr());
-    jit_function.getBody().takeBody(op.getBodyRegion());
-    tmp_module_builder.setInsertionPointToEnd(&jit_function.getBody().front());
-    tmp_module_builder.create<func::ReturnOp>(loc, yield_op.getResult());
-    rewriter.eraseOp(yield_op);
+    auto jit_module = rewriter.create<ModuleOp>(loc);
+    {
+      OpBuilder::InsertionGuard g(rewriter);
+      rewriter.setInsertionPointToStart(jit_module.SingleBlock::getBody());
+      auto jit_function = rewriter.create<func::FuncOp>(
+          loc, tf_framework::JITCompileFromStrOp::kJITEntryFunctionName,
+          rewriter.getFunctionType(body->getArgumentTypes(),
+                                   yield_op->getOperandTypes()));
+      jit_function->setAttr(tf_framework::TFFrameworkDialect::kTFEntryAttrName,
+                            rewriter.getUnitAttr());
+      jit_function.getBody().takeBody(op.getBodyRegion());
+      rewriter.setInsertionPointToEnd(&jit_function.getBody().front());
+      rewriter.create<func::ReturnOp>(loc, yield_op.getResult());
+      rewriter.eraseOp(yield_op);
+    }
 
     // Serialize JIT module.
     std::string code;
     llvm::raw_string_ostream ss(code);
-    jit_module.print(ss);
+    assert(succeeded(jit_module.verify()));
+    mlir::OpPrintingFlags flags;
+    jit_module.print(ss, flags.assumeVerified());
+
+    // Remove temporary module.
+    rewriter.eraseOp(jit_module);
 
     // Finally, create the new JIT compile op.
     rewriter.replaceOpWithNewOp<tf_framework::JITCompileFromStrOp>(
