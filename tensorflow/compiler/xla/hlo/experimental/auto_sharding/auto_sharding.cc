@@ -54,6 +54,7 @@ limitations under the License.
 #include "ortools/linear_solver/linear_solver.h"
 #include "ortools/linear_solver/linear_solver.pb.h"
 #ifdef PLATFORM_GOOGLE
+#include "file/base/helpers.h"
 #include "util/task/status.pb.h"
 #endif
 
@@ -2177,6 +2178,21 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
     }
   }
 
+#ifdef PLATFORM_GOOGLE
+  // Exports the model for debugging.
+  bool dump_model = false;
+  if (dump_model) {
+    operations_research::MPModelProto model_proto;
+    solver->ExportModelToProto(&model_proto);
+    auto write_status = file::SetTextProto(
+        // Modify this file path if needed.
+        absl::StrCat("/tmp/model_", solver->NumVariables(), ".proto"),
+        model_proto, file::Defaults());
+    if (!write_status.ok()) {
+      LOG(ERROR) << write_status.message();
+    }
+  }
+#endif
   solver->set_time_limit(3600 * 1000);  // in ms
   VLOG(0) << "Starting solver " << solver->ProblemType() << "\n"
           << "Solver parameter string: " << solver_parameter_str << "\n"
