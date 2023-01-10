@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
+#include "tensorflow/compiler/xla/python/python_utils.h"
 #include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/util.h"
@@ -86,6 +87,11 @@ class PjitFunction {
   PjitFunction& operator=(const PjitFunction&) = delete;
   PjitFunction(PjitFunction&&) = default;
   PjitFunction& operator=(PjitFunction&&) = default;
+
+  // Returns true if `h` is a PjitFunction.
+  static bool IsPjitFunction(py::handle handle);
+  // Converts `handle` to a PjitFunction*. Does not do any checking.
+  static PjitFunction* AsPjitFunctionUnchecked(py::handle handle);
 
   xla::StatusOr<py::object> Call(py::handle callable, PyObject* const* args,
                                  size_t nargs, PyObject* kwnames);
@@ -479,6 +485,21 @@ struct PjitFunctionObject {
 
 PyObject* PjitFunction_Type = nullptr;
 
+bool PjitFunction::IsPjitFunction(py::handle handle) {
+  return handle.get_type() == PjitFunction_Type;
+}
+
+PjitFunction* PjitFunction::AsPjitFunctionUnchecked(py::handle handle) {
+  return &(reinterpret_cast<PjitFunctionObject*>(handle.ptr())->fun);
+}
+
+xla::StatusOr<PjitFunction*> AsPjitFunction(py::handle handle) {
+  if (!PjitFunction::IsPjitFunction(handle)) {
+    return xla::InvalidArgument("Expected a PjitFunction");
+  }
+  return PjitFunction::AsPjitFunctionUnchecked(handle);
+}
+
 extern "C" {
 
 PyObject* PjitFunction_tp_vectorcall(PyObject* callable, PyObject* const* args,
@@ -663,6 +684,12 @@ void BuildPjitSubmodule(py::module& m) {
   // Add PjitFunction to the xla_extension module so it can be pickled.
   m.attr("PjitFunction") = cfun_type;
   cfun.attr("__module__") = m.attr("__name__");
+
+  cfun.attr("_cache_miss") =
+      property_readonly([](py::handle self) -> xla::StatusOr<py::object> {
+        TF_ASSIGN_OR_RETURN(PjitFunction * fun, AsPjitFunction(self));
+        return fun->cache_miss();
+      });
 
   m.def("pjit", [](std::string function_name, py::function cache_miss,
                    std::vector<int> static_argnums,
