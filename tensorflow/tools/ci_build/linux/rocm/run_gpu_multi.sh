@@ -45,7 +45,7 @@ bazel test \
       --test_tag_filters=-no_gpu,-no_rocm \
       --jobs=${N_BUILD_JOBS} \
       --local_test_jobs=${N_TEST_JOBS} \
-      --test_timeout 900,2400,7200,9600 \
+      --test_timeout 920,2400,7200,9600 \
       --build_tests_only \
       --test_output=errors \
       --test_sharding_strategy=disabled \

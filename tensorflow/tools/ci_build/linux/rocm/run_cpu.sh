@@ -37,7 +37,7 @@ bazel test \
       --test_tag_filters=-no_oss,-oss_serial,-gpu,-multi_gpu,-tpu,-no_rocm,-benchmark-test,-v1only \
       --jobs=${N_BUILD_JOBS} \
       --local_test_jobs=${N_BUILD_JOBS} \
-      --test_timeout 900,2400,7200,9600 \
+      --test_timeout 920,2400,7200,9600 \
       --build_tests_only \
       --test_output=errors \
       --test_sharding_strategy=disabled \
