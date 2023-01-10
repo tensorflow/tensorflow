@@ -1349,10 +1349,9 @@ tsl::Status CUDABlas::DoBlasGemmBatchedInternal(
 
 bool CUDABlas::DoBlasGemmBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, float alpha,
-    const DeviceMemorySlice<Eigen::half> &a_array, int lda,
-    const DeviceMemorySlice<Eigen::half> &b_array, int ldb, float beta,
-    const DeviceMemorySlice<Eigen::half> &c_array, int ldc, int batch_count,
+    uint64_t n, uint64 k, float alpha, DeviceMemorySlice<Eigen::half> a_array,
+    int lda, DeviceMemorySlice<Eigen::half> b_array, int ldb, float beta,
+    DeviceMemorySlice<Eigen::half> c_array, int ldc, int batch_count,
     ScratchAllocator *scratch_allocator) {
   // Note: The func passed here (cublasSgemmBatched) is not actually called,
   // due to special handling of fp16 inside DoBlasGemmBatchedInternal.
@@ -1368,9 +1367,9 @@ bool CUDABlas::DoBlasGemmBatched(
 bool CUDABlas::DoBlasGemmBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
     uint64_t n, uint64 k, float alpha,
-    const DeviceMemorySlice<Eigen::bfloat16> &a_array, int lda,
-    const DeviceMemorySlice<Eigen::bfloat16> &b_array, int ldb, float beta,
-    const DeviceMemorySlice<Eigen::bfloat16> &c_array, int ldc, int batch_count,
+    DeviceMemorySlice<Eigen::bfloat16> a_array, int lda,
+    DeviceMemorySlice<Eigen::bfloat16> b_array, int ldb, float beta,
+    DeviceMemorySlice<Eigen::bfloat16> c_array, int ldc, int batch_count,
     ScratchAllocator *scratch_allocator) {
   // Note: The func passed here (cublasSgemmBatched) is not actually called,
   // due to special handling of bf16 inside DoBlasGemmBatchedInternal.
@@ -1383,12 +1382,14 @@ bool CUDABlas::DoBlasGemmBatched(
   return status.ok();
 }
 
-bool CUDABlas::DoBlasGemmBatched(
-    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, float alpha, const DeviceMemorySlice<float> &a_array,
-    int lda, const DeviceMemorySlice<float> &b_array, int ldb, float beta,
-    const DeviceMemorySlice<float> &c_array, int ldc, int batch_count,
-    ScratchAllocator *scratch_allocator) {
+bool CUDABlas::DoBlasGemmBatched(Stream *stream, blas::Transpose transa,
+                                 blas::Transpose transb, uint64_t m, uint64_t n,
+                                 uint64 k, float alpha,
+                                 DeviceMemorySlice<float> a_array, int lda,
+                                 DeviceMemorySlice<float> b_array, int ldb,
+                                 float beta, DeviceMemorySlice<float> c_array,
+                                 int ldc, int batch_count,
+                                 ScratchAllocator *scratch_allocator) {
   tsl::Status status = DoBlasGemmBatchedInternal(
       cublasSgemmBatched, stream, transa, transb, m, n, k, alpha, a_array, lda,
       b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator);
@@ -1398,13 +1399,14 @@ bool CUDABlas::DoBlasGemmBatched(
   return status.ok();
 }
 
-bool CUDABlas::DoBlasGemmBatched(
-    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, double alpha,
-    const DeviceMemorySlice<double> &a_array, int lda,
-    const DeviceMemorySlice<double> &b_array, int ldb, double beta,
-    const DeviceMemorySlice<double> &c_array, int ldc, int batch_count,
-    ScratchAllocator *scratch_allocator) {
+bool CUDABlas::DoBlasGemmBatched(Stream *stream, blas::Transpose transa,
+                                 blas::Transpose transb, uint64_t m, uint64_t n,
+                                 uint64 k, double alpha,
+                                 DeviceMemorySlice<double> a_array, int lda,
+                                 DeviceMemorySlice<double> b_array, int ldb,
+                                 double beta, DeviceMemorySlice<double> c_array,
+                                 int ldc, int batch_count,
+                                 ScratchAllocator *scratch_allocator) {
   tsl::Status status = DoBlasGemmBatchedInternal(
       cublasDgemmBatched, stream, transa, transb, m, n, k, alpha, a_array, lda,
       b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator);
@@ -1417,11 +1419,10 @@ bool CUDABlas::DoBlasGemmBatched(
 bool CUDABlas::DoBlasGemmBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
     uint64_t n, uint64 k, std::complex<float> alpha,
-    const DeviceMemorySlice<std::complex<float>> &a_array, int lda,
-    const DeviceMemorySlice<std::complex<float>> &b_array, int ldb,
-    std::complex<float> beta,
-    const DeviceMemorySlice<std::complex<float>> &c_array, int ldc,
-    int batch_count, ScratchAllocator *scratch_allocator) {
+    DeviceMemorySlice<std::complex<float>> a_array, int lda,
+    DeviceMemorySlice<std::complex<float>> b_array, int ldb,
+    std::complex<float> beta, DeviceMemorySlice<std::complex<float>> c_array,
+    int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
   tsl::Status status = DoBlasGemmBatchedInternal(
       cublasCgemmBatched, stream, transa, transb, m, n, k, alpha, a_array, lda,
       b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator);
@@ -1434,11 +1435,10 @@ bool CUDABlas::DoBlasGemmBatched(
 bool CUDABlas::DoBlasGemmBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
     uint64_t n, uint64 k, std::complex<double> alpha,
-    const DeviceMemorySlice<std::complex<double>> &a_array, int lda,
-    const DeviceMemorySlice<std::complex<double>> &b_array, int ldb,
-    std::complex<double> beta,
-    const DeviceMemorySlice<std::complex<double>> &c_array, int ldc,
-    int batch_count, ScratchAllocator *scratch_allocator) {
+    DeviceMemorySlice<std::complex<double>> a_array, int lda,
+    DeviceMemorySlice<std::complex<double>> b_array, int ldb,
+    std::complex<double> beta, DeviceMemorySlice<std::complex<double>> c_array,
+    int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
   tsl::Status status = DoBlasGemmBatchedInternal(
       cublasZgemmBatched, stream, transa, transb, m, n, k, alpha, a_array, lda,
       b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator);

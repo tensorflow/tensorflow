@@ -765,10 +765,10 @@ template <typename T, typename FuncT>
 tsl::Status ROCMBlas::DoBlasGemmBatchedInternal(
     FuncT rocblas_func, Stream *stream, blas::Transpose transa,
     blas::Transpose transb, uint64_t m, uint64 n, uint64 k, T alpha,
-    const absl::Span<DeviceMemory<T> *const> &a_ptrs_to_wrappers, int lda,
-    const absl::Span<DeviceMemory<T> *const> &b_ptrs_to_wrappers, int ldb,
-    T beta, const absl::Span<DeviceMemory<T> *const> &c_ptrs_to_wrappers,
-    int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
+    DeviceMemorySlice<T> a_ptrs_to_wrappers, int lda,
+    DeviceMemorySlice<T> b_ptrs_to_wrappers, int ldb, T beta,
+    DeviceMemorySlice<T> c_ptrs_to_wrappers, int ldc, int batch_count,
+    ScratchAllocator *scratch_allocator) {
   using MAPPED_T = typename RocBlasTypeConversionHelper<T>::mapped_type;
 
   // Sanity checks before making any further progress
@@ -868,13 +868,14 @@ tsl::Status ROCMBlas::DoBlasGemmBatchedInternal(
   return tsl::OkStatus();
 }
 
-bool ROCMBlas::DoBlasGemmBatched(
-    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, float alpha,
-    const absl::Span<DeviceMemory<Eigen::half> *const> &a, int lda,
-    const absl::Span<DeviceMemory<Eigen::half> *const> &b, int ldb, float beta,
-    const absl::Span<DeviceMemory<Eigen::half> *const> &c, int ldc,
-    int batch_count, ScratchAllocator *scratch_allocator) {
+bool ROCMBlas::DoBlasGemmBatched(Stream *stream, blas::Transpose transa,
+                                 blas::Transpose transb, uint64_t m, uint64_t n,
+                                 uint64 k, float alpha,
+                                 DeviceMemorySlice<Eigen::half> a, int lda,
+                                 DeviceMemorySlice<Eigen::half> b, int ldb,
+                                 float beta, DeviceMemorySlice<Eigen::half> c,
+                                 int ldc, int batch_count,
+                                 ScratchAllocator *scratch_allocator) {
   blas_log("DoBlasGemmBatched");
   const Eigen::half alpha_half(alpha);
   const Eigen::half beta_half(beta);
@@ -893,10 +894,10 @@ bool ROCMBlas::DoBlasGemmBatched(
 bool ROCMBlas::DoBlasGemmBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
     uint64_t n, uint64 k, float alpha,
-    const absl::Span<DeviceMemory<Eigen::bfloat16> *const> &a_array, int lda,
-    const absl::Span<DeviceMemory<Eigen::bfloat16> *const> &b_array, int ldb,
-    float beta, const absl::Span<DeviceMemory<Eigen::bfloat16> *const> &c_array,
-    int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
+    DeviceMemorySlice<Eigen::bfloat16> a_array, int lda,
+    DeviceMemorySlice<Eigen::bfloat16> b_array, int ldb, float beta,
+    DeviceMemorySlice<Eigen::bfloat16> c_array, int ldc, int batch_count,
+    ScratchAllocator *scratch_allocator) {
   blas_log("DoBlasGemmBatched");
   const Eigen::bfloat16 alpha_bf16(alpha);
   const Eigen::bfloat16 beta_bf16(beta);
@@ -911,13 +912,14 @@ bool ROCMBlas::DoBlasGemmBatched(
   return status.ok();
 }
 
-bool ROCMBlas::DoBlasGemmBatched(
-    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, float alpha,
-    const absl::Span<DeviceMemory<float> *const> &a_array, int lda,
-    const absl::Span<DeviceMemory<float> *const> &b_array, int ldb, float beta,
-    const absl::Span<DeviceMemory<float> *const> &c_array, int ldc,
-    int batch_count, ScratchAllocator *scratch_allocator) {
+bool ROCMBlas::DoBlasGemmBatched(Stream *stream, blas::Transpose transa,
+                                 blas::Transpose transb, uint64_t m, uint64_t n,
+                                 uint64 k, float alpha,
+                                 DeviceMemorySlice<float> a_array, int lda,
+                                 DeviceMemorySlice<float> b_array, int ldb,
+                                 float beta, DeviceMemorySlice<float> c_array,
+                                 int ldc, int batch_count,
+                                 ScratchAllocator *scratch_allocator) {
   blas_log("DoBlasGemmBatched");
   tsl::Status status = DoBlasGemmBatchedInternal(
       wrap::rocblas_sgemm_strided_batched, stream, transa, transb, m, n, k,
@@ -929,13 +931,14 @@ bool ROCMBlas::DoBlasGemmBatched(
   return status.ok();
 }
 
-bool ROCMBlas::DoBlasGemmBatched(
-    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, double alpha,
-    const absl::Span<DeviceMemory<double> *const> &a_array, int lda,
-    const absl::Span<DeviceMemory<double> *const> &b_array, int ldb,
-    double beta, const absl::Span<DeviceMemory<double> *const> &c_array,
-    int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
+bool ROCMBlas::DoBlasGemmBatched(Stream *stream, blas::Transpose transa,
+                                 blas::Transpose transb, uint64_t m, uint64_t n,
+                                 uint64 k, double alpha,
+                                 DeviceMemorySlice<double> a_array, int lda,
+                                 DeviceMemorySlice<double> b_array, int ldb,
+                                 double beta, DeviceMemorySlice<double> c_array,
+                                 int ldc, int batch_count,
+                                 ScratchAllocator *scratch_allocator) {
   blas_log("DoBlasGemmBatched");
   tsl::Status status = DoBlasGemmBatchedInternal(
       wrap::rocblas_dgemm_strided_batched, stream, transa, transb, m, n, k,
@@ -950,11 +953,9 @@ bool ROCMBlas::DoBlasGemmBatched(
 bool ROCMBlas::DoBlasGemmBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
     uint64_t n, uint64 k, std::complex<float> alpha,
-    const absl::Span<DeviceMemory<std::complex<float>> *const> &a_array,
-    int lda,
-    const absl::Span<DeviceMemory<std::complex<float>> *const> &b_array,
-    int ldb, std::complex<float> beta,
-    const absl::Span<DeviceMemory<std::complex<float>> *const> &c_array,
+    DeviceMemorySlice<std::complex<float>> a_array, int lda,
+    DeviceMemorySlice<std::complex<float>> b_array, int ldb,
+    std::complex<float> beta, DeviceMemorySlice<std::complex<float>> c_array,
     int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
   blas_log("DoBlasGemmBatched");
   tsl::Status status = DoBlasGemmBatchedInternal(
@@ -970,11 +971,9 @@ bool ROCMBlas::DoBlasGemmBatched(
 bool ROCMBlas::DoBlasGemmBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
     uint64_t n, uint64 k, std::complex<double> alpha,
-    const absl::Span<DeviceMemory<std::complex<double>> *const> &a_array,
-    int lda,
-    const absl::Span<DeviceMemory<std::complex<double>> *const> &b_array,
-    int ldb, std::complex<double> beta,
-    const absl::Span<DeviceMemory<std::complex<double>> *const> &c_array,
+    DeviceMemorySlice<std::complex<double>> a_array, int lda,
+    DeviceMemorySlice<std::complex<double>> b_array, int ldb,
+    std::complex<double> beta, DeviceMemorySlice<std::complex<double>> c_array,
     int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
   blas_log("DoBlasGemmBatched");
   tsl::Status status = DoBlasGemmBatchedInternal(

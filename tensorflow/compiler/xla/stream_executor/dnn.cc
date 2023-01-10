@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/tsl/lib/strings/proto_serialization.h"
 #include "tensorflow/tsl/protobuf/dnn.pb.h"
 
@@ -617,7 +618,7 @@ int64_t BatchDescriptor::FullyConnectedBiasCount(
 }
 
 BatchDescriptor BatchDescriptor::DepthConcatenateOutputDescriptor(
-    port::ArraySlice<dnn::BatchDescriptor> inputs) {  // non-absl ok
+    absl::Span<const dnn::BatchDescriptor> inputs) {
   if (inputs.empty()) {
     return BatchDescriptor();
   }

@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_description.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/array_slice.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
@@ -355,7 +354,7 @@ class BatchDescriptor {
   // dimensions, except possibly for feature_map_count(), though this
   // function does not verify that.
   static BatchDescriptor DepthConcatenateOutputDescriptor(
-      port::ArraySlice<dnn::BatchDescriptor> inputs);  // non-absl ok
+      absl::Span<const dnn::BatchDescriptor> inputs);
 
  private:
   absl::Span<const int64_t> spatial_size() const {
@@ -1775,9 +1774,8 @@ class DnnSupport {
   //  output_data: un-owned device memory region in which to place the
   //    depth concatenate result.
   virtual bool DoDepthConcatenate(
-      Stream* stream,
-      port::ArraySlice<dnn::BatchDescriptor> input_dimensions,  // non-absl ok
-      port::ArraySlice<const DeviceMemory<float>*> input_data,  // non-absl ok
+      Stream* stream, absl::Span<const dnn::BatchDescriptor> input_dimensions,
+      absl::Span<const DeviceMemory<float>* const> input_data,
       DeviceMemory<float>* output_data) = 0;
 
   // Concatenates several layers into one, by concatenating each in the
@@ -1802,9 +1800,8 @@ class DnnSupport {
   //  concat_direction:  either dnn:SpaceConcatenateMode::XDirection or
   //    dnn::SpaceConcatenateMode::YDirection.
   virtual bool DoSpaceConcatenate(
-      Stream* stream,
-      port::ArraySlice<dnn::BatchDescriptor> input_dimensions,  // non-absl ok
-      port::ArraySlice<const DeviceMemory<float>*> input_data,  // non-absl ok
+      Stream* stream, absl::Span<const dnn::BatchDescriptor> input_dimensions,
+      absl::Span<const DeviceMemory<float>* const> input_data,
       DeviceMemory<float>* output_data,
       dnn::SpaceConcatenateMode concat_direction) {
     return false;
@@ -1922,8 +1919,8 @@ class DnnSupport {
   //    operation result.
   virtual bool DoElementwiseOperate(
       Stream* stream, ElementwiseOperation operation,
-      port::ArraySlice<dnn::BatchDescriptor> input_dimensions,  // non-absl ok
-      port::ArraySlice<const DeviceMemory<float>*> input_data,  // non-absl ok
+      absl::Span<const dnn::BatchDescriptor> input_dimensions,
+      absl::Span<const DeviceMemory<float>* const> input_data,
       const dnn::BatchDescriptor& output_dimensions,
       DeviceMemory<float>* output_data) = 0;
 
@@ -1950,10 +1947,9 @@ class DnnSupport {
   //    operation result.
   virtual bool DoElementwiseOperateScaledQuantized(
       Stream* stream, ElementwiseOperation operation,
-      port::ArraySlice<int> input_multiplicands,  // non-absl ok
-      int output_divisor,
-      port::ArraySlice<dnn::BatchDescriptor> input_dimensions,  // non-absl ok
-      port::ArraySlice<const DeviceMemory<float>*> input_data,  // non-absl ok
+      absl::Span<const int> input_multiplicands, int output_divisor,
+      absl::Span<const dnn::BatchDescriptor> input_dimensions,
+      absl::Span<const DeviceMemory<float>* const> input_data,
       const dnn::BatchDescriptor& output_dimensions,
       DeviceMemory<float>* output_data) {
     return false;

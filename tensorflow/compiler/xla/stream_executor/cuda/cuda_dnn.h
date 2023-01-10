@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/status.h"
@@ -40,12 +41,10 @@ class CudnnCtcLossDescriptor;
 // Opaque and unique identifier for the cuDNN plugin.
 extern const PluginId kCuDnnPlugin;
 
-using BatchDescriptorSlice =
-    port::ArraySlice<dnn::BatchDescriptor>;  // non-absl ok
+using BatchDescriptorSlice = absl::Span<const dnn::BatchDescriptor>;
 
 template <typename T>
-using DeviceMemorySlice =
-    port::ArraySlice<const DeviceMemory<T>*>;  // non-absl ok
+using DeviceMemorySlice = absl::Span<const DeviceMemory<T>* const>;
 
 // cudnn-library based DNN support. For details on overridden interface
 // functions, see dnn.h.

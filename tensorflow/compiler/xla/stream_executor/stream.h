@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/fft.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel.h"
 #include "tensorflow/compiler/xla/stream_executor/launch_dim.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/array_slice.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/stream_executor/temporary_memory_manager.h"
@@ -558,13 +557,13 @@ class Stream {
                                   uint64_t options);
 
   Stream &ThenDepthConcatenate(
-      port::ArraySlice<dnn::BatchDescriptor> input_dimensions,   // non-absl ok
-      port::ArraySlice<const DeviceMemory<float> *> input_data,  // non-absl ok
+      absl::Span<const dnn::BatchDescriptor> input_dimensions,
+      absl::Span<const DeviceMemory<float> *const> input_data,
       DeviceMemory<float> *output_data);
 
   Stream &ThenSpaceConcatenate(
-      port::ArraySlice<dnn::BatchDescriptor> input_dimensions,   // non-absl ok
-      port::ArraySlice<const DeviceMemory<float> *> input_data,  // non-absl ok
+      absl::Span<const dnn::BatchDescriptor> input_dimensions,
+      absl::Span<const DeviceMemory<float> *const> input_data,
       DeviceMemory<float> *output_data,
       dnn::SpaceConcatenateMode concat_direction);
 
@@ -602,17 +601,16 @@ class Stream {
 
   Stream &ThenElementwiseOperate(
       dnn::ElementwiseOperation operation,
-      port::ArraySlice<dnn::BatchDescriptor> input_dimensions,   // non-absl ok
-      port::ArraySlice<const DeviceMemory<float> *> input_data,  // non-absl ok
+      absl::Span<const dnn::BatchDescriptor> input_dimensions,
+      absl::Span<const DeviceMemory<float> *const> input_data,
       const dnn::BatchDescriptor &output_dimensions,
       DeviceMemory<float> *output_data);
 
   Stream &ThenElementwiseOperateScaledQuantized(
       dnn::ElementwiseOperation operation,
-      port::ArraySlice<int> input_multiplicands,  // non-absl ok
-      int output_divisor,
-      port::ArraySlice<dnn::BatchDescriptor> input_dimensions,   // non-absl ok
-      port::ArraySlice<const DeviceMemory<float> *> input_data,  // non-absl ok
+      absl::Span<const int> input_multiplicands, int output_divisor,
+      absl::Span<const dnn::BatchDescriptor> input_dimensions,
+      absl::Span<const DeviceMemory<float> *const> input_data,
       const dnn::BatchDescriptor &output_dimensions,
       DeviceMemory<float> *output_data);
 
@@ -639,13 +637,12 @@ class Stream {
                                  dnn::QuantizedActivationMode mode,
                                  void *host_dst, uint64_t size);
 
-  // Template version of ThenMemcpyD2HQuantized that takes a MutableArraySlice
-  // and uses the Quantization trait to call the generic version of
+  // Template version of ThenMemcpyD2HQuantized that takes a mutable span and
+  // uses the Quantization trait to call the generic version of
   // ThenMemcpyD2HQuantized with the correct QuantizedActivationMode.
   template <typename ElementType>
-  Stream &ThenMemcpyD2HQuantized(
-      const DeviceMemory<float> &gpu_unquantized_src,
-      port::MutableArraySlice<ElementType> host_dst) {
+  Stream &ThenMemcpyD2HQuantized(const DeviceMemory<float> &gpu_unquantized_src,
+                                 absl::Span<ElementType> host_dst) {
     return ThenMemcpyD2HQuantized(
         gpu_unquantized_src, Quantization<ElementType>::kModeId,
         host_dst.data(), host_dst.size() * sizeof(ElementType));
@@ -660,9 +657,8 @@ class Stream {
   // and uses the Quantization trait to call the generic version of
   // ThenMemcpyH2DQuantized with the correct QuantizedActivationMode.
   template <typename ElementType>
-  Stream &ThenMemcpyH2DQuantized(
-      port::ArraySlice<ElementType> host_src,  // non-absl ok
-      DeviceMemory<float> *gpu_unquantized_dst) {
+  Stream &ThenMemcpyH2DQuantized(absl::Span<const ElementType> host_src,
+                                 DeviceMemory<float> *gpu_unquantized_dst) {
     return ThenMemcpyH2DQuantized(
         host_src.data(), host_src.size() * sizeof(ElementType),
         Quantization<ElementType>::kModeId, gpu_unquantized_dst);
@@ -984,88 +980,84 @@ class Stream {
   }
 
   template <typename T>
-  using DeviceMemorySlice = port::ArraySlice<DeviceMemory<T> *>;  // non-absl ok
+  using DeviceMemorySlice = absl::Span<DeviceMemory<T> *const>;
 
   // See BlasSupport::DoBlasGemmBatched.
   Stream &ThenBlasGemmBatched(blas::Transpose transa, blas::Transpose transb,
                               uint64_t m, uint64 n, uint64_t k, float alpha,
-                              const DeviceMemorySlice<Eigen::half> &a, int lda,
-                              const DeviceMemorySlice<Eigen::half> &b, int ldb,
-                              float beta,
-                              const DeviceMemorySlice<Eigen::half> &c, int ldc,
-                              int batch_count);
+                              DeviceMemorySlice<Eigen::half> a, int lda,
+                              DeviceMemorySlice<Eigen::half> b, int ldb,
+                              float beta, DeviceMemorySlice<Eigen::half> c,
+                              int ldc, int batch_count);
   Stream &ThenBlasGemmBatched(blas::Transpose transa, blas::Transpose transb,
                               uint64_t m, uint64 n, uint64 k, float alpha,
-                              const DeviceMemorySlice<float> &a, int lda,
-                              const DeviceMemorySlice<float> &b, int ldb,
-                              float beta, const DeviceMemorySlice<float> &c,
-                              int ldc, int batch_count);
-  Stream &ThenBlasGemmBatched(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64 k, double alpha,
-      const port::ArraySlice<DeviceMemory<double> *> &a,  // non-absl ok
-      int lda,
-      const port::ArraySlice<DeviceMemory<double> *> &b,  // non-absl ok
-      int ldb, double beta,
-      const port::ArraySlice<DeviceMemory<double> *> &c,  // non-absl ok
-      int ldc, int batch_count);
+                              DeviceMemorySlice<float> a, int lda,
+                              DeviceMemorySlice<float> b, int ldb, float beta,
+                              DeviceMemorySlice<float> c, int ldc,
+                              int batch_count);
+  Stream &ThenBlasGemmBatched(blas::Transpose transa, blas::Transpose transb,
+                              uint64_t m, uint64 n, uint64 k, double alpha,
+                              DeviceMemorySlice<double> a, int lda,
+                              DeviceMemorySlice<double> b, int ldb, double beta,
+                              DeviceMemorySlice<double> c, int ldc,
+                              int batch_count);
   Stream &ThenBlasGemmBatched(blas::Transpose transa, blas::Transpose transb,
                               uint64_t m, uint64 n, uint64_t k,
                               std::complex<float> alpha,
-                              const DeviceMemorySlice<std::complex<float>> &a,
-                              int lda,
-                              const DeviceMemorySlice<std::complex<float>> &b,
-                              int ldb, std::complex<float> beta,
-                              const DeviceMemorySlice<std::complex<float>> &c,
-                              int ldc, int batch_count);
+                              DeviceMemorySlice<std::complex<float>> a, int lda,
+                              DeviceMemorySlice<std::complex<float>> b, int ldb,
+                              std::complex<float> beta,
+                              DeviceMemorySlice<std::complex<float>> c, int ldc,
+                              int batch_count);
   Stream &ThenBlasGemmBatched(blas::Transpose transa, blas::Transpose transb,
                               uint64_t m, uint64 n, uint64_t k,
                               std::complex<double> alpha,
-                              const DeviceMemorySlice<std::complex<double>> &a,
+                              DeviceMemorySlice<std::complex<double>> a,
                               int lda,
-                              const DeviceMemorySlice<std::complex<double>> &b,
+                              DeviceMemorySlice<std::complex<double>> b,
                               int ldb, std::complex<double> beta,
-                              const DeviceMemorySlice<std::complex<double>> &c,
+                              DeviceMemorySlice<std::complex<double>> c,
                               int ldc, int batch_count);
   Stream &ThenBlasGemmBatchedWithScratch(
       blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, float alpha, const DeviceMemorySlice<Eigen::half> &a, int lda,
-      const DeviceMemorySlice<Eigen::half> &b, int ldb, float beta,
-      const DeviceMemorySlice<Eigen::half> &c, int ldc, int batch_count,
+      uint64_t k, float alpha, DeviceMemorySlice<Eigen::half> a, int lda,
+      DeviceMemorySlice<Eigen::half> b, int ldb, float beta,
+      DeviceMemorySlice<Eigen::half> c, int ldc, int batch_count,
       ScratchAllocator *scratch_allocator);
   Stream &ThenBlasGemmBatchedWithScratch(
       blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, float alpha, const DeviceMemorySlice<Eigen::bfloat16> &a,
-      int lda, const DeviceMemorySlice<Eigen::bfloat16> &b, int ldb, float beta,
-      const DeviceMemorySlice<Eigen::bfloat16> &c, int ldc, int batch_count,
+      uint64_t k, float alpha, DeviceMemorySlice<Eigen::bfloat16> a, int lda,
+      DeviceMemorySlice<Eigen::bfloat16> b, int ldb, float beta,
+      DeviceMemorySlice<Eigen::bfloat16> c, int ldc, int batch_count,
       ScratchAllocator *scratch_allocator);
+  Stream &ThenBlasGemmBatchedWithScratch(blas::Transpose transa,
+                                         blas::Transpose transb, uint64_t m,
+                                         uint64 n, uint64_t k, float alpha,
+                                         DeviceMemorySlice<float> a, int lda,
+                                         DeviceMemorySlice<float> b, int ldb,
+                                         float beta, DeviceMemorySlice<float> c,
+                                         int ldc, int batch_count,
+                                         ScratchAllocator *scratch_allocator);
   Stream &ThenBlasGemmBatchedWithScratch(
       blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, float alpha, const DeviceMemorySlice<float> &a, int lda,
-      const DeviceMemorySlice<float> &b, int ldb, float beta,
-      const DeviceMemorySlice<float> &c, int ldc, int batch_count,
-      ScratchAllocator *scratch_allocator);
-  Stream &ThenBlasGemmBatchedWithScratch(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, double alpha, const DeviceMemorySlice<double> &a, int lda,
-      const DeviceMemorySlice<double> &b, int ldb, double beta,
-      const DeviceMemorySlice<double> &c, int ldc, int batch_count,
+      uint64_t k, double alpha, DeviceMemorySlice<double> a, int lda,
+      DeviceMemorySlice<double> b, int ldb, double beta,
+      DeviceMemorySlice<double> c, int ldc, int batch_count,
       ScratchAllocator *scratch_allocator);
   Stream &ThenBlasGemmBatchedWithScratch(
       blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
       uint64_t k, std::complex<float> alpha,
-      const DeviceMemorySlice<std::complex<float>> &a, int lda,
-      const DeviceMemorySlice<std::complex<float>> &b, int ldb,
-      std::complex<float> beta, const DeviceMemorySlice<std::complex<float>> &c,
+      DeviceMemorySlice<std::complex<float>> a, int lda,
+      DeviceMemorySlice<std::complex<float>> b, int ldb,
+      std::complex<float> beta, DeviceMemorySlice<std::complex<float>> c,
       int ldc, int batch_count, ScratchAllocator *scratch_allocator);
   Stream &ThenBlasGemmBatchedWithScratch(
       blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
       uint64_t k, std::complex<double> alpha,
-      const DeviceMemorySlice<std::complex<double>> &a, int lda,
-      const DeviceMemorySlice<std::complex<double>> &b, int ldb,
-      std::complex<double> beta,
-      const DeviceMemorySlice<std::complex<double>> &c, int ldc,
-      int batch_count, ScratchAllocator *scratch_allocator);
+      DeviceMemorySlice<std::complex<double>> a, int lda,
+      DeviceMemorySlice<std::complex<double>> b, int ldb,
+      std::complex<double> beta, DeviceMemorySlice<std::complex<double>> c,
+      int ldc, int batch_count, ScratchAllocator *scratch_allocator);
 
   template <typename InputType, typename ConstantType>
   tsl::Status ThenBlasGemmStridedBatched(
@@ -1218,7 +1210,7 @@ class Stream {
   // slice size.
   template <typename T>
   Stream &ThenMemcpyD2H(const DeviceMemory<T> &gpu_src,
-                        port::MutableArraySlice<T> host_dst) {
+                        absl::Span<T> host_dst) {
     auto host_size = host_dst.size() * sizeof(T);
     CHECK(gpu_src.size() == 0 || host_size >= gpu_src.size());
     return ThenMemcpy(host_dst.begin(), gpu_src, host_size);
@@ -1228,7 +1220,7 @@ class Stream {
   // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <typename T>
-  Stream &ThenMemcpyH2D(port::ArraySlice<T> host_src,  // non-absl ok
+  Stream &ThenMemcpyH2D(absl::Span<const T> host_src,
                         DeviceMemory<T> *gpu_dst) {
     auto host_size = host_src.size() * sizeof(T);
     CHECK(gpu_dst->size() == 0 || gpu_dst->size() >= host_size);

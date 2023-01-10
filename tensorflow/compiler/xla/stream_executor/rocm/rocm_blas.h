@@ -171,10 +171,10 @@ class ROCMBlas : public blas::BlasSupport {
   tsl::Status DoBlasGemmBatchedInternal(
       FuncT rocblas_func, Stream *stream, blas::Transpose transa,
       blas::Transpose transb, uint64_t m, uint64 n, uint64 k, T alpha,
-      const absl::Span<DeviceMemory<T> *const> &a_ptrs_to_wrappers, int lda,
-      const absl::Span<DeviceMemory<T> *const> &b_ptrs_to_wrappers, int ldb,
-      T beta, const absl::Span<DeviceMemory<T> *const> &c_ptrs_to_wrappers,
-      int ldc, int batch_count, ScratchAllocator *scratch_allocator);
+      DeviceMemorySlice<T> a_ptrs_to_wrappers, int lda,
+      DeviceMemorySlice<T> b_ptrs_to_wrappers, int ldb, T beta,
+      DeviceMemorySlice<T> c_ptrs_to_wrappers, int ldc, int batch_count,
+      ScratchAllocator *scratch_allocator);
 
   // Helper function for implementing DoBlasGemmWithProfiling.
   template <typename T, typename ParamType>
