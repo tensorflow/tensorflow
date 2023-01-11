@@ -891,17 +891,6 @@ struct ForOpIterArgsFolder : public OpRewritePattern<ForOp> {
     assert(oldBlock.getNumArguments() == newBlockTransferArgs.size() &&
            "unexpected argument size mismatch");
 
-    // No results case: the ForOp builder already created a zero
-    // result terminator. Merge before this terminator and just get rid of the
-    // original terminator that has been merged in.
-    if (newOutputArgs.empty()) {
-      auto newYieldOp = newForOp.getTerminator();
-      rewriter.mergeBlockBefore(&oldBlock, newYieldOp, newBlockTransferArgs);
-      rewriter.eraseOp(newBlock.getTerminator()->getPrevNode());
-      rewriter.replaceOp(forOp, newResultValues);
-      return success();
-    }
-
     // No terminator case: merge and rewrite the merged terminator.
     auto cloneFilteredTerminator = [&](SetYieldOp mergedTerminator) {
       OpBuilder::InsertionGuard g(rewriter);
