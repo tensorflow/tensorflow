@@ -43,7 +43,7 @@ class SegmentReductionHelper(test.TestCase):
     if dtype == dtypes_lib.bfloat16:
       # Large numbers from arange lead to high absolute diff with bfloat16, so
       # scale down.
-      np_values *= np.array(0.001, dtype=dtype.as_numpy_dtype)
+      np_values *= np.array(0.00001, dtype=dtype.as_numpy_dtype)
     # Add a non-zero imaginary component to complex types.
     if dtype.is_complex:
       np_values -= 1j * np_values
@@ -124,8 +124,7 @@ class SegmentReductionOpTest(SegmentReductionHelper, parameterized.TestCase):
                 indices, np_x, np_op1, np_op2, initial_value=initial_value)
             s = tf_op(data=tf_x, segment_ids=indices)
             tf_ans = self.evaluate(s)
-            tol = 1e-6 if dtype != dtypes_lib.bfloat16 else 1e-2
-            self.assertAllClose(np_ans, tf_ans, rtol=tol, atol=tol)
+            self.assertAllCloseAccordingToType(np_ans, tf_ans)
             # NOTE(mrry): The static shape inference that computes
             # `tf_ans.shape` can only infer that sizes from dimension 1
             # onwards, because the size of dimension 0 is data-dependent
@@ -345,8 +344,7 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
                   initial_value=init_op(dtype))
               s = tf_op(tf_x, segment_ids=indices, num_segments=num_segments)
               tf_ans = self.evaluate(s)
-              self.assertAllCloseAccordingToType(np_ans, tf_ans,
-                  bfloat16_rtol=1e-1, bfloat16_atol=1e-1)
+              self.assertAllCloseAccordingToType(np_ans, tf_ans)
               self.assertShapeEqual(np_ans, s)
 
   def testNumSegmentsTypes(self):
@@ -626,8 +624,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
                     segment_ids=math_ops.cast(segment_indices,
                                               segment_ids_dtype))
                 tf_ans = self.evaluate(s)
-                tol = 1e-6 if dtype != dtypes_lib.bfloat16 else 1e-1
-                self.assertAllClose(np_ans, tf_ans, rtol=tol, atol=tol)
+                self.assertAllCloseAccordingToType(np_ans, tf_ans)
                 # NOTE(mrry): The static shape inference that computes
                 # `tf_ans.shape` can only infer that sizes from dimension 1
                 # onwards, because the size of dimension 0 is data-dependent
