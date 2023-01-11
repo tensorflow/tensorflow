@@ -128,7 +128,6 @@ tf_kernel_library(
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
-        ":gpu_abs_kernels",
         ":gpu_acos_kernels",
         ":gpu_acosh_kernels",
         ":gpu_angle_kernels",
@@ -171,8 +170,14 @@ tf_kernel_library(
         ":gpu_tanh_kernels",
         "//third_party/eigen3",
     ]) + if_mlir_generated_experimental_kernels_enabled(
-        [":gpu_atanh_kernels_experimental"],
-        [":gpu_atanh_kernels"],
+        [
+            ":gpu_abs_kernels_experimental",
+            ":gpu_atanh_kernels_experimental",
+        ],
+        [
+            ":gpu_abs_kernels",
+            ":gpu_atanh_kernels",
+        ],
     ),
 )
 
@@ -624,6 +629,24 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_abs_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+    ],
+    jit_types = [
+        "i8",
+        "i16",
+    ],
+    op = "abs",
+    tile_size = "256",
+    types = [],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
     name = "gpu_acos_kernels",
     op = "acos",
     tile_size = "256",
@@ -713,13 +736,14 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_atanh_kernels_experimental",
-    jit_i64_indexed_for_large_tensors_types = ["f16"],
-    op = "atanh",
-    tile_size = "256",
-    types = [
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
         "f32",
         "f64",
     ],
+    op = "atanh",
+    tile_size = "256",
+    types = [],
     unroll_factors = "4",
 )
 
