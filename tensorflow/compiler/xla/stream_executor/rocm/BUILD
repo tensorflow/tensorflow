@@ -273,6 +273,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_config_rocm//rocm:rocm_headers",
         "//tensorflow/tsl/util:env_var",
+        "//tensorflow/tsl/util:determinism_for_kernels",
     ]),
     alwayslink = True,
 )

@@ -18,14 +18,14 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-install_ubuntu_16_python_pip_deps python3.8
+install_ubuntu_16_python_pip_deps python3.10
 
 install_bazelisk
 
 # Export required variables for running pip.sh
 export OS_TYPE="UBUNTU"
 export CONTAINER_TYPE="ROCM"
-export TF_PYTHON_VERSION='python3.8'
+export TF_PYTHON_VERSION='python3.10'
 export PYTHON_BIN_PATH="$(which ${TF_PYTHON_VERSION})"
 
 # .bazelrc does not have all config options listed within it for ROCm (as it does for others)
@@ -54,16 +54,15 @@ else
     TF_TEST_FILTER_TAGS_ROCM_VERSION_SPECIFIC=",no_rocm_pre_53"	
 fi
 
-
-
 # # Export optional variables for running pip.sh
-export TF_TEST_FILTER_TAGS='gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py39,-no_rocm'${TF_TEST_FILTER_TAGS_ROCM_VERSION_SPECIFIC}
+export TF_TEST_FILTER_TAGS='gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py39,-no_rocm${TF_TEST_FILTER_TAGS_ROCM_VERSION_SPECIFIC}'
 export TF_BUILD_FLAGS="--config=release_base "
 export TF_TEST_FLAGS="--test_tag_filters=${TF_TEST_FILTER_TAGS} --build_tag_filters=${TF_TEST_FILTER_TAGS} \
  --test_env=TF2_BEHAVIOR=1 \
  --local_test_jobs=${N_TEST_JOBS} \
  --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
  --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
+ --test_env=HSA_TOOLS_LIB=libroctracer64.so \
  --test_timeout 600,900,2400,7200 \
  --build_tests_only \
  --test_output=errors \
@@ -74,7 +73,7 @@ export TF_TEST_FLAGS="--test_tag_filters=${TF_TEST_FILTER_TAGS} --build_tag_filt
  --keep_going "
 export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/... "
 export TF_PIP_TESTS="test_pip_virtualenv_non_clean test_pip_virtualenv_clean"
-export IS_NIGHTLY=0 # Not nightly; uncomment if building from tf repo.
+export IS_NIGHTLY="${IS_NIGHTLY:-0}"
 export TF_PROJECT_NAME="tensorflow_rocm"  # single pip package!
 export TF_PIP_TEST_ROOT="pip_test"
 
