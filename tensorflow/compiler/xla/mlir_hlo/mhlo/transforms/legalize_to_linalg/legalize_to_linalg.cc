@@ -1125,7 +1125,7 @@ class TransposeOpToTransposeConverter
         llvm::to_vector(op.getPermutation().getValues<int64_t>()));
 
     rewriter.replaceOpWithNewOp<linalg::TransposeOp>(
-        op, op.getOperand(), emptyTensor, permutation,
+        op, adaptor.getOperand(), emptyTensor, permutation,
         linalg::getPrunedAttributeList(op));
     return success();
   }
