@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_array.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
@@ -174,12 +175,16 @@ PyBuffer::~PyBuffer() {
 }
 
 StatusOr<int64_t> PyBuffer::size() {
-  Shape max_buffer_shape = pjrt_buffer()->on_device_shape();
-  if (max_buffer_shape.is_dynamic()) {
-    TF_ASSIGN_OR_RETURN(const auto* dynamic_shape, xla_dynamic_shape());
-    return ShapeUtil::ElementsIn(*dynamic_shape);
+  if (llvm::isa<ifrt::PjRtCompatibleArray>(ifrt_array_.get())) {
+    Shape max_buffer_shape = pjrt_buffer()->on_device_shape();
+    if (max_buffer_shape.is_dynamic()) {
+      TF_ASSIGN_OR_RETURN(const auto* dynamic_shape, xla_dynamic_shape());
+      return ShapeUtil::ElementsIn(*dynamic_shape);
+    }
+    return ShapeUtil::ElementsIn(max_buffer_shape);
+  } else {
+    return ifrt_array_->shape().num_elements();
   }
-  return ShapeUtil::ElementsIn(max_buffer_shape);
 }
 
 StatusOr<const Shape*> PyBuffer::xla_dynamic_shape() {
@@ -202,11 +207,12 @@ StatusOr<const Shape*> PyBuffer::xla_dynamic_shape() {
 }
 
 pybind11::tuple PyBuffer::python_shape() const {
-  return SpanToTuple(pjrt_buffer()->on_device_shape().dimensions());
+  return SpanToTuple(ifrt_array_->shape().dims());
 }
 
 pybind11::dtype PyBuffer::python_dtype() const {
-  PrimitiveType primitive = pjrt_buffer()->on_device_shape().element_type();
+  // TODO(hyeontaek): Support non-XLA types such as xla::ifrt::DType::kString.
+  PrimitiveType primitive = ifrt::ToPrimitiveType(ifrt_array_->dtype()).value();
   return PrimitiveTypeToDtype(primitive).value();
 }
 
@@ -282,7 +288,9 @@ Status PyBuffer::BlockHostUntilReady() {
 }
 
 Status PyBuffer::CopyToHostAsync() {
-  if (!pjrt_buffer()->IsOnCpu() && !host_value_) {
+  if ((!llvm::isa<ifrt::PjRtCompatibleArray>(ifrt_array_.get()) ||
+       !pjrt_buffer()->IsOnCpu()) &&
+      !host_value_) {
     auto transfer_guard_formatter = [this] {
       auto shape = py::cast<std::string>(py::str(python_shape()));
       auto dtype = py::cast<std::string>(py::str(python_dtype()));
@@ -297,7 +305,18 @@ Status PyBuffer::CopyToHostAsync() {
     // TODO(b/182461453): This is a blocking call. If we further implemented
     // populating dynamic shape metadata while fetching the literal, we wouldn't
     // need this static approach.
-    TF_ASSIGN_OR_RETURN(const auto* dynamic_shape, xla_dynamic_shape());
+    const xla::Shape* dynamic_shape;
+    std::optional<xla::Shape> shape_holder;
+    if (llvm::isa<ifrt::PjRtCompatibleArray>(ifrt_array_.get())) {
+      TF_ASSIGN_OR_RETURN(dynamic_shape, xla_dynamic_shape());
+    } else {
+      // Skip querying the dynamic shape for a non-PjRt Array.
+      TF_ASSIGN_OR_RETURN(xla::PrimitiveType type,
+                          ifrt::ToPrimitiveType(ifrt_array_->dtype()));
+      shape_holder = ShapeUtil::MakeShapeWithDescendingLayout(
+          type, ifrt_array_->shape().dims());
+      dynamic_shape = &*shape_holder;
+    }
 
     py::gil_scoped_release gil;
     xla::Shape host_shape = ShapeUtil::DeviceShapeToHostShape(*dynamic_shape);
@@ -325,32 +344,35 @@ StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
   if (ifrt_array_->IsDeleted()) {
     return InvalidArgument("DeviceArray has been deleted.");
   }
-  TF_RET_CHECK(pjrt_buffer()->on_device_shape().IsArray());
-  // On CPU, we can return the value in a zero-copy way.
-  if (pjrt_buffer()->IsOnCpu()) {
-    TF_ASSIGN_OR_RETURN(const auto* shape, xla_dynamic_shape());
-    TF_ASSIGN_OR_RETURN(py::dtype dtype,
-                        PrimitiveTypeToDtype(shape->element_type()));
-    // Objects that must be kept alive while the array is alive.
-    struct Hold {
-      py::object buffer;
-      std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold;
-    };
-    auto hold = std::make_unique<Hold>();
-    TF_ASSIGN_OR_RETURN(hold->external_reference_hold,
-                        pjrt_buffer()->AcquireExternalReference());
-    hold->buffer = py::reinterpret_borrow<py::object>(this_obj);
-    void* data = hold->external_reference_hold->OpaqueDeviceMemoryDataPointer();
-    py::capsule hold_capsule(hold.release(),
-                             [](void* h) { delete static_cast<Hold*>(h); });
-    py::array array(dtype, shape->dimensions(), ByteStridesForShape(*shape),
-                    data, hold_capsule);
-    array.attr("flags").attr("writeable") = Py_False;
-    {
-      py::gil_scoped_release gil;
-      TF_RETURN_IF_ERROR(ifrt_array_->GetReadyFuture().Await());
+  if (llvm::isa<ifrt::PjRtCompatibleArray>(ifrt_array_.get())) {
+    TF_RET_CHECK(pjrt_buffer()->on_device_shape().IsArray());
+    // On CPU, we can return the value in a zero-copy way.
+    if (pjrt_buffer()->IsOnCpu()) {
+      TF_ASSIGN_OR_RETURN(const auto* shape, xla_dynamic_shape());
+      TF_ASSIGN_OR_RETURN(py::dtype dtype,
+                          PrimitiveTypeToDtype(shape->element_type()));
+      // Objects that must be kept alive while the array is alive.
+      struct Hold {
+        py::object buffer;
+        std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold;
+      };
+      auto hold = std::make_unique<Hold>();
+      TF_ASSIGN_OR_RETURN(hold->external_reference_hold,
+                          pjrt_buffer()->AcquireExternalReference());
+      hold->buffer = py::reinterpret_borrow<py::object>(this_obj);
+      void* data =
+          hold->external_reference_hold->OpaqueDeviceMemoryDataPointer();
+      py::capsule hold_capsule(hold.release(),
+                               [](void* h) { delete static_cast<Hold*>(h); });
+      py::array array(dtype, shape->dimensions(), ByteStridesForShape(*shape),
+                      data, hold_capsule);
+      array.attr("flags").attr("writeable") = Py_False;
+      {
+        py::gil_scoped_release gil;
+        TF_RETURN_IF_ERROR(ifrt_array_->GetReadyFuture().Await());
+      }
+      return array;
     }
-    return array;
   }
 
   TF_RETURN_IF_ERROR(CopyToHostAsync());
