@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
@@ -40,7 +41,9 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/IR/TensorInferTypeOpInterfaceImpl.h"
 #include "mlir/Dialect/Tensor/IR/TensorTilingInterfaceImpl.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -225,8 +228,15 @@ Value pad(Location loc, PatternRewriter &rewriter, Value input,
   Type elementType = inputType.getElementType();
   RankedTensorType resultType =
       RankedTensorType::get(resultTypeShape, elementType);
-  Value padValue = rewriter.create<arith::ConstantOp>(
-      loc, elementType, rewriter.getZeroAttr(elementType));
+  Value padValue;
+  if (auto complexTy = elementType.dyn_cast<ComplexType>()) {
+    auto zero = rewriter.getZeroAttr(complexTy.getElementType());
+    padValue = rewriter.create<complex::ConstantOp>(
+        loc, elementType, rewriter.getArrayAttr({zero, zero}));
+  } else {
+    auto zero = rewriter.getZeroAttr(elementType);
+    padValue = rewriter.create<arith::ConstantOp>(loc, elementType, zero);
+  }
   return rewriter.create<tensor::PadOp>(loc, resultType, input, lowPadding,
                                         highPadding, padValue);
 }
@@ -616,6 +626,7 @@ struct TransformMatmulForCpuPass
     mlir::gml_st::registerGmlStTilingInterfaceExternalModels(registry);
     linalg::registerTilingInterfaceExternalModels(registry);
     tensor::registerTilingInterfaceExternalModels(registry);
+    tensor::registerInferTypeOpInterfaceExternalModels(registry);
   }
 
   void runOnOperation() override {
