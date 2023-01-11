@@ -257,8 +257,7 @@ class GpuBfloat16Support : public BFloat16Support {
     if (std::holds_alternative<se::StreamExecutor*>(gpu_info_)) {
       auto stream_exec = std::get<se::StreamExecutor*>(gpu_info_);
       if (se::dnn::DnnSupport* dnn = stream_exec->AsDnn()) {
-        se::port::StatusOr<se::dnn::VersionInfo> cudnn_version =
-            dnn->GetVersion();
+        StatusOr<se::dnn::VersionInfo> cudnn_version = dnn->GetVersion();
         if (cudnn_version.ok()) {
           auto cuda_compute_capability =
               stream_exec->GetDeviceDescription().cuda_compute_capability();
