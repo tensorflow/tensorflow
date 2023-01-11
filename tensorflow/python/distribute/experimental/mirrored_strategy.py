@@ -21,10 +21,13 @@ any potential feature gaps between the current API and the need.
 from tensorflow.dtensor.python import api as d_api
 from tensorflow.dtensor.python import config as d_config
 from tensorflow.dtensor.python import d_variable
+from tensorflow.dtensor.python import input_util
 from tensorflow.dtensor.python import layout
 from tensorflow.dtensor.python import mesh_util
+from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import ops
+from tensorflow.python.util import nest
 
 # Default dimension name used for the mesh created when user provide a list
 # of devices. For mirrored strategy, it should be a 1D mesh with batch dim only.
@@ -153,6 +156,63 @@ class MirroredExtended(distribute_lib.StrategyExtendedV2):
     return self.worker_devices
 
   def _in_multi_worker_mode(self):
-    # For a strategy backed by DTensor, all the whole cluster should be treat
-    # as one single worker.
+    # This method is mostly used in the input relate context and high level API.
+    # In the single client mesh DTensor context, this is False.
     return False
+
+  def _experimental_distribute_dataset(self, dataset, options):
+    # Strategy always assume the user input data is a batched dataset for
+    # experimental_distribute_dataset().
+    # TODO(yuefengz): Add check for whether a dataset is batched for all
+    # strategies.
+
+    # TODO(b/265198795): Support dataset already batched to global batch size.
+    # Since DTensorDataset doesn't support batched dataset that is already
+    # batched global batch size, it only supports dataset that is batched to
+    # local batch size, we need to infer the batch size, and unbatch the dataset
+    # until the b/265198795 is resolved.
+    batch_size = distribute.compute_batch_size(dataset)
+
+    # There are multiple case that the batch is not static, eg partial batch,
+    # or uneven batch, in all those case, it will return -1.
+    if batch_size.numpy() < 0:
+      # When we don't have a static batch size.
+      raise ValueError('DTensor strategy requires a static batch size for now.'
+                       'The dynamic batch size will be supported in future')
+    # Unbatch the dataset for now since the DTensorDataset has some limitation
+    # about the local batch size as well as the mesh size.
+    dataset = dataset.unbatch()
+
+    def _create_batch_layout(tensor_spec):
+      # For unbatched dataset, the new layout need to have +1 rank for
+      # the batched result.
+      rank = len(tensor_spec.shape) + 1
+      return layout.Layout.batch_sharded(
+          self._mesh, batch_dim=_DEFAULT_BATCH_MESH_DIM_NAME, rank=rank)
+
+    layouts = nest.map_structure(_create_batch_layout, dataset.element_spec)
+
+    return input_util.DTensorDataset(
+        dataset=dataset,
+        mesh=self._mesh,
+        layouts=layouts,
+        global_batch_size=batch_size,
+        dataset_already_batched=False,
+        batch_dim=_DEFAULT_BATCH_MESH_DIM_NAME,
+        # TODO(scottzhu): Add prefetch support by inspecting the input dataset.
+        prefetch=None,
+        tf_data_service_config=None
+    )
+
+  # TODO(scottzhu): Address all these methods in follow up cls.
+  # def _make_dataset_iterator(self, dataset):
+  #   pass
+  #
+  # def _make_input_fn_iterator(self, input_fn, replication_mode):
+  #   pass
+  #
+  # def _distribute_datasets_from_function(self, dataset_fn, options):
+  #   pass
+  #
+  # def _experimental_distribute_values_from_function(self, value_fn):
+  #   pass
