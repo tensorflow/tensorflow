@@ -138,6 +138,18 @@ const size_t TFNPD_Api_STRUCT_SIZE =
 
 #undef TFNPD_API_STRUCT_FN
 
+typedef struct TFNPD_PluginParams {
+  size_t struct_size;
+  void* ext;  // reserved for future use
+
+  const char* device_type;              // output, set by plugin
+  const char* compilation_device_name;  // output, set by plugin
+} TFNPD_PluginParams;
+const size_t TFNPD_PLUGIN_PARAMS_STRUCT_SIZE =
+    TF_OFFSET_OF_END(TFNPD_PluginParams, compilation_device_name);
+const TFNPD_Api* TFNPD_InitPlugin(TFNPD_PluginParams* params,
+                                  TF_Status* tf_status);
+
 #if defined(__cplusplus)
 }  // extern "C"
 #endif  // defined(__cplusplus)
