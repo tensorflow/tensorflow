@@ -95,6 +95,15 @@ bool HasEnableReuseGroupKey() {
   return true;
 }
 
+bool UseNcclCommunicationOnGpu() {
+  // FIXME(b/258703996): use tsl::ReadBoolFromEnvVar()
+  static const char* env_str = (std::getenv("DTENSOR_GPU_USE_NCCL_COMMUNICATION"));
+  if (env_str && strcmp(env_str, "0") == 0) {
+    return false;
+  }
+  return true;
+}
+
 mlir::LogicalResult EmitAllReduceForXla(
     mlir::MLIRContext& context, mlir::OpBuilder& builder,
     mlir::TF::DTensorAllReduceOp all_reduce,
@@ -585,16 +594,9 @@ mlir::LogicalResult LowerReduceScatterOp(
             reduce_scatter.getReduceOpAttr());
     SetSingleLayoutOnOp(xla_reduce_scatter, *output_layout);
     reduce_scatter.replaceAllUsesWith(xla_reduce_scatter);
-  } else if (reduce_scatter.getDeviceType().endswith("GPU")) {
-    // Generate CPU/GPU collective. CPU/GPU collectives identify groups on
-    // the basis of a local group key. We must generate an appropriate group
-    // key based on our device ID. This is expressible as an algebraic
-    // function of the device id, but we instead encode the
-    // device_id->group_key as an explicit map value and lookup the result
-    // at runtime. Note that the order we map devices to partitions is not
-    // deterministic, and moreover if we have multiple distinct reductions
-    // groups in one program reducing over all hosts and reducing over pairs
-    // of hosts, we need unique ids for each case.
+  } else if (reduce_scatter.getDeviceType().endswith("GPU") &&
+             UseNcclCommunicationOnGpu()) {
+    // Use CollectiveReduceScatterV2 which has a NCCL GPU implementation.
     mlir::Value device_id = ops_util::ReshapeScalarToSizeType(
         builder, DeviceId(reduce_scatter.getResult()).value(), loc);
     // TODO(b/188076080): Clean up device id.
@@ -617,6 +619,8 @@ mlir::LogicalResult LowerReduceScatterOp(
     reduce_scatter.replaceAllUsesWith(collective_op);
   } else {
     // For non TPUs device, decompose to DTensorAllReduce+DTensorAllScatter.
+    // TODO(tmorris): Once CollectiveReduceScatterV2 has a CPU implementation,
+    // remove this path.
     StatusOr<Layout> input_layout =
         ExtractRequiredLayoutFromOperand(reduce_scatter.getInput());
     if (!input_layout.ok()) {
