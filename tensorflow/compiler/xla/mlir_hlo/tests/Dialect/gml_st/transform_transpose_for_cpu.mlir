@@ -40,12 +40,16 @@ func.func @peel_transpose(%input: tensor<16x32x65xf32>,
 // CHECK-SAME: %[[INPUT:.*]]: tensor<16x32x65xf32>
 // CHECK-SAME: %[[INIT:.*]]: tensor<32x65x16xf32>
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 :
+// CHECK-DAG: %[[C1:.*]] = arith.constant 1 :
 // CHECK-DAG: %[[C16:.*]] = arith.constant 16 :
 // CHECK-DAG: %[[C32:.*]] = arith.constant 32 :
 // CHECK-DAG: %[[C64:.*]] = arith.constant 64 :
 // CHECK-DAG: %[[C65:.*]] = arith.constant 65 :
 // CHECK: gml_st.parallel {{.*}} (%[[C0]], %[[C0]], %[[C0]]) to (%[[C16]], %[[C32]], %[[C64]])
+// CHECK:   linalg.transpose ins({{.*}} tensor<8x1x?xf32>) outs({{.*}} tensor<1x?x8xf32>)
 // CHECK: gml_st.parallel {{.*}} (%[[C0]], %[[C0]], %[[C64]]) to (%[[C16]], %[[C32]], %[[C65]])
+// CHECK:   gml_st.parallel {{.*}} (%[[C0]], %[[C0]], %[[C0]]) {{.*}} step (%[[C1]], %[[C1]], %[[C1]])
+// CHECK:     linalg.transpose ins({{.*}} tensor<1x1x1xf32>) outs({{.*}} tensor<1x1x1xf32>)
 
 // -----
 

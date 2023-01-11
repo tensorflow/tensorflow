@@ -48,7 +48,7 @@ static constexpr char kHLOBase[] = R"pb(
   }
   buffer_assignment {
     buffer_allocations {
-      index: 1
+      index: 0
       size: 1048576
       color: 0
       assigned { logical_buffer_id: 1 offset: 0 size: 524288 }

@@ -245,6 +245,44 @@ def OutfeedOp : XlaCpu_Op<"outfeed", [BufferizableOpInterface]> {
   }];
 }
 
+def RngBitGeneratorOp : XlaCpu_Op<"rng_bit_generator", [BufferizableOpInterface]> {
+  let summary = "CPU-specific version of rng_bit_generator";
+  let description = [{
+    The major differences between this and HLO's rng_bit_generator are:
+    - It bufferizes to itself.
+    - It uses destination passing style.
+  }];
+  let arguments = (ins
+      TensorOrMemref:$state,
+      TensorOrMemref:$dst_state,
+      TensorOrMemref:$dst,
+      AnyAttr:$rng_algorithm
+  );
+  let results = (outs Variadic<TensorOrMemref>);
+  let extraClassDeclaration = [{
+    // Declarations for BufferizableOpInterface:
+    bool bufferizesToMemoryRead(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return opOperand.getOperandNumber() == 0;
+    }
+    bool bufferizesToMemoryWrite(OpOperand &opOperand,
+        const bufferization::AnalysisState &state) {
+      return opOperand.getOperandNumber() != 0;
+    }
+    SmallVector<OpResult> getAliasingOpResult(
+        OpOperand &opOperand, const bufferization::AnalysisState &state) {
+      if (opOperand.getOperandNumber() == 0) return {};
+      return {getOperation()->getOpResult(opOperand.getOperandNumber()-1)};
+    }
+    LogicalResult bufferize(RewriterBase &rewriter,
+        const bufferization::BufferizationOptions &options);
+    bufferization::BufferRelation bufferRelation(OpResult opResult,
+        const bufferization::AnalysisState &state) {
+      return bufferization::BufferRelation::Equivalent;
+    }
+  }];
+}
+
 def AddDependencyOp : XlaCpu_Op<"add_dependency", [BufferizableOpInterface]> {
   let summary = "CPU-specific version of AddDependency";
   let description = [{

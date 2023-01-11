@@ -63,7 +63,7 @@ limitations under the License.
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::func::FuncOp;
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 // Debugging flag to print function mapping in the flatbuffer.
 // NOLINTNEXTLINE

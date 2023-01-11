@@ -27,6 +27,7 @@ namespace xla {
 namespace cpu {
 
 struct HloXlaRuntimePipelineOptions {
+  bool enable_tiling_and_fusion = false;
   bool sparse_bufferization = true;
   bool outline_with_xla_framework = false;
 };

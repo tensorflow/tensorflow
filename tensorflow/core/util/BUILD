@@ -382,6 +382,32 @@ cc_library(
 )
 
 cc_library(
+    name = "fake_clock_env",
+    testonly = 1,
+    srcs = ["fake_clock_env.cc"],
+    hdrs = ["fake_clock_env.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:tensorflow",
+    ],
+)
+
+tf_cc_test(
+    name = "fake_clock_env_test",
+    srcs = [
+        "fake_clock_env_test.cc",
+    ],
+    deps = [
+        ":fake_clock_env",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:env",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "stats_calculator_portable",
     hdrs = [
         "stat_summarizer_options.h",

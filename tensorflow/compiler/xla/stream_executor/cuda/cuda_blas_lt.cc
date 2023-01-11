@@ -52,8 +52,8 @@ namespace cuda {
 namespace {
 
 template <typename T>
-port::Status SetAttr(cublasLtMatrixLayout_t handle,
-                     cublasLtMatrixLayoutAttribute_t attr, T value) {
+tsl::Status SetAttr(cublasLtMatrixLayout_t handle,
+                    cublasLtMatrixLayoutAttribute_t attr, T value) {
   return SET_ATTR(cublasLtMatrixLayoutSetAttribute, handle, attr, value);
 }
 
@@ -64,8 +64,8 @@ port::StatusOr<T> GetAttr(cublasLtMatrixLayout_t handle,
 }
 
 template <typename T>
-port::Status SetAttr(cublasLtMatmulDesc_t handle,
-                     cublasLtMatmulDescAttributes_t attr, T value) {
+tsl::Status SetAttr(cublasLtMatmulDesc_t handle,
+                    cublasLtMatmulDescAttributes_t attr, T value) {
   return SET_ATTR(cublasLtMatmulDescSetAttribute, handle, attr, value);
 }
 
@@ -76,8 +76,8 @@ port::StatusOr<T> GetAttr(cublasLtMatmulDesc_t handle,
 }
 
 template <typename T>
-port::Status SetAttr(cublasLtMatmulPreference_t handle,
-                     cublasLtMatmulPreferenceAttributes_t attr, T value) {
+tsl::Status SetAttr(cublasLtMatmulPreference_t handle,
+                    cublasLtMatmulPreferenceAttributes_t attr, T value) {
   return SET_ATTR(cublasLtMatmulPreferenceSetAttribute, handle, attr, value);
 }
 
@@ -122,7 +122,7 @@ port::StatusOr<cublasLtEpilogue_t> AsCublasLtEpilogue(
 
 }  // namespace
 
-port::Status BlasLt::Init() {
+tsl::Status BlasLt::Init() {
   cublasLtHandle_t blas_lt;
   SE_CUBLAS_RETURN_IF_ERROR(cublasLtCreate(&blas_lt));
   absl::MutexLock lock(&mu_);
@@ -246,15 +246,17 @@ BlasLt::GetMatmulAlgorithms(const BlasLt::MatmulPlan& plan,
   return std::move(algorithms);
 }
 
-port::Status BlasLt::DoMatmul(
-    Stream* stream, const BlasLt::MatmulPlan& plan, const void* alpha,
-    DeviceMemoryBase a, DeviceMemoryBase b, const void* beta,
-    DeviceMemoryBase c, DeviceMemoryBase d,
-    const BlasLt::MatmulAlgorithm& algorithm,
-    ScratchAllocator& scratch_allocator, DeviceMemoryBase bias,
-    DeviceMemoryBase aux, DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
-    DeviceMemoryBase c_scale, DeviceMemoryBase d_scale, DeviceMemoryBase d_amax,
-    blas::ProfileResult* profile_result) {
+tsl::Status BlasLt::DoMatmul(Stream* stream, const BlasLt::MatmulPlan& plan,
+                             const void* alpha, DeviceMemoryBase a,
+                             DeviceMemoryBase b, const void* beta,
+                             DeviceMemoryBase c, DeviceMemoryBase d,
+                             const BlasLt::MatmulAlgorithm& algorithm,
+                             ScratchAllocator& scratch_allocator,
+                             DeviceMemoryBase bias, DeviceMemoryBase aux,
+                             DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
+                             DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
+                             DeviceMemoryBase d_amax,
+                             blas::ProfileResult* profile_result) {
   std::unique_ptr<gpu::GpuTimer, gpu::GpuTimerDeleter> timer;
   if (profile_result != nullptr) {
     timer.reset(new gpu::GpuTimer(parent_));

@@ -1064,7 +1064,7 @@ tf_xla_py_test(
         "cpu",
         "cpu_ondemand",
     ],
-    enable_mlir_bridge = False,
+    enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 5,
     tags = [

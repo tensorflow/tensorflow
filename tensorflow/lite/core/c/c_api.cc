@@ -22,9 +22,9 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/c/common_internal.h"
+#include "tensorflow/lite/core/create_op_resolver.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/model.h"
-#include "tensorflow/lite/create_op_resolver.h"
 #include "tensorflow/lite/delegates/interpreter_utils.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -467,6 +467,13 @@ TfLiteInterpreter* InterpreterCreateWithOpResolver(
                                               : tflite::DefaultErrorReporter();
   tflite::InterpreterBuilder builder(model->impl->GetModel(), *op_resolver,
                                      error_reporter);
+
+  if (optional_options && optional_options->telemetry_profiler) {
+    std::unique_ptr<tflite::telemetry::TelemetryProfiler> profiler;
+    profiler.reset(tflite::telemetry::MakeTfLiteTelemetryProfiler(
+        optional_options->telemetry_profiler));
+    builder.SetTelemetryProfiler(std::move(profiler));
+  }
 
   std::unique_ptr<tflite::Interpreter> interpreter;
   if (builder(&interpreter) != kTfLiteOk) {

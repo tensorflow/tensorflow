@@ -66,7 +66,7 @@ public class BenchmarkAccuracyActivity extends Activity {
     Intent intent = getIntent();
     Bundle bundle = intent.getExtras();
     String[] tfliteSettingsJsonFiles = bundle.getStringArray(TFLITE_SETTINGS_FILES_INTENT_KEY_0);
-    if (tfliteSettingsJsonFiles.length == 0) {
+    if (tfliteSettingsJsonFiles == null || tfliteSettingsJsonFiles.length == 0) {
       Log.e(TAG, "No TFLiteSettings file is provided.");
       finish();
       return;

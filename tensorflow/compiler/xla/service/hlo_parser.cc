@@ -5212,7 +5212,8 @@ bool HloParserImpl::ParseLayoutIntAttribute(
 //       (':' dim_level_types
 //            tiles
 //            memory_space
-//            physical_shape)?
+//            physical_shape
+//            dynamic_shape_metadata_prefix_bytes)?
 //       '}'
 // memory_space
 //   ::= /*empty*/
@@ -5227,6 +5228,7 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
   PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID;
   int64_t memory_space = 0;
   std::optional<Shape> physical_shape;
+  int64_t dynamic_shape_metadata_prefix_bytes = 0;
 
   auto parse_and_add_item = [&]() {
     int64_t i;
@@ -5299,6 +5301,12 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
         physical_shape.emplace();
         ParsePhysicalShape(&*physical_shape);
       }
+
+      if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "M") {
+        lexer_.Lex();
+        ParseLayoutIntAttribute(&dynamic_shape_metadata_prefix_bytes,
+                                "dynamic shape metadata prefix bytes");
+      }
     }
   }
   if (!ParseToken(TokKind::kRbrace,
@@ -5311,10 +5319,10 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
   for (int i = 0; i < tiles.size(); i++) {
     vec_tiles[i] = Tile(tiles[i]);
   }
-  *layout = LayoutUtil::MakeLayout(minor_to_major, dim_level_types, dim_unique,
-                                   dim_ordered, vec_tiles, index_primitive_type,
-                                   pointer_primitive_type, memory_space,
-                                   std::move(physical_shape));
+  *layout = LayoutUtil::MakeLayout(
+      minor_to_major, dim_level_types, dim_unique, dim_ordered, vec_tiles,
+      index_primitive_type, pointer_primitive_type, memory_space,
+      std::move(physical_shape), dynamic_shape_metadata_prefix_bytes);
   return true;
 }
 

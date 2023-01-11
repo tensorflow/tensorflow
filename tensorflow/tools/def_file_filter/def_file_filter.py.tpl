@@ -48,6 +48,8 @@ INCLUDEPRE_RE = re.compile(r"absl::lts_[0-9]+::base_internal::ThrowStdOutOfRange
                            r"absl::lts_[0-9]+::numbers_internal::FastIntToBuffer|" # for _pywrap_tfe
                            r"absl::lts_[0-9]+::StrCat|" # for _pywrap_tfe
                            r"absl::lts_[0-9]+::StrAppend|" # for _pywrap_tfe
+                           r"absl::lts_[0-9]+::hash_internal|" # for _pywrap_tfcompile
+                           r"absl::lts_[0-9]+::container_internal|" # for _pywrap_tfcompile
                            r"google::protobuf::internal::ExplicitlyConstructed|"
                            r"google::protobuf::internal::ArenaImpl::AllocateAligned|" # for contrib/data/_prefetching_ops
                            r"google::protobuf::internal::ArenaImpl::AddCleanup|" # for contrib/data/_prefetching_ops
@@ -291,6 +293,8 @@ def main():
     def_fp.write("\t ??_7CoordinatedTask@tensorflow@@6B@\n") # for _pywrap_tfe
     def_fp.write("\t ??0CoordinatedTask@tensorflow@@QEAA@XZ\n") # for _pywrap_tfe
     def_fp.write("\t ?InternalSwap@CoordinatedTask@tensorflow@@AEAAXPEAV12@@Z\n") # for _pywrap_tfe
+    def_fp.write("\t ?kSeed@MixingHashState@hash_internal@lts_20220623@absl@@0QEBXEB\n") # for _pywrap_tfcompile
+    def_fp.write("\t ?kEmptyGroup@container_internal@lts_20220623@absl@@3QBW4ctrl_t@123@B\n") # for _pywrap_tfcompile
 
     # Each symbols returned by undname matches the same position in candidates.
     # We compare on undname but use the decorated name from candidates.

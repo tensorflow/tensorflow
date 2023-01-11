@@ -322,7 +322,13 @@ tf_pybind_cc_library_wrapper(
 tf_python_pybind_extension(
     name = "_pywrap_tfcompile",
     srcs = ["tfcompile_wrapper.cc"],
+    dynamic_deps = [":_pywrap_tensorflow_internal.so"] + select({
+        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+        "//tensorflow:windows": [],
+    }),
     features = ["-layering_check"],
+    static_deps = tf_python_pybind_static_deps(),
     deps = [
         ":tfcompile_headers_lib",
         "@pybind11",
@@ -368,11 +374,6 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_py_exception_registry",
     srcs = ["py_exception_registry_wrapper.cc"],
-    hdrs = [
-        "//tensorflow/c:headers",
-        "//tensorflow/c/eager:headers",
-        "//tensorflow/python/lib/core:py_exception_registry_hdr",
-    ],
     dynamic_deps = [":_pywrap_tensorflow_internal.so"] + select({
         "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
         "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
@@ -383,6 +384,7 @@ tf_python_pybind_extension(
         ":py_exception_registry",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
+        "//tensorflow/python/lib/core:py_exception_registry",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:fixed_array",
         "@pybind11",
@@ -3043,7 +3045,10 @@ cuda_py_test(
     main = "ops/nn_batchnorm_test.py",
     python_version = "PY3",
     shard_count = 4,
-    tags = ["no_windows"],
+    tags = [
+        "no_mac_arm64",
+        "no_windows",
+    ],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -3412,7 +3417,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/data/service:py_utils",
-        "//tensorflow/core/function:runtime_client_cc",
+        "//tensorflow/core/function/runtime_client:runtime_client_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/grappler/clusters:cluster",
@@ -3531,7 +3536,7 @@ filegroup(
         "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe
         "//tensorflow/core/framework:attr_value_proto_cc",  # tf_text
         "//tensorflow/core/framework:op_def_proto_cc",  # tf_text
-        "//tensorflow/core/function:runtime_client_cc",  # runtime_client_pybind
+        "//tensorflow/core/function/runtime_client:runtime_client_cc",  # runtime_client_pybind
         "//tensorflow/core/grappler:devices",  # tf_cluster
         "//tensorflow/core/grappler:grappler_item",  # tf_item
         "//tensorflow/core/grappler:grappler_item_builder",  # tf_item

@@ -1194,6 +1194,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           &lstm_params,
           /*forward_sequence=*/true, time_major, /*output_offset=*/0,
           fw_scratch_buffer, fw_activation_state, fw_cell_state, fw_output,
+          /*recurrent_to_input_is_diag=*/false,
+          /*recurrent_to_forget_is_diag=*/false,
+          /*recurrent_to_cell_is_diag=*/false,
+          /*recurrent_to_output_is_diag=*/false,
           CpuBackendContext::GetFromContext(context));
       TF_LITE_ENSURE_OK(context, fw_pass_status);
 
@@ -1215,7 +1219,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           &lstm_params,
           /*forward_sequence=*/false, time_major, bw_output_offset,
           bw_scratch_buffer, bw_activation_state, bw_cell_state,
-          actual_bw_output, CpuBackendContext::GetFromContext(context));
+          actual_bw_output,
+          /*recurrent_to_input_is_diag=*/false,
+          /*recurrent_to_forget_is_diag=*/false,
+          /*recurrent_to_cell_is_diag=*/false,
+          /*recurrent_to_output_is_diag=*/false,
+          CpuBackendContext::GetFromContext(context));
       TF_LITE_ENSURE_OK(context, bw_pass_status);
       return kTfLiteOk;
     }

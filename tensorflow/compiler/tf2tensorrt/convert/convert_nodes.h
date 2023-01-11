@@ -44,7 +44,7 @@ namespace tensorflow {
 namespace tensorrt {
 
 namespace convert {
-using ::stream_executor::port::StatusOr;
+using ::tsl::StatusOr;
 
 struct EngineConnection {
   // Constructs a non-control edge.

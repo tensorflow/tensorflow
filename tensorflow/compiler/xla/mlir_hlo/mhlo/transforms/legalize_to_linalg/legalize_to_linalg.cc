@@ -952,10 +952,9 @@ class HloDynamicBroadcastInDimConverter
     rewriter.replaceOpWithNewOp<linalg::GenericOp>(
         op, TypeRange{emptyTensor.getType()}, ValueRange{operand},
         /*outputBuffers=*/ValueRange{emptyTensor},
-        llvm::makeArrayRef(
-            {AffineMap::get(/*dimCount=*/nloops, /*symbolCount=*/0, dimExprs,
-                            rewriter.getContext()),
-             rewriter.getMultiDimIdentityMap(nloops)}),
+        llvm::ArrayRef({AffineMap::get(/*dimCount=*/nloops, /*symbolCount=*/0,
+                                       dimExprs, rewriter.getContext()),
+                        rewriter.getMultiDimIdentityMap(nloops)}),
         getNParallelLoopsAttrs(nloops),
         [&](OpBuilder& nestedBuilder, Location /*nested_loc*/,
             ValueRange args) {
@@ -1477,7 +1476,7 @@ class IotaConverter : public OpConversionPattern<OpTy> {
 
         ValueRange{getEmptyTensorFor(rewriter, loc, resultShapedType, iotaOp,
                                      adaptor.getOperands())},
-        llvm::makeArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
+        llvm::ArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
         getNParallelLoopsAttrs(nloops),
         [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange /*args*/) {
           Value indexOp = nestedBuilder.create<linalg::IndexOp>(
@@ -1534,7 +1533,7 @@ struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
         op,
         /*resultTensorTypes=*/resultType,
         /*inputs=*/ValueRange{}, /*outputBuffers=*/result,
-        llvm::makeArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
+        llvm::ArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
         getNParallelLoopsAttrs(nloops),
         [&](OpBuilder& nestedBuilder, Location loc, ValueRange) {
           OpBuilder b = nestedBuilder;
@@ -2826,10 +2825,10 @@ struct ConvolutionOpGeneralConversion
             .create<linalg::GenericOp>(
                 loc,
                 /*resultTensors=*/
-                llvm::makeArrayRef<Type>(zeroTensor.getType()),
+                llvm::ArrayRef<Type>(zeroTensor.getType()),
                 /*inputs=*/
-                llvm::makeArrayRef<Value>({modifiedLhs, modifiedRhs}),
-                /*outputs=*/llvm::makeArrayRef<Value>(zeroTensor), inferredMaps,
+                llvm::ArrayRef<Value>({modifiedLhs, modifiedRhs}),
+                /*outputs=*/llvm::ArrayRef<Value>(zeroTensor), inferredMaps,
                 iterationLoops,
                 /*bodyBuild=*/
                 [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange) {

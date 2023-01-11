@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/pjit.h"
 
+#include <algorithm>
 #include <exception>
 #include <memory>
 #include <optional>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
+#include "tensorflow/compiler/xla/python/python_utils.h"
 #include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/util.h"
@@ -67,17 +69,29 @@ struct PjitCacheEntry {
 class PjitFunction {
  public:
   PjitFunction(std::string function_name, py::function cache_miss,
-               std::vector<int> static_argnums, int executables_cache_size)
+               std::vector<int> static_argnums,
+               std::vector<py::str> static_argnames, int executables_cache_size)
       : function_name_(std::move(function_name)),
         cache_miss_(std::move(cache_miss)),
         static_argnums_(std::move(static_argnums)),
+        static_argnames_(std::move(static_argnames)),
         lru_list_(std::make_unique<Cache::LRUList>(executables_cache_size)),
-        executables_(std::make_unique<Cache>(lru_list_.get())) {}
+        executables_(std::make_unique<Cache>(lru_list_.get())) {
+    std::sort(static_argnums_.begin(), static_argnums_.end());
+    for (py::str& s : static_argnames_) {
+      PyUnicode_InternInPlace(&s.ptr());
+    }
+  }
 
   PjitFunction(const PjitFunction&) = delete;
   PjitFunction& operator=(const PjitFunction&) = delete;
   PjitFunction(PjitFunction&&) = default;
   PjitFunction& operator=(PjitFunction&&) = default;
+
+  // Returns true if `h` is a PjitFunction.
+  static bool IsPjitFunction(py::handle handle);
+  // Converts `handle` to a PjitFunction*. Does not do any checking.
+  static PjitFunction* AsPjitFunctionUnchecked(py::handle handle);
 
   xla::StatusOr<py::object> Call(py::handle callable, PyObject* const* args,
                                  size_t nargs, PyObject* kwnames);
@@ -99,6 +113,7 @@ class PjitFunction {
   std::string function_name_;
   py::function cache_miss_;
   std::vector<int> static_argnums_;
+  std::vector<py::str> static_argnames_;
 
   std::unique_ptr<Cache::LRUList> lru_list_;
   std::unique_ptr<Cache> executables_;
@@ -201,9 +216,8 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
   absl::Span<PyObject* const> positional_args(args, num_positional_args);
   absl::Span<PyObject* const> keyword_args(args + num_positional_args,
                                            num_keyword_args);
-  auto status =
-      ParseArguments(positional_args, keyword_args, kwnames, static_argnums_,
-                     /*static_argnames=*/{}, arguments);
+  auto status = ParseArguments(positional_args, keyword_args, kwnames,
+                               static_argnums_, static_argnames_, arguments);
   if (!status.ok()) {
     VLOG(2) << "ParseArguments failed: " << status;
     return fallback_to_cache_miss();
@@ -471,6 +485,21 @@ struct PjitFunctionObject {
 
 PyObject* PjitFunction_Type = nullptr;
 
+bool PjitFunction::IsPjitFunction(py::handle handle) {
+  return handle.get_type() == PjitFunction_Type;
+}
+
+PjitFunction* PjitFunction::AsPjitFunctionUnchecked(py::handle handle) {
+  return &(reinterpret_cast<PjitFunctionObject*>(handle.ptr())->fun);
+}
+
+xla::StatusOr<PjitFunction*> AsPjitFunction(py::handle handle) {
+  if (!PjitFunction::IsPjitFunction(handle)) {
+    return xla::InvalidArgument("Expected a PjitFunction");
+  }
+  return PjitFunction::AsPjitFunctionUnchecked(handle);
+}
+
 extern "C" {
 
 PyObject* PjitFunction_tp_vectorcall(PyObject* callable, PyObject* const* args,
@@ -601,13 +630,15 @@ PyObject* PjitFunction_tp_repr(PyObject* self) {
 
 py::object MakePjitFunction(std::string function_name, py::function cache_miss,
                             std::vector<int> static_argnums,
+                            std::vector<py::str> static_argnames,
                             int executables_cache_size) {
   py::object obj = py::reinterpret_steal<py::object>(PjitFunction_tp_new(
       reinterpret_cast<PyTypeObject*>(PjitFunction_Type), nullptr, nullptr));
   PjitFunctionObject* fn_obj = reinterpret_cast<PjitFunctionObject*>(obj.ptr());
   new (&fn_obj->fun)
       PjitFunction(std::move(function_name), std::move(cache_miss),
-                   std::move(static_argnums), executables_cache_size);
+                   std::move(static_argnums), std::move(static_argnames),
+                   executables_cache_size);
   return obj;
 }
 
@@ -654,10 +685,18 @@ void BuildPjitSubmodule(py::module& m) {
   m.attr("PjitFunction") = cfun_type;
   cfun.attr("__module__") = m.attr("__name__");
 
+  cfun.attr("_cache_miss") =
+      property_readonly([](py::handle self) -> xla::StatusOr<py::object> {
+        TF_ASSIGN_OR_RETURN(PjitFunction * fun, AsPjitFunction(self));
+        return fun->cache_miss();
+      });
+
   m.def("pjit", [](std::string function_name, py::function cache_miss,
-                   std::vector<int> static_argnums) {
+                   std::vector<int> static_argnums,
+                   std::vector<py::str> static_argnames) {
     return MakePjitFunction(std::move(function_name), std::move(cache_miss),
                             std::move(static_argnums),
+                            std::move(static_argnames),
                             /*executables_cache_size=*/4096);
   });
 }

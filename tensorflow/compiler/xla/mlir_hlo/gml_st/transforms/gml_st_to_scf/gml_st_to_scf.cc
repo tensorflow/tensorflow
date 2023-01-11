@@ -33,71 +33,6 @@ namespace {
 #define GEN_PASS_DEF_GMLSTTOSCF
 #include "gml_st/transforms/passes.h.inc"
 
-/// Converts gml_st.loop to SCF loop nest. All parallel dimensions are collected
-/// into an scf.parallel loop and all sequential dimensions will result in a
-/// nested scf.for loop nest. The pattern assumes that a gml_st.loop with
-/// iterator_types ["reduction", "parallel", "reduction"] can be reordered.
-struct LoopToSCFPattern : public OpRewritePattern<LoopOp> {
-  using OpRewritePattern<LoopOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(LoopOp loop,
-                                PatternRewriter &rewriter) const override {
-    // Fail conversion if the `gml_st.loop` has not been bufferized.
-    if (!loop.hasBufferSemantics()) return failure();
-
-    // Collect loop control parameters for parallel and sequential dimensions.
-    SmallVector<Value, 3> seqLBs, seqUBs, seqSteps, seqIVs;
-    SmallVector<Value, 3> parLBs, parUBs, parSteps, parIVs;
-    for (const auto &en :
-         llvm::enumerate(llvm::zip(loop.getLowerBound(), loop.getUpperBound(),
-                                   loop.getStep(), loop.getInductionVars()))) {
-      Value lb, ub, step, iv;
-      std::tie(lb, ub, step, iv) = en.value();
-      if (loop.isParallelDimension(en.index())) {
-        parLBs.push_back(lb);
-        parUBs.push_back(ub);
-        parSteps.push_back(step);
-        parIVs.push_back(iv);
-      } else {
-        seqLBs.push_back(lb);
-        seqUBs.push_back(ub);
-        seqSteps.push_back(step);
-        seqIVs.push_back(iv);
-      }
-    }
-
-    Location loc = loop.getLoc();
-    auto generateForLoopNestAndCloneBody = [&](OpBuilder &builder, Location loc,
-                                               ValueRange ivs) {
-      BlockAndValueMapping bvm;
-      bvm.map(parIVs, ivs);
-      bvm.map(loop.getRegionInputArgs(), loop.getInputs());
-      bvm.map(loop.getRegionOutputArgs(), loop.getOutputs());
-
-      // If not all dimensions of the gml_st.loop are parallel, an scf.for loop
-      // nest is generated.
-      if (!seqIVs.empty()) {
-        scf::LoopNest nest =
-            scf::buildLoopNest(builder, loc, seqLBs, seqUBs, seqSteps,
-                               [&](OpBuilder & /*builder*/, Location /*loc*/,
-                                   ValueRange ivs) { bvm.map(seqIVs, ivs); });
-        builder.setInsertionPointToStart(nest.loops.back().getBody());
-      }
-      for (auto &op : loop.getBody()->without_terminator())
-        builder.clone(op, bvm);
-    };
-
-    if (parIVs.empty()) {
-      generateForLoopNestAndCloneBody(rewriter, loc, std::nullopt);
-    } else {
-      rewriter.create<scf::ParallelOp>(loc, parLBs, parUBs, parSteps,
-                                       generateForLoopNestAndCloneBody);
-    }
-    rewriter.eraseOp(loop);
-    return success();
-  }
-};
-
 /// Converts gml_st.parallel to SCF loop nest.
 struct ParallelOpToSCFPattern : public OpRewritePattern<ParallelOp> {
   using OpRewritePattern<ParallelOp>::OpRewritePattern;
@@ -158,7 +93,7 @@ struct GmlStToScfPass : public impl::GmlStToScfBase<GmlStToScfPass> {
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
-    patterns.add<ForOpToSCFPattern, LoopToSCFPattern, ParallelOpToSCFPattern>(
+    patterns.add<ForOpToSCFPattern, ParallelOpToSCFPattern>(
         patterns.getContext());
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {

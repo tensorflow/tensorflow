@@ -25,6 +25,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <system_error>  // NOLINT
 #include <utility>
 #include <variant>
 #include <vector>
@@ -37,6 +38,7 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -47,7 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/transforms/hlo_constant_splitter.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/gpu_passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/transforms/gpu_passes.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/all_gather_broadcast_reorder.h"
@@ -180,6 +182,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/casts.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/threadpool.h"
@@ -254,8 +257,7 @@ class GpuBfloat16Support : public BFloat16Support {
     if (std::holds_alternative<se::StreamExecutor*>(gpu_info_)) {
       auto stream_exec = std::get<se::StreamExecutor*>(gpu_info_);
       if (se::dnn::DnnSupport* dnn = stream_exec->AsDnn()) {
-        se::port::StatusOr<se::dnn::VersionInfo> cudnn_version =
-            dnn->GetVersion();
+        StatusOr<se::dnn::VersionInfo> cudnn_version = dnn->GetVersion();
         if (cudnn_version.ok()) {
           auto cuda_compute_capability =
               stream_exec->GetDeviceDescription().cuda_compute_capability();
@@ -1245,9 +1247,36 @@ static Status CompileModuleToLlvmIrImpl(
 
   if (hlo_module->config().debug_options().xla_gpu_enable_mlir_lowering()) {
     mlir::PassManager pm(&mlir_context);
+    bool uses_multithreading = pm.getContext()->isMultithreadingEnabled();
+    std::optional<llvm::raw_fd_ostream> log_stream;
+    if (hlo_module->config().debug_options().xla_gpu_dump_llvmir()) {
+      const std::string basename =
+          absl::StrCat(absl::string_view(tsl::io::Basename(hlo_module->name())),
+                       ".mlir-passes.log");
+      std::string outputs_dir;
+      tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir);
+      std::string path = tsl::io::JoinPath(outputs_dir, basename);
+      std::error_code err;
+      log_stream.emplace(path, err, llvm::sys::fs::OF_None);
+      if (err) {
+        log_stream.reset();
+      }
+
+      auto print_before = [](mlir::Pass*, mlir::Operation*) { return true; };
+      auto print_after = [](mlir::Pass*, mlir::Operation*) { return false; };
+      pm.getContext()->disableMultithreading();
+      pm.enableIRPrinting(print_before, print_after, true, true, false,
+                          *log_stream, {});
+    }
     pm.addPass(mlir::createGpuFusionRewritePass());
     if (failed(pm.run(mlir_module.get()))) {
       return InternalError("Failed to run gpu-fusion-rewrite pass");
+    }
+    if (hlo_module->config().debug_options().xla_gpu_dump_llvmir()) {
+      pm.getContext()->enableMultithreading(uses_multithreading);
+      if (log_stream) {
+        log_stream->flush();
+      }
     }
   }
 

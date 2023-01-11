@@ -378,14 +378,12 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
     added_names_message = """Some function names in
 self.reordered_function_names are not in reorders_v2.py.
 Please run the following commands to update reorders_v2.py:
-bazel build tensorflow/tools/compatibility/update:generate_v2_reorders_map
-bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
+bazel run tensorflow/tools/compatibility/update:generate_v2_reorders_map
 """
     removed_names_message = """%s in self.reorders_v2 does not match
 any name in self.reordered_function_names.
 Please run the following commands to update reorders_v2.py:
-bazel build tensorflow/tools/compatibility/update:generate_v2_reorders_map
-bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
+bazel run tensorflow/tools/compatibility/update:generate_v2_reorders_map
 """
     self.assertTrue(
         reordered_function_names.issubset(function_reorders),
@@ -1940,8 +1938,18 @@ def _log_prob(self, x):
   def test_saved_model_load(self):
     text = "tf.saved_model.load(sess, ['foo_graph'])"
     expected = "tf.compat.v1.saved_model.load(sess, ['foo_graph'])"
-    _, _, _, new_text = self._upgrade(text)
+    _, report, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
+    expected_info = "tf.saved_model.load works differently in 2.0"
+    self.assertIn(expected_info, report)
+
+  def test_saved_model_loader_load(self):
+    text = "tf.saved_model.loader.load(sess, ['foo_graph'])"
+    expected = "tf.compat.v1.saved_model.load(sess, ['foo_graph'])"
+    _, report, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+    expected_info = "tf.saved_model.load works differently in 2.0"
+    self.assertIn(expected_info, report)
 
   def test_saved_model_load_v2(self):
     text = "tf.saved_model.load_v2('/tmp/blah')"

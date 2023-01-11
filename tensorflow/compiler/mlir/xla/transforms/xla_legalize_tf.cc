@@ -199,7 +199,7 @@ FailureOr<mhlo::ConstantOp> CreateConstantOpForQint8Rhs(
   auto arr = t.flat<tensorflow::qint8>();
   auto dense_attr = mlir::DenseElementsAttr::get(
       GetSameShapeTensorType(new_rhs_type, rewriter.getIntegerType(8)),
-      llvm::makeArrayRef(arr.data(), arr.size()));
+      llvm::ArrayRef(arr.data(), arr.size()));
   return rewriter.create<mhlo::ConstantOp>(op.getLoc(), new_rhs_type,
                                            dense_attr);
 }
@@ -328,7 +328,8 @@ class ConvertUniformQuantizedDotHybridOp
       return failure();
     }
 
-    rewriter.replaceOpWithNewOp<mhlo::DotOp>(op, op.getLhs(), *rhs,
+    rewriter.replaceOpWithNewOp<mhlo::DotOp>(op, op.getType(), op.getLhs(),
+                                             *rhs,
                                              /*precision_config=*/nullptr);
     return success();
   }
@@ -751,10 +752,12 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
           ? PatternsIncludeOps(legalize_lower_patterns, MlirPreferredOps())
           : std::move(legalize_lower_patterns);
 
+  Tf2XlaTypeConverter converter;
   if (tf2xla_fallback_device_type) {
     // Add TF->HLO legalization patterns via TF2XLA fallback.
     PopulateLegalizeTfWithTf2XlaPatterns(tf2xla_fallback_device_type.value(),
-                                         patterns, context, prefer_tf2xla);
+                                         patterns, context, converter,
+                                         prefer_tf2xla);
   }
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
@@ -794,8 +797,9 @@ void LegalizeTFModulePass::runOnOperation() {
   Operation *op = getOperation();
   MLIRContext *context = op->getContext();
   RewritePatternSet patterns(context);
+  Tf2XlaTypeConverter converter;
   PopulateLegalizeTfWithTf2XlaPatterns(device_type_, patterns, context,
-                                       /*prefer_tf2xla=*/false,
+                                       converter, /*prefer_tf2xla=*/false,
                                        /*is_module_pass=*/true);
 
   if (failed(ApplyPatterns(op, patterns,

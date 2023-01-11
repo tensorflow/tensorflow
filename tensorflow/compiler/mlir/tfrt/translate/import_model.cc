@@ -206,6 +206,7 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
   pass_options.tpu_fuse_ops = options.tpu_fuse_ops;
   pass_options.use_tpu_host_allocator_for_inputs =
       options.use_tpu_host_allocator_for_inputs;
+  pass_options.sink_in_invariant_ops = options.sink_in_invariant_ops;
   pass_options.hoist_invariant_ops = options.hoist_invariant_ops;
   pass_options.func_use_fallback_tensor = true;
   pass_options.enable_while_parallel_iterations =

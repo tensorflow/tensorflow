@@ -288,6 +288,9 @@ void SetSizeOp<T>::Compute(OpKernelContext* ctx) {
     const auto group_key = group.group();
     const auto output_index = std::inner_product(
         group_key.begin(), group_key.end(), output_strides.begin(), 0LL);
+    OP_REQUIRES(ctx, output_index < out.size(),
+                errors::InvalidArgument("Index out of range, ", group.indices(),
+                                        " vs ", output_shape_ts.DebugString()));
     out(output_index) = group_set.size();
   }
 }

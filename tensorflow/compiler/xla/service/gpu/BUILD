@@ -750,6 +750,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1830,6 +1831,7 @@ cc_library(
         "//tensorflow/tsl/platform:casts",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/profiler/lib:traceme",
@@ -1837,6 +1839,7 @@ cc_library(
         "@com_google_absl//absl/types:variant",
         "@llvm-project//llvm:AsmParser",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TransformUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

@@ -42,6 +42,7 @@ tensorflow::tfrt_stub::GraphExecutionOptions GetGraphExecutionOptions(
       /*task=*/0, /*type=*/"CPU", /*id=*/0);
   compile_options.enable_grappler = true;
   compile_options.hoist_invariant_ops = true;
+  compile_options.sink_in_invariant_ops = false;
   compile_options.cost_threshold = 1024;
   compile_options.compile_to_sync_tfrt_dialect = true;
   return options;

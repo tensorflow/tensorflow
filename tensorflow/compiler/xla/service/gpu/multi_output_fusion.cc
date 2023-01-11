@@ -198,6 +198,9 @@ FusionDecision IsSiblingFusionCandidate(const HloInstruction* instr) {
   if (!IsFusibleAsMultiOutputFusionRoot(*instr)) {
     return "not fusible as MOF root";
   }
+  if (IsNestableVariadicReduction(*instr)) {
+    return "merging with variadic reductions is not supported yet";
+  }
   // Check if the users of multioutput fusion is not a get-tuple-element.
   // If this is the case, we bail out because the transformation assumes
   // the users are get-tuple-element.

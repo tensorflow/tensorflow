@@ -28,7 +28,7 @@ namespace tfr {
 
 extern const char* const kTFRLibEnv;
 
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 // An wrapper for all the objects used to decompose a module (graph mode) and
 // node_def (eager mode). Note that this class owns the decomposition library.

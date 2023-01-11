@@ -526,9 +526,11 @@ def lcm(x1, x2):  # pylint: disable=missing-function-docstring
     # Same as the `x2_safe` trick above
     d_safe = array_ops.where_v2(
         math_ops.equal(d, 0), constant_op.constant(1, d.dtype), d)
+    x1 = math_ops.abs(x1)
+    x2 = math_ops.abs(x2)
     return array_ops.where_v2(
         math_ops.equal(d, 0), constant_op.constant(0, d.dtype),
-        math_ops.abs(x1 * x2) // d_safe)
+        x1 * (x2 // d_safe))
 
   return _bin_op(f, x1, x2)
 

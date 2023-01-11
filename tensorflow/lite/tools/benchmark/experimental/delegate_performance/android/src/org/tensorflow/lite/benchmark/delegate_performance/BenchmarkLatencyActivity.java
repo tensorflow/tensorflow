@@ -109,13 +109,17 @@ public class BenchmarkLatencyActivity extends Activity {
     Intent intent = getIntent();
     Bundle bundle = intent.getExtras();
     String[] tfliteSettingsJsonFiles = bundle.getStringArray(TFLITE_SETTINGS_FILES_INTENT_KEY_0);
-    if (tfliteSettingsJsonFiles.length == 0) {
+    if (tfliteSettingsJsonFiles == null || tfliteSettingsJsonFiles.length == 0) {
       Log.e(TAG, "No TFLiteSettings file is provided.");
       finish();
       return;
     }
     numberOfInputTfLiteSettingsIsOne = tfliteSettingsJsonFiles.length == 1;
     String[] args = bundle.getStringArray(ARGS_INTENT_KEY_0);
+    if (args == null) {
+      // The "--args" extra key is not provided.
+      args = new String[0];
+    }
 
     try {
       // Creates root result folder.

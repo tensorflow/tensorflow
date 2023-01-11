@@ -42,7 +42,7 @@ func.func @perfectly_tiled_softmax(%argbuffer : memref<2048x4096xf32>,
   "lmhlo.terminator"() : () -> ()
 }
 // CHECK: gpu.module @[[MODULE]]
-// CHECK: llvm.func @[[KERNEL]]({{.*}}) attributes {gpu.kernel, nvvm.kernel}
+// CHECK: llvm.func @[[KERNEL]]({{.*}}) attributes {gpu.kernel, gpu.known_block_size = array<i32: 32, 8, 1>, gpu.known_grid_size = array<i32: 256, 1, 1>, nvvm.kernel}
 // CHECK: nvvm.shfl.sync  bfly
 // CHECK: llvm.fcmp
 // CHECK: llvm.select
@@ -92,7 +92,7 @@ func.func @imperfectly_tiled_softmax(%argbuffer : memref<2047x4095xf32>,
   "lmhlo.terminator"() : () -> ()
 }
 // CHECK: gpu.module @[[MODULE]]
-// CHECK: llvm.func @[[KERNEL]]({{.*}}) attributes {gpu.kernel, nvvm.kernel}
+// CHECK: llvm.func @[[KERNEL]]({{.*}}) attributes {gpu.kernel, gpu.known_block_size = array<i32: 32, 8, 1>, gpu.known_grid_size = array<i32: 256, 1, 1>, nvvm.kernel}
 
 // -----
 

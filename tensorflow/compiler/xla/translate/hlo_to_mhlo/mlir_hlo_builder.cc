@@ -109,7 +109,7 @@ static mlir::DenseIntElementsAttr GetI64ElementsAttr(
   auto ty = mlir::RankedTensorType::get({static_cast<int64_t>(values.size())},
                                         builder->getIntegerType(64));
   return mlir::DenseIntElementsAttr::get(
-      ty, llvm::makeArrayRef(values.data(), values.size()));
+      ty, llvm::ArrayRef(values.data(), values.size()));
 }
 
 static mlir::DenseIntElementsAttr ConvertPadding(
@@ -635,7 +635,7 @@ XlaOp MlirHloBuilder::BinaryOpNoBroadcast(HloOpcode binop, const Shape& shape,
 StatusOr<XlaOp> MlirHloBuilder::AddOpWithShape(
     HloOpcode opcode, const Shape& shape, absl::Span<const XlaOp> operands) {
   return CreateOp(GetMlirOpName(opcode), shape,
-                  llvm::makeArrayRef<XlaOp>(operands.data(), operands.size()));
+                  llvm::ArrayRef<XlaOp>(operands.data(), operands.size()));
 }
 
 XlaOp MlirHloBuilder::CreateToken() {

@@ -21,11 +21,11 @@ gentbl_cc_library(
     tbl_outs = [
         (
             ["-x=cpp"],
-            "include/mhlo_tosa/Transforms/legalize_mhlo.pdll.h.inc",
+            "transforms/legalize_mhlo/legalize_mhlo.pdll.h.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-pdll",
-    td_file = "lib/Transforms/legalize_mhlo.pdll",
+    td_file = "transforms/legalize_mhlo/legalize_mhlo.pdll",
     deps = [
         "//tensorflow/compiler/xla/mlir_hlo:hlo_ops_td_files",
         "@llvm-project//mlir:OpBaseTdFiles",
@@ -36,18 +36,18 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "MHLOTOSATransformsPassIncGen",
     compatible_with = get_compatible_with_cloud(),
-    strip_include_prefix = "include",
+    strip_include_prefix = ".",
     tbl_outs = [
         (
             [
                 "-gen-pass-decls",
                 "-name=MHLOTOSATransforms",
             ],
-            "include/mhlo_tosa/Transforms/passes.h.inc",
+            "transforms/passes.h.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mhlo_tosa/Transforms/passes.td",
+    td_file = "transforms/passes.td",
     deps = [
         "@llvm-project//mlir:PassBaseTdFiles",
     ],
@@ -56,13 +56,13 @@ gentbl_cc_library(
 cc_library(
     name = "MHLOTOSATransforms",
     srcs = [
-        "lib/Transforms/legalize_mhlo.cc",
-        "lib/Transforms/prepare_mhlo.cc",
+        "transforms/legalize_mhlo/legalize_mhlo.cc",
+        "transforms/prepare_mhlo/prepare_mhlo.cc",
     ],
     hdrs = [
-        "include/mhlo_tosa/Transforms/passes.h",
+        "transforms/passes.h",
     ],
-    includes = ["include"],
+    includes = ["."],
     deps = [
         ":MHLOTOSAPDLLPatternsIncGen",
         ":MHLOTOSATransformsPassIncGen",

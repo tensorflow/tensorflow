@@ -55,18 +55,18 @@ class TraceListener {
                                          const void* host_src, int64_t size,
                                          DeviceMemoryBase* gpu_dst) {}
   virtual void SynchronousMemcpyH2DComplete(int64_t correlation_id,
-                                            const port::Status* result) {}
+                                            const tsl::Status* result) {}
 
   virtual void SynchronousMemcpyD2HBegin(int64_t correlation_id,
                                          const DeviceMemoryBase& gpu_src,
                                          int64_t size, void* host_dst) {}
   virtual void SynchronousMemcpyD2HComplete(int64_t correlation_id,
-                                            const port::Status* result) {}
+                                            const tsl::Status* result) {}
 
   virtual void BlockHostUntilDoneBegin(int64_t correlation_id, Stream* stream) {
   }
   virtual void BlockHostUntilDoneComplete(int64_t correlation_id,
-                                          const port::Status* result) {}
+                                          const tsl::Status* result) {}
 };
 
 }  // namespace stream_executor

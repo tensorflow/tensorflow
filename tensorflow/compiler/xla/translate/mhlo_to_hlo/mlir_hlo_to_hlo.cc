@@ -78,10 +78,10 @@ limitations under the License.
 #include "tensorflow/tsl/platform/float8.h"
 
 using ::int64_t;
-using ::stream_executor::port::StatusOr;
 using ::tsl::int16;
 using ::tsl::int32;
 using ::tsl::int8;
+using ::tsl::StatusOr;  // TENSORFLOW_STATUS_OK
 using ::tsl::uint16;
 using ::tsl::uint32;
 using ::tsl::uint64;
@@ -1353,11 +1353,11 @@ LogicalResult ExportXlaOp(IfOp op, OpLoweringContext ctx) {
   // regions.
   if (failed(ctx.converter->LowerRegionAsComputation(
           &op.getTrueBranch(), &true_branch,
-          llvm::makeArrayRef(implicit_true_operands),
+          llvm::ArrayRef(implicit_true_operands),
           /*ensure_single_arg*/ true)) ||
       failed(ctx.converter->LowerRegionAsComputation(
           &op.getFalseBranch(), &false_branch,
-          llvm::makeArrayRef(implicit_false_operands),
+          llvm::ArrayRef(implicit_false_operands),
           /*ensure_single_arg*/ true))) {
     return failure();
   }
@@ -1431,8 +1431,7 @@ LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
     // that region.
     computations_p[i] = &computations[i];
     if (failed(ctx.converter->LowerRegionAsComputation(
-            &branches[i], computations_p[i],
-            llvm::makeArrayRef(implicit_operands),
+            &branches[i], computations_p[i], llvm::ArrayRef(implicit_operands),
             /*ensure_single_arg*/ true)))
       return failure();
   }

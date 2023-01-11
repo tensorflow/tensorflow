@@ -125,12 +125,12 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
 // MMT4D-LABEL:    func @matmul(
 
 // MMT4D-NOT:        linalg.matmul
-// MMT4D:            gml_st.parallel {{.*}} = (%c0, %c0) to (%[[DIM0:.*]], %[[DIM1:.*]]) step (%c1, %c1)
-// MMT4D:              gml_st.parallel {{.*}} = (%c0, %c0) to (%c8, %c8) step (%c8, %c8)
-// MMT4D:                %[[KERNEL:.*]] = gml_st.for {{.*}} = (%c0) to (%[[DIM2:.*]]) step (%c1) outs (%[[ARG:.*]] =
-// MMT4D:                  %[[LHS_READ:.*]] = vector.transfer_read
-// MMT4D:                  %[[RHS_READ:.*]] = vector.transfer_read
-// MMT4D:                  %[[CONTRACT:.*]] = vector.contract {{.*}} %[[LHS_READ]], %[[RHS_READ]], %[[ARG]]
-// MMT4D:                  gml_st.set_yield %[[CONTRACT]] into %[[ARG]]
+// MMT4D:            scf.for {{.*}} = %c0 to %[[DIM0:.*]] step %c1
+// MMT4D:              scf.for {{.*}} = %c0 to %[[DIM1:.*]] step %c1
+// MMT4D:                vector.transfer_read
+// MMT4D:                %[[KERNEL:.*]] = scf.for {{.*}} = %c0 to %[[DIM2:.*]] step %c1 {{.*}} -> (vector<1x1x8x8xf32>)
+// MMT4D:                  vector.transfer_read
+// MMT4D:                  vector.transfer_read
+// MMT4D:                  %[[CONTRACT:.*]] = vector.contract
+// MMT4D:                  scf.yield %[[CONTRACT]]
 // MMT4D:                %[[WRITE:.*]] = vector.transfer_write %[[KERNEL]]
-// MMT4D:                gml_st.set_yield %[[WRITE]] into

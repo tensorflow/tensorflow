@@ -179,7 +179,7 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<func::FuncOp> {
           rewriter.create<LLVM::StoreOp>(
               loc, ptr,
               rewriter.create<LLVM::GEPOp>(loc, ptr_type, first_load,
-                                           llvm::makeArrayRef(second_index)));
+                                           llvm::ArrayRef(second_index)));
 
         } else {
           // Non tuple outputs can be simply mapped to the first load op.

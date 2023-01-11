@@ -2075,33 +2075,66 @@ void AsynchronousCopyResource::AddCopy(const AsynchronousCopy& copy) {
 }
 
 void AsynchronousCopyResource::RemoveCopy(const AsynchronousCopy& copy) {
-  CHECK(ConsumeResource(copy.start_time, copy.end_time, /*resource=*/0,
+  // The ConsumeResource method can only correctly remove the last copy that
+  // starts at a given start time. So if the copy that is requested to be
+  // removed is not the last copy for this start time, we need to temporarily
+  // remove later copies that has the same start time and then add them back one
+  // by one. To do this, we first find the iterator that points to the earliest
+  // copy after this start time. We then decrement this iterator and temporarily
+  // remove the copies until we find the copy we actually want to remove. After
+  // we remove the copy that we actually want to remove, we add back the
+  // temporarily removed copies one by one in the same order.
+  auto async_copy_time_it = async_copy_time_map_.upper_bound(copy.start_time);
+  auto copy_it = (async_copy_time_it == async_copy_time_map_.end())
+                     ? async_copies_.end()
+                     : async_copy_time_it->second;
+  CHECK(copy_it != async_copies_.begin());
+  --copy_it;
+
+  std::list<AsynchronousCopy> copies_to_add_back;
+  auto prev_copy_it = copy_it;
+  for (; *copy_it != copy; copy_it = prev_copy_it) {
+    CHECK(copy_it != async_copies_.begin());
+    CHECK_EQ(copy_it->start_time, copy.start_time);
+    copies_to_add_back.push_front(*copy_it);
+    VLOG(4) << "RemoveCopy found a copy to temporarily remove and add back: "
+            << copy_it->start_time << " " << copy_it->end_time << " "
+            << copy_it->resource;
+    prev_copy_it = std::prev(copy_it);
+    RemoveCopy(copy_it);
+  }
+  CHECK(*copy_it == copy);
+  RemoveCopy(copy_it);
+
+  for (const AsynchronousCopy& copy_to_add_back : copies_to_add_back) {
+    AddCopy(copy_to_add_back);
+  }
+}
+
+void AsynchronousCopyResource::RemoveCopy(
+    std::list<AsynchronousCopy>::iterator& copy_it) {
+  // This method works only for the latest copy for the given start time.
+  CHECK(std::next(copy_it) == async_copies_.end() ||
+        std::next(copy_it)->start_time > copy_it->start_time);
+  CHECK(ConsumeResource(copy_it->start_time, copy_it->end_time, /*resource=*/0,
                         /*update_current_resource=*/true,
                         /*current_copy=*/nullptr,
-                        /*resource_to_free=*/copy.resource));
-  // Using async_copy_time_map_, find this copy to be removed. Note that the
-  // iterator in async_copy_time_map_ points to the first-seen copy with the
-  // given start time, so the copy to be removed might be later than the first
-  // one.
-  auto async_copy_time_it = async_copy_time_map_.find(copy.start_time);
-  CHECK(async_copy_time_it != async_copy_time_map_.end());
-  auto it = async_copy_time_it->second;
-  for (; it != async_copies_.end() && *it != copy; ++it) {
-  }
-  CHECK(it != async_copies_.end());
+                        /*resource_to_free=*/copy_it->resource));
   // If the copy to be removed is the value pointed by async_copy_time_map_, we
   // make the next copy with the same start time to be pointed by
   // async_copy_time_map_. If there are no such copies, we remove the key for
   // this copy start time.
-  if (it == async_copy_time_it->second) {
-    if (std::next(it) != async_copies_.end() &&
-        std::next(it)->start_time == copy.start_time) {
-      async_copy_time_it->second = std::next(it);
+  int64_t start_time = copy_it->start_time;
+  auto async_copy_time_it = async_copy_time_map_.find(start_time);
+  if (copy_it == async_copy_time_it->second) {
+    if (std::next(copy_it) != async_copies_.end() &&
+        std::next(copy_it)->start_time == start_time) {
+      async_copy_time_it->second = std::next(copy_it);
     } else {
       async_copy_time_map_.erase(async_copy_time_it);
     }
   }
-  async_copies_.erase(it);
+  async_copies_.erase(copy_it);
 }
 
 bool AsynchronousCopyResource::HasEnoughResource(int64_t start_time,

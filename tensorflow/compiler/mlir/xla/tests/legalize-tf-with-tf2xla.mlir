@@ -29,7 +29,7 @@ func.func @not_allowlisted_op(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: t
 // CHECK-LABEL: unranked_operand
 func.func @unranked_operand(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: tf.Atan2
-  // expected-remark@+1 {{lowering requires static shaped tensor operands}}
+  // expected-remark@+1 {{lowering requires bounded tensor operands}}
   %0 = "tf.Atan2"(%arg0, %arg0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
 
   func.return %0 : tensor<*xf32>
@@ -38,7 +38,7 @@ func.func @unranked_operand(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-LABEL: dynamic_operand
 func.func @dynamic_operand(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK: tf.Atan2
-  // expected-remark@+1 {{lowering requires static shaped tensor operands}}
+  // expected-remark@+1 {{lowering requires bounded tensor operands}}
   %0 = "tf.Atan2"(%arg0, %arg0) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
 
   func.return %0 : tensor<?xf32>
@@ -372,6 +372,42 @@ func.func @const() -> tensor<2xf32> {
   // CHECK: mhlo.const
   %cst = "tf.Const"() {value = dense<2.0> : tensor<2xf32>} : () -> tensor<2xf32>
   func.return %cst : tensor<2xf32>
+}
+
+// CHECK-LABEL: @bounds_propagation
+func.func @bounds_propagation(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<?xf32> {
+  %dimension = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
+  // CHECK: %[[BOUNDED:.*]] = "mhlo.set_dimension_size"
+  // CHECK-SAME: {dimension = 0 : i64} : (tensor<4xf32>, tensor<i32>) -> tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>
+  %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4xf32>, tensor<i32>, tensor<i32>) -> tensor<?xf32>
+
+  %axis = "tf.Const"() { value = dense<0> : tensor<1xi32> } : () -> tensor<1xi32>
+  // CHECK: %[[REVERSED:.*]] = "mhlo.reverse"(%[[BOUNDED]])
+  // CHECK-SAME: {dimensions = dense<0> : tensor<1xi64>}
+  // CHECK-SAME: (tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>) -> tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>
+  %1 = "tf.ReverseV2"(%0, %axis) : (tensor<?xf32>, tensor<1xi32>) -> tensor<?xf32>
+
+  // CHECK: %[[RESULT:.*]] = tensor.cast %[[REVERSED]] : tensor<?xf32, #mhlo.type_extensions<bounds = [4]>> to tensor<?xf32>
+  // CHECK: return %[[RESULT]] : tensor<?xf32>
+  func.return %1 : tensor<?xf32>
+}
+
+// CHECK-LABEL: @bounds_propagation_skip_symbol_ref_ops
+func.func @bounds_propagation_skip_symbol_ref_ops(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<?xf32> {
+  %dimension = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
+  // CHECK: %[[BOUNDED:.*]] = "mhlo.set_dimension_size"
+  // CHECK-SAME: {dimension = 0 : i64} : (tensor<4xf32>, tensor<i32>) -> tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>
+  %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4xf32>, tensor<i32>, tensor<i32>) -> tensor<?xf32>
+
+  // CHECK: %[[ORIGINAL:.*]] = tensor.cast %[[BOUNDED]] : tensor<?xf32, #mhlo.type_extensions<bounds = [4]>> to tensor<?xf32>
+
+  %axis = "tf.Const"() { value = dense<0> : tensor<1xi32> } : () -> tensor<1xi32>
+  // CHECK: tf.ReverseV2
+  // CHECK-SAME: (tensor<?xf32>, tensor<1xi32>) -> tensor<?xf32>
+  // expected-remark@+1 {{lowering requires bounded tensor operands}}
+  %1 = "tf.ReverseV2"(%0, %axis) {_body = @identity} : (tensor<?xf32>, tensor<1xi32>) -> tensor<?xf32>
+
+  func.return %1 : tensor<?xf32>
 }
 
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is

@@ -19,11 +19,12 @@ limitations under the License.
 #define GML_ST_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/ViewLikeInterface.td"
 include "gml_st/IR/gml_st_ops_base.td"
-include "gml_st/IR/gml_st_legacy_ops.td"
 
 ///////////////////////////////////////////////////////////////////////////////
 // Types
@@ -585,6 +586,23 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [
   }];
 
   let hasCanonicalizer = 1;
+}
+
+def GMLST_YieldOp : GMLST_Op<"yield", [Pure, ReturnLike, Terminator,
+    HasParent<"::mlir::gml_st::SetYieldOp">]>,
+    Arguments<(ins AnyType:$value)> {
+  let summary = "Yield operation";
+  let description = [{
+    `gml_st.yield` is a special terminator operation for accumulator regions of
+    `gml_st.set_yield`.
+
+    Example:
+
+    ```mlir
+    gml_st.yield %f0: tensor<f32>
+    ```
+  }];
+  let assemblyFormat = "attr-dict $value `:` type($value)";
 }
 
 // TODO(b/253560795): Figure out where this operation shoud live, and how to

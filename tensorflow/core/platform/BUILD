@@ -1198,6 +1198,7 @@ tf_cc_tests(
         "//tensorflow/tsl/platform/profile_utils:cpu_utils_test.cc",
     ],
     create_named_test_suite = True,
+    tags = ["no_mac_arm64"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",

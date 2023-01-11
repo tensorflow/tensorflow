@@ -150,10 +150,9 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
         rewriter
             .create<LLVM::CallOp>(
                 loc, getVoidPtrType(), tf_func_ref,
-                llvm::makeArrayRef({adaptor.getCtx(), num_elements,
-                                    element_size, output_index,
-                                    candidates_count_and_ptr.first,
-                                    candidates_count_and_ptr.second}))
+                llvm::ArrayRef({adaptor.getCtx(), num_elements, element_size,
+                                output_index, candidates_count_and_ptr.first,
+                                candidates_count_and_ptr.second}))
             .getResult();
 
     MemRefDescriptor memRefDescriptor = CreateMemRefDescriptor(
@@ -173,7 +172,7 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
     Type llvm_void_ptr_type = getVoidPtrType();
     return LLVM::LLVMFunctionType::get(
         llvm_void_ptr_type,
-        llvm::makeArrayRef(
+        llvm::ArrayRef(
             {/*void* op_kernel_ctx*/ llvm_void_ptr_type,
              /*size_t num_elements*/ getIndexType(),
              /*size_t element_size*/ getIndexType(),
@@ -239,7 +238,7 @@ class TFDeallocOpConverter : public ConvertToLLVMCallOpPattern<TFDeallocOp> {
         GetOrInsertLLVMFunction(GetFuncName(), GetFuncType(), op, &rewriter);
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
         op, llvm::None, tf_func_ref,
-        llvm::makeArrayRef({adaptor.getCtx(), allocated_bytes_ptr}));
+        llvm::ArrayRef({adaptor.getCtx(), allocated_bytes_ptr}));
     return success();
   }
 
@@ -285,10 +284,10 @@ class JITCompileFromStrOpConverter
         GetOrInsertLLVMFunction(GetFuncName(), GetFuncType(), op, &rewriter);
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
         op, getVoidPtrType(), tf_func_ref,
-        llvm::makeArrayRef({adaptor.getCtx(), jit_module_code, tile_sizes.first,
-                            tile_sizes.second, unroll_factors.first,
-                            unroll_factors.second, max_supported_rank,
-                            enable_ftz, index_64bit, cpu_codegen}));
+        llvm::ArrayRef({adaptor.getCtx(), jit_module_code, tile_sizes.first,
+                        tile_sizes.second, unroll_factors.first,
+                        unroll_factors.second, max_supported_rank, enable_ftz,
+                        index_64bit, cpu_codegen}));
     return success();
   }
 
@@ -418,7 +417,7 @@ class ReportErrorOpConverter
         adaptor.getErrorCodeAttr());
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
         op, llvm::None, tf_func_ref,
-        llvm::makeArrayRef({adaptor.getCtx(), error_code, message_constant}));
+        llvm::ArrayRef({adaptor.getCtx(), error_code, message_constant}));
     return success();
   }
 

@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for quantize_model."""
+# TODO(b/264234648): Refactor and cleanup this file.
 import itertools
 import os
 from typing import List, Mapping, Optional, Sequence, Tuple, Union
@@ -44,6 +45,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -59,6 +61,14 @@ from tensorflow.python.types import core
 # Type aliases for quantization method protobuf enums.
 _Method = quant_opts_pb2.QuantizationMethod.Method
 _ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
+
+_TensorShape = Sequence[Union[int, None]]
+
+_PerChannelQuantizedOps = (
+    'UniformQuantizedConvolution',
+    'UniformQuantizedConvolutionHybrid',
+    'UniformQuantizedDotHybrid',
+)
 
 
 def _is_variable(node_def: node_def_pb2.NodeDef) -> bool:
@@ -212,12 +222,11 @@ class QuantizationOptionsTest(quantize_model_test_base.QuantizedModelTest):
   def test_static_range_quantization_by_default(self):
     model = self.SimpleModel()
 
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
+    saved_model_save.save(model, self._input_saved_model_path)
 
     # Use default QuantizationOptions.
     converted_model = quantize_model.quantize(
-        input_saved_model_path,
+        self._input_saved_model_path,
         representative_dataset=self._simple_model_data_gen())
 
     self.assertIsNotNone(converted_model)
@@ -228,13 +237,12 @@ class QuantizationOptionsTest(quantize_model_test_base.QuantizedModelTest):
     # by checking that it complains about representative_dataset when it is
     # not provided.
     with self.assertRaisesRegex(ValueError, 'representative_dataset'):
-      quantize_model.quantize(input_saved_model_path)
+      quantize_model.quantize(self._input_saved_model_path)
 
   def test_method_unspecified_raises_value_error(self):
     model = self.SimpleModel()
 
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
+    saved_model_save.save(model, self._input_saved_model_path)
 
     options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -242,13 +250,12 @@ class QuantizationOptionsTest(quantize_model_test_base.QuantizedModelTest):
 
     with self.assertRaises(ValueError):
       quantize_model.quantize(
-          input_saved_model_path, quantization_options=options)
+          self._input_saved_model_path, quantization_options=options)
 
   def test_invalid_method_raises_value_error(self):
     model = self.SimpleModel()
 
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
+    saved_model_save.save(model, self._input_saved_model_path)
 
     # Set an invalid value of -1 to QuantizationMethod.method.
     options = quant_opts_pb2.QuantizationOptions(
@@ -256,13 +263,12 @@ class QuantizationOptionsTest(quantize_model_test_base.QuantizedModelTest):
 
     with self.assertRaises(ValueError):
       quantize_model.quantize(
-          input_saved_model_path, quantization_options=options)
+          self._input_saved_model_path, quantization_options=options)
 
   def test_per_channel_for_non_uniform_opset_raises_value_error(self):
     model = self.SimpleModel()
 
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
+    saved_model_save.save(model, self._input_saved_model_path)
 
     options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -272,7 +278,7 @@ class QuantizationOptionsTest(quantize_model_test_base.QuantizedModelTest):
 
     with self.assertRaises(ValueError):
       quantize_model.quantize(
-          input_saved_model_path, quantization_options=options)
+          self._input_saved_model_path, quantization_options=options)
 
 
 class TensorNamePreservationTest(quantize_model_test_base.QuantizedModelTest):
@@ -320,22 +326,26 @@ class TensorNamePreservationTest(quantize_model_test_base.QuantizedModelTest):
         'duplicate_outputs': model.duplicate_outputs,
         'return_higher_index_only': model.return_higher_index_only,
     }
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path, signatures=signatures)
+    saved_model_save.save(
+        model, self._input_saved_model_path, signatures=signatures)
 
     tags = {tag_constants.SERVING}
     original_signature_map = save_model.get_signatures_from_saved_model(
-        input_saved_model_path, signature_keys=signatures.keys(), tags=tags)
+        self._input_saved_model_path,
+        signature_keys=signatures.keys(),
+        tags=tags)
 
-    output_directory = self.create_tempdir('output').full_path
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE),
         op_set=quant_opts_pb2.TF)
-    quantize_model.quantize(input_saved_model_path, signatures.keys(), tags,
-                            output_directory, quantization_options)
+    quantize_model.quantize(self._input_saved_model_path, signatures.keys(),
+                            tags, self._output_saved_model_path,
+                            quantization_options)
     converted_signature_map = save_model.get_signatures_from_saved_model(
-        output_directory, signature_keys=signatures.keys(), tags=tags)
+        self._output_saved_model_path,
+        signature_keys=signatures.keys(),
+        tags=tags)
 
     # The original and converted model should have the same signature map.
     self.assertAllInSet(
@@ -358,25 +368,24 @@ class TensorNamePreservationTest(quantize_model_test_base.QuantizedModelTest):
       signature_map = {'main': signature}
 
       tags = {tag_constants.SERVING}
-      saved_model_path = self.create_tempdir('input').full_path
-      v1_builder = builder.SavedModelBuilder(saved_model_path)
+      v1_builder = builder.SavedModelBuilder(self._input_saved_model_path)
       v1_builder.add_meta_graph_and_variables(
           sess, tags, signature_def_map=signature_map)
       v1_builder.save()
 
-    output_directory = self.create_tempdir('output').full_path
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE),
         op_set=quant_opts_pb2.TF)
-    quantize_model.quantize(saved_model_path, signature_map.keys(), tags,
-                            output_directory, quantization_options)
+    quantize_model.quantize(self._input_saved_model_path, signature_map.keys(),
+                            tags, self._output_saved_model_path,
+                            quantization_options)
     converted_signature_map = save_model.get_signatures_from_saved_model(
-        output_directory, signature_keys=signature_map.keys(), tags=tags)
+        self._output_saved_model_path,
+        signature_keys=signature_map.keys(),
+        tags=tags)
     # The original and converted model should have the same signature map.
     self.assertDictEqual(signature_map, converted_signature_map)
-
-_TensorShape = Sequence[Union[int, None]]
 
 
 class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
@@ -405,21 +414,23 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
                      ([None, None, None], [None, None, None])],
           'activation_fn': [None, nn_ops.relu, nn_ops.relu6],
           'has_bias': [True, False],
+          'use_kernel': [True, False]
       }]))
   @test_util.run_in_graph_and_eager_modes
-  def test_qat_matmul_model(
-      self, shapes: Sequence[Tuple[_TensorShape, _TensorShape]],
-      activation_fn: Optional[ops.Operation], has_bias: bool):
+  def test_qat_matmul_model(self, shapes: Sequence[Tuple[_TensorShape,
+                                                         _TensorShape]],
+                            activation_fn: Optional[ops.Operation],
+                            has_bias: bool, use_kernel: bool):
 
     n = 5
     x_shape = [v if v is not None else n for v in shapes[0]]
-    kernel_shape = [v if v is not None else n for v in shapes[1]]
+    y_shape = [v if v is not None else n for v in shapes[1]]
 
     class MatmulModel(module.Module):
 
       def __init__(self, bias: Optional[core.Tensor]):
         self._bias = bias
-        self._kernel = np.random.uniform(size=kernel_shape).astype('f4')
+        self._kernel = np.random.uniform(size=y_shape).astype('f4')
         self._min = (-0.8, -0.8, -0.9)
         self._max = (0.9, 0.9, 1.0)
 
@@ -427,127 +438,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           tensor_spec.TensorSpec(
               name='x', shape=shapes[0], dtype=dtypes.float32)
       ])
-      def matmul(self, x: core.Tensor) -> Mapping[str, core.Tensor]:
-        """A tensor-by-tensor matmul function with fake-quants.
-
-        Args:
-          x: Tensor for matmul
-
-        Returns:
-          The matmul result with fake-quant operation attached.
-        """
-        x = array_ops.fake_quant_with_min_max_vars(
-            x,
-            min=ops.convert_to_tensor(self._min[0]),
-            max=ops.convert_to_tensor(self._max[0]),
-            num_bits=8,
-            narrow_range=False)
-        kernel = array_ops.fake_quant_with_min_max_vars(
-            ops.convert_to_tensor(self._kernel),
-            min=ops.convert_to_tensor(self._min[1]),
-            max=ops.convert_to_tensor(self._max[1]),
-            num_bits=8,
-            narrow_range=False)
-
-        out = math_ops.matmul(x, kernel)
-        if self._bias is not None:
-          out = nn_ops.bias_add(out, self._bias)
-        if activation_fn is not None:
-          out = activation_fn(out)
-        out = array_ops.fake_quant_with_min_max_vars(
-            out,
-            min=ops.convert_to_tensor(self._min[2]),
-            max=ops.convert_to_tensor(self._max[2]),
-            num_bits=8,
-            narrow_range=False)
-        return {'output': out}
-
-    np.random.seed(1234)
-    bias = None
-    if has_bias:
-      bias_shape = shapes[1][-1]
-      if bias_shape is not None:
-        bias = array_ops.constant(
-            np.random.uniform(size=[shapes[1][-1]]), dtype=dtypes.float32)
-    model = MatmulModel(bias)
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
-
-    signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-    tags = {tag_constants.SERVING}
-
-    # Check the converted model with TF opset as the baseline.
-    output_directory = self.create_tempdir().full_path
-    quantization_options = quant_opts_pb2.QuantizationOptions(
-        quantization_method=quant_opts_pb2.QuantizationMethod(
-            experimental_method=_ExperimentalMethod.STATIC_RANGE),
-        op_set=quant_opts_pb2.TF)
-
-    converted_model = quantize_model.quantize(input_saved_model_path,
-                                              [signature_key], tags,
-                                              output_directory,
-                                              quantization_options)
-    self.assertIsNotNone(converted_model)
-    self.assertCountEqual(converted_model.signatures._signatures.keys(),
-                          {signature_key})
-
-    x = array_ops.constant(
-        np.random.uniform(size=x_shape), dtype=dtypes.float32)
-
-    expected_outputs = model.matmul(x)
-    got_outputs = converted_model.signatures[signature_key](x=x)
-    self.assertAllClose(expected_outputs, got_outputs, atol=1e-1)
-
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
-
-    # Check the converted model in the XLA opset.
-    quantization_options = quant_opts_pb2.QuantizationOptions(
-        quantization_method=quant_opts_pb2.QuantizationMethod(
-            experimental_method=_ExperimentalMethod.STATIC_RANGE),
-        op_set=quant_opts_pb2.XLA)
-
-    output_directory = self.create_tempdir().full_path
-    converted_model = quantize_model.quantize(input_saved_model_path,
-                                              [signature_key], tags,
-                                              output_directory,
-                                              quantization_options)
-
-    self.assertIsNotNone(converted_model)
-    self.assertCountEqual(converted_model.signatures._signatures.keys(),
-                          {signature_key})
-    loader = saved_model_loader.SavedModelLoader(output_directory)
-    meta_graphdef = loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(self._contains_op(meta_graphdef, 'XlaDotV2'))
-
-    new_outputs = converted_model.signatures[signature_key](x=x)
-
-    # The difference between TF and XLA path is expected to be small (smaller
-    # or equal to 1 in the quantized domain).
-    self.assertAllClose(new_outputs, expected_outputs, atol=1e-1)
-
-  @parameterized.parameters(
-      parameter_combinations([{
-          'shapes': [([3, 3], [3, 3]), ([3, None], [None, 3]),
-                     ([None, None], [None, None]), ([4, 3, 3], [4, 3, 3]),
-                     ([4, 3, None], [4, None, 3]),
-                     ([None, None, None], [None, None, None])],
-          'activation_fn': [None, nn_ops.relu, nn_ops.relu6],
-          'has_bias': [True, False],
-      }]))
-  @test_util.run_in_graph_and_eager_modes
-  def test_qat_matmul_model_without_kernel(
-      self, shapes: Sequence[Tuple[_TensorShape, _TensorShape]],
-      activation_fn: Optional[ops.Operation], has_bias: bool):
-
-    class MatmulModelWithoutKernel(module.Module):
-
-      def __init__(self, bias: Optional[core.Tensor]):
-        self._bias = bias
-        self._min = (-0.8, -0.8, -0.9)
-        self._max = (0.9, 0.9, 1.0)
+      def matmul_with_kernel(self, x: core.Tensor) -> Mapping[str, core.Tensor]:
+        return self._matmul(x, self._kernel)
 
       @def_function.function(input_signature=[
           tensor_spec.TensorSpec(
@@ -555,17 +447,11 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           tensor_spec.TensorSpec(
               name='y', shape=shapes[1], dtype=dtypes.float32)
       ])
-      def matmul(self, x: core.Tensor,
-                 y: core.Tensor) -> Mapping[str, core.Tensor]:
-        """A tensor-by-tensor matmul function with fake-quants.
+      def matmul_without_kernel(self, x: core.Tensor,
+                                y: core.Tensor) -> Mapping[str, core.Tensor]:
+        return self._matmul(x, y)
 
-        Args:
-          x: First tensor for matmul.
-          y: Second tensor for matmul.
-
-        Returns:
-          The matmul result with fake-quant operation attached.
-        """
+      def _matmul(self, x, y):
         x = array_ops.fake_quant_with_min_max_vars(
             x,
             min=ops.convert_to_tensor(self._min[0]),
@@ -592,79 +478,77 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             narrow_range=False)
         return {'output': out}
 
-    np.random.seed(1234)
     bias = None
     if has_bias:
       bias_shape = shapes[1][-1]
       if bias_shape is not None:
         bias = array_ops.constant(
             np.random.uniform(size=[shapes[1][-1]]), dtype=dtypes.float32)
-    model = MatmulModelWithoutKernel(bias)
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
+    model = MatmulModel(bias)
+    x = array_ops.constant(
+        np.random.uniform(size=x_shape), dtype=dtypes.float32)
+    y = array_ops.constant(
+        np.random.uniform(size=y_shape), dtype=dtypes.float32)
+    if use_kernel:
+      model.matmul = model.matmul_with_kernel
+      model_inputs = {'x': x}
+    else:
+      model.matmul = model.matmul_without_kernel
+      model_inputs = {'x': x, 'y': y}
+
+    saved_model_save.save(
+        model, self._input_saved_model_path, signatures=model.matmul)
 
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     tags = {tag_constants.SERVING}
 
     # Check the converted model with TF opset as the baseline.
-    output_directory = self.create_tempdir().full_path
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE),
         op_set=quant_opts_pb2.TF)
 
-    converted_model = quantize_model.quantize(input_saved_model_path,
+    converted_model = quantize_model.quantize(self._input_saved_model_path,
                                               [signature_key], tags,
-                                              output_directory,
+                                              self._output_saved_model_path,
                                               quantization_options)
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {signature_key})
 
-    n = 5
-    x_shape = [v if v is not None else n for v in shapes[0]]
-    y_shape = [v if v is not None else n for v in shapes[1]]
-
-    x = array_ops.constant(
-        np.random.uniform(size=x_shape), dtype=dtypes.float32)
-    y = array_ops.constant(
-        np.random.uniform(size=y_shape), dtype=dtypes.float32)
-
-    expected_outputs = model.matmul(x, y)
-    got_outputs = converted_model.signatures[signature_key](x=x, y=y)
-    # TODO(b/263335799): The gap must be reduced.
+    expected_outputs = model.matmul(**model_inputs)
+    got_outputs = converted_model.signatures[signature_key](**model_inputs)
     self.assertAllClose(expected_outputs, got_outputs, atol=1e-1)
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
     # Check the converted model in the XLA opset.
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE),
-        enable_two_input_tensors=True,
-        op_set=quant_opts_pb2.XLA)
+        op_set=quant_opts_pb2.XLA,
+        enable_two_input_tensors=not use_kernel)
 
-    output_directory = self.create_tempdir().full_path
-    converted_model = quantize_model.quantize(input_saved_model_path,
+    converted_model = quantize_model.quantize(self._input_saved_model_path,
                                               [signature_key], tags,
-                                              output_directory,
+                                              self._output_saved_model_path_2,
                                               quantization_options)
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {signature_key})
-    loader = saved_model_loader.SavedModelLoader(output_directory)
-    meta_graphdef = loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(self._contains_op(meta_graphdef, 'XlaDotV2'))
+    loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path_2)
+    graphdef = loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_op(graphdef, 'XlaDotV2'))
 
-    new_outputs = converted_model.signatures[signature_key](x=x, y=y)
+    new_outputs = converted_model.signatures[signature_key](**model_inputs)
 
     # The difference between TF and XLA path is expected to be small (smaller
     # or equal to 1 in the quantized domain).
-    # TODO(b/263335799): The gap must be reduced.
     self.assertAllClose(new_outputs, expected_outputs, atol=1e-1)
 
   @parameterized.parameters(
@@ -739,22 +623,20 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     np.random.seed(1234)
     model = ConvModel()
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
+    saved_model_save.save(model, self._input_saved_model_path)
 
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     tags = {tag_constants.SERVING}
 
     # Check the converted model with TF opset as the baseline.
-    output_directory = self.create_tempdir().full_path
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE),
         op_set=quant_opts_pb2.TF)
 
-    converted_model = quantize_model.quantize(input_saved_model_path,
+    converted_model = quantize_model.quantize(self._input_saved_model_path,
                                               [signature_key], tags,
-                                              output_directory,
+                                              self._output_saved_model_path,
                                               quantization_options)
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
@@ -767,10 +649,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         input=ops.convert_to_tensor(input_data))
     self.assertAllClose(expected_outputs, got_outputs, atol=0.00323)
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
     # Check the converted model in the target opset.
     quantization_options = quant_opts_pb2.QuantizationOptions(
@@ -778,19 +660,19 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             experimental_method=_ExperimentalMethod.STATIC_RANGE),
         op_set=target_opset)
 
-    output_directory = self.create_tempdir().full_path
-    converted_model = quantize_model.quantize(input_saved_model_path,
+    converted_model = quantize_model.quantize(self._input_saved_model_path,
                                               [signature_key], tags,
-                                              output_directory,
+                                              self._output_saved_model_path_2,
                                               quantization_options)
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {signature_key})
-    loader = saved_model_loader.SavedModelLoader(output_directory)
-    meta_graphdef = loader.get_meta_graph_def_from_tags(tags)
+    loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path_2)
+    graphdef = loader.get_meta_graph_def_from_tags(tags).graph_def
     if target_opset == quant_opts_pb2.XLA:
-      self.assertTrue(self._contains_op(meta_graphdef, 'XlaConvV2'))
+      self.assertTrue(self._contains_op(graphdef, 'XlaConvV2'))
 
     new_outputs = converted_model.signatures[signature_key](
         input=ops.convert_to_tensor(input_data))
@@ -798,16 +680,164 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # or equal to 1 in the quantized domain).
     self.assertAllClose(new_outputs, got_outputs, atol=0.00154)
 
+  # Currently, only some specific forms of equantions are supported.
+  @parameterized.parameters(
+      parameter_combinations([{
+          'equation': ['abc,cd->abd', 'abcd,cde->abe'],
+          'shape_unknown': [True, False],
+          'activation_fn': [None, nn_ops.relu, nn_ops.relu6],
+          'has_bias': [True, False],
+          'use_kernel': [True, False]
+      }]))
+  @test_util.run_in_graph_and_eager_modes
+  def test_qat_einsum_model(self, equation: str, shape_unknown: bool,
+                            activation_fn: Optional[ops.Operation],
+                            has_bias: bool, use_kernel: bool):
+    comma_pos = equation.find(',')
+    arrow_pos = equation.find('->')
+    x_labels = equation[0:comma_pos]
+    y_labels = equation[comma_pos + 1:arrow_pos]
+
+    label_to_size = {'a': 2, 'b': 3, 'c': 4, 'd': 5, 'e': 6}
+    x_shape = [label_to_size.get(x_label) for x_label in x_labels]
+    y_shape = [label_to_size.get(y_label) for y_label in y_labels]
+    x_signature = [None for _ in x_labels] if shape_unknown else list(x_shape)
+    y_signature = [None for _ in y_labels] if shape_unknown else list(y_shape)
+
+    class EinsumModel(module.Module):
+
+      def __init__(self, bias: Optional[core.Tensor]):
+        self._bias = bias
+        self._kernel = np.random.uniform(size=y_shape).astype('f4')
+        self._min = (-0.8, -0.8, -0.9)
+        self._max = (0.9, 0.9, 1.0)
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(
+              name='x', shape=x_signature, dtype=dtypes.float32)
+      ])
+      def einsum_with_kernel(self, x: core.Tensor) -> Mapping[str, core.Tensor]:
+        return self._einsum(x, self._kernel)
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(
+              name='x', shape=x_signature, dtype=dtypes.float32),
+          tensor_spec.TensorSpec(
+              name='y', shape=y_signature, dtype=dtypes.float32)
+      ])
+      def einsum_without_kernel(self, x: core.Tensor,
+                                y: core.Tensor) -> Mapping[str, core.Tensor]:
+        return self._einsum(x, y)
+
+      def _einsum(self, x, y):
+        x = array_ops.fake_quant_with_min_max_vars(
+            x,
+            min=ops.convert_to_tensor(self._min[0]),
+            max=ops.convert_to_tensor(self._max[0]),
+            num_bits=8,
+            narrow_range=False)
+        y = array_ops.fake_quant_with_min_max_vars(
+            y,
+            min=ops.convert_to_tensor(self._min[1]),
+            max=ops.convert_to_tensor(self._max[1]),
+            num_bits=8,
+            narrow_range=False)
+
+        out = special_math_ops.einsum(equation, x, y)
+        if self._bias is not None:
+          out = nn_ops.bias_add(out, self._bias)
+        if activation_fn is not None:
+          out = activation_fn(out)
+        out = array_ops.fake_quant_with_min_max_vars(
+            out,
+            min=ops.convert_to_tensor(self._min[2]),
+            max=ops.convert_to_tensor(self._max[2]),
+            num_bits=8,
+            narrow_range=False)
+        return {'output': out}
+
+    bias = None
+    if has_bias:
+      bias_shape = y_signature[-1]
+      if bias_shape is not None:
+        bias = array_ops.constant(
+            np.random.uniform(size=[y_signature[-1]]), dtype=dtypes.float32)
+    model = EinsumModel(bias)
+    x = array_ops.constant(
+        np.random.uniform(size=x_shape), dtype=dtypes.float32)
+    y = array_ops.constant(
+        np.random.uniform(size=y_shape), dtype=dtypes.float32)
+    if use_kernel:
+      model.einsum = model.einsum_with_kernel
+      model_inputs = {'x': x}
+    else:
+      model.einsum = model.einsum_without_kernel
+      model_inputs = {'x': x, 'y': y}
+
+    saved_model_save.save(
+        model, self._input_saved_model_path, signatures=model.einsum)
+
+    signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    tags = {tag_constants.SERVING}
+
+    # Check the converted model with TF opset as the baseline.
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE),
+        op_set=quant_opts_pb2.TF)
+
+    converted_model = quantize_model.quantize(self._input_saved_model_path,
+                                              [signature_key], tags,
+                                              self._output_saved_model_path,
+                                              quantization_options)
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {signature_key})
+
+    expected_outputs = model.einsum(**model_inputs)
+    got_outputs = converted_model.signatures[signature_key](**model_inputs)
+    self.assertAllClose(expected_outputs, got_outputs, atol=1e-1)
+
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
+
+    # Check the converted model in the XLA opset.
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE),
+        op_set=quant_opts_pb2.XLA,
+        enable_two_input_tensors=not use_kernel)
+
+    converted_model = quantize_model.quantize(self._input_saved_model_path,
+                                              [signature_key], tags,
+                                              self._output_saved_model_path_2,
+                                              quantization_options)
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {signature_key})
+    loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path_2)
+    graphdef = loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_op(graphdef, 'XlaDotV2'))
+
+    new_outputs = converted_model.signatures[signature_key](**model_inputs)
+
+    # The difference between TF and XLA path is expected to be small (smaller
+    # or equal to 1 in the quantized domain).
+    self.assertAllClose(new_outputs, expected_outputs, atol=1e-1)
+
   # TODO(b/244276332): Allow table initialization in TF2 eager mode.
   @test_util.deprecated_graph_mode_only
   def test_qat_vocab_table_lookup_model(self):
     tags = {tag_constants.SERVING}
     signature_def_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-    input_model_dir = self.create_tempdir('input').full_path
 
     # Create and save a simple model that involves a hash table.
     inputs, outputs = self._create_and_save_vocab_table_lookup_qat_model_tf1(
-        input_model_dir, tags, signature_def_key)
+        self._input_saved_model_path, tags, signature_def_key)
 
     # Make sure that the desired input key and output key is present.
     self.assertIn('input_vocabs', inputs.keys())
@@ -823,13 +853,12 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
 
     signature_def_keys = [signature_def_key]
-    output_model_dir = self.create_tempdir('output').full_path
 
     quantize_model.quantize(
-        input_model_dir,
+        self._input_saved_model_path,
         signature_def_keys,
         tags,
-        output_model_dir,
+        self._output_saved_model_path,
         quantization_options,
         representative_dataset=repr_ds)
 
@@ -837,12 +866,15 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # successfully.
     with session.Session(graph=ops.Graph()) as sess:
       output_meta_graph_def = saved_model_loader.load(
-          sess, tags=tags, export_dir=output_model_dir)
+          sess, tags=tags, export_dir=self._output_saved_model_path)
 
       # The graph should contain a quantized function call (it contains a
       # single f32 matmul node).
       self.assertTrue(
-          self._contains_quantized_function_call(output_meta_graph_def))
+          self._contains_quantized_function_call(
+              output_meta_graph_def.graph_def
+          )
+      )
       self.assertCountEqual(output_meta_graph_def.signature_def.keys(),
                             signature_def_keys)
 
@@ -915,22 +947,20 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         }
 
     model = ConvModelWithVariable()
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
+    saved_model_save.save(model, self._input_saved_model_path)
 
     signature_keys = [signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
     tags = {tag_constants.SERVING}
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
 
     converted_model = quantize_model.quantize(
-        input_saved_model_path,
+        self._input_saved_model_path,
         signature_keys,
         tags,
-        output_directory,
+        self._output_saved_model_path,
         quantization_options,
         representative_dataset=gen_data())
 
@@ -938,10 +968,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           signature_keys)
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
   # TODO(b/263830952): Use dictionaries instead of tuples for parameters.
   @parameterized.named_parameters(
@@ -992,8 +1022,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     np.random.seed(1234)
     model = self._create_conv2d_model(input_shape, filter_shape, has_bias,
                                       has_batch_norm, activation_fn)
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
+    saved_model_save.save(model, self._input_saved_model_path)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(8):
@@ -1005,7 +1034,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         }
 
     tags = {tag_constants.SERVING}
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -1014,35 +1042,39 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         enable_per_channel_quantization=enable_per_channel_quantization)
 
     converted_model = quantize_model.quantize(
-        input_saved_model_path, ['serving_default'],
+        self._input_saved_model_path, ['serving_default'],
         tags,
-        output_directory,
+        self._output_saved_model_path,
         quantization_options,
         representative_dataset=data_gen())
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
     if target_opset == quant_opts_pb2.XLA:
-      self.assertTrue(self._contains_op(output_meta_graphdef, 'XlaConvV2'))
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
     elif target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
       # _contains_op for UQ ops also checks _contains_quantized_function_call.
       self.assertTrue(
-          self._contains_op(output_meta_graphdef,
-                            'UniformQuantizedConvolution'))
+          self._contains_op(output_graphdef, 'UniformQuantizedConvolution')
+      )
       if enable_per_channel_quantization:
         quantized_axis_attr = attr_value_pb2.AttrValue(i=3)
-        self.assertTrue(
-            self._contains_op(output_meta_graphdef,
-                              'UniformQuantizedConvolution',
-                              'rhs_quantization_axis', quantized_axis_attr))
+        self.assertEqual(
+            self._count_ops(
+                output_graphdef,
+                _PerChannelQuantizedOps,
+                'rhs_quantization_axis',
+                quantized_axis_attr,
+            ),
+            self._count_ops(output_graphdef, _PerChannelQuantizedOps),
+        )
     else:
-      self.assertTrue(
-          self._contains_quantized_function_call(output_meta_graphdef))
-    self.assertFalse(
-        self._contains_op(output_meta_graphdef, 'FusedBatchNormV3'))
+      self.assertTrue(self._contains_quantized_function_call(output_graphdef))
+    self.assertFalse(self._contains_op(output_graphdef, 'FusedBatchNormV3'))
 
   # TODO(b/263830952): Use dictionaries instead of tuples for parameters.
   @parameterized.named_parameters(
@@ -1095,8 +1127,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
                                                 has_bias, has_batch_norm,
                                                 activation_fn)
     np.random.seed(1234)
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
+    saved_model_save.save(model, self._input_saved_model_path)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(8):
@@ -1108,7 +1139,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         }
 
     tags = {tag_constants.SERVING}
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -1117,36 +1147,41 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         enable_per_channel_quantization=enable_per_channel_quantization)
 
     converted_model = quantize_model.quantize(
-        input_saved_model_path, ['serving_default'],
+        self._input_saved_model_path, ['serving_default'],
         tags,
-        output_directory,
+        self._output_saved_model_path,
         quantization_options,
         representative_dataset=data_gen())
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
     if target_opset == quant_opts_pb2.XLA:
       self.assertTrue(
-          self._contains_op(output_meta_graphdef, 'DepthwiseConv2dNative'))
+          self._contains_op(output_graphdef, 'DepthwiseConv2dNative')
+      )
     elif target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
       # _contains_op for UQ ops also checks _contains_quantized_function_call.
       self.assertTrue(
-          self._contains_op(output_meta_graphdef,
-                            'UniformQuantizedConvolution'))
+          self._contains_op(output_graphdef, 'UniformQuantizedConvolution')
+      )
       if enable_per_channel_quantization:
         quantized_axis_attr = attr_value_pb2.AttrValue(i=3)
-        self.assertTrue(
-            self._contains_op(output_meta_graphdef,
-                              'UniformQuantizedConvolution',
-                              'rhs_quantization_axis', quantized_axis_attr))
+        self.assertEqual(
+            self._count_ops(
+                output_graphdef,
+                _PerChannelQuantizedOps,
+                'rhs_quantization_axis',
+                quantized_axis_attr,
+            ),
+            self._count_ops(output_graphdef, _PerChannelQuantizedOps),
+        )
     else:
-      self.assertTrue(
-          self._contains_quantized_function_call(output_meta_graphdef))
-    self.assertFalse(
-        self._contains_op(output_meta_graphdef, 'FusedBatchNormV3'))
+      self.assertTrue(self._contains_quantized_function_call(output_graphdef))
+    self.assertFalse(self._contains_op(output_graphdef, 'FusedBatchNormV3'))
 
   @parameterized.parameters(*parameter_combinations([
       {
@@ -1172,9 +1207,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     input_shape = (*lhs_batch_size, 1, 1024)
     filter_shape = (*rhs_batch_size, 1024, 3)
     static_input_shape = [dim if dim is not None else 2 for dim in input_shape]
-    input_saved_model_path = self.create_tempdir('input').full_path
     model = self._create_matmul_model(input_shape, filter_shape,
-                                      input_saved_model_path, has_bias,
+                                      self._input_saved_model_path, has_bias,
                                       activation_fn)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
@@ -1188,26 +1222,25 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         }
 
     tags = {tag_constants.SERVING}
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
 
     converted_model = quantize_model.quantize(
-        input_saved_model_path, ['serving_default'],
+        self._input_saved_model_path, ['serving_default'],
         tags,
-        output_directory,
+        self._output_saved_model_path,
         quantization_options,
         representative_dataset=data_gen())
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
     input_data = ops.convert_to_tensor(
         np.random.uniform(low=0.0, high=1.0,
@@ -1223,21 +1256,21 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             experimental_method=_ExperimentalMethod.STATIC_RANGE),
         op_set=target_opset)
 
-    output_directory = self.create_tempdir().full_path
     converted_model = quantize_model.quantize(
-        input_saved_model_path, ['serving_default'],
+        self._input_saved_model_path, ['serving_default'],
         tags,
-        output_directory,
+        self._output_saved_model_path_2,
         quantization_options,
         representative_dataset=data_gen())
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
-    loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = loader.get_meta_graph_def_from_tags(tags)
+    loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path_2)
+    output_graphdef = loader.get_meta_graph_def_from_tags(tags).graph_def
     if target_opset == quant_opts_pb2.XLA:
-      self.assertTrue(self._contains_op(output_meta_graphdef, 'XlaDotV2'))
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaDotV2'))
 
     new_outputs = converted_model.signatures['serving_default'](
         input_tensor=ops.convert_to_tensor(input_data))
@@ -1252,9 +1285,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
                             weight_shape: Sequence[int],
                             bias_shape: Sequence[int],
                             target_opset: quant_opts_pb2.OpSet):
-    input_saved_model_path = self.create_tempdir('input').full_path
     model = self._create_einsum_model(
-        input_saved_model_path,
+        self._input_saved_model_path,
         equation,
         input_shape,
         weight_shape,
@@ -1271,26 +1303,25 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         }
 
     tags = {tag_constants.SERVING}
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
 
     converted_model = quantize_model.quantize(
-        input_saved_model_path, ['serving_default'],
+        self._input_saved_model_path, ['serving_default'],
         tags,
-        output_directory,
+        self._output_saved_model_path,
         quantization_options,
         representative_dataset=data_gen())
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
     input_data = ops.convert_to_tensor(
         np.random.uniform(low=0.0, high=1.0, size=input_shape).astype('f4'))
@@ -1305,21 +1336,21 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             experimental_method=_ExperimentalMethod.STATIC_RANGE),
         op_set=target_opset)
 
-    output_directory = self.create_tempdir().full_path
     converted_model = quantize_model.quantize(
-        input_saved_model_path, ['serving_default'],
+        self._input_saved_model_path, ['serving_default'],
         tags,
-        output_directory,
+        self._output_saved_model_path_2,
         quantization_options,
         representative_dataset=data_gen())
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path_2)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
     if target_opset == quant_opts_pb2.XLA:
-      self.assertTrue(self._contains_op(output_meta_graphdef, 'XlaDotV2'))
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaDotV2'))
 
     new_outputs = converted_model.signatures['serving_default'](
         input_tensor=ops.convert_to_tensor(input_data))
@@ -1329,20 +1360,17 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @test_util.deprecated_graph_mode_only
   def test_matmul_ptq_model_with_unfreeze_constants(self):
-    input_saved_model_path = self.create_tempdir('input').full_path
-
     # Uses large weight to exceed the constant size threshold of 64KiB
     # (specified by `kDefaultConstantSizeThresholdInBytes`) for unfreezing.
     self._create_matmul_model(
         input_shape=(1, 20),
         weight_shape=(20, 4096),
-        saved_model_path=input_saved_model_path)
+        saved_model_path=self._input_saved_model_path)
 
     repr_ds = self._create_data_generator(
         input_key='input_tensor', shape=(1, 20), num_examples=2)
 
     tags = {tag_constants.SERVING}
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -1351,9 +1379,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
 
     converted_model = quantize_model.quantize(
-        input_saved_model_path, ['serving_default'],
+        self._input_saved_model_path, ['serving_default'],
         tags,
-        output_directory,
+        self._output_saved_model_path,
         quantization_options,
         representative_dataset=repr_ds)
 
@@ -1362,18 +1390,19 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
                           {'serving_default'})
 
     # Confirms that quantization is applied to the model.
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
     # Tests that there are variables in the model.
-    variable_node_defs = _find_variables(output_meta_graphdef.graph_def)
+    variable_node_defs = _find_variables(output_graphdef)
     self.assertLen(variable_node_defs, 1)
 
     # Reads the variables from the checkpoint file and matches with the
     # variables found in the graph.
-    checkpoint_path = os.path.join(output_directory, 'variables', 'variables')
+    checkpoint_path = os.path.join(self._output_saved_model_path, 'variables',
+                                   'variables')
     var_name_and_shapes = checkpoint_utils.list_variables(checkpoint_path)
 
     # Checks that each variable's name and shape match.
@@ -1394,11 +1423,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     model = self._create_gather_model(use_variable)
 
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
+    saved_model_save.save(model, self._input_saved_model_path)
 
     tags = {tag_constants.SERVING}
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -1412,9 +1439,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         dtype=dtypes.int64)
 
     converted_model = quantize_model.quantize(
-        input_saved_model_path, ['serving_default'],
+        self._input_saved_model_path, ['serving_default'],
         tags,
-        output_directory,
+        self._output_saved_model_path,
         quantization_options,
         representative_dataset=data_gen)
 
@@ -1422,24 +1449,22 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
     # Currently gather is not supported.
-    self.assertFalse(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    self.assertFalse(self._contains_quantized_function_call(output_graphdef))
 
   @test_util.run_in_graph_and_eager_modes
   def test_model_ptq_use_representative_samples_list(self):
-    input_savedmodel_dir = self.create_tempdir('input').full_path
     self._create_matmul_model(
         input_shape=(1, 1024),
         weight_shape=(1024, 3),
-        saved_model_path=input_savedmodel_dir)
+        saved_model_path=self._input_saved_model_path)
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
-    output_savedmodel_dir = self.create_tempdir().full_path
     tags = {tag_constants.SERVING}
 
     representative_dataset: repr_dataset.RepresentativeDataset = [{
@@ -1447,31 +1472,30 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     } for _ in range(8)]
 
     converted_model = quantize_model.quantize(
-        input_savedmodel_dir, ['serving_default'],
-        output_directory=output_savedmodel_dir,
+        self._input_saved_model_path, ['serving_default'],
+        tags,
+        self._output_saved_model_path,
         quantization_options=quantization_options,
         representative_dataset=representative_dataset)
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
-    output_loader = saved_model_loader.SavedModelLoader(output_savedmodel_dir)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
   @test_util.run_in_graph_and_eager_modes
   def test_model_ptq_use_ndarray_representative_dataset(self):
-    input_savedmodel_dir = self.create_tempdir('input').full_path
     self._create_matmul_model(
         input_shape=(1, 1024),
         weight_shape=(1024, 3),
-        saved_model_path=input_savedmodel_dir)
+        saved_model_path=self._input_saved_model_path)
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
-    output_savedmodel_dir = self.create_tempdir().full_path
     tags = {tag_constants.SERVING}
 
     # Use np.ndarrays instead of tf.Tensors for the representative dataset.
@@ -1480,32 +1504,30 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     } for _ in range(4)]
 
     converted_model = quantize_model.quantize(
-        input_savedmodel_dir, ['serving_default'],
-        tags=tags,
-        output_directory=output_savedmodel_dir,
+        self._input_saved_model_path, ['serving_default'],
+        tags,
+        self._output_saved_model_path,
         quantization_options=quantization_options,
         representative_dataset=representative_dataset)
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
-    output_loader = saved_model_loader.SavedModelLoader(output_savedmodel_dir)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
   @test_util.run_in_graph_and_eager_modes
   def test_model_ptq_use_python_list_representative_dataset(self):
-    input_savedmodel_dir = self.create_tempdir('input').full_path
     self._create_matmul_model(
         input_shape=(1, 1024),
         weight_shape=(1024, 3),
-        saved_model_path=input_savedmodel_dir)
+        saved_model_path=self._input_saved_model_path)
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
-    output_savedmodel_dir = self.create_tempdir().full_path
     tags = {tag_constants.SERVING}
 
     # Use plain python lists as representative samples.
@@ -1514,32 +1536,30 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     } for _ in range(4)]
 
     converted_model = quantize_model.quantize(
-        input_savedmodel_dir, ['serving_default'],
-        tags=tags,
-        output_directory=output_savedmodel_dir,
+        self._input_saved_model_path, ['serving_default'],
+        tags,
+        self._output_saved_model_path,
         quantization_options=quantization_options,
         representative_dataset=representative_dataset)
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
-    output_loader = saved_model_loader.SavedModelLoader(output_savedmodel_dir)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
   @test_util.run_in_graph_and_eager_modes
   def test_model_ptq_call_twice(self):
-    input_savedmodel_dir = self.create_tempdir('input').full_path
     self._create_matmul_model(
         input_shape=(1, 1024),
         weight_shape=(1024, 3),
-        saved_model_path=input_savedmodel_dir)
+        saved_model_path=self._input_saved_model_path)
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
-    output_savedmodel_dir_1 = self.create_tempdir().full_path
     tags = {tag_constants.SERVING}
     signature_def_keys = [signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
 
@@ -1549,51 +1569,48 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     # Test the first run.
     converted_model_1 = quantize_model.quantize(
-        input_savedmodel_dir,
+        self._input_saved_model_path,
         signature_def_keys,
-        output_directory=output_savedmodel_dir_1,
+        output_directory=self._output_saved_model_path,
         quantization_options=quantization_options,
         representative_dataset=representative_dataset)
 
     self.assertIsNotNone(converted_model_1)
     self.assertCountEqual(converted_model_1.signatures._signatures.keys(),
                           signature_def_keys)
-    output_loader = saved_model_loader.SavedModelLoader(output_savedmodel_dir_1)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
     # Test the second run on the same model.
-    output_savedmodel_dir_2 = self.create_tempdir().full_path
     converted_model_2 = quantize_model.quantize(
-        input_savedmodel_dir,
+        self._input_saved_model_path,
         signature_def_keys,
-        output_directory=output_savedmodel_dir_2,
+        output_directory=self._output_saved_model_path_2,
         quantization_options=quantization_options,
         representative_dataset=representative_dataset)
 
     self.assertIsNotNone(converted_model_2)
     self.assertCountEqual(converted_model_2.signatures._signatures.keys(),
                           signature_def_keys)
-    output_loader = saved_model_loader.SavedModelLoader(output_savedmodel_dir_2)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path_2)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
   # tf.data.Dataset is as an Iterable (thus can be used as representative
   # dataset) only in TF2 (eager mode).
   @test_util.run_v2_only
   def test_model_ptq_use_tf_dataset_for_representative_dataset(self):
-    input_savedmodel_dir = self.create_tempdir('input').full_path
     self._create_matmul_model(
         input_shape=(1, 1024),
         weight_shape=(1024, 3),
-        saved_model_path=input_savedmodel_dir)
+        saved_model_path=self._input_saved_model_path)
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
-    output_savedmodel_dir = self.create_tempdir().full_path
     tags = {tag_constants.SERVING}
 
     representative_samples = [{
@@ -1609,27 +1626,26 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         })
 
     converted_model = quantize_model.quantize(
-        input_savedmodel_dir, ['serving_default'],
-        output_directory=output_savedmodel_dir,
+        self._input_saved_model_path, ['serving_default'],
+        tags,
+        self._output_saved_model_path,
         quantization_options=quantization_options,
         representative_dataset=representative_dataset)
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
-    output_loader = saved_model_loader.SavedModelLoader(output_savedmodel_dir)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
   @test_util.run_in_graph_and_eager_modes
   def test_model_ptq_no_representative_sample_shows_warnings(self):
-    input_savedmodel_dir = self.create_tempdir('input').full_path
     self._create_matmul_model(
         input_shape=(1, 1024),
         weight_shape=(1024, 3),
-        saved_model_path=input_savedmodel_dir)
-    output_savedmodel_dir = self.create_tempdir().full_path
+        saved_model_path=self._input_saved_model_path)
 
     tags = {tag_constants.SERVING}
     quantization_options = quant_opts_pb2.QuantizationOptions(
@@ -1643,10 +1659,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
       try:
         converted_model = quantize_model.quantize(
-            input_savedmodel_dir,
+            self._input_saved_model_path,
             ['serving_default'],
             tags,
-            output_savedmodel_dir,
+            self._output_saved_model_path,
             quantization_options,
             # Put no sample into the representative dataset to make calibration
             # impossible.
@@ -1667,11 +1683,11 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
-    output_loader = saved_model_loader.SavedModelLoader(output_savedmodel_dir)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
     # Model is not quantized because there was no sample data for calibration.
-    self.assertFalse(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    self.assertFalse(self._contains_quantized_function_call(output_graphdef))
 
   @test_util.run_in_graph_and_eager_modes
   def test_model_ptq_with_uncalibrated_subgraph(self):
@@ -1710,8 +1726,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         return {'output': out}
 
     model = IfModel()
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
+    saved_model_save.save(model, self._input_saved_model_path)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(8):
@@ -1723,7 +1738,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         }
 
     tags = {tag_constants.SERVING}
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -1736,9 +1750,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
       try:
         converted_model = quantize_model.quantize(
-            input_saved_model_path, ['serving_default'],
+            self._input_saved_model_path, ['serving_default'],
             tags,
-            output_directory,
+            self._output_saved_model_path,
             quantization_options,
             representative_dataset=data_gen())
       finally:
@@ -1761,10 +1775,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
   # Run this test only with the eager mode.
   @test_util.run_v2_only
@@ -1781,10 +1795,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
                 tensor_spec.TensorSpec(
                     shape=(1, 3, 4, 3), dtype=dtypes.float32)),
     }
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path, signatures=signatures)
+    saved_model_save.save(
+        model, self._input_saved_model_path, signatures=signatures)
 
-    output_directory = self.create_tempdir().full_path
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
@@ -1815,10 +1828,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     tags = {tag_constants.SERVING}
     converted_model = quantize_model.quantize(
-        input_saved_model_path,
+        self._input_saved_model_path,
         signature_keys=['sig1', 'sig2'],
         tags=tags,
-        output_directory=output_directory,
+        output_directory=self._output_saved_model_path,
         quantization_options=quantization_options,
         representative_dataset={
             'sig1': data_gen_sig1(),
@@ -1828,10 +1841,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'sig1', 'sig2'})
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
   # Run this test only with the eager mode.
   @test_util.run_v2_only
@@ -1848,10 +1861,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
                 tensor_spec.TensorSpec(
                     shape=(1, 3, 4, 3), dtype=dtypes.float32)),
     }
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path, signatures=signatures)
+    saved_model_save.save(
+        model, self._input_saved_model_path, signatures=signatures)
 
-    output_directory = self.create_tempdir().full_path
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
@@ -1864,21 +1876,20 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     with self.assertRaisesRegex(ValueError, 'Invalid representative dataset.'):
       quantize_model.quantize(
-          input_saved_model_path,
+          self._input_saved_model_path,
           signature_keys=['sig1', 'sig2'],
           tags={tag_constants.SERVING},
-          output_directory=output_directory,
+          output_directory=self._output_saved_model_path,
           quantization_options=quantization_options,
           representative_dataset=invalid_dataset)
 
   @test_util.run_in_graph_and_eager_modes
   def test_ptq_model_with_tf1_saved_model_with_variable_for_conv2d(self):
-    input_saved_model_path = self.create_tempdir('input').full_path
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     tags = {tag_constants.SERVING}
 
     input_placeholder = self._create_and_save_tf1_conv_model(
-        input_saved_model_path,
+        self._input_saved_model_path,
         signature_key,
         tags,
         input_key='x',
@@ -1886,7 +1897,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         use_variable=True)
 
     signature_keys = [signature_key]
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -1896,10 +1906,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         input_key='x', shape=input_placeholder.shape)
 
     converted_model = quantize_model.quantize(
-        input_saved_model_path,
+        self._input_saved_model_path,
         signature_keys,
         tags,
-        output_directory,
+        self._output_saved_model_path,
         quantization_options,
         representative_dataset=data_gen)
 
@@ -1907,10 +1917,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           signature_keys)
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
   @parameterized.named_parameters(
       ('use_constant', False),
@@ -1919,12 +1929,11 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   @test_util.run_in_graph_and_eager_modes
   def test_ptq_model_with_tf1_saved_model_with_variable_for_gather(
       self, use_variable):
-    input_saved_model_path = self.create_tempdir('input').full_path
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     tags = {tag_constants.SERVING}
 
     input_placeholder = self._create_and_save_tf1_gather_model(
-        input_saved_model_path,
+        self._input_saved_model_path,
         signature_key,
         tags,
         input_key='x',
@@ -1932,7 +1941,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         use_variable=use_variable)
 
     signature_keys = [signature_key]
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -1946,10 +1954,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         dtype=dtypes.int64)
 
     converted_model = quantize_model.quantize(
-        input_saved_model_path,
+        self._input_saved_model_path,
         signature_keys,
         tags,
-        output_directory,
+        self._output_saved_model_path,
         quantization_options,
         representative_dataset=data_gen)
 
@@ -1957,20 +1965,19 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           signature_keys)
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
     # Quantization is not currently supported for gather.
-    self.assertFalse(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    self.assertFalse(self._contains_quantized_function_call(output_graphdef))
 
   @test_util.deprecated_graph_mode_only
   def test_ptq_model_with_variable_tf1_saved_model_unfreeze_constants(self):
-    input_saved_model_path = self.create_tempdir('input').full_path
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     tags = {tag_constants.SERVING}
 
     input_placeholder = self._create_and_save_tf1_conv_model(
-        input_saved_model_path,
+        self._input_saved_model_path,
         signature_key,
         tags,
         input_key='x',
@@ -1982,7 +1989,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         use_variable=True)
 
     signature_keys = [signature_key]
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -1994,10 +2000,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         input_key='x', shape=input_placeholder.shape, num_examples=2)
 
     converted_model = quantize_model.quantize(
-        input_saved_model_path,
+        self._input_saved_model_path,
         signature_keys,
         tags,
-        output_directory,
+        self._output_saved_model_path,
         quantization_options,
         representative_dataset=repr_ds)
     self.assertIsNotNone(converted_model)
@@ -2005,18 +2011,19 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
                           {'serving_default'})
 
     # Checks that quantization is applied.
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
     # Tests that there are variables in the model.
-    variable_node_defs = _find_variables(output_meta_graphdef.graph_def)
+    variable_node_defs = _find_variables(output_graphdef)
     self.assertLen(variable_node_defs, 1)
 
     # Reads the variables from the checkpoint file and matches with the
     # variables found in the graph.
-    checkpoint_path = os.path.join(output_directory, 'variables', 'variables')
+    checkpoint_path = os.path.join(self._output_saved_model_path, 'variables',
+                                   'variables')
     var_name_and_shapes = checkpoint_utils.list_variables(checkpoint_path)
 
     # Checks that each variable's name and shape match.
@@ -2030,12 +2037,11 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @test_util.run_in_graph_and_eager_modes
   def test_ptq_model_with_tf1_saved_model(self):
-    input_saved_model_path = self.create_tempdir('input').full_path
     tags = {tag_constants.SERVING}
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
     input_placeholder = self._create_and_save_tf1_conv_model(
-        input_saved_model_path,
+        self._input_saved_model_path,
         signature_key,
         tags,
         input_key='p',
@@ -2043,7 +2049,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         use_variable=False)
 
     signature_keys = [signature_key]
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -2053,10 +2058,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         input_key='p', shape=input_placeholder.shape)
 
     converted_model = quantize_model.quantize(
-        input_saved_model_path,
+        self._input_saved_model_path,
         signature_keys,
         tags,
-        output_directory,
+        self._output_saved_model_path,
         quantization_options,
         representative_dataset=data_gen)
 
@@ -2064,14 +2069,13 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           signature_keys)
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
   @test_util.run_in_graph_and_eager_modes
   def test_ptq_model_with_tf1_saved_model_multiple_signatures(self):
-    input_saved_model_path = self.create_tempdir('input').full_path
     tags = {tag_constants.SERVING}
 
     # Create two models and add them to a same SavedModel under different
@@ -2085,7 +2089,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       sig_def_2 = signature_def_utils_impl.predict_signature_def(
           inputs={'x2': in_placeholder_2}, outputs={'output2': output_tensor_2})
 
-      v1_builder = builder.SavedModelBuilder(input_saved_model_path)
+      v1_builder = builder.SavedModelBuilder(self._input_saved_model_path)
       v1_builder.add_meta_graph_and_variables(
           sess, tags, signature_def_map={
               'sig1': sig_def_1,
@@ -2094,7 +2098,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
       v1_builder.save()
 
-    output_directory = self.create_tempdir().full_path
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
@@ -2124,10 +2127,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         yield {'x2': random_ops.random_uniform(shape=in_placeholder_2.shape)}
 
     converted_model = quantize_model.quantize(
-        input_saved_model_path,
+        self._input_saved_model_path,
         signature_keys=['sig1', 'sig2'],
         tags=tags,
-        output_directory=output_directory,
+        output_directory=self._output_saved_model_path,
         quantization_options=quantization_options,
         representative_dataset={
             'sig1': data_gen_sig1(),
@@ -2138,20 +2141,19 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'sig1', 'sig2'})
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
   @test_util.run_in_graph_and_eager_modes
   def test_ptq_model_with_tf1_saved_model_invalid_input_key_raises_value_error(
       self):
-    input_saved_model_path = self.create_tempdir('input').full_path
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     tags = {tag_constants.SERVING}
 
     input_placeholder = self._create_and_save_tf1_conv_model(
-        input_saved_model_path,
+        self._input_saved_model_path,
         signature_key,
         tags,
         input_key='x',
@@ -2159,7 +2161,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         use_variable=False)
 
     signature_keys = [signature_key]
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -2173,23 +2174,22 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         ValueError,
         'Failed to run graph for post-training quantization calibration'):
       quantize_model.quantize(
-          input_saved_model_path,
+          self._input_saved_model_path,
           signature_keys,
           tags,
-          output_directory,
+          self._output_saved_model_path,
           quantization_options,
           representative_dataset=invalid_data_gen)
 
   @test_util.run_in_graph_and_eager_modes
   def test_ptq_model_with_non_default_tags(self):
-    input_saved_model_path = self.create_tempdir('input').full_path
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     # Use a different set of tags other than {"serve"}.
     tags = {tag_constants.TRAINING, tag_constants.GPU}
 
     # Non-default tags are usually used when saving multiple metagraphs in TF1.
     input_placeholder = self._create_and_save_tf1_conv_model(
-        input_saved_model_path,
+        self._input_saved_model_path,
         signature_key,
         tags,
         input_key='input',
@@ -2197,7 +2197,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         use_variable=True)
 
     signature_keys = [signature_key]
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -2207,10 +2206,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         input_key='input', shape=input_placeholder.shape)
 
     converted_model = quantize_model.quantize(
-        input_saved_model_path,
+        self._input_saved_model_path,
         signature_keys,
         tags,
-        output_directory,
+        self._output_saved_model_path,
         quantization_options,
         representative_dataset=data_gen)
 
@@ -2218,19 +2217,18 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           signature_keys)
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
   @test_util.run_in_graph_and_eager_modes
   def test_ptq_model_with_wrong_tags_raises_error(self):
-    input_saved_model_path = self.create_tempdir('input').full_path
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     save_tags = {tag_constants.TRAINING, tag_constants.GPU}
 
     input_placeholder = self._create_and_save_tf1_conv_model(
-        input_saved_model_path,
+        self._input_saved_model_path,
         signature_key,
         save_tags,
         input_key='input',
@@ -2238,7 +2236,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         use_variable=True)
 
     signature_keys = [signature_key]
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -2252,10 +2249,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         RuntimeError,
         "MetaGraphDef associated with tags {'serve'} could not be found"):
       quantize_model.quantize(
-          input_saved_model_path,
+          self._input_saved_model_path,
           signature_keys,
           tags,
-          output_directory,
+          self._output_saved_model_path,
           quantization_options,
           representative_dataset=data_gen)
 
@@ -2264,11 +2261,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   def test_ptq_vocab_table_lookup_model(self):
     tags = {tag_constants.SERVING}
     signature_def_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-    input_model_dir = self.create_tempdir('input').full_path
 
     # Create and save a simple model that involves a hash table.
     inputs, outputs = self._create_and_save_vocab_table_lookup_model_tf1(
-        input_model_dir, tags, signature_def_key)
+        self._input_saved_model_path, tags, signature_def_key)
 
     # Make sure that the desired input key and output key is present.
     self.assertIn('input_vocabs', inputs.keys())
@@ -2284,13 +2280,12 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
 
     signature_def_keys = [signature_def_key]
-    output_model_dir = self.create_tempdir('output').full_path
 
     quantize_model.quantize(
-        input_model_dir,
+        self._input_saved_model_path,
         signature_def_keys,
         tags,
-        output_model_dir,
+        self._output_saved_model_path,
         quantization_options,
         representative_dataset=repr_ds)
 
@@ -2298,12 +2293,15 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # successfully.
     with session.Session(graph=ops.Graph()) as sess:
       output_meta_graph_def = saved_model_loader.load(
-          sess, tags=tags, export_dir=output_model_dir)
+          sess, tags=tags, export_dir=self._output_saved_model_path)
 
       # The graph should contain a quantized function call (it contains a
       # single f32 matmul node).
       self.assertTrue(
-          self._contains_quantized_function_call(output_meta_graph_def))
+          self._contains_quantized_function_call(
+              output_meta_graph_def.graph_def
+          )
+      )
       self.assertCountEqual(output_meta_graph_def.signature_def.keys(),
                             signature_def_keys)
 
@@ -2386,8 +2384,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     np.random.seed(1234)
     model = ConvModel()
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
+    saved_model_save.save(model, self._input_saved_model_path)
 
     repr_ds = []
     for _ in range(500):
@@ -2402,16 +2399,15 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     tags = {tag_constants.SERVING}
 
     # Check the converted model with TF opset as the baseline.
-    output_directory = self.create_tempdir().full_path
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE),
         op_set=quant_opts_pb2.TF)
 
     converted_model = quantize_model.quantize(
-        input_saved_model_path, [signature_key],
+        self._input_saved_model_path, [signature_key],
         tags,
-        output_directory,
+        self._output_saved_model_path,
         quantization_options,
         representative_dataset=repr_ds)
     self.assertIsNotNone(converted_model)
@@ -2425,10 +2421,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         input_tensor=ops.convert_to_tensor(input_data))
     self.assertAllClose(expected_outputs, got_outputs, atol=0.00494)
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
     # Check the converted model in the target opset.
     quantization_options = quant_opts_pb2.QuantizationOptions(
@@ -2436,21 +2432,21 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             experimental_method=_ExperimentalMethod.STATIC_RANGE),
         op_set=target_opset)
 
-    output_directory = self.create_tempdir().full_path
     converted_model = quantize_model.quantize(
-        input_saved_model_path, [signature_key],
+        self._input_saved_model_path, [signature_key],
         tags,
-        output_directory,
+        self._output_saved_model_path_2,
         quantization_options,
         representative_dataset=repr_ds)
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {signature_key})
-    loader = saved_model_loader.SavedModelLoader(output_directory)
-    meta_graphdef = loader.get_meta_graph_def_from_tags(tags)
+    loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path_2)
+    graphdef = loader.get_meta_graph_def_from_tags(tags).graph_def
     if target_opset == quant_opts_pb2.XLA:
-      self.assertTrue(self._contains_op(meta_graphdef, 'XlaConvV2'))
+      self.assertTrue(self._contains_op(graphdef, 'XlaConvV2'))
 
     new_outputs = converted_model.signatures[signature_key](
         input_tensor=ops.convert_to_tensor(input_data))
@@ -2458,6 +2454,59 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # compared to the quantized model in TF opset.
     self.assertAllClose(new_outputs, got_outputs, atol=0.00306)
     self.assertAllClose(new_outputs, expected_outputs, atol=0.00494)
+
+  # Tests the case of having a signature key of `main` because it is a
+  # special name in the TF quantizer's MLIR pipeline that should be treated
+  # with care.
+  @test_util.run_in_graph_and_eager_modes
+  def test_ptq_model_with_signature_key_main(self):
+    signature_key = 'main'
+    tags = {tag_constants.SERVING}
+
+    input_placeholder = self._create_and_save_tf1_conv_model(
+        self._input_saved_model_path,
+        signature_key,
+        tags,
+        input_key='x',
+        output_key='output',
+        use_variable=True)
+
+    signature_keys = [signature_key]
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+
+    data_gen = self._create_data_generator(
+        input_key='x', shape=input_placeholder.shape)
+
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        signature_keys,
+        tags,
+        self._output_saved_model_path,
+        quantization_options,
+        representative_dataset=data_gen)
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          signature_keys)
+
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
+
+    # Makes sure that the original function identified by the signature key
+    # `main` is renamed to `main_0` (see `InsertMainFunctionPass` for details).
+    self.assertTrue(
+        any(
+            map(
+                lambda func: func.signature.name == 'main_0',
+                output_graphdef.library.function,
+            )
+        )
+    )
 
 
 class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
@@ -2479,14 +2528,12 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   def test_matmul_model(self, target_opset: quant_opts_pb2.OpSet,
                         enable_per_channel_quantization: bool):
 
-    input_saved_model_path = self.create_tempdir('input').full_path
     self._create_matmul_model(
         input_shape=(1, 1024),
         weight_shape=(1024, 3),
-        saved_model_path=input_saved_model_path)
+        saved_model_path=self._input_saved_model_path)
 
     tags = {tag_constants.SERVING}
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -2494,34 +2541,40 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         op_set=target_opset,
         enable_per_channel_quantization=enable_per_channel_quantization)
 
-    converted_model = quantize_model.quantize(input_saved_model_path,
+    converted_model = quantize_model.quantize(self._input_saved_model_path,
                                               ['serving_default'], tags,
-                                              output_directory,
+                                              self._output_saved_model_path,
                                               quantization_options)
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
 
     if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
       # _contains_op for UQ ops also checks _contains_quantized_function_call.
       self.assertTrue(
-          self._contains_op(output_meta_graphdef, 'UniformQuantizedDotHybrid'))
-      self.assertFalse(self._contains_op(output_meta_graphdef, 'MatMul'))
+          self._contains_op(output_graphdef, 'UniformQuantizedDotHybrid')
+      )
+      self.assertFalse(self._contains_op(output_graphdef, 'MatMul'))
       if enable_per_channel_quantization:
         quantized_axis_attr = attr_value_pb2.AttrValue(i=-1)
         self.assertTrue(
-            self._contains_op(output_meta_graphdef, 'UniformQuantizedDotHybrid',
-                              'rhs_quantization_axis', quantized_axis_attr))
+            self._contains_op(
+                output_graphdef,
+                'UniformQuantizedDotHybrid',
+                'rhs_quantization_axis',
+                quantized_axis_attr,
+            )
+        )
     elif target_opset == quant_opts_pb2.XLA:
-      self.assertTrue(self._contains_op(output_meta_graphdef, 'XlaDotV2'))
-      self.assertFalse(self._contains_op(output_meta_graphdef, 'MatMul'))
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaDotV2'))
+      self.assertFalse(self._contains_op(output_graphdef, 'MatMul'))
     else:
-      self.assertTrue(
-          self._contains_quantized_function_call(output_meta_graphdef))
-      self.assertTrue(self._contains_op(output_meta_graphdef, 'MatMul'))
+      self.assertTrue(self._contains_quantized_function_call(output_graphdef))
+      self.assertTrue(self._contains_op(output_graphdef, 'MatMul'))
 
   @parameterized.named_parameters(
       ('to_tf_per_tensor', quant_opts_pb2.TF, False),
@@ -2543,11 +2596,9 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         has_batch_norm=True,
         activation_fn=nn_ops.relu6)
 
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
+    saved_model_save.save(model, self._input_saved_model_path)
 
     tags = {tag_constants.SERVING}
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -2555,17 +2606,18 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         op_set=target_opset,
         enable_per_channel_quantization=enable_per_channel_quantization)
 
-    converted_model = quantize_model.quantize(input_saved_model_path,
+    converted_model = quantize_model.quantize(self._input_saved_model_path,
                                               ['serving_default'], tags,
-                                              output_directory,
+                                              self._output_saved_model_path,
                                               quantization_options)
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
 
     if enable_per_channel_quantization:
       quantized_axis = 3
@@ -2581,24 +2633,34 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
       # _contains_op for UQ ops also checks _contains_quantized_function_call.
       self.assertTrue(
-          self._contains_op(output_meta_graphdef,
-                            'UniformQuantizedConvolutionHybrid'))
-      self.assertFalse(self._contains_op(output_meta_graphdef, 'Conv2D'))
+          self._contains_op(
+              output_graphdef, 'UniformQuantizedConvolutionHybrid'
+          )
+      )
+      self.assertFalse(self._contains_op(output_graphdef, 'Conv2D'))
       if enable_per_channel_quantization:
         self.assertTrue(
-            self._contains_op(output_meta_graphdef,
-                              'UniformQuantizedConvolutionHybrid',
-                              'rhs_quantization_axis', quantized_axis_attr))
+            self._contains_op(
+                output_graphdef,
+                'UniformQuantizedConvolutionHybrid',
+                'rhs_quantization_axis',
+                quantized_axis_attr,
+            )
+        )
         self.assertTrue(
-            self._contains_op(output_meta_graphdef, 'Const', '_output_shapes',
-                              quantized_dim_size_attr))
+            self._contains_op(
+                output_graphdef,
+                'Const',
+                '_output_shapes',
+                quantized_dim_size_attr,
+            )
+        )
     elif target_opset == quant_opts_pb2.XLA:
-      self.assertTrue(self._contains_op(output_meta_graphdef, 'XlaConvV2'))
-      self.assertFalse(self._contains_op(output_meta_graphdef, 'Conv2D'))
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
+      self.assertFalse(self._contains_op(output_graphdef, 'Conv2D'))
     else:
-      self.assertTrue(
-          self._contains_quantized_function_call(output_meta_graphdef))
-      self.assertTrue(self._contains_op(output_meta_graphdef, 'Conv2D'))
+      self.assertTrue(self._contains_quantized_function_call(output_graphdef))
+      self.assertTrue(self._contains_op(output_graphdef, 'Conv2D'))
 
   @parameterized.named_parameters(
       ('to_tf_per_tensor', quant_opts_pb2.TF, False),
@@ -2621,11 +2683,9 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     model = self._create_depthwise_conv2d_model(
         input_shape=(1, 3, 4, 1024), filter_shape=filter_shape, strides=strides)
 
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
+    saved_model_save.save(model, self._input_saved_model_path)
 
     tags = [tag_constants.SERVING]
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -2633,17 +2693,18 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         op_set=target_opset,
         enable_per_channel_quantization=enable_per_channel_quantization)
 
-    converted_model = quantize_model.quantize(input_saved_model_path,
+    converted_model = quantize_model.quantize(self._input_saved_model_path,
                                               ['serving_default'], tags,
-                                              output_directory,
+                                              self._output_saved_model_path,
                                               quantization_options)
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
 
     # Uniform Quantized op takes only the first and the second values for
     # strides.
@@ -2666,29 +2727,45 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
       # _contains_op for UQ ops also checks _contains_quantized_function_call.
       self.assertTrue(
-          self._contains_op(output_meta_graphdef,
-                            'UniformQuantizedConvolutionHybrid',
-                            'window_strides', strides_attr))
+          self._contains_op(
+              output_graphdef,
+              'UniformQuantizedConvolutionHybrid',
+              'window_strides',
+              strides_attr,
+          )
+      )
       self.assertFalse(
-          self._contains_op(output_meta_graphdef, 'DepthwiseConv2dNative'))
+          self._contains_op(output_graphdef, 'DepthwiseConv2dNative')
+      )
       if enable_per_channel_quantization:
         self.assertTrue(
-            self._contains_op(output_meta_graphdef,
-                              'UniformQuantizedConvolutionHybrid',
-                              'rhs_quantization_axis', quantized_axis_attr))
+            self._contains_op(
+                output_graphdef,
+                'UniformQuantizedConvolutionHybrid',
+                'rhs_quantization_axis',
+                quantized_axis_attr,
+            )
+        )
         self.assertTrue(
-            self._contains_op(output_meta_graphdef, 'Const', '_output_shapes',
-                              quantized_dim_size_attr))
+            self._contains_op(
+                output_graphdef,
+                'Const',
+                '_output_shapes',
+                quantized_dim_size_attr,
+            )
+        )
     elif target_opset == quant_opts_pb2.XLA:
-      self.assertTrue(self._contains_op(output_meta_graphdef, 'XlaConvV2'))
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
       self.assertFalse(
-          self._contains_op(output_meta_graphdef, 'DepthwiseConv2dNative'))
+          self._contains_op(output_graphdef, 'DepthwiseConv2dNative')
+      )
     else:
+      self.assertTrue(self._contains_quantized_function_call(output_graphdef))
       self.assertTrue(
-          self._contains_quantized_function_call(output_meta_graphdef))
-      self.assertTrue(
-          self._contains_op(output_meta_graphdef, 'DepthwiseConv2dNative',
-                            'strides', strides_attr))
+          self._contains_op(
+              output_graphdef, 'DepthwiseConv2dNative', 'strides', strides_attr
+          )
+      )
 
   @parameterized.named_parameters(
       ('use_constant', False),
@@ -2697,40 +2774,37 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   @test_util.run_v2_only
   def test_gather_model(self, use_variable):
     model = self._create_gather_model(use_variable)
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
+    saved_model_save.save(model, self._input_saved_model_path)
 
     tags = {tag_constants.SERVING}
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.DYNAMIC_RANGE),
         op_set=quant_opts_pb2.OpSet.UNIFORM_QUANTIZED)
 
-    converted_model = quantize_model.quantize(input_saved_model_path,
+    converted_model = quantize_model.quantize(self._input_saved_model_path,
                                               ['serving_default'], tags,
-                                              output_directory,
+                                              self._output_saved_model_path,
                                               quantization_options)
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
     # Currently gather is not supported.
-    self.assertFalse(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    self.assertFalse(self._contains_quantized_function_call(output_graphdef))
 
   @test_util.run_in_graph_and_eager_modes
   def test_conv_model_with_wrong_tags_raises_error(self):
-    input_saved_model_path = self.create_tempdir('input').full_path
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     save_tags = {tag_constants.TRAINING, tag_constants.GPU}
 
     input_placeholder = self._create_and_save_tf1_conv_model(
-        input_saved_model_path,
+        self._input_saved_model_path,
         signature_key,
         save_tags,
         input_key='input',
@@ -2738,7 +2812,6 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         use_variable=True)
 
     signature_keys = [signature_key]
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -2749,14 +2822,20 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     tags = {tag_constants.SERVING}
     data_gen = self._create_data_generator(
         input_key='input', shape=input_placeholder.shape)
-    with self.assertRaisesRegex(ValueError, 'Failed to import SavedModel'):
+
+    # StatusNotOk error. `Exception` is used here because importing
+    # `StatusNotOk` may break the open-sourced version of TensorFlow.
+    with self.assertRaisesRegex(Exception,
+                                'Failed to import SavedModel') as raises:
       quantize_model.quantize(
-          input_saved_model_path,
+          self._input_saved_model_path,
           signature_keys,
           tags,
-          output_directory,
+          self._output_saved_model_path,
           quantization_options,
           representative_dataset=data_gen)
+
+    self.assertEqual(raises.exception.__class__.__name__, 'StatusNotOk')
 
   @parameterized.named_parameters(
       ('quantize', True, 0),
@@ -2764,14 +2843,12 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   )
   @test_util.run_in_graph_and_eager_modes
   def test_minimum_elements_for_weights(self, quantize, num_elements):
-    input_saved_model_path = self.create_tempdir('input').full_path
     self._create_matmul_model(
         input_shape=(1, 1024),
         weight_shape=(1024, 3),
-        saved_model_path=input_saved_model_path)
+        saved_model_path=self._input_saved_model_path)
 
     tags = {tag_constants.SERVING}
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -2779,23 +2856,22 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         op_set=quant_opts_pb2.OpSet.UNIFORM_QUANTIZED)
     quantization_options.min_num_elements_for_weights = num_elements
 
-    converted_model = quantize_model.quantize(input_saved_model_path,
+    converted_model = quantize_model.quantize(self._input_saved_model_path,
                                               ['serving_default'], tags,
-                                              output_directory,
+                                              self._output_saved_model_path,
                                               quantization_options)
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
     if quantize:
-      self.assertTrue(
-          self._contains_quantized_function_call(output_meta_graphdef))
+      self.assertTrue(self._contains_quantized_function_call(output_graphdef))
     else:
-      self.assertFalse(
-          self._contains_quantized_function_call(output_meta_graphdef))
+      self.assertFalse(self._contains_quantized_function_call(output_graphdef))
 
   @parameterized.named_parameters(
       ('use_constant', False),
@@ -2803,12 +2879,11 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   )
   @test_util.run_in_graph_and_eager_modes
   def test_gather_model_tf1(self, use_variable):
-    input_saved_model_path = self.create_tempdir('input').full_path
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     tags = {tag_constants.SERVING}
 
     _ = self._create_and_save_tf1_gather_model(
-        input_saved_model_path,
+        self._input_saved_model_path,
         signature_key,
         tags,
         input_key='x',
@@ -2816,41 +2891,38 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         use_variable=use_variable)
 
     signature_keys = [signature_key]
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.DYNAMIC_RANGE),
         op_set=quant_opts_pb2.OpSet.UNIFORM_QUANTIZED)
 
-    converted_model = quantize_model.quantize(input_saved_model_path,
+    converted_model = quantize_model.quantize(self._input_saved_model_path,
                                               signature_keys, tags,
-                                              output_directory,
+                                              self._output_saved_model_path,
                                               quantization_options)
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           signature_keys)
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
     # Quantization is not currently supported for gather.
-    self.assertFalse(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    self.assertFalse(self._contains_quantized_function_call(output_graphdef))
 
   @test_util.run_in_graph_and_eager_modes
   def test_non_empty_directory_raises_file_exists_error(self):
-    input_saved_model_path = self.create_tempdir('input').full_path
     self._create_matmul_model(
         input_shape=(1, 1024),
         weight_shape=(1024, 3),
-        saved_model_path=input_saved_model_path)
+        saved_model_path=self._input_saved_model_path)
     tags = {tag_constants.SERVING}
 
     # Create a file inside the output directory.
-    output_directory = self.create_tempdir().full_path
     file_io.write_string_to_file(
-        filename=os.path.join(output_directory, 'dummy_file.txt'),
+        filename=os.path.join(self._output_saved_model_path, 'dummy_file.txt'),
         file_content='Test content')
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
@@ -2859,22 +2931,21 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     with self.assertRaisesRegex(FileExistsError,
                                 'Output directory already exists'):
-      quantize_model.quantize(input_saved_model_path, ['serving_default'], tags,
-                              output_directory, quantization_options)
+      quantize_model.quantize(self._input_saved_model_path, ['serving_default'],
+                              tags, self._output_saved_model_path,
+                              quantization_options)
 
   @test_util.run_in_graph_and_eager_modes
   def test_non_empty_directory_overwritten(self):
-    input_saved_model_path = self.create_tempdir('input').full_path
     self._create_matmul_model(
         input_shape=(1, 1024),
         weight_shape=(1024, 3),
-        saved_model_path=input_saved_model_path)
+        saved_model_path=self._input_saved_model_path)
     tags = {tag_constants.SERVING}
 
     # Create a file inside the output directory.
-    output_directory = self.create_tempdir().full_path
     file_io.write_string_to_file(
-        filename=os.path.join(output_directory, 'dummy_file.txt'),
+        filename=os.path.join(self._output_saved_model_path, 'dummy_file.txt'),
         file_content='Test content')
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
@@ -2882,9 +2953,9 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             experimental_method=_ExperimentalMethod.DYNAMIC_RANGE))
 
     converted_model = quantize_model.quantize(
-        input_saved_model_path, ['serving_default'],
+        self._input_saved_model_path, ['serving_default'],
         tags,
-        output_directory,
+        self._output_saved_model_path,
         quantization_options,
         overwrite_output_directory=True)
 
@@ -2892,21 +2963,20 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(
-        self._contains_quantized_function_call(output_meta_graphdef))
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
   # TODO(b/244276332): Allow table initialization in TF2 eager mode.
   @test_util.deprecated_graph_mode_only
   def test_table_initialized_when_model_has_table_tf1(self):
     tags = {tag_constants.SERVING}
     signature_def_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-    input_model_dir = self.create_tempdir('input').full_path
 
     # Create and save a simple model that involves a hash table.
     inputs, outputs = self._create_and_save_vocab_table_lookup_model_tf1(
-        input_model_dir, tags, signature_def_key)
+        self._input_saved_model_path, tags, signature_def_key)
 
     # Make sure that the desired input key and output key is present.
     self.assertIn('input_vocabs', inputs.keys())
@@ -2917,16 +2987,16 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             experimental_method=_ExperimentalMethod.DYNAMIC_RANGE))
 
     signature_def_keys = [signature_def_key]
-    output_model_dir = self.create_tempdir('output').full_path
 
-    quantize_model.quantize(input_model_dir, signature_def_keys, tags,
-                            output_model_dir, quantization_options)
+    quantize_model.quantize(self._input_saved_model_path, signature_def_keys,
+                            tags, self._output_saved_model_path,
+                            quantization_options)
 
     # Tests table lookup to make sure the table has been initialized
     # successfully.
     with session.Session(graph=ops.Graph()) as sess:
       output_meta_graph_def = saved_model_loader.load(
-          sess, tags=tags, export_dir=output_model_dir)
+          sess, tags=tags, export_dir=self._output_saved_model_path)
 
       self.assertCountEqual(output_meta_graph_def.signature_def.keys(),
                             signature_def_keys)
@@ -2963,37 +3033,36 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
                         enable_per_channel_quantization: bool):
 
     input_shape = (1, 512)
-    input_saved_model_path = self.create_tempdir('input').full_path
 
     self._create_matmul_model(
         input_shape=input_shape,
         weight_shape=(512, 2),
-        saved_model_path=input_saved_model_path)
+        saved_model_path=self._input_saved_model_path)
 
     tags = {tag_constants.SERVING}
-    output_directory = self.create_tempdir().full_path
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.WEIGHT_ONLY),
         op_set=target_opset,
         enable_per_channel_quantization=enable_per_channel_quantization)
 
-    converted_model = quantize_model.quantize(input_saved_model_path,
+    converted_model = quantize_model.quantize(self._input_saved_model_path,
                                               ['serving_default'], tags,
-                                              output_directory,
+                                              self._output_saved_model_path,
                                               quantization_options)
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
 
-    self.assertTrue(self._contains_op(output_meta_graphdef, 'MatMul'))
+    self.assertTrue(self._contains_op(output_graphdef, 'MatMul'))
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLessEqual(
-        get_dir_size(output_directory) / get_dir_size(input_saved_model_path),
-        1 / 3)
+        get_dir_size(self._output_saved_model_path) /
+        get_dir_size(self._input_saved_model_path), 1 / 3)
 
   @parameterized.named_parameters(
       ('to_tf_per_tensor', quant_opts_pb2.TF, False),
@@ -3001,19 +3070,15 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   @test_util.run_in_graph_and_eager_modes
   def test_conv_model(self, target_opset: quant_opts_pb2.OpSet,
                       enable_per_channel_quantization: bool):
-
-    input_saved_model_path = self.create_tempdir('input').full_path
-
     model = self._create_conv2d_model(
         input_shape=(1, 3, 4, 512),
         filter_shape=(2, 3, 512, 2),
         has_bias=False,
         has_batch_norm=False,
         activation_fn=nn_ops.relu6)
-    saved_model_save.save(model, input_saved_model_path)
+    saved_model_save.save(model, self._input_saved_model_path)
 
     tags = {tag_constants.SERVING}
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -3021,23 +3086,24 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         op_set=target_opset,
         enable_per_channel_quantization=enable_per_channel_quantization)
 
-    converted_model = quantize_model.quantize(input_saved_model_path,
+    converted_model = quantize_model.quantize(self._input_saved_model_path,
                                               ['serving_default'], tags,
-                                              output_directory,
+                                              self._output_saved_model_path,
                                               quantization_options)
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
 
-    self.assertTrue(self._contains_op(output_meta_graphdef, 'Conv2D'))
+    self.assertTrue(self._contains_op(output_graphdef, 'Conv2D'))
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLessEqual(
-        get_dir_size(output_directory) / get_dir_size(input_saved_model_path),
-        1 / 3)
+        get_dir_size(self._output_saved_model_path) /
+        get_dir_size(self._input_saved_model_path), 1 / 3)
 
   @parameterized.named_parameters(
       ('to_tf_per_tensor', quant_opts_pb2.TF, False),
@@ -3055,11 +3121,9 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     model = self._create_depthwise_conv2d_model(
         input_shape=(1, 3, 4, 512), filter_shape=filter_shape, strides=strides)
 
-    input_saved_model_path = self.create_tempdir('input').full_path
-    saved_model_save.save(model, input_saved_model_path)
+    saved_model_save.save(model, self._input_saved_model_path)
 
     tags = {tag_constants.SERVING}
-    output_directory = self.create_tempdir().full_path
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -3067,24 +3131,24 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         op_set=target_opset,
         enable_per_channel_quantization=enable_per_channel_quantization)
 
-    converted_model = quantize_model.quantize(input_saved_model_path,
+    converted_model = quantize_model.quantize(self._input_saved_model_path,
                                               ['serving_default'], tags,
-                                              output_directory,
+                                              self._output_saved_model_path,
                                               quantization_options)
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'serving_default'})
 
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path)
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
 
-    self.assertTrue(
-        self._contains_op(output_meta_graphdef, 'DepthwiseConv2dNative'))
+    self.assertTrue(self._contains_op(output_graphdef, 'DepthwiseConv2dNative'))
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLessEqual(
-        get_dir_size(output_directory) / get_dir_size(input_saved_model_path),
-        1 / 3)
+        get_dir_size(self._output_saved_model_path) /
+        get_dir_size(self._input_saved_model_path), 1 / 3)
 
 
 if __name__ == '__main__':

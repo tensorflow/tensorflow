@@ -22,6 +22,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "google/protobuf/any.pb.h"
+#include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
@@ -29,11 +33,19 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
+
+ABSL_CONST_INIT absl::Mutex process_new_env_fns_mu(absl::kConstInit);
+absl::flat_hash_map<const tsl::protobuf::Descriptor*,
+                    CompilationEnvironments::ProcessNewEnvFn>*
+    process_new_env_fns ABSL_GUARDED_BY(process_new_env_fns_mu) = nullptr;
 
 // A global singleton stats object for implementing CompilationEnvironments::{
 // DefaultEnvCreatedByCompilationEnvironments(), EnvAdded()}.
@@ -111,6 +123,93 @@ CompilationEnvironments& CompilationEnvironments::operator=(
   return *this;
 }
 
+StatusOr<std::unique_ptr<CompilationEnvironments>>
+CompilationEnvironments::CreateFromProto(
+    const CompilationEnvironmentsProto& proto) {
+  auto envs = std::make_unique<CompilationEnvironments>();
+
+  const tsl::protobuf::DescriptorPool* const pool =
+      tsl::protobuf::DescriptorPool::generated_pool();
+
+  for (const auto& env_proto : proto.environments()) {
+    std::string fullname;
+    if (!google::protobuf::Any::ParseAnyTypeUrl(env_proto.type_url(),
+                                                &fullname)) {
+      return tsl::errors::DataLoss(
+          "Invalid CompilationEnvironment message type url: %s",
+          env_proto.type_url());
+    }
+
+    const tsl::protobuf::Descriptor* const descriptor =
+        pool->FindMessageTypeByName(fullname);
+    if (descriptor == nullptr) {
+      return tsl::errors::DataLoss(
+          "Unknown CompilationEnvironment message type: %s", fullname);
+    }
+
+    const tsl::protobuf::Message* const prototype =
+        tsl::protobuf::MessageFactory::generated_factory()->GetPrototype(
+            descriptor);
+    if (prototype == nullptr) {
+      return tsl::errors::Internal(
+          "Unsupported CompilationEnvironment message type: %s", fullname);
+    }
+
+    std::unique_ptr<tsl::protobuf::Message> env(prototype->New());
+    if (!env_proto.UnpackTo(env.get())) {
+      return tsl::errors::DataLoss(
+          "Unable to unpack CompilationEnvironment message of type '%s'",
+          fullname);
+    }
+
+    TF_RETURN_IF_ERROR(envs->AddEnv(std::move(env)));
+  }
+
+  return envs;
+}
+
+void CompilationEnvironments::RegisterProcessNewEnvFn(
+    const tsl::protobuf::Descriptor* descriptor,
+    ProcessNewEnvFn process_new_env) {
+  absl::MutexLock l(&process_new_env_fns_mu);
+  if (process_new_env_fns == nullptr) {
+    process_new_env_fns =
+        new absl::flat_hash_map<const tsl::protobuf::Descriptor*,
+                                CompilationEnvironments::ProcessNewEnvFn>();
+  }
+  const bool inserted =
+      process_new_env_fns->insert({descriptor, std::move(process_new_env)})
+          .second;
+  CHECK(inserted) << "ProcessNewEnvFn for XLA compilation environment '"
+                  << descriptor->full_name() << "' has already been registered";
+}
+
+Status CompilationEnvironments::AddEnv(
+    std::unique_ptr<tsl::protobuf::Message> env) {
+  ProcessNewEnvFn process_new_env = GetProcessNewEnvFn(env->GetDescriptor());
+  if (process_new_env == nullptr) {
+    return tsl::errors::InvalidArgument(
+        "Unknown compilation environment type: %s",
+        env->GetDescriptor()->full_name());
+  }
+  AddProcessedEnv(process_new_env(std::move(env)));
+  return OkStatus();
+}
+
+CompilationEnvironments::ProcessNewEnvFn
+CompilationEnvironments::GetProcessNewEnvFn(
+    const tsl::protobuf::Descriptor* descriptor) {
+  absl::MutexLock l(&process_new_env_fns_mu);
+  if (process_new_env_fns == nullptr) {
+    return nullptr;
+  }
+  const auto it = process_new_env_fns->find(descriptor);
+  if (it == process_new_env_fns->end()) {
+    return nullptr;
+  }
+  return it->second;
+}
+
 void CompilationEnvironments::DefaultEnvCreatedByCompilationEnvironments(
     std::string_view env_type) {
   GlobalCompEnvStats::GetSingleton().DefaultEnvCreatedByCompilationEnvironments(
@@ -148,6 +247,26 @@ void CompilationEnvironments::AddProcessedEnv(
   // Actually add the env
   environments_.insert({descriptor, std::move(env)});
   EnvAdded(descriptor->full_name());
+}
+
+CompilationEnvironmentsProto CompilationEnvironments::ToProto() const {
+  // Sort the environments by their message types' full names so that the
+  // proto fields are deterministically ordered.
+  std::vector<const tsl::protobuf::Descriptor*> descriptors;
+  descriptors.reserve(environments_.size());
+  for (const auto& [descriptor, message] : environments_) {
+    descriptors.push_back(descriptor);
+  }
+  absl::c_sort(descriptors, [](const tsl::protobuf::Descriptor* lhs,
+                               const tsl::protobuf::Descriptor* rhs) {
+    return lhs->full_name() < rhs->full_name();
+  });
+
+  CompilationEnvironmentsProto proto;
+  for (const auto* const descriptor : descriptors) {
+    proto.add_environments()->PackFrom(*environments_.at(descriptor));
+  }
+  return proto;
 }
 
 }  // namespace xla

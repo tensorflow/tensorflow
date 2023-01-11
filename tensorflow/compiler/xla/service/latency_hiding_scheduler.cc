@@ -53,35 +53,48 @@ limitations under the License.
 
 namespace xla {
 
+namespace {
+struct CanonicalAsyncOp {
+  HloOpcode outer;  // kAsyncStart or kAsyncDone
+  HloOpcode inner;  // kAllReduce, kAllGather, kAllToAll, kCollectivePermute
+};
+
+CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) {
+  switch (hlo.opcode()) {
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncDone:
+      return {hlo.opcode(), hlo.async_wrapped_opcode()};
+    case HloOpcode::kAllReduceStart:
+      return {HloOpcode::kAsyncStart, HloOpcode::kAllReduce};
+    case HloOpcode::kAllGatherStart:
+      return {HloOpcode::kAsyncStart, HloOpcode::kAllGather};
+    case HloOpcode::kCollectivePermuteStart:
+      return {HloOpcode::kAsyncStart, HloOpcode::kCollectivePermute};
+    case HloOpcode::kAllReduceDone:
+      return {HloOpcode::kAsyncDone, HloOpcode::kAllReduce};
+    case HloOpcode::kAllGatherDone:
+      return {HloOpcode::kAsyncDone, HloOpcode::kAllGather};
+    case HloOpcode::kCollectivePermuteDone:
+      return {HloOpcode::kAsyncDone, HloOpcode::kCollectivePermute};
+    default:
+      return {hlo.opcode(), hlo.opcode()};
+  }
+}
+
+}  // namespace
+
 LatencyEstimator::TimeCost ApproximateLatencyEstimator::GetLatencyBetween(
     const HloGraphNode& from, const HloGraphNode& target) const {
   // These values are empirically derived to obtain an overlap of one output
   // fusion/convolution with 1 async op or 5 loop fusions with an async op.
   static constexpr TimeCost kLowLatency = 1.0;
   static constexpr TimeCost kHighLatency = 5000.0;
-  switch (from.GetInstr().opcode()) {
-    case HloOpcode::kCollectivePermuteStart:
-      if (target.GetInstr().opcode() == HloOpcode::kCollectivePermuteDone) {
-        return kHighLatency;
-      }
-      break;
-    case HloOpcode::kAsyncStart:
-      if (target.GetInstr().opcode() == HloOpcode::kAsyncDone) {
-        return kHighLatency;
-      }
-      break;
-    case HloOpcode::kAllGatherStart:
-      if (target.GetInstr().opcode() == HloOpcode::kAllGatherDone) {
-        return kHighLatency;
-      }
-      break;
-    case HloOpcode::kAllReduceStart:
-      if (target.GetInstr().opcode() == HloOpcode::kAllReduceDone) {
-        return kHighLatency;
-      }
-      break;
-    default:
-      break;
+  CanonicalAsyncOp from_op = GetCanonicalAsyncOp(from.GetInstr());
+  CanonicalAsyncOp target_op = GetCanonicalAsyncOp(target.GetInstr());
+  if (from_op.outer == HloOpcode::kAsyncStart &&
+      target_op.outer == HloOpcode::kAsyncDone &&
+      from_op.inner == target_op.inner) {
+    return kHighLatency;
   }
   // Every other instruction we consider synchronous, which means the
   // latency between each of them is always one unit.
@@ -103,10 +116,15 @@ LatencyEstimator::TimeCost ApproximateLatencyEstimator::NodeCost(
   return kLowCost;
 }
 
-// Returns if this is an Async op done that the scheduler supports.
+// Returns if this is an Async done op that the scheduler supports.
 bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
-  if (hlo.opcode() == HloOpcode::kAsyncDone) {
-    switch (hlo.async_wrapped_opcode()) {
+  CanonicalAsyncOp op = GetCanonicalAsyncOp(hlo);
+  if (op.outer == HloOpcode::kSendDone || op.outer == HloOpcode::kRecvDone) {
+    return config_.schedule_send_recvs;
+  }
+
+  if (op.outer == HloOpcode::kAsyncDone) {
+    switch (op.inner) {
       case HloOpcode::kAllToAll:
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
@@ -116,23 +134,18 @@ bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
         return false;
     }
   }
-  switch (hlo.opcode()) {
-    case HloOpcode::kAllGatherDone:
-    case HloOpcode::kAllReduceDone:
-    case HloOpcode::kCollectivePermuteDone:
-      return true;
-    case HloOpcode::kSendDone:
-    case HloOpcode::kRecvDone:
-      return config_.schedule_send_recvs;
-    default:
-      return false;
-  }
+  return false;
 }
 
 // Returns if this is an Async op start that the scheduler supports.
 bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
-  if (hlo.opcode() == HloOpcode::kAsyncStart) {
-    switch (hlo.async_wrapped_opcode()) {
+  CanonicalAsyncOp op = GetCanonicalAsyncOp(hlo);
+  if (op.outer == HloOpcode::kSend || op.outer == HloOpcode::kRecv) {
+    return config_.schedule_send_recvs;
+  }
+
+  if (op.outer == HloOpcode::kAsyncStart) {
+    switch (op.inner) {
       case HloOpcode::kAllToAll:
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
@@ -142,50 +155,38 @@ bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
         return false;
     }
   }
-  switch (hlo.opcode()) {
-    case HloOpcode::kAllGatherStart:
-    case HloOpcode::kAllReduceStart:
-    case HloOpcode::kCollectivePermuteStart:
-      return true;
-    case HloOpcode::kSend:
-    case HloOpcode::kRecv:
-      return config_.schedule_send_recvs;
-    default:
-      return false;
-  }
+  return false;
 }
 
 ResourcesVector AsyncTracker::GetResourcesFromInstruction(
     const HloInstruction& hlo) const {
+  CanonicalAsyncOp op = GetCanonicalAsyncOp(hlo);
+  auto get_resource_for_op = [](HloOpcode op) -> ResourceType {
+    switch (op) {
+      case HloOpcode::kAllReduce:
+        return ResourceType::kAllReduce;
+      case HloOpcode::kAllGather:
+        return ResourceType::kAllGather;
+      case HloOpcode::kAllToAll:
+        return ResourceType::kAllToAll;
+      case HloOpcode::kCollectivePermute:
+        return ResourceType::kCollectivePermute;
+      default:
+        return ResourceType::kNoResource;
+    }
+  };
+  if (op.outer == HloOpcode::kAsyncStart || op.outer == HloOpcode::kAsyncDone) {
+    ResourceType type = get_resource_for_op(op.inner);
+    if (type == ResourceType::kNoResource) {
+      return {};
+    }
+    ResourceUsageType usage = op.outer == HloOpcode::kAsyncStart
+                                  ? ResourceUsageType::kResourceRelease
+                                  : ResourceUsageType::kResourceOccupy;
+    return {std::make_pair(type, usage)};
+  }
+
   switch (hlo.opcode()) {
-    case HloOpcode::kAsyncStart:
-      switch (hlo.async_wrapped_opcode()) {
-        case HloOpcode::kAllToAll:
-          return ResourcesVector{std::make_pair(
-              ResourceType::kAllToAll, ResourceUsageType::kResourceRelease)};
-        case HloOpcode::kAllGather:
-          return ResourcesVector{std::make_pair(
-              ResourceType::kAllGather, ResourceUsageType::kResourceRelease)};
-        case HloOpcode::kAllReduce:
-          return ResourcesVector{std::make_pair(
-              ResourceType::kAllReduce, ResourceUsageType::kResourceRelease)};
-        case HloOpcode::kCollectivePermute:
-          return ResourcesVector{
-              std::make_pair(ResourceType::kCollectivePermute,
-                             ResourceUsageType::kResourceRelease)};
-        default:
-          return ResourcesVector{};
-      }
-    case HloOpcode::kCollectivePermuteStart:
-      return ResourcesVector{
-          std::make_pair(ResourceType::kCollectivePermute,
-                         ResourceUsageType::kResourceRelease)};
-    case HloOpcode::kAllGatherStart:
-      return ResourcesVector{std::make_pair(
-          ResourceType::kAllGather, ResourceUsageType::kResourceRelease)};
-    case HloOpcode::kAllReduceStart:
-      return ResourcesVector{std::make_pair(
-          ResourceType::kAllReduce, ResourceUsageType::kResourceRelease)};
     case HloOpcode::kAfterAll:
       // TODO(maggioni): Understand why AfterAll need to not be overlapped.
       return ResourcesVector{std::make_pair(ResourceType::kSendHost,
@@ -206,34 +207,6 @@ ResourcesVector AsyncTracker::GetResourcesFromInstruction(
                                ResourceUsageType::kResourceRelease)
               : std::make_pair(ResourceType::kSendRecv,
                                ResourceUsageType::kResourceRelease)};
-    case HloOpcode::kAsyncDone:
-      switch (hlo.async_wrapped_opcode()) {
-        case HloOpcode::kAllToAll:
-          return ResourcesVector{std::make_pair(
-              ResourceType::kAllToAll, ResourceUsageType::kResourceOccupy)};
-        case HloOpcode::kAllGather:
-          return ResourcesVector{std::make_pair(
-              ResourceType::kAllGather, ResourceUsageType::kResourceOccupy)};
-        case HloOpcode::kAllReduce:
-          return ResourcesVector{std::make_pair(
-              ResourceType::kAllReduce, ResourceUsageType::kResourceOccupy)};
-        case HloOpcode::kCollectivePermute:
-          return ResourcesVector{
-              std::make_pair(ResourceType::kCollectivePermute,
-                             ResourceUsageType::kResourceOccupy)};
-        default:
-          return ResourcesVector{};
-      }
-    case HloOpcode::kCollectivePermuteDone:
-      return ResourcesVector{
-          std::make_pair(ResourceType::kCollectivePermute,
-                         ResourceUsageType::kResourceOccupy)};
-    case HloOpcode::kAllGatherDone:
-      return ResourcesVector{std::make_pair(
-          ResourceType::kAllGather, ResourceUsageType::kResourceOccupy)};
-    case HloOpcode::kAllReduceDone:
-      return ResourcesVector{std::make_pair(
-          ResourceType::kAllReduce, ResourceUsageType::kResourceOccupy)};
     case HloOpcode::kRecvDone:
       return ResourcesVector{
           static_cast<const HloSendRecvInstruction*>(hlo.operand(0))
@@ -1321,6 +1294,7 @@ void DefaultSchedulerCore::DumpLatencyHidingSchedule(
     instr_msg->set_start_timestamp_cycles(start_time);
     instr_msg->set_end_timestamp_cycles(end_time);
   }
+  *proto.mutable_hlo_module() = computation->parent()->ToProto();
 
   const std::string fn = absl::StrFormat("%s.schedule", computation->name());
   DumpProtobufToFile(proto, debug_options, fn);

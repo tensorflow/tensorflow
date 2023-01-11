@@ -468,8 +468,9 @@ typedef struct TfLiteTensor {
   // Optional. Encodes shapes with unknown dimensions with -1. This field is
   // only populated when unknown dimensions exist in a read-write tensor (i.e.
   // an input or output tensor). (e.g.  `dims` contains [1, 1, 1, 3] and
-  // `dims_signature` contains [1, -1, -1, 3]). Note that this field only
-  // exists when TF_LITE_STATIC_MEMORY is not defined.
+  // `dims_signature` contains [1, -1, -1, 3]).  If no unknown dimensions exist
+  // then `dims_signature` is either null, or set to an empty array.  Note that
+  // this field only exists when TF_LITE_STATIC_MEMORY is not defined.
   const TfLiteIntArray* dims_signature;
 } TfLiteTensor;
 

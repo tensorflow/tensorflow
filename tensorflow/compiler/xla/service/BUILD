@@ -63,6 +63,18 @@ tf_proto_library(
     protodeps = [":hlo_profile_printer_data"],
 )
 
+tf_proto_library(
+    name = "metrics_proto",
+    srcs = ["metrics.proto"],
+    cc_api_version = 2,
+)
+
+xla_py_proto_library(
+    name = "metrics_pb2",
+    api_version = 2,
+    deps = [":metrics_proto"],
+)
+
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",
@@ -1373,10 +1385,9 @@ cc_library(
         ":computation_placer",
         ":executable",
         ":hlo_module_config",
-        ":logical_buffer",
         ":metrics_hook_interface",
+        ":metrics_proto_cc",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/ir:hlo_module_group",
@@ -2554,15 +2565,9 @@ cc_library(
     srcs = ["collectives_schedule_linearizer.cc"],
     hdrs = ["collectives_schedule_linearizer.h"],
     deps = [
-        ":hlo_domain_map",
         ":hlo_pass",
-        ":hlo_query",
         ":hlo_reachability",
-        ":shape_inference",
         "//tensorflow/compiler/xla:array2d",
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -2579,13 +2584,7 @@ xla_cc_test(
     srcs = ["collectives_schedule_linearizer_test.cc"],
     deps = [
         ":collectives_schedule_linearizer",
-        ":hlo_graph_dumper",
-        ":hlo_matchers",
-        ":hlo_runner",
         ":pattern_matcher",
-        "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -2593,7 +2592,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_benchmark",
     ],
 )
 
@@ -3987,6 +3985,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_execution_profile_test",
     srcs = ["hlo_execution_profile_test.cc"],
+    tags = ["no_mac_arm64"],
     deps = [
         ":cpu_plugin",
         ":hlo_cost_analysis",
@@ -6753,9 +6752,13 @@ cc_library(
     srcs = ["compilation_environments.cc"],
     hdrs = ["compilation_environments.h"],
     deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/tsl/platform:casts",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",  # fixdeps: keep
         "//tensorflow/tsl/platform:protobuf",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
@@ -6784,8 +6787,11 @@ xla_cc_test(
     deps = [
         ":compilation_environments",
         ":test_compilation_environment_proto_cc",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:casts",
         "//tensorflow/tsl/platform:protobuf",
     ],
@@ -6981,7 +6987,11 @@ xla_cc_test(
 cc_library(
     name = "metrics_hook_interface",
     hdrs = ["metrics_hook_interface.h"],
-    deps = ["@com_google_absl//absl/strings"],
+    deps = [
+        ":metrics_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
 )
 
 xla_cc_test(

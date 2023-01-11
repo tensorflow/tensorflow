@@ -231,7 +231,7 @@ bool GpuRng::SetSeed(Stream* stream, const uint8_t* seed, uint64_t seed_bytes) {
 }  // namespace gpu
 
 void initialize_curand() {
-  port::Status status =
+  tsl::Status status =
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::RngFactory>(
           cuda::kCudaPlatformId, gpu::kGpuRandPlugin, "cuRAND",
           [](internal::StreamExecutorInterface* parent) -> rng::RngSupport* {

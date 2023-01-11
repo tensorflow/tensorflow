@@ -14,13 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/python/framework/python_op_gen.h"
 
-#include <stdio.h>
-
+#include <algorithm>
+#include <cstdio>
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
-#include "absl/strings/escaping.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -28,12 +31,10 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -153,7 +154,7 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
     op_name_ = function_name_;
     absl::ConsumePrefix(&op_name_, "_");
   }
-  ~GenEagerPythonOp() override {}
+  ~GenEagerPythonOp() override = default;
 
   string Code() override;
 
@@ -1206,8 +1207,9 @@ void GenEagerPythonOp::AddRawOpExport(const string& parameters) {
 
 string GetPythonOpsImpl(
     const OpList& ops, const ApiDefMap& api_defs,
-    const std::vector<string>& hidden_ops, const string& source_file_name = "",
-    const std::unordered_set<string> type_annotate_ops = {}) {
+    absl::Span<const string> hidden_ops,
+    absl::Span<const string> source_file_list,
+    const std::unordered_set<string>& type_annotate_ops = {}) {
   string result;
   // Header
   // TODO(josh11b): Mention the library for which wrappers are being generated.
@@ -1218,9 +1220,9 @@ This file is MACHINE GENERATED! Do not edit.
 
   // Mention the original source file so someone tracing back through
   // generated Python code will know where to look next.
-  if (!source_file_name.empty()) {
+  if (!source_file_list.empty()) {
     strings::StrAppend(&result, "Original C++ source file: ");
-    strings::StrAppend(&result, source_file_name);
+    strings::StrAppend(&result, absl::StrJoin(source_file_list, ", "));
     strings::StrAppend(&result, "\n");
   }
 
@@ -1299,18 +1301,18 @@ from typing import TypeVar
 }  // namespace
 
 string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
-                    const std::vector<string>& hidden_ops,
-                    const string& source_file_name,
-                    const std::unordered_set<string> type_annotate_ops) {
-  return GetPythonOpsImpl(ops, api_defs, hidden_ops, source_file_name,
+                    absl::Span<const string> hidden_ops,
+                    absl::Span<const string> source_file_list,
+                    const std::unordered_set<string>& type_annotate_ops) {
+  return GetPythonOpsImpl(ops, api_defs, hidden_ops, source_file_list,
                           type_annotate_ops);
 }
 
 void PrintPythonOps(const OpList& ops, const ApiDefMap& api_defs,
-                    const std::vector<string>& hidden_ops,
-                    const string& source_file_name,
-                    const std::unordered_set<string> type_annotate_ops) {
-  printf("%s", GetPythonOpsImpl(ops, api_defs, hidden_ops, source_file_name,
+                    absl::Span<const string> hidden_ops,
+                    absl::Span<const string> source_file_list,
+                    const std::unordered_set<string>& type_annotate_ops) {
+  printf("%s", GetPythonOpsImpl(ops, api_defs, hidden_ops, source_file_list,
                                 type_annotate_ops)
                    .c_str());
 }
@@ -1320,7 +1322,7 @@ string GetPythonWrappers(const char* op_list_buf, size_t op_list_len) {
   ops.ParseFromArray(op_list_buf, op_list_len);
 
   ApiDefMap api_def_map(ops);
-  return GetPythonOpsImpl(ops, api_def_map, {});
+  return GetPythonOpsImpl(ops, api_def_map, {}, {});
 }
 
 string GetArgAnnotation(

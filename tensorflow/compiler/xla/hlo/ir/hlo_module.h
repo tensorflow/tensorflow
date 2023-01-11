@@ -41,7 +41,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/lib/gtl/iterator_range.h"
 #include "tensorflow/tsl/platform/logging.h"
@@ -70,7 +69,7 @@ class HloModule {
  public:
   // Constructor.
   HloModule(const std::string& name, HloModuleConfig config);
-  virtual ~HloModule() {}
+  virtual ~HloModule() = default;
 
   // Adds an entry computation to the module. A module can only have one entry
   // computation. Returns a pointer to the newly added computation.
@@ -474,8 +473,8 @@ class HloModule {
   }
 
   // Get the list of program arguments to be prefetch across programs.
-  const absl::Span<const std::pair<int64_t, ShapeIndex>>
-  CrossProgramPrefetches() const {
+  absl::Span<const std::pair<int64_t, ShapeIndex>> CrossProgramPrefetches()
+      const {
     return cross_program_prefetches_;
   }
 

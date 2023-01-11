@@ -58,7 +58,7 @@ LogicalResult BufferizeOp(Op op, RewriterBase &rewriter,
                       op.getOperation()->getAttrs());
   bufferization::replaceOpWithBufferizedValues(
       rewriter, op.getOperation(),
-      llvm::makeArrayRef(new_operands).drop_front(num_inputs));
+      llvm::ArrayRef(new_operands).drop_front(num_inputs));
   return success();
 }
 
@@ -114,6 +114,12 @@ LogicalResult OutfeedOp::bufferize(
     RewriterBase &rewriter,
     const bufferization::BufferizationOptions &options) {
   return BufferizeOp(*this, rewriter, options, this->getNumOperands());
+}
+
+LogicalResult RngBitGeneratorOp::bufferize(
+    RewriterBase &rewriter,
+    const bufferization::BufferizationOptions &options) {
+  return BufferizeOp(*this, rewriter, options, 1);
 }
 
 LogicalResult AddDependencyOp::bufferize(

@@ -17,8 +17,14 @@ syntax = "proto3";
 
 package xla;
 
+import "google/protobuf/any.proto";
 import "tensorflow/compiler/xla/service/hlo.proto";
 import "tensorflow/compiler/xla/xla_data.proto";
+
+// Proto version of `xla::CompilationEnvironments`.
+message CompilationEnvironmentsProto {
+  repeated google.protobuf.Any environments = 1;
+}
 
 // Debugging options for XLA. These options may change at any time - there are
 // no guarantees about backward or forward compatibility for these fields.
@@ -205,8 +211,7 @@ message DebugOptions {
 
   ShapeChecks xla_gpu_shape_checks = 170;
 
-  // Enable MLIR-based lowering in XLA:CPU instead of LLVM emitters.
-  bool xla_cpu_enable_mlir_lowering = 171;
+  reserved 171;  // Was xla_cpu_enable_mlir_lowering
 
   // If true, use MLIR instead of IR emitter to generate device code for
   // supported lmhlo.fusion ops. See xla::gpu::RewriteFusionOps() for details.
@@ -439,7 +444,12 @@ message DebugOptions {
 
   bool xla_dump_latency_hiding_schedule = 182;
 
-  // Next id: 184
+  // By default, MLIR lowering will use Linalg elementwise fusion. If this flag
+  // is enabled, the pipeline will use tiling, fusion, peeling, vectorization
+  // instead.
+  bool xla_cpu_enable_mlir_tiling_and_fusion = 184;
+
+  // Next id: 185
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -818,4 +828,5 @@ message ScheduleProto {
   repeated Instruction instructions = 1;
   // Computation id (matches the id in HloComputationProto).
   int64 computation_id = 2;
+  HloModuleProto hlo_module = 3;
 }

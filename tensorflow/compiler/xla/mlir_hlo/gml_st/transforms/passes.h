@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASSES_H
-#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASSES_H
+#ifndef MLIR_HLO_GML_ST_TRANSFORMS_PASSES_H
+#define MLIR_HLO_GML_ST_TRANSFORMS_PASSES_H
 
 #include <memory>
 #include <optional>
@@ -185,4 +185,4 @@ void addTileableOpsTransformationsForCPU(
 }  // namespace gml_st
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_PASSES_H
+#endif  // MLIR_HLO_GML_ST_TRANSFORMS_PASSES_H

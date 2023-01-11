@@ -96,12 +96,13 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // Set 4GB space limit for redzone scratch allocator.
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
   opts.set_xla_gpu_shape_checks(DebugOptions::RUNTIME);
-  opts.set_xla_cpu_enable_mlir_lowering(false);
   opts.set_xla_gpu_enable_mlir_lowering(true);
   opts.set_xla_gpu_enable_softmax_fusion(true);
   opts.set_xla_gpu_normalize_layouts(true);
   opts.set_xla_gpu_simplify_all_fp_conversions(true);
   opts.set_xla_dump_latency_hiding_schedule(false);
+
+  opts.set_xla_cpu_enable_mlir_tiling_and_fusion(false);
   return opts;
 }
 
@@ -806,11 +807,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       DebugOptions::ShapeChecks_Name(debug_options->xla_gpu_shape_checks()),
       "When to perform shape checks in XLA:GPU."));
   flag_list->push_back(tsl::Flag(
-      "xla_cpu_enable_mlir_lowering",
-      bool_setter_for(&DebugOptions::set_xla_cpu_enable_mlir_lowering),
-      debug_options->xla_cpu_enable_mlir_lowering(),
-      "Enable MLIR-based lowering in XLA:CPU instead of LLVM emitters."));
-  flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_mlir_lowering", setter_for_xla_gpu_enable_mlir_lowering,
       debug_options->xla_gpu_enable_mlir_lowering(),
       "Enable MLIR-based lowering in XLA:GPU instead of LLVM emitters."));
@@ -836,6 +832,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_dump_latency_hiding_schedule),
       debug_options->xla_dump_latency_hiding_schedule(),
       "Dump the schedule from the latency-hiding scheduler."));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_enable_mlir_tiling_and_fusion",
+      bool_setter_for(&DebugOptions::set_xla_cpu_enable_mlir_tiling_and_fusion),
+      debug_options->xla_cpu_enable_mlir_tiling_and_fusion(),
+      "Enable MLIR tiling and fusion."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

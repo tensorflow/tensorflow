@@ -11,6 +11,16 @@ package(
     licenses = ["notice"],
 )
 
+exports_files(
+    srcs = [
+        "profiler.h",
+        "telemetry_setting.h",
+    ],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
+)
+
 tflite_cc_library_with_c_headers_test(
     name = "profiler",
     hdrs = ["profiler.h"],

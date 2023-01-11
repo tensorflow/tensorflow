@@ -57,6 +57,8 @@ StatusOr<const xla::HloInstructionProto*> FindRootInstruction(
 
 }  // namespace
 
+char PjRtCompatibleExecutable::ID = 0;
+char PjRtCompatibleLoadedExecutable::ID = 0;
 char PjRtExecutable::ID = 0;
 char PjRtLoadedExecutable::ID = 0;
 

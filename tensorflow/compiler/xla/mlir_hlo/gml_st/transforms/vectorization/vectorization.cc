@@ -25,9 +25,12 @@ limitations under the License.
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Transforms/Hoisting.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "thlo/IR/thlo_ops.h"
 
 namespace mlir {
 namespace gml_st {
@@ -43,6 +46,7 @@ using mlir::linalg::Mmt4DOp;
 using mlir::linalg::ReduceOp;
 using mlir::linalg::TransposeOp;
 using mlir::tensor::ExpandShapeOp;
+using mlir::thlo::ReverseOp;
 using mlir::vector::TransferReadOp;
 using mlir::vector::TransferWriteOp;
 
@@ -55,6 +59,9 @@ using mlir::vector::TransferWriteOp;
 // static shape with more elements, then `linalg.fill` won't be vectorized. It
 // is expected that such operations are tiled to get to small static shapes.
 constexpr int64_t kNumElementsThreshold = 1024;
+
+// TODO(manany): This should be parameterized later on depending on hardware.
+constexpr int64_t kNumElementsVectorization = 8;
 
 // Rewrite `vector.transfer_read(linalg.expand_shape)` as
 // `vector.shape_cast(vector.transfer_read)`.
@@ -166,6 +173,8 @@ struct MaterializeUpdateTransferWriteTensorOperand
 
   LogicalResult matchAndRewrite(vector::TransferWriteOp op,
                                 PatternRewriter &rewriter) const override {
+    if (!op->getParentOfType<ForOp>()) return failure();
+
     // Sanity checks of TransferWriteOp.
     if (op.hasOutOfBoundsDim()) return failure();
     if (op.getVectorType().getRank() != op.getShapedType().getRank())
@@ -205,6 +214,8 @@ struct SetYieldUpdateTransferWriteTensorOperand
 
   LogicalResult matchAndRewrite(SetYieldOp op,
                                 PatternRewriter &rewriter) const override {
+    if (!op->getParentOfType<ForOp>()) return failure();
+
     bool changed = false;
     for (const auto &[src, dst, set] :
          llvm::zip(op.getSrcs(), op.getDsts(), op.getSets())) {
@@ -350,6 +361,66 @@ struct TensorToElementVectorizationPattern
 
  private:
   llvm::function_ref<bool(tensor::ExtractOp)> filterFn;
+};
+
+// This currently matches for all thlo.reverse of the form 1x1x..x1xVectorSize.
+// DimSize < kNumElementsVectorization will be handled by Scalarization.
+bool isPerfectlyTiledReverse(thlo::ReverseOp reverseOp) {
+  auto inputType = reverseOp.getInput().getType();
+  for (unsigned i = 0; i < inputType.getRank(); ++i) {
+    if (inputType.isDynamicDim(i)) {
+      return false;
+    }
+    if (i == inputType.getRank() - 1) {
+      return inputType.getDimSize(i) == kNumElementsVectorization &&
+             llvm::is_contained(reverseOp.getReverseDimensions(), i);
+    }
+    if (inputType.getDimSize(i) != 1) {
+      return false;
+    }
+  }
+  return false;
+}
+
+// Rewrite thlo.reverse of pattern 1x1x..x1xVectorSize as vector.transfer_read
+// followed by vector.shuffle followed by vector.transfer_write.
+struct ThloReverseVectorizationPattern
+    : public mlir::OpRewritePattern<thlo::ReverseOp> {
+  explicit ThloReverseVectorizationPattern(MLIRContext *context,
+                                           mlir::PatternBenefit benefit = 1)
+      : mlir::OpRewritePattern<thlo::ReverseOp>(context, benefit) {}
+
+  LogicalResult matchAndRewrite(thlo::ReverseOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!isPerfectlyTiledReverse(op))
+      return rewriter.notifyMatchFailure(op, "did not match filter");
+
+    auto inputType = op.getInput().getType();
+    auto vecTargetType =
+        RankedTensorType::get(inputType.getShape()[inputType.getRank() - 1],
+                              inputType.getElementType());
+    Value zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
+    SmallVector<Value> indices(op.getInit().getType().getRank(), zero);
+
+    auto readInput = rewriter.create<vector::TransferReadOp>(
+        op.getLoc(),
+        VectorType::get(vecTargetType.getShape(),
+                        vecTargetType.getElementType()),
+        op.getInput(), indices);
+
+    SmallVector<int64_t> mask;
+    int64_t maskSize = inputType.getShape()[inputType.getRank() - 1];
+    mask.reserve(maskSize);
+    for (int i = maskSize - 1; i >= 0; --i) {
+      mask.push_back(i);
+    }
+    auto shuffle = rewriter.create<vector::ShuffleOp>(op.getLoc(), readInput,
+                                                      readInput, mask);
+
+    rewriter.replaceOpWithNewOp<vector::TransferWriteOp>(
+        op, shuffle.getResult(), op.getInit(), indices);
+    return success();
+  }
 };
 
 // Rewrite vector.transfer_read(tensor.empty) into a constant vector of the
@@ -603,7 +674,7 @@ RewritePatternSet getDefaultVectorizationPatterns(MLIRContext *ctx) {
 
 bool isInsideGmlStLoop(Operation *op) {
   Operation *parent = op->getParentOp();
-  return isa<LoopOp>(parent) || isa<ParallelOp>(parent) || isa<ForOp>(parent);
+  return isa<ParallelOp>(parent) || isa<ForOp>(parent);
 }
 
 bool isFillTiledOrSmall(FillOp fill) {
@@ -730,6 +801,26 @@ struct VectorizeGmlStLoopsPass
   }
 };
 
+struct IdentityTransposeOpFoldingPattern
+    : public OpRewritePattern<TransposeOp> {
+  explicit IdentityTransposeOpFoldingPattern(MLIRContext *context,
+                                             PatternBenefit benefit = 1)
+      : OpRewritePattern(context, benefit) {}
+
+  LogicalResult matchAndRewrite(TransposeOp op,
+                                PatternRewriter & /*rewriter*/) const override {
+    auto perm = op.getPermutation();
+    for (int64_t i = 0; static_cast<uint64_t>(i) < perm.size(); ++i) {
+      if (perm[i] != i) return failure();
+    }
+
+    if (!hasSingleElementOperandsAndResults(op)) return failure();
+
+    op.replaceAllUsesWith(SmallVector<Value>(1, op.getInput()));
+    return success();
+  }
+};
+
 struct VectorizePerfectlyTiledLoopsPass
     : public impl::VectorizePerfectlyTiledLoopsPassBase<
           VectorizePerfectlyTiledLoopsPass> {
@@ -772,18 +863,19 @@ struct VectorizePerfectlyTiledLoopsPass
       patterns.add<TransferReadOfOneDimExpandShape>(ctx);
       patterns.add<TensorToElementVectorizationPattern>(
           ctx, isInsidePerfectlyTiledLoop);
+      patterns.add<ThloReverseVectorizationPattern>(ctx);
       (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
 
+    // TODO(vuson): remove these patterns once gml_st.for is retired.
     {
       RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
       linalg::populatePadOpVectorizationPatterns(patterns);
       patterns.add<MaterializeUpdateTransferWriteTensorOperand,
-                   SetYieldUpdateTransferWriteTensorOperand>(ctx);
+                   SetYieldUpdateTransferWriteTensorOperand,
+                   IdentityTransposeOpFoldingPattern>(ctx);
       (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
-
-    // Hoisting transfer_read/transfer_write.
     {
       RewritePatternSet patterns(ctx);
       patterns.add<IdentityMaterializeOpFoldingPattern>(ctx);
@@ -791,6 +883,8 @@ struct VectorizePerfectlyTiledLoopsPass
 
       hoistRedundantVectorTransfersOnTensor(func);
     }
+    // Hoisting transfer_read/transfer_write.
+    linalg::hoistRedundantVectorTransfersOnTensor(func);
   }
 };
 

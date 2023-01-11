@@ -164,8 +164,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property_readonly("task_id", &PjRtDevice::process_index,
                              "Deprecated; please use process_index")
       .def_property_readonly("platform",
-                             [](const PjRtDevice& device) {
-                               return device.client()->platform_name();
+                             [](const ClientAndPtr<PjRtDevice>& device) {
+                               return device.client->platform_name();
                              })
       .def_property_readonly("device_kind", &PjRtDevice::device_kind)
       .def_property_readonly(
@@ -564,7 +564,21 @@ PYBIND11_MODULE(xla_extension, m) {
             py::gil_scoped_release gil_release;
             return client.KeyValueSet(key, value);
           },
-          py::arg("key"), py::arg("value"));
+          py::arg("key"), py::arg("value"))
+      .def(
+          "key_value_dir_get",
+          [](DistributedRuntimeClient& client, std::string key) {
+            py::gil_scoped_release gil_release;
+            return client.KeyValueDirGet(key);
+          },
+          py::arg("key"))
+      .def(
+          "key_value_delete",
+          [](DistributedRuntimeClient& client, std::string key) {
+            py::gil_scoped_release gil_release;
+            return client.KeyValueDelete(key);
+          },
+          py::arg("key"));
 
   m.def(
       "get_distributed_runtime_service",

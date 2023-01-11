@@ -362,6 +362,7 @@ tf_cc_test(
         ":dispatcher_client",
         ":test_cluster",
         ":test_util",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -406,7 +407,9 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:hash_utils",
+        "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/data:standalone",
+        "//tensorflow/core/data/service/snapshot:path_utils",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:macros",
@@ -417,6 +420,20 @@ cc_library(
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:thread_annotations",
     ] + tf_grpc_cc_dependencies(),
+)
+
+tf_cc_test(
+    name = "dispatcher_impl_test",
+    srcs = ["dispatcher_impl_test.cc"],
+    deps = [
+        ":dispatcher_impl",
+        ":dispatcher_proto_cc",
+        ":test_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:status_matchers",
+    ],
 )
 
 cc_library(
@@ -448,15 +465,12 @@ tf_cc_test(
     deps = [
         ":common_proto_cc",
         ":dispatcher_state",
-        ":journal",
         ":journal_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/tsl/platform:status_matchers",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -793,6 +807,7 @@ cc_library(
         ":common_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/framework:function_proto_cc",
@@ -1047,8 +1062,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "//tensorflow/c:c_api_internal",
-        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",

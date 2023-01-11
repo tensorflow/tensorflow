@@ -479,6 +479,10 @@ namespace TFTPU {
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateConvertToLegacyCompileAndReplicateAttributesPass();
 
+// Creates a pass that converts all TPUPartitionedInput to TPUPartitionedInputV2
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTPUPartitionedOpConversionPass();
+
 // Creates a pass that forms clusters from operations of the same
 // `_replication_info` attribute.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass();

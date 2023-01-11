@@ -143,6 +143,7 @@ cc_test(
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/remat:metadata_util",
@@ -155,6 +156,28 @@ cc_test(
         "//third_party/eigen3",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "opaque_delegate_test",
+    size = "small",
+    srcs = ["opaque_delegate_test.cc"],
+    data = ["//tensorflow/lite:testdata/add.bin"],
+    defines = [
+        "TFLITE_USE_OPAQUE_DELEGATE",
+    ],
+    deps = [
+        ":delegate_test_util",
+        ":interpreter_utils",
+        ":utils",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_experimental",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -173,6 +196,7 @@ cc_library(
         "//tensorflow/lite:version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",

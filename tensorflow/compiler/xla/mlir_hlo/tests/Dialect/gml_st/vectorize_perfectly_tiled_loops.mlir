@@ -94,31 +94,6 @@ func.func @vectorize_static_matmul(%lhs: tensor<128x16xf32>,
 
 // -----
 
-func.func @do_not_vectorize_materialize_outside_loop() -> tensor<8x1xf32> {
-  %cst = arith.constant 0.000000e+00 : f32
-  %c1 = arith.constant 1 : index
-  %c8 = arith.constant 8 : index
-  %c0 = arith.constant 0 : index
-  %0 = tensor.empty() : tensor<10x1xf32>
-  %1 = linalg.fill ins(%cst : f32) outs(%0 : tensor<10x1xf32>) -> tensor<10x1xf32>
-  %3 = gml_st.materialize %1[0, 0] [8, 1] [1, 1]  : tensor<10x1xf32> to tensor<8x1xf32>
-  %4 = gml_st.loop (%arg2, %arg3) = (%c0, %c0) to (%c8, %c1) step (%c1, %c8) ins (%arg4 = %cst: f32) outs (%arg5 = %3: tensor<8x1xf32>) {
-    %10 = affine.min affine_map<(d0) -> (-d0 + 1, 8)>(%arg3)
-    %extracted_slice = tensor.extract_slice %arg5[%arg2, %arg3] [1, %10] [1, 1] : tensor<8x1xf32> to tensor<1x?xf32>
-    %11 = linalg.fill ins(%arg4 : f32) outs(%extracted_slice : tensor<1x?xf32>) -> tensor<1x?xf32>
-    %inserted_slice_1 = tensor.insert_slice %11 into %arg5[%arg2, %arg3] [1, %10] [1, 1] : tensor<1x?xf32> into tensor<8x1xf32>
-    gml_st.yield %inserted_slice_1 : tensor<8x1xf32>
-  }
-  return %4 : tensor<8x1xf32>
-}
-// CHECK-LABEL: func @do_not_vectorize_materialize_outside_loop
-// CHECK:         %[[CST:.*]] = arith.constant dense<0.000000e+00> : vector<10x1xf32>
-// CHECK:         %[[INIT:.*]] = tensor.empty() : tensor<10x1xf32>
-// CHECK:         %[[WRITE:.*]] = vector.transfer_write %[[CST]], %[[INIT]]{{.*}} tensor<10x1xf32>
-// CHECK:         gml_st.materialize %[[WRITE]] [0, 0] [8, 1] [1, 1] : {{.*}} to tensor<8x1xf32>
-
-// -----
-
 func.func @pad(%arg0: tensor<10x10xf32>) -> tensor<16x10xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %padded = tensor.pad %arg0 low[0, 0] high[6, 0] {
@@ -156,3 +131,93 @@ func.func @transpose(%input: tensor<4x5x6xf32>,
 // CHECK:         %[[TRANSPOSE:.*]] = vector.transpose %[[READ]], [1, 2, 0]
 // CHECK:         %[[WRITE:.*]] = vector.transfer_write %[[TRANSPOSE]], %[[INIT]]
 // CHECK:         return %[[WRITE]]
+
+// -----
+
+func.func @simplify_identity_transpose(%input: tensor<1x1xf32>,
+    %init: tensor<1x1xf32>) -> tensor<1x1xf32> {
+  %transpose = linalg.transpose
+    ins(%input:tensor<1x1xf32>)
+    outs(%init:tensor<1x1xf32>)
+    permutation = [0, 1]
+  func.return %transpose : tensor<1x1xf32>
+}
+
+// CHECK-LABEL: func @simplify_identity_transpose(
+
+// CHECK-NOT:     linalg.transpose
+// CHECK:         return
+
+// -----
+
+func.func @do_not_simplify_transpose(%input: tensor<1x1xf32>,
+    %init: tensor<1x1xf32>) -> tensor<1x1xf32> {
+  %transpose = linalg.transpose
+    ins(%input:tensor<1x1xf32>)
+    outs(%init:tensor<1x1xf32>)
+    permutation = [1, 0]
+  func.return %transpose : tensor<1x1xf32>
+}
+
+// CHECK-LABEL: func @do_not_simplify_transpose(
+
+// CHECK:         %[[TRANSPOSE:.*]] = linalg.transpose
+// CHECK:         return %[[TRANSPOSE]]
+
+// -----
+
+func.func @perfectly_tiled_reverse_1d(%input: tensor<8xf32>,
+    %init: tensor<8xf32>) -> tensor<8xf32> {
+  %res = thlo.reverse
+         ins(%input: tensor<8xf32>)
+         outs(%init: tensor<8xf32>)
+         reverse_dimensions = [0]
+  func.return %res : tensor<8xf32>
+}
+
+// CHECK-LABEL: func @perfectly_tiled_reverse_1d(
+//  CHECK-SAME: %[[ARG0:.*]]: tensor<8xf32>, %[[ARG1:.*]]: tensor<8xf32>
+//       CHECK:   %[[READ:.*]] = vector.transfer_read %[[ARG0]]
+//       CHECK:   %[[SHUFFLE:.*]] = vector.shuffle %[[READ]]
+//       CHECK:   %[[WRITE:.*]] = vector.transfer_write %[[SHUFFLE]], %[[ARG1]]
+//       CHECK:   return %[[WRITE]]
+
+// -----
+
+func.func @perfectly_tiled_reverse_2d(%input: tensor<1x8xf32>,
+    %init: tensor<1x8xf32>) -> tensor<1x8xf32> {
+  %res = thlo.reverse
+         ins(%input: tensor<1x8xf32>)
+         outs(%init: tensor<1x8xf32>)
+         reverse_dimensions = [1]
+  func.return %res : tensor<1x8xf32>
+}
+
+// CHECK-LABEL: func @perfectly_tiled_reverse_2d(
+//  CHECK-SAME: %[[ARG0:.*]]: tensor<1x8xf32>, %[[ARG1:.*]]: tensor<1x8xf32>
+//       CHECK:   %[[READ:.*]] = vector.transfer_read %[[ARG0]]
+//  CHECK-SAME:   : tensor<1x8xf32>, vector<8xf32>
+//       CHECK:   %[[SHUFFLE:.*]] = vector.shuffle %[[READ]]
+//       CHECK:   %[[WRITE:.*]] = vector.transfer_write %[[SHUFFLE]], %[[ARG1]]
+//  CHECK-SAME:   : vector<8xf32>, tensor<1x8xf32>
+//       CHECK:   return %[[WRITE]]
+
+// -----
+
+func.func @perfectly_tiled_reverse_4d(%input: tensor<1x1x1x8xf32>,
+    %init: tensor<1x1x1x8xf32>) -> tensor<1x1x1x8xf32> {
+  %res = thlo.reverse
+         ins(%input: tensor<1x1x1x8xf32>)
+         outs(%init: tensor<1x1x1x8xf32>)
+         reverse_dimensions = [3]
+  func.return %res : tensor<1x1x1x8xf32>
+}
+
+// CHECK-LABEL: func @perfectly_tiled_reverse_4d(
+//  CHECK-SAME: %[[ARG0:.*]]: tensor<1x1x1x8xf32>, %[[ARG1:.*]]: tensor<1x1x1x8xf32>
+//       CHECK:   %[[READ:.*]] = vector.transfer_read %[[ARG0]]
+//  CHECK-SAME:   : tensor<1x1x1x8xf32>, vector<8xf32>
+//       CHECK:   %[[SHUFFLE:.*]] = vector.shuffle %[[READ]]
+//       CHECK:   %[[WRITE:.*]] = vector.transfer_write %[[SHUFFLE]], %[[ARG1]]
+//  CHECK-SAME:   : vector<8xf32>, tensor<1x1x1x8xf32>
+//       CHECK:   return %[[WRITE]]

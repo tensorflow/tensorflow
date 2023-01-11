@@ -1,3 +1,4 @@
+# TODO(jakeharmon): Remove this comment
 load("tsl.bzl", "if_google", "if_oss")
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
@@ -450,6 +451,7 @@ bzl_library(
     srcs = ["tsl.bzl"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/tsl/mkl:build_defs_bzl",
         "//tensorflow/tsl/platform:rules_cc_bzl",
         "//third_party/compute_library:build_defs_bzl",
         "//third_party/mkl:build_defs_bzl",

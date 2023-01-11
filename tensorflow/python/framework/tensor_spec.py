@@ -266,6 +266,10 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
         (result,) = callback_outputs
     return result
 
+  def _to_tensors(self, value):
+    assert isinstance(value, ops.Tensor)
+    return [value]
+
   @classmethod
   def from_spec(cls, spec, name=None):
     """Returns a `TensorSpec` with the same shape and dtype as `spec`.

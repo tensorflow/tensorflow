@@ -33,7 +33,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
-using ::stream_executor::port::StatusOr;
+using ::tsl::StatusOr;
 
 // Creates a TensorRT execution context.
 ExecutionContext CreateExecutionContext(nvinfer1::ICudaEngine* cuda_engine);

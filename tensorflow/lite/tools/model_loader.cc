@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/minimal_logging.h"
-#include "tensorflow/lite/model_builder.h"
 
 namespace tflite {
 namespace tools {

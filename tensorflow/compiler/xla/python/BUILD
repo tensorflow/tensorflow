@@ -495,6 +495,7 @@ cc_library(
     deps = [
         ":jax_jit",
         ":py_client",
+        ":python_utils",
         ":status_casters",
         ":util",
         "//tensorflow/compiler/xla/pjrt:lru_cache",

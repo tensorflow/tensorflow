@@ -116,7 +116,7 @@ struct CustomCallOpInterface
 
     // Take the result buffers and fill in the token input in the gaps.
     auto bufferResults = llvm::to_vector(llvm::map_range(
-        makeArrayRef(bufferArgs).slice(numArguments),
+        llvm::ArrayRef(bufferArgs).slice(numArguments),
         [&](Value buffer) { return buffer ? buffer : tokenArgument; }));
 
     if (tokenArgument) {

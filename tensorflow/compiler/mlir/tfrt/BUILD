@@ -391,6 +391,7 @@ cc_library(
         "transforms/remove_device_attribute.cc",
         "transforms/remove_tf_if_const_args.cc",
         "transforms/reorder_assert.cc",
+        "transforms/sink_in_invariant_ops.cc",
         "transforms/tf_to_tfrt.cc",
         "transforms/tpu_passes.h",
     ],

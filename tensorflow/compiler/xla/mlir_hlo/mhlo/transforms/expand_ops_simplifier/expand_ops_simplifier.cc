@@ -41,8 +41,7 @@ namespace mhlo {
 namespace {
 
 ShapedType getScalarizedType(ShapedType t) {
-  return t.cloneWith(llvm::makeArrayRef<int64_t>(std::nullopt),
-                     t.getElementType());
+  return t.cloneWith(llvm::ArrayRef<int64_t>(std::nullopt), t.getElementType());
 }
 
 struct SelectAndScatterExpanderPattern

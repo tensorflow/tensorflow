@@ -37,7 +37,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import lift_to_graph
-from tensorflow.python.eager.polymorphic_function import monomorphic_function
+from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.framework import composite_tensor
@@ -288,12 +288,12 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         name = f.signature.name
         if 'forward' in name or 'backward' in name:
           not_present += 1
-          self.assertNotIn(monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME,
+          self.assertNotIn(attributes_lib.IMPLEMENTS,
                            f.attr, f)
         else:
           present += 1
           self.assertEqual(
-              f.attr[monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME].s,
+              f.attr[attributes_lib.IMPLEMENTS].s,
               'func'.encode('ascii'), f)
       self.assertEqual(not_present, 2, fdefs)
       self.assertEqual(present, 1, fdefs)
@@ -335,13 +335,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       functions = ops.get_default_graph().as_graph_def().library.function
       # Verify that we created only one function
       self.assertLen(functions, 1)
-      # Verify that eval() reads the current values.
+      # Verify that self.evaluate() reads the current values.
       a.initializer.run()
       b.initializer.run()
-      self.assertEqual(r1.eval(), 2)
+      self.assertEqual(self.evaluate(r1), 2)
 
-      a.assign_add([1]).eval()
-      self.assertEqual(r1.eval(), 3)
+      self.evaluate(a.assign_add([1]))
+      self.assertEqual(self.evaluate(r1), 3)
 
   def testImplementsAttributeWorksOnConstants(self):
     with context.graph_mode(), self.cached_session():
@@ -353,10 +353,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       functions = ops.get_default_graph().as_graph_def().library.function
       self.assertLen(functions, 1)
       self.assertLen(functions[0].signature.input_arg, 2)
-      # Verify that eval() reads the current values.
+      # Verify that self.evaluate() reads the current values.
       a.initializer.run()
-      self.assertEqual(r1.eval(), 3)
-      self.assertEqual(r2.eval(), 3)
+      self.assertEqual(self.evaluate(r1), 3)
+      self.assertEqual(self.evaluate(r2), 3)
 
   def testImplementsAttributeSpecializes(self):
     with context.graph_mode(), self.cached_session():
@@ -371,10 +371,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       self.assertLen(functions[0].signature.input_arg, 2)
       self.assertLen(functions[1].signature.input_arg, 2)
-      # Verify that eval() reads the current values.
+      # Verify that self.evaluate() reads the current values.
       a.initializer.run()
-      numpy.testing.assert_equal(r1.eval(), [3.])
-      numpy.testing.assert_equal(r2.eval(), [3., 3.])
+      numpy.testing.assert_equal(self.evaluate(r1), [3.])
+      numpy.testing.assert_equal(self.evaluate(r2), [3., 3.])
 
   def testImplementsWorksWithTensorSpec(self):
     v = polymorphic_function.function(
@@ -404,11 +404,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         name = f.signature.name
         if 'forward' in name or 'backward' in name:
           not_present += 1
-          self.assertNotIn(monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME,
+          self.assertNotIn(attributes_lib.IMPLEMENTS,
                            f.attr, f)
         else:
           present += 1
-          attr_value = f.attr[monomorphic_function.IMPLEMENTS_ATTRIBUTE_NAME]
+          attr_value = f.attr[attributes_lib.IMPLEMENTS]
           self.assertIsNotNone(attr_value.func, f)
           self.assertEqual(attr_value.func.name, 'embedding_matmul')
           name_attrs = attr_value.func.attr
@@ -3840,6 +3840,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                  constant_op.constant(3.),
                  constant_op.constant(4.)))
 
+  def testDuplicatedSanitizedNames(self):
+    @polymorphic_function.function
+    def foo(**kwargs):
+      return kwargs['a_b'] + kwargs['a/b']
+
+    error_message = 'Name collision after sanitization.'
+    with self.assertRaisesRegex(ValueError, error_message):
+      foo(**{'a_b': 1, 'a/b': 2})
+
   def testVariableCreatorScope(self):
     created_variables = []
     captured_variables = []
@@ -4809,7 +4818,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     @polymorphic_function.function
     def f():
       func = lambda: x
-      return ops.get_default_graph()._maybe_create_capture_placeholder(func)
+      # TODO(b/263520817): Remove access to private attribute.
+      return ops.get_default_graph(
+          )._function_captures._create_capture_placeholder(func)
 
     x = {
         'tensor': constant_op.constant(0),
@@ -4831,7 +4842,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     @polymorphic_function.function
     def f():
       func = lambda: x
-      return ops.get_default_graph()._maybe_create_capture_placeholder(func)
+      # TODO(b/263520817): Remove access to private attribute.
+      return ops.get_default_graph(
+          )._function_captures._create_capture_placeholder(func)
 
     # Set is not supported
     x = set([1, 2])

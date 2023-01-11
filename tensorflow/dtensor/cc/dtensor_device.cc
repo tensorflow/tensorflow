@@ -1476,8 +1476,6 @@ StatusOr<DTensorDevice::LoweredModuleBundle> DTensorDevice::LowerToSPMDModule(
         pass_runner_.RunOnGraph(device_set, doperation.is_func(), flib_def,
                                 *result.graph, cache_key));
   }
-  VLOG(4) << tensorflow::DumpGraphToFile("after_mlir_spmd_lowering",
-                                         *result.graph, flib_def);
 
   cached_mlir_module = module_manager_.AddCachedExecutable(
       doperation, cache_key, mlir_module_ref.release());

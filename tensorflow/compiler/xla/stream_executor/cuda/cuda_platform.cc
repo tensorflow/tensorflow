@@ -116,7 +116,7 @@ port::StatusOr<StreamExecutor*> CudaPlatform::FirstExecutorForBus(
     }
   }
 
-  return port::Status(
+  return tsl::Status(
       port::error::NOT_FOUND,
       absl::StrFormat("Executor for bus %d not found.", bus_ordinal));
 }
@@ -176,7 +176,7 @@ CudaPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
       config.ordinal);
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
-    return port::Status(
+    return tsl::Status(
         port::error::INTERNAL,
         absl::StrFormat(
             "failed initializing StreamExecutor for CUDA device ordinal %d: %s",

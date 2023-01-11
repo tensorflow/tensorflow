@@ -58,7 +58,7 @@ TEST(HostStream, ReportsHostCallbackError) {
   stream.ThenDoHostCallbackWithStatus(
       []() { return se::port::InternalError("error!"); });
 
-  se::port::Status status = stream.BlockHostUntilDone();
+  auto status = stream.BlockHostUntilDone();
   ASSERT_EQ(status.code(), tsl::error::INTERNAL);
   ASSERT_EQ(status.error_message(), "error!");
 }

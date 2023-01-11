@@ -302,6 +302,11 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
     // expected by TPURewritePass.
     pm->addNestedPass<mlir::func::FuncOp>(
         mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
+    // Rewrite RecvTPUEmbeddingActivationsOp and SendTPUEmbeddingGradients ops
+    // to internal variants by introducing XlaRecvTPUEmbeddingDeduplicationData
+    // op.
+    pm->addNestedPass<mlir::func::FuncOp>(
+        mlir::TF::CreateRewriteTPUEmbeddingOpsPass());
     // Create TPU Compile and TPU Execute ops for each TPU devices.
     pm->addPass(mlir::TFTPU::CreateTPURewritePass());
     // Convert unified compilation and replication attributes back to legacy

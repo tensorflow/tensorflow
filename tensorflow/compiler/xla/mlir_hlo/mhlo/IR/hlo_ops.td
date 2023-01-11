@@ -90,7 +90,7 @@ def MHLO_IotaOp : MHLO_Op<"iota", [Pure]> {
   }];
   let arguments = (ins I64Attr:$iota_dimension);
 
-  let results = (outs MHLO_IntFpOrComplexTensor:$output);
+  let results = (outs MHLO_StaticShapeIntFpOrComplexTensor:$output);
 
   // TODO(b/130357376): Iota has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -1012,7 +1012,7 @@ def MHLO_InfeedOp : MHLO_Op<"infeed", []> {
     DefaultValuedStrAttr<StrAttr, "">:$infeed_config,
     OptionalAttr<ArrayAttr>:$layout
   );
-  let results = (outs Variadic<MHLO_TensorOrToken>);
+  let results = (outs Variadic<MHLO_StaticShapeTensorOrToken>);
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
 }
@@ -1088,7 +1088,7 @@ def MHLO_RecvOp : MHLO_Op<"recv", []> {
     DefaultValuedOptionalAttr<BoolAttr, "false">:$is_host_transfer
   );
 
-  let results = (outs Variadic<MHLO_TensorOrToken>);
+  let results = (outs Variadic<MHLO_StaticShapeTensorOrToken>);
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
 }
@@ -1432,8 +1432,10 @@ def MHLO_AllReduceOp : MHLO_Op<"all_reduce",
       "::mlir::Type":$result_type, "::mlir::Value":$operand,
       "::mlir::DenseIntElementsAttr":$replica_groups,
       "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>];
+  let hasVerifier = 1;
 
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 def MHLO_ReduceScatterOp : MHLO_Op<"reduce_scatter",
@@ -1555,7 +1557,6 @@ def MHLO_GetTupleElementOp: MHLO_Op<"get_tuple_element", [Pure,
   let results = (outs MHLO_TensorOrTokenOrTuple);
 
   let hasFolder = 1;
-  let hasVerifier = 1;
 
   let assemblyFormat = [{
     $operand `[` $index `]` attr-dict `:` functional-type(operands, results)
@@ -1580,7 +1581,6 @@ def MHLO_TupleOp : MHLO_Op<"tuple", [Pure,
   let results = (outs MHLO_Tuple:$result);
 
   let hasCanonicalizer = 1;
-  let hasVerifier = 1;
 
   let assemblyFormat = [{
     $val attr-dict `:` custom<TupleOpType>(type($val), type($result))
@@ -1670,12 +1670,11 @@ def MHLO_DynamicSliceOp: MHLO_Op<"dynamic_slice",
 
   let results = (outs MHLO_Tensor:$result);
   let hasCanonicalizer = 1;
-  let hasVerifier = 1;
 }
 
 def MHLO_DynamicUpdateSliceOp: MHLO_Op<"dynamic_update_slice",
       [Pure, AllElementTypesMatch<["operand", "update", "result"]>,
-       AllShapesMatch<["operand", "result"]>, InferTensorType]> {
+       InferTensorType]> {
   let summary = "Dynamic Update Slice operator";
   let description = [{
     DynamicUpdateSlice generates a result which is the value of the input array
@@ -1864,7 +1863,6 @@ def MHLO_BroadcastOp : MHLO_ShapedInterfaceOp<"broadcast",
   let results = (outs MHLO_Tensor);
 
   let hasFolder = 1;
-  let hasVerifier = 1;
 }
 
 def MHLO_BroadcastInDimOp : MHLO_Op<"broadcast_in_dim",
@@ -2004,8 +2002,6 @@ def MHLO_ClampOp : MHLO_ShapedInterfaceOp<"clamp", [Pure,
     MHLO_Tensor:$max
   );
   let results = (outs MHLO_Tensor:$result);
-
-  let hasVerifier = 1;
 
   let assemblyFormat = [{
     $min `,` $operand `,` $max attr-dict
@@ -2258,8 +2254,7 @@ def MHLO_CustomCallOp: MHLO_Op<"custom_call",
   }];
 }
 
-def MHLO_DotOp: MHLO_Op<"dot",
-    [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def MHLO_DotOp: MHLO_Op<"dot", [Pure]> {
   let summary = "Dot operator";
   let description = [{
     Performs dot products between vectors, vector/matrix and matrix/matrix
@@ -2276,12 +2271,7 @@ def MHLO_DotOp: MHLO_Op<"dot",
   // Dot op required custom exporter to pass the preferred element type
   // to Xla builder.
   let hasCustomHLOConverter = 1;
-
-  let extraClassDeclaration = [{
-    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return succeeded(mlir::verifyCompatibleShapes(l, r));
-    }
-  }];
+  let hasVerifier = 1;
 }
 
 def MHLO_DotGeneralOp: MHLO_ShapedInterfaceOp<"dot_general", [Pure]> {
@@ -3033,7 +3023,7 @@ def MHLO_RngBitGeneratorOp : MHLO_Op<"rng_bit_generator", [Pure]> {
 
   let results = (outs
       MHLO_IntOrFpTensor:$output_state,
-      MHLO_IntOrFpTensor:$output
+      MHLO_StaticShapeIntOrFpTensor:$output
       );
 
   let hasVerifier = 1;
@@ -3165,7 +3155,7 @@ def MHLO_BitcastOp : MHLO_Op<"bitcast", [Pure]> {
 }
 
 def MHLO_ReducePrecisionOp :
-    MHLO_Op<"reduce_precision", [HLO_CompatibleOperandsAndResultType]> {
+    MHLO_Op<"reduce_precision", [HLO_CompatibleOperandsAndResultType, Pure]> {
   let summary = "Reduce precision operator";
   let description = [{
     Models the effect of converting floating - point values to a lower -

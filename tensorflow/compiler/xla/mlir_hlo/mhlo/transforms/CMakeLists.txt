@@ -64,8 +64,10 @@ add_mlir_library(MhloPasses
   rank_specialization/rank_specialization.cc
   restrict_max_rank/restrict_max_rank.cc
   shape_reification/shape_reification_pass.cc
+  shape_simplification/shape_simplification.cc
   sink_constants_to_control_flow/sink_constants_to_control_flow.cc
   sparse_rewriting/sparse_rewriting.cc
+  symbolic_shape_optimization/symbolic_shape_optimization.cc
   test_infer_shaped_type/test_infer_shaped_type_pass.cc
   unfuse_batch_norm/unfuse_batch_norm.cc
   unfuse_batch_norm/unfuse_batch_norm_pass.cc

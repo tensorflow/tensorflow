@@ -22,6 +22,7 @@ limitations under the License.
 #include "gml_st/interfaces/tiling_interface.h"
 #include "gml_st/interfaces/tiling_interface_impl.h"
 #include "gml_st/transforms/passes.h"
+#include "gml_st/transforms/peeling/peeling.h"
 #include "gml_st/transforms/rewriters.h"
 #include "gml_st/transforms/transforms.h"
 #include "llvm/ADT/STLExtras.h"
@@ -367,6 +368,103 @@ void fuseGreedily(PatternRewriter& rewriter, Block& block,
                   llvm::function_ref<bool(Operation*)> filterFn) {
   while (succeeded(fuseGreedilyOneOpIntoBlock(rewriter, block, filterFn)))
     ;
+}
+
+FusionCluster findMapFusionCluster(Operation* op) {
+  // Find the root operation in the chain of elementwise ops. Current approach
+  // doesn't work well if maps don't form a chain.
+  Operation* rootOp = op;
+  while (true) {
+    auto users = llvm::to_vector(rootOp->getUsers());
+
+    if (users.size() != 1) break;
+    if (!isa<linalg::MapOp>(users[0])) break;
+
+    rootOp = users[0];
+  }
+
+  // Run a graph search to find all linalg.map and that can be fused in
+  // the root op.
+  DenseSet<Operation*> resultOps;
+  SmallVector<Operation*> remainingProducers{rootOp};
+
+  while (!remainingProducers.empty()) {
+    Operation* curOp = remainingProducers.pop_back_val();
+    if (!curOp) continue;
+
+    if (curOp->getName() == op->getName()) {
+      for (auto* u : curOp->getUsers())
+        // Do not fuse curOp that is used by another op of the same type.
+        if (u->getName() == op->getName()) continue;
+      resultOps.insert(curOp);
+    } else if (auto mapOp = dyn_cast<linalg::MapOp>(curOp)) {
+      resultOps.insert(curOp);
+      for (auto* operand : mapOp.getDpsInputOperands())
+        remainingProducers.push_back(operand->get().getDefiningOp());
+    }
+  }
+  return {resultOps, rootOp};
+}
+
+LogicalResult fuseOutputFill(PatternRewriter& rewriter, Operation* op) {
+  // Fusion into the output.
+  Operation* definingOp =
+      cast<linalg::LinalgOp>(op).getDpsInitOperand(0)->get().getDefiningOp();
+
+  // linalg.fill has already been fused for another matmul.
+  if (isa<linalg::FillOp>(definingOp)) return success();
+
+  auto materialize = dyn_cast<MaterializeOp>(definingOp);
+  if (!materialize) {
+    return rewriter.notifyMatchFailure(
+        op, "has failed to 'materialize' output during 'linalg.fill' fusion.");
+  }
+  if (materialize.getSource().getDefiningOp<linalg::FillOp>()) {
+    if (failed(fuse(rewriter, materialize))) return failure();
+  }
+  return success();
+}
+
+FailureOr<Operation*> tileAndFuseGreedily(
+    PatternRewriter& rewriter, Operation* op,
+    const mlir::gml_st::TilingOptions& opts, StringRef label,
+    llvm::function_ref<bool(Operation*)> fuseFilterFn) {
+  auto tilingResult = tile(opts, rewriter, cast<TilingInterface>(op));
+  if (failed(tilingResult)) return failure();
+
+  // If we did not tile (e.g. when all tile sizes are 0), do not replace
+  // original op and just mark it as transformed then return.
+  if (tilingResult->loop != nullptr) {
+    rewriter.replaceOp(op, tilingResult->loop->getResults());
+
+    // Fuse ops into the loop.
+    fuseGreedily(rewriter, *tilingResult->tiledOps.front()->getBlock(),
+                 fuseFilterFn);
+  }
+  setLabel(tilingResult->tiledOps.front(), label);
+  return tilingResult->loop;
+}
+
+LogicalResult tilePeeledOpsToScalars(
+    PatternRewriter& rewriter, const PeelingResult& peelingResult,
+    StringRef label, llvm::function_ref<bool(Operation*)> fuseFilterFn) {
+  for (auto* loop : peelingResult) {
+    ParallelOp peeledLoop = dyn_cast<ParallelOp>(loop);
+    auto* terminatorOp = peeledLoop->getRegion(0).front().getTerminator();
+    if (!terminatorOp) return failure();
+
+    auto* definingOp = terminatorOp->getOperand(0).getDefiningOp();
+    if (!definingOp) return failure();
+
+    mlir::gml_st::TilingOptions opts;
+    opts.setTileSizeComputationFn(SmallVector<int64_t>(
+        cast<linalg::LinalgOp>(definingOp).getNumLoops(), 1));
+
+    if (failed(tileAndFuseGreedily(rewriter, definingOp, opts, label,
+                                   fuseFilterFn)))
+      return failure();
+  }
+  return success();
 }
 
 FailureOr<Value> createFusedOp(PatternRewriter& rewriter,

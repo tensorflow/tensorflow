@@ -1410,7 +1410,7 @@ Status TPUPartitionedCallOp::InitializeVarOnTPU(
   TF_RETURN_IF_ERROR(
       InstantiatePartition(*init_graph, fname, device, &fhandle, nullptr));
 
-  FunctionLibraryRuntime::Options opts;
+  FunctionLibraryRuntime::Options opts(ctx->step_id());
   opts.step_container = ctx->step_container();
   opts.cancellation_manager = ctx->cancellation_manager();
   opts.stats_collector = ctx->stats_collector();
@@ -1569,7 +1569,7 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
     functions.push_back(DeviceAndFHandle{.device = target, .handle = handle});
   }
 
-  FunctionLibraryRuntime::Options opts;
+  FunctionLibraryRuntime::Options opts(ctx->step_id());
 
   // Blocking on threads in the same thread pool is disallowed because
   // concurrent warm-up requests can exhaust the default thread pool.
@@ -2702,7 +2702,7 @@ void TPUPartitionedCallOp::ExecuteFunctions(
     const std::vector<DeviceAndFHandle>& functions, OpKernelContext* ctx,
     int device_ordinal, int64_t ordinal_selector_req_id, DoneCallback done) {
   profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteFunctions");
-  FunctionLibraryRuntime::Options opts;
+  FunctionLibraryRuntime::Options opts(ctx->step_id());
   opts.step_container = ctx->step_container();
   opts.stats_collector = ctx->stats_collector();
   // TODO(akshayka): Consider selecting a runner on a per-device basis,

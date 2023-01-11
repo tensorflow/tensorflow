@@ -128,7 +128,6 @@ tf_kernel_library(
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
-        ":gpu_abs_kernels",
         ":gpu_acos_kernels",
         ":gpu_acosh_kernels",
         ":gpu_angle_kernels",
@@ -171,8 +170,14 @@ tf_kernel_library(
         ":gpu_tanh_kernels",
         "//third_party/eigen3",
     ]) + if_mlir_generated_experimental_kernels_enabled(
-        [":gpu_atanh_kernels_experimental"],
-        [":gpu_atanh_kernels"],
+        [
+            ":gpu_abs_kernels_experimental",
+            ":gpu_atanh_kernels_experimental",
+        ],
+        [
+            ":gpu_abs_kernels",
+            ":gpu_atanh_kernels",
+        ],
     ),
 )
 
@@ -470,6 +475,27 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cuda_cc_test(
+    name = "gpu_unary_ops_large_tensor_test",
+    size = "enormous",
+    srcs = ["gpu_unary_ops_large_tensor_test.cc"],
+    extra_copts = if_mlir_generated_experimental_kernels_enabled([
+        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
+    ]) + if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # TODO(b/171341759): re-enable.
+        "no_cuda",  # TODO(b/196608406): re-enable
+    ],
+    deps = [
+        ":base_ops_test",
+        ":base_unary_ops_test",
+        "//tensorflow/core/common_runtime:device",
+        "//tensorflow/core/common_runtime:device_factory",
+    ],
+)
+
 cc_library(
     name = "base_binary_ops_test",
     testonly = 1,
@@ -603,6 +629,24 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_abs_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+    ],
+    jit_types = [
+        "i8",
+        "i16",
+    ],
+    op = "abs",
+    tile_size = "256",
+    types = [],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
     name = "gpu_acos_kernels",
     op = "acos",
     tile_size = "256",
@@ -692,16 +736,14 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_atanh_kernels_experimental",
-    jit_i64_indexed_for_large_tensors_types = ["f16"],
-    op = "atanh",
-    test_tags = [
-        "noasan",  # TODO(b/248071004): JIT-compiled code will not be instrumented.
-    ],
-    tile_size = "256",
-    types = [
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
         "f32",
         "f64",
     ],
+    op = "atanh",
+    tile_size = "256",
+    types = [],
     unroll_factors = "4",
 )
 

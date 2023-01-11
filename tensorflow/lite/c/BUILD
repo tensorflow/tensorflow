@@ -200,6 +200,7 @@ cc_library(
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/profiling/telemetry/c:profiler",
     ],
 )
 

@@ -318,7 +318,7 @@ class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
     auto perm_type = tensorflow::GetTypeFromTFTensorShape(
         {static_cast<int>(perm.size())}, rewriter.getIntegerType(32));
     auto perm_attr =
-        DenseElementsAttr::get(perm_type, llvm::makeArrayRef<int>(perm));
+        DenseElementsAttr::get(perm_type, llvm::ArrayRef<int>(perm));
     auto perm_op = rewriter.create<TF::ConstOp>(loc, perm_type, perm_attr);
 
     // Create tensor type for the transpose result.
@@ -1221,7 +1221,9 @@ LogicalResult ConvertTf2XlaOps(func::FuncOp func, MLIRContext *context) {
   target.addIllegalOp<TF::XlaGatherOp>();
 
   RewritePatternSet patterns(context);
-  mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns, context);
+  mhlo::Tf2XlaTypeConverter converter;
+  mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns, context,
+                                             converter);
   mhlo::PopulateLegalizeTfPatterns(context, &patterns);
   TF::PopulateLegalizeHloToTfPatterns(&patterns, context);
   mhlo::GatherOp::getCanonicalizationPatterns(patterns, context);

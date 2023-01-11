@@ -109,6 +109,10 @@ bool IsFusibleCandidate(const HloInstruction& instr) {
     return false;
   }
 
+  if (IsNestableVariadicReduction(instr)) {
+    return false;
+  }
+
   // Require no further check for element-wise instructions.
   if (instr.IsElementwise() && instr.operand_count() > 0) {
     return true;

@@ -824,11 +824,7 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
         "//tensorflow/compiler/xla/stream_executor:dnn",
         "//tensorflow/tsl/platform:platform_port",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-        "//tensorflow/tsl/protobuf:autotuning_proto_cc_impl",
-        "//tensorflow/tsl/profiler/backends/cpu:annotation_stack_impl",
         "//tensorflow/tsl/util:command_line_flags",
-        "//tensorflow/tsl/util:determinism",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",

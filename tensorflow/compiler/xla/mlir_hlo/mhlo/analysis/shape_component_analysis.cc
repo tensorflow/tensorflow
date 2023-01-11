@@ -715,7 +715,7 @@ struct ShapeVisitor {
   ArrayRef<SymbolicExpr> lookup(ShapeOrValueInfo requestedInfo) {
     auto i = symbolicExprsMap->find(requestedInfo);
     assert(i != symbolicExprsMap->end() && "op not processed yet?");
-    return llvm::makeArrayRef(i->second);
+    return llvm::ArrayRef(i->second);
   }
 
   // Inserts a new entry into the cache and returns a reference to its result
@@ -746,7 +746,7 @@ ShapeComponentAnalysis::ShapeComponentAnalysis::GetShapeInfo(Value value) {
   compute(request);
   auto found = symbolicExprsMap.find(request);
   if (found == symbolicExprsMap.end()) return {};
-  return llvm::makeArrayRef(found->second);
+  return llvm::ArrayRef(found->second);
 }
 
 Optional<ArrayRef<SymbolicExpr>>
@@ -755,7 +755,7 @@ ShapeComponentAnalysis::ShapeComponentAnalysis::GetValueInfo(Value shape) {
   compute(request);
   auto found = symbolicExprsMap.find(request);
   if (found == symbolicExprsMap.end()) return {};
-  return llvm::makeArrayRef(found->second);
+  return llvm::ArrayRef(found->second);
 }
 
 void ShapeComponentAnalysis::reset() {
