@@ -30,8 +30,8 @@ using ::stream_executor::gpu::GpuContext;
 using ::stream_executor::gpu::GpuDeviceHandle;
 using ::stream_executor::gpu::GpuDevicePtr;
 using ::stream_executor::gpu::GpuDriver;
-using ::stream_executor::port::StatusOr;
 using ::tsl::Status;
+using ::tsl::StatusOr;
 
 // Rounds value up to the specified power of two alignment.
 size_t AlignUp(size_t value, size_t alignment) {
@@ -59,8 +59,7 @@ Status CheckVirtualAddressManagementSupport(GpuDeviceHandle device,
 
 }  // namespace
 
-/* static */ stream_executor::port::StatusOr<
-    std::unique_ptr<GpuVirtualMemAllocator>>
+/* static */ tsl::StatusOr<std::unique_ptr<GpuVirtualMemAllocator>>
 GpuVirtualMemAllocator::Create(
     const std::vector<Visitor>& alloc_visitors,
     const std::vector<Visitor>& free_visitors, GpuContext& gpu_context,

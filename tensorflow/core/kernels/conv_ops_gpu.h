@@ -53,7 +53,7 @@ class DnnScratchAllocator : public se::ScratchAllocator {
   DnnScratchAllocator(int64_t memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
   int64 GetMemoryLimitInBytes() override { return memory_limit_; }
-  se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
+  tsl::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
       int64_t byte_size) override {
     Tensor temporary_memory;
     if (byte_size < 0) {
@@ -81,7 +81,7 @@ class DnnScratchAllocator : public se::ScratchAllocator {
     // allocator.
     allocated_tensors_.push_back(temporary_memory);
     total_byte_size_ += byte_size;
-    return se::port::StatusOr<se::DeviceMemory<uint8>>(
+    return tsl::StatusOr<se::DeviceMemory<uint8>>(
         AsDeviceMemory(temporary_memory.flat<uint8>().data(),
                        temporary_memory.flat<uint8>().size()));
   }

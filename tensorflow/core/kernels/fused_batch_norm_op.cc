@@ -52,7 +52,7 @@ namespace functor {
 using se::DeviceMemory;
 using se::ScratchAllocator;
 using se::Stream;
-using se::port::StatusOr;
+using tsl::StatusOr;
 #endif
 
 string ToString(FusedBatchNormActivationMode activation_mode) {
