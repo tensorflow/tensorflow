@@ -13,6 +13,7 @@ message CompilationLogEntry {
   enum CompilationStage {
     UNSPECIFIED = 0;
     END_TO_END = 1;
+    HLO_PASSES = 2;
   }
   // Compilation stage recorded by this log entry.
   CompilationStage stage = 2;
