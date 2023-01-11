@@ -46,10 +46,10 @@ namespace xla {
 
 // In order to use TestCompilationEnvironment* with CompilationEnvironments, we
 // must define ProcessNewEnv for them.
-template <>
-std::unique_ptr<test::TestCompilationEnvironment1>
-CompilationEnvironments::ProcessNewEnv(
-    std::unique_ptr<test::TestCompilationEnvironment1> env) {
+std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv(
+    std::unique_ptr<tsl::protobuf::Message> msg) {
+  std::unique_ptr<test::TestCompilationEnvironment1> env(
+      tensorflow::down_cast<test::TestCompilationEnvironment1*>(msg.release()));
   if (!env) {
     env = std::make_unique<test::TestCompilationEnvironment1>();
     env->set_some_flag(100);
@@ -63,7 +63,10 @@ namespace op = ::xla::testing::opcode_matchers;
 
 class HloModuleTest : public HloTestBase {
  protected:
-  HloModuleTest() {}
+  static void SetUpTestSuite() {
+    CompilationEnvironments::RegisterProcessNewEnvFn(
+        test::TestCompilationEnvironment1::descriptor(), ProcessNewEnv);
+  }
 
   // Create a computation which returns a constant.
   std::unique_ptr<HloComputation> CreateConstantComputation() {
@@ -126,7 +129,7 @@ TEST_F(HloModuleTest, CloneTest) {
   // Add a compilation environment to module
   auto env = std::make_unique<test::TestCompilationEnvironment1>();
   env->set_some_flag(10);
-  module->comp_envs().AddEnv(std::move(env));
+  TF_ASSERT_OK(module->comp_envs().AddEnv(std::move(env)));
 
   auto post_order = module->MakeComputationPostOrder();
   auto cloned_module = module->Clone("copy");
